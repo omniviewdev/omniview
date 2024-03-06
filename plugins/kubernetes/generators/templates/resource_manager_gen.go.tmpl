@@ -1,0 +1,32 @@
+package resourcers 
+
+import (
+	"github.com/joshuapare/kubede/backend/services"
+	"github.com/joshuapare/kubede/backend/services/resources"
+	"go.uber.org/zap"
+
+  {{- range .Packages }}
+  {{ .PackageName }} "github.com/infraview/kubernetes-plugin/resourcers/{{ .ImportPath }}"
+  {{- end }}
+)
+
+// ResourceManagerService controls and operates all of the various resources available to query
+// in the cluster.
+type ResourceManagerService struct {
+  logger *zap.SugaredLogger
+  {{- range .Resources }}
+  {{ .PackageName }}{{ .ResourceName }} *{{ .PackageName }}.{{ .ResourceName }}Service
+  {{- end }}
+}
+
+// NewResourceManagerService creates a new instance of the ResourceManagerService.
+func NewResourceManagerService(
+	logger *zap.SugaredLogger,
+) *ResourceManagerService {
+	return &ResourceManagerService{
+    logger: logger,
+    {{- range .Resources}}
+    {{ .PackageName }}{{ .ResourceName }} := {{ .PackageName }}.New{{ .ResourceName }}Service(logger),
+    {{- end }}
+	}
+}

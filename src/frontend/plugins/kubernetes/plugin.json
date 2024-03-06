@@ -1,0 +1,24 @@
+{
+  "id": "kubernetes",
+  "version": "1.0.0",
+  "name": "Kubernetes",
+  "icon": "SiKubernetes",
+  "description": "Kubernetes is an open-source system for automating deployment, scaling, and management of containerized applications.",
+  "repository": "github.com/infraview/kubernetes",
+  "website": "kubernetes.io",
+  "maintainers": [
+    {
+      "name": "Infraview Maintainers",
+      "email": "info@infraview.io"
+    }
+  ],
+  "tags": [
+    "kubernetes",
+    "container",
+    "orchestration",
+    "cloud"
+  ],
+  "capabilities": [
+    "resource"
+  ]
+}
