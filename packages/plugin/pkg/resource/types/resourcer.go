@@ -1,9 +1,7 @@
-package services
+package types
 
 import (
 	"context"
-
-	"github.com/infraview/plugin/pkg/resource/types"
 )
 
 // Resourcer is an interface that all resources must implement in order
@@ -28,24 +26,24 @@ import (
 // for that resource type.
 type Resourcer[ClientT, T any] interface {
 	// Get returns a single resource in the given resource namespace.
-	Get(ctx context.Context, client *ClientT, input types.GetInput) (*types.GetResult[T], error)
+	Get(ctx context.Context, client *ClientT, input GetInput) (*GetResult[T], error)
 
 	// List returns a list of resources in the given resource namespace.
-	List(ctx context.Context, client *ClientT, input types.ListInput) (*types.ListResult[T], error)
+	List(ctx context.Context, client *ClientT, input ListInput) (*ListResult[T], error)
 
 	// FindResources returns a list of resources in the given resource namespace that
 	// match a set of given options.
 	//
 	// Due to the dynamic nature of the options, the options are passed as an interface
 	// and the Resourcer is responsible for casting the options to the correct type.
-	Find(ctx context.Context, client *ClientT, input types.FindInput) (*types.FindResult[T], error)
+	Find(ctx context.Context, client *ClientT, input FindInput) (*FindResult[T], error)
 
 	// Create creates a new resource in the given resource namespace.
-	Create(ctx context.Context, client *ClientT, input types.CreateInput) (*types.CreateResult[T], error)
+	Create(ctx context.Context, client *ClientT, input CreateInput) (*CreateResult[T], error)
 
 	// Update updates an existing resource in the given resource namespace.
-	Update(ctx context.Context, client *ClientT, input types.UpdateInput) (*types.UpdateResult[T], error)
+	Update(ctx context.Context, client *ClientT, input UpdateInput) (*UpdateResult[T], error)
 
 	// Delete deletes an existing resource in the given resource namespace.
-	Delete(ctx context.Context, client *ClientT, input types.DeleteInput) (*types.DeleteResult, error)
+	Delete(ctx context.Context, client *ClientT, input DeleteInput) (*DeleteResult, error)
 }
