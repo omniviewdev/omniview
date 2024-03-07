@@ -24,26 +24,26 @@ import (
 // GroupVersionKind that it supports, such as core.v1.Pod, core.v1.Service, etc.
 // Each of these Resourcers knows how to interact with the Kubernetes API server
 // for that resource type.
-type Resourcer[ClientT, T any] interface {
+type Resourcer[ClientT any] interface {
 	// Get returns a single resource in the given resource namespace.
-	Get(ctx context.Context, client *ClientT, input GetInput) (*GetResult[T], error)
+	Get(ctx context.Context, client *ClientT, input GetInput, result *GetResult[any]) error
 
 	// List returns a list of resources in the given resource namespace.
-	List(ctx context.Context, client *ClientT, input ListInput) (*ListResult[T], error)
+	List(ctx context.Context, client *ClientT, input ListInput, result *ListResult[any]) error
 
 	// FindResources returns a list of resources in the given resource namespace that
 	// match a set of given options.
 	//
 	// Due to the dynamic nature of the options, the options are passed as an interface
 	// and the Resourcer is responsible for casting the options to the correct type.
-	Find(ctx context.Context, client *ClientT, input FindInput) (*FindResult[T], error)
+	Find(ctx context.Context, client *ClientT, input FindInput, result *FindResult[any]) error
 
 	// Create creates a new resource in the given resource namespace.
-	Create(ctx context.Context, client *ClientT, input CreateInput) (*CreateResult[T], error)
+	Create(ctx context.Context, client *ClientT, input CreateInput, result *CreateResult[any]) error
 
 	// Update updates an existing resource in the given resource namespace.
-	Update(ctx context.Context, client *ClientT, input UpdateInput) (*UpdateResult[T], error)
+	Update(ctx context.Context, client *ClientT, input UpdateInput, result *UpdateResult[any]) error
 
 	// Delete deletes an existing resource in the given resource namespace.
-	Delete(ctx context.Context, client *ClientT, input DeleteInput) (*DeleteResult, error)
+	Delete(ctx context.Context, client *ClientT, input DeleteInput, result *DeleteResult) error
 }

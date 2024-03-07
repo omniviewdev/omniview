@@ -48,6 +48,32 @@ type IOperation[T any, ClientT any, InputT OperationInput, ResultT OperationResu
 	RecordValidationErrors(map[string]string)
 }
 
+func NewOperation[T any, ClientT any, InputT OperationInput, ResultT OperationResult[T]](
+	model T,
+	ctx context.Context,
+	logger *zap.SugaredLogger,
+	client *ClientT,
+	input *InputT,
+	result *ResultT,
+	meta ResourceMeta,
+	namespace string,
+	opID string,
+	operation OperationType,
+) *Operation[T, ClientT, InputT, ResultT] {
+	return &Operation[T, ClientT, InputT, ResultT]{
+		ctx:              ctx,
+		logger:           logger,
+		client:           client,
+		input:            input,
+		result:           result,
+		validationErrors: make(map[string]string),
+		meta:             meta,
+		namespace:        namespace,
+		opID:             opID,
+		operation:        operation,
+	}
+}
+
 // BaseOperation is a contextual object that defines the operation being performed on a resource,
 // that works with a resource of type T.
 //
@@ -175,8 +201,23 @@ type BaseResult[T any] struct {
 	Success bool
 }
 
+// create a new base result for out ops
+func newBaseResult[T any](model T) BaseResult[T] {
+	return BaseResult[T]{
+		Result:  &model,
+		Success: false,
+		Errors:  make([]error, 0),
+	}
+}
+
 type GetResult[T any] struct {
 	BaseResult[T]
+}
+
+func NewGetResult[T any](model T) *GetResult[T] {
+	return &GetResult[T]{
+		BaseResult: newBaseResult(model),
+	}
 }
 
 type ListResult[T any] struct {

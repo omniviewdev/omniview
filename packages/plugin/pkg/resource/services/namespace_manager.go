@@ -41,13 +41,13 @@ func (r ResourceNamespaceManagerStatus) String() string {
 // acts as a provider that resourcers can use to get the appropriate client for the given namespace.
 // When creating a new resource manager, the type and options type should be provided to the namespace manager
 // so that it can be provided the necessary client factory to create and manage clients for the resource manager.
-type ResourceNamespaceManager[T, O any] interface {
+type ResourceNamespaceManager[ClientT, OptionsT any] interface {
 	sync.Locker
 
 	// Initialize initializes the resource manager with the given client factory
 	// This method should be called before any other methods on the resource manager
 	// are called.
-	Initialize(ctx context.Context, factory factories.ResourceClientFactory[T, O]) error
+	Initialize(ctx context.Context, factory factories.ResourceClientFactory[ClientT, OptionsT]) error
 
 	// Start starts the resource manager for use
 	// This method should be called before any other methods on the resource manager
@@ -76,10 +76,10 @@ type ResourceNamespaceManager[T, O any] interface {
 	// GetNamespaceClient returns the necessary client for the given namespace
 	// This method should be used by resourcers to get the client for the given
 	// namespace.
-	GetNamespaceClient(namespace string) (*T, error)
+	GetNamespaceClient(namespace string) (*ClientT, error)
 
 	// RefreshNamespaceClient performs any actions necessary to refresh a client for the given namespace.
 	// This may include refreshing credentials, or re-initializing the client if it has been
 	// invalidated.
-	RefreshNamespaceClient(ctx context.Context, namespace string, options O) error
+	RefreshNamespaceClient(ctx context.Context, namespace string, options OptionsT) error
 }

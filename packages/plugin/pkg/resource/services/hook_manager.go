@@ -14,6 +14,15 @@ type hookIndex[InputT types.OperationInput, ResultT types.OperationResult[any]] 
 	postMutation    map[string][]types.PostHook[ResultT, any]
 }
 
+type Hooks[InputT types.OperationInput, ResultT types.OperationResult[any]] struct {
+	PreMutatation   []types.PreHook[InputT, any]
+	PreValidation   []types.PreHook[InputT, any]
+	BeforeOperation []types.PreHook[InputT, any]
+	AfterOperation  []types.PostHook[ResultT, any]
+	PostValidation  []types.PostHook[ResultT, any]
+	PostMutation    []types.PostHook[ResultT, any]
+}
+
 func (h *hookIndex[InputT, ResultT]) registerPreHook(hook types.PreHook[InputT, any], selector string) {
 	switch hook.HookType {
 	case types.PreMutatation:
@@ -58,6 +67,17 @@ func (h *hookIndex[InputT, ResultT]) getPostHooks(selector string, postHookType 
 		return h.postMutation[selector]
 	}
 	return nil
+}
+
+func (h *hookIndex[InputT, ResultT]) getAllSelectorHooks(selector string) Hooks[InputT, ResultT] {
+	return Hooks[InputT, ResultT]{
+		PreMutatation:   h.getPreHooks(selector, types.PreMutatation),
+		PreValidation:   h.getPreHooks(selector, types.PreValidation),
+		BeforeOperation: h.getPreHooks(selector, types.BeforeOperation),
+		AfterOperation:  h.getPostHooks(selector, types.AfterOperation),
+		PostValidation:  h.getPostHooks(selector, types.PostValidation),
+		PostMutation:    h.getPostHooks(selector, types.PostMutation),
+	}
 }
 
 func NewHookIndex[InputT types.OperationInput, ResultT types.OperationResult[any]]() hookIndex[InputT, ResultT] {
@@ -125,6 +145,30 @@ func NewResourceHookManager() *ResourceHookManager {
 		updateIndex: NewHookIndex[types.UpdateInput, types.UpdateResult[any]](),
 		deleteIndex: NewHookIndex[types.DeleteInput, types.DeleteResult](),
 	}
+}
+
+func (r *ResourceHookManager) GetHooksForGet(selector string) Hooks[types.GetInput, types.GetResult[any]] {
+	return r.getIndex.getAllSelectorHooks(selector)
+}
+
+func (r *ResourceHookManager) GetHooksForList(selector string) Hooks[types.ListInput, types.ListResult[any]] {
+	return r.listIndex.getAllSelectorHooks(selector)
+}
+
+func (r *ResourceHookManager) GetHooksForFind(selector string) Hooks[types.FindInput, types.FindResult[any]] {
+	return r.findIndex.getAllSelectorHooks(selector)
+}
+
+func (r *ResourceHookManager) GetHooksForCreate(selector string) Hooks[types.CreateInput, types.CreateResult[any]] {
+	return r.createIndex.getAllSelectorHooks(selector)
+}
+
+func (r *ResourceHookManager) GetHooksForUpdate(selector string) Hooks[types.UpdateInput, types.UpdateResult[any]] {
+	return r.updateIndex.getAllSelectorHooks(selector)
+}
+
+func (r *ResourceHookManager) GetHooksForDelete(selector string) Hooks[types.DeleteInput, types.DeleteResult] {
+	return r.deleteIndex.getAllSelectorHooks(selector)
 }
 
 // ============================================= HOOK REGISTRATION ==================================================== //
