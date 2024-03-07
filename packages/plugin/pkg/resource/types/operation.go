@@ -54,26 +54,16 @@ type IOperation[T any, ClientT any, InputT OperationInput, ResultT OperationResu
 // It is passed through the lifecycle of a resource operation, and is used to provide context
 // to the various hooks that are attached to the resource manager..
 type Operation[T any, ClientT any, InputT OperationInput, ResultT OperationResult[T]] struct {
-	// logger is the logger for the operation.
-	logger *zap.SugaredLogger
-	// opID is a unique identifier for the operation.
-	opID string
-	// type is the type of operation being performed.
-	operation OperationType
-	// Context is the context of the operation. It is used to pass the context of the operation
-	ctx context.Context
-	// resource is the metadata of the resource being operated on.
-	meta ResourceMeta
-	// namespace is the resource namespace that the operation is being performed in.
-	namespace string
-	// client is the resource client that the operation is being performed with.
-	client *ClientT
-	// input is the input to the operation.
-	input *InputT
-	// result is the result of the operation.
-	result *ResultT
-	// validationErrors is a map of validation errors that occur during the operation.
+	ctx              context.Context
+	logger           *zap.SugaredLogger
+	client           *ClientT
+	input            *InputT
+	result           *ResultT
 	validationErrors map[string]string
+	meta             ResourceMeta
+	namespace        string
+	opID             string
+	operation        OperationType
 }
 
 func (o *Operation[T, ClientT, InputT, ResultT]) ID() string {

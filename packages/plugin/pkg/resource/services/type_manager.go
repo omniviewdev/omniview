@@ -47,8 +47,6 @@ type ResourceTypeManager interface {
 // a static set of resource types that does not change with each resource namespace, for example, AWS,
 // GCP, Azure, etc.
 type StaticResourceTypeManager struct {
-	sync.RWMutex
-
 	// logger is the logger for the resource type manager
 	logger *zap.SugaredLogger
 
@@ -57,6 +55,8 @@ type StaticResourceTypeManager struct {
 
 	// namespacedResourceTypes is a map of available resource types for a given resource namespace
 	namespacedResourceTypes map[string][]*types.ResourceMeta
+
+	sync.RWMutex // embed this last for pointer receiver semantics
 }
 
 // NewStaticResourceTypeManager creates a new resource type manager with a static set of resource types
@@ -146,8 +146,6 @@ func (r *StaticResourceTypeManager) GetAvailableResourceTypes(namespace string) 
 // This discovery manager is optional, and if none is provided, the resource manager will
 // use all resource types provided by the resource type manager.
 type DynamicResourceTypeManager[T any] struct {
-	StaticResourceTypeManager
-
 	// clientFactory is the client factory for the resource type discovery manager
 	clientFactory factories.ResourceDiscoveryClientFactory[T]
 
@@ -157,6 +155,8 @@ type DynamicResourceTypeManager[T any] struct {
 	// syncer is the getter function that, taking in the respective client, can retrieve and then
 	// return the available resource types for a given namespace
 	syncer func(ctx context.Context, client *T) ([]*types.ResourceMeta, error)
+
+	StaticResourceTypeManager // embed this last for pointer receiver semantics
 }
 
 // NewDynamicResourceTypeManager creates a new resource type discovery manager to be
