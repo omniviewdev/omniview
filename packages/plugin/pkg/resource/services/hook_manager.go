@@ -73,7 +73,7 @@ func NewHookIndex[InputT types.OperationInput, ResultT types.OperationResult[any
 
 // ============================================= HOOK MANAGER ==================================================== //
 
-// ResourcerHookManager allows for hooking into various components of a resourcer's
+// ResourceHookManager allows for hooking into various components of a resourcer's
 // lifecycle. This can be used to extend the functionality of a resourcer, such as:
 //
 // - Validating input before it is sent to the backend
@@ -82,7 +82,7 @@ func NewHookIndex[InputT types.OperationInput, ResultT types.OperationResult[any
 // - Logging the input and output of operations
 // - Tracing the input and output of operations
 //
-// The ResourcerHookManager is a component of the resource manager, and is responsible
+// The ResourceHookManager is a component of the resource manager, and is responsible
 // for attaching the necessary hooks to the query object that is passed through the resource
 // lifecycle.
 //
@@ -100,7 +100,7 @@ func NewHookIndex[InputT types.OperationInput, ResultT types.OperationResult[any
 // Each of these hooks is optional, and can be added to the manager as needed. Hooks can be
 // defined for a specific operation, or for all operations, and can be defined for one or more
 // resource types, and optionally using a selector to define when to run.
-type ResourcerHookManager struct {
+type ResourceHookManager struct {
 	// keep an index of the registered hooks for the get operations
 	getIndex hookIndex[types.GetInput, types.GetResult[any]]
 	// keep an index of the registered hooks for the list operations
@@ -116,8 +116,8 @@ type ResourcerHookManager struct {
 }
 
 // Registers a new hook manager for managing global hooks
-func NewResourcerHookManager() *ResourcerHookManager {
-	return &ResourcerHookManager{
+func NewResourceHookManager() *ResourceHookManager {
+	return &ResourceHookManager{
 		getIndex:    NewHookIndex[types.GetInput, types.GetResult[any]](),
 		listIndex:   NewHookIndex[types.ListInput, types.ListResult[any]](),
 		findIndex:   NewHookIndex[types.FindInput, types.FindResult[any]](),
@@ -130,84 +130,84 @@ func NewResourcerHookManager() *ResourcerHookManager {
 // ============================================= HOOK REGISTRATION ==================================================== //
 
 // RegisterPreGetHook registers a pre-get hook for the given selector
-func (r *ResourcerHookManager) RegisterPreGetHook(hook types.PreHook[types.GetInput, any]) {
+func (r *ResourceHookManager) RegisterPreGetHook(hook types.PreHook[types.GetInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.getIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostGetHook registers a post-get hook for the given selector
-func (r *ResourcerHookManager) RegisterPostGetHook(hook types.PostHook[types.GetResult[any], any]) {
+func (r *ResourceHookManager) RegisterPostGetHook(hook types.PostHook[types.GetResult[any], any]) {
 	for _, selector := range hook.Selectors {
 		r.getIndex.registerPostHook(hook, selector)
 	}
 }
 
 // RegisterPreListHook registers a pre-list hook for the given selector
-func (r *ResourcerHookManager) RegisterPreListHook(hook types.PreHook[types.ListInput, any]) {
+func (r *ResourceHookManager) RegisterPreListHook(hook types.PreHook[types.ListInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.listIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostListHook registers a post-list hook for the given selector
-func (r *ResourcerHookManager) RegisterPostListHook(hook types.PostHook[types.ListResult[any], any]) {
+func (r *ResourceHookManager) RegisterPostListHook(hook types.PostHook[types.ListResult[any], any]) {
 	for _, selector := range hook.Selectors {
 		r.listIndex.registerPostHook(hook, selector)
 	}
 }
 
 // RegisterPreFindHook registers a pre-find hook for the given selector
-func (r *ResourcerHookManager) RegisterPreFindHook(hook types.PreHook[types.FindInput, any]) {
+func (r *ResourceHookManager) RegisterPreFindHook(hook types.PreHook[types.FindInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.findIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostFindHook registers a post-find hook for the given selector
-func (r *ResourcerHookManager) RegisterPostFindHook(hook types.PostHook[types.FindResult[any], any]) {
+func (r *ResourceHookManager) RegisterPostFindHook(hook types.PostHook[types.FindResult[any], any]) {
 	for _, selector := range hook.Selectors {
 		r.findIndex.registerPostHook(hook, selector)
 	}
 }
 
 // RegisterPreCreateHook registers a pre-create hook for the given selector
-func (r *ResourcerHookManager) RegisterPreCreateHook(hook types.PreHook[types.CreateInput, any]) {
+func (r *ResourceHookManager) RegisterPreCreateHook(hook types.PreHook[types.CreateInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.createIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostCreateHook registers a post-create hook for the given selector
-func (r *ResourcerHookManager) RegisterPostCreateHook(hook types.PostHook[types.CreateResult[any], any]) {
+func (r *ResourceHookManager) RegisterPostCreateHook(hook types.PostHook[types.CreateResult[any], any]) {
 	for _, selector := range hook.Selectors {
 		r.createIndex.registerPostHook(hook, selector)
 	}
 }
 
 // RegisterPreUpdateHook registers a pre-update hook for the given selector
-func (r *ResourcerHookManager) RegisterPreUpdateHook(hook types.PreHook[types.UpdateInput, any]) {
+func (r *ResourceHookManager) RegisterPreUpdateHook(hook types.PreHook[types.UpdateInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.updateIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostUpdateHook registers a post-update hook for the given selector
-func (r *ResourcerHookManager) RegisterPostUpdateHook(hook types.PostHook[types.UpdateResult[any], any]) {
+func (r *ResourceHookManager) RegisterPostUpdateHook(hook types.PostHook[types.UpdateResult[any], any]) {
 	for _, selector := range hook.Selectors {
 		r.updateIndex.registerPostHook(hook, selector)
 	}
 }
 
 // RegisterPreDeleteHook registers a pre-delete hook for the given selector
-func (r *ResourcerHookManager) RegisterPreDeleteHook(hook types.PreHook[types.DeleteInput, any]) {
+func (r *ResourceHookManager) RegisterPreDeleteHook(hook types.PreHook[types.DeleteInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.deleteIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostDeleteHook registers a post-delete hook for the given selector
-func (r *ResourcerHookManager) RegisterPostDeleteHook(hook types.PostHook[types.DeleteResult, any]) {
+func (r *ResourceHookManager) RegisterPostDeleteHook(hook types.PostHook[types.DeleteResult, any]) {
 	for _, selector := range hook.Selectors {
 		r.deleteIndex.registerPostHook(hook, selector)
 	}
