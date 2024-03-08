@@ -1,0 +1,14 @@
+id: example
+version: 1.0.0
+name: Example
+icon: SiKubernetes
+description: Example plugin to show how create custom plugins
+repository: github.com/infraview/plugins/example
+website: infraview.dev
+maintainers:
+  - name: Infraview Maintainers
+    email: info@infraview.dev
+tags:
+  - infraview
+capabilities:
+  - resource
