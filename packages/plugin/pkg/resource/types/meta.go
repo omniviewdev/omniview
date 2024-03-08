@@ -60,34 +60,34 @@ type ResourceMeta struct {
 
 // String returns the string representation of the ResourceMeta
 // in the format "group::version::kind"
-// For example, "core::v1::Pod" or "ec2::2012-12-01::EC2Instance"
+// For example, "core::v1::Pod" or "ec2::2012-12-01::EC2Instance".
 func (r ResourceMeta) String() string {
 	return r.Group + "::" + r.Version + "::" + r.Kind
 }
 
-// GetKind returns the kind of the resource
+// GetKind returns the kind of the resource.
 func (r ResourceMeta) GetKind() string {
 	return r.Kind
 }
 
 // GetGroup returns the group of the resource
-// For example, "core" or "ec2"
+// For example, "core" or "ec2".
 func (r ResourceMeta) GetGroup() string {
 	return r.Group
 }
 
 // GetVersion returns the version of the resource
-// For example, "v1" or "2012-12-01"
+// For example, "v1" or "2012-12-01".
 func (r ResourceMeta) GetVersion() string {
 	return r.Version
 }
 
-// GetDescription returns the description of the resource
+// GetDescription returns the description of the resource.
 func (r ResourceMeta) GetDescription() string {
 	return r.Description
 }
 
-// GetCategory returns the category of the resource
+// GetCategory returns the category of the resource.
 func (r ResourceMeta) GetCategory() string {
 	if r.Category == "" {
 		return "Uncategorized"

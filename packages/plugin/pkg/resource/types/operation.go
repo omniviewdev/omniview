@@ -201,7 +201,7 @@ type BaseResult[T any] struct {
 	Success bool
 }
 
-// create a new base result for out ops
+// create a new base result for out ops.
 func newBaseResult[T any](model T) BaseResult[T] {
 	return BaseResult[T]{
 		Result:  &model,

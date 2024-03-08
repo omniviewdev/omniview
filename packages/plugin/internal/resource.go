@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
+
 	types "github.com/infraview/plugin/pkg"
 	resourcetypes "github.com/infraview/plugin/pkg/resource/types"
 )
@@ -77,7 +78,7 @@ func RunResourcePlugin(
 		return fmt.Errorf("failed to initialize resource plugin %s: %w", pluginConfig.ID, err)
 	}
 
-	// insure it satisfies the interface, and start routing to the plugin
+	// ensure it satisfies the interface, and start routing to the plugin
 	_, ok := raw.(resourcetypes.ResourceProvider)
 	if !ok {
 		return fmt.Errorf("failed to initialize resource plugin %s: shared interface violation", pluginConfig.ID)

@@ -4,7 +4,7 @@ import "github.com/infraview/plugin/pkg/resource/types"
 
 // ============================================= HOOK INDEX ==================================================== //
 
-// keep an index of the registered hooks for the selectors
+// keep an index of the registered hooks for the selectors.
 type hookIndex[InputT types.OperationInput, ResultT types.OperationResult[any]] struct {
 	preMutatation   map[string][]types.PreHook[InputT, any]
 	preValidation   map[string][]types.PreHook[InputT, any]
@@ -135,7 +135,7 @@ type ResourceHookManager struct {
 	deleteIndex hookIndex[types.DeleteInput, types.DeleteResult]
 }
 
-// Registers a new hook manager for managing global hooks
+// Registers a new hook manager for managing global hooks.
 func NewResourceHookManager() *ResourceHookManager {
 	return &ResourceHookManager{
 		getIndex:    NewHookIndex[types.GetInput, types.GetResult[any]](),
@@ -173,84 +173,84 @@ func (r *ResourceHookManager) GetHooksForDelete(selector string) Hooks[types.Del
 
 // ============================================= HOOK REGISTRATION ==================================================== //
 
-// RegisterPreGetHook registers a pre-get hook for the given selector
+// RegisterPreGetHook registers a pre-get hook for the given selector.
 func (r *ResourceHookManager) RegisterPreGetHook(hook types.PreHook[types.GetInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.getIndex.registerPreHook(hook, selector)
 	}
 }
 
-// RegisterPostGetHook registers a post-get hook for the given selector
+// RegisterPostGetHook registers a post-get hook for the given selector.
 func (r *ResourceHookManager) RegisterPostGetHook(hook types.PostHook[types.GetResult[any], any]) {
 	for _, selector := range hook.Selectors {
 		r.getIndex.registerPostHook(hook, selector)
 	}
 }
 
-// RegisterPreListHook registers a pre-list hook for the given selector
+// RegisterPreListHook registers a pre-list hook for the given selector.
 func (r *ResourceHookManager) RegisterPreListHook(hook types.PreHook[types.ListInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.listIndex.registerPreHook(hook, selector)
 	}
 }
 
-// RegisterPostListHook registers a post-list hook for the given selector
+// RegisterPostListHook registers a post-list hook for the given selector.
 func (r *ResourceHookManager) RegisterPostListHook(hook types.PostHook[types.ListResult[any], any]) {
 	for _, selector := range hook.Selectors {
 		r.listIndex.registerPostHook(hook, selector)
 	}
 }
 
-// RegisterPreFindHook registers a pre-find hook for the given selector
+// RegisterPreFindHook registers a pre-find hook for the given selector.
 func (r *ResourceHookManager) RegisterPreFindHook(hook types.PreHook[types.FindInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.findIndex.registerPreHook(hook, selector)
 	}
 }
 
-// RegisterPostFindHook registers a post-find hook for the given selector
+// RegisterPostFindHook registers a post-find hook for the given selector.
 func (r *ResourceHookManager) RegisterPostFindHook(hook types.PostHook[types.FindResult[any], any]) {
 	for _, selector := range hook.Selectors {
 		r.findIndex.registerPostHook(hook, selector)
 	}
 }
 
-// RegisterPreCreateHook registers a pre-create hook for the given selector
+// RegisterPreCreateHook registers a pre-create hook for the given selector.
 func (r *ResourceHookManager) RegisterPreCreateHook(hook types.PreHook[types.CreateInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.createIndex.registerPreHook(hook, selector)
 	}
 }
 
-// RegisterPostCreateHook registers a post-create hook for the given selector
+// RegisterPostCreateHook registers a post-create hook for the given selector.
 func (r *ResourceHookManager) RegisterPostCreateHook(hook types.PostHook[types.CreateResult[any], any]) {
 	for _, selector := range hook.Selectors {
 		r.createIndex.registerPostHook(hook, selector)
 	}
 }
 
-// RegisterPreUpdateHook registers a pre-update hook for the given selector
+// RegisterPreUpdateHook registers a pre-update hook for the given selector.
 func (r *ResourceHookManager) RegisterPreUpdateHook(hook types.PreHook[types.UpdateInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.updateIndex.registerPreHook(hook, selector)
 	}
 }
 
-// RegisterPostUpdateHook registers a post-update hook for the given selector
+// RegisterPostUpdateHook registers a post-update hook for the given selector.
 func (r *ResourceHookManager) RegisterPostUpdateHook(hook types.PostHook[types.UpdateResult[any], any]) {
 	for _, selector := range hook.Selectors {
 		r.updateIndex.registerPostHook(hook, selector)
 	}
 }
 
-// RegisterPreDeleteHook registers a pre-delete hook for the given selector
+// RegisterPreDeleteHook registers a pre-delete hook for the given selector.
 func (r *ResourceHookManager) RegisterPreDeleteHook(hook types.PreHook[types.DeleteInput, any]) {
 	for _, selector := range hook.Selectors {
 		r.deleteIndex.registerPreHook(hook, selector)
 	}
 }
 
-// RegisterPostDeleteHook registers a post-delete hook for the given selector
+// RegisterPostDeleteHook registers a post-delete hook for the given selector.
 func (r *ResourceHookManager) RegisterPostDeleteHook(hook types.PostHook[types.DeleteResult, any]) {
 	for _, selector := range hook.Selectors {
 		r.deleteIndex.registerPostHook(hook, selector)

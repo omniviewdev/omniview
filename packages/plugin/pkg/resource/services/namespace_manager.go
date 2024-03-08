@@ -7,13 +7,13 @@ import (
 	"github.com/infraview/plugin/pkg/resource/factories"
 )
 
-// ResourceNamespaceManagerState represents the state of the resource namespace manager
+// ResourceNamespaceManagerState represents the state of the resource namespace manager.
 type ResourceNamespaceManagerStatus int
 
 const (
-	// ResourceNamespaceManagerStatusStopped represents the state of the resource namespace manager when it is stopped
+	// ResourceNamespaceManagerStatusStopped represents the state of the resource namespace manager when it is stopped.
 	ResourceNamespaceManagerStatusStopped ResourceNamespaceManagerStatus = iota
-	// ResourceNamespaceManagerStatusStarted represents the state of the resource namespace manager when it is started
+	// ResourceNamespaceManagerStatusStarted represents the state of the resource namespace manager when it is started.
 	ResourceNamespaceManagerStatusStarted
 )
 

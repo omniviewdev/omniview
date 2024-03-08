@@ -6,5 +6,6 @@ docs:
 dev:
 	cd src && wails dev
 
-
+lint-plugin:
+	cd packages/plugin && golangci-lint run --fix
 

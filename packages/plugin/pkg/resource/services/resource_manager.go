@@ -25,7 +25,7 @@ type resourcerManager[ClientT, T any] struct {
 	sync.RWMutex
 }
 
-// RegisterResourcer registers a new resourcer for the given resource type
+// RegisterResourcer registers a new resourcer for the given resource type.
 func (r *resourcerManager[ClientT, T]) RegisterResourcer(resourceType string, resourcer types.Resourcer[ClientT]) error {
 	r.Lock()
 	defer r.Unlock()
@@ -38,7 +38,7 @@ func (r *resourcerManager[ClientT, T]) RegisterResourcer(resourceType string, re
 	return nil
 }
 
-// DeregisterResourcer deregisters the resourcer for the given resource type
+// DeregisterResourcer deregisters the resourcer for the given resource type.
 func (r *resourcerManager[ClientT, T]) DeregisterResourcer(resourceType string) error {
 	r.Lock()
 	defer r.Unlock()
@@ -49,7 +49,7 @@ func (r *resourcerManager[ClientT, T]) DeregisterResourcer(resourceType string) 
 	return nil
 }
 
-// GetResourcer returns the resourcer for the given resource type
+// GetResourcer returns the resourcer for the given resource type.
 func (r *resourcerManager[ClientT, T]) GetResourcer(resourceType string) (types.Resourcer[ClientT], error) {
 	r.RLock()
 	defer r.RUnlock()

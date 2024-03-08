@@ -2,12 +2,14 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
+	"go.uber.org/zap"
+
 	"github.com/infraview/plugin/pkg/resource/services"
 	"github.com/infraview/plugin/pkg/resource/types"
-	"go.uber.org/zap"
 )
 
 // ResourceController is responsible for managing the execution of resource operations.
@@ -18,9 +20,8 @@ import (
 // TODO
 type ResourceController interface{}
 
-// NewResourceController creates a new resource controller
+// NewResourceController creates a new resource controller.
 func NewResourceController[ClientT, OptionsT any](
-	ctx context.Context,
 	logger *zap.SugaredLogger,
 	resourceManager services.ResourceManager[ClientT],
 	hookManager services.ResourceHookManager,
@@ -37,8 +38,6 @@ func NewResourceController[ClientT, OptionsT any](
 }
 
 type resourceController[ClientT, OptionsT any] struct {
-	// ctx is the context of the resource controller.
-	ctx context.Context
 	// logger is the logger for the resource controller.
 	logger *zap.SugaredLogger
 	// resourceManager is the resource manager that the controller will execute operations on.
@@ -82,7 +81,12 @@ func (c *resourceController[ClientT, OptionsT]) Get(
 
 	// Compare the types.
 	if clientType != expectedType {
-		return nil, fmt.Errorf("client type %s does not match expected type %s for namespace %s", clientType, expectedType, namespace)
+		return nil, fmt.Errorf(
+			"client type %s does not match expected type %s for namespace %s",
+			clientType,
+			expectedType,
+			namespace,
+		)
 	}
 
 	// create our final result object
@@ -91,44 +95,44 @@ func (c *resourceController[ClientT, OptionsT]) Get(
 
 	// run our prehooks
 	for _, preMutateHook := range hooks.PreMutatation {
-		if err := preMutateHook.Execute(&input); err != nil {
+		if err = preMutateHook.Execute(&input); err != nil {
 			return nil, fmt.Errorf("pre-mutate hook failed: %w", err)
 		}
 	}
 	for _, preValidationHook := range hooks.PreValidation {
-		if err := preValidationHook.Execute(&input); err != nil {
+		if err = preValidationHook.Execute(&input); err != nil {
 			return nil, fmt.Errorf("pre-validation hook failed: %w", err)
 		}
 	}
 	for _, beforeOperationHook := range hooks.BeforeOperation {
-		if err := beforeOperationHook.Execute(&input); err != nil {
+		if err = beforeOperationHook.Execute(&input); err != nil {
 			return nil, fmt.Errorf("before-operation hook failed: %w", err)
 		}
 	}
 
 	// execute the resourcer
-	if err := resourcer.Get(ctx, client, input, result); err != nil {
+	if err = resourcer.Get(ctx, client, input, result); err != nil {
 		return nil, fmt.Errorf("resourcer failed to get resource: %w", err)
 	}
 
 	// ensure the returned resource is of the correct type
 	if reflect.TypeOf(result.Result) != reflect.TypeOf(model) {
-		return nil, fmt.Errorf("resource returned from resourcer is not of the correct type")
+		return nil, errors.New("resource returned from resourcer is not of the correct type")
 	}
 
 	// 6. Run the post-operation hooks
 	for _, afterOperationHook := range hooks.AfterOperation {
-		if err := afterOperationHook.Execute(result); err != nil {
+		if err = afterOperationHook.Execute(result); err != nil {
 			return nil, fmt.Errorf("after-operation hook failed: %w", err)
 		}
 	}
 	for _, postValidationHook := range hooks.PostValidation {
-		if err := postValidationHook.Execute(result); err != nil {
+		if err = postValidationHook.Execute(result); err != nil {
 			return nil, fmt.Errorf("post-validation hook failed: %w", err)
 		}
 	}
 	for _, postMutateHook := range hooks.PostMutation {
-		if err := postMutateHook.Execute(result); err != nil {
+		if err = postMutateHook.Execute(result); err != nil {
 			return nil, fmt.Errorf("post-mutate hook failed: %w", err)
 		}
 	}

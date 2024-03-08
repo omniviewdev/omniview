@@ -15,21 +15,21 @@ const (
 )
 
 type PluginConfig struct {
-	ID          string `yaml:"id" json:"id"`
-	Version     string `yaml:"version" json:"version"`
-	Name        string `yaml:"name" json: "name"`
-	Icon        string `yaml:"icon" json:"icon"`
-	Description string `yaml:"description" json:"description"`
-	Repository  string `yaml:"repository" json:"repository"`
-	Website     string `yaml:"website" json:"website"`
+	ID          string `json:"id"          yaml:"id"`
+	Version     string `json:"version"     yaml:"version"`
+	Name        string `json:"name"        yaml:"name"`
+	Icon        string `json:"icon"        yaml:"icon"`
+	Description string `json:"description" yaml:"description"`
+	Repository  string `json:"repository"  yaml:"repository"`
+	Website     string `json:"website"     yaml:"website"`
 	Maintainers []struct {
-		Name  string `yaml:"name" json:"name"`
-		Email string `yaml:"email" json:"email"`
-	} `yaml:"maintainers" json:"maintainers"`
-	Tags         []string `yaml:"tags" json:"tags"`
-	Dependencies []string `yaml:"dependencies" json:"dependencies"`
-	Capabilities []string `yaml:"capabilities" json:"capabilities"`
-	Markdown     string   `yaml:"-" json:"-"`
+		Name  string `json:"name"  yaml:"name"`
+		Email string `json:"email" yaml:"email"`
+	} `json:"maintainers"  yaml:"maintainers"`
+	Tags         []string `json:"tags"         yaml:"tags"`
+	Dependencies []string `json:"dependencies" yaml:"dependencies"`
+	Capabilities []string `json:"capabilities" yaml:"capabilities"`
+	Markdown     string   `json:"-"            yaml:"-"`
 }
 
 // LoadMarkdown loads a plugin Markdown file from a given path (if it exists)

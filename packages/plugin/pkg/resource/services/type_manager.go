@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"sync"
 
+	"go.uber.org/zap"
+
 	"github.com/infraview/plugin/pkg/resource/factories"
 	"github.com/infraview/plugin/pkg/resource/types"
-	"go.uber.org/zap"
 )
 
 // ResourceTypeManager is the interface for which resource type managers must implement.
@@ -70,7 +71,7 @@ func NewStaticResourceTypeManager(logger *zap.SugaredLogger, resourceTypes map[s
 	}
 }
 
-// GetResourceTypes returns the all of the available resource types for the resource manager
+// GetResourceTypes returns the all of the available resource types for the resource manager.
 func (r *StaticResourceTypeManager) GetResourceTypes() map[string]*types.ResourceMeta {
 	r.RLock()
 	defer r.RUnlock()
@@ -78,7 +79,7 @@ func (r *StaticResourceTypeManager) GetResourceTypes() map[string]*types.Resourc
 	return r.resourceTypes
 }
 
-// GetResourceType returns the resource type information by it's string representation
+// GetResourceType returns the resource type information by it's string representation.
 func (r *StaticResourceTypeManager) GetResourceType(s string) (*types.ResourceMeta, error) {
 	r.RLock()
 	defer r.RUnlock()
@@ -89,7 +90,7 @@ func (r *StaticResourceTypeManager) GetResourceType(s string) (*types.ResourceMe
 	return nil, fmt.Errorf("resource type %s does not exist", s)
 }
 
-// HasResourceType checks to see if the resource type exists
+// HasResourceType checks to see if the resource type exists.
 func (r *StaticResourceTypeManager) HasResourceType(s string) bool {
 	r.RLock()
 	defer r.RUnlock()
@@ -113,7 +114,7 @@ func (r *StaticResourceTypeManager) SyncResourceNamespace(ctx context.Context, n
 	return nil
 }
 
-// RemoveResourceNamespace removes a resource namespace from the resource type manager
+// RemoveResourceNamespace removes a resource namespace from the resource type manager.
 func (r *StaticResourceTypeManager) RemoveResourceNamespace(ctx context.Context, namespace string) error {
 	r.Lock()
 	defer r.Unlock()
@@ -122,7 +123,7 @@ func (r *StaticResourceTypeManager) RemoveResourceNamespace(ctx context.Context,
 	return nil
 }
 
-// GetAvailableResourceTypes returns the available resource types for the given namespace
+// GetAvailableResourceTypes returns the available resource types for the given namespace.
 func (r *StaticResourceTypeManager) GetAvailableResourceTypes(namespace string) ([]*types.ResourceMeta, error) {
 	r.RLock()
 	defer r.RUnlock()
@@ -219,7 +220,7 @@ func (r *DynamicResourceTypeManager[T]) SyncResourceNamespace(ctx context.Contex
 }
 
 // RemoveResourceNamespace removes a resource namespace from the resource type discovery manager
-// and stops the client for the namespace
+// and stops the client for the namespace.
 func (r *DynamicResourceTypeManager[T]) RemoveResourceNamespace(ctx context.Context, namespace string) error {
 	r.Lock()
 	defer r.Unlock()
@@ -238,7 +239,7 @@ func (r *DynamicResourceTypeManager[T]) RemoveResourceNamespace(ctx context.Cont
 	return nil
 }
 
-// GetAvailableResourceTypes returns the available resource types for the given namespace
+// GetAvailableResourceTypes returns the available resource types for the given namespace.
 func (r *DynamicResourceTypeManager[T]) GetAvailableResourceTypes(namespace string) ([]*types.ResourceMeta, error) {
 	r.Lock()
 	defer r.Unlock()
