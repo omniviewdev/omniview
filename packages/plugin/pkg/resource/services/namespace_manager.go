@@ -2,26 +2,14 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/omniviewdev/plugin/pkg/resource/factories"
+	"github.com/omniviewdev/plugin/pkg/resource/types"
 )
 
-// ResourceNamespaceManagerState represents the state of the resource namespace manager.
-type ResourceNamespaceManagerStatus int
-
-const (
-	// ResourceNamespaceManagerStatusStopped represents the state of the resource namespace manager when it is stopped.
-	ResourceNamespaceManagerStatusStopped ResourceNamespaceManagerStatus = iota
-	// ResourceNamespaceManagerStatusStarted represents the state of the resource namespace manager when it is started.
-	ResourceNamespaceManagerStatusStarted
-)
-
-func (r ResourceNamespaceManagerStatus) String() string {
-	return [...]string{"Stopped", "Started"}[r]
-}
-
-// ResourceNamespaceManager is an interface that resource managers must implement
+// NamespaceManager is an interface that resource managers must implement
 // in order to manage working against resources within a namespaced resources. T is the type of the client
 // that the resource manager will manage, and O is the options type that the resource manager will use.
 //
@@ -41,45 +29,137 @@ func (r ResourceNamespaceManagerStatus) String() string {
 // acts as a provider that resourcers can use to get the appropriate client for the given namespace.
 // When creating a new resource manager, the type and options type should be provided to the namespace manager
 // so that it can be provided the necessary client factory to create and manage clients for the resource manager.
-type ResourceNamespaceManager[ClientT, OptionsT any] interface {
-	sync.Locker
-
-	// Initialize initializes the resource manager with the given client factory
-	// This method should be called before any other methods on the resource manager
-	// are called.
-	Initialize(ctx context.Context, factory factories.ResourceClientFactory[ClientT, OptionsT]) error
-
-	// Start starts the resource manager for use
-	// This method should be called before any other methods on the resource manager
-	// are called.
-	Start(ctx context.Context) error
-
-	// Stop stops the resource manager
-	// This method should be called before any other methods on the resource manager
-	// are called.
-	Stop(ctx context.Context) error
-
-	// GetState returns the state of the resource namespace manager
-	GetStatus() ResourceNamespaceManagerStatus
-
+type NamespaceManager[ClientT, DataT, SensitiveDataT any] interface {
 	// CreateNamespace creates a new namespace for the resource manager
 	// This method should perform any necessary setup so that client retrieval
 	// can be done for the namespace after it is created
-	CreateNamespace(ctx context.Context, namespace string) error
+	CreateNamespace(ctx context.Context, namespace types.Namespace[DataT, SensitiveDataT]) error
 
 	// RemoveNamespace removes a namespace from the resource manager
-	RemoveNamespace(ctx context.Context, namespace string) error
+	RemoveNamespace(ctx context.Context, id string) error
 
 	// ListNamespaces lists the namespaces for the resource manager
-	ListNamespaces() ([]string, error)
+	ListNamespaces() ([]types.Namespace[DataT, SensitiveDataT], error)
 
 	// GetNamespaceClient returns the necessary client for the given namespace
 	// This method should be used by resourcers to get the client for the given
 	// namespace.
-	GetNamespaceClient(namespace string) (*ClientT, error)
+	GetNamespaceClient(id string) (*ClientT, error)
 
 	// RefreshNamespaceClient performs any actions necessary to refresh a client for the given namespace.
 	// This may include refreshing credentials, or re-initializing the client if it has been
 	// invalidated.
-	RefreshNamespaceClient(ctx context.Context, namespace string, options OptionsT) error
+	RefreshNamespaceClient(ctx context.Context, id string) error
+}
+
+func NewNamespaceManager[ClientT, DataT, SensitiveDataT any](
+	factory factories.ResourceClientFactory[ClientT, DataT, SensitiveDataT],
+) NamespaceManager[ClientT, DataT, SensitiveDataT] {
+	return &namespaceManager[ClientT, DataT, SensitiveDataT]{
+		factory:    factory,
+		namespaces: make(map[string]types.Namespace[DataT, SensitiveDataT]),
+		clients:    make(map[string]*ClientT),
+	}
+}
+
+type namespaceManager[ClientT, DataT, SensitiveDataT any] struct {
+	factory    factories.ResourceClientFactory[ClientT, DataT, SensitiveDataT]
+	namespaces map[string]types.Namespace[DataT, SensitiveDataT]
+	clients    map[string]*ClientT
+	sync.RWMutex
+}
+
+func (r *namespaceManager[ClientT, DataT, SensitiveDataT]) CreateNamespace(
+	ctx context.Context,
+	namespace types.Namespace[DataT, SensitiveDataT],
+) error {
+	r.Lock()
+	defer r.Unlock()
+
+	_, hasClient := r.clients[namespace.ID]
+	_, hasNamespace := r.namespaces[namespace.ID]
+
+	if hasClient || hasNamespace {
+		return fmt.Errorf("namespace %s already exists", namespace.ID)
+	}
+
+	client, err := r.factory.CreateClient(ctx, namespace)
+	if err != nil {
+		return err
+	}
+
+	r.clients[namespace.ID] = client
+	r.namespaces[namespace.ID] = namespace
+
+	return nil
+}
+
+func (r *namespaceManager[ClientT, DataT, SensitiveDataT]) RemoveNamespace(
+	ctx context.Context,
+	namespace string,
+) error {
+	r.Lock()
+	defer r.Unlock()
+
+	client, ok := r.clients[namespace]
+
+	if ok && client != nil {
+		delete(r.clients, namespace)
+		if err := r.factory.StopClient(ctx, client); err != nil {
+			return err
+		}
+	}
+
+	delete(r.namespaces, namespace)
+
+	return nil
+}
+
+func (r *namespaceManager[ClientT, DataT, SensitiveDataT]) ListNamespaces() (
+	[]types.Namespace[DataT, SensitiveDataT],
+	error,
+) {
+	r.RLock()
+	defer r.RUnlock()
+
+	namespaces := make([]types.Namespace[DataT, SensitiveDataT], 0, len(r.namespaces))
+
+	for _, namespace := range r.namespaces {
+		namespaces = append(namespaces, namespace)
+	}
+	return namespaces, nil
+}
+
+func (r *namespaceManager[ClientT, DataT, SensitiveDataT]) GetNamespaceClient(
+	id string,
+) (*ClientT, error) {
+	r.RLock()
+	defer r.RUnlock()
+	client, ok := r.clients[id]
+
+	if !ok {
+		return nil, fmt.Errorf("client for namespace %s does not exist", id)
+	}
+
+	return client, nil
+}
+
+func (r *namespaceManager[ClientT, DataT, SensitiveDataT]) RefreshNamespaceClient(
+	ctx context.Context,
+	id string,
+) error {
+	r.RLock()
+	defer r.RUnlock()
+
+	client, clientOk := r.clients[id]
+	namespace, namespaceOk := r.namespaces[id]
+
+	if !clientOk {
+		return fmt.Errorf("client for namespace %s does not exist", id)
+	}
+	if !namespaceOk {
+		return fmt.Errorf("namespace %s does not exist", id)
+	}
+
+	return r.factory.RefreshClient(ctx, namespace, client)
 }

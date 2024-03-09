@@ -18,6 +18,12 @@ type ResourcePluginMessage[M pkgtypes.OperationInput] struct {
 	PluginID   string `json:"plugin_id"`
 }
 
+type PreHookRegistration[OperationI pkgtypes.OperationInput] struct {
+	Operation pkgtypes.OperationType
+	Hook      pkgtypes.PreHookType
+	Handler   pkgtypes.PreHookFunc[OperationI]
+}
+
 // ResourcePluginController manages the lifecycle and registration of
 // resource plugins. It is responsible for registering and unregistering
 // resource plugins, starting and stopping resource plugins, and acting as
@@ -53,11 +59,11 @@ func NewResourcePluginController(
 // GetResource dispatches a get resource request to the appropriate resource plugin.
 func (rpc *ResourcePluginController) GetResource(
 	message ResourcePluginMessage[pkgtypes.GetInput],
-) (pkgtypes.GetResult[any], error) {
+) (*pkgtypes.GetResult, error) {
 	rpc.RLock()
 	defer rpc.RUnlock()
 
-	empty := pkgtypes.GetResult[any]{}
+	empty := pkgtypes.GetResult{}
 
 	if message.ResourceID == "" {
 		return empty, errors.New("dispatch failed: resource ID is empty")

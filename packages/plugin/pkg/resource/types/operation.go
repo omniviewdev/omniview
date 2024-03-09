@@ -1,11 +1,5 @@
 package types
 
-import (
-	"context"
-
-	"go.uber.org/zap"
-)
-
 type OperationType int
 
 const (
@@ -27,106 +21,106 @@ const (
 	OperationErrorUnknown
 )
 
-type IOperation[T any, ClientT any, InputT OperationInput, ResultT OperationResult[T]] interface {
-	// ID returns the unique identifier of the operation.
-	ID() string
-	// GetOperationType returns the type of operation being performed.
-	OperationType() OperationType
-	// GetContext returns the context of the operation.
-	Context() context.Context
-	// GetResourceMeta returns the metadata of the resource being operated on.
-	ResourceMeta() ResourceMeta
-	// GetNamespace returns the namespace of the resource being operated on.
-	Namespace() string
-	// Client returns the resource client that the operation is being performed with.
-	Client() *ClientT
-	// Input returns the input to the operation.
-	Input() *InputT
-	// Result returns the result of the operation.
-	Result() *ResultT
-	// RecordValidationErrors records a validation error that occurs during the operation.
-	RecordValidationErrors(map[string]string)
-}
-
-func NewOperation[T any, ClientT any, InputT OperationInput, ResultT OperationResult[T]](
-	model T,
-	ctx context.Context,
-	logger *zap.SugaredLogger,
-	client *ClientT,
-	input *InputT,
-	result *ResultT,
-	meta ResourceMeta,
-	namespace string,
-	opID string,
-	operation OperationType,
-) *Operation[T, ClientT, InputT, ResultT] {
-	return &Operation[T, ClientT, InputT, ResultT]{
-		ctx:              ctx,
-		logger:           logger,
-		client:           client,
-		input:            input,
-		result:           result,
-		validationErrors: make(map[string]string),
-		meta:             meta,
-		namespace:        namespace,
-		opID:             opID,
-		operation:        operation,
-	}
-}
-
-// BaseOperation is a contextual object that defines the operation being performed on a resource,
-// that works with a resource of type T.
+// type IOperation[T any, ClientT any, InputT OperationInput, ResultT OperationResult] interface {
+// 	// ID returns the unique identifier of the operation.
+// 	ID() string
+// 	// GetOperationType returns the type of operation being performed.
+// 	OperationType() OperationType
+// 	// GetContext returns the context of the operation.
+// 	Context() context.Context
+// 	// GetResourceMeta returns the metadata of the resource being operated on.
+// 	ResourceMeta() ResourceMeta
+// 	// GetNamespace returns the namespace of the resource being operated on.
+// 	Namespace() string
+// 	// Client returns the resource client that the operation is being performed with.
+// 	Client() *ClientT
+// 	// Input returns the input to the operation.
+// 	Input() *InputT
+// 	// Result returns the result of the operation.
+// 	Result() *ResultT
+// 	// RecordValidationErrors records a validation error that occurs during the operation.
+// 	RecordValidationErrors(map[string]string)
+// }
 //
-// It is passed through the lifecycle of a resource operation, and is used to provide context
-// to the various hooks that are attached to the resource manager..
-type Operation[T any, ClientT any, InputT OperationInput, ResultT OperationResult[T]] struct {
-	ctx              context.Context
-	logger           *zap.SugaredLogger
-	client           *ClientT
-	input            *InputT
-	result           *ResultT
-	validationErrors map[string]string
-	meta             ResourceMeta
-	namespace        string
-	opID             string
-	operation        OperationType
-}
-
-func (o *Operation[T, ClientT, InputT, ResultT]) ID() string {
-	return o.opID
-}
-
-func (o *Operation[T, ClientT, InputT, ResultT]) OperationType() OperationType {
-	return o.operation
-}
-
-func (o *Operation[T, ClientT, InputT, ResultT]) Context() context.Context {
-	return o.ctx
-}
-
-func (o *Operation[T, ClientT, InputT, ResultT]) ResourceMeta() ResourceMeta {
-	return o.meta
-}
-
-func (o *Operation[T, ClientT, InputT, ResultT]) Namespace() string {
-	return o.namespace
-}
-
-func (o *Operation[T, ClientT, InputT, ResultT]) Client() *ClientT {
-	return o.client
-}
-
-func (o *Operation[T, ClientT, InputT, ResultT]) Input() *InputT {
-	return o.input
-}
-
-func (o *Operation[T, ClientT, InputT, ResultT]) Result() *ResultT {
-	return o.result
-}
-
-func (o *Operation[T, ClientT, InputT, ResultT]) RecordValidationErrors(errors map[string]string) {
-	o.validationErrors = errors
-}
+// func NewOperation[T any, ClientT any, InputT OperationInput, ResultT OperationResult](
+// 	model T,
+// 	ctx context.Context,
+// 	logger *zap.SugaredLogger,
+// 	client *ClientT,
+// 	input *InputT,
+// 	result *ResultT,
+// 	meta ResourceMeta,
+// 	namespace string,
+// 	opID string,
+// 	operation OperationType,
+// ) *Operation[T, ClientT, InputT, ResultT] {
+// 	return &Operation[T, ClientT, InputT, ResultT]{
+// 		ctx:              ctx,
+// 		logger:           logger,
+// 		client:           client,
+// 		input:            input,
+// 		result:           result,
+// 		validationErrors: make(map[string]string),
+// 		meta:             meta,
+// 		namespace:        namespace,
+// 		opID:             opID,
+// 		operation:        operation,
+// 	}
+// }
+//
+// // BaseOperation is a contextual object that defines the operation being performed on a resource,
+// // that works with a resource of type T.
+// //
+// // It is passed through the lifecycle of a resource operation, and is used to provide context
+// // to the various hooks that are attached to the resource manager..
+// type Operation[T any, ClientT any, InputT OperationInput, ResultT OperationResult] struct {
+// 	ctx              context.Context
+// 	logger           *zap.SugaredLogger
+// 	client           *ClientT
+// 	input            *InputT
+// 	result           *ResultT
+// 	validationErrors map[string]string
+// 	meta             ResourceMeta
+// 	namespace        string
+// 	opID             string
+// 	operation        OperationType
+// }
+//
+// func (o *Operation[T, ClientT, InputT, ResultT]) ID() string {
+// 	return o.opID
+// }
+//
+// func (o *Operation[T, ClientT, InputT, ResultT]) OperationType() OperationType {
+// 	return o.operation
+// }
+//
+// func (o *Operation[T, ClientT, InputT, ResultT]) Context() context.Context {
+// 	return o.ctx
+// }
+//
+// func (o *Operation[T, ClientT, InputT, ResultT]) ResourceMeta() ResourceMeta {
+// 	return o.meta
+// }
+//
+// func (o *Operation[T, ClientT, InputT, ResultT]) Namespace() string {
+// 	return o.namespace
+// }
+//
+// func (o *Operation[T, ClientT, InputT, ResultT]) Client() *ClientT {
+// 	return o.client
+// }
+//
+// func (o *Operation[T, ClientT, InputT, ResultT]) Input() *InputT {
+// 	return o.input
+// }
+//
+// func (o *Operation[T, ClientT, InputT, ResultT]) Result() *ResultT {
+// 	return o.result
+// }
+//
+// func (o *Operation[T, ClientT, InputT, ResultT]) RecordValidationErrors(errors map[string]string) {
+// 	o.validationErrors = errors
+// }
 
 // ========================================== INPUTS ========================================== //
 
@@ -188,13 +182,31 @@ type DeleteInput struct {
 
 // ========================================== RESULTS ========================================== //
 
-type OperationResult[T any] interface {
-	GetResult[T] | ListResult[T] | FindResult[T] | CreateResult[T] | UpdateResult[T] | DeleteResult
+type OperationResult interface {
+	GetResult | ListResult | FindResult | CreateResult | UpdateResult | DeleteResult
 }
 
-type BaseResult[T any] struct {
+func (r *BaseResult) RecordError(err error) {
+	if r == nil {
+		return
+	}
+
+	if err != nil {
+		r.Errors = append(r.Errors, err)
+		r.Success = false
+	}
+}
+
+func (r *BaseResult) RecordResult(result interface{}) {
+	if r == nil {
+		return
+	}
+	r.Result = result
+}
+
+type BaseResult struct {
 	// Result is the result of the operation.
-	Result *T
+	Result interface{}
 	// Errors is a list of errors that occurred during the operation.
 	Errors []error
 	// Success is a flag that indicates if the operation was successful.
@@ -202,79 +214,75 @@ type BaseResult[T any] struct {
 }
 
 // create a new base result for out ops.
-func newBaseResult[T any](model T) BaseResult[T] {
-	return BaseResult[T]{
-		Result:  &model,
-		Success: false,
+func newBaseResult() BaseResult {
+	return BaseResult{
+		Result:  new(interface{}),
+		Success: true,
 		Errors:  make([]error, 0),
 	}
 }
 
-type GetResult[T any] struct {
-	BaseResult[T]
+type GetResult struct {
+	BaseResult
 }
 
-func NewGetResult[T any](model T) *GetResult[T] {
-	return &GetResult[T]{
-		BaseResult: newBaseResult(model),
+func NewGetResult() *GetResult {
+	return &GetResult{
+		BaseResult: newBaseResult(),
 	}
 }
 
-type ListResult[T any] struct {
-	BaseResult[T]
+type ListResult struct {
+	BaseResult
 	// Pagination is the pagination result of the list operation.
 	Pagination PaginationResult
 }
 
-func NewListResult[T any](model T) *ListResult[T] {
-	return &ListResult[T]{
-		BaseResult: newBaseResult(model),
+func NewListResult() *ListResult {
+	return &ListResult{
+		BaseResult: newBaseResult(),
 	}
 }
 
-type FindResult[T any] struct {
-	BaseResult[T]
+type FindResult struct {
+	BaseResult
 	// Pagination is the pagination result of the find operation.
 	Pagination PaginationResult
 }
 
-func NewFindResult[T any](model T) *FindResult[T] {
-	return &FindResult[T]{
-		BaseResult: newBaseResult(model),
+func NewFindResult() *FindResult {
+	return &FindResult{
+		BaseResult: newBaseResult(),
 	}
 }
 
-type CreateResult[T any] struct {
-	BaseResult[T]
+type CreateResult struct {
+	BaseResult
 }
 
-func NewCreateResult[T any](model T) *CreateResult[T] {
-	return &CreateResult[T]{
-		BaseResult: newBaseResult(model),
+func NewCreateResult() *CreateResult {
+	return &CreateResult{
+		BaseResult: newBaseResult(),
 	}
 }
 
-type UpdateResult[T any] struct {
-	BaseResult[T]
+type UpdateResult struct {
+	BaseResult
 }
 
-func NewUpdateResult[T any](model T) *UpdateResult[T] {
-	return &UpdateResult[T]{
-		BaseResult: newBaseResult(model),
+func NewUpdateResult() *UpdateResult {
+	return &UpdateResult{
+		BaseResult: newBaseResult(),
 	}
 }
 
 type DeleteResult struct {
-	// Errors is a list of errors that occurred during the operation.
-	Errors []error
-	// Success is a flag that indicates if the operation was successful.
-	Success bool
+	BaseResult
 }
 
 func NewDeleteResult() *DeleteResult {
 	return &DeleteResult{
-		Success: false,
-		Errors:  make([]error, 0),
+		BaseResult: newBaseResult(),
 	}
 }
 
