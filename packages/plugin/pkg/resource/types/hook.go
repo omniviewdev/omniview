@@ -36,10 +36,10 @@ type PreHookFunc[I OperationInput] func(*I) error
 
 // PostHookFunc is a function that runs on output lifecycle events of a resource operation, and
 // is provided an interface representing a pointer to the output of the operation.
-type PostHookFunc[T any, I OperationResult[T]] func(*I) error
+type PostHookFunc[I OperationResult] func(*I) error
 
 // PreHook is a hook that runs on input lifecycle events of a resource operation.
-type PreHook[I OperationInput, T any] struct {
+type PreHook[I OperationInput] struct {
 	// Execute is the function that should be run when the hook is executed. The input to the
 	// function will always be an interface representing a pointer to the input of the operation.
 	Execute PreHookFunc[I]
@@ -64,10 +64,10 @@ type PreHook[I OperationInput, T any] struct {
 }
 
 // PostHook is a hook that runs on output lifecycle events of a resource operation.
-type PostHook[I OperationResult[T], T any] struct {
+type PostHook[R OperationResult] struct {
 	// Execute is the function that should be run when the hook is executed. The input to the
 	// function will always be an interface representing a pointer to the output of the operation.
-	Execute PostHookFunc[T, I]
+	Execute PostHookFunc[R]
 
 	// ID is the unique identifier of the operation.
 	ID string

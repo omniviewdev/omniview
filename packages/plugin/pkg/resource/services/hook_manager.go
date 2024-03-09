@@ -5,25 +5,25 @@ import "github.com/omniviewdev/plugin/pkg/resource/types"
 // ============================================= HOOK INDEX ==================================================== //
 
 // keep an index of the registered hooks for the selectors.
-type hookIndex[InputT types.OperationInput, ResultT types.OperationResult[any]] struct {
-	preMutatation   map[string][]types.PreHook[InputT, any]
-	preValidation   map[string][]types.PreHook[InputT, any]
-	beforeOperation map[string][]types.PreHook[InputT, any]
-	afterOperation  map[string][]types.PostHook[ResultT, any]
-	postValidation  map[string][]types.PostHook[ResultT, any]
-	postMutation    map[string][]types.PostHook[ResultT, any]
+type hookIndex[InputT types.OperationInput, ResultT types.OperationResult] struct {
+	preMutatation   map[string][]types.PreHook[InputT]
+	preValidation   map[string][]types.PreHook[InputT]
+	beforeOperation map[string][]types.PreHook[InputT]
+	afterOperation  map[string][]types.PostHook[ResultT]
+	postValidation  map[string][]types.PostHook[ResultT]
+	postMutation    map[string][]types.PostHook[ResultT]
 }
 
-type Hooks[InputT types.OperationInput, ResultT types.OperationResult[any]] struct {
-	PreMutatation   []types.PreHook[InputT, any]
-	PreValidation   []types.PreHook[InputT, any]
-	BeforeOperation []types.PreHook[InputT, any]
-	AfterOperation  []types.PostHook[ResultT, any]
-	PostValidation  []types.PostHook[ResultT, any]
-	PostMutation    []types.PostHook[ResultT, any]
+type Hooks[InputT types.OperationInput, ResultT types.OperationResult] struct {
+	PreMutatation   []types.PreHook[InputT]
+	PreValidation   []types.PreHook[InputT]
+	BeforeOperation []types.PreHook[InputT]
+	AfterOperation  []types.PostHook[ResultT]
+	PostValidation  []types.PostHook[ResultT]
+	PostMutation    []types.PostHook[ResultT]
 }
 
-func (h *hookIndex[InputT, ResultT]) registerPreHook(hook types.PreHook[InputT, any], selector string) {
+func (h *hookIndex[InputT, ResultT]) registerPreHook(hook types.PreHook[InputT], selector string) {
 	switch hook.HookType {
 	case types.PreMutatation:
 		h.preMutatation[selector] = append(h.preMutatation[selector], hook)
@@ -34,7 +34,10 @@ func (h *hookIndex[InputT, ResultT]) registerPreHook(hook types.PreHook[InputT, 
 	}
 }
 
-func (h *hookIndex[InputT, ResultT]) registerPostHook(hook types.PostHook[ResultT, any], selector string) {
+func (h *hookIndex[InputT, ResultT]) registerPostHook(
+	hook types.PostHook[ResultT],
+	selector string,
+) {
 	switch hook.HookType {
 	case types.AfterOperation:
 		h.afterOperation[selector] = append(h.afterOperation[selector], hook)
@@ -45,7 +48,10 @@ func (h *hookIndex[InputT, ResultT]) registerPostHook(hook types.PostHook[Result
 	}
 }
 
-func (h *hookIndex[InputT, ResultT]) getPreHooks(selector string, preHookType types.PreHookType) []types.PreHook[InputT, any] {
+func (h *hookIndex[InputT, ResultT]) getPreHooks(
+	selector string,
+	preHookType types.PreHookType,
+) []types.PreHook[InputT] {
 	switch preHookType {
 	case types.PreMutatation:
 		return h.preMutatation[selector]
@@ -57,7 +63,10 @@ func (h *hookIndex[InputT, ResultT]) getPreHooks(selector string, preHookType ty
 	return nil
 }
 
-func (h *hookIndex[InputT, ResultT]) getPostHooks(selector string, postHookType types.PostHookType) []types.PostHook[ResultT, any] {
+func (h *hookIndex[InputT, ResultT]) getPostHooks(
+	selector string,
+	postHookType types.PostHookType,
+) []types.PostHook[ResultT] {
 	switch postHookType {
 	case types.AfterOperation:
 		return h.afterOperation[selector]
@@ -80,14 +89,17 @@ func (h *hookIndex[InputT, ResultT]) getAllSelectorHooks(selector string) Hooks[
 	}
 }
 
-func NewHookIndex[InputT types.OperationInput, ResultT types.OperationResult[any]]() hookIndex[InputT, ResultT] {
+func newHookIndex[
+	InputT types.OperationInput,
+	ResultT types.OperationResult,
+]() hookIndex[InputT, ResultT] {
 	return hookIndex[InputT, ResultT]{
-		preMutatation:   make(map[string][]types.PreHook[InputT, any]),
-		preValidation:   make(map[string][]types.PreHook[InputT, any]),
-		beforeOperation: make(map[string][]types.PreHook[InputT, any]),
-		afterOperation:  make(map[string][]types.PostHook[ResultT, any]),
-		postValidation:  make(map[string][]types.PostHook[ResultT, any]),
-		postMutation:    make(map[string][]types.PostHook[ResultT, any]),
+		preMutatation:   make(map[string][]types.PreHook[InputT]),
+		preValidation:   make(map[string][]types.PreHook[InputT]),
+		beforeOperation: make(map[string][]types.PreHook[InputT]),
+		afterOperation:  make(map[string][]types.PostHook[ResultT]),
+		postValidation:  make(map[string][]types.PostHook[ResultT]),
+		postMutation:    make(map[string][]types.PostHook[ResultT]),
 	}
 }
 
@@ -120,138 +132,189 @@ func NewHookIndex[InputT types.OperationInput, ResultT types.OperationResult[any
 // Each of these hooks is optional, and can be added to the manager as needed. Hooks can be
 // defined for a specific operation, or for all operations, and can be defined for one or more
 // resource types, and optionally using a selector to define when to run.
-type ResourceHookManager struct {
+type resourceHookManager struct {
 	// keep an index of the registered hooks for the get operations
-	getIndex hookIndex[types.GetInput, types.GetResult[any]]
+	getIndex hookIndex[types.GetInput, types.GetResult]
 	// keep an index of the registered hooks for the list operations
-	listIndex hookIndex[types.ListInput, types.ListResult[any]]
+	listIndex hookIndex[types.ListInput, types.ListResult]
 	// keep an index of the registered hooks for the find operations
-	findIndex hookIndex[types.FindInput, types.FindResult[any]]
+	findIndex hookIndex[types.FindInput, types.FindResult]
 	// keep an index of the registered hooks for the create operations
-	createIndex hookIndex[types.CreateInput, types.CreateResult[any]]
+	createIndex hookIndex[types.CreateInput, types.CreateResult]
 	// keep an index of the registered hooks for the update operations
-	updateIndex hookIndex[types.UpdateInput, types.UpdateResult[any]]
+	updateIndex hookIndex[types.UpdateInput, types.UpdateResult]
 	// keep an index of the registered hooks for the delete operations
 	deleteIndex hookIndex[types.DeleteInput, types.DeleteResult]
 }
 
+type HookManager interface {
+	// GetHooksForGet returns all the hooks for the get operation for the given selector.
+	GetHooksForGet(selector string) Hooks[types.GetInput, types.GetResult]
+	// GetHooksForList returns all the hooks for the list operation for the given selector.
+	GetHooksForList(selector string) Hooks[types.ListInput, types.ListResult]
+	// GetHooksForFind returns all the hooks for the find operation for the given selector.
+	GetHooksForFind(selector string) Hooks[types.FindInput, types.FindResult]
+	// GetHooksForCreate returns all the hooks for the create operation for the given selector.
+	GetHooksForCreate(selector string) Hooks[types.CreateInput, types.CreateResult]
+	// GetHooksForUpdate returns all the hooks for the update operation for the given selector.
+	GetHooksForUpdate(selector string) Hooks[types.UpdateInput, types.UpdateResult]
+	// GetHooksForDelete returns all the hooks for the delete operation for the given selector.
+	GetHooksForDelete(selector string) Hooks[types.DeleteInput, types.DeleteResult]
+	// RegisterPreGetHook registers a pre-get hook for the given selector.
+	RegisterPreGetHook(hook types.PreHook[types.GetInput])
+	// RegisterPostGetHook registers a post-get hook for the given selector.
+	RegisterPostGetHook(hook types.PostHook[types.GetResult])
+	// RegisterPreListHook registers a pre-list hook for the given selector.
+	RegisterPreListHook(hook types.PreHook[types.ListInput])
+	// RegisterPostListHook registers a post-list hook for the given selector.
+	RegisterPostListHook(hook types.PostHook[types.ListResult])
+	// RegisterPreFindHook registers a pre-find hook for the given selector.
+	RegisterPreFindHook(hook types.PreHook[types.FindInput])
+	// RegisterPostFindHook registers a post-find hook for the given selector.
+	RegisterPostFindHook(hook types.PostHook[types.FindResult])
+	// RegisterPreCreateHook registers a pre-create hook for the given selector.
+	RegisterPreCreateHook(hook types.PreHook[types.CreateInput])
+	// RegisterPostCreateHook registers a post-create hook for the given selector.
+	RegisterPostCreateHook(hook types.PostHook[types.CreateResult])
+	// RegisterPreUpdateHook registers a pre-update hook for the given selector.
+	RegisterPreUpdateHook(hook types.PreHook[types.UpdateInput])
+	// RegisterPostUpdateHook registers a post-update hook for the given selector.
+	RegisterPostUpdateHook(hook types.PostHook[types.UpdateResult])
+	// RegisterPreDeleteHook registers a pre-delete hook for the given selector.
+	RegisterPreDeleteHook(hook types.PreHook[types.DeleteInput])
+	// RegisterPostDeleteHook registers a post-delete hook for the given selector.
+	RegisterPostDeleteHook(hook types.PostHook[types.DeleteResult])
+}
+
 // Registers a new hook manager for managing global hooks.
-func NewResourceHookManager() *ResourceHookManager {
-	return &ResourceHookManager{
-		getIndex:    NewHookIndex[types.GetInput, types.GetResult[any]](),
-		listIndex:   NewHookIndex[types.ListInput, types.ListResult[any]](),
-		findIndex:   NewHookIndex[types.FindInput, types.FindResult[any]](),
-		createIndex: NewHookIndex[types.CreateInput, types.CreateResult[any]](),
-		updateIndex: NewHookIndex[types.UpdateInput, types.UpdateResult[any]](),
-		deleteIndex: NewHookIndex[types.DeleteInput, types.DeleteResult](),
+func NewHookManager() HookManager {
+	return &resourceHookManager{
+		getIndex:    newHookIndex[types.GetInput, types.GetResult](),
+		listIndex:   newHookIndex[types.ListInput, types.ListResult](),
+		findIndex:   newHookIndex[types.FindInput, types.FindResult](),
+		createIndex: newHookIndex[types.CreateInput, types.CreateResult](),
+		updateIndex: newHookIndex[types.UpdateInput, types.UpdateResult](),
+		deleteIndex: newHookIndex[types.DeleteInput, types.DeleteResult](),
 	}
 }
 
-func (r *ResourceHookManager) GetHooksForGet(selector string) Hooks[types.GetInput, types.GetResult[any]] {
+func (r *resourceHookManager) GetHooksForGet(
+	selector string,
+) Hooks[types.GetInput, types.GetResult] {
 	return r.getIndex.getAllSelectorHooks(selector)
 }
 
-func (r *ResourceHookManager) GetHooksForList(selector string) Hooks[types.ListInput, types.ListResult[any]] {
+func (r *resourceHookManager) GetHooksForList(
+	selector string,
+) Hooks[types.ListInput, types.ListResult] {
 	return r.listIndex.getAllSelectorHooks(selector)
 }
 
-func (r *ResourceHookManager) GetHooksForFind(selector string) Hooks[types.FindInput, types.FindResult[any]] {
+func (r *resourceHookManager) GetHooksForFind(
+	selector string,
+) Hooks[types.FindInput, types.FindResult] {
 	return r.findIndex.getAllSelectorHooks(selector)
 }
 
-func (r *ResourceHookManager) GetHooksForCreate(selector string) Hooks[types.CreateInput, types.CreateResult[any]] {
+func (r *resourceHookManager) GetHooksForCreate(
+	selector string,
+) Hooks[types.CreateInput, types.CreateResult] {
 	return r.createIndex.getAllSelectorHooks(selector)
 }
 
-func (r *ResourceHookManager) GetHooksForUpdate(selector string) Hooks[types.UpdateInput, types.UpdateResult[any]] {
+func (r *resourceHookManager) GetHooksForUpdate(
+	selector string,
+) Hooks[types.UpdateInput, types.UpdateResult] {
 	return r.updateIndex.getAllSelectorHooks(selector)
 }
 
-func (r *ResourceHookManager) GetHooksForDelete(selector string) Hooks[types.DeleteInput, types.DeleteResult] {
+func (r *resourceHookManager) GetHooksForDelete(
+	selector string,
+) Hooks[types.DeleteInput, types.DeleteResult] {
 	return r.deleteIndex.getAllSelectorHooks(selector)
 }
 
-// ============================================= HOOK REGISTRATION ==================================================== //
+// ======================================= HOOK REGISTRATION ========================================= //
 
 // RegisterPreGetHook registers a pre-get hook for the given selector.
-func (r *ResourceHookManager) RegisterPreGetHook(hook types.PreHook[types.GetInput, any]) {
+func (r *resourceHookManager) RegisterPreGetHook(hook types.PreHook[types.GetInput]) {
 	for _, selector := range hook.Selectors {
 		r.getIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostGetHook registers a post-get hook for the given selector.
-func (r *ResourceHookManager) RegisterPostGetHook(hook types.PostHook[types.GetResult[any], any]) {
+func (r *resourceHookManager) RegisterPostGetHook(hook types.PostHook[types.GetResult]) {
 	for _, selector := range hook.Selectors {
 		r.getIndex.registerPostHook(hook, selector)
 	}
 }
 
 // RegisterPreListHook registers a pre-list hook for the given selector.
-func (r *ResourceHookManager) RegisterPreListHook(hook types.PreHook[types.ListInput, any]) {
+func (r *resourceHookManager) RegisterPreListHook(hook types.PreHook[types.ListInput]) {
 	for _, selector := range hook.Selectors {
 		r.listIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostListHook registers a post-list hook for the given selector.
-func (r *ResourceHookManager) RegisterPostListHook(hook types.PostHook[types.ListResult[any], any]) {
+func (r *resourceHookManager) RegisterPostListHook(hook types.PostHook[types.ListResult]) {
 	for _, selector := range hook.Selectors {
 		r.listIndex.registerPostHook(hook, selector)
 	}
 }
 
 // RegisterPreFindHook registers a pre-find hook for the given selector.
-func (r *ResourceHookManager) RegisterPreFindHook(hook types.PreHook[types.FindInput, any]) {
+func (r *resourceHookManager) RegisterPreFindHook(hook types.PreHook[types.FindInput]) {
 	for _, selector := range hook.Selectors {
 		r.findIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostFindHook registers a post-find hook for the given selector.
-func (r *ResourceHookManager) RegisterPostFindHook(hook types.PostHook[types.FindResult[any], any]) {
+func (r *resourceHookManager) RegisterPostFindHook(hook types.PostHook[types.FindResult]) {
 	for _, selector := range hook.Selectors {
 		r.findIndex.registerPostHook(hook, selector)
 	}
 }
 
 // RegisterPreCreateHook registers a pre-create hook for the given selector.
-func (r *ResourceHookManager) RegisterPreCreateHook(hook types.PreHook[types.CreateInput, any]) {
+func (r *resourceHookManager) RegisterPreCreateHook(hook types.PreHook[types.CreateInput]) {
 	for _, selector := range hook.Selectors {
 		r.createIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostCreateHook registers a post-create hook for the given selector.
-func (r *ResourceHookManager) RegisterPostCreateHook(hook types.PostHook[types.CreateResult[any], any]) {
+func (r *resourceHookManager) RegisterPostCreateHook(hook types.PostHook[types.CreateResult]) {
 	for _, selector := range hook.Selectors {
 		r.createIndex.registerPostHook(hook, selector)
 	}
 }
 
 // RegisterPreUpdateHook registers a pre-update hook for the given selector.
-func (r *ResourceHookManager) RegisterPreUpdateHook(hook types.PreHook[types.UpdateInput, any]) {
+func (r *resourceHookManager) RegisterPreUpdateHook(hook types.PreHook[types.UpdateInput]) {
 	for _, selector := range hook.Selectors {
 		r.updateIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostUpdateHook registers a post-update hook for the given selector.
-func (r *ResourceHookManager) RegisterPostUpdateHook(hook types.PostHook[types.UpdateResult[any], any]) {
+func (r *resourceHookManager) RegisterPostUpdateHook(hook types.PostHook[types.UpdateResult]) {
 	for _, selector := range hook.Selectors {
 		r.updateIndex.registerPostHook(hook, selector)
 	}
 }
 
 // RegisterPreDeleteHook registers a pre-delete hook for the given selector.
-func (r *ResourceHookManager) RegisterPreDeleteHook(hook types.PreHook[types.DeleteInput, any]) {
+func (r *resourceHookManager) RegisterPreDeleteHook(hook types.PreHook[types.DeleteInput]) {
 	for _, selector := range hook.Selectors {
 		r.deleteIndex.registerPreHook(hook, selector)
 	}
 }
 
 // RegisterPostDeleteHook registers a post-delete hook for the given selector.
-func (r *ResourceHookManager) RegisterPostDeleteHook(hook types.PostHook[types.DeleteResult, any]) {
+func (r *resourceHookManager) RegisterPostDeleteHook(hook types.PostHook[types.DeleteResult]) {
 	for _, selector := range hook.Selectors {
 		r.deleteIndex.registerPostHook(hook, selector)
 	}
