@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/infraview/infraview/backend/services"
-	"github.com/infraview/infraview/pkg/clusters"
+	"github.com/omniviewdev/omniview/backend/services"
+	"github.com/omniviewdev/omniview/pkg/clusters"
 )
 
 const DEFAULT_KUBECONFIG = "/Users/joshuapare/.kube/config"

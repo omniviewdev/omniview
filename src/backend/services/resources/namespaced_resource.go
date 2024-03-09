@@ -11,9 +11,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/infraview/infraview/backend/clients"
-	"github.com/infraview/infraview/backend/services"
-	"github.com/infraview/infraview/backend/types"
+	"github.com/omniviewdev/omniview/backend/clients"
+	"github.com/omniviewdev/omniview/backend/services"
+	"github.com/omniviewdev/omniview/backend/types"
 )
 
 const (

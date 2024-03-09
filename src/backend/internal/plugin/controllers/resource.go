@@ -6,9 +6,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/infraview/infraview/backend/internal/plugin/types"
+	"github.com/omniviewdev/omniview/backend/internal/plugin/types"
 
-	pkgtypes "github.com/infraview/plugin/pkg/resource/types"
+	pkgtypes "github.com/omniviewdev/plugin/pkg/resource/types"
 )
 
 type ResourcePluginMessage[M pkgtypes.OperationInput] struct {

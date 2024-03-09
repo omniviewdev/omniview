@@ -8,8 +8,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/infraview/plugin/pkg/resource/services"
-	"github.com/infraview/plugin/pkg/resource/types"
+	"github.com/omniviewdev/plugin/pkg/resource/services"
+	"github.com/omniviewdev/plugin/pkg/resource/types"
 )
 
 // ResourceController is responsible for managing the execution of resource operations.

@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/infraview/plugin/pkg/resource/factories"
-	"github.com/infraview/plugin/pkg/resource/types"
+	"github.com/omniviewdev/plugin/pkg/resource/factories"
+	"github.com/omniviewdev/plugin/pkg/resource/types"
 )
 
 // ResourceTypeManager is the interface for which resource type managers must implement.

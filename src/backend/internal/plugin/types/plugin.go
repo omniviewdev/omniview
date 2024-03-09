@@ -1,7 +1,7 @@
 package types
 
 import (
-	plugintypes "github.com/infraview/plugin/pkg/types"
+	plugintypes "github.com/omniviewdev/plugin/pkg/types"
 )
 
 type PluginType int

@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/infraview/infraview/backend/types"
+	"github.com/omniviewdev/omniview/backend/types"
 )
 
 // ResourceStateEvent is a simple struct that holds the name of a resource and its readiness state.

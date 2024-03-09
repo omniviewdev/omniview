@@ -1,4 +1,4 @@
-module github.com/infraview/infraview
+module github.com/omniviewdev/omniview
 
 go 1.21
 

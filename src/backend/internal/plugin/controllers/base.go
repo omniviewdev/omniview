@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/go-plugin"
 	"go.uber.org/zap"
 
-	"github.com/infraview/infraview/backend/internal/plugin/types"
+	"github.com/omniviewdev/omniview/backend/internal/plugin/types"
 )
 
 type PluginControllerStatus int

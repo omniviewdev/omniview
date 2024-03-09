@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 
-	"github.com/infraview/infraview/backend/types"
+	"github.com/omniviewdev/omniview/backend/types"
 )
 
 const (
