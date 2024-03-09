@@ -2,10 +2,10 @@
 
 <p align="center">
     <a href="https://omniview.dev#gh-dark-mode-only" target="_blank">
-        <img width="600" src="./logo.png" alt="Omniview Logo">
+        <img width="600" src="./img/logo.svg" alt="Omniview Logo">
     </a>
     <a href="https://omniview.dev#gh-light-mode-only" target="_blank">
-        <img width="600" src="./logo.png" alt="Omniview Logo">
+        <img width="600" src="./img/logo.svg" alt="Omniview Logo">
     </a>
 </p>
 
@@ -32,7 +32,7 @@
 </p>
 
 <p align="center">
-        <img src="./preview.png" alt="Omniview Preview">
+        <img src="./img/preview.png" alt="Omniview Preview">
 </p>
 
 
