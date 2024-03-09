@@ -5,11 +5,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/joshuapare/kubede/backend/clients"
-	"github.com/joshuapare/kubede/backend/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/infraview/infraview/backend/clients"
+	"github.com/infraview/infraview/backend/types"
 )
 
 const (
@@ -35,7 +36,7 @@ type ClusterContext struct {
 	sync.RWMutex
 }
 
-// GetResourceStates returns the current state of all resources in the ClusterContext
+// GetResourceStates returns the current state of all resources in the ClusterContext.
 func (c *ClusterContext) GetResourceStates() map[string]types.ResourceStateEventType {
 	c.RLock()
 	defer c.RUnlock()
@@ -64,7 +65,7 @@ func (c *ClusterContext) UpsertResourceState(gvrs map[string]bool) {
 	}
 }
 
-// GetResourceStatesAsBoolMap returns the current state of all resources in the ClusterContext as a map of GVR to bool
+// GetResourceStatesAsBoolMap returns the current state of all resources in the ClusterContext as a map of GVR to bool.
 func (c *ClusterContext) GetResourceStatesAsBoolMap() map[string]bool {
 	c.RLock()
 	defer c.RUnlock()
@@ -75,7 +76,7 @@ func (c *ClusterContext) GetResourceStatesAsBoolMap() map[string]bool {
 	return result
 }
 
-// MarkResourseReady marks a resource as ready in the ClusterContext
+// MarkResourseReady marks a resource as ready in the ClusterContext.
 func (c *ClusterContext) MarkResourceReady(gvr string) {
 	c.Lock()
 	defer c.Unlock()
@@ -83,7 +84,7 @@ func (c *ClusterContext) MarkResourceReady(gvr string) {
 	c.ResourceStates[gvr] = types.ClusterContextResourceReady
 }
 
-// MarkResourseNotReady marks a resource as not ready in the ClusterContext
+// MarkResourseNotReady marks a resource as not ready in the ClusterContext.
 func (c *ClusterContext) MarkResourceNotReady(gvr string) {
 	c.Lock()
 	defer c.Unlock()
@@ -91,7 +92,7 @@ func (c *ClusterContext) MarkResourceNotReady(gvr string) {
 	c.ResourceStates[gvr] = types.ClusterContextResourceNotReady
 }
 
-// MarkResourseError marks a resource as errored in the ClusterContext
+// MarkResourseError marks a resource as errored in the ClusterContext.
 func (c *ClusterContext) MarkResourceError(gvr string) {
 	c.Lock()
 	defer c.Unlock()
@@ -99,7 +100,7 @@ func (c *ClusterContext) MarkResourceError(gvr string) {
 	c.ResourceStates[gvr] = types.ClusterContextResourceError
 }
 
-// MarkAllResourcesNotReady marks all resources as not ready in the ClusterContext
+// MarkAllResourcesNotReady marks all resources as not ready in the ClusterContext.
 func (c *ClusterContext) MarkAllResourcesNotReady() {
 	c.Lock()
 	defer c.Unlock()
@@ -108,14 +109,14 @@ func (c *ClusterContext) MarkAllResourcesNotReady() {
 	}
 }
 
-// IsResourceReady returns whether a resource is ready in the ClusterContext
+// IsResourceReady returns whether a resource is ready in the ClusterContext.
 func (c *ClusterContext) IsResourceReady(gvr string) bool {
 	c.RLock()
 	defer c.RUnlock()
 	return c.ResourceStates[gvr] == types.ClusterContextResourceReady
 }
 
-// AllResourcesReady returns whether all resources are ready in the ClusterContext
+// AllResourcesReady returns whether all resources are ready in the ClusterContext.
 func (c *ClusterContext) AllResourcesReady() bool {
 	c.RLock()
 	defer c.RUnlock()

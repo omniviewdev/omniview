@@ -9,7 +9,7 @@ import (
 
 // Create
 
-// CreateLogger creates a new logger for the application
+// CreateLogger creates a new logger for the application.
 func CreateLogger(debug bool) *zap.SugaredLogger {
 	pe := zap.NewProductionEncoderConfig()
 

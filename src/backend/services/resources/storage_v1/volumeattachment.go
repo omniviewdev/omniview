@@ -1,11 +1,11 @@
 package storagev1
 
 import (
-	"github.com/joshuapare/kubede/backend/services"
-	"github.com/joshuapare/kubede/backend/services/resources"
 	"go.uber.org/zap"
-
 	storagev1 "k8s.io/api/storage/v1"
+
+	"github.com/infraview/infraview/backend/services"
+	"github.com/infraview/infraview/backend/services/resources"
 )
 
 type VolumeAttachmentService struct {

@@ -1,4 +1,4 @@
-package internal
+package controllers
 
 import (
 	"errors"
@@ -11,6 +11,8 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"go.uber.org/zap"
+
+	"github.com/infraview/infraview/backend/internal/plugin/types"
 )
 
 type PluginControllerStatus int
@@ -50,7 +52,7 @@ type PluginStatus struct {
 // must satisfy in order to be used by the plugin system.
 type PluginController[HandlerI any] interface {
 	Run() error
-	Type() PluginType
+	Type() types.PluginType
 	Status() PluginControllerStatus
 	LoadPlugin(id string) error
 	UnloadPlugin(id string) error
@@ -74,14 +76,14 @@ type BasePluginController[HandlerI any] struct {
 	plugins     map[string]PluginEntry[HandlerI]
 	pluginsPath string
 	status      PluginControllerStatus
-	pluginType  PluginType
+	pluginType  types.PluginType
 	sync.RWMutex
 }
 
 // Instantiates a new BasePluginController to be be extended by the various plugin controllers.
 func NewBasePluginController[HandlerI any](
 	logger *zap.SugaredLogger,
-	pluginType PluginType,
+	pluginType types.PluginType,
 	pluginPath string,
 	stopCh chan struct{},
 ) BasePluginController[HandlerI] {
@@ -166,7 +168,7 @@ func (c *BasePluginController[I]) Status() PluginControllerStatus {
 }
 
 // Type returns the type of the plugin controller.
-func (c *BasePluginController[I]) Type() PluginType {
+func (c *BasePluginController[I]) Type() types.PluginType {
 	return c.pluginType
 }
 

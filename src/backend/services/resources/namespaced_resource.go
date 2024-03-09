@@ -6,13 +6,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/joshuapare/kubede/backend/clients"
-	"github.com/joshuapare/kubede/backend/services"
-	"github.com/joshuapare/kubede/backend/types"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/infraview/infraview/backend/clients"
+	"github.com/infraview/infraview/backend/services"
+	"github.com/infraview/infraview/backend/types"
 )
 
 const (
@@ -429,7 +430,7 @@ func (s *NamespacedResourceService[T]) getClient(context string) (*clients.Clust
 	return client, ok
 }
 
-// ============================ ACTION METHODS ============================ //
+// ============================ ACTION METHODS ============================ //.
 func (s *NamespacedResourceService[T]) List(opts ListOptions) (interface{}, error) {
 	s.log.Debugw("listing resources", "resource", s.resourceType, "opts", opts)
 
@@ -507,7 +508,7 @@ func (s *NamespacedResourceService[T]) List(opts ListOptions) (interface{}, erro
 	return results, nil
 }
 
-// Get returns a resource by name and namespace
+// Get returns a resource by name and namespace.
 func (s *NamespacedResourceService[T]) Get(opts GetOptions) (interface{}, error) {
 	s.RLock()
 	defer s.RUnlock()

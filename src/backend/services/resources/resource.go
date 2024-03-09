@@ -7,7 +7,7 @@ import (
 
 // ResourceActions defines methods to interact with Kubernetes resources.
 // The methods in the interface are used to interact with Kubernetes resources, and
-// must be fulfilled by all generic resources
+// must be fulfilled by all generic resources.
 type ResourceActions interface {
 	Get(ctx context.Context, opts GetOptions) (interface{}, error)
 	List(ctx context.Context, opts ListOptions) ([]interface{}, error)

@@ -226,18 +226,42 @@ type ListResult[T any] struct {
 	Pagination PaginationResult
 }
 
+func NewListResult[T any](model T) *ListResult[T] {
+	return &ListResult[T]{
+		BaseResult: newBaseResult(model),
+	}
+}
+
 type FindResult[T any] struct {
 	BaseResult[T]
 	// Pagination is the pagination result of the find operation.
 	Pagination PaginationResult
 }
 
+func NewFindResult[T any](model T) *FindResult[T] {
+	return &FindResult[T]{
+		BaseResult: newBaseResult(model),
+	}
+}
+
 type CreateResult[T any] struct {
 	BaseResult[T]
 }
 
+func NewCreateResult[T any](model T) *CreateResult[T] {
+	return &CreateResult[T]{
+		BaseResult: newBaseResult(model),
+	}
+}
+
 type UpdateResult[T any] struct {
 	BaseResult[T]
+}
+
+func NewUpdateResult[T any](model T) *UpdateResult[T] {
+	return &UpdateResult[T]{
+		BaseResult: newBaseResult(model),
+	}
 }
 
 type DeleteResult struct {
@@ -245,6 +269,13 @@ type DeleteResult struct {
 	Errors []error
 	// Success is a flag that indicates if the operation was successful.
 	Success bool
+}
+
+func NewDeleteResult() *DeleteResult {
+	return &DeleteResult{
+		Success: false,
+		Errors:  make([]error, 0),
+	}
 }
 
 // ========================================== OPTIONS ========================================== //

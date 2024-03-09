@@ -4,21 +4,21 @@ import (
 	"context"
 	"embed"
 
-	"github.com/joshuapare/kubede/backend/clients"
-	"github.com/joshuapare/kubede/backend/services"
-	appsv1 "github.com/joshuapare/kubede/backend/services/resources/apps_v1"
-	batchv1 "github.com/joshuapare/kubede/backend/services/resources/batch_v1"
-	networkingv1 "github.com/joshuapare/kubede/backend/services/resources/networking_v1"
-	rbacv1 "github.com/joshuapare/kubede/backend/services/resources/rbac_v1"
-	storagev1 "github.com/joshuapare/kubede/backend/services/resources/storage_v1"
-	"github.com/joshuapare/kubede/backend/services/resources/v1"
-
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+
+	"github.com/infraview/infraview/backend/clients"
+	"github.com/infraview/infraview/backend/services"
+	appsv1 "github.com/infraview/infraview/backend/services/resources/apps_v1"
+	batchv1 "github.com/infraview/infraview/backend/services/resources/batch_v1"
+	networkingv1 "github.com/infraview/infraview/backend/services/resources/networking_v1"
+	rbacv1 "github.com/infraview/infraview/backend/services/resources/rbac_v1"
+	storagev1 "github.com/infraview/infraview/backend/services/resources/storage_v1"
+	"github.com/infraview/infraview/backend/services/resources/v1"
 )
 
 //go:embed all:frontend/dist

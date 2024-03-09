@@ -6,11 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/joshuapare/kubede/backend/types"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
+
+	"github.com/infraview/infraview/backend/types"
 )
 
 const (
@@ -143,7 +144,7 @@ func (c *ClusterContextClient[T]) IsRunning() bool {
 	return c.status == ClusterContextClientStatusRunning
 }
 
-// Status returns the status of the informer
+// Status returns the status of the informer.
 func (c *ClusterContextClient[T]) Status() ClusterContextClientStatus {
 	c.RLock()
 	defer c.RUnlock()

@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/joshuapare/kubede/backend/types"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
-
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/infraview/infraview/backend/types"
 )
 
 // ResourceStateEvent is a simple struct that holds the name of a resource and its readiness state.
@@ -63,7 +63,7 @@ type ClusterManager struct {
 }
 
 // NewClusterManager initializes and returns a new instance of a ClusterManager, along with a channel
-// for other services to recieve context updates
+// for other services to recieve context updates.
 func NewClusterManager(log *zap.SugaredLogger) (*ClusterManager, *ClusterContextPublisher, chan ResourceStateEvent) {
 	cp := &ClusterContextPublisher{
 		log:  log.With("service", "ClusterManager::ClusterContextPublisher"),
@@ -416,7 +416,7 @@ func (cm *ClusterManager) SetClusterContextResourceError(contextName string, gvr
 // ========================================= STATISTICS ======================================== //
 // Methods for being able to get statuses from the cluster manager
 
-// GetClusterContexts returns a list of all registered cluster contexts and their resource states
+// GetClusterContexts returns a list of all registered cluster contexts and their resource states.
 func (cm *ClusterManager) GetClusterContexts() map[string]*ClusterContext {
 	cm.RLock()
 	defer cm.RUnlock()
@@ -424,7 +424,7 @@ func (cm *ClusterManager) GetClusterContexts() map[string]*ClusterContext {
 	return cm.clusterContexts
 }
 
-// GetResources returns a map of all the resources and their ready states
+// GetResources returns a map of all the resources and their ready states.
 func (cm *ClusterManager) GetResources() map[string]bool {
 	cm.RLock()
 	defer cm.RUnlock()

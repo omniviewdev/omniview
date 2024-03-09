@@ -1,4 +1,4 @@
-module github.com/joshuapare/kubede
+module github.com/infraview/infraview
 
 go 1.21
 

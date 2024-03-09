@@ -6,11 +6,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/infraview/plugin/internal"
-	"github.com/infraview/plugin/pkg/resource/types"
+	"github.com/infraview/infraview/backend/internal/plugin/types"
+
+	pkgtypes "github.com/infraview/plugin/pkg/resource/types"
 )
 
-type ResourcePluginMessage[M types.OperationInput] struct {
+type ResourcePluginMessage[M pkgtypes.OperationInput] struct {
 	Payload    M      `json:"payload"`
 	ResourceID string `json:"resource_id"`
 	Namespace  string `json:"namespace"`
@@ -28,11 +29,11 @@ type ResourcePluginMessage[M types.OperationInput] struct {
 // system, and allows for the resource plugins to be loaded and unloaded
 // dynamically at runtime.
 type ResourcePluginController struct {
-	internal.BasePluginController[types.ResourceProvider]
+	BasePluginController[pkgtypes.ResourceProvider]
 }
 
 // compile time check for interface conformance.
-var _ internal.PluginController[types.ResourceProvider] = &ResourcePluginController{}
+var _ PluginController[pkgtypes.ResourceProvider] = &ResourcePluginController{}
 
 func NewResourcePluginController(
 	logger *zap.SugaredLogger,
@@ -40,9 +41,9 @@ func NewResourcePluginController(
 	stopCh chan struct{},
 ) *ResourcePluginController {
 	return &ResourcePluginController{
-		BasePluginController: internal.NewBasePluginController[types.ResourceProvider](
+		BasePluginController: NewBasePluginController[pkgtypes.ResourceProvider](
 			logger,
-			internal.ResourcePlugin,
+			types.ResourcePlugin,
 			pluginPath,
 			stopCh,
 		),
@@ -51,12 +52,12 @@ func NewResourcePluginController(
 
 // GetResource dispatches a get resource request to the appropriate resource plugin.
 func (rpc *ResourcePluginController) GetResource(
-	message ResourcePluginMessage[types.GetInput],
-) (types.GetResult[any], error) {
+	message ResourcePluginMessage[pkgtypes.GetInput],
+) (pkgtypes.GetResult[any], error) {
 	rpc.RLock()
 	defer rpc.RUnlock()
 
-	empty := types.GetResult[any]{}
+	empty := pkgtypes.GetResult[any]{}
 
 	if message.ResourceID == "" {
 		return empty, errors.New("dispatch failed: resource ID is empty")
@@ -71,12 +72,12 @@ func (rpc *ResourcePluginController) GetResource(
 
 // ListResources dispatches a list resources request to the appropriate resource plugin.
 func (rpc *ResourcePluginController) ListResources(
-	message ResourcePluginMessage[types.ListInput],
-) (types.ListResult[any], error) {
+	message ResourcePluginMessage[pkgtypes.ListInput],
+) (pkgtypes.ListResult[any], error) {
 	rpc.RLock()
 	defer rpc.RUnlock()
 
-	empty := types.ListResult[any]{}
+	empty := pkgtypes.ListResult[any]{}
 
 	handler, err := rpc.GetPluginInstance(message.PluginID)
 	if err != nil {
@@ -87,12 +88,12 @@ func (rpc *ResourcePluginController) ListResources(
 
 // FindResources dispatches a find resources request to the appropriate resource plugin.
 func (rpc *ResourcePluginController) FindResources(
-	message ResourcePluginMessage[types.FindInput],
-) (types.FindResult[any], error) {
+	message ResourcePluginMessage[pkgtypes.FindInput],
+) (pkgtypes.FindResult[any], error) {
 	rpc.RLock()
 	defer rpc.RUnlock()
 
-	empty := types.FindResult[any]{}
+	empty := pkgtypes.FindResult[any]{}
 
 	handler, err := rpc.GetPluginInstance(message.PluginID)
 	if err != nil {
@@ -103,12 +104,12 @@ func (rpc *ResourcePluginController) FindResources(
 
 // CreateResource dispatches a create resource request to the appropriate resource plugin.
 func (rpc *ResourcePluginController) CreateResource(
-	message ResourcePluginMessage[types.CreateInput],
-) (types.CreateResult[any], error) {
+	message ResourcePluginMessage[pkgtypes.CreateInput],
+) (pkgtypes.CreateResult[any], error) {
 	rpc.RLock()
 	defer rpc.RUnlock()
 
-	empty := types.CreateResult[any]{}
+	empty := pkgtypes.CreateResult[any]{}
 
 	handler, err := rpc.GetPluginInstance(message.PluginID)
 	if err != nil {
@@ -119,12 +120,12 @@ func (rpc *ResourcePluginController) CreateResource(
 
 // UpdateResource dispatches an update resource request to the appropriate resource plugin.
 func (rpc *ResourcePluginController) UpdateResource(
-	message ResourcePluginMessage[types.UpdateInput],
-) (types.UpdateResult[any], error) {
+	message ResourcePluginMessage[pkgtypes.UpdateInput],
+) (pkgtypes.UpdateResult[any], error) {
 	rpc.RLock()
 	defer rpc.RUnlock()
 
-	empty := types.UpdateResult[any]{}
+	empty := pkgtypes.UpdateResult[any]{}
 
 	handler, err := rpc.GetPluginInstance(message.PluginID)
 	if err != nil {
@@ -135,12 +136,12 @@ func (rpc *ResourcePluginController) UpdateResource(
 
 // DeleteResource dispatches a delete resource request to the appropriate resource plugin.
 func (rpc *ResourcePluginController) DeleteResource(
-	message ResourcePluginMessage[types.DeleteInput],
-) (types.DeleteResult, error) {
+	message ResourcePluginMessage[pkgtypes.DeleteInput],
+) (pkgtypes.DeleteResult, error) {
 	rpc.RLock()
 	defer rpc.RUnlock()
 
-	empty := types.DeleteResult{}
+	empty := pkgtypes.DeleteResult{}
 
 	handler, err := rpc.GetPluginInstance(message.PluginID)
 	if err != nil {

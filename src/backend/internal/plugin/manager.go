@@ -1,4 +1,4 @@
-package internal
+package plugin
 
 import (
 	"encoding/json"
@@ -10,65 +10,29 @@ import (
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 
-	"github.com/infraview/plugin/internal/types"
+	"github.com/infraview/infraview/backend/internal/plugin/types"
+
 	plugintypes "github.com/infraview/plugin/pkg/types"
 )
 
-type PluginType int
-
-const (
-	ExecutorPlugin PluginType = iota
-	FilesystemPlugin
-	LogPlugin
-	MetricPlugin
-	ReporterPlugin
-	ResourcePlugin
-)
-
-func (pt PluginType) String() string {
-	switch pt {
-	case ExecutorPlugin:
-		return "executor"
-	case FilesystemPlugin:
-		return "filesystem"
-	case LogPlugin:
-		return "log"
-	case MetricPlugin:
-		return "metric"
-	case ReporterPlugin:
-		return "reporter"
-	case ResourcePlugin:
-		return "resource"
-	default:
-		return "unknown"
-	}
-}
-
-// Plugin represents a plugin that is installed and managed by the plugin manager.
-type Plugin struct {
-	ID           string
-	Config       plugintypes.PluginConfig
-	Capabilities []PluginType
-}
-
-// PluginManager manages the lifecycle and registration of plugins. It is responsible
+// Manager manages the lifecycle and registration of plugins. It is responsible
 // for registering and unregistering plugins, and communicating with the plugin
 // controllers to handle the lifecycle of the plugins.
-type PluginManager interface {
+type Manager interface {
 	GetPluginConfig(id string) (plugintypes.PluginConfig, error)
 }
 
 type pluginManager struct {
 	logger      *zap.SugaredLogger
-	pluginStore map[string]Plugin
+	pluginStore map[string]types.Plugin
 	config      types.PluginManagerConfig
 }
 
-func NewPluginManager(logger *zap.SugaredLogger, config types.PluginManagerConfig) PluginManager {
+func NewManager(logger *zap.SugaredLogger, config types.PluginManagerConfig) Manager {
 	return &pluginManager{
 		logger:      logger,
 		config:      config,
-		pluginStore: map[string]Plugin{},
+		pluginStore: make(map[string]types.Plugin),
 	}
 }
 
@@ -132,17 +96,17 @@ func (pm *pluginManager) validateLocalPlugin(id string) error {
 	// check capabilities are met
 	for _, p := range config.Capabilities {
 		switch p {
-		case ResourcePlugin.String():
+		case types.ResourcePlugin.String():
 			return pm.validateResourcePlugin(path)
-		case ReporterPlugin.String():
+		case types.ReporterPlugin.String():
 			return errors.New("reporter plugins are not yet supported")
-		case ExecutorPlugin.String():
+		case types.ExecutorPlugin.String():
 			return errors.New("executor plugins are not yet supported")
-		case FilesystemPlugin.String():
+		case types.FilesystemPlugin.String():
 			return errors.New("filesystem plugins are not yet supported")
-		case LogPlugin.String():
+		case types.LogPlugin.String():
 			return errors.New("log plugins are not yet supported")
-		case MetricPlugin.String():
+		case types.MetricPlugin.String():
 			return errors.New("metric plugins are not yet supported")
 		default:
 			return fmt.Errorf("error validating plugin: unknown plugin capability type '%s'", p)

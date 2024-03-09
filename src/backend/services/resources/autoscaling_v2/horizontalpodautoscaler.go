@@ -1,11 +1,11 @@
 package autoscalingv2
 
 import (
-	"github.com/joshuapare/kubede/backend/services"
-	"github.com/joshuapare/kubede/backend/services/resources"
 	"go.uber.org/zap"
-
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+
+	"github.com/infraview/infraview/backend/services"
+	"github.com/infraview/infraview/backend/services/resources"
 )
 
 type HorizontalPodAutoscalerService struct {

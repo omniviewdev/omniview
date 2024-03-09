@@ -1,11 +1,11 @@
 package discoveryv1
 
 import (
-	"github.com/joshuapare/kubede/backend/services"
-	"github.com/joshuapare/kubede/backend/services/resources"
 	"go.uber.org/zap"
-
 	discoveryv1 "k8s.io/api/discovery/v1"
+
+	"github.com/infraview/infraview/backend/services"
+	"github.com/infraview/infraview/backend/services/resources"
 )
 
 type EndpointSliceService struct {
