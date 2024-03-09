@@ -2,10 +2,10 @@
 
 <p align="center">
     <a href="https://omniview.dev#gh-dark-mode-only" target="_blank">
-        <img width="300" src="./logo.png" alt="Omniview Logo">
+        <img width="600" src="./logo.png" alt="Omniview Logo">
     </a>
     <a href="https://omniview.dev#gh-light-mode-only" target="_blank">
-        <img width="300" src="./logo.png" alt="Omniview Logo">
+        <img width="600" src="./logo.png" alt="Omniview Logo">
     </a>
 </p>
 
@@ -24,26 +24,11 @@
 </p>
 
 <p align="center">
-	<a href="https://surrealdb.com/discord"><img src="https://img.shields.io/discord/902568124350599239?label=discord&style=flat-square&color=5a66f6"></a>
-	&nbsp;
-    <a href="https://twitter.com/surrealdb"><img src="https://img.shields.io/badge/twitter-follow_us-1d9bf0.svg?style=flat-square"></a>
+    <a href="https://twitter.com/omniview"><img src="https://img.shields.io/badge/twitter-follow_us-1d9bf0.svg?style=flat-square"></a>
     &nbsp;
-    <a href="https://dev.to/surrealdb"><img src="https://img.shields.io/badge/dev-join_us-86f7b7.svg?style=flat-square"></a>
+    <a href="https://dev.to/omniview"><img src="https://img.shields.io/badge/dev-join_us-86f7b7.svg?style=flat-square"></a>
     &nbsp;
-    <a href="https://www.linkedin.com/company/surrealdb/"><img src="https://img.shields.io/badge/linkedin-connect_with_us-0a66c2.svg?style=flat-square"></a>
-</p>
-
-<p align="center">
-	<a href="https://surrealdb.com/blog"><img height="25" src="./img/social/blog.svg" alt="Blog"></a>
-	&nbsp;
-	<a href="https://github.com/omniviewdev/omniview"><img height="25" src="./img/social/github.svg" alt="Github	"></a>
-	&nbsp;
-    <a href="https://www.linkedin.com/company/surrealdb/"><img height="25" src="./img/social/linkedin.svg" alt="LinkedIn"></a>
-    &nbsp;
-    <a href="https://twitter.com/surrealdb"><img height="25" src="./img/social/twitter.svg" alt="Twitter"></a>
-    &nbsp;
-    <a href="https://www.youtube.com/channel/UCjf2teVEuYVvvVC-gFZNq6w"><img height="25" src="./img/social/youtube.svg" alt="Youtube"></a>
-    &nbsp;
+    <a href="https://www.linkedin.com/company/omniview/"><img src="https://img.shields.io/badge/linkedin-connect_with_us-0a66c2.svg?style=flat-square"></a>
 </p>
 
 
@@ -89,7 +74,7 @@ We welcome contributions from the community! If you're interested in making Omni
 
 ## License
 
-Omniview is open-source software licensed under the [MIT license](LICENSE).
+Omniview is open-source software licensed under the [AGPL-3.0 License](LICENSE).
 
 ---
 
