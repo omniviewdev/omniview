@@ -31,6 +31,12 @@
     <a href="https://www.linkedin.com/company/omniview/"><img src="https://img.shields.io/badge/linkedin-connect_with_us-0a66c2.svg?style=flat-square"></a>
 </p>
 
+<p align="center">
+    <a href="https://omniview.dev#gh-light-mode-only" target="_blank">
+        <img width="100%" src="./preview.png" alt="Omniview Preview">
+    </a>
+</p>
+
 
 <h2>What is Omniview?</h2>
 
