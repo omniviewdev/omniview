@@ -9,8 +9,8 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/infraview/infraview/backend/clients"
-	"github.com/infraview/infraview/backend/types"
+	"github.com/omniviewdev/omniview/backend/clients"
+	"github.com/omniviewdev/omniview/backend/types"
 )
 
 const (

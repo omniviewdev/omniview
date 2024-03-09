@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/infraview/plugin/pkg/resource/factories"
+	"github.com/omniviewdev/plugin/pkg/resource/factories"
 )
 
 // ResourceNamespaceManagerState represents the state of the resource namespace manager.

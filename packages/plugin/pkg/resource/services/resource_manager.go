@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/infraview/plugin/pkg/resource/types"
+	"github.com/omniviewdev/plugin/pkg/resource/types"
 )
 
 // ResourcerManager manages all of the resourcers for a given resource type. It is responsible for

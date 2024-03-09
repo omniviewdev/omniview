@@ -1,4 +1,4 @@
-module github.com/infraview/plugin
+module github.com/omniviewdev/plugin
 
 go 1.21.3
 

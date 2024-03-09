@@ -1,6 +1,6 @@
 package services
 
-import "github.com/infraview/plugin/pkg/resource/types"
+import "github.com/omniviewdev/plugin/pkg/resource/types"
 
 // ============================================= HOOK INDEX ==================================================== //
 

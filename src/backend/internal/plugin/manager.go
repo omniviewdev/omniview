@@ -10,9 +10,9 @@ import (
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 
-	"github.com/infraview/infraview/backend/internal/plugin/types"
+	"github.com/omniviewdev/omniview/backend/internal/plugin/types"
 
-	plugintypes "github.com/infraview/plugin/pkg/types"
+	plugintypes "github.com/omniviewdev/plugin/pkg/types"
 )
 
 // Manager manages the lifecycle and registration of plugins. It is responsible

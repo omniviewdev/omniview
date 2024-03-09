@@ -4,8 +4,8 @@ import (
 	"go.uber.org/zap"
 	batchv1 "k8s.io/api/batch/v1"
 
-	"github.com/infraview/infraview/backend/services"
-	"github.com/infraview/infraview/backend/services/resources"
+	"github.com/omniviewdev/omniview/backend/services"
+	"github.com/omniviewdev/omniview/backend/services/resources"
 )
 
 type JobService struct {
