@@ -32,9 +32,7 @@
 </p>
 
 <p align="center">
-    <a href="https://omniview.dev#gh-light-mode-only" target="_blank">
-        <img width="100%" src="./preview.png" alt="Omniview Preview">
-    </a>
+        <img src="./preview.png" alt="Omniview Preview">
 </p>
 
 
