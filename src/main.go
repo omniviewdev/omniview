@@ -4,13 +4,6 @@ import (
 	"context"
 	"embed"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/logger"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
-
 	"github.com/omniviewdev/omniview/backend/clients"
 	"github.com/omniviewdev/omniview/backend/services"
 	appsv1 "github.com/omniviewdev/omniview/backend/services/resources/apps_v1"
@@ -19,6 +12,12 @@ import (
 	rbacv1 "github.com/omniviewdev/omniview/backend/services/resources/rbac_v1"
 	storagev1 "github.com/omniviewdev/omniview/backend/services/resources/storage_v1"
 	"github.com/omniviewdev/omniview/backend/services/resources/v1"
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/logger"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
 //go:embed all:frontend/dist

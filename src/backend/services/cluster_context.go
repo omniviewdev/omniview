@@ -5,12 +5,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/omniviewdev/omniview/backend/clients"
+	"github.com/omniviewdev/omniview/backend/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-
-	"github.com/omniviewdev/omniview/backend/clients"
-	"github.com/omniviewdev/omniview/backend/types"
 )
 
 const (

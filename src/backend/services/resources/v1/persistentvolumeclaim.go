@@ -1,11 +1,10 @@
 package resources
 
 import (
-	"go.uber.org/zap"
-	corev1 "k8s.io/api/core/v1"
-
 	"github.com/omniviewdev/omniview/backend/services"
 	"github.com/omniviewdev/omniview/backend/services/resources"
+	"go.uber.org/zap"
+	corev1 "k8s.io/api/core/v1"
 )
 
 type PersistentVolumeClaimService struct {

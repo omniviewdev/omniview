@@ -78,8 +78,8 @@ linters-settings:
     sections:
       - standard # Standard section: captures all standard packages.
       - default # Default section: contains all imports that could not be matched to another section type.
-      - prefix(github.com/infraview/plugin)
-      - prefix(github.com/infraview/infraview)
+      - prefix(github.com/omniviewdev/plugin)
+      - prefix(github.com/omniviewdev/omniview)
       - blank # Blank section: contains all blank imports. This section is not present unless explicitly enabled.
       - dot # Dot section: contains all dot imports. This section is not present unless explicitly enabled.
 
