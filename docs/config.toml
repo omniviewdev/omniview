@@ -1,6 +1,6 @@
-baseURL = 'infraview/'
+baseURL = 'http://omniview.dev/'
 languageCode = 'en-us'
-title = 'Infraview - The DevOps IDE'
+title = 'Omniview - The DevOps IDE'
 
 [module]
     [[module.imports]]

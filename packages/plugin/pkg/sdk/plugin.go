@@ -1,6 +1,8 @@
 package sdk
 
 import (
+	"embed"
+
 	"github.com/hashicorp/go-plugin"
 	"github.com/omniviewdev/plugin/pkg/types"
 )
@@ -16,9 +18,15 @@ type Plugin struct {
 // NewPlugin creates a new plugin with the given configuration. This should be instantiated
 // within your main function for your plugin and passed to the Register* functions to add
 // capabilities to the plugin.
-func NewPlugin(config types.PluginConfig) *Plugin {
+func NewPlugin(config embed.FS) *Plugin {
+	// load in the plugin configuration
+	pluginConfig := types.PluginConfig{}
+	if err := pluginConfig.LoadFromFile(config); err != nil {
+		panic(err)
+	}
+
 	return &Plugin{
-		config:    config,
+		config:    pluginConfig,
 		pluginMap: make(map[string]plugin.Plugin),
 	}
 }

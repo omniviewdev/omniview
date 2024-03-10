@@ -1,11 +1,13 @@
 package types
 
 import (
+	"embed"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/hashicorp/go-plugin"
+	"gopkg.in/yaml.v3"
 )
 
 type PluginConfigFormat int
@@ -35,6 +37,19 @@ type PluginConfig struct {
 type PluginMaintainer struct {
 	Name  string `json:"name"  yaml:"name"`
 	Email string `json:"email" yaml:"email"`
+}
+
+func (c *PluginConfig) LoadFromFile(file embed.FS) error {
+	contents, err := file.ReadFile("config.yaml")
+	if err != nil {
+		return err
+	}
+	// load the plugin config from the file
+	if err = yaml.Unmarshal(contents, c); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // LoadMarkdown loads a plugin Markdown file from a given path (if it exists)
