@@ -1,11 +1,10 @@
 package storagev1
 
 import (
-	"go.uber.org/zap"
-	storagev1 "k8s.io/api/storage/v1"
-
 	"github.com/omniviewdev/omniview/backend/services"
 	"github.com/omniviewdev/omniview/backend/services/resources"
+	"go.uber.org/zap"
+	storagev1 "k8s.io/api/storage/v1"
 )
 
 type CSINodeService struct {

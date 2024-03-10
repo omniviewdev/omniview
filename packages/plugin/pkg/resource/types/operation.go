@@ -29,12 +29,29 @@ type OperationInput interface {
 
 // ResourcerGetInput is the input to the Get operation of a Resourcer.
 type GetInput struct {
+	// Params is used as an injectable field for any operations that require extra data
+	Params interface{}
 	// ID is the unique identifier of the resource to get.
 	ID string
+	// PartitionID is an option identifier to use when a resource backend
+	// requires a partition identifier to be passed with each request, notably
+	// when a resource backend has a concept of partitioning resources (like with corev1.Namespace
+	// in Kubernetes).
+	PartitionID string
 }
 
 // ResourcerListInput is the input to the List operation of a Resourcer.
 type ListInput struct {
+	// Params is used as an injectable field for any operations that require extra data
+	Params interface{}
+	// PartitionIDs is an optional list of partition identifiers to use when a resource backend
+	// requires a partition identifier to be passed with each request, notably
+	// when a resource backend has a concept of partitioning resources (like with corev1.Namespace
+	// in Kubernetes).
+	//
+	// For consisitency, the implemented behavior when this is not specified should be to
+	// list all resources in all partitions.
+	PartitionIDs []string
 	// Order is the order parameters for the list operation.
 	Order OrderParams
 	// Pagination is the pagination parameters for the list operation.
@@ -42,6 +59,16 @@ type ListInput struct {
 }
 
 type FindInput struct {
+	// Params is used as an injectable field for any operations that require extra data
+	Params interface{}
+	// PartitionIDs is an optional list of partition identifiers to use when a resource backend
+	// requires a partition identifier to be passed with each request, notably
+	// when a resource backend has a concept of partitioning resources (like with corev1.Namespace
+	// in Kubernetes).
+	//
+	// For consisitency, the implemented behavior when this is not specified should be to
+	// list all resources in all partitions.
+	PartitionIDs []string
 	// Conditions is a list of conditions to filter the list of resources by.
 	// TODO - turn this into a conditions builder, will integrate with a parser
 	// and a query builder/lexer to build the conditions. For now, it's just a map
@@ -54,27 +81,42 @@ type FindInput struct {
 }
 
 type CreateInput struct {
+	// Params is used as an injectable field for any operations that require extra data
+	Params interface{}
 	// Input is the input to the create operation.
-	Input interface{}
-	// Options is a set of arbitrary options to the create operation that must be
-	// resolved by the Resourcer.
-	Options interface{}
+	Input map[string]interface{}
+	// PartitionID is an option identifier to use when a resource backend
+	// requires a partition identifier to be passed with each request, notably
+	// when a resource backend has a concept of partitioning resources (like with corev1.Namespace
+	// in Kubernetes).
+	PartitionID string
 }
 
 type UpdateInput struct {
+	// Params are paramaters for the update operation
+	Params interface{}
 	// Input is the input to the update operation.
-	Input interface{}
-	// Options is a set of arbitrary options to the update operation that must be
-	// resolved by the Resourcer.
-	Options interface{}
+	Input map[string]interface{}
+	// PartitionID is an option identifier to use when a resource backend
+	// requires a partition identifier to be passed with each request, notably
+	// when a resource backend has a concept of partitioning resources (like with corev1.Namespace
+	// in Kubernetes).
+	PartitionID string
 	// ID is the unique identifier of the resource to update.
 	ID string
 }
 
 type DeleteInput struct {
+	// Params is used as an injectable field for any operations that require extra data
+	Params interface{}
 	// Options is a set of arbitrary options to the delete operation that must be
 	// resolved by the Resourcer.
-	Options interface{}
+	Input map[string]interface{}
+	// PartitionID is an option identifier to use when a resource backend
+	// requires a partition identifier to be passed with each request, notably
+	// when a resource backend has a concept of partitioning resources (like with corev1.Namespace
+	// in Kubernetes).
+	PartitionID string
 	// ID is the unique identifier of the resource to delete.
 	ID string
 }

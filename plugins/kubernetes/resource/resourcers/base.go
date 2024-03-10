@@ -4,18 +4,15 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/omniview/kubernetes/resource"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/omniviewdev/omniview/backend/services"
+	pkgtypes "github.com/omniviewdev/plugin/pkg/resource/types"
 	"go.uber.org/zap"
-	"k8s.io/apimachinery/pkg/labels"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/informers"
-
-	"github.com/omniviewdev/omniview/backend/clients"
-	"github.com/omniviewdev/omniview/backend/services"
-	"github.com/omniviewdev/omniview/backend/types"
 )
 
 const (
@@ -24,7 +21,7 @@ const (
 	DELETE_CHANNEL_BUFFER_SIZE = 100
 )
 
-// All kubernetes objects extending this implement the following base interface
+// All kubernetes objects extending this implement the following base interface.
 type MetaAccessor interface {
 	GetName() string
 	GetNamespace() string
@@ -40,8 +37,8 @@ type KubernetesResourcerBase[T MetaAccessor] struct {
 	log *zap.SugaredLogger
 	// resourceType is the group version resource for the resource this service manages.
 	resourceType schema.GroupVersionResource
-  // informer is the informer for the resource type
-  informer informers.GenericInformer
+	// informer is the informer for the resource type
+	informer informers.GenericInformer
 }
 
 // NewKubernetesResourcerBase creates a new instance of KubernetesResourcerBase for interacting
@@ -58,7 +55,7 @@ func NewKubernetesResourcerBase[T MetaAccessor](
 			"service",
 			fmt.Sprintf("%sService", resourceType.Resource),
 		),
-		resourceType:            resourceType,
+		resourceType: resourceType,
 	}
 
 	return &service
@@ -70,15 +67,15 @@ func (s *KubernetesResourcerBase[T]) GroupVersionResource() schema.GroupVersionR
 }
 
 // ============================ ACTION METHODS ============================ //.
+
 // Get returns a resource by name and namespace.
-func (s *KubernetesResourcerBase[T]) Get(ctx context.Context, client *resource.ClientSet, input types.GetInput) (interface{}, error) {
-	s.RLock()
-	defer s.RUnlock()
-
-  // Get the lister
-  lister := client.DynamicInformerFactory
-
-	resource, err := client.DynamicInformerFactory..Lister.ByNamespace(opts.Namespace).Get(opts.Name)
+func (s *KubernetesResourcerBase[T]) Get(
+	ctx context.Context,
+	client *resource.ClientSet,
+	input pkgtypes.GetInput,
+) (interface{}, error) {
+	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.PartitionID)
+	resource, err := lister.Get(ctx, input.ID, v1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -86,43 +83,102 @@ func (s *KubernetesResourcerBase[T]) Get(ctx context.Context, client *resource.C
 }
 
 // List returns a map of resources for the provided cluster contexts.
-func (s *KubernetesResourcerBase[T]) List(opts ListOptions) (interface{}, error) {
-	s.log.Debugw("listing resources", "resource", s.resourceType, "opts", opts)
-
-	objects, err := client.Lister.List(labels.Everything())
-
-	return results, nil
-}
-
-// Get returns a resource by name and namespace.
-func (s *KubernetesResourcerBase[T]) Get() (interface{}, error) {
-	s.RLock()
-	defer s.RUnlock()
-
-	// get the cluster context for the context provided
-	client, ok := s.clients[opts.ClusterContext]
-	if !ok {
-		return nil, fmt.Errorf("context not found")
-	}
-
-	// get the client for the context provided
-	if client.Lister == nil {
-		return nil, fmt.Errorf("lister not initialized")
-	}
-
-	resource, err := client.Lister.ByNamespace(opts.Namespace).Get(opts.Name)
+func (s *KubernetesResourcerBase[T]) List(
+	ctx context.Context,
+	client *resource.ClientSet,
+	input pkgtypes.ListInput,
+) (interface{}, error) {
+	lister := client.DynamicClient.Resource(s.GroupVersionResource())
+	resources, err := lister.List(ctx, v1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
-	return resource, nil
+
+	return resources, nil
 }
 
-func (s *KubernetesResourcerBase[T]) Edit(name string, namespace string, obj interface{}) error {
-	// Default implementation, can be overridden by embedded services
-	return fmt.Errorf("edit not implemented")
+// Find returns a resource by name and namespace.
+// TODO - implement, for now this just does list
+func (s *KubernetesResourcerBase[T]) Find(
+	ctx context.Context,
+	client *resource.ClientSet,
+	input pkgtypes.FindInput,
+) (interface{}, error) {
+	lister := client.DynamicClient.Resource(s.GroupVersionResource())
+	resources, err := lister.List(ctx, v1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return resources, nil
 }
 
-func (s *KubernetesResourcerBase[T]) Delete(name string, namespace string) error {
-	// Default implementation, can be overridden by embedded services
-	return fmt.Errorf("delete not implemented")
+// Create creates a new resource in the given resource namespace.
+func (s *KubernetesResourcerBase[T]) Create(
+	ctx context.Context,
+	client *resource.ClientSet,
+	input pkgtypes.CreateInput,
+) *pkgtypes.CreateResult {
+	result := new(pkgtypes.CreateResult)
+	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.PartitionID)
+	object := &unstructured.Unstructured{
+		Object: input.Input,
+	}
+	created, err := lister.Create(ctx, object, v1.CreateOptions{})
+	if err != nil {
+		result.RecordError(err)
+		return result
+	}
+	result.Result = created.Object
+	return nil
+}
+
+func (s *KubernetesResourcerBase[T]) Update(
+	ctx context.Context,
+	client *resource.ClientSet,
+	input pkgtypes.UpdateInput,
+) *pkgtypes.UpdateResult {
+	result := new(pkgtypes.UpdateResult)
+
+	// first get the resource
+	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.PartitionID)
+	resource, err := lister.Get(ctx, input.ID, v1.GetOptions{})
+	if err != nil {
+		result.RecordError(fmt.Errorf("error getting resource during update: %s", err))
+		return result
+	}
+
+	// update and resubmit
+	resource.Object = input.Input
+	updated, err := lister.Update(ctx, resource, v1.UpdateOptions{})
+	if err != nil {
+		result.RecordError(fmt.Errorf("error updating resource: %s", err))
+		return result
+	}
+	result.Result = updated.Object
+	return result
+}
+
+func (s *KubernetesResourcerBase[T]) Delete(
+	ctx context.Context,
+	client *resource.ClientSet,
+	input pkgtypes.DeleteInput,
+) *pkgtypes.DeleteResult {
+	result := new(pkgtypes.DeleteResult)
+	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.PartitionID)
+
+	// first, get the resource for the delete so we can return back to the client
+	resource, err := lister.Get(ctx, input.ID, v1.GetOptions{})
+	if err != nil {
+		result.RecordError(fmt.Errorf("error getting resource during delete: %s", err))
+		return result
+	}
+	result.Result = resource.Object
+
+	// delete the resource
+	if err = lister.Delete(ctx, input.ID, v1.DeleteOptions{}); err != nil {
+		result.RecordError(fmt.Errorf("error deleting resource: %s", err))
+		return result
+	}
+
+	return result
 }

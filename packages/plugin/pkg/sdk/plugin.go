@@ -4,6 +4,7 @@ import (
 	"embed"
 
 	"github.com/hashicorp/go-plugin"
+
 	"github.com/omniviewdev/plugin/pkg/types"
 )
 

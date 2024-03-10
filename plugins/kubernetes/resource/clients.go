@@ -10,7 +10,7 @@ import (
 	"github.com/omniviewdev/plugin/pkg/resource/factories"
 	"github.com/omniviewdev/plugin/pkg/resource/types"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/informers"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -27,9 +27,9 @@ func NewKubernetesClientFactory() *KubernetesClientFactory {
 
 // Use a custom type here since we want multiple clients to use for each namespace context.
 type ClientSet struct {
-	Clientset       *kubernetes.Clientset
-	DynamicClient   dynamic.Interface
-	InformerFactory informers.SharedInformerFactory
+	Clientset              *kubernetes.Clientset
+	DynamicClient          dynamic.Interface
+	DynamicInformerFactory dynamicinformer.DynamicSharedInformerFactory
 }
 
 var _ factories.ResourceClientFactory[ClientSet, Data, SensitiveData] = &KubernetesClientFactory{}
@@ -70,12 +70,15 @@ func (f *KubernetesClientFactory) CreateClient(
 		return nil, fmt.Errorf("error creating dynamic client: %w", err)
 	}
 
-	informerFactory := informers.NewSharedInformerFactory(clientset, DEFAULT_RESYNC_PERIOD)
+	dynamicInformerFactory := dynamicinformer.NewDynamicSharedInformerFactory(
+		client,
+		DEFAULT_RESYNC_PERIOD,
+	)
 
 	return &ClientSet{
-		Clientset:       clientset,
-		DynamicClient:   client,
-		InformerFactory: informerFactory,
+		Clientset:              clientset,
+		DynamicClient:          client,
+		DynamicInformerFactory: dynamicInformerFactory,
 	}, nil
 }
 
