@@ -3,5 +3,6 @@ go 1.21.3
 use (
 	./packages/plugin
 	./plugins/example
+	./plugins/kubernetes
 	./src
 )

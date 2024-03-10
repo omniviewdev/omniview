@@ -12,9 +12,19 @@ type RegisterPreHookRequest[I OperationInput] struct {
 	Phase PreHookType
 }
 
-// ResourceInformer adds additional functionality on top of a resource provider to signal
-// back to the IDE when resources have changed automatically.
-type ResourceInformer interface {
+// ResourceInformerProvider is a resource provider that supports advanced informer operations
+// for a given resource. If the resource backend supports informer operations, it is highly
+// recommended to implement this interface to provide a better user experience.
+//
+// A ResourceInformerProvider is a superset of the ResourceProvider interface, and as such
+// includes all the methods of the ResourceProvider, as well as providing subscription methods
+// and informer channels which the resource controller can pipe back to the event subsystem.
+type ResourceInformerProvider interface {
+	ResourceProvider
+	// StartInformer starts the informer for a resource in the given resource namespace.
+	StartInformer(resourceID, namespaceID string) error
+	// StopInformer stops the informer for a resource in the given resource namespace.
+	StopInformer(resourceID, namespaceID string) error
 	// Subscribe is sent from the IDE that the resource provider is interested in receiving
 	// informer messages for a given resource in a resource namespace.
 	Subscribe(resourceID, namespaceID string, actions []InformerAction) error
@@ -26,12 +36,21 @@ type ResourceInformer interface {
 	UnsubscribeAll(namespaceID string) error
 	// GetInformerAddChannel is sent from the IDE to request a channel that will be used to send
 	// informer messages to the IDE.
+	//
+	// Received messages will be demultiplexed and sent to the appropriate resource and
+	// resource namespace channel.
 	GetInformerAddChannel() chan InformerMessage[InformerAddPayload]
 	// GetInformerUpdateChannel is sent from the IDE to request a channel that will be used to send
 	// informer messages to the IDE.
+	//
+	// Received messages will be demultiplexed and sent to the appropriate resource and
+	// resource namespace channel.
 	GetInformerUpdateChannel() chan InformerMessage[InformerUpdatePayload]
 	// GetInformerDeleteChannel is sent from the IDE to request a channel that will be used to send
 	// informer messages to the IDE.
+	//
+	// Received messages will be demultiplexed and sent to the appropriate resource and
+	// resource namespace channel.
 	GetInformerDeleteChannel() chan InformerMessage[InformerDeletePayload]
 }
 
