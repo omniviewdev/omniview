@@ -1,5 +1,7 @@
 package types
 
+import "context"
+
 type ResourceProviderInput[I OperationInput] struct {
 	Input       I
 	ResourceID  string
@@ -12,70 +14,59 @@ type RegisterPreHookRequest[I OperationInput] struct {
 	Phase PreHookType
 }
 
-// InformerProvider is a resource provider that supports advanced informer operations
-// for a given resource. If the resource backend supports informer operations, it is highly
-// recommended to implement this interface to provide a better user experience.
-//
-// A InformerProvider is a superset of the ResourceProvider interface, and as such
-// includes all the methods of the ResourceProvider, as well as providing subscription methods
-// and informer channels which the resource controller can pipe back to the event subsystem.
-type InformerProvider interface {
-	ResourceProvider
-	// StartInformer starts the informer for a resource in the given resource namespace.
-	StartInformer(resourceID, namespaceID string) error
-	// StopInformer stops the informer for a resource in the given resource namespace.
-	StopInformer(resourceID, namespaceID string) error
-	// Subscribe is sent from the IDE that the resource provider is interested in receiving
-	// informer messages for a given resource in a resource namespace.
-	Subscribe(resourceID, namespaceID string, actions []InformerAction) error
-	// Unsubscribe is sent from the IDE that the resource provider is no longer interested in
-	// receiving informer messages for a given resource in a resource namespace.
-	Unsubscribe(resourceID, namespaceID string, actions []InformerAction) error
-	// UnsubscribeAll is sent from the IDE that the resource provider is no longer interested in
-	// receiving informer messages for any resource in a resource namespace.
-	UnsubscribeAll(namespaceID string) error
-}
-
 // ResourceProvider provides an interface for performing operations against a resource backend
 // given a resource namespace and a resource identifier.
 type ResourceProvider interface {
 	// Get returns a single resource in the given resource namespace.
-	Get(resourceID string, namespaceID string, input GetInput) *GetResult
+	Get(ctx context.Context, key, contextID string, input GetInput) (*GetResult, error)
 	// Get returns a single resource in the given resource namespace.
-	List(resourceID string, namespaceID string, input ListInput) *ListResult
+	List(ctx context.Context, key, contextID string, input ListInput) (*ListResult, error)
 	// FindResources returns a list of resources in the given resource namespace that
 	// match a set of given options.
-	Find(resourceID string, namespaceID string, input FindInput) *FindResult
+	Find(ctx context.Context, key, contextID string, input FindInput) (*FindResult, error)
 	// Create creates a new resource in the given resource namespace.
-	Create(resourceID string, namespaceID string, input CreateInput) *CreateResult
+	Create(ctx context.Context, key, contextID string, input CreateInput) (*CreateResult, error)
 	// Update updates an existing resource in the given resource namespace.
-	Update(resourceID string, namespaceID string, input UpdateInput) *UpdateResult
+	Update(ctx context.Context, key, contextID string, input UpdateInput) (*UpdateResult, error)
 	// Delete deletes an existing resource in the given resource namespace.
-	Delete(resourceID string, namespaceID string, input DeleteInput) *DeleteResult
+	Delete(ctx context.Context, key, contextID string, input DeleteInput) (*DeleteResult, error)
+	// StartContextInformer signals the resource provider to start an informer for the given resource backend context
+	StartContextInformer(ctx context.Context, contextID string) error
+	// StopContextInformer signals the resource provider to stop an informer for the given resource backend context
+	StopContextInformer(ctx context.Context, contextID string) error
+	// ListenForEvents registers a listener for resource events
+	ListenForEvents(
+		ctx context.Context,
+		addStream chan InformerAddPayload,
+		updateStream chan InformerUpdatePayload,
+		deleteStream chan InformerDeletePayload,
+	) error
 
-	// RegisterPreGetHook registers a pre-get hook that will be called before a resource is retrieved
-	RegisterPreGetHook(PreHook[GetInput]) error
-	// RegisterPreListHook registers a pre-list hook that will be called before a resource is listed
-	RegisterPreListHook(PreHook[ListInput]) error
-	// RegisterPreFindHook registers a pre-find hook that will be called before a resource is found
-	RegisterPreFindHook(PreHook[FindInput]) error
-	// RegisterPreCreateHook registers a pre-create hook that will be called before a resource is created
-	RegisterPreCreateHook(PreHook[CreateInput]) error
-	// RegisterPreUpdateHook registers a pre-update hook that will be called before a resource is updated
-	RegisterPreUpdateHook(PreHook[UpdateInput]) error
-	// RegisterPreDeleteHook registers a pre-delete hook that will be called before a resource is deleted
-	RegisterPreDeleteHook(PreHook[DeleteInput]) error
-
-	// RegisterPostGetHook registers a post-create hook that will be called after a resource is created
-	RegisterPostGetHook(PostHook[GetResult]) error
-	// RegisterPostListHook registers a post-create hook that will be called after a resource is created
-	RegisterPostListHook(PostHook[ListResult]) error
-	// RegisterPostFindHook registers a post-create hook that will be called after a resource is created
-	RegisterPostFindHook(PostHook[FindResult]) error
-	// RegisterPostCreateHook registers a post-create hook that will be called after a resource is created
-	RegisterPostCreateHook(PostHook[CreateResult]) error
-	// RegisterPostUpdateHook registers a post-create hook that will be called after a resource is created
-	RegisterPostUpdateHook(PostHook[UpdateResult]) error
-	// RegisterPostDeleteHook registers a post-create hook that will be called after a resource is created
-	RegisterPostDeleteHook(PostHook[DeleteResult]) error
+	// TODO - rework/remove this, the IDE should be the one doing the lifecycle hooking on the data, not the plugin
+	//
+	// // RegisterPreGetHook registers a pre-get hook that will be called before a resource is retrieved
+	// RegisterPreGetHook(PreHook[GetInput]) error
+	// // RegisterPreListHook registers a pre-list hook that will be called before a resource is listed
+	// RegisterPreListHook(PreHook[ListInput]) error
+	// // RegisterPreFindHook registers a pre-find hook that will be called before a resource is found
+	// RegisterPreFindHook(PreHook[FindInput]) error
+	// // RegisterPreCreateHook registers a pre-create hook that will be called before a resource is created
+	// RegisterPreCreateHook(PreHook[CreateInput]) error
+	// // RegisterPreUpdateHook registers a pre-update hook that will be called before a resource is updated
+	// RegisterPreUpdateHook(PreHook[UpdateInput]) error
+	// // RegisterPreDeleteHook registers a pre-delete hook that will be called before a resource is deleted
+	// RegisterPreDeleteHook(PreHook[DeleteInput]) error
+	//
+	// // RegisterPostGetHook registers a post-create hook that will be called after a resource is created
+	// RegisterPostGetHook(PostHook[GetResult]) error
+	// // RegisterPostListHook registers a post-create hook that will be called after a resource is created
+	// RegisterPostListHook(PostHook[ListResult]) error
+	// // RegisterPostFindHook registers a post-create hook that will be called after a resource is created
+	// RegisterPostFindHook(PostHook[FindResult]) error
+	// // RegisterPostCreateHook registers a post-create hook that will be called after a resource is created
+	// RegisterPostCreateHook(PostHook[CreateResult]) error
+	// // RegisterPostUpdateHook registers a post-create hook that will be called after a resource is created
+	// RegisterPostUpdateHook(PostHook[UpdateResult]) error
+	// // RegisterPostDeleteHook registers a post-create hook that will be called after a resource is created
+	// RegisterPostDeleteHook(PostHook[DeleteResult]) error
 }

@@ -36,9 +36,9 @@ type InformerManager[ClientT, InformerT, DataT, SensitiveDataT any] struct {
 	registerHandler    RegisterResourceFunc[InformerT]
 	runHandler         RunInformerFunc[InformerT]
 	informers          map[string]informer[InformerT]
-	addChan            chan types.InformerMessage[types.InformerAddPayload]
-	updateChan         chan types.InformerMessage[types.InformerUpdatePayload]
-	deleteChan         chan types.InformerMessage[types.InformerDeletePayload]
+	addChan            chan types.InformerAddPayload
+	updateChan         chan types.InformerUpdatePayload
+	deleteChan         chan types.InformerDeletePayload
 	startNamespaceChan chan string
 	stopNamespaceChan  chan string
 }
@@ -70,9 +70,9 @@ type RegisterResourceFunc[InformerT any] func(
 type RunInformerFunc[InformerT any] func(
 	informer InformerT,
 	stopCh chan struct{},
-	addChan chan types.InformerMessage[types.InformerAddPayload],
-	updateChan chan types.InformerMessage[types.InformerUpdatePayload],
-	deleteChan chan types.InformerMessage[types.InformerDeletePayload],
+	addChan chan types.InformerAddPayload,
+	updateChan chan types.InformerUpdatePayload,
+	deleteChan chan types.InformerDeletePayload,
 ) error
 
 func NewInformerManager[ClientT, InformerT, DataT, SensitiveDataT any](
@@ -85,18 +85,26 @@ func NewInformerManager[ClientT, InformerT, DataT, SensitiveDataT any](
 		registerHandler:    registerHandler,
 		runHandler:         runHandler,
 		informers:          make(map[string]informer[InformerT]),
-		addChan:            make(chan types.InformerMessage[types.InformerAddPayload]),
-		updateChan:         make(chan types.InformerMessage[types.InformerUpdatePayload]),
-		deleteChan:         make(chan types.InformerMessage[types.InformerDeletePayload]),
+		addChan:            make(chan types.InformerAddPayload),
+		updateChan:         make(chan types.InformerUpdatePayload),
+		deleteChan:         make(chan types.InformerDeletePayload),
 		startNamespaceChan: make(chan string),
 		stopNamespaceChan:  make(chan string),
 	}
 }
 
 // Run starts the informer manager, and blocks until the stop channel is closed.
-func (i *InformerManager[CT, IT, DT, SDT]) Run(stopCh <-chan struct{}) error {
+// Acts as a fan-in aggregator for the various informer channels.
+func (i *InformerManager[CT, IT, DT, SDT]) Run(
+	stopCh <-chan struct{},
+	controllerAddChan chan types.InformerAddPayload,
+	controllerUpdateChan chan types.InformerUpdatePayload,
+	controllerDeleteChan chan types.InformerDeletePayload,
+) error {
 	for {
 		select {
+		case <-stopCh:
+			return nil
 		case id := <-i.startNamespaceChan:
 			informer := i.informers[id]
 			// TODO - handle this error case at some point
@@ -115,14 +123,12 @@ func (i *InformerManager[CT, IT, DT, SDT]) Run(stopCh <-chan struct{}) error {
 				break
 			}
 			close(informer.cancel)
-		case <-i.addChan:
-		// handle add
-		case <-i.updateChan:
-		// handle update
-		case <-i.deleteChan:
-		// handle delete
-		case <-stopCh:
-			return nil
+		case add := <-i.addChan:
+			controllerAddChan <- add
+		case update := <-i.updateChan:
+			controllerUpdateChan <- update
+		case del := <-i.deleteChan:
+			controllerDeleteChan <- del
 		}
 	}
 }
