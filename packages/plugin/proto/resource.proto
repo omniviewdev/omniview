@@ -1,0 +1,148 @@
+syntax = "proto3";
+package com.omniview.pluginsdk;
+import "google/protobuf/struct.proto";
+import "google/protobuf/empty.proto";
+option go_package = "./proto";
+
+// Get
+
+message GetRequest {
+  string key = 1;
+  string context = 2;
+
+  string id = 3;
+  string namespace = 4;
+}
+
+message GetResponse {
+  bool success = 1;
+  google.protobuf.Struct data = 2;
+}
+
+// List
+
+message ListRequest {
+  string key = 1;
+  string context = 2;
+  repeated string namespaces = 3;
+}
+
+message ListResponse {
+  bool success = 1;
+  repeated google.protobuf.Struct data = 2;
+}
+
+// Find
+
+message FindRequest {
+  string key = 1;
+  string context = 2;
+  repeated string namespaces = 3;
+}
+
+message FindResponse {
+  bool success = 1;
+  repeated google.protobuf.Struct data = 2;
+}
+
+// Create
+
+message CreateRequest {
+  string key = 1;
+  string context = 2;
+  string id = 3;
+  string namespace = 4;
+  google.protobuf.Struct data = 5;
+}
+
+message CreateResponse {
+  bool success = 1;
+  google.protobuf.Struct data = 2;
+}
+
+// Update
+
+message UpdateRequest {
+  string key = 1;
+  string context = 2;
+  string id = 3;
+  string namespace = 4;
+  google.protobuf.Struct data = 5;
+}
+
+message UpdateResponse {
+  bool success = 1;
+  google.protobuf.Struct data = 2;
+}
+
+// Delete
+
+message DeleteRequest {
+  string key = 1;
+  string context = 2;
+  string id = 3;
+  string namespace = 4;
+}
+
+message DeleteResponse {
+  bool success = 1;
+  google.protobuf.Struct data = 2;
+}
+
+// Informers
+message StartContextInformerRequest {
+  string key = 1;
+  string context = 2;
+}
+
+message StopContextInformerRequest {
+  string key = 1;
+  string context = 2;
+}
+
+message InformerEvent {
+  string key = 1;
+  string context = 2;
+  string namespace = 3;
+  oneof action {
+    InformerAddEvent add = 4;
+    InformerUpdateEvent update = 5;
+    InformerDeleteEvent delete = 6;
+  }
+}
+
+message InformerAddEvent {
+  string key = 1;
+  string context = 2;
+  string id = 3;
+  string namespace = 4;
+  google.protobuf.Struct data = 5;
+}
+
+message InformerUpdateEvent {
+  string key = 1;
+  string context = 2;
+  string id = 3;
+  string namespace = 4;
+  google.protobuf.Struct old_data = 5;
+  google.protobuf.Struct new_data = 6;
+}
+
+message InformerDeleteEvent {
+  string key = 1;
+  string context = 2;
+  string id = 3;
+  string namespace = 4;
+}
+
+service ResourcePlugin {
+  rpc Get(GetRequest) returns (GetResponse) {}
+  rpc List(ListRequest) returns (ListResponse) {}
+  rpc Find(FindRequest) returns (FindResponse) {}
+  rpc Create(CreateRequest) returns (CreateResponse) {}
+  rpc Update(UpdateRequest) returns (UpdateResponse) {}
+  rpc Delete(DeleteRequest) returns (DeleteResponse) {}
+  rpc StartContextInformer(StartContextInformerRequest) returns (google.protobuf.Empty) {}
+  rpc StopContextInformer(StopContextInformerRequest) returns (google.protobuf.Empty) {}
+  rpc ListenForEvents(google.protobuf.Empty) returns (stream InformerEvent) {}
+}

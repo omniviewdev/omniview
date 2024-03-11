@@ -1,7 +1,6 @@
 package types
 
 import (
-	"embed"
 	"fmt"
 	"io"
 	"os"
@@ -39,17 +38,8 @@ type PluginMaintainer struct {
 	Email string `json:"email" yaml:"email"`
 }
 
-func (c *PluginConfig) LoadFromFile(file embed.FS) error {
-	contents, err := file.ReadFile("config.yaml")
-	if err != nil {
-		return err
-	}
-	// load the plugin config from the file
-	if err = yaml.Unmarshal(contents, c); err != nil {
-		return err
-	}
-
-	return nil
+func (c *PluginConfig) Load(reader io.Reader) error {
+	return yaml.NewDecoder(reader).Decode(c)
 }
 
 // LoadMarkdown loads a plugin Markdown file from a given path (if it exists)

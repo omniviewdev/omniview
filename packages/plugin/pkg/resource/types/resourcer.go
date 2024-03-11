@@ -26,24 +26,24 @@ import (
 // for that resource type.
 type Resourcer[ClientT any] interface {
 	// Get returns a single resource in the given resource namespace.
-	Get(ctx context.Context, client *ClientT, input GetInput) *GetResult
+	Get(ctx context.Context, client *ClientT, input GetInput) (*GetResult, error)
 
 	// List returns a list of resources in the given resource namespace.
-	List(ctx context.Context, client *ClientT, input ListInput) *ListResult
+	List(ctx context.Context, client *ClientT, input ListInput) (*ListResult, error)
 
 	// FindResources returns a list of resources in the given resource namespace that
 	// match a set of given options.
 	//
 	// Due to the dynamic nature of the options, the options are passed as an interface
 	// and the Resourcer is responsible for casting the options to the correct type.
-	Find(ctx context.Context, client *ClientT, input FindInput) *FindResult
+	Find(ctx context.Context, client *ClientT, input FindInput) (*FindResult, error)
 
 	// Create creates a new resource in the given resource namespace.
-	Create(ctx context.Context, client *ClientT, input CreateInput) *CreateResult
+	Create(ctx context.Context, client *ClientT, input CreateInput) (*CreateResult, error)
 
 	// Update updates an existing resource in the given resource namespace.
-	Update(ctx context.Context, client *ClientT, input UpdateInput) *UpdateResult
+	Update(ctx context.Context, client *ClientT, input UpdateInput) (*UpdateResult, error)
 
 	// Delete deletes an existing resource in the given resource namespace.
-	Delete(ctx context.Context, client *ClientT, input DeleteInput) *DeleteResult
+	Delete(ctx context.Context, client *ClientT, input DeleteInput) (*DeleteResult, error)
 }

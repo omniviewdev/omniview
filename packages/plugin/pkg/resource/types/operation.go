@@ -12,15 +12,6 @@ const (
 	OperationTypeDelete
 )
 
-type OperationErrorType int
-
-const (
-	OperationErrorValidation OperationErrorType = iota
-	OperationErrorMutation
-	OperationErrorNotFound
-	OperationErrorUnknown
-)
-
 // ========================================== INPUTS ========================================== //
 
 type OperationInput interface {
@@ -127,104 +118,50 @@ type OperationResult interface {
 	GetResult | ListResult | FindResult | CreateResult | UpdateResult | DeleteResult
 }
 
-func (r *BaseResult) RecordError(err error) {
-	if r == nil {
-		return
-	}
-
-	if err != nil {
-		r.Errors = append(r.Errors, err)
-		r.Success = false
-	}
-}
-
-func (r *BaseResult) RecordResult(result interface{}) {
-	if r == nil {
-		return
-	}
-	r.Result = result
-}
-
-type BaseResult struct {
+type GetResult struct {
 	// Result is the result of the operation.
-	Result interface{}
-	// Errors is a list of errors that occurred during the operation.
-	Errors []error
+	Result map[string]interface{}
 	// Success is a flag that indicates if the operation was successful.
 	Success bool
 }
 
-// create a new base result for out ops.
-func newBaseResult() BaseResult {
-	return BaseResult{
-		Result:  new(interface{}),
-		Success: true,
-		Errors:  make([]error, 0),
-	}
-}
-
-type GetResult struct {
-	BaseResult
-}
-
-func NewGetResult() *GetResult {
-	return &GetResult{
-		BaseResult: newBaseResult(),
-	}
-}
-
 type ListResult struct {
-	BaseResult
+	// Result is the result of the operation.
+	Result []map[string]interface{}
+	// Success is a flag that indicates if the operation was successful.
+	Success bool
 	// Pagination is the pagination result of the list operation.
 	Pagination PaginationResult
 }
 
-func NewListResult() *ListResult {
-	return &ListResult{
-		BaseResult: newBaseResult(),
-	}
-}
-
 type FindResult struct {
-	BaseResult
-	// Pagination is the pagination result of the find operation.
+	// Result is the result of the operation.
+	Result []map[string]interface{}
+	// Success is a flag that indicates if the operation was successful.
+	Success bool
+	// Pagination is the pagination result of the list operation.
 	Pagination PaginationResult
 }
 
-func NewFindResult() *FindResult {
-	return &FindResult{
-		BaseResult: newBaseResult(),
-	}
-}
-
 type CreateResult struct {
-	BaseResult
-}
-
-func NewCreateResult() *CreateResult {
-	return &CreateResult{
-		BaseResult: newBaseResult(),
-	}
+	// Result is the result of the operation.
+	Result map[string]interface{}
+	// Success is a flag that indicates if the operation was successful.
+	Success bool
 }
 
 type UpdateResult struct {
-	BaseResult
-}
-
-func NewUpdateResult() *UpdateResult {
-	return &UpdateResult{
-		BaseResult: newBaseResult(),
-	}
+	// Result is the result of the operation.
+	Result map[string]interface{}
+	// Success is a flag that indicates if the operation was successful.
+	Success bool
 }
 
 type DeleteResult struct {
-	BaseResult
-}
-
-func NewDeleteResult() *DeleteResult {
-	return &DeleteResult{
-		BaseResult: newBaseResult(),
-	}
+	// Result is the result of the operation.
+	Result map[string]interface{}
+	// Success is a flag that indicates if the operation was successful.
+	Success bool
 }
 
 // ========================================== OPTIONS ========================================== //

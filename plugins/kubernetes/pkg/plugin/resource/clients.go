@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	DEFAULT_RESYNC_PERIOD = 30 * time.Minute
+	DefaultResyncPeriod = 30 * time.Minute
 )
 
 type KubernetesClientFactory struct{}
@@ -44,6 +44,7 @@ func (f *KubernetesClientFactory) CreateClient(
 		return nil, errors.New("kubeconfig is required")
 	}
 
+	// Change this to get from settings provider
 	os.Setenv("SHELL", "/bin/zsh")
 
 	// ensure PATH includes locations for common dependencies
@@ -72,7 +73,7 @@ func (f *KubernetesClientFactory) CreateClient(
 
 	dynamicInformerFactory := dynamicinformer.NewDynamicSharedInformerFactory(
 		client,
-		DEFAULT_RESYNC_PERIOD,
+		DefaultResyncPeriod,
 	)
 
 	return &ClientSet{

@@ -1,14 +1,22 @@
 package sdk
 
 import (
-	"embed"
+	"os"
 
 	"github.com/hashicorp/go-plugin"
 
+	pkgsettings "github.com/omniviewdev/plugin/pkg/settings"
 	"github.com/omniviewdev/plugin/pkg/types"
 )
 
+type PluginOpts struct {
+	// Settings is a list of settings to be used by the plugin
+	Settings []interface{}
+}
+
 type Plugin struct {
+	// settingsProvider is the settings provider for the plugin
+	settingsProvider pkgsettings.Provider
 	// pluginMap is the map of plugins we can dispense. Each plugin entry in the map
 	// is a plugin capability
 	pluginMap map[string]plugin.Plugin
@@ -19,16 +27,29 @@ type Plugin struct {
 // NewPlugin creates a new plugin with the given configuration. This should be instantiated
 // within your main function for your plugin and passed to the Register* functions to add
 // capabilities to the plugin.
-func NewPlugin(config embed.FS) *Plugin {
+func NewPlugin(opts PluginOpts) *Plugin {
+	// load in the plugin configuration from the same directory
+	config := "plugin.yaml"
+
+	// create io reader from the file
+	file, err := os.Open(config)
+	if err != nil {
+		if os.IsNotExist(err) {
+			panic("plugin.yaml not found")
+		}
+		panic(err)
+	}
+
 	// load in the plugin configuration
 	pluginConfig := types.PluginConfig{}
-	if err := pluginConfig.LoadFromFile(config); err != nil {
+	if err = pluginConfig.Load(file); err != nil {
 		panic(err)
 	}
 
 	return &Plugin{
-		config:    pluginConfig,
-		pluginMap: make(map[string]plugin.Plugin),
+		config:           pluginConfig,
+		pluginMap:        make(map[string]plugin.Plugin),
+		settingsProvider: pkgsettings.NewSettingsProvider(opts.Settings),
 	}
 }
 

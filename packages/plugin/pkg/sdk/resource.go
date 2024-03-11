@@ -25,7 +25,7 @@ type StaticResourcePluginOpts[ClientT, NamespaceDataT, NamespaceSensitiveDataT a
 // to may have a different set of available resources based on the resource namespace being connected to (like
 // various Kubernetes clusters, where different clusters may have different resources available), then
 // a dynamic resource plugin should be used instead.
-func RegisterStaticResourcePlugin[ClientT, NamespaceDataT, NamespaceSensitiveDataT any](
+func RegisterStaticResourcePlugin[ClientT, InformerT, NamespaceDataT, NamespaceSensitiveDataT any](
 	plugin *Plugin,
 	opts StaticResourcePluginOpts[ClientT, NamespaceDataT, NamespaceSensitiveDataT],
 ) {
@@ -39,7 +39,7 @@ func RegisterStaticResourcePlugin[ClientT, NamespaceDataT, NamespaceSensitiveDat
 		metas = append(metas, meta)
 	}
 
-	controller := controllers.NewResourceController(
+	controller := controllers.NewResourceController[ClientT, InformerT](
 		services.NewResourceManager[ClientT](),
 		services.NewHookManager(),
 		services.NewNamespaceManager(opts.ClientFactory),
@@ -77,7 +77,7 @@ type DynamicResourcePluginOpts[ClientT, DiscoveryClientT, NamespaceDataT, Namesp
 // If the resource that's being connected to does not have a different set of available resources based on
 // the resource namespace being connected to (like various clouds, where the types of resources available does
 // not change with different resource namespace connections), then a static resource plugin should be used instead.
-func RegisterDynamicResourcePlugin[ClientT, DiscoveryClientT, NamespaceDataT, NamespaceSensitiveDataT any](
+func RegisterDynamicResourcePlugin[ClientT, InformerT, DiscoveryClientT, NamespaceDataT, NamespaceSensitiveDataT any](
 	plugin *Plugin,
 	opts DynamicResourcePluginOpts[ClientT, DiscoveryClientT, NamespaceDataT, NamespaceSensitiveDataT],
 ) {
@@ -89,7 +89,7 @@ func RegisterDynamicResourcePlugin[ClientT, DiscoveryClientT, NamespaceDataT, Na
 	for meta := range opts.Resourcers {
 		metas = append(metas, meta)
 	}
-	controller := controllers.NewResourceController(
+	controller := controllers.NewResourceController[ClientT, InformerT](
 		services.NewResourceManager[ClientT](),
 		services.NewHookManager(),
 		services.NewNamespaceManager(opts.ClientFactory),

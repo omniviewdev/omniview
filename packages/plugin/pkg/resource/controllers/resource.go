@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 
@@ -16,13 +15,13 @@ import (
 //
 // This controller is the primary entrypoint for executing operations on resources, and
 // operates as the plugin host for the installed resource plugin.
-func NewResourceController[ClientT, NamespaceDT, NamespaceSDT any](
+func NewResourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT any](
 	resourceManager services.ResourceManager[ClientT],
 	hookManager services.HookManager,
 	namespaceManager services.NamespaceManager[ClientT, NamespaceDT, NamespaceSDT],
 	resourceTypeManager services.TypeManager[NamespaceDT, NamespaceSDT],
 ) types.ResourceProvider {
-	return &resourceController[ClientT, NamespaceDT, NamespaceSDT]{
+	return &resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]{
 		resourceManager:     resourceManager,
 		hookManager:         hookManager,
 		namespaceManager:    namespaceManager,
@@ -30,7 +29,23 @@ func NewResourceController[ClientT, NamespaceDT, NamespaceSDT any](
 	}
 }
 
-type resourceController[ClientT, NamespaceDataT, NamespaceSensitiveDataT any] struct {
+func AddInformerManager[ClientT, InformerT, NamespaceDT, NamespaceSDT any](
+	controller *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT],
+	opts services.InformerOptions[ClientT, InformerT, NamespaceDT, NamespaceSDT],
+) {
+	controller.withInformer = true
+	controller.informerManager = services.NewInformerManager(
+		opts.Factory,
+		opts.RegisterHandler,
+		opts.RunHandler,
+	)
+}
+
+type resourceController[ClientT, InformerT, NamespaceDataT, NamespaceSensitiveDataT any] struct {
+	// signal whether informer is enabled
+	withInformer bool
+	// informerManager is the informer manager that the controller will use to manage informers.
+	informerManager *services.InformerManager[ClientT, InformerT, NamespaceDataT, NamespaceSensitiveDataT]
 	// resourceManager is the resource manager that the controller will execute operations on.
 	resourceManager services.ResourceManager[ClientT]
 	// hookManager is the hook manager that the controller will use to attach hooks to operations.
@@ -41,116 +56,8 @@ type resourceController[ClientT, NamespaceDataT, NamespaceSensitiveDataT any] st
 	resourceTypeManager services.TypeManager[NamespaceDataT, NamespaceSensitiveDataT]
 }
 
-// RegisterPreGetHook registers a pre-get hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPreGetHook(
-	hook types.PreHook[types.GetInput],
-) error {
-	c.hookManager.RegisterPreGetHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
-// RegisterPreListHook registers a pre-list hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPreListHook(
-	hook types.PreHook[types.ListInput],
-) error {
-	c.hookManager.RegisterPreListHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
-// RegisterPreFindHook registers a pre-find hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPreFindHook(
-	hook types.PreHook[types.FindInput],
-) error {
-	c.hookManager.RegisterPreFindHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
-// RegisterPreCreateHook registers a pre-create hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPreCreateHook(
-	hook types.PreHook[types.CreateInput],
-) error {
-	c.hookManager.RegisterPreCreateHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
-// RegisterPreUpdateHook registers a pre-update hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPreUpdateHook(
-	hook types.PreHook[types.UpdateInput],
-) error {
-	c.hookManager.RegisterPreUpdateHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
-// RegisterPreDeleteHook registers a pre-delete hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPreDeleteHook(
-	hook types.PreHook[types.DeleteInput],
-) error {
-	c.hookManager.RegisterPreDeleteHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
-// RegisterPostGetHook registers a post-get hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPostGetHook(
-	hook types.PostHook[types.GetResult],
-) error {
-	c.hookManager.RegisterPostGetHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
-// RegisterPostListHook registers a post-list hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPostListHook(
-	hook types.PostHook[types.ListResult],
-) error {
-	c.hookManager.RegisterPostListHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
-// RegisterPostFindHook registers a post-find hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPostFindHook(
-	hook types.PostHook[types.FindResult],
-) error {
-	c.hookManager.RegisterPostFindHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
-// RegisterPostCreateHook registers a post-create hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPostCreateHook(
-	hook types.PostHook[types.CreateResult],
-) error {
-	c.hookManager.RegisterPostCreateHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
-// RegisterPostUpdateHook registers a post-update hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPostUpdateHook(
-	hook types.PostHook[types.UpdateResult],
-) error {
-	c.hookManager.RegisterPostUpdateHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
-// RegisterPostDeleteHook registers a post-delete hook for the given resource type.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) RegisterPostDeleteHook(
-	hook types.PostHook[types.DeleteResult],
-) error {
-	c.hookManager.RegisterPostDeleteHook(hook)
-	// TODO - add error checking in hook manager registration
-	return nil
-}
-
 // get our client and resourcer outside to slim down the methods.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) retrieveClientResourcer(
+func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) retrieveClientResourcer(
 	resource, namespace string,
 ) (*ClientT, types.Resourcer[ClientT], error) {
 	var nilResourcer types.Resourcer[ClientT]
@@ -247,22 +154,15 @@ func runPostHooks[I types.OperationInput, H types.OperationResult](
 
 // TODO - combine the common logic for the operations here, lots of repetativeness
 // Get gets a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) Get(
+func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Get(
+	ctx context.Context,
 	resource string,
 	namespace string,
 	input types.GetInput,
-) *types.GetResult {
-	ctx := context.TODO()
-
-	errHandler := func(err error) *types.GetResult {
-		result := types.NewGetResult()
-		result.RecordError(err)
-		return result
-	}
-
+) (*types.GetResult, error) {
 	client, resourcer, err := c.retrieveClientResourcer(resource, namespace)
 	if err != nil {
-		return errHandler(fmt.Errorf("unable to retrieve client and resourcer: %w", err))
+		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
 
 	// create our final result object
@@ -270,232 +170,225 @@ func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) Get(
 
 	// run our prehooks
 	if err = runPreHooks(input, hooks); err != nil {
-		return errHandler(fmt.Errorf("unable to run prehooks: %w", err))
+		return nil, fmt.Errorf("unable to run prehooks: %w", err)
 	}
 
 	// execute the resourcer
-	result := resourcer.Get(ctx, client, input)
-	if result == nil {
-		return errHandler(errors.New("resourcer returned no data"))
-	}
-	if result.Errors != nil && len(result.Errors) > 0 {
-		return result
+	result, err := resourcer.Get(ctx, client, input)
+	if err != nil {
+		return nil, err
 	}
 
 	// run the post-operation hooks
 	if err = runPostHooks(result, hooks); err != nil {
-		result.RecordError(fmt.Errorf("unable to run posthooks: %w", err))
-		return result
+		return nil, fmt.Errorf("unable to run posthooks: %w", err)
 	}
 
-	return result
+	return result, nil
 }
 
 // List lists resources within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) List(
+func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) List(
+	ctx context.Context,
 	resource string,
 	namespace string,
 	input types.ListInput,
-) *types.ListResult {
-	ctx := context.TODO()
-
-	errHandler := func(err error) *types.ListResult {
-		result := types.NewListResult()
-		result.RecordError(err)
-		return result
-	}
-
+) (*types.ListResult, error) {
 	client, resourcer, err := c.retrieveClientResourcer(resource, namespace)
 	if err != nil {
-		return errHandler(fmt.Errorf("unable to retrieve client and resourcer: %w", err))
+		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
 
 	hooks := c.hookManager.GetHooksForList(resource)
 
 	// run our prehooks
 	if err = runPreHooks(input, hooks); err != nil {
-		return errHandler(fmt.Errorf("unable to run prehooks: %w", err))
+		return nil, fmt.Errorf("unable to run prehooks: %w", err)
 	}
 
-	result := resourcer.List(ctx, client, input)
-	if result == nil {
-		return errHandler(errors.New("resourcer returned no data"))
-	}
-	if result.Errors != nil && len(result.Errors) > 0 {
-		return result
+	result, err := resourcer.List(ctx, client, input)
+	if err != nil {
+		return nil, err
 	}
 
 	if err = runPostHooks(result, hooks); err != nil {
-		result.RecordError(fmt.Errorf("unable to run posthooks: %w", err))
-		return result
+		return nil, fmt.Errorf("unable to run posthooks: %w", err)
 	}
 
-	return result
+	return result, nil
 }
 
 // Find finds resources within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) Find(
+func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Find(
+	ctx context.Context,
 	resource string,
 	namespace string,
 	input types.FindInput,
-) *types.FindResult {
-	ctx := context.TODO()
-
-	errHandler := func(err error) *types.FindResult {
-		result := types.NewFindResult()
-		result.RecordError(err)
-		return result
-	}
-
+) (*types.FindResult, error) {
 	client, resourcer, err := c.retrieveClientResourcer(resource, namespace)
 	if err != nil {
-		return errHandler(fmt.Errorf("unable to retrieve client and resourcer: %w", err))
+		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
 
 	hooks := c.hookManager.GetHooksForFind(resource)
 
 	// run our prehooks
 	if err = runPreHooks(input, hooks); err != nil {
-		return errHandler(fmt.Errorf("unable to run prehooks: %w", err))
+		return nil, fmt.Errorf("unable to run prehooks: %w", err)
 	}
 
-	result := resourcer.Find(ctx, client, input)
-	if result == nil {
-		return errHandler(errors.New("resourcer returned no data"))
+	result, err := resourcer.Find(ctx, client, input)
+	if err != nil {
+		return nil, err
 	}
-	if result.Errors != nil && len(result.Errors) > 0 {
-		return result
-	}
+
 	if err = runPostHooks(result, hooks); err != nil {
-		result.RecordError(fmt.Errorf("unable to run posthooks: %w", err))
-		return result
+		return nil, fmt.Errorf("unable to run posthooks: %w", err)
 	}
 
-	return result
+	return result, err
 }
 
 // Create creates a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) Create(
+func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Create(
+	ctx context.Context,
 	resource string,
 	namespace string,
 	input types.CreateInput,
-) *types.CreateResult {
-	ctx := context.TODO()
-
-	errHandler := func(err error) *types.CreateResult {
-		result := types.NewCreateResult()
-		result.RecordError(err)
-		return result
-	}
-
+) (*types.CreateResult, error) {
 	client, resourcer, err := c.retrieveClientResourcer(resource, namespace)
 	if err != nil {
-		return errHandler(fmt.Errorf("unable to retrieve client and resourcer: %w", err))
+		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
 
 	hooks := c.hookManager.GetHooksForCreate(resource)
 
 	// run our prehooks
 	if err = runPreHooks(input, hooks); err != nil {
-		return errHandler(fmt.Errorf("unable to run prehooks: %w", err))
+		return nil, fmt.Errorf("unable to run prehooks: %w", err)
 	}
 
-	result := resourcer.Create(ctx, client, input)
-	if result == nil {
-		return errHandler(errors.New("resourcer returned no data"))
-	}
-	if result.Errors != nil && len(result.Errors) > 0 {
-		return result
+	result, err := resourcer.Create(ctx, client, input)
+	if err != nil {
+		return nil, err
 	}
 
 	if err = runPostHooks(result, hooks); err != nil {
-		result.RecordError(fmt.Errorf("unable to run posthooks: %w", err))
-		return result
+		return nil, fmt.Errorf("unable to run posthooks: %w", err)
 	}
 
-	return result
+	return result, nil
 }
 
 // Update updates a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) Update(
+func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Update(
+	ctx context.Context,
 	resource string,
 	namespace string,
 	input types.UpdateInput,
-) *types.UpdateResult {
-	ctx := context.TODO()
-
-	errHandler := func(err error) *types.UpdateResult {
-		result := types.NewUpdateResult()
-		result.RecordError(err)
-		return result
-	}
-
+) (*types.UpdateResult, error) {
 	client, resourcer, err := c.retrieveClientResourcer(resource, namespace)
 	if err != nil {
-		return errHandler(fmt.Errorf("unable to retrieve client and resourcer: %w", err))
+		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
 
 	hooks := c.hookManager.GetHooksForUpdate(resource)
 
 	// run our prehooks
 	if err = runPreHooks(input, hooks); err != nil {
-		return errHandler(fmt.Errorf("unable to run prehooks: %w", err))
+		return nil, fmt.Errorf("unable to run prehooks: %w", err)
 	}
 
-	result := resourcer.Update(ctx, client, input)
-	if result == nil {
-		return errHandler(errors.New("resourcer returned no data"))
-	}
-	if result.Errors != nil && len(result.Errors) > 0 {
-		return result
+	result, err := resourcer.Update(ctx, client, input)
+	if err != nil {
+		return nil, err
 	}
 
 	if err = runPostHooks(result, hooks); err != nil {
-		result.RecordError(fmt.Errorf("unable to run posthooks: %w", err))
-		return result
+		return nil, fmt.Errorf("unable to run posthooks: %w", err)
 	}
 
-	return result
+	return result, nil
 }
 
 // Delete deletes a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, NamespaceDT, NamespaceSDT]) Delete(
+func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Delete(
+	ctx context.Context,
 	resource string,
 	namespace string,
 	input types.DeleteInput,
-) *types.DeleteResult {
-	ctx := context.TODO()
-
-	errHandler := func(err error) *types.DeleteResult {
-		result := types.NewDeleteResult()
-		result.RecordError(err)
-		return result
-	}
-
+) (*types.DeleteResult, error) {
 	client, resourcer, err := c.retrieveClientResourcer(resource, namespace)
 	if err != nil {
-		return errHandler(fmt.Errorf("unable to retrieve client and resourcer: %w", err))
+		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
 
 	hooks := c.hookManager.GetHooksForDelete(resource)
 
 	// run our prehooks
 	if err = runPreHooks(input, hooks); err != nil {
-		return errHandler(fmt.Errorf("unable to run prehooks: %w", err))
+		return nil, fmt.Errorf("unable to run prehooks: %w", err)
 	}
 
-	result := resourcer.Delete(ctx, client, input)
-	if result == nil {
-		return errHandler(errors.New("resourcer returned no data"))
-	}
-	if result.Errors != nil && len(result.Errors) > 0 {
-		return result
+	result, err := resourcer.Delete(ctx, client, input)
+	if err != nil {
+		return nil, err
 	}
 
 	if err = runPostHooks(result, hooks); err != nil {
-		result.RecordError(fmt.Errorf("unable to run posthooks: %w", err))
-		return result
+		return nil, fmt.Errorf("unable to run posthooks: %w", err)
 	}
 
-	return result
+	return result, nil
+}
+
+// StartContextInformer signals to the listen runner to start the informer for the given context.
+// If the informer is not enabled, this method will return a nil error.
+func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) StartContextInformer(
+	ctx context.Context,
+	contextID string,
+) error {
+	if !c.withInformer {
+		return nil
+	}
+	return c.informerManager.StartNamespace(
+		ctx,
+		types.Namespace[NamespaceDT, NamespaceSDT]{
+			ID: contextID,
+		},
+	)
+}
+
+// StopContextInformer signals to the listen runner to stop the informer for the given context.
+func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) StopContextInformer(
+	ctx context.Context,
+	contextID string,
+) error {
+	if !c.withInformer {
+		return nil
+	}
+	return c.informerManager.StopNamespace(
+		ctx,
+		types.Namespace[NamespaceDT, NamespaceSDT]{
+			ID: contextID,
+		},
+	)
+}
+
+// ListenForEvents listens for events from the informer and sends them to the given event channels.
+// This method will block until the context is cancelled, and given this will block, the parent
+// gRPC plugin host will spin this up in a goroutine.
+func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) ListenForEvents(
+	ctx context.Context,
+	addChan chan types.InformerAddPayload,
+	updateChan chan types.InformerUpdatePayload,
+	deleteChan chan types.InformerDeletePayload,
+) error {
+	if !c.withInformer {
+		return nil
+	}
+	if err := c.informerManager.Run(ctx.Done(), addChan, updateChan, deleteChan); err != nil {
+		return fmt.Errorf("error running informer manager: %w", err)
+	}
+	return nil
 }
