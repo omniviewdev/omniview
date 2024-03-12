@@ -15,13 +15,13 @@ import (
 //
 // This controller is the primary entrypoint for executing operations on resources, and
 // operates as the plugin host for the installed resource plugin.
-func NewResourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT any](
+func NewResourceController[ClientT, InformerT any](
 	resourceManager services.ResourceManager[ClientT],
 	hookManager services.HookManager,
-	namespaceManager services.NamespaceManager[ClientT, NamespaceDT, NamespaceSDT],
-	resourceTypeManager services.TypeManager[NamespaceDT, NamespaceSDT],
+	namespaceManager services.NamespaceManager[ClientT],
+	resourceTypeManager services.TypeManager,
 ) types.ResourceProvider {
-	return &resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]{
+	return &resourceController[ClientT, InformerT]{
 		resourceManager:     resourceManager,
 		hookManager:         hookManager,
 		namespaceManager:    namespaceManager,
@@ -29,9 +29,9 @@ func NewResourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT any](
 	}
 }
 
-func AddInformerManager[ClientT, InformerT, NamespaceDT, NamespaceSDT any](
-	controller *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT],
-	opts services.InformerOptions[ClientT, InformerT, NamespaceDT, NamespaceSDT],
+func AddInformerManager[ClientT, InformerT any](
+	controller *resourceController[ClientT, InformerT],
+	opts services.InformerOptions[ClientT, InformerT],
 ) {
 	controller.withInformer = true
 	controller.informerManager = services.NewInformerManager(
@@ -41,23 +41,23 @@ func AddInformerManager[ClientT, InformerT, NamespaceDT, NamespaceSDT any](
 	)
 }
 
-type resourceController[ClientT, InformerT, NamespaceDataT, NamespaceSensitiveDataT any] struct {
+type resourceController[ClientT, InformerT any] struct {
 	// signal whether informer is enabled
 	withInformer bool
 	// informerManager is the informer manager that the controller will use to manage informers.
-	informerManager *services.InformerManager[ClientT, InformerT, NamespaceDataT, NamespaceSensitiveDataT]
+	informerManager *services.InformerManager[ClientT, InformerT]
 	// resourceManager is the resource manager that the controller will execute operations on.
 	resourceManager services.ResourceManager[ClientT]
 	// hookManager is the hook manager that the controller will use to attach hooks to operations.
 	hookManager services.HookManager
 	// namespaceManager is the namespace manager that the controller will use to manage resource namespaces.
-	namespaceManager services.NamespaceManager[ClientT, NamespaceDataT, NamespaceSensitiveDataT]
+	namespaceManager services.NamespaceManager[ClientT]
 	// resourceTypeManager is the resource type manager that the controller will use to manage resource types.
-	resourceTypeManager services.TypeManager[NamespaceDataT, NamespaceSensitiveDataT]
+	resourceTypeManager services.TypeManager
 }
 
 // get our client and resourcer outside to slim down the methods.
-func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) retrieveClientResourcer(
+func (c *resourceController[ClientT, InformerT]) retrieveClientResourcer(
 	resource, namespace string,
 ) (*ClientT, types.Resourcer[ClientT], error) {
 	var nilResourcer types.Resourcer[ClientT]
@@ -154,7 +154,7 @@ func runPostHooks[I types.OperationInput, H types.OperationResult](
 
 // TODO - combine the common logic for the operations here, lots of repetativeness
 // Get gets a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Get(
+func (c *resourceController[ClientT, InformerT]) Get(
 	ctx context.Context,
 	resource string,
 	namespace string,
@@ -188,7 +188,7 @@ func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Get(
 }
 
 // List lists resources within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) List(
+func (c *resourceController[ClientT, InformerT]) List(
 	ctx context.Context,
 	resource string,
 	namespace string,
@@ -219,7 +219,7 @@ func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) List
 }
 
 // Find finds resources within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Find(
+func (c *resourceController[ClientT, InformerT]) Find(
 	ctx context.Context,
 	resource string,
 	namespace string,
@@ -250,7 +250,7 @@ func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Find
 }
 
 // Create creates a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Create(
+func (c *resourceController[ClientT, InformerT]) Create(
 	ctx context.Context,
 	resource string,
 	namespace string,
@@ -281,7 +281,7 @@ func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Crea
 }
 
 // Update updates a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Update(
+func (c *resourceController[ClientT, InformerT]) Update(
 	ctx context.Context,
 	resource string,
 	namespace string,
@@ -312,7 +312,7 @@ func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Upda
 }
 
 // Delete deletes a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Delete(
+func (c *resourceController[ClientT, InformerT]) Delete(
 	ctx context.Context,
 	resource string,
 	namespace string,
@@ -344,41 +344,31 @@ func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) Dele
 
 // StartContextInformer signals to the listen runner to start the informer for the given context.
 // If the informer is not enabled, this method will return a nil error.
-func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) StartContextInformer(
+func (c *resourceController[ClientT, InformerT]) StartContextInformer(
 	ctx context.Context,
-	contextID string,
+	authID string,
 ) error {
 	if !c.withInformer {
 		return nil
 	}
-	return c.informerManager.StartNamespace(
-		ctx,
-		types.Namespace[NamespaceDT, NamespaceSDT]{
-			ID: contextID,
-		},
-	)
+	return c.informerManager.StartNamespace(ctx, authID)
 }
 
 // StopContextInformer signals to the listen runner to stop the informer for the given context.
-func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) StopContextInformer(
+func (c *resourceController[ClientT, InformerT]) StopContextInformer(
 	ctx context.Context,
-	contextID string,
+	authID string,
 ) error {
 	if !c.withInformer {
 		return nil
 	}
-	return c.informerManager.StopNamespace(
-		ctx,
-		types.Namespace[NamespaceDT, NamespaceSDT]{
-			ID: contextID,
-		},
-	)
+	return c.informerManager.StopNamespace(ctx, authID)
 }
 
 // ListenForEvents listens for events from the informer and sends them to the given event channels.
 // This method will block until the context is cancelled, and given this will block, the parent
 // gRPC plugin host will spin this up in a goroutine.
-func (c *resourceController[ClientT, InformerT, NamespaceDT, NamespaceSDT]) ListenForEvents(
+func (c *resourceController[ClientT, InformerT]) ListenForEvents(
 	ctx context.Context,
 	addChan chan types.InformerAddPayload,
 	updateChan chan types.InformerUpdatePayload,

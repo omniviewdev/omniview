@@ -1,4 +1,4 @@
-package types
+package config
 
 import (
 	"fmt"
@@ -9,16 +9,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type PluginConfigFormat int
+type PluginMetaFormat int
 
 const (
-	// PluginConfigFormatYAML is the YAML format for a plugin config.
-	PluginConfigFormatYAML PluginConfigFormat = iota
-	// PluginConfigFormatJSON is the JSON format for a plugin config.
-	PluginConfigFormatJSON
+	// PluginMetaFormatYAML is the YAML format for a plugin config.
+	PluginMetaFormatYAML PluginMetaFormat = iota
+	// PluginMetaFormatJSON is the JSON format for a plugin config.
+	PluginMetaFormatJSON
 )
 
-type PluginConfig struct {
+// PluginMeta is the plugin description file located at the root of a plugin.
+type PluginMeta struct {
 	ID           string             `json:"id"           yaml:"id"`
 	Version      string             `json:"version"      yaml:"version"`
 	Name         string             `json:"name"         yaml:"name"`
@@ -38,13 +39,13 @@ type PluginMaintainer struct {
 	Email string `json:"email" yaml:"email"`
 }
 
-func (c *PluginConfig) Load(reader io.Reader) error {
+func (c *PluginMeta) Load(reader io.Reader) error {
 	return yaml.NewDecoder(reader).Decode(c)
 }
 
 // LoadMarkdown loads a plugin Markdown file from a given path (if it exists)
 // into the plugin config.
-func (c *PluginConfig) LoadMarkdown(path string) error {
+func (c *PluginMeta) LoadMarkdown(path string) error {
 	// load markdown file from path and set c.Markdown to the loaded markdown
 	file, err := os.Open(path)
 	if err != nil {
@@ -62,7 +63,7 @@ func (c *PluginConfig) LoadMarkdown(path string) error {
 }
 
 // GenerateHandshakeConfig generates a handshake config for the plugin given the plugin config.
-func (c *PluginConfig) GenerateHandshakeConfig() plugin.HandshakeConfig {
+func (c *PluginMeta) GenerateHandshakeConfig() plugin.HandshakeConfig {
 	if c.ID == "" {
 		panic("plugin ID must be set")
 	}
@@ -75,15 +76,4 @@ func (c *PluginConfig) GenerateHandshakeConfig() plugin.HandshakeConfig {
 		MagicCookieKey:   "OMNIVIEW",
 		MagicCookieValue: fmt.Sprintf("%s-%s", c.ID, c.Version),
 	}
-}
-
-// PluginSystemConfig is the configuration for the core plugin system.
-type PluginSystemConfig struct {
-	// pluginsPath is the path on the filesystem to where plugins are stored
-	pluginsPath string
-}
-
-// PluginsPath returns the path on the filesystem to where plugins are stored.
-func (c *PluginSystemConfig) PluginsPath() string {
-	return c.pluginsPath
 }
