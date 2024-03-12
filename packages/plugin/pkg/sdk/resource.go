@@ -10,6 +10,10 @@ import (
 	"github.com/omniviewdev/plugin/pkg/resource/types"
 )
 
+type ResourcePluginOpts interface {
+	StaticResourcePluginOpts[any] | DynamicResourcePluginOpts[any, any]
+}
+
 // StaticResourcePluginOpts is a set of options for configuring a resource plugin. A resource plugin
 // must consist of a client factory and a set of resourcers that the plugin will manage.
 type StaticResourcePluginOpts[ClientT any] struct {
@@ -42,7 +46,7 @@ func RegisterStaticResourcePlugin[ClientT, InformerT any](
 	controller := controllers.NewResourceController[ClientT, InformerT](
 		services.NewResourceManager[ClientT](),
 		services.NewHookManager(),
-		services.NewNamespaceManager(opts.ClientFactory),
+		services.NewAuthorizationManager(opts.ClientFactory),
 		services.NewStaticResourceTypeManager(metas),
 	)
 

@@ -7,13 +7,6 @@ import (
 	sdksettings "github.com/omniviewdev/plugin/pkg/settings"
 )
 
-type (
-	ClientType                 resource.ClientSet
-	InformerType               interface{}
-	NamespaceDataType          resource.Data
-	NamespaceSensitiveDataType resource.SensitiveData
-)
-
 func main() {
 	plugin := sdk.NewPlugin(sdk.PluginOpts{
 		Settings: []interface{}{
@@ -40,7 +33,7 @@ func main() {
 	// ....
 	sdk.RegisterStaticResourcePlugin[resource.ClientSet, any](
 		plugin,
-		sdk.StaticResourcePluginOpts[resource.ClientSet, resource.Data, resource.SensitiveData]{
+		sdk.StaticResourcePluginOpts[resource.ClientSet]{
 			ClientFactory: resource.NewKubernetesClientFactory(),
 			Resourcers:    map[types.ResourceMeta]types.Resourcer[resource.ClientSet]{},
 		},
