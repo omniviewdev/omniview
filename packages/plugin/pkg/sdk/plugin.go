@@ -11,7 +11,7 @@ import (
 
 const DefaultPluginMetaPath = "plugin.yaml"
 
-// PluginOpts is the options for creating a new plugin
+// PluginOpts is the options for creating a new plugin.
 type PluginOpts struct {
 	// Settings is a list of settings to be used by the plugin
 	Settings []interface{}

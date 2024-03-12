@@ -30,3 +30,14 @@ func PluginConfigFromContext(ctx context.Context) *PluginConfig {
 func NewPluginConfig(config map[string]string) *PluginConfig {
 	return &PluginConfig{config: config}
 }
+
+// Get returns the value for the given key on the config
+func (c *PluginConfig) Get(key string) string {
+	return c.config[key]
+}
+
+// WithPluginConfig injects the IDE plugin configuration into context.
+func WithPluginConfig(ctx context.Context, config *PluginConfig) context.Context {
+	ctx = context.WithValue(ctx, pluginConfigKey{}, config)
+	return ctx
+}
