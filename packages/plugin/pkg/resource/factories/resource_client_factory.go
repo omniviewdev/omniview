@@ -1,9 +1,7 @@
 package factories
 
 import (
-	"context"
-
-	"github.com/omniviewdev/plugin/pkg/resource/types"
+	"github.com/omniviewdev/plugin/pkg/types"
 )
 
 // ResourceClientFactory is responsible for generating clients that resource
@@ -11,32 +9,25 @@ import (
 // against a given backend. Resource clients are expected to be credentialed to only
 // one resource namespace, and the resource namespace manager is responsible for
 // managing these clients and switching between them as necessary.
-type ResourceClientFactory[ClientT, NamespaceDT, NamespaceSDT any] interface {
+type ResourceClientFactory[ClientT any] interface {
 	// CreateClient creates a new client for the resource manager to use in interacting with
 	// the resource backend. This method should be used to create a new client for the given
 	// namespace.
-	CreateClient(
-		ctx context.Context,
-		namespace types.Namespace[NamespaceDT, NamespaceSDT],
-	) (*ClientT, error)
+	CreateClient(ctx types.PluginContext) (*ClientT, error)
 
 	// RefreshClient performs any actions necessary to refresh a client for the given namespace.
 	// This may include refreshing credentials, or re-initializing the client if it has been
 	// invalidated.
-	RefreshClient(
-		ctx context.Context,
-		namespace types.Namespace[NamespaceDT, NamespaceSDT],
-		client *ClientT,
-	) error
+	RefreshClient(ctx types.PluginContext, client *ClientT) error
 
 	// StartClient starts the given client, and returns an error if the client could not be started.
 	// This method should be called when the client is needed.
 	//
 	// If the client does not need to be started, this method should return nil. This method will
 	// be called on every sync operation, and as such should be idempotent.
-	StartClient(ctx context.Context, client *ClientT) error
+	StartClient(ctx types.PluginContext, client *ClientT) error
 
 	// StopClient stops the given client, and returns an error if the client could not be stopped.
 	// If the client does not need to be stopped, this method should return nil.
-	StopClient(ctx context.Context, client *ClientT) error
+	StopClient(ctx types.PluginContext, client *ClientT) error
 }

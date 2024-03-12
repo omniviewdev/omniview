@@ -63,7 +63,7 @@ To begin transforming your DevOps experience with Omniview, follow these steps:
 
 ## Documentation
 
-For detailed instructions, tutorials, and API documentation, visit our [official documentation](https://omniview.dev/docs).
+For detailed instructions, tutorials, and API documentation, visit our [official documentation](https://docs.omniview.dev/docs/introduction).
 
 ## Community and Support
 
@@ -78,7 +78,7 @@ We welcome contributions from the community! If you're interested in making Omni
 
 ## License
 
-Omniview is open-source software licensed under the [AGPL-3.0 License](LICENSE).
+Omniview is open-source software licensed under the [AGPL-3.0 License](https://github.com/omniviewdev/omniview/blob/main/LICENSE).
 
 ---
 

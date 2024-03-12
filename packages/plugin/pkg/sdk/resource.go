@@ -12,8 +12,8 @@ import (
 
 // StaticResourcePluginOpts is a set of options for configuring a resource plugin. A resource plugin
 // must consist of a client factory and a set of resourcers that the plugin will manage.
-type StaticResourcePluginOpts[ClientT, NamespaceDataT, NamespaceSensitiveDataT any] struct {
-	ClientFactory factories.ResourceClientFactory[ClientT, NamespaceDataT, NamespaceSensitiveDataT]
+type StaticResourcePluginOpts[ClientT any] struct {
+	ClientFactory factories.ResourceClientFactory[ClientT]
 	Resourcers    map[types.ResourceMeta]types.Resourcer[ClientT]
 }
 
@@ -25,9 +25,9 @@ type StaticResourcePluginOpts[ClientT, NamespaceDataT, NamespaceSensitiveDataT a
 // to may have a different set of available resources based on the resource namespace being connected to (like
 // various Kubernetes clusters, where different clusters may have different resources available), then
 // a dynamic resource plugin should be used instead.
-func RegisterStaticResourcePlugin[ClientT, InformerT, NamespaceDataT, NamespaceSensitiveDataT any](
+func RegisterStaticResourcePlugin[ClientT, InformerT any](
 	plugin *Plugin,
-	opts StaticResourcePluginOpts[ClientT, NamespaceDataT, NamespaceSensitiveDataT],
+	opts StaticResourcePluginOpts[ClientT],
 ) {
 	if plugin == nil {
 		// improper use of plugin
@@ -43,7 +43,7 @@ func RegisterStaticResourcePlugin[ClientT, InformerT, NamespaceDataT, NamespaceS
 		services.NewResourceManager[ClientT](),
 		services.NewHookManager(),
 		services.NewNamespaceManager(opts.ClientFactory),
-		services.NewStaticResourceTypeManager[NamespaceDataT, NamespaceSensitiveDataT](metas),
+		services.NewStaticResourceTypeManager(metas),
 	)
 
 	// Register the resource plugin with the plugin system.
@@ -53,15 +53,11 @@ func RegisterStaticResourcePlugin[ClientT, InformerT, NamespaceDataT, NamespaceS
 // DynamicResourcePluginOpts is a set of options for configuring a dynamic resource plugin. A dynamic resource
 // plugin must consist of a discovery client factory, a discovery function, a client factory, and a set of
 // resourcers that the plugin will manage.
-type DynamicResourcePluginOpts[ClientT, DiscoveryClientT, NamespaceDataT, NamespaceSensitiveDataT any] struct {
-	DiscoveryClientFactory factories.ResourceDiscoveryClientFactory[
-		DiscoveryClientT,
-		NamespaceDataT,
-		NamespaceSensitiveDataT,
-	]
-	DiscoveryFunc func(context.Context, *DiscoveryClientT) ([]types.ResourceMeta, error)
-	ClientFactory factories.ResourceClientFactory[ClientT, NamespaceDataT, NamespaceSensitiveDataT]
-	Resourcers    map[types.ResourceMeta]types.Resourcer[ClientT]
+type DynamicResourcePluginOpts[ClientT, DiscoveryClientT any] struct {
+	DiscoveryClientFactory factories.ResourceDiscoveryClientFactory[DiscoveryClientT]
+	DiscoveryFunc          func(context.Context, *DiscoveryClientT) ([]types.ResourceMeta, error)
+	ClientFactory          factories.ResourceClientFactory[ClientT]
+	Resourcers             map[types.ResourceMeta]types.Resourcer[ClientT]
 }
 
 // Registers and runs a dynamic resource plugin with the given options. Dynamic resource plugins are
@@ -77,9 +73,9 @@ type DynamicResourcePluginOpts[ClientT, DiscoveryClientT, NamespaceDataT, Namesp
 // If the resource that's being connected to does not have a different set of available resources based on
 // the resource namespace being connected to (like various clouds, where the types of resources available does
 // not change with different resource namespace connections), then a static resource plugin should be used instead.
-func RegisterDynamicResourcePlugin[ClientT, InformerT, DiscoveryClientT, NamespaceDataT, NamespaceSensitiveDataT any](
+func RegisterDynamicResourcePlugin[ClientT, InformerT, DiscoveryClientT any](
 	plugin *Plugin,
-	opts DynamicResourcePluginOpts[ClientT, DiscoveryClientT, NamespaceDataT, NamespaceSensitiveDataT],
+	opts DynamicResourcePluginOpts[ClientT, DiscoveryClientT],
 ) {
 	if plugin == nil {
 		// improper use of plugin
