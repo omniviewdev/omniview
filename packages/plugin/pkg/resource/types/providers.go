@@ -1,6 +1,6 @@
 package types
 
-import "context"
+import "github.com/omniviewdev/plugin/pkg/types"
 
 type ResourceProviderInput[I OperationInput] struct {
 	Input       I
@@ -18,25 +18,37 @@ type RegisterPreHookRequest[I OperationInput] struct {
 // given a resource namespace and a resource identifier.
 type ResourceProvider interface {
 	// Get returns a single resource in the given resource namespace.
-	Get(ctx context.Context, key, contextID string, input GetInput) (*GetResult, error)
+	Get(ctx *types.PluginContext, key string, input GetInput) (*GetResult, error)
 	// Get returns a single resource in the given resource namespace.
-	List(ctx context.Context, key, contextID string, input ListInput) (*ListResult, error)
+	List(ctx *types.PluginContext, key string, input ListInput) (*ListResult, error)
 	// FindResources returns a list of resources in the given resource namespace that
 	// match a set of given options.
-	Find(ctx context.Context, key, contextID string, input FindInput) (*FindResult, error)
+	Find(ctx *types.PluginContext, key string, input FindInput) (*FindResult, error)
 	// Create creates a new resource in the given resource namespace.
-	Create(ctx context.Context, key, contextID string, input CreateInput) (*CreateResult, error)
+	Create(
+		ctx *types.PluginContext,
+		key string,
+		input CreateInput,
+	) (*CreateResult, error)
 	// Update updates an existing resource in the given resource namespace.
-	Update(ctx context.Context, key, contextID string, input UpdateInput) (*UpdateResult, error)
+	Update(
+		ctx *types.PluginContext,
+		key string,
+		input UpdateInput,
+	) (*UpdateResult, error)
 	// Delete deletes an existing resource in the given resource namespace.
-	Delete(ctx context.Context, key, contextID string, input DeleteInput) (*DeleteResult, error)
+	Delete(
+		ctx *types.PluginContext,
+		key string,
+		input DeleteInput,
+	) (*DeleteResult, error)
 	// StartContextInformer signals the resource provider to start an informer for the given resource backend context
-	StartContextInformer(ctx context.Context, contextID string) error
+	StartContextInformer(ctx *types.PluginContext, contextID string) error
 	// StopContextInformer signals the resource provider to stop an informer for the given resource backend context
-	StopContextInformer(ctx context.Context, contextID string) error
+	StopContextInformer(ctx *types.PluginContext, contextID string) error
 	// ListenForEvents registers a listener for resource events
 	ListenForEvents(
-		ctx context.Context,
+		ctx *types.PluginContext,
 		addStream chan InformerAddPayload,
 		updateStream chan InformerUpdatePayload,
 		deleteStream chan InformerDeletePayload,

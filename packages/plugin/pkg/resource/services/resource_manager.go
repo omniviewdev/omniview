@@ -9,7 +9,7 @@ import (
 
 // ResourcerManager manages all of the resourcers for a given resource type. It is responsible for
 // registering, retreiving, and managing resourcers for a given resource type.
-type ResourceManager[ClientT any] interface {
+type ResourcerManager[ClientT any] interface {
 	// RegisterResourcer registers a new resourcer for the given resource type
 	RegisterResourcer(resourceType string, resourcer types.Resourcer[ClientT]) error
 	// RegisterResourcersFromMap registers a new resourcer for the given resource type given
@@ -28,14 +28,17 @@ type resourcerManager[ClientT any] struct {
 	sync.RWMutex
 }
 
-func NewResourceManager[ClientT any]() ResourceManager[ClientT] {
+func NewResourcerManager[ClientT any]() ResourcerManager[ClientT] {
 	return &resourcerManager[ClientT]{
 		store: make(map[string]types.Resourcer[ClientT]),
 	}
 }
 
 // RegisterResourcer registers a new resourcer for the given resource type.
-func (r *resourcerManager[ClientT]) RegisterResourcer(resourceType string, resourcer types.Resourcer[ClientT]) error {
+func (r *resourcerManager[ClientT]) RegisterResourcer(
+	resourceType string,
+	resourcer types.Resourcer[ClientT],
+) error {
 	r.Lock()
 	defer r.Unlock()
 
@@ -78,7 +81,9 @@ func (r *resourcerManager[ClientT]) DeregisterResourcer(resourceType string) err
 }
 
 // GetResourcer returns the resourcer for the given resource type.
-func (r *resourcerManager[ClientT]) GetResourcer(resourceType string) (types.Resourcer[ClientT], error) {
+func (r *resourcerManager[ClientT]) GetResourcer(
+	resourceType string,
+) (types.Resourcer[ClientT], error) {
 	r.RLock()
 	defer r.RUnlock()
 	resourcer, exists := r.store[resourceType]

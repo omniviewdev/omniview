@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/omniviewdev/plugin/pkg/resource/types"
+	pkgtypes "github.com/omniviewdev/plugin/pkg/types"
 	"github.com/omniviewdev/plugin/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -21,9 +22,11 @@ func (s *ResourcePluginServer) Get(
 	ctx context.Context,
 	in *proto.GetRequest,
 ) (*proto.GetResponse, error) {
-	resp, err := s.Impl.Get(ctx, in.GetKey(), in.GetContext(), types.GetInput{
+	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+
+	resp, err := s.Impl.Get(pluginCtx, in.GetKey(), types.GetInput{
 		ID:          in.GetId(),
-		PartitionID: in.GetContext(),
+		PartitionID: in.GetNamespace(),
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get resource: %w", err)
