@@ -1,13 +1,12 @@
 package sdk
 
 import (
-	"context"
-
 	"github.com/omniviewdev/plugin/pkg/resource/controllers"
 	"github.com/omniviewdev/plugin/pkg/resource/factories"
 	resource "github.com/omniviewdev/plugin/pkg/resource/plugin"
 	"github.com/omniviewdev/plugin/pkg/resource/services"
 	"github.com/omniviewdev/plugin/pkg/resource/types"
+	pkgtypes "github.com/omniviewdev/plugin/pkg/types"
 )
 
 type ResourcePluginOpts interface {
@@ -44,9 +43,9 @@ func RegisterStaticResourcePlugin[ClientT, InformerT any](
 	}
 
 	controller := controllers.NewResourceController[ClientT, InformerT](
-		services.NewResourceManager[ClientT](),
+		services.NewResourcerManager[ClientT](),
 		services.NewHookManager(),
-		services.NewAuthorizationManager(opts.ClientFactory),
+		services.NewAuthContextManager(opts.ClientFactory),
 		services.NewStaticResourceTypeManager(metas),
 	)
 
@@ -59,7 +58,7 @@ func RegisterStaticResourcePlugin[ClientT, InformerT any](
 // resourcers that the plugin will manage.
 type DynamicResourcePluginOpts[ClientT, DiscoveryClientT any] struct {
 	DiscoveryClientFactory factories.ResourceDiscoveryClientFactory[DiscoveryClientT]
-	DiscoveryFunc          func(context.Context, *DiscoveryClientT) ([]types.ResourceMeta, error)
+	DiscoveryFunc          func(*pkgtypes.PluginContext, *DiscoveryClientT) ([]types.ResourceMeta, error)
 	ClientFactory          factories.ResourceClientFactory[ClientT]
 	Resourcers             map[types.ResourceMeta]types.Resourcer[ClientT]
 }
@@ -90,9 +89,9 @@ func RegisterDynamicResourcePlugin[ClientT, InformerT, DiscoveryClientT any](
 		metas = append(metas, meta)
 	}
 	controller := controllers.NewResourceController[ClientT, InformerT](
-		services.NewResourceManager[ClientT](),
+		services.NewResourcerManager[ClientT](),
 		services.NewHookManager(),
-		services.NewNamespaceManager(opts.ClientFactory),
+		services.NewAuthContextManager(opts.ClientFactory),
 		services.NewDynamicResourceTypeManager(
 			metas,
 			opts.DiscoveryClientFactory,

@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/omniviewdev/plugin/pkg/config"
-	"github.com/omniviewdev/plugin/pkg/resource/types"
 )
 
 const (
@@ -24,7 +23,7 @@ type PluginContext struct {
 	RequestOptions *RequestOptions
 
 	// AuthContext holds the identifier of the auth context for the plugin.
-	AuthContext *types.AuthorizationContext
+	AuthContext *AuthContext
 
 	// The resource context for the request, if available
 	ResourceContext *ResourceContext
@@ -34,7 +33,7 @@ type PluginContext struct {
 
 	// GlobalSettings are settings that are accessible to all plugins, taken
 	// from the global settings in the IDE section
-	GlobalConfig *config.PluginConfig
+	GlobalConfig *config.GlobalConfig
 
 	// Unique ID for the request
 	RequestID string
@@ -48,7 +47,7 @@ func NewPluginContext(
 	context context.Context,
 	requester string,
 	pluginConfig *config.PluginConfig,
-	globalConfig *config.PluginConfig,
+	globalConfig *config.GlobalConfig,
 	resourceContext *ResourceContext,
 ) *PluginContext {
 	return &PluginContext{
@@ -62,7 +61,17 @@ func NewPluginContext(
 	}
 }
 
-func (c *PluginContext) SetAuthContext(authContext *types.AuthorizationContext) {
+func NewPluginContextFromCtx(ctx context.Context) *PluginContext {
+	return &PluginContext{
+		Context:        ctx,
+		RequestID:      uuid.New().String(),
+		RequestOptions: NewDefaultRequestOptions(),
+		PluginConfig:   config.PluginConfigFromContext(ctx),
+		GlobalConfig:   config.GlobalConfigFromContext(ctx),
+	}
+}
+
+func (c *PluginContext) SetAuthContext(authContext *AuthContext) {
 	if c.ResourceContext != nil {
 		c.AuthContext = authContext
 	}

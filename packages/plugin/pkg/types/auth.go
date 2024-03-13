@@ -17,7 +17,7 @@ const (
 // This will be passed within the PluginContext so that it may be used across all requests,
 // and data here not within the sensitiveStore will be exposed to the user in the UI for the
 // plugin.
-type AuthorizationContext struct {
+type AuthContext struct {
 	// LastRefresh is the time when the auth context was last refreshed
 	// +optional
 	LastRefresh time.Time `json:"last_refresh"`
@@ -69,42 +69,42 @@ type AuthorizationContext struct {
 	ExpiryTime time.Duration `json:"expiry_time"`
 }
 
-func (c *AuthorizationContext) GetSensitiveData() map[string]interface{} {
+func (c *AuthContext) GetSensitiveData() map[string]interface{} {
 	return c.sensitiveData
 }
 
-func (c *AuthorizationContext) SetSensitiveData(data map[string]interface{}) {
+func (c *AuthContext) SetSensitiveData(data map[string]interface{}) {
 	c.sensitiveData = data
 }
 
-func (c *AuthorizationContext) SetSensitiveDataKey(key string, value interface{}) {
+func (c *AuthContext) SetSensitiveDataKey(key string, value interface{}) {
 	c.sensitiveData[key] = value
 }
 
-func (c *AuthorizationContext) GetSensitiveDataKey(key string) (interface{}, bool) {
+func (c *AuthContext) GetSensitiveDataKey(key string) (interface{}, bool) {
 	val, ok := c.sensitiveData[key]
 	return val, ok
 }
 
-func (c *AuthorizationContext) GetData() map[string]interface{} {
+func (c *AuthContext) GetData() map[string]interface{} {
 	return c.Data
 }
 
-func (c *AuthorizationContext) SetData(data map[string]interface{}) {
+func (c *AuthContext) SetData(data map[string]interface{}) {
 	c.Data = data
 }
 
-func (c *AuthorizationContext) GetDataKey(key string) (interface{}, bool) {
+func (c *AuthContext) GetDataKey(key string) (interface{}, bool) {
 	val, ok := c.Data[key]
 	return val, ok
 }
 
-func (c *AuthorizationContext) SetDataKey(key string, value interface{}) {
+func (c *AuthContext) SetDataKey(key string, value interface{}) {
 	c.Data[key] = value
 }
 
 // IsAuthed returns whether the auth context is authenticated or not.
-func (c *AuthorizationContext) IsAuthed() bool {
+func (c *AuthContext) IsAuthed() bool {
 	return c.ExpiryTime > 0 && time.Now().Before(c.LastRefresh.Add(c.ExpiryTime))
 }
 
@@ -138,7 +138,7 @@ type AuthContextOpts struct {
 	ExpiryTime time.Duration
 }
 
-func NewAuthContext(opts AuthContextOpts) (*AuthorizationContext, error) {
+func NewAuthContext(opts AuthContextOpts) (*AuthContext, error) {
 	if opts.ID == "" {
 		return nil, errors.New("ID is required when creating an authorization context")
 	}
@@ -162,7 +162,7 @@ func NewAuthContext(opts AuthContextOpts) (*AuthorizationContext, error) {
 		opts.ExpiryTime = DefaultExpiryTime
 	}
 
-	return &AuthorizationContext{
+	return &AuthContext{
 		ID:            opts.ID,
 		UID:           opts.UID,
 		Name:          opts.Name,

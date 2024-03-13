@@ -1,15 +1,15 @@
 package services
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/omniviewdev/plugin/pkg/resource/types"
+	pkgtypes "github.com/omniviewdev/plugin/pkg/types"
 )
 
 // InformerOptions defines the behavior for the integrating informers into a resource plugin..
-type InformerOptions[ClientT, InformerT, DataT, SensitiveDataT any] struct {
-	Factory         InformerFactory[ClientT, InformerT, DataT, SensitiveDataT]
+type InformerOptions[ClientT, InformerT any] struct {
+	Factory         InformerFactory[ClientT, InformerT]
 	RegisterHandler RegisterResourceFunc[InformerT]
 	RunHandler      RunInformerFunc[InformerT]
 }
@@ -31,8 +31,8 @@ type InformerOptions[ClientT, InformerT, DataT, SensitiveDataT any] struct {
 // same client that the resourcer clients use for their operations. If multiple clients are used
 // to set up informers, they should be injected as a dependency into the Client setup in the
 // ResourceClientFactory.
-type InformerManager[ClientT, InformerT, DataT, SensitiveDataT any] struct {
-	factory            InformerFactory[ClientT, InformerT, DataT, SensitiveDataT]
+type InformerManager[ClientT, InformerT any] struct {
+	factory            InformerFactory[ClientT, InformerT]
 	registerHandler    RegisterResourceFunc[InformerT]
 	runHandler         RunInformerFunc[InformerT]
 	informers          map[string]informer[InformerT]
@@ -44,11 +44,11 @@ type InformerManager[ClientT, InformerT, DataT, SensitiveDataT any] struct {
 }
 
 // InformerFactory is a factory for creating informers for a given resource namespace.
-type InformerFactory[ClientT, InformerT, DataT, SensitiveDataT any] interface {
+type InformerFactory[ClientT, InformerT any] interface {
 	// CreateInformer creates a new informer for a given resource namespace.
 	CreateInformer(
-		ctx context.Context,
-		rn types.Namespace[DataT, SensitiveDataT],
+		ctx *pkgtypes.PluginContext,
+		auth *pkgtypes.AuthContext,
 		client *ClientT,
 	) (InformerT, error)
 }
@@ -75,12 +75,12 @@ type RunInformerFunc[InformerT any] func(
 	deleteChan chan types.InformerDeletePayload,
 ) error
 
-func NewInformerManager[ClientT, InformerT, DataT, SensitiveDataT any](
-	factory InformerFactory[ClientT, InformerT, DataT, SensitiveDataT],
+func NewInformerManager[ClientT, InformerT any](
+	factory InformerFactory[ClientT, InformerT],
 	registerHandler RegisterResourceFunc[InformerT],
 	runHandler RunInformerFunc[InformerT],
-) *InformerManager[ClientT, InformerT, DataT, SensitiveDataT] {
-	return &InformerManager[ClientT, InformerT, DataT, SensitiveDataT]{
+) *InformerManager[ClientT, InformerT] {
+	return &InformerManager[ClientT, InformerT]{
 		factory:            factory,
 		registerHandler:    registerHandler,
 		runHandler:         runHandler,
@@ -95,7 +95,7 @@ func NewInformerManager[ClientT, InformerT, DataT, SensitiveDataT any](
 
 // Run starts the informer manager, and blocks until the stop channel is closed.
 // Acts as a fan-in aggregator for the various informer channels.
-func (i *InformerManager[CT, IT, DT, SDT]) Run(
+func (i *InformerManager[CT, IT]) Run(
 	stopCh <-chan struct{},
 	controllerAddChan chan types.InformerAddPayload,
 	controllerUpdateChan chan types.InformerUpdatePayload,
@@ -133,38 +133,38 @@ func (i *InformerManager[CT, IT, DT, SDT]) Run(
 	}
 }
 
-func (i *InformerManager[CT, IT, DT, SDT]) CreateNamespaceInformer(
-	ctx context.Context,
-	rn types.Namespace[DT, SDT],
+func (i *InformerManager[CT, IT]) CreateAuthContextInformer(
+	ctx *pkgtypes.PluginContext,
+	auth *pkgtypes.AuthContext,
 	client *CT,
 ) error {
 	// make sure we don't already have an informer for this namespace
-	if _, ok := i.informers[rn.ID]; ok {
-		return fmt.Errorf("informer already exists for namespace %s", rn.ID)
+	if _, ok := i.informers[auth.ID]; ok {
+		return fmt.Errorf("informer already exists for namespace %s", auth.ID)
 	}
 
 	// get an informer from the factory
-	cache, err := i.factory.CreateInformer(ctx, rn, client)
+	cache, err := i.factory.CreateInformer(ctx, auth, client)
 	if err != nil {
-		return fmt.Errorf("error creating informer for namespace %s: %w", rn.ID, err)
+		return fmt.Errorf("error creating informer for namespace %s: %w", auth.ID, err)
 	}
 
 	// add to map
-	i.informers[rn.ID] = informer[IT]{informer: cache, cancel: make(chan struct{})}
+	i.informers[auth.ID] = informer[IT]{informer: cache, cancel: make(chan struct{})}
 	return nil
 }
 
 // RegisterResource registers a resource with the informer manager for a given client. This is
 // called when a new context has been started for the first time.
-func (i *InformerManager[CT, IT, DT, SDT]) RegisterResource(
-	_ context.Context,
-	rn types.Namespace[DT, SDT],
+func (i *InformerManager[CT, IT]) RegisterResource(
+	_ *pkgtypes.PluginContext,
+	auth *pkgtypes.AuthContext,
 	resource types.ResourceMeta,
 ) error {
 	// get the informer
-	informer, ok := i.informers[rn.ID]
+	informer, ok := i.informers[auth.ID]
 	if !ok {
-		return fmt.Errorf("informer not found for namespace %s", rn.ID)
+		return fmt.Errorf("informer not found for namespace %s", auth.ID)
 	}
 
 	// register the resource
@@ -173,30 +173,30 @@ func (i *InformerManager[CT, IT, DT, SDT]) RegisterResource(
 
 // StartNamespace starts the informer for a given resource namespace, and sends events to the given
 // event channels.
-func (i *InformerManager[CT, IT, DT, SDT]) StartNamespace(
-	_ context.Context,
-	rn types.Namespace[DT, SDT],
+func (i *InformerManager[CT, IT]) StartAuthContext(
+	_ *pkgtypes.PluginContext,
+	authID string,
 ) error {
 	// make sure the informer exists before signalling a start
-	_, ok := i.informers[rn.ID]
+	_, ok := i.informers[authID]
 	if !ok {
-		return fmt.Errorf("informer not found for namespace %s", rn.ID)
+		return fmt.Errorf("informer not found for auth context %s", authID)
 	}
 
-	i.startNamespaceChan <- rn.ID
+	i.startNamespaceChan <- authID
 	return nil
 }
 
 // StopNamespace stops the informer for a given resource namespace.
-func (i *InformerManager[CT, IT, DT, SDT]) StopNamespace(
-	_ context.Context,
-	rn types.Namespace[DT, SDT],
+func (i *InformerManager[CT, IT]) StopAuthContext(
+	_ *pkgtypes.PluginContext,
+	authID string,
 ) error {
 	// make sure the informer exists before signalling a stop
-	_, ok := i.informers[rn.ID]
+	_, ok := i.informers[authID]
 	if !ok {
-		return fmt.Errorf("informer not found for namespace %s", rn.ID)
+		return fmt.Errorf("informer not found for namespace %s", authID)
 	}
-	i.stopNamespaceChan <- rn.ID
+	i.stopNamespaceChan <- authID
 	return nil
 }
