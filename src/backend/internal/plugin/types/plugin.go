@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/omniviewdev/plugin/pkg/config"
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"gopkg.in/yaml.v3"
 )
 

@@ -4,7 +4,7 @@ import React from 'react';
 import Box from '@mui/joy/Box';
 
 type Props = {
-  type?: 'inset' | 'bordered';
+  type?: 'inset' | 'bordered' | 'transparent' | 'bordered-inset';
   children: React.ReactNode;
 }
 
@@ -20,6 +20,18 @@ const SideNav: React.FC<Props> = ({ type = 'inset', children }) => {
   const InsetSx = {
     bgcolor: 'transparent',
   }
+  const TransparentSx = {
+    bgcolor: 'transparent',
+    borderRight: '1px solid',
+    borderColor: 'divider',
+  }
+  const BorderedInsetSx = {
+    bgcolor: 'transparent',
+    border: '1px solid',
+    borderRadius: 'md',
+    borderColor: 'divider',
+  }
+
 
   return (
     <Box
@@ -40,6 +52,8 @@ const SideNav: React.FC<Props> = ({ type = 'inset', children }) => {
         },
         type === 'bordered' && BorderedSx,
         type === 'inset' && InsetSx,
+        type === 'transparent' && TransparentSx,
+        type === 'bordered-inset' && BorderedInsetSx,
       ]}
     >
       {children}

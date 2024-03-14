@@ -1,0 +1,3 @@
+[submodule "packages/plugin-sdk"]
+	path = packages/plugin-sdk
+	url = git@github.com:omniviewdev/plugin-sdk.git

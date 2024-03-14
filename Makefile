@@ -7,6 +7,7 @@ sync:
 	go work sync
 
 dev:
+	cd src/frontend && pnpm install
 	cd src && wails dev
 
 lint: lint-core lint-plugin lint-kubernetes
