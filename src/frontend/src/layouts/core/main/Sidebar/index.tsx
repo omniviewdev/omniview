@@ -8,7 +8,7 @@ import Sheet from '@mui/joy/Sheet';
 import IconButton from '@mui/joy/IconButton';
 
 // icons
-import { LuBoxes } from "react-icons/lu";
+import { LuBoxes, LuUnplug } from "react-icons/lu";
 import { PiGraphBold } from "react-icons/pi";
 import { useSettingsNamespace } from '@/hooks/useSettings';
 import Icon from '@/components/icons/Icon';
@@ -18,6 +18,10 @@ const sidebarItems = [
   {
     name: 'explorer',
     logo: LuBoxes,
+  },
+  {
+    name: 'plugins',
+    logo: LuUnplug,
   },
   {
     name: 'graphql',

@@ -4,6 +4,7 @@ import { HeaderAreaItemList, HeaderAreaItemType, HeaderState } from "./types";
 const defaultItems: HeaderAreaItemList = [
   { id: 'home', type: HeaderAreaItemType.LINK, icon: 'LuHome', href: '/' },
   { id: 'settings', type: HeaderAreaItemType.LINK, icon: 'LuSettings', href: '/settings' },
+  { id: 'plugins', type: HeaderAreaItemType.LINK, icon: 'LuUnplug', href: '/plugins' },
 ];
 /**
  * Show the header with a context badge on the left, and a search bar in the center and items on the right.

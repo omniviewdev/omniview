@@ -42,7 +42,11 @@ func main() {
 	namespaceService := resources.NewNamespaceService(log, publisher, resourceChan)
 	nodeService := resources.NewNodeService(log, publisher, resourceChan)
 	persistentVolumeService := resources.NewPersistentVolumeService(log, publisher, resourceChan)
-	persistentVolumeClaimService := resources.NewPersistentVolumeClaimService(log, publisher, resourceChan)
+	persistentVolumeClaimService := resources.NewPersistentVolumeClaimService(
+		log,
+		publisher,
+		resourceChan,
+	)
 	podService := resources.NewPodService(log, publisher, resourceChan)
 	secretService := resources.NewSecretService(log, publisher, resourceChan)
 	serviceService := resources.NewServiceService(log, publisher, resourceChan)
@@ -119,9 +123,6 @@ func main() {
 		csiNodeService.Run(ctx)
 		storageClassService.Run(ctx)
 		volumeAttachmentService.Run(ctx)
-
-		// finally, sync the kubeconfigs
-		clusterManager.SyncKubeconfig(DEFAULT_KUBECONFIG)
 	}
 
 	// Create application with options

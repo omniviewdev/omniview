@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 // material-ui
 import Divider from '@mui/joy/Divider';
@@ -8,21 +8,13 @@ import List from '@mui/joy/List';
 import Typography from '@mui/joy/Typography';
 
 
-// mock data
-import { GetClusters } from '../../../wailsjs/go/main/App';
-import { clusters } from 'wailsjs/go/models';
-
 // icons
 import KubernetesLogo from '@/assets/logos/kubernetes/KubernetesColorWhiteBG'
-import ClusterListItem from './ClusterListItem';
+// import ClusterListItem from './ClusterListItem';
 import BlogFeed from './BlogFeed';
 
 export default function Clusters() {
-  const [clusters, setClusters] = useState<clusters.ClusterInfos | {}>({});
-
-  useEffect(() => {
-    GetClusters().then((clusters) => setClusters(clusters.clusters));
-  }, [])
+  const [_clusters, _setClusters] = useState({});
 
   return (
     <Grid container p={4} overflow={'auto'}>
@@ -54,12 +46,12 @@ export default function Clusters() {
               borderRadius: 'sm',
             }}
           >
-            {Object.values(clusters).map((cluster, idx) => (
-              <>
-                <ClusterListItem {...cluster} />
-                {idx < Object.values(clusters).length - 1 && <Divider />}
-              </>
-            ))}
+            {/* {Object.values(clusters).map((cluster, idx) => ( */}
+            {/*   <> */}
+            {/*     <ClusterListItem {...cluster} /> */}
+            {/*     {idx < Object.values(clusters).length - 1 && <Divider />} */}
+            {/*   </> */}
+            {/* ))} */}
 
           </List>
         </Sheet>

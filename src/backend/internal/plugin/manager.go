@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/omniviewdev/omniview/backend/internal/plugin/types"
-	"github.com/omniviewdev/plugin/pkg/config"
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )

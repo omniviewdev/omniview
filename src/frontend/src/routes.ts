@@ -4,7 +4,8 @@ import CoreLayout from './layouts/core/main/CoreLayout';
 import ClusterLayout from './layouts/ClusterLayout';
 
 // lazy load each container
-import Clusters from './pages/Clusters';
+import Clusters from './pages/clusters';
+import Plugins from './pages/plugins';
 
 // Connecting page
 import Connecting from './pages/connecting';
@@ -249,6 +250,10 @@ export const core = [
         path: "settings",
         Component: Settings,
       },
+      {
+        path: "plugins",
+        Component: Plugins,
+      }
     ],
   },
 ];

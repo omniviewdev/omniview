@@ -6,10 +6,7 @@ import (
 	"runtime"
 
 	"github.com/omniviewdev/omniview/backend/services"
-	"github.com/omniviewdev/omniview/pkg/clusters"
 )
-
-const DEFAULT_KUBECONFIG = "/Users/joshuapare/.kube/config"
 
 // App struct.
 type App struct {
@@ -62,13 +59,4 @@ func (a *App) shutdown(ctx context.Context) {
 // Greet returns a greeting for the given name.
 func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
-}
-
-// GetClusters returns a list of clusters.
-func (a *App) GetClusters() clusters.ClusterInfos {
-	info, err := clusters.GetClusters(DEFAULT_KUBECONFIG)
-	if err != nil {
-		fmt.Println(err)
-	}
-	return info
 }
