@@ -1,14 +1,12 @@
 package resource
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/factories"
-	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -40,9 +38,15 @@ var _ factories.ResourceClientFactory[ClientSet] = &KubernetesClientFactory{}
 func (f *KubernetesClientFactory) CreateClient(
 	ctx *pkgtypes.PluginContext,
 ) (*ClientSet, error) {
-	if ctx.AuthContext == "" {
+	if ctx.Connection == nil {
 		return nil, errors.New("kubeconfig is required")
 	}
+
+	kubeconfig, ok := ctx.Connection.GetDataKey("kubeconfig")
+	if !ok {
+		return nil, errors.New("kubeconfig is required")
+	}
+	val := kubeconfig.(string)
 
 	// Change this to get from settings provider
 	os.Setenv("SHELL", "/bin/zsh")
@@ -52,8 +56,8 @@ func (f *KubernetesClientFactory) CreateClient(
 
 	// connect to a cluster using the provided kubeconfig and context
 	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: rn.Data.Kubeconfig},
-		&clientcmd.ConfigOverrides{CurrentContext: rn.ID},
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: val},
+		&clientcmd.ConfigOverrides{CurrentContext: ctx.Connection.ID},
 	).ClientConfig()
 	if err != nil {
 		return nil, fmt.Errorf("error creating client: %w", err)
@@ -85,19 +89,18 @@ func (f *KubernetesClientFactory) CreateClient(
 
 // We don't need to refresh the client since we're using a new client for each namespace.
 func (f *KubernetesClientFactory) RefreshClient(
-	_ context.Context,
-	_ types.Namespace[Data, SensitiveData],
+	_ *pkgtypes.PluginContext,
 	_ *ClientSet,
 ) error {
 	return nil
 }
 
 // StartClient starts the given client, and returns an error if the client could not be started.
-func (f *KubernetesClientFactory) StartClient(_ context.Context, _ *ClientSet) error {
+func (f *KubernetesClientFactory) StartClient(_ *pkgtypes.PluginContext, _ *ClientSet) error {
 	return nil
 }
 
 // StopClient stops the given client, and returns an error if the client could not be stopped.
-func (f *KubernetesClientFactory) StopClient(_ context.Context, _ *ClientSet) error {
+func (f *KubernetesClientFactory) StopClient(_ *pkgtypes.PluginContext, _ *ClientSet) error {
 	return nil
 }
