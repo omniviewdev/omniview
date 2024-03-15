@@ -1,0 +1,52 @@
+[
+  {
+    "version": "1.5.0",
+    "releaseDate": "2024-07-01",
+    "changes": {
+      "feature": [
+        "Added automatic scaling based on workload.",
+        "Implemented cross-cloud service discovery."
+      ],
+      "bugfix": [
+        "Resolved an issue where logs were not properly collected from certain nodes.",
+        "Fixed a memory leak in the metrics collection service."
+      ],
+      "security": [
+        "Enhanced encryption for data at rest and in transit.",
+        "Addressed CVE-2024-12345 related to Kubernetes API."
+      ]
+    }
+  },
+  {
+    "version": "1.4.0",
+    "releaseDate": "2024-05-15",
+    "changes": {
+      "feature": [
+        "Integrated advanced monitoring tools for cluster health.",
+        "Support for automated backup and recovery processes."
+      ],
+      "bugfix": [
+        "Fixed cluster auto-upgrade failures under specific network conditions."
+      ],
+      "security": [
+        "Patched a vulnerability in the authentication module."
+      ]
+    }
+  },
+  {
+    "version": "1.3.0",
+    "releaseDate": "2024-03-01",
+    "changes": {
+      "feature": [
+        "Introduced support for managing multiple clusters.",
+        "Added support for managing Kubernetes resources using Helm."
+      ],
+      "bugfix": [
+        "Fixed a bug that caused the application to crash when switching between clusters."
+      ],
+      "security": [
+        "Updated security protocols to prevent unauthorized access to clusters."
+      ]
+    }
+  }
+]

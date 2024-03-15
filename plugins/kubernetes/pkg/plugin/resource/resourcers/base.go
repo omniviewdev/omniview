@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/omniview/kubernetes/resource"
+	"github.com/omniview/kubernetes/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/services"
-	pkgtypes "github.com/omniviewdev/plugin/pkg/resource/types"
+	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"go.uber.org/zap"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"

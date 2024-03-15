@@ -2,7 +2,6 @@ import React from 'react';
 
 // material-ui
 import Avatar from '@mui/joy/Avatar';
-import Chip from '@mui/joy/Chip';
 import Stack from '@mui/joy/Stack';
 import List from '@mui/joy/List';
 import ListItem from '@mui/joy/ListItem';

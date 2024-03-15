@@ -2,9 +2,9 @@ package main
 
 import (
 	"github.com/omniview/kubernetes/pkg/plugin/resource"
-	"github.com/omniviewdev/plugin/pkg/resource/types"
-	"github.com/omniviewdev/plugin/pkg/sdk"
-	sdksettings "github.com/omniviewdev/plugin/pkg/settings"
+	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
+	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/settings"
 )
 
 func main() {
