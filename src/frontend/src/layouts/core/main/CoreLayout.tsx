@@ -10,7 +10,10 @@ import { Outlet } from 'react-router-dom';
  */
 export default function CoreLayout() {
   return (
-    <CssVarsProvider disableTransitionOnChange>
+    <CssVarsProvider
+      defaultMode="dark"
+      disableTransitionOnChange
+    >
       <CssBaseline />
       <Box sx={{ display: 'flex', minHeight: '100dvh', flexDirection: 'column' }}>
         <Layout.Header />

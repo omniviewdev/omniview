@@ -5,6 +5,8 @@ import (
 	"embed"
 
 	"github.com/omniviewdev/omniview/backend/clients"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/controllers"
 	"github.com/omniviewdev/omniview/backend/services"
 	appsv1 "github.com/omniviewdev/omniview/backend/services/resources/apps_v1"
 	batchv1 "github.com/omniviewdev/omniview/backend/services/resources/batch_v1"
@@ -23,12 +25,18 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-//go:embed build/appicon.png
+//go:embed build/favicon.icns
 var icon []byte
 
 func main() {
 	nillogger := logger.NewFileLogger("/dev/null")
 	log := clients.CreateLogger(true)
+
+	// Setup the plugin systems
+	resourceController := controllers.NewResourceController(log)
+	pluginManager := plugin.NewManager(log, resourceController)
+
+	// LEGACY - KUBERNETES MANAGERS INLINE
 
 	// Create our managers
 	clusterManager, publisher, resourceChan := services.NewClusterManager(log)
@@ -81,6 +89,11 @@ func main() {
 		// Perform your setup here
 		app.startup(ctx)
 
+		// Initialize the plugin system
+		if err := pluginManager.Initialize(ctx); err != nil {
+			log.Errorw("error while initializing plugin system", "error", err)
+		}
+
 		// Run the overarching managers
 		clusterManager.Run(ctx)
 		terminalManager.Run(ctx)
@@ -127,7 +140,7 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:     "KubeDE",
+		Title:     "Omniview",
 		Width:     1920,
 		Height:    1080,
 		MinWidth:  1280,
@@ -156,6 +169,9 @@ func main() {
 		// CSSDragValue:     "1",
 		Bind: []interface{}{
 			app,
+
+			// plugin system
+			pluginManager,
 
 			// managers
 			clusterManager,
@@ -216,7 +232,7 @@ func main() {
 			WebviewIsTransparent: true,
 			WindowIsTranslucent:  true,
 			About: &mac.AboutInfo{
-				Title:   "KubeDE",
+				Title:   "Omniview",
 				Message: "",
 				Icon:    icon,
 			},

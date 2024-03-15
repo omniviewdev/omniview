@@ -3,6 +3,7 @@ package plugin
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,8 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/omniviewdev/omniview/backend/internal/plugin/types"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/controllers"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 )
@@ -24,32 +26,79 @@ const (
 // for registering and unregistering plugins, and communicating with the plugin
 // controllers to handle the lifecycle of the plugins.
 type Manager interface {
+	// Initialize discovers and loads all plugins that are currently installed in the plugin directory,
+	// and initializes them with the appropriate controllers.
+	Initialize(ctx context.Context) error
+
 	// InstallPluginFromPath installs a plugin from the given path. It will validate the plugin
 	// and then load it into the manager.
 	InstallPluginFromPath(path string) error
+
 	// LoadPlugin loads a plugin at the given path. It will validate the plugin
 	// and then load it into the manager.
 	LoadPlugin(id string) error
+
 	// UnloadPlugin unloads a plugin from the manager.
 	UnloadPlugin(id string) error
-	// GetPlugin
+
+	// GetPlugin returns the plugin with the given plugin ID.
+	GetPlugin(id string) (types.Plugin, error)
+
+	// ListPlugins returns a list of all plugins that are currently registered with the manager.
+	ListPlugins() []types.Plugin
+
+	// GetPluginMeta returns the plugin metadata for the given plugin ID.
 	GetPluginMeta(id string) (config.PluginMeta, error)
+
 	// ListPlugins returns a list of all plugins that are currently registered with the manager.
 	ListPluginMetas() []config.PluginMeta
 }
 
 // NewManager returns a new plugin manager for the IDE to use to manager installed plugins.
-func NewManager(logger *zap.SugaredLogger) Manager {
+func NewManager(
+	logger *zap.SugaredLogger,
+	resourceController controllers.ResourceController,
+) Manager {
 	return &pluginManager{
-		logger:  logger,
-		plugins: make(map[string]types.Plugin),
+		logger:             logger,
+		plugins:            make(map[string]types.Plugin),
+		resourceController: resourceController,
 	}
 }
 
 // concrete implementation of the plugin manager.
 type pluginManager struct {
-	logger  *zap.SugaredLogger
-	plugins map[string]types.Plugin
+	ctx                context.Context
+	logger             *zap.SugaredLogger
+	plugins            map[string]types.Plugin
+	resourceController controllers.ResourceController
+}
+
+func (pm *pluginManager) Initialize(ctx context.Context) error {
+	// bind to Wails context
+	pm.ctx = ctx
+
+	// make sure our plugin dir is all set
+	if err := auditPluginDir(); err != nil {
+		return err
+	}
+
+	// load all the plugins in the plugin directory
+	files, err := os.ReadDir(filepath.Join(os.Getenv("HOME"), ".omniview", "plugins"))
+	if err != nil {
+		return fmt.Errorf("error reading plugin directory: %w", err)
+	}
+
+	// load each plugin
+	for _, file := range files {
+		if file.IsDir() {
+			if err = pm.LoadPlugin(file.Name()); err != nil {
+				return fmt.Errorf("error loading plugin: %w", err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // make sure our plugin dir is all set.
@@ -326,6 +375,24 @@ func (pm *pluginManager) UnloadPlugin(id string) error {
 	// remove from the map
 	delete(pm.plugins, id)
 	return nil
+}
+
+// GetPlugin returns the plugin with the given plugin ID.
+func (pm *pluginManager) GetPlugin(id string) (types.Plugin, error) {
+	plugin, ok := pm.plugins[id]
+	if !ok {
+		return types.Plugin{}, fmt.Errorf("plugin not found: %s", id)
+	}
+	return plugin, nil
+}
+
+// ListPlugins returns a list of all plugins that are currently registered with the manager.
+func (pm *pluginManager) ListPlugins() []types.Plugin {
+	var plugins []types.Plugin
+	for _, plugin := range pm.plugins {
+		plugins = append(plugins, plugin)
+	}
+	return plugins
 }
 
 func validateInstalledPlugin(metadata config.PluginMeta) error {

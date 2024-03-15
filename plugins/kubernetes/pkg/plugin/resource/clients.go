@@ -7,8 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/omniviewdev/plugin/pkg/resource/factories"
-	"github.com/omniviewdev/plugin/pkg/resource/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/resource/factories"
+	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
+	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
@@ -32,15 +33,14 @@ type ClientSet struct {
 	DynamicInformerFactory dynamicinformer.DynamicSharedInformerFactory
 }
 
-var _ factories.ResourceClientFactory[ClientSet, Data, SensitiveData] = &KubernetesClientFactory{}
+var _ factories.ResourceClientFactory[ClientSet] = &KubernetesClientFactory{}
 
 // CreateClient creates a new client for interacting with the API server for a given cluster, given a
 // path to the kubeconfig file and the context to use.
 func (f *KubernetesClientFactory) CreateClient(
-	_ context.Context,
-	rn types.Namespace[Data, SensitiveData],
+	ctx *pkgtypes.PluginContext,
 ) (*ClientSet, error) {
-	if rn.Data.Kubeconfig == "" {
+	if ctx.AuthContext == "" {
 		return nil, errors.New("kubeconfig is required")
 	}
 
