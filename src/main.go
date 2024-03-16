@@ -6,7 +6,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/clients"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/controllers"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/services"
 	appsv1 "github.com/omniviewdev/omniview/backend/services/resources/apps_v1"
 	batchv1 "github.com/omniviewdev/omniview/backend/services/resources/batch_v1"
@@ -33,7 +33,9 @@ func main() {
 	log := clients.CreateLogger(true)
 
 	// Setup the plugin systems
-	resourceController := controllers.NewResourceController(log)
+	resourceController := resource.NewController(log)
+	resourceClient := resource.NewClient(resourceController)
+
 	pluginManager := plugin.NewManager(log, resourceController)
 
 	// LEGACY - KUBERNETES MANAGERS INLINE
@@ -172,6 +174,8 @@ func main() {
 
 			// plugin system
 			pluginManager,
+
+			resourceClient,
 
 			// managers
 			clusterManager,

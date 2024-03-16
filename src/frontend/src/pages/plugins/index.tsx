@@ -20,6 +20,7 @@ import PluginsNav from './PluginsNav';
 import PluginPreview from './PluginPreview';
 import { LuSlidersHorizontal } from 'react-icons/lu';
 import { Sheet } from '@mui/joy';
+import InstalledPlugins from './InstalledPlugins';
 
 /**
  * The main settings page for the application.
@@ -59,7 +60,10 @@ const SettingsPage = () => {
           <PluginsNav selected={selected} onChange={setSelected} />
         </Layout.SideNav>
         <Layout.Main>
-          {selected !== undefined && <PluginPreview plugin={selected} />}
+          {selected !== undefined
+            ? <PluginPreview plugin={selected} />
+            : <InstalledPlugins />
+          }
         </Layout.Main>
       </Layout.Root>
     </CssVarsProvider>

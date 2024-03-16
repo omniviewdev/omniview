@@ -1,13 +1,13 @@
 id: kubernetes
 version: 1.0.0
 name: Kubernetes
-icon: SiKubernetes
+icon: https://upload.wikimedia.org/wikipedia/commons/3/39/Kubernetes_logo_without_workmark.svg
 description: Kubernetes is an open-source system for automating deployment, scaling, and management of containerized applications.
 repository: github.com/omniviewdev/omniview/plugins/kubernetes
 website: kubernetes.io
 maintainers:
-  - name: Infraview Maintainers
-    email: info@infraview.dev
+  - name: Omniview Maintainers
+    email: info@omniview.dev
 tags:
   - kubernetes
   - container
