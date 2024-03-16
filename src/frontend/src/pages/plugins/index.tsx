@@ -21,24 +21,21 @@ import PluginPreview from './PluginPreview';
 import { LuSlidersHorizontal } from 'react-icons/lu';
 import { Sheet } from '@mui/joy';
 import InstalledPlugins from './InstalledPlugins';
-
-import {
-  useQuery,
-} from '@tanstack/react-query'
-import { ListPlugins } from '@api/plugin/pluginManager';
+import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 
 /**
  * The main settings page for the application.
  */
 const SettingsPage = () => {
   const [selected, setSelected] = React.useState()
-  const { data, isLoading, isError, error } = useQuery({ queryKey: ['INSTALLED_PLUGINS'], queryFn: ListPlugins })
+  const { plugins } = usePluginManager()
 
-  if (isLoading) {
+  if (plugins.isLoading) {
     return <div>Loading...</div>
   }
-  if (isError) {
-    return <div>Error: {error.message}</div>
+
+  if (plugins.isError) {
+    return <div>Error: {plugins.error.message}</div>
   }
 
   return (
@@ -70,14 +67,12 @@ const SettingsPage = () => {
               }}
             />
           </Stack>
-          <PluginsNav selected={selected} onChange={setSelected} installed={data?.map((p => p.id))} />
+          <PluginsNav selected={selected} onChange={setSelected} installed={plugins.data?.map((p => p.id))} />
         </Layout.SideNav>
         <Layout.Main>
           {selected !== undefined
             ? <PluginPreview plugin={selected} />
-            : (
-              data?.length && <InstalledPlugins plugins={data} />
-            )
+            : <InstalledPlugins />
           }
         </Layout.Main>
       </Layout.Root>

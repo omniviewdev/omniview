@@ -12,6 +12,8 @@ import { LuBoxes, LuUnplug } from "react-icons/lu";
 import { PiGraphBold } from "react-icons/pi";
 import { useSettingsNamespace } from '@/hooks/useSettings';
 import Icon from '@/components/icons/Icon';
+import { usePluginManager } from '@/hooks/plugin/usePluginManager';
+import { Avatar } from '@mui/joy';
 
 
 const sidebarItems = [
@@ -33,6 +35,7 @@ export default function CoreLayoutSidebar() {
   const { pathname } = useLocation();
   const clouds = useSettingsNamespace('clouds')
   const orchestrators = useSettingsNamespace('orchestrators')
+  const { plugins } = usePluginManager()
 
   return (
     <Sheet
@@ -92,6 +95,21 @@ export default function CoreLayoutSidebar() {
             <Link to={`/${orchestrator.id}`}>
               <IconButton variant={pathname.startsWith(`/${orchestrator.id}`) ? 'solid' : 'plain'} size="lg">
                 <Icon name={orchestrator.icon} size={25} />
+              </IconButton>
+            </Link>
+          </ListItem>
+        ))}
+        {!plugins.isLoading && plugins.data?.map(({ id, metadata }) => (
+          <ListItem key={id}>
+            <Link to={`/${id}`}>
+              <IconButton variant={pathname.startsWith(`/${id}`) ? 'solid' : 'plain'} size="lg">
+                {metadata?.icon.endsWith('.svg') || metadata?.icon.endsWith('.png') ? (
+                  <Avatar
+                    size="sm"
+                    src={metadata.icon}
+                    variant='plain'
+                  />
+                ) : <Icon name={metadata?.icon || ''} size={44} />}
               </IconButton>
             </Link>
           </ListItem>

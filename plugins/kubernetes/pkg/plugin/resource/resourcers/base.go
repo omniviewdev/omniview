@@ -1,18 +1,18 @@
 package resourcers
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/omniview/kubernetes/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/services"
-	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"go.uber.org/zap"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/informers"
+
+	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 const (
@@ -51,11 +51,10 @@ func NewKubernetesResourcerBase[T MetaAccessor](
 ) pkgtypes.Resourcer[resource.ClientSet] {
 	// Create a new instance of the service
 	service := KubernetesResourcerBase[T]{
-		log: logger.With(
-			"service",
-			fmt.Sprintf("%sService", resourceType.Resource),
-		),
+		RWMutex:      sync.RWMutex{},
+		log:          logger.With("service", resourceType.Resource+"Service"),
 		resourceType: resourceType,
+		informer:     nil,
 	}
 
 	return &service
@@ -154,7 +153,7 @@ func (s *KubernetesResourcerBase[T]) Update(
 	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.PartitionID)
 	resource, err := lister.Get(ctx.Context, input.ID, v1.GetOptions{})
 	if err != nil {
-		return result, nil
+		return nil, err
 	}
 
 	// update and resubmit
