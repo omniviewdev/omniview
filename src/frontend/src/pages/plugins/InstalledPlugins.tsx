@@ -7,8 +7,13 @@ import {
 } from '@tanstack/react-query'
 import { Grid, Typography } from '@mui/joy'
 import InstalledPluginCard from './InstalledPluginCard'
+import { types } from '@api/models'
 
-const InstalledPlugins: React.FC = () => {
+type Props = {
+  plugins: Array<types.Plugin>
+}
+
+const InstalledPlugins: React.FC<Props> = ({ plugins }) => {
   const query = useQuery({ queryKey: ['INSTALLED_PLUGINS'], queryFn: ListPlugins })
 
   if (query.isLoading) {
@@ -23,7 +28,7 @@ const InstalledPlugins: React.FC = () => {
       <Grid xs={12} pb={2}>
         <Typography level="h2">Installed Plugins</Typography>
       </Grid>
-      {query.data?.map((plugin) => (
+      {plugins.map((plugin) => (
         <Grid xs={12} md={6} xl={4} >
           <InstalledPluginCard key={plugin.id} {...plugin} />
         </Grid>

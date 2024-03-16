@@ -11,16 +11,19 @@ import Typography from '@mui/joy/Typography';
 
 // mock data
 import mock from './mock/plugins.json'
+import { Chip } from '@mui/joy';
+import { LuCheck } from 'react-icons/lu';
 
 type Props = {
   selected: any;
   onChange: (selection: any) => void;
+  installed: string[] | undefined;
 }
 
 /**
  * The navigation content for the settings page.
  */
-const PluginsNav: React.FC<Props> = ({ selected, onChange }) => {
+const PluginsNav: React.FC<Props> = ({ selected, onChange, installed }) => {
   return (
     <List
       size="sm"
@@ -39,8 +42,11 @@ const PluginsNav: React.FC<Props> = ({ selected, onChange }) => {
               <Avatar size="md" src={plugin.icon} variant='plain' sx={{ borderRadius: 4 }} />
             </ListItemDecorator>
             <div>
-              <Stack direction="row" spacing={2}>
+              <Stack direction="row" spacing={2} justifyContent={'space-between'}>
                 <Typography fontSize="md" fontWeight={700}>{plugin.name}</Typography>
+                {installed && installed.includes(plugin.id) && (
+                  <Chip size="sm" color="primary" sx={{ borderRadius: 'sm', maxHeight: 20 }} startDecorator={<LuCheck />}>Installed</Chip>
+                )}
               </Stack>
               <Typography
                 fontSize="xs"
