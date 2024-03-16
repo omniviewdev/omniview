@@ -1,16 +1,12 @@
 package plugin
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/hashicorp/go-plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/controllers"
@@ -18,8 +14,8 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	rp "github.com/omniviewdev/plugin-sdk/pkg/resource/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
-	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -34,16 +30,24 @@ type Manager interface {
 	// and initializes them with the appropriate controllers.
 	Initialize(ctx context.Context) error
 
+	// InstallFromPathPrompt installs a plugin from the given path, prompting the user for the location
+	// with a window dialog.
+	InstallFromPathPrompt() (*config.PluginMeta, error)
+
 	// InstallPluginFromPath installs a plugin from the given path. It will validate the plugin
 	// and then load it into the manager.
-	InstallPluginFromPath(path string) error
+	InstallPluginFromPath(path string) (*config.PluginMeta, error)
 
 	// LoadPlugin loads a plugin at the given path. It will validate the plugin
 	// and then load it into the manager.
-	LoadPlugin(id string) error
+	LoadPlugin(id string) (types.Plugin, error)
 
-	// UnloadPlugin unloads a plugin from the manager.
-	UnloadPlugin(id string) error
+	// ReloadPlugin reloads a plugin at the given path. It will validate the plugin
+	// and then load it into the manager.
+	ReloadPlugin(id string) (types.Plugin, error)
+
+	// UninstallPlugin uninstalls a plugin from the manager, and removes it from the filesystem.
+	UninstallPlugin(id string) (types.Plugin, error)
 
 	// GetPlugin returns the plugin with the given plugin ID.
 	GetPlugin(id string) (types.Plugin, error)
@@ -64,11 +68,23 @@ func NewManager(
 	resourceController resource.Controller,
 ) Manager {
 	return &pluginManager{
-		logger:              logger,
-		plugins:             make(map[string]types.Plugin),
-		connlessControllers: make(map[types.PluginType]controllers.Controller),
+		logger:  logger,
+		plugins: make(map[string]types.Plugin),
+		connlessControllers: map[types.PluginType]controllers.Controller{
+			types.ResourcePlugin:   nil, // not connless
+			types.ExecutorPlugin:   nil, // not connless
+			types.FilesystemPlugin: nil, // not connless
+			types.LogPlugin:        nil, // not connless
+			types.MetricPlugin:     nil, // not connless
+			types.ReporterPlugin:   nil, // TODO implement
+		},
 		connfullControllers: map[types.PluginType]controllers.ConnectedController{
-			types.ResourcePlugin: resourceController,
+			types.ResourcePlugin:   resourceController,
+			types.ExecutorPlugin:   nil, // TODO: implement
+			types.FilesystemPlugin: nil, // TODO: implement
+			types.LogPlugin:        nil, // TODO: implement
+			types.MetricPlugin:     nil, // TODO: implement
+			types.ReporterPlugin:   nil, // connless
 		},
 	}
 }
@@ -100,7 +116,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// load each plugin
 	for _, file := range files {
 		if file.IsDir() {
-			if err = pm.LoadPlugin(file.Name()); err != nil {
+			if _, err = pm.LoadPlugin(file.Name()); err != nil {
 				return fmt.Errorf("error loading plugin: %w", err)
 			}
 		}
@@ -109,308 +125,106 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// make sure our plugin dir is all set.
-func auditPluginDir() error {
-	plugindir := filepath.Join(os.Getenv("HOME"), ".omniview", "plugins")
-
-	// make sure our plugin dir is all set
-	if err := os.MkdirAll(plugindir, 0755); err != nil {
-		return fmt.Errorf("error creating plugin directory: %w", err)
-	}
-
-	return nil
-}
-
-func getPluginLocation(id string) string {
-	// TODO - do we want to make this dynamic?
-	return filepath.Join(os.Getenv("HOME"), ".omniview", "plugins", id)
-}
-
-func checkTarball(filePath string) error {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// our tarball should be gzipped
-	gzipReader, err := gzip.NewReader(file)
-	if err != nil {
-		return err
-	}
-	defer gzipReader.Close()
-
-	tarReader := tar.NewReader(gzipReader)
-
-	hasBinPlugin := false
-	hasPluginYaml := false
-
-	for {
-		var header *tar.Header
-		header, err = tarReader.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				// end of archive
-				break
-			}
-
-			return err
-		}
-
-		// check for required files and executable
-		switch header.Name {
-		case "bin/plugin":
-			hasBinPlugin = true
-			if header.FileInfo().Mode()&0111 == 0 {
-				return errors.New("bin/plugin is not executable")
-			}
-		case "plugin.yaml":
-			hasPluginYaml = true
-		}
-	}
-
-	// Ensure required files were found
-	if !hasBinPlugin || !hasPluginYaml {
-		if !hasBinPlugin {
-			return errors.New("missing required binary")
-		}
-		if !hasPluginYaml {
-			return errors.New("missing required plugin.yaml")
-		}
-	}
-
-	return nil
-}
-
-// sanitize archive file pathing from G305.
-func sanitizeArchivePath(destination, target string) (string, error) {
-	v := filepath.Join(destination, target)
-	if strings.HasPrefix(v, filepath.Clean(destination)) {
-		return v, nil
-	}
-
-	return "", fmt.Errorf("%s: %s", "content filepath is tainted", target)
-}
-
-func unpackPluginArchive(source string, destination string) error {
-	// Open the .tar.gz file
-	file, err := os.Open(source)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	gzipReader, err := gzip.NewReader(file)
-	if err != nil {
-		return err
-	}
-	defer gzipReader.Close()
-
-	tarReader := tar.NewReader(gzipReader)
-
-	// iterate through the files in the tarball
-	for {
-		var header *tar.Header
-		header, err = tarReader.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				// end of archive
-				break
-			}
-
-			return err
-		}
-
-		// Check file size against MaxPluginSize before extraction
-		if header.Size > MaxPluginSize {
-			return errors.New("file size exceeds maximum allowed size")
-		}
-
-		// sanitize the file path
-		path, sanitizeErr := sanitizeArchivePath(destination, header.Name)
-		if sanitizeErr != nil {
-			return sanitizeErr
-		}
-
-		switch header.Typeflag {
-		case tar.TypeDir: // If it's a directory, create it
-			basePath := filepath.Dir(destination)
-
-			if err = os.MkdirAll(filepath.Join(basePath, path), 0755); err != nil {
-				return err
-			}
-		case tar.TypeReg: // If it's a file, create it
-			var outFile *os.File
-
-			if err = os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-				return fmt.Errorf("error creating plugin directory: %w", err)
-			}
-
-			// if the file already exists, remove it
-			if _, err = os.Stat(path); err == nil {
-				if err = os.Remove(path); err != nil {
-					return err
-				}
-			}
-
-			outFile, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
-			if err != nil {
-				return err
-			}
-
-			// prevent DoS from huge files
-			if _, err = io.CopyN(outFile, tarReader, MaxPluginSize); err != nil {
-				if !errors.Is(err, io.EOF) {
-					err = fmt.Errorf("error copying file: %w", err)
-					outFile.Close()
-					return err
-				}
-			}
-			outFile.Close()
-		}
-	}
-
-	// cleanup the original tarball
-	if err = os.Remove(source); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func parseMetadataFromArchive(path string) (*config.PluginMeta, error) {
-	f, err := os.Open(path)
+// InstallFromPathPrompt installs a plugin from the given path, prompting the user for the location
+// with a window dialog.
+func (pm *pluginManager) InstallFromPathPrompt() (*config.PluginMeta, error) {
+	// have to pass wails context
+	path, err := runtime.OpenFileDialog(pm.ctx, runtime.OpenDialogOptions{})
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-
-	gzr, err := gzip.NewReader(f)
-	if err != nil {
-		return nil, err
+	if path == "" {
+		return nil, errors.New("cancelled")
 	}
-	defer gzr.Close()
-
-	tr := tar.NewReader(gzr)
-
-	for {
-		var header *tar.Header
-		header, err = tr.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				// end of archive
-				break
-			}
-
-			return nil, err
-		}
-
-		if header.Name == "plugin.yaml" {
-			var metadata config.PluginMeta
-			if err = yaml.NewDecoder(tr).Decode(&metadata); err != nil {
-				return nil, err
-			}
-			return &metadata, nil
-		}
-	}
-
-	return nil, errors.New("'plugin.yaml' not found in download file")
+	return pm.InstallPluginFromPath(path)
 }
 
-// isGzippedTarball attempts to read the file as a gzipped tarball. If it succeeds in reading at least one
-// header from the tar archive, it assumes the file is a valid gzipped tarball.
-func isGzippedTarball(filePath string) bool {
-	// Open the file for reading
-	file, err := os.Open(filePath)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
-
-	// Create a gzip reader
-	gzr, err := gzip.NewReader(file)
-	if err != nil {
-		return false
-	}
-	defer gzr.Close()
-
-	// Create a tar reader from the gzip reader
-	tr := tar.NewReader(gzr)
-
-	// Attempt to read the first header from the tar archive
-	_, err = tr.Next()
-	if errors.Is(
-		err,
-		tar.ErrHeader,
-	) { // Found a header, but it's invalid; still likely a tar archive
-		return true
-	}
-	if err != nil {
-		return false
-	}
-
-	// Successfully read at least one header, so it's likely a gzipped tarball
-	return true
-}
-
-func (pm *pluginManager) InstallPluginFromPath(path string) error {
+func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta, error) {
 	// make sure the plugin dir is all set
 	if err := auditPluginDir(); err != nil {
-		return err
+		return nil, err
 	}
 
 	// plugins should be a valid tar.gz file
 	if !isGzippedTarball(path) {
-		return fmt.Errorf("plugin is not a tar.gz file: %s", path)
+		return nil, fmt.Errorf("plugin is not a tar.gz file: %s", path)
 	}
 
 	if err := checkTarball(path); err != nil {
-		return fmt.Errorf("plugin package is corrupt: %w", err)
+		return nil, fmt.Errorf("plugin package is corrupt: %w", err)
 	}
 
 	// all good - unpack to the plugin directory
 	metadata, err := parseMetadataFromArchive(path)
 	if err != nil {
-		return fmt.Errorf("error parsing plugin metadata: %w", err)
+		return nil, fmt.Errorf("error parsing plugin metadata: %w", err)
 	}
 
 	// ensure the plugin directory exists
 	location := getPluginLocation(metadata.ID)
 	if err = os.MkdirAll(location, 0755); err != nil {
-		return fmt.Errorf("error creating plugin directory: %w", err)
+		return nil, fmt.Errorf("error creating plugin directory: %w", err)
 	}
 
 	if err = unpackPluginArchive(path, location); err != nil {
-		return fmt.Errorf("error unpacking plugin download: %w", err)
+		return nil, fmt.Errorf("error unpacking plugin download: %w", err)
 	}
 
-	return nil
+	// all set, load it in
+	_, err = pm.LoadPlugin(metadata.ID)
+	if err != nil {
+		return nil, fmt.Errorf("error loading plugin: %w", err)
+	}
+
+	return metadata, nil
 }
 
-func (pm *pluginManager) LoadPlugin(id string) error {
+func (pm *pluginManager) ReloadPlugin(id string) (types.Plugin, error) {
+	_, ok := pm.plugins[id]
+	if !ok {
+		return types.Plugin{}, fmt.Errorf("plugin with id '%s' is not currently loaded", id)
+	}
+	if err := pm.UnloadPlugin(id); err != nil {
+		return types.Plugin{}, fmt.Errorf("error unloading plugin during reload: %w", err)
+	}
+	return pm.LoadPlugin(id)
+}
+
+func (pm *pluginManager) LoadPlugin(id string) (types.Plugin, error) {
 	if _, ok := pm.plugins[id]; ok {
-		return fmt.Errorf("plugin with id '%s' already loaded", id)
+		return types.Plugin{}, fmt.Errorf("plugin with id '%s' already loaded", id)
 	}
 
 	location := getPluginLocation(id)
 
 	// make sure it exists, and load the metadata file
 	if _, err := os.Stat(location); os.IsNotExist(err) {
-		return fmt.Errorf("plugin with id '%s' not found", id)
+		return types.Plugin{}, fmt.Errorf("plugin with id '%s' not found", id)
 	}
 
 	// load the metadata in so we can start validating
 	metadata, err := types.LoadPluginMetadata(location)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("plugin with id '%s' is missing it's metadata file", id)
+			return types.Plugin{}, fmt.Errorf(
+				"plugin with id '%s' is missing it's metadata file",
+				id,
+			)
 		}
 
-		return fmt.Errorf("error loading plugin metadata for plugin '%s': %w", id, err)
+		return types.Plugin{}, fmt.Errorf(
+			"error loading plugin metadata for plugin '%s': %w",
+			id,
+			err,
+		)
 	}
 
 	if err = validateInstalledPlugin(metadata); err != nil {
-		return fmt.Errorf("plugin with id '%s' failed validation during loading: %w", id, err)
+		return types.Plugin{}, fmt.Errorf(
+			"plugin with id '%s' failed validation during loading: %w",
+			id,
+			err,
+		)
 	}
 
 	// We're a host. Start by launching the plugin process.
@@ -428,38 +242,67 @@ func (pm *pluginManager) LoadPlugin(id string) error {
 	if err != nil {
 		err = fmt.Errorf("error initializing plugin: %w", err)
 		pm.logger.Error(err)
-		return err
+		return types.Plugin{}, err
 	}
 
 	// all good, add to the map
-	pm.plugins[id] = types.Plugin{
+	newPlugin := types.Plugin{
 		ID:           id,
 		Metadata:     metadata,
-		Running:      true,
+		Running:      false,
 		Enabled:      true,
 		Config:       *config.NewEmptyPluginConfig(),
 		RPCClient:    rpcClient,
 		PluginClient: pluginClient,
 	}
 
-	return nil
+	pm.plugins[id] = newPlugin
+
+	// init the controllers
+	if err = pm.initPlugin(&newPlugin); err != nil {
+		newPlugin.LoadError = err.Error()
+		pm.plugins[id] = newPlugin
+
+		return types.Plugin{}, fmt.Errorf("error initializing plugin: %w", err)
+	}
+
+	// start the controllers
+	if err = pm.startPlugin(&newPlugin, rpcClient); err != nil {
+		newPlugin.LoadError = err.Error()
+		pm.plugins[id] = newPlugin
+
+		return types.Plugin{}, fmt.Errorf("error starting plugin: %w", err)
+	}
+
+	return newPlugin, nil
 }
 
 // UninstallPlugin uninstalls a plugin from the manager, and removes it from the filesystem.
-func (pm *pluginManager) UninstallPlugin(id string) error {
+func (pm *pluginManager) UninstallPlugin(id string) (types.Plugin, error) {
+	plugin, ok := pm.plugins[id]
+	if !ok {
+		err := fmt.Errorf("plugin with id '%s' is not currently loaded", id)
+		pm.logger.Error(err)
+		return types.Plugin{}, err
+	}
+
 	if err := pm.UnloadPlugin(id); err != nil {
-		return fmt.Errorf("error unloading plugin during uninstall: %w", err)
+		err = fmt.Errorf("error unloading plugin during uninstall: %w", err)
+		pm.logger.Error(err)
+		return types.Plugin{}, err
 	}
 
 	// remove from the filesystem
 	location := getPluginLocation(id)
 	if err := os.RemoveAll(location); err != nil {
-		return fmt.Errorf("error removing plugin from filesystem: %w", err)
+		err = fmt.Errorf("error removing plugin from filesystem: %w", err)
+		pm.logger.Error(err)
+		return types.Plugin{}, err
 	}
-	return nil
+	return plugin, nil
 }
 
-// UnloadPlugin unloads a plugin from the manager.
+// UnloadPlugin unloads a plugin from the manager, stopping it if it is currently running.
 func (pm *pluginManager) UnloadPlugin(id string) error {
 	plugin, ok := pm.plugins[id]
 	if !ok {
@@ -467,12 +310,14 @@ func (pm *pluginManager) UnloadPlugin(id string) error {
 	}
 
 	if plugin.IsRunning() {
-		return fmt.Errorf("plugin with id '%s' is currently running, cannot unload", id)
+		// stop the plugin
+		if err := pm.stopPlugin(&plugin); err != nil {
+			return fmt.Errorf("error shutting down plugin: %w", err)
+		}
 	}
 
-	// stop the plugin client
-	if err := plugin.RPCClient.Close(); err != nil {
-		return fmt.Errorf("error stopping plugin client: %w", err)
+	if err := pm.shutdownPlugin(&plugin); err != nil {
+		return fmt.Errorf("error shutting down plugin: %w", err)
 	}
 
 	// remove from the map
@@ -484,7 +329,9 @@ func (pm *pluginManager) UnloadPlugin(id string) error {
 func (pm *pluginManager) GetPlugin(id string) (types.Plugin, error) {
 	plugin, ok := pm.plugins[id]
 	if !ok {
-		return types.Plugin{}, fmt.Errorf("plugin not found: %s", id)
+		err := fmt.Errorf("plugin not found: %s", id)
+		pm.logger.Error(err)
+		return types.Plugin{}, err
 	}
 	return plugin, nil
 }
@@ -498,53 +345,13 @@ func (pm *pluginManager) ListPlugins() []types.Plugin {
 	return plugins
 }
 
-func validateInstalledPlugin(metadata config.PluginMeta) error {
-	path := getPluginLocation(metadata.ID)
-
-	// check capabilities are met
-	for _, p := range metadata.Capabilities {
-		switch p {
-		case types.ResourcePlugin.String():
-			return validateHasBinary(path)
-		case types.ReporterPlugin.String():
-			return validateHasBinary(path)
-		case types.ExecutorPlugin.String():
-			return validateHasBinary(path)
-		case types.FilesystemPlugin.String():
-			return validateHasBinary(path)
-		case types.LogPlugin.String():
-			return validateHasBinary(path)
-		case types.MetricPlugin.String():
-			return validateHasBinary(path)
-		default:
-			return fmt.Errorf("error validating plugin: unknown plugin capability type '%s'", p)
-		}
-	}
-
-	return nil
-}
-
-func validateHasBinary(path string) error {
-	// first, ensure the required files are present. there should, at minimum be a binary
-	// at <path>/bin/resource
-	plugin, err := os.Stat(filepath.Join(path, "bin", "plugin"))
-	if os.IsNotExist(err) {
-		return fmt.Errorf("resource plugin binary not found: %s", path)
-	}
-
-	// check that it's actually a compiled binary
-	if plugin.Mode()&0111 == 0 {
-		return fmt.Errorf("resource plugin binary is not executable: %s", path)
-	}
-
-	return nil
-}
-
 // GetPluginConfig returns the plugin configuration for the given plugin ID.
 func (pm *pluginManager) GetPluginMeta(id string) (config.PluginMeta, error) {
 	plugin, ok := pm.plugins[id]
 	if !ok {
-		return config.PluginMeta{}, fmt.Errorf("plugin not found: %s", id)
+		err := fmt.Errorf("plugin not found: %s", id)
+		pm.logger.Error(err)
+		return config.PluginMeta{}, err
 	}
 	return plugin.Metadata, nil
 }
@@ -556,4 +363,192 @@ func (pm *pluginManager) ListPluginMetas() []config.PluginMeta {
 		metas = append(metas, plugin.Metadata)
 	}
 	return metas
+}
+
+// ================================== private methods ================================== //
+
+// TODO - redo all of these to extract the common logic. This is a bit of a mess.
+
+// initPlugin initializes the plugin and calls all the plugin controller init handlers.
+func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
+	if plugin == nil {
+		return errors.New("plugin is nil")
+	}
+	// go through the controllers and init them based on the capabilities
+	for _, capability := range plugin.Metadata.Capabilities {
+		switch capability {
+		case types.ResourcePlugin.String():
+			pm.connfullControllers[types.ResourcePlugin].OnPluginInit(plugin.Metadata)
+		case types.ExecutorPlugin.String():
+			pm.connfullControllers[types.ExecutorPlugin].OnPluginInit(plugin.Metadata)
+		case types.FilesystemPlugin.String():
+			pm.connfullControllers[types.FilesystemPlugin].OnPluginInit(plugin.Metadata)
+		case types.LogPlugin.String():
+			pm.connfullControllers[types.LogPlugin].OnPluginInit(plugin.Metadata)
+		case types.MetricPlugin.String():
+			pm.connfullControllers[types.MetricPlugin].OnPluginInit(plugin.Metadata)
+		case types.ReporterPlugin.String():
+			pm.connlessControllers[types.ReporterPlugin].OnPluginInit(plugin.Metadata)
+		}
+	}
+
+	return nil
+}
+
+// startPlugin starts the plugin and calls all the plugin controller start handlers.
+func (pm *pluginManager) startPlugin(plugin *types.Plugin, client plugin.ClientProtocol) error {
+	if plugin == nil {
+		return errors.New("plugin is nil")
+	}
+
+	// go through the controllers and start them based on the capabilities
+	for _, capability := range plugin.Metadata.Capabilities {
+		switch capability {
+		case types.ResourcePlugin.String():
+			if err := pm.connfullControllers[types.ResourcePlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+				return fmt.Errorf("error starting resource plugin: %w", err)
+			}
+		case types.ExecutorPlugin.String():
+			if err := pm.connfullControllers[types.ExecutorPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+				return fmt.Errorf("error starting executor plugin: %w", err)
+			}
+		case types.FilesystemPlugin.String():
+			if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+				return fmt.Errorf("error starting filesystem plugin: %w", err)
+			}
+		case types.LogPlugin.String():
+			if err := pm.connfullControllers[types.LogPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+				return fmt.Errorf("error starting log plugin: %w", err)
+			}
+		case types.MetricPlugin.String():
+			if err := pm.connfullControllers[types.MetricPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+				return fmt.Errorf("error starting metric plugin: %w", err)
+			}
+		case types.ReporterPlugin.String():
+			if err := pm.connlessControllers[types.ReporterPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+				return fmt.Errorf("error starting reporter plugin: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// Stop the plugin and call all the plugin controller stop handlers.
+func (pm *pluginManager) stopPlugin(plugin *types.Plugin) error {
+	if plugin == nil {
+		return errors.New("plugin is nil")
+	}
+
+	// go through the controllers and stop them based on the capabilities
+	for _, capability := range plugin.Metadata.Capabilities {
+		switch capability {
+		case types.ResourcePlugin.String():
+			if err := pm.connfullControllers[types.ResourcePlugin].OnPluginStop(plugin.Metadata); err != nil {
+				return fmt.Errorf("error stopping resource plugin: %w", err)
+			}
+		case types.ExecutorPlugin.String():
+			if err := pm.connfullControllers[types.ExecutorPlugin].OnPluginStop(plugin.Metadata); err != nil {
+				return fmt.Errorf("error stopping executor plugin: %w", err)
+			}
+		case types.FilesystemPlugin.String():
+			if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginStop(plugin.Metadata); err != nil {
+				return fmt.Errorf("error stopping filesystem plugin: %w", err)
+			}
+		case types.LogPlugin.String():
+			if err := pm.connfullControllers[types.LogPlugin].OnPluginStop(plugin.Metadata); err != nil {
+				return fmt.Errorf("error stopping log plugin: %w", err)
+			}
+		case types.MetricPlugin.String():
+			if err := pm.connfullControllers[types.MetricPlugin].OnPluginStop(plugin.Metadata); err != nil {
+				return fmt.Errorf("error stopping metric plugin: %w", err)
+			}
+		case types.ReporterPlugin.String():
+			if err := pm.connlessControllers[types.ReporterPlugin].OnPluginStop(plugin.Metadata); err != nil {
+				return fmt.Errorf("error stopping reporter plugin: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// Shutdown the plugin and call all the plugin controller shutdown handlers.
+func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
+	if plugin == nil {
+		return errors.New("plugin is nil")
+	}
+
+	// stop the plugin client
+	if err := plugin.RPCClient.Close(); err != nil {
+		return fmt.Errorf("error stopping plugin client: %w", err)
+	}
+
+	// go through the controllers and stop them based on the capabilities
+	for _, capability := range plugin.Metadata.Capabilities {
+		switch capability {
+		case types.ResourcePlugin.String():
+			if err := pm.connfullControllers[types.ResourcePlugin].OnPluginShutdown(plugin.Metadata); err != nil {
+				return fmt.Errorf("error shutting down resource plugin: %w", err)
+			}
+		case types.ExecutorPlugin.String():
+			if err := pm.connfullControllers[types.ExecutorPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
+				return fmt.Errorf("error shutting down executor plugin: %w", err)
+			}
+		case types.FilesystemPlugin.String():
+			if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
+				return fmt.Errorf("error shutting down filesystem plugin: %w", err)
+			}
+		case types.LogPlugin.String():
+			if err := pm.connfullControllers[types.LogPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
+				return fmt.Errorf("error shutting down log plugin: %w", err)
+			}
+		case types.MetricPlugin.String():
+			if err := pm.connfullControllers[types.MetricPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
+				return fmt.Errorf("error shutting down metric plugin: %w", err)
+			}
+		case types.ReporterPlugin.String():
+			if err := pm.connfullControllers[types.ReporterPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
+				return fmt.Errorf("error shutting down reporter plugin: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+// Destroy the plugin and call all the plugin controller destroy handlers.
+func (pm *pluginManager) destroyPlugin(plugin *types.Plugin) error {
+	if plugin == nil {
+		return errors.New("plugin is nil")
+	}
+	// go through the controllers and stop them based on the capabilities
+	for _, capability := range plugin.Metadata.Capabilities {
+		switch capability {
+		case types.ResourcePlugin.String():
+			if err := pm.connfullControllers[types.ResourcePlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+				return fmt.Errorf("error destroying resource plugin: %w", err)
+			}
+		case types.ExecutorPlugin.String():
+			if err := pm.connfullControllers[types.ExecutorPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+				return fmt.Errorf("error destroying executor plugin: %w", err)
+			}
+		case types.FilesystemPlugin.String():
+			if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+				return fmt.Errorf("error destroying filesystem plugin: %w", err)
+			}
+		case types.LogPlugin.String():
+			if err := pm.connfullControllers[types.LogPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+				return fmt.Errorf("error destroying log plugin: %w", err)
+			}
+		case types.MetricPlugin.String():
+			if err := pm.connfullControllers[types.MetricPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+				return fmt.Errorf("error destroying metric plugin: %w", err)
+			}
+		case types.ReporterPlugin.String():
+			if err := pm.connfullControllers[types.ReporterPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+				return fmt.Errorf("error destroying reporter plugin: %w", err)
+			}
+		}
+	}
+	return nil
 }

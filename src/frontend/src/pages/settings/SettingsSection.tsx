@@ -56,7 +56,9 @@ const SettingsSection: React.FC<Props> = ({ namespaceID, sectionID }) => {
       showSnackbar('Settings saved', 'success')
       setDraftValues({})
     } catch (e) {
-      showSnackbar(`Error saving settings: ${e}`, 'error')
+      if (e instanceof Error && e.message !== "cancelled") {
+        showSnackbar(`Error saving settings: ${e}`, 'error')
+      }
     }
   }
 

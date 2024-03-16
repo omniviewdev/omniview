@@ -1,35 +1,52 @@
 import React from 'react'
 
-import { ListPlugins } from '@api/plugin/pluginManager'
+// material-ui
+import Grid from '@mui/joy/Grid'
+import Typography from '@mui/joy/Typography'
+import Stack from '@mui/joy/Stack'
+import Button from '@mui/joy/Button'
 
-import {
-  useQuery,
-} from '@tanstack/react-query'
-import { Grid, Typography } from '@mui/joy'
+// components
 import InstalledPluginCard from './InstalledPluginCard'
-import { types } from '@api/models'
 
-type Props = {
-  plugins: Array<types.Plugin>
-}
+// icons
+import { LuFile } from 'react-icons/lu'
 
-const InstalledPlugins: React.FC<Props> = ({ plugins }) => {
-  const query = useQuery({ queryKey: ['INSTALLED_PLUGINS'], queryFn: ListPlugins })
+// hooks
+import { usePluginManager } from '@/hooks/plugin/usePluginManager'
 
-  if (query.isLoading) {
+type Props = {}
+
+/**
+ * Show the currently installed plugins.
+ */
+const InstalledPlugins: React.FC<Props> = () => {
+  const { plugins, promptInstallFromPath } = usePluginManager()
+
+  if (plugins.isLoading) {
     return <div>Loading...</div>
   }
-  if (query.isError) {
-    return <div>Error: {query.error.message}</div>
+  if (plugins.isError) {
+    return <div>Error: {plugins.error.message}</div>
   }
 
   return (
-    <Grid container spacing={2} p={4}>
+    <Grid container spacing={4} p={4}>
       <Grid xs={12} pb={2}>
-        <Typography level="h2">Installed Plugins</Typography>
+        <Stack direction="row" spacing={2} alignItems="center" justifyContent={'space-between'}>
+          <Typography level="h2">Installed Plugins</Typography>
+          <Button
+            variant="outlined"
+            color="primary"
+            startDecorator={<LuFile />}
+            onClick={() => promptInstallFromPath()}
+          >
+            Install From Location
+          </Button>
+        </Stack>
       </Grid>
-      {plugins.map((plugin) => (
-        <Grid xs={12} md={6} xl={4} >
+      {plugins.data?.map((plugin) => (
+        <Grid key={plugin.id} xs={12} md={6} xl={4} >
           <InstalledPluginCard key={plugin.id} {...plugin} />
         </Grid>
       ))}

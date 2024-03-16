@@ -10,14 +10,18 @@ export function GetPluginMeta(arg1:string):Promise<config.PluginMeta>;
 
 export function Initialize(arg1:context.Context):Promise<void>;
 
-export function InstallPluginFromPath(arg1:string):Promise<void>;
+export function InstallFromPathPrompt():Promise<config.PluginMeta>;
+
+export function InstallPluginFromPath(arg1:string):Promise<config.PluginMeta>;
 
 export function ListPluginMetas():Promise<Array<config.PluginMeta>>;
 
 export function ListPlugins():Promise<Array<types.Plugin>>;
 
-export function LoadPlugin(arg1:string):Promise<void>;
+export function LoadPlugin(arg1:string):Promise<types.Plugin>;
 
-export function UninstallPlugin(arg1:string):Promise<void>;
+export function ReloadPlugin(arg1:string):Promise<types.Plugin>;
+
+export function UninstallPlugin(arg1:string):Promise<types.Plugin>;
 
 export function UnloadPlugin(arg1:string):Promise<void>;

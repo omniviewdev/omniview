@@ -2,11 +2,12 @@ package main
 
 import (
 	"github.com/omniview/kubernetes/pkg/plugin/resource"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
+
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/settings"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
 )
 
 func main() {

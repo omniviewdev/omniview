@@ -14,6 +14,10 @@ export function Initialize(arg1) {
   return window['go']['plugin']['pluginManager']['Initialize'](arg1);
 }
 
+export function InstallFromPathPrompt() {
+  return window['go']['plugin']['pluginManager']['InstallFromPathPrompt']();
+}
+
 export function InstallPluginFromPath(arg1) {
   return window['go']['plugin']['pluginManager']['InstallPluginFromPath'](arg1);
 }
@@ -28,6 +32,10 @@ export function ListPlugins() {
 
 export function LoadPlugin(arg1) {
   return window['go']['plugin']['pluginManager']['LoadPlugin'](arg1);
+}
+
+export function ReloadPlugin(arg1) {
+  return window['go']['plugin']['pluginManager']['ReloadPlugin'](arg1);
 }
 
 export function UninstallPlugin(arg1) {
