@@ -22,11 +22,24 @@ import { LuSlidersHorizontal } from 'react-icons/lu';
 import { Sheet } from '@mui/joy';
 import InstalledPlugins from './InstalledPlugins';
 
+import {
+  useQuery,
+} from '@tanstack/react-query'
+import { ListPlugins } from '@api/plugin/pluginManager';
+
 /**
  * The main settings page for the application.
  */
 const SettingsPage = () => {
   const [selected, setSelected] = React.useState()
+  const { data, isLoading, isError, error } = useQuery({ queryKey: ['INSTALLED_PLUGINS'], queryFn: ListPlugins })
+
+  if (isLoading) {
+    return <div>Loading...</div>
+  }
+  if (isError) {
+    return <div>Error: {error.message}</div>
+  }
 
   return (
     <CssVarsProvider disableTransitionOnChange>
@@ -57,12 +70,14 @@ const SettingsPage = () => {
               }}
             />
           </Stack>
-          <PluginsNav selected={selected} onChange={setSelected} />
+          <PluginsNav selected={selected} onChange={setSelected} installed={data?.map((p => p.id))} />
         </Layout.SideNav>
         <Layout.Main>
           {selected !== undefined
             ? <PluginPreview plugin={selected} />
-            : <InstalledPlugins />
+            : (
+              data?.length && <InstalledPlugins plugins={data} />
+            )
           }
         </Layout.Main>
       </Layout.Root>

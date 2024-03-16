@@ -16,6 +16,7 @@ import Typography from '@mui/joy/Typography';
 import { types } from '@api/models';
 import Icon from '@/components/icons/Icon';
 import { FaGithub } from 'react-icons/fa6';
+import { BrowserOpenURL } from '@runtime/runtime';
 
 type Props = Partial<types.Plugin>;
 
@@ -54,10 +55,19 @@ const InstalledPluginCard: React.FC<Props> = ({ id, metadata }) => {
         <Typography level="body-sm">{metadata?.description}</Typography>
       </CardContent>
       <CardActions buttonFlex="0 1 120px">
-        <IconButton variant="outlined" color="neutral" sx={{ mr: 'auto' }}>
+        <IconButton
+          variant="outlined"
+          color="neutral"
+          sx={{ mr: 'auto' }}
+          onClick={() => metadata?.repository && BrowserOpenURL(metadata?.repository)}
+        >
           <FaGithub />
         </IconButton>
-        <Button variant="outlined" color="neutral">
+        <Button
+          variant="outlined"
+          color="neutral"
+          onClick={() => metadata?.website && BrowserOpenURL(metadata?.website)}
+        >
           View
         </Button>
         <Button variant="solid" color="primary">
