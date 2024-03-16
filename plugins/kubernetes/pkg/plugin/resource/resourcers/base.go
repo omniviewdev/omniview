@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	ADD_CHANNEL_BUFFER_SIZE    = 100
-	UPDATE_CHANNEL_BUFFER_SIZE = 100
-	DELETE_CHANNEL_BUFFER_SIZE = 100
+	AddChannelBufferSize    = 100
+	UpdateChannelBufferSize = 100
+	DeleteChannelBufferSize = 100
 )
 
 // All kubernetes objects extending this implement the following base interface.

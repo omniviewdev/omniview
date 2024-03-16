@@ -8,11 +8,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/hashicorp/go-plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/controllers"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	rp "github.com/omniviewdev/plugin-sdk/pkg/resource/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
@@ -57,21 +61,25 @@ type Manager interface {
 // NewManager returns a new plugin manager for the IDE to use to manager installed plugins.
 func NewManager(
 	logger *zap.SugaredLogger,
-	resourceController controllers.ResourceController,
+	resourceController resource.Controller,
 ) Manager {
 	return &pluginManager{
-		logger:             logger,
-		plugins:            make(map[string]types.Plugin),
-		resourceController: resourceController,
+		logger:              logger,
+		plugins:             make(map[string]types.Plugin),
+		connlessControllers: make(map[types.PluginType]controllers.Controller),
+		connfullControllers: map[types.PluginType]controllers.ConnectedController{
+			types.ResourcePlugin: resourceController,
+		},
 	}
 }
 
 // concrete implementation of the plugin manager.
 type pluginManager struct {
-	ctx                context.Context
-	logger             *zap.SugaredLogger
-	plugins            map[string]types.Plugin
-	resourceController controllers.ResourceController
+	ctx                 context.Context
+	logger              *zap.SugaredLogger
+	plugins             map[string]types.Plugin
+	connlessControllers map[types.PluginType]controllers.Controller
+	connfullControllers map[types.PluginType]controllers.ConnectedController
 }
 
 func (pm *pluginManager) Initialize(ctx context.Context) error {
@@ -151,10 +159,10 @@ func checkTarball(filePath string) error {
 
 		// check for required files and executable
 		switch header.Name {
-		case "/bin/plugin":
+		case "bin/plugin":
 			hasBinPlugin = true
 			if header.FileInfo().Mode()&0111 == 0 {
-				return errors.New("/bin/plugin is not executable")
+				return errors.New("bin/plugin is not executable")
 			}
 		case "plugin.yaml":
 			hasPluginYaml = true
@@ -163,7 +171,12 @@ func checkTarball(filePath string) error {
 
 	// Ensure required files were found
 	if !hasBinPlugin || !hasPluginYaml {
-		return errors.New("missing required files")
+		if !hasBinPlugin {
+			return errors.New("missing required binary")
+		}
+		if !hasPluginYaml {
+			return errors.New("missing required plugin.yaml")
+		}
 	}
 
 	return nil
@@ -208,6 +221,11 @@ func unpackPluginArchive(source string, destination string) error {
 			return err
 		}
 
+		// Check file size against MaxPluginSize before extraction
+		if header.Size > MaxPluginSize {
+			return errors.New("file size exceeds maximum allowed size")
+		}
+
 		// sanitize the file path
 		path, sanitizeErr := sanitizeArchivePath(destination, header.Name)
 		if sanitizeErr != nil {
@@ -216,11 +234,24 @@ func unpackPluginArchive(source string, destination string) error {
 
 		switch header.Typeflag {
 		case tar.TypeDir: // If it's a directory, create it
-			if err = os.MkdirAll(path, 0755); err != nil {
+			basePath := filepath.Dir(destination)
+
+			if err = os.MkdirAll(filepath.Join(basePath, path), 0755); err != nil {
 				return err
 			}
 		case tar.TypeReg: // If it's a file, create it
 			var outFile *os.File
+
+			if err = os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+				return fmt.Errorf("error creating plugin directory: %w", err)
+			}
+
+			// if the file already exists, remove it
+			if _, err = os.Stat(path); err == nil {
+				if err = os.Remove(path); err != nil {
+					return err
+				}
+			}
 
 			outFile, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
 			if err != nil {
@@ -229,8 +260,11 @@ func unpackPluginArchive(source string, destination string) error {
 
 			// prevent DoS from huge files
 			if _, err = io.CopyN(outFile, tarReader, MaxPluginSize); err != nil {
-				outFile.Close()
-				return err
+				if !errors.Is(err, io.EOF) {
+					err = fmt.Errorf("error copying file: %w", err)
+					outFile.Close()
+					return err
+				}
 			}
 			outFile.Close()
 		}
@@ -283,6 +317,42 @@ func parseMetadataFromArchive(path string) (*config.PluginMeta, error) {
 	return nil, errors.New("'plugin.yaml' not found in download file")
 }
 
+// isGzippedTarball attempts to read the file as a gzipped tarball. If it succeeds in reading at least one
+// header from the tar archive, it assumes the file is a valid gzipped tarball.
+func isGzippedTarball(filePath string) bool {
+	// Open the file for reading
+	file, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	// Create a gzip reader
+	gzr, err := gzip.NewReader(file)
+	if err != nil {
+		return false
+	}
+	defer gzr.Close()
+
+	// Create a tar reader from the gzip reader
+	tr := tar.NewReader(gzr)
+
+	// Attempt to read the first header from the tar archive
+	_, err = tr.Next()
+	if errors.Is(
+		err,
+		tar.ErrHeader,
+	) { // Found a header, but it's invalid; still likely a tar archive
+		return true
+	}
+	if err != nil {
+		return false
+	}
+
+	// Successfully read at least one header, so it's likely a gzipped tarball
+	return true
+}
+
 func (pm *pluginManager) InstallPluginFromPath(path string) error {
 	// make sure the plugin dir is all set
 	if err := auditPluginDir(); err != nil {
@@ -290,7 +360,7 @@ func (pm *pluginManager) InstallPluginFromPath(path string) error {
 	}
 
 	// plugins should be a valid tar.gz file
-	if filepath.Ext(path) != ".tar.gz" {
+	if !isGzippedTarball(path) {
 		return fmt.Errorf("plugin is not a tar.gz file: %s", path)
 	}
 
@@ -304,7 +374,13 @@ func (pm *pluginManager) InstallPluginFromPath(path string) error {
 		return fmt.Errorf("error parsing plugin metadata: %w", err)
 	}
 
-	if err = unpackPluginArchive(path, getPluginLocation(metadata.ID)); err != nil {
+	// ensure the plugin directory exists
+	location := getPluginLocation(metadata.ID)
+	if err = os.MkdirAll(location, 0755); err != nil {
+		return fmt.Errorf("error creating plugin directory: %w", err)
+	}
+
+	if err = unpackPluginArchive(path, location); err != nil {
 		return fmt.Errorf("error unpacking plugin download: %w", err)
 	}
 
@@ -337,11 +413,33 @@ func (pm *pluginManager) LoadPlugin(id string) error {
 		return fmt.Errorf("plugin with id '%s' failed validation during loading: %w", id, err)
 	}
 
+	// We're a host. Start by launching the plugin process.
+	pluginClient := plugin.NewClient(&plugin.ClientConfig{
+		HandshakeConfig: metadata.GenerateHandshakeConfig(),
+		Plugins: map[string]plugin.Plugin{
+			"resource": &rp.ResourcePlugin{},
+		},
+		Cmd:              exec.Command(filepath.Join(location, "bin", "plugin")),
+		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+	})
+
+	// Connect via RPC
+	rpcClient, err := pluginClient.Client()
+	if err != nil {
+		err = fmt.Errorf("error initializing plugin: %w", err)
+		pm.logger.Error(err)
+		return err
+	}
+
 	// all good, add to the map
 	pm.plugins[id] = types.Plugin{
-		ID:       id,
-		Metadata: metadata,
-		Config:   *config.NewEmptyPluginConfig(), // TODO - load the plugin config
+		ID:           id,
+		Metadata:     metadata,
+		Running:      true,
+		Enabled:      true,
+		Config:       *config.NewEmptyPluginConfig(),
+		RPCClient:    rpcClient,
+		PluginClient: pluginClient,
 	}
 
 	return nil
@@ -370,6 +468,11 @@ func (pm *pluginManager) UnloadPlugin(id string) error {
 
 	if plugin.IsRunning() {
 		return fmt.Errorf("plugin with id '%s' is currently running, cannot unload", id)
+	}
+
+	// stop the plugin client
+	if err := plugin.RPCClient.Close(); err != nil {
+		return fmt.Errorf("error stopping plugin client: %w", err)
 	}
 
 	// remove from the map

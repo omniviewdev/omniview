@@ -5,10 +5,13 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/settings"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 )
 
 func main() {
 	plugin := sdk.NewPlugin(sdk.PluginOpts{
+		ID: "kubernetes",
 		Settings: []interface{}{
 			// Define your various plugin settings here. The available settings can be found in the settings section
 			// of the SDK package:
@@ -29,11 +32,9 @@ func main() {
 		},
 	})
 
-	// Register your capabilities here
-	// ....
-	sdk.RegisterStaticResourcePlugin[resource.ClientSet, any](
+	sdk.RegisterResourcePlugin(
 		plugin,
-		sdk.StaticResourcePluginOpts[resource.ClientSet]{
+		sdk.ResourcePluginOpts[resource.ClientSet, dynamic.Interface, dynamicinformer.DynamicSharedInformerFactory]{
 			ClientFactory: resource.NewKubernetesClientFactory(),
 			Resourcers:    map[types.ResourceMeta]types.Resourcer[resource.ClientSet]{},
 		},

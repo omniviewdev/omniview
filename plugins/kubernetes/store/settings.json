@@ -1,6 +1,0 @@
-{
-    "kubeconfigs": [
-        "~/.kube/config"
-    ],
-    "shell": "/bin/zsh"
-}

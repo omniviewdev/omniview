@@ -46,7 +46,7 @@ const PluginsNav: React.FC<Props> = ({ selected, onChange }) => {
                 fontSize="xs"
                 textOverflow={'clip'}
                 sx={{
-                  display: '-webkit-box',
+                  display: 'WebkitBox',
                   overflow: 'hidden',
                   WebkitBoxOrient: 'vertical',
                   WebkitLineClamp: 2,

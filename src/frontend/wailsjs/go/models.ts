@@ -166,6 +166,63 @@ export namespace services {
 
 export namespace types {
 	
+	export class Connection {
+	    // Go type: time
+	    last_refresh: any;
+	    data: {[key: string]: any};
+	    labels: {[key: string]: string};
+	    id: string;
+	    uid: string;
+	    name: string;
+	    description: string;
+	    avatar: string;
+	    expiry_time: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Connection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.last_refresh = this.convertValues(source["last_refresh"], null);
+	        this.data = source["data"];
+	        this.labels = source["labels"];
+	        this.id = source["id"];
+	        this.uid = source["uid"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.avatar = source["avatar"];
+	        this.expiry_time = source["expiry_time"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 	export class Plugin {
 	    id: string;
 	    metadata: config.PluginMeta;
@@ -173,6 +230,7 @@ export namespace types {
 	    config: any;
 	    enabled: boolean;
 	    running: boolean;
+	    load_error: string;
 	    capabilities: number[];
 	
 	    static createFrom(source: any = {}) {
@@ -186,6 +244,7 @@ export namespace types {
 	        this.config = this.convertValues(source["config"], null);
 	        this.enabled = source["enabled"];
 	        this.running = source["running"];
+	        this.load_error = source["load_error"];
 	        this.capabilities = source["capabilities"];
 	    }
 	
@@ -207,6 +266,7 @@ export namespace types {
 		    return a;
 		}
 	}
+	
 
 }
 

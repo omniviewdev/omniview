@@ -1,7 +1,8 @@
 .PHONY: build
 
 build:
-	go build -o plugin ./pkg
+	rm -rf bin && rm -f kubernetes.tar.gz
+	mkdir bin && go build -o bin/plugin ./pkg
 	
 
 install: build
@@ -11,3 +12,7 @@ install: build
 		cp plugin ~/.omniview/plugins/kubernetes/ && \
 		cp plugin.yaml ~/.omniview/plugins/kubernetes/ && \
 		rm plugin
+
+package: build
+	tar -czvf kubernetes.tar.gz plugin.yaml bin/plugin
+	

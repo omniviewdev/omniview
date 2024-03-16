@@ -141,7 +141,7 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
           backdrop: {
             sx: {
               backgroundColor: 'transparent',
-              '-webkit-backdrop-filter': 'blur(0px)',
+              'WebkitBackdropFilter': 'blur(0px)',
             },
           },
           content: {

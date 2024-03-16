@@ -20,7 +20,7 @@ const (
 
 type KubernetesClientFactory struct{}
 
-func NewKubernetesClientFactory() *KubernetesClientFactory {
+func NewKubernetesClientFactory() factories.ResourceClientFactory[ClientSet] {
 	return &KubernetesClientFactory{}
 }
 
@@ -46,7 +46,10 @@ func (f *KubernetesClientFactory) CreateClient(
 	if !ok {
 		return nil, errors.New("kubeconfig is required")
 	}
-	val := kubeconfig.(string)
+	val, ok := kubeconfig.(string)
+	if !ok {
+		return nil, errors.New("kubeconfig is required and must be a string")
+	}
 
 	// Change this to get from settings provider
 	os.Setenv("SHELL", "/bin/zsh")
