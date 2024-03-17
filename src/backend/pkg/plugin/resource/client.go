@@ -33,6 +33,9 @@ type IClient interface {
 	// The pluginID should match the name of the plugin in the plugin metadata.
 	Delete(pluginID, connectionID, key string, input rt.DeleteInput) (*rt.DeleteResult, error)
 
+	// LoadConnections loads the connections for the resource provider
+	LoadConnections(pluginID string) ([]types.Connection, error)
+
 	// ListConnections returns a list of connections for the plugin.
 	// The pluginID should match the name of the plugin in the plugin metadata.
 	ListConnections(pluginID string) ([]types.Connection, error)
@@ -107,6 +110,10 @@ func (c *Client) Delete(
 	input rt.DeleteInput,
 ) (*rt.DeleteResult, error) {
 	return c.controller.Delete(pluginID, connectionID, key, input)
+}
+
+func (c *Client) LoadConnections(pluginID string) ([]types.Connection, error) {
+	return c.controller.LoadConnections(pluginID)
 }
 
 func (c *Client) ListConnections(pluginID string) ([]types.Connection, error) {

@@ -195,6 +195,17 @@ func (c *controller) HasPlugin(pluginID string) bool {
 	return hasClient
 }
 
+func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error) {
+	c.logger.Debug("LoadConnections")
+
+	client, ok := c.clients[pluginID]
+	if !ok {
+		return nil, fmt.Errorf("plugin '%s' not found", pluginID)
+	}
+
+	return client.LoadConnections(nil)
+}
+
 func (c *controller) ListAllConnections() (map[string][]types.Connection, error) {
 	c.logger.Debug("ListAllConnections")
 	return c.connections, nil

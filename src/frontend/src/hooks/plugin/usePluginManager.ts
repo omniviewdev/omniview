@@ -85,6 +85,7 @@ export const usePlugin = ({ id }: { id: string }) => {
       showSnackbar(`Plugin '${metadata.name}' sucessfully reloaded`, 'success')
       // Invalidate the plugins query to refetch the list of plugins
       queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] })
+      queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] })
     },
     onError: (error) => {
       showSnackbar(`Failed to reload plugin: ${error}`, 'error')

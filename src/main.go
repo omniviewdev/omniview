@@ -85,7 +85,7 @@ func main() {
 	volumeAttachmentService := storagev1.NewVolumeAttachmentService(log, publisher, resourceChan)
 
 	// Create an instance of the app structure
-	app := NewApp(clusterManager)
+	app := NewApp()
 
 	startup := func(ctx context.Context) {
 		// Perform your setup here

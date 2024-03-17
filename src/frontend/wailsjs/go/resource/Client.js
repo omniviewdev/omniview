@@ -30,6 +30,10 @@ export function ListConnections(arg1) {
   return window['go']['resource']['Client']['ListConnections'](arg1);
 }
 
+export function LoadConnections(arg1) {
+  return window['go']['resource']['Client']['LoadConnections'](arg1);
+}
+
 export function RemoveConnection(arg1, arg2) {
   return window['go']['resource']['Client']['RemoveConnection'](arg1, arg2);
 }

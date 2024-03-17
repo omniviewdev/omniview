@@ -16,6 +16,8 @@ export function List(arg1:string,arg2:string,arg3:string,arg4:types.ListInput):P
 
 export function ListConnections(arg1:string):Promise<Array<types.Connection>>;
 
+export function LoadConnections(arg1:string):Promise<Array<types.Connection>>;
+
 export function RemoveConnection(arg1:string,arg2:string):Promise<void>;
 
 export function StartConnectionInformer(arg1:string,arg2:string):Promise<void>;

@@ -20,3 +20,23 @@ export const getGroupedResourceNames = (): { [key: string]: string[] } => {
     // "tekton.dev/v1beta1": ["pipelines", "pipelineruns", "tasks", "taskruns"],
   }
 }
+
+/**
+ * Parses a resource key into its GVR (Group, Version, Resource) components
+ *
+ * @param resourceKey The key to parse
+ * @returns The parsed GVR components
+ * @throws If the resource key is invalid
+ * @example
+ * const key = "core::v1::pods"
+ * const { group, version, resource } = parseResourceKey(key)
+ */
+export const parseResourceKey = (resourceKey: string): { group: string, version: string, resource: string } => {
+  const [group, version, resource] = resourceKey.split('::');
+
+  if (!group || !version || !resource) {
+    throw new Error(`Invalid resourceID: ${resourceKey}`);
+  }
+
+  return { group, version, resource };
+}
