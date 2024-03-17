@@ -5,7 +5,3 @@
 export function GetOperatingSystem() {
   return window['go']['main']['App']['GetOperatingSystem']();
 }
-
-export function Greet(arg1) {
-  return window['go']['main']['App']['Greet'](arg1);
-}

@@ -38,6 +38,9 @@ type Controller interface {
 type ConnectedController interface {
 	Controller
 
+	// LoadConnections loads the connections for the resource provider
+	LoadConnections(pluginID string) ([]types.Connection, error)
+
 	// ListAllConnections returns a list of all connections for all plugins.
 	ListAllConnections() (map[string][]types.Connection, error)
 

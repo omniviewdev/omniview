@@ -73,7 +73,7 @@ func (s *KubernetesResourcerBase[T]) Get(
 	client *resource.ClientSet,
 	input pkgtypes.GetInput,
 ) (*pkgtypes.GetResult, error) {
-	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.PartitionID)
+	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.Namespace)
 	resource, err := lister.Get(ctx.Context, input.ID, v1.GetOptions{})
 	if err != nil {
 		return nil, err
@@ -94,9 +94,9 @@ func (s *KubernetesResourcerBase[T]) List(
 		return nil, err
 	}
 
-	result := make([]map[string]interface{}, 0, len(resources.Items))
+	result := make(map[string]interface{})
 	for _, r := range resources.Items {
-		result = append(result, r.Object)
+		result[r.GetName()] = r.Object
 	}
 
 	return &pkgtypes.ListResult{Success: true, Result: result}, nil
@@ -115,9 +115,9 @@ func (s *KubernetesResourcerBase[T]) Find(
 		return nil, err
 	}
 
-	result := make([]map[string]interface{}, 0, len(resources.Items))
+	result := make(map[string]interface{})
 	for _, r := range resources.Items {
-		result = append(result, r.Object)
+		result[r.GetName()] = r.Object
 	}
 
 	return &pkgtypes.FindResult{Success: true, Result: result}, nil
@@ -130,7 +130,7 @@ func (s *KubernetesResourcerBase[T]) Create(
 	input pkgtypes.CreateInput,
 ) (*pkgtypes.CreateResult, error) {
 	result := new(pkgtypes.CreateResult)
-	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.PartitionID)
+	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.Namespace)
 	object := &unstructured.Unstructured{
 		Object: input.Input,
 	}
@@ -150,7 +150,7 @@ func (s *KubernetesResourcerBase[T]) Update(
 	result := new(pkgtypes.UpdateResult)
 
 	// first get the resource
-	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.PartitionID)
+	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.Namespace)
 	resource, err := lister.Get(ctx.Context, input.ID, v1.GetOptions{})
 	if err != nil {
 		return nil, err
@@ -172,7 +172,7 @@ func (s *KubernetesResourcerBase[T]) Delete(
 	input pkgtypes.DeleteInput,
 ) (*pkgtypes.DeleteResult, error) {
 	result := new(pkgtypes.DeleteResult)
-	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.PartitionID)
+	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.Namespace)
 
 	// first, get the resource for the delete so we can return back to the client
 	resource, err := lister.Get(ctx.Context, input.ID, v1.GetOptions{})

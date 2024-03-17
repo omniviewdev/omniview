@@ -16,7 +16,7 @@ func main() {
 		Settings: []interface{}{
 			// Define your various plugin settings here. The available settings can be found in the settings section
 			// of the SDK package:
-			// https://github.com/omniviewdev/plugin/pkg/settings/types.go
+			// https://github.com/omniviewdev/plugin-sdk/pkg/settings/types.go
 			// ...
 			sdksettings.Multitext{
 				ID:          "kubeconfigs",

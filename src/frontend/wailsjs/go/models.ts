@@ -213,13 +213,282 @@ export namespace types {
 		    return a;
 		}
 	}
+	export class CreateInput {
+	    params: any;
+	    input: {[key: string]: any};
+	    namespace: string;
 	
+	    static createFrom(source: any = {}) {
+	        return new CreateInput(source);
+	    }
 	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.params = source["params"];
+	        this.input = source["input"];
+	        this.namespace = source["namespace"];
+	    }
+	}
+	export class CreateResult {
+	    result: {[key: string]: any};
+	    success: boolean;
 	
+	    static createFrom(source: any = {}) {
+	        return new CreateResult(source);
+	    }
 	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.result = source["result"];
+	        this.success = source["success"];
+	    }
+	}
+	export class DeleteInput {
+	    input: {[key: string]: any};
+	    params: {[key: string]: any};
+	    id: string;
+	    namespace: string;
 	
+	    static createFrom(source: any = {}) {
+	        return new DeleteInput(source);
+	    }
 	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.input = source["input"];
+	        this.params = source["params"];
+	        this.id = source["id"];
+	        this.namespace = source["namespace"];
+	    }
+	}
+	export class DeleteResult {
+	    result: {[key: string]: any};
+	    success: boolean;
 	
+	    static createFrom(source: any = {}) {
+	        return new DeleteResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.result = source["result"];
+	        this.success = source["success"];
+	    }
+	}
+	export class PaginationParams {
+	    page: number;
+	    pageSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PaginationParams(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	    }
+	}
+	export class OrderParams {
+	    by: string;
+	    direction: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new OrderParams(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.by = source["by"];
+	        this.direction = source["direction"];
+	    }
+	}
+	export class FindInput {
+	    params: {[key: string]: any};
+	    conditions: {[key: string]: any};
+	    namespaces: string[];
+	    order: OrderParams;
+	    pagination: PaginationParams;
+	
+	    static createFrom(source: any = {}) {
+	        return new FindInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.params = source["params"];
+	        this.conditions = source["conditions"];
+	        this.namespaces = source["namespaces"];
+	        this.order = this.convertValues(source["order"], OrderParams);
+	        this.pagination = this.convertValues(source["pagination"], PaginationParams);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PaginationResult {
+	    page: number;
+	    pageSize: number;
+	    total: number;
+	    pages: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PaginationResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.total = source["total"];
+	        this.pages = source["pages"];
+	    }
+	}
+	export class FindResult {
+	    success: boolean;
+	    pagination: PaginationResult;
+	
+	    static createFrom(source: any = {}) {
+	        return new FindResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.pagination = this.convertValues(source["pagination"], PaginationResult);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class GetInput {
+	    params: {[key: string]: any};
+	    id: string;
+	    namespace: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GetInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.params = source["params"];
+	        this.id = source["id"];
+	        this.namespace = source["namespace"];
+	    }
+	}
+	export class GetResult {
+	    result: {[key: string]: any};
+	    success: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GetResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.result = source["result"];
+	        this.success = source["success"];
+	    }
+	}
+	export class ListInput {
+	    params: {[key: string]: any};
+	    namespaces: string[];
+	    order: OrderParams;
+	    pagination: PaginationParams;
+	
+	    static createFrom(source: any = {}) {
+	        return new ListInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.params = source["params"];
+	        this.namespaces = source["namespaces"];
+	        this.order = this.convertValues(source["order"], OrderParams);
+	        this.pagination = this.convertValues(source["pagination"], PaginationParams);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ListResult {
+	    success: boolean;
+	    pagination: PaginationResult;
+	
+	    static createFrom(source: any = {}) {
+	        return new ListResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.pagination = this.convertValues(source["pagination"], PaginationResult);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	
 	
@@ -266,7 +535,38 @@ export namespace types {
 		    return a;
 		}
 	}
+	export class UpdateInput {
+	    input: {[key: string]: any};
+	    params: {[key: string]: any};
+	    id: string;
+	    namespace: string;
 	
+	    static createFrom(source: any = {}) {
+	        return new UpdateInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.input = source["input"];
+	        this.params = source["params"];
+	        this.id = source["id"];
+	        this.namespace = source["namespace"];
+	    }
+	}
+	export class UpdateResult {
+	    result: {[key: string]: any};
+	    success: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.result = source["result"];
+	        this.success = source["success"];
+	    }
+	}
 
 }
 
