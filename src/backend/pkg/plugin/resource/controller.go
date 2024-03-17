@@ -203,7 +203,15 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 		return nil, fmt.Errorf("plugin '%s' not found", pluginID)
 	}
 
-	return client.LoadConnections(nil)
+	ctx := types.NewPluginContextWithConnection(
+		context.TODO(),
+		"CORE",
+		nil, // TODO: PluginConfig - fill this in
+		nil, // TODO: GlobalConfig - fill this in
+		nil, // no associated connection
+	)
+
+	return client.LoadConnections(ctx)
 }
 
 func (c *controller) ListAllConnections() (map[string][]types.Connection, error) {

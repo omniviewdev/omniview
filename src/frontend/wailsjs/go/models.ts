@@ -170,7 +170,7 @@ export namespace types {
 	    // Go type: time
 	    last_refresh: any;
 	    data: {[key: string]: any};
-	    labels: {[key: string]: string};
+	    labels: {[key: string]: any};
 	    id: string;
 	    uid: string;
 	    name: string;

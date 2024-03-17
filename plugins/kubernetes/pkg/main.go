@@ -5,6 +5,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 
+	k8splugin "github.com/omniview/kubernetes/pkg/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/settings"
@@ -36,8 +37,9 @@ func main() {
 	sdk.RegisterResourcePlugin(
 		plugin,
 		sdk.ResourcePluginOpts[resource.ClientSet, dynamic.Interface, dynamicinformer.DynamicSharedInformerFactory]{
-			ClientFactory: resource.NewKubernetesClientFactory(),
-			Resourcers:    map[types.ResourceMeta]types.Resourcer[resource.ClientSet]{},
+			ClientFactory:      resource.NewKubernetesClientFactory(),
+			Resourcers:         map[types.ResourceMeta]types.Resourcer[resource.ClientSet]{},
+			LoadConnectionFunc: k8splugin.LoadConnectionsFunc,
 		},
 	)
 
