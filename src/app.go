@@ -5,6 +5,13 @@ import (
 	"runtime"
 )
 
+// Shutdownable is an interface that can be implemented by any struct that needs to
+// perform an action at application termination.
+type Shutdownable interface {
+	// Shutdown is called at application termination.
+	Shutdown(ctx context.Context)
+}
+
 // App struct.
 type App struct {
 	ctx context.Context

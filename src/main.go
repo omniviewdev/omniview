@@ -14,6 +14,8 @@ import (
 	rbacv1 "github.com/omniviewdev/omniview/backend/services/resources/rbac_v1"
 	storagev1 "github.com/omniviewdev/omniview/backend/services/resources/storage_v1"
 	"github.com/omniviewdev/omniview/backend/services/resources/v1"
+	coresettings "github.com/omniviewdev/omniview/internal/settings"
+	"github.com/omniviewdev/settings"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -31,6 +33,10 @@ var icon []byte
 func main() {
 	nillogger := logger.NewFileLogger("/dev/null")
 	log := clients.CreateLogger(true)
+
+	settingsProvider := settings.NewProvider(settings.ProviderOpts{
+		Logger: log,
+	})
 
 	// Setup the plugin systems
 	resourceController := resource.NewController(log)
@@ -90,6 +96,16 @@ func main() {
 	startup := func(ctx context.Context) {
 		// Perform your setup here
 		app.startup(ctx)
+
+		// Initialize the settings
+		if err := settingsProvider.Initialize(
+			ctx,
+			coresettings.General,
+			coresettings.Appearance,
+			coresettings.Terminal,
+		); err != nil {
+			log.Errorw("error while initializing settings system", "error", err)
+		}
 
 		// Initialize the plugin system
 		if err := pluginManager.Initialize(ctx); err != nil {
@@ -172,9 +188,11 @@ func main() {
 		Bind: []interface{}{
 			app,
 
+			// core engines/providers
+			settingsProvider,
+
 			// plugin system
 			pluginManager,
-
 			resourceClient,
 
 			// managers
@@ -219,6 +237,9 @@ func main() {
 			csiNodeService,
 			storageClassService,
 			volumeAttachmentService,
+		},
+		EnumBind: []interface{}{
+			settings.AllSettingTypes,
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{

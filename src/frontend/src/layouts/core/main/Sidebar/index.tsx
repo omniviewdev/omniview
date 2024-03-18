@@ -49,7 +49,7 @@ export default function CoreLayoutSidebar() {
           lg: 'none',
         },
         transition: 'transform 0.4s',
-        zIndex: 10000,
+        zIndex: 9000,
         height: 'calc(100dvh - var(--CoreLayoutHeader-height))',
         maxWidth: 'var(--CoreLayoutSidebar-width)',
         bottom: 0,

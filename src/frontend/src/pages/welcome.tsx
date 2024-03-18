@@ -91,7 +91,7 @@ const Welcome = () => {
                 textShadow: (theme) => `10px 10px 25px ${theme.palette.neutral[900]}, -10px 10px 25px ${theme.palette.neutral[900]}, -10px -10px 25px ${theme.palette.neutral[900]}, 10px -10px 25px ${theme.palette.neutral[900]};`
               }}
             >
-              Welcome to Infraview
+              Welcome to Omniview
             </Typography>
             <Stack direction='row' spacing={2} minHeight={70} alignItems="center" pl={20}>
               <Typography fontSize={30} fontWeight={700} color='neutral' sx={{ letterSpacing: '0.05rem' }}>

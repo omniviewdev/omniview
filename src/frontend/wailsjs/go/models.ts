@@ -164,6 +164,117 @@ export namespace services {
 
 }
 
+export namespace settings {
+	
+	export enum SettingType {
+	    TEXT = "text",
+	    INTEGER = "integer",
+	    FLOAT = "float",
+	    TOGGLE = "toggle",
+	    COLOR = "color",
+	    DATETIME = "datetime",
+	    PASSWORD = "password",
+	}
+	export class SettingOption {
+	    label: string;
+	    description: string;
+	    value: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new SettingOption(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.description = source["description"];
+	        this.value = source["value"];
+	    }
+	}
+	export class Setting {
+	    id: string;
+	    label: string;
+	    description: string;
+	    type: SettingType;
+	    value: any;
+	    default: any;
+	    options: SettingOption[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Setting(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.description = source["description"];
+	        this.type = source["type"];
+	        this.value = source["value"];
+	        this.default = source["default"];
+	        this.options = this.convertValues(source["options"], SettingOption);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Category {
+	    settings: {[key: string]: Setting};
+	    id: string;
+	    label: string;
+	    description: string;
+	    icon: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Category(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.settings = this.convertValues(source["settings"], Setting, true);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.description = source["description"];
+	        this.icon = source["icon"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+
+}
+
 export namespace types {
 	
 	export class Connection {

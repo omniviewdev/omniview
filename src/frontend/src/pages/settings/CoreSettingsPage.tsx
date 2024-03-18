@@ -1,5 +1,4 @@
 import React from 'react';
-import { useDispatch } from 'react-redux';
 
 // material-ui
 import { useTheme } from '@mui/joy/styles';
@@ -12,33 +11,26 @@ import Sheet from '@mui/joy/Sheet';
 import useMediaQuery from '@mui/material/useMediaQuery';
 
 // project imports
-import { useSectionSettings, useSettingsNamespaceSection } from '@/hooks/useSettings';
 import Icon from '@/components/icons/Icon';
-import SettingsEntries from './SettingsEntries';
-import { batchSetSettingValues } from '@/store/settings/slice';
-import { useSnackbar } from '@/providers/SnackbarProvider';
-
 
 // types
-import { NamespaceSection } from '.';
+import { useCategorySettings } from '@/hooks/settings/useCategorySettings';
+import SettingsEntries from './SettingsEntries';
+import { Section } from '.';
 
-type Props = NamespaceSection
+type Props = {
+  id: string;
+}
 
 /**
  * View and modify settings for a given namespace and section.
  */
-const SettingsSection: React.FC<Props> = ({ namespaceID, sectionID }) => {
+const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
   const theme = useTheme();
-  const dispatch = useDispatch()
-  const { showSnackbar } = useSnackbar()
-
-  const section = useSettingsNamespaceSection(namespaceID, sectionID)
-
-  // icon should be the same height both text lines on smaller devices
+  const [draftValues, setDraftValues] = React.useState<Record<string, any>>({})
   const isNormalScreenSize = useMediaQuery(theme.breakpoints.up('lg'));
 
-  const settings = useSectionSettings(namespaceID, sectionID)
-  const [draftValues, setDraftValues] = React.useState<Record<string, any>>({})
+  const { settings, setSettings } = useCategorySettings({ category: categoryID })
 
   /**
    * Commit the drafted settings into the settings store.
@@ -46,20 +38,14 @@ const SettingsSection: React.FC<Props> = ({ namespaceID, sectionID }) => {
   const commitDraftValues = () => {
     const values = Object.entries(draftValues).reduce((acc, [id, value]) => {
       if (value !== undefined) {
-        acc[`${namespaceID}.${sectionID}.${id}`] = value
+        acc[id] = value
       }
       return acc
     }, {} as Record<string, any>)
 
-    try {
-      dispatch(batchSetSettingValues({ values }))
-      showSnackbar('Settings saved', 'success')
-      setDraftValues({})
-    } catch (e) {
-      if (e instanceof Error && e.message !== "cancelled") {
-        showSnackbar(`Error saving settings: ${e}`, 'error')
-      }
-    }
+    console.log('committing', values)
+    setSettings(values)
+    clearDraftValues()
   }
 
   /**
@@ -69,7 +55,8 @@ const SettingsSection: React.FC<Props> = ({ namespaceID, sectionID }) => {
     setDraftValues({})
   }
 
-  if (!section) return (<></>)
+  if (settings.isLoading) return null
+  if (settings.isError || !settings.data) return null
 
   return (
     <Stack
@@ -95,7 +82,7 @@ const SettingsSection: React.FC<Props> = ({ namespaceID, sectionID }) => {
           gap: 1.5,
         }}
       >
-        <Icon name={section.icon} size={isNormalScreenSize ? 20 : 30} />
+        <Icon name={settings.data.icon} size={isNormalScreenSize ? 20 : 30} />
         <Stack
           sx={{
             display: 'flex',
@@ -115,8 +102,8 @@ const SettingsSection: React.FC<Props> = ({ namespaceID, sectionID }) => {
             width: '100%'
           }}
         >
-          <Typography level={isNormalScreenSize ? 'title-lg' : 'title-md'}>{section.label}</Typography>
-          <Typography level={isNormalScreenSize ? 'body-sm' : 'body-xs'}>{section.description}</Typography>
+          <Typography level={isNormalScreenSize ? 'title-lg' : 'title-md'}>{settings.data.label}</Typography>
+          <Typography level={isNormalScreenSize ? 'body-sm' : 'body-xs'}>{settings.data.description}</Typography>
         </Stack>
       </Sheet>
 
@@ -130,9 +117,9 @@ const SettingsSection: React.FC<Props> = ({ namespaceID, sectionID }) => {
         }}
       >
         <SettingsEntries
-          sectionID={sectionID}
-          namespaceID={namespaceID}
-          settings={settings}
+          section={Section.Core}
+          id={categoryID}
+          settings={settings.data.settings}
           draftValues={draftValues}
           setDraftValues={setDraftValues}
         />
@@ -165,4 +152,4 @@ const SettingsSection: React.FC<Props> = ({ namespaceID, sectionID }) => {
   )
 }
 
-export default SettingsSection;
+export default CoreSettingsPage;

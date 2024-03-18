@@ -1,35 +1,33 @@
 package main
 
 import (
+	k8splugin "github.com/omniview/kubernetes/pkg/plugin"
 	"github.com/omniview/kubernetes/pkg/plugin/resource"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 
-	k8splugin "github.com/omniview/kubernetes/pkg/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
-	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/settings"
+	"github.com/omniviewdev/settings"
 )
 
 func main() {
 	plugin := sdk.NewPlugin(sdk.PluginOpts{
 		ID: "kubernetes",
-		Settings: []interface{}{
-			// Define your various plugin settings here. The available settings can be found in the settings section
-			// of the SDK package:
-			// https://github.com/omniviewdev/plugin-sdk/pkg/settings/types.go
-			// ...
-			sdksettings.Multitext{
+		Settings: []settings.Setting{
+			{
 				ID:          "kubeconfigs",
-				Name:        "Kubeconfigs",
+				Label:       "Kubeconfigs",
 				Description: "A list of available Kubeconfigs to use",
+				Type:        settings.Text,
 				Default:     []string{"~/.kube/config"},
 			},
-			sdksettings.Text{
+			{
 				ID:          "shell",
-				Name:        "Shell",
+				Label:       "Shell",
 				Description: "The default shell to use for running commands and authenticating with Kubernetes clusters.",
-				Default:     "/bin/zsh",
+				Type:        settings.Text,
+				Default:     "/bin/bash",
 			},
 		},
 	})
