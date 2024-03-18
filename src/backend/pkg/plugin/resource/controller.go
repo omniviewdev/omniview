@@ -54,6 +54,7 @@ func NewController(logger *zap.SugaredLogger) Controller {
 // make sure we have a local store on disk to save and store the connections
 // map, so we can load it up on start.
 func (c *controller) saveToLocalStore(pluginID string) error {
+	gob.Register(map[string]interface{}{})
 	store, err := utils.GetStore(StoreName, pluginID)
 	if err != nil {
 		return err
@@ -67,6 +68,7 @@ func (c *controller) saveToLocalStore(pluginID string) error {
 // load the connections from the local store, initializing a new state if the
 // file is empty.
 func (c *controller) loadFromLocalStore(pluginID string) error {
+	gob.Register(map[string]interface{}{})
 	store, err := utils.GetStore(StoreName, pluginID)
 	if err != nil {
 		return err
@@ -195,6 +197,27 @@ func (c *controller) HasPlugin(pluginID string) bool {
 	return hasClient
 }
 
+func mergeConnections(
+	connections []types.Connection,
+	newConnections []types.Connection,
+) []types.Connection {
+	// perform a merge of the connections, deduplicating by ID
+	merged := make(map[string]types.Connection)
+	for _, conn := range connections {
+		merged[conn.ID] = conn
+	}
+	for _, conn := range newConnections {
+		merged[conn.ID] = conn
+	}
+
+	list := make([]types.Connection, 0, len(merged))
+	for _, conn := range merged {
+		list = append(list, conn)
+	}
+
+	return list
+}
+
 func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error) {
 	c.logger.Debug("LoadConnections")
 
@@ -206,12 +229,29 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 	ctx := types.NewPluginContextWithConnection(
 		context.TODO(),
 		"CORE",
-		nil, // TODO: PluginConfig - fill this in
+		nil, // pluginconfig is managed plugin side
 		nil, // TODO: GlobalConfig - fill this in
 		nil, // no associated connection
 	)
 
-	return client.LoadConnections(ctx)
+	connections, err := client.LoadConnections(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// writethrough to local state
+	c.connections[pluginID] = mergeConnections(c.connections[pluginID], connections)
+	c.saveToLocalStore(pluginID)
+	return connections, nil
+}
+
+func (c *controller) ListConnections(pluginID string) ([]types.Connection, error) {
+	c.logger.Debug("ListConnections")
+	connections, ok := c.connections[pluginID]
+	if !ok {
+		return nil, fmt.Errorf("plugin '%s' has no connections", pluginID)
+	}
+	return connections, nil
 }
 
 func (c *controller) ListAllConnections() (map[string][]types.Connection, error) {
@@ -237,15 +277,6 @@ func (c *controller) GetConnection(
 		connectionID,
 		pluginID,
 	)
-}
-
-func (c *controller) ListConnections(pluginID string) ([]types.Connection, error) {
-	c.logger.Debug("ListConnections")
-	connections, ok := c.connections[pluginID]
-	if !ok {
-		return nil, fmt.Errorf("plugin '%s' has no connections", pluginID)
-	}
-	return connections, nil
 }
 
 func (c *controller) AddConnection(pluginID string, connection types.Connection) error {

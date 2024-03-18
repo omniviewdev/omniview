@@ -5,6 +5,7 @@ go 1.21.3
 require (
 	github.com/omniviewdev/omniview v0.0.0-00010101000000-000000000000
 	github.com/omniviewdev/plugin-sdk v0.0.0-20240314004425-c2572eb4a1c1
+	github.com/omniviewdev/settings v0.0.0-00010101000000-000000000000
 	go.uber.org/zap v1.27.0
 	k8s.io/apimachinery v0.29.2
 	k8s.io/client-go v0.29.2
@@ -46,7 +47,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oklog/run v1.0.0 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/wailsapp/wails/v2 v2.8.0 // indirect
@@ -81,3 +81,5 @@ require (
 replace github.com/omniviewdev/plugin-sdk => ../../packages/plugin-sdk
 
 replace github.com/omniviewdev/omniview => ../../src
+
+replace github.com/omniviewdev/settings => ../../pkg/settings

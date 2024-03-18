@@ -9,6 +9,7 @@ require (
 	github.com/hashicorp/go-hclog v1.6.2
 	github.com/hashicorp/go-plugin v1.6.0
 	github.com/omniviewdev/plugin-sdk v0.0.0-20240314004425-c2572eb4a1c1
+	github.com/omniviewdev/settings v0.0.0-00010101000000-000000000000
 	github.com/vrischmann/userdir v0.0.0-20151206171402-20f291cebd68
 	github.com/wailsapp/wails/v2 v2.8.0
 	go.uber.org/zap v1.27.0
@@ -98,3 +99,5 @@ require (
 
 // replace github.com/wailsapp/wails/v2 v2.8.0 => /Users/joshuapare/go/pkg/mod
 replace github.com/omniviewdev/plugin-sdk => ../packages/plugin-sdk
+
+replace github.com/omniviewdev/settings => ../pkg/settings

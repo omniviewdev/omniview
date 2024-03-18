@@ -1,19 +1,18 @@
 import React from 'react'
 
 // material-ui
-import Divider from '@mui/joy/Divider'
 import Stack from '@mui/joy/Stack'
 import Typography from '@mui/joy/Typography'
 import Chip from '@mui/joy/Chip';
 
-// hooks
-import { NamespaceSection } from '.';
+// types
+import { SectionSelection } from '.';
 import SettingsEntry from './SettingsEntry';
-import { useSetting } from '@/hooks/useSettings';
+import { settings } from '@api/models';
 
 
-type Props = NamespaceSection & {
-  settings: Record<string, any>
+type Props = SectionSelection & {
+  settings: Record<string, settings.Setting>
   draftValues: Record<string, any>
   setDraftValues: (draftValues: Record<string, any>) => void
 }
@@ -21,16 +20,18 @@ type Props = NamespaceSection & {
 /**
  * Displays and allows modification to application settings, given a settings namespace and section.
  */
-const SettingsEntries: React.FC<Props> = ({ namespaceID, sectionID, settings, draftValues, setDraftValues }) => {
-  const showSettingID = useSetting('core.appearance.showSettingIds')
+const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues, setDraftValues }) => {
+  const showSettingID = true // todo - make this a setting
 
   const handleChange = (name: string, value: any) => {
+    const id = `${sectionID}.${name}`
+
     // if changing back to initial value, remove from draft values
     // otherwise, add to draft values
     if (value === settings[name].value) {
-      setDraftValues({ ...draftValues, [name]: undefined })
+      setDraftValues({ ...draftValues, [id]: undefined })
     } else {
-      setDraftValues({ ...draftValues, [name]: value })
+      setDraftValues({ ...draftValues, [id]: value })
     }
   }
 
@@ -51,7 +52,7 @@ const SettingsEntries: React.FC<Props> = ({ namespaceID, sectionID, settings, dr
       <Stack
         direction={'column'}
         justifyContent={'flex-start'}
-        gap={2}
+        gap={4}
         sx={{
           // account for the 1px border highlight we put on the selected items
           // otherwise, it get's cut off
@@ -63,20 +64,23 @@ const SettingsEntries: React.FC<Props> = ({ namespaceID, sectionID, settings, dr
           scrollbarWidth: 'none',
         }}
       >
-        {Object.entries(settings).map(([id, setting], idx) => (
+        {Object.entries(settings).map(([id, setting]) => (
           <div key={id}>
             <Stack key={id} direction={'column'} gap={1}>
               <Stack direction={'column'}>
                 <Stack direction={'row'} justifyContent={'space-between'}>
                   <Typography level='title-md'>{setting.label}</Typography>
-                  {showSettingID && <Chip size='sm' variant='outlined' sx={{ borderRadius: 4 }}>{`${namespaceID}.${sectionID}.${id}`}</Chip>}
+                  {showSettingID && <Chip size='sm' variant='outlined' sx={{ borderRadius: 4 }}>{`${sectionID}.${id}`}</Chip>}
                 </Stack>
                 <Typography level='body-sm'>{setting.description}</Typography>
               </Stack>
-
-              <SettingsEntry setting={setting} id={id} draftValue={draftValues[id]} handleChange={handleChange} />
+              <SettingsEntry
+                setting={setting}
+                id={id}
+                draftValue={draftValues[`${sectionID}.${id}`]}
+                handleChange={handleChange}
+              />
             </Stack>
-            {idx !== Object.keys(settings).length - 1 && <Divider />}
           </div>
         ))}
       </Stack>

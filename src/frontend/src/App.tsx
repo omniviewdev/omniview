@@ -3,6 +3,7 @@ import { Provider } from 'react-redux'
 import { store } from './store/store'
 
 // providers
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { CssVarsProvider, StyledEngineProvider } from '@mui/joy/styles';
 import { WindowProvider } from '@/providers/WindowProvider';
 import { Renderer } from '@/providers/PaneProvider';
@@ -52,6 +53,7 @@ const App: React.FC = () => {
             </CssVarsProvider>
           </Provider>
         </StyledEngineProvider>
+        <ReactQueryDevtools initialIsOpen={false} />
       </QueryClientProvider>
     </ErrorBoundary>
   );

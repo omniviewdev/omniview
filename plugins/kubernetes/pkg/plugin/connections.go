@@ -1,25 +1,32 @@
 package plugin
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 const (
-	// Estimated size of a the number of contexts in a kubeconfig
+	// Estimated size of a the number of contexts in a kubeconfig.
 	EstimatedContexts = 10
 )
 
 // LoadConnectionsFunc loads the available connections for the plugin.
 func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
 	// Get the kubeconfigs from the settings provider
-	kubeconfigs, err := ctx.PluginConfig.GetMultiValue("kubeconfigs")
-	if err != nil {
-		return nil, err
+	val, settingErr := ctx.PluginConfig.GetSettingValue("kubeconfigs")
+	if settingErr != nil {
+		return nil, settingErr
+	}
+
+	kubeconfigs, ok := val.([]string)
+	if !ok {
+		return nil, errors.New("failed to get kubeconfigs from settings")
 	}
 
 	// let's make a guestimate of the number of connections we might have
