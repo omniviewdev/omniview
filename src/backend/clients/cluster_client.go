@@ -6,11 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/omniviewdev/omniview/backend/types"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
+
+	"github.com/omniviewdev/omniview/backend/types"
 )
 
 const (

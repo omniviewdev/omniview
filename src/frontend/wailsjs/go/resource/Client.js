@@ -30,6 +30,10 @@ export function ListConnections(arg1) {
   return window['go']['resource']['Client']['ListConnections'](arg1);
 }
 
+export function ListPlugins() {
+  return window['go']['resource']['Client']['ListPlugins']();
+}
+
 export function LoadConnections(arg1) {
   return window['go']['resource']['Client']['LoadConnections'](arg1);
 }

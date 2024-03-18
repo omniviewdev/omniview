@@ -8,6 +8,7 @@ import Option from '@mui/joy/Option';
 
 // hooks
 import { settings } from '@api/models';
+import { Autocomplete } from '@mui/joy';
 
 type Props = {
   setting: settings.Setting;
@@ -36,30 +37,20 @@ const SettingsEntry: React.FC<Props> = ({ setting, id, draftValue, handleChange 
 const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
   const isChanged = draftValue !== undefined;
 
-  if (!setting.options?.length) {
+  if (Array.isArray(setting.value)) {
     return (
-      <Input
-        variant="outlined"
-        name={id}
+      <Autocomplete
+        multiple
+        freeSolo={setting.options?.length === 0}
+        placeholder="Kubeconfigs"
         value={isChanged ? draftValue : setting.value}
-        onChange={(e) => handleChange(id, e.target.value)}
-        sx={{
-          '&::before': {
-            display: 'none',
-          },
-          '&:focus-within': {
-            outline: '2px solid var(--Input-focusedHighlight)',
-            outlineOffset: '2px',
-          },
-          ...(isChanged && {
-            outline: '2px solid var(--Input-focusedHighlight)',
-            outlineOffset: '2px',
-          }),
-        }}
+        onChange={(_, val) => handleChange(id, val)}
+        options={setting.options.map((option) => ({ label: option.label, id: option.value }))}
       />
     )
-  } else {
+  } else if (!!setting.options?.length) {
     return (
+      // options selection
       <Select
         variant="outlined"
         name={id}
@@ -83,6 +74,29 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
           <Option key={option.value} value={option.value}>{option.label}</Option>
         ))}
       </Select>
+    )
+  } else {
+    // normal single input
+    return (
+      <Input
+        variant="outlined"
+        name={id}
+        value={isChanged ? draftValue : setting.value}
+        onChange={(e) => handleChange(id, e.target.value)}
+        sx={{
+          '&::before': {
+            display: 'none',
+          },
+          '&:focus-within': {
+            outline: '2px solid var(--Input-focusedHighlight)',
+            outlineOffset: '2px',
+          },
+          ...(isChanged && {
+            outline: '2px solid var(--Input-focusedHighlight)',
+            outlineOffset: '2px',
+          }),
+        }}
+      />
     )
   }
 }

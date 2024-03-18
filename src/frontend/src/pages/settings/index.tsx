@@ -10,6 +10,7 @@ import Layout from '@/layouts/core/sidenav';
 // components
 import SettingsNav from './SettingsNav';
 import CoreSettingsPage from './CoreSettingsPage';
+import PluginSettingsPage from './PluginSettingsPage';
 
 export enum Section {
   Core = 'core',
@@ -57,7 +58,7 @@ const GetSettingsPage = (section: Section, id: string) => {
     case Section.Core:
       return <CoreSettingsPage id={id} />;
     case Section.Plugins:
-    // return <PluginsSettingsSection id={id} />;
+      return <PluginSettingsPage id={id} />;
     default:
       return null;
   }

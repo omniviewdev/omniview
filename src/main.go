@@ -4,9 +4,18 @@ import (
 	"context"
 	"embed"
 
+	pkgsettings "github.com/omniviewdev/settings"
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/logger"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
+
 	"github.com/omniviewdev/omniview/backend/clients"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	"github.com/omniviewdev/omniview/backend/services"
 	appsv1 "github.com/omniviewdev/omniview/backend/services/resources/apps_v1"
 	batchv1 "github.com/omniviewdev/omniview/backend/services/resources/batch_v1"
@@ -15,13 +24,6 @@ import (
 	storagev1 "github.com/omniviewdev/omniview/backend/services/resources/storage_v1"
 	"github.com/omniviewdev/omniview/backend/services/resources/v1"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
-	"github.com/omniviewdev/settings"
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/logger"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
 //go:embed all:frontend/dist
@@ -34,7 +36,7 @@ func main() {
 	nillogger := logger.NewFileLogger("/dev/null")
 	log := clients.CreateLogger(true)
 
-	settingsProvider := settings.NewProvider(settings.ProviderOpts{
+	settingsProvider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{
 		Logger: log,
 	})
 
@@ -42,7 +44,14 @@ func main() {
 	resourceController := resource.NewController(log)
 	resourceClient := resource.NewClient(resourceController)
 
-	pluginManager := plugin.NewManager(log, resourceController)
+	settingsController := settings.NewController(log)
+	settingsClient := settings.NewClient(settingsController)
+
+	pluginManager := plugin.NewManager(
+		log,
+		resourceController,
+		settingsController,
+	)
 
 	// LEGACY - KUBERNETES MANAGERS INLINE
 
@@ -194,6 +203,7 @@ func main() {
 			// plugin system
 			pluginManager,
 			resourceClient,
+			settingsClient,
 
 			// managers
 			clusterManager,
@@ -239,7 +249,7 @@ func main() {
 			volumeAttachmentService,
 		},
 		EnumBind: []interface{}{
-			settings.AllSettingTypes,
+			pkgsettings.AllSettingTypes,
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{
