@@ -32,7 +32,7 @@ const PluginDetails: FC<Props> = ({ plugin }) => {
   }, [plugin])
 
   return (
-    <Stack direction="column" p={6} gap={3} sx={{ maxHeight: 'calc(100vh - 200px)' }}>
+    <Stack direction="column" p={6} gap={3} sx={{ maxHeight: 'calc(100vh - 60px)' }}>
       <Stack direction="row" spacing={3} width={'100%'} alignItems={'center'} >
         <Avatar sx={{ height: 72, width: 72, borderRadius: 'md' }} variant='plain' src={plugin.icon} />
         <Stack direction="column" spacing={0.5} justifyContent={'center'} width={'100%'} >
@@ -70,7 +70,7 @@ const PluginDetails: FC<Props> = ({ plugin }) => {
         <TabPanel value={0} sx={{ display: 'flex' }}>
           <Box overflow={'auto'} p={1}>
             {plugin.readme
-              ? _readme && <MarkdownPreview source={_readme} style={{ backgroundColor: 'transparent' }} />
+              ? _readme && <MarkdownPreview source={_readme} style={{ backgroundColor: 'transparent', overflow: 'auto', maxHeight: 'calc(100vh - 350px)' }} />
               : <Typography level="body-xs">No details available</Typography>
             }
           </Box>

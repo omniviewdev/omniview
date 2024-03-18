@@ -1,10 +1,11 @@
 package rbacv1
 
 import (
-	"github.com/omniviewdev/omniview/backend/services"
-	"github.com/omniviewdev/omniview/backend/services/resources"
 	"go.uber.org/zap"
 	rbacv1 "k8s.io/api/rbac/v1"
+
+	"github.com/omniviewdev/omniview/backend/services"
+	"github.com/omniviewdev/omniview/backend/services/resources"
 )
 
 type ClusterRoleService struct {

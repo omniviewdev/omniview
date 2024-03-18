@@ -3,12 +3,12 @@ package main
 import (
 	k8splugin "github.com/omniview/kubernetes/pkg/plugin"
 	"github.com/omniview/kubernetes/pkg/plugin/resource"
+	"github.com/omniviewdev/settings"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
-	"github.com/omniviewdev/settings"
 )
 
 func main() {

@@ -6,13 +6,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/omniviewdev/omniview/backend/clients"
-	"github.com/omniviewdev/omniview/backend/services"
-	"github.com/omniviewdev/omniview/backend/types"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/omniviewdev/omniview/backend/clients"
+	"github.com/omniviewdev/omniview/backend/services"
+	"github.com/omniviewdev/omniview/backend/types"
 )
 
 const (

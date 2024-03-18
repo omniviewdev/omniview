@@ -7,12 +7,14 @@ import (
 	"reflect"
 
 	"github.com/hashicorp/go-plugin"
+	"go.uber.org/zap"
+
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
+
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resourcetypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	"go.uber.org/zap"
 )
 
 const (
@@ -23,13 +25,13 @@ const (
 // Controller is a controller that manages the lifecycle of resource plugins. Resource plugins
 // interact with a backend that supplies various entities that can be read, created, updated, and deleted.
 //
-// Has to satisfy both the internal connected controller type, as well as the external client type
+// Has to satisfy both the internal connected controller type, as well as the external client type.
 type Controller interface {
 	internaltypes.ConnectedController
 	IClient
 }
 
-// runtime assertion to make sure we satisfy both internal and external interfaces
+// runtime assertion to make sure we satisfy both internal and external interfaces.
 var (
 	_ Controller = (*controller)(nil)
 	_ IClient    = (*controller)(nil)
@@ -45,7 +47,7 @@ type controller struct {
 // NewController returns a new Controller instance.
 func NewController(logger *zap.SugaredLogger) Controller {
 	return &controller{
-		logger:      logger.Named("Controller"),
+		logger:      logger.Named("ResourceController"),
 		connections: make(map[string][]types.Connection),
 		clients:     make(map[string]resourcetypes.ResourceProvider),
 	}
@@ -187,7 +189,12 @@ func (c *controller) OnPluginDestroy(meta config.PluginMeta) error {
 func (c *controller) ListPlugins() ([]string, error) {
 	c.logger.Debug("ListPlugins")
 
-	panic("implement me")
+	plugins := make([]string, 0, len(c.clients))
+	for pluginID := range c.clients {
+		plugins = append(plugins, pluginID)
+	}
+
+	return plugins, nil
 }
 
 func (c *controller) HasPlugin(pluginID string) bool {

@@ -10,9 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	"gopkg.in/yaml.v2"
 )
 
 func validateInstalledPlugin(metadata config.PluginMeta) error {

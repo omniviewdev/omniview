@@ -1,10 +1,11 @@
 package autoscalingv2
 
 import (
-	"github.com/omniviewdev/omniview/backend/services"
-	"github.com/omniviewdev/omniview/backend/services/resources"
 	"go.uber.org/zap"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+
+	"github.com/omniviewdev/omniview/backend/services"
+	"github.com/omniviewdev/omniview/backend/services/resources"
 )
 
 type HorizontalPodAutoscalerService struct {

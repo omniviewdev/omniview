@@ -16,6 +16,8 @@ import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownR
 import Icon from '@/components/icons/Icon';
 import { SectionSelection, Section } from '.';
 import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
+import { usePluginManager } from '@/hooks/plugin/usePluginManager';
+import { Avatar } from '@mui/joy';
 
 type Props = {
   selected: SectionSelection;
@@ -28,8 +30,9 @@ type Props = {
 const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
   // get the core settings sections
   const { settings } = useSettingsProvider()
+  const { plugins } = usePluginManager()
 
-  if (settings.isLoading) return null
+  if (settings.isLoading || plugins.isLoading) return null
   if (settings.isError || !settings.data) return null
 
   return (
@@ -68,6 +71,42 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
           ))}
         </List>
       </ListItem>
+
+      {/** Plugins section */}
+      <ListItem key={Section.Plugins} nested>
+        <ListSubheader>
+          {Section.Plugins}
+          <IconButton
+            size="sm"
+            variant="outlined"
+            color="primary"
+            sx={{ '--IconButton-size': '24px', ml: 'auto' }}
+          >
+            <KeyboardArrowDownRoundedIcon fontSize="small" color="primary" />
+          </IconButton>
+        </ListSubheader>
+        <List
+          aria-labelledby="nav-list-browse"
+          sx={{
+            '& .JoyListItemButton-root': { p: '8px' },
+          }}
+        >
+          {plugins.data?.map((plugin) => (
+            <ListItem key={plugin.id}>
+              <ListItemButton
+                selected={selected.id === plugin.id && selected.section === Section.Plugins}
+                onClick={() => onChange({ section: Section.Plugins, id: plugin.id })}
+              >
+                <ListItemDecorator>
+                  <Avatar size="sm" src={plugin.metadata.icon} variant='plain' sx={{ borderRadius: 4, height: 20, width: 20 }} />
+                </ListItemDecorator>
+                <ListItemContent>{plugin.metadata.name}</ListItemContent>
+              </ListItemButton>
+            </ListItem>
+          ))}
+        </List>
+      </ListItem>
+
     </List>
   );
 }

@@ -9,13 +9,17 @@ import (
 	"path/filepath"
 
 	"github.com/hashicorp/go-plugin"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/controllers"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
-	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	rp "github.com/omniviewdev/plugin-sdk/pkg/resource/plugin"
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
+
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	rp "github.com/omniviewdev/plugin-sdk/pkg/resource/plugin"
+	sp "github.com/omniviewdev/plugin-sdk/pkg/settings"
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 const (
@@ -66,25 +70,28 @@ type Manager interface {
 func NewManager(
 	logger *zap.SugaredLogger,
 	resourceController resource.Controller,
+	settingsController settings.Controller,
 ) Manager {
 	return &pluginManager{
 		logger:  logger,
 		plugins: make(map[string]types.Plugin),
-		connlessControllers: map[types.PluginType]controllers.Controller{
+		connlessControllers: map[types.PluginType]plugintypes.Controller{
+			types.SettingsPlugin:   settingsController,
+			types.ReporterPlugin:   nil, // TODO implement
 			types.ResourcePlugin:   nil, // not connless
 			types.ExecutorPlugin:   nil, // not connless
 			types.FilesystemPlugin: nil, // not connless
 			types.LogPlugin:        nil, // not connless
 			types.MetricPlugin:     nil, // not connless
-			types.ReporterPlugin:   nil, // TODO implement
 		},
-		connfullControllers: map[types.PluginType]controllers.ConnectedController{
+		connfullControllers: map[types.PluginType]plugintypes.ConnectedController{
 			types.ResourcePlugin:   resourceController,
 			types.ExecutorPlugin:   nil, // TODO: implement
 			types.FilesystemPlugin: nil, // TODO: implement
 			types.LogPlugin:        nil, // TODO: implement
 			types.MetricPlugin:     nil, // TODO: implement
 			types.ReporterPlugin:   nil, // connless
+			types.SettingsPlugin:   nil, // connless
 		},
 	}
 }
@@ -94,8 +101,8 @@ type pluginManager struct {
 	ctx                 context.Context
 	logger              *zap.SugaredLogger
 	plugins             map[string]types.Plugin
-	connlessControllers map[types.PluginType]controllers.Controller
-	connfullControllers map[types.PluginType]controllers.ConnectedController
+	connlessControllers map[types.PluginType]plugintypes.Controller
+	connfullControllers map[types.PluginType]plugintypes.ConnectedController
 }
 
 func (pm *pluginManager) Initialize(ctx context.Context) error {
@@ -232,6 +239,7 @@ func (pm *pluginManager) LoadPlugin(id string) (types.Plugin, error) {
 		HandshakeConfig: metadata.GenerateHandshakeConfig(),
 		Plugins: map[string]plugin.Plugin{
 			"resource": &rp.ResourcePlugin{},
+			"settings": &sp.SettingsPlugin{},
 		},
 		Cmd:              exec.Command(filepath.Join(location, "bin", "plugin")),
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
@@ -374,6 +382,10 @@ func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
 	if plugin == nil {
 		return errors.New("plugin is nil")
 	}
+
+	// manually register the required capabilities first
+	pm.connlessControllers[types.SettingsPlugin].OnPluginInit(plugin.Metadata)
+
 	// go through the controllers and init them based on the capabilities
 	for _, capability := range plugin.Metadata.Capabilities {
 		switch capability {
@@ -399,6 +411,12 @@ func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
 func (pm *pluginManager) startPlugin(plugin *types.Plugin, client plugin.ClientProtocol) error {
 	if plugin == nil {
 		return errors.New("plugin is nil")
+	}
+
+	// manually start the required capabilities first
+
+	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+		return fmt.Errorf("error starting settings plugin: %w", err)
 	}
 
 	// go through the controllers and start them based on the capabilities
@@ -438,6 +456,12 @@ func (pm *pluginManager) startPlugin(plugin *types.Plugin, client plugin.ClientP
 func (pm *pluginManager) stopPlugin(plugin *types.Plugin) error {
 	if plugin == nil {
 		return errors.New("plugin is nil")
+	}
+
+	// manually stop the required capabilities first
+
+	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginStop(plugin.Metadata); err != nil {
+		return fmt.Errorf("error stopping settings plugin: %w", err)
 	}
 
 	// go through the controllers and stop them based on the capabilities
@@ -484,6 +508,12 @@ func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 		return fmt.Errorf("error stopping plugin client: %w", err)
 	}
 
+	// manually shutdown the required capabilities first
+
+	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
+		return fmt.Errorf("error shutting down settings plugin: %w", err)
+	}
+
 	// go through the controllers and stop them based on the capabilities
 	for _, capability := range plugin.Metadata.Capabilities {
 		switch capability {
@@ -521,6 +551,12 @@ func (pm *pluginManager) destroyPlugin(plugin *types.Plugin) error {
 	if plugin == nil {
 		return errors.New("plugin is nil")
 	}
+
+	// manually destroy the required capabilities first
+	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+		return fmt.Errorf("error destroying settings plugin: %w", err)
+	}
+
 	// go through the controllers and stop them based on the capabilities
 	for _, capability := range plugin.Metadata.Capabilities {
 		switch capability {

@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/omniviewdev/omniview/backend/types"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/omniviewdev/omniview/backend/types"
 )
 
 // ResourceStateEvent is a simple struct that holds the name of a resource and its readiness state.

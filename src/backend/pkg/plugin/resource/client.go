@@ -9,6 +9,9 @@ import (
 // We don't really want to expose the other methods of the controller to the outside world, so only
 // methods that should exist here are the ones that the UI/other controllers need to interact with.
 type IClient interface {
+	// ListPlugins returns a list of all the plugins that are registered with the resource controller
+	ListPlugins() ([]string, error)
+
 	// Get performs a get requests for a resource against a resource backend plugin.
 	// The pluginID should match the name of the plugin in the plugin metadata.
 	Get(pluginID, connectionID, key string, input rt.GetInput) (*rt.GetResult, error)
@@ -68,6 +71,10 @@ func NewClient(controller Controller) *Client {
 	return &Client{
 		controller: controller,
 	}
+}
+
+func (c *Client) ListPlugins() ([]string, error) {
+	return c.controller.ListPlugins()
 }
 
 func (c *Client) Get(

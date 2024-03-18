@@ -70,7 +70,8 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
               <Stack direction={'column'}>
                 <Stack direction={'row'} justifyContent={'space-between'}>
                   <Typography level='title-md'>{setting.label}</Typography>
-                  {showSettingID && <Chip size='sm' variant='outlined' sx={{ borderRadius: 4 }}>{`${sectionID}.${id}`}</Chip>}
+                  {showSettingID && sectionID !== "plugin" && <Chip size='sm' variant='outlined' sx={{ borderRadius: 4 }}>{`${sectionID}.${id}`}</Chip>}
+                  {showSettingID && sectionID === "plugin" && <Chip size='sm' variant='outlined' sx={{ borderRadius: 4 }}>{`${id}`}</Chip>}
                 </Stack>
                 <Typography level='body-sm'>{setting.description}</Typography>
               </Stack>

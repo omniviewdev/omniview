@@ -2,6 +2,7 @@ package types
 
 import (
 	"github.com/hashicorp/go-plugin"
+
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -37,9 +38,6 @@ type Controller interface {
 // Controller interface, with additional requirements for when events relating to connections occur.
 type ConnectedController interface {
 	Controller
-
-	// LoadConnections loads the connections for the resource provider
-	LoadConnections(pluginID string) ([]types.Connection, error)
 
 	// ListAllConnections returns a list of all connections for all plugins.
 	ListAllConnections() (map[string][]types.Connection, error)
