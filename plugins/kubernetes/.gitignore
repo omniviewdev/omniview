@@ -8,3 +8,8 @@
 *.log.*
 *.pid
 *.pid.*
+
+generators/_tmp
+generators/build
+generators/tmp
+generators/dist
