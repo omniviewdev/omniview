@@ -1,4 +1,4 @@
-// import { FC } from 'react';
+// Import { FC } from 'react';
 // import { usePluginRouter } from '@infraview/router';
 //
 // import AspectRatio from '@mui/joy/AspectRatio';

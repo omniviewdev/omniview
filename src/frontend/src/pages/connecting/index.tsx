@@ -9,7 +9,7 @@ import LinearProgress from '@mui/joy/LinearProgress';
 import Sheet from '@mui/joy/Sheet';
 import Typography from '@mui/joy/Typography';
 import { produce } from 'immer';
-import { FC, useEffect, useReducer } from 'react';
+import { type FC, useEffect, useReducer } from 'react';
 import { usePluginRouter } from '@infraview/router';
 
 import { StartContext } from '@api/services/ClusterManager';
@@ -17,29 +17,24 @@ import { EventsOff, EventsOn } from '@runtime/runtime';
 import { handleRemoveTab } from '@/store/tabs/slice';
 import { useDispatch } from 'react-redux';
 
-
 function calculateTotalResources(resourceStates: ResourceState) {
   return Object.values(resourceStates).reduce(
     (acc, group) => acc + Object.keys(group).length,
-    0
+    0,
   );
 }
 
-interface ResourceState {
-  [group: string]: {
-    [resource: string]: {
-      initialized: boolean;
-      error: boolean;
-      message: string;
-    };
-  };
-}
+type ResourceState = Record<string, Record<string, {
+  initialized: boolean;
+  error: boolean;
+  message: string;
+}>>;
 
-interface AppState {
+type AppState = {
   resourceStates: ResourceState;
   resourcesReady: number;
   totalResources: number;
-}
+};
 
 const initialState = {
   resourceStates: {},
@@ -50,8 +45,7 @@ const initialState = {
 type AppAction =
   | { type: 'MARK_RESOURCE_READY'; payload: string }
   | { type: 'MARK_RESOURCE_ERROR'; payload: string }
-  | { type: 'SET_RESOURCES'; payload: { resources: { [resource: string]: boolean } } }
-
+  | { type: 'SET_RESOURCES'; payload: { resources: Record<string, boolean> } };
 
 function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -60,13 +54,11 @@ function reducer(state: AppState, action: AppAction): AppState {
       const { group, resource } = parseResourceString(action.payload);
       let resourcesReadyIncrement = 0;
 
-      const newState = produce(state.resourceStates, (draft) => {
-        // if the group doesn't exist, add it
-        if (!draft[group]) {
-          draft[group] = {};
-        }
+      const newState = produce(state.resourceStates, draft => {
+        // If the group doesn't exist, add it
+        draft[group] ||= {};
 
-        // if the resource doesn't exist, add it
+        // If the resource doesn't exist, add it
         if (!draft[group][resource]) {
           draft[group][resource] = {
             initialized: false,
@@ -91,19 +83,16 @@ function reducer(state: AppState, action: AppAction): AppState {
         resourcesReady: state.resourcesReady + resourcesReadyIncrement,
       };
     }
+
     case 'MARK_RESOURCE_ERROR': {
       console.log('MARK_RESOURCE_ERROR', action.payload);
       const { group, resource } = parseResourceString(action.payload);
 
+      const newState = produce(state.resourceStates, draft => {
+        // If the group doesn't exist, add it
+        draft[group] ||= {};
 
-      const newState = produce(state.resourceStates, (draft) => {
-
-        // if the group doesn't exist, add it
-        if (!draft[group]) {
-          draft[group] = {};
-        }
-
-        // if the resource doesn't exist, add it
+        // If the resource doesn't exist, add it
         if (!draft[group][resource]) {
           draft[group][resource] = {
             initialized: false,
@@ -111,6 +100,7 @@ function reducer(state: AppState, action: AppAction): AppState {
             message: '',
           };
         }
+
         if (!draft[group][resource].error || draft[group][resource].message !== '') {
           draft[group][resource].error = true;
           draft[group][resource].message = '';
@@ -122,21 +112,20 @@ function reducer(state: AppState, action: AppAction): AppState {
         resourceStates: newState,
       };
     }
+
     case 'SET_RESOURCES': {
       console.log('SET_RESOURCES', action.payload);
 
-      const newState = produce(state.resourceStates, (draft) => {
+      const newState = produce(state.resourceStates, draft => {
         for (const resourceString in action.payload.resources) {
           const { group, resource } = parseResourceString(resourceString);
 
-          if (!draft[group]) {
-            draft[group] = {};
-          }
+          draft[group] ||= {};
 
           if (!draft[group][resource]) {
             // Initialize if the resource does not exist yet
             draft[group][resource] = {
-              initialized: false, // or true, based on your logic needs
+              initialized: false, // Or true, based on your logic needs
               error: false,
               message: '',
             };
@@ -160,7 +149,7 @@ type GroupVersionResource = {
   group: string;
   version: string;
   resource: string;
-}
+};
 
 function parseResourceString(input: string): GroupVersionResource {
   const parts = input.split(', Resource=');
@@ -181,13 +170,11 @@ function parseResourceString(input: string): GroupVersionResource {
   const gvr: GroupVersionResource = {
     group,
     version,
-    resource
+    resource,
   };
 
   return gvr;
 }
-
-
 
 const Connecting: FC = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -195,15 +182,15 @@ const Connecting: FC = () => {
   const { navigate, contextID } = usePluginRouter();
 
   const handleInitialized = () => {
-    // replace the current location with the new one instead of pushing a new one
-    navigate(`/explorer/pods`, { replace: true, withinContext: true });
-  }
+    // Replace the current location with the new one instead of pushing a new one
+    navigate('/explorer/pods', { replace: true, withinContext: true });
+  };
 
   const handleCancel = () => {
-    // navigate to plugin home and remove the tab
-    navigate(`/`, { replace: true });
+    // Navigate to plugin home and remove the tab
+    navigate('/', { replace: true });
     reduxDispatch(handleRemoveTab(contextID));
-  }
+  };
 
   useEffect(() => {
     if (!contextID) {
@@ -214,95 +201,94 @@ const Connecting: FC = () => {
     const ERROR_EVENT = `${contextID}::RESOURCE::ERROR`;
     const ALL_READY_EVENT = `${contextID}::RESOURCE::ALL_READY`;
 
-    // go is much faster here, so we may actually receive the event before we're done setting up the listeners
+    // Go is much faster here, so we may actually receive the event before we're done setting up the listeners
     // so we need to make sure we're listening before we start the switch context
     EventsOn(READY_EVENT, (resource: string) => {
       dispatch({ type: 'MARK_RESOURCE_READY', payload: resource });
-    })
+    });
     EventsOn(ERROR_EVENT, (resource: string) => {
       dispatch({ type: 'MARK_RESOURCE_ERROR', payload: resource });
-    })
-    EventsOn(ALL_READY_EVENT, () => handleInitialized())
-
-    StartContext(contextID).then((resources) => {
-      // resources is a map of gvr strings to booleans, split and convert to the expected format
-      dispatch({ type: 'SET_RESOURCES', payload: { resources } });
-    }).catch((err) => {
-      console.error('Error switching context:', err);
-      // unsubscribe
-      EventsOff(READY_EVENT)
-      EventsOff(ERROR_EVENT)
-      EventsOff(ALL_READY_EVENT)
+    });
+    EventsOn(ALL_READY_EVENT, () => {
+      handleInitialized();
     });
 
+    StartContext(contextID).then(resources => {
+      // Resources is a map of gvr strings to booleans, split and convert to the expected format
+      dispatch({ type: 'SET_RESOURCES', payload: { resources } });
+    }).catch(err => {
+      console.error('Error switching context:', err);
+      // Unsubscribe
+      EventsOff(READY_EVENT);
+      EventsOff(ERROR_EVENT);
+      EventsOff(ALL_READY_EVENT);
+    });
 
     return () => {
-      // unsubscribe
-      EventsOff(READY_EVENT)
-      EventsOff(ERROR_EVENT)
-      EventsOff(ALL_READY_EVENT)
-    }
+      // Unsubscribe
+      EventsOff(READY_EVENT);
+      EventsOff(ERROR_EVENT);
+      EventsOff(ALL_READY_EVENT);
+    };
   }, []);
 
   return (
-    <Stack direction="column" width={'100%'} maxHeight={'100%'} p={4} gap={4} justifyContent={'flex-start'}>
-      <Stack direction="row" gap={1} alignItems="center">
-        <Typography level="title-lg">Connecting To Cluster</Typography>
-        {Math.floor((state.resourcesReady / state.totalResources) * 100) === 100 && <CheckCircle color="success" sx={{ height: '20px' }} />}
+    <Stack direction='column' width={'100%'} maxHeight={'100%'} p={4} gap={4} justifyContent={'flex-start'}>
+      <Stack direction='row' gap={1} alignItems='center'>
+        <Typography level='title-lg'>Connecting To Cluster</Typography>
+        {Math.floor((state.resourcesReady / state.totalResources) * 100) === 100 && <CheckCircle color='success' sx={{ height: '20px' }} />}
       </Stack>
-      <LinearProgress determinate size="lg" value={Math.floor((state.resourcesReady / state.totalResources) * 100)} />
+      <LinearProgress determinate size='lg' value={Math.floor((state.resourcesReady / state.totalResources) * 100)} />
 
-      <Stack direction="row" justifyContent="flex-start" gap={2} flexWrap="wrap">
-        {Object.keys(state.resourceStates).map(group => {
-          return (
-            <Sheet
-              key={group}
-              variant="outlined"
-              sx={{
-                width: 320,
-                maxHeight: 300,
-                // don't grow vertifcally
-                flex: '0 0 auto',
-                overflow: 'auto',
-                borderRadius: 'sm',
-              }}
-            >
-              <List sx={{
-                '--ListItem-minHeight': '1.2rem',
-              }}>
-                <ListItem nested key={group}>
-                  <ListSubheader sticky>{group}</ListSubheader>
-                  <List>
-                    {Object.keys(state.resourceStates[group]).map(resource => {
-                      const curr = state.resourceStates[group][resource];
-                      return (
-                        <ListItem key={resource}>
-                          <Stack direction="row" gap={1} alignItems="center" key={resource}>
-                            <Typography level="body-xs">{resource}</Typography>
-                            {curr.initialized && <CheckCircle color='success' sx={{ height: '14px' }} />}
-                            {curr.error &&
-                              <>
-                                <ErrorIcon color='error' sx={{ height: '14px' }} />
-                                <Typography level='body-xs' color='danger'>{curr.message}</Typography>
+      <Stack direction='row' justifyContent='flex-start' gap={2} flexWrap='wrap'>
+        {Object.keys(state.resourceStates).map(group => (
+          <Sheet
+            key={group}
+            variant='outlined'
+            sx={{
+              width: 320,
+              maxHeight: 300,
+              // Don't grow vertifcally
+              flex: '0 0 auto',
+              overflow: 'auto',
+              borderRadius: 'sm',
+            }}
+          >
+            <List sx={{
+              '--ListItem-minHeight': '1.2rem',
+            }}>
+              <ListItem nested key={group}>
+                <ListSubheader sticky>{group}</ListSubheader>
+                <List>
+                  {Object.keys(state.resourceStates[group]).map(resource => {
+                    const curr = state.resourceStates[group][resource];
+                    return (
+                      <ListItem key={resource}>
+                        <Stack direction='row' gap={1} alignItems='center' key={resource}>
+                          <Typography level='body-xs'>{resource}</Typography>
+                          {curr.initialized && <CheckCircle color='success' sx={{ height: '14px' }} />}
+                          {curr.error
+                              && <>
+                              	<ErrorIcon color='error' sx={{ height: '14px' }} />
+                              	<Typography level='body-xs' color='danger'>{curr.message}</Typography>
                               </>
-                            }
-                            {!curr.initialized && !curr.error && <CircularProgress
-                              sx={{
-                                "--CircularProgress-size": "14px",
-                                "--CircularProgress-trackThickness": "2px",
-                                "--CircularProgress-progressThickness": "2px"
-                              }}
-                            />}
-                          </Stack>
-                        </ListItem>
-                      )
-                    })}
-                  </List>
-                </ListItem>
-              </List>
-            </Sheet>
-          )
-        })}
+                          }
+                          {!curr.initialized && !curr.error && <CircularProgress
+                            sx={{
+                              '--CircularProgress-size': '14px',
+                              '--CircularProgress-trackThickness': '2px',
+                              '--CircularProgress-progressThickness': '2px',
+                            }}
+                          />}
+                        </Stack>
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              </ListItem>
+            </List>
+          </Sheet>
+        ))}
       </Stack>
       <Box
         sx={{
@@ -312,13 +298,13 @@ const Connecting: FC = () => {
           gap: 1,
         }}
       >
-        <Button variant="outlined" color="neutral" size="sm" onClick={handleCancel}>
+        <Button variant='outlined' color='neutral' size='sm' onClick={handleCancel}>
           Cancel
         </Button>
       </Box>
     </Stack>
   );
-}
+};
 
 Connecting.displayName = 'ConnectingPage';
 

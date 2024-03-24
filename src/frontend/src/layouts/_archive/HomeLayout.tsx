@@ -1,5 +1,5 @@
 import * as React from 'react';
-import Box, { BoxProps } from '@mui/joy/Box';
+import Box, { type BoxProps } from '@mui/joy/Box';
 import Sheet from '@mui/joy/Sheet';
 import { GlobalStyles } from '@mui/joy';
 import { useWindow } from '@/hooks/useWindow';
@@ -12,7 +12,7 @@ function Root(props: BoxProps) {
         {
           bgcolor: 'background.appBody',
           minHeight: '100vh',
-          display: 'flex'
+          display: 'flex',
         },
         ...(Array.isArray(props.sx) ? props.sx : [props.sx]),
       ]}
@@ -36,8 +36,8 @@ function Header(props: BoxProps) {
         }}
       />
       <Box
-        component="header"
-        className="Header"
+        component='header'
+        className='Header'
         {...props}
         sx={[
           {
@@ -45,7 +45,7 @@ function Header(props: BoxProps) {
             p: 1,
             pl: shouldIndent ? undefined : 10,
             gap: 2,
-            // include the divider border
+            // Include the divider border
             height: 'calc(var(--HomeLayoutHeader-height) - 1px)',
             bgcolor: 'background.surface',
             display: 'flex',
@@ -69,14 +69,14 @@ function Header(props: BoxProps) {
 function SideNav(props: BoxProps) {
   return (
     <Box
-      component="nav"
-      className="Navigation"
+      component='nav'
+      className='Navigation'
       {...props}
       sx={[
         {
           p: 2,
           bgcolor: 'transparent',
-          // borderRight: '1px solid',
+          // BorderRight: '1px solid',
           // borderColor: 'divider',
           width: '20rem',
           display: {
@@ -93,7 +93,7 @@ function SideNav(props: BoxProps) {
 function SidePane(props: BoxProps) {
   return (
     <Box
-      className="Inbox"
+      className='Inbox'
       {...props}
       sx={[
         {
@@ -114,8 +114,8 @@ function SidePane(props: BoxProps) {
 function Main(props: BoxProps) {
   return (
     <Box
-      component="main"
-      className="Main"
+      component='main'
+      className='Main'
       {...props}
       sx={[{ p: 2, width: '100%' }, ...(Array.isArray(props.sx) ? props.sx : [props.sx])]}
     />
@@ -130,17 +130,19 @@ function SideDrawer({
     <Box
       {...props}
       sx={[
-        { position: 'fixed', zIndex: 1200, width: '100%', height: '100%' },
+        {
+          position: 'fixed', zIndex: 1200, width: '100%', height: '100%',
+        },
         ...(Array.isArray(props.sx) ? props.sx : [props.sx]),
       ]}
     >
       <Box
-        role="button"
+        role='button'
         onClick={onClose}
         sx={{
           position: 'absolute',
           inset: 0,
-          bgcolor: (theme) =>
+          bgcolor: theme =>
             `rgba(${theme.vars.palette.neutral.darkChannel} / 0.8)`,
         }}
       />

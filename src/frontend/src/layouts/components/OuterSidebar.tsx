@@ -1,17 +1,17 @@
 import { useLocation } from 'react-router-dom';
 
-// material-ui
+// Material-ui
 import GlobalStyles from '@mui/joy/GlobalStyles';
 import List from '@mui/joy/List';
 import ListItem from '@mui/joy/ListItem';
 import Sheet from '@mui/joy/Sheet';
 import IconButton from '@mui/joy/IconButton';
 
-// icons
-import { LuBoxes } from "react-icons/lu";
-import { PiGraphBold } from "react-icons/pi";
+// Icons
+import { LuBoxes } from 'react-icons/lu';
+import { PiGraphBold } from 'react-icons/pi';
 
-// assets
+// Assets
 // import KubernetesLogo from '../../assets/icons/KubernetesLogo';
 
 const sidebarItems = [
@@ -30,7 +30,7 @@ export default function FirstSidebar() {
 
   return (
     <Sheet
-      className="FirstSidebar"
+      className='FirstSidebar'
       sx={{
         position: {
           xs: 'fixed',
@@ -62,10 +62,10 @@ export default function FirstSidebar() {
         }}
       />
       {/* Cluster List */}
-      <List size="sm" sx={{ '--ListItem-radius': '6px', '--List-gap': '8px', '--ListItem-paddingY': '0px' }}>
-        {sidebarItems.map((item) => (
+      <List size='sm' sx={{ '--ListItem-radius': '6px', '--List-gap': '8px', '--ListItem-paddingY': '0px' }}>
+        {sidebarItems.map(item => (
           <ListItem key={item.name}>
-            <IconButton variant={pathname.startsWith(`/${item.name}`) ? 'solid' : 'plain'} size="lg">
+            <IconButton variant={pathname.startsWith(`/${item.name}`) ? 'solid' : 'plain'} size='lg'>
               <item.logo size={25} />
             </IconButton>
           </ListItem>

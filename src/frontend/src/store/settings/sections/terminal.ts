@@ -1,6 +1,6 @@
-import { SettingsSection } from '@/store/settings/types';
+import { type SettingsSection } from '@/store/settings/types';
 
-export type TerminalSettings = SettingsSection
+export type TerminalSettings = SettingsSection;
 
 export const initialState: TerminalSettings = {
   id: 'terminal',
@@ -90,6 +90,6 @@ export const initialState: TerminalSettings = {
       type: 'toggle',
       default: true,
       value: true,
-    }
-  }
-}
+    },
+  },
+};

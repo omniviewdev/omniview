@@ -3,12 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"log"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"text/template"
 )
 
@@ -19,6 +20,7 @@ type OpenAPISpec struct {
 
 // Definition represents a single definition in the OpenAPI spec
 type Definition struct {
+	Description                 string              `json:"description"`
 	Properties                  map[string]Property `json:"properties"`
 	XKubernetesGroupVersionKind []GroupVersionKind  `json:"x-kubernetes-group-version-kind"`
 }
@@ -36,44 +38,29 @@ type GroupVersionKind struct {
 	Kind    string `json:"kind"`
 }
 
+type Resource struct {
+	Group       string `json:"group"`
+	Version     string `json:"version"`
+	Kind        string `json:"kind"`
+	Description string `json:"description"`
+	ImportName  string `json:"importName"`
+	ImportPath  string `json:"importPath"`
+	SGVRName    string `json:"sgvrName"`
+}
+
+type Package struct {
+	ImportName string `json:"importName"`
+	ImportPath string `json:"importPath"`
+}
+
 type TemplateData struct {
-	// should be lowercase, no spaces the <group><version>
-	PackageName string
-	// <group>/<version>
-	ImportPath string
-	// ResourceName is just the Kind
-	ResourceName string
-	// <resource.lowercase.plural>
-	SGVRName string
-	// Description is the description of the resource
-	// from the OpenAPI spec
-	Description string
-}
-
-type ManagerPackage struct {
-	// the package name
-	PackageName string
-	// the import path
-	ImportPath string
-}
-
-type ManagerResource struct {
-	// The name of the manager resource
-	ResourceName string
-	// the package name
-	PackageName string
-	// the version
-	Version string
-}
-
-type ResourceManagerTemplateData struct {
 	// the imports to add
-	Packages []ManagerPackage
+	Packages []Package
 	// The resources to attach to the
-	Resources []ManagerResource
+	Resources []Resource
 }
 
-func ParseOpenAPI(location string) {
+func ParseOpenAPI(location string, resources *[]Resource, packages *[]Package) {
 	// Read the OpenAPI spec file
 	data, err := os.ReadFile(location)
 	if err != nil {
@@ -86,205 +73,176 @@ func ParseOpenAPI(location string) {
 		log.Fatalf("Failed to unmarshal OpenAPI spec: %v", err)
 	}
 
-	var entries []GroupVersionKind
-
 	// Process each definition
 	for _, def := range spec.Definitions {
+		_, hasAPIVersion := def.Properties["apiVersion"]
+		_, hasKind := def.Properties["kind"]
+		_, hasMetadata := def.Properties["metadata"]
+
 		// Check if the definition has the required properties
-		if _, ok := def.Properties["apiVersion"]; ok {
-			if _, ok := def.Properties["kind"]; ok {
-				if _, ok := def.Properties["metadata"]; ok {
-					// Write the details to the output file
-					for _, gvk := range def.XKubernetesGroupVersionKind {
-						// account for "core"
-						if gvk.Group == "" {
-							gvk.Group = "core"
-						}
-						// skip anything with a kind ending in "List"
-						// check for out of bounds first though
-						if len(gvk.Kind) > 4 && gvk.Kind[len(gvk.Kind)-4:] == "List" {
-							continue
-						}
+		if hasAPIVersion && hasKind && hasMetadata {
+			// Write the details to the output file
+			for _, gvk := range def.XKubernetesGroupVersionKind {
+				// account for "core"
+				if gvk.Group == "" {
+					gvk.Group = "core"
+				}
+				// skip anything with a kind ending in "List"
+				// check for out of bounds first though
+				if len(gvk.Kind) > 4 && gvk.Kind[len(gvk.Kind)-4:] == "List" {
+					continue
+				}
 
-						// skip CRDs
-						if gvk.Kind == "CustomResourceDefinition" {
-							continue
-						}
+				// skip CRDs
+				if gvk.Kind == "CustomResourceDefinition" {
+					continue
+				}
+				group := gvk.Group
 
-						// add to entries
-						entries = append(entries, gvk)
+				// if group ends in .k8s.io, remove it
+				group = strings.TrimSuffix(group, ".k8s.io")
+
+				// if group still has dots, remove them except in our weird cases
+				if strings.Contains(group, ".") {
+					// split by dot, and combine in reverse order without dot
+					parts := strings.Split(group, ".")
+
+					if strings.HasPrefix(group, "internal.") {
+						group = ""
+						for i := len(parts) - 1; i >= 0; i-- {
+							group += parts[i]
+						}
+					} else {
+						// take the first part of the group
+						group = parts[0]
 					}
+				}
+
+				importPath := fmt.Sprintf("%s/%s", group, gvk.Version)
+				importName := fmt.Sprintf("%s%s", group, gvk.Version)
+
+				svgrName := strings.ToLower(gvk.Kind)
+
+				whitelist := []string{
+					"endpoints",
+					"resourceclaimparameters",
+				}
+
+				// english language pluralization
+				if svgrName[len(svgrName)-1:] == "s" {
+					// they made a mistake with "endpoints" and it's already plural
+					if !slices.Contains(whitelist, svgrName) {
+						svgrName = fmt.Sprintf("%ses", svgrName)
+					}
+				} else if svgrName[len(svgrName)-1:] == "y" {
+					svgrName = fmt.Sprintf("%sies", svgrName[:len(svgrName)-1])
+				} else if svgrName[len(svgrName)-1:] == "x" {
+					svgrName = fmt.Sprintf("%ses", svgrName)
+				} else {
+					svgrName = fmt.Sprintf("%ss", svgrName)
+				}
+
+				process := true
+
+				// skip our whitelisted resources
+				switch group {
+				case "storagemigration":
+					process = false
+				case "apiregistration":
+					process = false
+				}
+
+				// yet another whitelist
+				switch {
+				case group == "resource" && gvk.Version == "v1alpha1":
+					process = false
+				}
+
+				if !process {
+					continue
+				}
+
+				// only process if we haven't already
+				alreadyProcessed := slices.ContainsFunc(*resources, func(r Resource) bool {
+					return r.Kind == gvk.Kind && r.Group == group &&
+						r.Version == gvk.Version
+				})
+
+				if alreadyProcessed {
+					continue
+				}
+
+				// add to resources
+				*resources = append(*resources, Resource{
+					Group:       group,
+					Version:     gvk.Version,
+					Kind:        gvk.Kind,
+					Description: strings.ReplaceAll(html.EscapeString(def.Description), "`", "'"),
+					ImportName:  importName,
+					ImportPath:  importPath,
+					SGVRName:    svgrName,
+				})
+
+				// add to packages if not already there
+				if !slices.ContainsFunc(*packages, func(p Package) bool {
+					return p.ImportPath == importPath
+				}) {
+					*packages = append(*packages, Package{
+						ImportName: importName,
+						ImportPath: importPath,
+					})
 				}
 			}
 		}
 	}
+}
+
+func GenerateRegister(resources []Resource, packages []Package) {
+	// Sort the entries
+	sort.SliceStable(resources, func(i, j int) bool {
+		return resources[i].Kind < resources[j].Kind // Descending kind
+	})
 
 	// Sort the entries
-	sort.SliceStable(entries, func(i, j int) bool {
-		return entries[i].Kind < entries[j].Kind // Descending kind
+	sort.SliceStable(resources, func(i, j int) bool {
+		return resources[i].Version > resources[j].Version // Ascending version
 	})
 
-	// Sort the entries
-	sort.SliceStable(entries, func(i, j int) bool {
-		return entries[i].Version > entries[j].Version // Ascending version
+	sort.SliceStable(resources, func(i, j int) bool {
+		return resources[i].Group < resources[j].Group // Descending type
 	})
 
-	sort.SliceStable(entries, func(i, j int) bool {
-		return entries[i].Group < entries[j].Group // Descending type
+	sort.SliceStable(packages, func(i, j int) bool {
+		return packages[i].ImportName < packages[j].ImportName // Descending type
 	})
 
-	// empty the resourcers directory
-	// if it exists
-	if _, err := os.Stat("resourcers"); err == nil {
-		os.RemoveAll("resourcers")
-	}
-
-	// Create the resourcers directory
-	if err := os.MkdirAll("resourcers", 0755); err != nil {
-		log.Fatalf("Failed to create resourcers directory: %v", err)
-	}
-
-	// Parse the template for our resourcer files
-	tmpl, err := template.ParseFiles("templates/resource_gen.go.tmpl")
+	writepath, err := filepath.Abs("../pkg/plugin/resource/register_gen.go")
 	if err != nil {
 		panic(err)
 	}
 
-	var wg sync.WaitGroup
-
-	var managerResources []ManagerResource
-	var managerPackages []ManagerPackage
-
-	// Generate each resource on a goroutine to speed up the process
-	for _, entry := range entries {
-		// if the group version is dot separated, get the first part
-		if len(entry.Group) > 0 {
-			// check for out of bounds first
-			if idx := strings.Index(entry.Group, "."); idx > 0 {
-				entry.Group = entry.Group[:idx]
-			}
-		}
-
-		managerResources = append(managerResources, ManagerResource{
-			PackageName:  fmt.Sprintf("%s%s", entry.Group, entry.Version),
-			ResourceName: entry.Kind,
-			Version:      entry.Version,
-		})
-
-		managerPackages = append(managerPackages, ManagerPackage{
-			PackageName: fmt.Sprintf("%s%s", entry.Group, entry.Version),
-			ImportPath:  fmt.Sprintf("%s/%s", entry.Group, entry.Version),
-		})
-
-		wg.Add(1)
-		go func(gvk GroupVersionKind) {
-			defer wg.Done()
-			GenerateResource(gvk, tmpl)
-		}(entry)
+	// Parse the template for our resourcer files
+	tmpl, err := template.ParseFiles("templates/register_gen.go.tmpl")
+	if err != nil {
+		panic(err)
 	}
 
-	wg.Wait()
-
-	GenerateResourceManager(managerResources, managerPackages)
-
-	// write out results to the output file
-	if _, err := os.Stat("definitions.txt"); err == nil {
-		os.Remove("definitions.txt")
+	if _, err := os.Stat(writepath); err == nil {
+		os.Remove(writepath)
 	}
 
-	outputFile, err := os.Create("definitions.txt")
+	outputFile, err := os.Create(writepath)
 	if err != nil {
 		log.Fatalf("Failed to create output file: %v", err)
 	}
 	defer outputFile.Close()
 
-	for _, entry := range entries {
-		line := fmt.Sprintf("%s\t%s\t%s\n", entry.Group, entry.Version, entry.Kind)
-		_, err := outputFile.WriteString(line)
-		if err != nil {
-			log.Fatalf("Failed to write to output file: %v", err)
-		}
+	if err := tmpl.Execute(outputFile, &TemplateData{
+		Resources: resources,
+		Packages:  packages,
+	}); err != nil {
+		log.Fatalf("Failed to execute template: %v", err)
 	}
 
 	log.Println("Processing and sorting complete.")
-}
-
-func GenerateResource(gvk GroupVersionKind, template *template.Template) {
-	resourceDir := fmt.Sprintf("resourcers/%s/%s", gvk.Group, gvk.Version)
-
-	// Create the resource directory
-	if err := os.MkdirAll(resourceDir, 0755); err != nil {
-		log.Fatalf("Failed to create resource directory: %v", err)
-	}
-
-	// convert camelcase to snakecase
-	generatedFile, err := os.Create(fmt.Sprintf("%s/%s.go", resourceDir, strings.ToLower(gvk.Kind)))
-	if err != nil {
-		log.Fatalf("Failed to create generated file: %v", err)
-	}
-	defer generatedFile.Close()
-
-	// Create the template data
-	data := TemplateData{
-		PackageName:  fmt.Sprintf("%s%s", gvk.Group, gvk.Version),
-		ImportPath:   fmt.Sprintf("%s/%s", gvk.Group, gvk.Version),
-		ResourceName: gvk.Kind,
-		SGVRName:     strings.ToLower(fmt.Sprintf("%s%s", gvk.Kind, "s")),
-	}
-
-	// Execute the template
-	// and write the result to the generated file
-	// using the data
-	if err := template.Execute(generatedFile, data); err != nil {
-		log.Fatalf("Failed to execute template: %v", err)
-	}
-
-	// Log the resource generation
-	log.Printf("Generated resource: %s/%s/%s", gvk.Group, gvk.Version, gvk.Kind)
-}
-
-func GenerateResourceManager(resources []ManagerResource, packages []ManagerPackage) {
-	// create and dedup the imports
-	var dedupedPackages []ManagerPackage
-
-	for _, entry := range packages {
-		if !slices.ContainsFunc(dedupedPackages, func(p ManagerPackage) bool {
-			return p.ImportPath == entry.ImportPath
-		}) {
-			dedupedPackages = append(dedupedPackages, entry)
-		}
-	}
-
-	data := ResourceManagerTemplateData{
-		Packages:  dedupedPackages,
-		Resources: resources,
-	}
-
-	// write out the resourcer file
-	managertmpl, err := template.ParseFiles("templates/resource_manager_gen.go.tmpl")
-	if err != nil {
-		panic(err)
-	}
-
-	// delete the file if it exists
-	if _, err := os.Stat("resourcers/resource_manager_gen.go"); err == nil {
-		os.Remove("resourcers/resource_manager_gen.go")
-	}
-
-	// convert camelcase to snakecase
-	generatedFile, err := os.Create("resourcers/resource_manager_gen.go")
-	if err != nil {
-		log.Fatalf("Failed to create generated file: %v", err)
-	}
-	defer generatedFile.Close()
-
-	// Execute the template
-	// and write the result to the generated file
-	// using the data
-	if err := managertmpl.Execute(generatedFile, data); err != nil {
-		log.Fatalf("Failed to execute template: %v", err)
-	}
-
-	// Log the resource generation
-	log.Printf("Generated resource manager")
 }

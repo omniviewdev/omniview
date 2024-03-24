@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/hashicorp/go-plugin"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
@@ -23,7 +24,8 @@ import (
 )
 
 const (
-	MaxPluginSize = 1024 * 1024 * 1024 // 1GB
+	MaxPluginSize             = 1024 * 1024 * 1024 // 1GB
+	PluginInstallStartedEvent = "plugin/install_started"
 )
 
 // Manager manages the lifecycle and registration of plugins. It is responsible
@@ -33,6 +35,13 @@ type Manager interface {
 	// Initialize discovers and loads all plugins that are currently installed in the plugin directory,
 	// and initializes them with the appropriate controllers.
 	Initialize(ctx context.Context) error
+
+	// Run starts until the the passed in context is cancelled
+	Run(ctx context.Context)
+
+	// InstallInDevMode installs a plugin from the given path, and sets up a watcher to recompile and reload the plugin
+	// when changes are detected. Will prompt the user for a path.
+	InstallInDevMode() (*config.PluginMeta, error)
 
 	// InstallFromPathPrompt installs a plugin from the given path, prompting the user for the location
 	// with a window dialog.
@@ -44,7 +53,7 @@ type Manager interface {
 
 	// LoadPlugin loads a plugin at the given path. It will validate the plugin
 	// and then load it into the manager.
-	LoadPlugin(id string) (types.Plugin, error)
+	LoadPlugin(id string, opts *LoadPluginOptions) (types.Plugin, error)
 
 	// ReloadPlugin reloads a plugin at the given path. It will validate the plugin
 	// and then load it into the manager.
@@ -72,6 +81,14 @@ func NewManager(
 	resourceController resource.Controller,
 	settingsController settings.Controller,
 ) Manager {
+	l := logger.Named("PluginManager")
+
+	// create new watcher.
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		l.Errorf("error creating new dev mode watcher: %s", err)
+	}
+
 	return &pluginManager{
 		logger:  logger,
 		plugins: make(map[string]types.Plugin),
@@ -93,6 +110,8 @@ func NewManager(
 			types.ReporterPlugin:   nil, // connless
 			types.SettingsPlugin:   nil, // connless
 		},
+		watcher:      watcher,
+		watchTargets: make(map[string][]string),
 	}
 }
 
@@ -103,6 +122,17 @@ type pluginManager struct {
 	plugins             map[string]types.Plugin
 	connlessControllers map[types.PluginType]plugintypes.Controller
 	connfullControllers map[types.PluginType]plugintypes.ConnectedController
+	watcher             *fsnotify.Watcher
+	watchTargets        map[string][]string
+}
+
+// Run starts until the the passed in context is cancelled.
+func (pm *pluginManager) Run(ctx context.Context) {
+	if pm.ctx == nil {
+		pm.ctx = ctx
+	}
+
+	go pm.runWatcher()
 }
 
 func (pm *pluginManager) Initialize(ctx context.Context) error {
@@ -123,13 +153,47 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// load each plugin
 	for _, file := range files {
 		if file.IsDir() {
-			if _, err = pm.LoadPlugin(file.Name()); err != nil {
+			if _, err = pm.LoadPlugin(file.Name(), nil); err != nil {
 				return fmt.Errorf("error loading plugin: %w", err)
 			}
 		}
 	}
 
 	return nil
+}
+
+// markPluginDevMode marks a plugin as being in dev mode, and adds the path to the watch list.
+func (pm *pluginManager) markPluginDevMode(plugin *types.Plugin, path string) {
+	plugin.DevMode = true
+	plugin.DevPath = path
+	pm.AddTarget(path)
+}
+
+func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
+	// have to pass wails context
+	path, err := runtime.OpenDirectoryDialog(pm.ctx, runtime.OpenDialogOptions{})
+	if err != nil {
+		pm.logger.Error(err)
+		return nil, err
+	}
+	if path == "" {
+		return nil, errors.New("cancelled")
+	}
+
+	// perform initial install
+	var metadata *config.PluginMeta
+	metadata, err = pm.installAndWatchDevPlugin(path)
+	if err != nil {
+		pm.logger.Error(err)
+		return nil, err
+	}
+	_, err = pm.LoadPlugin(metadata.ID, &LoadPluginOptions{DevMode: true, DevModePath: path})
+	if err != nil {
+		return nil, fmt.Errorf("error loading plugin: %w", err)
+	}
+	// add to watchers
+	pm.AddTarget(path)
+	return metadata, nil
 }
 
 // InstallFromPathPrompt installs a plugin from the given path, prompting the user for the location
@@ -167,6 +231,9 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 		return nil, fmt.Errorf("error parsing plugin metadata: %w", err)
 	}
 
+	// signal to UI the install has started
+	runtime.EventsEmit(pm.ctx, PluginInstallStartedEvent, metadata)
+
 	// ensure the plugin directory exists
 	location := getPluginLocation(metadata.ID)
 	if err = os.MkdirAll(location, 0755); err != nil {
@@ -178,7 +245,7 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 	}
 
 	// all set, load it in
-	_, err = pm.LoadPlugin(metadata.ID)
+	_, err = pm.LoadPlugin(metadata.ID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error loading plugin: %w", err)
 	}
@@ -194,10 +261,15 @@ func (pm *pluginManager) ReloadPlugin(id string) (types.Plugin, error) {
 	if err := pm.UnloadPlugin(id); err != nil {
 		return types.Plugin{}, fmt.Errorf("error unloading plugin during reload: %w", err)
 	}
-	return pm.LoadPlugin(id)
+	return pm.LoadPlugin(id, nil)
 }
 
-func (pm *pluginManager) LoadPlugin(id string) (types.Plugin, error) {
+type LoadPluginOptions struct {
+	DevMode     bool
+	DevModePath string
+}
+
+func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.Plugin, error) {
 	if _, ok := pm.plugins[id]; ok {
 		return types.Plugin{}, fmt.Errorf("plugin with id '%s' already loaded", id)
 	}
@@ -264,6 +336,11 @@ func (pm *pluginManager) LoadPlugin(id string) (types.Plugin, error) {
 		PluginClient: pluginClient,
 	}
 
+	// mark as dev mode if needed
+	if opts != nil && opts.DevMode {
+		pm.markPluginDevMode(&newPlugin, opts.DevModePath)
+	}
+
 	pm.plugins[id] = newPlugin
 
 	// init the controllers
@@ -287,16 +364,18 @@ func (pm *pluginManager) LoadPlugin(id string) (types.Plugin, error) {
 
 // UninstallPlugin uninstalls a plugin from the manager, and removes it from the filesystem.
 func (pm *pluginManager) UninstallPlugin(id string) (types.Plugin, error) {
+	l := pm.logger.With("name", "UninstallPlugin", "pluginID", id)
+
 	plugin, ok := pm.plugins[id]
 	if !ok {
 		err := fmt.Errorf("plugin with id '%s' is not currently loaded", id)
-		pm.logger.Error(err)
+		l.Error(err)
 		return types.Plugin{}, err
 	}
 
 	if err := pm.UnloadPlugin(id); err != nil {
 		err = fmt.Errorf("error unloading plugin during uninstall: %w", err)
-		pm.logger.Error(err)
+		l.Error(err)
 		return types.Plugin{}, err
 	}
 
@@ -304,7 +383,7 @@ func (pm *pluginManager) UninstallPlugin(id string) (types.Plugin, error) {
 	location := getPluginLocation(id)
 	if err := os.RemoveAll(location); err != nil {
 		err = fmt.Errorf("error removing plugin from filesystem: %w", err)
-		pm.logger.Error(err)
+		l.Error(err)
 		return types.Plugin{}, err
 	}
 	return plugin, nil
@@ -335,10 +414,12 @@ func (pm *pluginManager) UnloadPlugin(id string) error {
 
 // GetPlugin returns the plugin with the given plugin ID.
 func (pm *pluginManager) GetPlugin(id string) (types.Plugin, error) {
+	l := pm.logger.With("name", "GetPlugin", "pluginID", id)
+
 	plugin, ok := pm.plugins[id]
 	if !ok {
 		err := fmt.Errorf("plugin not found: %s", id)
-		pm.logger.Error(err)
+		l.Error(err)
 		return types.Plugin{}, err
 	}
 	return plugin, nil
@@ -355,10 +436,12 @@ func (pm *pluginManager) ListPlugins() []types.Plugin {
 
 // GetPluginConfig returns the plugin configuration for the given plugin ID.
 func (pm *pluginManager) GetPluginMeta(id string) (config.PluginMeta, error) {
+	l := pm.logger.With("name", "GetPluginMeta", "pluginID", id)
+
 	plugin, ok := pm.plugins[id]
 	if !ok {
 		err := fmt.Errorf("plugin not found: %s", id)
-		pm.logger.Error(err)
+		l.Error(err)
 		return config.PluginMeta{}, err
 	}
 	return plugin.Metadata, nil

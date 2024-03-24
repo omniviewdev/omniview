@@ -1,6 +1,6 @@
-import React, { FC } from 'react';
+import React, { type FC } from 'react';
 
-// material-ui
+// Material-ui
 import Box from '@mui/joy/Box';
 import Button from '@mui/joy/Button';
 import Chip from '@mui/joy/Chip';
@@ -11,42 +11,44 @@ import Tab, { tabClasses } from '@mui/joy/Tab';
 import { Avatar, Stack, Typography } from '@mui/joy';
 import { InstallDesktop } from '@mui/icons-material';
 
-// third party
+// Third party
 import MarkdownPreview from '@uiw/react-markdown-preview';
 import PluginChangelog from './sections/PluginChangelog';
 
 type Props = {
   plugin: any;
-}
+};
 
 const PluginDetails: FC<Props> = ({ plugin }) => {
-  const [_readme, setReadme] = React.useState('')
+  const [_readme, setReadme] = React.useState('');
 
   React.useEffect(() => {
-    setReadme('')
+    setReadme('');
     if (plugin.readme) {
       fetch(plugin.readme)
-        .then((response) => response.text())
-        .then((text) => setReadme(text))
+        .then(async response => response.text())
+        .then(text => {
+          setReadme(text);
+        });
     }
-  }, [plugin])
+  }, [plugin]);
 
   return (
-    <Stack direction="column" p={6} gap={3} sx={{ maxHeight: 'calc(100vh - 60px)' }}>
-      <Stack direction="row" spacing={3} width={'100%'} alignItems={'center'} >
+    <Stack direction='column' p={6} gap={3} sx={{ maxHeight: 'calc(100vh - 60px)' }}>
+      <Stack direction='row' spacing={3} width={'100%'} alignItems={'center'} >
         <Avatar sx={{ height: 72, width: 72, borderRadius: 'md' }} variant='plain' src={plugin.icon} />
-        <Stack direction="column" spacing={0.5} justifyContent={'center'} width={'100%'} >
-          <Stack direction="row" spacing={2} alignItems="center" >
-            <Typography level="h3">{plugin.name}</Typography>
-            <Chip size="sm" sx={{ borderRadius: 'sm', maxHeight: 20 }} color="primary">{plugin.version}</Chip>
+        <Stack direction='column' spacing={0.5} justifyContent={'center'} width={'100%'} >
+          <Stack direction='row' spacing={2} alignItems='center' >
+            <Typography level='h3'>{plugin.name}</Typography>
+            <Chip size='sm' sx={{ borderRadius: 'sm', maxHeight: 20 }} color='primary'>{plugin.version}</Chip>
           </Stack>
-          <Typography level="body-xs">{plugin.description}</Typography>
+          <Typography level='body-xs'>{plugin.description}</Typography>
         </Stack>
         <Box height={'100%'} >
-          <Button size="lg" variant="outlined" color="primary" startDecorator={<InstallDesktop />}>Install</Button>
+          <Button size='lg' variant='outlined' color='primary' startDecorator={<InstallDesktop />}>Install</Button>
         </Box>
       </Stack>
-      <Tabs aria-label="tabs" defaultValue={0} sx={{ bgcolor: 'transparent' }}>
+      <Tabs aria-label='tabs' defaultValue={0} sx={{ bgcolor: 'transparent' }}>
         <TabList
           disableUnderline
           variant='outlined'
@@ -71,18 +73,18 @@ const PluginDetails: FC<Props> = ({ plugin }) => {
           <Box overflow={'auto'} p={1}>
             {plugin.readme
               ? _readme && <MarkdownPreview source={_readme} style={{ backgroundColor: 'transparent', overflow: 'auto', maxHeight: 'calc(100vh - 350px)' }} />
-              : <Typography level="body-xs">No details available</Typography>
+              : <Typography level='body-xs'>No details available</Typography>
             }
           </Box>
         </TabPanel>
         <TabPanel value={1}>
           <Box overflow={'auto'} p={1}>
-            <Typography level="body-xs">No content available</Typography>
+            <Typography level='body-xs'>No content available</Typography>
           </Box>
         </TabPanel>
         <TabPanel value={2}>
           <Box overflow={'auto'} p={1}>
-            <Typography level="body-xs">No reviews available</Typography>
+            <Typography level='body-xs'>No reviews available</Typography>
           </Box>
         </TabPanel>
         <TabPanel value={3}>
@@ -93,6 +95,6 @@ const PluginDetails: FC<Props> = ({ plugin }) => {
       </Tabs>
     </Stack >
   );
-}
+};
 
 export default PluginDetails;

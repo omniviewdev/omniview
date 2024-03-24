@@ -4,6 +4,7 @@ go 1.21.3
 
 require (
 	github.com/creack/pty v1.1.21
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/glebarez/sqlite v1.10.0
 	github.com/google/uuid v1.4.0
 	github.com/hashicorp/go-plugin v1.6.0
@@ -12,6 +13,7 @@ require (
 	github.com/vrischmann/userdir v0.0.0-20151206171402-20f291cebd68
 	github.com/wailsapp/wails/v2 v2.8.0
 	go.uber.org/zap v1.27.0
+	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
 	gopkg.in/yaml.v2 v2.4.0
 	gorm.io/gorm v1.25.7
 	k8s.io/api v0.29.2
@@ -72,7 +74,6 @@ require (
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.18.0 // indirect
-	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
 	golang.org/x/net v0.20.0 // indirect
 	golang.org/x/oauth2 v0.13.0 // indirect
 	golang.org/x/sys v0.16.0 // indirect

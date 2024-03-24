@@ -1,4 +1,4 @@
-// import React from 'react'
+// Import React from 'react'
 //
 // // state
 // import { useDispatch } from 'react-redux';

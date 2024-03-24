@@ -1,14 +1,13 @@
-package plugin
+package resource
 
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/utils"
 )
 
 const (
@@ -19,13 +18,8 @@ const (
 // LoadConnectionsFunc loads the available connections for the plugin.
 func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
 	// Get the kubeconfigs from the settings provider
-	val, settingErr := ctx.PluginConfig.GetSettingValue("kubeconfigs")
-	if settingErr != nil {
-		return nil, settingErr
-	}
-
-	kubeconfigs, ok := val.([]string)
-	if !ok {
+	kubeconfigs, settingsErr := ctx.PluginConfig.GetStringSlice("kubeconfigs")
+	if settingsErr != nil {
 		return nil, errors.New("failed to get kubeconfigs from settings")
 	}
 
@@ -34,7 +28,8 @@ func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
 	for _, kubeconfigPath := range kubeconfigs {
 		kubeconfigConnections, err := connectionsFromKubeconfig(kubeconfigPath)
 		if err != nil {
-			return nil, err
+			// continue for now
+			continue
 		}
 		connections = append(connections, kubeconfigConnections...)
 	}
@@ -42,34 +37,9 @@ func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
 	return connections, nil
 }
 
-// expandTilde takes a path and if it starts with a ~, it will replace it with the home directory.
-func expandTilde(path string) (string, error) {
-	if path[:2] == "~/" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("failed to get home directory: %w", err)
-		}
-		path = filepath.Join(home, path[2:])
-	}
-	return path, nil
-}
-
-// deexpandTilde takes a path and if it is in the home directory, it will replace it with a ~.
-func deexpandTilde(path string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		// fallback to the original path
-		return path
-	}
-	if home != "" {
-		path = filepath.Join("~", path[len(home):])
-	}
-	return path
-}
-
 func connectionsFromKubeconfig(kubeconfigPath string) ([]types.Connection, error) {
 	// if the path has a ~ in it, expand it to the home directory
-	kubeconfigPath, err := expandTilde(kubeconfigPath)
+	kubeconfigPath, err := utils.ExpandTilde(kubeconfigPath)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +59,7 @@ func connectionsFromKubeconfig(kubeconfigPath string) ([]types.Connection, error
 			Description: "",
 			Avatar:      "",
 			Labels: map[string]interface{}{
-				"kubeconfig": deexpandTilde(kubeconfigPath),
+				"kubeconfig": utils.DeexpandTilde(kubeconfigPath),
 				"cluster":    context.Cluster,
 				"user":       context.AuthInfo,
 			},

@@ -1,6 +1,6 @@
 import React from 'react';
 
-// material-ui
+// Material-ui
 import { useTheme } from '@mui/joy/styles';
 import Button from '@mui/joy/Button';
 import Box from '@mui/joy/Box';
@@ -10,58 +10,64 @@ import Stack from '@mui/joy/Stack';
 import Sheet from '@mui/joy/Sheet';
 import useMediaQuery from '@mui/material/useMediaQuery';
 
-// project imports
+// Project imports
 import Icon from '@/components/icons/Icon';
 
-// types
+// Types
 import { useCategorySettings } from '@/hooks/settings/useCategorySettings';
 import SettingsEntries from './SettingsEntries';
 import { Section } from '.';
 
 type Props = {
   id: string;
-}
+};
 
 /**
  * View and modify settings for a given namespace and section.
  */
 const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
   const theme = useTheme();
-  const [draftValues, setDraftValues] = React.useState<Record<string, any>>({})
+  const [draftValues, setDraftValues] = React.useState<Record<string, any>>({});
   const isNormalScreenSize = useMediaQuery(theme.breakpoints.up('lg'));
 
-  const { settings, setSettings } = useCategorySettings({ category: categoryID })
+  const { settings, setSettings } = useCategorySettings({ category: categoryID });
 
   /**
    * Commit the drafted settings into the settings store.
    */
   const commitDraftValues = () => {
-    const values = Object.entries(draftValues).reduce((acc, [id, value]) => {
+    const values = Object.entries(draftValues).reduce<Record<string, any>>((acc, [id, value]) => {
       if (value !== undefined) {
-        acc[id] = value
+        acc[id] = value;
       }
-      return acc
-    }, {} as Record<string, any>)
 
-    console.log('committing', values)
-    setSettings(values)
-    clearDraftValues()
-  }
+      return acc;
+    }, {});
+
+    console.log('committing', values);
+    setSettings(values);
+    clearDraftValues();
+  };
 
   /**
   * Clear the drafted settings.
   */
   const clearDraftValues = () => {
-    setDraftValues({})
+    setDraftValues({});
+  };
+
+  if (settings.isLoading) {
+    return null;
   }
 
-  if (settings.isLoading) return null
-  if (settings.isError || !settings.data) return null
+  if (settings.isError || !settings.data) {
+    return null;
+  }
 
   return (
     <Stack
       direction={'column'}
-      // justifyContent={'space-between'}
+      // JustifyContent={'space-between'}
       gap={2}
       sx={{
         width: '100%',
@@ -99,7 +105,7 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
               lg: 'center',
             },
             borderRadius: 12,
-            width: '100%'
+            width: '100%',
           }}
         >
           <Typography level={isNormalScreenSize ? 'title-lg' : 'title-md'}>{settings.data.label}</Typography>
@@ -149,7 +155,7 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
         </Grid>
       </Grid>
     </Stack>
-  )
-}
+  );
+};
 
 export default CoreSettingsPage;

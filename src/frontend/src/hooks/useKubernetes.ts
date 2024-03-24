@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback, useEffect, useMemo, useState,
+} from 'react';
 import { produce } from 'immer';
 
-// types
+// Types
 import { EventsOff, EventsOn } from '@runtime/runtime';
-import { resources } from '@api/models';
-import { KubernetesResource } from '@/types/kubernetes';
+import { type resources } from '@api/models';
+import { type KubernetesResource } from '@/types/kubernetes';
 
-
-// core/v1
-import { Pod, Namespace, Node, Secret, Service, ConfigMap, PersistentVolume, PersistentVolumeClaim, Endpoints, ServiceAccount } from 'kubernetes-types/core/v1';
+// Core/v1
+import {
+  type Pod, type Namespace, type Node, type Secret, type Service, type ConfigMap, type PersistentVolume, type PersistentVolumeClaim, type Endpoints, type ServiceAccount,
+} from 'kubernetes-types/core/v1';
 import { List as ListPods } from '@api/resources/PodService';
 import { List as ListNamespaces } from '@api/resources/NamespaceService';
 import { List as ListNodes } from '@api/resources/NodeService';
@@ -20,33 +23,37 @@ import { List as ListPersistentVolumeClaims } from '@api/resources/PersistentVol
 import { List as ListEndpoints } from '@api/resources/EndpointsService';
 import { List as ListServiceAccounts } from '@api/resources/ServiceAccountService';
 
-// apps/v1
-import { Deployment, ReplicaSet, StatefulSet, DaemonSet } from 'kubernetes-types/apps/v1';
+// Apps/v1
+import {
+  type Deployment, type ReplicaSet, type StatefulSet, type DaemonSet,
+} from 'kubernetes-types/apps/v1';
 import { List as ListDeployments } from '@api/appsv1/DeploymentService';
 import { List as ListReplicaSets } from '@api/appsv1/ReplicaSetService';
 import { List as ListStatefulSets } from '@api/appsv1/StatefulSetService';
 import { List as ListDaemonSets } from '@api/appsv1/DaemonSetService';
 
-// batch/v1
-import { Job, CronJob } from 'kubernetes-types/batch/v1';
+// Batch/v1
+import { type Job, type CronJob } from 'kubernetes-types/batch/v1';
 import { List as ListJobs } from '@api/batchv1/JobService';
 import { List as ListCronJobs } from '@api/batchv1/CronJobService';
 
-// networking.k8s.io/v1
-import { Ingress, IngressClass, NetworkPolicy } from 'kubernetes-types/networking/v1';
+// Networking.k8s.io/v1
+import { type Ingress, type IngressClass, type NetworkPolicy } from 'kubernetes-types/networking/v1';
 import { List as ListIngresses } from '@api/networkingv1/IngressService';
 import { List as ListIngressClasses } from '@api/networkingv1/IngressClassService';
 import { List as ListNetworkPolicies } from '@api/networkingv1/NetworkPolicyService';
 
-// rbac.authorization.k8s.io/v1
-import { Role, RoleBinding, ClusterRole, ClusterRoleBinding } from 'kubernetes-types/rbac/v1';
+// Rbac.authorization.k8s.io/v1
+import {
+  type Role, type RoleBinding, type ClusterRole, type ClusterRoleBinding,
+} from 'kubernetes-types/rbac/v1';
 import { List as ListRoles } from '@api/rbacv1/RoleService';
 import { List as ListRoleBindings } from '@api/rbacv1/RoleBindingService';
 import { List as ListClusterRoles } from '@api/rbacv1/ClusterRoleService';
 import { List as ListClusterRoleBindings } from '@api/rbacv1/ClusterRoleBindingService';
 
-// storage.k8s.io/v1
-import { StorageClass, VolumeAttachment } from 'kubernetes-types/storage/v1';
+// Storage.k8s.io/v1
+import { type StorageClass, type VolumeAttachment } from 'kubernetes-types/storage/v1';
 import { List as ListStorageClasses } from '@api/storagev1/StorageClassService';
 import { List as ListVolumeAttachments } from '@api/storagev1/VolumeAttachmentService';
 
@@ -56,7 +63,7 @@ export type OrderOptions = {
   field: string;
   // The direction to order by
   direction: 'asc' | 'desc';
-}
+};
 
 export type Options = {
   // The clusters contexts to search in. for most cases, this will be a single cluster id, but for multi-cluster
@@ -70,7 +77,7 @@ export type Options = {
   labels?: Record<string, string>;
   // Order options
   order?: OrderOptions;
-}
+};
 
 export type UseKubernetesResult<T extends KubernetesResource> = {
   /** The resources that were fetched */
@@ -78,42 +85,41 @@ export type UseKubernetesResult<T extends KubernetesResource> = {
   /** Whether the resources are currently loading */
   loading: boolean;
   /** The error if one occurred */
-  error: Error | null;
-}
+  error: Error | undefined;
+};
 
 export type UpdateEvent<T extends KubernetesResource> = {
   oldObj: T;
   newObj: T;
-}
+};
 
 export type UseKubernetesParams = {
   lister: (arg1: resources.ListOptions) => Promise<any>;
   type: string;
   options?: Options;
-}
+};
 
 /**
-  * useKubernetes will fetch and subscribe to viewing and listing resources given a set of search parameters,
+  * UseKubernetes will fetch and subscribe to viewing and listing resources given a set of search parameters,
   * returning a loading state, error state and the resources data.
   */
 const useKubernetes = <T extends KubernetesResource>({ lister, type, options = {} }: UseKubernetesParams): UseKubernetesResult<T> => {
   let {
     clusters,
-    name = "",
+    name = '',
     namespaces = useMemo(() => [], []),
     labels = useMemo(() => ({}), []),
   } = options;
 
   const [resources, setResources] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
+  const [error, setError] = useState<Error | undefined>(undefined);
 
   /**
    * Handle adding new resources to the resource list
    */
   const onResourceAdd = useCallback((newResources: T[]) => {
-    console.log("Adding resources", newResources)
+    console.log('Adding resources', newResources);
     setResources(current => produce(current, (draft: T[]) => {
       draft.push(...newResources);
     }));
@@ -122,8 +128,8 @@ const useKubernetes = <T extends KubernetesResource>({ lister, type, options = {
   /**
    * Handle updating pods in the pods list
    */
-  const onResourceUpdate = useCallback((updateEvents: UpdateEvent<T>[]) => {
-    console.log("Updating resources", updateEvents)
+  const onResourceUpdate = useCallback((updateEvents: Array<UpdateEvent<T>>) => {
+    console.log('Updating resources', updateEvents);
     setResources(current => produce(current, (draft: T[]) => {
       updateEvents.forEach(({ oldObj, newObj }) => {
         const index = draft.findIndex(p => p.metadata?.uid === oldObj.metadata?.uid);
@@ -138,33 +144,34 @@ const useKubernetes = <T extends KubernetesResource>({ lister, type, options = {
    * Handle deleting pods from the pods list
    */
   const onResourceDelete = useCallback((deletedResources: T[]) => {
-    console.log("Deleting resources", deletedResources)
-    setResources(current => produce(current, (draft: T[]) => {
-      return draft.filter(p => !deletedResources.some(d => d.metadata?.uid === p.metadata?.uid));
-    }));
+    console.log('Deleting resources', deletedResources);
+    setResources(current => produce(current, (draft: T[]) => draft.filter(p => !deletedResources.some(d => d.metadata?.uid === p.metadata?.uid))));
   }, []);
 
   useEffect(() => {
     if (clusters === undefined) {
-
-      // handle the case where clusters is undefined and we don't want to fetch anything
+      // Handle the case where clusters is undefined and we don't want to fetch anything
       // this is likely a bug in the code if this happens, but we'll handle it gracefully
       // and not fetch anything
-      console.warn("No clusters were specified for fetching resources");
+      console.warn('No clusters were specified for fetching resources');
       return;
-    } else if (typeof clusters === "string") {
+    }
+
+    if (typeof clusters === 'string') {
       clusters = [clusters];
     }
 
     setLoading(true);
-    setError(null);
-    lister({ clusters, namespaces, name, labels })
-      .then((resources: { [context: string]: T[] }) => {
-        // for not, we'll just flatten until we know what we want to do here.
-        setResources(Object.values(resources).flat())
+    setError(undefined);
+    lister({
+      clusters, namespaces, name, labels,
+    })
+      .then((resources: Record<string, T[]>) => {
+        // For not, we'll just flatten until we know what we want to do here.
+        setResources(Object.values(resources).flat());
         setLoading(false);
       })
-      .catch((err) => {
+      .catch(err => {
         setError(err);
         setLoading(false);
       });
@@ -172,7 +179,7 @@ const useKubernetes = <T extends KubernetesResource>({ lister, type, options = {
 
   // *Only on mount*, we want subscribe to new resources, updates and deletes
   // and update the pods list accordingly
-  // 
+  //
   // TODO - eventually we want to have the ability for multiple subscribers for the same resource,
   // so that various pages can subscribe to filtered views of the same resource. for now this is fine
   // to get the core functionality working
@@ -183,6 +190,7 @@ const useKubernetes = <T extends KubernetesResource>({ lister, type, options = {
     if (clusters === undefined) {
       return;
     }
+
     for (const cluster of clusters) {
       EventsOn(`${cluster}::${type}::ADD`, onResourceAdd);
       EventsOn(`${cluster}::${type}::UPDATE`, onResourceUpdate);
@@ -193,51 +201,52 @@ const useKubernetes = <T extends KubernetesResource>({ lister, type, options = {
       if (clusters === undefined) {
         return;
       }
+
       for (const cluster of clusters) {
         EventsOff(`${cluster}::${type}::ADD`);
         EventsOff(`${cluster}::${type}::UPDATE`);
         EventsOff(`${cluster}::${type}::DELETE`);
       }
-    }
+    };
   }, []);
 
   return { resources, loading, error };
-}
+};
 
 // Export hooks for each resource type
 // core/v1
-export const usePods = (options?: Options): UseKubernetesResult<Pod> => useKubernetes({ lister: ListPods, type: "pods", options });
-export const useNamespaces = (options?: Options): UseKubernetesResult<Namespace> => useKubernetes({ lister: ListNamespaces, type: "namespaces", options });
-export const useNodes = (options?: Options): UseKubernetesResult<Node> => useKubernetes({ lister: ListNodes, type: "nodes", options });
-export const useSecrets = (options?: Options): UseKubernetesResult<Secret> => useKubernetes({ lister: ListSecrets, type: "secrets", options });
-export const useServices = (options?: Options): UseKubernetesResult<Service> => useKubernetes({ lister: ListServices, type: "services", options });
-export const useConfigMaps = (options?: Options): UseKubernetesResult<ConfigMap> => useKubernetes({ lister: ListConfigMaps, type: "configmaps", options });
-export const usePersistentVolumes = (options?: Options): UseKubernetesResult<PersistentVolume> => useKubernetes({ lister: ListPersistentVolumes, type: "persistentvolumes", options });
-export const usePersistentVolumeClaims = (options?: Options): UseKubernetesResult<PersistentVolumeClaim> => useKubernetes({ lister: ListPersistentVolumeClaims, type: "persistentvolumeclaims", options });
-export const useEndpoints = (options?: Options): UseKubernetesResult<Endpoints> => useKubernetes({ lister: ListEndpoints, type: "endpoints", options });
-export const useServiceAccounts = (options?: Options): UseKubernetesResult<ServiceAccount> => useKubernetes({ lister: ListServiceAccounts, type: "serviceaccounts", options });
+export const usePods = (options?: Options): UseKubernetesResult<Pod> => useKubernetes({ lister: ListPods, type: 'pods', options });
+export const useNamespaces = (options?: Options): UseKubernetesResult<Namespace> => useKubernetes({ lister: ListNamespaces, type: 'namespaces', options });
+export const useNodes = (options?: Options): UseKubernetesResult<Node> => useKubernetes({ lister: ListNodes, type: 'nodes', options });
+export const useSecrets = (options?: Options): UseKubernetesResult<Secret> => useKubernetes({ lister: ListSecrets, type: 'secrets', options });
+export const useServices = (options?: Options): UseKubernetesResult<Service> => useKubernetes({ lister: ListServices, type: 'services', options });
+export const useConfigMaps = (options?: Options): UseKubernetesResult<ConfigMap> => useKubernetes({ lister: ListConfigMaps, type: 'configmaps', options });
+export const usePersistentVolumes = (options?: Options): UseKubernetesResult<PersistentVolume> => useKubernetes({ lister: ListPersistentVolumes, type: 'persistentvolumes', options });
+export const usePersistentVolumeClaims = (options?: Options): UseKubernetesResult<PersistentVolumeClaim> => useKubernetes({ lister: ListPersistentVolumeClaims, type: 'persistentvolumeclaims', options });
+export const useEndpoints = (options?: Options): UseKubernetesResult<Endpoints> => useKubernetes({ lister: ListEndpoints, type: 'endpoints', options });
+export const useServiceAccounts = (options?: Options): UseKubernetesResult<ServiceAccount> => useKubernetes({ lister: ListServiceAccounts, type: 'serviceaccounts', options });
 
-// apps/v1
-export const useDeployments = (options?: Options): UseKubernetesResult<Deployment> => useKubernetes({ lister: ListDeployments, type: "deployments", options });
-export const useReplicaSets = (options?: Options): UseKubernetesResult<ReplicaSet> => useKubernetes({ lister: ListReplicaSets, type: "replicasets", options });
-export const useStatefulSets = (options?: Options): UseKubernetesResult<StatefulSet> => useKubernetes({ lister: ListStatefulSets, type: "statefulsets", options });
-export const useDaemonSets = (options?: Options): UseKubernetesResult<DaemonSet> => useKubernetes({ lister: ListDaemonSets, type: "daemonsets", options });
+// Apps/v1
+export const useDeployments = (options?: Options): UseKubernetesResult<Deployment> => useKubernetes({ lister: ListDeployments, type: 'deployments', options });
+export const useReplicaSets = (options?: Options): UseKubernetesResult<ReplicaSet> => useKubernetes({ lister: ListReplicaSets, type: 'replicasets', options });
+export const useStatefulSets = (options?: Options): UseKubernetesResult<StatefulSet> => useKubernetes({ lister: ListStatefulSets, type: 'statefulsets', options });
+export const useDaemonSets = (options?: Options): UseKubernetesResult<DaemonSet> => useKubernetes({ lister: ListDaemonSets, type: 'daemonsets', options });
 
-// batch/v1
-export const useJobs = (options?: Options): UseKubernetesResult<Job> => useKubernetes({ lister: ListJobs, type: "jobs", options });
-export const useCronJobs = (options?: Options): UseKubernetesResult<CronJob> => useKubernetes({ lister: ListCronJobs, type: "cronjobs", options });
+// Batch/v1
+export const useJobs = (options?: Options): UseKubernetesResult<Job> => useKubernetes({ lister: ListJobs, type: 'jobs', options });
+export const useCronJobs = (options?: Options): UseKubernetesResult<CronJob> => useKubernetes({ lister: ListCronJobs, type: 'cronjobs', options });
 
-// networking.k8s.io/v1
-export const useIngresses = (options?: Options): UseKubernetesResult<Ingress> => useKubernetes({ lister: ListIngresses, type: "ingresses", options });
-export const useIngressClasses = (options?: Options): UseKubernetesResult<IngressClass> => useKubernetes({ lister: ListIngressClasses, type: "ingressclasses", options });
-export const useNetworkPolicies = (options?: Options): UseKubernetesResult<NetworkPolicy> => useKubernetes({ lister: ListNetworkPolicies, type: "networkpolicies", options });
+// Networking.k8s.io/v1
+export const useIngresses = (options?: Options): UseKubernetesResult<Ingress> => useKubernetes({ lister: ListIngresses, type: 'ingresses', options });
+export const useIngressClasses = (options?: Options): UseKubernetesResult<IngressClass> => useKubernetes({ lister: ListIngressClasses, type: 'ingressclasses', options });
+export const useNetworkPolicies = (options?: Options): UseKubernetesResult<NetworkPolicy> => useKubernetes({ lister: ListNetworkPolicies, type: 'networkpolicies', options });
 
-// rbac.authorization.k8s.io/v1
-export const useRoles = (options?: Options): UseKubernetesResult<Role> => useKubernetes({ lister: ListRoles, type: "roles", options });
-export const useRoleBindings = (options?: Options): UseKubernetesResult<RoleBinding> => useKubernetes({ lister: ListRoleBindings, type: "rolebindings", options });
-export const useClusterRoles = (options?: Options): UseKubernetesResult<ClusterRole> => useKubernetes({ lister: ListClusterRoles, type: "clusterroles", options });
-export const useClusterRoleBindings = (options?: Options): UseKubernetesResult<ClusterRoleBinding> => useKubernetes({ lister: ListClusterRoleBindings, type: "clusterrolebindings", options });
+// Rbac.authorization.k8s.io/v1
+export const useRoles = (options?: Options): UseKubernetesResult<Role> => useKubernetes({ lister: ListRoles, type: 'roles', options });
+export const useRoleBindings = (options?: Options): UseKubernetesResult<RoleBinding> => useKubernetes({ lister: ListRoleBindings, type: 'rolebindings', options });
+export const useClusterRoles = (options?: Options): UseKubernetesResult<ClusterRole> => useKubernetes({ lister: ListClusterRoles, type: 'clusterroles', options });
+export const useClusterRoleBindings = (options?: Options): UseKubernetesResult<ClusterRoleBinding> => useKubernetes({ lister: ListClusterRoleBindings, type: 'clusterrolebindings', options });
 
-// storage.k8s.io/v1
-export const useStorageClasses = (options?: Options): UseKubernetesResult<StorageClass> => useKubernetes({ lister: ListStorageClasses, type: "storageclasses", options });
-export const useVolumeAttachments = (options?: Options): UseKubernetesResult<VolumeAttachment> => useKubernetes({ lister: ListVolumeAttachments, type: "volumeattachments", options });
+// Storage.k8s.io/v1
+export const useStorageClasses = (options?: Options): UseKubernetesResult<StorageClass> => useKubernetes({ lister: ListStorageClasses, type: 'storageclasses', options });
+export const useVolumeAttachments = (options?: Options): UseKubernetesResult<VolumeAttachment> => useKubernetes({ lister: ListVolumeAttachments, type: 'volumeattachments', options });

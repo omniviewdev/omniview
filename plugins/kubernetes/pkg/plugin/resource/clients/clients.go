@@ -1,8 +1,9 @@
-package resource
+package clients
 
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -39,6 +40,7 @@ var _ factories.ResourceClientFactory[ClientSet] = &KubernetesClientFactory{}
 func (f *KubernetesClientFactory) CreateClient(
 	ctx *pkgtypes.PluginContext,
 ) (*ClientSet, error) {
+	log.Printf("Connection: %v", ctx.Connection)
 	if ctx.Connection == nil {
 		return nil, errors.New("kubeconfig is required")
 	}
@@ -94,8 +96,13 @@ func (f *KubernetesClientFactory) CreateClient(
 // We don't need to refresh the client since we're using a new client for each namespace.
 func (f *KubernetesClientFactory) RefreshClient(
 	_ *pkgtypes.PluginContext,
-	_ *ClientSet,
+	client *ClientSet,
 ) error {
+	// dynamic informers will need to be reinited
+	client.DynamicInformerFactory = dynamicinformer.NewDynamicSharedInformerFactory(
+		client.DynamicClient,
+		DefaultResyncPeriod,
+	)
 	return nil
 }
 

@@ -48,8 +48,8 @@ export default extendTheme({
     },
   },
   fontFamily: {
-    display: "'Inter', var(--joy-fontFamily-fallback)",
-    body: "'Inter', var(--joy-fontFamily-fallback)",
+    display: '\'Inter\', var(--joy-fontFamily-fallback)',
+    body: '\'Inter\', var(--joy-fontFamily-fallback)',
   },
   components: {
     JoyInput: {

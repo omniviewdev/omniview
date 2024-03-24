@@ -1,26 +1,30 @@
-import React, { useState, useCallback, ReactNode, useMemo, memo } from 'react';
+import React, {
+  useState, useCallback, type ReactNode, useMemo, memo,
+} from 'react';
 
-// material-ui
+// Material-ui
 import Drawer from '@mui/joy/Drawer';
 import DialogTitle from '@mui/joy/DialogTitle';
 import DialogContent from '@mui/joy/DialogContent';
 import ModalClose from '@mui/joy/ModalClose';
 import Sheet from '@mui/joy/Sheet';
 
-// icons
-import { LuNetwork, LuServer, LuContainer, LuDatabase, LuCloudLightning, LuGroup, LuCpu, LuFileJson2, LuShield } from "react-icons/lu";
+// Icons
+import {
+  LuNetwork, LuServer, LuContainer, LuDatabase, LuCloudLightning, LuGroup, LuCpu, LuFileJson2, LuShield,
+} from 'react-icons/lu';
 
 // 3rd party
 import MonacoEditor from '@monaco-editor/react'; // Ensure this package is installed
-import { stringify } from 'yaml'
+import { stringify } from 'yaml';
 
-// context
-import RightDrawerContext, { RightDrawerContextType, DrawerContent } from '@/contexts/RightDrawerContext';
+// Context
+import RightDrawerContext, { type RightDrawerContextType, type DrawerContent } from '@/contexts/RightDrawerContext';
 import { Stack } from '@mui/joy';
 
-interface RightDrawerProviderProps {
+type RightDrawerProviderProps = {
   children: ReactNode;
-}
+};
 
 const GetResourceSpecIcon = (type: string) => {
   switch (type) {
@@ -61,20 +65,20 @@ const GetResourceSpecIcon = (type: string) => {
     default:
       return <React.Fragment />;
   }
-}
+};
 
 type ContentRendererProps = {
   type: string;
   content: DrawerContent;
-}
+};
 
 const ContentRenderer: React.FC<ContentRendererProps> = memo(({ type, content }) => {
   switch (type) {
     case 'spec':
       return (
         <MonacoEditor
-          defaultLanguage="yaml"
-          theme="vs-dark"
+          defaultLanguage='yaml'
+          theme='vs-dark'
           value={stringify(content, null, 2)}
           options={{
             readOnly: true,
@@ -118,11 +122,10 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
     // }, 300);
   }, []);
 
-
   const contextValue = useMemo(() => ({
     showResourceSpec,
     openDrawer,
-    closeDrawer
+    closeDrawer,
   }), [showResourceSpec, openDrawer, closeDrawer]);
 
   return (
@@ -131,17 +134,17 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
       <Drawer
         disableEnforceFocus
         disableScrollLock
-        size="lg"
+        size='lg'
         anchor='right'
-        variant="plain"
+        variant='plain'
         open={isOpen}
         onClose={closeDrawer}
-        // hideBackdrop
+        // HideBackdrop
         slotProps={{
           backdrop: {
             sx: {
               backgroundColor: 'transparent',
-              'WebkitBackdropFilter': 'blur(0px)',
+              WebkitBackdropFilter: 'blur(0px)',
             },
           },
           content: {
@@ -156,10 +159,10 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
         sx={{
           // This ensures the drawer is an overlay that does not push content
           position: 'fixed',
-          zIndex: (theme) => theme.zIndex.modal,
+          zIndex: theme => theme.zIndex.modal,
           // This makes the background content interactive
           '& .MuiBackdrop-root': {
-            // make it transparent
+            // Make it transparent
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
           },
         }}
@@ -177,7 +180,7 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
           }}
         >
           <DialogTitle >
-            <Stack direction="row" gap={1} alignItems={'center'}>
+            <Stack direction='row' gap={1} alignItems={'center'}>
               {titleIcon}{title}
             </Stack>
           </DialogTitle>

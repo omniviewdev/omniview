@@ -1,58 +1,75 @@
-import React from 'react'
+import React from 'react';
 
-// material-ui
-import Grid from '@mui/joy/Grid'
-import Typography from '@mui/joy/Typography'
-import Stack from '@mui/joy/Stack'
-import Button from '@mui/joy/Button'
+// Material-ui
+import Button from '@mui/joy/Button';
+import Grid from '@mui/joy/Grid';
+import Stack from '@mui/joy/Stack';
+import Typography from '@mui/joy/Typography';
 
-// components
-import InstalledPluginCard from './InstalledPluginCard'
+// Components
+import InstalledPluginCard from './InstalledPluginCard';
 
-// icons
-import { LuFile } from 'react-icons/lu'
+// Icons
+import { LuAtom, LuBox, LuGlobe } from 'react-icons/lu';
 
-// hooks
-import { usePluginManager } from '@/hooks/plugin/usePluginManager'
+// Hooks
+import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 
-type Props = {}
+type Props = Record<string, unknown>;
 
 /**
  * Show the currently installed plugins.
  */
 const InstalledPlugins: React.FC<Props> = () => {
-  const { plugins, promptInstallFromPath } = usePluginManager()
+  const { plugins, promptInstallFromPath, promptInstallDev } = usePluginManager();
 
   if (plugins.isLoading) {
-    return <div>Loading...</div>
+    return <div>Loading...</div>;
   }
+
   if (plugins.isError) {
-    return <div>Error: {plugins.error.message}</div>
+    return <div>Error: {plugins.error.message}</div>;
   }
 
   return (
     <Grid container spacing={4} p={4}>
       <Grid xs={12} pb={2}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent={'space-between'}>
-          <Typography level="h2">Installed Plugins</Typography>
-          <Button
-            variant="outlined"
-            color="primary"
-            startDecorator={<LuFile />}
-            onClick={() => promptInstallFromPath()}
-          >
-            Install From Location
-          </Button>
+        <Stack direction='row' spacing={2} alignItems='center' justifyContent={'space-between'}>
+          <Typography level='h2'>Installed Plugins</Typography>
+          <Stack direction='row' spacing={2}>
+            <Button
+              variant='soft'
+              color='primary'
+              startDecorator={<LuGlobe />}
+            >
+              Go to Plugin Marketplace
+            </Button>
+            <Button
+              variant='soft'
+              color='neutral'
+              startDecorator={<LuBox />}
+              onClick={async () => promptInstallFromPath()}
+            >
+              Install From Location
+            </Button>
+            <Button
+              variant='soft'
+              color='neutral'
+              startDecorator={<LuAtom />}
+              onClick={async () => promptInstallDev()}
+            >
+              Install From Location (Development Mode)
+            </Button>
+          </Stack>
         </Stack>
       </Grid>
-      {plugins.data?.map((plugin) => (
+      {plugins.data?.map(plugin => (
         <Grid key={plugin.id} xs={12} md={6} xl={4} >
           <InstalledPluginCard key={plugin.id} {...plugin} />
         </Grid>
       ))}
     </Grid>
-  )
+  );
+};
 
-}
-
-export default InstalledPlugins
+export default InstalledPlugins;

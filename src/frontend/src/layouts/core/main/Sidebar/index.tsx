@@ -1,20 +1,22 @@
 import { useLocation, Link } from 'react-router-dom';
 
-// material-ui
+// Material-ui
 import GlobalStyles from '@mui/joy/GlobalStyles';
 import List from '@mui/joy/List';
 import ListItem from '@mui/joy/ListItem';
 import Sheet from '@mui/joy/Sheet';
 import IconButton from '@mui/joy/IconButton';
 
-// icons
-import { LuBoxes, LuUnplug } from "react-icons/lu";
-import { PiGraphBold } from "react-icons/pi";
+// Icons
+import { LuBoxes, LuUnplug } from 'react-icons/lu';
+import { PiGraphBold } from 'react-icons/pi';
 import { useSettingsNamespace } from '@/hooks/useSettings';
 import Icon from '@/components/icons/Icon';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { Avatar } from '@mui/joy';
 
+// Project imports
+import { IsImage } from '@/utils/url';
 
 const sidebarItems = [
   {
@@ -33,13 +35,13 @@ const sidebarItems = [
 
 export default function CoreLayoutSidebar() {
   const { pathname } = useLocation();
-  const clouds = useSettingsNamespace('clouds')
-  const orchestrators = useSettingsNamespace('orchestrators')
-  const { plugins } = usePluginManager()
+  const clouds = useSettingsNamespace('clouds');
+  const orchestrators = useSettingsNamespace('orchestrators');
+  const { plugins } = usePluginManager();
 
   return (
     <Sheet
-      className="CoreLayoutSidebar"
+      className='CoreLayoutSidebar'
       sx={{
         position: {
           xs: 'fixed',
@@ -71,29 +73,29 @@ export default function CoreLayoutSidebar() {
         }}
       />
       {/* Cluster List */}
-      <List size="sm" sx={{ '--ListItem-radius': '6px', '--List-gap': '8px', '--ListItem-paddingY': '0px' }}>
-        {sidebarItems.map((item) => (
+      <List size='sm' sx={{ '--ListItem-radius': '6px', '--List-gap': '8px', '--ListItem-paddingY': '0px' }}>
+        {sidebarItems.map(item => (
           <ListItem key={item.name}>
             <Link to={`/${item.name}`}>
-              <IconButton variant={pathname.startsWith(`/${item.name}`) ? 'solid' : 'plain'} size="lg">
+              <IconButton variant={pathname.startsWith(`/${item.name}`) ? 'solid' : 'plain'} size='lg'>
                 <item.logo size={25} />
               </IconButton>
             </Link>
           </ListItem>
         ))}
-        {Object.values(clouds.sections).map((cloud) => (
+        {Object.values(clouds.sections).map(cloud => (
           <ListItem key={cloud.id}>
             <Link to={`/${cloud.id}`}>
-              <IconButton variant={pathname.startsWith(`/${cloud.id}`) ? 'solid' : 'plain'} size="lg">
+              <IconButton variant={pathname.startsWith(`/${cloud.id}`) ? 'solid' : 'plain'} size='lg'>
                 <Icon name={cloud.icon} size={25} />
               </IconButton>
             </Link>
           </ListItem>
         ))}
-        {Object.values(orchestrators.sections).map((orchestrator) => (
+        {Object.values(orchestrators.sections).map(orchestrator => (
           <ListItem key={orchestrator.id}>
             <Link to={`/${orchestrator.id}`}>
-              <IconButton variant={pathname.startsWith(`/${orchestrator.id}`) ? 'solid' : 'plain'} size="lg">
+              <IconButton variant={pathname.startsWith(`/${orchestrator.id}`) ? 'solid' : 'plain'} size='lg'>
                 <Icon name={orchestrator.icon} size={25} />
               </IconButton>
             </Link>
@@ -101,13 +103,16 @@ export default function CoreLayoutSidebar() {
         ))}
         {!plugins.isLoading && plugins.data?.map(({ id, metadata }) => (
           <ListItem key={id}>
-            <Link to={`/${id}`}>
-              <IconButton variant={pathname.startsWith(`/${id}`) ? 'solid' : 'plain'} size="lg">
-                {metadata?.icon.endsWith('.svg') || metadata?.icon.endsWith('.png') ? (
+            <Link to={`/plugin/${id}`}>
+              <IconButton variant={pathname.startsWith(`/plugin/${id}`) ? 'solid' : 'plain'} size='lg'>
+                {IsImage(metadata?.icon) ? (
                   <Avatar
-                    size="sm"
+                    size='sm'
                     src={metadata.icon}
                     variant='plain'
+                    sx={{
+                      borderRadius: 4, backgroundColor: 'transparent', objectFit: 'contain', border: 0,
+                    }}
                   />
                 ) : <Icon name={metadata?.icon || ''} size={44} />}
               </IconButton>

@@ -1,7 +1,7 @@
 import { redistributeSpace } from '@/utils/math';
-import { createSlice, nanoid } from '@reduxjs/toolkit'
-import type { PayloadAction } from '@reduxjs/toolkit'
-import type { Tab, ContainerState, ReorderActionPayload } from './types'
+import { createSlice, nanoid } from '@reduxjs/toolkit';
+import type { PayloadAction } from '@reduxjs/toolkit';
+import type { Tab, ContainerState, ReorderActionPayload } from './types';
 import { findTabIndex, handleAddColumn, handleRemoveRow } from './helpers';
 
 const initialState: ContainerState = {
@@ -14,7 +14,7 @@ const initialState: ContainerState = {
     rows: [window.innerHeight],
     columns: [window.innerWidth],
   },
-}
+};
 
 // Slice
 export const slice = createSlice({
@@ -30,12 +30,12 @@ export const slice = createSlice({
      * @param state The current state of the container.
      * @param action The action payload containing the cluster context, optional windowID, icon, and label.
      */
-    handleAddTab: (state, action: PayloadAction<{
-      cluster: string,
-      windowID?: string,
-      icon?: string | Blob
-      label?: string // Custom label
-    }>) => {
+    handleAddTab(state, action: PayloadAction<{
+      cluster: string;
+      windowID?: string;
+      icon?: string | Blob;
+      label?: string; // Custom label
+    }>) {
       const { cluster, windowID, icon, label } = action.payload;
 
       // Generate a unique ID for the new tab
@@ -70,7 +70,7 @@ export const slice = createSlice({
      * @param state The current state of the container.
      * @param action The action payload containing the ID of the tab to be removed.
      */
-    handleRemoveTab: (state, action: PayloadAction<string>) => {
+    handleRemoveTab(state, action: PayloadAction<string>) {
       const tabId = action.payload;
 
       // Attempt to find the tab in the state
@@ -98,20 +98,19 @@ export const slice = createSlice({
       }
     },
 
-
     /**
      * Reorders a tab in the tab list, moving it from its old position to a new position.
      * This is used to reflect changes in the tab order made by the user in the UI.
-     * 
+     *
      * @param state The current state of the container.
      * @param action The action payload containing the id of the tab to move, its old position, and new position.
      */
-    handleReorderTab: (state, action: PayloadAction<{ id: string, oldPosition: number, newPosition: number }>) => {
+    handleReorderTab(state, action: PayloadAction<{ id: string; oldPosition: number; newPosition: number }>) {
       const { id, oldPosition, newPosition } = action.payload;
 
       // Check if oldPosition or newPosition are out of bounds
       if (oldPosition < 0 || oldPosition >= state.tabs.length || newPosition < 0 || newPosition >= state.tabs.length) {
-        console.warn("Old position or new position is out of bounds.");
+        console.warn('Old position or new position is out of bounds.');
         return;
       }
 
@@ -138,7 +137,7 @@ export const slice = createSlice({
      * @param state The current state of the container.
      * @param action The action payload containing the IDs of the tabs to reorder and the strategy.
      */
-    handleReorderTabsByID: (state, action: PayloadAction<ReorderActionPayload>) => {
+    handleReorderTabsByID(state, action: PayloadAction<ReorderActionPayload>) {
       const { tabId1, tabId2, strategy } = action.payload;
 
       const index1 = findTabIndex(state.tabs, tabId1);
@@ -165,20 +164,21 @@ export const slice = createSlice({
     /**
      * Manually updates the layout state with the new column sizes. Useful when committing a drag handler
      * for resizing columns in the layout.
-     * 
+     *
      * @param state The current state of the container.
      * @param action The action payload containing an array of new sizes for the columns.
      */
-    handleResizeColumns: (state, action: PayloadAction<number[]>) => {
+    handleResizeColumns(state, action: PayloadAction<number[]>) {
       const newColumnSizes = action.payload;
 
       // Validate the new sizes to ensure they are not empty
       if (newColumnSizes.length !== state.layout.columns.length) {
-        console.warn("Column sizes array must match the number of columns in the layout.");
+        console.warn('Column sizes array must match the number of columns in the layout.');
         return;
       }
+
       if (newColumnSizes.some(size => size <= 0)) {
-        console.warn("Column sizes must be positive numbers.");
+        console.warn('Column sizes must be positive numbers.');
         return;
       }
 
@@ -189,46 +189,47 @@ export const slice = createSlice({
     /**
      * Manually updates the layout state with the new row sizes. Useful when committing a drag handler
      * for resizing rows in the layout.
-     * 
+     *
      * @param state The current state of the container.
      * @param action The action payload containing an array of new sizes for the rows.
      */
-    handleResizeRows: (state, action: PayloadAction<number[]>) => {
+    handleResizeRows(state, action: PayloadAction<number[]>) {
       const newRowSizes = action.payload;
 
       // Validate the new sizes to ensure they are not empty
       if (newRowSizes.length !== state.layout.rows.length) {
-        console.warn("Row sizes array must match the number of rows in the layout.");
+        console.warn('Row sizes array must match the number of rows in the layout.');
         return;
       }
+
       if (newRowSizes.some(size => size <= 0)) {
-        console.warn("Row sizes must be positive numbers.");
+        console.warn('Row sizes must be positive numbers.');
         return;
       }
+
       // Update the rows array in the layout
       state.layout.rows = newRowSizes;
     },
 
-
-    /** 
-     * Adds a new column to the layout, providing a row and column index for where to position the element 
-     * If the row or column index is out of range, the row or column is added to the end of the layout and 
+    /**
+     * Adds a new column to the layout, providing a row and column index for where to position the element
+     * If the row or column index is out of range, the row or column is added to the end of the layout and
      * the windows are repositioned accordingly.
      */
-    handleAddWindow: (
+    handleAddWindow(
       state,
       action: PayloadAction<{
-        tabId: string,
-        row: number,
-        redistribution?: 'even' | 'priority',
-        priorities?: 'first' | 'last' | number[],
-      }>
-    ) => {
+        tabId: string;
+        row: number;
+        redistribution?: 'even' | 'priority';
+        priorities?: 'first' | 'last' | number[];
+      }>,
+    ) {
       const { tabId, row, redistribution = 'even', priorities = [] } = action.payload;
       const windowId = nanoid();
 
-      // our width to start should be the average of the current column widths
-      const newColumnWidth = Math.floor(state.layout.columns.reduce((acc, val) => acc + val, 0) / state.layout.columns.length)
+      // Our width to start should be the average of the current column widths
+      const newColumnWidth = Math.floor(state.layout.columns.reduce((acc, val) => acc + val, 0) / state.layout.columns.length);
 
       // Ensure the tab isn't already assigned to a window
       if (state.windows.some(w => w.tabId === tabId)) {
@@ -245,27 +246,27 @@ export const slice = createSlice({
         tabId,
         position: {
           rowStart: row,
-          rowEnd: row + 1, // new windows should take up a single row height
+          rowEnd: row + 1, // New windows should take up a single row height
           columnStart: state.layout.columns.length - 1,
           columnEnd: state.layout.columns.length, // Assume single column width for new window, adjust if necessary
-        }
+        },
       });
     },
 
-    /** 
+    /**
      * Removes a window from the layout, given a window id, and resizes element to take up the missing space.
      * If the window results in a row or column no longer being needed, the row or column is removed from the layout
      * and the windows are repositioned accordingly.
      */
-    handleRemoveWindow: (
+    handleRemoveWindow(
       state,
       action: PayloadAction<{
-        id: string,
-        idType?: 'tab' | 'window'
-        redistribution?: 'even' | 'priority',
-        priorities?: 'first' | 'last' | number[],
-      }>
-    ) => {
+        id: string;
+        idType?: 'tab' | 'window';
+        redistribution?: 'even' | 'priority';
+        priorities?: 'first' | 'last' | number[];
+      }>,
+    ) {
       const { id, idType = 'window', redistribution = 'even', priorities = [] } = action.payload;
 
       // Find and remove the specified window
@@ -281,7 +282,7 @@ export const slice = createSlice({
       // Record the window's row and column for later checks
       const { rowStart, columnStart, columnEnd } = state.windows[windowIndex].position;
 
-      // clear any empty rows or columns and resize the one that was affected, and do any resizing of other windows
+      // Clear any empty rows or columns and resize the one that was affected, and do any resizing of other windows
       // for example, say we have the following layout:
       //
       // -----------------
@@ -297,7 +298,7 @@ export const slice = createSlice({
       // |   3   |   4   |
       // -----------------
       //
-      // this effected the first column, so we need to recalculate the width of the items in the first column. 
+      // this effected the first column, so we need to recalculate the width of the items in the first column.
       // Now let's say we now remove window 1, we would end up with the following layout:
       //
       // -----------------
@@ -313,46 +314,44 @@ export const slice = createSlice({
       // 1. remove the window
       state.windows.splice(windowIndex, 1);
 
-      let rowRemoved = false;
+      const rowRemoved = false;
 
       // 2. resize the window before or after the column was affected
       if (columnStart === 1 && columnEnd === state.layout.columns.length) {
-
-        // if the window was the only one in the row, remove the row
+        // If the window was the only one in the row, remove the row
         state.layout.rows.splice(rowStart - 1, 1);
       } else {
-
-        // if the window was the first in the row, find the window after it and make it start in the original rows start position
+        // If the window was the first in the row, find the window after it and make it start in the original rows start position
         // otherwise, find the window before it and make it end in the original rows end
         // if there are no windows before or after, just remove the row
         state.windows.forEach(window => {
           if (columnStart > 1 && window.position.columnStart === columnEnd && rowStart === window.position.rowStart) {
-            // resize the window in the same row
+            // Resize the window in the same row
             window.position.columnStart = columnStart;
             return;
           }
+
           if (columnEnd < state.layout.columns.length && window.position.columnEnd === columnStart && rowStart === window.position.rowStart) {
-            // resize the window in the same row
+            // Resize the window in the same row
             window.position.columnEnd = columnEnd;
-            return;
           }
-        })
+        });
       }
 
       // 3. windows are all processed. Now we need to resize the row heights if there was a removal of a row
       if (rowRemoved) {
-        let result = handleRemoveRow(state.layout.rows, state.windows, rowStart, redistribution, priorities);
+        const result = handleRemoveRow(state.layout.rows, state.windows, rowStart, redistribution, priorities);
         state.layout.rows = result.rows;
         state.windows = result.windows;
       }
     },
 
-    /** 
-     * Assigns a tab to a window given a tab id and a window id, and then unassigns the currently 
+    /**
+     * Assigns a tab to a window given a tab id and a window id, and then unassigns the currently
      * assigned tab from the window
      */
-    handleAssignTabToWindow: (state, action: PayloadAction<{ tabId: string, windowID: string }>) => {
-      // Find the window 
+    handleAssignTabToWindow(state, action: PayloadAction<{ tabId: string; windowID: string }>) {
+      // Find the window
       const windowIndex = state.windows.findIndex(window => window.id === action.payload.windowID);
       if (windowIndex === -1) {
         console.warn(`window with id ${action.payload.windowID} not found.`);
@@ -364,7 +363,7 @@ export const slice = createSlice({
         return;
       }
 
-      // find the tab we're assigning, so that if it's already assigned to a window, we can swap the window assignments,
+      // Find the tab we're assigning, so that if it's already assigned to a window, we can swap the window assignments,
       // this is useful for when we want to move a tab from one window to another without having to remove it from the first window
       const tabToAssignIndex = state.tabs.findIndex(tab => tab.id === action.payload.tabId);
       if (tabToAssignIndex === -1) {
@@ -372,29 +371,29 @@ export const slice = createSlice({
         return;
       }
 
-      // if the tab we're assigning is already assigned to a window, we'll give that window to the tab that's 
+      // If the tab we're assigning is already assigned to a window, we'll give that window to the tab that's
       // being unassigned from the window
       //
       // so, first go through the windows to see if any of them are assigned to the tab we're assigning
       const currentWindowIndex = state.windows.findIndex(window => window.tabId === action.payload.tabId);
       if (currentWindowIndex !== -1) {
-        // if we found a window assigned to the tab, we'll assign it to the window we're assigning the tab to
+        // If we found a window assigned to the tab, we'll assign it to the window we're assigning the tab to
         state.windows[currentWindowIndex].tabId = state.windows[windowIndex].tabId;
       }
 
-      // now assign the tab to the new window
+      // Now assign the tab to the new window
       state.windows[windowIndex].tabId = action.payload.tabId;
     },
 
     /**
      * Handle the browser window resizing event, and updates the layout state with the new window dimensions
      */
-    handleBrowserResize: (state, action: PayloadAction<{ width: number, height: number }>) => {
+    handleBrowserResize(state, action: PayloadAction<{ width: number; height: number }>) {
       state.layout.rows = redistributeSpace(state.layout.rows, action.payload.width, 'even');
       state.layout.columns = redistributeSpace(state.layout.columns, action.payload.height, 'even');
     },
   },
-})
+});
 
 // Action creators are generated for each case reducer function
 export const {
@@ -407,7 +406,7 @@ export const {
   handleRemoveWindow,
   handleResizeRows,
   handleResizeColumns,
-  handleBrowserResize
-} = slice.actions
+  handleBrowserResize,
+} = slice.actions;
 
-export default slice.reducer
+export default slice.reducer;

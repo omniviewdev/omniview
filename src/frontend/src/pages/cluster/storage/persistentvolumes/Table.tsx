@@ -1,22 +1,24 @@
-import { FC } from 'react';
+import { type FC } from 'react';
 
-// types
-import { PersistentVolume } from 'kubernetes-types/core/v1';
+// Types
+import { type PersistentVolume } from 'kubernetes-types/core/v1';
 
-// helpers
-import { ColumnDef } from '@tanstack/react-table';
+// Helpers
+import { type ColumnDef } from '@tanstack/react-table';
 import ResourceTable from '@/components/tables/ResourceTable/virtualized';
-import { SelectBoxHeader, SelectBoxRow, TextRow, RowMenu, Age } from '@/components/tables/ResourceTable/components';
+import {
+  SelectBoxHeader, SelectBoxRow, TextRow, RowMenu, Age,
+} from '@/components/tables/ResourceTable/components';
 import { usePersistentVolumes } from '@/hooks/useKubernetes';
 
-type Props = {}
+type Props = Record<string, unknown>;
 
 /**
  * Display a table of the deployments
  */
 const PersistentVolumesTable: FC<Props> = () => {
   const loader = usePersistentVolumes;
-  const columns: ColumnDef<PersistentVolume>[] = [
+  const columns: Array<ColumnDef<PersistentVolume>> = [
     {
       id: 'select',
       header: SelectBoxHeader,
@@ -29,7 +31,7 @@ const PersistentVolumesTable: FC<Props> = () => {
       id: 'name',
       header: 'Name',
       accessorKey: 'metadata.name',
-      cell: ({ row }) => (<TextRow row={row} column="name" />),
+      cell: ({ row }) => (<TextRow row={row} column='name' />),
     },
     {
       id: 'age',
@@ -43,14 +45,14 @@ const PersistentVolumesTable: FC<Props> = () => {
       header: 'Volume Mode',
       size: 40,
       accessorKey: 'spec.volumeMode',
-      cell: ({ row }) => (<TextRow row={row} column="volumeMode" />),
+      cell: ({ row }) => (<TextRow row={row} column='volumeMode' />),
     },
     {
       id: 'storageClass',
       header: 'Storage Class',
       size: 40,
       accessorKey: 'spec.storageClassName',
-      cell: ({ row }) => (<TextRow row={row} column="storageClass" />),
+      cell: ({ row }) => (<TextRow row={row} column='storageClass' />),
     },
     {
       id: 'menu',
@@ -59,12 +61,12 @@ const PersistentVolumesTable: FC<Props> = () => {
       size: 5,
       enableSorting: false,
       enableHiding: false,
-    }
-  ]
+    },
+  ];
 
   return (
     <ResourceTable columns={columns} loader={loader} kind='persistentvolume' />
-  )
-}
+  );
+};
 
 export default PersistentVolumesTable;

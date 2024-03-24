@@ -1,14 +1,14 @@
 import * as React from 'react';
 
-// material-ui
-import JoyMenu, { MenuActions } from '@mui/joy/Menu';
+// Material-ui
+import JoyMenu, { type MenuActions } from '@mui/joy/Menu';
 import MenuItem from '@mui/joy/MenuItem';
 import IconButton from '@mui/joy/IconButton';
 import { ListActionTypes } from '@mui/base/useList';
 
-// project imports
+// Project imports
 import Icon from '@/components/icons/Icon';
-import { HeaderIconMenuItem, HeaderIconMenu as HeaderIconMenuProps } from '@/store/header/types';
+import { type HeaderIconMenuItem, type HeaderIconMenu as HeaderIconMenuProps } from '@/store/header/types';
 import { WithConditionalTooltip } from './HeaderIconLink';
 import { WithConditionalLink } from '../HeaderContextArea';
 import { ListItemDecorator } from '@mui/joy';
@@ -18,29 +18,27 @@ type Props = HeaderIconMenuProps;
 /**
  * Display a drop down menu as a header icon
  */
-const HeaderIconMenu: React.FC<Props> = ({ id, icon, helpText, items }) => {
-  return (
-    <Menu
-      id={id}
-      control={
-        <WithConditionalTooltip helpText={helpText}>
-          <IconButton
-            size="sm"
-            variant="soft"
-            color="neutral"
-            aria-label="Apps"
-            sx={{
-              '--wails-draggable': 'no-drag',
-            }}
-          >
-            <Icon name={icon} />
-          </IconButton>
-        </WithConditionalTooltip>
-      }
-      menus={items}
-    />
-  )
-}
+const HeaderIconMenu: React.FC<Props> = ({ id, icon, helpText, items }) => (
+  <Menu
+    id={id}
+    control={
+      <WithConditionalTooltip helpText={helpText}>
+        <IconButton
+          size='sm'
+          variant='soft'
+          color='neutral'
+          aria-label='Apps'
+          sx={{
+            '--wails-draggable': 'no-drag',
+          }}
+        >
+          <Icon name={icon} />
+        </IconButton>
+      </WithConditionalTooltip>
+    }
+    menus={items}
+  />
+);
 
 function Menu({
   control,
@@ -49,16 +47,16 @@ function Menu({
 }: {
   control: React.ReactElement;
   id: string;
-  menus: Array<HeaderIconMenuItem>;
+  menus: HeaderIconMenuItem[];
 }) {
-  const [buttonElement, setButtonElement] =
-    React.useState<HTMLButtonElement | null>(null);
+  const [buttonElement, setButtonElement]
+    = React.useState<HTMLButtonElement | undefined>(undefined);
   const [isOpen, setOpen] = React.useState(false);
   const buttonRef = React.useRef<HTMLButtonElement>(null);
   const menuActions = React.useRef<MenuActions>(null);
   const preventReopen = React.useRef(false);
 
-  const updateAnchor = React.useCallback((node: HTMLButtonElement | null) => {
+  const updateAnchor = React.useCallback((node: HTMLButtonElement | undefined) => {
     setButtonElement(node);
   }, []);
 
@@ -69,11 +67,11 @@ function Menu({
       return;
     }
 
-    setOpen((open) => !open);
+    setOpen(open => !open);
   };
 
   const handleButtonKeyDown = (
-    event: React.KeyboardEvent<HTMLButtonElement>
+    event: React.KeyboardEvent<HTMLButtonElement>,
   ) => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
@@ -106,7 +104,7 @@ function Menu({
       })}
       <JoyMenu
         id={id}
-        placement="bottom-end"
+        placement='bottom-end'
         actions={menuActions}
         open={isOpen}
         onClose={close}

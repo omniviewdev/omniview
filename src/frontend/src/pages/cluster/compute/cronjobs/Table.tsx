@@ -1,22 +1,24 @@
-import { FC } from 'react';
+import { type FC } from 'react';
 
-// types
-import { CronJob } from 'kubernetes-types/batch/v1';
+// Types
+import { type CronJob } from 'kubernetes-types/batch/v1';
 
-// helpers
-import { ColumnDef } from '@tanstack/react-table';
+// Helpers
+import { type ColumnDef } from '@tanstack/react-table';
 import ResourceTable from '@/components/tables/ResourceTable/virtualized';
-import { SelectBoxHeader, SelectBoxRow, TextRow, RowMenu, Age } from '@/components/tables/ResourceTable/components';
+import {
+  SelectBoxHeader, SelectBoxRow, TextRow, RowMenu, Age,
+} from '@/components/tables/ResourceTable/components';
 import { useCronJobs } from '@/hooks/useKubernetes';
 
-type Props = {}
+type Props = Record<string, unknown>;
 
 /**
  * Display a table of the deployments
  */
 const CronJobTable: FC<Props> = () => {
   const loader = useCronJobs;
-  const columns: ColumnDef<CronJob>[] = [
+  const columns: Array<ColumnDef<CronJob>> = [
     {
       id: 'select',
       header: SelectBoxHeader,
@@ -29,14 +31,14 @@ const CronJobTable: FC<Props> = () => {
       id: 'name',
       header: 'Name',
       accessorKey: 'metadata.name',
-      cell: ({ row }) => (<TextRow row={row} column="name" />),
+      cell: ({ row }) => (<TextRow row={row} column='name' />),
     },
     {
       id: 'namespace',
       header: 'Namespace',
       size: 50,
       accessorKey: 'metadata.namespace',
-      cell: ({ row }) => (<TextRow row={row} column="namespace" />),
+      cell: ({ row }) => (<TextRow row={row} column='namespace' />),
     },
     {
       id: 'age',
@@ -52,12 +54,12 @@ const CronJobTable: FC<Props> = () => {
       size: 40,
       enableSorting: false,
       enableHiding: false,
-    }
-  ]
+    },
+  ];
 
   return (
     <ResourceTable columns={columns} loader={loader} kind='cronjob' />
-  )
-}
+  );
+};
 
 export default CronJobTable;

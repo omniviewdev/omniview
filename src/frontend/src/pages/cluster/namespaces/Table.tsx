@@ -1,22 +1,22 @@
-import { FC } from 'react';
+import { type FC } from 'react';
 
-// types
-import { Namespace } from 'kubernetes-types/core/v1';
+// Types
+import { type Namespace } from 'kubernetes-types/core/v1';
 
-// helpers
-import { ColumnDef } from '@tanstack/react-table';
+// Helpers
+import { type ColumnDef } from '@tanstack/react-table';
 import ResourceTable from '@/components/tables/ResourceTable/virtualized';
 import { SelectBoxHeader, SelectBoxRow, TextRow } from '@/components/tables/ResourceTable/components';
 import { useNamespaces } from '@/hooks/useKubernetes';
 
-type Props = {}
+type Props = Record<string, unknown>;
 
 /**
  * Display a table of the nodes
  */
 const NamespacesTable: FC<Props> = () => {
   const loader = useNamespaces;
-  const columns: ColumnDef<Namespace>[] = [
+  const columns: Array<ColumnDef<Namespace>> = [
     {
       id: 'select',
       header: SelectBoxHeader,
@@ -29,13 +29,13 @@ const NamespacesTable: FC<Props> = () => {
       id: 'name',
       header: 'Name',
       accessorKey: 'metadata.name',
-      cell: ({ row }) => (<TextRow row={row} column="name" />),
+      cell: ({ row }) => (<TextRow row={row} column='name' />),
     },
-  ]
+  ];
 
   return (
-    <ResourceTable loader={loader} columns={columns} kind="namespace" />
-  )
-}
+    <ResourceTable loader={loader} columns={columns} kind='namespace' />
+  );
+};
 
 export default NamespacesTable;

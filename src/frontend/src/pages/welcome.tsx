@@ -1,22 +1,21 @@
-import React from 'react'
+import React from 'react';
 
-// material-ui
-import Stack from '@mui/joy/Stack'
-import Typography from '@mui/joy/Typography'
-import GradientBackground from '@/components/backgrounds/GradientBackground'
+// Material-ui
+import Stack from '@mui/joy/Stack';
+import Typography from '@mui/joy/Typography';
+import GradientBackground from '@/components/backgrounds/GradientBackground';
 
-import { motion, AnimatePresence } from "framer-motion"
+import { motion, AnimatePresence } from 'framer-motion';
 
-// logos
-import Terraform from '@/assets/logos/terraform/horizontal/TerraformHorizontalColorWhite'
-import Kubernetes from '@/assets/logos/kubernetes/horizontal/KubernetesHorizontalColorWhite'
-import AWS from '@/assets/logos/aws/horizontal/AWSHorizontalColorWhite'
-import GCP from '@/assets/logos/gcp/horizontal/GCPHorizontal'
-import Docker from '@/assets/logos/docker/horizontal/DockerHorizontal'
-import { Box } from '@mui/joy'
+// Logos
+import Terraform from '@/assets/logos/terraform/horizontal/TerraformHorizontalColorWhite';
+import Kubernetes from '@/assets/logos/kubernetes/horizontal/KubernetesHorizontalColorWhite';
+import AWS from '@/assets/logos/aws/horizontal/AWSHorizontalColorWhite';
+import GCP from '@/assets/logos/gcp/horizontal/GCPHorizontal';
+import Docker from '@/assets/logos/docker/horizontal/DockerHorizontal';
+import { Box } from '@mui/joy';
 
-
-// const tools = [
+// Const tools = [
 //   'Kubernetes',
 //   'Helm',
 //   'AWS',
@@ -33,12 +32,12 @@ const logos = [
   <Docker height={40} color={true} />,
   <Terraform height={60} />,
   <GCP height={40} color={true} />,
-]
+];
 
 const images = [
   '/src/assets/images/app_preview.png',
   '/src/assets/images/app_preview_2.png',
-]
+];
 
 const MotionBox = motion(Box);
 
@@ -46,8 +45,8 @@ const MotionBox = motion(Box);
  * The main welcome landing page for the application.
  */
 const Welcome = () => {
-  const [toolIndex, _setToolIndex] = React.useState(0)
-  const [imageIndex, _setImageIndex] = React.useState(0)
+  const [toolIndex, _setToolIndex] = React.useState(0);
+  const [imageIndex, _setImageIndex] = React.useState(0);
 
   // // run a rotation of tools every 3 seconds
   // React.useEffect(() => {
@@ -76,8 +75,8 @@ const Welcome = () => {
 
   return (
     <GradientBackground>
-      <Stack direction='column' gap={8} alignItems="center" justifyContent={'center'} height={'100%'}>
-        <Stack direction='column' spacing={6} alignItems="center" width={'100%'}>
+      <Stack direction='column' gap={8} alignItems='center' justifyContent={'center'} height={'100%'}>
+        <Stack direction='column' spacing={6} alignItems='center' width={'100%'}>
           <motion.div
             initial={{ opacity: 0, scale: 0.99 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -88,12 +87,12 @@ const Welcome = () => {
               fontSize={72}
               fontWeight={800}
               sx={{
-                textShadow: (theme) => `10px 10px 25px ${theme.palette.neutral[900]}, -10px 10px 25px ${theme.palette.neutral[900]}, -10px -10px 25px ${theme.palette.neutral[900]}, 10px -10px 25px ${theme.palette.neutral[900]};`
+                textShadow: theme => `10px 10px 25px ${theme.palette.neutral[900]}, -10px 10px 25px ${theme.palette.neutral[900]}, -10px -10px 25px ${theme.palette.neutral[900]}, 10px -10px 25px ${theme.palette.neutral[900]};`,
               }}
             >
               Welcome to Omniview
             </Typography>
-            <Stack direction='row' spacing={2} minHeight={70} alignItems="center" pl={20}>
+            <Stack direction='row' spacing={2} minHeight={70} alignItems='center' pl={20}>
               <Typography fontSize={30} fontWeight={700} color='neutral' sx={{ letterSpacing: '0.05rem' }}>
                 The IDE for
               </Typography>
@@ -101,9 +100,9 @@ const Welcome = () => {
                 <motion.span
                   key={toolIndex}
                   variants={variants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
+                  initial='hidden'
+                  animate='visible'
+                  exit='exit'
                   transition={{ duration: 0.5 }}
                 >
                   {logos[toolIndex]}
@@ -138,9 +137,9 @@ const Welcome = () => {
               }}
             >
               <Box
-                component="img"
+                component='img'
                 src={images[imageIndex]}
-                alt="App Preview"
+                alt='App Preview'
                 sx={{
                   width: '100%',
                   height: 'auto',
@@ -151,12 +150,12 @@ const Welcome = () => {
           </AnimatePresence>
         </Stack>
 
-        <Stack direction='row' spacing={2} alignItems="center">
+        <Stack direction='row' spacing={2} alignItems='center'>
 
         </Stack>
       </Stack>
     </GradientBackground >
-  )
-}
+  );
+};
 
-export default Welcome
+export default Welcome;

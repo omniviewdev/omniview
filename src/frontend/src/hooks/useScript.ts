@@ -9,9 +9,9 @@ const cachedScriptStatuses: Record<string, UseScriptStatus | undefined> = {};
  * Simplified version of https://usehooks-ts.com/react-hook/use-script
  */
 function getScriptNode(src: string) {
-  const node: HTMLScriptElement | null = document.querySelector(
-    `script[src="${src}"]`
-  );
+  const node: HTMLScriptElement | undefined = document.querySelector(
+    `script[src="${src}"]`,
+  ) as HTMLScriptElement | undefined;
   const status = node?.getAttribute('data-status') as
     | UseScriptStatus
     | undefined;
@@ -56,8 +56,8 @@ function useScript(src: string): UseScriptStatus {
       // Store status in attribute on script
       // This can be read by other instances of this hook
       const setAttributeFromEvent = (event: Event) => {
-        const scriptStatus: UseScriptStatus =
-          event.type === 'load' ? 'ready' : 'error';
+        const scriptStatus: UseScriptStatus
+          = event.type === 'load' ? 'ready' : 'error';
 
         scriptNode?.setAttribute('data-status', scriptStatus);
       };
@@ -83,7 +83,7 @@ function useScript(src: string): UseScriptStatus {
     scriptNode.addEventListener('error', setStateFromEvent);
 
     // Remove event listeners on cleanup
-    // eslint-disable-next-line consistent-return
+
     return () => {
       if (scriptNode) {
         scriptNode.removeEventListener('load', setStateFromEvent);

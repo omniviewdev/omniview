@@ -1,15 +1,11 @@
-import { GeneralSettings } from './sections/general';
-import { AppearanceSettings } from './sections/appearance';
-import { NotificationSettings } from './sections/notifications';
-import { EditorSettings } from './sections/editor';
-import { TerminalSettings } from './sections/terminal';
+import { type GeneralSettings } from './sections/general';
 
 // ======================================== SETTING TYPES ======================================== //
 
 export type Setting = TextSetting | IntegerSetting | FloatSetting | SelectSetting | ToggleSetting | ColorSetting | DatetimeSetting;
 
 /** A setting definition */
-export interface BaseSetting {
+export type BaseSetting = {
   /** The type of the setting */
   type: 'text' | 'integer' | 'float' | 'select' | 'toggle' | 'color' | 'datetime' | 'password';
   /** The visibility of the setting */
@@ -20,26 +16,26 @@ export interface BaseSetting {
   description: string;
   /** Defines if the setting is private and not accessible by other plugins */
   private?: boolean;
-  /** 
-   * Optional group for the setting. If provided, the setting will be grouped with other settings in the UI with the 
+  /**
+   * Optional group for the setting. If provided, the setting will be grouped with other settings in the UI with the
    * same group, and will be formatted for capitalization and spacing. This is purely for UI purposes.
    */
   group?: string;
-  /** 
-   * Custom validator function for the setting. If specified, it must return either an empty string to 
+  /**
+   * Custom validator function for the setting. If specified, it must return either an empty string to
    * indicate success, or a string with an error message to indicate failure.
    *
    * @param value The value to validate
-   * @param settings The currently defined settings in the setting storage, keyed 
+   * @param settings The currently defined settings in the setting storage, keyed
    *  by <section>.<namespace>.<id>. Useful for doing cross-setting validation.
    *
    * @returns An empty string if the value is valid, or an error message if it is not
    */
   validator?: (value: any, settings?: Record<string, any>) => string;
-}
+};
 
 /** A setting with a text type */
-export interface TextSetting extends BaseSetting {
+export type TextSetting = {
   type: 'text';
   /** The default value for the setting */
   default: string;
@@ -51,10 +47,10 @@ export interface TextSetting extends BaseSetting {
   maxLength?: number;
   /** Optional regex pattern validator for the text */
   pattern?: RegExp;
-}
+} & BaseSetting;
 
 /** A setting with an integer type */
-export interface IntegerSetting extends BaseSetting {
+export type IntegerSetting = {
   type: 'integer';
   /** The default value for the setting */
   default: number;
@@ -68,10 +64,10 @@ export interface IntegerSetting extends BaseSetting {
   step?: number;
   /** Optional unit for the integer */
   unit?: string;
-}
+} & BaseSetting;
 
 /** A setting with a float type */
-export interface FloatSetting extends BaseSetting {
+export type FloatSetting = {
   type: 'float';
   /** The default value for the setting */
   default: number;
@@ -81,10 +77,10 @@ export interface FloatSetting extends BaseSetting {
   min?: number;
   /** Optional maximum value for the float */
   max?: number;
-}
+} & BaseSetting;
 
 /** A setting with a select type */
-export interface SelectSetting extends BaseSetting {
+export type SelectSetting = {
   type: 'select';
   /** The default value for the setting */
   default: string | string[];
@@ -94,10 +90,10 @@ export interface SelectSetting extends BaseSetting {
   options: SelectSettingOption[];
   /** Optional multiple select */
   multiple?: boolean;
-}
+} & BaseSetting;
 
 /** An option for a select setting */
-export interface SelectSettingOption {
+export type SelectSettingOption = {
   /** The value for the option */
   value: string;
   /** Desriptive label for the option */
@@ -106,28 +102,28 @@ export interface SelectSettingOption {
   icon?: string;
   /** Optional description for the option */
   description?: string;
-}
+};
 
 /** A setting with a toggle type */
-export interface ToggleSetting extends BaseSetting {
+export type ToggleSetting = {
   type: 'toggle';
   /** The default value for the setting */
   default: boolean;
   /** The set value for the setting */
   value: boolean;
-}
+} & BaseSetting;
 
 /** A setting with a color type */
-export interface ColorSetting extends BaseSetting {
+export type ColorSetting = {
   type: 'color';
   /** The default value for the setting */
   default: string;
   /** The set value for the setting */
   value: string;
-}
+} & BaseSetting;
 
 /** A setting with a datetime type */
-export interface DatetimeSetting extends BaseSetting {
+export type DatetimeSetting = {
   type: 'datetime';
   /** The default value for the setting */
   default: string;
@@ -137,7 +133,7 @@ export interface DatetimeSetting extends BaseSetting {
   min?: string;
   /** Optional maximum date for the datetime */
   max?: string;
-}
+} & BaseSetting;
 
 // ======================================== STATE ======================================== //
 
@@ -152,7 +148,7 @@ export interface DatetimeSetting extends BaseSetting {
  *
  * All plugins must define a namespace in which their plugins settings are defined, and must not
  * conflict between other plugins. As such, it is recommended to use a unique identifier for the
- * namespace, such as the plugin name or a unique identifier. This namespace identifier will be 
+ * namespace, such as the plugin name or a unique identifier. This namespace identifier will be
  * published along with the plugin, and will be used to access the settings for the plugin, as well
  * as allow other plugin publishers to use the settings defined (unless marked private at either the
  * namespace or setting level).
@@ -166,7 +162,7 @@ export type SettingsNamespace = {
   description?: string;
   /** Optional icon for the settings namespace */
   icon?: string;
-  /** 
+  /**
    * Defines if the namespace is globally private and not accessible by other plugins.
    * If true, the namespace and all settings within it will not be accessible by other plugins.
    * This can be set to false to allow other plugins to access the settings within the namespace, with
@@ -175,7 +171,7 @@ export type SettingsNamespace = {
   private?: boolean;
   /** The sections for the settings namespace */
   sections: Record<string, SettingsSection>;
-}
+};
 
 export type SettingsSection = {
   /** Unique identifier for the section */
@@ -186,7 +182,7 @@ export type SettingsSection = {
   description: string;
   /** The icon for the section */
   icon: string;
-  /** 
+  /**
    * Defines if the section is globally private and not accessible by other plugins. If true, the
    * section and all settings within it will not be accessible by other plugins. This can be set to
    * false to allow other plugins to access the settings within the section, with individual settings
@@ -195,8 +191,8 @@ export type SettingsSection = {
   private?: boolean;
   /** The settings for the section */
   settings: Record<string, Setting>;
-}
+};
 
-export type SettingsSectionEntry = GeneralSettings | AppearanceSettings | NotificationSettings | EditorSettings | TerminalSettings;
+export type SettingsSectionEntry = GeneralSettings;
 export type SettingsState = Record<string, SettingsNamespace>;
 

@@ -1,9 +1,8 @@
-// material-ui
+// Material-ui
 // import { Stack } from '@mui/material';
 
 // custom
 import Table from './Table';
-
 
 /**
  * Main view for all of the pods in a cluster
@@ -14,5 +13,4 @@ export default function Pods() {
     <Table />
   );
 }
-
 

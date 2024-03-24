@@ -1,6 +1,6 @@
 import React from 'react';
 
-// material-ui
+// Material-ui
 import { CssVarsProvider } from '@mui/joy/styles';
 import Typography from '@mui/joy/Typography';
 import Input from '@mui/joy/Input';
@@ -8,14 +8,13 @@ import IconButton from '@mui/joy/IconButton';
 import Stack from '@mui/joy/Stack';
 import CssBaseline from '@mui/joy/CssBaseline';
 
-
-// icons
+// Icons
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 
-// layout
+// Layout
 import Layout from '@/layouts/core/sidenav';
 
-// components
+// Components
 import PluginsNav from './PluginsNav';
 import PluginPreview from './PluginPreview';
 import { LuSlidersHorizontal } from 'react-icons/lu';
@@ -27,15 +26,15 @@ import { usePluginManager } from '@/hooks/plugin/usePluginManager';
  * The main settings page for the application.
  */
 const SettingsPage = () => {
-  const [selected, setSelected] = React.useState()
-  const { plugins } = usePluginManager()
+  const [selected, setSelected] = React.useState();
+  const { plugins } = usePluginManager();
 
   if (plugins.isLoading) {
-    return <div>Loading...</div>
+    return <div>Loading...</div>;
   }
 
   if (plugins.isError) {
-    return <div>Error: {plugins.error.message}</div>
+    return <div>Error: {plugins.error.message}</div>;
   }
 
   return (
@@ -48,15 +47,17 @@ const SettingsPage = () => {
         }}
       >
         <Layout.SideNav type='bordered-inset'>
-          <Stack component={Sheet} variant={'outlined'} direction="row" alignItems={'center'} spacing={8} sx={{ px: 2, py: 1.5, m: 1, borderRadius: 'md' }}>
-            <Typography level="title-lg">Plugins</Typography>
+          <Stack component={Sheet} variant={'outlined'} direction='row' alignItems={'center'} spacing={8} sx={{
+            px: 2, py: 1.5, m: 1, borderRadius: 'md',
+          }}>
+            <Typography level='title-lg'>Plugins</Typography>
             <Input
-              size="sm"
-              variant="outlined"
-              placeholder="Search the plugin repository…"
-              startDecorator={<SearchRoundedIcon color="primary" />}
+              size='sm'
+              variant='outlined'
+              placeholder='Search the plugin repository…'
+              startDecorator={<SearchRoundedIcon color='primary' />}
               endDecorator={
-                <IconButton variant="outlined" color="primary">
+                <IconButton variant='outlined' color='primary'>
                   <LuSlidersHorizontal />
                 </IconButton>
               }
@@ -78,6 +79,6 @@ const SettingsPage = () => {
       </Layout.Root>
     </CssVarsProvider>
   );
-}
+};
 
 export default SettingsPage;

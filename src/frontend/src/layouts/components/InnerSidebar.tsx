@@ -6,7 +6,7 @@ import ListItem from '@mui/joy/ListItem';
 import ListItemContent from '@mui/joy/ListItemContent';
 import ListItemDecorator from '@mui/joy/ListItemDecorator';
 import ListItemButton from '@mui/joy/ListItemButton';
-// icons
+// Icons
 import KeyIcon from '@mui/icons-material/Key';
 import CollectionsIcon from '@mui/icons-material/Collections';
 import ViewListIcon from '@mui/icons-material/ViewList';
@@ -22,7 +22,7 @@ export default function InnerSidebar() {
   return (
     <>
       <Box
-        className="SecondSidebar-overlay"
+        className='SecondSidebar-overlay'
         sx={{
           position: 'fixed',
           zIndex: 9998,
@@ -38,11 +38,13 @@ export default function InnerSidebar() {
             lg: 'translateX(-100%)',
           },
         }}
-        onClick={() => closeSidebar()}
+        onClick={() => {
+          closeSidebar();
+        }}
       />
       <Sheet
-        className="SecondSidebar"
-        color="neutral"
+        className='SecondSidebar'
+        color='neutral'
         sx={{
           position: {
             xs: 'fixed',
@@ -66,17 +68,17 @@ export default function InnerSidebar() {
         }}
       >
         <List
-          size="sm"
+          size='sm'
           sx={{
             '--ListItem-radius': '6px',
             '--List-gap': '6px',
           }}
         >
-          <ListSubheader role="presentation" sx={{ fontWeight: 'lg' }}>
+          <ListSubheader role='presentation' sx={{ fontWeight: 'lg' }}>
             Dashboard
           </ListSubheader>
           <ListItem>
-            <Link to="/dashboard/rentals" style={{ textDecoration: 'none' }}>
+            <Link to='/dashboard/rentals' style={{ textDecoration: 'none' }}>
               <ListItemButton>
                 <ListItemDecorator>
                   <KeyIcon />
@@ -86,8 +88,10 @@ export default function InnerSidebar() {
             </Link>
           </ListItem>
           <ListItem>
-            <Link to="/dashboard/orders" style={{ textDecoration: 'none' }}>
-              <ListItemButton onClick={() => closeSidebar()}>
+            <Link to='/dashboard/orders' style={{ textDecoration: 'none' }}>
+              <ListItemButton onClick={() => {
+                closeSidebar();
+              }}>
                 <ListItemDecorator>
                   <ViewListIcon />
                 </ListItemDecorator>
@@ -96,7 +100,7 @@ export default function InnerSidebar() {
             </Link>
           </ListItem>
           <ListItem>
-            <Link to="/dashboard/gallery" style={{ textDecoration: 'none' }}>
+            <Link to='/dashboard/gallery' style={{ textDecoration: 'none' }}>
               <ListItemButton>
                 <ListItemDecorator>
                   <CollectionsIcon />
@@ -106,7 +110,7 @@ export default function InnerSidebar() {
             </Link>
           </ListItem>
           <ListItem>
-            <Link to="/dashboard/uploads" style={{ textDecoration: 'none' }}>
+            <Link to='/dashboard/uploads' style={{ textDecoration: 'none' }}>
               <ListItemButton>
                 <ListItemDecorator>
                   <UploadIcon />
@@ -116,8 +120,10 @@ export default function InnerSidebar() {
             </Link>
           </ListItem>
           <ListItem>
-            <Link to="/dashboard/messages" style={{ textDecoration: 'none' }}>
-              <ListItemButton onClick={() => closeSidebar()}>
+            <Link to='/dashboard/messages' style={{ textDecoration: 'none' }}>
+              <ListItemButton onClick={() => {
+                closeSidebar();
+              }}>
                 <ListItemDecorator>
                   <MessageIcon />
                 </ListItemDecorator>
@@ -126,8 +132,10 @@ export default function InnerSidebar() {
             </Link>
           </ListItem>
           <ListItem>
-            <Link to="/dashboard/email" style={{ textDecoration: 'none' }}>
-              <ListItemButton onClick={() => closeSidebar()}>
+            <Link to='/dashboard/email' style={{ textDecoration: 'none' }}>
+              <ListItemButton onClick={() => {
+                closeSidebar();
+              }}>
                 <ListItemDecorator>
                   <EmailIcon />
                 </ListItemDecorator>
@@ -136,8 +144,10 @@ export default function InnerSidebar() {
             </Link>
           </ListItem>
           <ListItem>
-            <Link to="/dashboard/team" style={{ textDecoration: 'none' }}>
-              <ListItemButton onClick={() => closeSidebar()}>
+            <Link to='/dashboard/team' style={{ textDecoration: 'none' }}>
+              <ListItemButton onClick={() => {
+                closeSidebar();
+              }}>
                 <ListItemDecorator>
                   <GroupsIcon />
                 </ListItemDecorator>

@@ -1,13 +1,13 @@
-import { createSlice } from '@reduxjs/toolkit'
+import { createSlice } from '@reduxjs/toolkit';
 
-// reducers
-import mainReducers from './sections/main'
-import areaReducers from './sections/area'
+// Reducers
+import mainReducers from './sections/main';
+import areaReducers from './sections/area';
 
-// types
+// Types
 
 // configurations
-import { TabsWithSearch } from './configurations'
+import { TabsWithSearch } from './configurations';
 
 // Slice
 export const slice = createSlice({
@@ -19,8 +19,8 @@ export const slice = createSlice({
     // Area Specific Reducers
     ...areaReducers,
   },
-})
+});
 
 // Action creators are generated for each case reducer function
-export const { ...actions } = slice.actions
-export default slice.reducer
+export const { ...actions } = slice.actions;
+export default slice.reducer;

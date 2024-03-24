@@ -14,6 +14,37 @@ export namespace config {
 	        this.email = source["email"];
 	    }
 	}
+	export class PluginTheme {
+	    // Go type: struct { Primary string "json:\"primary\"   yaml:\"primary\""; Secondary string "json:\"secondary\" yaml:\"secondary\""; Tertiary string "json:\"tertiary\"  yaml:\"tertiary\"" }
+	    colors: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginTheme(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.colors = this.convertValues(source["colors"], Object);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class PluginMeta {
 	    id: string;
 	    version: string;
@@ -26,6 +57,7 @@ export namespace config {
 	    tags: string[];
 	    dependencies: string[];
 	    capabilities: string[];
+	    theme: PluginTheme;
 	
 	    static createFrom(source: any = {}) {
 	        return new PluginMeta(source);
@@ -44,6 +76,7 @@ export namespace config {
 	        this.tags = source["tags"];
 	        this.dependencies = source["dependencies"];
 	        this.capabilities = source["capabilities"];
+	        this.theme = this.convertValues(source["theme"], PluginTheme);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -471,6 +504,7 @@ export namespace types {
 	    }
 	}
 	export class FindResult {
+	    result: {[key: string]: any};
 	    success: boolean;
 	    pagination: PaginationResult;
 	
@@ -480,6 +514,7 @@ export namespace types {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.result = source["result"];
 	        this.success = source["success"];
 	        this.pagination = this.convertValues(source["pagination"], PaginationResult);
 	    }
@@ -532,6 +567,44 @@ export namespace types {
 	        this.success = source["success"];
 	    }
 	}
+	export class LayoutItem {
+	    id: string;
+	    title: string;
+	    icon: string;
+	    description: string;
+	    items: LayoutItem[];
+	
+	    static createFrom(source: any = {}) {
+	        return new LayoutItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.icon = source["icon"];
+	        this.description = source["description"];
+	        this.items = this.convertValues(source["items"], LayoutItem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ListInput {
 	    params: {[key: string]: any};
 	    namespaces: string[];
@@ -569,6 +642,7 @@ export namespace types {
 		}
 	}
 	export class ListResult {
+	    result: {[key: string]: any};
 	    success: boolean;
 	    pagination: PaginationResult;
 	
@@ -578,6 +652,7 @@ export namespace types {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.result = source["result"];
 	        this.success = source["success"];
 	        this.pagination = this.convertValues(source["pagination"], PaginationResult);
 	    }
@@ -610,7 +685,10 @@ export namespace types {
 	    config: any;
 	    enabled: boolean;
 	    running: boolean;
-	    load_error: string;
+	    devMode: boolean;
+	    devPath: string;
+	    loading: boolean;
+	    loadError: string;
 	    capabilities: number[];
 	
 	    static createFrom(source: any = {}) {
@@ -624,7 +702,10 @@ export namespace types {
 	        this.config = this.convertValues(source["config"], null);
 	        this.enabled = source["enabled"];
 	        this.running = source["running"];
-	        this.load_error = source["load_error"];
+	        this.devMode = source["devMode"];
+	        this.devPath = source["devPath"];
+	        this.loading = source["loading"];
+	        this.loadError = source["loadError"];
 	        this.capabilities = source["capabilities"];
 	    }
 	
@@ -645,6 +726,26 @@ export namespace types {
 		    }
 		    return a;
 		}
+	}
+	export class ResourceMeta {
+	    group: string;
+	    version: string;
+	    kind: string;
+	    description: string;
+	    category: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResourceMeta(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.group = source["group"];
+	        this.version = source["version"];
+	        this.kind = source["kind"];
+	        this.description = source["description"];
+	        this.category = source["category"];
+	    }
 	}
 	export class UpdateInput {
 	    input: {[key: string]: any};

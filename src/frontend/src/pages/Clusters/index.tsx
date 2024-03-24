@@ -1,16 +1,15 @@
 import { useState } from 'react';
 
-// material-ui
+// Material-ui
 import Divider from '@mui/joy/Divider';
 import Grid from '@mui/joy/Grid';
 import Sheet from '@mui/joy/Sheet';
 import List from '@mui/joy/List';
 import Typography from '@mui/joy/Typography';
 
-
-// icons
-import KubernetesLogo from '@/assets/logos/kubernetes/KubernetesColorWhiteBG'
-// import ClusterListItem from './ClusterListItem';
+// Icons
+import KubernetesLogo from '@/assets/logos/kubernetes/KubernetesColorWhiteBG';
+// Import ClusterListItem from './ClusterListItem';
 import BlogFeed from './BlogFeed';
 
 export default function Clusters() {
@@ -32,14 +31,16 @@ export default function Clusters() {
         }}
       >
         <Sheet sx={{ backgroundColor: 'transparent', borderRadius: 8 }} variant='outlined'>
-          <Sheet sx={{ px: 2, py: 1.5, backgroundColor: 'background.surface', borderRadius: 8 }} variant='plain'>
+          <Sheet sx={{
+            px: 2, py: 1.5, backgroundColor: 'background.surface', borderRadius: 8,
+          }} variant='plain'>
             <Typography fontSize={20} fontWeight={600}>Clusters</Typography>
           </Sheet>
           <Divider />
           <List
-            variant="plain"
-            component="nav"
-            size="lg"
+            variant='plain'
+            component='nav'
+            size='lg'
             sx={{
               p: 0,
               width: '100%',

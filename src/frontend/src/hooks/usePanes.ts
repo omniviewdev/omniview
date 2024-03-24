@@ -19,6 +19,6 @@ export const usePane = () => {
   }
 
   return context;
-}
+};
 
 export default usePanes;

@@ -1,8 +1,8 @@
-import React from 'react';
+import type React from 'react';
 
-export interface Children {
+export type Children = {
   children: React.ReactNode;
-}
+};
 
 export type UserProps = {
   name: string;

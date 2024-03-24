@@ -7,7 +7,7 @@ import { useMemo } from 'react';
 type PluginNavigateOptions = {
   /** Replace the current entry in the history stack */
   replace?: boolean;
-  /** 
+  /**
    * Navigate within the current active context. If there is no active
    * context, it will be ignored.
    */
@@ -27,7 +27,7 @@ function usePluginRouter() {
   const location = useLocation();
   const params = useParams();
 
-  // the URL structure should be /<plugin>/<contextID>/*
+  // The URL structure should be /<plugin>/<contextID>/*
   const { contextID } = params;
 
   const contextLocation = location.pathname.split('/').slice(3).join('/');
@@ -47,32 +47,33 @@ function usePluginRouter() {
   const navigate = (path: string, opts?: PluginNavigateOptions) => {
     const { withinContext, toContext, ...rest } = opts || {};
 
-    if (opts?.withinContext && !!opts?.toContext) {
-      throw new Error('Cannot use both "withinContext" and "toContext" options together.')
+    if (opts?.withinContext && Boolean(opts?.toContext)) {
+      throw new Error('Cannot use both "withinContext" and "toContext" options together.');
     }
 
     const plugin = location.pathname.split('/')[1];
     if (!plugin) {
-      // protect ourselves just in case
+      // Protect ourselves just in case
       throw new Error('Plugin router used outside of a plugin');
     }
 
     let desired = `/${plugin}`;
 
-    if (opts?.withinContext && !!contextID) {
-      desired += `/${contextID}`
-    }
-    if (opts?.toContext) {
-      // base64 encode the context to avoid any potential URL encoding issues
-      desired += `/${btoa(opts.toContext)}`
+    if (opts?.withinContext && Boolean(contextID)) {
+      desired += `/${contextID}`;
     }
 
-    // account for possible leading slashes
+    if (opts?.toContext) {
+      // Base64 encode the context to avoid any potential URL encoding issues
+      desired += `/${btoa(opts.toContext)}`;
+    }
+
+    // Account for possible leading slashes
     originalNavigate(`${desired}${path.startsWith('/') ? '' : '/'}${path}`, rest);
   };
 
   return useMemo(() => ({
-    location: !!contextID ? `/${contextLocation}` : `/${pluginLocation}`,
+    location: contextID ? `/${contextLocation}` : `/${pluginLocation}`,
     contextID: atob(contextID || ''),
     navigate,
   }), [contextID, location.pathname]);

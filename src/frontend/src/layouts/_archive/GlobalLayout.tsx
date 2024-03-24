@@ -2,7 +2,7 @@
 import { CssVarsProvider } from '@mui/joy/styles';
 import CssBaseline from '@mui/joy/CssBaseline';
 import Box from '@mui/joy/Box';
-import Layout from '@/layouts/core/main'
+import Layout from '@/layouts/core/main';
 import { Outlet } from 'react-router-dom';
 
 export default function GlobalLayout() {
@@ -13,8 +13,8 @@ export default function GlobalLayout() {
         <Layout.Header />
         <Layout.Sidebar />
         <Box
-          component="main"
-          className="MainContent"
+          component='main'
+          className='MainContent'
           sx={{
             ml: {
               md: 'var(--CoreLayoutSidebar-width)',

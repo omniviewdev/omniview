@@ -26,7 +26,7 @@ export default function Header() {
       }}
     >
       <GlobalStyles
-        styles={(theme) => ({
+        styles={theme => ({
           ':root': {
             '--Header-height': '52px',
             [theme.breakpoints.up('lg')]: {
@@ -36,10 +36,12 @@ export default function Header() {
         })}
       />
       <IconButton
-        onClick={() => toggleSidebar()}
-        variant="outlined"
-        color="neutral"
-        size="sm"
+        onClick={() => {
+          toggleSidebar();
+        }}
+        variant='outlined'
+        color='neutral'
+        size='sm'
       >
         <MenuIcon />
       </IconButton>

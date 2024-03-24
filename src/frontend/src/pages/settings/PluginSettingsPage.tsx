@@ -1,6 +1,6 @@
 import React from 'react';
 
-// material-ui
+// Material-ui
 import { useTheme } from '@mui/joy/styles';
 import Button from '@mui/joy/Button';
 import Box from '@mui/joy/Box';
@@ -10,7 +10,7 @@ import Stack from '@mui/joy/Stack';
 import Sheet from '@mui/joy/Sheet';
 import useMediaQuery from '@mui/material/useMediaQuery';
 
-// types
+// Types
 import SettingsEntries from './SettingsEntries';
 import { Section } from '.';
 import { usePluginSettings } from '@/hooks/settings/usePluginSettings';
@@ -19,51 +19,56 @@ import { Avatar } from '@mui/joy';
 
 type Props = {
   id: string;
-}
+};
 
 /**
  * View and modify settings for a given plugin
  */
 const PluginSettingsPage: React.FC<Props> = ({ id }) => {
   const theme = useTheme();
-  const [draftValues, setDraftValues] = React.useState<Record<string, any>>({})
+  const [draftValues, setDraftValues] = React.useState<Record<string, any>>({});
   const isNormalScreenSize = useMediaQuery(theme.breakpoints.up('lg'));
 
-  const { plugin } = usePlugin({ id })
-  const { settings, setSettings } = usePluginSettings({ plugin: id })
-
+  const { plugin } = usePlugin({ id });
+  const { settings, setSettings } = usePluginSettings({ plugin: id });
 
   /**
    * Commit the drafted settings into the settings store.
    */
   const commitDraftValues = () => {
-    const values = Object.entries(draftValues).reduce((acc, [id, value]) => {
+    const values = Object.entries(draftValues).reduce<Record<string, any>>((acc, [id, value]) => {
       if (value !== undefined) {
-        id = id.split('.')[1]
-        acc[id] = value
+        id = id.split('.')[1];
+        acc[id] = value;
       }
-      return acc
-    }, {} as Record<string, any>)
 
-    console.log('committing', values)
-    setSettings(values)
-    clearDraftValues()
-  }
+      return acc;
+    }, {});
+
+    console.log('committing', values);
+    setSettings(values);
+    clearDraftValues();
+  };
 
   /**
   * Clear the drafted settings.
   */
   const clearDraftValues = () => {
-    setDraftValues({})
+    setDraftValues({});
+  };
+
+  if (settings.isLoading) {
+    return null;
   }
 
-  if (settings.isLoading) return null
-  if (settings.isError || !settings.data || !plugin.data) return null
+  if (settings.isError || !settings.data || !plugin.data) {
+    return null;
+  }
 
   return (
     <Stack
       direction={'column'}
-      // justifyContent={'space-between'}
+      // JustifyContent={'space-between'}
       gap={2}
       sx={{
         width: '100%',
@@ -84,7 +89,7 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
           gap: 1.5,
         }}
       >
-        <Avatar size="sm" src={plugin.data.metadata.icon} variant='plain' sx={{ borderRadius: 4, height: 20, width: 20 }} />
+        <Avatar size='sm' src={plugin.data.metadata.icon} variant='plain' sx={{ borderRadius: 4, height: 20, width: 20 }} />
         <Stack
           sx={{
             display: 'flex',
@@ -101,7 +106,7 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
               lg: 'center',
             },
             borderRadius: 12,
-            width: '100%'
+            width: '100%',
           }}
         >
           <Typography level={isNormalScreenSize ? 'title-lg' : 'title-md'}>{plugin.data.metadata.name}</Typography>
@@ -151,7 +156,7 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
         </Grid>
       </Grid>
     </Stack>
-  )
-}
+  );
+};
 
 export default PluginSettingsPage;

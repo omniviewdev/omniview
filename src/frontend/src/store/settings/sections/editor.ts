@@ -1,4 +1,4 @@
-import { SettingsSection } from '@/store/settings/types';
+import { type SettingsSection } from '@/store/settings/types';
 
 export type EditorSettings = SettingsSection;
 
@@ -19,7 +19,7 @@ export const initialState: EditorSettings = {
         { value: 'default', label: 'Default' },
         { value: 'dark', label: 'Dark' },
         { value: 'light', label: 'Light' },
-      ]
+      ],
     },
     fontSize: {
       label: 'Font Size',
@@ -40,7 +40,7 @@ export const initialState: EditorSettings = {
         { value: 'monospace', label: 'Monospace' },
         { value: 'sans-serif', label: 'Sans-serif' },
         { value: 'serif', label: 'Serif' },
-      ]
+      ],
     },
     tabSize: {
       label: 'Tab Size',
@@ -62,7 +62,7 @@ export const initialState: EditorSettings = {
         { value: 'on', label: 'On' },
         { value: 'wordWrapColumn', label: 'Word Wrap Column' },
         { value: 'bounded', label: 'Bounded' },
-      ]
+      ],
     },
     lineNumbers: {
       label: 'Line Numbers',
@@ -74,7 +74,7 @@ export const initialState: EditorSettings = {
       options: [
         { value: 'on', label: 'On' },
         { value: 'off', label: 'Off' },
-      ]
+      ],
     },
   },
-} 
+};

@@ -1,54 +1,54 @@
 import { memo, useState, useEffect } from 'react';
 
-// material-ui
+// Material-ui
 import Box from '@mui/joy/Box';
 import Link from '@mui/joy/Link';
 import Sheet from '@mui/joy/Sheet';
 import Table from '@mui/joy/Table';
 import Typography from '@mui/joy/Typography';
-import Input, { InputProps } from '@mui/joy/Input';
+import Input, { type InputProps } from '@mui/joy/Input';
 import Stack from '@mui/joy/Stack';
 import IconButton from '@mui/joy/IconButton';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 
-// tanstack/react-table
+// Tanstack/react-table
 import {
-  ColumnDef,
-  ColumnFiltersState,
-  FilterFn,
-  Row,
-  SortingState,
-  VisibilityState,
+  type ColumnDef,
+  type ColumnFiltersState,
+  type FilterFn,
+  type Row,
+  type SortingState,
+  type VisibilityState,
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
-  // getPaginationRowModel,
+  // GetPaginationRowModel,
   getSortedRowModel,
-  useReactTable
+  useReactTable,
 } from '@tanstack/react-table';
-import { ObjectMeta } from 'kubernetes-types/meta/v1';
+import { type ObjectMeta } from 'kubernetes-types/meta/v1';
 import NamespaceSelect from '@/components/selects/NamespaceSelect';
 import useRightDrawer from '@/hooks/useRightDrawer';
-import { Options, UseKubernetesResult } from '@/hooks/useKubernetes';
+import { type Options, type UseKubernetesResult } from '@/hooks/useKubernetes';
 
 /**
  * This table is specifically designed for handling Kubernetes resources. As such, we want
  * to ensure that the table is able to index on the metadata
  */
-export interface KubernetesResource {
+export type KubernetesResource = {
   apiVersion?: string;
   kind?: string;
   metadata?: ObjectMeta;
-}
+};
 
 export type Props<T extends KubernetesResource> = {
-  columns: ColumnDef<T>[];
+  columns: Array<ColumnDef<T>>;
   kind: string;
   loader: (options: Options) => UseKubernetesResult<T>;
   clusters?: string[];
-}
+};
 
 export type MemoizedRowProps<T extends KubernetesResource> = {
   row: Row<T>;
@@ -69,9 +69,11 @@ export const MemoizedRow = memo(({ row, kind }: MemoizedRowProps<KubernetesResou
       {row.getVisibleCells().map(cell => (
         <td
           key={cell.id}
-          onClick={cell.column.id === 'name' ? () => showResourceSpec(kind.toLowerCase(), cell.getValue() as string, row.original) : undefined}
+          onClick={cell.column.id === 'name' ? () => {
+            showResourceSpec(kind.toLowerCase(), cell.getValue() as string, row.original);
+          } : undefined}
           style={{
-            width: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? "auto" : cell.column.getSize(),
+            width: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
             textOverflow: 'ellipsis',
             overflow: 'hidden',
           }}
@@ -81,11 +83,11 @@ export const MemoizedRow = memo(({ row, kind }: MemoizedRowProps<KubernetesResou
       ))}
     </tr>
   );
-}, (prevProps, nextProps) => {
-  // Example memoization condition, adjust according to your actual needs
-  return prevProps.row.original.metadata?.uid === nextProps.row.original.metadata?.uid &&
-    prevProps.row.original.metadata?.resourceVersion === nextProps.row.original.metadata?.resourceVersion;
-});
+}, (prevProps, nextProps) =>
+// Example memoization condition, adjust according to your actual needs
+  prevProps.row.original.metadata?.uid === nextProps.row.original.metadata?.uid
+    && prevProps.row.original.metadata?.resourceVersion === nextProps.row.original.metadata?.resourceVersion,
+);
 
 MemoizedRow.displayName = 'MemoizedRow';
 
@@ -102,54 +104,60 @@ export function DebouncedInput({
   debounce = 500,
   ...rest
 }: InputProps & DebounceProps) {
-  const [value, setValue] = useState(initialValue)
+  const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
-    setValue(initialValue)
-  }, [initialValue])
+    setValue(initialValue);
+  }, [initialValue]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      onChange(value)
-    }, debounce)
+      onChange(value);
+    }, debounce);
 
-    return () => clearTimeout(timeout)
-  }, [value])
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [value]);
 
   return (
     <Input
       {...rest}
       value={value}
-      size="sm"
-      placeholder="Search"
+      size='sm'
+      placeholder='Search'
       name='pod-search'
       type='text'
-      autoComplete="off"
-      onChange={e => setValue(e.target.value)}
+      autoComplete='off'
+      onChange={e => {
+        setValue(e.target.value);
+      }}
       startDecorator={<SearchIcon />}
-      // clearing should not be debounced
-      endDecorator={<IconButton onClick={() => onChange('')}><CloseIcon /></IconButton>}
+      // Clearing should not be debounced
+      endDecorator={<IconButton onClick={() => {
+        onChange('');
+      }}><CloseIcon /></IconButton>}
       sx={{ flexGrow: 1, maxWidth: 500, minHeight: 36 }}
       slotProps={{
         input: {
-          // keep the input from auto capitalizing and autocorrecting, doesn't work
+          // Keep the input from auto capitalizing and autocorrecting, doesn't work
           // without both the input and the inputProps
           autoCorrect: 'off',
           autoComplete: 'off',
         },
       }}
     />
-  )
+  );
 }
 
 export const namespaceFilter: FilterFn<any> = (row, columnId, value) => {
-  // if not selected namespaces, return true
+  // If not selected namespaces, return true
   if (!value?.length) {
-    return true
+    return true;
   }
 
-  return value.includes(row.getValue(columnId))
-}
+  return value.includes(row.getValue(columnId));
+};
 
 /**
   * Render a generic resource table with sorting, filtering, column visibility and row selection.
@@ -160,40 +168,41 @@ export const namespaceFilter: FilterFn<any> = (row, columnId, value) => {
   * @returns The resource table.
   */
 const ResourceTable = <T extends KubernetesResource>({ loader, columns, kind }: Props<T>) => {
-
   /**
-  * run our loader to get the data for the table
+  * Run our loader to get the data for the table
   * for now we'll pass the loader an empty object, but we could pass it
   */
-  const { resources: data, error } = loader({})
+  const { resources: data, error } = loader({});
 
-  // monkey patch the namespace column so it uses the namespace filter
+  // Monkey patch the namespace column so it uses the namespace filter
   const namespaced = columns.some(c => c.id === 'namespace');
   if (namespaced) {
     columns.find(c => c.id === 'namespace')!.filterFn = namespaceFilter;
   }
 
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }])
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(namespaced ? [
-    { id: 'namespace', value: [] }
-  ] : [])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
-  const [rowSelection, setRowSelection] = useState({})
+    { id: 'namespace', value: [] },
+  ] : []);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [rowSelection, setRowSelection] = useState({});
 
   const setNamespaces = (namespaces: string[]) => {
-    setColumnFilters((prev) => {
+    setColumnFilters(prev => {
       const namespaceFilter = prev.find(f => f.id === 'namespace');
       if (namespaceFilter) {
         return prev.map(f => {
           if (f.id === 'namespace') {
-            return { ...f, value: namespaces }
+            return { ...f, value: namespaces };
           }
-          return f
-        })
+
+          return f;
+        });
       }
-      return prev
-    })
-  }
+
+      return prev;
+    });
+  };
 
   const [search, setSearch] = useState<string>('');
 
@@ -203,12 +212,12 @@ const ResourceTable = <T extends KubernetesResource>({ loader, columns, kind }: 
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
-    // getPaginationRowModel: getPaginationRowModel(),
+    // GetPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
-    // the object will always have a metadata.uid, so we can use that as the row id,
+    // The object will always have a metadata.uid, so we can use that as the row id,
     // that last part is just to avoid the type error
     getRowId: row => row.metadata?.uid ? row.metadata.uid : Math.random().toString(36).substring(7),
     state: {
@@ -222,32 +231,36 @@ const ResourceTable = <T extends KubernetesResource>({ loader, columns, kind }: 
       minSize: 0,
       size: Number.MAX_SAFE_INTEGER,
       maxSize: Number.MAX_SAFE_INTEGER,
-    }
-  })
+    },
+  });
 
   if (error) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', width: '100%' }}>
-        <Typography level='h2' color="danger">
+      <Box sx={{
+        display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', width: '100%',
+      }}>
+        <Typography level='h2' color='danger'>
           Error loading {kind}: {error.message}
         </Typography>
       </Box>
-    )
+    );
   }
 
   return (
     <>
-      <Stack direction="row" justifyContent={'space-between'} className="NamespaceAndSearch" sx={{ width: '100%' }}>
+      <Stack direction='row' justifyContent={'space-between'} className='NamespaceAndSearch' sx={{ width: '100%' }}>
         <DebouncedInput
           value={search ?? ''}
-          onChange={value => setSearch(String(value))}
-          placeholder="Search all columns..."
+          onChange={value => {
+            setSearch(String(value));
+          }}
+          placeholder='Search all columns...'
         />
         {namespaced && <NamespaceSelect namespaces={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []} setNamespaces={setNamespaces} />}
       </Stack>
       <Sheet
-        className={`table-container`}
-        variant="outlined"
+        className={'table-container'}
+        variant='outlined'
         sx={{
           display: { xs: 'none', sm: 'initial' },
           width: '100%',
@@ -257,7 +270,7 @@ const ResourceTable = <T extends KubernetesResource>({ loader, columns, kind }: 
           overflow: 'scroll',
           minHeight: 0,
           maxHeight: '100%',
-          // hide the scrollbars
+          // Hide the scrollbars
           '&::-webkit-scrollbar': {
             display: 'none',
           },
@@ -265,7 +278,7 @@ const ResourceTable = <T extends KubernetesResource>({ loader, columns, kind }: 
         }}
       >
         <Table
-          aria-labelledby={`table-title`}
+          aria-labelledby={'table-title'}
           stickyHeader
           hoverRow
           sx={{
@@ -279,48 +292,46 @@ const ResourceTable = <T extends KubernetesResource>({ loader, columns, kind }: 
           }}
         >
           <thead>
-            {table.getHeaderGroups().map((headerGroup) => (
+            {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => {
-                  return (
-                    <th key={header.id} style={{ alignContent: 'center', paddingTop: '12px', paddingBottom: '12px', width: header.getSize() === Number.MAX_SAFE_INTEGER ? "auto" : header.getSize() }} >
-                      {header.column.getCanSort()
-                        ? <Link
-                          underline="none"
-                          color="primary"
-                          component="button"
-                          onClick={header.column.getToggleSortingHandler()}
-                          fontWeight="lg"
-                          endDecorator={header.column.getIsSorted() && <ArrowDropDownIcon />}
-                          sx={{
-                            '& svg': {
-                              transition: '0.2s',
-                              transform:
+                {headerGroup.headers.map(header => (
+                  <th key={header.id} style={{
+                    alignContent: 'center', paddingTop: '12px', paddingBottom: '12px', width: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
+                  }} >
+                    {header.column.getCanSort()
+                      ? <Link
+                        underline='none'
+                        color='primary'
+                        component='button'
+                        onClick={header.column.getToggleSortingHandler()}
+                        fontWeight='lg'
+                        endDecorator={header.column.getIsSorted() && <ArrowDropDownIcon />}
+                        sx={{
+                          '& svg': {
+                            transition: '0.2s',
+                            transform:
                                 header.column.getIsSorted() as string === 'desc' ? 'rotate(180deg)' : 'rotate(0deg)',
-                            },
-                          }}
-                        >
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                        </Link>
-                        : flexRender(header.column.columnDef.header, header.getContext())
-                      }
-                    </th>
-                  )
-                })}
+                          },
+                        }}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </Link>
+                      : flexRender(header.column.columnDef.header, header.getContext())
+                    }
+                  </th>
+                ))}
               </tr>
             ))}
           </thead>
           <tbody>
-            {table.getRowModel().rows.map((row) => (
-              /*@ts-ignore - stop warning about an lsp error that's not true... */
+            {table.getRowModel().rows.map(row => (
               <MemoizedRow key={row.original.metadata?.uid} row={row} kind={kind} />
             ))}
           </tbody>
         </Table>
       </Sheet>
     </>
-  )
-}
-
+  );
+};
 
 export default ResourceTable;

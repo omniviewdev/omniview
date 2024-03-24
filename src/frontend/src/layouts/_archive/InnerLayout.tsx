@@ -7,7 +7,7 @@ import OuterSidebar from '../components/OuterSidebar';
 import InnerSidebar from '../components/InnerSidebar';
 import Header from '../components/Header';
 import ColorSchemeToggle from '../components/ColorSchemeToggle';
-import { Children } from '../../types';
+import { type Children } from '../../types';
 
 export default function InnerLayout({ children }: Children) {
   const pathname = window.location.pathname.split('/')[1];
@@ -20,8 +20,8 @@ export default function InnerLayout({ children }: Children) {
         <OuterSidebar />
         <InnerSidebar />
         <Box
-          component="main"
-          className="MainContent"
+          component='main'
+          className='MainContent'
           sx={{
             px: {
               xs: 2,
@@ -49,7 +49,7 @@ export default function InnerLayout({ children }: Children) {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', pb: 2 }}>
-            <Typography level="h2" sx={{ textTransform: 'capitalize' }}>
+            <Typography level='h2' sx={{ textTransform: 'capitalize' }}>
               {pathname ? pathname : 'Clusters'}
             </Typography>
             <ColorSchemeToggle

@@ -1,5 +1,9 @@
 .PHONY: build
 
+generate:
+	cd generators && go run .
+	golangci-lint run --fix ./pkg/plugin/resource/register_gen.go
+
 build:
 	rm -rf bin && rm -f kubernetes.tar.gz
 	mkdir bin && go build -o bin/plugin ./pkg

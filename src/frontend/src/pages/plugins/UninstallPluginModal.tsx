@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-// material-ui
+// Material-ui
 import Box from '@mui/joy/Box';
 import Button from '@mui/joy/Button';
 import Modal from '@mui/joy/Modal';
@@ -13,23 +13,23 @@ type Props = {
   onClose: () => void;
   name: string;
   uninstall: () => void;
-}
+};
 
 const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose }) => {
-  const [uninstalling, setUninstalling] = React.useState(false)
+  const [uninstalling, setUninstalling] = React.useState(false);
 
   const handleUninstall = () => {
-    setUninstalling(true)
-    uninstall()
-    onClose()
-  }
+    setUninstalling(true);
+    uninstall();
+    onClose();
+  };
 
   return (
     <Modal open={open} onClose={onClose}>
       <ModalDialog
-        aria-labelledby="nested-modal-title"
-        aria-describedby="nested-modal-description"
-        sx={(theme) => ({
+        aria-labelledby='nested-modal-title'
+        aria-describedby='nested-modal-description'
+        sx={theme => ({
           [theme.breakpoints.only('xs')]: {
             top: 'unset',
             bottom: 0,
@@ -41,10 +41,10 @@ const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose 
           },
         })}
       >
-        <Typography id="nested-modal-title" level="h2">
+        <Typography id='nested-modal-title' level='h2'>
           Are you sure you want to uninstall the {name} plugin?
         </Typography>
-        <Typography id="nested-modal-description" textColor="text.tertiary">
+        <Typography id='nested-modal-description' textColor='text.tertiary'>
           This will remove all data associated with the plugin.
         </Typography>
         <Box
@@ -56,16 +56,16 @@ const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose 
           }}
         >
           <Button
-            variant="solid"
-            color="primary"
+            variant='solid'
+            color='primary'
             onClick={handleUninstall}
             disabled={uninstalling}
           >
             {uninstalling ? <CircularProgress /> : 'Uninstall'}
           </Button>
           <Button
-            variant="outlined"
-            color="neutral"
+            variant='outlined'
+            color='neutral'
             onClick={onClose}
             disabled={uninstalling}
           >
@@ -75,6 +75,6 @@ const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose 
       </ModalDialog>
     </Modal>
   );
-}
+};
 
 export default UninstallPluginModal;

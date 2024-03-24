@@ -8,17 +8,19 @@ import ListItemContent from '@mui/joy/ListItemContent';
 import ListItemDecorator from '@mui/joy/ListItemDecorator';
 import ListItemButton from '@mui/joy/ListItemButton';
 import MenuItem from '@mui/joy/MenuItem';
-// import Card from '@mui/joy/Card';
+// Import Card from '@mui/joy/Card';
 // import CardContent from '@mui/joy/CardContent';
 // import AspectRatio from '@mui/joy/AspectRatio';
 // import CardOverflow from '@mui/joy/CardOverflow';
 import Typography from '@mui/joy/Typography';
 
-// icons
-import { LuNetwork, LuServer, LuContainer, LuDatabase, LuCloudLightning, LuGroup, LuLayoutDashboard, LuCpu, LuFileJson2, LuShield } from "react-icons/lu";
+// Icons
+import {
+  LuNetwork, LuServer, LuContainer, LuDatabase, LuCloudLightning, LuGroup, LuLayoutDashboard, LuCpu, LuFileJson2, LuShield,
+} from 'react-icons/lu';
 
 import { closeSidebar } from '../../utils';
-import { Link, usePluginRouter } from '@infraview/router'
+import { Link, usePluginRouter } from '@infraview/router';
 import { GlobalStyles, IconButton, Menu } from '@mui/joy';
 import { KeyboardArrowDown } from '@mui/icons-material';
 import usePanes from '@/hooks/usePanes';
@@ -83,8 +85,8 @@ const menuItems = [
       {
         label: 'CronJobs',
         name: 'cronjobs',
-      }
-    ]
+      },
+    ],
   },
   {
     label: 'Network',
@@ -110,8 +112,8 @@ const menuItems = [
       {
         label: 'Network Policies',
         name: 'networkpolicies',
-      }
-    ]
+      },
+    ],
   },
   {
     label: 'Storage',
@@ -133,8 +135,8 @@ const menuItems = [
       {
         label: 'Volume Attachments',
         name: 'volumeattachments',
-      }
-    ]
+      },
+    ],
   },
   {
     label: 'Configuration',
@@ -149,7 +151,7 @@ const menuItems = [
         label: 'Secrets',
         name: 'secrets',
       },
-    ]
+    ],
   },
   {
     label: 'Security',
@@ -176,38 +178,40 @@ const menuItems = [
         label: 'Service Accounts',
         name: 'serviceaccounts',
       },
-    ]
+    ],
   },
-]
-
+];
 
 export default function ClusterResourceSidebar() {
   const { location } = usePluginRouter();
   const { numPanes } = usePanes();
-  const [menuIndex, setMenuIndex] = React.useState<string | null>(null);
+  const [menuIndex, setMenuIndex] = React.useState<string | undefined>(undefined);
   const itemProps = {
-    onClick: () => setMenuIndex(null),
+    onClick() {
+      setMenuIndex(undefined);
+    },
   };
 
-  const createHandleLeaveMenu =
-    (menu: string) => (getIsOnButton: () => boolean) => {
-      setTimeout(() => {
-        const isOnButton = getIsOnButton();
-        if (!isOnButton) {
-          setMenuIndex((latestMenu: null | string) => {
-            if (menu === latestMenu) {
-              return null;
-            }
-            return latestMenu;
-          });
-        }
-      }, 200);
+  const createHandleLeaveMenu
+    = (menu: string) => (getIsOnButton: () => boolean) => {
+    	setTimeout(() => {
+    		const isOnButton = getIsOnButton();
+    		if (!isOnButton) {
+    			setMenuIndex((latestMenu: undefined | string) => {
+    				if (menu === latestMenu) {
+              return undefined;
+    				}
+
+    				return latestMenu;
+    			});
+    		}
+    	}, 200);
     };
 
   return (
     <>
       <Box
-        className="SecondSidebar-overlay"
+        className='SecondSidebar-overlay'
         sx={{
           position: 'fixed',
           zIndex: 9998,
@@ -223,11 +227,13 @@ export default function ClusterResourceSidebar() {
             lg: 'translateX(-100%)',
           },
         }}
-        onClick={() => closeSidebar()}
+        onClick={() => {
+          closeSidebar();
+        }}
       />
       <Sheet
-        className="ClusterResourceSidebar"
-        color="neutral"
+        className='ClusterResourceSidebar'
+        color='neutral'
         sx={{
           position: {
             xs: 'fixed',
@@ -252,7 +258,7 @@ export default function ClusterResourceSidebar() {
       >
         <GlobalStyles
           styles={{
-            ':root': {
+            'root': {
               '--ClusterResourceSidebar-width': numPanes > 1 ? '53px' : '211px',
             },
           }}
@@ -273,12 +279,12 @@ export default function ClusterResourceSidebar() {
         {/*   </CardContent> */}
         {/* </Card> */}
         <List
-          size="sm"
+          size='sm'
           sx={{
             overflowY: 'scroll',
             width: '100%',
 
-            // make the scrollbar invisible
+            // Make the scrollbar invisible
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',
             '&::-webkit-scrollbar': {
@@ -291,50 +297,11 @@ export default function ClusterResourceSidebar() {
             // '--List-gap': '6px',
           }}
         >
-          {menuItems.map((item) => {
+          {menuItems.map(item => {
             return numPanes > 1
               ? <NavHoverButtonMenu item={item} location={location} itemProps={itemProps} menuFocused={menuIndex} setMenuFocused={setMenuIndex} createHandleLeaveMenu={createHandleLeaveMenu} />
-              : <NavNormalMenu item={item} location={location} />
-            return (
-              <NavWrapper item={item} key={item.name}>
-                <ListItem
-                  nested={!!item.children?.length}
-                  endAction={
-                    !!item.children?.length && <IconButton
-                      variant="plain"
-                      size="sm"
-                      color="neutral"
-                    >
-                      <KeyboardArrowDown
-                        sx={{ transform: 'initial' }}
-                      />
-                    </IconButton>
-                  }
-                >
-                  <ListItemButton selected={location === `/explorer/${item.name}`}>
-                    <ListItemDecorator>
-                      {item.icon}
-                    </ListItemDecorator>
-                    <ListItemContent>
-                      <Typography level='title-sm' fontWeight={500}>{item.label}</Typography>
-                    </ListItemContent>
-                  </ListItemButton>
-                </ListItem>
-                {item.children.map((child) => (
-                  <Link to={`/explorer/${item.name}/${child.name}`} key={child.name} style={{ textDecoration: 'none' }} withinContext={true}>
-                    <ListItem nested>
-                      <ListItemButton selected={location === `/explorer/${item.name}/${child.name}`}>
-                        <ListItemDecorator sx={{ marginLeft: 1 }} />
-                        <ListItemContent>
-                          <Typography level='title-sm'>{child.label}</Typography>
-                        </ListItemContent>
-                      </ListItemButton>
-                    </ListItem>
-                  </Link>
-                ))}
-              </NavWrapper>
-            )
-          }
+              : <NavNormalMenu item={item} location={location} />;
+          },
           )}
         </List>
       </Sheet>
@@ -345,85 +312,85 @@ export default function ClusterResourceSidebar() {
 type Props = {
   item: any;
   itemProps: any;
-  menuFocused: string | null;
-  setMenuFocused: (menuFocused: string | null) => void;
+  menuFocused: string | undefined;
+  setMenuFocused: (menuFocused: string | undefined) => void;
   createHandleLeaveMenu: (menu: string) => (getIsOnButton: () => boolean) => void;
   location: string;
-}
+};
 
-const NavHoverButtonMenu: React.FC<Props> = ({ item, itemProps, menuFocused, setMenuFocused, createHandleLeaveMenu, location }) => {
-  return (
-    <NavWrapper item={item} key={item.name}>
-      <NavMenuButton
-        label={item.label}
-        aria-selected={location === `/explorer/${item.name}`}
-        selected={location.startsWith(`/explorer/${item.name}`)}
-        open={menuFocused === item.name}
-        onOpen={() => setMenuFocused(item.name)}
-        onLeaveMenu={createHandleLeaveMenu(item.name)}
-        menu={!!item.children?.length ?
-          <Menu onClose={() => setMenuFocused(null)}>
-            {item.children.map((child: any) => (
+const NavHoverButtonMenu: React.FC<Props> = ({ item, itemProps, menuFocused, setMenuFocused, createHandleLeaveMenu, location }) => (
+  <NavWrapper item={item} key={item.name}>
+    <NavMenuButton
+      label={item.label}
+      aria-selected={location === `/explorer/${item.name}`}
+      selected={location.startsWith(`/explorer/${item.name}`)}
+      open={menuFocused === item.name}
+      onOpen={() => {
+        setMenuFocused(item.name);
+      }}
+      onLeaveMenu={createHandleLeaveMenu(item.name)}
+      menu={item.children?.length
+        ? <Menu onClose={() => {
+          setMenuFocused(undefined);
+        }}>
+          {item.children.map((child: any) => (
 
-              <Link to={`/explorer/${item.name}/${child.name}`} key={child.name} style={{ textDecoration: 'none' }} withinContext={true}>
-                <MenuItem {...itemProps}>{child.label}</MenuItem>
-              </Link>
-            ))}
-          </Menu> : <></>
-        }
-      >
-        {item.icon}
-      </NavMenuButton>
-    </NavWrapper>
-  )
-}
+            <Link to={`/explorer/${item.name}/${child.name}`} key={child.name} style={{ textDecoration: 'none' }} withinContext={true}>
+              <MenuItem {...itemProps}>{child.label}</MenuItem>
+            </Link>
+          ))}
+        </Menu> : <></>
+      }
+    >
+      {item.icon}
+    </NavMenuButton>
+  </NavWrapper>
+);
 
-const NavNormalMenu: React.FC<{ item: any, location: string }> = ({ item, location }) => {
-  return (
-    <NavWrapper item={item} key={item.name}>
-      <ListItem
-        nested={!!item.children?.length}
-        endAction={
-          !!item.children?.length && <IconButton
-            variant="plain"
-            size="sm"
-            color="neutral"
-          >
-            <KeyboardArrowDown
-              sx={{ transform: 'initial' }}
-            />
-          </IconButton>
-        }
-      >
-        <ListItemButton selected={location === `/explorer/${item.name}`}>
-          <ListItemDecorator>
-            {item.icon}
-          </ListItemDecorator>
-          <ListItemContent>
-            <Typography level='title-sm' fontWeight={500}>{item.label}</Typography>
-          </ListItemContent>
-        </ListItemButton>
-      </ListItem>
-      {item.children.map((child: any) => (
-        <Link to={`/explorer/${item.name}/${child.name}`} key={child.name} style={{ textDecoration: 'none' }} withinContext={true}>
-          <ListItem nested>
-            <ListItemButton selected={location === `/explorer/${item.name}/${child.name}`}>
-              <ListItemDecorator sx={{ marginLeft: 1 }} />
-              <ListItemContent>
-                <Typography level='title-sm'>{child.label}</Typography>
-              </ListItemContent>
-            </ListItemButton>
-          </ListItem>
-        </Link>
-      ))}
-    </NavWrapper>
-  )
-}
+const NavNormalMenu: React.FC<{ item: any; location: string }> = ({ item, location }) => (
+  <NavWrapper item={item} key={item.name}>
+    <ListItem
+      nested={Boolean(item.children?.length)}
+      endAction={
+        Boolean(item.children?.length) && <IconButton
+          variant='plain'
+          size='sm'
+          color='neutral'
+        >
+          <KeyboardArrowDown
+            sx={{ transform: 'initial' }}
+          />
+        </IconButton>
+      }
+    >
+      <ListItemButton selected={location === `/explorer/${item.name}`}>
+        <ListItemDecorator>
+          {item.icon}
+        </ListItemDecorator>
+        <ListItemContent>
+          <Typography level='title-sm' fontWeight={500}>{item.label}</Typography>
+        </ListItemContent>
+      </ListItemButton>
+    </ListItem>
+    {item.children.map((child: any) => (
+      <Link to={`/explorer/${item.name}/${child.name}`} key={child.name} style={{ textDecoration: 'none' }} withinContext={true}>
+        <ListItem nested>
+          <ListItemButton selected={location === `/explorer/${item.name}/${child.name}`}>
+            <ListItemDecorator sx={{ marginLeft: 1 }} />
+            <ListItemContent>
+              <Typography level='title-sm'>{child.label}</Typography>
+            </ListItemContent>
+          </ListItemButton>
+        </ListItem>
+      </Link>
+    ))}
+  </NavWrapper>
+);
 
-
-const NavWrapper = ({ item, children }: { item: any, children: any }) => {
-  if (!!item?.children?.length) {
-    return children
+const NavWrapper = ({ item, children }: { item: any; children: any }) => {
+  if (item?.children?.length) {
+    return children;
   }
-  return <Link to={`/explorer/${item.name}`} key={item.name} style={{ textDecoration: 'none' }} withinContext={true}>{children}</Link>
-}
+
+  return <Link to={`/explorer/${item.name}`} key={item.name} style={{ textDecoration: 'none' }} withinContext={true}>{children}</Link>;
+};

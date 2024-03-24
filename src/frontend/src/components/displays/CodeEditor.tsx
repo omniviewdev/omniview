@@ -1,7 +1,7 @@
-import { FC, useEffect, useState } from 'react';
+import { type FC, useEffect, useState } from 'react';
 import Editor, { DiffEditor, useMonaco, loader } from '@monaco-editor/react';
 
-// themes
+// Themes
 import GithubDark from './themes/GithubDark';
 import BrillianceBlack from './themes/BrillianceBlack';
 
@@ -16,17 +16,16 @@ type Props = {
 };
 
 const CodeEditor: FC<Props> = ({ language, value, onChange, readOnly, diff, original }) => {
-
-  // if uncontrolled, define our state control here
+  // If uncontrolled, define our state control here
   const [controlledValue, setControlledValue] = useState(value);
   const monaco = useMonaco();
 
   useEffect(() => {
     if (monaco) {
-      // define all of our themes
-      monaco.editor.defineTheme('github-dark', GithubDark)
-      monaco.editor.defineTheme('brilliance-black', BrillianceBlack)
-      monaco.editor.setTheme('brilliance-black')
+      // Define all of our themes
+      monaco.editor.defineTheme('github-dark', GithubDark);
+      monaco.editor.defineTheme('brilliance-black', BrillianceBlack);
+      monaco.editor.setTheme('brilliance-black');
     }
   }, [monaco]);
 
@@ -36,15 +35,15 @@ const CodeEditor: FC<Props> = ({ language, value, onChange, readOnly, diff, orig
   const handleChange = (value: string) => {
     if (onChange) {
       onChange(value);
-      return
+      return;
     }
 
     setControlledValue(value);
-  }
+  };
 
   useEffect(() => {
     if (monaco) {
-      loader.init().then((monacoInstance) => {
+      loader.init().then(monacoInstance => {
         monacoInstance.languages.typescript.javascriptDefaults.setEagerModelSync(true);
       });
     }
@@ -58,19 +57,19 @@ const CodeEditor: FC<Props> = ({ language, value, onChange, readOnly, diff, orig
         language={language}
         options={{ readOnly }}
       />
-    )
+    );
   }
 
   return (
     <Editor
       language={language}
       value={value || controlledValue}
-      onChange={(value) => {
+      onChange={value => {
         handleChange(value || '');
       }}
       options={{ readOnly }}
     />
   );
-}
+};
 
 export default CodeEditor;

@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-// material-ui
+// Material-ui
 import Avatar from '@mui/joy/Avatar';
 import Box from '@mui/joy/Box';
 import Button from '@mui/joy/Button';
@@ -13,124 +13,160 @@ import Stack from '@mui/joy/Stack';
 import Tooltip from '@mui/joy/Tooltip';
 import Typography from '@mui/joy/Typography';
 
-// icons
+// Icons
 import Icon from '@/components/icons/Icon';
 import { FaGithub } from 'react-icons/fa6';
 import { LuRefreshCcwDot } from 'react-icons/lu';
 
-// hooks
+// Hooks
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
 import { BrowserOpenURL } from '@runtime/runtime';
 import UninstallPluginModal from './UninstallPluginModal';
+import { CircularProgress } from '@mui/joy';
 
-// bindings
+// Bindings
 
 type Props = {
   /** The ID of the plugin */
-  id: string
-}
+  id: string;
+};
+
+const IsImage = /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$|\.(gif|jpe?g|tiff?|png|webp|bmp)$/i;
+
+// Assuming you
 
 const InstalledPluginCard: React.FC<Props> = ({ id }) => {
-  const [uninstallModalOpen, setUninstallModalOpen] = React.useState(false)
+  const [uninstallModalOpen, setUninstallModalOpen] = React.useState(false);
 
-  const { plugin, reload, uninstall } = usePlugin({ id })
+  const { plugin, reload, uninstall } = usePlugin({ id });
 
   /**
    * Handle opening the link inside the users default browser
    */
   const handleOpenInBrowser = (url: string | undefined) => {
-    console.log("opening in browser", url)
-    // if the url is a url but doesn't include a protocol, add it
+    console.log('opening in browser', url);
+    // If the url is a url but doesn't include a protocol, add it
     if (url && !url.includes('://')) {
-      url = `https://${url}`
+      url = `https://${url}`;
     }
 
     if (url !== undefined) {
-      BrowserOpenURL(url)
+      BrowserOpenURL(url);
     }
-  }
+  };
 
   if (plugin.isLoading) {
-    return <></>
+    return <></>;
   }
 
   if (plugin.isError) {
-    return <></>
+    return <></>;
   }
 
   return (
     <Card
       id={`plugin-card-${id}`}
-      variant="outlined"
+      variant='outlined'
       sx={{
         overflow: 'auto',
         position: 'relative',
       }}
     >
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'start',
-        }}
-      >
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Typography level="title-lg">{plugin.data?.metadata.name}</Typography>
-          <Chip size="sm" sx={{ borderRadius: 'sm', maxHeight: 20 }} color="primary">
-            {plugin.data?.metadata.version}
-          </Chip>
-        </Stack>
-        {plugin.data?.metadata.icon.endsWith('.svg') || plugin.data?.metadata.icon.endsWith('.png') ? (
-          <Avatar
-            size="md"
-            src={plugin.data?.metadata.icon}
-            variant='plain'
-            sx={{ borderRadius: 4, position: 'absolute', top: 10, right: 10 }} />
-        ) : <Icon name={plugin.data?.metadata.icon || ''} size={44} />}
-      </Box>
-      <CardContent>
-        <Typography level="body-sm">{plugin.data?.metadata.description}</Typography>
-      </CardContent>
-      <CardActions buttonFlex="0 1 120px">
-        <Tooltip title="View on GitHub" variant="soft" arrow>
-          <IconButton
-            variant="outlined"
-            color="neutral"
-            onClick={() => handleOpenInBrowser(plugin.data?.metadata.repository)}
-          >
-            <FaGithub />
-          </IconButton>
-        </Tooltip>
-
-        <Tooltip title="Reload plugin" variant="soft" arrow>
-          <IconButton
-            variant="outlined"
-            color="neutral"
-            sx={{ mr: 'auto' }}
-            onClick={() => reload()}
-          >
-            <LuRefreshCcwDot />
-          </IconButton>
-        </Tooltip>
-
-        <Button
-          variant="solid"
-          color="primary"
-          onClick={() => handleOpenInBrowser(plugin.data?.metadata.website)}
+      {plugin.data?.loading && <CircularProgress size={'lg'} thickness={8} sx={{
+        position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+      }} />}
+      <div style={{
+        height: '100%',
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        opacity: plugin.data?.loading ? 0.2 : 1,
+        transition: 'opacity 0.3s ease-in-out',
+      }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'start',
+          }}
         >
-          View
-        </Button>
-        <Button
-          variant="outlined"
-          color="neutral"
-          onClick={() => setUninstallModalOpen(true)}
-        >
-          Uninstall
-        </Button>
-        <UninstallPluginModal open={uninstallModalOpen} onClose={() => setUninstallModalOpen(false)} name={plugin.data?.metadata.name || ""} uninstall={uninstall} />
-      </CardActions>
+          <Stack direction='row' spacing={2} alignItems='center'>
+            <Typography level='title-lg'>{plugin.data?.metadata.name}</Typography>
+            <Chip size='sm' sx={{ borderRadius: 'sm', maxHeight: 20 }} color='primary'>
+              {plugin.data?.metadata.version}
+            </Chip>
+          </Stack>
+          {plugin.data?.metadata.icon && IsImage.test(plugin.data?.metadata.icon) ? (
+            <Avatar
+              size='md'
+              src={plugin.data?.metadata.icon}
+              variant='plain'
+              sx={{
+                borderRadius: 4, position: 'absolute', top: 10, right: 10,
+              }} />
+          ) : <Icon name={plugin.data?.metadata.icon || ''} size={44} />}
+        </Box>
+        <CardContent>
+          <Typography
+            level='body-sm'
+            sx={{
+              display: '-webkit-box',
+              overflow: 'hidden',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+            }}
+          >{plugin.data?.metadata.description}</Typography>
+        </CardContent>
+        <CardActions buttonFlex='0 1 120px'>
+          <Tooltip title='View on GitHub' variant='soft' arrow>
+            <IconButton
+              variant='outlined'
+              color='neutral'
+              onClick={() => {
+                handleOpenInBrowser(plugin.data?.metadata.repository);
+              }}
+            >
+              <FaGithub />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title='Reload plugin' variant='soft' arrow>
+            <IconButton
+              variant='outlined'
+              color='neutral'
+              sx={{ mr: 'auto' }}
+              onClick={async () => reload()}
+            >
+              <LuRefreshCcwDot />
+            </IconButton>
+          </Tooltip>
+
+          <Button
+            variant='solid'
+            color='primary'
+            onClick={() => {
+              handleOpenInBrowser(plugin.data?.metadata.website);
+            }}
+          >
+            View
+          </Button>
+          <Button
+            variant='outlined'
+            color='neutral'
+            onClick={() => {
+              setUninstallModalOpen(true);
+            }}
+          >
+            Uninstall
+          </Button>
+          <UninstallPluginModal open={uninstallModalOpen} onClose={() => {
+            setUninstallModalOpen(false);
+          }} name={plugin.data?.metadata.name || ''} uninstall={uninstall} />
+        </CardActions>
+      </div>
     </Card>
   );
-}
+};
 
 export default InstalledPluginCard;
