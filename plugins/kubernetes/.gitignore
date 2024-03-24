@@ -1,5 +1,6 @@
 .DS_Store
 
+/build
 /bin
 /dist
 *.tar.gz
