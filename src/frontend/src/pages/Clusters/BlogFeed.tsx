@@ -7,8 +7,10 @@ import Sheet from '@mui/joy/Sheet';
 import Stack from '@mui/joy/Stack';
 import Typography from '@mui/joy/Typography';
 
-import { BrowserOpenURL } from '@runtime/runtime'
-import { Avatar, Chip, Divider, ListItemDecorator } from '@mui/joy';
+import { BrowserOpenURL } from '@runtime/runtime';
+import {
+  Avatar, Chip, Divider, ListItemDecorator,
+} from '@mui/joy';
 
 type RssArticle = {
   title: string;
@@ -19,11 +21,11 @@ type RssArticle = {
 };
 
 const knownSpamPhrases = [
-  "Money Plus Loan",
-]
+  'Money Plus Loan',
+];
 
 const parsers = {
-  'medium.com': (item: Element) => {
+  'medium.com'(item: Element) {
     const content = item.getElementsByTagName('description')[0].textContent;
     const parsed = MediumContentToHTML(content || '');
     let title = item.getElementsByTagName('title')[0].textContent || '';
@@ -39,41 +41,43 @@ const parsers = {
       description: parsed.text,
       link: item.getElementsByTagName('link')[0].textContent || '',
       pubDate: item.getElementsByTagName('pubDate')[0].textContent || '',
-    }
+    };
   },
-}
+};
 
 const MediumContentToHTML = (content: string) => {
-  if (!content) return {
-    image: '',
-    text: '',
-    link: ''
+  if (!content) {
+    return {
+      image: '',
+      text: '',
+      link: '',
+    };
   }
 
   const parser = new DOMParser();
-  const xmlDoc = parser.parseFromString(content, "text/html");
+  const xmlDoc = parser.parseFromString(content, 'text/html');
 
   const imageEl = xmlDoc.getElementsByClassName('medium-feed-image');
-  // get the img element within the above
+  // Get the img element within the above
   const imgTag = imageEl[0].getElementsByTagName('img')[0];
-  // get the src attribute of the img element
+  // Get the src attribute of the img element
   const image = imgTag.getAttribute('src');
 
   const textTag = xmlDoc.getElementsByClassName('medium-feed-snippet');
   const text = textTag[0].textContent;
 
   const linkEl = xmlDoc.getElementsByClassName('medium-feed-link');
-  // get a tag within the above
+  // Get a tag within the above
   const a = linkEl[0].getElementsByTagName('a')[0];
-  // get the href attribute of the a tag
+  // Get the href attribute of the a tag
   const link = a.getAttribute('href');
 
   return {
     image,
     text,
-    link
-  }
-}
+    link,
+  };
+};
 
 function RssFeedList() {
   const [articles, setArticles] = useState<RssArticle[]>([]);
@@ -86,7 +90,7 @@ function RssFeedList() {
         const response = await fetch(proxyUrl + encodeURIComponent(feedUrl));
         const resp = await response.json();
         const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(resp.contents, "text/xml");
+        const xmlDoc = parser.parseFromString(resp.contents, 'text/xml');
         console.log('xmlDoc', xmlDoc);
         const items = xmlDoc.getElementsByTagName('item');
         console.log('items', items);
@@ -103,12 +107,12 @@ function RssFeedList() {
 
   return (
     <Sheet variant='outlined' sx={{ width: '100%', mx: 'auto', borderRadius: 6 }}>
-      <Typography level="h1" fontSize="lg" component="div" sx={{ p: 2 }}>
+      <Typography level='h1' fontSize='lg' component='div' sx={{ p: 2 }}>
         Articles
       </Typography>
       <Divider />
       <List
-        size="lg"
+        size='lg'
         sx={{
           width: '100%',
           borderRadius: 1,
@@ -117,17 +121,21 @@ function RssFeedList() {
       >
         {articles.map((article, index) => (
           <ListItem key={index}>
-            <ListItemButton onClick={() => { article.link && BrowserOpenURL(article.link) }}>
+            <ListItemButton onClick={() => {
+              article.link && BrowserOpenURL(article.link);
+            }}>
               <ListItemDecorator>
-                <Avatar size="lg" src={article.image} sx={{ borderRadius: 6, backgroundColor: 'transparent', objectFit: 'contain', border: 0 }} />
+                <Avatar size='lg' src={article.image} sx={{
+                  borderRadius: 6, backgroundColor: 'transparent', objectFit: 'contain', border: 0,
+                }} />
               </ListItemDecorator>
               <ListItemContent>
-                <Stack direction="column" width={'100%'} px={2}>
-                  <Typography display={'flex'} justifyContent={'space-between'} level="h2" fontSize="md" component="h3" sx={{ fontWeight: 'bold' }}>
+                <Stack direction='column' width={'100%'} px={2}>
+                  <Typography display={'flex'} justifyContent={'space-between'} level='h2' fontSize='md' component='h3' sx={{ fontWeight: 'bold' }}>
                     {article.title}
-                    <Chip variant='outlined' color="neutral" size="sm" sx={{ ml: 1, pointerEvents: 'none' }}>{new Date(article.pubDate).toLocaleDateString()}</Chip>
+                    <Chip variant='outlined' color='neutral' size='sm' sx={{ ml: 1, pointerEvents: 'none' }}>{new Date(article.pubDate).toLocaleDateString()}</Chip>
                   </Typography>
-                  <Typography level="body-sm" fontSize="sm" sx={{ mt: 0.5 }}>
+                  <Typography level='body-sm' fontSize='sm' sx={{ mt: 0.5 }}>
                     {article.description}
                   </Typography>
                 </Stack>

@@ -1,12 +1,12 @@
-import React from 'react'
+import React from 'react';
 
-// material-ui
-import Checkbox from '@mui/joy/Checkbox'
-import Input from '@mui/joy/Input'
+// Material-ui
+import Checkbox from '@mui/joy/Checkbox';
+import Input from '@mui/joy/Input';
 import Select from '@mui/joy/Select';
 import Option from '@mui/joy/Option';
 
-// hooks
+// Hooks
 import { settings } from '@api/models';
 import { Autocomplete } from '@mui/joy';
 
@@ -15,7 +15,7 @@ type Props = {
   id: string;
   draftValue: any;
   handleChange: (name: string, value: any) => void;
-}
+};
 
 /**
  * Renders a single setting entry based on the type of setting.
@@ -23,16 +23,19 @@ type Props = {
 const SettingsEntry: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
   switch (setting.type) {
     case settings.SettingType.TEXT:
-      return <TextSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />
+      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+      return <TextSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
     case settings.SettingType.TOGGLE:
-      return <ToggleSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />
+      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+      return <ToggleSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
     case settings.SettingType.INTEGER:
     case settings.SettingType.FLOAT:
-      return <NumberSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />
+      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+      return <NumberSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
     default:
-      return null
+      return null;
   }
-}
+};
 
 const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
   const isChanged = draftValue !== undefined;
@@ -42,20 +45,33 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
       <Autocomplete
         multiple
         freeSolo={setting.options?.length === 0}
-        placeholder="Kubeconfigs"
-        value={isChanged ? draftValue : setting.value}
-        onChange={(_, val) => handleChange(id, val)}
-        options={setting.options.map((option) => ({ label: option.label, id: option.value }))}
+        placeholder={setting.value.length > 0 ? undefined : 'Kubeconfigs'}
+        value={isChanged ? draftValue as string[] : setting.value as string[]}
+        onChange={(_, val) => {
+          handleChange(id, val);
+        }}
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        options={setting.options.map(option => ({ label: option.label, id: option.value }))}
+        sx={{
+          ...(isChanged && {
+            outline: '2px solid var(--Select-focusedHighlight)',
+            outlineOffset: '2px',
+          }),
+        }}
       />
-    )
-  } else if (!!setting.options?.length) {
+    );
+  }
+
+  if (setting.options?.length) {
     return (
-      // options selection
+    // Options selection
       <Select
-        variant="outlined"
+        variant='outlined'
         name={id}
-        value={isChanged ? draftValue : setting.value}
-        onChange={(_, val) => handleChange(id, val)}
+        value={isChanged ? draftValue as string : setting.value as string}
+        onChange={(_, val) => {
+          handleChange(id, val);
+        }}
         sx={{
           '&::before': {
             display: 'none',
@@ -70,58 +86,65 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
           }),
         }}
       >
-        {setting.options.map((option) => (
+        {setting.options.map(option => (
+          /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
           <Option key={option.value} value={option.value}>{option.label}</Option>
         ))}
       </Select>
-    )
-  } else {
-    // normal single input
-    return (
-      <Input
-        variant="outlined"
-        name={id}
-        value={isChanged ? draftValue : setting.value}
-        onChange={(e) => handleChange(id, e.target.value)}
-        sx={{
-          '&::before': {
-            display: 'none',
-          },
-          '&:focus-within': {
-            outline: '2px solid var(--Input-focusedHighlight)',
-            outlineOffset: '2px',
-          },
-          ...(isChanged && {
-            outline: '2px solid var(--Input-focusedHighlight)',
-            outlineOffset: '2px',
-          }),
-        }}
-      />
-    )
+    );
   }
-}
+
+  // Normal single input
+  return (
+    <Input
+      variant='outlined'
+      name={id}
+      value={isChanged ? draftValue as string : setting.value as string}
+      onChange={e => {
+        handleChange(id, e.target.value);
+      }}
+      sx={{
+        '&::before': {
+          display: 'none',
+        },
+        '&:focus-within': {
+          outline: '2px solid var(--Input-focusedHighlight)',
+          outlineOffset: '2px',
+        },
+        ...(isChanged && {
+          outline: '2px solid var(--Input-focusedHighlight)',
+          outlineOffset: '2px',
+        }),
+      }}
+    />
+  );
+};
 
 const ToggleSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => (
   <Checkbox
-    variant="solid"
+    variant='solid'
     name={id}
-    checked={draftValue !== undefined ? draftValue : setting.value}
-    onChange={(e) => handleChange(id, e.target.checked)}
+    checked={draftValue !== undefined ? !!draftValue : !!setting.value}
+    onChange={e => {
+      handleChange(id, e.target.checked);
+    }}
   />
-)
+);
 
 const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const inputRef = React.useRef<HTMLInputElement | undefined>(null);
   const isChanged = draftValue !== undefined;
 
   if (!setting.options?.length) {
     return (
       <Input
-        type="number"
-        variant="outlined"
+        type='number'
+        variant='outlined'
         name={id}
-        value={isChanged ? draftValue : setting.value}
-        onChange={(e) => handleChange(id, e.target.value)}
+        value={isChanged ? +draftValue : +setting.value}
+        onChange={e => {
+          handleChange(id, e.target.value);
+        }}
         sx={{
           '&::before': {
             display: 'none',
@@ -137,39 +160,42 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
         }}
         slotProps={{
           input: {
-            ref: inputRef,
-            step: setting.type === 'integer' ? 1 : 0.1,
+            ref: inputRef as React.RefObject<HTMLInputElement>,
+            step: setting.type === settings.SettingType.INTEGER ? 1 : 0.1,
           },
         }}
       />
-    )
-  } else {
-    return (
-      <Select
-        variant="outlined"
-        name={id}
-        value={isChanged ? draftValue : setting.value}
-        onChange={(_, val) => handleChange(id, val)}
-        sx={{
-          '&::before': {
-            display: 'none',
-          },
-          '&:focus-within': {
-            outline: '2px solid var(--Select-focusedHighlight)',
-            outlineOffset: '2px',
-          },
-          ...(isChanged && {
-            outline: '2px solid var(--Select-focusedHighlight)',
-            outlineOffset: '2px',
-          }),
-        }}
-      >
-        {setting.options.map((option) => (
-          <Option key={option.value} value={option.value}>{option.label}</Option>
-        ))}
-      </Select>
-    )
+    );
   }
-}
+
+  return (
+    <Select
+      variant='outlined'
+      name={id}
+      value={isChanged ? !!draftValue : !!setting.value}
+      onChange={(_, val) => {
+        handleChange(id, val);
+      }}
+      sx={{
+        '&::before': {
+          display: 'none',
+        },
+        '&:focus-within': {
+          outline: '2px solid var(--Select-focusedHighlight)',
+          outlineOffset: '2px',
+        },
+        ...(isChanged && {
+          outline: '2px solid var(--Select-focusedHighlight)',
+          outlineOffset: '2px',
+        }),
+      }}
+    >
+      {setting.options.map(option => (
+        /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+        <Option key={option.value as string} value={option.value}>{option.label}</Option>
+      ))}
+    </Select>
+  );
+};
 
 export default SettingsEntry;

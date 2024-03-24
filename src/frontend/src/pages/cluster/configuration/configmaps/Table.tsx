@@ -1,22 +1,24 @@
-import { FC } from 'react';
+import { type FC } from 'react';
 
-// types
-import { ConfigMap } from 'kubernetes-types/core/v1';
+// Types
+import { type ConfigMap } from 'kubernetes-types/core/v1';
 
-// helpers
-import { ColumnDef } from '@tanstack/react-table';
+// Helpers
+import { type ColumnDef } from '@tanstack/react-table';
 import ResourceTable from '@/components/tables/ResourceTable/virtualized';
-import { SelectBoxHeader, SelectBoxRow, TextRow, RowMenu, Age } from '@/components/tables/ResourceTable/components';
+import {
+  SelectBoxHeader, SelectBoxRow, TextRow, RowMenu, Age,
+} from '@/components/tables/ResourceTable/components';
 import { useConfigMaps } from '@/hooks/useKubernetes';
 
-type Props = {}
+type Props = Record<string, unknown>;
 
 /**
  * Display a table of the deployments
  */
 const ConfigMapsTable: FC<Props> = () => {
   const loader = useConfigMaps;
-  const columns: ColumnDef<ConfigMap>[] = [
+  const columns: Array<ColumnDef<ConfigMap>> = [
     {
       id: 'select',
       header: SelectBoxHeader,
@@ -29,7 +31,7 @@ const ConfigMapsTable: FC<Props> = () => {
       id: 'name',
       header: 'Name',
       accessorKey: 'metadata.name',
-      cell: ({ row }) => (<TextRow row={row} column="name" />),
+      cell: ({ row }) => (<TextRow row={row} column='name' />),
     },
     {
       id: 'age',
@@ -45,12 +47,12 @@ const ConfigMapsTable: FC<Props> = () => {
       size: 5,
       enableSorting: false,
       enableHiding: false,
-    }
-  ]
+    },
+  ];
 
   return (
     <ResourceTable columns={columns} loader={loader} kind='configmap' />
-  )
-}
+  );
+};
 
 export default ConfigMapsTable;

@@ -2,7 +2,7 @@ import {
   differenceInSeconds,
   differenceInMinutes,
   differenceInHours,
-  differenceInDays
+  differenceInDays,
 } from 'date-fns';
 
 /**
@@ -17,7 +17,9 @@ export function formatTimeDifference(date: Date) {
   const days = differenceInDays(now, date);
 
   // Days
-  if (days > 0) return `${days}d`;
+  if (days > 0) {
+    return `${days}d`;
+  }
 
   // Hours and minutes
   if (hours > 0) {

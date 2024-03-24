@@ -1,22 +1,24 @@
-import { FC } from 'react';
+import { type FC } from 'react';
 
-// types
-import { ClusterRole } from 'kubernetes-types/rbac/v1';
+// Types
+import { type ClusterRole } from 'kubernetes-types/rbac/v1';
 
-// helpers
-import { ColumnDef } from '@tanstack/react-table';
+// Helpers
+import { type ColumnDef } from '@tanstack/react-table';
 import ResourceTable from '@/components/tables/ResourceTable/virtualized';
-import { SelectBoxHeader, SelectBoxRow, TextRow, RowMenu, Age } from '@/components/tables/ResourceTable/components';
+import {
+  SelectBoxHeader, SelectBoxRow, TextRow, RowMenu, Age,
+} from '@/components/tables/ResourceTable/components';
 import { useClusterRoles } from '@/hooks/useKubernetes';
 
-type Props = {}
+type Props = Record<string, unknown>;
 
 /**
  * Display a table of the deployments
  */
 const ClusterRolesTable: FC<Props> = () => {
   const loader = useClusterRoles;
-  const columns: ColumnDef<ClusterRole>[] = [
+  const columns: Array<ColumnDef<ClusterRole>> = [
     {
       id: 'select',
       header: SelectBoxHeader,
@@ -29,7 +31,7 @@ const ClusterRolesTable: FC<Props> = () => {
       id: 'name',
       header: 'Name',
       accessorKey: 'metadata.name',
-      cell: ({ row }) => (<TextRow row={row} column="name" />),
+      cell: ({ row }) => (<TextRow row={row} column='name' />),
     },
     {
       id: 'age',
@@ -45,12 +47,12 @@ const ClusterRolesTable: FC<Props> = () => {
       size: 5,
       enableSorting: false,
       enableHiding: false,
-    }
-  ]
+    },
+  ];
 
   return (
     <ResourceTable columns={columns} loader={loader} kind='clusterrole' />
-  )
-}
+  );
+};
 
 export default ClusterRolesTable;

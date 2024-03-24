@@ -1,6 +1,8 @@
 package resource
 
 import (
+	"log"
+
 	rt "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -43,13 +45,17 @@ type IClient interface {
 	// The pluginID should match the name of the plugin in the plugin metadata.
 	ListConnections(pluginID string) ([]types.Connection, error)
 
+	// GetConnection returns a connection for the plugin.
+	// The pluginID should match the name of the plugin in the plugin metadata.
+	GetConnection(pluginID, connectionID string) (types.Connection, error)
+
 	// AddConnection adds a new connection for the plugin.
 	// The pluginID should match the name of the plugin in the plugin metadata.
 	AddConnection(pluginID string, connection types.Connection) error
 
 	// UpdateConnection updates an existing connection for a plugin
 	// The pluginID should match the name of the plugin in the plugin metadata.
-	UpdateConnection(pluginID string, connection types.Connection) error
+	UpdateConnection(pluginID string, connection types.Connection) (types.Connection, error)
 
 	// RemoveConnection removes a connection for a plugin
 	// The pluginID should match the name of the plugin in the plugin metadata.
@@ -60,6 +66,25 @@ type IClient interface {
 
 	// StopConnectionInformer stops an informer for the given connection
 	StopConnectionInformer(pluginID, connectionID string) error
+
+	// GetResourceTypes returns a map of all the resource types that are available to the resource controller
+	GetResourceTypes(pluginID string) map[string]rt.ResourceMeta
+
+	// GetResourceType returns the resource type information by it's string representation
+	// For example, "core::v1::Pod" or "ec2::2012-12-01::EC2Instance"
+	GetResourceType(pluginID, typeID string) (*rt.ResourceMeta, error)
+
+	// HasResourceType checks to see if the resource type exists
+	HasResourceType(pluginID, typeID string) bool
+
+	// GetLayout returns the layout for the plugin
+	GetLayout(pluginID string, layoutID string) ([]rt.LayoutItem, error)
+
+	// GetDefaultLayout returns the default layout for the plugin
+	GetDefaultLayout(pluginID string) ([]rt.LayoutItem, error)
+
+	// SetLayout sets a single layout for a plugin
+	SetLayout(pluginID string, layoutID string, layout []rt.LayoutItem) error
 }
 
 // I HATE THIS. WHY CAN'T I JUST USE THE SAME INSTANCE?????
@@ -127,11 +152,18 @@ func (c *Client) ListConnections(pluginID string) ([]types.Connection, error) {
 	return c.controller.ListConnections(pluginID)
 }
 
+func (c *Client) GetConnection(pluginID, connectionID string) (types.Connection, error) {
+	return c.controller.GetConnection(pluginID, connectionID)
+}
+
 func (c *Client) AddConnection(pluginID string, connection types.Connection) error {
 	return c.controller.AddConnection(pluginID, connection)
 }
 
-func (c *Client) UpdateConnection(pluginID string, connection types.Connection) error {
+func (c *Client) UpdateConnection(
+	pluginID string,
+	connection types.Connection,
+) (types.Connection, error) {
 	return c.controller.UpdateConnection(pluginID, connection)
 }
 
@@ -145,4 +177,30 @@ func (c *Client) StartConnectionInformer(pluginID, connectionID string) error {
 
 func (c *Client) StopConnectionInformer(pluginID, connectionID string) error {
 	return c.controller.StopConnectionInformer(pluginID, connectionID)
+}
+
+func (c *Client) GetResourceTypes(pluginID string) map[string]rt.ResourceMeta {
+	resp := c.controller.GetResourceTypes(pluginID)
+	log.Println("GetResourceTypes", resp)
+	return resp
+}
+
+func (c *Client) GetResourceType(pluginID, typeID string) (*rt.ResourceMeta, error) {
+	return c.controller.GetResourceType(pluginID, typeID)
+}
+
+func (c *Client) HasResourceType(pluginID, typeID string) bool {
+	return c.controller.HasResourceType(pluginID, typeID)
+}
+
+func (c *Client) GetLayout(pluginID string, layoutID string) ([]rt.LayoutItem, error) {
+	return c.controller.GetLayout(pluginID, layoutID)
+}
+
+func (c *Client) GetDefaultLayout(pluginID string) ([]rt.LayoutItem, error) {
+	return c.controller.GetDefaultLayout(pluginID)
+}
+
+func (c *Client) SetLayout(pluginID string, layoutID string, layout []rt.LayoutItem) error {
+	return c.controller.SetLayout(pluginID, layoutID, layout)
 }

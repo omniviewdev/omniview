@@ -1,4 +1,4 @@
-import { SettingsSection } from "../types";
+import { type SettingsSection } from '../types';
 
 export type AppearanceSettings = SettingsSection;
 
@@ -30,7 +30,7 @@ export const initialState: AppearanceSettings = {
       value: 'default',
       options: [
         { value: 'default', label: 'Default' },
-      ]
+      ],
     },
     headerSearch: {
       label: 'Header Search',
@@ -41,13 +41,13 @@ export const initialState: AppearanceSettings = {
       value: true,
     },
     showSettingIds: {
-      label: "Show Setting IDs",
-      description: "Show the unique identifier for each setting in the settings panel",
+      label: 'Show Setting IDs',
+      description: 'Show the unique identifier for each setting in the settings panel',
       visible: true,
-      type: "toggle",
+      type: 'toggle',
       default: false,
       value: false,
-    }
-  }
-}
+    },
+  },
+};
 

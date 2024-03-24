@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
-// material-ui
+// Material-ui
 import Box from '@mui/joy/Box';
 import Sheet from '@mui/joy/Sheet';
 import List from '@mui/joy/List';
@@ -10,14 +10,16 @@ import ListItemContent from '@mui/joy/ListItemContent';
 import ListItemDecorator from '@mui/joy/ListItemDecorator';
 import ListItemButton from '@mui/joy/ListItemButton';
 import Typography from '@mui/joy/Typography';
-import GlobalStyles from '@mui/joy/GlobalStyles'
-import IconButton from '@mui/joy/IconButton'
+import GlobalStyles from '@mui/joy/GlobalStyles';
+import IconButton from '@mui/joy/IconButton';
 
-// icons
-import { LuNetwork, LuServer, LuContainer, LuDatabase, LuCloudLightning, LuGroup, LuLayoutDashboard, LuCpu, LuFileJson2, LuShield } from "react-icons/lu";
-import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown'
+// Icons
+import {
+  LuNetwork, LuServer, LuContainer, LuDatabase, LuCloudLightning, LuGroup, LuLayoutDashboard, LuCpu, LuFileJson2, LuShield,
+} from 'react-icons/lu';
+import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown';
 
-// project imports
+// Project imports
 import { closeSidebar } from '@/utils';
 
 const menuItems = [
@@ -79,8 +81,8 @@ const menuItems = [
       {
         label: 'CronJobs',
         name: 'cronjobs',
-      }
-    ]
+      },
+    ],
   },
   {
     label: 'Network',
@@ -106,8 +108,8 @@ const menuItems = [
       {
         label: 'Network Policies',
         name: 'networkpolicies',
-      }
-    ]
+      },
+    ],
   },
   {
     label: 'Storage',
@@ -129,8 +131,8 @@ const menuItems = [
       {
         label: 'Volume Attachments',
         name: 'volumeattachments',
-      }
-    ]
+      },
+    ],
   },
   {
     label: 'Configuration',
@@ -145,7 +147,7 @@ const menuItems = [
         label: 'Secrets',
         name: 'secrets',
       },
-    ]
+    ],
   },
   {
     label: 'Security',
@@ -172,18 +174,17 @@ const menuItems = [
         label: 'Service Accounts',
         name: 'serviceaccounts',
       },
-    ]
+    ],
   },
-]
-
+];
 
 const ResourceSidebar: React.FC = () => {
-  let location = useLocation();
+  const location = useLocation();
 
   return (
     <>
       <Box
-        className="ResourceSidebar-overlay"
+        className='ResourceSidebar-overlay'
         sx={{
           position: 'fixed',
           zIndex: 9998,
@@ -199,11 +200,13 @@ const ResourceSidebar: React.FC = () => {
             lg: 'translateX(-100%)',
           },
         }}
-        onClick={() => closeSidebar()}
+        onClick={() => {
+          closeSidebar();
+        }}
       />
       <Sheet
-        className="ResourceSidebar"
-        color="neutral"
+        className='ResourceSidebar'
+        color='neutral'
         sx={{
           position: {
             xs: 'fixed',
@@ -234,11 +237,11 @@ const ResourceSidebar: React.FC = () => {
           }}
         />
         <List
-          size="sm"
+          size='sm'
           sx={{
             overflowY: 'scroll',
             width: '100%',
-            // make the scrollbar invisible
+            // Make the scrollbar invisible
             scrollbarWidth: 'none',
             msOverflowStyle: 'none',
             '&::-webkit-scrollbar': {
@@ -250,19 +253,19 @@ const ResourceSidebar: React.FC = () => {
             '--ListItemDecorator-size': '1.5rem',
           }}
         >
-          {menuItems.map((item) => {
-            // bogus to get it to work eventually
-            const parentLink = `${location.pathname}/${item.name}`
+          {menuItems.map(item => {
+            // Bogus to get it to work eventually
+            const parentLink = `${location.pathname}/${item.name}`;
 
             return (
               <NavWrapper item={item} key={item.name} location={location.pathname}>
                 <ListItem
-                  nested={!!item.children?.length}
+                  nested={Boolean(item.children?.length)}
                   endAction={
-                    !!item.children?.length && <IconButton
-                      variant="plain"
-                      size="sm"
-                      color="neutral"
+                    Boolean(item.children?.length) && <IconButton
+                      variant='plain'
+                      size='sm'
+                      color='neutral'
                     >
                       <KeyboardArrowDown
                         sx={{ transform: 'initial' }}
@@ -279,7 +282,7 @@ const ResourceSidebar: React.FC = () => {
                     </ListItemContent>
                   </ListItemButton>
                 </ListItem>
-                {item.children.map((child) => (
+                {item.children.map(child => (
                   <Link to={`${parentLink}/${child.name}`} key={child.name} style={{ textDecoration: 'none' }} >
                     <ListItem nested>
                       <ListItemButton selected={location.pathname === `${parentLink}/${child.name}`}>
@@ -292,20 +295,21 @@ const ResourceSidebar: React.FC = () => {
                   </Link>
                 ))}
               </NavWrapper>
-            )
-          }
+            );
+          },
           )}
         </List>
       </Sheet>
     </>
   );
-}
+};
 
-const NavWrapper = ({ item, children, location }: { item: any, children: any, location: string }) => {
-  if (!!item?.children?.length) {
-    return children
+const NavWrapper = ({ item, children, location }: { item: any; children: any; location: string }) => {
+  if (item?.children?.length) {
+    return children;
   }
-  return <Link to={`${location}/${item.name}`} key={item.name} style={{ textDecoration: 'none' }}>{children}</Link>
-}
 
-export default ResourceSidebar
+  return <Link to={`${location}/${item.name}`} key={item.name} style={{ textDecoration: 'none' }}>{children}</Link>;
+};
+
+export default ResourceSidebar;

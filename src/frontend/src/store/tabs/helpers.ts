@@ -1,10 +1,9 @@
-import { redistributeSpace } from "@/utils/math";
-import type { Tab, Window } from './types'
-
+import { redistributeSpace } from '@/utils/math';
+import type { Tab, Window } from './types';
 
 /**
  * Removes a column from the layout, and optionally redistributes the space to remaining columns.
- * 
+ *
 * @param columns The array of column widths.
 * @param windows The array of windows.
 * @param columnIndex The index of the column to remove.
@@ -17,15 +16,15 @@ export const handleRemoveColumn = (
   columnIndex: number,
   redistribution: 'even' | 'priority',
   priorities: 'first' | 'last' | number[],
-): { columns: number[], windows: Window[] } => {
+): { columns: number[]; windows: Window[] } => {
   if (columnIndex < 0 || columnIndex >= columns.length) {
-    console.warn("invalid column index");
-    return { columns, windows }
+    console.warn('invalid column index');
+    return { columns, windows };
   }
 
-  // work on a copy
+  // Work on a copy
   let newColumns = columns.slice();
-  let newWindows = windows.slice();
+  const newWindows = windows.slice();
 
   // Calculate the current total width to preserve it after removing the targeted column
   const widthBeforeRemoval = newColumns.reduce((acc, val) => acc + val, 0);
@@ -38,7 +37,7 @@ export const handleRemoveColumn = (
     newColumns,
     widthBeforeRemoval,
     redistribution,
-    priorities
+    priorities,
   );
 
   // Remove or adjust windows that were in the removed column
@@ -57,10 +56,9 @@ export const handleRemoveColumn = (
     }
   });
 
-  // return the updated columns and windows
+  // Return the updated columns and windows
   return { columns: newColumns, windows: newWindows };
-}
-
+};
 
 /**
  * Removes a row from the layout, and redistributes the space to remaining rows according to the specified strategy.
@@ -75,15 +73,15 @@ export const handleRemoveRow = (
   index: number,
   redistribution: 'even' | 'priority',
   priorities: 'first' | 'last' | number[],
-): { rows: number[], windows: Window[] } => {
+): { rows: number[]; windows: Window[] } => {
   if (index < 0 || index >= rows.length) {
-    console.warn("invalid row index");
-    return { rows, windows }
+    console.warn('invalid row index');
+    return { rows, windows };
   }
 
-  // work on a copy
+  // Work on a copy
   let newRows = rows.slice();
-  let newWindows = windows.slice();
+  const newWindows = windows.slice();
 
   // Calculate the total height of all rows before removing the targeted row
   const heightBeforeRemoval = newRows.reduce((acc, val) => acc + val, 0);
@@ -97,18 +95,17 @@ export const handleRemoveRow = (
     newRows,
     heightBeforeRemoval,
     redistribution,
-    priorities
+    priorities,
   );
 
-  // adjust windows that are positioned in or below the removed row
+  // Adjust windows that are positioned in or below the removed row
   newWindows.forEach(window => {
     if (window.position.rowStart > index) {
-      // shift up windows below the removed row
+      // Shift up windows below the removed row
       window.position.rowStart -= 1;
       window.position.rowEnd -= 1;
     } else if (window.position.rowStart === index) {
-
-      // for windows that start in the removed row, adjust their position.
+      // For windows that start in the removed row, adjust their position.
       // this just moves them up for now, but other strategies could be applied.
       window.position.rowStart = Math.max(0, index - 1);
       window.position.rowEnd = Math.max(1, window.position.rowEnd - 1);
@@ -116,7 +113,7 @@ export const handleRemoveRow = (
   });
 
   return { rows: newRows, windows: newWindows };
-}
+};
 
 /**
  * Adds a row to the layout, and redistributes the space to accommodate the new row according to the specified strategy.
@@ -136,11 +133,11 @@ export const handleAddRow = (
   rowIndex: number,
   redistribution: 'even' | 'priority',
   priorities?: 'first' | 'last' | number[],
-): { rows: number[], windows: Window[] } => {
+): { rows: number[]; windows: Window[] } => {
   let newRows = rows.slice();
-  let newWindows = windows.slice();
+  const newWindows = windows.slice();
 
-  // get the current height so we keep the same height after adding the new row
+  // Get the current height so we keep the same height after adding the new row
   const currentHeight = newRows.reduce((acc, val) => acc + val, 0);
 
   // Insert the new row at the specified index
@@ -151,7 +148,7 @@ export const handleAddRow = (
     newRows,
     currentHeight,
     redistribution,
-    priorities
+    priorities,
   );
 
   // Adjust windows that are positioned at or below the added row
@@ -164,7 +161,7 @@ export const handleAddRow = (
   });
 
   return { rows: newRows, windows: newWindows };
-}
+};
 
 /**
  * Adds a column to the layout, and redistributes the space among existing columns to maintain the overall layout width.
@@ -184,11 +181,11 @@ export const handleAddColumn = (
   columnIndex: number,
   redistribution: 'even' | 'priority',
   priorities?: 'first' | 'last' | number[],
-): { columns: number[], windows: Window[] } => {
+): { columns: number[]; windows: Window[] } => {
   let newColumns = columns.slice();
-  let newWindows = windows.slice();
+  const newWindows = windows.slice();
 
-  // calculate the current total width to preserve it after adding the new column
+  // Calculate the current total width to preserve it after adding the new column
   const targetTotalWidth = newColumns.reduce((acc, val) => acc + val, 0);
 
   // Insert the new column width at the specified index
@@ -200,7 +197,7 @@ export const handleAddColumn = (
     newColumns,
     targetTotalWidth,
     redistribution,
-    priorities
+    priorities,
   );
 
   // Adjust windows that are positioned at or beyond the added column
@@ -213,8 +210,7 @@ export const handleAddColumn = (
   });
 
   return { columns: newColumns, windows: newWindows };
-}
-
+};
 
 /**
  * Finds the index of a tab by its ID.

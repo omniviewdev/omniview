@@ -2,12 +2,12 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Layout from '@/layouts/core/main';
 
-// material-ui
+// Material-ui
 import Box from '@mui/joy/Box';
 import IconButton from '@mui/joy/IconButton';
 import usePanes, { usePane } from '@/hooks/usePanes';
 
-// icon
+// Icon
 import CloseIcon from '@mui/icons-material/Close';
 
 /**
@@ -15,13 +15,13 @@ import CloseIcon from '@mui/icons-material/Close';
  */
 export default function Container() {
   const { numPanes, removePane } = usePanes();
-  const { id } = usePane()
+  const { id } = usePane();
   const [showCloseButton, setShowCloseButton] = React.useState(false);
 
   return (
     <Box
-      component="main"
-      className="Container"
+      component='main'
+      className='Container'
       sx={{
         flex: 1,
         minWidth: 0,
@@ -31,10 +31,16 @@ export default function Container() {
         overflow: 'auto',
         gap: 1,
       }}
-      onMouseEnter={() => setShowCloseButton(true)}
-      onMouseLeave={() => setShowCloseButton(false)}
+      onMouseEnter={() => {
+        setShowCloseButton(true);
+      }}
+      onMouseLeave={() => {
+        setShowCloseButton(false);
+      }}
     >
-      <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+      <Box sx={{
+        display: 'flex', flexDirection: 'column', width: '100%', height: '100%',
+      }}>
         <Layout.Sidebar />
         <Box
           sx={{
@@ -48,7 +54,7 @@ export default function Container() {
             ml: {
               xs: 0,
               md: 'var(--CoreLayoutSidebar-width)',
-            }
+            },
           }}
         >
           <Outlet />
@@ -62,9 +68,11 @@ export default function Container() {
             right: 0,
           }}
 
-          color="neutral"
+          color='neutral'
           size='sm'
-          onClick={() => removePane(id)}
+          onClick={() => {
+            removePane(id);
+          }}
         >
           <CloseIcon />
         </IconButton>

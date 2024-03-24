@@ -1,12 +1,15 @@
 package resource
 
 import (
+	"cmp"
 	"context"
 	"encoding/gob"
 	"fmt"
 	"reflect"
+	"slices"
 
 	"github.com/hashicorp/go-plugin"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
@@ -39,17 +42,93 @@ var (
 
 // Handles all of the client-side logic of resource plugins.
 type controller struct {
-	logger      *zap.SugaredLogger
-	connections map[string][]types.Connection
-	clients     map[string]resourcetypes.ResourceProvider
+	// wails context
+	ctx               context.Context
+	logger            *zap.SugaredLogger
+	connections       map[string][]types.Connection
+	clients           map[string]resourcetypes.ResourceProvider
+	informerStopChans map[string]chan struct{}
+
+	// informer channels
+	addChan    chan resourcetypes.InformerControllerAddPayload
+	updateChan chan resourcetypes.InformerControllerUpdatePayload
+	deleteChan chan resourcetypes.InformerControllerDeletePayload
 }
 
 // NewController returns a new Controller instance.
 func NewController(logger *zap.SugaredLogger) Controller {
 	return &controller{
-		logger:      logger.Named("ResourceController"),
-		connections: make(map[string][]types.Connection),
-		clients:     make(map[string]resourcetypes.ResourceProvider),
+		logger:            logger.Named("ResourceController"),
+		connections:       make(map[string][]types.Connection),
+		clients:           make(map[string]resourcetypes.ResourceProvider),
+		informerStopChans: make(map[string]chan struct{}),
+
+		// informer channels
+		addChan:    make(chan resourcetypes.InformerControllerAddPayload),
+		updateChan: make(chan resourcetypes.InformerControllerUpdatePayload),
+		deleteChan: make(chan resourcetypes.InformerControllerDeletePayload),
+	}
+}
+
+// Runs the controller, setting up the context and starting the informer listener.
+func (c *controller) Run(ctx context.Context) {
+	c.ctx = ctx
+	go c.informerListener()
+}
+
+// Listens for informer events and emits them over the frontend IPC.
+func (c *controller) informerListener() {
+	for {
+		select {
+		case <-c.ctx.Done():
+			// shutting down
+			for _, stopChan := range c.informerStopChans {
+				stopChan <- struct{}{}
+			}
+			return
+		case event := <-c.addChan:
+			namespace := event.Namespace
+			if namespace == "" {
+				namespace = "default"
+			}
+			eventKey := fmt.Sprintf(
+				"%s/informer/add/%s/%s/%s/%s",
+				event.PluginID,
+				event.Key,
+				event.Connection,
+				event.ID,
+				event.Namespace,
+			)
+			runtime.EventsEmit(c.ctx, eventKey, event.Data)
+		case event := <-c.updateChan:
+			namespace := event.Namespace
+			if namespace == "" {
+				namespace = "default"
+			}
+			eventKey := fmt.Sprintf(
+				"%s/informer/update/%s/%s/%s/%s",
+				event.PluginID,
+				event.Key,
+				event.Connection,
+				event.ID,
+				event.Namespace,
+			)
+			runtime.EventsEmit(c.ctx, eventKey, event.OldData, event.NewData)
+		case event := <-c.deleteChan:
+			namespace := event.Namespace
+			if namespace == "" {
+				namespace = "default"
+			}
+			eventKey := fmt.Sprintf(
+				"%s/informer/delete/%s/%s/%s/%s",
+				event.PluginID,
+				event.Key,
+				event.Connection,
+				event.ID,
+				event.Namespace,
+			)
+			runtime.EventsEmit(c.ctx, eventKey, event.Data)
+		}
 	}
 }
 
@@ -120,6 +199,12 @@ func (c *controller) OnPluginInit(meta config.PluginMeta) {
 	if err := c.loadFromLocalStore(meta.ID); err != nil {
 		logger.Errorw("failed to load connections from local store", "error", err)
 	}
+
+	// if we have no connections, make sure we initialize the map
+	// with empty slices, and attempt to load connections from the plugin
+	if _, ok := c.connections[meta.ID]; !ok {
+		c.connections[meta.ID] = make([]types.Connection, 0)
+	}
 }
 
 func (c *controller) OnPluginStart(
@@ -148,6 +233,23 @@ func (c *controller) OnPluginStart(
 	}
 
 	c.clients[meta.ID] = resourceClient
+
+	// try to load the connections from the plugin
+	if _, err := c.LoadConnections(meta.ID); err != nil {
+		logger.Errorw("failed to load connections from plugin", "error", err)
+	}
+
+	// start running informer receivers
+	stopChan := make(chan struct{})
+	c.informerStopChans[meta.ID] = stopChan
+	go c.listenForPluginInformerEvents(
+		meta.ID,
+		resourceClient,
+		stopChan,
+		c.addChan,
+		c.updateChan,
+		c.deleteChan,
+	)
 	return nil
 }
 
@@ -246,6 +348,8 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 		return nil, err
 	}
 
+	c.logger.Debug("loaded connections from backend", "connections", connections)
+
 	// writethrough to local state
 	c.connections[pluginID] = mergeConnections(c.connections[pluginID], connections)
 	c.saveToLocalStore(pluginID)
@@ -258,6 +362,11 @@ func (c *controller) ListConnections(pluginID string) ([]types.Connection, error
 	if !ok {
 		return nil, fmt.Errorf("plugin '%s' has no connections", pluginID)
 	}
+	slices.SortFunc(connections,
+		func(a, b types.Connection) int {
+			return cmp.Compare(a.Name, b.Name)
+		})
+
 	return connections, nil
 }
 
@@ -296,19 +405,26 @@ func (c *controller) AddConnection(pluginID string, connection types.Connection)
 	return nil
 }
 
-func (c *controller) UpdateConnection(pluginID string, connection types.Connection) error {
+func (c *controller) UpdateConnection(
+	pluginID string,
+	connection types.Connection,
+) (types.Connection, error) {
 	c.logger.Debug("UpdateConnection")
 	connections, ok := c.connections[pluginID]
 	if !ok {
-		return fmt.Errorf("plugin '%s' has no connections", pluginID)
+		return types.Connection{}, fmt.Errorf("plugin '%s' has no connections", pluginID)
 	}
 	for i, conn := range connections {
 		if conn.ID == connection.ID {
 			connections[i] = connection
-			return nil
+			return connection, nil
 		}
 	}
-	return fmt.Errorf("connection '%s' not found for plugin '%s'", connection.ID, pluginID)
+	return types.Connection{}, fmt.Errorf(
+		"connection '%s' not found for plugin '%s'",
+		connection.ID,
+		pluginID,
+	)
 }
 
 func (c *controller) RemoveConnection(pluginID, connectionID string) error {
@@ -507,7 +623,7 @@ func (c *controller) StartConnectionInformer(pluginID, connectionID string) erro
 		nil, // TODO: GlobalConfig - fill this in
 		&conn,
 	)
-	return client.StartContextInformer(ctx, connectionID)
+	return client.StartConnectionInformer(ctx, connectionID)
 }
 
 func (c *controller) StopConnectionInformer(pluginID, connectionID string) error {
@@ -528,5 +644,148 @@ func (c *controller) StopConnectionInformer(pluginID, connectionID string) error
 		nil, // TODO: GlobalConfig - fill this in
 		&conn,
 	)
-	return client.StopContextInformer(ctx, connectionID)
+	return client.StopConnectionInformer(ctx, connectionID)
+}
+
+// ================================== RESOURCE TYPE METHODS ================================== //
+
+func (c *controller) GetResourceTypes(pluginID string) map[string]resourcetypes.ResourceMeta {
+	logger := c.logger.With("pluginID", pluginID)
+	logger.Debug("GetResourceTypes")
+
+	client, ok := c.clients[pluginID]
+	if !ok {
+		logger.Error("plugin not found")
+		return nil
+	}
+	return client.GetResourceTypes()
+}
+
+func (c *controller) GetResourceType(
+	pluginID, resourceType string,
+) (*resourcetypes.ResourceMeta, error) {
+	logger := c.logger.With("pluginID", pluginID)
+	logger.Debug("GetResourceType")
+
+	client, ok := c.clients[pluginID]
+	if !ok {
+		return nil, fmt.Errorf("plugin not found")
+	}
+	return client.GetResourceType(resourceType)
+}
+
+func (c *controller) HasResourceType(pluginID, resourceType string) bool {
+	logger := c.logger.With("pluginID", pluginID)
+	logger.Debug("HasResourceType")
+
+	client, ok := c.clients[pluginID]
+	if !ok {
+		return false
+	}
+	return client.HasResourceType(resourceType)
+}
+
+// ================================== LAYOUT METHODS ================================== //
+
+func (c *controller) GetLayout(pluginID, layoutID string) ([]resourcetypes.LayoutItem, error) {
+	logger := c.logger.With("pluginID", pluginID)
+	logger.Debug("GetLayout")
+	client, ok := c.clients[pluginID]
+	if !ok {
+		return nil, fmt.Errorf("plugin not found")
+	}
+	return client.GetLayout(layoutID)
+}
+
+func (c *controller) GetDefaultLayout(pluginID string) ([]resourcetypes.LayoutItem, error) {
+	logger := c.logger.With("pluginID", pluginID)
+	logger.Debug("GetDefaultLayout")
+	client, ok := c.clients[pluginID]
+	if !ok {
+		return nil, fmt.Errorf("plugin not found")
+	}
+	return client.GetDefaultLayout()
+}
+
+func (c *controller) SetLayout(
+	pluginID string,
+	layoutID string,
+	layout []resourcetypes.LayoutItem,
+) error {
+	logger := c.logger.With("pluginID", pluginID)
+	logger.Debug("SetLayout")
+	client, ok := c.clients[pluginID]
+	if !ok {
+		return fmt.Errorf("plugin not found")
+	}
+	return client.SetLayout(layoutID, layout)
+}
+
+// ================================== INFORMER METHODS ================================== //
+
+// listenForPluginEvents listens for events from the plugin in a blocking event
+// loop, and emits them to the controller. this should be run in a goroutine.
+func (c *controller) listenForPluginInformerEvents(
+	pluginID string,
+	client resourcetypes.ResourceProvider,
+	stopChan <-chan struct{},
+	addChan chan resourcetypes.InformerControllerAddPayload,
+	updateChan chan resourcetypes.InformerControllerUpdatePayload,
+	deleteChan chan resourcetypes.InformerControllerDeletePayload,
+) {
+	l := c.logger.With("pluginID", pluginID)
+	l.Debug("listenForPluginInformerEvents")
+
+	ctx := types.NewPluginContext(context.Background(), "CORE", nil, nil, nil)
+
+	addStream := make(chan resourcetypes.InformerAddPayload)
+	updateStream := make(chan resourcetypes.InformerUpdatePayload)
+	deleteStream := make(chan resourcetypes.InformerDeletePayload)
+
+	errChan := make(chan error)
+
+	go func(errChan chan error) {
+		if err := client.ListenForEvents(ctx, addStream, updateStream, deleteStream); err != nil {
+			l.Errorw("failed to listen for events", "error", err)
+			errChan <- err
+			return
+		}
+	}(errChan)
+
+	for {
+		select {
+		case <-errChan:
+			return
+		case <-stopChan:
+			return
+		case event := <-addStream:
+			addChan <- resourcetypes.InformerControllerAddPayload{
+				PluginID:   pluginID,
+				Key:        event.Key,
+				Connection: event.Connection,
+				ID:         event.ID,
+				Namespace:  event.Namespace,
+				Data:       event.Data,
+			}
+		case event := <-updateStream:
+			updateChan <- resourcetypes.InformerControllerUpdatePayload{
+				PluginID:   pluginID,
+				Key:        event.Key,
+				Connection: event.Connection,
+				ID:         event.ID,
+				Namespace:  event.Namespace,
+				OldData:    event.OldData,
+				NewData:    event.NewData,
+			}
+		case event := <-deleteStream:
+			deleteChan <- resourcetypes.InformerControllerDeletePayload{
+				PluginID:   pluginID,
+				Key:        event.Key,
+				Connection: event.Connection,
+				ID:         event.ID,
+				Namespace:  event.Namespace,
+				Data:       event.Data,
+			}
+		}
+	}
 }

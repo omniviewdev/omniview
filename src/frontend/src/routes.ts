@@ -1,15 +1,15 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, type RouteObject } from 'react-router-dom';
 
 import CoreLayout from './layouts/core/main/CoreLayout';
 import ClusterLayout from './layouts/ClusterLayout';
 
-// lazy load each container
+// Lazy load each container
 import Clusters from './pages/clusters';
 import Plugins from './pages/plugins';
 
 // Connecting page
 import Connecting from './pages/connecting';
-import Settings from "./pages/settings";
+import Settings from './pages/settings';
 
 // In cluster routes
 import Pods from './pages/cluster/pods';
@@ -29,23 +29,35 @@ import IngressClasses from './pages/cluster/network/ingressclasses';
 import Endpoints from './pages/cluster/network/endpoints';
 import NetworkPolicies from './pages/cluster/network/networkpolicies';
 
-import PersistentVolumes from "./pages/cluster/storage/persistentvolumes";
-import PersistentVolumeClaims from "./pages/cluster/storage/persistentvolumeclaims";
-import StorageClasses from "./pages/cluster/storage/storageclasses";
-import VolumeAttachments from "./pages/cluster/storage/volumeattachments";
+import PersistentVolumes from './pages/cluster/storage/persistentvolumes';
+import PersistentVolumeClaims from './pages/cluster/storage/persistentvolumeclaims';
+import StorageClasses from './pages/cluster/storage/storageclasses';
+import VolumeAttachments from './pages/cluster/storage/volumeattachments';
 
-import ConfigMaps from "./pages/cluster/configuration/configmaps";
-import Secrets from "./pages/cluster/configuration/secrets";
+import ConfigMaps from './pages/cluster/configuration/configmaps';
+import Secrets from './pages/cluster/configuration/secrets';
 
-import Roles from "./pages/cluster/security/roles";
-import RoleBindings from "./pages/cluster/security/rolebindings";
-import ClusterRoles from "./pages/cluster/security/clusterroles";
-import ClusterRoleBindings from "./pages/cluster/security/clusterrolebindings";
-import ServiceAccounts from "./pages/cluster/security/serviceaccounts";
+import Roles from './pages/cluster/security/roles';
+import RoleBindings from './pages/cluster/security/rolebindings';
+import ClusterRoles from './pages/cluster/security/clusterroles';
+import ClusterRoleBindings from './pages/cluster/security/clusterrolebindings';
+import ServiceAccounts from './pages/cluster/security/serviceaccounts';
+
+// New core
 import PaneRenderer from './providers/PaneProvider';
-import { RouterErrorBoundary } from './ErrorBoundary';
 import Container from './layouts/core/main/Container';
 import Welcome from './pages/welcome';
+import PluginContainer from './layouts/core/main/PluginContainer';
+
+// Plugin
+import PluginHome from './pages/[plugin]/Home';
+
+// Plugin: connection
+import EditConnectionPage from './pages/[plugin]/[connectionID]/edit';
+import ConnectionDetails from './pages/[plugin]/[connectionID]/edit/ConnectionDetails';
+import ResourceTableView from './pages/[plugin]/[connectionID]/resources/ResourceTableView';
+
+import { RouterErrorBoundary } from './ErrorBoundary';
 
 /**
  * Route segments for the Kubernetes plugin.
@@ -63,83 +75,83 @@ export const KubernetesPluginRoutes = [
     path: ':contextID',
     children: [
       {
-        path: "connecting",
+        path: 'connecting',
         Component: Connecting,
       },
       {
-        path: "explorer",
+        path: 'explorer',
         Component: ClusterLayout,
         children: [
           {
-            path: "nodes",
+            path: 'nodes',
             Component: Nodes,
           },
           {
-            path: "pods",
+            path: 'pods',
             Component: Pods,
           },
           {
-            path: "namespaces",
+            path: 'namespaces',
             Component: Namespaces,
           },
           {
-            path: "compute",
+            path: 'compute',
             Component: Outlet,
             children: [
               {
-                path: "deployments",
+                path: 'deployments',
                 Component: Deployments,
               },
               {
-                path: "statefulsets",
+                path: 'statefulsets',
                 Component: StatefulSets,
               },
               {
-                path: "daemonsets",
+                path: 'daemonsets',
                 Component: DaemonSets,
               },
               {
-                path: "replicasets",
+                path: 'replicasets',
                 Component: ReplicaSets,
               },
               {
-                path: "jobs",
+                path: 'jobs',
                 Component: Jobs,
               },
               {
-                path: "cronjobs",
+                path: 'cronjobs',
                 Component: CronJobs,
               },
             ],
           },
           {
-            path: "network",
+            path: 'network',
             Component: Outlet,
             children: [
               {
-                path: "services",
+                path: 'services',
                 Component: Services,
               },
               {
-                path: "ingresses",
+                path: 'ingresses',
                 Component: Ingresses,
               },
               {
-                path: "ingressclasses",
+                path: 'ingressclasses',
                 Component: IngressClasses,
               },
               {
-                path: "endpoints",
+                path: 'endpoints',
                 Component: Endpoints,
               },
               {
-                path: "networkpolicies",
+                path: 'networkpolicies',
                 Component: NetworkPolicies,
               },
             ],
           },
           {
-            path: "storage",
+            path: 'storage',
             Component: Outlet,
             children: [
               {
@@ -158,10 +170,10 @@ export const KubernetesPluginRoutes = [
                 path: 'volumeattachments',
                 Component: VolumeAttachments,
               },
-            ]
+            ],
           },
           {
-            path: "configuration",
+            path: 'configuration',
             Component: Outlet,
             children: [
               {
@@ -172,10 +184,10 @@ export const KubernetesPluginRoutes = [
                 path: 'secrets',
                 Component: Secrets,
               },
-            ]
+            ],
           },
           {
-            path: "security",
+            path: 'security',
             Component: Outlet,
             children: [
               {
@@ -198,36 +210,65 @@ export const KubernetesPluginRoutes = [
                 path: 'serviceaccounts',
                 Component: ServiceAccounts,
               },
-            ]
-          }
+            ],
+          },
         ],
       },
     ],
   },
-]
+];
 
-
-
-export const scoped = [
+export const scoped: RouteObject[] = [
   {
-    path: "/",
+    path: '/',
     Component: Container,
     ErrorBoundary: RouterErrorBoundary,
     children: [
       {
-        path: "",
+        path: '/',
         index: true,
         Component: Welcome,
       },
       {
-        path: "kubernetes",
-        children: KubernetesPluginRoutes,
+        path: 'plugin',
+        Component: PluginContainer,
+        ErrorBoundary: RouterErrorBoundary,
+        children: [
+          {
+            path: ':pluginID',
+            Component: Outlet,
+            children: [
+              {
+                path: '',
+                index: true,
+                Component: PluginHome,
+              },
+              {
+                path: 'connection/:connectionID',
+                children: [
+                  {
+                    path: 'edit',
+                    Component: EditConnectionPage,
+                    children: [
+                      {
+                        path: 'details',
+                        Component: ConnectionDetails,
+                      },
+                    ],
+                  },
+                  {
+                    path: 'resources',
+                    Component: ResourceTableView,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
       },
-      // Add more plugins here. TODO - make this dynamic. Hardcoded for P.O.C
-    ]
-  }
-]
-
+    ],
+  },
+];
 
 /**
  *
@@ -238,22 +279,26 @@ export const scoped = [
  */
 export const core = [
   {
-    path: "/",
+    path: '/',
     Component: CoreLayout,
     children: [
       {
-        path: "/",
+        path: '/',
         index: true,
         Component: PaneRenderer,
       },
       {
-        path: "settings",
+        path: 'plugin',
+        Component: PaneRenderer,
+      },
+      {
+        path: 'settings',
         Component: Settings,
       },
       {
-        path: "plugins",
+        path: 'plugins',
         Component: Plugins,
-      }
+      },
     ],
   },
 ];

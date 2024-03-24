@@ -1,11 +1,9 @@
-import React from 'react'
+import React from 'react';
 
-type Props = {}
+type Props = Record<string, unknown>;
 
-const RightDrawer: React.FC<Props> = () => {
-  return (
-    <div>RightDrawer</div>
-  )
-}
+const RightDrawer: React.FC<Props> = () => (
+  <div>RightDrawer</div>
+);
 
 export default RightDrawer;

@@ -116,10 +116,13 @@ func main() {
 			log.Errorw("error while initializing settings system", "error", err)
 		}
 
+		resourceController.Run(ctx)
+
 		// Initialize the plugin system
 		if err := pluginManager.Initialize(ctx); err != nil {
 			log.Errorw("error while initializing plugin system", "error", err)
 		}
+		pluginManager.Run(ctx)
 
 		// Run the overarching managers
 		clusterManager.Run(ctx)

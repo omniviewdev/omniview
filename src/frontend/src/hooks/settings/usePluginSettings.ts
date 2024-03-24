@@ -1,9 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSnackbar } from "@/providers/SnackbarProvider";
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSnackbar } from '@/providers/SnackbarProvider';
 
-// underlying client
-import { ListSettings, SetSettings } from "@api/settings/Client";
-import { settings } from "@api/models";
+// Underlying client
+import { ListSettings, SetSettings } from '@api/settings/Client';
+import { type settings } from '@api/models';
 
 type PluginSettingsOptions = {
   /**
@@ -20,23 +20,23 @@ export const usePluginSettings = ({ plugin }: PluginSettingsOptions) => {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
-  const queryKey = ['settings', plugin]
+  const queryKey = ['settings', plugin];
 
   const { mutateAsync: setSettings } = useMutation({
-    mutationFn: (newSettings: Record<string, any>) => SetSettings(plugin, newSettings),
-    onSuccess: (_, _vars) => {
-      showSnackbar(`Settings saved`, 'success');
+    mutationFn: async (newSettings: Record<string, any>) => SetSettings(plugin, newSettings),
+    onSuccess(_, _vars) {
+      showSnackbar('Settings saved', 'success');
       // TODO - invalidate each one individually
       queryClient.invalidateQueries({ queryKey });
     },
-    onError: (error) => {
+    onError(error) {
       showSnackbar(`Failed to save ${plugin} plugin settings: ${error}`, 'error');
     },
   });
 
   const settings = useQuery({
     queryKey,
-    queryFn: () => ListSettings(plugin) as Promise<{ [key: string]: settings.Setting }>,
+    queryFn: async () => ListSettings(plugin) as Promise<Record<string, settings.Setting>>,
   });
 
   return {
@@ -50,5 +50,5 @@ export const usePluginSettings = ({ plugin }: PluginSettingsOptions) => {
      * @param newSettings The new settings to save, as a key-value object.
      */
     setSettings,
-  }
-}
+  };
+};

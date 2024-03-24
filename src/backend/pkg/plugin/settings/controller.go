@@ -6,13 +6,13 @@ import (
 	"reflect"
 
 	"github.com/hashicorp/go-plugin"
+	pkgsettings "github.com/omniviewdev/settings"
 	"go.uber.org/zap"
 
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/settings"
-	pkgsettings "github.com/omniviewdev/settings"
 )
 
 const (

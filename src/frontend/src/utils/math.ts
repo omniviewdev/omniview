@@ -1,11 +1,11 @@
 
 /**
-* Given an array of numbers, redistribute the space between them. The mode can be 'even' or 'priority'. 
-* If mode is 'even', the space is distributed evenly between all the elements. If mode is 'priority', 
+* Given an array of numbers, redistribute the space between them. The mode can be 'even' or 'priority'.
+* If mode is 'even', the space is distributed evenly between all the elements. If mode is 'priority',
 * the space is distributed based on the priorityIndexes or priorityPosition.
 *
 * @param arr The array of numbers to redistribute the space
-* @param target The target number for all the elements in the array to add up to. 
+* @param target The target number for all the elements in the array to add up to.
 * @param mode The mode to redistribute the space. Can be 'even' or 'priority' - defaults to 'even'
 * @param priorityIndexes The indexes that have priority. Only used if mode is 'priority' and priorityPosition is not provided.
 * @param priorityPosition The position of the priority. Can be 'first' or 'last'. Only used if mode is 'priority' and priorityIndexes is not provided.
@@ -21,6 +21,7 @@ export const redistributeSpace = (
     console.warn('Target size cannot be negative');
     return arr;
   }
+
   let calculated = arr.slice();
 
   const currentTotal = arr.reduce((sum, value) => sum + value, 0);
@@ -36,7 +37,7 @@ export const redistributeSpace = (
   } else if (mode === 'priority' && priorities !== undefined) {
     let priorityIndexes: number[] = [];
     if (Array.isArray(priorities)) {
-      // check if priorities are out of range
+      // Check if priorities are out of range
       const maxIndex = arr.length - 1;
       priorities.forEach(index => {
         if (index < 0 || index > maxIndex) {
@@ -46,14 +47,16 @@ export const redistributeSpace = (
       });
       priorityIndexes = priorities;
     }
+
     if (priorities === 'first') {
       priorityIndexes = [0];
     }
+
     if (priorities === 'last') {
       priorityIndexes = [arr.length - 1];
     }
 
-    // split the adjustment factor between priority and non-priority elements
+    // Split the adjustment factor between priority and non-priority elements
     let perPriorityChange = adjustmentFactor;
     if (priorityIndexes.length > 1) {
       perPriorityChange = adjustmentFactor > 0
@@ -67,8 +70,6 @@ export const redistributeSpace = (
         calculated[i] += perPriorityChange;
       }
     }
-
-
   } else {
     console.warn('Mode "priority" requires priorities to favor for resizing');
   }

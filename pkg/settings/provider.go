@@ -18,7 +18,7 @@ var (
 	ErrInvalidSettingID        = errors.New("invalid setting ID")
 )
 
-//nolin:gochecknoglobals // don't want to have to specify this in every function
+//nolint:gochecknoglobals // don't want to have to specify this in every function
 var nilSetting = Setting{}
 
 // The settings store is a map of maps. The first map is the category of the settings, and the second
@@ -82,6 +82,34 @@ type Provider interface {
 
 	// GetCategoryValues returns a map of the values of the settings by category
 	GetCategoryValues(id string) (map[string]interface{}, error)
+
+	// GetString returns the value of the setting by ID as a string.
+	// This is a convenience method for getting a string setting.
+	GetString(id string) (string, error)
+
+	// GetStringSlice returns the value of the setting by ID as a string slice.
+	// This is a convenience method for getting a string slice setting.
+	GetStringSlice(id string) ([]string, error)
+
+	// GetInt returns the value of the setting by ID as an int.
+	// This is a convenience method for getting an int setting.
+	GetInt(id string) (int, error)
+
+	// GetIntSlice returns the value of the setting by ID as an int slice.
+	// This is a convenience method for getting an int slice setting.
+	GetIntSlice(id string) ([]int, error)
+
+	// GetFloat returns the value of the setting by ID as a float64.
+	// This is a convenience method for getting a float setting.
+	GetFloat(id string) (float64, error)
+
+	// GetFloatSlice returns the value of the setting by ID as a float64 slice.
+	// This is a convenience method for getting a float slice setting.
+	GetFloatSlice(id string) ([]float64, error)
+
+	// GetBool returns the value of the setting by ID as a bool.
+	// This is a convenience method for getting a bool setting.
+	GetBool(id string) (bool, error)
 }
 
 // ProviderOpts are the options for creating a new settings provider.
@@ -459,4 +487,118 @@ func (p *provider) parseSettingID(id string) (string, string, error) {
 		return "", "", ErrInvalidSettingID
 	}
 	return parts[0], parts[1], nil
+}
+
+// ============================================= UTILS ============================================= //
+
+// GetString returns the value of the setting by ID as a string.
+func (p *provider) GetString(id string) (string, error) {
+	setting, err := p.GetSetting(id)
+	if err != nil {
+		return "", err
+	}
+	if setting.Type != Text {
+		return "", ErrSettingTypeMismatch
+	}
+	val, ok := setting.Value.(string)
+	if !ok {
+		return "", ErrSettingTypeMismatch
+	}
+	return val, nil
+}
+
+// GetStringSlice returns the value of the setting by ID as a string slice.
+func (p *provider) GetStringSlice(id string) ([]string, error) {
+	setting, err := p.GetSetting(id)
+	if err != nil {
+		return nil, err
+	}
+	if setting.Type != Text {
+		return nil, ErrSettingTypeMismatch
+	}
+	val, ok := setting.Value.([]string)
+	if !ok {
+		return nil, ErrSettingTypeMismatch
+	}
+	return val, nil
+}
+
+// GetInt returns the value of the setting by ID as an int.
+func (p *provider) GetInt(id string) (int, error) {
+	setting, err := p.GetSetting(id)
+	if err != nil {
+		return 0, err
+	}
+	if setting.Type != Integer {
+		return 0, ErrSettingTypeMismatch
+	}
+	val, ok := setting.Value.(int)
+	if !ok {
+		return 0, ErrSettingTypeMismatch
+	}
+	return val, nil
+}
+
+// GetIntSlice returns the value of the setting by ID as an int slice.
+func (p *provider) GetIntSlice(id string) ([]int, error) {
+	setting, err := p.GetSetting(id)
+	if err != nil {
+		return nil, err
+	}
+	if setting.Type != Integer {
+		return nil, ErrSettingTypeMismatch
+	}
+	val, ok := setting.Value.([]int)
+	if !ok {
+		return nil, ErrSettingTypeMismatch
+	}
+	return val, nil
+}
+
+// GetFloat returns the value of the setting by ID as a float64.
+func (p *provider) GetFloat(id string) (float64, error) {
+	setting, err := p.GetSetting(id)
+	if err != nil {
+		return 0, err
+	}
+	if setting.Type != Float {
+		return 0, ErrSettingTypeMismatch
+	}
+	val, ok := setting.Value.(float64)
+	if !ok {
+		return 0, ErrSettingTypeMismatch
+	}
+	return val, nil
+}
+
+// GetFloatSlice returns the value of the setting by ID as a float64 slice.
+func (p *provider) GetFloatSlice(id string) ([]float64, error) {
+	setting, err := p.GetSetting(id)
+	if err != nil {
+		return nil, err
+	}
+	if setting.Type != Float {
+		return nil, ErrSettingTypeMismatch
+	}
+	val, ok := setting.Value.([]float64)
+	if !ok {
+		return nil, ErrSettingTypeMismatch
+	}
+	return val, nil
+}
+
+// GetBool returns the value of the setting by ID as a bool.
+func (p *provider) GetBool(id string) (bool, error) {
+	setting, err := p.GetSetting(id)
+	if err != nil {
+		return false, err
+	}
+	if setting.Type != Toggle {
+		return false, ErrSettingTypeMismatch
+	}
+	val, ok := setting.Value.(bool)
+	if !ok {
+		return false, ErrSettingTypeMismatch
+	}
+	return val, nil
 }

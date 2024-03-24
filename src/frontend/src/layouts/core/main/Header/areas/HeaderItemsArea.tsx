@@ -1,28 +1,28 @@
-import React from 'react'
+import React from 'react';
 
-// material-ui
-import Box from '@mui/joy/Box'
-import IconButton from '@mui/joy/IconButton'
-import Icon from '@/components/icons/Icon'
-import HeaderIconMenu from './components/HeaderIconMenu'
-import HeaderIconButton from './components/HeaderIconButton'
-import HeaderIconLink from './components/HeaderIconLink'
+// Material-ui
+import Box from '@mui/joy/Box';
+import IconButton from '@mui/joy/IconButton';
+import Icon from '@/components/icons/Icon';
+import HeaderIconMenu from './components/HeaderIconMenu';
+import HeaderIconButton from './components/HeaderIconButton';
+import HeaderIconLink from './components/HeaderIconLink';
 
-// project-imports
-import { HeaderAreaItemList, HeaderAreaItemListType, HeaderAreaItemType } from '@/store/header/types'
-import usePanes from '@/hooks/usePanes'
-import { Tooltip } from '@mui/joy'
+// Project-imports
+import { type HeaderAreaItemList, type HeaderAreaItemListType, HeaderAreaItemType } from '@/store/header/types';
+import usePanes from '@/hooks/usePanes';
+import { Tooltip } from '@mui/joy';
 
 type Props = {
   /** The items to display in the header. */
-  items: HeaderAreaItemList
-}
+  items: HeaderAreaItemList;
+};
 
 /**
  * Display items within an item area on the header
  */
 const HeaderItemsArea: React.FC<Props> = ({ items }) => {
-  const { addNewPane } = usePanes()
+  const { addNewPane } = usePanes();
 
   return (
     <Box
@@ -35,18 +35,18 @@ const HeaderItemsArea: React.FC<Props> = ({ items }) => {
         justifyContent: 'flex-end',
         alignItems: 'center',
         px: 0.5,
-        'WebkitUserSelect': 'none',
+        WebkitUserSelect: 'none',
       }}
     >
-      {items.map((item) => <HeaderItemComponent key={item.id} item={item} />)}
+      {items.map(item => <HeaderItemComponent key={item.id} item={item} />)}
       {/* Temporary to test the panes */}
-      <Tooltip enterDelay={1000} title="Add Pane" variant='soft' >
+      <Tooltip enterDelay={1000} title='Add Pane' variant='soft' >
 
         <IconButton
           name={'add-pane'}
-          size="md"
-          variant="outlined"
-          color="neutral"
+          size='md'
+          variant='outlined'
+          color='neutral'
           sx={{
             '--wails-draggable': 'no-drag',
           }}
@@ -56,22 +56,22 @@ const HeaderItemsArea: React.FC<Props> = ({ items }) => {
         </IconButton>
       </Tooltip>
     </Box>
-  )
-}
+  );
+};
 
 const HeaderItemComponent = ({ item }: { item: HeaderAreaItemListType }): React.ReactElement => {
   switch (item.type) {
     case HeaderAreaItemType.BUTTON:
-      return <HeaderIconButton {...item} />
+      return <HeaderIconButton {...item} />;
     case HeaderAreaItemType.LINK:
-      return <HeaderIconLink {...item} />
+      return <HeaderIconLink {...item} />;
     case HeaderAreaItemType.MENU:
-      return <HeaderIconMenu {...item} />
+      return <HeaderIconMenu {...item} />;
     case HeaderAreaItemType.MODAL:
-    // not defined yet for now
+      // Not defined yet for now
     default:
-      return <></>
+      return <></>;
   }
-}
+};
 
-export default HeaderItemsArea
+export default HeaderItemsArea;

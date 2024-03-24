@@ -18,6 +18,16 @@ const (
 	EXEC_DIR     = "../backend/exec"
 )
 
+// Versions to compile against. These are the tags we'll check out
+var Versions = []string{
+	"v1.30.0-beta.0",
+	"v1.29.3",
+	"v1.28.8",
+	"v1.27.12",
+	"v1.26.15",
+	"v1.25.16",
+}
+
 // Clone the repo down to the temporary directory for parsing
 func cloneRepo(repoURL string) error {
 	// first, clean up the location if it exists, BUT ONLY IF IT'S NOT THE EXISTING GIT REPO
@@ -61,16 +71,42 @@ func cloneRepo(repoURL string) error {
 	return nil
 }
 
+// Checkout a specific tag so we can accumulate the resources
+func checkoutTag(tag string) error {
+	cmd := exec.Command("git", "-C", START_DIR, "checkout", tag)
+	log.Printf("Running command: %s", cmd.String())
+	if err := cmd.Run(); err != nil {
+		err = fmt.Errorf("failed to run command: %s, with error: %v", cmd.String(), err)
+		return err
+	}
+	log.Printf("Checked out tag: %s", tag)
+	return nil
+}
+
 // Run the generator
 func main() {
 	if err := cloneRepo(REPO_URL); err != nil {
 		log.Panicf("failed to run generator: %s", err)
 	}
 
+	resources := make([]Resource, 0, 100)
+	packages := make([]Package, 0, 30)
+
 	// readSpec(filepath.Join(START_DIR, "api/openapi-spec/v3/api__v1_openapi.json"))
 
 	// parse the open api spec
-	ParseOpenAPI(filepath.Join(START_DIR, "api/openapi-spec/swagger.json"))
+	for _, version := range Versions {
+		if err := checkoutTag(version); err != nil {
+			log.Panicf("failed to run generator: %s", err)
+		}
+		ParseOpenAPI(
+			filepath.Join(START_DIR, "api/openapi-spec/swagger.json"),
+			&resources,
+			&packages,
+		)
+		log.Printf("Parsed resources for version: %s", version)
+	}
 
+	GenerateRegister(resources, packages)
 	log.Print("Generator ran successfully")
 }

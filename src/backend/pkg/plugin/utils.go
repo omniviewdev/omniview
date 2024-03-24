@@ -266,6 +266,21 @@ func parseMetadataFromArchive(path string) (*config.PluginMeta, error) {
 	return nil, errors.New("'plugin.yaml' not found in download file")
 }
 
+func parseMetadataFromPluginPath(path string) (*config.PluginMeta, error) {
+	// Open the plugin.yaml file
+	file, err := os.Open(filepath.Join(path, "plugin.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var metadata config.PluginMeta
+	if err = yaml.NewDecoder(file).Decode(&metadata); err != nil {
+		return nil, err
+	}
+	return &metadata, nil
+}
+
 // isGzippedTarball attempts to read the file as a gzipped tarball. If it succeeds in reading at least one
 // header from the tar archive, it assumes the file is a valid gzipped tarball.
 func isGzippedTarball(filePath string) bool {

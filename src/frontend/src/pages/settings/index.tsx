@@ -1,13 +1,13 @@
 import React from 'react';
 
-// material-ui
+// Material-ui
 import { CssVarsProvider } from '@mui/joy/styles';
 import CssBaseline from '@mui/joy/CssBaseline';
 
-// layout
+// Layout
 import Layout from '@/layouts/core/sidenav';
 
-// components
+// Components
 import SettingsNav from './SettingsNav';
 import CoreSettingsPage from './CoreSettingsPage';
 import PluginSettingsPage from './PluginSettingsPage';
@@ -22,13 +22,13 @@ export type SectionSelection = {
   section: Section;
   /** ID of the part of the seciton (e.g the category or plugin ID) */
   id: string;
-}
+};
 
 /**
  * The main settings page for the application.
  */
 export default function SettingsPage() {
-  const [selected, setSelected] = React.useState<SectionSelection>({ section: Section.Core, id: '' })
+  const [selected, setSelected] = React.useState<SectionSelection>({ section: Section.Core, id: '' });
 
   return (
     <CssVarsProvider disableTransitionOnChange>
@@ -51,9 +51,12 @@ export default function SettingsPage() {
 }
 
 const GetSettingsPage = (section: Section, id: string) => {
-  if (!id) return (
-    <></>
-  );
+  if (!id) {
+    return (
+      <></>
+    );
+  }
+
   switch (section) {
     case Section.Core:
       return <CoreSettingsPage id={id} />;
@@ -62,4 +65,4 @@ const GetSettingsPage = (section: Section, id: string) => {
     default:
       return null;
   }
-}
+};

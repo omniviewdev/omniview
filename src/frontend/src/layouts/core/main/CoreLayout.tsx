@@ -1,7 +1,7 @@
 import { CssVarsProvider } from '@mui/joy/styles';
 import CssBaseline from '@mui/joy/CssBaseline';
 import Box from '@mui/joy/Box';
-import Layout from '@/layouts/core/main'
+import Layout from '@/layouts/core/main';
 import { Outlet } from 'react-router-dom';
 
 /**
@@ -11,15 +11,15 @@ import { Outlet } from 'react-router-dom';
 export default function CoreLayout() {
   return (
     <CssVarsProvider
-      defaultMode="dark"
+      defaultMode='dark'
       disableTransitionOnChange
     >
       <CssBaseline />
       <Box sx={{ display: 'flex', minHeight: '100dvh', flexDirection: 'column' }}>
         <Layout.Header />
         <Box
-          component="main"
-          className="MainContent"
+          component='main'
+          className='MainContent'
           sx={{
             flex: 1,
             display: 'flex',

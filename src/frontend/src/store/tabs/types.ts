@@ -3,7 +3,7 @@
  * cluster context for displaying the tab's content. The tab is also linked to a window ID, which
  * is used to render the tab's content in the main rendering container.
  */
-export interface Tab {
+export type Tab = {
   /** Unique id for the tab */
   id: string;
   /** Label to display in the tab */
@@ -12,9 +12,9 @@ export interface Tab {
   icon: string | Blob | React.ReactNode;
   /** The cluster context the tab is using */
   cluster: string;
-}
+};
 
-export interface GridPosition {
+export type GridPosition = {
   /** The row to start the window at */
   rowStart: number;
   /** The row to end the window at */
@@ -23,45 +23,45 @@ export interface GridPosition {
   columnStart: number;
   /** The column to end the window at */
   columnEnd: number;
-}
+};
 
-/** 
- * Layout represents the current layout of the windows in the main rendering container 
+/**
+ * Layout represents the current layout of the windows in the main rendering container
  */
-export interface Layout {
+export type Layout = {
   /** An array of sizings in pixels for each row, with each index being the row number */
   rows: number[];
   /** An array of sizings in pixels for each column, with each index being the column number */
   columns: number[];
-}
+};
 
-/** 
+/**
  * A window represents a single viewable pane within the main rendering container. Each
  * is linked to a single tab and it's context for displaying the tab's content.
  * To acheive the layout, we use CSS Grid to position the windows within the main
  * rendering container.
  */
-export interface Window {
+export type Window = {
   /** The ID of the window */
   id: string;
   /** The ID of the tab this window is rendering */
   tabId: string;
   /** The position of the window within the grid */
   position: GridPosition;
-}
+};
 
 /**
  * The current state of the application container, including the tabs, windows, and layout
  * of the main rendering container.
  */
-export interface ContainerState {
+export type ContainerState = {
   /** The current tabs that are opened, both assigned and unassigned to windows */
   tabs: Tab[];
   /** The various windows within the main rendering container */
   windows: Window[];
   /** The layout of the windows in the main rendering container */
   layout: Layout;
-}
+};
 
 /**
   * Reorder tabs within the tab bar. If the strategy is 'swap', the two tabs will swap positions

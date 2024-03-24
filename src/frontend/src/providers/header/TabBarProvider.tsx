@@ -1,31 +1,35 @@
-import { FC } from 'react'
+import { type FC } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-// dnd-kit
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, sortableKeyboardCoordinates, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+// Dnd-kit
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, horizontalListSortingStrategy, useSortable,
+} from '@dnd-kit/sortable';
 import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 
 import { CSS } from '@dnd-kit/utilities';
 
-// types
-import { Tab as ITab } from '@/store/tabs/types';
+// Types
+import { type Tab as ITab } from '@/store/tabs/types';
 
-// material-ui
+// Material-ui
 import Typography from '@mui/joy/Typography';
 import Sheet from '@mui/joy/Sheet';
 import Stack from '@mui/joy/Stack';
 import AspectRatio from '@mui/joy/AspectRatio';
 import IconButton from '@mui/joy/IconButton';
 
-// redux
-import type { RootState } from '@/store/store'
-import { useSelector, useDispatch } from 'react-redux'
+// Redux
+import type { RootState } from '@/store/store';
+import { useSelector, useDispatch } from 'react-redux';
 import { handleAddTab, handleRemoveTab, handleReorderTabsByID } from '@/store/tabs/slice';
 
-// icons
-import { LuBox, LuX } from "react-icons/lu";
-import { FaPlus } from "react-icons/fa";
+// Icons
+import { LuBox, LuX } from 'react-icons/lu';
+import { FaPlus } from 'react-icons/fa';
 
 type TabProps = {
   tab: ITab;
@@ -33,7 +37,7 @@ type TabProps = {
   handleCloseTab: (tabId: string) => void;
   clusterId: string;
   selectedTabs: string[];
-}
+};
 
 /**
  * Represents a single tab in the tab provider
@@ -53,10 +57,9 @@ const Tab: FC<TabProps> = ({ tab, handleTabClick, handleCloseTab, clusterId, sel
   };
 
   const handleTabClose = (event: React.MouseEvent, id: string) => {
-    event.stopPropagation()
-    handleCloseTab(id)
-  }
-
+    event.stopPropagation();
+    handleCloseTab(id);
+  };
 
   return (
     <Sheet
@@ -65,9 +68,11 @@ const Tab: FC<TabProps> = ({ tab, handleTabClick, handleCloseTab, clusterId, sel
       style={style}
       {...attributes}
       {...listeners}
-      className="Tab"
+      className='Tab'
       variant='plain'
-      onClick={() => handleTabClick(tab.id)}
+      onClick={() => {
+        handleTabClick(tab.id);
+      }}
       sx={{
         gap: 1.5,
         display: 'flex',
@@ -82,16 +87,16 @@ const Tab: FC<TabProps> = ({ tab, handleTabClick, handleCloseTab, clusterId, sel
         pl: 1,
         pr: 1,
         '--wails-draggable': 'no-drag',
-        'WebkitUserSelect': 'none',
+        WebkitUserSelect: 'none',
       }}
     >
-      {!!tab.icon && typeof tab.icon === 'string' ?
-        <AspectRatio ratio="1" sx={{ width: 22, borderRadius: 4 }}>
+      {Boolean(tab.icon) && typeof tab.icon === 'string'
+        ? <AspectRatio ratio='1' sx={{ width: 22, borderRadius: 4 }}>
           <img
             src={tab.icon}
             srcSet={`${tab.icon} 2x`}
-            loading="lazy"
-            alt=""
+            loading='lazy'
+            alt=''
           />
         </AspectRatio>
         : <LuBox />
@@ -100,16 +105,20 @@ const Tab: FC<TabProps> = ({ tab, handleTabClick, handleCloseTab, clusterId, sel
       <IconButton
         variant='plain'
         size='sm'
-        onClick={(e) => handleTabClose(e, tab.id)}
-        sx={{ minHeight: 0, minWidth: 0, padding: 0.5, backgroundColor: 'transparent' }}
+        onClick={e => {
+          handleTabClose(e, tab.id);
+        }}
+        sx={{
+          minHeight: 0, minWidth: 0, padding: 0.5, backgroundColor: 'transparent',
+        }}
       >
         <LuX />
       </IconButton>
     </Sheet>
-  )
-}
+  );
+};
 
-type TabBarProviderProps = {}
+type TabBarProviderProps = Record<string, unknown>;
 
 const TabBarProvider: FC<TabBarProviderProps> = ({ }) => {
   const { clusterId } = useParams<{ clusterId: string }>();
@@ -124,7 +133,7 @@ const TabBarProvider: FC<TabBarProviderProps> = ({ }) => {
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   // Handler for drag end
@@ -140,29 +149,29 @@ const TabBarProvider: FC<TabBarProviderProps> = ({ }) => {
 
   const dispatch = useDispatch();
   const tabs = useSelector((state: RootState) => state.tabs.tabs);
-  const selectedTabs = useSelector((state: RootState) => state.tabs.windows.filter((window) => !!window.tabId).map((window) => window.tabId));
-
+  const selectedTabs = useSelector((state: RootState) => state.tabs.windows.filter(window => Boolean(window.tabId)).map(window => window.tabId));
 
   const handleTabClick = (tabId: string) => {
-    // find the cluster id for the tab 
-    const tab = tabs.find((tab) => tab.id === tabId);
+    // Find the cluster id for the tab
+    const tab = tabs.find(tab => tab.id === tabId);
     if (!tab?.cluster) {
       return;
     }
+
     navigate(`/explorer/${btoa(tab.cluster)}/pods`);
-  }
+  };
 
   const handleCreateNewTab = () => {
-    dispatch(handleAddTab({ cluster: 'gc-int', label: 'gc-int' }))
-  }
+    dispatch(handleAddTab({ cluster: 'gc-int', label: 'gc-int' }));
+  };
 
   const handleCloseTab = (tabId: string) => {
     dispatch(handleRemoveTab(tabId));
-  }
+  };
 
   return (
     <Sheet
-      className="TabBarProvider"
+      className='TabBarProvider'
       sx={{
         height: '100%',
         maxHeight: '100%',
@@ -180,14 +189,14 @@ const TabBarProvider: FC<TabBarProviderProps> = ({ }) => {
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
           modifiers={[restrictToParentElement, restrictToHorizontalAxis]} >
-          <SortableContext items={tabs.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>
-            {tabs.map((tab) => (
-              <Tab tab={tab} handleTabClick={handleTabClick} handleCloseTab={handleCloseTab} clusterId={clusterId as string} selectedTabs={selectedTabs} />
+          <SortableContext items={tabs.map(tab => tab.id)} strategy={horizontalListSortingStrategy}>
+            {tabs.map(tab => (
+              <Tab tab={tab} handleTabClick={handleTabClick} handleCloseTab={handleCloseTab} clusterId={clusterId!} selectedTabs={selectedTabs} />
             ))}
           </SortableContext>
         </DndContext>
         <Sheet
-          className="Tab"
+          className='Tab'
           variant='soft'
           onClick={handleCreateNewTab}
           sx={{
@@ -208,6 +217,6 @@ const TabBarProvider: FC<TabBarProviderProps> = ({ }) => {
       </Stack>
     </Sheet>
   );
-}
+};
 
 export default TabBarProvider;

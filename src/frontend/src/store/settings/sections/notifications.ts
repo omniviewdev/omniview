@@ -1,6 +1,6 @@
-import { SettingsSection } from '@/store/settings/types';
+import { type SettingsSection } from '@/store/settings/types';
 
-export type NotificationSettings = SettingsSection
+export type NotificationSettings = SettingsSection;
 
 export const initialState: NotificationSettings = {
   id: 'notifications',
@@ -24,5 +24,5 @@ export const initialState: NotificationSettings = {
       default: true,
       value: true,
     },
-  }
-}
+  },
+};

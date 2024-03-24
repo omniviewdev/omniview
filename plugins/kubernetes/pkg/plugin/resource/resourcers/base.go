@@ -3,13 +3,13 @@ package resourcers
 import (
 	"sync"
 
-	"github.com/omniview/kubernetes/pkg/plugin/resource"
-	"github.com/omniviewdev/omniview/backend/services"
+	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
 	"go.uber.org/zap"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/informers"
 
 	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -37,8 +37,6 @@ type KubernetesResourcerBase[T MetaAccessor] struct {
 	log *zap.SugaredLogger
 	// resourceType is the group version resource for the resource this service manages.
 	resourceType schema.GroupVersionResource
-	// informer is the informer for the resource type
-	informer informers.GenericInformer
 }
 
 // NewKubernetesResourcerBase creates a new instance of KubernetesResourcerBase for interacting
@@ -46,15 +44,12 @@ type KubernetesResourcerBase[T MetaAccessor] struct {
 func NewKubernetesResourcerBase[T MetaAccessor](
 	logger *zap.SugaredLogger,
 	resourceType schema.GroupVersionResource,
-	publisher *services.ClusterContextPublisher,
-	stateChan chan<- services.ResourceStateEvent,
-) pkgtypes.Resourcer[resource.ClientSet] {
+) pkgtypes.Resourcer[clients.ClientSet] {
 	// Create a new instance of the service
 	service := KubernetesResourcerBase[T]{
 		RWMutex:      sync.RWMutex{},
 		log:          logger.With("service", resourceType.Resource+"Service"),
 		resourceType: resourceType,
-		informer:     nil,
 	}
 
 	return &service
@@ -69,34 +64,48 @@ func (s *KubernetesResourcerBase[T]) GroupVersionResource() schema.GroupVersionR
 
 // Get returns a resource by name and namespace.
 func (s *KubernetesResourcerBase[T]) Get(
-	ctx *types.PluginContext,
-	client *resource.ClientSet,
+	_ *types.PluginContext,
+	client *clients.ClientSet,
 	input pkgtypes.GetInput,
 ) (*pkgtypes.GetResult, error) {
-	lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.Namespace)
-	resource, err := lister.Get(ctx.Context, input.ID, v1.GetOptions{})
+	// TODO - figure out if using informer or not, for not assume we are
+	lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
+	// lister := client.DynamicClient.Resource(s.GroupVersionResource()).Namespace(input.Namespace)
+
+	resource, err := lister.Get(input.ID)
+	if err != nil {
+		return nil, err
+	}
+	// convert the runtime.Object to unstructured.Unstructured
+	obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(resource)
 	if err != nil {
 		return nil, err
 	}
 
-	return &pkgtypes.GetResult{Success: true, Result: resource.Object}, nil
+	return &pkgtypes.GetResult{Success: true, Result: obj}, nil
 }
 
 // List returns a map of resources for the provided cluster contexts.
 func (s *KubernetesResourcerBase[T]) List(
-	ctx *types.PluginContext,
-	client *resource.ClientSet,
-	input pkgtypes.ListInput,
+	_ *types.PluginContext,
+	client *clients.ClientSet,
+	_ pkgtypes.ListInput,
 ) (*pkgtypes.ListResult, error) {
-	lister := client.DynamicClient.Resource(s.GroupVersionResource())
-	resources, err := lister.List(ctx.Context, v1.ListOptions{})
+	lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
+	resources, err := lister.List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
 
 	result := make(map[string]interface{})
-	for _, r := range resources.Items {
-		result[r.GetName()] = r.Object
+	for _, r := range resources {
+		var obj map[string]interface{}
+		obj, err = runtime.DefaultUnstructuredConverter.ToUnstructured(r)
+		if err != nil {
+			return nil, err
+		}
+		res := unstructured.Unstructured{Object: obj}
+		result[res.GetName()] = obj
 	}
 
 	return &pkgtypes.ListResult{Success: true, Result: result}, nil
@@ -105,19 +114,25 @@ func (s *KubernetesResourcerBase[T]) List(
 // Find returns a resource by name and namespace.
 // TODO - implement, for now this just does list
 func (s *KubernetesResourcerBase[T]) Find(
-	ctx *types.PluginContext,
-	client *resource.ClientSet,
-	input pkgtypes.FindInput,
+	_ *types.PluginContext,
+	client *clients.ClientSet,
+	_ pkgtypes.FindInput,
 ) (*pkgtypes.FindResult, error) {
-	lister := client.DynamicClient.Resource(s.GroupVersionResource())
-	resources, err := lister.List(ctx.Context, v1.ListOptions{})
+	lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
+
+	resources, err := lister.List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
 
 	result := make(map[string]interface{})
-	for _, r := range resources.Items {
-		result[r.GetName()] = r.Object
+	for _, r := range resources {
+		obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(r)
+		if err != nil {
+			return nil, err
+		}
+		res := unstructured.Unstructured{Object: obj}
+		result[res.GetName()] = obj
 	}
 
 	return &pkgtypes.FindResult{Success: true, Result: result}, nil
@@ -126,7 +141,7 @@ func (s *KubernetesResourcerBase[T]) Find(
 // Create creates a new resource in the given resource namespace.
 func (s *KubernetesResourcerBase[T]) Create(
 	ctx *types.PluginContext,
-	client *resource.ClientSet,
+	client *clients.ClientSet,
 	input pkgtypes.CreateInput,
 ) (*pkgtypes.CreateResult, error) {
 	result := new(pkgtypes.CreateResult)
@@ -144,7 +159,7 @@ func (s *KubernetesResourcerBase[T]) Create(
 
 func (s *KubernetesResourcerBase[T]) Update(
 	ctx *types.PluginContext,
-	client *resource.ClientSet,
+	client *clients.ClientSet,
 	input pkgtypes.UpdateInput,
 ) (*pkgtypes.UpdateResult, error) {
 	result := new(pkgtypes.UpdateResult)
@@ -160,7 +175,7 @@ func (s *KubernetesResourcerBase[T]) Update(
 	resource.Object = input.Input
 	updated, err := lister.Update(ctx.Context, resource, v1.UpdateOptions{})
 	if err != nil {
-		return result, nil
+		return nil, err
 	}
 	result.Result = updated.Object
 	return result, nil
@@ -168,7 +183,7 @@ func (s *KubernetesResourcerBase[T]) Update(
 
 func (s *KubernetesResourcerBase[T]) Delete(
 	ctx *types.PluginContext,
-	client *resource.ClientSet,
+	client *clients.ClientSet,
 	input pkgtypes.DeleteInput,
 ) (*pkgtypes.DeleteResult, error) {
 	result := new(pkgtypes.DeleteResult)

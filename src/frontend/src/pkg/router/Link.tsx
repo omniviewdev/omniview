@@ -1,12 +1,12 @@
 import React from 'react';
-import { Link as OriginalLink, LinkProps as OriginalLinkProps, useLocation, useParams } from 'react-router-dom';
+import { Link as OriginalLink, type LinkProps as OriginalLinkProps, useParams } from 'react-router-dom';
 
-interface LinkProps extends Omit<OriginalLinkProps, 'to'> {
+type LinkProps = {
   /** The path to link to */
   to: string;
   /** Navigate within the current context */
   withinContext?: boolean;
-}
+} & Omit<OriginalLinkProps, 'to'>;
 
 /**
  * Renders a history-aware link to a route. If `withinContext` is true, the link is resolved
@@ -23,17 +23,22 @@ interface LinkProps extends Omit<OriginalLinkProps, 'to'> {
  * <Link to="/dashboard">Go to Dashboard</Link>
  */
 const Link: React.FC<LinkProps> = ({ to, withinContext, ...props }) => {
-  const location = useLocation()
-  const plugin = location.pathname.split('/')[1]
+  const { pluginID, connectionID } = useParams<{ pluginID: string; connectionID: string }>();
 
-  const { contextID } = useParams<{ contextID: string }>();
+  if (!pluginID) {
+    console.error('Link used outside of a plugin context');
+  }
 
-  const resolvedTo = !!withinContext && contextID
-    ? `/${plugin}/${contextID}${to.startsWith('/') ? '' : '/'}${to}`
-    : `/${plugin}${to.startsWith('/') ? '' : '/'}${to}`;
+  if (!connectionID && withinContext) {
+    console.error('Link used within a context without a connectionID');
+  }
 
-  // memoize the above pease!
-  return React.useMemo(() => <OriginalLink {...props} to={resolvedTo} />, [props, resolvedTo]);
+  const resolvedTo = Boolean(withinContext) && pluginID
+    ? `/plugin/${pluginID}/connection/${connectionID}${to.startsWith('/') ? '' : '/'}${to}`
+    : `/plugin/${pluginID}${to.startsWith('/') ? '' : '/'}${to}`;
+
+  // Memoize the link, and default to not adding underline
+  return React.useMemo(() => <OriginalLink style={{ textDecoration: 'none', color: 'inherit' }} {...props} to={resolvedTo} />, [props, resolvedTo]);
 };
 
 export default Link;

@@ -22,6 +22,30 @@ export function Get(arg1, arg2, arg3, arg4) {
   return window['go']['resource']['Client']['Get'](arg1, arg2, arg3, arg4);
 }
 
+export function GetConnection(arg1, arg2) {
+  return window['go']['resource']['Client']['GetConnection'](arg1, arg2);
+}
+
+export function GetDefaultLayout(arg1) {
+  return window['go']['resource']['Client']['GetDefaultLayout'](arg1);
+}
+
+export function GetLayout(arg1, arg2) {
+  return window['go']['resource']['Client']['GetLayout'](arg1, arg2);
+}
+
+export function GetResourceType(arg1, arg2) {
+  return window['go']['resource']['Client']['GetResourceType'](arg1, arg2);
+}
+
+export function GetResourceTypes(arg1) {
+  return window['go']['resource']['Client']['GetResourceTypes'](arg1);
+}
+
+export function HasResourceType(arg1, arg2) {
+  return window['go']['resource']['Client']['HasResourceType'](arg1, arg2);
+}
+
 export function List(arg1, arg2, arg3, arg4) {
   return window['go']['resource']['Client']['List'](arg1, arg2, arg3, arg4);
 }
@@ -40,6 +64,10 @@ export function LoadConnections(arg1) {
 
 export function RemoveConnection(arg1, arg2) {
   return window['go']['resource']['Client']['RemoveConnection'](arg1, arg2);
+}
+
+export function SetLayout(arg1, arg2, arg3) {
+  return window['go']['resource']['Client']['SetLayout'](arg1, arg2, arg3);
 }
 
 export function StartConnectionInformer(arg1, arg2) {

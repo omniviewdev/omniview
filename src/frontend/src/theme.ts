@@ -32,7 +32,7 @@ export const theme = createTheme({
     MuiList: {
       defaultProps: {
         dense: true,
-      }
+      },
     },
     MuiMenuItem: {
       defaultProps: {
@@ -42,7 +42,7 @@ export const theme = createTheme({
     MuiTable: {
       defaultProps: {
         size: 'small',
-      }
+      },
     },
     MuiButton: {
       defaultProps: {

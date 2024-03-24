@@ -4,24 +4,24 @@ import CssBaseline from '@mui/joy/CssBaseline';
 import Box from '@mui/joy/Box';
 import Typography from '@mui/joy/Typography';
 import ColorSchemeToggle from '../components/ColorSchemeToggle';
-import { Children } from '../../types';
+import { type Children } from '../../types';
 
 export default function OuterLayout({ children }: Children) {
   return (
-    <CssVarsProvider defaultMode="dark" disableTransitionOnChange>
+    <CssVarsProvider defaultMode='dark' disableTransitionOnChange>
       <CssBaseline />
       <GlobalStyles
         styles={{
           ':root': {
-            '--Collapsed-breakpoint': '769px', // form will stretch when viewport is below `769px`
-            '--Cover-width': '40vw', // must be `vw` only
+            '--Collapsed-breakpoint': '769px', // Form will stretch when viewport is below `769px`
+            '--Cover-width': '40vw', // Must be `vw` only
             '--Form-maxWidth': '700px',
-            '--Transition-duration': '0.4s', // set to `none` to disable transition
+            '--Transition-duration': '0.4s', // Set to `none` to disable transition
           },
         }}
       />
       <Box
-        sx={(theme) => ({
+        sx={theme => ({
           width:
             'clamp(100vw - var(--Cover-width), (var(--Collapsed-breakpoint) - 100vw) * 999, 100vw)',
           transition: 'width var(--Transition-duration)',
@@ -49,7 +49,7 @@ export default function OuterLayout({ children }: Children) {
           }}
         >
           <Box
-            component="header"
+            component='header'
             sx={{
               py: 3,
               display: 'flex',
@@ -58,18 +58,18 @@ export default function OuterLayout({ children }: Children) {
             }}
           >
             <Typography
-              fontWeight="lg"
+              fontWeight='lg'
               startDecorator={
                 <Box
-                  component="span"
+                  component='span'
                   sx={{
                     width: 24,
                     height: 24,
-                    background: (theme) =>
+                    background: theme =>
                       `linear-gradient(45deg, ${theme.vars.palette.primary.solidBg}, ${theme.vars.palette.primary.solidBg} 30%, ${theme.vars.palette.primary.softBg})`,
                     borderRadius: '50%',
-                    boxShadow: (theme) => theme.shadow.md,
-                    '--joy-shadowChannel': (theme) =>
+                    boxShadow: theme => theme.shadow.md,
+                    '--joy-shadowChannel': theme =>
                       theme.vars.palette.primary.mainChannel,
                   }}
                 />
@@ -83,7 +83,7 @@ export default function OuterLayout({ children }: Children) {
         </Box>
       </Box>
       <Box
-        sx={(theme) => ({
+        sx={theme => ({
           height: '100%',
           position: 'fixed',
           right: 0,

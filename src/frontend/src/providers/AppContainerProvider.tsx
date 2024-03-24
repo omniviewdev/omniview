@@ -1,17 +1,21 @@
-import { FC, useEffect, useState } from 'react'
+import { type FC, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-// dnd-kit
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, sortableKeyboardCoordinates, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+// Dnd-kit
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, horizontalListSortingStrategy, useSortable,
+} from '@dnd-kit/sortable';
 import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 
 import { CSS } from '@dnd-kit/utilities';
 
-// types
-import { Tab } from '@/store/tabs/types';
+// Types
+import { type Tab } from '@/store/tabs/types';
 
-// material-ui
+// Material-ui
 import { CssVarsProvider } from '@mui/joy/styles';
 import CssBaseline from '@mui/joy/CssBaseline';
 import Box from '@mui/joy/Box';
@@ -23,26 +27,29 @@ import AspectRatio from '@mui/joy/AspectRatio';
 import Divider from '@mui/joy/Divider';
 import IconButton from '@mui/joy/IconButton';
 
+// Redux
+import type { RootState } from '@/store/store';
+import { useSelector, useDispatch } from 'react-redux';
+import {
+  handleAddTab, handleBrowserResize, handleRemoveTab, handleReorderTabsByID,
+} from '@/store/tabs/slice';
 
-// redux
-import type { RootState } from '@/store/store'
-import { useSelector, useDispatch } from 'react-redux'
-import { handleAddTab, handleBrowserResize, handleRemoveTab, handleReorderTabsByID } from '@/store/tabs/slice';
-
-// icons
-import { LuAppWindow, LuBox, LuHome, LuSettings, LuX } from "react-icons/lu";
-import { FaPlus } from "react-icons/fa";
+// Icons
+import {
+  LuAppWindow, LuBox, LuHome, LuSettings, LuX,
+} from 'react-icons/lu';
+import { FaPlus } from 'react-icons/fa';
 import { WindowIsFullscreen } from '@runtime/runtime';
 
 type Props = {
   children?: React.ReactNode;
-}
+};
 
 const AppContainerProvider: FC<Props> = ({ children }) => {
   const dispatch = useDispatch();
 
   function reportWindowSize() {
-    console.log("new window size", { width: window.innerWidth, height: window.innerHeight })
+    console.log('new window size', { width: window.innerWidth, height: window.innerHeight });
     dispatch(handleBrowserResize({ width: window.innerWidth, height: window.innerHeight }));
   }
 
@@ -55,9 +62,9 @@ const AppContainerProvider: FC<Props> = ({ children }) => {
         <HeaderTabBar />
         <Divider />
         <Box
-          component="main"
-          className="MainContainer"
-          // make fill entire width and height of the screen
+          component='main'
+          className='MainContainer'
+          // Make fill entire width and height of the screen
           sx={{
             p: 0,
             m: 0,
@@ -72,7 +79,7 @@ const AppContainerProvider: FC<Props> = ({ children }) => {
       </Box>
     </CssVarsProvider>
   );
-}
+};
 
 type HeaderTabProps = {
   tab: Tab;
@@ -80,7 +87,7 @@ type HeaderTabProps = {
   handleCloseTab: (tabId: string) => void;
   clusterId: string;
   selectedTabs: string[];
-}
+};
 
 const HeaderTab: FC<HeaderTabProps> = ({ tab, handleTabClick, handleCloseTab, clusterId, selectedTabs }) => {
   const {
@@ -96,7 +103,6 @@ const HeaderTab: FC<HeaderTabProps> = ({ tab, handleTabClick, handleCloseTab, cl
     transition,
   };
 
-
   return (
     <Sheet
       key={tab.id}
@@ -104,9 +110,11 @@ const HeaderTab: FC<HeaderTabProps> = ({ tab, handleTabClick, handleCloseTab, cl
       style={style}
       {...attributes}
       {...listeners}
-      className="Tab"
+      className='Tab'
       variant='plain'
-      onClick={() => handleTabClick(tab.id)}
+      onClick={() => {
+        handleTabClick(tab.id);
+      }}
       sx={{
         gap: 1.5,
         display: 'flex',
@@ -122,13 +130,13 @@ const HeaderTab: FC<HeaderTabProps> = ({ tab, handleTabClick, handleCloseTab, cl
         pr: 1,
       }}
     >
-      {!!tab.icon && typeof tab.icon === 'string' ?
-        <AspectRatio ratio="1" sx={{ width: 22, borderRadius: 4 }}>
+      {Boolean(tab.icon) && typeof tab.icon === 'string'
+        ? <AspectRatio ratio='1' sx={{ width: 22, borderRadius: 4 }}>
           <img
             src={tab.icon}
             srcSet={`${tab.icon} 2x`}
-            loading="lazy"
-            alt=""
+            loading='lazy'
+            alt=''
           />
         </AspectRatio>
         : <LuBox />
@@ -137,16 +145,20 @@ const HeaderTab: FC<HeaderTabProps> = ({ tab, handleTabClick, handleCloseTab, cl
       <IconButton
         variant='plain'
         size='sm'
-        onClick={() => handleCloseTab(tab.id)}
-        sx={{ minHeight: 0, minWidth: 0, padding: 0.5, backgroundColor: 'transparent' }}
+        onClick={() => {
+          handleCloseTab(tab.id);
+        }}
+        sx={{
+          minHeight: 0, minWidth: 0, padding: 0.5, backgroundColor: 'transparent',
+        }}
       >
         <LuX />
       </IconButton>
     </Sheet>
-  )
-}
+  );
+};
 
-type HeaderTabBarProps = {}
+type HeaderTabBarProps = Record<string, unknown>;
 
 const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -162,7 +174,7 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   // Handler for drag end
@@ -178,36 +190,37 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
 
   useEffect(() => {
     async function isFullscreen() {
-      setIsFullscreen(await WindowIsFullscreen())
+      setIsFullscreen(await WindowIsFullscreen());
     }
-    isFullscreen()
-  }, [window.innerWidth, window.innerHeight])
+
+    isFullscreen();
+  }, [window.innerWidth, window.innerHeight]);
 
   const dispatch = useDispatch();
   const tabs = useSelector((state: RootState) => state.tabs.tabs);
-  const selectedTabs = useSelector((state: RootState) => state.tabs.windows.filter((window) => !!window.tabId).map((window) => window.tabId));
-
+  const selectedTabs = useSelector((state: RootState) => state.tabs.windows.filter(window => Boolean(window.tabId)).map(window => window.tabId));
 
   const handleTabClick = (tabId: string) => {
-    // find the cluster id for the tab 
-    const tab = tabs.find((tab) => tab.id === tabId);
+    // Find the cluster id for the tab
+    const tab = tabs.find(tab => tab.id === tabId);
     if (!tab?.cluster) {
       return;
     }
+
     navigate(`/explorer/${btoa(tab.cluster)}/pods`);
-  }
+  };
 
   const handleCreateNewTab = () => {
-    dispatch(handleAddTab({ cluster: 'gc-int', label: 'gc-int' }))
-  }
+    dispatch(handleAddTab({ cluster: 'gc-int', label: 'gc-int' }));
+  };
 
   const handleCloseTab = (tabId: string) => {
     dispatch(handleRemoveTab(tabId));
-  }
+  };
 
   return (
     <Sheet
-      className="TabBar"
+      className='TabBar'
       sx={{
         height: '42px',
         maxHeight: '42px',
@@ -232,18 +245,18 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
           modifiers={[restrictToParentElement, restrictToHorizontalAxis]} >
-          <SortableContext items={tabs.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>
+          <SortableContext items={tabs.map(tab => tab.id)} strategy={horizontalListSortingStrategy}>
             {tabs.map((tab, index) => (
               <>
                 {index > 0 && <Divider orientation='vertical' />}
-                <HeaderTab tab={tab} handleTabClick={handleTabClick} handleCloseTab={handleCloseTab} clusterId={clusterId as string} selectedTabs={selectedTabs} />
+                <HeaderTab tab={tab} handleTabClick={handleTabClick} handleCloseTab={handleCloseTab} clusterId={clusterId!} selectedTabs={selectedTabs} />
               </>
             ))}
           </SortableContext>
         </DndContext>
         <Divider orientation='vertical' />
         <Sheet
-          className="Tab"
+          className='Tab'
           variant='outlined'
           onClick={handleCreateNewTab}
           sx={{
@@ -264,18 +277,18 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
       {/* Action items */}
       <Stack direction='row' gap={0.5} px={1}>
 
-        <Link to="/application">
+        <Link to='/application'>
           <IconButton size='md' variant='plain' color='neutral' sx={{ minWidth: 40 }}>
             <LuAppWindow />
           </IconButton>
         </Link>
-        <Link to="/">
+        <Link to='/'>
           <IconButton size='md' variant='plain' color='neutral' sx={{ minWidth: 40 }}>
             <LuHome />
           </IconButton>
         </Link>
 
-        <Link to="/settings">
+        <Link to='/settings'>
           <IconButton size='md' variant='plain' color='neutral' sx={{ minWidth: 40 }}>
             <LuSettings />
           </IconButton>
@@ -283,6 +296,6 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
       </Stack>
     </Sheet>
   );
-}
+};
 
 export default AppContainerProvider;

@@ -1,6 +1,6 @@
-import { SettingsSection } from '@/store/settings/types';
+import { type SettingsSection } from '@/store/settings/types';
 
-export type GeneralSettings = SettingsSection
+export type GeneralSettings = SettingsSection;
 
 export const initialState: GeneralSettings = {
   id: 'general',
@@ -28,5 +28,5 @@ export const initialState: GeneralSettings = {
         { value: 'ko', label: 'Korean' },
       ],
     },
-  }
-}
+  },
+};

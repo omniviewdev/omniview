@@ -1,17 +1,17 @@
-import { createSlice } from '@reduxjs/toolkit'
-import type { PayloadAction } from '@reduxjs/toolkit'
-import type { Setting, SettingsState } from './types'
+import { createSlice } from '@reduxjs/toolkit';
+import type { PayloadAction } from '@reduxjs/toolkit';
+import type { Setting, SettingsState } from './types';
 
-import { initialState as appearanceInitialState } from './sections/appearance'
-import { initialState as editorInitialState } from './sections/editor'
-import { initialState as generalInitialState } from './sections/general'
-import { initialState as notificationsInitialState } from './sections/notifications'
-import { initialState as terminalInitialState } from './sections/terminal'
-import { parseSettingIdentifier, validateSettingValue } from './helpers'
-import { awsState, azureState, gcpState } from './sections/clouds'
+import { initialState as appearanceInitialState } from './sections/appearance';
+import { initialState as editorInitialState } from './sections/editor';
+import { initialState as generalInitialState } from './sections/general';
+import { initialState as notificationsInitialState } from './sections/notifications';
+import { initialState as terminalInitialState } from './sections/terminal';
+import { parseSettingIdentifier, validateSettingValue } from './helpers';
+import { awsState, azureState, gcpState } from './sections/clouds';
 
 const initialState: SettingsState = {
-  'core': {
+  core: {
     id: 'core',
     label: 'Core',
     description: 'Core settings namespace for the application',
@@ -22,9 +22,9 @@ const initialState: SettingsState = {
       editor: editorInitialState,
       terminal: terminalInitialState,
       notifications: notificationsInitialState,
-    }
+    },
   },
-  'clouds': {
+  clouds: {
     id: 'clouds',
     label: 'Clouds',
     description: 'Customize cloud provider settings',
@@ -33,9 +33,9 @@ const initialState: SettingsState = {
       aws: awsState,
       gcp: gcpState,
       azure: azureState,
-    }
+    },
   },
-  'orchestrators': {
+  orchestrators: {
     id: 'orchestrators',
     label: 'Orchestrators',
     description: 'Customize orchestrator settings',
@@ -46,32 +46,32 @@ const initialState: SettingsState = {
         label: 'Kubernetes',
         description: 'Customize Kubernetes settings',
         icon: 'SiKubernetes',
-        settings: {}
+        settings: {},
       },
       docker: {
         id: 'docker',
         label: 'Docker',
         description: 'Customize Docker settings',
         icon: 'SiDocker',
-        settings: {}
+        settings: {},
       },
       openshift: {
         id: 'openshift',
         label: 'OpenShift',
         description: 'Customize OpenShift settings',
         icon: 'SiRedhatopenshift',
-        settings: {}
+        settings: {},
       },
       mesos: {
         id: 'mesos',
         label: 'Mesos',
         description: 'Customize Mesos settings',
         icon: 'SiApache',
-        settings: {}
+        settings: {},
       },
-    }
+    },
   },
-}
+};
 
 // Slice
 export const slice = createSlice({
@@ -86,29 +86,29 @@ export const slice = createSlice({
     * @param action The action with the setting identifier and value to set
     */
     setSettingValue(state, action: PayloadAction<{ identifier: string; value: any }>) {
-      const { identifier, value } = action.payload
-      const { namespaceID, sectionID, settingID } = parseSettingIdentifier(identifier)
+      const { identifier, value } = action.payload;
+      const { namespaceID, sectionID, settingID } = parseSettingIdentifier(identifier);
 
-      // attempt to find the setting
+      // Attempt to find the setting
       // TODO - add the context check here
-      const setting = state[namespaceID]?.sections[sectionID]?.settings[settingID]
+      const setting = state[namespaceID]?.sections[sectionID]?.settings[settingID];
       if (!setting) {
-        throw new Error(`Attempted to set a setting value that does not exist: ${identifier}`)
+        throw new Error(`Attempted to set a setting value that does not exist: ${identifier}`);
       }
 
-      // first, check the type
-      const validationError = validateSettingValue(setting, value)
+      // First, check the type
+      const validationError = validateSettingValue(setting, value);
       if (validationError) {
-        throw new Error(`Attempted to set a setting with an invalid value: ${validationError}`)
+        throw new Error(`Attempted to set a setting with an invalid value: ${validationError}`);
       }
 
-      // then, if they have a custom validator, run that as well
-      const customValidatorError = setting.validator?.(value, state)
+      // Then, if they have a custom validator, run that as well
+      const customValidatorError = setting.validator?.(value, state);
       if (customValidatorError) {
-        throw new Error(`Attempted to set a setting with an invalid value: ${customValidatorError}`)
+        throw new Error(`Attempted to set a setting with an invalid value: ${customValidatorError}`);
       }
 
-      setting.value = value
+      setting.value = value;
     },
 
     /**
@@ -116,33 +116,34 @@ export const slice = createSlice({
      * If any setting value is invalid, the entire batch will be rejected.
      */
     batchSetSettingValues(state, action: PayloadAction<{ values: Record<string, any> }>) {
-      const { values } = action.payload
-      const invalidValues: string[] = []
+      const { values } = action.payload;
+      const invalidValues: string[] = [];
 
-      // validate each setting value up front
+      // Validate each setting value up front
       for (const identifier in values) {
-        const { namespaceID, sectionID, settingID } = parseSettingIdentifier(identifier)
-        const setting = state[namespaceID]?.sections[sectionID]?.settings[settingID]
-        console.log(setting)
+        const { namespaceID, sectionID, settingID } = parseSettingIdentifier(identifier);
+        const setting = state[namespaceID]?.sections[sectionID]?.settings[settingID];
+        console.log(setting);
         if (!setting) {
-          invalidValues.push(identifier)
-          continue
+          invalidValues.push(identifier);
+          continue;
         }
-        const validationError = validateSettingValue(setting as Setting, values[identifier])
+
+        const validationError = validateSettingValue(setting as Setting, values[identifier]);
         if (validationError) {
-          throw new Error(validationError)
+          throw new Error(validationError);
         }
       }
 
-      // if any values are invalid, reject the entire batch
+      // If any values are invalid, reject the entire batch
       if (invalidValues.length > 0) {
-        throw new Error(`Attempted to set invalid setting values: ${invalidValues.join(', ')}`)
+        throw new Error(`Attempted to set invalid setting values: ${invalidValues.join(', ')}`);
       }
 
-      // set each value
+      // Set each value
       for (const identifier in values) {
-        const { namespaceID, sectionID, settingID } = parseSettingIdentifier(identifier)
-        state[namespaceID].sections[sectionID].settings[settingID].value = values[identifier]
+        const { namespaceID, sectionID, settingID } = parseSettingIdentifier(identifier);
+        state[namespaceID].sections[sectionID].settings[settingID].value = values[identifier];
       }
     },
 
@@ -150,16 +151,16 @@ export const slice = createSlice({
      * Restores a setting to it's default value.
      */
     resetSettingValue(state, action: PayloadAction<{ identifier: string }>) {
-      const { identifier } = action.payload
-      const { namespaceID, sectionID, settingID } = parseSettingIdentifier(identifier)
+      const { identifier } = action.payload;
+      const { namespaceID, sectionID, settingID } = parseSettingIdentifier(identifier);
 
-      // attempt to find the setting
-      const setting = state[namespaceID]?.sections[sectionID]?.settings[settingID]
+      // Attempt to find the setting
+      const setting = state[namespaceID]?.sections[sectionID]?.settings[settingID];
       if (!setting) {
-        throw new Error(`Attempted to reset a setting that does not exist: ${identifier}`)
+        throw new Error(`Attempted to reset a setting that does not exist: ${identifier}`);
       }
 
-      state[namespaceID].sections[sectionID].settings[settingID].value = setting.default
+      state[namespaceID].sections[sectionID].settings[settingID].value = setting.default;
     },
 
     /**
@@ -170,14 +171,14 @@ export const slice = createSlice({
     resetAllSettings(state) {
       for (const sectionID in state.core.sections) {
         for (const settingID in state.core.sections[sectionID].settings) {
-          state.core.sections[sectionID].settings[settingID].value = state.core.sections[sectionID].settings[settingID].default
+          state.core.sections[sectionID].settings[settingID].value = state.core.sections[sectionID].settings[settingID].default;
         }
       }
     },
   },
-})
+});
 
 // Action creators are generated for each case reducer function
-export const { setSettingValue, batchSetSettingValues, resetSettingValue, resetAllSettings } = slice.actions
+export const { setSettingValue, batchSetSettingValues, resetSettingValue, resetAllSettings } = slice.actions;
 
-export default slice.reducer
+export default slice.reducer;

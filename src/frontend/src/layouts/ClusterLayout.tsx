@@ -1,24 +1,24 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
 
-// material-ui
+// Material-ui
 import Box from '@mui/joy/Box';
 import Divider from '@mui/joy/Divider';
 
-// project imports
+// Project imports
 import LowerContext from './components/LowerContext';
-import ClusterResourceSidebar from "./components/ClusterResourceSidebar";
+import ClusterResourceSidebar from './components/ClusterResourceSidebar';
 import { usePluginRouter } from '@infraview/router';
 
 const ClusterLayout: React.FC = () => {
-  const { contextID } = usePluginRouter()
+  const { contextID } = usePluginRouter();
 
   return (
     <>
       <ClusterResourceSidebar />
       <Box
-        component="main"
-        className="ClusterContent"
+        component='main'
+        className='ClusterContent'
         sx={{
           p: {
             xs: 1,
@@ -41,9 +41,9 @@ const ClusterLayout: React.FC = () => {
         <Outlet />
       </Box>
       <Box
-        className="LowerContextContainer"
+        className='LowerContextContainer'
         sx={{
-          // position: 'fixed',
+          // Position: 'fixed',
           bottom: 0,
           width: {
             xs: '100%',
@@ -61,6 +61,6 @@ const ClusterLayout: React.FC = () => {
       </Box>
     </>
   );
-}
+};
 
 export default ClusterLayout;

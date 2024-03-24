@@ -1,0 +1,18 @@
+id: aws
+version: 0.1.0
+name: AWS
+icon: https://yt3.googleusercontent.com/HRJKaJg70sqBrCNh7Tf2RSjXTb_5hCUn7Hht7mxUJMg77EWkihh55JklD-KhwAMhwY31ox5O=s900-c-k-c0x00ffffff-no-rj
+description: Amazon Web Services (AWS) is the world’s most comprehensive and broadly adopted cloud, offering over 200 fully featured services from data centers globally
+repository: github.com/omniviewdev/omniview/plugins/aws
+website: https://aws.amazon.com/
+maintainers:
+  - name: Omniview Maintainers
+    email: info@omniview.dev
+tags:
+  - aws
+  - cloud
+capabilities:
+  - resource
+theme:
+  colors:
+    primary: "#FF9900"

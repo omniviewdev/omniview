@@ -1,6 +1,8 @@
 package types
 
 import (
+	"context"
+
 	"github.com/hashicorp/go-plugin"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -52,8 +54,11 @@ type ConnectedController interface {
 	AddConnection(pluginID string, connection types.Connection) error
 
 	// UpdateConnection updates an existing connection for a plugin
-	UpdateConnection(pluginID string, connection types.Connection) error
+	UpdateConnection(pluginID string, connection types.Connection) (types.Connection, error)
 
 	// RemoveConnection removes a connection for a plugin
 	RemoveConnection(pluginID, connectionID string) error
+
+	// Run starts the controller, using the provided context to know when to stop
+	Run(ctx context.Context)
 }

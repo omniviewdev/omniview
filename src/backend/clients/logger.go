@@ -21,7 +21,7 @@ func CreateLogger(debug bool) *zap.SugaredLogger {
 
 	level := zap.InfoLevel
 	if debug {
-		level = zap.ErrorLevel
+		level = zap.DebugLevel
 	}
 
 	core := zapcore.NewTee(

@@ -1,6 +1,8 @@
-import { useState, useRef, useCallback, memo, FC } from 'react';
+import {
+  useState, useRef, useCallback, memo, type FC,
+} from 'react';
 
-// material-ui
+// Material-ui
 import Box from '@mui/joy/Box';
 import Typography from '@mui/joy/Typography';
 import Link from '@mui/joy/Link';
@@ -8,22 +10,24 @@ import Sheet from '@mui/joy/Sheet';
 import Table from '@mui/joy/Table';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 
-// tanstack/react-table
+// Tanstack/react-table
 import {
-  ColumnFiltersState,
-  Row,
-  RowSelectionState,
-  SortingState,
-  VisibilityState,
+  type ColumnFiltersState,
+  type Row,
+  type RowSelectionState,
+  type SortingState,
+  type VisibilityState,
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
-  // getPaginationRowModel,
+  // GetPaginationRowModel,
   getSortedRowModel,
-  useReactTable
+  useReactTable,
 } from '@tanstack/react-table';
-import { VirtualItem, useVirtualizer } from '@tanstack/react-virtual'
-import { DebouncedInput, KubernetesResource, Props, namespaceFilter } from '.';
+import { type VirtualItem, useVirtualizer } from '@tanstack/react-virtual';
+import {
+  DebouncedInput, type KubernetesResource, type Props, namespaceFilter,
+} from '.';
 import NamespaceSelect from '@/components/selects/NamespaceSelect';
 import { Stack, styled } from '@mui/joy';
 import useRightDrawer from '@/hooks/useRightDrawer';
@@ -36,7 +40,7 @@ type RowComponentProps = {
   kind: string;
   isSelected: boolean;
   clusterID: string;
-}
+};
 
 const ResizerBlock = styled('div')(({ theme }) => ({
   position: 'absolute',
@@ -73,41 +77,38 @@ const ResizerBlock = styled('div')(({ theme }) => ({
   },
 }));
 
-
 type ResizerProps = {
   header: any;
   table: any;
-}
+};
 
 /**
  * Resizer component for resizing columns
  */
-const Resizer: FC<ResizerProps> = ({ header, table }) => {
-  return (
-    <ResizerBlock
-      {...{
-        onDoubleClick: () => header.column.resetSize(),
-        onMouseDown: header.getResizeHandler(),
-        onTouchStart: header.getResizeHandler(),
-        className: `resizer ${table.options.columnResizeDirection
-          } ${header.column.getIsResizing() ? 'isResizing' : ''
-          }`,
-        style: {
-          transform:
+const Resizer: FC<ResizerProps> = ({ header, table }) => (
+  <ResizerBlock
+    {...{
+      onDoubleClick: () => header.column.resetSize(),
+      onMouseDown: header.getResizeHandler(),
+      onTouchStart: header.getResizeHandler(),
+      className: `resizer ${table.options.columnResizeDirection
+      } ${header.column.getIsResizing() ? 'isResizing' : ''
+      }`,
+      style: {
+        transform:
             header.column.getIsResizing()
-              ? `translateX(${(table.options.columnResizeDirection ===
-                'rtl'
-                ? -1
-                : 1) *
-              (table.getState().columnSizingInfo
-                .deltaOffset ?? 0)
-              }px)`
-              : '',
-        },
-      }}
-    />
-  )
-}
+            	? `translateX(${(table.options.columnResizeDirection
+                === 'rtl'
+            		? -1
+            		: 1)
+              * (table.getState().columnSizingInfo
+              	.deltaOffset ?? 0)
+            	}px)`
+            	: '',
+      },
+    }}
+  />
+);
 
 // Import useRightDrawer or any relevant hooks/context if necessary
 const RowComponent = memo(({ virtualizer, virtualRow, row, kind, isSelected }: RowComponentProps) => {
@@ -119,26 +120,27 @@ const RowComponent = memo(({ virtualizer, virtualRow, row, kind, isSelected }: R
     virtualizer.measureElement(node);
   }, [virtualizer, virtualRow.index]);
 
-
   return (
     <tr
       data-index={virtualRow.index}
-      ref={ref} //measure dynamic row height
+      ref={ref} // Measure dynamic row height
       key={row.id}
-      data-state={isSelected ? "selected" : undefined}
+      data-state={isSelected ? 'selected' : undefined}
       style={{
         display: 'flex',
         position: 'absolute',
-        transform: `translateY(${virtualRow.start}px)`, //this should always be a `style` as it changes on scroll
+        transform: `translateY(${virtualRow.start}px)`, // This should always be a `style` as it changes on scroll
         width: '100%',
       }}
     >
-      {row.getVisibleCells().map((cell) => {
-        const width = cell.column.getSize() === Number.MAX_SAFE_INTEGER ? "auto" : cell.column.getSize();
+      {row.getVisibleCells().map(cell => {
+        const width = cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize();
         return (
           <td
             key={cell.id}
-            onClick={cell.column.id === 'name' ? () => showResourceSpec(kind.toLowerCase(), cell.getValue() as string, row.original) : undefined}
+            onClick={cell.column.id === 'name' ? () => {
+              showResourceSpec(kind.toLowerCase(), cell.getValue() as string, row.original);
+            } : undefined}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -151,17 +153,17 @@ const RowComponent = memo(({ virtualizer, virtualRow, row, kind, isSelected }: R
           >
             {flexRender(cell.column.columnDef.cell, cell.getContext())}
           </td>
-        )
+        );
       })}
     </tr>
   );
-}, (prevProps, nextProps) => {
-  // Example memoization condition, adjust according to your actual needs
-  return prevProps.clusterID === nextProps.clusterID &&
-    prevProps.row.original.metadata?.uid === nextProps.row.original.metadata?.uid &&
-    prevProps.row.original.metadata?.resourceVersion === nextProps.row.original.metadata?.resourceVersion &&
-    prevProps.virtualRow.start === nextProps.virtualRow.start && prevProps.isSelected === nextProps.isSelected;
-});
+}, (prevProps, nextProps) =>
+// Example memoization condition, adjust according to your actual needs
+  prevProps.clusterID === nextProps.clusterID
+    && prevProps.row.original.metadata?.uid === nextProps.row.original.metadata?.uid
+    && prevProps.row.original.metadata?.resourceVersion === nextProps.row.original.metadata?.resourceVersion
+    && prevProps.virtualRow.start === nextProps.virtualRow.start && prevProps.isSelected === nextProps.isSelected,
+);
 
 RowComponent.displayName = 'RowComponent';
 
@@ -177,41 +179,43 @@ RowComponent.displayName = 'RowComponent';
 const ResourceTableVirtualized = <T extends KubernetesResource>({ loader, columns, kind, clusters }: Props<T>) => {
   // TODO - MOVE THIS TO THE PARENT COMPONENT!!! - This is a temporary solution to get the clusterId
   // in for all the resources
-  const { contextID } = usePluginRouter()
+  const { contextID } = usePluginRouter();
 
   /**
-  * run our loader to get the data for the table
+  * Run our loader to get the data for the table
   * for now we'll pass the loader an empty object, but we could pass it
   */
   const { resources: data, error } = loader({ clusters: clusters?.length ? clusters : [contextID] });
 
-  // monkey patch the namespace column so it uses the namespace filter
+  // Monkey patch the namespace column so it uses the namespace filter
   const namespaced = columns.some(c => c.id === 'namespace');
   if (namespaced) {
     columns.find(c => c.id === 'namespace')!.filterFn = namespaceFilter;
   }
 
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }])
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(namespaced ? [
-    { id: 'namespace', value: [] }
-  ] : [])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+    { id: 'namespace', value: [] },
+  ] : []);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   const setNamespaces = (namespaces: string[]) => {
-    setColumnFilters((prev) => {
+    setColumnFilters(prev => {
       const namespaceFilter = prev.find(f => f.id === 'namespace');
       if (namespaceFilter) {
         return prev.map(f => {
           if (f.id === 'namespace') {
-            return { ...f, value: namespaces }
+            return { ...f, value: namespaces };
           }
-          return f
-        })
+
+          return f;
+        });
       }
-      return prev
-    })
-  }
+
+      return prev;
+    });
+  };
 
   const [search, setSearch] = useState<string>('');
 
@@ -221,12 +225,12 @@ const ResourceTableVirtualized = <T extends KubernetesResource>({ loader, column
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
-    // getPaginationRowModel: getPaginationRowModel(),
+    // GetPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
-    // the object will always have a metadata.uid, so we can use that as the row id,
+    // The object will always have a metadata.uid, so we can use that as the row id,
     // that last part is just to avoid the type error
     getRowId: row => row.metadata?.uid ? row.metadata.uid : 'error',
     state: {
@@ -240,51 +244,55 @@ const ResourceTableVirtualized = <T extends KubernetesResource>({ loader, column
       minSize: 0,
       size: Number.MAX_SAFE_INTEGER,
       maxSize: Number.MAX_SAFE_INTEGER,
-    }
-  })
+    },
+  });
 
-  const { rows } = table.getRowModel()
+  const { rows } = table.getRowModel();
 
-  const parentRef = useRef<HTMLDivElement>(null)
+  const parentRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
-    // getItemKey: useCallback((index: number) => rows[index]?.id ?? index, [rows]),
+    // GetItemKey: useCallback((index: number) => rows[index]?.id ?? index, [rows]),
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 40, //estimate row height for accurate scrollbar dragging
+    estimateSize: () => 40, // Estimate row height for accurate scrollbar dragging
     // getItemKey: useCallback((index: number) => rows[index]?.id ?? index, [rows]),
     overscan: 40,
-    //measure dynamic row height, except in firefox because it measures table border height incorrectly
+    // Measure dynamic row height, except in firefox because it measures table border height incorrectly
     measureElement:
-      typeof window !== 'undefined' &&
-        navigator.userAgent.indexOf('Firefox') === -1
-        ? element => element?.getBoundingClientRect().height
-        : undefined,
-  })
+      typeof window !== 'undefined'
+        && !navigator.userAgent.includes('Firefox')
+      	? element => element?.getBoundingClientRect().height
+      	: undefined,
+  });
 
   if (error) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', width: '100%' }}>
-        <Typography level='h2' color="danger">
+      <Box sx={{
+        display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', width: '100%',
+      }}>
+        <Typography level='h2' color='danger'>
           Error loading {kind}: {error.message}
         </Typography>
       </Box>
-    )
+    );
   }
 
   return (
     <>
-      <Stack direction="row" justifyContent={'space-between'} className="NamespaceAndSearch" sx={{ width: '100%' }}>
+      <Stack direction='row' justifyContent={'space-between'} className='NamespaceAndSearch' sx={{ width: '100%' }}>
         <DebouncedInput
           value={search ?? ''}
-          onChange={value => setSearch(String(value))}
-          placeholder="Search all columns..."
+          onChange={value => {
+            setSearch(String(value));
+          }}
+          placeholder='Search all columns...'
         />
         {namespaced && <NamespaceSelect namespaces={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []} setNamespaces={setNamespaces} />}
       </Stack>
       <Sheet
-        className={`table-container`}
-        variant="outlined"
+        className={'table-container'}
+        variant='outlined'
         ref={parentRef}
         sx={{
           display: { xs: 'none', sm: 'initial' },
@@ -294,11 +302,11 @@ const ResourceTableVirtualized = <T extends KubernetesResource>({ loader, column
           flexGrow: 1,
           overflow: 'auto',
           position: 'relative',
-          height: 'calc(100dvh - var(--CoreLayoutHeader-height) - var(--LowerContextMenu-height) - 36px)'
+          height: 'calc(100dvh - var(--CoreLayoutHeader-height) - var(--LowerContextMenu-height) - 36px)',
         }}
       >
         <Table
-          aria-labelledby={`table-title`}
+          aria-labelledby={'table-title'}
           stickyHeader
           hoverRow
           sx={{
@@ -320,13 +328,13 @@ const ResourceTableVirtualized = <T extends KubernetesResource>({ loader, column
               zIndex: 1,
             }}
           >
-            {table.getHeaderGroups().map((headerGroup) => (
+            {table.getHeaderGroups().map(headerGroup => (
               <tr
                 key={headerGroup.id}
                 style={{ display: 'flex', width: '100%' }}
               >
-                {headerGroup.headers.map((header) => {
-                  const width = header.getSize() === Number.MAX_SAFE_INTEGER ? "auto" : header.getSize();
+                {headerGroup.headers.map(header => {
+                  const width = header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize();
                   return (
                     <th
                       key={header.id}
@@ -335,16 +343,16 @@ const ResourceTableVirtualized = <T extends KubernetesResource>({ loader, column
                         alignItems: 'center',
                         maxWidth: width,
                         minWidth: width,
-                        flexGrow: 1
+                        flexGrow: 1,
                       }}
                     >
                       {header.column.getCanSort()
                         ? <Link
-                          underline="none"
-                          color="primary"
-                          component="button"
+                          underline='none'
+                          color='primary'
+                          component='button'
                           onClick={header.column.getToggleSortingHandler()}
-                          fontWeight="lg"
+                          fontWeight='lg'
                           endDecorator={header.column.getIsSorted() && <ArrowDropDownIcon />}
                           sx={{
                             '& svg': {
@@ -361,7 +369,7 @@ const ResourceTableVirtualized = <T extends KubernetesResource>({ loader, column
 
                       <Resizer header={header} table={table} />
                     </th>
-                  )
+                  );
                 })}
               </tr>
             ))}
@@ -369,23 +377,22 @@ const ResourceTableVirtualized = <T extends KubernetesResource>({ loader, column
           <tbody
             style={{
               display: 'grid',
-              height: `${virtualizer.getTotalSize()}px`, //tells scrollbar how big the table is
-              position: 'relative', //needed for absolute positioning of rows
+              height: `${virtualizer.getTotalSize()}px`, // Tells scrollbar how big the table is
+              position: 'relative', // Needed for absolute positioning of rows
             }}
           >
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const row = rows[virtualRow.index] as Row<T>;
+            {virtualizer.getVirtualItems().map(virtualRow => {
+              const row = rows[virtualRow.index];
               return (
-                /*@ts-ignore - stop warning about an lsp error that's not true... */
-                <RowComponent key={row.id} virtualizer={virtualizer} virtualRow={virtualRow} row={row} kind={kind} isSelected={!!rowSelection[row.id]} clusterID={contextID} />
-              )
+              /* @ts-expect-error - stop warning about an lsp error that's not true... */
+                <RowComponent key={row.id} virtualizer={virtualizer} virtualRow={virtualRow} row={row} kind={kind} isSelected={Boolean(rowSelection[row.id])} clusterID={contextID} />
+              );
             })}
           </tbody>
         </Table>
       </Sheet>
     </>
-  )
-}
-
+  );
+};
 
 export default ResourceTableVirtualized;

@@ -1,36 +1,34 @@
-import React from 'react'
+import React from 'react';
 
-// material-ui
-import Stack from '@mui/joy/Stack'
+// Material-ui
+import Stack from '@mui/joy/Stack';
 
-// mock data
-import mock from '../mock/kubernetes/changelog.json'
-import PluginChangelogCard from './PluginChangelogCard'
+// Mock data
+import mock from '../mock/kubernetes/changelog.json';
+import PluginChangelogCard from './PluginChangelogCard';
 
 type Props = {
-  id: string
-}
+  id: string;
+};
 
-export interface Changelog {
-  version: string
-  releaseDate: string
-  changes: Changes
-}
+export type Changelog = {
+  version: string;
+  releaseDate: string;
+  changes: Changes;
+};
 
-export interface Changes {
-  feature: string[]
-  bugfix: string[]
-  security: string[]
-}
+export type Changes = {
+  feature: string[];
+  bugfix: string[];
+  security: string[];
+};
 
-const PluginChangelog: React.FC<Props> = ({ }) => {
-  return (
-    <Stack direction="column" p={6} gap={3} maxHeight={'100%'} overflow={'scroll'}>
-      {mock.map((record: Changelog) => (
-        <PluginChangelogCard {...record} />
-      ))}
-    </Stack>
-  )
-}
+const PluginChangelog: React.FC<Props> = ({ }) => (
+  <Stack direction='column' p={6} gap={3} maxHeight={'100%'} overflow={'scroll'}>
+    {mock.map((record: Changelog) => (
+      <PluginChangelogCard {...record} />
+    ))}
+  </Stack>
+);
 
-export default PluginChangelog
+export default PluginChangelog;

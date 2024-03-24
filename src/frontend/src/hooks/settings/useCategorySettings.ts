@@ -1,8 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSnackbar } from "@/providers/SnackbarProvider";
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSnackbar } from '@/providers/SnackbarProvider';
 
-// underlying client
-import { GetCategory, SetSettings } from "@api/settings/provider";
+// Underlying client
+import { GetCategory, SetSettings } from '@api/settings/provider';
 
 type UseCategorySettingsOptions = {
   /**
@@ -10,7 +10,7 @@ type UseCategorySettingsOptions = {
    * @example "appearance"
    */
   category: string;
-}
+};
 
 /**
  * Interact with a category of settings from the global settings provider. Intended for use in the settings UI - if
@@ -20,23 +20,23 @@ export const useCategorySettings = ({ category }: UseCategorySettingsOptions) =>
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
-  const queryKey = ['settings', category]
+  const queryKey = ['settings', category];
 
   const settings = useQuery({
     queryKey,
-    queryFn: () => GetCategory(category)
+    queryFn: async () => GetCategory(category),
   });
 
   const { mutateAsync: setSettings } = useMutation({
-    mutationFn: (newSettings: Record<string, any>) => SetSettings(newSettings),
-    onSuccess: (_, _vars) => {
-      showSnackbar(`Settings saved`, 'success');
+    mutationFn: async (newSettings: Record<string, any>) => SetSettings(newSettings),
+    onSuccess(_, _vars) {
+      showSnackbar('Settings saved', 'success');
 
       // TODO - invalidate each one individually
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       queryClient.refetchQueries({ queryKey: ['settings'] });
     },
-    onError: (error) => {
+    onError(error) {
       showSnackbar(`Failed to save settings: ${error}`, 'error');
     },
   });
@@ -52,5 +52,5 @@ export const useCategorySettings = ({ category }: UseCategorySettingsOptions) =>
      * @param newSettings The new settings to save, as a key-value object.
      */
     setSettings,
-  }
-}
+  };
+};

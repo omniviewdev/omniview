@@ -3,15 +3,29 @@
 import {settings} from '../models';
 import {context} from '../models';
 
+export function GetBool(arg1:string):Promise<boolean>;
+
 export function GetCategories():Promise<Array<settings.Category>>;
 
 export function GetCategory(arg1:string):Promise<settings.Category>;
 
 export function GetCategoryValues(arg1:string):Promise<{[key: string]: any}>;
 
+export function GetFloat(arg1:string):Promise<number>;
+
+export function GetFloatSlice(arg1:string):Promise<Array<number>>;
+
+export function GetInt(arg1:string):Promise<number>;
+
+export function GetIntSlice(arg1:string):Promise<Array<number>>;
+
 export function GetSetting(arg1:string):Promise<settings.Setting>;
 
 export function GetSettingValue(arg1:string):Promise<any>;
+
+export function GetString(arg1:string):Promise<string>;
+
+export function GetStringSlice(arg1:string):Promise<Array<string>>;
 
 export function HasSetting(arg1:string):Promise<boolean>;
 

@@ -1,6 +1,6 @@
-import { FC, useState, useEffect } from 'react';
+import { type FC, useState, useEffect } from 'react';
 
-// material-ui
+// Material-ui
 import Box from '@mui/joy/Box';
 import Sheet from '@mui/joy/Sheet';
 import IconButton from '@mui/joy/IconButton';
@@ -8,12 +8,14 @@ import Typography from '@mui/joy/Typography';
 import Divider from '@mui/joy/Divider';
 import Stack from '@mui/joy/Stack';
 
-// icons
-import { LuPlus, LuTerminalSquare, LuX, LuMinimize } from 'react-icons/lu';
+// Icons
+import {
+  LuPlus, LuTerminalSquare, LuX, LuMinimize,
+} from 'react-icons/lu';
 
-// terminal manager
+// Terminal manager
 import { ListSessions, StartSession, TerminateSession } from '@api/services/TerminalManager';
-import { services } from '@api/models';
+import { type services } from '@api/models';
 import TerminalView from '@/components/terminal/TerminalView';
 import { GlobalStyles } from '@mui/joy';
 
@@ -26,7 +28,7 @@ type Tab = {
 
   /** The content of the tab, (currently only terminal tabs suppported) */
   content: services.TerminalSessionDetails;
-}
+};
 
 type TabBarProps = {
   /** ID of the cluster */
@@ -41,51 +43,51 @@ type TabBarProps = {
   setSelectedTab: (id: string) => void;
   /** The height of the tab bar */
   height: number;
-}
+};
 
 /**
 * Provides a tab bar for the lower context area.
 */
 const TabBar: FC<TabBarProps> = ({ tabs, setTabs, selectedTab, setSelectedTab, height, clusterId }) => {
   useEffect(() => {
-    ListSessions().then((sessions) => {
-      setTabs(sessions.map((session) => ({ id: session.id, type: 'terminal', content: session })));
+    ListSessions().then(sessions => {
+      setTabs(sessions.map(session => ({ id: session.id, type: 'terminal', content: session })));
     });
-  }, [])
+  }, []);
 
   /**
    * Kill a tab by ID
    */
   const closeTab = (id: string) => {
-    const tab = tabs.find((tab => tab.id === id))
+    const tab = tabs.find((tab => tab.id === id));
     if (tab && tab.type === 'terminal') {
       TerminateSession(tab.content.id).then(() => {
         setSelectedTab('');
-        ListSessions().then((sessions) => {
-          setTabs(sessions.map((session) => ({ id: session.id, type: 'terminal', content: session })));
+        ListSessions().then(sessions => {
+          setTabs(sessions.map(session => ({ id: session.id, type: 'terminal', content: session })));
         });
       });
     }
-  }
+  };
 
   /**
    * Create a new tab
    */
   const newTab = ({ type }: { type: string }) => {
     if (type === 'terminal') {
-      StartSession([], { kubeconfig: '', context: clusterId as string, labels: {} }).then((session) => {
+      StartSession([], { kubeconfig: '', context: clusterId, labels: {} }).then(session => {
         setSelectedTab(session);
-        ListSessions().then((sessions) => {
-          setTabs(sessions.map((session) => ({ id: session.id, type: 'terminal', content: session })));
+        ListSessions().then(sessions => {
+          setTabs(sessions.map(session => ({ id: session.id, type: 'terminal', content: session })));
         });
       });
     }
-  }
+  };
 
   return (
     <Box
-      className="TabBar"
-      border="1px solid transparent"
+      className='TabBar'
+      border='1px solid transparent'
       sx={{
         height,
         maxHeight: height,
@@ -100,16 +102,20 @@ const TabBar: FC<TabBarProps> = ({ tabs, setTabs, selectedTab, setSelectedTab, h
         <IconButton
           variant='soft'
           size='md'
-          sx={{ minHeight: 0, minWidth: 0, py: 1, px: 1.5 }}
-          onClick={() => newTab({ type: 'terminal' })}
+          sx={{
+            minHeight: 0, minWidth: 0, py: 1, px: 1.5,
+          }}
+          onClick={() => {
+            newTab({ type: 'terminal' });
+          }}
         >
           <LuPlus />
         </IconButton>
-        {tabs.map((tab) => (
+        {tabs.map(tab => (
           <Sheet
             key={tab.id}
-            className="Tab"
-            variant="outlined"
+            className='Tab'
+            variant='outlined'
             sx={{
               display: 'flex',
               flexDirection: 'row',
@@ -126,10 +132,14 @@ const TabBar: FC<TabBarProps> = ({ tabs, setTabs, selectedTab, setSelectedTab, h
                 border: selectedTab === tab.id ? '1px solid' : '0.5px solid',
               },
             }}
-            onClick={() => setSelectedTab(tab.content.id)}
+            onClick={() => {
+              setSelectedTab(tab.content.id);
+            }}
           >
             <Typography level='body-sm'><LuTerminalSquare style={{ marginRight: 8 }} />{tab.id}</Typography>
-            <IconButton variant='soft' size='sm' onClick={() => closeTab(tab.id)} sx={{ minHeight: 0, minWidth: 0, padding: 0.5 }} >
+            <IconButton variant='soft' size='sm' onClick={() => {
+              closeTab(tab.id);
+            }} sx={{ minHeight: 0, minWidth: 0, padding: 0.5 }} >
               <LuX />
             </IconButton>
           </Sheet>
@@ -140,22 +150,26 @@ const TabBar: FC<TabBarProps> = ({ tabs, setTabs, selectedTab, setSelectedTab, h
         <IconButton
           variant='soft'
           size='md'
-          sx={{ minHeight: 0, minWidth: 0, py: 1, px: 1.5 }}
-          onClick={() => setSelectedTab('')}
+          sx={{
+            minHeight: 0, minWidth: 0, py: 1, px: 1.5,
+          }}
+          onClick={() => {
+            setSelectedTab('');
+          }}
         >
           <LuMinimize />
         </IconButton>
       </Stack>
     </Box>
   );
-}
+};
 
 TabBar.whyDidYouRender = true;
 
 type LowerContextProps = {
   /** The ID of the cluster */
   clusterId: string;
-}
+};
 
 /**
 * LowerContext provides a resizable context for the lower portion of the layout.
@@ -173,12 +187,12 @@ const LowerContext: FC<LowerContextProps> = ({ clusterId }) => {
       <GlobalStyles
         styles={{
           ':root': {
-            '--LowerContextMenu-height': `${!!selectedTab ? height + tabBarHeight : tabBarHeight}px`,
+            '--LowerContextMenu-height': `${selectedTab ? height + tabBarHeight : tabBarHeight}px`,
           },
         }}
       />
       <Box
-        className="LowerContext"
+        className='LowerContext'
         sx={{
           zIndex: 10000,
           flex: 1,
@@ -189,13 +203,13 @@ const LowerContext: FC<LowerContextProps> = ({ clusterId }) => {
         }}
       >
         <Sheet
-          className="LowerContextContainer"
-          variant="plain"
+          className='LowerContextContainer'
+          variant='plain'
           sx={{
             display: { xs: 'none', sm: 'initial' },
             backgroundColor: 'background.surface',
             width: '100%',
-            // borderRadius: 'sm',
+            // BorderRadius: 'sm',
             flexShrink: 1,
             flexGrow: 1,
             overflow: 'hidden',
@@ -205,14 +219,14 @@ const LowerContext: FC<LowerContextProps> = ({ clusterId }) => {
           <TabBar tabs={tabs} setTabs={setTabs} selectedTab={selectedTab} setSelectedTab={setSelectedTab} height={tabBarHeight} clusterId={clusterId} />
           <Divider />
           {/* Context window */}
-          {selectedTab !== '' && tabs.find((tab) => tab.id === selectedTab)?.type === 'terminal' && (
+          {selectedTab !== '' && tabs.find(tab => tab.id === selectedTab)?.type === 'terminal' && (
             <TerminalView sessionId={selectedTab} height={height} />
           )}
         </Sheet>
       </Box>
     </>
-  )
-}
+  );
+};
 
 LowerContext.whyDidYouRender = true;
 

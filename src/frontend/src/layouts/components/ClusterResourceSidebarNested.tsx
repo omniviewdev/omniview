@@ -7,28 +7,29 @@ import MenuButton from '@mui/joy/MenuButton';
 
 // The Menu is built on top of Popper v2, so it accepts `modifiers` prop that will be passed to the Popper.
 // https://popper.js.org/docs/v2/modifiers/offset/
-interface MenuButtonProps extends React.HTMLAttributes<HTMLButtonElement> {
+type MenuButtonProps = {
   children: React.ReactNode;
   menu: React.ReactElement;
   open: boolean;
   onOpen: (
     event?:
-      | React.MouseEvent<HTMLButtonElement>
-      | React.KeyboardEvent<HTMLButtonElement>,
+    | React.MouseEvent<HTMLButtonElement>
+    | React.KeyboardEvent<HTMLButtonElement>,
   ) => void;
   onLeaveMenu: (callback: () => boolean) => void;
   label: string;
   selected?: boolean;
-}
+} & React.HTMLAttributes<HTMLButtonElement>;
 
 const modifiers = [
   {
     name: 'offset',
     options: {
-      offset: ({ placement }: any) => {
+      offset({ placement }: any) {
         if (placement.includes('end')) {
           return [8, 20];
         }
+
         return [-8, 20];
       },
     },
@@ -56,7 +57,6 @@ function NavMenuButton({
     }
   };
 
-
   return (
     <Dropdown
       open={open}
@@ -73,7 +73,7 @@ function NavMenuButton({
           root: {
             variant: 'plain',
             color: 'neutral',
-          }
+          },
         }}
         onMouseDown={() => {
           internalOpen.current = open;
@@ -104,7 +104,7 @@ function NavMenuButton({
         {children}
       </MenuButton>
       {React.cloneElement(menu, {
-        onMouseLeave: () => {
+        onMouseLeave() {
           onLeaveMenu(() => isOnButton.current);
         },
         modifiers,

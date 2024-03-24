@@ -1,5 +1,5 @@
 import React from 'react';
-import { IconBaseProps } from 'react-icons/lib';
+import { type IconBaseProps } from 'react-icons/lib';
 import { LuFileQuestion } from 'react-icons/lu';
 
 import * as Ai from 'react-icons/ai';
@@ -24,10 +24,9 @@ import * as Sl from 'react-icons/sl';
 import * as Tb from 'react-icons/tb';
 import * as Lu from 'react-icons/lu';
 
-
-interface NamedIconProps extends IconBaseProps {
+type NamedIconProps = {
   name: string;
-}
+} & IconBaseProps;
 
 // Mapping to dynamically import icon libraries
 const iconComponents = {
@@ -55,7 +54,7 @@ const iconComponents = {
 };
 
 const loadIconComponent = (name: string) => {
-  const prefix = name.substring(0, 2) as keyof typeof iconComponents
+  const prefix = name.substring(0, 2) as keyof typeof iconComponents;
   const iconName = name;
 
   const Icons = iconComponents[prefix];
@@ -66,6 +65,7 @@ const loadIconComponent = (name: string) => {
   if (!Icons[iconName as keyof typeof Icons]) {
     throw new Error(`Icon "${iconName}" is not supported`);
   }
+
   return Icons[iconName as keyof typeof Icons];
 };
 
