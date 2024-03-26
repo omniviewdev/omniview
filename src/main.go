@@ -3,14 +3,22 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 
 	pkgsettings "github.com/omniviewdev/settings"
+	"github.com/wailsapp/mimetype"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/clients"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
@@ -32,8 +40,116 @@ var assets embed.FS
 //go:embed build/favicon.icns
 var icon []byte
 
+type FileLoader struct {
+	http.Handler
+	logger *zap.SugaredLogger
+}
+
+func NewFileLoader(logger *zap.SugaredLogger) *FileLoader {
+	return &FileLoader{
+		logger: logger,
+	}
+}
+
+func isAllowed(path string) bool {
+	// only allow the following patterns:
+	// - /plugins/<pluginname>/(assets|dist)/*.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|html)
+	// - /assets/*.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|html)
+
+	tester := regexp.MustCompile(
+		`^/plugins/[^/]+/(assets|dist)/.*\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|html)$`,
+	)
+	return tester.MatchString(path)
+}
+
+func forceMimeType(path string) string {
+	switch {
+	case strings.HasSuffix(path, ".js"):
+		return "application/javascript"
+	case strings.HasSuffix(path, ".css"):
+		return "text/css"
+	case strings.HasSuffix(path, ".png"):
+		return "image/png"
+	case strings.HasSuffix(path, ".jpg"), strings.HasSuffix(path, ".jpeg"):
+		return "image/jpeg"
+	case strings.HasSuffix(path, ".gif"):
+		return "image/gif"
+	case strings.HasSuffix(path, ".svg"):
+		return "image/svg+xml"
+	case strings.HasSuffix(path, ".ico"):
+		return "image/x-icon"
+	case strings.HasSuffix(path, ".woff"):
+		return "font/woff"
+	case strings.HasSuffix(path, ".woff2"):
+		return "font/woff2"
+	case strings.HasSuffix(path, ".ttf"):
+		return "font/ttf"
+	case strings.HasSuffix(path, ".html"):
+		return "text/html"
+	default:
+		return "text/plain"
+	}
+}
+
+func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	var err error
+	respondUnauthorized := func() {
+		res.WriteHeader(http.StatusUnauthorized)
+		res.Write([]byte("Unauthorized"))
+	}
+
+	requestedFilename := req.URL.Path
+
+	// must start with /_/
+	if !strings.HasPrefix(requestedFilename, "/_/") {
+		respondUnauthorized()
+		return
+	}
+	requestedFilename = strings.TrimPrefix(requestedFilename, "/_")
+
+	h.logger.Infow("requested file", "path", requestedFilename)
+
+	if !isAllowed(requestedFilename) {
+		// unauthorized request
+		// log it
+		h.logger.Warnw("unauthorized request", "path", requestedFilename)
+		res.WriteHeader(http.StatusUnauthorized)
+		res.Write([]byte("Unauthorized"))
+		return
+	}
+
+	toFetch := filepath.Join(os.Getenv("HOME"), ".omniview", requestedFilename)
+	fileData, err := os.ReadFile(toFetch)
+	if err != nil {
+		res.WriteHeader(http.StatusBadRequest)
+		if _, err = fmt.Fprintf(res, "Could not load file %s", toFetch); err != nil {
+			h.logger.Errorw("error serving file", "error", err)
+		}
+		return
+	}
+
+	// set content type
+	contentType := mimetype.Detect(fileData).String()
+	h.logger.Infow("content type", "type", contentType)
+	if strings.HasPrefix(contentType, "text/plain") {
+		// don't like this but it's the only way to force the right mime type.
+		contentType = forceMimeType(requestedFilename)
+	}
+
+	res.Header().Set("Content-Type", contentType)
+
+	// if remoteEntry.js, do NOT cache
+	if strings.HasSuffix(requestedFilename, "remoteEntry.js") {
+		res.Header().Set("Cache-Control", "no-store")
+	}
+
+	if _, err = res.Write(fileData); err != nil {
+		h.logger.Errorw("error serving file", "error", err)
+	}
+}
+
 func main() {
-	nillogger := logger.NewFileLogger("/dev/null")
+	// nillogger := logger.NewFileLogger("/dev/null")
 	log := clients.CreateLogger(true)
 
 	settingsProvider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{
@@ -184,16 +300,18 @@ func main() {
 		HideWindowOnClose: false,
 		BackgroundColour:  &options.RGBA{R: 255, G: 255, B: 255, A: 255},
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets:  assets,
+			Handler: NewFileLoader(log),
 		},
 		Menu: nil,
 		// start logger that sends to dev null
-		Logger:           nillogger,
-		LogLevel:         logger.ERROR,
-		OnStartup:        startup,
-		OnDomReady:       app.domReady,
-		OnBeforeClose:    app.beforeClose,
-		OnShutdown:       app.shutdown,
+		LogLevel:      logger.DEBUG,
+		OnStartup:     startup,
+		OnDomReady:    app.domReady,
+		OnBeforeClose: app.beforeClose,
+		OnShutdown: func(ctx context.Context) {
+			pluginManager.Shutdown()
+		},
 		WindowStartState: options.Normal,
 		// CSSDragProperty:  "wails-draggable",
 		// CSSDragValue:     "1",

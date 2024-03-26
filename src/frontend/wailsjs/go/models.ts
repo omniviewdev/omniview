@@ -727,10 +727,32 @@ export namespace types {
 		    return a;
 		}
 	}
+	export class ResourceGroup {
+	    id: string;
+	    name: string;
+	    description: string;
+	    icon: string;
+	    resources: {[key: string]: ResourceMeta[]};
+	
+	    static createFrom(source: any = {}) {
+	        return new ResourceGroup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.icon = source["icon"];
+	        this.resources = source["resources"];
+	    }
+	}
 	export class ResourceMeta {
 	    group: string;
 	    version: string;
 	    kind: string;
+	    label: string;
+	    icon: string;
 	    description: string;
 	    category: string;
 	
@@ -743,6 +765,8 @@ export namespace types {
 	        this.group = source["group"];
 	        this.version = source["version"];
 	        this.kind = source["kind"];
+	        this.label = source["label"];
+	        this.icon = source["icon"];
 	        this.description = source["description"];
 	        this.category = source["category"];
 	    }

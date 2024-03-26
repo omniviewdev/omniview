@@ -16,7 +16,7 @@ import Typography from '@mui/joy/Typography';
 // Icons
 import Icon from '@/components/icons/Icon';
 import { FaGithub } from 'react-icons/fa6';
-import { LuRefreshCcwDot } from 'react-icons/lu';
+import { LuAtom, LuRefreshCcwDot } from 'react-icons/lu';
 
 // Hooks
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
@@ -93,9 +93,34 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
         >
           <Stack direction='row' spacing={2} alignItems='center'>
             <Typography level='title-lg'>{plugin.data?.metadata.name}</Typography>
-            <Chip size='sm' sx={{ borderRadius: 'sm', maxHeight: 20 }} color='primary'>
+            <Chip size='sm' sx={{ borderRadius: 'sm', maxHeight: 20 }} color='neutral'>
               {plugin.data?.metadata.version}
             </Chip>
+            {plugin.data?.devMode && 
+              <Tooltip 
+                sx={{ p: 1 }} 
+                title={
+                  <Typography level='title-sm'>
+                    {plugin.data?.devPath}
+                  </Typography>
+                } 
+                variant='soft'
+                color='warning'
+                arrow
+              >
+                <Chip 
+                  size='sm' 
+                  sx={{ borderRadius: 'sm', maxHeight: 20 }} 
+                  color='warning'
+                  variant='outlined'
+                  startDecorator={
+                    <LuAtom />
+                  }
+                >
+                Dev Mode
+                </Chip>
+              </Tooltip>
+            }
           </Stack>
           {plugin.data?.metadata.icon && IsImage.test(plugin.data?.metadata.icon) ? (
             <Avatar
@@ -105,7 +130,7 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
               sx={{
                 borderRadius: 4, position: 'absolute', top: 10, right: 10,
               }} />
-          ) : <Icon name={plugin.data?.metadata.icon || ''} size={44} />}
+          ) : <Icon name={plugin.data?.metadata.icon ?? ''} size={44} />}
         </Box>
         <CardContent>
           <Typography
@@ -162,7 +187,7 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
           </Button>
           <UninstallPluginModal open={uninstallModalOpen} onClose={() => {
             setUninstallModalOpen(false);
-          }} name={plugin.data?.metadata.name || ''} uninstall={uninstall} />
+          }} name={plugin.data?.metadata.name ?? ''} uninstall={uninstall} />
         </CardActions>
       </div>
     </Card>

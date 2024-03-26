@@ -66,18 +66,17 @@ func RegisterResourceInformer(
 	handlers := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			r, ok := obj.(*unstructured.Unstructured)
-			if !ok {
+			if !ok || r == nil {
 				log.Print("object is not an unstructured object")
-				return
-			}
-			if r == nil {
-				log.Print("object is nil")
 				return
 			}
 
 			kind := r.GroupVersionKind()
-
-			key := fmt.Sprintf("%s::%s::%s", kind.Group, kind.Version, kind.Kind)
+			group := kind.Group
+			if group == "" {
+				group = "core"
+			}
+			key := fmt.Sprintf("%s::%s::%s", group, kind.Version, kind.Kind)
 
 			// send it into the channel
 			addChan <- types.InformerAddPayload{
@@ -90,26 +89,23 @@ func RegisterResourceInformer(
 		},
 		UpdateFunc: func(oldObj, obj interface{}) {
 			orig, ok := oldObj.(*unstructured.Unstructured)
-			if !ok {
-				log.Print("old object is not an unstructured object")
+			if !ok || orig == nil {
+				log.Print("object is not an unstructured object")
 				return
 			}
-			if orig == nil {
-				log.Print("object is nil")
-				return
-			}
+
 			updated, ok := obj.(*unstructured.Unstructured)
-			if !ok {
-				log.Print("new object is not an unstructured object")
-				return
-			}
-			if updated == nil {
-				log.Print("object is nil")
+			if !ok || updated == nil {
+				log.Print("object is not an unstructured object")
 				return
 			}
 
 			kind := updated.GroupVersionKind()
-			key := fmt.Sprintf("%s::%s::%s", kind.Group, kind.Version, kind.Kind)
+			group := kind.Group
+			if group == "" {
+				group = "core"
+			}
+			key := fmt.Sprintf("%s::%s::%s", group, kind.Version, kind.Kind)
 
 			// send it into the channel
 			updateChan <- types.InformerUpdatePayload{
@@ -133,7 +129,11 @@ func RegisterResourceInformer(
 			}
 
 			kind := r.GroupVersionKind()
-			key := fmt.Sprintf("%s::%s::%s", kind.Group, kind.Version, kind.Kind)
+			group := kind.Group
+			if group == "" {
+				group = "core"
+			}
+			key := fmt.Sprintf("%s::%s::%s", group, kind.Version, kind.Kind)
 
 			// send it into the channel
 			deleteChan <- types.InformerDeletePayload{

@@ -16,7 +16,13 @@ import {
 } from '@tanstack/react-query';
 
 // Create a client
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 function fallbackRender({ error }: { error: Error }) {
   return (

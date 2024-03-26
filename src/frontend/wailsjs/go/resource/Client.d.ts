@@ -18,6 +18,10 @@ export function GetDefaultLayout(arg1:string):Promise<Array<types.LayoutItem>>;
 
 export function GetLayout(arg1:string,arg2:string):Promise<Array<types.LayoutItem>>;
 
+export function GetResourceGroup(arg1:string,arg2:string):Promise<types.ResourceGroup>;
+
+export function GetResourceGroups(arg1:string):Promise<{[key: string]: types.ResourceGroup}>;
+
 export function GetResourceType(arg1:string,arg2:string):Promise<types.ResourceMeta>;
 
 export function GetResourceTypes(arg1:string):Promise<{[key: string]: types.ResourceMeta}>;
@@ -36,7 +40,11 @@ export function RemoveConnection(arg1:string,arg2:string):Promise<void>;
 
 export function SetLayout(arg1:string,arg2:string,arg3:Array<types.LayoutItem>):Promise<void>;
 
+export function StartConnection(arg1:string,arg2:string):Promise<types.Connection>;
+
 export function StartConnectionInformer(arg1:string,arg2:string):Promise<void>;
+
+export function StopConnection(arg1:string,arg2:string):Promise<types.Connection>;
 
 export function StopConnectionInformer(arg1:string,arg2:string):Promise<void>;
 

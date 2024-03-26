@@ -54,6 +54,10 @@ export function Run(arg1) {
   return window['go']['plugin']['pluginManager']['Run'](arg1);
 }
 
+export function Shutdown() {
+  return window['go']['plugin']['pluginManager']['Shutdown']();
+}
+
 export function UninstallPlugin(arg1) {
   return window['go']['plugin']['pluginManager']['UninstallPlugin'](arg1);
 }

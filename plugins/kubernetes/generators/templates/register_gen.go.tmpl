@@ -39,6 +39,7 @@ func Register(plugin *sdk.Plugin) {
 			ClientFactory:      clients.NewKubernetesClientFactory(),
 			LoadConnectionFunc: LoadConnectionsFunc,
       InformerOpts:       NewInformerOptions(),
+      ResourceGroups:     ResourceGroups,
 			Resourcers:         map[types.ResourceMeta]types.Resourcer[clients.ClientSet]{
         {{- range .Resources}}
 				{

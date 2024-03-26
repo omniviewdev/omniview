@@ -22,7 +22,7 @@ export const MemoizedRow = memo(({ row, kind }: MemoizedRowProps) => {
 
   // Simplified memoization check can be done outside, based on your needs
   return (
-    <tr>
+    <tr style={{ cursor: 'pointer' }} >
       {row.getVisibleCells().map(cell => (
         <td
           key={cell.id}

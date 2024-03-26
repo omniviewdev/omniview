@@ -8,7 +8,9 @@ type Clients struct {
 	Resource resource.Client `json:"resource"`
 }
 
-func NewClients(resourceClient resource.Client) *Clients {
+func NewClients(
+	resourceClient resource.Client,
+) *Clients {
 	return &Clients{
 		Resource: resourceClient,
 	}

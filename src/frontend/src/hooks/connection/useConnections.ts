@@ -26,7 +26,7 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
       showSnackbar({
         message: 'Failed to start connection informer',
         status: 'error',
-        details: `${error}`,
+        details: `${error.message}`,
       });
     },
   });
@@ -37,7 +37,7 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
       showSnackbar({
         message: 'Failed to stop connection informer',
         status: 'error',
-        details: `${error}`,
+        details: `${error.message}`,
       });
     },
   });

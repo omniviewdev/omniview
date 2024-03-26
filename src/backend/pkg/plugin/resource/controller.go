@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"time"
 
 	"github.com/hashicorp/go-plugin"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -87,47 +88,37 @@ func (c *controller) informerListener() {
 			}
 			return
 		case event := <-c.addChan:
-			namespace := event.Namespace
-			if namespace == "" {
-				namespace = "default"
-			}
 			eventKey := fmt.Sprintf(
-				"%s/informer/add/%s/%s/%s/%s",
+				"%s/%s/%s/ADD",
 				event.PluginID,
-				event.Key,
 				event.Connection,
-				event.ID,
-				event.Namespace,
+				event.Key,
 			)
-			runtime.EventsEmit(c.ctx, eventKey, event.Data)
+			c.logger.Debug("emitting add event", "eventKey", eventKey)
+			runtime.EventsEmit(c.ctx, eventKey, event)
 		case event := <-c.updateChan:
-			namespace := event.Namespace
-			if namespace == "" {
-				namespace = "default"
-			}
 			eventKey := fmt.Sprintf(
-				"%s/informer/update/%s/%s/%s/%s",
+				"%s/%s/%s/UPDATE",
 				event.PluginID,
-				event.Key,
 				event.Connection,
-				event.ID,
-				event.Namespace,
+				event.Key,
 			)
-			runtime.EventsEmit(c.ctx, eventKey, event.OldData, event.NewData)
+
+			c.logger.Debug("emitting update event", "eventKey", eventKey)
+			runtime.EventsEmit(
+				c.ctx,
+				eventKey,
+				event,
+			)
 		case event := <-c.deleteChan:
-			namespace := event.Namespace
-			if namespace == "" {
-				namespace = "default"
-			}
 			eventKey := fmt.Sprintf(
-				"%s/informer/delete/%s/%s/%s/%s",
+				"%s/%s/%s/DELETE",
 				event.PluginID,
-				event.Key,
 				event.Connection,
-				event.ID,
-				event.Namespace,
+				event.Key,
 			)
-			runtime.EventsEmit(c.ctx, eventKey, event.Data)
+			c.logger.Debug("emitting delete event", "eventKey", eventKey)
+			runtime.EventsEmit(c.ctx, eventKey, event)
 		}
 	}
 }
@@ -173,13 +164,26 @@ func (c *controller) loadFromLocalStore(pluginID string) error {
 		return encoder.Encode(c.connections)
 	}
 
+	var state map[string][]types.Connection
+
 	// proceed with decoding since the file is not empty
 	decoder := gob.NewDecoder(store)
-	err = decoder.Decode(&c.connections)
+	err = decoder.Decode(&state)
 	if err != nil {
 		return err
 	}
 
+	for id, plugin := range state {
+		loaded := make([]types.Connection, 0, len(plugin))
+		for _, conn := range plugin {
+			// ensure we don't accidently load and say we're connected, because we're not
+			conn.LastRefresh = time.Time{}
+			loaded = append(loaded, conn)
+		}
+		state[id] = loaded
+	}
+
+	c.connections = state
 	return nil
 }
 
@@ -325,6 +329,54 @@ func mergeConnections(
 	}
 
 	return list
+}
+
+// ================================== CONNECTION METHODS ================================== //
+
+func (c *controller) StartConnection(pluginID, connectionID string) (types.Connection, error) {
+	c.logger.Debug("StartConnection")
+	client, ok := c.clients[pluginID]
+	if !ok {
+		return types.Connection{}, fmt.Errorf("plugin '%s' not found", pluginID)
+	}
+	ctx := types.NewPluginContextWithConnection(
+		context.TODO(),
+		"CORE",
+		nil, // pluginconfig is managed plugin side
+		nil, // TODO: GlobalConfig - fill this in
+		nil, // no associated connection
+	)
+	conn, err := client.StartConnection(ctx, connectionID)
+	if err != nil {
+		return types.Connection{}, err
+	}
+
+	// purposely don't write to state, we're not trying to persist realtime connection state, just
+	// the connection itself
+	c.connections[pluginID] = mergeConnections(c.connections[pluginID], []types.Connection{conn})
+	return conn, nil
+}
+
+func (c *controller) StopConnection(pluginID, connectionID string) (types.Connection, error) {
+	c.logger.Debug("StopConnection")
+	client, ok := c.clients[pluginID]
+	if !ok {
+		return types.Connection{}, fmt.Errorf("plugin '%s' not found", pluginID)
+	}
+	ctx := types.NewPluginContextWithConnection(
+		context.TODO(),
+		"CORE",
+		nil, // pluginconfig is managed plugin side
+		nil, // TODO: GlobalConfig - fill this in
+		nil, // no associated connection
+	)
+	conn, err := client.StopConnection(ctx, connectionID)
+	if err != nil {
+		return types.Connection{}, err
+	}
+
+	c.connections[pluginID] = mergeConnections(c.connections[pluginID], []types.Connection{conn})
+	return conn, nil
 }
 
 func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error) {
@@ -648,6 +700,29 @@ func (c *controller) StopConnectionInformer(pluginID, connectionID string) error
 }
 
 // ================================== RESOURCE TYPE METHODS ================================== //
+
+func (c *controller) GetResourceGroups(pluginID string) map[string]resourcetypes.ResourceGroup {
+	logger := c.logger.With("pluginID", pluginID)
+	logger.Debug("GetResourceGroups")
+	client, ok := c.clients[pluginID]
+	if !ok {
+		logger.Error("plugin not found")
+		return nil
+	}
+	return client.GetResourceGroups()
+}
+
+func (c *controller) GetResourceGroup(
+	pluginID, groupID string,
+) (resourcetypes.ResourceGroup, error) {
+	logger := c.logger.With("pluginID", pluginID)
+	logger.Debug("GetResourceGroup")
+	client, ok := c.clients[pluginID]
+	if !ok {
+		return resourcetypes.ResourceGroup{}, fmt.Errorf("plugin not found")
+	}
+	return client.GetResourceGroup(groupID)
+}
 
 func (c *controller) GetResourceTypes(pluginID string) map[string]resourcetypes.ResourceMeta {
 	logger := c.logger.With("pluginID", pluginID)

@@ -149,3 +149,5 @@ export const useResource = ({
     remove,
   };
 };
+
+export default useResource;

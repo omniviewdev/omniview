@@ -244,7 +244,7 @@ const PluginResourceTable: React.FC<Props> = ({ columns, pluginID, connectionID,
         >
           <thead>
             {table.getHeaderGroups().map(headerGroup => (
-              <tr key={headerGroup.id}>
+              <tr key={headerGroup.id} style={{ cursor: 'pointer' }}>
                 {headerGroup.headers.map(header => (
                   <th key={header.id} style={{
                     alignContent: 'center', paddingTop: '12px', paddingBottom: '12px', width: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),

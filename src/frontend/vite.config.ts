@@ -1,5 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import federation from "@originjs/vite-plugin-federation";
+import topLevelAwait from "vite-plugin-top-level-await";
+
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
@@ -14,10 +17,34 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/_/': {
+        bypass: function () {
+          // Return false to produce a 404 error for the request.
+          return false;
+        }
+      },
+    },
   },
   plugins: [
     react({
       jsxImportSource: '@welldone-software/why-did-you-render',
+    }),
+    federation({
+      name: "omniview-host",
+      // needs a placeholder to prevent "ReferenceError: __rf_placeholder__shareScope is not defined"
+      remotes: { noopRemote: 'noopRemote.js' },
+      shared: [
+        'react',
+        'react-dom', 
+        '@mui/joy',
+        '@emotion/react',
+      ]
+    }),
+    // Webkit doesn't support top level await
+    topLevelAwait({
+      promiseExportName: "__tla",
+      promiseImportName: i => `__tla_${i}`
     })
   ],
   resolve: {

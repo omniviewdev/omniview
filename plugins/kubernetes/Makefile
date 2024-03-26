@@ -24,4 +24,14 @@ install: build
 
 package: build
 	tar -czvf kubernetes.tar.gz plugin.yaml bin/plugin
+
+installui: 
+	cd ui && pnpm run build
+	mkdir -p ~/.omniview/plugins/kubernetes/assets
+	cp -r ui/dist/assets/* ~/.omniview/plugins/kubernetes/assets/
 	
+storybook:
+	cd ui && pnpm run storybook
+
+storybook-build:
+	cd ui && pnpm run build-storybook
