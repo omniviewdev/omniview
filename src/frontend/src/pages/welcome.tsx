@@ -3,6 +3,7 @@ import React from 'react';
 // Material-ui
 import Stack from '@mui/joy/Stack';
 import Typography from '@mui/joy/Typography';
+import Button from '@mui/joy/Button';
 import GradientBackground from '@/components/backgrounds/GradientBackground';
 
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,6 +15,7 @@ import AWS from '@/assets/logos/aws/horizontal/AWSHorizontalColorWhite';
 import GCP from '@/assets/logos/gcp/horizontal/GCPHorizontal';
 import Docker from '@/assets/logos/docker/horizontal/DockerHorizontal';
 import { Box } from '@mui/joy';
+import PluginComponent from '@/federation';
 
 // Const tools = [
 //   'Kubernetes',
@@ -151,7 +153,7 @@ const Welcome = () => {
         </Stack>
 
         <Stack direction='row' spacing={2} alignItems='center'>
-
+          <PluginComponent plugin={'kubernetes'} component={'PodSidebar'} />
         </Stack>
       </Stack>
     </GradientBackground >

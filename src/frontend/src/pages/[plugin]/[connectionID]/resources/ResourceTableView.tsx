@@ -30,6 +30,7 @@ import { LuCog } from 'react-icons/lu';
 import ResourceTable from './ResourceTable';
 import PluginBackdrop from '../../PluginBackdrop';
 import { usePluginContext } from '@/contexts/PluginContext';
+import useResourceGroups from '@/hooks/resource/useResourceGroups';
 
 /**
  * Get the ID from the meta object
@@ -43,47 +44,41 @@ export default function ResourceTableView(): React.ReactElement {
   const [selected, setSelected] = React.useState<string | undefined>(undefined);
 
   const { types } = useResourceTypes({ pluginID });
+  const { groups } = useResourceGroups({ pluginID });
   const { connection } = useConnection({ pluginID, connectionID });
   const plugin = usePluginContext();
 
-  if (types.isLoading || connection.isLoading || !types.data || !connection.data) {
+  if (groups.isLoading || connection.isLoading || !groups.data || !connection.data) {
     return (<></>);
   }
 
-  if (types.isError) {
+  if (groups.isError) {
     return (<>{types.error}</>);
   }
 
-  const grouped: SidebarItem[] = Object.values(types.data).reduce<SidebarItem[]>((prev, curr) => {
-    // Find the group
-    // if it doesn't exist, create it
-    const idx = prev.findIndex(group => group.id === curr.group);
-    if (idx === -1) {
-      prev.push({
-        id: curr.group,
-        label: curr.group,
-        icon: null,
-        children: [{
-          id: toID(curr),
-          label: curr.kind,
-          icon: null,
-        }],
+  const grouped: SidebarItem[] = Object.values(groups.data).map((group) => {
+    const item: SidebarItem = {
+      id: group.id,
+      label: group.name,
+      icon: group.icon,
+      children: [],
+    };
+
+    Object.entries(group.resources).forEach(([version, metas]) => {
+      metas.forEach((meta) => {
+        item.children?.push({
+          id: toID(meta),
+          label: meta.kind,
+          icon: meta.icon,
+          decorator: version,
+        });
       });
-      return prev;
-    }
-
-    if (prev[idx].children === undefined) {
-      prev[idx].children = [];
-    }
-
-    // Add the item to the group
-    prev[idx].children?.push({
-      id: toID(curr),
-      label: curr.kind,
-      icon: null,
     });
-    return prev;
-  }, []);
+
+    // Sort the children
+    item.children = item.children?.sort((a, b) => a.label.localeCompare(b.label));
+    return item;
+  }).sort((a, b) => a.label.localeCompare(b.label));
 
   return (
     <Layout.Root
@@ -98,47 +93,49 @@ export default function ResourceTableView(): React.ReactElement {
         message={`${plugin.metadata.name} plugin is reloading`}
       />
       <Layout.SideNav type='bordered' padding={1} width={300} >
-        <Sheet
-          variant='outlined'
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            p: 1,
-            borderRadius: 'sm',
-            boxShadow: theme => theme.shadow.sm,
-          }}
-        >
-          <Stack direction='row' alignItems='center' gap={1}>
-            {connection.data?.avatar
-              ? <Avatar
-                size='sm'
-                src={connection.data?.avatar}
-                sx={{
-                  borderRadius: 6,
-                  backgroundColor: 'transparent',
-                  objectFit: 'contain',
-                  border: 0,
-                  maxHeight: 28,
-                  maxWidth: 28,
-                }}
-              />
-              : <Avatar
-                size='sm'
-                {...stringAvatar(connection.data?.name || '')}
-              />
-            }
-            <Typography level='title-sm' textOverflow={'ellipsis'}>{connection.data?.name}</Typography>
-          </Stack>
-          <Stack direction='row' alignItems='center' gap={1}>
-            <Link to={`/connection/${connectionID}/edit`}>
-              <IconButton variant='soft' size='sm' color='neutral'>
-                <LuCog size={20} color={theme.palette.neutral[400]} />
-              </IconButton>
-            </Link>
-          </Stack>
-        </Sheet>
-        <NavMenu selected={selected} onSelect={setSelected} size='sm' items={grouped} scrollable />
+        <Stack direction='column' maxHeight='100%' gap={0.5}>
+          <Sheet
+            variant='outlined'
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              p: 1,
+              borderRadius: 'sm',
+              boxShadow: theme => theme.shadow.sm,
+            }}
+          >
+            <Stack direction='row' alignItems='center' gap={1}>
+              {connection.data?.avatar
+                ? <Avatar
+                  size='sm'
+                  src={connection.data?.avatar}
+                  sx={{
+                    borderRadius: 6,
+                    backgroundColor: 'transparent',
+                    objectFit: 'contain',
+                    border: 0,
+                    maxHeight: 28,
+                    maxWidth: 28,
+                  }}
+                />
+                : <Avatar
+                  size='sm'
+                  {...stringAvatar(connection.data?.name || '')}
+                />
+              }
+              <Typography level='title-sm' textOverflow={'ellipsis'}>{connection.data?.name}</Typography>
+            </Stack>
+            <Stack direction='row' alignItems='center' gap={1}>
+              <Link to={`/connection/${connectionID}/edit`}>
+                <IconButton variant='soft' size='sm' color='neutral'>
+                  <LuCog size={20} color={theme.palette.neutral[400]} />
+                </IconButton>
+              </Link>
+            </Stack>
+          </Sheet>
+          <NavMenu selected={selected} onSelect={setSelected} size='sm' items={grouped} scrollable />
+        </Stack>
       </Layout.SideNav>
       <Layout.Main p={1} gap={2}>
         {selected && (

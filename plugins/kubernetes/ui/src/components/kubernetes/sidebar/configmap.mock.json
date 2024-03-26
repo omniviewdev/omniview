@@ -1,0 +1,49 @@
+{
+  "apiVersion": "v1",
+  "data": {
+    "app.conf": "upstream phpfpm {\n  server unix:/var/run/php/php7.4-fpm.sock;\n}\n\n# If the CF-Connecting-IP header exists\n#   we'll pass that as the HTTP_CLIENT_IP\nmap $http_cf_connecting_ip $client_ip {\n    ~^[0-9.]+$          $http_cf_connecting_ip;\n    ~^[0-9A-Fa-f:.]+$   $http_cf_connecting_ip;\n}\n\nserver {\n  listen 8080 default_server;\n  \n  root                            /var/www/moodle;\n  index                           index.php;\n\n  access_log                      /app/logs/access.log json_analytics if=$loggable;\n  error_log                       /app/logs/error.log warn;\n\n  proxy_buffers                   16 16k;\n  proxy_buffer_size               16k;\n  client_max_body_size            200m;\n  client_body_buffer_size         4m;\n  client_header_buffer_size       16k;\n  large_client_header_buffers     8 8k;\n  fastcgi_buffers                 512 16k;\n  fastcgi_buffer_size             512k;\n  fastcgi_busy_buffers_size       512k;\n\n  port_in_redirect                off;\n\n  # ELB Health Check\n  location /elb-status {\n    access_log off;\n    return 200;\n  }\n\n  # Check for options preflighting\n  location / {\n      if ($request_method = OPTIONS) {\n          add_header Content-Type text/plain;\n          add_header Content-Length 0;\n          return 204;\n      }\n      \n      try_files $uri $uri/ =404;\n  }\n\n  location /dataroot/ {\n    internal;\n    # proxy_cache statics;\n    alias /var/www/moodledata/;\n  }\n\n  location /cachedir/ {\n    internal;\n    # proxy_cache statics;\n    alias /var/www/moodledata/cache/;\n  }\n\n  location /localcachedir/ {\n    internal;\n    # proxy_cache statics;\n    alias /var/www/localcache/;\n  }\n  \n  location /tempdir/ {\n    internal;\n    # proxy_cache statics;\n    alias /var/www/moodledata/temp/;\n  }\n\n  location /filedir/ {\n    internal;\n    # proxy_cache statics;\n    alias /var/www/moodledata/filedir/;\n  }\n\n  location ~* (?:\\.(?:bak|engine|install|make|in[ci]|module|profile|po|sh|sw[op]|sql|theme|twig|tpl(\\.php)?|xtmpl|yml|orig|save|well-known)|~|Entries.*|web\\.config|Repository|Root|Tag|Template|composer\\.(json|lock)|^#.*#$|\\.php(~|\\.sw[op]|\\.bak|\\.orig|\\.save))$ {        \n    deny all;\n  }\n\n  # Alias requests to anything /media except core moodle classes over to to the media dir on the mounted EFS volume\n  location ~ ^/media/(?!classes$|classes/|player$|player/)(.*)$ {\n    alias /var/www/eta-media/$1;\n  }\n\n  # Pass PHP requests to FPM\n  location ~ ^(.+\\.php)(.*)$ {\n      root                            /var/www/moodle/;\n      fastcgi_split_path_info         ^(.+\\.php)(.*)$;\n      fastcgi_index                   index.php;\n      fastcgi_pass                    phpfpm;\n      include                         /etc/nginx/mime.types;\n      include                         fastcgi_params;\n      fastcgi_param   HTTP_CLIENT_IP  $client_ip;\n      fastcgi_param   PATH_INFO       $fastcgi_path_info;\n      fastcgi_param   SCRIPT_FILENAME $document_root$fastcgi_script_name;\n      fastcgi_read_timeout            300;\n  }\n\n  # Security headers\n  add_header X-Frame-Options SAMEORIGIN;\n  add_header X-Content-Type-Options nosniff;\n  add_header X-XSS-Protection \"1; mode=block\";\n\n  charset utf-8;\n  server_tokens off;\n\n}\n",
+    "datadog.conf": "server {\n  listen 8081;\n  access_log    off;\n\n  location /nginx_status {\n    access_log off;\n    return 200;\n  }\n\n  location /stub_status {\n    stub_status;\n  }\n\n  location ~ ^/(status|ping)$ {\n    include                         fastcgi_params;\n    fastcgi_param SCRIPT_FILENAME   $document_root$fastcgi_script_name;\n    fastcgi_pass                    phpfpm;\n  }\n}\n"
+  },
+  "kind": "ConfigMap",
+  "metadata": {
+    "annotations": {
+      "meta.helm.sh/release-name": "ptsi-lms",
+      "meta.helm.sh/release-namespace": "ptsi"
+    },
+    "creationTimestamp": "2023-05-16T16:31:31.000Z",
+    "labels": {
+      "app.kubernetes.io/managed-by": "Helm"
+    },
+    "managedFields": [
+      {
+        "apiVersion": "v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:data": {
+            ".": {},
+            "f:app.conf": {},
+            "f:datadog.conf": {}
+          },
+          "f:metadata": {
+            "f:annotations": {
+              ".": {},
+              "f:meta.helm.sh/release-name": {},
+              "f:meta.helm.sh/release-namespace": {}
+            },
+            "f:labels": {
+              ".": {},
+              "f:app.kubernetes.io/managed-by": {}
+            }
+          }
+        },
+        "manager": "helm",
+        "operation": "Update",
+        "time": "2023-10-24T17:05:08.000Z"
+      }
+    ],
+    "name": "ptsi-lms-nginx-conf-config",
+    "namespace": "ptsi",
+    "resourceVersion": "552579142",
+    "uid": "3063c247-12f7-4c34-b804-cb7b4904e1ae"
+  }
+}

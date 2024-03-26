@@ -47,7 +47,7 @@ export const usePluginManager = () => {
         status: 'info',
       });
     });
-    EventsOn('plugin/dev_reloadError', (meta: config.PluginMeta, error: string) => {
+    EventsOn('plugin/dev_reload_rror', (meta: config.PluginMeta, error: string) => {
       // Find the plugin in the list of plugins and update the status
       // to show that it's reloading
       queryClient.setQueryData([Entity.PLUGINS], (oldData: config.PluginMeta[]) => oldData.map(plugin => {
@@ -100,6 +100,7 @@ export const usePluginManager = () => {
         status: 'success',
       });
     });
+
     EventsOn('plugin/dev_install_start', (meta: config.PluginMeta) => {
       showSnackbar({
         message: `Installing plugin '${meta.name}' in development mode`,
@@ -110,7 +111,7 @@ export const usePluginManager = () => {
     return () => {
       // Cleanup watchers
       EventsOff('plugin/dev_reload_start');
-      EventsOff('plugin/dev_reloadError');
+      EventsOff('plugin/dev_reload_error');
       EventsOff('plugin/dev_reload_complete');
       EventsOff('plugin/dev_install_start');
     };
@@ -216,7 +217,6 @@ export const usePlugin = ({ id }: { id: string }) => {
       showSnackbar(`Plugin '${metadata.name}' sucessfully reloaded`, 'success');
       // Invalidate the plugins query to refetch the list of plugins
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
-      void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
     },
     onError(error) {
       showSnackbar(`Failed to reload plugin: ${error.message}`, 'error');

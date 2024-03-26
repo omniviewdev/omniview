@@ -15,6 +15,14 @@ tags:
   - cloud
 capabilities:
   - resource
+
 theme:
   colors:
     primary: "#326CE5"
+
+components:
+  resource:
+    - name: "PodSidebarPrimary"
+      plugin: "kubernetes"
+      area: "SIDEBAR"
+      resources: ["core::v1::Pod"]

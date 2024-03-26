@@ -1,8 +1,6 @@
 package resource
 
 import (
-	"log"
-
 	rt "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -38,6 +36,12 @@ type IClient interface {
 	// The pluginID should match the name of the plugin in the plugin metadata.
 	Delete(pluginID, connectionID, key string, input rt.DeleteInput) (*rt.DeleteResult, error)
 
+	// StartConnection starts a connection for a plugin
+	StartConnection(pluginID, connectionID string) (types.Connection, error)
+
+	// StopConnection stops a connection for a plugin
+	StopConnection(pluginID, connectionID string) (types.Connection, error)
+
 	// LoadConnections loads the connections for the resource provider
 	LoadConnections(pluginID string) ([]types.Connection, error)
 
@@ -66,6 +70,12 @@ type IClient interface {
 
 	// StopConnectionInformer stops an informer for the given connection
 	StopConnectionInformer(pluginID, connectionID string) error
+
+	// GetResourceGroups
+	GetResourceGroups(pluginID string) map[string]rt.ResourceGroup
+
+	// GetResourceGroup
+	GetResourceGroup(pluginID, groupID string) (rt.ResourceGroup, error)
 
 	// GetResourceTypes returns a map of all the resource types that are available to the resource controller
 	GetResourceTypes(pluginID string) map[string]rt.ResourceMeta
@@ -144,6 +154,14 @@ func (c *Client) Delete(
 	return c.controller.Delete(pluginID, connectionID, key, input)
 }
 
+func (c *Client) StartConnection(pluginID, connectionID string) (types.Connection, error) {
+	return c.controller.StartConnection(pluginID, connectionID)
+}
+
+func (c *Client) StopConnection(pluginID, connectionID string) (types.Connection, error) {
+	return c.controller.StopConnection(pluginID, connectionID)
+}
+
 func (c *Client) LoadConnections(pluginID string) ([]types.Connection, error) {
 	return c.controller.LoadConnections(pluginID)
 }
@@ -179,10 +197,16 @@ func (c *Client) StopConnectionInformer(pluginID, connectionID string) error {
 	return c.controller.StopConnectionInformer(pluginID, connectionID)
 }
 
+func (c *Client) GetResourceGroups(pluginID string) map[string]rt.ResourceGroup {
+	return c.controller.GetResourceGroups(pluginID)
+}
+
+func (c *Client) GetResourceGroup(pluginID, groupID string) (rt.ResourceGroup, error) {
+	return c.controller.GetResourceGroup(pluginID, groupID)
+}
+
 func (c *Client) GetResourceTypes(pluginID string) map[string]rt.ResourceMeta {
-	resp := c.controller.GetResourceTypes(pluginID)
-	log.Println("GetResourceTypes", resp)
-	return resp
+	return c.controller.GetResourceTypes(pluginID)
 }
 
 func (c *Client) GetResourceType(pluginID, typeID string) (*rt.ResourceMeta, error) {

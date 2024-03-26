@@ -14,9 +14,12 @@ import Stack from '@mui/joy/Stack';
 // Icons import
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
 
+
 // Custom
 import { type SidebarListItemProps, type SidebarProps } from './types';
-import { Typography } from '@mui/joy';
+import { Chip, Typography } from '@mui/joy';
+import { IsImage } from '@/utils/url';
+import Icon from '@/components/icons/Icon';
 
 /**
  * Render a navigation menu in a sidebar layout
@@ -30,6 +33,7 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
     throw new Error('You can only pass items or sections, not both');
   }
 
+  // memoize the scrollable styles to prevent rerenders
   const scrollableSx = {
     overflow: 'auto',
     maxHeight: '100%',
@@ -41,6 +45,9 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
       display: 'none',
     },
   };
+  
+  // memoize the scrollable styles to prevent rerenders
+  const scrollStyle = React.useMemo(() => scrollableSx, [scrollable]);
 
   const [open, setOpen] = React.useState<Record<string, boolean>>({});
 
@@ -65,9 +72,7 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
   return (
     <Stack
       direction='column'
-      sx={{
-        ...scrollable && scrollableSx,
-      }}
+      sx={scrollStyle}
     >
       {header}
       <List
@@ -122,6 +127,9 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
   );
 };
 
+NavMenu.displayName = 'NavMenu';
+NavMenu.whyDidYouRender = true;
+
 /**
  * Recursively render the sidebar items
  *
@@ -144,6 +152,10 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
     }
   };
 
+  const MemoizedIcon = React.useMemo(() => (
+    <KeyboardArrowDownRoundedIcon sx={{ transform: openState[id] ? 'initial' : 'rotate(-90deg)' }} />
+  ), [openState[id]]);
+
   return (
     <>
       <ListItem
@@ -152,17 +164,22 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
           userSelect: 'none',
         }}
         nested={Boolean(item.children?.length)}
-        endAction={Boolean(item.children?.length) && (
+        endAction={Boolean(item.children?.length) ? (
           <IconButton
             variant='plain'
             size='sm'
             color='neutral'
             onClick={handleClick}
           >
-            <KeyboardArrowDownRoundedIcon
-              sx={{ transform: openState[id] ? 'initial' : 'rotate(-90deg)' }}
-            />
+            {MemoizedIcon}
           </IconButton>
+        ) : ( 
+          typeof item.decorator === 'string' 
+            ? (
+              <Chip size='sm' variant='outlined' color='neutral' sx={{ borderRadius: 'sm' }}>
+                <Typography level='body-xs' fontSize={10}>{item.decorator}</Typography>
+              </Chip>
+            ) : item.decorator
         )}
       >
         <ListItemButton
@@ -173,7 +190,9 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
           {item.icon && (
             <ListItemDecorator>
               {typeof item.icon === 'string' ? (
-                <Avatar size='sm' src={item.icon} sx={{ borderRadius: 'sm', maxHeight: 20, maxWidth: 20 }} />
+                IsImage(item.icon) 
+                  ? <Avatar size='sm' src={item.icon} sx={{ borderRadius: 'sm', maxHeight: 20, maxWidth: 20 }} />
+                  : <Icon name={item.icon} size={16}/>
               ) : (
                 item.icon
               )}
@@ -191,6 +210,9 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
           <List
             aria-labelledby={`nav-list-${id}`}
             size='sm'
+            sx={{
+              '--List-gap': '0px',
+            }}
           >
             {item.children?.map(child => (
               <SidebarListItem
@@ -210,5 +232,8 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
     </>
   );
 };
+
+SidebarListItem.displayName = 'SidebarListItem';
+SidebarListItem.whyDidYouRender = true;
 
 export default NavMenu;

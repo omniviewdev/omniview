@@ -8,6 +8,9 @@ export type SidebarItem = {
   /** Human readable label */
   label: string;
 
+  /** Optional chip to display next to the label */
+  decorator?: string | React.ReactNode;
+
   /**
    * Icon to display. This can be either:
   * - A string representing a React Icons name

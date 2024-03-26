@@ -299,8 +299,8 @@ export default function ClusterResourceSidebar() {
         >
           {menuItems.map(item => {
             return numPanes > 1
-              ? <NavHoverButtonMenu item={item} location={location} itemProps={itemProps} menuFocused={menuIndex} setMenuFocused={setMenuIndex} createHandleLeaveMenu={createHandleLeaveMenu} />
-              : <NavNormalMenu item={item} location={location} />;
+              ? <NavHoverButtonMenu item={item} location={location.pathname} itemProps={itemProps} menuFocused={menuIndex} setMenuFocused={setMenuIndex} createHandleLeaveMenu={createHandleLeaveMenu} />
+              : <NavNormalMenu item={item} location={location.pathname} />;
           },
           )}
         </List>

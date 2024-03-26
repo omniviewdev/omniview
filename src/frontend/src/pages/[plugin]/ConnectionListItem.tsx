@@ -2,7 +2,9 @@ import React from 'react';
 
 // Material-ui
 import Avatar from '@mui/joy/Avatar';
+import Badge from '@mui/joy/Badge';
 import Chip from '@mui/joy/Chip';
+import CircularProgress from '@mui/joy/CircularProgress';
 import Dropdown from '@mui/joy/Dropdown';
 import IconButton from '@mui/joy/IconButton';
 import ListItem from '@mui/joy/ListItem';
@@ -14,6 +16,10 @@ import MenuItem from '@mui/joy/MenuItem';
 import Stack from '@mui/joy/Stack';
 import Typography from '@mui/joy/Typography';
 
+// Project imports
+import { usePluginContext } from '@/contexts/PluginContext';
+import { useConnection } from '@/hooks/connection/useConnection';
+
 // Types
 import { stringToColor } from '@/utils/color';
 import { type types } from '@api/models';
@@ -23,7 +29,7 @@ import { MoreVert } from '@mui/icons-material';
 import { LuPencil, LuTrash } from 'react-icons/lu';
 
 // Third-party
-import { Link } from '@infraview/router';
+import { Link, usePluginRouter } from '@infraview/router';
 
 type Props = Omit<types.Connection, 'createFrom' | 'convertValues'>;
 
@@ -68,8 +74,54 @@ function stringAvatar(name: string) {
   };
 }
 
-const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, labels }) => (
-  <Link to={`/connection/${id}/resources`}>
+const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, labels, last_refresh, expiry_time }) => {
+  const plugin = usePluginContext();
+  const { navigate } = usePluginRouter();
+
+  const { startConnection } = useConnection({ pluginID: plugin.id, connectionID: id });
+  const [connecting, setConnecting] = React.useState(false);
+
+  const handleClick = () => {
+    if (isConnected()) {
+      navigate(`/connection/${id}/resources`);
+      return;
+    }
+
+    setConnecting(true);
+    startConnection()
+      .then(_ => {
+        navigate(`/connection/${id}/resources`);
+      })
+      .catch(_ => {
+        console.log('not connected');
+      })
+      .finally(() => {
+        setConnecting(false);
+      });
+  };
+
+  /**
+   * Determines if we're connected
+   */
+  const isConnected = () => {
+    // compute from last refresh (timestamp) and expiry time (duration)
+    const refreshTime = new Date(last_refresh);
+    // if we have no valid refresh time, we can't determine if the connection is connected, so assume we are
+    if (refreshTime.toString() === 'Invalid Date') {
+      console.log('Invalid Date for refresh time', last_refresh);
+      return true;
+    }
+
+    const now = new Date();
+    console.log({
+      refreshTime: refreshTime.getTime() + expiry_time,
+      now: now.getTime(),
+      isConnected: (refreshTime.getTime() + expiry_time) > now.getTime(),
+    });
+    return (refreshTime.getTime() + expiry_time) > now.getTime();
+  };
+
+  return (
     <ListItem
       id={`connection-${id}`}
       endAction={
@@ -102,31 +154,45 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
         </Dropdown>
       }
     >
-      <ListItemButton sx={{ borderRadius: 'sm' }}>
+      <ListItemButton 
+        sx={{ borderRadius: 'sm' }}
+        onClick={handleClick}
+      >
         <ListItemDecorator >
-          {avatar
-            ? <Avatar
-              size='sm'
-              src={avatar}
-              sx={{
-                borderRadius: 6,
-                backgroundColor: 'transparent',
-                objectFit: 'contain',
-                border: 0,
-                maxHeight: 28,
-                maxWidth: 28,
-              }}
-            />
-            : <Avatar
-              size='sm'
-              {...stringAvatar(id || '')}
-            />
-          }
+          <Badge 
+            color="success" 
+            invisible={!isConnected()} 
+            size='sm'
+            anchorOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+          >
+            {avatar
+              ? <Avatar
+                size='sm'
+                src={avatar}
+                sx={{
+                  borderRadius: 6,
+                  backgroundColor: 'transparent',
+                  objectFit: 'contain',
+                  border: 0,
+                  maxHeight: 28,
+                  maxWidth: 28,
+                }}
+              />
+              : <Avatar
+                size='sm'
+                {...stringAvatar(id || '')}
+              />
+            }
+          </Badge>
         </ListItemDecorator>
         <Stack direction='row' width={'100%'} alignItems={'center'}>
-          <Stack direction='column' width={'100%'}>
+          <Stack direction='row' width={'100%'} height={'100%'} alignItems={'center'} gap={2} >
             <Typography level='title-sm' noWrap>{name}</Typography>
             {Boolean(description) && <Typography level='body-sm' noWrap>{description}</Typography>}
+            {connecting && <CircularProgress size='sm' />}
           </Stack>
           <Stack direction='row' spacing={1} alignItems={'center'}>
             {labels && Object.entries(labels).sort().map(([key, _]) => (
@@ -146,7 +212,7 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
         </Stack>
       </ListItemButton>
     </ListItem>
-  </Link>
-);
+  );
+};
 
 export default ConnectionListItem;

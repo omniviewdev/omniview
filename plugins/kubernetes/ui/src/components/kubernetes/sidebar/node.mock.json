@@ -1,0 +1,659 @@
+{
+  "apiVersion": "v1",
+  "kind": "Node",
+  "metadata": {
+    "annotations": {
+      "alpha.kubernetes.io/provided-node-ip": "10.100.193.127",
+      "csi.volume.kubernetes.io/nodeid": "{\"ebs.csi.aws.com\":\"i-0220b8401a40a22a8\",\"efs.csi.aws.com\":\"i-0220b8401a40a22a8\"}",
+      "karpenter.sh/managed-by": "govcloud-int",
+      "node.alpha.kubernetes.io/ttl": "0",
+      "volumes.kubernetes.io/controller-managed-attach-detach": "true"
+    },
+    "creationTimestamp": "2024-02-05T22:03:58.000Z",
+    "finalizers": ["karpenter.sh/termination"],
+    "labels": {
+      "beta.kubernetes.io/arch": "amd64",
+      "beta.kubernetes.io/instance-type": "c5a.2xlarge",
+      "beta.kubernetes.io/os": "linux",
+      "failure-domain.beta.kubernetes.io/region": "us-gov-east-1",
+      "failure-domain.beta.kubernetes.io/zone": "us-gov-east-1c",
+      "k8s.io/cloud-provider-aws": "6d1970318a74726bfb010f5bc90e2d8a",
+      "karpenter.k8s.aws/instance-category": "c",
+      "karpenter.k8s.aws/instance-cpu": "8",
+      "karpenter.k8s.aws/instance-encryption-in-transit-supported": "true",
+      "karpenter.k8s.aws/instance-family": "c5a",
+      "karpenter.k8s.aws/instance-generation": "5",
+      "karpenter.k8s.aws/instance-hypervisor": "nitro",
+      "karpenter.k8s.aws/instance-memory": "16384",
+      "karpenter.k8s.aws/instance-network-bandwidth": "2500",
+      "karpenter.k8s.aws/instance-pods": "58",
+      "karpenter.k8s.aws/instance-size": "2xlarge",
+      "karpenter.sh/capacity-type": "spot",
+      "karpenter.sh/initialized": "true",
+      "karpenter.sh/provisioner-name": "bottlerocket-spot",
+      "kubernetes.io/arch": "amd64",
+      "kubernetes.io/hostname": "ip-10-100-193-127.us-gov-east-1.compute.internal",
+      "kubernetes.io/os": "linux",
+      "node.kubernetes.io/instance-type": "c5a.2xlarge",
+      "topology.ebs.csi.aws.com/zone": "us-gov-east-1c",
+      "topology.kubernetes.io/region": "us-gov-east-1",
+      "topology.kubernetes.io/zone": "us-gov-east-1c"
+    },
+    "managedFields": [
+      {
+        "apiVersion": "v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:labels": {
+              "f:beta.kubernetes.io/instance-type": {},
+              "f:failure-domain.beta.kubernetes.io/region": {},
+              "f:failure-domain.beta.kubernetes.io/zone": {},
+              "f:k8s.io/cloud-provider-aws": {}
+            }
+          }
+        },
+        "manager": "aws-cloud-controller-manager",
+        "operation": "Update",
+        "time": "2024-02-05T22:03:58.000Z"
+      },
+      {
+        "apiVersion": "v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:status": {
+            "f:addresses": {
+              "k:{\"type\":\"InternalDNS\"}": {
+                ".": {},
+                "f:address": {},
+                "f:type": {}
+              }
+            }
+          }
+        },
+        "manager": "aws-cloud-controller-manager",
+        "operation": "Update",
+        "subresource": "status",
+        "time": "2024-02-05T22:03:58.000Z"
+      },
+      {
+        "apiVersion": "v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:annotations": {
+              ".": {},
+              "f:alpha.kubernetes.io/provided-node-ip": {},
+              "f:volumes.kubernetes.io/controller-managed-attach-detach": {}
+            },
+            "f:labels": {
+              ".": {},
+              "f:beta.kubernetes.io/arch": {},
+              "f:beta.kubernetes.io/os": {},
+              "f:karpenter.sh/capacity-type": {},
+              "f:karpenter.sh/provisioner-name": {},
+              "f:kubernetes.io/arch": {},
+              "f:kubernetes.io/hostname": {},
+              "f:kubernetes.io/os": {}
+            }
+          },
+          "f:spec": {
+            "f:providerID": {}
+          }
+        },
+        "manager": "kubelet",
+        "operation": "Update",
+        "time": "2024-02-05T22:03:58.000Z"
+      },
+      {
+        "apiVersion": "v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:annotations": {
+              "f:karpenter.sh/managed-by": {}
+            },
+            "f:finalizers": {
+              ".": {},
+              "v:\"karpenter.sh/termination\"": {}
+            },
+            "f:labels": {
+              "f:karpenter.k8s.aws/instance-category": {},
+              "f:karpenter.k8s.aws/instance-cpu": {},
+              "f:karpenter.k8s.aws/instance-encryption-in-transit-supported": {},
+              "f:karpenter.k8s.aws/instance-family": {},
+              "f:karpenter.k8s.aws/instance-generation": {},
+              "f:karpenter.k8s.aws/instance-hypervisor": {},
+              "f:karpenter.k8s.aws/instance-memory": {},
+              "f:karpenter.k8s.aws/instance-network-bandwidth": {},
+              "f:karpenter.k8s.aws/instance-pods": {},
+              "f:karpenter.k8s.aws/instance-size": {},
+              "f:karpenter.sh/initialized": {},
+              "f:node.kubernetes.io/instance-type": {},
+              "f:topology.kubernetes.io/region": {},
+              "f:topology.kubernetes.io/zone": {}
+            },
+            "f:ownerReferences": {
+              ".": {},
+              "k:{\"uid\":\"a3422404-01cc-4e76-bbb4-326be57d721d\"}": {}
+            }
+          }
+        },
+        "manager": "karpenter",
+        "operation": "Update",
+        "time": "2024-02-05T22:04:17.000Z"
+      },
+      {
+        "apiVersion": "v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:annotations": {
+              "f:node.alpha.kubernetes.io/ttl": {}
+            }
+          }
+        },
+        "manager": "kube-controller-manager",
+        "operation": "Update",
+        "time": "2024-02-05T22:04:17.000Z"
+      },
+      {
+        "apiVersion": "v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:annotations": {
+              "f:csi.volume.kubernetes.io/nodeid": {}
+            },
+            "f:labels": {
+              "f:topology.ebs.csi.aws.com/zone": {}
+            }
+          },
+          "f:status": {
+            "f:conditions": {
+              "k:{\"type\":\"DiskPressure\"}": {
+                "f:lastHeartbeatTime": {}
+              },
+              "k:{\"type\":\"MemoryPressure\"}": {
+                "f:lastHeartbeatTime": {}
+              },
+              "k:{\"type\":\"PIDPressure\"}": {
+                "f:lastHeartbeatTime": {}
+              },
+              "k:{\"type\":\"Ready\"}": {
+                "f:lastHeartbeatTime": {},
+                "f:lastTransitionTime": {},
+                "f:message": {},
+                "f:reason": {},
+                "f:status": {}
+              }
+            },
+            "f:images": {}
+          }
+        },
+        "manager": "kubelet",
+        "operation": "Update",
+        "subresource": "status",
+        "time": "2024-03-26T03:39:42.000Z"
+      }
+    ],
+    "name": "ip-10-100-193-127.us-gov-east-1.compute.internal",
+    "ownerReferences": [
+      {
+        "apiVersion": "karpenter.sh/v1alpha5",
+        "blockOwnerDeletion": true,
+        "kind": "Machine",
+        "name": "bottlerocket-spot-rnxbp",
+        "uid": "a3422404-01cc-4e76-bbb4-326be57d721d"
+      }
+    ],
+    "resourceVersion": "656354341",
+    "uid": "57d11a8f-4ef6-4592-8257-9b1243664637"
+  },
+  "spec": {
+    "providerID": "aws:///us-gov-east-1c/i-0220b8401a40a22a8"
+  },
+  "status": {
+    "addresses": [
+      {
+        "address": "10.100.193.127",
+        "type": "InternalIP"
+      },
+      {
+        "address": "ip-10-100-193-127.us-gov-east-1.compute.internal",
+        "type": "InternalDNS"
+      },
+      {
+        "address": "ip-10-100-193-127.us-gov-east-1.compute.internal",
+        "type": "Hostname"
+      }
+    ],
+    "allocatable": {
+      "cpu": "7910m",
+      "ephemeral-storage": "236711801668",
+      "hugepages-1Gi": "0",
+      "hugepages-2Mi": "0",
+      "memory": "15144100Ki",
+      "pods": "58"
+    },
+    "capacity": {
+      "cpu": "8",
+      "ephemeral-storage": "258013828Ki",
+      "hugepages-1Gi": "0",
+      "hugepages-2Mi": "0",
+      "memory": "16160932Ki",
+      "pods": "58"
+    },
+    "conditions": [
+      {
+        "lastHeartbeatTime": "2024-03-26T03:39:42.000Z",
+        "lastTransitionTime": "2024-02-05T22:03:57.000Z",
+        "message": "kubelet has sufficient memory available",
+        "reason": "KubeletHasSufficientMemory",
+        "status": "False",
+        "type": "MemoryPressure"
+      },
+      {
+        "lastHeartbeatTime": "2024-03-26T03:39:42.000Z",
+        "lastTransitionTime": "2024-02-05T22:03:57.000Z",
+        "message": "kubelet has no disk pressure",
+        "reason": "KubeletHasNoDiskPressure",
+        "status": "False",
+        "type": "DiskPressure"
+      },
+      {
+        "lastHeartbeatTime": "2024-03-26T03:39:42.000Z",
+        "lastTransitionTime": "2024-02-05T22:03:57.000Z",
+        "message": "kubelet has sufficient PID available",
+        "reason": "KubeletHasSufficientPID",
+        "status": "False",
+        "type": "PIDPressure"
+      },
+      {
+        "lastHeartbeatTime": "2024-03-26T03:39:42.000Z",
+        "lastTransitionTime": "2024-02-05T22:04:17.000Z",
+        "message": "kubelet is posting ready status",
+        "reason": "KubeletReady",
+        "status": "True",
+        "type": "Ready"
+      }
+    ],
+    "daemonEndpoints": {
+      "kubeletEndpoint": {
+        "Port": 10250
+      }
+    },
+    "images": [
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:353dc5f757705eec1adf087b67231de4cadd28d47e5977469297d1dd2fb9628b",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.137-alpha.vb10510b"
+        ],
+        "sizeBytes": 673320681
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:5839f7574405581b14ee391ea6f7891a387e4ad79283922fc0b88fe548ef5fb2",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.134-alpha.v0039ac1"
+        ],
+        "sizeBytes": 673320328
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:658a041a16fd7bb79684ad44b9b9e2c043736ec9ac4c54f1e1550636da4038fb",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.137-alpha.v2d27f9f"
+        ],
+        "sizeBytes": 673319872
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:f6fa82e5d2924d46e55315dfb0fbbe89c468adc8c055fb7eb0b4aa3a5d85bf8b",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.130-alpha.v752a0e5",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.131-alpha.v752a0e5"
+        ],
+        "sizeBytes": 673319563
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:f25a99c907ce22444369a3f97b17b0a952204b79ca33bd900c365c11d4e4702c",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.137-alpha.v0da702b"
+        ],
+        "sizeBytes": 673308733
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:7ae2f6429bdc6a01bf4fe8d4ffde59ef57936b5477295484f6c7d4496b99f969",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.140-alpha.v02bcde9"
+        ],
+        "sizeBytes": 673307037
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:d7212478b2c83e0c0bc00cf456a000618fe8b4737affc897d58df46bd37898cd",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.135-alpha.v705381f"
+        ],
+        "sizeBytes": 673306232
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:f370bf544f877e25b422499bf26a3640c9566df2ba3a232a53946875627cb4e4",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.135-alpha.v3a85aa5"
+        ],
+        "sizeBytes": 673306232
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:38174da74038ad1d7513f8277e9e10caf346a74ebffb881b5ffd16067cb8b448",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.140-alpha.v66f0a62"
+        ],
+        "sizeBytes": 673304658
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:2a07d4771c5002f5a239f72dca02e2cdd9493f409003044d10ca5e730f325d0f",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.137-alpha.v48cfe85"
+        ],
+        "sizeBytes": 673304307
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:682789d824b32f181adfa3155baab34699dc016fedd10d5985bcd3ee9521c1ba",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.132-alpha.va577caa"
+        ],
+        "sizeBytes": 673304032
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:aec2c07b9cd73d65e02ed9791d8c92770233e264ae7e22129a67d0692fbfa2e2",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.134-alpha.v705381f"
+        ],
+        "sizeBytes": 673303864
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:981fc621cce334e4aed29f4b044baac38a2e2fcf31d57e7b366d6f10266099e6",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.133-alpha.ve68c71a"
+        ],
+        "sizeBytes": 673303576
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:79eef94a9ab0a5b2f360117fe77c0f99c7d9b701d13602706a3cc7cd824582c8",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.134-alpha.vd1fbdac",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.134-alpha.vd45adea"
+        ],
+        "sizeBytes": 673303482
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:3027917edd54cff224f143860226d50b8e301259b9d183a193291f76f3a152c5",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.133-alpha.vc84bf6e"
+        ],
+        "sizeBytes": 673303252
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:61fe55b73810dd3a9389b3ef52bd9f68b3f9293a1817b3cf4aec6446a56211e4",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.139-alpha.v16e2acb"
+        ],
+        "sizeBytes": 673303173
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:553a2959f5724fbf1702f91e4479c11252d6407cc357ea03b61bb317adb66ba7",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.135-alpha.v7fd573c",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.135-alpha.vd191576"
+        ],
+        "sizeBytes": 673303092
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:8d6bfa3847831facbddf8a3d8a50c668f25031e8492676a1543822ee0202ded5",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.134-alpha.ve247004"
+        ],
+        "sizeBytes": 673302390
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:87a41400ea0c37351e0f2f7569bc7ce23a7e21b592547a7bf074f832a13bd354",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.134-alpha.vd0fe802"
+        ],
+        "sizeBytes": 673301408
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:d0d47830ac9a0952e5689ca22083e52f4e11ad13303727a279b9822a0ef67d00",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.140-alpha.v5de712f"
+        ],
+        "sizeBytes": 671837691
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:3457d7752ebc7478a964b460c120961a575a62efadfe752e00ba806be40c6ef3",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.134-alpha.v2ccc327",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.134-alpha.v3111c48"
+        ],
+        "sizeBytes": 671832056
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:310b631a26fbca169839d258f44aefed91244c19f7794fc1a243c0c9629957d8",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.136-alpha.veb951aa"
+        ],
+        "sizeBytes": 671830672
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:b8c3304f1a534031960e1962dbe25b5bf86721c1857f6171147a77cdfb65c68c",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.141-alpha.ve67ffc1"
+        ],
+        "sizeBytes": 671820558
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:4e22df1a5a3bc3c385c27a691531c40485ca9b8186bd9beddc39992c651de010",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.141-alpha.v3483f4c",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.141-alpha.ve226272"
+        ],
+        "sizeBytes": 671820422
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:b352a23dcd951acdac77c853b9ebb7ab5b17071cd896e2b4d8e9185a3b84593a",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.134-alpha.v04ee026",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.134-alpha.v731d324"
+        ],
+        "sizeBytes": 671819162
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:29ee50125be1ae993c6fed10f70e6cc6b68222457221ebd8a19fe42436edafad",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.141-alpha.v4d6bf89"
+        ],
+        "sizeBytes": 671816174
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:68ec83779ace75ef6d26e5c9a171b4c69671f14db76469543cc42412df7e555d",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.135-alpha.v06308bd",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.135-alpha.v643635d"
+        ],
+        "sizeBytes": 671815275
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:d6b3c4917af14e37105b40e24f28c70a18bdbe663326978cc03de49b1377fc17",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.133-alpha.v5336d1f"
+        ],
+        "sizeBytes": 671815032
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:dddbe9c6b4f3aa45f6e46ff501a8e7739dbf3731090c3472e9c700f6f3f2ce0e",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.132-alpha.v88af0fe"
+        ],
+        "sizeBytes": 671814842
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:6af03ee91d1cc85bc13324f57a25a466cf976a448f8183c11868c531a7bc39da",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.132-alpha.vab85c41"
+        ],
+        "sizeBytes": 671814735
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:77effca74c81ae3853e013c66987ba10233636ce7fa85b257de7ee9b1c9369a0",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.137-alpha.vf16cd69"
+        ],
+        "sizeBytes": 671814152
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:91121b9bdb8643bf8cb4490836a8cec1eb15f7661ac719ec4d6c844cc7be205a",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.137-alpha.v9b2605e"
+        ],
+        "sizeBytes": 671813884
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php@sha256:71632b7a0615a4556d5decb2fd623afa60c30fb5c707ebb0acd3e40bf861adf1",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.137-alpha.v23a29fe",
+          "registry.moslrn.net/ptsi/lms/pdfgenerator/php:3.9.137-alpha.vea88a44"
+        ],
+        "sizeBytes": 671813700
+      },
+      {
+        "names": [
+          "151742754352.dkr.ecr.us-gov-east-1.amazonaws.com/eks/aws-efs-csi-driver@sha256:071bfa46915de4cefb1e0f6de4225b9fcf5d42cc015ab195543c1c6ed0b21ec4",
+          "151742754352.dkr.ecr.us-gov-east-1.amazonaws.com/eks/aws-efs-csi-driver:v1.4.8"
+        ],
+        "sizeBytes": 504796066
+      },
+      {
+        "names": [
+          "public.ecr.aws/datadog/agent@sha256:364b90eb9da1925a4b8a1dca501a9a8e8cd5e8455733a16857284c49d4bf8467",
+          "public.ecr.aws/datadog/agent:7.47.1"
+        ],
+        "sizeBytes": 418850876
+      },
+      {
+        "names": [
+          "registry.moslrn.net/library/backup-utility@sha256:597f952c0e9531b0b2d98faa62af4a1d23f3bed3a4719bade07221ae541a5d6d",
+          "registry.moslrn.net/library/backup-utility:v2.1"
+        ],
+        "sizeBytes": 316328307
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:f73273e0e6db7f2e5b844bd3fe3b17878cb4a5b6f2ea81a3292c2507af09a6d9",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.141-alpha.v3483f4c"
+        ],
+        "sizeBytes": 304695688
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:3892243abdbf7dadfbed9326b549cbe313943d1799f4b164809babc60a21cd70",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.141-alpha.v4d6bf89"
+        ],
+        "sizeBytes": 304694809
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:b83ebfe744125281f896aa1906c5706c6568165408f97defe72875bb12d13036",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.141-alpha.ve67ffc1"
+        ],
+        "sizeBytes": 304693788
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:2f1a3a96e3d32415536005ae10923d73d8489bb07233f337816203b139233748",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.141-alpha.vcd3d6f1"
+        ],
+        "sizeBytes": 304693563
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:68bf6bdc079ca4698df64344b84655b88526e83c93da475c719c74951888f6f9",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.140-alpha.v5de712f"
+        ],
+        "sizeBytes": 304692437
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:1c5b6a34e4960989f76aa48e00979d6cce343b018788dc2390d42c1a5a0be0c5",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.140-alpha.v66f0a62"
+        ],
+        "sizeBytes": 304692183
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:d7fb45a6728d96396f5d1175924bdaae0b53923b5e108ba27822031b36d5f68a",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.141-alpha.ve226272"
+        ],
+        "sizeBytes": 304692178
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:37aa60731ee32d8633a1525fd797d45079f07df8eb665e8e4cd14a37d9c2c7a7",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.140-alpha.v00bfd29"
+        ],
+        "sizeBytes": 304692054
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:117d64895a552a6552f666778f97dc4bac867ca751b0351a1ea08c22a5a437d4",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.137-alpha.vb10510b"
+        ],
+        "sizeBytes": 304689447
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:04ca37fa27ceb55aa9723355d3ca83ff139f2dc935c1605d473157b0e2af1d08",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.137-alpha.v2d27f9f"
+        ],
+        "sizeBytes": 304688770
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:188b40da07378f037267a4b7f05c93b20368e7d674559f9bfb13bc8d71bb2b1e",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.137-alpha.v48cfe85"
+        ],
+        "sizeBytes": 304687601
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:985d6dc64e68db04f2b6c01f78c128728d6866d8a67dc288053c18a39378c41e",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.135-alpha.v643635d"
+        ],
+        "sizeBytes": 304686025
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:3ed57085826ee3a3969810f012e1c9c9ca10b800196c689a4ce0ccd21a31682b",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.137-alpha.v0da702b"
+        ],
+        "sizeBytes": 304685868
+      },
+      {
+        "names": [
+          "registry.moslrn.net/ptsi/lms/tmsapi/php@sha256:18f88759119bea5bfa6717a430db52c11011c187cb48e456fd5ba1d4f9467ffc",
+          "registry.moslrn.net/ptsi/lms/tmsapi/php:3.9.139-alpha.v16e2acb"
+        ],
+        "sizeBytes": 304681343
+      }
+    ],
+    "nodeInfo": {
+      "architecture": "amd64",
+      "bootID": "811418ce-9ac3-4a15-bf3a-eac4649825c3",
+      "containerRuntimeVersion": "containerd://1.6.28+bottlerocket",
+      "kernelVersion": "5.15.145",
+      "kubeProxyVersion": "v1.26.11-eks-b93ee12",
+      "kubeletVersion": "v1.26.11-eks-b93ee12",
+      "machineID": "ec25c800269392d581a4a3ceab366eb6",
+      "operatingSystem": "linux",
+      "osImage": "Bottlerocket OS 1.19.0 (aws-k8s-1.26)",
+      "systemUUID": "ec25c800-2693-92d5-81a4-a3ceab366eb6"
+    }
+  }
+}

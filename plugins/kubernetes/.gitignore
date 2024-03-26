@@ -13,3 +13,6 @@ generators/_tmp
 generators/build
 generators/tmp
 generators/dist
+
+ui/_tmp
+ui/node_modules

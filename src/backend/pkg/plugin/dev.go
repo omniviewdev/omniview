@@ -138,7 +138,7 @@ func (pm *pluginManager) AddTarget(dir string) {
 	// target only the directories we know contain code to reload on
 	watchdirs := []string{
 		"pkg",
-		"ui",
+		"ui/src",
 	}
 
 	paths := []string{}
@@ -262,6 +262,21 @@ func buildPluginBinaries(path string) error {
 		return fmt.Errorf("failed to build plugin: %s", string(out))
 	}
 
+	// if there's a ui directory, build it
+	if _, err := os.Stat(filepath.Join(path, "ui", "package.json")); err == nil {
+		cmd = exec.Command("pnpm", "run", "build")
+		cmd.Dir = filepath.Join(path, "ui")
+
+		out, err = cmd.Output()
+		if err != nil {
+			// get the ExitError
+			if exitError, ok := err.(*exec.ExitError); ok {
+				return fmt.Errorf("failed to build plugin: %s", string(exitError.Stderr))
+			}
+			return fmt.Errorf("failed to build plugin: %s", string(out))
+		}
+	}
+
 	return nil
 }
 
@@ -302,6 +317,23 @@ func transferPluginBuild(path string) (*config.PluginMeta, error) {
 
 	if _, err = io.Copy(destMetaFile, sourceMetaFile); err != nil {
 		return nil, fmt.Errorf("failed to copy metadata to plugin location: %w", err)
+	}
+
+	// 3. UI (recursive copy)
+	uiPath := filepath.Join(path, "ui", "dist", "assets")
+	targetUIPath := filepath.Join(installLocation, "assets")
+
+	if err = os.RemoveAll(targetUIPath); err != nil {
+		return nil, fmt.Errorf("failed to remove existing UI directory: %w", err)
+	}
+	if err = os.MkdirAll(targetUIPath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create UI directory: %w", err)
+	}
+
+	if _, err = os.Stat(uiPath); err == nil {
+		if err = CopyDirectory(uiPath, targetUIPath); err != nil {
+			return nil, fmt.Errorf("failed to copy UI to plugin location: %w", err)
+		}
 	}
 
 	return meta, nil

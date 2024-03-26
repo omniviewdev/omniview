@@ -1,3 +1,4 @@
+import React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '@/providers/SnackbarProvider';
 
@@ -6,6 +7,33 @@ import { types } from '@api/models';
 
 // Underlying client
 import { List, Create } from '@api/resource/Client';
+import { EventsOff, EventsOn } from '@runtime/runtime';
+import { produce } from 'immer';
+
+type AddPayload = {
+  data: any;
+  key: string;
+  connection: string;
+  id: string;
+  namespace: string;
+};
+
+type UpdatePayload = {
+  oldData: any;
+  newData: any;
+  key: string;
+  connection: string;
+  id: string;
+  namespace: string;
+};
+
+type DeletePayload = {
+  data: any;
+  key: string;
+  connection: string;
+  id: string;
+  namespace: string;
+};
 
 type UseResourcesOptions = {
   /**
@@ -66,8 +94,6 @@ export const useResources = ({
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
-  console.log('useResources', pluginID, connectionID, resourceKey, namespaces, listParams, createParams);
-
   const queryKey = ['RESOURCE', pluginID, connectionID, resourceKey];
 
   // === Mutations === //
@@ -119,6 +145,56 @@ export const useResources = ({
       namespaces,
     })),
   });
+
+
+  // === Informer Cache Updates === //
+
+  /**
+   * Handle adding new resources to the resource list
+   */
+  const onResourceAdd = React.useCallback((newResource: AddPayload) => {
+    queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
+      return produce(oldData, (draft) => {
+        draft.result[newResource.id] = newResource.data;
+      });
+    });
+  }, []);
+
+  /**
+   * Handle updating resources in the resource list
+   */
+  const onResourceUpdate = React.useCallback((updateEvent: UpdatePayload) => {
+    queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
+      return produce(oldData, (draft) => { 
+        draft.result[updateEvent.id] = updateEvent.newData;
+      });
+    });
+  }, []);
+
+  /**
+   * Handle deleting pods from the resource list
+   */
+  const onResourceDelete = React.useCallback((deletedResource: DeletePayload) => {
+    queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
+      return produce(oldData, (draft) => { 
+        /* eslint-disable-next-line */
+        delete draft.result[deletedResource.id];
+      });
+    });
+  }, []);
+
+  // *Only on mount*, we want subscribe to new resources, updates and deletes
+  React.useEffect(() => {
+    EventsOn(`${pluginID}/${connectionID}/${resourceKey}/ADD`, onResourceAdd);
+    EventsOn(`${pluginID}/${connectionID}/${resourceKey}/UPDATE`, onResourceUpdate);
+    EventsOn(`${pluginID}/${connectionID}/${resourceKey}/DELETE`, onResourceDelete);
+
+    return () => {
+      EventsOff(`${pluginID}/${connectionID}/${resourceKey}/ADD`);
+      EventsOff(`${pluginID}/${connectionID}/${resourceKey}/UPDATE`);
+      EventsOff(`${pluginID}/${connectionID}/${resourceKey}/DELETE`);
+    };
+  }, []); 
 
   return {
     /**

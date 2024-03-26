@@ -39,6 +39,9 @@ type Manager interface {
 	// Run starts until the the passed in context is cancelled
 	Run(ctx context.Context)
 
+	// Shutdown stops the plugin manager and all plugins.
+	Shutdown()
+
 	// InstallInDevMode installs a plugin from the given path, and sets up a watcher to recompile and reload the plugin
 	// when changes are detected. Will prompt the user for a path.
 	InstallInDevMode() (*config.PluginMeta, error)
@@ -135,6 +138,16 @@ func (pm *pluginManager) Run(ctx context.Context) {
 	go pm.runWatcher()
 }
 
+func (pm *pluginManager) Shutdown() {
+	// stop the watcher
+	pm.watcher.Close()
+
+	// shutdown all plugins
+	for _, plugin := range pm.plugins {
+		pm.shutdownPlugin(&plugin)
+	}
+}
+
 func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// bind to Wails context
 	pm.ctx = ctx
@@ -143,6 +156,15 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	if err := auditPluginDir(); err != nil {
 		return err
 	}
+
+	// load any existing state
+	states, err := pm.readPluginState()
+	if err != nil {
+		// not a big deal, just log it
+		pm.logger.Error(err)
+	}
+
+	pm.logger.Debugw("Loading plugins states from disk", "states", states)
 
 	// load all the plugins in the plugin directory
 	files, err := os.ReadDir(filepath.Join(os.Getenv("HOME"), ".omniview", "plugins"))
@@ -153,20 +175,29 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// load each plugin
 	for _, file := range files {
 		if file.IsDir() {
-			if _, err = pm.LoadPlugin(file.Name(), nil); err != nil {
+			var opts *LoadPluginOptions
+
+			for _, state := range states {
+				if state.ID == file.Name() {
+					opts = &LoadPluginOptions{
+						ExistingState: state,
+					}
+				}
+			}
+
+			if _, err = pm.LoadPlugin(file.Name(), opts); err != nil {
 				return fmt.Errorf("error loading plugin: %w", err)
 			}
 		}
 	}
 
-	return nil
-}
+	// write the plugin state to disk
+	if err = pm.writePluginState(); err != nil {
+		// just log for now
+		pm.logger.Error(err)
+	}
 
-// markPluginDevMode marks a plugin as being in dev mode, and adds the path to the watch list.
-func (pm *pluginManager) markPluginDevMode(plugin *types.Plugin, path string) {
-	plugin.DevMode = true
-	plugin.DevPath = path
-	pm.AddTarget(path)
+	return nil
 }
 
 func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
@@ -191,8 +222,12 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error loading plugin: %w", err)
 	}
-	// add to watchers
-	pm.AddTarget(path)
+
+	if err = pm.writePluginState(); err != nil {
+		// skip for now, but should probobly do some other action
+		pm.logger.Error(err)
+	}
+
 	return metadata, nil
 }
 
@@ -250,6 +285,11 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 		return nil, fmt.Errorf("error loading plugin: %w", err)
 	}
 
+	if err = pm.writePluginState(); err != nil {
+		// skip for now, but should probobly do some other action
+		pm.logger.Error(err)
+	}
+
 	return metadata, nil
 }
 
@@ -258,15 +298,32 @@ func (pm *pluginManager) ReloadPlugin(id string) (types.Plugin, error) {
 	if !ok {
 		return types.Plugin{}, fmt.Errorf("plugin with id '%s' is not currently loaded", id)
 	}
-	if err := pm.UnloadPlugin(id); err != nil {
+
+	var opts *LoadPluginOptions
+
+	// get the existing state first
+	state, err := pm.readPluginState()
+	if err == nil {
+		// find and load it
+		for _, s := range state {
+			if s.ID == id {
+				opts = &LoadPluginOptions{
+					ExistingState: s,
+				}
+			}
+		}
+	}
+
+	if err = pm.UnloadPlugin(id); err != nil {
 		return types.Plugin{}, fmt.Errorf("error unloading plugin during reload: %w", err)
 	}
-	return pm.LoadPlugin(id, nil)
+	return pm.LoadPlugin(id, opts)
 }
 
 type LoadPluginOptions struct {
-	DevMode     bool
-	DevModePath string
+	DevMode       bool
+	DevModePath   string
+	ExistingState *plugintypes.PluginState
 }
 
 func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.Plugin, error) {
@@ -336,9 +393,20 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 		PluginClient: pluginClient,
 	}
 
-	// mark as dev mode if needed
+	if opts != nil && opts.ExistingState != nil {
+		if err = upsertPluginState(&newPlugin, *opts.ExistingState); err != nil {
+			return types.Plugin{}, fmt.Errorf("error upserting plugin state: %w", err)
+		}
+	}
+
 	if opts != nil && opts.DevMode {
-		pm.markPluginDevMode(&newPlugin, opts.DevModePath)
+		newPlugin.DevMode = true
+		newPlugin.DevPath = opts.DevModePath
+	}
+
+	// add watchers if in dev mode
+	if newPlugin.DevMode {
+		pm.AddTarget(newPlugin.DevPath)
 	}
 
 	pm.plugins[id] = newPlugin
@@ -365,6 +433,7 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 // UninstallPlugin uninstalls a plugin from the manager, and removes it from the filesystem.
 func (pm *pluginManager) UninstallPlugin(id string) (types.Plugin, error) {
 	l := pm.logger.With("name", "UninstallPlugin", "pluginID", id)
+	defer pm.writePluginState()
 
 	plugin, ok := pm.plugins[id]
 	if !ok {
@@ -590,6 +659,8 @@ func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 	if err := plugin.RPCClient.Close(); err != nil {
 		return fmt.Errorf("error stopping plugin client: %w", err)
 	}
+
+	plugin.PluginClient.Kill()
 
 	// manually shutdown the required capabilities first
 

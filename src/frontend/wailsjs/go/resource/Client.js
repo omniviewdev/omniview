@@ -34,6 +34,14 @@ export function GetLayout(arg1, arg2) {
   return window['go']['resource']['Client']['GetLayout'](arg1, arg2);
 }
 
+export function GetResourceGroup(arg1, arg2) {
+  return window['go']['resource']['Client']['GetResourceGroup'](arg1, arg2);
+}
+
+export function GetResourceGroups(arg1) {
+  return window['go']['resource']['Client']['GetResourceGroups'](arg1);
+}
+
 export function GetResourceType(arg1, arg2) {
   return window['go']['resource']['Client']['GetResourceType'](arg1, arg2);
 }
@@ -70,8 +78,16 @@ export function SetLayout(arg1, arg2, arg3) {
   return window['go']['resource']['Client']['SetLayout'](arg1, arg2, arg3);
 }
 
+export function StartConnection(arg1, arg2) {
+  return window['go']['resource']['Client']['StartConnection'](arg1, arg2);
+}
+
 export function StartConnectionInformer(arg1, arg2) {
   return window['go']['resource']['Client']['StartConnectionInformer'](arg1, arg2);
+}
+
+export function StopConnection(arg1, arg2) {
+  return window['go']['resource']['Client']['StopConnection'](arg1, arg2);
 }
 
 export function StopConnectionInformer(arg1, arg2) {

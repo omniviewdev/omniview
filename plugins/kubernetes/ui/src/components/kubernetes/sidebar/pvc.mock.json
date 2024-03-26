@@ -1,0 +1,94 @@
+{
+  "apiVersion": "v1",
+  "kind": "PersistentVolumeClaim",
+  "metadata": {
+    "annotations": {
+      "pv.kubernetes.io/bind-completed": "yes",
+      "volume.kubernetes.io/selected-node": "ip-10-100-181-86.us-gov-east-1.compute.internal"
+    },
+    "creationTimestamp": "2022-04-21T02:28:59.000Z",
+    "finalizers": ["kubernetes.io/pvc-protection"],
+    "managedFields": [
+      {
+        "apiVersion": "v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:spec": {
+            "f:accessModes": {},
+            "f:resources": {
+              "f:requests": {
+                ".": {},
+                "f:storage": {}
+              }
+            },
+            "f:storageClassName": {},
+            "f:volumeMode": {},
+            "f:volumeName": {}
+          }
+        },
+        "manager": "HashiCorp",
+        "operation": "Update",
+        "time": "2022-04-21T02:28:59.000Z"
+      },
+      {
+        "apiVersion": "v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:annotations": {
+              ".": {},
+              "f:pv.kubernetes.io/bind-completed": {}
+            }
+          },
+          "f:status": {
+            "f:accessModes": {},
+            "f:capacity": {
+              ".": {},
+              "f:storage": {}
+            },
+            "f:phase": {}
+          }
+        },
+        "manager": "kube-controller-manager",
+        "operation": "Update",
+        "time": "2022-04-21T02:29:12.000Z"
+      },
+      {
+        "apiVersion": "v1",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:annotations": {
+              "f:volume.kubernetes.io/selected-node": {}
+            }
+          }
+        },
+        "manager": "karpenter",
+        "operation": "Update",
+        "time": "2022-04-21T04:40:49.000Z"
+      }
+    ],
+    "name": "ic-lms-moodle-data",
+    "namespace": "ic",
+    "resourceVersion": "445637096",
+    "uid": "0dee16fc-7dd3-42a7-95ed-905ccc980fcb"
+  },
+  "spec": {
+    "accessModes": ["ReadWriteMany"],
+    "resources": {
+      "requests": {
+        "storage": "5Gi"
+      }
+    },
+    "storageClassName": "efs-sc",
+    "volumeMode": "Filesystem",
+    "volumeName": "ic-lms-moodle-data"
+  },
+  "status": {
+    "accessModes": ["ReadWriteMany"],
+    "capacity": {
+      "storage": "5Gi"
+    },
+    "phase": "Bound"
+  }
+}

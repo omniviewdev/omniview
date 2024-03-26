@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { GetConnection, UpdateConnection, RemoveConnection } from '@api/resource/Client';
+import { GetConnection, UpdateConnection, RemoveConnection, StartConnection } from '@api/resource/Client';
 import { type types } from '@api/models';
 import { useSnackbar } from '@/providers/SnackbarProvider';
 
@@ -25,6 +25,28 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
   const queryKey = [pluginID, 'connection', 'detail', connectionID];
 
   // === Mutations === //
+  const { mutateAsync: startConnection } = useMutation({
+    mutationFn: async () => StartConnection(pluginID, connectionID),
+    onSuccess(data) {
+      // update the cache
+      queryClient.setQueryData(queryKey, data);
+    },
+    onError(error) {
+      showSnackbar(`Failed to start connection: ${error.message}`, 'error');
+    },
+  });
+
+  const { mutateAsync: stopConnection } = useMutation({
+    mutationFn: async () => StartConnection(pluginID, connectionID),
+    onSuccess(data) {
+      // update the cache
+      queryClient.setQueryData(queryKey, data);
+    },
+    onError(error) {
+      showSnackbar(`Failed to stop connection: ${error.message}`, 'error');
+    },
+  });
+  
   const { mutateAsync: updateConnection } = useMutation({
     mutationFn: async (conn: types.Connection) => UpdateConnection(pluginID, conn),
     onSuccess(data, { name }) {
@@ -37,7 +59,7 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
       );
     },
     onError(error) {
-      showSnackbar(`Failed to update connection: ${error}`, 'error');
+      showSnackbar(`Failed to update connection: ${error.message}`, 'error');
     },
   });
 
@@ -53,7 +75,7 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
       );
     },
     onError(error) {
-      showSnackbar(`Failed to remove connection: ${error}`, 'error');
+      showSnackbar(`Failed to remove connection: ${error.message}`, 'error');
     },
   });
 
@@ -69,6 +91,16 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
      * Get the connection
      */
     connection,
+
+    /**
+     * Start the connection
+     */
+    startConnection,
+
+    /**
+     * Stop the connection
+     */ 
+    stopConnection,
 
     /**
      * Update the connection.

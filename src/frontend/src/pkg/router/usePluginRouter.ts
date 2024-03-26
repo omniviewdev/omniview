@@ -25,13 +25,11 @@ type PluginNavigateOptions = {
 function usePluginRouter() {
   const originalNavigate = useNavigate();
   const location = useLocation();
-  const params = useParams();
+  const { pluginID, connectionID } = useParams<{ pluginID: string; connectionID: string }>();
 
-  // The URL structure should be /<plugin>/<contextID>/*
-  const { contextID } = params;
-
-  const contextLocation = location.pathname.split('/').slice(3).join('/');
-  const pluginLocation = location.pathname.split('/').slice(2).join('/');
+  if (!pluginID) {
+    console.error('Link used outside of a plugin context');
+  }
 
   /**
    * Programatically navigate to a path within the plugin, optionally
@@ -45,38 +43,25 @@ function usePluginRouter() {
    * @throws If both `withinContext` and `toContext` are provided together
    */
   const navigate = (path: string, opts?: PluginNavigateOptions) => {
-    const { withinContext, toContext, ...rest } = opts || {};
+    const { withinContext, toContext, ...rest } = opts ?? {};
+
+    const resolvedTo = Boolean(withinContext) && pluginID
+      ? `/plugin/${pluginID}/connection/${connectionID}${path.startsWith('/') ? '' : '/'}${path}`
+      : `/plugin/${pluginID}${path.startsWith('/') ? '' : '/'}${path}`;
 
     if (opts?.withinContext && Boolean(opts?.toContext)) {
       throw new Error('Cannot use both "withinContext" and "toContext" options together.');
     }
 
-    const plugin = location.pathname.split('/')[1];
-    if (!plugin) {
-      // Protect ourselves just in case
-      throw new Error('Plugin router used outside of a plugin');
-    }
-
-    let desired = `/${plugin}`;
-
-    if (opts?.withinContext && Boolean(contextID)) {
-      desired += `/${contextID}`;
-    }
-
-    if (opts?.toContext) {
-      // Base64 encode the context to avoid any potential URL encoding issues
-      desired += `/${btoa(opts.toContext)}`;
-    }
-
     // Account for possible leading slashes
-    originalNavigate(`${desired}${path.startsWith('/') ? '' : '/'}${path}`, rest);
+    originalNavigate(resolvedTo, rest);
   };
 
   return useMemo(() => ({
-    location: contextID ? `/${contextLocation}` : `/${pluginLocation}`,
-    contextID: atob(contextID || ''),
+    location,
+    contextID: connectionID ?? '',
     navigate,
-  }), [contextID, location.pathname]);
+  }), [connectionID, location.pathname]);
 }
 
 export default usePluginRouter;
