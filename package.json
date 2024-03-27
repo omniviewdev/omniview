@@ -8,5 +8,8 @@
     "eslint-plugin-promise": "^6.0.0",
     "eslint-plugin-react": "^7.34.1",
     "typescript": "*"
+  },
+  "dependencies": {
+    "client-node": "link:@types/@kubernetes/client-node"
   }
 }

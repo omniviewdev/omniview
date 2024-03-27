@@ -23,9 +23,12 @@ export const Primary: Story = {
 };
 
 Primary.decorators = [
-  (Story) => (
+  (Story, c) => (
     <ResourceDrawerContainer
-      title="PersistentVolumeClaim"
+      // @ts-expect-error - arbitrary json
+      title={c.args.data.metadata.name}
+      type="core::v1::PersistentVolumeClaim"
+      icon="LuStorage"
       open
       onClose={() => {}}
     >

@@ -138,13 +138,35 @@ func (pm *pluginManager) AddTarget(dir string) {
 	// target only the directories we know contain code to reload on
 	watchdirs := []string{
 		"pkg",
-		"ui/src",
+		"ui",
+	}
+
+	ignoreDirs := []string{
+		filepath.Join("ui", "node_modules"),
+		filepath.Join("ui", "dist"),
+	}
+
+	shouldIgnore := func(path string) bool {
+		for _, ignore := range ignoreDirs {
+			if strings.Contains(path, ignore) {
+				return true
+			}
+		}
+		return false
 	}
 
 	paths := []string{}
 
 	for _, watchdir := range watchdirs {
-		if err := filepath.Walk(filepath.Join(dir, watchdir), func(path string, info os.FileInfo, _ error) error {
+		fullPath := filepath.Join(dir, watchdir)
+
+		if err := filepath.Walk(fullPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() && shouldIgnore(path) {
+				return filepath.SkipDir
+			}
 			if info.IsDir() {
 				pm.logger.Debugf("Watching directory: %s", path)
 				paths = append(paths, path)

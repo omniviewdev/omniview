@@ -10,9 +10,24 @@ export default defineConfig({
       name: "kubernetes",
       filename: "remoteEntry.js",
       exposes: {
+        "./ConfigMapSidebar":
+          "./src/components/kubernetes/sidebar/ConfigMapSidebar",
+        "./NodeSidebar": "./src/components/kubernetes/sidebar/NodeSidebar",
+        "./PersistentVolumeSidebar":
+          "./src/components/kubernetes/sidebar/PersistentVolumeSidebar",
+        "./PersistentVolumeClaimSidebar":
+          "./src/components/kubernetes/sidebar/PersistentVolumeClaimSidebar",
         "./PodSidebar": "./src/components/kubernetes/sidebar/PodSidebar",
+        "./SecretSidebar": "./src/components/kubernetes/sidebar/SecretSidebar",
       },
-      shared: ["react", "react-dom", "@mui/joy", "@emotion/react"],
+      shared: [
+        "react",
+        "react-dom",
+        "@mui/joy",
+        "@emotion/react",
+        "@monaco-editor/react",
+        "monaco-editor",
+      ],
     }),
   ],
   build: {

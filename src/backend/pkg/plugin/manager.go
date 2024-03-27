@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/hashicorp/go-plugin"
@@ -83,6 +84,7 @@ func NewManager(
 	logger *zap.SugaredLogger,
 	resourceController resource.Controller,
 	settingsController settings.Controller,
+	managers map[string]plugintypes.PluginManager,
 ) Manager {
 	l := logger.Named("PluginManager")
 
@@ -115,6 +117,7 @@ func NewManager(
 		},
 		watcher:      watcher,
 		watchTargets: make(map[string][]string),
+		managers:     managers,
 	}
 }
 
@@ -127,6 +130,8 @@ type pluginManager struct {
 	connfullControllers map[types.PluginType]plugintypes.ConnectedController
 	watcher             *fsnotify.Watcher
 	watchTargets        map[string][]string
+	// extendable amount of plugin managers
+	managers map[string]plugintypes.PluginManager
 }
 
 // Run starts until the the passed in context is cancelled.
@@ -535,6 +540,24 @@ func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
 		return errors.New("plugin is nil")
 	}
 
+	ctx := context.Background()
+
+	// run the extended managers
+	for name, manager := range pm.managers {
+		if err := manager.OnPluginInit(ctx, plugin.Metadata); err != nil {
+			// log the error
+			pm.logger.Errorw(
+				"error invoking init for plugin manager",
+				"manager",
+				name,
+				plugin,
+				plugin.Metadata.ID,
+				"error",
+				err,
+			)
+		}
+	}
+
 	// manually register the required capabilities first
 	pm.connlessControllers[types.SettingsPlugin].OnPluginInit(plugin.Metadata)
 
@@ -563,6 +586,24 @@ func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
 func (pm *pluginManager) startPlugin(plugin *types.Plugin, client plugin.ClientProtocol) error {
 	if plugin == nil {
 		return errors.New("plugin is nil")
+	}
+
+	ctx := context.Background()
+
+	// run the extended managers
+	for name, manager := range pm.managers {
+		if err := manager.OnPluginStart(ctx, plugin.Metadata); err != nil {
+			// log the error
+			pm.logger.Errorw(
+				"error invoking start for plugin manager",
+				"manager",
+				name,
+				plugin,
+				plugin.Metadata.ID,
+				"error",
+				err,
+			)
+		}
 	}
 
 	// manually start the required capabilities first
@@ -610,6 +651,24 @@ func (pm *pluginManager) stopPlugin(plugin *types.Plugin) error {
 		return errors.New("plugin is nil")
 	}
 
+	ctx := context.Background()
+
+	// run the extended managers
+	for name, manager := range pm.managers {
+		if err := manager.OnPluginStop(ctx, plugin.Metadata); err != nil {
+			// log the error
+			pm.logger.Errorw(
+				"error invoking stop for plugin manager",
+				"manager",
+				name,
+				plugin,
+				plugin.Metadata.ID,
+				"error",
+				err,
+			)
+		}
+	}
+
 	// manually stop the required capabilities first
 
 	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginStop(plugin.Metadata); err != nil {
@@ -653,6 +712,24 @@ func (pm *pluginManager) stopPlugin(plugin *types.Plugin) error {
 func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 	if plugin == nil {
 		return errors.New("plugin is nil")
+	}
+
+	ctx := context.Background()
+
+	// run the extended managers
+	for name, manager := range pm.managers {
+		if err := manager.OnPluginShutdown(ctx, plugin.Metadata); err != nil {
+			// log the error
+			pm.logger.Errorw(
+				"error invoking shutdown for plugin manager",
+				"manager",
+				name,
+				plugin,
+				plugin.Metadata.ID,
+				"error",
+				err,
+			)
+		}
 	}
 
 	// stop the plugin client
@@ -706,39 +783,97 @@ func (pm *pluginManager) destroyPlugin(plugin *types.Plugin) error {
 		return errors.New("plugin is nil")
 	}
 
+	ctx := context.Background()
+	var managerwg sync.WaitGroup
+
+	// all of our managers satisfy the PluginManager interface, so we can iterate over them
+	// and call the destroy method on each one
+	for name, manager := range pm.managers {
+		managerwg.Add(1)
+
+		// invoke the manager destroy in a goroutine
+		go func(meta config.PluginMeta, manager plugintypes.PluginManager, name string) {
+			defer managerwg.Done()
+			if err := manager.OnPluginDestroy(ctx, meta); err != nil {
+				// log the error
+				pm.logger.Errorw(
+					"error invoking manager destroy for plugin",
+					"manager", name,
+					plugin, meta.ID,
+					"error", err,
+				)
+			}
+		}(plugin.Metadata, manager, name)
+	}
+
+	managerwg.Wait()
+
 	// manually destroy the required capabilities first
 	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
 		return fmt.Errorf("error destroying settings plugin: %w", err)
 	}
 
-	// go through the controllers and stop them based on the capabilities
+	// define our plugin types that should call the connfullControllers
+	confull := []types.PluginType{
+		types.ResourcePlugin,
+		types.ExecutorPlugin,
+		types.FilesystemPlugin,
+		types.LogPlugin,
+		types.MetricPlugin,
+		types.ReporterPlugin,
+	}
+
 	for _, capability := range plugin.Metadata.Capabilities {
-		switch capability {
-		case types.ResourcePlugin.String():
-			if err := pm.connfullControllers[types.ResourcePlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-				return fmt.Errorf("error destroying resource plugin: %w", err)
-			}
-		case types.ExecutorPlugin.String():
-			if err := pm.connfullControllers[types.ExecutorPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-				return fmt.Errorf("error destroying executor plugin: %w", err)
-			}
-		case types.FilesystemPlugin.String():
-			if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-				return fmt.Errorf("error destroying filesystem plugin: %w", err)
-			}
-		case types.LogPlugin.String():
-			if err := pm.connfullControllers[types.LogPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-				return fmt.Errorf("error destroying log plugin: %w", err)
-			}
-		case types.MetricPlugin.String():
-			if err := pm.connfullControllers[types.MetricPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-				return fmt.Errorf("error destroying metric plugin: %w", err)
-			}
-		case types.ReporterPlugin.String():
-			if err := pm.connfullControllers[types.ReporterPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-				return fmt.Errorf("error destroying reporter plugin: %w", err)
+		// find the capability type
+		var ctype types.PluginType
+		found := false
+		for _, t := range confull {
+			if capability == t.String() {
+				// found
+				ctype = t
+				break
 			}
 		}
+		if !found {
+			return fmt.Errorf(
+				"error destroying plugin: unknown plugin capability type '%s'",
+				capability,
+			)
+		}
+		if err := pm.connfullControllers[ctype].OnPluginDestroy(plugin.Metadata); err != nil {
+			return fmt.Errorf("error destroying %s plugin: %w", capability, err)
+		}
 	}
+
+	//
+	// // go through the controllers and stop them based on the capabilities
+	// for _, capability := range plugin.Metadata.Capabilities {
+	// 	switch capability {
+	// 	case types.ResourcePlugin.String():
+	// 		if err := pm.connfullControllers[types.ResourcePlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+	// 			return fmt.Errorf("error destroying resource plugin: %w", err)
+	// 		}
+	// 	case types.ExecutorPlugin.String():
+	// 		if err := pm.connfullControllers[types.ExecutorPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+	// 			return fmt.Errorf("error destroying executor plugin: %w", err)
+	// 		}
+	// 	case types.FilesystemPlugin.String():
+	// 		if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+	// 			return fmt.Errorf("error destroying filesystem plugin: %w", err)
+	// 		}
+	// 	case types.LogPlugin.String():
+	// 		if err := pm.connfullControllers[types.LogPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+	// 			return fmt.Errorf("error destroying log plugin: %w", err)
+	// 		}
+	// 	case types.MetricPlugin.String():
+	// 		if err := pm.connfullControllers[types.MetricPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+	// 			return fmt.Errorf("error destroying metric plugin: %w", err)
+	// 		}
+	// 	case types.ReporterPlugin.String():
+	// 		if err := pm.connfullControllers[types.ReporterPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+	// 			return fmt.Errorf("error destroying reporter plugin: %w", err)
+	// 		}
+	// 	}
+	// }
 	return nil
 }

@@ -8,6 +8,9 @@ build:
 	rm -rf bin && rm -f kubernetes.tar.gz
 	mkdir bin && go build -o bin/plugin ./pkg
 
+build-ui:
+	cd ui && pnpm run build
+
 update:
 	go mod tidy
 	

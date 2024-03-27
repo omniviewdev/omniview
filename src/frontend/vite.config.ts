@@ -13,6 +13,10 @@ const __dirname = dirname(__filename)
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  build: {
+    minify: false,
+    sourcemap: false,
+  },
   server: {
     host: true,
     port: 5173,
