@@ -23,8 +23,15 @@ export const Primary: Story = {
 };
 
 Primary.decorators = [
-  (Story) => (
-    <ResourceDrawerContainer title="Node" open onClose={() => {}}>
+  (Story, c) => (
+    <ResourceDrawerContainer
+      // @ts-expect-error - arbitrary json
+      title={c.args.data.metadata.name}
+      icon="LuServer"
+      type="core::v1::Node"
+      open
+      onClose={() => {}}
+    >
       <Story />
     </ResourceDrawerContainer>
   ),

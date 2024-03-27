@@ -3,7 +3,6 @@ import React from 'react';
 // Material-ui
 import Stack from '@mui/joy/Stack';
 import Typography from '@mui/joy/Typography';
-import Button from '@mui/joy/Button';
 import GradientBackground from '@/components/backgrounds/GradientBackground';
 
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,18 +14,6 @@ import AWS from '@/assets/logos/aws/horizontal/AWSHorizontalColorWhite';
 import GCP from '@/assets/logos/gcp/horizontal/GCPHorizontal';
 import Docker from '@/assets/logos/docker/horizontal/DockerHorizontal';
 import { Box } from '@mui/joy';
-import PluginComponent from '@/federation';
-
-// Const tools = [
-//   'Kubernetes',
-//   'Helm',
-//   'AWS',
-//   'Terraform',
-//   'GCP',
-//   'Pulumi',
-//   'Azure',
-//   'Docker',
-// ]
 
 const logos = [
   <Kubernetes height={50} />,
@@ -57,7 +44,9 @@ const Welcome = () => {
   //   }, 3000);
   //
   //
-  //   return () => clearInterval(interval)
+  //   return () => {
+  //     clearInterval(interval); 
+  //   };
   // }, []);
   //
   // // run a rotation of images every 5 seconds
@@ -65,7 +54,9 @@ const Welcome = () => {
   //   const interval = setInterval(() => {
   //     setImageIndex((prevIndex) => (prevIndex + 1) % images.length);
   //   }, 9000);
-  //   return () => clearInterval(interval)
+  //   return () => {
+  //     clearInterval(interval); 
+  //   };
   // }, []);
 
   // Define the animation variants
@@ -150,10 +141,6 @@ const Welcome = () => {
               />
             </MotionBox>
           </AnimatePresence>
-        </Stack>
-
-        <Stack direction='row' spacing={2} alignItems='center'>
-          <PluginComponent plugin={'kubernetes'} component={'PodSidebar'} />
         </Stack>
       </Stack>
     </GradientBackground >

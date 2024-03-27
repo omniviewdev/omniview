@@ -24,6 +24,8 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/ui"
 	"github.com/omniviewdev/omniview/backend/services"
 	appsv1 "github.com/omniviewdev/omniview/backend/services/resources/apps_v1"
 	batchv1 "github.com/omniviewdev/omniview/backend/services/resources/batch_v1"
@@ -156,6 +158,14 @@ func main() {
 		Logger: log,
 	})
 
+	// Create our plugin system managers
+	uiManager := ui.NewComponentManager(log)
+	uiClient := ui.NewClient(uiManager)
+
+	managers := map[string]types.PluginManager{
+		"ui": uiManager,
+	}
+
 	// Setup the plugin systems
 	resourceController := resource.NewController(log)
 	resourceClient := resource.NewClient(resourceController)
@@ -167,6 +177,7 @@ func main() {
 		log,
 		resourceController,
 		settingsController,
+		managers,
 	)
 
 	// LEGACY - KUBERNETES MANAGERS INLINE
@@ -325,6 +336,7 @@ func main() {
 			pluginManager,
 			resourceClient,
 			settingsClient,
+			uiClient,
 
 			// managers
 			clusterManager,

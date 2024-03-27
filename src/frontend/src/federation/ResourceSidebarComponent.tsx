@@ -1,0 +1,3 @@
+import PluginComponent from '.';
+
+

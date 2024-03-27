@@ -1,5 +1,55 @@
 export namespace config {
 	
+	export class PluginResourceComponent {
+	    name: string;
+	    plugin: string;
+	    area: string;
+	    resources: string[];
+	    extension: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginResourceComponent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.plugin = source["plugin"];
+	        this.area = source["area"];
+	        this.resources = source["resources"];
+	        this.extension = source["extension"];
+	    }
+	}
+	export class PluginComponents {
+	    resource: PluginResourceComponent[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginComponents(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.resource = this.convertValues(source["resource"], PluginResourceComponent);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class PluginMaintainer {
 	    name: string;
 	    email: string;
@@ -58,6 +108,7 @@ export namespace config {
 	    dependencies: string[];
 	    capabilities: string[];
 	    theme: PluginTheme;
+	    components: PluginComponents;
 	
 	    static createFrom(source: any = {}) {
 	        return new PluginMeta(source);
@@ -77,6 +128,7 @@ export namespace config {
 	        this.dependencies = source["dependencies"];
 	        this.capabilities = source["capabilities"];
 	        this.theme = this.convertValues(source["theme"], PluginTheme);
+	        this.components = this.convertValues(source["components"], PluginComponents);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -97,6 +149,7 @@ export namespace config {
 		    return a;
 		}
 	}
+	
 
 }
 
@@ -801,6 +854,75 @@ export namespace types {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.result = source["result"];
 	        this.success = source["success"];
+	    }
+	}
+
+}
+
+export namespace ui {
+	
+	export class GetPluginComponentsInput {
+	    plugin: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GetPluginComponentsInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.plugin = source["plugin"];
+	    }
+	}
+	export class GetResourceAreaComponentInput {
+	    plugin: string;
+	    resource: string;
+	    area: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GetResourceAreaComponentInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.plugin = source["plugin"];
+	        this.resource = source["resource"];
+	        this.area = source["area"];
+	    }
+	}
+	export class GetResourceComponentsInput {
+	    plugin: string;
+	    resource: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GetResourceComponentsInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.plugin = source["plugin"];
+	        this.resource = source["resource"];
+	    }
+	}
+	export class ResourceComponent {
+	    owner: string;
+	    name: string;
+	    plugin: string;
+	    resource: string;
+	    area: string;
+	    extension: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResourceComponent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.owner = source["owner"];
+	        this.name = source["name"];
+	        this.plugin = source["plugin"];
+	        this.resource = source["resource"];
+	        this.area = source["area"];
+	        this.extension = source["extension"];
 	    }
 	}
 
