@@ -2,13 +2,16 @@ import React from 'react';
 import { Provider } from 'react-redux';
 import { store } from './store/store';
 
+import './utils/globalutils';
+import 'monaco-editor-nginx';
+
 // Providers
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { CssVarsProvider, StyledEngineProvider } from '@mui/joy/styles';
 import { WindowProvider } from '@/providers/WindowProvider';
 import { Renderer } from '@/providers/PaneProvider';
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
-import RightDrawerProvider from '@/providers/RightDrawerProvider';
+import RightDrawerProvider from '@/providers/RightDrawer';
 import { ErrorBoundary } from 'react-error-boundary';
 import {
   QueryClient,

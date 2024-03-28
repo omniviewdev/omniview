@@ -144,6 +144,7 @@ export const useResources = ({
       },
       namespaces,
     })),
+    retry: false,
   });
 
 

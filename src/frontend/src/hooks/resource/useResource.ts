@@ -123,6 +123,7 @@ export const useResource = ({
       id: resourceID,
       namespace,
     })),
+    retry: false,
   });
 
   return {

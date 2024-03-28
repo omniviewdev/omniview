@@ -6,6 +6,7 @@ import GithubDark from "./themes/GithubDark";
 import BrillianceBlack from "./themes/BrillianceBlack";
 
 type Props = {
+  filename: string;
   height?: string | number;
   language?: string;
   value: string;
@@ -17,6 +18,7 @@ type Props = {
 
 const CodeEditor: FC<Props> = ({
   language,
+  filename,
   value,
   onChange,
   readOnly,
@@ -26,15 +28,35 @@ const CodeEditor: FC<Props> = ({
   // If uncontrolled, define our state control here
   const [controlledValue, setControlledValue] = useState(value);
   const monaco = useMonaco();
+  const [lang, setLang] = useState<string | undefined>(language);
 
   useEffect(() => {
     if (monaco) {
       // Define all of our themes
       monaco.editor.defineTheme("github-dark", GithubDark);
       monaco.editor.defineTheme("brilliance-black", BrillianceBlack);
-      monaco.editor.setTheme("brilliance-black");
     }
-  }, [monaco]);
+
+    async function detectLanguage() {
+      try {
+        /* @ts-expect-error - global helper on the window object */
+        const detected = await window.detectLanguage({
+          filename,
+          contents: value,
+        });
+        if (detected) {
+          console.log("Detected language", detected);
+          setLang(detected);
+        }
+      } catch (err) {
+        console.error("Failed to detect language", err);
+      }
+    }
+
+    if (!lang) {
+      detectLanguage().catch(console.error);
+    }
+  }, [monaco, filename, value, lang]);
 
   /**
    * If we are using controlled, we need to handle the change event
@@ -58,29 +80,36 @@ const CodeEditor: FC<Props> = ({
     }
   }, [monaco]);
 
-  if (diff && original) {
+  if (diff && original && lang) {
     return (
       <DiffEditor
         original={original}
         modified={value || controlledValue}
-        language={language}
+        language={lang}
         options={{ readOnly }}
       />
     );
   }
 
-  return (
-    <Editor
-      theme="brilliance-black"
-      language={language}
-      value={value || controlledValue}
-      onChange={(value) => {
-        handleChange(value || "");
-      }}
-      height="60vh"
-      options={{ readOnly }}
-    />
-  );
+  if (lang) {
+    return (
+      <Editor
+        theme="vs-dark"
+        language={lang}
+        value={
+          lang === "json"
+            ? // pretty print it
+              JSON.stringify(JSON.parse(value), null, 2)
+            : value || controlledValue
+        }
+        onChange={(value) => {
+          handleChange(value || "");
+        }}
+        height="40vh"
+        options={{ readOnly }}
+      />
+    );
+  }
 };
 
 export default CodeEditor;

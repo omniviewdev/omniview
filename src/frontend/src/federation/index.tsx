@@ -26,7 +26,8 @@ const PluginComponent: React.FC<PluginComponentProps> = ({ plugin, component, fa
       component = `./${component}`;
     }
 
-    return __federation_method_getRemote(plugin, component).catch(() => ({ default: () => <div>Page Not Found</div> }));
+    return __federation_method_getRemote(plugin, component)
+      .catch((error: Error) => ({ default: () => <div>{`${error.message}`}</div> }));
   });
 
   return (
