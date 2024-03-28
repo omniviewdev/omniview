@@ -19,6 +19,8 @@
     "@monaco-editor/react": "^4.6.0",
     "@mui/joy": "5.0.0-beta.32",
     "kubernetes-types": "^1.26.0",
+    "language-detect": "^1.1.0",
+    "language-map": "^1.5.0",
     "monaco-editor": "^0.47.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

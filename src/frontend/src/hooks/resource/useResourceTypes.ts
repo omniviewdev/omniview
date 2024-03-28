@@ -21,6 +21,7 @@ export const useResourceTypes = ({ pluginID }: UseResourceTypesOptions) => {
   const types = useQuery({
     queryKey,
     queryFn: async () => GetResourceTypes(pluginID),
+    retry: false,
   });
 
   return {

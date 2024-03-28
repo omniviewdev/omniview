@@ -50,7 +50,7 @@ export const NodeSidebar: React.FC<Props> = ({ data }) => {
           </Grid>
         </Grid>
       </div>
-      <pre>{JSON.stringify(data, null, 2)}</pre>;
+      {/* <pre>{JSON.stringify(data, null, 2)}</pre>; */}
     </Stack>
   );
 };
@@ -94,10 +94,6 @@ const HardwareInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
       key: "CPUs",
       value: node.status?.capacity?.cpu,
       icon: "LuCpu",
-      used: `${(
-        parseInt(node.status?.capacity?.cpu || "0") -
-        parseInt(node.status?.allocatable?.cpu.split("m")[0] || "0") / 1000
-      ).toFixed(2)}`,
       ratio: [6.5, 5.5],
     },
     {

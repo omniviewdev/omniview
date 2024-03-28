@@ -32,7 +32,7 @@ export const ConfigMapSidebar: React.FC<Props> = ({ data }) => {
       <div>
         <Chip
           sx={{ borderRadius: "sm", mb: 1 }}
-          size="lg"
+          size="md"
           variant="soft"
           startDecorator={<LuCode />}
         >
@@ -40,14 +40,20 @@ export const ConfigMapSidebar: React.FC<Props> = ({ data }) => {
         </Chip>
         {configMap.data !== undefined && (
           <ExpandableSections
-            sections={Object.entries(configMap.data).map(([key, value]) => ({
-              title: key,
-              icon: "LuFile",
-              defaultExpanded: true,
-              children: (
-                <CodeEditor value={value} language="yaml" readOnly={true} />
-              ),
-            }))}
+            sections={Object.entries(configMap.data).map(
+              ([key, value], idx) => ({
+                title: key,
+                icon: "LuFile",
+                defaultExpanded: idx === 0,
+                children: (
+                  <CodeEditor
+                    value={value}
+                    filename={`${configMap.metadata?.uid}/${key}`}
+                    readOnly={true}
+                  />
+                ),
+              }),
+            )}
           />
         )}
       </div>

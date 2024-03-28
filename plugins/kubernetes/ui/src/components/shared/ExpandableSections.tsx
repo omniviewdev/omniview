@@ -28,6 +28,7 @@ export default function ExpandableSections({
 }: Props): React.ReactElement {
   return (
     <AccordionGroup
+      size="sm"
       variant="outlined"
       transition="0.2s"
       sx={{
@@ -48,7 +49,7 @@ export default function ExpandableSections({
         <Accordion defaultExpanded={section.defaultExpanded}>
           <AccordionSummary sx={{ pl: 0.5 }}>
             <Chip
-              size="lg"
+              size="md"
               color="neutral"
               variant="soft"
               sx={{ borderRadius: "sm" }}
@@ -64,7 +65,7 @@ export default function ExpandableSections({
                 fontFamily={"monospace"}
                 px={0.5}
                 textColor={"neutral.50"}
-                fontSize={14}
+                fontSize={12}
               >
                 {section.title}
               </Typography>

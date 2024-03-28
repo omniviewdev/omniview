@@ -8,6 +8,8 @@ import {
 import useRightDrawer from '@/hooks/useRightDrawer';
 
 export type MemoizedRowProps = {
+  pluginID: string;
+  connectionID: string;
   row: Row<any>;
   kind: string;
 };
@@ -17,8 +19,8 @@ export type MemoizedRowProps = {
 * whether or not the data has changed, we can use memoization checks to avoid
 * unnecessary re-renders.
 */
-export const MemoizedRow = memo(({ row, kind }: MemoizedRowProps) => {
-  const { showResourceSpec } = useRightDrawer();
+export const MemoizedRow = memo(({ pluginID, connectionID, row, kind }: MemoizedRowProps) => {
+  const { showResourceSidebar } = useRightDrawer();
 
   // Simplified memoization check can be done outside, based on your needs
   return (
@@ -27,7 +29,13 @@ export const MemoizedRow = memo(({ row, kind }: MemoizedRowProps) => {
         <td
           key={cell.id}
           onClick={cell.column.id === 'name' ? () => {
-            showResourceSpec(kind.toLowerCase(), cell.getValue() as string, row.original);
+            showResourceSidebar({ 
+              pluginID, 
+              connectionID, 
+              resourceKey: kind, 
+              resourceID: cell.row.original.metadata.name,
+              namespace: cell.row.original.metadata.namespace,
+            });
           } : undefined}
           style={{
             width: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),

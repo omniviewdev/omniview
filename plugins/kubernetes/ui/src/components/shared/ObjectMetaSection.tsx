@@ -56,7 +56,7 @@ const ObjectMetaSection: React.FC<Props> = ({ data }) => {
         }}
         variant="outlined"
       >
-        <Box sx={{ py: 1, px: 1.5 }}>
+        <Box sx={{ py: 1, px: 1.25 }}>
           <Typography level="title-sm">Metadata</Typography>
         </Box>
         <Divider />
@@ -80,6 +80,7 @@ const ObjectMetaSection: React.FC<Props> = ({ data }) => {
       <AccordionGroup
         variant="outlined"
         transition="0.2s"
+        size="sm"
         sx={{
           borderRadius: "sm",
           [`& .${accordionSummaryClasses.button}:hover`]: {

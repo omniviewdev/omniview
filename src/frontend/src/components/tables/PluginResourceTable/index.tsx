@@ -170,6 +170,20 @@ const PluginResourceTable: React.FC<Props> = ({ columns, pluginID, connectionID,
   }
 
   if (resources.isError) {
+    let errstring = resources.error.toString();
+    console.error('Failed loading resources', errstring);
+    let error = <p>{'An error occurred while loading resources'}</p>;
+    if (errstring.includes('could not find the requested resource')) {
+      error = <div>
+        <span>{'The resource group could not be found. This may be the result of'}</span>
+        <ol>
+          <li>{'The resource group does not exist (for this connection)'}</li>
+          <li>{'The resource group has been deleted (for this connection)'}</li>
+          <li>{'You do not have permission to access the resource group'}</li>
+        </ol>
+      </div>;
+    }
+
     return (
       <Box sx={{
         display: 'flex',
@@ -192,7 +206,7 @@ const PluginResourceTable: React.FC<Props> = ({ columns, pluginID, connectionID,
           </Typography>
         </Alert>
         <Typography level='body-sm' color='danger' textAlign={'center'} maxWidth={500} flexWrap='wrap'>
-          {`${resources.error.message}`}
+          {error}
         </Typography>
       </Box>
     );
@@ -276,7 +290,7 @@ const PluginResourceTable: React.FC<Props> = ({ columns, pluginID, connectionID,
           </thead>
           <tbody>
             {table.getRowModel().rows.map((row) => (
-              <MemoizedRow key={row.original.metadata?.uid as string} row={row} kind={resourceKey} />
+              <MemoizedRow key={row.original.metadata?.uid as string} pluginID={pluginID} connectionID={connectionID} row={row} kind={resourceKey} />
             ))}
           </tbody>
         </Table>

@@ -26,6 +26,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/ui"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
 	"github.com/omniviewdev/omniview/backend/services"
 	appsv1 "github.com/omniviewdev/omniview/backend/services/resources/apps_v1"
 	batchv1 "github.com/omniviewdev/omniview/backend/services/resources/batch_v1"
@@ -121,6 +122,8 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 
 	toFetch := filepath.Join(os.Getenv("HOME"), ".omniview", requestedFilename)
+	h.logger.Infow("fetching file", "path", toFetch)
+
 	fileData, err := os.ReadFile(toFetch)
 	if err != nil {
 		res.WriteHeader(http.StatusBadRequest)
@@ -165,6 +168,8 @@ func main() {
 	managers := map[string]types.PluginManager{
 		"ui": uiManager,
 	}
+
+	utilsClient := utils.NewClient()
 
 	// Setup the plugin systems
 	resourceController := resource.NewController(log)
@@ -337,6 +342,7 @@ func main() {
 			resourceClient,
 			settingsClient,
 			uiClient,
+			utilsClient,
 
 			// managers
 			clusterManager,

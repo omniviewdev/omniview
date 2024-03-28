@@ -22,7 +22,27 @@ theme:
 
 components:
   resource:
-    - name: "PodSidebarPrimary"
-      plugin: "kubernetes"
-      area: "SIDEBAR"
+    - name: PodSidebar
+      plugin: kubernetes
+      area: SIDEBAR
       resources: ["core::v1::Pod"]
+    - name: NodeSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["core::v1::Node"]
+    - name: PersistentVolumeSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["core::v1::PersistentVolume"]
+    - name: PersistentVolumeClaimSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["core::v1::PersistentVolumeClaim"]
+    - name: SecretSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["core::v1::Secret"]
+    - name: ConfigMapSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["core::v1::ConfigMap"]

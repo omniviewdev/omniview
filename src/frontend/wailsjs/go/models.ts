@@ -928,3 +928,22 @@ export namespace ui {
 
 }
 
+export namespace utils {
+	
+	export class GetLanguageInput {
+	    filename: string;
+	    contents: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GetLanguageInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filename = source["filename"];
+	        this.contents = source["contents"];
+	    }
+	}
+
+}
+
