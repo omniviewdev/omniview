@@ -3,7 +3,7 @@ import { Provider } from 'react-redux';
 import { store } from './store/store';
 
 import './utils/globalutils';
-import 'monaco-editor-nginx';
+import './providers/monaco/bootstrap';
 
 // Providers
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';

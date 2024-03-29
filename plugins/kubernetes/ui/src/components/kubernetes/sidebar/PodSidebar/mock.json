@@ -1,0 +1,1050 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "name": "jenkins-0",
+    "generateName": "jenkins-",
+    "namespace": "jenkins",
+    "uid": "bc9f2cf1-b931-423b-9753-cc76a4cfa54f",
+    "resourceVersion": "468995391",
+    "creationTimestamp": "2024-03-22T16:03:46Z",
+    "labels": {
+      "app.kubernetes.io/component": "jenkins-controller",
+      "app.kubernetes.io/instance": "jenkins",
+      "app.kubernetes.io/managed-by": "Helm",
+      "app.kubernetes.io/name": "jenkins",
+      "controller-revision-hash": "jenkins-7b4b9446b9",
+      "statefulset.kubernetes.io/pod-name": "jenkins-0"
+    },
+    "annotations": {
+      "checksum/config": "b02ffd2871310cfed6174cd2e6845a8901ff0af89bb0184cb18dfa6f822164ad",
+      "kubectl.kubernetes.io/restartedAt": "2024-01-26T16:45:05Z"
+    },
+    "ownerReferences": [
+      {
+        "apiVersion": "apps/v1",
+        "kind": "StatefulSet",
+        "name": "jenkins",
+        "uid": "6bf2033b-83bf-4d17-b042-264d1c56e764",
+        "controller": true,
+        "blockOwnerDeletion": true
+      }
+    ],
+    "managedFields": [
+      {
+        "manager": "kube-controller-manager",
+        "operation": "Update",
+        "apiVersion": "v1",
+        "time": "2024-03-22T16:03:46Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:annotations": {
+              ".": {},
+              "f:checksum/config": {},
+              "f:kubectl.kubernetes.io/restartedAt": {}
+            },
+            "f:generateName": {},
+            "f:labels": {
+              ".": {},
+              "f:app.kubernetes.io/component": {},
+              "f:app.kubernetes.io/instance": {},
+              "f:app.kubernetes.io/managed-by": {},
+              "f:app.kubernetes.io/name": {},
+              "f:controller-revision-hash": {},
+              "f:statefulset.kubernetes.io/pod-name": {}
+            },
+            "f:ownerReferences": {
+              ".": {},
+              "k:{\"uid\":\"6bf2033b-83bf-4d17-b042-264d1c56e764\"}": {}
+            }
+          },
+          "f:spec": {
+            "f:containers": {
+              "k:{\"name\":\"config-reload\"}": {
+                ".": {},
+                "f:env": {
+                  ".": {},
+                  "k:{\"name\":\"FOLDER\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:value": {}
+                  },
+                  "k:{\"name\":\"LABEL\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:value": {}
+                  },
+                  "k:{\"name\":\"NAMESPACE\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:value": {}
+                  },
+                  "k:{\"name\":\"POD_NAME\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:valueFrom": {
+                      ".": {},
+                      "f:fieldRef": {}
+                    }
+                  },
+                  "k:{\"name\":\"REQ_METHOD\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:value": {}
+                  },
+                  "k:{\"name\":\"REQ_RETRY_CONNECT\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:value": {}
+                  },
+                  "k:{\"name\":\"REQ_URL\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:value": {}
+                  }
+                },
+                "f:image": {},
+                "f:imagePullPolicy": {},
+                "f:name": {},
+                "f:resources": {},
+                "f:securityContext": {
+                  ".": {},
+                  "f:allowPrivilegeEscalation": {},
+                  "f:readOnlyRootFilesystem": {},
+                  "f:runAsNonRoot": {},
+                  "f:runAsUser": {}
+                },
+                "f:terminationMessagePath": {},
+                "f:terminationMessagePolicy": {},
+                "f:volumeMounts": {
+                  ".": {},
+                  "k:{\"mountPath\":\"/var/jenkins_home\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  },
+                  "k:{\"mountPath\":\"/var/jenkins_home/casc_configs\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  }
+                }
+              },
+              "k:{\"name\":\"jenkins\"}": {
+                ".": {},
+                "f:args": {},
+                "f:env": {
+                  ".": {},
+                  "k:{\"name\":\"CASC_JENKINS_CONFIG\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:value": {}
+                  },
+                  "k:{\"name\":\"HOST_IP\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:valueFrom": {
+                      ".": {},
+                      "f:fieldRef": {}
+                    }
+                  },
+                  "k:{\"name\":\"JAVA_OPTS\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:value": {}
+                  },
+                  "k:{\"name\":\"JENKINS_OPTS\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:value": {}
+                  },
+                  "k:{\"name\":\"JENKINS_SLAVE_AGENT_PORT\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:value": {}
+                  },
+                  "k:{\"name\":\"POD_NAME\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:valueFrom": {
+                      ".": {},
+                      "f:fieldRef": {}
+                    }
+                  },
+                  "k:{\"name\":\"SECRETS\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:value": {}
+                  }
+                },
+                "f:image": {},
+                "f:imagePullPolicy": {},
+                "f:livenessProbe": {
+                  ".": {},
+                  "f:failureThreshold": {},
+                  "f:httpGet": {
+                    ".": {},
+                    "f:path": {},
+                    "f:port": {},
+                    "f:scheme": {}
+                  },
+                  "f:periodSeconds": {},
+                  "f:successThreshold": {},
+                  "f:timeoutSeconds": {}
+                },
+                "f:name": {},
+                "f:ports": {
+                  ".": {},
+                  "k:{\"containerPort\":8080,\"protocol\":\"TCP\"}": {
+                    ".": {},
+                    "f:containerPort": {},
+                    "f:name": {},
+                    "f:protocol": {}
+                  },
+                  "k:{\"containerPort\":50000,\"protocol\":\"TCP\"}": {
+                    ".": {},
+                    "f:containerPort": {},
+                    "f:name": {},
+                    "f:protocol": {}
+                  }
+                },
+                "f:readinessProbe": {
+                  ".": {},
+                  "f:failureThreshold": {},
+                  "f:httpGet": {
+                    ".": {},
+                    "f:path": {},
+                    "f:port": {},
+                    "f:scheme": {}
+                  },
+                  "f:periodSeconds": {},
+                  "f:successThreshold": {},
+                  "f:timeoutSeconds": {}
+                },
+                "f:resources": {
+                  ".": {},
+                  "f:limits": {
+                    ".": {},
+                    "f:cpu": {},
+                    "f:memory": {}
+                  },
+                  "f:requests": {
+                    ".": {},
+                    "f:cpu": {},
+                    "f:memory": {}
+                  }
+                },
+                "f:securityContext": {
+                  ".": {},
+                  "f:allowPrivilegeEscalation": {},
+                  "f:readOnlyRootFilesystem": {},
+                  "f:runAsGroup": {},
+                  "f:runAsUser": {}
+                },
+                "f:startupProbe": {
+                  ".": {},
+                  "f:failureThreshold": {},
+                  "f:httpGet": {
+                    ".": {},
+                    "f:path": {},
+                    "f:port": {},
+                    "f:scheme": {}
+                  },
+                  "f:periodSeconds": {},
+                  "f:successThreshold": {},
+                  "f:timeoutSeconds": {}
+                },
+                "f:terminationMessagePath": {},
+                "f:terminationMessagePolicy": {},
+                "f:volumeMounts": {
+                  ".": {},
+                  "k:{\"mountPath\":\"/run/secrets/additional\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  },
+                  "k:{\"mountPath\":\"/run/secrets/jenkins-secrets-sdprod-access-key\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {},
+                    "f:readOnly": {},
+                    "f:subPath": {}
+                  },
+                  "k:{\"mountPath\":\"/run/secrets/jenkins-secrets-sdprod-secret-key\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {},
+                    "f:readOnly": {},
+                    "f:subPath": {}
+                  },
+                  "k:{\"mountPath\":\"/tmp\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  },
+                  "k:{\"mountPath\":\"/usr/share/jenkins/ref/plugins/\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  },
+                  "k:{\"mountPath\":\"/var/jenkins_cache\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  },
+                  "k:{\"mountPath\":\"/var/jenkins_config\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {},
+                    "f:readOnly": {}
+                  },
+                  "k:{\"mountPath\":\"/var/jenkins_home\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  },
+                  "k:{\"mountPath\":\"/var/jenkins_home/casc_configs\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  }
+                }
+              }
+            },
+            "f:dnsPolicy": {},
+            "f:enableServiceLinks": {},
+            "f:hostname": {},
+            "f:imagePullSecrets": {
+              ".": {},
+              "k:{\"name\":\"harbor\"}": {}
+            },
+            "f:initContainers": {
+              ".": {},
+              "k:{\"name\":\"init\"}": {
+                ".": {},
+                "f:command": {},
+                "f:image": {},
+                "f:imagePullPolicy": {},
+                "f:name": {},
+                "f:resources": {
+                  ".": {},
+                  "f:limits": {
+                    ".": {},
+                    "f:cpu": {},
+                    "f:memory": {}
+                  },
+                  "f:requests": {
+                    ".": {},
+                    "f:cpu": {},
+                    "f:memory": {}
+                  }
+                },
+                "f:securityContext": {
+                  ".": {},
+                  "f:allowPrivilegeEscalation": {},
+                  "f:readOnlyRootFilesystem": {},
+                  "f:runAsGroup": {},
+                  "f:runAsUser": {}
+                },
+                "f:terminationMessagePath": {},
+                "f:terminationMessagePolicy": {},
+                "f:volumeMounts": {
+                  ".": {},
+                  "k:{\"mountPath\":\"/run/secrets/additional\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  },
+                  "k:{\"mountPath\":\"/tmp\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  },
+                  "k:{\"mountPath\":\"/usr/share/jenkins/ref/plugins\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  },
+                  "k:{\"mountPath\":\"/var/jenkins_config\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  },
+                  "k:{\"mountPath\":\"/var/jenkins_home\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  },
+                  "k:{\"mountPath\":\"/var/jenkins_plugins\"}": {
+                    ".": {},
+                    "f:mountPath": {},
+                    "f:name": {}
+                  }
+                }
+              }
+            },
+            "f:restartPolicy": {},
+            "f:schedulerName": {},
+            "f:securityContext": {},
+            "f:serviceAccount": {},
+            "f:serviceAccountName": {},
+            "f:subdomain": {},
+            "f:terminationGracePeriodSeconds": {},
+            "f:volumes": {
+              ".": {},
+              "k:{\"name\":\"jenkins-cache\"}": {
+                ".": {},
+                "f:emptyDir": {},
+                "f:name": {}
+              },
+              "k:{\"name\":\"jenkins-config\"}": {
+                ".": {},
+                "f:configMap": {
+                  ".": {},
+                  "f:defaultMode": {},
+                  "f:name": {}
+                },
+                "f:name": {}
+              },
+              "k:{\"name\":\"jenkins-home\"}": {
+                ".": {},
+                "f:name": {},
+                "f:persistentVolumeClaim": {
+                  ".": {},
+                  "f:claimName": {}
+                }
+              },
+              "k:{\"name\":\"jenkins-secrets\"}": {
+                ".": {},
+                "f:name": {},
+                "f:secret": {
+                  ".": {},
+                  "f:defaultMode": {},
+                  "f:secretName": {}
+                }
+              },
+              "k:{\"name\":\"jenkins-secrets-sdprod-access-key\"}": {
+                ".": {},
+                "f:name": {},
+                "f:secret": {
+                  ".": {},
+                  "f:defaultMode": {},
+                  "f:secretName": {}
+                }
+              },
+              "k:{\"name\":\"jenkins-secrets-sdprod-secret-key\"}": {
+                ".": {},
+                "f:name": {},
+                "f:secret": {
+                  ".": {},
+                  "f:defaultMode": {},
+                  "f:secretName": {}
+                }
+              },
+              "k:{\"name\":\"plugin-dir\"}": {
+                ".": {},
+                "f:emptyDir": {},
+                "f:name": {}
+              },
+              "k:{\"name\":\"plugins\"}": {
+                ".": {},
+                "f:emptyDir": {},
+                "f:name": {}
+              },
+              "k:{\"name\":\"sc-config-volume\"}": {
+                ".": {},
+                "f:emptyDir": {},
+                "f:name": {}
+              },
+              "k:{\"name\":\"tmp-volume\"}": {
+                ".": {},
+                "f:emptyDir": {},
+                "f:name": {}
+              }
+            }
+          }
+        }
+      },
+      {
+        "manager": "kube-scheduler",
+        "operation": "Update",
+        "apiVersion": "v1",
+        "time": "2024-03-22T16:04:33Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:status": {
+            "f:conditions": {
+              ".": {},
+              "k:{\"type\":\"PodScheduled\"}": {
+                ".": {},
+                "f:lastProbeTime": {},
+                "f:lastTransitionTime": {},
+                "f:message": {},
+                "f:reason": {},
+                "f:status": {},
+                "f:type": {}
+              }
+            }
+          }
+        },
+        "subresource": "status"
+      },
+      {
+        "manager": "kubelet",
+        "operation": "Update",
+        "apiVersion": "v1",
+        "time": "2024-03-25T15:22:27Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:status": {
+            "f:conditions": {
+              "k:{\"type\":\"ContainersReady\"}": {
+                ".": {},
+                "f:lastProbeTime": {},
+                "f:lastTransitionTime": {},
+                "f:status": {},
+                "f:type": {}
+              },
+              "k:{\"type\":\"Initialized\"}": {
+                ".": {},
+                "f:lastProbeTime": {},
+                "f:lastTransitionTime": {},
+                "f:status": {},
+                "f:type": {}
+              },
+              "k:{\"type\":\"Ready\"}": {
+                ".": {},
+                "f:lastProbeTime": {},
+                "f:lastTransitionTime": {},
+                "f:status": {},
+                "f:type": {}
+              }
+            },
+            "f:containerStatuses": {},
+            "f:hostIP": {},
+            "f:initContainerStatuses": {},
+            "f:phase": {},
+            "f:podIP": {},
+            "f:podIPs": {
+              ".": {},
+              "k:{\"ip\":\"10.10.201.108\"}": {
+                ".": {},
+                "f:ip": {}
+              }
+            },
+            "f:startTime": {}
+          }
+        },
+        "subresource": "status"
+      }
+    ],
+    "selfLink": "/api/v1/namespaces/jenkins/pods/jenkins-0"
+  },
+  "status": {
+    "phase": "Running",
+    "conditions": [
+      {
+        "type": "Initialized",
+        "status": "True",
+        "lastProbeTime": null,
+        "lastTransitionTime": "2024-03-22T16:05:30Z"
+      },
+      {
+        "type": "Ready",
+        "status": "True",
+        "lastProbeTime": null,
+        "lastTransitionTime": "2024-03-25T15:22:27Z"
+      },
+      {
+        "type": "ContainersReady",
+        "status": "True",
+        "lastProbeTime": null,
+        "lastTransitionTime": "2024-03-25T15:22:27Z"
+      },
+      {
+        "type": "PodScheduled",
+        "status": "True",
+        "lastProbeTime": null,
+        "lastTransitionTime": "2024-03-22T16:05:00Z"
+      }
+    ],
+    "hostIP": "10.10.201.95",
+    "podIP": "10.10.201.108",
+    "podIPs": [
+      {
+        "ip": "10.10.201.108"
+      }
+    ],
+    "startTime": "2024-03-22T16:05:00Z",
+    "initContainerStatuses": [
+      {
+        "name": "init",
+        "state": {
+          "terminated": {
+            "exitCode": 0,
+            "reason": "Completed",
+            "startedAt": "2024-03-22T16:05:12Z",
+            "finishedAt": "2024-03-22T16:05:12Z",
+            "containerID": "containerd://6e6b01a206952d9d205b73b93b051eb0f4bd5d54f10a0cc3c19c749bd035068b"
+          }
+        },
+        "lastState": {},
+        "ready": true,
+        "restartCount": 0,
+        "image": "registry.moslrn.net/dh/jenkins/jenkins:2.440.2-jdk17",
+        "imageID": "registry.moslrn.net/dh/jenkins/jenkins@sha256:1fd79ceb68ce883fb86db70bdbf7f9eaa8b25e580aafe7a240235240396e3916",
+        "containerID": "containerd://6e6b01a206952d9d205b73b93b051eb0f4bd5d54f10a0cc3c19c749bd035068b"
+      }
+    ],
+    "containerStatuses": [
+      {
+        "name": "config-reload",
+        "state": {
+          "running": {
+            "startedAt": "2024-03-22T16:05:32Z"
+          }
+        },
+        "lastState": {},
+        "ready": true,
+        "restartCount": 0,
+        "image": "quay.io/kiwigrid/k8s-sidecar:1.15.0",
+        "imageID": "quay.io/kiwigrid/k8s-sidecar@sha256:abc3060bfe232788886f279530f8afe02614ef590ae59d9d58f637df770bcffc",
+        "containerID": "containerd://0899c2ab2f27fd96f9d5777702b7be2cc7ac3882753f270a1fb14ff4a0898314",
+        "started": true
+      },
+      {
+        "name": "jenkins",
+        "state": {
+          "running": {
+            "startedAt": "2024-03-25T15:21:35Z"
+          }
+        },
+        "lastState": {
+          "terminated": {
+            "exitCode": 5,
+            "reason": "Error",
+            "startedAt": "2024-03-22T16:05:30Z",
+            "finishedAt": "2024-03-25T15:21:34Z",
+            "containerID": "containerd://7aee18437b8cad4fba2ad58087e9fac01f569c47b196fc9e2b4009c9b5bf5eac"
+          }
+        },
+        "ready": true,
+        "restartCount": 1,
+        "image": "registry.moslrn.net/dh/jenkins/jenkins:2.440.2-jdk17",
+        "imageID": "registry.moslrn.net/dh/jenkins/jenkins@sha256:1fd79ceb68ce883fb86db70bdbf7f9eaa8b25e580aafe7a240235240396e3916",
+        "containerID": "containerd://468d5effaff5c76d90ab9d941961f114d1fb929eeb35568139ad6f26c91b999c",
+        "started": true
+      }
+    ],
+    "qosClass": "Burstable"
+  },
+  "spec": {
+    "volumes": [
+      {
+        "name": "jenkins-secrets-sdprod-access-key",
+        "secret": {
+          "secretName": "jenkins-secrets",
+          "defaultMode": 420
+        }
+      },
+      {
+        "name": "jenkins-secrets-sdprod-secret-key",
+        "secret": {
+          "secretName": "jenkins-secrets",
+          "defaultMode": 420
+        }
+      },
+      {
+        "name": "jenkins-secrets",
+        "secret": {
+          "secretName": "jenkins-secrets",
+          "defaultMode": 420
+        }
+      },
+      {
+        "name": "plugins",
+        "emptyDir": {}
+      },
+      {
+        "name": "jenkins-config",
+        "configMap": {
+          "name": "jenkins",
+          "defaultMode": 420
+        }
+      },
+      {
+        "name": "plugin-dir",
+        "emptyDir": {}
+      },
+      {
+        "name": "jenkins-cache",
+        "emptyDir": {}
+      },
+      {
+        "name": "jenkins-home",
+        "persistentVolumeClaim": {
+          "claimName": "jenkins"
+        }
+      },
+      {
+        "name": "sc-config-volume",
+        "emptyDir": {}
+      },
+      {
+        "name": "tmp-volume",
+        "emptyDir": {}
+      },
+      {
+        "name": "kube-api-access-wpkbk",
+        "projected": {
+          "sources": [
+            {
+              "serviceAccountToken": {
+                "expirationSeconds": 3607,
+                "path": "token"
+              }
+            },
+            {
+              "configMap": {
+                "name": "kube-root-ca.crt",
+                "items": [
+                  {
+                    "key": "ca.crt",
+                    "path": "ca.crt"
+                  }
+                ]
+              }
+            },
+            {
+              "downwardAPI": {
+                "items": [
+                  {
+                    "path": "namespace",
+                    "fieldRef": {
+                      "apiVersion": "v1",
+                      "fieldPath": "metadata.namespace"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultMode": 420
+        }
+      }
+    ],
+    "initContainers": [
+      {
+        "name": "init",
+        "image": "registry.moslrn.net/dh/jenkins/jenkins:2.440.2-jdk17",
+        "command": ["sh", "/var/jenkins_config/apply_config.sh"],
+        "resources": {
+          "limits": {
+            "cpu": "4",
+            "memory": "4Gi"
+          },
+          "requests": {
+            "cpu": "1",
+            "memory": "2000Mi"
+          }
+        },
+        "volumeMounts": [
+          {
+            "name": "jenkins-secrets",
+            "mountPath": "/run/secrets/additional"
+          },
+          {
+            "name": "jenkins-home",
+            "mountPath": "/var/jenkins_home"
+          },
+          {
+            "name": "jenkins-config",
+            "mountPath": "/var/jenkins_config"
+          },
+          {
+            "name": "plugins",
+            "mountPath": "/usr/share/jenkins/ref/plugins"
+          },
+          {
+            "name": "plugin-dir",
+            "mountPath": "/var/jenkins_plugins"
+          },
+          {
+            "name": "tmp-volume",
+            "mountPath": "/tmp"
+          },
+          {
+            "name": "kube-api-access-wpkbk",
+            "readOnly": true,
+            "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount"
+          }
+        ],
+        "terminationMessagePath": "/dev/termination-log",
+        "terminationMessagePolicy": "File",
+        "imagePullPolicy": "IfNotPresent",
+        "securityContext": {
+          "runAsUser": 1000,
+          "runAsGroup": 1000,
+          "readOnlyRootFilesystem": true,
+          "allowPrivilegeEscalation": false
+        }
+      }
+    ],
+    "containers": [
+      {
+        "name": "jenkins",
+        "image": "registry.moslrn.net/dh/jenkins/jenkins:2.440.2-jdk17",
+        "args": ["--httpPort=8080"],
+        "ports": [
+          {
+            "name": "http",
+            "containerPort": 8080,
+            "protocol": "TCP"
+          },
+          {
+            "name": "agent-listener",
+            "containerPort": 50000,
+            "protocol": "TCP"
+          }
+        ],
+        "env": [
+          {
+            "name": "HOST_IP",
+            "valueFrom": {
+              "fieldRef": {
+                "apiVersion": "v1",
+                "fieldPath": "status.hostIP"
+              }
+            }
+          },
+          {
+            "name": "SECRETS",
+            "value": "/run/secrets/additional"
+          },
+          {
+            "name": "POD_NAME",
+            "valueFrom": {
+              "fieldRef": {
+                "apiVersion": "v1",
+                "fieldPath": "metadata.name"
+              }
+            }
+          },
+          {
+            "name": "JAVA_OPTS",
+            "value": "-Dcasc.reload.token=$(POD_NAME) "
+          },
+          {
+            "name": "JENKINS_OPTS",
+            "value": "--webroot=/var/jenkins_cache/war "
+          },
+          {
+            "name": "JENKINS_SLAVE_AGENT_PORT",
+            "value": "50000"
+          },
+          {
+            "name": "CASC_JENKINS_CONFIG",
+            "value": "/var/jenkins_home/casc_configs"
+          }
+        ],
+        "resources": {
+          "limits": {
+            "cpu": "4",
+            "memory": "4Gi"
+          },
+          "requests": {
+            "cpu": "1",
+            "memory": "2000Mi"
+          }
+        },
+        "volumeMounts": [
+          {
+            "name": "jenkins-secrets-sdprod-access-key",
+            "readOnly": true,
+            "mountPath": "/run/secrets/jenkins-secrets-sdprod-access-key",
+            "subPath": "sdprod-access-key"
+          },
+          {
+            "name": "jenkins-secrets-sdprod-secret-key",
+            "readOnly": true,
+            "mountPath": "/run/secrets/jenkins-secrets-sdprod-secret-key",
+            "subPath": "sdprod-secret-key"
+          },
+          {
+            "name": "jenkins-secrets",
+            "mountPath": "/run/secrets/additional"
+          },
+          {
+            "name": "jenkins-home",
+            "mountPath": "/var/jenkins_home"
+          },
+          {
+            "name": "jenkins-config",
+            "readOnly": true,
+            "mountPath": "/var/jenkins_config"
+          },
+          {
+            "name": "plugin-dir",
+            "mountPath": "/usr/share/jenkins/ref/plugins/"
+          },
+          {
+            "name": "sc-config-volume",
+            "mountPath": "/var/jenkins_home/casc_configs"
+          },
+          {
+            "name": "jenkins-cache",
+            "mountPath": "/var/jenkins_cache"
+          },
+          {
+            "name": "tmp-volume",
+            "mountPath": "/tmp"
+          },
+          {
+            "name": "kube-api-access-wpkbk",
+            "readOnly": true,
+            "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount"
+          }
+        ],
+        "livenessProbe": {
+          "httpGet": {
+            "path": "/login",
+            "port": "http",
+            "scheme": "HTTP"
+          },
+          "timeoutSeconds": 5,
+          "periodSeconds": 10,
+          "successThreshold": 1,
+          "failureThreshold": 5
+        },
+        "readinessProbe": {
+          "httpGet": {
+            "path": "/login",
+            "port": "http",
+            "scheme": "HTTP"
+          },
+          "timeoutSeconds": 5,
+          "periodSeconds": 10,
+          "successThreshold": 1,
+          "failureThreshold": 3
+        },
+        "startupProbe": {
+          "httpGet": {
+            "path": "/login",
+            "port": "http",
+            "scheme": "HTTP"
+          },
+          "timeoutSeconds": 5,
+          "periodSeconds": 10,
+          "successThreshold": 1,
+          "failureThreshold": 12
+        },
+        "terminationMessagePath": "/dev/termination-log",
+        "terminationMessagePolicy": "File",
+        "imagePullPolicy": "IfNotPresent",
+        "securityContext": {
+          "runAsUser": 1000,
+          "runAsGroup": 1000,
+          "readOnlyRootFilesystem": true,
+          "allowPrivilegeEscalation": false
+        }
+      },
+      {
+        "name": "config-reload",
+        "image": "quay.io/kiwigrid/k8s-sidecar:1.15.0",
+        "env": [
+          {
+            "name": "POD_NAME",
+            "valueFrom": {
+              "fieldRef": {
+                "apiVersion": "v1",
+                "fieldPath": "metadata.name"
+              }
+            }
+          },
+          {
+            "name": "LABEL",
+            "value": "jenkins-jenkins-config"
+          },
+          {
+            "name": "FOLDER",
+            "value": "/var/jenkins_home/casc_configs"
+          },
+          {
+            "name": "NAMESPACE",
+            "value": "jenkins"
+          },
+          {
+            "name": "REQ_URL",
+            "value": "http://localhost:8080/reload-configuration-as-code/?casc-reload-token=$(POD_NAME)"
+          },
+          {
+            "name": "REQ_METHOD",
+            "value": "POST"
+          },
+          {
+            "name": "REQ_RETRY_CONNECT",
+            "value": "10"
+          }
+        ],
+        "resources": {},
+        "volumeMounts": [
+          {
+            "name": "sc-config-volume",
+            "mountPath": "/var/jenkins_home/casc_configs"
+          },
+          {
+            "name": "jenkins-home",
+            "mountPath": "/var/jenkins_home"
+          },
+          {
+            "name": "kube-api-access-wpkbk",
+            "readOnly": true,
+            "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount"
+          }
+        ],
+        "terminationMessagePath": "/dev/termination-log",
+        "terminationMessagePolicy": "File",
+        "imagePullPolicy": "IfNotPresent",
+        "securityContext": {
+          "runAsUser": 1000,
+          "runAsNonRoot": true,
+          "readOnlyRootFilesystem": true,
+          "allowPrivilegeEscalation": false
+        }
+      }
+    ],
+    "restartPolicy": "Always",
+    "terminationGracePeriodSeconds": 30,
+    "dnsPolicy": "ClusterFirst",
+    "serviceAccountName": "jenkins",
+    "serviceAccount": "jenkins",
+    "nodeName": "ip-10-10-201-95.ec2.internal",
+    "securityContext": {},
+    "imagePullSecrets": [
+      {
+        "name": "harbor"
+      }
+    ],
+    "hostname": "jenkins-0",
+    "subdomain": "jenkins",
+    "schedulerName": "default-scheduler",
+    "tolerations": [
+      {
+        "key": "node.kubernetes.io/not-ready",
+        "operator": "Exists",
+        "effect": "NoExecute",
+        "tolerationSeconds": 300
+      },
+      {
+        "key": "node.kubernetes.io/unreachable",
+        "operator": "Exists",
+        "effect": "NoExecute",
+        "tolerationSeconds": 300
+      }
+    ],
+    "priority": 0,
+    "enableServiceLinks": true,
+    "preemptionPolicy": "PreemptLowerPriority"
+  }
+}

@@ -19,6 +19,8 @@ export default defineConfig({
           "./src/components/kubernetes/sidebar/PersistentVolumeClaimSidebar",
         "./PodSidebar": "./src/components/kubernetes/sidebar/PodSidebar",
         "./SecretSidebar": "./src/components/kubernetes/sidebar/SecretSidebar",
+        "./IngressSidebar":
+          "./src/components/kubernetes/sidebar/IngressSidebar",
       },
       shared: [
         "react",

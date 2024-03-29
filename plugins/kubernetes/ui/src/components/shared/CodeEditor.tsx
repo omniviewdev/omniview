@@ -1,5 +1,5 @@
 import { type FC, useEffect, useState } from "react";
-import Editor, { DiffEditor, useMonaco, loader } from "@monaco-editor/react";
+import Editor, { DiffEditor, useMonaco } from "@monaco-editor/react";
 
 // Themes
 import GithubDark from "./themes/GithubDark";
@@ -17,6 +17,7 @@ type Props = {
 };
 
 const CodeEditor: FC<Props> = ({
+  height,
   language,
   filename,
   value,
@@ -70,16 +71,6 @@ const CodeEditor: FC<Props> = ({
     setControlledValue(value);
   };
 
-  useEffect(() => {
-    if (monaco) {
-      loader.init().then((monacoInstance) => {
-        monacoInstance.languages.typescript.javascriptDefaults.setEagerModelSync(
-          true,
-        );
-      });
-    }
-  }, [monaco]);
-
   if (diff && original && lang) {
     return (
       <DiffEditor
@@ -94,7 +85,7 @@ const CodeEditor: FC<Props> = ({
   if (lang) {
     return (
       <Editor
-        theme="vs-dark"
+        theme={lang === "nginx" ? "nginx-theme-dark" : "vs-dark"}
         language={lang}
         value={
           lang === "json"
@@ -105,7 +96,7 @@ const CodeEditor: FC<Props> = ({
         onChange={(value) => {
           handleChange(value || "");
         }}
-        height="40vh"
+        height={height ?? "100%"}
         options={{ readOnly }}
       />
     );
