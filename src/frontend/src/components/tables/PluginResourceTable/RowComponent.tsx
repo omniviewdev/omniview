@@ -6,7 +6,6 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import { type VirtualItem, type useVirtualizer } from '@tanstack/react-virtual';
-import useRightDrawer from '@/hooks/useRightDrawer';
 
 type RowComponentProps = {
   virtualizer: ReturnType<typeof useVirtualizer>;
@@ -23,10 +22,10 @@ type RowComponentProps = {
 const getUniqueKey = (row: Row<any>, uniquers: string[]) => uniquers.map(key => row.original[key]).join('-');
 
 // Import useRightDrawer or any relevant hooks/context if necessary
-const RowComponent: React.FC<RowComponentProps> = memo(({ virtualizer, virtualRow, row, resourceKey, isSelected }) => {
+const RowComponent: React.FC<RowComponentProps> = memo(({ virtualizer, virtualRow, row, isSelected }) => {
   console.log('RowComponent', row.original);
   // Assuming useRightDrawer is a hook that provides showResourceSpec function
-  const { showResourceSpec } = useRightDrawer();
+  // const { showResourceSidebar } = useRightDrawer();
 
   // Use the provided ref callback to measure items
   const ref = useCallback((node: HTMLTableRowElement) => {
@@ -51,9 +50,8 @@ const RowComponent: React.FC<RowComponentProps> = memo(({ virtualizer, virtualRo
         return (
           <td
             key={cell.id}
-            onClick={cell.column.id === 'name' ? () => {
-              showResourceSpec(resourceKey.toLowerCase(), cell.getValue() as string, row.original);
-            } : undefined}
+            // onClick={cell.column.id === 'name' ? () => {
+            // } : undefined}
             style={{
               display: 'flex',
               alignItems: 'center',

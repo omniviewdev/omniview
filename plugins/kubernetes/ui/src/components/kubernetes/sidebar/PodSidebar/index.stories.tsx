@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { PodSidebar } from "./PodSidebar";
+import { PodSidebar } from ".";
 
-import data from "./pod.mock.json";
-import ResourceDrawerContainer from "../../../stories/containers/SidebarContainer";
+import data from "./mock.json";
+import ResourceDrawerContainer from "../../../../stories/containers/SidebarContainer";
 
 // More on how to set up stories at: https://storybook.js.org/docs/writing-stories#default-export
 const meta = {

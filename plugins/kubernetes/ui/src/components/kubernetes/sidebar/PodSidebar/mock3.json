@@ -1,0 +1,268 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "name": "grafana-agent-operator-6c76c8dfbd-hzjwl",
+    "generateName": "grafana-agent-operator-6c76c8dfbd-",
+    "namespace": "monitoring",
+    "uid": "aff60279-7ac3-46ef-a9e0-adb41b3e95cc",
+    "resourceVersion": "467131868",
+    "creationTimestamp": "2024-03-22T16:17:18Z",
+    "labels": {
+      "app.kubernetes.io/instance": "grafana-agent-operator",
+      "app.kubernetes.io/name": "grafana-agent-operator",
+      "pod-template-hash": "6c76c8dfbd"
+    },
+    "annotations": {
+      "kubectl.kubernetes.io/restartedAt": "2024-02-12T21:33:21Z"
+    },
+    "ownerReferences": [
+      {
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": "grafana-agent-operator-6c76c8dfbd",
+        "uid": "b2a8f859-2faa-4b5c-b1d0-5d1a70dfc2f8",
+        "controller": true,
+        "blockOwnerDeletion": true
+      }
+    ],
+    "managedFields": [
+      {
+        "manager": "kube-controller-manager",
+        "operation": "Update",
+        "apiVersion": "v1",
+        "time": "2024-03-22T16:17:18Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:annotations": {
+              ".": {},
+              "f:kubectl.kubernetes.io/restartedAt": {}
+            },
+            "f:generateName": {},
+            "f:labels": {
+              ".": {},
+              "f:app.kubernetes.io/instance": {},
+              "f:app.kubernetes.io/name": {},
+              "f:pod-template-hash": {}
+            },
+            "f:ownerReferences": {
+              ".": {},
+              "k:{\"uid\":\"b2a8f859-2faa-4b5c-b1d0-5d1a70dfc2f8\"}": {}
+            }
+          },
+          "f:spec": {
+            "f:containers": {
+              "k:{\"name\":\"grafana-agent-operator\"}": {
+                ".": {},
+                "f:args": {},
+                "f:image": {},
+                "f:imagePullPolicy": {},
+                "f:name": {},
+                "f:resources": {},
+                "f:terminationMessagePath": {},
+                "f:terminationMessagePolicy": {}
+              }
+            },
+            "f:dnsPolicy": {},
+            "f:enableServiceLinks": {},
+            "f:restartPolicy": {},
+            "f:schedulerName": {},
+            "f:securityContext": {},
+            "f:serviceAccount": {},
+            "f:serviceAccountName": {},
+            "f:terminationGracePeriodSeconds": {}
+          }
+        }
+      },
+      {
+        "manager": "kubelet",
+        "operation": "Update",
+        "apiVersion": "v1",
+        "time": "2024-03-22T16:17:20Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:status": {
+            "f:conditions": {
+              "k:{\"type\":\"ContainersReady\"}": {
+                ".": {},
+                "f:lastProbeTime": {},
+                "f:lastTransitionTime": {},
+                "f:status": {},
+                "f:type": {}
+              },
+              "k:{\"type\":\"Initialized\"}": {
+                ".": {},
+                "f:lastProbeTime": {},
+                "f:lastTransitionTime": {},
+                "f:status": {},
+                "f:type": {}
+              },
+              "k:{\"type\":\"Ready\"}": {
+                ".": {},
+                "f:lastProbeTime": {},
+                "f:lastTransitionTime": {},
+                "f:status": {},
+                "f:type": {}
+              }
+            },
+            "f:containerStatuses": {},
+            "f:hostIP": {},
+            "f:phase": {},
+            "f:podIP": {},
+            "f:podIPs": {
+              ".": {},
+              "k:{\"ip\":\"10.10.205.175\"}": {
+                ".": {},
+                "f:ip": {}
+              }
+            },
+            "f:startTime": {}
+          }
+        },
+        "subresource": "status"
+      }
+    ],
+    "selfLink": "/api/v1/namespaces/monitoring/pods/grafana-agent-operator-6c76c8dfbd-hzjwl"
+  },
+  "status": {
+    "phase": "Running",
+    "conditions": [
+      {
+        "type": "Initialized",
+        "status": "True",
+        "lastProbeTime": null,
+        "lastTransitionTime": "2024-03-22T16:17:18Z"
+      },
+      {
+        "type": "Ready",
+        "status": "True",
+        "lastProbeTime": null,
+        "lastTransitionTime": "2024-03-22T16:17:20Z"
+      },
+      {
+        "type": "ContainersReady",
+        "status": "True",
+        "lastProbeTime": null,
+        "lastTransitionTime": "2024-03-22T16:17:20Z"
+      },
+      {
+        "type": "PodScheduled",
+        "status": "True",
+        "lastProbeTime": null,
+        "lastTransitionTime": "2024-03-22T16:17:18Z"
+      }
+    ],
+    "hostIP": "10.10.207.239",
+    "podIP": "10.10.205.175",
+    "podIPs": [
+      {
+        "ip": "10.10.205.175"
+      }
+    ],
+    "startTime": "2024-03-22T16:17:18Z",
+    "containerStatuses": [
+      {
+        "name": "grafana-agent-operator",
+        "state": {
+          "running": {
+            "startedAt": "2024-03-22T16:17:19Z"
+          }
+        },
+        "lastState": {},
+        "ready": true,
+        "restartCount": 0,
+        "image": "docker.io/grafana/agent-operator:v0.39.1",
+        "imageID": "docker.io/grafana/agent-operator@sha256:aa2a4a17b84a987d6ba8a11a251235910751645f3d8c3fcedfce562ac55aca2b",
+        "containerID": "containerd://02de57dd7155617ccc2975ad7f8db0582ff4b47ba702b83381526813c3752bfa",
+        "started": true
+      }
+    ],
+    "qosClass": "BestEffort"
+  },
+  "spec": {
+    "volumes": [
+      {
+        "name": "kube-api-access-cxmv9",
+        "projected": {
+          "sources": [
+            {
+              "serviceAccountToken": {
+                "expirationSeconds": 3607,
+                "path": "token"
+              }
+            },
+            {
+              "configMap": {
+                "name": "kube-root-ca.crt",
+                "items": [
+                  {
+                    "key": "ca.crt",
+                    "path": "ca.crt"
+                  }
+                ]
+              }
+            },
+            {
+              "downwardAPI": {
+                "items": [
+                  {
+                    "path": "namespace",
+                    "fieldRef": {
+                      "apiVersion": "v1",
+                      "fieldPath": "metadata.namespace"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "defaultMode": 420
+        }
+      }
+    ],
+    "containers": [
+      {
+        "name": "grafana-agent-operator",
+        "image": "docker.io/grafana/agent-operator:v0.39.1",
+        "args": ["--kubelet-service=default/kubelet"],
+        "resources": {},
+        "volumeMounts": [
+          {
+            "name": "kube-api-access-cxmv9",
+            "readOnly": true,
+            "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount"
+          }
+        ],
+        "terminationMessagePath": "/dev/termination-log",
+        "terminationMessagePolicy": "File",
+        "imagePullPolicy": "IfNotPresent"
+      }
+    ],
+    "restartPolicy": "Always",
+    "terminationGracePeriodSeconds": 30,
+    "dnsPolicy": "ClusterFirst",
+    "serviceAccountName": "grafana-agent-operator",
+    "serviceAccount": "grafana-agent-operator",
+    "nodeName": "ip-10-10-207-239.ec2.internal",
+    "securityContext": {},
+    "schedulerName": "default-scheduler",
+    "tolerations": [
+      {
+        "key": "node.kubernetes.io/not-ready",
+        "operator": "Exists",
+        "effect": "NoExecute",
+        "tolerationSeconds": 300
+      },
+      {
+        "key": "node.kubernetes.io/unreachable",
+        "operator": "Exists",
+        "effect": "NoExecute",
+        "tolerationSeconds": 300
+      }
+    ],
+    "priority": 0,
+    "enableServiceLinks": true,
+    "preemptionPolicy": "PreemptLowerPriority"
+  }
+}

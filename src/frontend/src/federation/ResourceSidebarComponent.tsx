@@ -3,7 +3,6 @@ import React from 'react';
 // material-ui
 import Chip from '@mui/joy/Chip';
 import CircularProgress from '@mui/joy/CircularProgress';
-import DialogContent from '@mui/joy/DialogContent';
 import Divider from '@mui/joy/Divider';
 import IconButton from '@mui/joy/IconButton';
 import Stack from '@mui/joy/Stack';
@@ -27,6 +26,7 @@ import { LuX } from 'react-icons/lu';
 // third-party
 import { stringify } from 'yaml';
 import MonacoEditor from '@monaco-editor/react';
+import { Box } from '@mui/joy';
 
 type Props = {
   pluginID: string;
@@ -89,6 +89,7 @@ const ResourceDrawerContainer: React.FC<Props> = ({
         flexDirection: 'column',
         gap: 1,
         minHeight: '100%',
+        maxHeight: '100%',
         overflow: 'auto',
       }}
     >
@@ -104,10 +105,11 @@ const ResourceDrawerContainer: React.FC<Props> = ({
         </Stack>
       </Stack>
       <Divider />
-      <DialogContent
+      <Box
         sx={{
           gap: 2,
           p: 0.5,
+          flexGrow: 1,
           overflowY: 'auto',
           maxWidth: '100%',
           overflowX: 'hidden',
@@ -120,7 +122,7 @@ const ResourceDrawerContainer: React.FC<Props> = ({
         }}
       >
         <ResourceSidebarComponent plugin={pluginID} resource={resourceKey} data={resource.data.result} />
-      </DialogContent>
+      </Box>
     </Sheet>
   );
 };
@@ -152,6 +154,7 @@ const ResourceSidebarComponent: React.FC<ResourceSidebarComponentProps> = ({ plu
       <MonacoEditor
         defaultLanguage='yaml'
         theme='vs-dark'
+        height='calc(100vh - 84px)'
         value={stringify(data, null, 2)}
         options={{
           readOnly: true,

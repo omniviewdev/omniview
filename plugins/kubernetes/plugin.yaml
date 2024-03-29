@@ -46,3 +46,7 @@ components:
       plugin: kubernetes
       area: SIDEBAR
       resources: ["core::v1::ConfigMap"]
+    - name: IngressSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["networking::v1::Ingress"]

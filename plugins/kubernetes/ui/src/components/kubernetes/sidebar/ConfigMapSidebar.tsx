@@ -48,6 +48,7 @@ export const ConfigMapSidebar: React.FC<Props> = ({ data }) => {
                 children: (
                   <CodeEditor
                     value={value}
+                    height="40vh"
                     filename={`${configMap.metadata?.uid}/${key}`}
                     readOnly={true}
                   />

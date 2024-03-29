@@ -10,10 +10,11 @@ import AccordionSummary, {
   accordionSummaryClasses,
 } from "@mui/joy/AccordionSummary";
 import DynamicIcon from "../../stories/components/DynamicIcon";
-import { Chip, Typography } from "@mui/joy";
+import { Avatar, Chip, Typography } from "@mui/joy";
 
 interface Props {
   sections: Array<ExpandableSection>;
+  monospace?: boolean;
 }
 
 interface ExpandableSection {
@@ -25,6 +26,7 @@ interface ExpandableSection {
 
 export default function ExpandableSections({
   sections,
+  monospace = false,
 }: Props): React.ReactElement {
   return (
     <AccordionGroup
@@ -38,6 +40,7 @@ export default function ExpandableSections({
         },
         [`& .${accordionDetailsClasses.content}`]: {
           boxShadow: (theme) => `inset 0 1px ${theme.vars.palette.divider}`,
+          transition: "0.2s",
           [`&.${accordionDetailsClasses.expanded}`]: {
             paddingBlock: "0.25rem",
             p: "0.25rem",
@@ -54,18 +57,32 @@ export default function ExpandableSections({
               variant="soft"
               sx={{ borderRadius: "sm" }}
               startDecorator={
-                section.icon && typeof section.icon === "string" ? (
-                  <DynamicIcon name={section.icon} size={14} />
+                section.icon &&
+                (typeof section.icon === "string" ? (
+                  section.icon.startsWith("http") ? (
+                    <Avatar
+                      src={section.icon}
+                      size="sm"
+                      sx={{
+                        maxHeight: 16,
+                        maxWidth: 16,
+                        borderRadius: "2px",
+                        ml: "0px",
+                      }}
+                    />
+                  ) : (
+                    <DynamicIcon name={section.icon} size={14} />
+                  )
                 ) : (
                   section.icon
-                )
+                ))
               }
             >
               <Typography
-                fontFamily={"monospace"}
+                fontFamily={monospace ? "monospace" : "inherit"}
                 px={0.5}
                 textColor={"neutral.50"}
-                fontSize={12}
+                fontSize={monospace ? 12 : 13}
               >
                 {section.title}
               </Typography>

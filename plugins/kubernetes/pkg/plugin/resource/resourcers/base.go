@@ -73,13 +73,23 @@ func (s *KubernetesResourcerBase[T]) Get(
 	var resource runtime.Object
 	var err error
 
-	// TODO - figure out if using informer or not, for not assume we are
-	lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
-	if input.Namespace != "" {
-		nslister := lister.ByNamespace(input.Namespace)
-		resource, err = nslister.Get(input.ID)
+	informer := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Informer()
+	if !informer.HasSynced() {
+		lister := client.DynamicClient.Resource(s.GroupVersionResource())
+		if input.Namespace != "" {
+			resource, err = lister.Namespace(input.Namespace).
+				Get(context.Background(), input.ID, v1.GetOptions{})
+		} else {
+			resource, err = lister.Get(context.Background(), input.ID, v1.GetOptions{})
+		}
 	} else {
-		resource, err = lister.Get(input.ID)
+		lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
+		if input.Namespace != "" {
+			nslister := lister.ByNamespace(input.Namespace)
+			resource, err = nslister.Get(input.ID)
+		} else {
+			resource, err = lister.Get(input.ID)
+		}
 	}
 
 	if err != nil {

@@ -30,7 +30,6 @@ import {
 } from '.';
 import NamespaceSelect from '@/components/selects/NamespaceSelect';
 import { Stack, styled } from '@mui/joy';
-import useRightDrawer from '@/hooks/useRightDrawer';
 import { usePluginRouter } from '@infraview/router';
 
 type RowComponentProps = {
@@ -111,9 +110,8 @@ const Resizer: FC<ResizerProps> = ({ header, table }) => (
 );
 
 // Import useRightDrawer or any relevant hooks/context if necessary
-const RowComponent = memo(({ virtualizer, virtualRow, row, kind, isSelected }: RowComponentProps) => {
+const RowComponent = memo(({ virtualizer, virtualRow, row, isSelected }: RowComponentProps) => {
   // Assuming useRightDrawer is a hook that provides showResourceSpec function
-  const { showResourceSpec } = useRightDrawer();
 
   // Use the provided ref callback to measure items
   const ref = useCallback((node: HTMLTableRowElement) => {
@@ -138,9 +136,6 @@ const RowComponent = memo(({ virtualizer, virtualRow, row, kind, isSelected }: R
         return (
           <td
             key={cell.id}
-            onClick={cell.column.id === 'name' ? () => {
-              showResourceSpec(kind.toLowerCase(), cell.getValue() as string, row.original);
-            } : undefined}
             style={{
               display: 'flex',
               alignItems: 'center',

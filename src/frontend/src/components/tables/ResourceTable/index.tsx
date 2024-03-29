@@ -30,7 +30,6 @@ import {
 } from '@tanstack/react-table';
 import { type ObjectMeta } from 'kubernetes-types/meta/v1';
 import NamespaceSelect from '@/components/selects/NamespaceSelect';
-import useRightDrawer from '@/hooks/useRightDrawer';
 import { type Options, type UseKubernetesResult } from '@/hooks/useKubernetes';
 
 /**
@@ -60,8 +59,7 @@ export type MemoizedRowProps<T extends KubernetesResource> = {
 * whether or not the data has changed, we can use memoization checks to avoid
 * unnecessary re-renders.
 */
-export const MemoizedRow = memo(({ row, kind }: MemoizedRowProps<KubernetesResource>) => {
-  const { showResourceSpec } = useRightDrawer();
+export const MemoizedRow = memo(({ row }: MemoizedRowProps<KubernetesResource>) => {
 
   // Simplified memoization check can be done outside, based on your needs
   return (
@@ -69,9 +67,6 @@ export const MemoizedRow = memo(({ row, kind }: MemoizedRowProps<KubernetesResou
       {row.getVisibleCells().map(cell => (
         <td
           key={cell.id}
-          onClick={cell.column.id === 'name' ? () => {
-            showResourceSpec(kind.toLowerCase(), cell.getValue() as string, row.original);
-          } : undefined}
           style={{
             width: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
             textOverflow: 'ellipsis',
