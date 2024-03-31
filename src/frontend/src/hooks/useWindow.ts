@@ -10,6 +10,8 @@ export const useWindow = () => {
   React.useEffect(() => {
     GetOperatingSystem().then(os => {
       setPlatform(os);
+    }).catch(() => {
+      console.log('Failed to get OS');
     });
   }, []);
 
@@ -50,7 +52,9 @@ export const useWindow = () => {
         setIsFullscreen(await WindowIsFullscreen());
       }
 
-      checkFullscreen();
+      checkFullscreen().catch(() => {
+        console.log('Failed to check fullscreen');
+      });
     },
     500,
     [windowSize], // Use the state here instead of window properties directly.

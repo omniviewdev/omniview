@@ -1,0 +1,176 @@
+{
+  "apiVersion": "networking.k8s.io/v1",
+  "kind": "Ingress",
+  "metadata": {
+    "name": "ptsi-messaging-api-external",
+    "namespace": "ptsi",
+    "uid": "6c6f262c-4536-4d17-a093-516fbcf87335",
+    "resourceVersion": "436018527",
+    "generation": 1,
+    "creationTimestamp": "2022-08-29T20:16:49Z",
+    "labels": {
+      "app.kubernetes.io/instance": "ptsi-messaging",
+      "app.kubernetes.io/managed-by": "Helm",
+      "app.kubernetes.io/name": "ptsi-messaging-api",
+      "app.kubernetes.io/version": "0.0.25-rc.v2fc4e33",
+      "helm.sh/chart": "ptsi-messaging-0.0.25"
+    },
+    "annotations": {
+      "alb.ingress.kubernetes.io/group.name": "ptsi-prd-external",
+      "alb.ingress.kubernetes.io/group.order": "400",
+      "alb.ingress.kubernetes.io/healthcheck-path": "/api",
+      "alb.ingress.kubernetes.io/listen-ports": "[{\"HTTP\": 80}, {\"HTTPS\": 443}]",
+      "alb.ingress.kubernetes.io/load-balancer-attributes": "idle_timeout.timeout_seconds=600",
+      "alb.ingress.kubernetes.io/load-balancer-name": "ptsi-prd-external",
+      "alb.ingress.kubernetes.io/scheme": "internet-facing",
+      "alb.ingress.kubernetes.io/security-groups": "prd-cluster-alb-external",
+      "alb.ingress.kubernetes.io/ssl-redirect": "443",
+      "alb.ingress.kubernetes.io/target-group-attributes": "deregistration_delay.timeout_seconds=60",
+      "alb.ingress.kubernetes.io/target-type": "ip",
+      "kubernetes.io/ingress.class": "alb",
+      "meta.helm.sh/release-name": "ptsi-messaging",
+      "meta.helm.sh/release-namespace": "ptsi"
+    },
+    "finalizers": ["group.ingress.k8s.aws/ptsi-prd-external"],
+    "managedFields": [
+      {
+        "manager": "controller",
+        "operation": "Update",
+        "apiVersion": "networking.k8s.io/v1",
+        "time": "2022-08-29T20:16:57Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:finalizers": {
+              ".": {},
+              "v:\"group.ingress.k8s.aws/ptsi-prd-external\"": {}
+            }
+          }
+        }
+      },
+      {
+        "manager": "controller",
+        "operation": "Update",
+        "apiVersion": "networking.k8s.io/v1",
+        "time": "2022-08-29T20:17:00Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:status": {
+            "f:loadBalancer": {
+              "f:ingress": {}
+            }
+          }
+        },
+        "subresource": "status"
+      },
+      {
+        "manager": "helm",
+        "operation": "Update",
+        "apiVersion": "networking.k8s.io/v1",
+        "time": "2024-03-26T18:03:53Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:annotations": {
+              ".": {},
+              "f:alb.ingress.kubernetes.io/group.name": {},
+              "f:alb.ingress.kubernetes.io/group.order": {},
+              "f:alb.ingress.kubernetes.io/healthcheck-path": {},
+              "f:alb.ingress.kubernetes.io/listen-ports": {},
+              "f:alb.ingress.kubernetes.io/load-balancer-attributes": {},
+              "f:alb.ingress.kubernetes.io/load-balancer-name": {},
+              "f:alb.ingress.kubernetes.io/scheme": {},
+              "f:alb.ingress.kubernetes.io/security-groups": {},
+              "f:alb.ingress.kubernetes.io/ssl-redirect": {},
+              "f:alb.ingress.kubernetes.io/target-group-attributes": {},
+              "f:alb.ingress.kubernetes.io/target-type": {},
+              "f:kubernetes.io/ingress.class": {},
+              "f:meta.helm.sh/release-name": {},
+              "f:meta.helm.sh/release-namespace": {}
+            },
+            "f:labels": {
+              ".": {},
+              "f:app.kubernetes.io/instance": {},
+              "f:app.kubernetes.io/managed-by": {},
+              "f:app.kubernetes.io/name": {},
+              "f:app.kubernetes.io/version": {},
+              "f:helm.sh/chart": {}
+            }
+          },
+          "f:spec": {
+            "f:rules": {}
+          }
+        }
+      }
+    ],
+    "selfLink": "/apis/networking.k8s.io/v1/namespaces/ptsi/ingresses/ptsi-messaging-api-external"
+  },
+  "status": {
+    "loadBalancer": {
+      "ingress": [
+        {
+          "hostname": "ptsi-prd-external-1500176497.us-east-1.elb.amazonaws.com"
+        }
+      ]
+    }
+  },
+  "spec": {
+    "rules": [
+      {
+        "host": "chat.protechskillsinstitute.org",
+        "http": {
+          "paths": [
+            {
+              "path": "/api",
+              "pathType": "Prefix",
+              "backend": {
+                "service": {
+                  "name": "ptsi-messaging-api",
+                  "port": {
+                    "name": "http"
+                  }
+                }
+              }
+            },
+            {
+              "path": "/socket.io",
+              "pathType": "Prefix",
+              "backend": {
+                "service": {
+                  "name": "ptsi-messaging-api",
+                  "port": {
+                    "name": "http"
+                  }
+                }
+              }
+            },
+            {
+              "path": "/health",
+              "pathType": "Prefix",
+              "backend": {
+                "service": {
+                  "name": "ptsi-messaging-api",
+                  "port": {
+                    "name": "http"
+                  }
+                }
+              }
+            },
+            {
+              "path": "/metrics",
+              "pathType": "Prefix",
+              "backend": {
+                "service": {
+                  "name": "ptsi-messaging-api",
+                  "port": {
+                    "name": "http"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

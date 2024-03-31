@@ -1,0 +1,37 @@
+{
+  "apiVersion": "v1",
+  "kind": "Namespace",
+  "metadata": {
+    "name": "kube-system",
+    "uid": "8ea4f5ce-b47d-4490-86a9-98354f188c0c",
+    "resourceVersion": "344586023",
+    "creationTimestamp": "2022-03-06T01:58:56Z",
+    "labels": {
+      "kubernetes.io/metadata.name": "kube-system"
+    },
+    "managedFields": [
+      {
+        "manager": "kube-apiserver",
+        "operation": "Update",
+        "apiVersion": "v1",
+        "time": "2022-03-06T01:58:56Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:labels": {
+              ".": {},
+              "f:kubernetes.io/metadata.name": {}
+            }
+          }
+        }
+      }
+    ],
+    "selfLink": "/api/v1/namespaces/kube-system"
+  },
+  "status": {
+    "phase": "Active"
+  },
+  "spec": {
+    "finalizers": ["kubernetes"]
+  }
+}

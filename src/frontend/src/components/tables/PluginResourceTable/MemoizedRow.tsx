@@ -24,7 +24,7 @@ export const MemoizedRow = memo(({ pluginID, connectionID, row, kind }: Memoized
 
   // Simplified memoization check can be done outside, based on your needs
   return (
-    <tr style={{ cursor: 'pointer' }} >
+    <tr style={{ cursor: 'pointer', WebkitUserSelect: 'text' }} >
       {row.getVisibleCells().map(cell => (
         <td
           key={cell.id}

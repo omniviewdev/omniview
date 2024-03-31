@@ -115,41 +115,41 @@ func (s *KubernetesResourcerBase[T]) List(
 	result := make(map[string]interface{})
 
 	// if the informer isn't synced yet, do a normal call while the informer catches up
-	informer := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Informer()
-	if !informer.HasSynced() {
-		lister := client.DynamicClient.Resource(s.GroupVersionResource())
-		resources, err := lister.List(context.Background(), v1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-
-		for _, r := range resources.Items {
-			var obj map[string]interface{}
-			p := r
-			obj, err = runtime.DefaultUnstructuredConverter.ToUnstructured(&p)
-			if err != nil {
-				return nil, err
-			}
-			res := unstructured.Unstructured{Object: obj}
-			result[res.GetName()] = obj
-		}
-	} else {
-		lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
-		resources, err := lister.List(labels.Everything())
-		if err != nil {
-			return nil, err
-		}
-
-		for _, r := range resources {
-			var obj map[string]interface{}
-			obj, err = runtime.DefaultUnstructuredConverter.ToUnstructured(r)
-			if err != nil {
-				return nil, err
-			}
-			res := unstructured.Unstructured{Object: obj}
-			result[res.GetName()] = obj
-		}
+	// informer := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Informer()
+	// if !informer.HasSynced() {
+	// 	lister := client.DynamicClient.Resource(s.GroupVersionResource())
+	// 	resources, err := lister.List(context.Background(), v1.ListOptions{})
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	//
+	// 	for _, r := range resources.Items {
+	// 		var obj map[string]interface{}
+	// 		p := r
+	// 		obj, err = runtime.DefaultUnstructuredConverter.ToUnstructured(&p)
+	// 		if err != nil {
+	// 			return nil, err
+	// 		}
+	// 		res := unstructured.Unstructured{Object: obj}
+	// 		result[res.GetName()] = obj
+	// 	}
+	// } else {
+	lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
+	resources, err := lister.List(labels.Everything())
+	if err != nil {
+		return nil, err
 	}
+
+	for _, r := range resources {
+		var obj map[string]interface{}
+		obj, err = runtime.DefaultUnstructuredConverter.ToUnstructured(r)
+		if err != nil {
+			return nil, err
+		}
+		res := unstructured.Unstructured{Object: obj}
+		result[res.GetName()] = obj
+	}
+	//}
 
 	return &pkgtypes.ListResult{Success: true, Result: result}, nil
 }

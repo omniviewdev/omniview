@@ -1,3 +1,4 @@
+/* eslint @typescript-eslint/naming-convention: 0 */  // firing on the route objects
 import { Outlet, type RouteObject } from 'react-router-dom';
 
 import CoreLayout from './layouts/core/main/CoreLayout';
@@ -64,7 +65,7 @@ import { RouterErrorBoundary } from './ErrorBoundary';
  * TODO - this will be moved into the plugin itself
  * once the plugin system is in place.
  */
-export const KubernetesPluginRoutes = [
+export const KubernetesPluginRoutes: RouteObject[] = [
   {
     path: '',
     Component: Clusters,

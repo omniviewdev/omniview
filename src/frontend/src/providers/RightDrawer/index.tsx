@@ -16,47 +16,67 @@ type RightDrawerProviderProps = {
 };
 
 const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) => {
+  // TODO - calculate these based on window width
+  const minWidth = 600;
+  const maxWidth = window.innerWidth - 359;
+  const initialWidth = 800;
+
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [content, setContent] = useState<ReactNode>(<React.Fragment />);
+
   const theme = useTheme();
-
-  const minVw = 30;
-  const maxVw = 80;
-
-  // State for drag operation
   const [isDragging, setIsDragging] = useState(false);
-  const [drawerWidth, setDrawerWidth] = useState('40vw');
 
-  // Ref for the sidebar to calculate changes in width
-  const sidebarRef = useRef(null);
-  const dragHandleRef = useRef(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const dragHandleRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Handle the double click separately from the drag to prevent shakiness
+   */
+  const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!sidebarRef.current) return;
+
+    // if double click, reset height
+    if (e.detail === 2) {
+      // if already at initial width, set to max width
+      if (sidebarRef.current.style.width === initialWidth + 'px') {
+        sidebarRef.current.style.width = maxWidth + 'px';
+      } else if (sidebarRef.current.style.width === maxWidth + 'px') {
+        sidebarRef.current.style.width = initialWidth + 'px';
+      } else {
+        sidebarRef.current.style.width = initialWidth + 'px';
+      }
+    }
+  }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     setIsDragging(true);
     e.preventDefault(); // Prevent text selection during drag
   }, []);
 
+  // don't commit the width directly until mouse up, otherwise we'll suffer state sync
+  // lag becoming visible
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging || !sidebarRef.current) return;
+
     // Calculate the remaining viewport width to the right of the mouse cursor in pixels
-    const remainingWidthPx = window.innerWidth - e.clientX;
-    // Convert this width to vw units
-    const widthVw = (remainingWidthPx / window.innerWidth) * 100;
+    const newWidth = window.innerWidth - e.clientX;
+    
     // Clamp the width between min and max values
-    if (widthVw < minVw) {
-      setDrawerWidth(minVw + 'vw');
+    if (newWidth < minWidth) {
+      sidebarRef.current.style.width = minWidth + 'px';
       return;
-    } else if (widthVw > maxVw) {
-      setDrawerWidth(maxVw + 'vw');
+    } else if (newWidth > maxWidth) {
+      sidebarRef.current.style.width = maxWidth + 'px';
       return;
     }
 
-    setDrawerWidth(widthVw + 'vw');
+    sidebarRef.current.style.width = newWidth + 'px';
   }, [isDragging]);
 
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+  // const handleMouseUp = useCallback(() => {
+  //   setIsDragging(false);
+  // }, []);
 
   React.useEffect(() => {
     const handleMouseUpGlobal = () => {
@@ -109,18 +129,20 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
         ref={sidebarRef}
         variant='outlined'
         sx={{
-          borderRadius: 'md',
-          width: drawerWidth,
+          borderColor: 'divider',
+          borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 12px 12px 2px' : 'md',
+          width: initialWidth,
           bgcolor: 'background.surface',
           p: 0,
           position: 'absolute',
-          top: 4,
-          right: 4,
-          bottom: 4,
+          top: 0,
+          right: 0,
+          bottom: 0,
           zIndex: 1300,
-          minHeight: 'calc(100vh - 8px)',
+          minHeight: 'calc(100vh)',
           transition: 'transform 0.3s ease',
-          transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+          transform: isOpen ? 'translateX(0)' : 'translateX(110%)',
+          overflow: 'hidden',
         }}
       >
         {content}
@@ -134,11 +156,11 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
             width: '10px', // This is the width of the draggable area
             cursor: 'ew-resize',
             borderLeft: `4px solid ${theme.palette.primary[400]}`,
-            borderRadius: '6px 0px 0px 6px',
+            borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 0px 0px 2px' : '6px 0px 0px 6px',
             opacity: isDragging ? 0.5 : 0,
           }}
           onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
+          onClick={handleClick}
         />
       </Sheet>
     </RightDrawerContext.Provider>

@@ -25,8 +25,8 @@ export default function CoreLayout() {
             display: 'flex',
             flexDirection: 'column',
             minWidth: 0,
-            height: 'calc(100dvh - var(--CoreLayoutHeader-height))',
-            maxHeight: 'calc(100dvh - var(--CoreLayoutHeader-height))',
+            height: 'calc(100dvh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height))',
+            maxHeight: 'calc(100dvh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height))',
             overflow: 'auto',
             gap: 1,
           }}

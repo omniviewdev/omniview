@@ -137,10 +137,16 @@ export default function ResourceTableView(): React.ReactElement {
           <NavMenu selected={selected} onSelect={setSelected} size='sm' items={grouped} scrollable />
         </Stack>
       </Layout.SideNav>
-      <Layout.Main p={1} gap={2}>
+      <Layout.Main
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
         {selected && (
           <ResourceTable resourceKey={selected} pluginID={pluginID} connectionID={connectionID} />
         )}
+        <Layout.BottomDrawer />
       </Layout.Main>
     </Layout.Root>
   );

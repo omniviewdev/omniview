@@ -4,7 +4,6 @@ import React from "react";
 import Chip from "@mui/joy/Chip";
 import Grid from "@mui/joy/Grid";
 import Stack from "@mui/joy/Stack";
-import Sheet from "@mui/joy/Sheet";
 import Typography from "@mui/joy/Typography";
 
 // types
@@ -86,33 +85,27 @@ const RuleInfo: React.FC<InfoSectionProps> = ({ obj }) => {
   return (
     <Card title="Rules" icon="LuNetwork">
       {obj.spec?.rules?.map((rule) => (
-        <Sheet
-          variant="soft"
-          key={rule.host}
-          sx={{ p: 0.5, borderRadius: "sm" }}
-        >
-          <Stack direction="column" spacing={0}>
-            <Chip
-              sx={{ borderRadius: "sm" }}
-              variant="outlined"
-              onClick={() =>
-                rule.host &&
-                BrowserOpenURL(
-                  rule.host.startsWith("http")
-                    ? rule.host
-                    : "https://" + rule.host,
-                )
-              }
-            >
-              {rule.host}
-            </Chip>
-            {rule.http?.paths ? (
-              <RuleTable rule={rule} />
-            ) : (
-              <Typography level="body-sm">No paths defined</Typography>
-            )}
-          </Stack>
-        </Sheet>
+        <Stack direction="column" spacing={1} p={1}>
+          <Chip
+            sx={{ px: 1, borderRadius: "sm" }}
+            variant="outlined"
+            onClick={() =>
+              rule.host &&
+              BrowserOpenURL(
+                rule.host.startsWith("http")
+                  ? rule.host
+                  : "https://" + rule.host,
+              )
+            }
+          >
+            {rule.host}
+          </Chip>
+          {rule.http?.paths ? (
+            <RuleTable rule={rule} />
+          ) : (
+            <Typography level="body-sm">No paths defined</Typography>
+          )}
+        </Stack>
       ))}
     </Card>
   );

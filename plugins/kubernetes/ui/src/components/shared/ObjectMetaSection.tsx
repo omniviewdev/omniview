@@ -1,7 +1,10 @@
 import React from "react";
 
 // material-ui
+import Box from "@mui/joy/Box";
 import Card from "@mui/joy/Card";
+import CardContent from "@mui/joy/CardContent";
+import Divider from "@mui/joy/Divider";
 import Grid from "@mui/joy/Grid";
 import Stack from "@mui/joy/Stack";
 import Typography from "@mui/joy/Typography";
@@ -16,7 +19,9 @@ import AccordionSummary, {
 
 // types
 import { ObjectMeta } from "kubernetes-types/meta/v1";
-import { Box, CardContent, Divider } from "@mui/joy";
+
+// third-party
+import { formatRelative } from "date-fns";
 
 interface Props {
   data?: ObjectMeta;
@@ -73,7 +78,14 @@ const ObjectMetaSection: React.FC<Props> = ({ data }) => {
           {data.namespace && (
             <ObjectMetaEntry title="Namespace" value={data.namespace} />
           )}
-          <ObjectMetaEntry title="Created" value={data.creationTimestamp} />
+          <ObjectMetaEntry
+            title="Created"
+            value={
+              data.creationTimestamp
+                ? formatRelative(new Date(data.creationTimestamp), new Date())
+                : undefined
+            }
+          />
           <ObjectMetaEntry title="Version" value={data.resourceVersion} />
         </CardContent>
       </Card>

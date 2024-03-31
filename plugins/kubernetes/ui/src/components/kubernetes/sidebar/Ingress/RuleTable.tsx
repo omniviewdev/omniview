@@ -24,23 +24,35 @@ export const RuleTable: React.FC<Props> = ({ rule }) => {
   };
 
   return (
-    <Table aria-label="rules table">
+    <Table
+      aria-label="rules table"
+      sx={{
+        "--TableCell-paddingY": "0rem",
+      }}
+    >
       <thead>
         <tr>
-          <th>Path</th>
-          <th style={{ width: "150px" }}>Type</th>
-          <th>Target</th>
+          <th style={{ height: "30px", paddingBottom: "6px" }}>Path</th>
+          <th style={{ height: "30px", paddingBottom: "6px", width: "150px" }}>
+            Type
+          </th>
+          <th style={{ height: "30px", paddingBottom: "6px" }}>Target</th>
         </tr>
       </thead>
       <tbody>
         {rule.http?.paths.map((path) => (
-          <tr>
+          <tr
+            style={{
+              padding: "0.5rem",
+            }}
+          >
             <td
               style={{
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 cursor: "pointer",
+                height: "1.5rem",
               }}
               onClick={() => handleLinkClick(rule.host, path.path)}
             >
@@ -64,16 +76,16 @@ const IngressBackendChip: React.FC<{ backend: IngressBackend }> = ({
     return (
       backend.service.port && (
         <Chip
-          startDecorator={
+          endDecorator={
             <Sheet variant="soft" sx={{ borderRadius: "sm", px: 1 }}>
-              <Typography level="body-sm">{backend.service.name}</Typography>
+              <Typography level="body-xs">{backend.service.name}</Typography>
             </Sheet>
           }
           sx={{ borderRadius: "sm", p: 0.25 }}
           size="sm"
           variant="outlined"
         >
-          <Typography level="body-sm" px={1}>
+          <Typography level="body-xs" px={1}>
             {backend.service.port.number ?? backend.service.port.name}
           </Typography>
         </Chip>

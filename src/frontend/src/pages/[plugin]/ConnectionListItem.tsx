@@ -113,11 +113,6 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
     }
 
     const now = new Date();
-    console.log({
-      refreshTime: refreshTime.getTime() + expiry_time,
-      now: now.getTime(),
-      isConnected: (refreshTime.getTime() + expiry_time) > now.getTime(),
-    });
     return (refreshTime.getTime() + expiry_time) > now.getTime();
   };
 
