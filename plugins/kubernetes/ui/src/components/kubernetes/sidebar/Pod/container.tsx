@@ -149,14 +149,16 @@ const ContainerSection: React.FC<Props> = (obj) => {
             />
           </Grid>
         )}
-        <Grid xs={12}>
-          <DetailsCard
-            title="Ports"
-            icon="LuNetwork"
-            titleSize="sm"
-            data={portsData}
-          />
-        </Grid>
+        {obj.container.ports && (
+          <Grid xs={12}>
+            <DetailsCard
+              title="Ports"
+              icon="LuNetwork"
+              titleSize="sm"
+              data={portsData}
+            />
+          </Grid>
+        )}
         {obj.container.env && (
           <Grid xs={12}>
             <DetailsCard

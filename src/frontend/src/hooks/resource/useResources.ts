@@ -94,7 +94,8 @@ export const useResources = ({
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
-  const queryKey = ['RESOURCE', pluginID, connectionID, resourceKey];
+  const queryKey = [pluginID, connectionID, resourceKey, namespaces, 'list'];
+  const getResourceKey = (id: string, namespace: string) => [pluginID, connectionID, resourceKey, namespace, id];
 
   // === Mutations === //
 
@@ -156,9 +157,18 @@ export const useResources = ({
   const onResourceAdd = React.useCallback((newResource: AddPayload) => {
     queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
       return produce(oldData, (draft) => {
+        if (!draft) {
+          draft = types.ListResult.createFrom({
+            result: {},
+            success: true,
+            pagination: {}, 
+          });
+        }
+
         draft.result[newResource.id] = newResource.data;
       });
     });
+    queryClient.setQueryData(getResourceKey(newResource.id, newResource.namespace), { result:  newResource.data });
   }, []);
 
   /**
@@ -167,9 +177,18 @@ export const useResources = ({
   const onResourceUpdate = React.useCallback((updateEvent: UpdatePayload) => {
     queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
       return produce(oldData, (draft) => { 
+        if (!draft) {
+          draft = types.ListResult.createFrom({
+            result: {},
+            success: true,
+            pagination: {}, 
+          });
+        }
+
         draft.result[updateEvent.id] = updateEvent.newData;
       });
     });
+    queryClient.setQueryData(getResourceKey(updateEvent.id, updateEvent.namespace), { result: updateEvent.newData });
   }, []);
 
   /**
@@ -178,10 +197,15 @@ export const useResources = ({
   const onResourceDelete = React.useCallback((deletedResource: DeletePayload) => {
     queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
       return produce(oldData, (draft) => { 
+        if (!draft) {
+          return;
+        }
         /* eslint-disable-next-line */
         delete draft.result[deletedResource.id];
       });
     });
+    // TODO - don't delete yet, just set to undefined
+    // queryClient.setQueryData(getResourceKey(deletedResource.id, deletedResource.namespace), undefined);
   }, []);
 
   // *Only on mount*, we want subscribe to new resources, updates and deletes

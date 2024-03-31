@@ -17,16 +17,18 @@ import useResource from '@/hooks/resource/useResource';
 import useResourceType from '@/hooks/resource/useResourceType';
 
 // types
-import { ui } from '@api/models';
+import { types, ui } from '@api/models';
 
 // icons
 import Icon from '@/components/icons/Icon';
-import { LuX } from 'react-icons/lu';
+import { LuFileCode, LuFileDiff, LuList, LuPencil, LuRotateCw, LuX } from 'react-icons/lu';
 
 // third-party
-import { stringify } from 'yaml';
-import MonacoEditor from '@monaco-editor/react';
-import { Box } from '@mui/joy';
+import { parse, stringify } from 'yaml';
+import MonacoEditor, { DiffEditor } from '@monaco-editor/react';
+import { Box, Button, ToggleButtonGroup } from '@mui/joy';
+import { useSnackbar } from '@/providers/SnackbarProvider';
+import useResourceSearch from '@/hooks/resource/useResourceSearch';
 
 type Props = {
   pluginID: string;
@@ -65,8 +67,38 @@ const ResourceDrawerContainer: React.FC<Props> = ({
   namespace,
   onClose,
 }) => {
-  const { resource } = useResource({ pluginID, connectionID, resourceKey, resourceID, namespace });
+  const [view, setView] = React.useState<string>('view');
+
+  const { resource, update } = useResource({ pluginID, connectionID, resourceKey, resourceID, namespace });
   const { resourceType } = useResourceType({ pluginID, resourceKey });
+
+  /**
+  * Update the resource
+  */
+  const onResourceUpdate = async (data: Record<string, unknown>) => {
+    const input = types.UpdateInput.createFrom({
+      input: data,
+      params: {},
+      id: resourceID,
+      namespace: namespace,
+    });
+    try {
+      const result = await update(input);
+      console.log(result);
+      onClose();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      console.log('done');
+    }
+  };
+
+  /**
+  * Cancel the resource update
+  */
+  const onResourceCancel = () => {
+    onClose();
+  };
 
   if (resource.isLoading || resourceType.isLoading) {
     return (
@@ -84,20 +116,38 @@ const ResourceDrawerContainer: React.FC<Props> = ({
     <Sheet
       sx={{
         borderRadius: 'md',
-        p: 1,
+        p: 0.5,
         display: 'flex',
         flexDirection: 'column',
-        gap: 1,
+        gap: 0.5,
         minHeight: '100%',
         maxHeight: '100%',
         overflow: 'auto',
       }}
     >
-      <Stack direction="row" alignItems="center" justifyContent={'space-between'}>
+      <Stack pr={0.5} direction="row" alignItems="center" justifyContent={'space-between'}>
         <Chip size="lg" variant="plain" sx={{ borderRadius: 'sm' }}>
           <Typography sx={{ flexGrow: 1 }}>{resourceID}</Typography>
         </Chip>
         <Stack direction="row" gap={1}>
+        </Stack>
+        <Stack direction="row" gap={1}>
+          <ToggleButtonGroup
+            size='sm'
+            value={view}
+            onChange={(_event, newView) => {
+              if (newView) {
+                setView(newView);
+              }
+            }}
+          >
+            <IconButton value="view">
+              <LuList />
+            </IconButton>
+            <IconButton value="edit">
+              <LuPencil />
+            </IconButton>
+          </ToggleButtonGroup>
           <ResourceDrawerDecorator icon={resourceType.data.icon} type={resourceKey} />
           <IconButton variant="outlined" size="sm" onClick={onClose}>
             <LuX size={20} />
@@ -109,7 +159,8 @@ const ResourceDrawerContainer: React.FC<Props> = ({
         sx={{
           gap: 2,
           p: 0.5,
-          flexGrow: 1,
+          display: 'flex',
+          flex: 1,
           overflowY: 'auto',
           maxWidth: '100%',
           overflowX: 'hidden',
@@ -121,22 +172,249 @@ const ResourceDrawerContainer: React.FC<Props> = ({
           'ms-overflow-style': 'none',
         }}
       >
-        <ResourceSidebarComponent plugin={pluginID} resource={resourceKey} data={resource.data.result} />
+        <ResourceSidebarView 
+          plugin={pluginID}
+          connection={connectionID}
+          resource={resourceKey} 
+          data={resource.data.result} 
+          view={view} 
+          onSubmit={onResourceUpdate}
+          onCancel={onResourceCancel}
+        />
       </Box>
     </Sheet>
   );
 };
 
+
+type ResourceSearch = {
+  /** The resources to search through. Limited to resources within the same plugin and connection */
+  searches: ResourceSearchEntry[];
+};
+
+type ResourceSearchEntry = {
+  /**
+   * The key of the resource
+   */
+  key: string;
+
+  /**
+   * The namespaces to search for the resource
+   */
+  namespaces: string[];
+
+  /**
+   * Post-retrieve function filter to apply after the resources are found
+   */
+  postFilter?: (resource: any) => boolean;
+};
+
+type ResourceSearchResult = {
+  key: string;
+  namespaces: string[];
+  isLoading: boolean;
+  isError: boolean;
+  // eslint-disable-next-line @typescript-eslint/ban-types
+  error: Error | null;
+  data: unknown[];
+};
+
+
+type ResourceSidebarViewProps = {
+  plugin: string;
+  connection: string;
+  resource: string;
+  data: Record<string, unknown>;
+  view: string;
+  onSubmit: (data: Record<string, unknown>) => void;
+  onCancel: () => void;
+};
+
+type ResourceEditorProps = {
+  data: Record<string, unknown>;
+  datatype: 'json' | 'yaml';
+  onSubmit: (data: Record<string, unknown>) => void;
+  onCancel: () => void;
+};
+
+const PrepareResourceData = (data: Record<string, unknown>, datatype: 'json' | 'yaml') => {
+  switch (datatype) {
+    case 'json':
+      return JSON.stringify(data, null, 2);
+    case 'yaml':
+      return stringify(data, null, 2);
+  }
+};
+
+const ResourceEditor: React.FC<ResourceEditorProps> = ({ data, datatype, onSubmit, onCancel }) => {
+  const [value, setValue] = React.useState<string>(PrepareResourceData(data, datatype));
+  const [changed, setChanged] = React.useState<boolean>(false);
+  const [viewDiff, setViewDiff] = React.useState<boolean>(false);
+  const { showSnackbar } = useSnackbar();
+
+  const handleChange = (value: string | undefined) => {
+    if (!value) {
+      return;
+    }
+
+    if (!changed) {
+      // a little reduntant, but try to prevent state updates where not necessary
+      setChanged(true);
+    }
+
+    setValue(value);
+  };
+
+  const handleCancel = () => {
+    onCancel();
+  };
+
+  const handleSubmit = () => {
+    try {
+      let parsed: Record<string, unknown>;
+      switch (datatype) {
+        case 'json':
+          parsed = JSON.parse(value);
+          break;
+        case 'yaml':
+          parsed = parse(value);
+          break;
+      }
+
+      onSubmit(parsed);
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        showSnackbar({
+          message: 'Invalid Resource',
+          status: 'error',
+          icon: 'LuAlertCircle',
+          details: error.message,
+        });
+      } 
+    }
+  };
+
+  return (
+    <Stack 
+      direction="column" 
+      gap={1}
+      display='flex'
+      flex={1}
+    > 
+      {viewDiff ? (
+        <DiffEditor 
+          height='100%'
+          original={PrepareResourceData(data, datatype)}
+          theme='vs-dark'
+          modified={value}
+          language={datatype}
+          options={{
+            readOnly: true,
+            fontSize: 11,
+          }}
+        />
+      ) : (
+        <MonacoEditor
+          defaultLanguage={datatype}
+          theme='vs-dark'
+          height='100%'
+          value={value}
+          options={{
+            readOnly: false,
+            fontSize: 11,
+          }}
+          onChange={handleChange}
+        />
+      )}
+      <Stack direction="row" justifyContent={'space-between'} gap={1}>
+        <Stack direction="row" gap={1}>
+          <Button 
+            variant='soft'
+            color='primary'
+            disabled={!changed}
+            onClick={handleSubmit}
+          >Submit</Button>
+          <Button
+            variant='outlined'
+            color='neutral'
+            onClick={handleCancel}
+          >Cancel</Button>
+        </Stack>
+        <Stack direction="row" gap={1}>
+          <Button
+            variant='outlined'
+            color='warning'
+            startDecorator={<LuRotateCw size={16} />}
+            onClick={() => {
+              setValue(PrepareResourceData(data, datatype));
+              setChanged(false);
+            }}
+          >Reset Changes</Button>
+          <Button
+            variant='outlined'
+            startDecorator={viewDiff ? <LuFileCode size={18} /> : <LuFileDiff size={16} />}
+            onClick={() => {
+              setViewDiff(!viewDiff); 
+            }}
+          >{viewDiff ? 'Return to Code Editor' : 'View in Diff Editor'}</Button>
+        </Stack>
+      </Stack>
+    </Stack>
+  );
+};
+
+const ResourceSidebarView: React.FC<ResourceSidebarViewProps> = ({ plugin, connection, resource, data, view, onSubmit, onCancel }) => {
+  /**
+  * Provide a searchable function to the resource sidebar,
+  * but limit access to the underlying behavior
+  */
+  const searchFunc = (options: ResourceSearch) => useResourceSearch({ 
+    pluginID: plugin, 
+    connectionID: connection, 
+    searches: options.searches,
+  }).map((result, idx) => {
+    console.log('got the following:', result);
+    return {
+      key: options.searches[idx].key,
+      namespaces: options.searches[idx].namespaces,
+      data: result.data ?? [],
+      isLoading: result.isLoading,
+      isError: result.isError,
+      error: result.error,
+    };
+  }) || [] as ResourceSearchResult[];
+
+  switch (view) {
+    case 'view':
+      return <ResourceSidebarComponent 
+        plugin={plugin} 
+        resource={resource} 
+        data={data} 
+        onSubmit={onSubmit} 
+        onCancel={onCancel} 
+        useSearch={searchFunc}
+      />;
+    case 'edit':
+      return <ResourceEditor data={data} datatype='yaml' onSubmit={onSubmit} onCancel={onCancel} />;
+    default:
+      return <React.Fragment />;
+  }
+};
+ 
+
 type ResourceSidebarComponentProps = {
   plugin: string;
   resource: string;
   data: Record<string, unknown>;
+  onSubmit: (data: Record<string, unknown>) => void;
+  onCancel: () => void;
+  useSearch: (options: ResourceSearch) => ResourceSearchResult[];
 };
 
 /**
  * Get the dynamic resource sidebar component with the fallback
  */
-const ResourceSidebarComponent: React.FC<ResourceSidebarComponentProps> = ({ plugin, resource, data }) => {
+const ResourceSidebarComponent: React.FC<ResourceSidebarComponentProps> = ({ plugin, resource, data, onSubmit, onCancel, useSearch }) => {
   const { component } = useResourceAreaComponent(ui.GetResourceAreaComponentInput.createFrom({ plugin, resource, area: 'SIDEBAR' }));
 
   if (component.isLoading) {
@@ -168,8 +446,11 @@ const ResourceSidebarComponent: React.FC<ResourceSidebarComponentProps> = ({ plu
     <PluginComponent
       plugin={plugin}
       component={component.data.name}
-      data={data}
       fallback={<React.Fragment />}
+      data={data}
+      onSubmit={onSubmit}
+      onCancel={onCancel}
+      useSearch={useSearch}
     />
   );
 };

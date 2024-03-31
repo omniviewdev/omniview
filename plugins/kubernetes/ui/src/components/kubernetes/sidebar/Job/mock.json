@@ -1,0 +1,235 @@
+{
+  "apiVersion": "batch/v1",
+  "kind": "Job",
+  "metadata": {
+    "name": "hammer9-personify-download-cron-28528560",
+    "namespace": "ubc",
+    "uid": "53215d1d-10c4-429f-8056-cd02dcd7b636",
+    "resourceVersion": "437936139",
+    "generation": 1,
+    "creationTimestamp": "2024-03-29T12:00:00Z",
+    "labels": {
+      "controller-uid": "53215d1d-10c4-429f-8056-cd02dcd7b636",
+      "job-name": "hammer9-personify-download-cron-28528560"
+    },
+    "annotations": {
+      "batch.kubernetes.io/job-tracking": ""
+    },
+    "ownerReferences": [
+      {
+        "apiVersion": "batch/v1",
+        "kind": "CronJob",
+        "name": "hammer9-personify-download-cron",
+        "uid": "96e144f0-a5b2-46d9-b480-a78a993b9218",
+        "controller": true,
+        "blockOwnerDeletion": true
+      }
+    ],
+    "managedFields": [
+      {
+        "manager": "kube-controller-manager",
+        "operation": "Update",
+        "apiVersion": "batch/v1",
+        "time": "2024-03-29T12:00:00Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:ownerReferences": {
+              ".": {},
+              "k:{\"uid\":\"96e144f0-a5b2-46d9-b480-a78a993b9218\"}": {}
+            }
+          },
+          "f:spec": {
+            "f:backoffLimit": {},
+            "f:completionMode": {},
+            "f:completions": {},
+            "f:parallelism": {},
+            "f:suspend": {},
+            "f:template": {
+              "f:spec": {
+                "f:containers": {
+                  "k:{\"name\":\"php\"}": {
+                    ".": {},
+                    "f:args": {},
+                    "f:command": {},
+                    "f:envFrom": {},
+                    "f:image": {},
+                    "f:imagePullPolicy": {},
+                    "f:name": {},
+                    "f:resources": {},
+                    "f:securityContext": {
+                      ".": {},
+                      "f:runAsUser": {}
+                    },
+                    "f:terminationMessagePath": {},
+                    "f:terminationMessagePolicy": {},
+                    "f:volumeMounts": {
+                      ".": {},
+                      "k:{\"mountPath\":\"/var/run/php\"}": {
+                        ".": {},
+                        "f:mountPath": {},
+                        "f:name": {}
+                      },
+                      "k:{\"mountPath\":\"/var/www/private\"}": {
+                        ".": {},
+                        "f:mountPath": {},
+                        "f:name": {}
+                      }
+                    }
+                  }
+                },
+                "f:dnsPolicy": {},
+                "f:imagePullSecrets": {
+                  ".": {},
+                  "k:{\"name\":\"harbor\"}": {}
+                },
+                "f:restartPolicy": {},
+                "f:schedulerName": {},
+                "f:securityContext": {
+                  ".": {},
+                  "f:fsGroup": {},
+                  "f:runAsGroup": {},
+                  "f:runAsUser": {}
+                },
+                "f:terminationGracePeriodSeconds": {},
+                "f:volumes": {
+                  ".": {},
+                  "k:{\"name\":\"fpm-socket\"}": {
+                    ".": {},
+                    "f:emptyDir": {},
+                    "f:name": {}
+                  },
+                  "k:{\"name\":\"hammer9-private-files\"}": {
+                    ".": {},
+                    "f:name": {},
+                    "f:persistentVolumeClaim": {
+                      ".": {},
+                      "f:claimName": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "manager": "kube-controller-manager",
+        "operation": "Update",
+        "apiVersion": "batch/v1",
+        "time": "2024-03-29T12:00:17Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:status": {
+            "f:completionTime": {},
+            "f:conditions": {},
+            "f:ready": {},
+            "f:startTime": {},
+            "f:succeeded": {},
+            "f:uncountedTerminatedPods": {}
+          }
+        },
+        "subresource": "status"
+      }
+    ],
+    "selfLink": "/apis/batch/v1/namespaces/ubc/jobs/hammer9-personify-download-cron-28528560"
+  },
+  "status": {
+    "conditions": [
+      {
+        "type": "Complete",
+        "status": "True",
+        "lastProbeTime": "2024-03-29T12:00:17Z",
+        "lastTransitionTime": "2024-03-29T12:00:17Z"
+      }
+    ],
+    "startTime": "2024-03-29T12:00:00Z",
+    "completionTime": "2024-03-29T12:00:17Z",
+    "succeeded": 1,
+    "uncountedTerminatedPods": {},
+    "ready": 0
+  },
+  "spec": {
+    "parallelism": 1,
+    "completions": 1,
+    "backoffLimit": 6,
+    "selector": {
+      "matchLabels": {
+        "controller-uid": "53215d1d-10c4-429f-8056-cd02dcd7b636"
+      }
+    },
+    "template": {
+      "metadata": {
+        "creationTimestamp": null,
+        "labels": {
+          "controller-uid": "53215d1d-10c4-429f-8056-cd02dcd7b636",
+          "job-name": "hammer9-personify-download-cron-28528560"
+        }
+      },
+      "spec": {
+        "volumes": [
+          {
+            "name": "fpm-socket",
+            "emptyDir": {}
+          },
+          {
+            "name": "hammer9-private-files",
+            "persistentVolumeClaim": {
+              "claimName": "hammer9-private-files"
+            }
+          }
+        ],
+        "containers": [
+          {
+            "name": "php",
+            "image": "registry.moslrn.net/ubc/hammer9/php:0.0.206-rc.ve736aca",
+            "command": ["/bin/sh", "-c"],
+            "args": [
+              "/var/www/vendor/bin/drush hammer9:personify:ftp-download --unprocessed --source-path=$(printenv PERSONIFY_FTP_REMOTE_DIRECTORY) && /var/www/vendor/bin/drush migrate:import personify_import --update --continue-on-failure && cat /var/www/logs/personify_migrate/personify_migrate*.log"
+            ],
+            "envFrom": [
+              {
+                "secretRef": {
+                  "name": "ubc-hammer9-doppler-secrets"
+                }
+              }
+            ],
+            "resources": {},
+            "volumeMounts": [
+              {
+                "name": "fpm-socket",
+                "mountPath": "/var/run/php"
+              },
+              {
+                "name": "hammer9-private-files",
+                "mountPath": "/var/www/private"
+              }
+            ],
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "imagePullPolicy": "IfNotPresent",
+            "securityContext": {
+              "runAsUser": 82
+            }
+          }
+        ],
+        "restartPolicy": "Never",
+        "terminationGracePeriodSeconds": 30,
+        "dnsPolicy": "ClusterFirst",
+        "securityContext": {
+          "runAsUser": 82,
+          "runAsGroup": 82,
+          "fsGroup": 82
+        },
+        "imagePullSecrets": [
+          {
+            "name": "harbor"
+          }
+        ],
+        "schedulerName": "default-scheduler"
+      }
+    },
+    "completionMode": "NonIndexed",
+    "suspend": false
+  }
+}

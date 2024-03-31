@@ -1,3 +1,4 @@
+import BottomDrawer from './BottomDrawer';
 import Main from './Main';
 import Root from './Root';
 import SideDrawer from './SideDrawer';
@@ -31,4 +32,5 @@ export default {
   SideDrawer,
   SideNav,
   SidePane,
+  BottomDrawer,
 };

@@ -1,6 +1,7 @@
 import * as React from "react";
 
 // material-ui
+import Avatar from "@mui/joy/Avatar";
 import AccordionGroup from "@mui/joy/AccordionGroup";
 import Accordion from "@mui/joy/Accordion";
 import AccordionDetails, {
@@ -9,8 +10,12 @@ import AccordionDetails, {
 import AccordionSummary, {
   accordionSummaryClasses,
 } from "@mui/joy/AccordionSummary";
+import Chip from "@mui/joy/Chip";
+import Stack from "@mui/joy/Stack";
+import Typography from "@mui/joy/Typography";
+
+// project imports
 import DynamicIcon from "../../stories/components/DynamicIcon";
-import { Avatar, Chip, Typography } from "@mui/joy";
 
 interface Props {
   sections: Array<ExpandableSection>;
@@ -20,6 +25,7 @@ interface Props {
 interface ExpandableSection {
   icon?: string | React.ReactNode;
   title: string;
+  endDecorator?: React.ReactNode;
   children: React.ReactNode;
   defaultExpanded?: boolean;
 }
@@ -51,42 +57,51 @@ export default function ExpandableSections({
       {sections.map((section) => (
         <Accordion defaultExpanded={section.defaultExpanded}>
           <AccordionSummary sx={{ pl: 0.5 }}>
-            <Chip
-              size="md"
-              color="neutral"
-              variant="soft"
-              sx={{ borderRadius: "sm" }}
-              startDecorator={
-                section.icon &&
-                (typeof section.icon === "string" ? (
-                  section.icon.startsWith("http") ? (
-                    <Avatar
-                      src={section.icon}
-                      size="sm"
-                      sx={{
-                        maxHeight: 16,
-                        maxWidth: 16,
-                        borderRadius: "2px",
-                        ml: "0px",
-                      }}
-                    />
-                  ) : (
-                    <DynamicIcon name={section.icon} size={14} />
-                  )
-                ) : (
-                  section.icon
-                ))
-              }
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems={"center"}
+              justifyContent={"space-between"}
+              width={"100%"}
             >
-              <Typography
-                fontFamily={monospace ? "monospace" : "inherit"}
-                px={0.5}
-                textColor={"neutral.50"}
-                fontSize={monospace ? 12 : 13}
+              <Chip
+                size="md"
+                color="neutral"
+                variant="soft"
+                sx={{ borderRadius: "sm" }}
+                startDecorator={
+                  section.icon &&
+                  (typeof section.icon === "string" ? (
+                    section.icon.startsWith("http") ? (
+                      <Avatar
+                        src={section.icon}
+                        size="sm"
+                        sx={{
+                          maxHeight: 16,
+                          maxWidth: 16,
+                          borderRadius: "2px",
+                          ml: "0px",
+                        }}
+                      />
+                    ) : (
+                      <DynamicIcon name={section.icon} size={14} />
+                    )
+                  ) : (
+                    section.icon
+                  ))
+                }
               >
-                {section.title}
-              </Typography>
-            </Chip>
+                <Typography
+                  fontFamily={monospace ? "monospace" : "inherit"}
+                  px={0.5}
+                  textColor={"neutral.50"}
+                  fontSize={monospace ? 12 : 13}
+                >
+                  {section.title}
+                </Typography>
+              </Chip>
+              {section.endDecorator && section.endDecorator}
+            </Stack>
           </AccordionSummary>
           <AccordionDetails sx={{ p: 0 }}>{section.children}</AccordionDetails>
         </Accordion>

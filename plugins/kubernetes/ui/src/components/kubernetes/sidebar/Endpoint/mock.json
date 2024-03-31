@@ -1,0 +1,133 @@
+{
+  "apiVersion": "v1",
+  "kind": "Endpoints",
+  "metadata": {
+    "name": "grafana-agent-operated",
+    "namespace": "monitoring",
+    "uid": "a4876390-6bef-4430-9167-6e7f5f4dd5a7",
+    "resourceVersion": "467141703",
+    "creationTimestamp": "2024-02-12T21:28:24Z",
+    "labels": {
+      "app.kubernetes.io/managed-by": "grafana-agent-operator",
+      "operated-agent": "true",
+      "operator.agent.grafana.com/name": "grafana-agent",
+      "service.kubernetes.io/headless": ""
+    },
+    "managedFields": [
+      {
+        "manager": "kube-controller-manager",
+        "operation": "Update",
+        "apiVersion": "v1",
+        "time": "2024-03-22T16:32:58Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:labels": {
+              ".": {},
+              "f:app.kubernetes.io/managed-by": {},
+              "f:operated-agent": {},
+              "f:operator.agent.grafana.com/name": {},
+              "f:service.kubernetes.io/headless": {}
+            }
+          },
+          "f:subsets": {}
+        }
+      }
+    ],
+    "selfLink": "/api/v1/namespaces/monitoring/endpoints/grafana-agent-operated"
+  },
+  "subsets": [
+    {
+      "addresses": [
+        {
+          "ip": "10.10.200.222",
+          "nodeName": "ip-10-10-200-57.ec2.internal",
+          "targetRef": {
+            "kind": "Pod",
+            "namespace": "monitoring",
+            "name": "grafana-agent-logs-pqzd9",
+            "uid": "b366c868-7379-4ffd-b173-b3c24fea699f"
+          }
+        },
+        {
+          "ip": "10.10.200.225",
+          "hostname": "grafana-agent-0",
+          "nodeName": "ip-10-10-200-57.ec2.internal",
+          "targetRef": {
+            "kind": "Pod",
+            "namespace": "monitoring",
+            "name": "grafana-agent-0",
+            "uid": "22b1d889-a85b-4388-8d2b-1e21e4269cc8"
+          }
+        },
+        {
+          "ip": "10.10.202.138",
+          "nodeName": "ip-10-10-201-95.ec2.internal",
+          "targetRef": {
+            "kind": "Pod",
+            "namespace": "monitoring",
+            "name": "grafana-agent-logs-k2hpn",
+            "uid": "7db76016-f8fb-4c90-90e9-02f420e52e6f"
+          }
+        },
+        {
+          "ip": "10.10.203.183",
+          "nodeName": "ip-10-10-202-235.ec2.internal",
+          "targetRef": {
+            "kind": "Pod",
+            "namespace": "monitoring",
+            "name": "grafana-agent-logs-dtl69",
+            "uid": "f4c8a956-5b82-42c6-b976-9ec68229fc7e"
+          }
+        },
+        {
+          "ip": "10.10.203.99",
+          "nodeName": "ip-10-10-202-208.ec2.internal",
+          "targetRef": {
+            "kind": "Pod",
+            "namespace": "monitoring",
+            "name": "grafana-agent-logs-l95ft",
+            "uid": "c6fb3eb7-148e-4899-87dd-e23c543c8a29"
+          }
+        },
+        {
+          "ip": "10.10.205.126",
+          "nodeName": "ip-10-10-207-239.ec2.internal",
+          "targetRef": {
+            "kind": "Pod",
+            "namespace": "monitoring",
+            "name": "grafana-agent-logs-nz5dw",
+            "uid": "92de479e-a55b-4771-a8bd-45955bfe09e5"
+          }
+        },
+        {
+          "ip": "10.10.206.0",
+          "nodeName": "ip-10-10-204-83.ec2.internal",
+          "targetRef": {
+            "kind": "Pod",
+            "namespace": "monitoring",
+            "name": "grafana-agent-logs-r2xc7",
+            "uid": "b850d4fc-3002-4f03-a971-fd0916203a11"
+          }
+        },
+        {
+          "ip": "10.10.208.6",
+          "nodeName": "ip-10-10-208-152.ec2.internal",
+          "targetRef": {
+            "kind": "Pod",
+            "namespace": "monitoring",
+            "name": "grafana-agent-logs-n4j4w",
+            "uid": "fb2ab9c1-f5c5-4731-b340-9628dfd4363a"
+          }
+        }
+      ],
+      "ports": [
+        {
+          "name": "http-metrics",
+          "port": 8080,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ]
+}

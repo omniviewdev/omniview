@@ -8,9 +8,6 @@ import Sheet from '@mui/joy/Sheet';
 import IconButton from '@mui/joy/IconButton';
 
 // Icons
-import { LuBoxes, LuUnplug } from 'react-icons/lu';
-import { PiGraphBold } from 'react-icons/pi';
-import { useSettingsNamespace } from '@/hooks/useSettings';
 import Icon from '@/components/icons/Icon';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { Avatar } from '@mui/joy';
@@ -18,25 +15,8 @@ import { Avatar } from '@mui/joy';
 // Project imports
 import { IsImage } from '@/utils/url';
 
-const sidebarItems = [
-  {
-    name: 'explorer',
-    logo: LuBoxes,
-  },
-  {
-    name: 'plugins',
-    logo: LuUnplug,
-  },
-  {
-    name: 'graphql',
-    logo: PiGraphBold,
-  },
-];
-
 export default function CoreLayoutSidebar() {
   const { pathname } = useLocation();
-  const clouds = useSettingsNamespace('clouds');
-  const orchestrators = useSettingsNamespace('orchestrators');
   const { plugins } = usePluginManager();
 
   return (
@@ -67,6 +47,7 @@ export default function CoreLayoutSidebar() {
     >
       <GlobalStyles
         styles={{
+          // eslint-disable-next-line @typescript-eslint/naming-convention
           ':root': {
             '--CoreLayoutSidebar-width': '60px',
           },
@@ -74,33 +55,6 @@ export default function CoreLayoutSidebar() {
       />
       {/* Cluster List */}
       <List size='sm' sx={{ '--ListItem-radius': '6px', '--List-gap': '8px', '--ListItem-paddingY': '0px' }}>
-        {sidebarItems.map(item => (
-          <ListItem key={item.name}>
-            <Link to={`/${item.name}`}>
-              <IconButton variant={pathname.startsWith(`/${item.name}`) ? 'solid' : 'plain'} size='lg'>
-                <item.logo size={25} />
-              </IconButton>
-            </Link>
-          </ListItem>
-        ))}
-        {Object.values(clouds.sections).map(cloud => (
-          <ListItem key={cloud.id}>
-            <Link to={`/${cloud.id}`}>
-              <IconButton variant={pathname.startsWith(`/${cloud.id}`) ? 'solid' : 'plain'} size='lg'>
-                <Icon name={cloud.icon} size={25} />
-              </IconButton>
-            </Link>
-          </ListItem>
-        ))}
-        {Object.values(orchestrators.sections).map(orchestrator => (
-          <ListItem key={orchestrator.id}>
-            <Link to={`/${orchestrator.id}`}>
-              <IconButton variant={pathname.startsWith(`/${orchestrator.id}`) ? 'solid' : 'plain'} size='lg'>
-                <Icon name={orchestrator.icon} size={25} />
-              </IconButton>
-            </Link>
-          </ListItem>
-        ))}
         {!plugins.isLoading && plugins.data?.map(({ id, metadata }) => (
           <ListItem key={id}>
             <Link to={`/plugin/${id}`}>

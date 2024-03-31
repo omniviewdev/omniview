@@ -19,6 +19,9 @@ type Story = StoryObj<typeof meta>;
 export const Primary: Story = {
   args: {
     data,
+    onSubmit: () => {},
+    onCancel: () => {},
+    useSearch: () => [],
   },
 };
 
@@ -27,7 +30,6 @@ Primary.decorators = [
     <ResourceDrawerContainer
       type="core::v1::Secret"
       icon="LuFileKey"
-      // @ts-expect-error - arbitrary json
       title={c.args.data.metadata.name}
       open
       onClose={() => {}}

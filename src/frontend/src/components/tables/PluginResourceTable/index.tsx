@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 
 // Material-ui
 import Box from '@mui/joy/Box';
@@ -213,7 +213,7 @@ const PluginResourceTable: React.FC<Props> = ({ columns, pluginID, connectionID,
   }
 
   return (
-    <Stack direction='column' height='100%' gap={1}>
+    <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', p: 1, gap: 1, minHeight: 0 }} >
       <Stack direction='row' justifyContent={'space-between'} className='NamespaceAndSearch' sx={{ width: '100%' }}>
         <DebouncedInput
           value={search ?? ''}
@@ -230,16 +230,16 @@ const PluginResourceTable: React.FC<Props> = ({ columns, pluginID, connectionID,
         sx={{
           width: '100%',
           borderRadius: 'sm',
-          flexShrink: 1,
-          flexGrow: 1,
+          flex: 1,
           overflow: 'scroll',
+          minHeight: 0, 
           // TODO: make this a prop
-          maxHeight: 'calc(100vh - 100px)',
           // Hide the scrollbars
           '&::-webkit-scrollbar': {
             display: 'none',
           },
           scrollbarWidth: 'none',
+          WebkitUserSelect: 'none',
         }}
       >
         <Table
@@ -254,6 +254,7 @@ const PluginResourceTable: React.FC<Props> = ({ columns, pluginID, connectionID,
               'var(--joy-palette-background-level1)',
             '--TableCell-paddingY': '2px',
             '--TableCell-paddingX': '8px',
+            WebkitUserSelect: 'none',
           }}
         >
           <thead>
@@ -295,7 +296,7 @@ const PluginResourceTable: React.FC<Props> = ({ columns, pluginID, connectionID,
           </tbody>
         </Table>
       </Sheet>
-    </Stack>
+    </Box>
   );
 };
 

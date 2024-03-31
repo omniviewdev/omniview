@@ -22,6 +22,26 @@ theme:
 
 components:
   resource:
+    - name: CronJob
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["batch::v1::CronJob"]
+    - name: EndpointSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["core::v1::Endpoints"]
+    - name: IngressSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["networking::v1::Ingress"]
+    - name: JobSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["batch::v1::Job"]
+    - name: NamespaceSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["core::v1::Namespace"]
     - name: PodSidebar
       plugin: kubernetes
       area: SIDEBAR
@@ -46,7 +66,3 @@ components:
       plugin: kubernetes
       area: SIDEBAR
       resources: ["core::v1::ConfigMap"]
-    - name: IngressSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["networking::v1::Ingress"]
