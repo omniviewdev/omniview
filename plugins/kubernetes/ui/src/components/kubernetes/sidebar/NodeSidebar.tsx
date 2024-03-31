@@ -2,12 +2,14 @@ import React from "react";
 
 // material-ui
 import Stack from "@mui/joy/Stack";
+import Table from "@mui/joy/Table";
 
 // types
 import { Node } from "kubernetes-types/core/v1";
 
 // project-imports
 import ObjectMetaSection from "../../shared/ObjectMetaSection";
+import CommonCard from "../../shared/Card";
 import { Avatar, Card, CardContent, Divider, Grid, Typography } from "@mui/joy";
 import DynamicIcon from "../../../stories/components/DynamicIcon";
 import { convertKubernetesByteUnits } from "../../../utils/convert";
@@ -39,6 +41,9 @@ export const NodeSidebar: React.FC<Props> = ({ data }) => {
           </Grid>
           <Grid xs={12}>
             <EndpointsInfo node={node} />
+          </Grid>
+          <Grid xs={12}>
+            <ResourcesInfo node={node} />
           </Grid>
           {node?.metadata?.labels?.["karpenter.sh/initialized"] && (
             <Grid xs={12}>
@@ -88,6 +93,70 @@ interface NodeInfoSectionProps {
   node: Node;
 }
 
+const ResourcesInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
+  const data = [
+    {
+      name: "Capacity",
+      cpu: node.status?.capacity?.cpu,
+      memory: node.status?.capacity?.memory,
+      ephemeralStorage: node.status?.capacity?.["ephemeral-storage"],
+      pods: node.status?.capacity?.pods,
+      hugepages1Gi: node.status?.capacity?.["hugepages-1Gi"],
+      hugepages2Mi: node.status?.capacity?.["hugepages-2Mi"],
+    },
+    {
+      name: "Allocatable",
+      cpu: node.status?.allocatable?.cpu,
+      memory: node.status?.allocatable?.memory,
+      ephemeralStorage: node.status?.allocatable?.["ephemeral-storage"],
+      pods: node.status?.allocatable?.pods,
+      hugepages1Gi: node.status?.allocatable?.["hugepages-1Gi"],
+      hugepages2Mi: node.status?.allocatable?.["hugepages-2Mi"],
+    },
+  ];
+
+  return (
+    <CommonCard title="Resources" icon="LuServer">
+      <Table aria-label="resources table">
+        <thead>
+          <tr>
+            <th style={{ width: "100px" }}></th>
+            <th>CPU</th>
+            <th>Memory</th>
+            <th>Ephemeral Storage</th>
+            <th>Pods</th>
+            <th>Hugepages 1Gi</th>
+            <th>Hugepages 2Mi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((entry) => (
+            <tr>
+              <td>{entry.name}</td>
+              <td>{entry.cpu}</td>
+              <td>
+                {convertKubernetesByteUnits({
+                  from: entry.memory || "",
+                  to: "GB",
+                })}
+              </td>
+              <td>
+                {convertKubernetesByteUnits({
+                  from: entry.ephemeralStorage || "",
+                  to: "GB",
+                })}
+              </td>
+              <td>{entry.pods}</td>
+              <td>{entry.hugepages1Gi}</td>
+              <td>{entry.hugepages2Mi}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </CommonCard>
+  );
+};
+
 const HardwareInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
   const data = [
     {
@@ -121,7 +190,7 @@ const HardwareInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
       ratio: [6.5, 5.5],
     },
   ] as DetailsCardEntry[];
-  return <DetailsCard title="Hardware" icon="LuServer" data={data} />;
+  return <DetailsCard title="Hardware" icon="LuComputer" data={data} />;
 };
 
 const OSInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
