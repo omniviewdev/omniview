@@ -47,7 +47,7 @@ export default function TerminalContainer({ sessionId }: Props) {
       macOptionClickForcesSelection: true,
       scrollback: 0,
       fontSize: 13,
-      fontFamily: 'Consolas,Liberation Mono,Menlo,Courier,monospace',
+      fontFamily: '"Fira Code", courier-new, courier, monospace, "Powerline Extra Symbols"',
     });
 
     xtermRef.current = terminal;
@@ -73,7 +73,7 @@ export default function TerminalContainer({ sessionId }: Props) {
     const debouncedFit = debounce(() => {
       console.log('fitting terminal');
       fitAddon.fit();
-    }, 100);
+    }, 40);
 
     window.onresize = () => {
       fitAddon.fit();
@@ -166,9 +166,9 @@ export default function TerminalContainer({ sessionId }: Props) {
     style={{ 
       backgroundColor: 'black',
       // a bit hacky, but works
-      height: 'calc(100% - 40px)',
+      height: 'calc(100% - 28px)',
       paddingBottom: '34px',
-      paddingLeft: '10px',
+      // paddingLeft: '10px',
     }} 
   />;
 }
