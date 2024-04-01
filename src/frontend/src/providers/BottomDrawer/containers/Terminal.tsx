@@ -3,9 +3,6 @@ import { useEffect, useRef } from 'react';
 // xterm
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
-// import { CanvasAddon } from '@xterm/addon-canvas';
-// import { WebglAddon } from '@xterm/addon-webgl';
-// import { WebLinksAddon } from '@xterm/addon-web-links';
 import { debounce } from '@/utils/debounce';
 
 // project import
@@ -27,19 +24,7 @@ export default function TerminalContainer({ sessionId }: Props) {
   const terminalRef = useRef<HTMLDivElement>(null); // For the terminal container div
   const disposers = useRef<Array<() => void>>([]); // For keepin track of things we need to do when killing the terminal session
   const xtermRef = useRef<Terminal | undefined>(undefined);
-  const fitAddonRef = useRef<FitAddon | undefined>(undefined);
-
-  // const { height } = useBottomDrawer();
-  
-  useEffect(() => {
-    if (xtermRef.current === null || fitAddonRef.current === undefined) {
-      return;
-    }
-
-    console.log('fitting terminal');
-
-    fitAddonRef.current.fit();
-  }, []);
+  // const fitAddonRef = useRef<FitAddon | undefined>(undefined);
 
   console.log('rerender');
 
@@ -54,7 +39,7 @@ export default function TerminalContainer({ sessionId }: Props) {
     }
 
     // Initialize Terminal
-    const xterm = new Terminal({
+    const terminal = new Terminal({
       cursorBlink: true,
       allowProposedApi: true,
       allowTransparency: true,
@@ -65,56 +50,53 @@ export default function TerminalContainer({ sessionId }: Props) {
       fontFamily: 'Consolas,Liberation Mono,Menlo,Courier,monospace',
     });
 
-    xtermRef.current = xterm;
+    xtermRef.current = terminal;
 
     const fitAddon = new FitAddon();
-    fitAddonRef.current = fitAddon;
+    // const canvasAddon = new CanvasAddon();
+
+    terminal.open(terminalRef.current);
+
+    // fitAddonRef.current = fitAddon;
+
+    terminal.loadAddon(fitAddon);
     disposers.current.push(() => {
-      fitAddon.dispose();
+      terminal.dispose();
     });
+    // terminal.loadAddon(canvasAddon);
+    // disposers.current.push(() => {
+    //   terminal.dispose();
+    // });
 
-    // Const canvasAddon = new CanvasAddon();
-    // disposers.current.push(() => canvasAddon.dispose());
-
-    xterm.open(terminalRef.current);
-
-    xterm.loadAddon(fitAddon);
-    // Xterm.loadAddon(canvasAddon);
-
-    // xterm.focus();
-
-    // terminal.focus();
-    fitAddon.fit();
+    terminal.focus();
 
     const debouncedFit = debounce(() => {
       console.log('fitting terminal');
       fitAddon.fit();
     }, 100);
 
+    window.onresize = () => {
+      fitAddon.fit();
+    };
+
     const resizeObserver = new ResizeObserver((_val) => {
       debouncedFit();
     });
 
-    // resizeObserver.observe(terminalRef.current);
+    resizeObserver.observe(terminalRef.current);
 
-    // perform initial fit
-    // fitAddon.fit();
-
-
-    // clear the data in the terminal
-    if (xtermRef.current === undefined) {
-      return;
-    }
+    terminal.onResize((event) => {
+      var rows = event.rows;
+      var cols = event.cols;
+      SetTTYSize(sessionId, rows, cols).catch((err) => {
+        console.error('failed to set tty size', err);
+      });
+    });
 
     const eventkey = `core/terminal/${sessionId}`;
-    // xtermRef.current.clear();
 
     // Function to handle attachment logic
     const attachToSession = async () => {
-      if (xtermRef.current === undefined) {
-        return;
-      }
-
       console.log('attaching to session', sessionId);
 
       try {
@@ -122,7 +104,7 @@ export default function TerminalContainer({ sessionId }: Props) {
         // AttachToSession returns a byte array, so we need to convert it to a string
         const data = await AttachToSession(sessionId) as unknown as string;
         if (data !== null && data !== undefined) {
-          xtermRef.current?.write(Base64.toUint8Array(data));
+          terminal.write(Base64.toUint8Array(data));
         }
       } catch (e) {
         console.error('failed to attach to session', e);
@@ -132,26 +114,16 @@ export default function TerminalContainer({ sessionId }: Props) {
       runtime.EventsOn(eventkey, (data: string) => {
         console.log('received data from backend', data);
         if (data !== null && data !== undefined) {
-          xtermRef.current?.write(Base64.toUint8Array(data));
+          terminal.write(Base64.toUint8Array(data));
         }
       });
     };
-
-    const debouncedResize = debounce((rows: number, cols: number) => {
-      SetTTYSize(sessionId, rows, cols).catch((err) => {
-        console.error('failed to set tty size', err);
-      });
-    }, 1000);
 
     // Attach to the session
     attachToSession().then(() => {
       console.log('attached to session');
 
-      xtermRef.current?.onResize((size) => {
-        debouncedResize(size.rows, size.cols);
-      });
-
-      xtermRef.current?.onData(data => {
+      terminal.onData(data => {
         WriteToSession(sessionId, data)
           .then(() => {
             console.log('Data sent');
@@ -168,19 +140,18 @@ export default function TerminalContainer({ sessionId }: Props) {
 
     // Cleanup function to detach from the session and remove listeners
     return () => {
-      xterm.clear();
-      xterm.dispose();
+      // run our disposers
+      disposers.current.forEach((disposer) => {
+        disposer();
+      }); 
+
+      terminal.dispose();
 
       if (terminalRef.current !== null) {
         resizeObserver.unobserve(terminalRef.current);
       }
 
       runtime.EventsOff(eventkey);
-
-      // Run our disposers
-      disposers.current.forEach(disposer => {
-        disposer();
-      });
 
       DetachFromSession(sessionId).then(() => {
         console.log('detached from session');
@@ -194,14 +165,10 @@ export default function TerminalContainer({ sessionId }: Props) {
     ref={terminalRef} 
     style={{ 
       backgroundColor: 'black',
-      paddingLeft: '10px',
+      // a bit hacky, but works
       height: 'calc(100% - 40px)',
-      maxWidth: '100%',
-      display: 'flex',
-      flex: 1,
-      minHeight: 0,
-      minWidth: 0,
-      overflow: 'hidden',
+      paddingBottom: '34px',
+      paddingLeft: '10px',
     }} 
   />;
 }

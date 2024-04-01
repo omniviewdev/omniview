@@ -143,12 +143,14 @@ export default function ResourceTableView(): React.ReactElement {
           flexDirection: 'column',
         }}
       >
-        {selected ? (
-          <ResourceTable resourceKey={selected} pluginID={pluginID} connectionID={connectionID} />
-        ) : (
-          <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', p: 1, gap: 1, minHeight: 0 }} />
-        )
-        }
+        {/** Purposely double nesting this inside a non-padded container as not doing so doesn't allow the bottom drawer to
+         fully epand up to the top of the container (since the padding get's accounted for in the sizing, which essentially
+         just end up creating a gutter at the top equal to the top and bottom padding combined) */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+          {selected && 
+            <ResourceTable resourceKey={selected} pluginID={pluginID} connectionID={connectionID} />
+          }
+        </Box>
         <Layout.BottomDrawer />
       </Layout.Main>
     </Layout.Root>
