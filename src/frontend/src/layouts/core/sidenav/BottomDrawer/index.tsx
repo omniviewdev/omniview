@@ -16,6 +16,7 @@ import useBottomDrawer from '@/hooks/useBottomDrawer';
  */
 const BottomDrawer: React.FC = () => {
   const minHeight = 32;
+  const defaultHeight = 400;
 
   const { tabs, focused } = useBottomDrawer();
 
@@ -36,6 +37,13 @@ const BottomDrawer: React.FC = () => {
 
     // if double click, reset height
     if (e.detail === 2) {
+      if (drawerRef.current.style.minHeight === `${minHeight}px`) {
+        drawerRef.current.style.minHeight = `${defaultHeight}px`;
+        drawerRef.current.style.maxHeight = `${defaultHeight}px`;
+        setDrawerHeight(defaultHeight);
+        return;
+      }
+
       drawerRef.current.style.minHeight = `${minHeight}px`;
       drawerRef.current.style.maxHeight = `${minHeight}px`;
 
@@ -149,7 +157,16 @@ const BottomDrawer: React.FC = () => {
         >
           <Divider />
           <BottomDrawerTabs />
-          {/* <TerminalContainer sessionId={tabs[focused]?.id ?? ''} /> */}
+          <Box
+            sx={{
+              flex: 1,
+              overflow: 'auto',
+              minHeight: 0,
+              height: '100%',
+              maxWidth: 'calc(100vw - 360px)',
+            }}>
+            <TerminalContainer sessionId={tabs[focused]?.id ?? ''} />
+          </Box>
         </Sheet>
       </Box>
     </>

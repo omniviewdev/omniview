@@ -13,6 +13,7 @@ import { useTheme } from '@mui/joy';
  */
 const BottomDrawerContainer: React.FC = () => {
   const minHeight = 32;
+  const defaultHeight = 500;
   const theme = useTheme();
 
   const [height, setDrawerHeight] = React.useState<number>(minHeight);
@@ -32,6 +33,12 @@ const BottomDrawerContainer: React.FC = () => {
 
     // if double click, reset height
     if (e.detail === 2) {
+      if (drawerRef.current.style.minHeight === `${minHeight}px`) {
+        drawerRef.current.style.minHeight = `${defaultHeight}px`;
+        drawerRef.current.style.maxHeight = `${defaultHeight}px`;
+        setDrawerHeight(defaultHeight);
+      }
+
       drawerRef.current.style.minHeight = `${minHeight}px`;
       drawerRef.current.style.maxHeight = `${minHeight}px`;
 
@@ -124,6 +131,12 @@ const BottomDrawerContainer: React.FC = () => {
           maxHeight: minHeight,
           overflow: 'hidden',
           position: 'relative',
+          // I spent far too many hours trying to make this work without the calc, but unfortunately this is how we have to do it.
+          // Below is a running counter of the amount of hours I have spent. increment it as you like to pu those Jira numbers
+          // to shame.
+          //
+          // Hours wasted on this: 7
+          width: 'calc(100vw - var())',
         }}
       >
         <div

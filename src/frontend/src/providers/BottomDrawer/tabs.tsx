@@ -167,7 +167,7 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, title, i
     variant='plain'
     sx={{
       pt: 0,
-      pb: 0.25,
+      pb: selected ? 0.25 : 0,
       pr: 0,
       pl: 1,
       alignItems: 'center',
