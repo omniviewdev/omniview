@@ -43,7 +43,10 @@ export const tokenConf: monaco.languages.IMonarchLanguage = {
         /\b(accept_mutex|accept_mutex_delay|debug_connection|devpoll_changes|devpoll_events|epoll_events|kqueue_changes|kqueue_events|multi_accept|rtsig_signo|rtsig_overflow_events|rtsig_overflow_test|rtsig_overflow_threshold|use|worker_connections)\b/,
         'module.events',
       ],
-      [/\b(add_before_body|add_after_body|addition_types)\b/, 'module.http.addition'],
+      [
+        /\b(add_before_body|add_after_body|addition_types)\b/,
+        'module.http.addition',
+      ],
       [/\b(events)\b/, 'module.events'],
       [
         /\b(fastcgi_index|fastcgi_hide_header|fastcgi_ignore_client_abort|fastcgi_intercept_errors|fastcgi_param|fastcgi_pass|fastcgi_pass_header|fastcgi_read_timeout|fastcgi_redirect_errors|fa|stcgi_storefastcgi_store_access|fastcgi_buffers|fastcgi_buffers_size|fastcgi_temp_path|fastcgi_buffer_size|fastcgi_connect_timeout|fastcgi_send_timeout|fastcgi_split_path_info)\b/,
@@ -59,7 +62,10 @@ export const tokenConf: monaco.languages.IMonarchLanguage = {
     //     ['\\)', { token: 'delimiter.parenthesis', next: '@pop' }]
     // ],
     numbers: [
-      ['-?(\\d*\\.)?\\d+([eE][\\-+]?\\d+)?', { token: 'attribute.value.number', next: '@units' }],
+      [
+        '-?(\\d*\\.)?\\d+([eE][\\-+]?\\d+)?',
+        { token: 'attribute.value.number', next: '@units' },
+      ],
       ['#[0-9a-fA-F_]+(?!\\w)', 'attribute.value.hex'],
     ],
     units: [['(M)?', 'attribute.value.unit', '@pop']],

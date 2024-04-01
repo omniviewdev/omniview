@@ -3,13 +3,15 @@ import React, {
   useRef,
 } from 'react';
 
-// Material-ui
+// material-ui
 import Sheet from '@mui/joy/Sheet';
-
-// Context
-import RightDrawerContext, { type RightDrawerContextType } from '@/contexts/RightDrawerContext';
-import ResourceDrawerContainer from '@/federation/ResourceSidebarComponent';
 import { useTheme } from '@mui/joy';
+
+// context
+import RightDrawerContext, { type RightDrawerContextType } from '@/contexts/RightDrawerContext';
+
+// local imports
+import ResourceDrawerContainer from '@/federation/ResourceSidebarComponent';
 
 type RightDrawerProviderProps = {
   children: ReactNode;
@@ -34,7 +36,9 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
    * Handle the double click separately from the drag to prevent shakiness
    */
   const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!sidebarRef.current) return;
+    if (!sidebarRef.current) {
+      return;
+    }
 
     // if double click, reset height
     if (e.detail === 2) {
@@ -57,7 +61,9 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
   // don't commit the width directly until mouse up, otherwise we'll suffer state sync
   // lag becoming visible
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging || !sidebarRef.current) return;
+    if (!isDragging || !sidebarRef.current) {
+      return;
+    }
 
     // Calculate the remaining viewport width to the right of the mouse cursor in pixels
     const newWidth = window.innerWidth - e.clientX;

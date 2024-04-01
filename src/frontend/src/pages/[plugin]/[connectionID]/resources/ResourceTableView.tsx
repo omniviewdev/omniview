@@ -7,7 +7,7 @@ import IconButton from '@mui/joy/IconButton';
 import Sheet from '@mui/joy/Sheet';
 import Stack from '@mui/joy/Stack';
 import Typography from '@mui/joy/Typography';
-import { useTheme } from '@mui/joy';
+import { Box, useTheme } from '@mui/joy';
 
 // Hooks
 import { useResourceTypes } from '@/hooks/resource/useResourceTypes';
@@ -143,9 +143,12 @@ export default function ResourceTableView(): React.ReactElement {
           flexDirection: 'column',
         }}
       >
-        {selected && (
+        {selected ? (
           <ResourceTable resourceKey={selected} pluginID={pluginID} connectionID={connectionID} />
-        )}
+        ) : (
+          <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', p: 1, gap: 1, minHeight: 0 }} />
+        )
+        }
         <Layout.BottomDrawer />
       </Layout.Main>
     </Layout.Root>

@@ -397,9 +397,9 @@ export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
           </Button>
         </Stack>
       )}
-      {(!!deployments.data.length ||
-        !!statefulsets.data.length ||
-        !!daemonsets.data.length) && (
+      {(!!deployments?.data?.length ||
+        !!statefulsets?.data?.length ||
+        !!daemonsets?.data?.length) && (
         <Typography level="title-md" pl={1}>
           Used By
         </Typography>
@@ -414,7 +414,7 @@ export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
 const UsedDeploymentsCard: React.FC<{ deployments: ResourceSearchResult }> = ({
   deployments,
 }) => {
-  if (deployments.isLoading || !deployments.data || deployments.isError) {
+  if (deployments?.isLoading || !deployments?.data || deployments?.isError) {
     return <React.Fragment />;
   }
 
@@ -444,7 +444,7 @@ const UsedDeploymentsCard: React.FC<{ deployments: ResourceSearchResult }> = ({
 const UsedStatefulSetsCard: React.FC<{
   statefulsets: ResourceSearchResult;
 }> = ({ statefulsets }) => {
-  if (statefulsets.isLoading || !statefulsets.data || statefulsets.isError) {
+  if (statefulsets?.isLoading || !statefulsets?.data || statefulsets?.isError) {
     return <React.Fragment />;
   }
   const result = statefulsets.data as Array<StatefulSet>;
@@ -472,7 +472,7 @@ const UsedStatefulSetsCard: React.FC<{
 const UsedDaemonSetsCard: React.FC<{ daemonsets: ResourceSearchResult }> = ({
   daemonsets,
 }) => {
-  if (daemonsets.isLoading || !daemonsets.data || daemonsets.isError) {
+  if (daemonsets?.isLoading || !daemonsets?.data || daemonsets?.isError) {
     return <React.Fragment />;
   }
   const result = daemonsets.data as Array<DaemonSet>;

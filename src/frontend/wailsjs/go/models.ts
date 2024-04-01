@@ -212,41 +212,6 @@ export namespace services {
 	        this.kubeconfig = source["kubeconfig"];
 	    }
 	}
-	
-	export class TerminalSessionDetails {
-	    labels: {[key: string]: string};
-	    id: string;
-	    command: string;
-	    attached: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new TerminalSessionDetails(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.labels = source["labels"];
-	        this.id = source["id"];
-	        this.command = source["command"];
-	        this.attached = source["attached"];
-	    }
-	}
-	export class TerminalSessionOptions {
-	    labels: {[key: string]: string};
-	    kubeconfig: string;
-	    context: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new TerminalSessionOptions(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.labels = source["labels"];
-	        this.kubeconfig = source["kubeconfig"];
-	        this.context = source["context"];
-	    }
-	}
 
 }
 
@@ -358,6 +323,47 @@ export namespace settings {
 		}
 	}
 	
+
+}
+
+export namespace terminal {
+	
+	export class TerminalSessionDetails {
+	    labels: {[key: string]: string};
+	    id: string;
+	    command: string;
+	    attached: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalSessionDetails(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.labels = source["labels"];
+	        this.id = source["id"];
+	        this.command = source["command"];
+	        this.attached = source["attached"];
+	    }
+	}
+	export class TerminalSessionOptions {
+	    id: string;
+	    labels: {[key: string]: string};
+	    kubeconfig: string;
+	    context: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalSessionOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.labels = source["labels"];
+	        this.kubeconfig = source["kubeconfig"];
+	        this.context = source["context"];
+	    }
+	}
 
 }
 

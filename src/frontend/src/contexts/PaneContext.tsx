@@ -6,13 +6,13 @@ export type Pane = {
   router: ReturnType<typeof createMemoryRouter>;
 };
 
-export type IPaneContext = {
+export type PaneContextType = {
   id: string;
 };
 
-export const PaneContext = React.createContext<IPaneContext | undefined>(undefined);
+export const PaneContext = React.createContext<PaneContextType | undefined>(undefined);
 
-export type IPaneProviderContext = {
+export type PaneProviderContextType = {
   panes: Pane[];
   numPanes: number;
   setPanes: (panes: Pane[]) => void;
@@ -21,7 +21,7 @@ export type IPaneProviderContext = {
 };
 
 // Create a context with a default dummy implementation to avoid the need to check for undefined
-const defaultState: IPaneProviderContext = {
+const defaultState: PaneProviderContextType = {
   panes: [],
   numPanes: 0,
   setPanes() { },
@@ -29,6 +29,6 @@ const defaultState: IPaneProviderContext = {
   removePane() { },
 };
 
-export const PaneProviderContext = React.createContext<IPaneProviderContext>(defaultState);
+export const PaneProviderContext = React.createContext<PaneProviderContextType>(defaultState);
 
 export default PaneProviderContext;

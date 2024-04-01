@@ -14,12 +14,12 @@ import {
 } from 'react-icons/lu';
 import Icon from '@/components/icons/Icon';
 
-type ISnackbarContext = {
+type SnackbarContextType = {
   showSnackbar(message: string, status: VariantType, icon?: string, details?: string): void;
   showSnackbar(options: ShowSnackbarOptions): void;
 };
 
-const SnackbarContext = createContext<ISnackbarContext | undefined>(undefined);
+const SnackbarContext = createContext<SnackbarContextType | undefined>(undefined);
 
 type SnackbarProviderProps = {
   children: ReactNode;
@@ -64,7 +64,7 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
   const { enqueueSnackbar, closeSnackbar } = useNotistackSnackbar();
 
   // Updated showSnackbar function to handle both overloads
-  const showSnackbar: ISnackbarContext['showSnackbar'] = (messageOrOptions: string | ShowSnackbarOptions, status?: VariantType, icon?: string, details?: string) => {
+  const showSnackbar: SnackbarContextType['showSnackbar'] = (messageOrOptions: string | ShowSnackbarOptions, status?: VariantType, icon?: string, details?: string) => {
     // Determine if the function was called with ShowSnackbarOptions or individual arguments
     const isOptions = typeof messageOrOptions === 'object';
 
@@ -124,7 +124,7 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
   );
 };
 
-export const useSnackbar = (): ISnackbarContext => {
+export const useSnackbar = (): SnackbarContextType => {
   const context = useContext(SnackbarContext);
   if (context === undefined) {
     throw new Error('useCustomSnackbar must be used within a CustomSnackbarProvider');

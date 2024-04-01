@@ -22,7 +22,27 @@ theme:
 
 components:
   resource:
-    - name: CronJob
+    - name: ControllerRevisionSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["apps::v1::ControllerRevision"]
+    - name: DaemonSetSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["apps::v1::DaemonSet"]
+    - name: DeploymentSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["apps::v1::Deployment"]
+    - name: ReplicaSetSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["apps::v1::ReplicaSet"]
+    - name: StatefulSetSidebar
+      plugin: kubernetes
+      area: SIDEBAR
+      resources: ["apps::v1::StatefulSet"]
+    - name: CronJobSidebar
       plugin: kubernetes
       area: SIDEBAR
       resources: ["batch::v1::CronJob"]

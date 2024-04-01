@@ -4,7 +4,7 @@ import suggestions from './suggestions';
 import directives from './directives.json';
 
 export const register = (instance: typeof monaco) => {
-// Register a new language
+  // Register a new language
   instance.languages.register({
     id: 'nginx',
   });
@@ -13,7 +13,10 @@ export const register = (instance: typeof monaco) => {
   instance.editor.defineTheme('nginx-theme-dark', themeDarkConfig);
 
   instance.languages.registerCompletionItemProvider('nginx', {
-    provideCompletionItems: (model: monaco.editor.ITextModel, position: monaco.Position) => {
+    provideCompletionItems: (
+      model: monaco.editor.ITextModel,
+      position: monaco.Position
+    ) => {
       const word = model.getWordUntilPosition(position);
       const range = {
         startLineNumber: position.lineNumber,
@@ -26,10 +29,16 @@ export const register = (instance: typeof monaco) => {
   });
 
   instance.languages.registerHoverProvider('nginx', {
-    provideHover: (model: monaco.editor.ITextModel, position: monaco.Position, _token: monaco.CancellationToken) => {
+    provideHover: (
+      model: monaco.editor.ITextModel,
+      position: monaco.Position,
+      _token: monaco.CancellationToken
+    ) => {
       const word = model.getWordAtPosition(position);
       if (!word) return;
-      const data = directives.find((item) => item.n === word.word || item.n === `$${word.word}`);
+      const data = directives.find(
+        (item) => item.n === word.word || item.n === `$${word.word}`
+      );
       if (!data) return;
       const range = {
         startLineNumber: position.lineNumber,
@@ -37,7 +46,9 @@ export const register = (instance: typeof monaco) => {
         startColumn: word.startColumn,
         endColumn: word.endColumn,
       };
-      const contents = [{ value: `**\`${data.n}\`** | ${data.m} | ${data.c ?? ''}` }];
+      const contents = [
+        { value: `**\`${data.n}\`** | ${data.m} | ${data.c ?? ''}` },
+      ];
       if (data.s) {
         contents.push({ value: `**syntax:** ${data.s || ''}` });
       }

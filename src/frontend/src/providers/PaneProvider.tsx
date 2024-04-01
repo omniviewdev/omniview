@@ -4,8 +4,9 @@ import {
   createBrowserRouter, createMemoryRouter, Outlet, RouterProvider, UNSAFE_LocationContext, useLocation,
 } from 'react-router-dom';
 import Box from '@mui/joy/Box';
-import PaneProviderContext, { PaneContext, type IPaneProviderContext, type Pane } from '@/contexts/PaneContext';
+import PaneProviderContext, { PaneContext, type PaneProviderContextType, type Pane } from '@/contexts/PaneContext';
 import usePanes from '@/hooks/usePanes';
+import BottomDrawerProvider from './BottomDrawer/provider';
 
 /**
 * Provides the primary renderer for the application. This renderer
@@ -22,12 +23,12 @@ export const Renderer: React.FC = () => {
   }]);
 
   /** Set the panes for the pane renderer */
-  const setPanes: IPaneProviderContext['setPanes'] = panes => {
+  const setPanes: PaneProviderContextType['setPanes'] = panes => {
     setPanesStore(panes);
   };
 
   /** Add a new pane to the pane renderer */
-  const addNewPane: IPaneProviderContext['addNewPane'] = () => {
+  const addNewPane: PaneProviderContextType['addNewPane'] = () => {
     setPanesStore([...panes, {
       id: window.crypto.randomUUID(),
       router: createMemoryRouter(scoped),
@@ -35,7 +36,7 @@ export const Renderer: React.FC = () => {
   };
 
   /** Remove a pane from the pane renderer */
-  const removePane: IPaneProviderContext['removePane'] = (id: string) => {
+  const removePane: PaneProviderContextType['removePane'] = (id: string) => {
     setPanesStore(panes.filter(pane => id !== pane.id));
   };
 
@@ -77,14 +78,12 @@ export default function PaneRenderer() {
                 key={index}
               >
                 <PaneContext.Provider value={{ id: pane.id }}>
-
-                  {/* Dirty hack to kill the route context propogation
-                https://github.com/remix-run/react-router/issues/7375#issuecomment-975431736
-                @ts-expect-error */}
+                  {/* @ts-expect-error - Dirty hack to kill the route context propogation https://github.com/remix-run/react-router/issues/7375#issuecomment-975431736 */}
                   <UNSAFE_LocationContext.Provider value={null}>
-                    <RouterProvider router={pane.router} fallbackElement={<div>Loading...</div>} />
+                    <BottomDrawerProvider>
+                      <RouterProvider router={pane.router} fallbackElement={<div>Loading...</div>} />
+                    </BottomDrawerProvider>
                   </UNSAFE_LocationContext.Provider>
-
                 </PaneContext.Provider>
               </Box>
             );
