@@ -231,6 +231,7 @@ type ResourceSidebarViewProps = {
 };
 
 type ResourceEditorProps = {
+  resourceKey: string;
   data: Record<string, unknown>;
   datatype: 'json' | 'yaml';
   onSubmit: (data: Record<string, unknown>) => void;
@@ -246,8 +247,11 @@ const PrepareResourceData = (data: Record<string, unknown>, datatype: 'json' | '
   }
 };
 
-const ResourceEditor: React.FC<ResourceEditorProps> = ({ data, datatype, onSubmit, onCancel }) => {
-  const [value, setValue] = React.useState<string>(PrepareResourceData(data, datatype));
+const ResourceEditor: React.FC<ResourceEditorProps> = ({ resourceKey, data, datatype, onSubmit, onCancel }) => {
+  const originalData = PrepareResourceData(data, datatype);
+  const editorPath = `file:///${resourceKey}/draft.yaml`;
+
+  const [value, setValue] = React.useState<string>(originalData);
   const [changed, setChanged] = React.useState<boolean>(false);
   const [viewDiff, setViewDiff] = React.useState<boolean>(false);
   const { showSnackbar } = useSnackbar();
@@ -304,7 +308,7 @@ const ResourceEditor: React.FC<ResourceEditorProps> = ({ data, datatype, onSubmi
       {viewDiff ? (
         <DiffEditor 
           height='100%'
-          original={PrepareResourceData(data, datatype)}
+          original={originalData}
           theme='vs-dark'
           modified={value}
           language={datatype}
@@ -319,6 +323,8 @@ const ResourceEditor: React.FC<ResourceEditorProps> = ({ data, datatype, onSubmi
           theme='vs-dark'
           height='100%'
           value={value}
+          language={datatype}
+          path={editorPath}
           options={{
             readOnly: false,
             fontSize: 11,
@@ -346,7 +352,7 @@ const ResourceEditor: React.FC<ResourceEditorProps> = ({ data, datatype, onSubmi
             color='warning'
             startDecorator={<LuRotateCw size={16} />}
             onClick={() => {
-              setValue(PrepareResourceData(data, datatype));
+              setValue(originalData);
               setChanged(false);
             }}
           >Reset Changes</Button>
@@ -395,7 +401,13 @@ const ResourceSidebarView: React.FC<ResourceSidebarViewProps> = ({ plugin, conne
         useSearch={searchFunc}
       />;
     case 'edit':
-      return <ResourceEditor data={data} datatype='yaml' onSubmit={onSubmit} onCancel={onCancel} />;
+      return <ResourceEditor 
+        data={data} 
+        datatype='yaml' 
+        onSubmit={onSubmit} 
+        onCancel={onCancel} 
+        resourceKey={resource} 
+      />;
     default:
       return <React.Fragment />;
   }

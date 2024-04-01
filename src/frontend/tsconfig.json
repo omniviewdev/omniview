@@ -2,11 +2,7 @@
   "compilerOptions": {
     "target": "ESNext",
     "useDefineForClassFields": true,
-    "lib": [
-      "DOM",
-      "DOM.Iterable",
-      "ESNext"
-    ],
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "module": "ESNext",
     "skipLibCheck": true,
     /* Bundler mode */
@@ -26,44 +22,20 @@
     "rootDir": ".",
     "baseUrl": "./",
     "paths": {
-      "@api/*": [
-        "./wailsjs/go/*"
-      ],
-      "@runtime/*": [
-        "./wailsjs/runtime/*"
-      ],
-      "@infraview/*": [
-        "./src/pkg/*"
-      ],
-      "@/*": [
-        "./src/*"
-      ],
-      "@components/*": [
-        "./src/components/*"
-      ],
-      "@hooks/*": [
-        "./src/hooks/*"
-      ],
-      "@layouts/*": [
-        "./src/layouts/*"
-      ],
-      "@pages/*": [
-        "./src/pages/*"
-      ],
-      "@theme/*": [
-        "./src/theme/*"
-      ],
-      "@types/*": [
-        "./src/types/*"
-      ],
-      "@utils/*": [
-        "./src/utils/*"
-      ]
+      "@api/*": ["./wailsjs/go/*"],
+      "@runtime/*": ["./wailsjs/runtime/*"],
+      "@infraview/*": ["./src/pkg/*"],
+      "@/*": ["./src/*"],
+      "@components/*": ["./src/components/*"],
+      "@hooks/*": ["./src/hooks/*"],
+      "@layouts/*": ["./src/layouts/*"],
+      "@pages/*": ["./src/pages/*"],
+      "@theme/*": ["./src/theme/*"],
+      "@types/*": ["./src/types/*"],
+      "@utils/*": ["./src/utils/*"]
     }
   },
-  "include": [
-    "src"
-  ],
+  "include": ["src", "vite.config.ts", ".eslintrc.cjs"],
   "references": [
     {
       "path": "./tsconfig.node.json"

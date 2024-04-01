@@ -12,7 +12,13 @@ export default defineConfig({
       exposes: {
         "./ConfigMapSidebar":
           "./src/components/kubernetes/sidebar/ConfigMapSidebar",
+        "./ControllerRevisionSidebar":
+          "./src/components/kubernetes/sidebar/appsv1/ControllerRevision",
         "./CrobJobSidebar": "./src/components/kubernetes/sidebar/CronJob",
+        "./DaemonSetSidebar":
+          "./src/components/kubernetes/sidebar/appsv1/DaemonSet",
+        "./DeploymentSidebar":
+          "./src/components/kubernetes/sidebar/appsv1/Deployment",
         "./EndpointSidebar": "./src/components/kubernetes/sidebar/Endpoint",
         "./IngressSidebar": "./src/components/kubernetes/sidebar/Ingress",
         "./JobSidebar": "./src/components/kubernetes/sidebar/Job",
@@ -23,7 +29,11 @@ export default defineConfig({
         "./PersistentVolumeClaimSidebar":
           "./src/components/kubernetes/sidebar/PersistentVolumeClaimSidebar",
         "./PodSidebar": "./src/components/kubernetes/sidebar/Pod",
+        "./ReplicaSetSidebar":
+          "./src/components/kubernetes/sidebar/appsv1/ReplicaSet",
         "./SecretSidebar": "./src/components/kubernetes/sidebar/SecretSidebar",
+        "./StatefulSetSidebar":
+          "./src/components/kubernetes/sidebar/appsv1/StatefulSet",
       },
       shared: [
         "react",

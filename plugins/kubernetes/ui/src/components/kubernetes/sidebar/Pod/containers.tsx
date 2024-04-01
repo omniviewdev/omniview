@@ -5,7 +5,7 @@ import ContainerSection, { Props as ContainerProps } from "./container";
 import ExpandableSections from "../../../shared/ExpandableSections";
 
 // types
-import { ContainerStatus, Pod } from "kubernetes-types/core/v1";
+import { ContainerStatus, Pod, PodSpec } from "kubernetes-types/core/v1";
 import { logoMap } from "./logos";
 import { ContainerStatusDecorator } from "./ContainerStatuses";
 import { Alert, Stack } from "@mui/joy";
@@ -72,6 +72,20 @@ const ContainersSection: React.FC<Props> = ({ obj }) => {
       }))}
     />
   );
+};
+
+export const ContainersSectionFromPodSpec: React.FC<{ spec?: PodSpec }> = ({
+  spec,
+}) => {
+  const sections =
+    spec?.containers.map((container, idx) => ({
+      title: container.name,
+      icon: lookupLogo(container.name, container.image),
+      defaultExpanded: idx === 0,
+      children: <ContainerSection container={container} />,
+    })) || [];
+
+  return <ExpandableSections sections={sections} />;
 };
 
 function parseContainers(pod: Pod) {

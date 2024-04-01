@@ -22,7 +22,7 @@ interface Props {
   monospace?: boolean;
 }
 
-interface ExpandableSection {
+export interface ExpandableSection {
   icon?: string | React.ReactNode;
   title: string;
   endDecorator?: React.ReactNode;
@@ -38,9 +38,10 @@ export default function ExpandableSections({
     <AccordionGroup
       size="sm"
       variant="outlined"
-      transition="0.2s"
+      transition="0.1s"
       sx={{
         borderRadius: "sm",
+        flexGrow: 0,
         [`& .${accordionSummaryClasses.button}:hover`]: {
           bgcolor: "transparent",
         },

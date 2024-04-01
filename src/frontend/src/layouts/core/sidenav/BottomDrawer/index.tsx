@@ -6,6 +6,9 @@ import Divider from '@mui/joy/Divider';
 import Sheet from '@mui/joy/Sheet';
 import GlobalStyles from '@mui/joy/GlobalStyles';
 import { useTheme } from '@mui/joy';
+import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
+import TerminalContainer from '@/providers/BottomDrawer/containers/Terminal';
+import useBottomDrawer from '@/hooks/useBottomDrawer';
 
 /**
  * Sticky resizable drawer at the bottom of the screen used to display
@@ -13,6 +16,8 @@ import { useTheme } from '@mui/joy';
  */
 const BottomDrawer: React.FC = () => {
   const minHeight = 32;
+
+  const { tabs, focused } = useBottomDrawer();
 
   const [height, setDrawerHeight] = React.useState<number>(minHeight);
   const theme = useTheme();
@@ -25,7 +30,9 @@ const BottomDrawer: React.FC = () => {
   const dragHandleRef = React.useRef<HTMLDivElement>(null);
 
   const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!drawerRef.current) return;
+    if (!drawerRef.current) {
+      return;
+    }
 
     // if double click, reset height
     if (e.detail === 2) {
@@ -42,7 +49,9 @@ const BottomDrawer: React.FC = () => {
   }, []);
 
   const handleMouseMove = React.useCallback((e: MouseEvent) => {
-    if (!isDragging || !drawerRef.current) return;
+    if (!isDragging || !drawerRef.current) {
+      return;
+    }
 
     // Calculate the remaining viewport width to the right of the mouse cursor in pixels
     const remainingHeightPx = window.innerHeight - e.clientY;
@@ -87,7 +96,6 @@ const BottomDrawer: React.FC = () => {
     <>
       <GlobalStyles
         styles={{
-          // eslint-disable-next-line @typescript-eslint/naming-convention
           ':root': {
             '--BottomDrawer-height': `${height}px`,
           },
@@ -106,6 +114,7 @@ const BottomDrawer: React.FC = () => {
           maxHeight: minHeight,
           overflow: 'hidden',
           position: 'relative',
+          backgroundColor: 'background.body',
         }}
       >
         <div
@@ -115,7 +124,7 @@ const BottomDrawer: React.FC = () => {
             left: 0,
             top: 0,
             bottom: 0,
-            height: '10px', // This is the width of the draggable area
+            height: '10px',
             width: '100%',
             cursor: 'ns-resize',
             zIndex: 1291,
@@ -133,15 +142,14 @@ const BottomDrawer: React.FC = () => {
           sx={{
             display: { xs: 'none', sm: 'initial' },
             backgroundColor: 'background.surface',
-            width: '100%',
-            // BorderRadius: 'sm',
-            flexShrink: 1,
-            flexGrow: 1,
+            flex: 1,
             overflow: 'hidden',
             minHeight: 0,
           }}
         >
           <Divider />
+          <BottomDrawerTabs />
+          {/* <TerminalContainer sessionId={tabs[focused]?.id ?? ''} /> */}
         </Sheet>
       </Box>
     </>

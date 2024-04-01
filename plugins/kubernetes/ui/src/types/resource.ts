@@ -4,7 +4,7 @@
 export interface ResourceSidebarProps {
   /** The JSON data of the resource passed in */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: any;
+  data?: any;
   /** Handler to submit an update to the resource backend */
   onSubmit: (data: Record<string, unknown>) => void;
   /** Handler to cancel the update */

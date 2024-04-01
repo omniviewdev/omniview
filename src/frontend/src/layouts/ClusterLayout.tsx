@@ -6,13 +6,9 @@ import Box from '@mui/joy/Box';
 import Divider from '@mui/joy/Divider';
 
 // Project imports
-import LowerContext from './components/LowerContext';
 import ClusterResourceSidebar from './components/ClusterResourceSidebar';
-import { usePluginRouter } from '@infraview/router';
 
 const ClusterLayout: React.FC = () => {
-  const { contextID } = usePluginRouter();
-
   return (
     <>
       <ClusterResourceSidebar />
@@ -57,7 +53,6 @@ const ClusterLayout: React.FC = () => {
         }}
       >
         <Divider />
-        <LowerContext clusterId={contextID} />
       </Box>
     </>
   );

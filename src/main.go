@@ -27,6 +27,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/ui"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
+	"github.com/omniviewdev/omniview/backend/pkg/terminal"
 	"github.com/omniviewdev/omniview/backend/services"
 	appsv1 "github.com/omniviewdev/omniview/backend/services/resources/apps_v1"
 	batchv1 "github.com/omniviewdev/omniview/backend/services/resources/batch_v1"
@@ -184,12 +185,10 @@ func main() {
 		settingsController,
 		managers,
 	)
-
-	// LEGACY - KUBERNETES MANAGERS INLINE
+	terminalManager := terminal.NewTerminalManager(log)
 
 	// Create our managers
 	clusterManager, publisher, resourceChan := services.NewClusterManager(log)
-	terminalManager := services.NewTerminalManager(log)
 
 	// Create our resource services, which all independently subscribe to changes
 	// and update their state when the context changes.
