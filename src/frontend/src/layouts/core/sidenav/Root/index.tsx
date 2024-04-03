@@ -14,8 +14,8 @@ const Root: React.FC<BoxProps> = (props: BoxProps) => (
         flexDirection: 'row',
         flexGrow: 1,
         overflow: 'hidden',
-        minHeight: '100%',
-        maxHeight: '100%',
+        // minHeight: '100%',
+        // maxHeight: '100%',
         // Display: 'grid',
         // gridTemplateColumns: {
         //   xs: '1fr',

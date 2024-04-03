@@ -6,6 +6,9 @@ import Divider from '@mui/joy/Divider';
 import Sheet from '@mui/joy/Sheet';
 import GlobalStyles from '@mui/joy/GlobalStyles';
 import { useTheme } from '@mui/joy';
+import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
+import TerminalContainer from '@/providers/BottomDrawer/containers/Terminal';
+import useBottomDrawer from '@/hooks/useBottomDrawer';
 
 /**
  * Sticky resizable drawer at the bottom of the screen used to display
@@ -13,23 +16,42 @@ import { useTheme } from '@mui/joy';
  */
 const BottomDrawerContainer: React.FC = () => {
   const minHeight = 32;
-  const defaultHeight = 500;
-  const theme = useTheme();
+  const defaultHeight = 400;
+
+  const { tabs, focused } = useBottomDrawer();
 
   const [height, setDrawerHeight] = React.useState<number>(minHeight);
+  const theme = useTheme();
+
+
+  // State for drag operation
   const [isDragging, setIsDragging] = React.useState(false);
 
   // Ref for the sidebar to calculate changes in width
   const drawerRef = React.useRef<HTMLDivElement>(null);
   const dragHandleRef = React.useRef<HTMLDivElement>(null);
 
-  /**
-   * Handle the double click separately from the drag to prevent shakiness
-   */
+  React.useEffect(() => {
+    if (!drawerRef.current) {
+      return;
+    }
+
+    const currentHeight = parseInt(drawerRef.current.style.minHeight.replace('px', ''));
+
+    // if the tabs change, expand the window, or if there is a new tab
+    if (tabs.length > 0 && currentHeight < defaultHeight) {
+      drawerRef.current.style.minHeight = `${defaultHeight}px`;
+      drawerRef.current.style.maxHeight = `${defaultHeight}px`;
+    } else if (tabs.length == 0) {
+      drawerRef.current.style.minHeight = `${minHeight}px`;
+      drawerRef.current.style.maxHeight = `${minHeight}px`;
+    }
+  }, [tabs, focused]);
+
   const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!drawerRef.current) {
       return;
-    } 
+    }
 
     // if double click, reset height
     if (e.detail === 2) {
@@ -37,6 +59,7 @@ const BottomDrawerContainer: React.FC = () => {
         drawerRef.current.style.minHeight = `${defaultHeight}px`;
         drawerRef.current.style.maxHeight = `${defaultHeight}px`;
         setDrawerHeight(defaultHeight);
+        return;
       }
 
       drawerRef.current.style.minHeight = `${minHeight}px`;
@@ -46,20 +69,11 @@ const BottomDrawerContainer: React.FC = () => {
     }
   }, []);
 
-  /**
-   * Don't do any state updates here to avoid lag. We just want to kill the event propogation.
-   */
   const handleMouseDown = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     setIsDragging(true);
     e.preventDefault(); // Prevent text selection during drag
   }, []);
 
-  /**
-   * When the mouse moves, we want to update the drawer property directly, but avoid React state updates.
-   * Things get very lagy if use the state update directly for sizing - we only really want it to update
-   * the CSS var in case some other component in the app relies on it, in which case it should be known
-   * that the other components won't get the update until the mouse up.
-   */
   const handleMouseMove = React.useCallback((e: MouseEvent) => {
     if (!isDragging || !drawerRef.current) {
       return;
@@ -74,13 +88,9 @@ const BottomDrawerContainer: React.FC = () => {
     drawerRef.current.style.maxHeight = `${newHeight}px`;
   }, [isDragging, minHeight]);
 
-  /**
-   * Sync the state on mouse up so we don't dispatch a ton of updates to var provider and make other components
-   * start freaking out with potential rerenders.
-   */
   const handleMouseUp = React.useCallback(() => {
     setIsDragging(false);
-    
+    // Optionally sync your React state here if needed for other purposes
     if (drawerRef.current) {
       const currentHeight = drawerRef.current.style.minHeight;
       const newHeight = Math.max(parseInt(currentHeight, 10), minHeight);
@@ -125,18 +135,12 @@ const BottomDrawerContainer: React.FC = () => {
           flex: 1,
           flexGrow: 0,
           display: 'flex',
-          minWidth: 0,
           flexDirection: 'column',
           minHeight: minHeight,
           maxHeight: minHeight,
           overflow: 'hidden',
           position: 'relative',
-          // I spent far too many hours trying to make this work without the calc, but unfortunately this is how we have to do it.
-          // Below is a running counter of the amount of hours I have spent. increment it as you like to pu those Jira numbers
-          // to shame.
-          //
-          // Hours wasted on this: 7
-          width: 'calc(100vw - var())',
+          backgroundColor: 'background.body',
         }}
       >
         <div
@@ -148,7 +152,7 @@ const BottomDrawerContainer: React.FC = () => {
             bottom: 0,
             height: '10px',
             width: '100%',
-            cursor: 'ns-resize',
+            cursor: 'row-resize',
             zIndex: 1291,
             borderTop: `4px solid ${theme.palette.primary[400]}`,
             borderRadius: '0px 0px 0px 0px',
@@ -170,6 +174,17 @@ const BottomDrawerContainer: React.FC = () => {
           }}
         >
           <Divider />
+          <BottomDrawerTabs />
+          <Box
+            sx={{
+              flex: 1,
+              overflow: 'auto',
+              minHeight: 0,
+              height: '100%',
+              maxWidth: 'calc(100vw - 360px)',
+            }}>
+            <TerminalContainer sessionId={tabs[focused]?.id ?? ''} />
+          </Box>
         </Sheet>
       </Box>
     </>
@@ -179,3 +194,4 @@ const BottomDrawerContainer: React.FC = () => {
 BottomDrawerContainer.displayName = 'BottomDrawerContainer';
 BottomDrawerContainer.whyDidYouRender = true;
 export default BottomDrawerContainer;
+

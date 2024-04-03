@@ -42,6 +42,8 @@ const NamespaceSelect: FC<Props> = ({ namespaces, setNamespaces, clusters = [] }
   const [availableNS, setAvailableNS] = useState<string[]>([]);
   const { contextID } = usePluginRouter();
 
+  console.log('namespaces', namespaces);
+
   useEffect(() => {
     List({
       clusters: clusters?.length ? clusters : [contextID],

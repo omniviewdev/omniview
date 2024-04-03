@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+
 	pkgsettings "github.com/omniviewdev/settings"
 	"github.com/wailsapp/mimetype"
 	"github.com/wailsapp/wails/v2"
@@ -388,6 +390,7 @@ func main() {
 		},
 		EnumBind: []interface{}{
 			pkgsettings.AllSettingTypes,
+			sdktypes.AllConnectionStatusCodes,
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{

@@ -10,6 +10,16 @@ var ResourceGroups = []types.ResourceGroup{
 		Icon: "LuTicket",
 	},
 	{
+		ID:   "apiextensions",
+		Name: "API Extensions",
+		Icon: "LuPuzzle",
+	},
+	{
+		ID:   "apiregistration",
+		Name: "API Registration",
+		Icon: "LuClipboardCheck",
+	},
+	{
 		ID:   "core",
 		Name: "Core",
 		Icon: "LuBox",
@@ -28,6 +38,11 @@ var ResourceGroups = []types.ResourceGroup{
 		ID:   "autoscaling",
 		Name: "Autoscaling",
 		Icon: "LuGauge",
+	},
+	{
+		ID:   "metrics",
+		Name: "Metrics",
+		Icon: "LuBarChartBig",
 	},
 	{
 		ID:   "networking",

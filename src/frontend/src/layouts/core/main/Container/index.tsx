@@ -32,7 +32,9 @@ export default function Container() {
         gap: 1,
       }}
       onMouseEnter={() => {
-        setShowCloseButton(true);
+        if (numPanes > 1) {
+          setShowCloseButton(true);
+        }
       }}
       onMouseLeave={() => {
         setShowCloseButton(false);
@@ -47,6 +49,9 @@ export default function Container() {
             bgcolor: 'background.appBody',
             height: 'calc(100vh - var(--CoreLayoutHeader-height))',
             overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
             width: {
               xs: '100%',
               md: 'calc(100% - var(--CoreLayoutSidebar-width))',
@@ -58,6 +63,7 @@ export default function Container() {
           }}
         >
           <Outlet />
+          <Layout.BottomDrawer />
         </Box>
       </Box>
       {showCloseButton && numPanes > 1 && (

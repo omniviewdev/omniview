@@ -28,6 +28,7 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
 
   const theme = useTheme();
   const [isDragging, setIsDragging] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
 
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dragHandleRef = useRef<HTMLDivElement>(null);
@@ -160,10 +161,17 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
             top: 0,
             bottom: 0,
             width: '10px', // This is the width of the draggable area
-            cursor: 'ew-resize',
-            borderLeft: `4px solid ${theme.palette.primary[400]}`,
+            cursor: 'col-resize',
+            borderLeft: `${isDragging ? 4 : 2 }px solid ${theme.palette.primary[400]}`,
             borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 0px 0px 2px' : '6px 0px 0px 6px',
-            opacity: isDragging ? 0.5 : 0,
+            opacity: isDragging ? 0.5 : isHovering ? 0.2 : 0,
+            transition: 'opacity 0.2s, border 0.2s',
+          }}
+          onMouseEnter={() => {
+            setIsHovering(true); 
+          }}
+          onMouseLeave={() => {
+            setIsHovering(false); 
           }}
           onMouseDown={handleMouseDown}
           onClick={handleClick}

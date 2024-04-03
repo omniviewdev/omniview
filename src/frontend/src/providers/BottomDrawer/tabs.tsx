@@ -24,7 +24,7 @@ import { terminal } from '@api/models';
  * Renders the tabs for the bottom drawer.
  */
 const BottomDrawerTabs: React.FC = () => {
-  const { tabs, focused, focusTab, closeTab, createTab } = useBottomDrawer();
+  const { tabs, focused, focusTab, closeTab, createTab, createTabs } = useBottomDrawer();
 
   // eslint-disable-next-line @typescript-eslint/ban-types -- null is required by onChange
   const handleChange = (_event: React.SyntheticEvent | null, newValue: string | number | null) => {
@@ -59,14 +59,17 @@ const BottomDrawerTabs: React.FC = () => {
       .then(sessions => {
         console.log('sessions', sessions);
         let newtabcount = 0;
-        // find and upsert any missing sessions where the id doesn't exist
-        const newTabs = sessions.map((session => {
-          const existing = tabs.find(tab => tab.id === session.id);
-          if (existing) {
-            return undefined;
-          }
 
-          return {
+        const newTabs: BottomDrawerTab[] = [];
+
+        // find and upsert any missing sessions where the id doesn't exist
+        sessions.forEach(session => {
+          // const existing = tabs.find(tab => tab.id === session.id);
+          // if (existing) {
+          //   return undefined;
+          // }
+
+          newTabs.push({
             id: session.id,
             title: `Session ${tabs.length + newtabcount++}`,
             variant: 'terminal',
@@ -74,13 +77,11 @@ const BottomDrawerTabs: React.FC = () => {
             properties: session.labels,
             createdAt: new Date(),
             updatedAt: new Date(),
-          };
-        })).filter(tab => tab !== undefined) as BottomDrawerTab[];
-
-        newTabs.forEach(tab => {
-          createTab(tab);
+          });
         });
 
+        console.log('newTabs', newTabs);
+        createTabs(newTabs);
       }).catch(err => {
         console.error(err);
       });

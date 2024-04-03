@@ -3,11 +3,15 @@ package resource
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"k8s.io/client-go/tools/clientcmd"
 
+	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
+	resourcetypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/utils"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
@@ -35,6 +39,85 @@ func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
 	}
 
 	return connections, nil
+}
+
+// CheckConnectionFunc checks the connection to the cluster, using the discovery client
+func CheckConnectionFunc(
+	ctx *types.PluginContext,
+	conn *types.Connection,
+	client *clients.ClientSet,
+) (types.ConnectionStatus, error) {
+	if conn == nil {
+		return types.ConnectionStatus{
+			Connection: conn,
+			Status:     types.ConnectionStatusError,
+			Details:    "No connection was provided to check",
+			Error:      "connection is required",
+		}, nil
+	}
+	if client == nil {
+		return types.ConnectionStatus{
+			Connection: conn,
+			Status:     types.ConnectionStatusError,
+			Details:    "No client was provided to check the connection",
+			Error:      "client is required",
+		}, nil
+	}
+
+	result := types.ConnectionStatus{
+		Connection: conn,
+		Status:     types.ConnectionStatusUnknown,
+	}
+
+	// our check is simply if we can get all the server groups
+	_, err := client.DiscoveryClient.ServerGroups()
+	if err != nil {
+		switch {
+		case k8serrors.IsUnauthorized(err):
+			result.Status = types.ConnectionStatusUnauthorized
+			result.Error = "Unauthorized"
+			result.Details = "You are not currently authorized to access this connection. Please check your credentials and try again."
+		case k8serrors.IsForbidden(err):
+			result.Status = types.ConnectionStatusForbidden
+			result.Error = "Forbidden"
+			result.Details = "You are forbidden from accessing this connection. Please check your permissions and try again."
+		// common cases for unauthorized AWS session credentials
+		case strings.Contains(err.Error(), "getting credentials: exec: executable aws failed with exit code 255"):
+			result.Status = types.ConnectionStatusUnauthorized
+			result.Error = "Unauthorized"
+			result.Details = "You are not currently authorized to access this connection. Please check your AWS credentials and try again."
+		case strings.Contains(err.Error(), "executable aws-iam-authenticator failed with exit code 1"):
+			result.Status = types.ConnectionStatusUnauthorized
+			result.Error = "Unauthorized"
+			result.Details = "You are not currently authorized to access this connection. Please check your AWS credentials and try again."
+		case strings.Contains(err.Error(), "no such host"):
+			result.Status = types.ConnectionStatusNotFound
+			result.Error = "Not Found"
+			result.Details = "The host was not found. Please check the host and try again."
+		case strings.Contains(err.Error(), "connection refused"):
+			result.Status = types.ConnectionStatusError
+			result.Error = "Connection Refused"
+			result.Details = "The connection was refused. Please check the host and try again."
+		case strings.Contains(err.Error(), "certificate signed by unknown authority"):
+			result.Status = types.ConnectionStatusError
+			result.Error = "Unknown Authority"
+			result.Details = "The certificate for this connection was signed by an unknown authority. Please check the certificate and try again."
+		case strings.Contains(err.Error(), "certificate has expired"):
+			result.Status = types.ConnectionStatusUnauthorized
+			result.Error = "Certificate Expired"
+			result.Details = "The certificate for this connection has expired. Please check/refresh the certificate and try again."
+		default:
+			result.Status = types.ConnectionStatusError
+			result.Error = "Error"
+			result.Details = fmt.Sprintf("Error checking connection: %v", err)
+		}
+
+		return result, nil
+	}
+
+	result.Status = types.ConnectionStatusConnected
+	result.Details = "Connection is valid"
+	return result, nil
 }
 
 func connectionsFromKubeconfig(kubeconfigPath string) ([]types.Connection, error) {
@@ -73,4 +156,66 @@ func connectionsFromKubeconfig(kubeconfigPath string) ([]types.Connection, error
 	}
 
 	return connections, nil
+}
+
+func processGroupVersion(gv string) (string, string) {
+	parts := strings.Split(gv, "/")
+
+	if len(parts) == 1 {
+		return "core", parts[0]
+	}
+
+	group := parts[0]
+	version := parts[1]
+
+	if strings.HasSuffix(group, ".k8s.io") {
+		// if group ends in .k8s.io, remove it
+		group = strings.TrimSuffix(group, ".k8s.io")
+
+		// if group still has dots, remove them except in our weird cases
+		if strings.Contains(group, ".") {
+			// split by dot, and combine in reverse order without dot
+			parts := strings.Split(group, ".")
+
+			if strings.HasPrefix(group, "internal.") {
+				group = ""
+				for i := len(parts) - 1; i >= 0; i-- {
+					group += parts[i]
+				}
+			} else {
+				// take the first part of the group
+				group = parts[0]
+			}
+		}
+	}
+
+	return group, version
+}
+
+func DiscoveryFunc(
+	ctx *types.PluginContext,
+	client *clients.DiscoveryClient,
+) ([]resourcetypes.ResourceMeta, error) {
+	// TODO: not sure if we wnat preferred or not, but I could see a use case for getting all supported
+	groups, err := client.DiscoveryClient.ServerPreferredResources()
+	if err != nil {
+		return nil, err
+	}
+
+	// guestimate about 5 resources per group
+	response := make([]resourcetypes.ResourceMeta, 0, len(groups)*5)
+
+	for _, grouplist := range groups {
+		group, version := processGroupVersion(grouplist.GroupVersion)
+
+		for _, resource := range grouplist.APIResources {
+			response = append(response, resourcetypes.ResourceMeta{
+				Group:   group,
+				Version: version,
+				Kind:    resource.Kind,
+			})
+		}
+	}
+
+	return response, nil
 }

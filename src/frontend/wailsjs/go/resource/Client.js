@@ -34,20 +34,24 @@ export function GetLayout(arg1, arg2) {
   return window['go']['resource']['Client']['GetLayout'](arg1, arg2);
 }
 
+export function GetResourceDefinition(arg1, arg2) {
+  return window['go']['resource']['Client']['GetResourceDefinition'](arg1, arg2);
+}
+
 export function GetResourceGroup(arg1, arg2) {
   return window['go']['resource']['Client']['GetResourceGroup'](arg1, arg2);
 }
 
-export function GetResourceGroups(arg1) {
-  return window['go']['resource']['Client']['GetResourceGroups'](arg1);
+export function GetResourceGroups(arg1, arg2) {
+  return window['go']['resource']['Client']['GetResourceGroups'](arg1, arg2);
 }
 
 export function GetResourceType(arg1, arg2) {
   return window['go']['resource']['Client']['GetResourceType'](arg1, arg2);
 }
 
-export function GetResourceTypes(arg1) {
-  return window['go']['resource']['Client']['GetResourceTypes'](arg1);
+export function GetResourceTypes(arg1, arg2) {
+  return window['go']['resource']['Client']['GetResourceTypes'](arg1, arg2);
 }
 
 export function HasResourceType(arg1, arg2) {

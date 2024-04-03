@@ -20,14 +20,15 @@ import Layout from '@/layouts/core/sidenav';
 
 // Project import
 import NavMenu from '@infraview/navigation/NavMenu';
-import { type SidebarItem } from '@infraview/navigation/types';
+import { type SidebarSection, type SidebarItem } from '@infraview/navigation/types';
 import { useConnection } from '@/hooks/connection/useConnection';
 import { stringAvatar } from '@/utils/color';
 import { Link } from '@infraview/router';
 
 // Icons
 import { LuCog } from 'react-icons/lu';
-import ResourceTable from './ResourceTable';
+// import ResourceTable from './ResourceTable';
+import ResourceTable from '@/components/tables/Resources';
 import PluginBackdrop from '../../PluginBackdrop';
 import { usePluginContext } from '@/contexts/PluginContext';
 import useResourceGroups from '@/hooks/resource/useResourceGroups';
@@ -43,9 +44,10 @@ export default function ResourceTableView(): React.ReactElement {
   const { pluginID = '', connectionID = '' } = useParams<{ pluginID: string; connectionID: string }>();
   const [selected, setSelected] = React.useState<string | undefined>(undefined);
 
-  const { types } = useResourceTypes({ pluginID });
-  const { groups } = useResourceGroups({ pluginID });
+  const { types } = useResourceTypes({ pluginID, connectionID });
+  const { groups } = useResourceGroups({ pluginID, connectionID });
   const { connection } = useConnection({ pluginID, connectionID });
+
   const plugin = usePluginContext();
 
   if (groups.isLoading || connection.isLoading || !groups.data || !connection.data) {
@@ -56,29 +58,51 @@ export default function ResourceTableView(): React.ReactElement {
     return (<>{types.error}</>);
   }
 
-  const grouped: SidebarItem[] = Object.values(groups.data).map((group) => {
-    const item: SidebarItem = {
-      id: group.id,
-      label: group.name,
-      icon: group.icon,
-      children: [],
-    };
+  const getSections = () => {
+    const coreSection: SidebarItem[] = [];
 
-    Object.entries(group.resources).forEach(([version, metas]) => {
-      metas.forEach((meta) => {
-        item.children?.push({
-          id: toID(meta),
-          label: meta.kind,
-          icon: meta.icon,
-          decorator: version,
+    const crdSection: SidebarItem[] = [];
+
+    const grouped: SidebarItem[] = Object.values(groups.data).map((group) => {
+      const item: SidebarItem = {
+        id: group.id,
+        label: group.name,
+        icon: group.icon,
+        children: [],
+      };
+
+      Object.entries(group.resources).forEach(([version, metas]) => {
+        metas.forEach((meta) => {
+          item.children?.push({
+            id: toID(meta),
+            label: meta.kind,
+            icon: meta.icon,
+            decorator: version,
+          });
         });
       });
+
+      // Sort the children
+      item.children = item.children?.sort((a, b) => a.label.localeCompare(b.label));
+      return item;
+    }).sort((a, b) => a.label.localeCompare(b.label));
+
+    grouped.forEach((group) => {
+      // This is kubernetes specific, let's eventually allow plugins to define this somehow
+      if (group.label.includes('.') && !group.label.includes('k8s.io')) {
+        // custom resource definition
+        crdSection.push(group);
+      } else {
+        coreSection.push(group);
+      }  
     });
 
-    // Sort the children
-    item.children = item.children?.sort((a, b) => a.label.localeCompare(b.label));
-    return item;
-  }).sort((a, b) => a.label.localeCompare(b.label));
+    const sections: SidebarSection[] = [
+      { id: 'core', title: '', items: coreSection },
+      { id: 'crd', title: 'Custom Resource Definitions', items: crdSection },
+    ];
+    return sections;
+  };
 
   return (
     <Layout.Root
@@ -134,7 +158,7 @@ export default function ResourceTableView(): React.ReactElement {
               </Link>
             </Stack>
           </Sheet>
-          <NavMenu selected={selected} onSelect={setSelected} size='sm' items={grouped} scrollable />
+          <NavMenu selected={selected} onSelect={setSelected} size='sm' sections={getSections()} scrollable />
         </Stack>
       </Layout.SideNav>
       <Layout.Main
@@ -151,7 +175,6 @@ export default function ResourceTableView(): React.ReactElement {
             <ResourceTable resourceKey={selected} pluginID={pluginID} connectionID={connectionID} />
           }
         </Box>
-        <Layout.BottomDrawer />
       </Layout.Main>
     </Layout.Root>
   );

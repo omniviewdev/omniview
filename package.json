@@ -10,6 +10,7 @@
     "typescript": "*"
   },
   "dependencies": {
+    "@types/lodash.get": "^4.4.9",
     "client-node": "link:@types/@kubernetes/client-node"
   }
 }

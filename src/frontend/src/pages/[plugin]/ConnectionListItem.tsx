@@ -22,7 +22,7 @@ import { useConnection } from '@/hooks/connection/useConnection';
 
 // Types
 import { stringToColor } from '@/utils/color';
-import { type types } from '@api/models';
+import { types } from '@api/models';
 
 // Icons
 import { MoreVert } from '@mui/icons-material';
@@ -30,10 +30,21 @@ import { LuPencil, LuTrash } from 'react-icons/lu';
 
 // Third-party
 import { Link, usePluginRouter } from '@infraview/router';
+import { useSnackbar } from '@/providers/SnackbarProvider';
 
 type Props = Omit<types.Connection, 'createFrom' | 'convertValues'>;
 
 function stringAvatar(name: string) {
+  if (!name) {
+    return {
+      sx: {
+        bgcolor: 'grey.500',
+        borderRadius: 6,
+      },
+      children: 'NA',
+    };
+  }
+
   if (name.length === 1) {
     return {
       sx: {
@@ -77,9 +88,38 @@ function stringAvatar(name: string) {
 const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, labels, last_refresh, expiry_time }) => {
   const plugin = usePluginContext();
   const { navigate } = usePluginRouter();
+  const { showSnackbar } = useSnackbar();
 
   const { startConnection } = useConnection({ pluginID: plugin.id, connectionID: id });
   const [connecting, setConnecting] = React.useState(false);
+
+  const handleConnectionStatus = (status: types.ConnectionStatus) => {
+    switch (status.status) {
+      case types.ConnectionStatusCode.UNAUTHORIZED:
+        showSnackbar({
+          status: 'warning',
+          message: `Failed to authorize to '${name}'`,
+          details: status.details,
+          icon: 'LuShieldClose',
+        });
+        break;
+      case types.ConnectionStatusCode.CONNECTED:
+        showSnackbar({
+          status: 'success',
+          message: `Connected to '${name}'`,
+          icon: 'LuCheckCircle',
+        });
+        navigate(`/connection/${id}/resources`);
+        break;
+      default:
+        showSnackbar({
+          status: 'error',
+          message: `Failed to connect to '${name}'`,
+          details: status.details,
+          icon: 'LuAlertCircle',
+        });
+    }
+  };
 
   const handleClick = () => {
     if (isConnected()) {
@@ -89,11 +129,17 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
 
     setConnecting(true);
     startConnection()
-      .then(_ => {
-        navigate(`/connection/${id}/resources`);
+      .then(status => {
+        handleConnectionStatus(status); 
       })
-      .catch(_ => {
-        console.log('not connected');
+      .catch(err => {
+        if (err instanceof Error) {
+          showSnackbar({
+            status: 'error',
+            message: err.message,
+            icon: 'LuAlertCircle',
+          });
+        }
       })
       .finally(() => {
         setConnecting(false);

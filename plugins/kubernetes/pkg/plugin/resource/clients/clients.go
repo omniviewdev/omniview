@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
@@ -29,6 +30,7 @@ func NewKubernetesClientFactory() factories.ResourceClientFactory[ClientSet] {
 // Use a custom type here since we want multiple clients to use for each namespace context.
 type ClientSet struct {
 	Clientset              *kubernetes.Clientset
+	DiscoveryClient        *discovery.DiscoveryClient
 	DynamicClient          dynamic.Interface
 	DynamicInformerFactory dynamicinformer.DynamicSharedInformerFactory
 }
@@ -86,14 +88,21 @@ func (f *KubernetesClientFactory) CreateClient(
 		DefaultResyncPeriod,
 	)
 
+	// create our discovery client
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("error creating discovery client: %w", err)
+	}
+
 	return &ClientSet{
 		Clientset:              clientset,
+		DiscoveryClient:        discoveryClient,
 		DynamicClient:          client,
 		DynamicInformerFactory: dynamicInformerFactory,
 	}, nil
 }
 
-// We don't need to refresh the client since we're using a new client for each namespace.
+// We'll need to refresh just the dynamic informers when the client is refreshed.
 func (f *KubernetesClientFactory) RefreshClient(
 	_ *pkgtypes.PluginContext,
 	client *ClientSet,

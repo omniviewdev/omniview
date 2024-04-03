@@ -37,7 +37,7 @@ type IClient interface {
 	Delete(pluginID, connectionID, key string, input rt.DeleteInput) (*rt.DeleteResult, error)
 
 	// StartConnection starts a connection for a plugin
-	StartConnection(pluginID, connectionID string) (types.Connection, error)
+	StartConnection(pluginID, connectionID string) (types.ConnectionStatus, error)
 
 	// StopConnection stops a connection for a plugin
 	StopConnection(pluginID, connectionID string) (types.Connection, error)
@@ -72,13 +72,13 @@ type IClient interface {
 	StopConnectionInformer(pluginID, connectionID string) error
 
 	// GetResourceGroups
-	GetResourceGroups(pluginID string) map[string]rt.ResourceGroup
+	GetResourceGroups(pluginID, connectionID string) map[string]rt.ResourceGroup
 
 	// GetResourceGroup
 	GetResourceGroup(pluginID, groupID string) (rt.ResourceGroup, error)
 
 	// GetResourceTypes returns a map of all the resource types that are available to the resource controller
-	GetResourceTypes(pluginID string) map[string]rt.ResourceMeta
+	GetResourceTypes(pluginID, connectionID string) map[string]rt.ResourceMeta
 
 	// GetResourceType returns the resource type information by it's string representation
 	// For example, "core::v1::Pod" or "ec2::2012-12-01::EC2Instance"
@@ -86,6 +86,9 @@ type IClient interface {
 
 	// HasResourceType checks to see if the resource type exists
 	HasResourceType(pluginID, typeID string) bool
+
+	// GetResourceDefinition returns the resource definition for a given resource
+	GetResourceDefinition(pluginID, typeID string) (rt.ResourceDefinition, error)
 
 	// GetLayout returns the layout for the plugin
 	GetLayout(pluginID string, layoutID string) ([]rt.LayoutItem, error)
@@ -154,7 +157,7 @@ func (c *Client) Delete(
 	return c.controller.Delete(pluginID, connectionID, key, input)
 }
 
-func (c *Client) StartConnection(pluginID, connectionID string) (types.Connection, error) {
+func (c *Client) StartConnection(pluginID, connectionID string) (types.ConnectionStatus, error) {
 	return c.controller.StartConnection(pluginID, connectionID)
 }
 
@@ -197,16 +200,16 @@ func (c *Client) StopConnectionInformer(pluginID, connectionID string) error {
 	return c.controller.StopConnectionInformer(pluginID, connectionID)
 }
 
-func (c *Client) GetResourceGroups(pluginID string) map[string]rt.ResourceGroup {
-	return c.controller.GetResourceGroups(pluginID)
+func (c *Client) GetResourceGroups(pluginID, connectionID string) map[string]rt.ResourceGroup {
+	return c.controller.GetResourceGroups(pluginID, connectionID)
 }
 
 func (c *Client) GetResourceGroup(pluginID, groupID string) (rt.ResourceGroup, error) {
 	return c.controller.GetResourceGroup(pluginID, groupID)
 }
 
-func (c *Client) GetResourceTypes(pluginID string) map[string]rt.ResourceMeta {
-	return c.controller.GetResourceTypes(pluginID)
+func (c *Client) GetResourceTypes(pluginID, connectionID string) map[string]rt.ResourceMeta {
+	return c.controller.GetResourceTypes(pluginID, connectionID)
 }
 
 func (c *Client) GetResourceType(pluginID, typeID string) (*rt.ResourceMeta, error) {
@@ -215,6 +218,10 @@ func (c *Client) GetResourceType(pluginID, typeID string) (*rt.ResourceMeta, err
 
 func (c *Client) HasResourceType(pluginID, typeID string) bool {
 	return c.controller.HasResourceType(pluginID, typeID)
+}
+
+func (c *Client) GetResourceDefinition(pluginID, typeID string) (rt.ResourceDefinition, error) {
+	return c.controller.GetResourceDefinition(pluginID, typeID)
 }
 
 func (c *Client) GetLayout(pluginID string, layoutID string) ([]rt.LayoutItem, error) {

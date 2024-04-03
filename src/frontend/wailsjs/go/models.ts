@@ -369,6 +369,51 @@ export namespace terminal {
 
 export namespace types {
 	
+	export enum ConnectionStatusCode {
+	    UNKNOWN = "UNKNOWN",
+	    CONNECTED = "CONNECTED",
+	    DISCONNECTED = "DISCONNECTED",
+	    PENDING = "PENDING",
+	    FAILED = "FAILED",
+	    ERROR = "ERROR",
+	    UNAUTHORIZED = "UNAUTHORIZED",
+	    FORBIDDEN = "FORBIDDEN",
+	    BAD_REQUEST = "BAD_REQUEST",
+	    NOT_FOUND = "NOT_FOUND",
+	    TIMEOUT = "TIMEOUT",
+	    UNAVAILABLE = "UNAVAILABLE",
+	    REQUEST_ENTITY_TOO_LARGE = "REQUEST_ENTITY_TOO_LARGE",
+	}
+	export class ColumnDef {
+	    id: string;
+	    header: string;
+	    accessor: string;
+	    colorMap?: {[key: string]: string};
+	    color?: string;
+	    align?: string;
+	    hidden?: boolean;
+	    width?: number;
+	    formatter?: string;
+	    component?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ColumnDef(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.header = source["header"];
+	        this.accessor = source["accessor"];
+	        this.colorMap = source["colorMap"];
+	        this.color = source["color"];
+	        this.align = source["align"];
+	        this.hidden = source["hidden"];
+	        this.width = source["width"];
+	        this.formatter = source["formatter"];
+	        this.component = source["component"];
+	    }
+	}
 	export class Connection {
 	    // Go type: time
 	    last_refresh: any;
@@ -396,6 +441,42 @@ export namespace types {
 	        this.description = source["description"];
 	        this.avatar = source["avatar"];
 	        this.expiry_time = source["expiry_time"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ConnectionStatus {
+	    connection?: Connection;
+	    status: ConnectionStatusCode;
+	    error: string;
+	    details: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConnectionStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connection = this.convertValues(source["connection"], Connection);
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.details = source["details"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -766,6 +847,42 @@ export namespace types {
 	        this.loading = source["loading"];
 	        this.loadError = source["loadError"];
 	        this.capabilities = source["capabilities"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ResourceDefinition {
+	    id_accessor: string;
+	    namespace_accessor: string;
+	    memoizer_accessor: string;
+	    columnDefs: ColumnDef[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ResourceDefinition(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id_accessor = source["id_accessor"];
+	        this.namespace_accessor = source["namespace_accessor"];
+	        this.memoizer_accessor = source["memoizer_accessor"];
+	        this.columnDefs = this.convertValues(source["columnDefs"], ColumnDef);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

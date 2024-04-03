@@ -17,6 +17,7 @@ import PluginBackdrop from './PluginBackdrop';
 
 // Third-party
 import tinycolor from 'tinycolor2';
+import { ListItem, Skeleton } from '@mui/joy';
 
 /**
  * Default home landing for the plugin.
@@ -27,10 +28,6 @@ export default function PluginHome(): React.ReactElement {
   const plugin = usePluginContext();
   const { connections } = useConnections({ plugin: plugin.id });
 
-  if (connections.isLoading) {
-    return (<></>);
-  }
-
   return (
     <Stack
       p={2}
@@ -38,8 +35,8 @@ export default function PluginHome(): React.ReactElement {
       overflow={'auto'}
       direction={'column'}
       alignItems={'flex-start'}
-      maxHeight={'100%'}
-      minHeight={'100%'}
+      minHeight={0}
+      flex={1}
       sx={{
         background: `linear-gradient(109.6deg, rgb(36, 45, 57) 2.2%, ${tinycolor(plugin.metadata.theme.colors.primary).setAlpha(0.2).toString()} 50.2%, rgb(0, 0, 0) 98.6%);`,
       }}
@@ -87,11 +84,17 @@ export default function PluginHome(): React.ReactElement {
               '--ListItem-paddingY': '0px',
             }}
           >
-            {connections.data
-              ?.filter(connection => connection.name.toLowerCase().includes(search.toLowerCase()))
-              .map(connection => (
-                <ConnectionListItem key={connection.id} {...connection} />
-              ))}
+            {connections.isLoading 
+              ?  Array.from(new Array(4)).map((_, idx ) => 
+                <ListItem key={idx} sx={{ borderRadius: 'sm' }}>
+                  <Skeleton variant='rectangular' height={40} />
+                </ListItem>
+              )
+              : connections.data
+                ?.filter(connection => connection.name.toLowerCase().includes(search.toLowerCase()))
+                .map(connection => (
+                  <ConnectionListItem key={connection.id} {...connection} />
+                ))}
           </List>
         )}
       </Sheet>
