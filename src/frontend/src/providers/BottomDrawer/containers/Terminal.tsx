@@ -71,7 +71,6 @@ export default function TerminalContainer({ sessionId }: Props) {
     terminal.focus();
 
     const debouncedFit = debounce(() => {
-      console.log('fitting terminal');
       fitAddon.fit();
     }, 40);
 
@@ -112,7 +111,6 @@ export default function TerminalContainer({ sessionId }: Props) {
 
       // Listen for terminal data from the backend
       runtime.EventsOn(eventkey, (data: string) => {
-        console.log('received data from backend', data);
         if (data !== null && data !== undefined) {
           terminal.write(Base64.toUint8Array(data));
         }
@@ -121,15 +119,15 @@ export default function TerminalContainer({ sessionId }: Props) {
 
     // Attach to the session
     attachToSession().then(() => {
-      console.log('attached to session');
+      console.log('attached to session %s', sessionId);
 
       terminal.onData(data => {
         WriteToSession(sessionId, data)
-          .then(() => {
-            console.log('Data sent');
-          })
-          .catch(() => {
-            console.error('failed to send data');
+          .catch((err) => {
+            if (err instanceof Error) {
+              console.error('failed to write to session: ', err.message);
+              return;
+            }
           });
       });
 
@@ -154,9 +152,12 @@ export default function TerminalContainer({ sessionId }: Props) {
       runtime.EventsOff(eventkey);
 
       DetachFromSession(sessionId).then(() => {
-        console.log('detached from session');
+        console.log('detached from session %s', sessionId);
       }).catch((err) => {
-        console.error('failed to detach from session', err);
+        if (err instanceof Error) {
+          console.error('failed to detach from session: ', err.message);
+          return;
+        }
       });
     };
   }, [sessionId]);

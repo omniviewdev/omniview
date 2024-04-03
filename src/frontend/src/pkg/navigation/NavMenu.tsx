@@ -81,19 +81,25 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
           py: 0,
           userSelect: 'none',
           '--ListItem-radius': '8px',
-          '--List-gap': '4px',
-          '--List-nestedInsetStart': '13px',
+          '--List-gap': '0px',
+          '--List-nestedInsetStart': '0px',
         }}
       >
         {/** Sections */}
         {sections?.map(section => (
           <ListItem key={section.id} nested>
-            <ListSubheader>
-              {section.title}
-            </ListSubheader>
+            {section.title && (
+              <ListSubheader sx={{ minBlockSize: 0, pt: 1.5 }}>
+                {section.title}
+              </ListSubheader>
+            )}
             <List
               aria-labelledby='nav-list-browse'
+              size={size ?? 'md'}
               sx={{
+                py: 0,
+                '--List-nestedInsetStart': '13px',
+                '--ListItem-paddingLeft': '8px',
                 '& .JoyListItemButton-root': { p: '8px' },
               }}
             >
@@ -211,6 +217,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
             aria-labelledby={`nav-list-${id}`}
             size='sm'
             sx={{
+              '--ListItem-radius': '8px',
               '--List-gap': '0px',
             }}
           >

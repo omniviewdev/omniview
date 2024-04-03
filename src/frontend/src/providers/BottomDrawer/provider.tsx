@@ -11,6 +11,7 @@ import {
   type ResizeDrawer, 
   type CloseTab,
   type ReorderTab,
+  type CreateTabs,
 } from './types';
 import { TerminateSession } from '@api/terminal/TerminalManager';
 
@@ -85,6 +86,23 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
       properties: opts.properties,
     };
     setTabs([...tabs, newTab]);
+    setFocused(tabs.length);
+  };
+
+  const createTabs: CreateTabs = (newTabs: CreateTabOpts[]) => {
+    const toCreate = newTabs.map((opts) => {
+      const id = opts.id ?? window.crypto.randomUUID();
+      return {
+        id,
+        icon: opts.icon,
+        title: opts.title,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        variant: opts.variant,
+        properties: opts.properties,
+      };
+    }) as BottomDrawerTab[];
+    setTabs([...tabs, ...toCreate]);
   };
 
   const focusTab: FocusTab = (opts: FindTabOpts) => {  
@@ -163,6 +181,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     focused,
     tabs,
     createTab,
+    createTabs,
     focusTab,
     reorderTab,
     closeTab,

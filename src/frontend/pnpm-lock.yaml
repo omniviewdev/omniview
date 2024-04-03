@@ -92,6 +92,9 @@ dependencies:
   kubernetes-types:
     specifier: ^1.26.0
     version: 1.26.0
+  lodash.get:
+    specifier: ^4.4.2
+    version: 4.4.2
   monaco-editor-nginx:
     specifier: ^1.0.16
     version: 1.0.16(@babel/runtime@7.24.0)(monaco-editor@0.47.0)(react-dom@18.2.0)(react@18.2.0)
@@ -5390,6 +5393,10 @@ packages:
 
   /lodash-es@4.17.21:
     resolution: {integrity: sha512-mKnC+QJ9pWVzv+C4/U3rRsHapFfHvQFoFB92e52xeyGMcX6/OlIl78je1u8vePzYZSkkogMPJ2yjxxsb89cxyw==}
+    dev: false
+
+  /lodash.get@4.4.2:
+    resolution: {integrity: sha512-z+Uw/vLuy6gQe8cfaFWD7p0wVv8fJl3mbzXh33RS+0oW2wvUqiRXiQ69gLWSLpgB5/6sU+r6BlQR0MBILadqTQ==}
     dev: false
 
   /lodash.memoize@4.1.2:

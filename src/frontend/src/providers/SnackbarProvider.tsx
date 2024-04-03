@@ -94,12 +94,15 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
         horizontal: 'right',
       },
       preventDuplicate: true,
-      autoHideDuration: 3000,
+      autoHideDuration: 5000,
       content: (key, message) => (
         <Alert
           variant='soft'
+          sx={{
+            maxWidth: 400,
+          }}
           color={snackbarContent[_status].color}
-          startDecorator={_icon ? <Icon name={_icon} /> : snackbarContent[_status].icon}
+          startDecorator={_icon ? <Icon name={_icon} size={20} /> : snackbarContent[_status].icon}
           endDecorator={
             <IconButton size='sm' variant='soft' color={snackbarContent[_status].color} onClick={() => {
               closeSnackbar(key);
@@ -108,9 +111,9 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
             </IconButton>
           }
         >
-          <Stack direction='column' spacing={1} alignItems='flex-start'>
+          <Stack direction='column' spacing={0} alignItems='flex-start'>
             <Typography level='title-sm'>{message}</Typography>
-            {Boolean(_details) && <Typography level='body-sm'>{_details}</Typography>}
+            {Boolean(_details) && <Typography level='body-sm' color={snackbarContent[_status].color} >{_details}</Typography>}
           </Stack>
         </Alert>
       ),

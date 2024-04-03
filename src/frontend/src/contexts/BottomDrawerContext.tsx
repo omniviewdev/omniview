@@ -7,6 +7,7 @@ import {
   type CloseTab, 
   type ResizeDrawer, 
   type BottomDrawerTab,
+  type CreateTabs,
 } from '@/providers/BottomDrawer/types';
 
 // ===================================== CONTEXT ===================================== //
@@ -16,6 +17,7 @@ export type BottomDrawerContextType = {
   focused: number;
   tabs: BottomDrawerTab[];
   createTab: CreateTab;
+  createTabs: CreateTabs;
   focusTab: FocusTab;
   closeTab: CloseTab;
   resizeDrawer: ResizeDrawer;
@@ -30,6 +32,7 @@ export const defaultState: BottomDrawerContextType = {
   focused: 0,
   tabs: [],
   createTab: () => { },
+  createTabs: () => { },
   focusTab: () => { },
   closeTab: () => { },
   resizeDrawer: () => { },

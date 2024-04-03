@@ -41,6 +41,11 @@ export type CreateTabOpts = Pick<BottomDrawerTab, 'title' | 'icon' | 'variant' |
 export type CreateTab = (opts: CreateTabOpts) => void;
 
 /**
+ * Create multiple tabs in the bottom drawer.
+ */
+export type CreateTabs = (opts: CreateTabOpts[]) => void;
+
+/**
 * Focus on a tab in the bottom drawer. If multiple tabs match the search criteria, the 'newest' tab will be focused.
 */
 export type FocusTab = (opts: FindTabOpts) => void;

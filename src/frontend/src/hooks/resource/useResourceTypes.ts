@@ -9,18 +9,22 @@ type UseResourceTypesOptions = {
    * @example "appearance"
    */
   pluginID: string;
+  /**
+  * The ID of the connection
+  */
+  connectionID: string;
 };
 
 /**
  * Interact with a category of settings from the global settings provider. Intended for use in the settings UI - if
  * you need to read or write settings from a specific plugin, use the `@hooks/settings/useSettings` hook instead.
  */
-export const useResourceTypes = ({ pluginID }: UseResourceTypesOptions) => {
+export const useResourceTypes = ({ pluginID, connectionID }: UseResourceTypesOptions) => {
   const queryKey = [pluginID, 'resources', 'list'];
 
   const types = useQuery({
     queryKey,
-    queryFn: async () => GetResourceTypes(pluginID),
+    queryFn: async () => GetResourceTypes(pluginID, connectionID),
     retry: false,
   });
 

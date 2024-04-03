@@ -94,7 +94,6 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
-			c.logger.Debug("emitting add event", "eventKey", eventKey)
 			runtime.EventsEmit(c.ctx, eventKey, event)
 		case event := <-c.updateChan:
 			eventKey := fmt.Sprintf(
@@ -104,7 +103,6 @@ func (c *controller) informerListener() {
 				event.Key,
 			)
 
-			c.logger.Debug("emitting update event", "eventKey", eventKey)
 			runtime.EventsEmit(
 				c.ctx,
 				eventKey,
@@ -117,7 +115,6 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
-			c.logger.Debug("emitting delete event", "eventKey", eventKey)
 			runtime.EventsEmit(c.ctx, eventKey, event)
 		}
 	}
@@ -333,11 +330,13 @@ func mergeConnections(
 
 // ================================== CONNECTION METHODS ================================== //
 
-func (c *controller) StartConnection(pluginID, connectionID string) (types.Connection, error) {
+func (c *controller) StartConnection(
+	pluginID, connectionID string,
+) (types.ConnectionStatus, error) {
 	c.logger.Debug("StartConnection")
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return types.Connection{}, fmt.Errorf("plugin '%s' not found", pluginID)
+		return types.ConnectionStatus{}, fmt.Errorf("plugin '%s' not found", pluginID)
 	}
 	ctx := types.NewPluginContextWithConnection(
 		context.TODO(),
@@ -348,12 +347,20 @@ func (c *controller) StartConnection(pluginID, connectionID string) (types.Conne
 	)
 	conn, err := client.StartConnection(ctx, connectionID)
 	if err != nil {
-		return types.Connection{}, err
+		return types.ConnectionStatus{}, err
+	}
+	if conn.Status != types.ConnectionStatusConnected {
+		return conn, nil
 	}
 
 	// purposely don't write to state, we're not trying to persist realtime connection state, just
-	// the connection itself
-	c.connections[pluginID] = mergeConnections(c.connections[pluginID], []types.Connection{conn})
+	// the connection
+	if conn.Connection != nil {
+		c.connections[pluginID] = mergeConnections(
+			c.connections[pluginID],
+			[]types.Connection{*conn.Connection},
+		)
+	}
 	return conn, nil
 }
 
@@ -701,15 +708,17 @@ func (c *controller) StopConnectionInformer(pluginID, connectionID string) error
 
 // ================================== RESOURCE TYPE METHODS ================================== //
 
-func (c *controller) GetResourceGroups(pluginID string) map[string]resourcetypes.ResourceGroup {
-	logger := c.logger.With("pluginID", pluginID)
+func (c *controller) GetResourceGroups(
+	pluginID, connectionID string,
+) map[string]resourcetypes.ResourceGroup {
+	logger := c.logger.With("pluginID", pluginID, "connectionID", connectionID)
 	logger.Debug("GetResourceGroups")
 	client, ok := c.clients[pluginID]
 	if !ok {
 		logger.Error("plugin not found")
 		return nil
 	}
-	return client.GetResourceGroups()
+	return client.GetResourceGroups(connectionID)
 }
 
 func (c *controller) GetResourceGroup(
@@ -724,8 +733,10 @@ func (c *controller) GetResourceGroup(
 	return client.GetResourceGroup(groupID)
 }
 
-func (c *controller) GetResourceTypes(pluginID string) map[string]resourcetypes.ResourceMeta {
-	logger := c.logger.With("pluginID", pluginID)
+func (c *controller) GetResourceTypes(
+	pluginID, connectionID string,
+) map[string]resourcetypes.ResourceMeta {
+	logger := c.logger.With("pluginID", pluginID, "connectionID", connectionID)
 	logger.Debug("GetResourceTypes")
 
 	client, ok := c.clients[pluginID]
@@ -733,7 +744,7 @@ func (c *controller) GetResourceTypes(pluginID string) map[string]resourcetypes.
 		logger.Error("plugin not found")
 		return nil
 	}
-	return client.GetResourceTypes()
+	return client.GetResourceTypes(connectionID)
 }
 
 func (c *controller) GetResourceType(
@@ -758,6 +769,19 @@ func (c *controller) HasResourceType(pluginID, resourceType string) bool {
 		return false
 	}
 	return client.HasResourceType(resourceType)
+}
+
+func (c *controller) GetResourceDefinition(
+	pluginID, resourceType string,
+) (resourcetypes.ResourceDefinition, error) {
+	logger := c.logger.With("pluginID", pluginID)
+	logger.Debug("GetResourceDefinition")
+
+	client, ok := c.clients[pluginID]
+	if !ok {
+		return resourcetypes.ResourceDefinition{}, fmt.Errorf("plugin not found")
+	}
+	return client.GetResourceDefinition(resourceType)
 }
 
 // ================================== LAYOUT METHODS ================================== //
