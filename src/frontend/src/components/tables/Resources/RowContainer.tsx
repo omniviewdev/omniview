@@ -8,6 +8,7 @@ import {
 import useRightDrawer from '@/hooks/useRightDrawer';
 
 import { type Memoizer } from './ResourceTableContainer';
+import { type Virtualizer, type VirtualItem } from '@tanstack/react-virtual';
 
 export type Props = {
   /** ID of the plugin */
@@ -22,6 +23,9 @@ export type Props = {
   namespace?: string;
   /** An optional memoizer function to optimize rendering */
   memoizer?: Memoizer;
+  virtualizer: Virtualizer<HTMLDivElement, Element>;
+  virtualRow: VirtualItem;
+  isSelected: boolean;
   /** The row data */
   row: Row<any>;
 };
@@ -36,9 +40,17 @@ export const RowContainer: React.FC<Props> = ({
   resourceID,
   resourceKey,
   namespace = '',
+  virtualizer,
+  virtualRow,
+  isSelected,
   row,
 }) => {
   const { showResourceSidebar } = useRightDrawer();
+
+  // Use the provided ref callback to measure items
+  const ref = React.useCallback((node: HTMLTableRowElement) => {
+    virtualizer.measureElement(node);
+  }, [virtualizer, virtualRow.index]);
 
   const handleRowClick = (column: string) => {
     if (column === 'name') {
@@ -54,7 +66,20 @@ export const RowContainer: React.FC<Props> = ({
 
   //   // Simplified memoization check can be done outside, based on your needs
   return (
-    <tr style={{ cursor: 'pointer', WebkitUserSelect: 'text' }} >
+    <tr 
+      data-index={virtualRow.index}
+      ref={ref} // Measure dynamic row height
+      key={row.id}
+      data-state={isSelected ? 'selected' : undefined}
+      style={{
+        cursor: 'pointer',
+        WebkitUserSelect: 'text',
+        display: 'flex',
+        position: 'absolute',
+        transform: `translateY(${virtualRow.start}px)`, // This should always be a `style` as it changes on scroll
+        width: '100%',
+      }}
+    >
       {row.getVisibleCells().map(cell => (
         <td
           key={cell.id}
@@ -63,6 +88,10 @@ export const RowContainer: React.FC<Props> = ({
           }}
           style={{
             width: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
+            minWidth: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
+            maxWidth: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
+            display: 'flex',
+            flex: 1,
             textOverflow: 'ellipsis',
             overflow: 'hidden',
           }}

@@ -35,6 +35,8 @@ type ShowSnackbarOptions = {
   status: VariantType;
   icon?: string;
   details?: string;
+  showOnce?: boolean;
+  autoHideDuration?: number;
 };
 
 const snackbarContent: Record<VariantType, SnackbarContent> = {
@@ -63,6 +65,12 @@ const snackbarContent: Record<VariantType, SnackbarContent> = {
 export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) => {
   const { enqueueSnackbar, closeSnackbar } = useNotistackSnackbar();
 
+  const [singleShowNotices, setSingleShowNotices] = React.useState<string[]>([]);
+
+  const setNoticeShown = (message: string) => {
+    setSingleShowNotices([...singleShowNotices, message]);
+  };
+
   // Updated showSnackbar function to handle both overloads
   const showSnackbar: SnackbarContextType['showSnackbar'] = (messageOrOptions: string | ShowSnackbarOptions, status?: VariantType, icon?: string, details?: string) => {
     // Determine if the function was called with ShowSnackbarOptions or individual arguments
@@ -73,13 +81,24 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
     let _status: VariantType = 'info';
     let _icon: string | undefined;
     let _details: string | undefined;
+    let _autoHideDuration: number | undefined = 5000;
 
     if (isOptions) {
-      const { message: messageFromOptions, status: statusFromOptions, icon: iconFromOptions, details: detailsFromOptions } = messageOrOptions;
-      _message = messageFromOptions;
-      _status = statusFromOptions;
-      _icon = iconFromOptions;
-      _details = detailsFromOptions;
+      _message = messageOrOptions.message;
+      // before doing anything else, check to see if this is a single show
+      if (messageOrOptions.showOnce) {
+        if (singleShowNotices.includes(_message)) {
+          // don't show again
+          return;
+        }
+
+        setNoticeShown(_message);
+      }
+
+      _status = messageOrOptions.status;
+      _icon = messageOrOptions.icon;
+      _details = messageOrOptions.details;
+      _autoHideDuration = messageOrOptions.autoHideDuration ?? 5000;
     } else {
       _message = messageOrOptions;
       _status = status!;
@@ -94,12 +113,12 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
         horizontal: 'right',
       },
       preventDuplicate: true,
-      autoHideDuration: 5000,
+      autoHideDuration: _autoHideDuration,
       content: (key, message) => (
         <Alert
           variant='soft'
           sx={{
-            maxWidth: 400,
+            maxWidth: 600,
           }}
           color={snackbarContent[_status].color}
           startDecorator={_icon ? <Icon name={_icon} size={20} /> : snackbarContent[_status].icon}
@@ -135,4 +154,6 @@ export const useSnackbar = (): SnackbarContextType => {
 
   return context;
 };
+
+export default useSnackbar;
 
