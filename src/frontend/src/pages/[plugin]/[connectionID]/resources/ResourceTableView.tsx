@@ -32,6 +32,7 @@ import ResourceTable from '@/components/tables/Resources';
 import PluginBackdrop from '../../PluginBackdrop';
 import { usePluginContext } from '@/contexts/PluginContext';
 import useResourceGroups from '@/hooks/resource/useResourceGroups';
+import useSnackbar from '@/providers/SnackbarProvider';
 
 /**
  * Get the ID from the meta object
@@ -49,6 +50,19 @@ export default function ResourceTableView(): React.ReactElement {
   const { connection } = useConnection({ pluginID, connectionID });
 
   const plugin = usePluginContext();
+  const { showSnackbar } = useSnackbar();
+
+  React.useEffect(() => {
+    if (import.meta.env.DEV) {
+      showSnackbar({
+        message: 'You are currently running in development mode',
+        details: 'Rendering performance will be slightly degraded until this application is built for production.',
+        status: 'info',
+        showOnce: true,
+        autoHideDuration: 15000,
+      });
+    }
+  }, []);
 
   if (groups.isLoading || connection.isLoading || !groups.data || !connection.data) {
     return (<></>);

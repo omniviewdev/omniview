@@ -20,6 +20,7 @@ import {
   getFilteredRowModel,
   getSortedRowModel,
   useReactTable,
+  type RowSelectionState,
 } from '@tanstack/react-table';
 import get from 'lodash.get';
 
@@ -28,6 +29,7 @@ import NamespaceSelect from '@/components/selects/NamespaceSelect';
 import { DebouncedInput } from './DebouncedInput';
 import { RowContainer } from './RowContainer';
 import { plural } from '@/utils/language';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 export type Memoizer = string | string[] | ((data: any) => string);
 export type IdAccessor = string | ((data: any) => string);
@@ -134,7 +136,7 @@ const ResourceTableContainer: React.FC<Props> = ({
   ] : []);
 
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [rowSelection, setRowSelection] = useState({});
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   const setNamespaces = (namespaces: string[]) => {
     setColumnFilters(prev => {
@@ -185,6 +187,25 @@ const ResourceTableContainer: React.FC<Props> = ({
     },
   });
 
+  const { rows } = table.getRowModel();
+
+  const parentRef = React.useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    // GetItemKey: useCallback((index: number) => rows[index]?.id ?? index, [rows]),
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 40, // Estimate row height for accurate scrollbar dragging
+    // getItemKey: useCallback((index: number) => rows[index]?.id ?? index, [rows]),
+    overscan: 40,
+    // Measure dynamic row height, except in firefox because it measures table border height incorrectly
+    measureElement:
+      typeof window !== 'undefined'
+        && !navigator.userAgent.includes('Firefox')
+      	? element => element?.getBoundingClientRect().height
+      	: undefined,
+  });
+
   const placeHolderText = () => {
     const keyparts = resourceKey.split('::'); 
     const resource = plural(keyparts[keyparts.length - 1]);
@@ -211,6 +232,7 @@ const ResourceTableContainer: React.FC<Props> = ({
       <Sheet
         className={'table-container'}
         variant='outlined'
+        ref={parentRef}
         sx={{
           width: '100%',
           borderRadius: 'sm',
@@ -231,6 +253,7 @@ const ResourceTableContainer: React.FC<Props> = ({
           stickyHeader
           hoverRow
           sx={{
+            display: 'grid',
             '--TableCell-headBackground':
               'var(--joy-palette-background-level1)',
             '--Table-headerUnderlineThickness': '1px',
@@ -241,13 +264,34 @@ const ResourceTableContainer: React.FC<Props> = ({
             WebkitUserSelect: 'none',
           }}
         >
-          <thead>
+          <thead
+            style={{
+              display: 'grid',
+              position: 'sticky',
+              top: 0,
+              zIndex: 1,
+            }}
+          >
             {table.getHeaderGroups().map(headerGroup => (
-              <tr key={headerGroup.id} style={{ cursor: 'pointer' }}>
+              <tr 
+                key={headerGroup.id} 
+                style={{ display: 'flex', width: '100%', cursor: 'pointer' }}
+              >
                 {headerGroup.headers.map(header => (
-                  <th key={header.id} style={{
-                    alignContent: 'center', paddingTop: '12px', paddingBottom: '12px', width: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
-                  }} >
+                  <th 
+                    key={header.id} 
+                    style={{
+                      alignContent: 'center',
+                      display: 'flex',
+                      alignItems: 'center',
+                      // paddingTop: '12px', 
+                      // paddingBottom: '12px', 
+                      width: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
+                      minWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
+                      maxWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
+                      flex: 1,
+                    }} 
+                  >
                     {header.column.getCanSort()
                       ? <Link
                         underline='none'
@@ -273,19 +317,31 @@ const ResourceTableContainer: React.FC<Props> = ({
               </tr>
             ))}
           </thead>
-          <tbody>
-            {table.getRowModel().rows.map((row) => (
-              <MemoizedRow
-                key={row.id}
-                pluginID={pluginID}
-                connectionID={connectionID}
-                resourceID={row.id}
-                resourceKey={resourceKey}
-                namespace={namespaceAccessor ? get(row.original, namespaceAccessor) : undefined}
-                row={row}
-                memoizer={memoizer}
-              />
-            ))}
+          <tbody
+            style={{
+              display: 'grid',
+              height: `${virtualizer.getTotalSize()}px`, // Tells scrollbar how big the table is
+              position: 'relative', // Needed for absolute positioning of rows
+            }}
+          >
+            {virtualizer.getVirtualItems().map(virtualRow => {
+              const row = rows[virtualRow.index];
+              return (
+                <MemoizedRow
+                  key={row.id}
+                  pluginID={pluginID}
+                  connectionID={connectionID}
+                  resourceID={row.id}
+                  resourceKey={resourceKey}
+                  namespace={namespaceAccessor ? get(row.original, namespaceAccessor) : undefined}
+                  row={row}
+                  memoizer={memoizer}
+                  virtualizer={virtualizer} 
+                  virtualRow={virtualRow} 
+                  isSelected={rowSelection[row.id]} 
+                />
+              );
+            })}
           </tbody>
         </Table>
       </Sheet>
@@ -314,7 +370,8 @@ const calcMemoKey = (data: any, memoizer?: Memoizer) => {
 };
 
 const MemoizedRow = React.memo(RowContainer, (prev, next) => {
-  return calcMemoKey(prev.row.original, prev.memoizer) === calcMemoKey(next.row.original, next.memoizer);
+  return calcMemoKey(prev.row.original, prev.memoizer) === calcMemoKey(next.row.original, next.memoizer)
+    && prev.virtualRow.start === next.virtualRow.start && prev.isSelected === next.isSelected;
 });
 
 ResourceTableContainer.displayName = 'ResourceTableContainer';
