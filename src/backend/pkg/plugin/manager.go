@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
@@ -368,6 +369,12 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 		)
 	}
 
+	logger := hclog.New(&hclog.LoggerOptions{
+		Name:   id,
+		Output: os.Stdout,
+		Level:  hclog.Debug,
+	})
+
 	// We're a host. Start by launching the plugin process.
 	pluginClient := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig: metadata.GenerateHandshakeConfig(),
@@ -377,6 +384,7 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 		},
 		Cmd:              exec.Command(filepath.Join(location, "bin", "plugin")),
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+		Logger:           logger,
 	})
 
 	// Connect via RPC

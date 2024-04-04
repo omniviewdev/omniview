@@ -108,7 +108,7 @@ const ResourceDrawerContainer: React.FC<Props> = ({
     );
   }
 
-  if (!resource.data || !resourceType.data) {
+  if (!resource.data) {
     return <React.Fragment />;
   }
 
@@ -126,9 +126,7 @@ const ResourceDrawerContainer: React.FC<Props> = ({
       }}
     >
       <Stack pr={0.5} direction="row" alignItems="center" justifyContent={'space-between'}>
-        <Chip size="lg" variant="plain" sx={{ borderRadius: 'sm' }}>
-          <Typography sx={{ flexGrow: 1 }}>{resourceID}</Typography>
-        </Chip>
+        <Typography level="title-md" sx={{ flexGrow: 0, pl: 1 }} noWrap>{resourceID}</Typography>
         <Stack direction="row" gap={1}>
         </Stack>
         <Stack direction="row" gap={1}>
@@ -148,7 +146,7 @@ const ResourceDrawerContainer: React.FC<Props> = ({
               <LuPencil />
             </IconButton>
           </ToggleButtonGroup>
-          <ResourceDrawerDecorator icon={resourceType.data.icon} type={resourceKey} />
+          <ResourceDrawerDecorator icon={resourceType.data?.icon} type={resourceKey} />
           <IconButton variant="outlined" size="sm" onClick={onClose}>
             <LuX size={20} />
           </IconButton>
