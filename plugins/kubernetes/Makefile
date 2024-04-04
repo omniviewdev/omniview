@@ -1,5 +1,8 @@
 .PHONY: build
 
+prepare:
+	pip install openapi2jsonschema
+
 generate:
 	cd generators && go run .
 	golangci-lint run --fix ./pkg/plugin/resource/register_gen.go

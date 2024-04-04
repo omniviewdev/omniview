@@ -252,6 +252,9 @@ func Register(plugin *sdk.Plugin) {
 			ResourceGroups:            ResourceGroups,
 			ResourceDefinitions:       resourcers.ResourceDefs,
 			DefaultResourceDefinition: resourcers.DefaultResourceDef,
+			DynamicResourcers: map[string]types.DynamicResourcer[clients.ClientSet]{
+				"*": resourcers.NewKubernetesDynamicResourcer(logger),
+			},
 			Resourcers: map[types.ResourceMeta]types.Resourcer[clients.ClientSet]{
 				{
 					Group:       "admissionregistration",

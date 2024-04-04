@@ -25,6 +25,25 @@ func main() {
 				Type:        settings.Text,
 				Default:     "/bin/zsh",
 			},
+			{
+				ID:          "layout",
+				Label:       "Layout",
+				Description: "The layout to use for the main sidebar",
+				Type:        settings.Text,
+				Default:     "default",
+				Options: []settings.SettingOption{
+					{
+						Label:       "Default",
+						Description: "The default layout",
+						Value:       "default",
+					},
+					{
+						Label:       "Compact",
+						Description: "A more compact layout",
+						Value:       "compact",
+					},
+				},
+			},
 		},
 	})
 
