@@ -46,6 +46,11 @@ export type Props = {
   data: any[];
 
   /**
+   * The visibility state to start with for the columns.
+   */
+  initialColumnVisibility?: VisibilityState;
+
+  /**
    * The ID accessor for the data.
    */
   idAccessor: IdAccessor;
@@ -83,7 +88,6 @@ export type Props = {
 };
 
 const idAccessorResolver = (data: any, accessor: IdAccessor): string => {
-  console.log('data', data, 'accessor', accessor);
   switch (typeof accessor) {
     case 'function':
       return accessor(data);
@@ -121,6 +125,7 @@ const ResourceTableContainer: React.FC<Props> = ({
   pluginID, 
   connectionID, 
   resourceKey,
+  initialColumnVisibility,
 }) => {
 
   // Monkey patch the namespace column so it uses the namespace filter
@@ -137,6 +142,26 @@ const ResourceTableContainer: React.FC<Props> = ({
 
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+
+  // we have to use layout effect to set the column visibility before the table is repainted, use effect will cause a flicker
+  // also can't just put it in the initial state because it will cause an issue with table render as well
+  React.useLayoutEffect(() => {
+    // check local storage to see if they've saved this
+    const storedColumnVisibility = window.localStorage.getItem(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`);
+    if (storedColumnVisibility) {
+      setColumnVisibility(JSON.parse(storedColumnVisibility));
+    } else if (initialColumnVisibility) {
+      setColumnVisibility(initialColumnVisibility);
+    }
+  }, [initialColumnVisibility]);
+
+  React.useEffect(() => {
+    let visibility = JSON.stringify(columnVisibility);
+    // save changes to local storage
+    if (visibility !== '{}') {
+      window.localStorage.setItem(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`, visibility);
+    }
+  }, [columnVisibility]);
 
   const setNamespaces = (namespaces: string[]) => {
     setColumnFilters(prev => {
@@ -168,11 +193,7 @@ const ResourceTableContainer: React.FC<Props> = ({
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
-    getRowId: (row) => {
-      const id = idAccessorResolver(row, idAccessor);
-      console.log('id', id);
-      return id;
-    },
+    getRowId: (row) => idAccessorResolver(row, idAccessor),
     state: {
       sorting,
       columnFilters,
@@ -338,7 +359,8 @@ const ResourceTableContainer: React.FC<Props> = ({
                   memoizer={memoizer}
                   virtualizer={virtualizer} 
                   virtualRow={virtualRow} 
-                  isSelected={rowSelection[row.id]} 
+                  isSelected={rowSelection[row.id]}
+                  columnVisibility={JSON.stringify(columnVisibility)}
                 />
               );
             })}
@@ -371,8 +393,12 @@ const calcMemoKey = (data: any, memoizer?: Memoizer) => {
 
 const MemoizedRow = React.memo(RowContainer, (prev, next) => {
   return calcMemoKey(prev.row.original, prev.memoizer) === calcMemoKey(next.row.original, next.memoizer)
-    && prev.virtualRow.start === next.virtualRow.start && prev.isSelected === next.isSelected;
+    && prev.virtualRow.start === next.virtualRow.start && prev.isSelected === next.isSelected
+    && prev.columnVisibility === next.columnVisibility;
 });
+
+MemoizedRow.displayName = 'MemoizedRow';
+MemoizedRow.whyDidYouRender = true;
 
 ResourceTableContainer.displayName = 'ResourceTableContainer';
 ResourceTableContainer.whyDidYouRender = true;

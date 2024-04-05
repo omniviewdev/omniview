@@ -28,6 +28,7 @@ export type Props = {
   isSelected: boolean;
   /** The row data */
   row: Row<any>;
+  columnVisibility: string;
 };
 
 /**
@@ -53,7 +54,7 @@ export const RowContainer: React.FC<Props> = ({
   }, [virtualizer, virtualRow.index]);
 
   const handleRowClick = (column: string) => {
-    if (column === 'name') {
+    if (column !== 'select' && column !== 'menu') {
       showResourceSidebar({ 
         pluginID, 
         connectionID, 

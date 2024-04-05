@@ -3,6 +3,7 @@ package resourcers
 
 import (
 	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers/appsv1"
+	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers/corev1"
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 )
 
@@ -41,4 +42,5 @@ var ResourceDefs = map[string]types.ResourceDefinition{
 	"apps::v1::ReplicaSet":         appsv1.ReplicaSetDef,
 	"apps::v1::DaemonSet":          appsv1.DaemonSetDef,
 	"apps::v1::ControllerRevision": appsv1.ControllerRevisionDef,
+	"core::v1::Node":               corev1.NodeDef,
 }

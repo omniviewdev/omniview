@@ -4,6 +4,7 @@ import React from 'react';
 import Box from '@mui/joy/Box';
 import Typography from '@mui/joy/Typography';
 import { formatTimeDifference } from '@/utils/time';
+import { convertByteUnits } from '@/utils/units';
 
 type Props = {
   /** The text value to render */
@@ -20,6 +21,12 @@ type Props = {
   align?: 'left' | 'right' | 'center';
   /** Formatter for the text */
   formatter?: string;
+};
+
+type FormattingFunction = (value: string) => string;
+
+const formatters: Record<string, FormattingFunction> = {
+  bytes: (value: string) => convertByteUnits({ from: value }),
 };
 
 const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
@@ -59,7 +66,7 @@ const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
 };
 
 /** Render a standard text row for the generic resource table. */
-const TextCellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorator, endDecorator }) => {
+const TextCellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorator, endDecorator, formatter }) => {
   const getColor = () => {
     if (colorMap) {
       return colorMap[value] || 'neutral';
@@ -97,7 +104,7 @@ const TextCellBase: React.FC<Props> = ({ align, value, color, colorMap, startDec
         endDecorator={endDecorator}
         noWrap
       >
-        {value}
+        {formatter && formatters[formatter] ? formatters[formatter](value) : value}
       </Typography>
     </Box>
   );
@@ -105,12 +112,11 @@ const TextCellBase: React.FC<Props> = ({ align, value, color, colorMap, startDec
 
 
 const TextCell: React.FC<Props> = ({ formatter, ...props }) => {
-  switch (formatter) {
-    case 'AGE':
-      console.log('using age formatter');
+  switch (formatter?.toLowerCase()) {
+    case 'age':
       return <AgeCell {...props}/>;
     default:
-      return <TextCellBase {...props} />;
+      return <TextCellBase {...props} formatter={formatter?.toLowerCase()} />;
   }
 };
 

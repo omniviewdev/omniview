@@ -68,7 +68,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
     return null;
   }
 
-  const { columnDefs, isLoading, isError, data } = useResourceDefinition({ pluginID, connectionID, resourceKey });
+  const { isLoading, isError, data, columns } = useResourceDefinition({ pluginID, connectionID, resourceKey });
   const { resources } = useResources({ pluginID, connectionID, resourceKey });
 
   // TODO: replace these with loaders
@@ -146,7 +146,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
     );
   }
 
-  if (!resources.data || !data) {
+  if (!resources.data || !data || !columns.defs.length) {
     return null;
   }
 
@@ -167,7 +167,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
 
   return (
     <ResourceTableContainer
-      columns={columnDefs}
+      columns={columns.defs}
       data={Object.values(resources.data.result)}
       idAccessor={getIDAccessor()}
       namespaceAccessor={data.namespace_accessor}
@@ -175,6 +175,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
       pluginID={pluginID}
       connectionID={connectionID}
       resourceKey={resourceKey}
+      initialColumnVisibility={columns.visibility}
     />
   );
 };

@@ -113,6 +113,7 @@ const Welcome = () => {
               transition={{ type: 'spring', duration: 1.5, delay: 0.5 }}
               sx={{
                 width: '50%',
+                maxWidth: 900,
                 borderRadius: 9,
                 overflow: 'hidden',
                 position: 'relative',

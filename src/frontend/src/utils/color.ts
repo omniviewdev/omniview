@@ -24,6 +24,16 @@ export function stringToColor(string: string, alpha = 0.5) {
 }
 
 export function stringAvatar(name: string) {
+  if (!name) {
+    return {
+      sx: {
+        bgcolor: '#f44336',
+        borderRadius: 6,
+      },
+      children: 'NA',
+    };
+  }
+
   if (name.length === 1) {
     return {
       sx: {

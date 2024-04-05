@@ -10,6 +10,7 @@ import {
   RowMenu,
 } from '@/components/tables/ResourceTable/components';
 import { TextCell } from '@/components/tables/Resources/cells';
+import ColumnFilter from '@/components/tables/Resources/ColumnFilter';
 
 type UseResourceDefinitionOptions = {
   /**
@@ -27,9 +28,23 @@ type UseResourceDefinitionOptions = {
   resourceKey: string;
 };
 
+const getAlignment = (align?: string) => {
+  switch (align) {
+    case 'center':
+      return 'center';
+    case 'right':
+      return 'right';
+    default:
+      return 'left';
+  }
+};
+
 const parseColumnDef = (columnDefs?: types.ColumnDef[]) => {
   if (columnDefs === undefined) {
-    return [];
+    return {
+      defs: [],
+      visibility: {},
+    };
   }
 
   const defs: Array<ColumnDef<any>> = [
@@ -48,7 +63,7 @@ const parseColumnDef = (columnDefs?: types.ColumnDef[]) => {
       id: def.id,
       header: def.header,
       accessorKey: def.accessor,
-      cell: ({ getValue }) => <TextCell value={getValue() as string} formatter={def.formatter} />,
+      cell: ({ getValue }) => <TextCell align={getAlignment(def.align)} value={getValue() as string} formatter={def.formatter} />,
     };
 
     if (def.width) {
@@ -61,15 +76,18 @@ const parseColumnDef = (columnDefs?: types.ColumnDef[]) => {
   // add the actions to the end
   defs.push({
     id: 'menu',
-    header: '',
+    header: ({ table }) => <ColumnFilter columns={table.getAllFlatColumns()} />,
     cell: RowMenu,
     size: 50,
     enableSorting: false,
     enableHiding: false,
   });
 
-  return defs;
-};
+  return {
+    defs,
+    visibility: Object.fromEntries(columnDefs?.map((def) => [def.id, !def.hidden])),
+  };
+}; 
 
 /**
  * Fetches the resource definition for the given resource key and returns calculated resource
@@ -89,7 +107,7 @@ export const useResourceDefinition = ({ pluginID, resourceKey }: UseResourceDefi
     isLoading: definition.isLoading,
     isError: definition.isError,
     error: definition.error,
-    columnDefs: parseColumnDef(definition.data?.columnDefs),
+    columns: parseColumnDef(definition.data?.columnDefs),
   };
 };
 
