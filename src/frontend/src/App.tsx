@@ -59,7 +59,7 @@ const App: React.FC = () => (
             </CssVarsProvider>
           </Provider>
         </StyledEngineProvider>
-        <ReactQueryDevtools initialIsOpen={false} buttonPosition='bottom-right' />
+        {/* <ReactQueryDevtools initialIsOpen={false} buttonPosition='bottom-right' /> */}
       </QueryClientProvider>
     </AppSnackbarProvider>
   </ErrorBoundary>
