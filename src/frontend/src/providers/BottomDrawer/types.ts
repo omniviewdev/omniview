@@ -61,6 +61,11 @@ export type ReorderTab = (from: number, to: number) => void;
 export type CloseTab = (opts: FindTabOpts) => void;
 
 /**
+* Close multiple tabs in the bottom drawer.
+*/
+export type CloseTabs = (opts: FindTabOpts[]) => void;
+
+/**
  * Resize the height of the bottom drawer programatically, in pixels.
  */
 export type ResizeDrawer = (height: number) => void;

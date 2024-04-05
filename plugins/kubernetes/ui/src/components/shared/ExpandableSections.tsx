@@ -3,13 +3,9 @@ import * as React from "react";
 // material-ui
 import Avatar from "@mui/joy/Avatar";
 import AccordionGroup from "@mui/joy/AccordionGroup";
-import Accordion from "@mui/joy/Accordion";
-import AccordionDetails, {
-  accordionDetailsClasses,
-} from "@mui/joy/AccordionDetails";
-import AccordionSummary, {
-  accordionSummaryClasses,
-} from "@mui/joy/AccordionSummary";
+import Accordion, { accordionClasses } from "@mui/joy/Accordion";
+import AccordionDetails from "@mui/joy/AccordionDetails";
+import AccordionSummary from "@mui/joy/AccordionSummary";
 import Chip from "@mui/joy/Chip";
 import Stack from "@mui/joy/Stack";
 import Typography from "@mui/joy/Typography";
@@ -37,21 +33,24 @@ export default function ExpandableSections({
   return (
     <AccordionGroup
       size="sm"
-      variant="outlined"
+      variant="soft"
       transition="0.1s"
       sx={{
         borderRadius: "sm",
+        border: (theme) => `1px solid ${theme.palette.divider}`,
         flexGrow: 0,
-        [`& .${accordionSummaryClasses.button}:hover`]: {
-          bgcolor: "transparent",
-        },
-        [`& .${accordionDetailsClasses.content}`]: {
-          boxShadow: (theme) => `inset 0 1px ${theme.vars.palette.divider}`,
-          transition: "0.2s",
-          [`&.${accordionDetailsClasses.expanded}`]: {
-            paddingBlock: "0.25rem",
-            p: "0.25rem",
+        [`& .${accordionClasses.root}`]: {
+          transition: '0.2s ease',
+          '& button:not([aria-expanded="true"])': {
+            transition: '0.2s ease',
           },
+          '& button:hover': {
+            background: 'transparent',
+          },
+        },
+        [`& .${accordionClasses.root}.${accordionClasses.expanded}`]: {
+          bgcolor: 'background.level1',
+          borderRadius: 'sm',
         },
       }}
     >
@@ -96,7 +95,8 @@ export default function ExpandableSections({
                   fontFamily={monospace ? "monospace" : "inherit"}
                   px={0.5}
                   textColor={"neutral.50"}
-                  fontSize={monospace ? 12 : 13}
+                  m={'3px'}
+                  fontSize={monospace ? 13 : 14}
                 >
                   {section.title}
                 </Typography>

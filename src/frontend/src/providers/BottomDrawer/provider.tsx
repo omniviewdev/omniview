@@ -12,6 +12,7 @@ import {
   type CloseTab,
   type ReorderTab,
   type CreateTabs,
+  type CloseTabs,
 } from './types';
 import { TerminateSession } from '@api/terminal/TerminalManager';
 
@@ -127,6 +128,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     const [tab] = draft.splice(from, 1);
     draft.splice(to, 0, tab);
     setTabs(draft);
+    setFocused(to);
   };
 
   const closeTab: CloseTab = (opts: FindTabOpts) => {
@@ -149,6 +151,34 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
 
     setTabs((prevTabs) => prevTabs.filter((_, i) => i !== foundIndex));
     setFocused(Math.max(foundIndex - 1, 0));
+  };
+
+  const closeTabs: CloseTabs = (opts: FindTabOpts[]) => {
+    const foundIndexes = opts.map((opt) => findTabIndex(tabs, opt)).filter((index) => index !== -1);
+    if (foundIndexes.length === 0) {
+      return;
+    }
+
+    let terminalTabs: BottomDrawerTab[] = [];
+    foundIndexes.forEach((index) => {
+      const tab = tabs[index];
+      if (tab.variant === 'terminal') {
+        terminalTabs.push(tab);
+      }
+    });
+
+    // close all the selected sessions
+    const closesPromises = Promise.all(terminalTabs.map(async (tab) => TerminateSession(tab.id)));
+    closesPromises.catch((err) => {
+      if (err instanceof Error) {
+        console.error('failed to terminate sessions: ', err.message);
+        return;
+      }
+    });
+
+    const newTabs = tabs.filter((_, i) => !foundIndexes.includes(i));
+    setTabs(newTabs);
+    setFocused(newTabs.length - 1);
   };
 
   const resizeDrawer: ResizeDrawer = (height: number) => {
@@ -185,6 +215,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     focusTab,
     reorderTab,
     closeTab,
+    closeTabs,
     resizeDrawer,
     closeDrawer,
     fullscreenDrawer,
