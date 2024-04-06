@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/omniview/kubernetes/pkg/plugin/exec"
 	"github.com/omniview/kubernetes/pkg/plugin/resource"
 	"github.com/omniviewdev/settings"
 
@@ -49,6 +50,7 @@ func main() {
 
 	// Register the capabilities
 	resource.Register(plugin)
+	exec.Register(plugin)
 
 	// Serve the plugin
 	plugin.Serve()

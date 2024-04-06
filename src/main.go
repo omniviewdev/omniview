@@ -10,8 +10,6 @@ import (
 	"regexp"
 	"strings"
 
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-
 	pkgsettings "github.com/omniviewdev/settings"
 	"github.com/wailsapp/mimetype"
 	"github.com/wailsapp/wails/v2"
@@ -38,6 +36,8 @@ import (
 	storagev1 "github.com/omniviewdev/omniview/backend/services/resources/storage_v1"
 	"github.com/omniviewdev/omniview/backend/services/resources/v1"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
+
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 //go:embed all:frontend/dist
