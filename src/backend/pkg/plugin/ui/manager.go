@@ -3,9 +3,11 @@ package ui
 import (
 	"context"
 
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"go.uber.org/zap"
+
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
 // ComponentManager is responsible for managing UI components.

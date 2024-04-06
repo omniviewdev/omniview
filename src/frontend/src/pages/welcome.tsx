@@ -34,30 +34,30 @@ const MotionBox = motion(Box);
  * The main welcome landing page for the application.
  */
 const Welcome = () => {
-  const [toolIndex, setToolIndex] = React.useState(0);
-  const [imageIndex, setImageIndex] = React.useState(0);
+  const [toolIndex, _setToolIndex] = React.useState(0);
+  const [imageIndex, _setImageIndex] = React.useState(0);
 
-  // run a rotation of tools every 3 seconds
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      setToolIndex((prevIndex) => (prevIndex + 1) % logos.length);
-    }, 3000);
-
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, []);
-
-  // run a rotation of images every 5 seconds
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      setImageIndex((prevIndex) => (prevIndex + 1) % images.length);
-    }, 9000);
-    return () => {
-      clearInterval(interval);
-    };
-  }, []);
+  // // run a rotation of tools every 3 seconds
+  // React.useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     setToolIndex((prevIndex) => (prevIndex + 1) % logos.length);
+  //   }, 3000);
+  //
+  //
+  //   return () => {
+  //     clearInterval(interval); 
+  //   };
+  // }, []);
+  //
+  // // run a rotation of images every 5 seconds
+  // React.useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     setImageIndex((prevIndex) => (prevIndex + 1) % images.length);
+  //   }, 9000);
+  //   return () => {
+  //     clearInterval(interval); 
+  //   };
+  // }, []);
 
   // Define the animation variants
   const variants = {

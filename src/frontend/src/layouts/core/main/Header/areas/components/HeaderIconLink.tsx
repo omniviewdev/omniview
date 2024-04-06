@@ -19,7 +19,7 @@ const HeaderIconLink: React.FC<Props> = ({ id, helpText, icon, href }) => (
     <Link to={href}>
       <IconButton
         name={id}
-        size='md'
+        size='sm'
         variant='outlined'
         color='neutral'
         sx={{

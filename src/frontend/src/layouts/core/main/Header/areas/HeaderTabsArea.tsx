@@ -1,10 +1,9 @@
 import React from 'react';
 
-// Material-ui
+// material-ui
 import Box from '@mui/joy/Box';
 
-// Icons
-import TabBarProvider from '@/providers/header/TabBarProvider';
+// import TabBarProvider from '@/providers/header/TabBarProvider';
 
 /**
  * The tabs area in the header
@@ -23,7 +22,7 @@ const HeaderTabsArea: React.FC = () => (
       WebkitUserSelect: 'none',
     }}
   >
-    <TabBarProvider />
+    {/* <TabBarProvider /> */}
   </Box>
 );
 

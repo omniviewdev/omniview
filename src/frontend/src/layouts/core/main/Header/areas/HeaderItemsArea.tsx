@@ -44,7 +44,7 @@ const HeaderItemsArea: React.FC<Props> = ({ items }) => {
 
         <IconButton
           name={'add-pane'}
-          size='md'
+          size='sm'
           variant='outlined'
           color='neutral'
           sx={{
@@ -69,7 +69,6 @@ const HeaderItemComponent = ({ item }: { item: HeaderAreaItemListType }): React.
       return <HeaderIconMenu {...item} />;
     case HeaderAreaItemType.MODAL:
       // Not defined yet for now
-    default:
       return <></>;
   }
 };

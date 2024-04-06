@@ -15,9 +15,10 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/exp/slices"
+
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
 const (

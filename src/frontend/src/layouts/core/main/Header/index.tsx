@@ -28,7 +28,7 @@ const CoreLayoutHeader: React.FC<BoxProps> = props => {
         styles={{
           // eslint-disable-next-line @typescript-eslint/naming-convention
           ':root': {
-            '--CoreLayoutHeader-height': '43px',
+            '--CoreLayoutHeader-height': '41px',
             '--CoreLayoutHeader-inset': shouldIndent ? '68px' : '0px',
           },
         }}
@@ -84,8 +84,6 @@ const HeaderItemAreaComponent = ({ area }: { area: HeaderArea }): React.ReactEle
       return <HeaderContextArea title='' />;
     case 'tabs':
       return <HeaderTabsArea />;
-    default:
-      return <></>;
   }
 };
 
