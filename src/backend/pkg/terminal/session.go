@@ -6,8 +6,8 @@ import (
 	"os/exec"
 )
 
-// TerminalSession represents an individual terminal session.
-type TerminalSession struct {
+// Session represents an individual terminal session.
+type Session struct {
 	cmd      *exec.Cmd          // The command being run in this session.
 	ptyFile  *os.File           // File descriptor for the pseudo-terminal device.
 	buffer   *OutputBuffer      // Stores session output for retrieval upon reattachment.
@@ -18,8 +18,8 @@ type TerminalSession struct {
 	attached bool // Indicates if the session is currently broadcasting output.
 }
 
-// TerminalSessionOptions contains options for creating a new terminal session.
-type TerminalSessionOptions struct {
+// SessionOptions contains options for creating a new terminal session.
+type SessionOptions struct {
 	ID string `json:"id"`
 	// Labels are arbitrary key-value pairs for the session that can be used to filter sessions, or
 	// to provide additional information about the session.
@@ -30,8 +30,8 @@ type TerminalSessionOptions struct {
 	Context string `json:"context"`
 }
 
-// TerminalSessionDetails contains details about a terminal session.
-type TerminalSessionDetails struct {
+// SessionDetails contains details about a terminal session.
+type SessionDetails struct {
 	// Labels are key-value pairs for the session.
 	Labels map[string]string `json:"labels"`
 	// ID is the unique identifier for the session.

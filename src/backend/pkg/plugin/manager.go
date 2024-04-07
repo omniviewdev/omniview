@@ -15,12 +15,15 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 
+	pluginexec "github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	ep "github.com/omniviewdev/plugin-sdk/pkg/exec"
 	rp "github.com/omniviewdev/plugin-sdk/pkg/resource/plugin"
+	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sp "github.com/omniviewdev/plugin-sdk/pkg/settings"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -85,6 +88,7 @@ func NewManager(
 	logger *zap.SugaredLogger,
 	resourceController resource.Controller,
 	settingsController settings.Controller,
+	execController pluginexec.Controller,
 	managers map[string]plugintypes.PluginManager,
 ) Manager {
 	l := logger.Named("PluginManager")
@@ -100,12 +104,12 @@ func NewManager(
 		plugins: make(map[string]types.Plugin),
 		connlessControllers: map[types.PluginType]plugintypes.Controller{
 			types.SettingsPlugin:   settingsController,
-			types.ReporterPlugin:   nil, // TODO implement
-			types.ResourcePlugin:   nil, // not connless
-			types.ExecutorPlugin:   nil, // not connless
-			types.FilesystemPlugin: nil, // not connless
-			types.LogPlugin:        nil, // not connless
-			types.MetricPlugin:     nil, // not connless
+			types.ReporterPlugin:   nil,            // TODO implement
+			types.ResourcePlugin:   nil,            // not connless
+			types.ExecutorPlugin:   execController, // not connless
+			types.FilesystemPlugin: nil,            // not connless
+			types.LogPlugin:        nil,            // not connless
+			types.MetricPlugin:     nil,            // not connless
 		},
 		connfullControllers: map[types.PluginType]plugintypes.ConnectedController{
 			types.ResourcePlugin:   resourceController,
@@ -380,8 +384,10 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 		HandshakeConfig: metadata.GenerateHandshakeConfig(),
 		Plugins: map[string]plugin.Plugin{
 			"resource": &rp.ResourcePlugin{},
+			"exec":     &ep.Plugin{},
 			"settings": &sp.SettingsPlugin{},
 		},
+		GRPCDialOptions:  sdk.GRPCDialOptions(),
 		Cmd:              exec.Command(filepath.Join(location, "bin", "plugin")),
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
 		Logger:           logger,
@@ -575,7 +581,7 @@ func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
 		case types.ResourcePlugin.String():
 			pm.connfullControllers[types.ResourcePlugin].OnPluginInit(plugin.Metadata)
 		case types.ExecutorPlugin.String():
-			pm.connfullControllers[types.ExecutorPlugin].OnPluginInit(plugin.Metadata)
+			pm.connlessControllers[types.ExecutorPlugin].OnPluginInit(plugin.Metadata)
 		case types.FilesystemPlugin.String():
 			pm.connfullControllers[types.FilesystemPlugin].OnPluginInit(plugin.Metadata)
 		case types.LogPlugin.String():
@@ -628,7 +634,7 @@ func (pm *pluginManager) startPlugin(plugin *types.Plugin, client plugin.ClientP
 				return fmt.Errorf("error starting resource plugin: %w", err)
 			}
 		case types.ExecutorPlugin.String():
-			if err := pm.connfullControllers[types.ExecutorPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+			if err := pm.connlessControllers[types.ExecutorPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
 				return fmt.Errorf("error starting executor plugin: %w", err)
 			}
 		case types.FilesystemPlugin.String():
@@ -691,7 +697,7 @@ func (pm *pluginManager) stopPlugin(plugin *types.Plugin) error {
 				return fmt.Errorf("error stopping resource plugin: %w", err)
 			}
 		case types.ExecutorPlugin.String():
-			if err := pm.connfullControllers[types.ExecutorPlugin].OnPluginStop(plugin.Metadata); err != nil {
+			if err := pm.connlessControllers[types.ExecutorPlugin].OnPluginStop(plugin.Metadata); err != nil {
 				return fmt.Errorf("error stopping executor plugin: %w", err)
 			}
 		case types.FilesystemPlugin.String():
@@ -761,7 +767,7 @@ func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 				return fmt.Errorf("error shutting down resource plugin: %w", err)
 			}
 		case types.ExecutorPlugin.String():
-			if err := pm.connfullControllers[types.ExecutorPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
+			if err := pm.connlessControllers[types.ExecutorPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
 				return fmt.Errorf("error shutting down executor plugin: %w", err)
 			}
 		case types.FilesystemPlugin.String():
@@ -830,58 +836,51 @@ func (pm *pluginManager) destroyPlugin(plugin *types.Plugin) error {
 		types.MetricPlugin,
 		types.ReporterPlugin,
 	}
+	conless := []types.PluginType{
+		types.ExecutorPlugin,
+	}
 
 	for _, capability := range plugin.Metadata.Capabilities {
 		// find the capability type
 		var ctype types.PluginType
+		var connfull bool
+
 		found := false
 		for _, t := range confull {
 			if capability == t.String() {
 				// found
 				ctype = t
+				connfull = true
 				break
 			}
 		}
+		for _, t := range conless {
+			if capability == t.String() {
+				// found
+				ctype = t
+				connfull = false
+				break
+			}
+		}
+
 		if !found {
 			return fmt.Errorf(
 				"error destroying plugin: unknown plugin capability type '%s'",
 				capability,
 			)
 		}
-		if err := pm.connfullControllers[ctype].OnPluginDestroy(plugin.Metadata); err != nil {
+
+		var err error
+		if connfull {
+			err = pm.connfullControllers[ctype].OnPluginDestroy(plugin.Metadata)
+		} else {
+			err = pm.connlessControllers[ctype].OnPluginDestroy(plugin.Metadata)
+		}
+
+		if err != nil {
 			return fmt.Errorf("error destroying %s plugin: %w", capability, err)
 		}
 	}
 
-	//
-	// // go through the controllers and stop them based on the capabilities
-	// for _, capability := range plugin.Metadata.Capabilities {
-	// 	switch capability {
-	// 	case types.ResourcePlugin.String():
-	// 		if err := pm.connfullControllers[types.ResourcePlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-	// 			return fmt.Errorf("error destroying resource plugin: %w", err)
-	// 		}
-	// 	case types.ExecutorPlugin.String():
-	// 		if err := pm.connfullControllers[types.ExecutorPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-	// 			return fmt.Errorf("error destroying executor plugin: %w", err)
-	// 		}
-	// 	case types.FilesystemPlugin.String():
-	// 		if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-	// 			return fmt.Errorf("error destroying filesystem plugin: %w", err)
-	// 		}
-	// 	case types.LogPlugin.String():
-	// 		if err := pm.connfullControllers[types.LogPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-	// 			return fmt.Errorf("error destroying log plugin: %w", err)
-	// 		}
-	// 	case types.MetricPlugin.String():
-	// 		if err := pm.connfullControllers[types.MetricPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-	// 			return fmt.Errorf("error destroying metric plugin: %w", err)
-	// 		}
-	// 	case types.ReporterPlugin.String():
-	// 		if err := pm.connfullControllers[types.ReporterPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-	// 			return fmt.Errorf("error destroying reporter plugin: %w", err)
-	// 		}
-	// 	}
-	// }
 	return nil
 }

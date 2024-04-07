@@ -6,7 +6,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { debounce } from '@/utils/debounce';
 
 // project import
-import { AttachToSession, DetachFromSession, SetTTYSize, WriteToSession } from '@api/terminal/TerminalManager';
+import { AttachSession, DetachSession, ResizeSession, WriteSession } from '@api/exec/Client';
 import * as runtime from '@runtime/runtime.js';
 import { Base64 } from 'js-base64';
 
@@ -87,32 +87,39 @@ export default function TerminalContainer({ sessionId }: Props) {
     terminal.onResize((event) => {
       var rows = event.rows;
       var cols = event.cols;
-      SetTTYSize(sessionId, rows, cols).catch((err) => {
+      console.log('rows: %s, cols: %s', rows, cols);
+      
+      ResizeSession(sessionId, rows, cols).catch((err) => {
         console.error('failed to set tty size', err);
       });
     });
 
-    const eventkey = `core/terminal/${sessionId}`;
+    const stdout = `core/exec/stream/stdout/${sessionId}`;
+    const stderr = `core/exec/stream/stderr/${sessionId}`;
+
 
     // Function to handle attachment logic
     const attachToSession = async () => {
       console.log('attaching to session', sessionId);
 
       try {
-        // Assuming attach method returns previous lines and subscribes to new output
-        // AttachToSession returns a byte array, so we need to convert it to a string
-        const data = await AttachToSession(sessionId) as unknown as string;
+        const data = await AttachSession(sessionId);
         if (data !== null && data !== undefined) {
-          terminal.write(Base64.toUint8Array(data));
+          terminal.write(Base64.toUint8Array(data.buffer as unknown as string));
         }
       } catch (e) {
         console.error('failed to attach to session', e);
       }
 
-      // Listen for terminal data from the backend
-      runtime.EventsOn(eventkey, (data: string) => {
+      runtime.EventsOn(stdout, (data: number[]) => {
         if (data !== null && data !== undefined) {
-          terminal.write(Base64.toUint8Array(data));
+          terminal.write(Base64.toUint8Array(data as unknown as string));
+        }
+      });
+
+      runtime.EventsOn(stderr, (data: number[]) => {
+        if (data !== null && data !== undefined) {
+          terminal.write(Base64.toUint8Array(data as unknown as string));
         }
       });
     };
@@ -122,7 +129,8 @@ export default function TerminalContainer({ sessionId }: Props) {
       console.log('attached to session %s', sessionId);
 
       terminal.onData(data => {
-        WriteToSession(sessionId, data)
+        console.log('data:', data);
+        WriteSession(sessionId, data)
           .catch((err) => {
             if (err instanceof Error) {
               console.error('failed to write to session: ', err.message);
@@ -149,9 +157,10 @@ export default function TerminalContainer({ sessionId }: Props) {
         resizeObserver.unobserve(terminalRef.current);
       }
 
-      runtime.EventsOff(eventkey);
+      runtime.EventsOff(stdout);
+      runtime.EventsOff(stderr);
 
-      DetachFromSession(sessionId).then(() => {
+      DetachSession(sessionId).then(() => {
         console.log('detached from session %s', sessionId);
       }).catch((err) => {
         if (err instanceof Error) {

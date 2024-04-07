@@ -153,6 +153,125 @@ export namespace config {
 
 }
 
+export namespace exec {
+	
+	export class Session {
+	    // Go type: time
+	    created_at: any;
+	    labels: {[key: string]: string};
+	    params: {[key: string]: string};
+	    id: string;
+	    command: string[];
+	    attached: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Session(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.created_at = this.convertValues(source["created_at"], null);
+	        this.labels = source["labels"];
+	        this.params = source["params"];
+	        this.id = source["id"];
+	        this.command = source["command"];
+	        this.attached = source["attached"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AttachSessionResult {
+	    session?: Session;
+	    buffer: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AttachSessionResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.session = this.convertValues(source["session"], Session);
+	        this.buffer = source["buffer"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CreateTerminalOptions {
+	    labels: {[key: string]: string};
+	    command: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateTerminalOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.labels = source["labels"];
+	        this.command = source["command"];
+	    }
+	}
+	
+	export class SessionOptions {
+	    params: {[key: string]: string};
+	    labels: {[key: string]: string};
+	    id: string;
+	    resource_plugin: string;
+	    resource_key: string;
+	    resource_data: {[key: string]: any};
+	    command: string[];
+	    tty: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.params = source["params"];
+	        this.labels = source["labels"];
+	        this.id = source["id"];
+	        this.resource_plugin = source["resource_plugin"];
+	        this.resource_key = source["resource_key"];
+	        this.resource_data = source["resource_data"];
+	        this.command = source["command"];
+	        this.tty = source["tty"];
+	    }
+	}
+
+}
+
 export namespace resources {
 	
 	export class GetOptions {
@@ -323,47 +442,6 @@ export namespace settings {
 		}
 	}
 	
-
-}
-
-export namespace terminal {
-	
-	export class TerminalSessionDetails {
-	    labels: {[key: string]: string};
-	    id: string;
-	    command: string;
-	    attached: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new TerminalSessionDetails(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.labels = source["labels"];
-	        this.id = source["id"];
-	        this.command = source["command"];
-	        this.attached = source["attached"];
-	    }
-	}
-	export class TerminalSessionOptions {
-	    id: string;
-	    labels: {[key: string]: string};
-	    kubeconfig: string;
-	    context: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new TerminalSessionOptions(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.labels = source["labels"];
-	        this.kubeconfig = source["kubeconfig"];
-	        this.context = source["context"];
-	    }
-	}
 
 }
 

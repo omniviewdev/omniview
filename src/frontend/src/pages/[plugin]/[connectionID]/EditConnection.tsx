@@ -44,9 +44,6 @@ export default function EditConnection(): React.ReactElement {
       alignItems={'flex-start'}
       maxHeight={'100%'}
       minHeight={'100%'}
-      // Sx={{
-      //   background: `linear-gradient(109.6deg, rgb(36, 45, 57) 2.2%, ${tinycolor(plugin.metadata.theme.colors.primary).setAlpha(0.2).toString()} 50.2%, rgb(0, 0, 0) 98.6%);`,
-      // }}
     >
 
       <PluginBackdrop

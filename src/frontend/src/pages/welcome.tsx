@@ -148,4 +148,7 @@ const Welcome = () => {
   );
 };
 
+Welcome.displayName = 'Welcome';
+Welcome.whyDidYouRender = true;
+
 export default Welcome;

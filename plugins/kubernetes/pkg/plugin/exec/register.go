@@ -57,8 +57,6 @@ func PodHandler(
 
 	// Change this to get from settings provider
 	os.Setenv("SHELL", "/bin/zsh")
-
-	// ensure PATH includes locations for common dependencies
 	os.Setenv("PATH", os.Getenv("PATH")+":/usr/local/bin:/usr/bin")
 
 	// connect to a cluster using the provided kubeconfig and context
