@@ -10,7 +10,6 @@ import (
 
 	"github.com/creack/pty"  // Import the pty package for creating pseudo-terminal devices.
 	"github.com/google/uuid" // UUID package for generating unique identifiers.
-
 	// Wails runtime for backend-frontend communication.
 	"go.uber.org/zap"
 
