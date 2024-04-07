@@ -9,6 +9,7 @@ import (
 	"os"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	restclient "k8s.io/client-go/rest"
@@ -92,7 +93,7 @@ func PodHandler(
 		container = ""
 	}
 
-	return ExecCmdExample(
+	return ExecCmd(
 		ctx.Context,
 		clientset,
 		config,
@@ -101,11 +102,22 @@ func PodHandler(
 		container,
 		opts.Command,
 		opts.TTY,
+		nil,
 	)
 }
 
+type sizeQueue chan remotecommand.TerminalSize
+
+func (s *sizeQueue) Next() *remotecommand.TerminalSize {
+	size, ok := <-*s
+	if !ok {
+		return nil
+	}
+	return &size
+}
+
 // ExecCmd exec command on specific pod and wait the command's output.
-func ExecCmdExample(
+func ExecCmd(
 	ctx context.Context,
 	client kubernetes.Interface,
 	config *restclient.Config,
@@ -114,6 +126,7 @@ func ExecCmdExample(
 	container string,
 	command []string,
 	tty bool,
+	sizeQueue remotecommand.TerminalSizeQueue,
 ) (io.Writer, io.Reader, io.Reader, error) {
 	req := client.
 		CoreV1().
@@ -138,7 +151,15 @@ func ExecCmdExample(
 		scheme.ParameterCodec,
 	)
 
-	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	spdy, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	ws, err := remotecommand.NewWebSocketExecutor(config, "GET", req.URL().String())
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	exec, err := remotecommand.NewFallbackExecutor(ws, spdy, httpstream.IsUpgradeFailure)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -150,10 +171,11 @@ func ExecCmdExample(
 	)
 
 	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdin:  stdin,
-		Stdout: stdout,
-		Stderr: stderr,
-		Tty:    true,
+		Stdin:             stdin,
+		Stdout:            stdout,
+		Stderr:            stderr,
+		Tty:               true,
+		TerminalSizeQueue: sizeQueue,
 	})
 	if err != nil {
 		return nil, nil, nil, err
