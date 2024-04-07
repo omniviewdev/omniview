@@ -30,9 +30,8 @@ import { type BottomDrawerTab } from '@/providers/BottomDrawer/types';
 import Icon from '@/components/icons/Icon';
 import { LuPlus, LuX } from 'react-icons/lu';
 import useBottomDrawer from '@/hooks/useBottomDrawer';
-import { ListSessions, StartSession } from '@api/terminal/TerminalManager';
-import { terminal } from '@api/models';
-
+import { ListSessions, CreateTerminal } from '@api/exec/Client';
+import { exec } from '@api/models';
 
 type TabContextMenuProps = {
   selected: number;
@@ -117,31 +116,31 @@ const BottomDrawerTabs: React.FC = () => {
   // eslint-disable-next-line @typescript-eslint/ban-types
   const [contextSelected, setContextSelected] = React.useState<{ index: number; el: HTMLElement } | null>(null);
 
-  const handleContextMenuClick = (tabIndex: number, event: React.MouseEvent<HTMLElement>) => {
+  const handleContextMenuClick = React.useCallback((tabIndex: number, event: React.MouseEvent<HTMLElement>) => {
     event.preventDefault();
     setContextSelected(contextSelected && contextSelected.index === tabIndex ? null : {
       index: tabIndex,
       el: event.currentTarget,
     });
-  };
+  }, [contextSelected, setContextSelected]);
 
   const contextMenuOpen = Boolean(contextSelected);
 
   // eslint-disable-next-line @typescript-eslint/ban-types -- null is required by onChange
-  const handleChange = (_event: React.SyntheticEvent | null, newValue: string | number | null) => {
+  const handleChange = React.useCallback((_event: React.SyntheticEvent | null, newValue: string | number | null) => {
     if (typeof newValue === 'number') {
       focusTab({ index: newValue });
     }
-  };
+  }, [focusTab]);
 
   const handleCreate = (variant: 'terminal' | 'browser') => {
     switch (variant) {
       case 'terminal':
-        StartSession([], terminal.TerminalSessionOptions.createFrom({}))
+        CreateTerminal(exec.CreateTerminalOptions.createFrom({ command: [] }))
           .then(session => {
             createTab({
-              id: session,
-              title: `Session ${tabs.length + 1}`, 
+              id: session.id,
+              title: `Session ${session.id.substring(0, 8)}`,
               variant: 'terminal', 
               icon: 'LuTerminalSquare',
             });
@@ -154,6 +153,10 @@ const BottomDrawerTabs: React.FC = () => {
         break;
     }
   };
+
+  const handleRemove = React.useCallback((index: number) => {
+    closeTab({ index });
+  }, [closeTab]);
 
   // Sensors for DND Kit
   const sensors = useSensors(
@@ -182,20 +185,18 @@ const BottomDrawerTabs: React.FC = () => {
     ListSessions()
       .then(sessions => {
         console.log('sessions', sessions);
-        let newtabcount = 0;
-
         const newTabs: BottomDrawerTab[] = [];
 
         // find and upsert any missing sessions where the id doesn't exist
         sessions.forEach(session => {
-          // const existing = tabs.find(tab => tab.id === session.id);
-          // if (existing) {
-          //   return undefined;
-          // }
+          const existing = tabs.find(tab => tab.id === session.id);
+          if (existing) {
+            return;
+          }
 
           newTabs.push({
             id: session.id,
-            title: `Session ${tabs.length + newtabcount++}`,
+            title: `Session ${session.id.substring(0, 8)}`,
             variant: 'terminal',
             icon: 'LuTerminalSquare',
             properties: session.labels,
@@ -269,14 +270,12 @@ const BottomDrawerTabs: React.FC = () => {
               }}
             >
               {tabs.map((tab, index) => (
-                <BottomDrawerTabComponent 
+                <MemoizedBottomDrawerTabComponent 
                   key={`bottom-drawer-tab-${index}`} 
                   {...tab} 
                   index={index} 
                   selected={focused === index}
-                  onRemove={() => {
-                    closeTab({ index }); 
-                  }} 
+                  onRemove={handleRemove}
                   onChange={handleChange}
                   handleContextMenuClick={handleContextMenuClick}
                 />
@@ -309,7 +308,7 @@ const BottomDrawerTabs: React.FC = () => {
 type BottomDrawerTabProps = BottomDrawerTab & {
   index: number;
   selected: boolean;
-  onRemove?: () => void;
+  onRemove: (index: number) => void;
   onChange: (event: React.SyntheticEvent, newValue: string | number) => void;
   handleContextMenuClick: (tabIndex: number, event: React.MouseEvent<HTMLElement>) => void;
 };
@@ -394,10 +393,14 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, t
         >
           {title}
         </Typography>
-        <LuX size={16} onClick={onRemove} />
+        <LuX size={16} onClick={() => { 
+          onRemove(index);
+        }} />
       </Stack>
     </Tab>
   );
 };
+
+const MemoizedBottomDrawerTabComponent = React.memo(BottomDrawerTabComponent);
 
 export default BottomDrawerTabs;

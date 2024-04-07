@@ -22,12 +22,12 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/clients"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/ui"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
-	"github.com/omniviewdev/omniview/backend/pkg/terminal"
 	"github.com/omniviewdev/omniview/backend/services"
 	appsv1 "github.com/omniviewdev/omniview/backend/services/resources/apps_v1"
 	batchv1 "github.com/omniviewdev/omniview/backend/services/resources/batch_v1"
@@ -181,13 +181,16 @@ func main() {
 	settingsController := settings.NewController(log)
 	settingsClient := settings.NewClient(settingsController)
 
+	execController := exec.NewController(log, resourceClient)
+	execClient := exec.NewClient(execController)
+
 	pluginManager := plugin.NewManager(
 		log,
 		resourceController,
 		settingsController,
+		execController,
 		managers,
 	)
-	terminalManager := terminal.NewTerminalManager(log)
 
 	// Create our managers
 	clusterManager, publisher, resourceChan := services.NewClusterManager(log)
@@ -250,6 +253,7 @@ func main() {
 		}
 
 		resourceController.Run(ctx)
+		execController.Run(ctx)
 
 		// Initialize the plugin system
 		if err := pluginManager.Initialize(ctx); err != nil {
@@ -259,7 +263,6 @@ func main() {
 
 		// Run the overarching managers
 		clusterManager.Run(ctx)
-		terminalManager.Run(ctx)
 
 		// core resource services
 		configMapService.Run(ctx)
@@ -342,12 +345,12 @@ func main() {
 			pluginManager,
 			resourceClient,
 			settingsClient,
+			execClient,
 			uiClient,
 			utilsClient,
 
 			// managers
 			clusterManager,
-			terminalManager,
 
 			// core resource services
 			configMapService,

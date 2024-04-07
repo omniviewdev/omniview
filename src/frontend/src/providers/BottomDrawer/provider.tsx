@@ -14,7 +14,7 @@ import {
   type CreateTabs,
   type CloseTabs,
 } from './types';
-import { TerminateSession } from '@api/terminal/TerminalManager';
+import { CloseSession } from '@api/exec/Client';
 
 type BottomDrawerProviderProps = {
   children: ReactNode;
@@ -141,7 +141,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
 
     // if terminal, close the session
     if (tab.variant === 'terminal') {
-      TerminateSession(tab.id).catch((err) => {
+      CloseSession(tab.id).catch((err) => {
         if (err instanceof Error) {
           console.error('failed to terminate session: ', err.message);
           return;
@@ -168,7 +168,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     });
 
     // close all the selected sessions
-    const closesPromises = Promise.all(terminalTabs.map(async (tab) => TerminateSession(tab.id)));
+    const closesPromises = Promise.all(terminalTabs.map(async (tab) => CloseSession(tab.id)));
     closesPromises.catch((err) => {
       if (err instanceof Error) {
         console.error('failed to terminate sessions: ', err.message);

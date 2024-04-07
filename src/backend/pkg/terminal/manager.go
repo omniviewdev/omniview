@@ -2,77 +2,102 @@ package terminal
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 
-	"github.com/creack/pty"                    // Import the pty package for creating pseudo-terminal devices.
-	"github.com/google/uuid"                   // UUID package for generating unique identifiers.
-	"github.com/wailsapp/wails/v2/pkg/runtime" // Wails runtime for backend-frontend communication.
+	"github.com/creack/pty"  // Import the pty package for creating pseudo-terminal devices.
+	"github.com/google/uuid" // UUID package for generating unique identifiers.
+
+	// Wails runtime for backend-frontend communication.
 	"go.uber.org/zap"
+
+	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/exec"
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
-// TerminalManager manages terminal sessions, allowing creation, attachment, and more.
-type TerminalManager struct {
-	wailsCtx context.Context             // Wails context for sending events to the frontend.
-	log      *zap.SugaredLogger          // Logger for the terminal manager.
-	sessions map[string]*TerminalSession // Maps session IDs to TerminalSession instances.
-	mux      sync.Mutex                  // Protects access to the sessions map.
+const (
+	DefaultLocalShell     = "zsh"
+	DefaultReadBufferSize = 20480
+	InitialRows           = 27
+	InitialCols           = 72
+)
+
+// Manager manages terminal sessions, allowing creation, attachment, and more.
+type Manager struct {
+	log      *zap.SugaredLogger
+	sessions map[string]*sdkexec.Session
+	ptys     map[string]*os.File
+
+	inMux     chan sdkexec.StreamInput
+	outMux    chan sdkexec.StreamOutput
+	resizeMux chan sdkexec.StreamResize
+	mux       sync.RWMutex
 }
 
-// NewTerminalManager initializes a new TerminalManager instance.
-func NewTerminalManager(log *zap.SugaredLogger) *TerminalManager {
-	return &TerminalManager{
-		log:      log.With("service", "TerminalManager"),
-		sessions: make(map[string]*TerminalSession),
+// NewManager initializes a new Manager instance. Because we want to be a bit more
+// latency sensitive with the local manager, we're going to directly return
+// the channels for in and out that the exec controller will use.
+func NewManager(
+	log *zap.SugaredLogger,
+) (*Manager, chan sdkexec.StreamInput, chan sdkexec.StreamOutput, chan sdkexec.StreamResize) {
+	inMux := make(chan sdkexec.StreamInput)
+	outMux := make(chan sdkexec.StreamOutput)
+	resizeMux := make(chan sdkexec.StreamResize)
+
+	return &Manager{
+		log:       log.With("service", "Manager"),
+		sessions:  make(map[string]*sdkexec.Session),
+		ptys:      make(map[string]*os.File),
+		inMux:     inMux,
+		outMux:    outMux,
+		resizeMux: resizeMux,
+	}, inMux, outMux, resizeMux
+}
+
+// GetSession returns a session by its ID.
+func (m *Manager) GetSession(sessionID string) (*sdkexec.Session, error) {
+	m.mux.RLock()
+	defer m.mux.RUnlock()
+	session, exists := m.sessions[sessionID]
+	if !exists {
+		return nil, fmt.Errorf("session %s not found", sessionID)
 	}
-}
-
-// Run starts the TerminalManager, allowing it to handle terminal sessions.
-func (tm *TerminalManager) Run(ctx context.Context) {
-	// for now, just set the context. eventually we'll use the context channel to listen for updates
-	// and do management
-	tm.wailsCtx = ctx
+	return session, nil
 }
 
 // ListSessions returns a list of details for all active sessions.
-func (tm *TerminalManager) ListSessions() []TerminalSessionDetails {
-	tm.mux.Lock()
-	defer tm.mux.Unlock()
-	sessions := make([]TerminalSessionDetails, 0, len(tm.sessions))
+func (m *Manager) ListSessions(_ *types.PluginContext) []*sdkexec.Session {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+	sessions := make([]*sdkexec.Session, 0, len(m.sessions))
 
-	for id, session := range tm.sessions {
-		sessions = append(sessions, TerminalSessionDetails{
-			ID: id,
-			Command: fmt.Sprintf(
-				"%s %s",
-				session.cmd.Path,
-				strings.Join(session.cmd.Args[1:], " "),
-			),
-			Attached: session.attached,
-			Labels:   session.labels,
-		})
+	for _, session := range m.sessions {
+		sessions = append(sessions, session)
 	}
-	tm.log.Debugw("listed sessions", "sessions", sessions)
+
+	m.log.Debugw("listed sessions", "sessions", sessions)
 	return sessions
 }
 
 // StartSession creates a new terminal session with a given command.
-func (tm *TerminalManager) StartSession(
-	command []string,
-	opts TerminalSessionOptions,
-) (string, error) {
-	tm.log.Debugw("starting session", "command", command, "options", opts)
+func (m *Manager) StartSession(
+	pCtx *types.PluginContext,
+	opts sdkexec.SessionOptions,
+) (*sdkexec.Session, error) {
+	logger := m.log.With("action", "StartSession")
+	logger.Debugw("starting session", "options", opts, "context", pCtx)
 
 	// Set up the command to run in a new pseudo-terminal.
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// start default shell with commands appended to it
-	cmd := exec.CommandContext(ctx, "zsh", command...)
+	//nolint:gosec // whole point is to get a local shell from the local IDE, so this is just
+	// going to be exactly what the user wants
+	cmd := exec.CommandContext(ctx, DefaultLocalShell, opts.Command...)
+
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 
@@ -80,21 +105,18 @@ func (tm *TerminalManager) StartSession(
 		opts.Labels = make(map[string]string)
 	}
 
-	if opts.Kubeconfig != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONFIG=%s", opts.Kubeconfig))
-		opts.Labels["kubeconfig"] = opts.Kubeconfig
-	}
-	if opts.Context != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONTEXT=%s", opts.Context))
-		opts.Labels["context"] = opts.Context
-	}
-
 	ptyFile, err := pty.Start(cmd)
 	if err != nil {
 		err = fmt.Errorf("failed to start pty in terminal manager: %w", err)
-		tm.log.Error(err)
+		logger.Error(err)
 		cancel()
-		return "", err
+		return nil, err
+	}
+	// set an initial size for the pty, otherwise we get really weird behavior
+	if err = pty.Setsize(ptyFile, &pty.Winsize{Rows: InitialRows, Cols: InitialCols}); err != nil {
+		err = fmt.Errorf("failed to set initial pty size: %w", err)
+		cancel()
+		return nil, err
 	}
 
 	// Generate a unique ID for the session.
@@ -102,156 +124,172 @@ func (tm *TerminalManager) StartSession(
 		opts.ID = uuid.NewString()
 	}
 
-	session := &TerminalSession{
-		ID:       opts.ID,
-		cmd:      cmd,
-		ptyFile:  ptyFile,
-		ctx:      ctx,
-		cancel:   cancel,
-		buffer:   NewOutputBuffer(1000000),
-		attached: false,
-		labels:   opts.Labels,
-	}
+	session := sdkexec.NewSessionFromOpts(ctx, cancel, opts)
+	session.SetStdin(ptyFile)
+	session.SetStdout(ptyFile)
+	// TODO: separate stderr to the separate stream
 
-	tm.mux.Lock()
-	tm.sessions[opts.ID] = session
-	tm.mux.Unlock()
+	m.mux.Lock()
+	m.sessions[opts.ID] = session
+	m.ptys[opts.ID] = ptyFile
+	m.mux.Unlock()
 
-	tm.log.Debugw("session started", "session", opts.ID, "command", command)
+	logger.Debugw("session started",
+		"session", session,
+		"command", session.Command,
+	)
 
 	// Start handling terminal output in a separate goroutine.
-	go tm.handleIO(opts.ID)
-
-	return opts.ID, nil
+	go m.handleOutStream(ctx, opts.ID, ptyFile)
+	return session, nil
 }
 
-// handleIO reads output from the session's pty and stores it in the output buffer.
-// If the session is attached, it also broadcasts the output to the frontend.
-func (tm *TerminalManager) handleIO(sessionID string) {
-	tm.log.Debugw("handling io for session", "session", sessionID)
-
-	tm.mux.Lock()
-	session, ok := tm.sessions[sessionID]
-	tm.mux.Unlock()
-
-	eventKey := "core/terminal/" + sessionID
-
-	if !ok {
-		tm.log.Errorw("session not found", "session", sessionID)
-		return
+func (m *Manager) ResizeSession(sessionID string, rows, cols uint16) error {
+	m.mux.RLock()
+	defer m.mux.RUnlock()
+	ptyFile, exists := m.ptys[sessionID]
+	if !exists {
+		err := fmt.Errorf("session %s not found", sessionID)
+		m.log.Error(err)
+		return err
 	}
+	if err := pty.Setsize(ptyFile, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
+		m.log.Errorw("error resizing pty", "session", sessionID, "error", err)
+		return err
+	}
+	return nil
+}
 
-	tm.log.Debugw("starting io handling for session", "session", sessionID)
+func (m *Manager) handleOutStream(
+	ctx context.Context,
+	sessionID string,
+	stream io.Reader,
+) {
 	for {
-		buf := make([]byte, 20480)
-		n, err := session.ptyFile.Read(buf)
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				tm.log.Errorw("read error in terminal session", "session", sessionID, "error", err)
-				runtime.LogErrorf(tm.wailsCtx, "read error: %s", err)
-				continue
+		select {
+		case <-ctx.Done():
+			m.log.Debugw(
+				"context cancelled, stopping read stream handling",
+				"session", sessionID,
+			)
+			if err := m.CloseSession(sessionID); err != nil {
+				m.log.Errorw("error closing session", "session", sessionID, "error", err)
+			}
+			return
+		default:
+			buf := make([]byte, DefaultReadBufferSize)
+			read, err := stream.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					m.log.Errorw(
+						"error reading from stream",
+						"session", sessionID,
+						"error", err,
+					)
+				}
+				return
 			}
 
-			// If the session has been terminated, remove it from the manager and stop handling IO.
-			// in this goroutine.
-			tm.mux.Lock()
-			delete(tm.sessions, sessionID)
-			tm.mux.Unlock()
-			tm.log.Debugw("session terminated", "session", sessionID)
+			if len(buf) > 0 {
+				m.outMux <- sdkexec.StreamOutput{
+					SessionID: sessionID,
+					Target:    sdkexec.StreamTargetStdOut,
+					Data:      buf[:read],
+				}
 
-			break
-		}
-
-		session.buffer.Append(buf[:n])
-		if session.attached {
-			// Broadcast output to the frontend.
-			runtime.EventsEmit(tm.wailsCtx, eventKey, buf[:n])
+				session, ok := m.sessions[sessionID]
+				if !ok {
+					// soft error
+					m.log.Errorw("failed to write to session buffer: couldn't find session")
+					continue
+				}
+				session.RecordToBuffer(buf[:read])
+			}
 		}
 	}
 }
 
 // WriteToSession writes a string to the session's input.
-func (tm *TerminalManager) WriteToSession(sessionID string, input string) error {
-	tm.mux.Lock()
-	session, exists := tm.sessions[sessionID]
-	tm.mux.Unlock()
+func (m *Manager) writeToSession(sessionID string, bytes []byte) error {
+	m.mux.RLock()
+	defer m.mux.RUnlock()
 
+	session, exists := m.sessions[sessionID]
 	if !exists {
 		err := fmt.Errorf("session %s not found", sessionID)
-		tm.log.Error(err)
+		m.log.Error(err)
 		return err
 	}
-	_, err := session.ptyFile.Write([]byte(input))
-	return err
+
+	if _, err := session.Write(bytes); err != nil {
+		m.log.Errorw("error writing to session", "session", sessionID, "error", err)
+		return err
+	}
+
+	return nil
+}
+
+// WriteSession writes data to the session's input.
+func (m *Manager) WriteSession(sessionID string, input []byte) error {
+	return m.writeToSession(sessionID, input)
 }
 
 // AttachToSession marks a session as attached and returns its current output buffer.
-func (tm *TerminalManager) AttachToSession(sessionID string) ([]byte, error) {
-	tm.mux.Lock()
-	defer tm.mux.Unlock()
+func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, error) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
 
-	session, exists := tm.sessions[sessionID]
+	session, exists := m.sessions[sessionID]
 	if !exists {
 		err := fmt.Errorf("session %s not found", sessionID)
-		tm.log.Error(err)
-		return nil, err
+		m.log.Error(err)
+		return nil, nil, err
 	}
 
-	session.attached = true
-	tm.log.Debugw("session attached", "session", sessionID)
-	return session.buffer.GetAll(), nil
+	// pointer, no need to reassign
+	session.Attached = true
+
+	m.log.Debugw("session attached", "session", sessionID)
+	return session, session.GetBufferData(), nil
 }
 
 // DetachFromSession marks a session as not attached, stopping output broadcast.
-func (tm *TerminalManager) DetachFromSession(sessionID string) error {
-	tm.mux.Lock()
-	defer tm.mux.Unlock()
+func (m *Manager) DetachSession(sessionID string) (*sdkexec.Session, error) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
 
-	session, exists := tm.sessions[sessionID]
+	session, exists := m.sessions[sessionID]
 	if !exists {
 		err := fmt.Errorf("session %s not found", sessionID)
-		tm.log.Error(err)
-		return err
+		m.log.Error(err)
+		return nil, err
 	}
 
-	session.attached = false
-	tm.log.Debugw("session detached", "session", sessionID)
-	return nil
+	session.Attached = false
+
+	m.log.Debugw("session detached", "session", sessionID)
+	return session, nil
 }
 
-// TerminateSession cancels the session's context, effectively terminating
+// CloseSession cancels the session's context, effectively terminating
 // its command, and removes it from the manager.
-func (tm *TerminalManager) TerminateSession(sessionID string) error {
-	tm.mux.Lock()
-	defer tm.mux.Unlock()
+func (m *Manager) CloseSession(sessionID string) error {
+	m.mux.Lock()
+	defer m.mux.Unlock()
 
-	session, exists := tm.sessions[sessionID]
+	session, exists := m.sessions[sessionID]
 	if !exists {
 		err := fmt.Errorf("session %s not found", sessionID)
-		tm.log.Error(err)
+		m.log.Error(err)
 		return err
 	}
 
-	session.cancel()               // Terminates the command by canceling its context.
-	delete(tm.sessions, sessionID) // Removes the session from management.
-	tm.log.Debugw("session terminated", "session", sessionID)
+	m.terminateSession(session)
 	return nil
 }
 
-// SetTTYSize sets the terminal size for a session.
-func (tm *TerminalManager) SetTTYSize(sessionID string, rows, cols uint16) error {
-	tm.mux.Lock()
-	defer tm.mux.Unlock()
-	session, exists := tm.sessions[sessionID]
-	if !exists {
-		err := fmt.Errorf("session %s not found", sessionID)
-		tm.log.Error(err)
-		return err
-	}
-	if err := pty.Setsize(session.ptyFile, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
-		err = fmt.Errorf("failed to set terminal size: %w", err)
-		tm.log.Error(err)
-		return err
-	}
-	return nil
+func (m *Manager) terminateSession(session *sdkexec.Session) {
+	session.Close()
+	delete(m.sessions, session.ID)
+	m.log.Debugw("session terminated", "session", session.ID)
 }
