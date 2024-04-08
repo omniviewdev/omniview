@@ -6,13 +6,25 @@ import (
 
 // I HATE THIS. WHY CAN'T I JUST USE THE SAME INSTANCE?????
 type Client struct {
-	controller *controller
+	controller Controller
 }
 
-func NewClient(controller *controller) *Client {
+func NewClient(controller Controller) *Client {
 	return &Client{
 		controller: controller,
 	}
+}
+
+func (c *Client) GetPluginHandlers(plugin string) map[string]sdkexec.HandlerOpts {
+	return c.controller.GetPluginHandlers(plugin)
+}
+
+func (c *Client) GetHandlers() map[string]map[string]sdkexec.HandlerOpts {
+	return c.controller.GetHandlers()
+}
+
+func (c *Client) GetHandler(plugin, resource string) *sdkexec.HandlerOpts {
+	return c.controller.GetHandler(plugin, resource)
 }
 
 func (c *Client) ListPlugins() ([]string, error) {

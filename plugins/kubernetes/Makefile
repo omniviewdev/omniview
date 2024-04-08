@@ -9,7 +9,8 @@ generate:
 
 build:
 	rm -rf bin && rm -f kubernetes.tar.gz
-	mkdir bin && go build -o bin/plugin ./pkg
+	mkdir bin && go build -o bin/plugin ./pkg	
+	cd ui && pnpm run build
 
 build-ui:
 	cd ui && pnpm run build

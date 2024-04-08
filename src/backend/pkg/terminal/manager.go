@@ -10,6 +10,7 @@ import (
 
 	"github.com/creack/pty"  // Import the pty package for creating pseudo-terminal devices.
 	"github.com/google/uuid" // UUID package for generating unique identifiers.
+
 	// Wails runtime for backend-frontend communication.
 	"go.uber.org/zap"
 
@@ -98,7 +99,7 @@ func (m *Manager) StartSession(
 	cmd := exec.CommandContext(ctx, DefaultLocalShell, opts.Command...)
 
 	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+	cmd.Env = append(cmd.Env, "TERM=xterm-256color", "LANG=en_US.UTF-8")
 
 	if opts.Labels == nil {
 		opts.Labels = make(map[string]string)

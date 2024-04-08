@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react';
 // xterm
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { CanvasAddon } from 'xterm-addon-canvas';
+import { WebglAddon } from 'xterm-addon-webgl';
 import { debounce } from '@/utils/debounce';
 
 // project import
@@ -15,18 +17,28 @@ type Props = {
   sessionId: string;
 };
 
+
 /**
+ *
 * Terminal view attaches to an existing terminal session and displays the output, as well as
 * allows the user to input commands. This component is used in the terminal tab of the lower
 * context area.
 */
 export default function TerminalContainer({ sessionId }: Props) {
-  const terminalRef = useRef<HTMLDivElement>(null); // For the terminal container div
-  const disposers = useRef<Array<() => void>>([]); // For keepin track of things we need to do when killing the terminal session
-  const xtermRef = useRef<Terminal | undefined>(undefined);
-  // const fitAddonRef = useRef<FitAddon | undefined>(undefined);
+  const terminalRef = useRef<HTMLDivElement>(null);
 
-  console.log('rerender');
+  const disposers = useRef<Array<() => void>>([]);
+  const xtermRef = useRef<Terminal | undefined>(undefined);
+
+  const fitAddonRef = useRef<FitAddon | undefined>(undefined);
+  const canvasAddonRef = useRef<CanvasAddon | undefined>(undefined);
+  const webglAddonRef = useRef<WebglAddon | undefined>(undefined);
+
+  const handleFit = () => {
+    if (fitAddonRef.current !== undefined) {
+      fitAddonRef.current.fit();
+    }
+  };
 
   useEffect(() => {
     // Don't attempt if the ref is not set
@@ -47,26 +59,29 @@ export default function TerminalContainer({ sessionId }: Props) {
       macOptionClickForcesSelection: true,
       scrollback: 0,
       fontSize: 13,
-      fontFamily: '"Fira Code", courier-new, courier, monospace, "Powerline Extra Symbols"',
+      fontFamily: 'Hack,Consolas,Liberation Mono,Menlo,Courier,monospace',
+      fontWeight: 'normal',
     });
 
     xtermRef.current = terminal;
 
     const fitAddon = new FitAddon();
-    // const canvasAddon = new CanvasAddon();
+    const canvasAddon = new CanvasAddon();
+    const webglAddon = new WebglAddon();
+    webglAddon.onContextLoss(e => {
+      console.log('context loss', e);
+      webglAddon.dispose();
+    });
 
     terminal.open(terminalRef.current);
 
-    // fitAddonRef.current = fitAddon;
+    fitAddonRef.current = fitAddon;
+    canvasAddonRef.current = canvasAddon;
+    webglAddonRef.current = webglAddon;
 
     terminal.loadAddon(fitAddon);
-    disposers.current.push(() => {
-      terminal.dispose();
-    });
-    // terminal.loadAddon(canvasAddon);
-    // disposers.current.push(() => {
-    //   terminal.dispose();
-    // });
+    terminal.loadAddon(canvasAddon);
+    terminal.loadAddon(webglAddon);
 
     terminal.focus();
 
@@ -75,7 +90,7 @@ export default function TerminalContainer({ sessionId }: Props) {
     }, 40);
 
     window.onresize = () => {
-      fitAddon.fit();
+      handleFit(); 
     };
 
     const resizeObserver = new ResizeObserver((_val) => {
@@ -86,9 +101,7 @@ export default function TerminalContainer({ sessionId }: Props) {
 
     terminal.onResize((event) => {
       var rows = event.rows;
-      var cols = event.cols;
-      console.log('rows: %s, cols: %s', rows, cols);
-      
+      var cols = event.cols;   
       ResizeSession(sessionId, rows, cols).catch((err) => {
         console.error('failed to set tty size', err);
       });
@@ -97,14 +110,15 @@ export default function TerminalContainer({ sessionId }: Props) {
     const stdout = `core/exec/stream/stdout/${sessionId}`;
     const stderr = `core/exec/stream/stderr/${sessionId}`;
 
-
     // Function to handle attachment logic
     const attachToSession = async () => {
       console.log('attaching to session', sessionId);
 
       try {
         const data = await AttachSession(sessionId);
-        if (data !== null && data !== undefined) {
+        console.log('attach data', data.buffer);
+
+        if (data.buffer !== null && data.buffer !== undefined) {
           terminal.write(Base64.toUint8Array(data.buffer as unknown as string));
         }
       } catch (e) {
@@ -124,12 +138,9 @@ export default function TerminalContainer({ sessionId }: Props) {
       });
     };
 
-    // Attach to the session
     attachToSession().then(() => {
       console.log('attached to session %s', sessionId);
-
       terminal.onData(data => {
-        console.log('data:', data);
         WriteSession(sessionId, data)
           .catch((err) => {
             if (err instanceof Error) {
@@ -138,7 +149,6 @@ export default function TerminalContainer({ sessionId }: Props) {
             }
           });
       });
-
     }).catch((err) => {
       console.error('failed to attach to session', err);
     });
@@ -149,9 +159,13 @@ export default function TerminalContainer({ sessionId }: Props) {
       // run our disposers
       disposers.current.forEach((disposer) => {
         disposer();
-      }); 
+      });
 
-      terminal.dispose();
+      try {
+        terminal.dispose();
+      } catch (e) {
+        console.log(e);
+      }
 
       if (terminalRef.current !== null) {
         resizeObserver.unobserve(terminalRef.current);
