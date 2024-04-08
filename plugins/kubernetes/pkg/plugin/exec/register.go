@@ -1,13 +1,14 @@
 package exec
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
+
+	"github.com/creack/pty"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/httpstream"
@@ -175,17 +176,18 @@ func ExecCmd(
 		return nil, nil, nil, err
 	}
 
-	var (
-		stdin  = new(bytes.Buffer)
-		stdout = new(bytes.Buffer)
-		stderr = new(bytes.Buffer)
-	)
+	pty, ptty, err := pty.Open()
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	go func() {
+		defer ptty.Close()
+
 		err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
-			Stdin:  stdin,
-			Stdout: stdout,
-			Stderr: stderr,
+			Stdin:  ptty,
+			Stdout: ptty,
+			Stderr: ptty,
 			Tty:    true,
 		})
 		if err != nil {
@@ -193,5 +195,5 @@ func ExecCmd(
 		}
 	}()
 
-	return stdin, stdout, stderr, nil
+	return pty, pty, pty, nil
 }
