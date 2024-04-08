@@ -20,7 +20,7 @@ import ActionMenuListItem from './ActionMenuListItem';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
 
 /** Command to detect the shell */
-const DefaultShellCmd = ['/bin/sh'];
+const DefaultShellCmd = ['/bin/sh', '-c', 'stty -echo && /bin/sh'];
 
 type Props = {
   selected: boolean;
