@@ -20,20 +20,32 @@ import (
 
 type Controller interface {
 	internaltypes.Controller
+	Run(ctx context.Context)
+	GetPluginHandlers(plugin string) map[string]exec.HandlerOpts
+	GetHandlers() map[string]map[string]exec.HandlerOpts
+	GetHandler(plugin, resource string) *exec.HandlerOpts
+	CreateSession(plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
+	ListSessions() ([]*exec.Session, error)
+	GetSession(sessionID string) (*exec.Session, error)
+	AttachSession(sessionID string) (*exec.Session, []byte, error)
+	DetachSession(sessionID string) (*exec.Session, error)
+	WriteSession(sessionID string, data []byte) error
+	CloseSession(sessionID string) error
+	ResizeSession(sessionID string, rows, cols uint16) error
 }
 
 // make it easy for us to lookup sessions by ID, without having to know
 // the plugin or connection ID.
 type sessionIndex struct {
-	local        bool
 	pluginID     string
 	connectionID string
+	local        bool
 }
 
 func NewController(
 	logger *zap.SugaredLogger,
 	resourceClient resource.IClient,
-) *controller {
+) Controller {
 	return &controller{
 		logger:         logger.Named("ExecController"),
 		stops:          make(map[string]chan struct{}),
@@ -43,6 +55,7 @@ func NewController(
 		outputMux:      make(chan exec.StreamOutput),
 		resizeMux:      make(chan exec.StreamResize),
 		resourceClient: resourceClient,
+		handlerMap:     make(map[string]map[string]exec.HandlerOpts),
 	}
 }
 
@@ -65,6 +78,7 @@ type controller struct {
 	resizeMux chan exec.StreamResize
 
 	resourceClient  resource.IClient
+	handlerMap      map[string]map[string]exec.HandlerOpts
 	terminalManager *terminal.Manager
 }
 
@@ -122,6 +136,7 @@ func (c *controller) runMux() {
 		case <-c.ctx.Done():
 			return
 		case input := <-c.inputMux:
+			c.logger.Debugw("got input", "input", input)
 			if client, ok := c.inChans[input.SessionID]; ok {
 				client <- input
 			}
@@ -166,6 +181,41 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 	}
 
 	c.clients[meta.ID] = provider
+
+	// get the handlers and ensure the map is updated
+	handlers := provider.GetSupportedResources(c.getUnconnectedCtx(context.Background(), ""))
+	for _, handler := range handlers {
+		if _, ok := c.handlerMap[handler.Plugin]; !ok {
+			c.handlerMap[handler.Plugin] = make(map[string]exec.HandlerOpts)
+		}
+
+		// TODO: for now we're just overwriting, but we should do something else here once we
+		// determine what we should support. Eventually we should support multiple handlers
+		// for a single resource type.
+		c.handlerMap[handler.Plugin][handler.Resource] = handler
+	}
+
+	inchan := make(chan exec.StreamInput)
+	c.inChans[meta.ID] = inchan
+
+	// start the stream on a goroutine
+	go func() {
+		stream, err := provider.Stream(c.ctx, inchan)
+		if err != nil {
+			logger.Error("error starting stream: ", err)
+			return
+		}
+
+		for {
+			select {
+			case <-c.ctx.Done():
+				return
+			case output := <-stream:
+				c.outputMux <- output
+			}
+		}
+	}()
+
 	return nil
 }
 
@@ -217,6 +267,7 @@ func (c *controller) getConnectedCtx(
 	// get the connection from the right resource
 	connection, err := c.resourceClient.GetConnection(plugin, connectionID)
 	if err != nil {
+		c.logger.Errorw("error getting connection: ", "err", err)
 		return nil
 	}
 
@@ -242,13 +293,34 @@ func (c *controller) getUnconnectedCtx(
 	)
 }
 
+func (c *controller) GetPluginHandlers(plugin string) map[string]exec.HandlerOpts {
+	return c.handlerMap[plugin]
+}
+
+func (c *controller) GetHandlers() map[string]map[string]exec.HandlerOpts {
+	return c.handlerMap
+}
+
+func (c *controller) GetHandler(
+	plugin string,
+	resource string,
+) *exec.HandlerOpts {
+	p, ok := c.handlerMap[plugin]
+	if !ok {
+		return nil
+	}
+	h, ok := p[resource]
+	if !ok {
+		return nil
+	}
+	return &h
+}
+
 func (c *controller) CreateSession(
 	plugin string,
 	connectionID string,
 	opts exec.SessionOptions,
 ) (*exec.Session, error) {
-	c.logger.Debug("StartSession")
-
 	if plugin == "local" {
 		// start local terminal
 		session, err := c.terminalManager.StartSession(
@@ -268,7 +340,7 @@ func (c *controller) CreateSession(
 	}
 
 	session, err := client.CreateSession(
-		c.getConnectedCtx(context.TODO(), plugin, connectionID),
+		c.getConnectedCtx(context.Background(), plugin, connectionID),
 		opts,
 	)
 	if err != nil {
@@ -371,6 +443,8 @@ func (c *controller) WriteSession(
 	sessionID string,
 	data []byte,
 ) error {
+	c.logger.Debugw("WriteSession", "sessionID", sessionID, "data", data)
+
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
 		return fmt.Errorf("session %s not found", sessionID)
@@ -379,10 +453,11 @@ func (c *controller) WriteSession(
 		return c.terminalManager.WriteSession(sessionID, data)
 	}
 
-	inchan, ok := c.inChans[sessionID]
+	inchan, ok := c.inChans[index.pluginID]
 	if !ok {
 		return fmt.Errorf("session %s not found", sessionID)
 	}
+	c.logger.Debug("Writing to session")
 	inchan <- exec.StreamInput{
 		SessionID: sessionID,
 		Data:      data,

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 
 	v1 "k8s.io/api/core/v1"
@@ -19,6 +20,8 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/exec"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 )
 
 func Register(plugin *sdk.Plugin) {
@@ -29,6 +32,13 @@ func Register(plugin *sdk.Plugin) {
 				Plugin:   "kubernetes",
 				Resource: "core::v1::Pod",
 				Handler:  PodHandler,
+				TargetBuilder: sdkresource.ActionTargetBuilder{
+					Paths: []string{"$.spec.containers[*]"},
+					Selectors: map[string]string{
+						"container": "$.name",
+					},
+					LabelSelector: "container",
+				},
 			},
 		},
 	}); err != nil {
@@ -40,6 +50,7 @@ func PodHandler(
 	ctx *types.PluginContext,
 	opts exec.SessionOptions,
 ) (io.Writer, io.Reader, io.Reader, error) {
+	log.Println("Connection", fmt.Sprintf("%+v\n", ctx))
 	// create a new kubernetes client
 	if ctx.Connection == nil {
 		return nil, nil, nil, errors.New("connection is required")
@@ -47,7 +58,7 @@ func PodHandler(
 
 	kubeconfig, ok := ctx.Connection.GetDataKey("kubeconfig")
 	if !ok {
-		return nil, nil, nil, errors.New("connection is required")
+		return nil, nil, nil, errors.New("kubeconfig is required")
 	}
 	val, ok := kubeconfig.(string)
 	if !ok {
@@ -165,21 +176,22 @@ func ExecCmd(
 	}
 
 	var (
-		stdin  *bytes.Buffer
-		stdout *bytes.Buffer
-		stderr *bytes.Buffer
+		stdin  = new(bytes.Buffer)
+		stdout = new(bytes.Buffer)
+		stderr = new(bytes.Buffer)
 	)
 
-	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdin:             stdin,
-		Stdout:            stdout,
-		Stderr:            stderr,
-		Tty:               true,
-		TerminalSizeQueue: sizeQueue,
-	})
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	go func() {
+		err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+			Stdin:  stdin,
+			Stdout: stdout,
+			Stderr: stderr,
+			Tty:    true,
+		})
+		if err != nil {
+			log.Println("Error", err)
+		}
+	}()
 
 	return stdin, stdout, stderr, nil
 }

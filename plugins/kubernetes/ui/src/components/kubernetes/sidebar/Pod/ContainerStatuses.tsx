@@ -110,6 +110,7 @@ export const ContainerStatusDecorator: React.FC<{
 
   return (
     <Tooltip
+      key={statusInfo.text}
       placement="top-end"
       variant="soft"
       sx={{

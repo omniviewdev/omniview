@@ -22,6 +22,18 @@ export function DetachSession(arg1) {
   return window['go']['exec']['Client']['DetachSession'](arg1);
 }
 
+export function GetHandler(arg1, arg2) {
+  return window['go']['exec']['Client']['GetHandler'](arg1, arg2);
+}
+
+export function GetHandlers() {
+  return window['go']['exec']['Client']['GetHandlers']();
+}
+
+export function GetPluginHandlers(arg1) {
+  return window['go']['exec']['Client']['GetPluginHandlers'](arg1);
+}
+
 export function GetSession(arg1) {
   return window['go']['exec']['Client']['GetSession'](arg1);
 }

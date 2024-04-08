@@ -30,8 +30,10 @@ import { type BottomDrawerTab } from '@/providers/BottomDrawer/types';
 import Icon from '@/components/icons/Icon';
 import { LuPlus, LuX } from 'react-icons/lu';
 import useBottomDrawer from '@/hooks/useBottomDrawer';
-import { ListSessions, CreateTerminal } from '@api/exec/Client';
+import { ListSessions, CreateTerminal, CreateSession } from '@api/exec/Client';
 import { exec } from '@api/models';
+
+import { bottomDrawerChannel } from './events';
 
 type TabContextMenuProps = {
   selected: number;
@@ -40,6 +42,8 @@ type TabContextMenuProps = {
 
 const TabContextMenu: React.FC<TabContextMenuProps> = ({ selected, onClose }) => {
   const { tabs, closeTab, closeTabs } = useBottomDrawer();
+
+
 
   const handleCloseTab = () => {
     closeTab({ index: selected });
@@ -153,6 +157,30 @@ const BottomDrawerTabs: React.FC = () => {
         break;
     }
   };
+
+  // handle signals from across the app through the event bus
+  React.useEffect(() => {
+    const unsubscribeCreateSession = bottomDrawerChannel.on('onCreateSession', ({ plugin, connection, opts, icon, label }) => {
+      console.log('onCreateSession', { plugin, connection, opts, icon, label });
+      CreateSession(plugin, connection, opts)
+        .then(session => {
+          console.log('created session', session);
+          createTab({
+            id: session.id,
+            title: label ?? `Session ${session.id.substring(0, 8)}`,
+            variant: 'terminal', 
+            icon: icon ?? 'LuTerminalSquare', 
+          });
+        })
+        .catch(err => {
+          console.error(err);
+        });
+    });
+
+    return () => {
+      unsubscribeCreateSession();
+    };
+  }, []);
 
   const handleRemove = React.useCallback((index: number) => {
     closeTab({ index });

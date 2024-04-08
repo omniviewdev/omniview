@@ -55,7 +55,7 @@ export default function ExpandableSections({
       }}
     >
       {sections.map((section) => (
-        <Accordion defaultExpanded={section.defaultExpanded}>
+        <Accordion key={section.title} defaultExpanded={section.defaultExpanded}>
           <AccordionSummary sx={{ pl: 0.5 }}>
             <Stack
               direction="row"
