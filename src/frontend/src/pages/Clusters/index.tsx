@@ -10,7 +10,6 @@ import Typography from '@mui/joy/Typography';
 // Icons
 import KubernetesLogo from '@/assets/logos/kubernetes/KubernetesColorWhiteBG';
 // Import ClusterListItem from './ClusterListItem';
-import BlogFeed from './BlogFeed';
 
 export default function Clusters() {
   const [_clusters, _setClusters] = useState({});
@@ -56,17 +55,6 @@ export default function Clusters() {
 
           </List>
         </Sheet>
-      </Grid>
-
-      <Grid
-        xs={12}
-        sm={6}
-        sx={{
-          py: 2,
-          pl: { xs: 0, sm: 2 },
-        }}
-      >
-        <BlogFeed />
       </Grid>
     </Grid>
   );
