@@ -44,7 +44,6 @@ window.MonacoEnvironment = {
   },
 };
 
-/* @ts-expect-error not sure what's up with their type regisration here */
 configureMonacoYaml(monaco, {
   enableSchemaRequest: true,
   schemas: [
