@@ -436,7 +436,6 @@ const ResourceSidebarComponent: React.FC<ResourceSidebarComponentProps> = ({ plu
   }
 
   if (component.isError || !component.data) {
-    console.log('ResourceSidebarComponent', component.error);
     // render the fallback
     return (
       <MonacoEditor

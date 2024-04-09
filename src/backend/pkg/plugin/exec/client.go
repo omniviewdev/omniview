@@ -4,7 +4,6 @@ import (
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/exec"
 )
 
-// I HATE THIS. WHY CAN'T I JUST USE THE SAME INSTANCE?????
 type Client struct {
 	controller Controller
 }
@@ -15,15 +14,15 @@ func NewClient(controller Controller) *Client {
 	}
 }
 
-func (c *Client) GetPluginHandlers(plugin string) map[string]sdkexec.HandlerOpts {
+func (c *Client) GetPluginHandlers(plugin string) map[string]sdkexec.Handler {
 	return c.controller.GetPluginHandlers(plugin)
 }
 
-func (c *Client) GetHandlers() map[string]map[string]sdkexec.HandlerOpts {
+func (c *Client) GetHandlers() map[string]map[string]sdkexec.Handler {
 	return c.controller.GetHandlers()
 }
 
-func (c *Client) GetHandler(plugin, resource string) *sdkexec.HandlerOpts {
+func (c *Client) GetHandler(plugin, resource string) *sdkexec.Handler {
 	return c.controller.GetHandler(plugin, resource)
 }
 

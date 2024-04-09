@@ -12,11 +12,11 @@ export function CreateTerminal(arg1:exec.CreateTerminalOptions):Promise<exec.Ses
 
 export function DetachSession(arg1:string):Promise<exec.Session>;
 
-export function GetHandler(arg1:string,arg2:string):Promise<exec.HandlerOpts>;
+export function GetHandler(arg1:string,arg2:string):Promise<exec.Handler>;
 
-export function GetHandlers():Promise<{[key: string]: {[key: string]: exec.HandlerOpts}}>;
+export function GetHandlers():Promise<{[key: string]: {[key: string]: exec.Handler}}>;
 
-export function GetPluginHandlers(arg1:string):Promise<{[key: string]: exec.HandlerOpts}>;
+export function GetPluginHandlers(arg1:string):Promise<{[key: string]: exec.Handler}>;
 
 export function GetSession(arg1:string):Promise<exec.Session>;
 

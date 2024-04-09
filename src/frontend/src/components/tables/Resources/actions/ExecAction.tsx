@@ -28,7 +28,7 @@ type Props = {
   handleDeselect: () => void;
   handleLeaveMenu: (getIsOnButton: () => boolean) => void;
   itemProps: Record<string, unknown>;
-  action: exec.HandlerOpts;
+  action: exec.Handler;
   plugin: string;
   connection: string;
   resource: string;
@@ -40,7 +40,7 @@ type ExecTarget = {
   params: Record<string, string>;
 };
 
-const calcTargets = (action: exec.HandlerOpts, data: Record<string, unknown>): ExecTarget[] => {
+const calcTargets = (action: exec.Handler, data: Record<string, unknown>): ExecTarget[] => {
   const targets = [] as ExecTarget[];
 
   const datas = action.target_builder.paths.reduce<Array<Record<string, unknown>>>((acc, path) => {

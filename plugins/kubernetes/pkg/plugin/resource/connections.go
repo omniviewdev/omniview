@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
 	resourcetypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/utils"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
@@ -41,7 +41,7 @@ func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
 	return connections, nil
 }
 
-// CheckConnectionFunc checks the connection to the cluster, using the discovery client
+// CheckConnectionFunc checks the connection to the cluster, using the discovery client.
 func CheckConnectionFunc(
 	ctx *types.PluginContext,
 	conn *types.Connection,

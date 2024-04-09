@@ -113,6 +113,5 @@ export const MemoizedColumnFilter = React.memo(ColumnFilter, (prevProps, nextPro
 });
 
 ColumnFilter.displayName = 'ColumnFilter';
-ColumnFilter.whyDidYouRender = true;
 
 export default ColumnFilter;

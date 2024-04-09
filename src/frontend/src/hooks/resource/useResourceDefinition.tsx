@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 
 // third party
 import { type ColumnDef } from '@tanstack/react-table';
+import jsonpath from 'jsonpath';
+import get from 'lodash.get';
 
 // project imports
 import { GetResourceDefinition } from '@api/resource/Client';
@@ -11,11 +13,11 @@ import {
   SelectBoxRow, 
 } from '@/components/tables/ResourceTable/components';
 import { type Actions } from '@/components/tables/Resources/actions/types';
-
 import ActionMenu from '@/components/tables/Resources/actions/ActionMenu';
 import { TextCell } from '@/components/tables/Resources/cells';
 import ColumnFilter from '@/components/tables/Resources/ColumnFilter';
 import { GetHandler } from '@api/exec/Client';
+
 
 type UseResourceDefinitionOptions = {
   /**
@@ -35,9 +37,9 @@ type UseResourceDefinitionOptions = {
 
 const getAlignment = (align?: string) => {
   switch (align) {
-    case 'center':
+    case 'CENTER':
       return 'center';
-    case 'right':
+    case 'RIGHT':
       return 'right';
     default:
       return 'left';
@@ -50,14 +52,28 @@ type ParseColumnDefOpts = {
   pluginID: string;
   connectionID: string;
   resourceKey: string;
+  namespaceAccessor?: string;
 };
 
+export type ResourceMetadata = {
+  pluginID: string;
+  connectionID: string;
+  resourceID: string;
+  resourceKey: string;
+  namespace?: string;
+};
+
+
+/**
+ * Use our metadata and resource defenitions to dynamically build out our ColumnDefs at runtime.
+ */
 const parseColumnDef = ({
   columnDefs,
   actions,
   pluginID,
   connectionID,
   resourceKey,
+  namespaceAccessor,
 }: ParseColumnDefOpts) => {
   if (columnDefs === undefined) {
     return {
@@ -78,11 +94,31 @@ const parseColumnDef = ({
   ];
 
   columnDefs.forEach((def) => {
-    const column: ColumnDef<any> = {
+    let column: ColumnDef<any> = {
       id: def.id,
       header: def.header,
-      accessorKey: def.accessor,
-      cell: ({ getValue }) => <TextCell align={getAlignment(def.align)} value={getValue() as string} formatter={def.formatter} />,
+      accessorFn: (data) => {
+        if (def.accessor.startsWith('$.')) {
+          return jsonpath.value(data, def.accessor) ?? '';
+        }
+
+        return get(data, def.accessor, '');
+      },
+      cell: ({ getValue, row }) => 
+        <TextCell 
+          align={getAlignment(def.align)} 
+          value={getValue() as string} 
+          formatter={def.formatter} 
+          colorMap={def.colorMap}
+          resourceLink={def.resourceLink}
+          metadata={{
+            pluginID,
+            connectionID,
+            resourceKey,
+            resourceID: row.id,
+            namespace: namespaceAccessor ? get(row.original, namespaceAccessor, '') : '',
+          }}
+        />,
     };
 
     if (def.width) {
@@ -145,6 +181,7 @@ export const useResourceDefinition = ({ pluginID, resourceKey, connectionID }: U
       pluginID,
       connectionID,
       resourceKey,
+      namespaceAccessor: definition.data?.namespace_accessor,
     }),
   };
 };

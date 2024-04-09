@@ -5,14 +5,17 @@ import Box from '@mui/joy/Box';
 import Typography from '@mui/joy/Typography';
 import { formatTimeDifference } from '@/utils/time';
 import { convertByteUnits } from '@/utils/units';
+import { type types } from '@api/models';
+import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
+import ResourceLinkCell from './ResourceLinkCell';
 
 type Props = {
   /** The text value to render */
-  value: string;
+  value: any;
   /** The color of the text. Default is 'neutral' */
   color?: 'success' | 'warning' | 'danger' | 'primary' | 'neutral';
   /** Specify mapping of values to colors that will change with the input */
-  colorMap?: Record<string, 'success' | 'warning' | 'danger' | 'primary' | 'neutral'>;
+  colorMap?: Record<string, string>;
   /** A decorator to render before the text */
   startDecorator?: React.ReactNode;
   /** A decorator to render after the text */
@@ -21,12 +24,99 @@ type Props = {
   align?: 'left' | 'right' | 'center';
   /** Formatter for the text */
   formatter?: string;
+  /** Resource links to parse */
+  resourceLink?: types.ResourceLink;
+  /** Metadata for the resource */
+  metadata?: ResourceMetadata;
+  /** children */
+  children?: React.ReactNode;
 };
 
-type FormattingFunction = (value: string) => string;
+type FormattingFunction = (value: any) => string;
 
+/**
+ * Various formatters that we can apply to the contents of the cell. These need to return a string,
+ * but can take in any type.
+ */
 const formatters: Record<string, FormattingFunction> = {
   bytes: (value: string) => convertByteUnits({ from: value }),
+  sum: (value: string[] | number[] | string | number) => {
+    let summed = 0;
+    if (Array.isArray(value)) {
+      for (const v of value) {
+        summed += Number(v);
+      }
+    }
+
+    if (typeof value === 'string') {
+      value.split(',').forEach((v) => {
+        summed += Number(v);
+      });
+    }
+
+    if (typeof value === 'number') {
+      summed += value;
+    }
+
+    return summed.toString();
+  },
+  count: (value: string[] | number[] | string | number) => {
+    if (Array.isArray(value)) {
+      return value.length.toString();
+    }
+
+    if (typeof value === 'string') {
+      return value.split(',').length.toString();
+    }
+
+    if (typeof value === 'number') {
+      return value.toString();
+    }
+
+    return '';
+  },
+  avg: (value: string[] | number[] | string | number) => {
+    let summed = 0;
+    let count = 0;
+    if (Array.isArray(value)) {
+      for (const v of value) {
+        summed += Number(v);
+        count++;
+      }
+    }
+
+    return (summed / count).toString();
+  },
+  max: (value: string[] | number[] | string | number) => {
+    let max = 0;
+    if (Array.isArray(value)) {
+      for (const v of value) {
+        max = Math.max(max, Number(v));
+      }
+    }
+
+    return max.toString();
+  },
+  min: (value: string[] | number[] | string | number) => {
+    let min = Number.MAX_VALUE;
+    if (Array.isArray(value)) {
+      for (const v of value) {
+        min = Math.min(min, Number(v));
+      }
+    }
+
+    if (typeof value === 'string') {
+      value.split(',').forEach((v) => {
+        min = Math.min(min, Number(v));
+      });
+    }
+
+    if (typeof value === 'number') {
+      min = Math.min(min, value);
+    }
+
+    return min.toString();
+  },
 };
 
 const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
@@ -62,14 +152,30 @@ const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
     };
   }, [value, initialAge]);
 
-  return <TextCellBase value={time} {...rest} />;
+  return <CellBase value={time} {...rest} />;
 };
 
 /** Render a standard text row for the generic resource table. */
-const TextCellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorator, endDecorator, formatter }) => {
+const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorator, endDecorator, formatter, children }) => {
   const getColor = () => {
     if (colorMap) {
-      return colorMap[value] || 'neutral';
+      let val = colorMap[value] ?? colorMap['*'] ?? 'neutral';
+
+      switch (val) {
+        case 'healthy':
+        case 'good':
+        case 'success':
+          return 'success';
+        case 'warning':
+          return 'warning';
+        case 'error':
+        case 'danger':
+          return 'danger';
+        case 'primary':
+          return 'primary';
+        default:
+          return 'neutral';
+      }
     }
 
     return color ?? 'neutral';
@@ -97,6 +203,7 @@ const TextCellBase: React.FC<Props> = ({ align, value, color, colorMap, startDec
       justifyContent={getAlignment()}
       alignItems='center'
     >
+      {children ??
       <Typography 
         level='body-xs'
         color={getColor()}
@@ -104,19 +211,30 @@ const TextCellBase: React.FC<Props> = ({ align, value, color, colorMap, startDec
         endDecorator={endDecorator}
         noWrap
       >
-        {formatter && formatters[formatter] ? formatters[formatter](value) : value}
+        {formatter && formatters[formatter] ? formatters[formatter](value) : `${value}`}
       </Typography>
+      }
     </Box>
   );
 };
 
-
 const TextCell: React.FC<Props> = ({ formatter, ...props }) => {
+  /**
+   * Resource links have their own component type
+   */
+  if (props.resourceLink) {
+    return (
+      <CellBase {...props}>
+        <ResourceLinkCell value={props.value} metadata={props.metadata} {...props.resourceLink} />
+      </CellBase>
+    );
+  }
+
   switch (formatter?.toLowerCase()) {
     case 'age':
       return <AgeCell {...props}/>;
     default:
-      return <TextCellBase {...props} formatter={formatter?.toLowerCase()} />;
+      return <CellBase {...props} formatter={formatter?.toLowerCase()} />;
   }
 };
 

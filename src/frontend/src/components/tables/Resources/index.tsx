@@ -9,10 +9,11 @@ import Alert from '@mui/joy/Alert';
 // icons
 import { LuAlertCircle } from 'react-icons/lu';
 
-// Helpers
+// project imports
 import useResourceDefinition from '@/hooks/resource/useResourceDefinition';
 import { useResources } from '@/hooks/resource/useResources';
 import ResourceTableContainer from './ResourceTableContainer';
+
 
 type Props = {
   /**

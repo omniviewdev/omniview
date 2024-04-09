@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/gobuffalo/flect"
-
 	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
 	"go.uber.org/zap"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"

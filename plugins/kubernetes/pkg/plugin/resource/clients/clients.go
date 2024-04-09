@@ -3,7 +3,6 @@ package clients
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -42,7 +41,6 @@ var _ factories.ResourceClientFactory[ClientSet] = &KubernetesClientFactory{}
 func (f *KubernetesClientFactory) CreateClient(
 	ctx *pkgtypes.PluginContext,
 ) (*ClientSet, error) {
-	log.Printf("Connection: %v", ctx.Connection)
 	if ctx.Connection == nil {
 		return nil, errors.New("kubeconfig is required")
 	}

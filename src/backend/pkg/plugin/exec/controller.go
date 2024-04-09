@@ -21,9 +21,9 @@ import (
 type Controller interface {
 	internaltypes.Controller
 	Run(ctx context.Context)
-	GetPluginHandlers(plugin string) map[string]exec.HandlerOpts
-	GetHandlers() map[string]map[string]exec.HandlerOpts
-	GetHandler(plugin, resource string) *exec.HandlerOpts
+	GetPluginHandlers(plugin string) map[string]exec.Handler
+	GetHandlers() map[string]map[string]exec.Handler
+	GetHandler(plugin, resource string) *exec.Handler
 	CreateSession(plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
 	ListSessions() ([]*exec.Session, error)
 	GetSession(sessionID string) (*exec.Session, error)
@@ -55,7 +55,7 @@ func NewController(
 		outputMux:      make(chan exec.StreamOutput),
 		resizeMux:      make(chan exec.StreamResize),
 		resourceClient: resourceClient,
-		handlerMap:     make(map[string]map[string]exec.HandlerOpts),
+		handlerMap:     make(map[string]map[string]exec.Handler),
 	}
 }
 
@@ -78,7 +78,7 @@ type controller struct {
 	resizeMux chan exec.StreamResize
 
 	resourceClient  resource.IClient
-	handlerMap      map[string]map[string]exec.HandlerOpts
+	handlerMap      map[string]map[string]exec.Handler
 	terminalManager *terminal.Manager
 }
 
@@ -120,7 +120,21 @@ func (c *controller) runLocalMux() {
 				c.logger.Error("context is nil, cannot dispatch output")
 			}
 
-			eventkey := "core/exec/stream/" + output.Target.String() + "/" + output.SessionID
+			var eventkey string
+
+			switch output.Signal {
+			case exec.StreamSignalNone:
+				eventkey = "core/exec/stream/" + output.Target.String() + "/" + output.SessionID
+			case exec.StreamSignalClose:
+				c.logger.Debug("closing session")
+				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
+				// session doesn't exist anymore, remove it from the index
+				delete(c.sessionIndex, output.SessionID)
+			default:
+				c.logger.Debugw("received signal", "signal", output.Signal.String())
+				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
+			}
+
 			runtime.EventsEmit(c.ctx, eventkey, output.Data)
 		case resize := <-resizeMux:
 			if err := manager.ResizeSession(resize.SessionID, resize.Rows, resize.Cols); err != nil {
@@ -145,7 +159,22 @@ func (c *controller) runMux() {
 			if c.ctx == nil {
 				c.logger.Error("context is nil, cannot dispatch output")
 			}
-			eventkey := "core/exec/stream/" + output.Target.String() + "/" + output.SessionID
+
+			var eventkey string
+
+			switch output.Signal {
+			case exec.StreamSignalNone:
+				eventkey = "core/exec/stream/" + output.Target.String() + "/" + output.SessionID
+			case exec.StreamSignalClose:
+				c.logger.Debug("closing session")
+				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
+				// session doesn't exist anymore, remove it from the index
+				delete(c.sessionIndex, output.SessionID)
+			default:
+				c.logger.Debugw("received signal", "signal", output.Signal.String())
+				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
+			}
+
 			runtime.EventsEmit(c.ctx, eventkey, output.Data)
 		}
 	}
@@ -186,7 +215,7 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 	handlers := provider.GetSupportedResources(c.getUnconnectedCtx(context.Background(), ""))
 	for _, handler := range handlers {
 		if _, ok := c.handlerMap[handler.Plugin]; !ok {
-			c.handlerMap[handler.Plugin] = make(map[string]exec.HandlerOpts)
+			c.handlerMap[handler.Plugin] = make(map[string]exec.Handler)
 		}
 
 		// TODO: for now we're just overwriting, but we should do something else here once we
@@ -293,18 +322,18 @@ func (c *controller) getUnconnectedCtx(
 	)
 }
 
-func (c *controller) GetPluginHandlers(plugin string) map[string]exec.HandlerOpts {
+func (c *controller) GetPluginHandlers(plugin string) map[string]exec.Handler {
 	return c.handlerMap[plugin]
 }
 
-func (c *controller) GetHandlers() map[string]map[string]exec.HandlerOpts {
+func (c *controller) GetHandlers() map[string]map[string]exec.Handler {
 	return c.handlerMap
 }
 
 func (c *controller) GetHandler(
 	plugin string,
 	resource string,
-) *exec.HandlerOpts {
+) *exec.Handler {
 	p, ok := c.handlerMap[plugin]
 	if !ok {
 		return nil

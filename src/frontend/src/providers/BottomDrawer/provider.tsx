@@ -86,8 +86,10 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
       variant: opts.variant,
       properties: opts.properties,
     };
+    console.log('newTab:', newTab);
+    console.log('tabs:', tabs);
     setTabs([...tabs, newTab]);
-    setFocused(tabs.length);
+    setFocused(tabs.length); 
   };
 
   const createTabs: CreateTabs = (newTabs: CreateTabOpts[]) => {

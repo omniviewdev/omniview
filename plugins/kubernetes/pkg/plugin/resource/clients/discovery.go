@@ -3,7 +3,6 @@ package clients
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 
 	"k8s.io/client-go/discovery"
@@ -31,7 +30,6 @@ var _ factories.ResourceDiscoveryClientFactory[DiscoveryClient] = &KubernetesDis
 func (f *KubernetesDiscoveryClientFactory) CreateClient(
 	ctx *pkgtypes.PluginContext,
 ) (*DiscoveryClient, error) {
-	log.Printf("Connection: %v", ctx.Connection)
 	if ctx.Connection == nil {
 		return nil, errors.New("kubeconfig is required")
 	}
@@ -71,7 +69,7 @@ func (f *KubernetesDiscoveryClientFactory) CreateClient(
 	}, nil
 }
 
-// nothing we need to do here
+// nothing we need to do here.
 func (f *KubernetesDiscoveryClientFactory) RefreshClient(
 	_ *pkgtypes.PluginContext,
 	client *DiscoveryClient,
