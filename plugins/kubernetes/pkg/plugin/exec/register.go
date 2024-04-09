@@ -4,11 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
-
-	"github.com/creack/pty"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/httpstream"
@@ -19,20 +16,19 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/exec"
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 )
 
 func Register(plugin *sdk.Plugin) {
 	// Register the capabilities
 	if err := exec.RegisterPlugin(plugin, exec.PluginOpts{
-		Handlers: []exec.HandlerOpts{
+		Handlers: []exec.Handler{
 			{
-				Plugin:   "kubernetes",
-				Resource: "core::v1::Pod",
-				Handler:  PodHandler,
+				Plugin:     "kubernetes",
+				Resource:   "core::v1::Pod",
+				TTYHandler: PodHandler,
 				TargetBuilder: sdkresource.ActionTargetBuilder{
 					Paths: []string{"$.spec.containers[*]"},
 					Selectors: map[string]string{
@@ -50,22 +46,22 @@ func Register(plugin *sdk.Plugin) {
 func PodHandler(
 	ctx *types.PluginContext,
 	opts exec.SessionOptions,
-) (io.Writer, io.Reader, io.Reader, error) {
-	log.Println("Connection", fmt.Sprintf("%+v\n", ctx))
+	tty *os.File,
+	stopCh chan struct{},
+	resize <-chan exec.SessionResizeInput,
+) error {
 	// create a new kubernetes client
 	if ctx.Connection == nil {
-		return nil, nil, nil, errors.New("connection is required")
+		return errors.New("connection is required")
 	}
 
 	kubeconfig, ok := ctx.Connection.GetDataKey("kubeconfig")
 	if !ok {
-		return nil, nil, nil, errors.New("kubeconfig is required")
+		return errors.New("kubeconfig is required")
 	}
 	val, ok := kubeconfig.(string)
 	if !ok {
-		return nil, nil, nil, errors.New(
-			"kubeconfig in connection is required and must be a string",
-		)
+		return errors.New("kubeconfig in connection is required and must be a string")
 	}
 
 	// Change this to get from settings provider
@@ -78,27 +74,27 @@ func PodHandler(
 		&clientcmd.ConfigOverrides{CurrentContext: ctx.Connection.ID},
 	).ClientConfig()
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error creating client: %w", err)
+		return fmt.Errorf("error creating client: %w", err)
 	}
 
 	// create a clientset for being able to initialize informers
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("error creating clientset: %w", err)
+		return fmt.Errorf("error creating clientset: %w", err)
 	}
 
 	// get the namespace and pod off the data obj
 	metadata, ok := opts.ResourceData["metadata"].(map[string]interface{})
 	if !ok {
-		return nil, nil, nil, errors.New("metadata is required")
+		return errors.New("metadata is required")
 	}
 	pod, ok := metadata["name"].(string)
 	if !ok {
-		return nil, nil, nil, errors.New("pod is required")
+		return errors.New("pod is required")
 	}
 	namespace, ok := metadata["namespace"].(string)
 	if !ok {
-		return nil, nil, nil, errors.New("namespace is required")
+		return errors.New("namespace is required")
 	}
 	container, ok := opts.Params["container"]
 	if !ok {
@@ -113,8 +109,9 @@ func PodHandler(
 		pod,
 		container,
 		opts.Command,
-		opts.TTY,
-		nil,
+		tty,
+		stopCh,
+		resize,
 	)
 }
 
@@ -137,9 +134,10 @@ func ExecCmd(
 	pod string,
 	container string,
 	command []string,
-	tty bool,
-	sizeQueue remotecommand.TerminalSizeQueue,
-) (io.Writer, io.Reader, io.Reader, error) {
+	tty *os.File,
+	stopChan chan struct{},
+	resize <-chan exec.SessionResizeInput,
+) error {
 	req := client.
 		CoreV1().
 		RESTClient().
@@ -155,7 +153,7 @@ func ExecCmd(
 		Stdin:     true,
 		Stdout:    true,
 		Stderr:    true,
-		TTY:       tty,
+		TTY:       true,
 	}
 
 	req.VersionedParams(
@@ -165,35 +163,32 @@ func ExecCmd(
 
 	spdy, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
 	if err != nil {
-		return nil, nil, nil, err
+		return err
 	}
 	ws, err := remotecommand.NewWebSocketExecutor(config, "GET", req.URL().String())
 	if err != nil {
-		return nil, nil, nil, err
+		return err
 	}
-	exec, err := remotecommand.NewFallbackExecutor(ws, spdy, httpstream.IsUpgradeFailure)
+	executor, err := remotecommand.NewFallbackExecutor(ws, spdy, httpstream.IsUpgradeFailure)
 	if err != nil {
-		return nil, nil, nil, err
+		return err
 	}
 
-	pty, ptty, err := pty.Open()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	go func() {
-		defer ptty.Close()
-
-		err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
-			Stdin:  ptty,
-			Stdout: ptty,
-			Stderr: ptty,
+	go func(tty *os.File, stopCh chan struct{}) {
+		err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+			Stdin:  tty,
+			Stdout: tty,
+			Stderr: tty,
 			Tty:    true,
 		})
 		if err != nil {
-			log.Println("Error", err)
+			log.Println("error while streaming to executor", err)
+		} else {
+			log.Println("session ended successfully")
 		}
-	}()
 
-	return pty, pty, pty, nil
+		stopCh <- struct{}{}
+	}(tty, stopChan)
+
+	return nil
 }

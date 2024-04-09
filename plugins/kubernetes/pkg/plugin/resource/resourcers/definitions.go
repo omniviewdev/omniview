@@ -4,6 +4,7 @@ package resourcers
 import (
 	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers/appsv1"
 	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers/corev1"
+
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 )
 
@@ -37,7 +38,7 @@ func GenerateResourceDef(columndefs []types.ColumnDef, namespaced bool) types.Re
 			ID:        "age",
 			Header:    "Age",
 			Accessors: "metadata.creationTimestamp",
-			Alignment: types.CellAlignmentCenter,
+			Alignment: types.CellAlignmentLeft,
 			Width:     120,
 			Formatter: types.CellValueFormatterAge,
 		},
@@ -78,7 +79,7 @@ var DefaultResourceDef = types.ResourceDefinition{
 			ID:        "age",
 			Header:    "Age",
 			Accessors: "metadata.creationTimestamp",
-			Alignment: types.CellAlignmentCenter,
+			Alignment: types.CellAlignmentLeft,
 			Width:     120,
 			Formatter: types.CellValueFormatterAge,
 		},
@@ -92,4 +93,5 @@ var ResourceDefs = map[string]types.ResourceDefinition{
 	"apps::v1::DaemonSet":          GenerateResourceDef(appsv1.DaemonSetCols, true),
 	"apps::v1::ControllerRevision": GenerateResourceDef(appsv1.ControllerRevisionCols, true),
 	"core::v1::Node":               corev1.NodeDef,
+	"core::v1::Pod":                corev1.PodDef,
 }

@@ -9,6 +9,7 @@ import { debounce } from '@/utils/debounce';
 
 // project import
 import { AttachSession, DetachSession, ResizeSession, WriteSession } from '@api/exec/Client';
+import { bottomDrawerChannel } from '../events';
 import * as runtime from '@runtime/runtime.js';
 import { Base64 } from 'js-base64';
 
@@ -17,6 +18,50 @@ type Props = {
   sessionId: string;
 };
 
+const constructSignalHandler = (signal: string, sessionId: string) => {
+  return `core/exec/signal/${signal}/${sessionId}`;
+};
+
+const setupSignalHandlers = (sessionId: string) => {
+  runtime.EventsOn(constructSignalHandler('CLOSE', sessionId), () => {
+    console.log('session closed');
+    bottomDrawerChannel.emit('onSessionClosed', { id: sessionId });
+  });
+
+  // TODO: Implementing these for now just to visualize and prepare, but not actually handling them
+  // Will determine if we even need these.
+  
+  runtime.EventsOn(constructSignalHandler('SIGINT', sessionId), () => {
+    console.log('SIGINT');
+  });
+  runtime.EventsOn(constructSignalHandler('SIGQUIT', sessionId), () => {
+    console.log('SIGQUIT');
+  });
+  runtime.EventsOn(constructSignalHandler('SIGTERM', sessionId), () => {
+    console.log('SIGTERM');
+  });
+  runtime.EventsOn(constructSignalHandler('SIGKILL', sessionId), () => {
+    console.log('SIGKILL');
+  });
+  runtime.EventsOn(constructSignalHandler('SIGHUP', sessionId), () => {
+    console.log('SIGHUP');
+  });
+  runtime.EventsOn(constructSignalHandler('SIGUSR1', sessionId), () => {
+    console.log('SIGUSR1');
+  });
+  runtime.EventsOn(constructSignalHandler('SIGUSR2', sessionId), () => {
+    console.log('SIGUSR2');
+  });
+  runtime.EventsOn(constructSignalHandler('SIGWINCH', sessionId), () => {
+    console.log('SIGWINCH');
+  });
+};
+
+const cleanupSignalHandlers = (sessionId: string) => {
+  [ 'CLOSE', 'SIGINT', 'SIGQUIT', 'SIGTERM', 'SIGKILL', 'SIGHUP', 'SIGUSR1', 'SIGUSR2', 'SIGWINCH' ].forEach((signal) => {
+    runtime.EventsOff(constructSignalHandler(signal, sessionId));
+  });
+};
 
 /**
  *
@@ -136,10 +181,13 @@ export default function TerminalContainer({ sessionId }: Props) {
           terminal.write(Base64.toUint8Array(data as unknown as string));
         }
       });
+
+      setupSignalHandlers(sessionId);
     };
 
     attachToSession().then(() => {
       console.log('attached to session %s', sessionId);
+
       terminal.onData(data => {
         WriteSession(sessionId, data)
           .catch((err) => {
@@ -149,6 +197,7 @@ export default function TerminalContainer({ sessionId }: Props) {
             }
           });
       });
+
     }).catch((err) => {
       console.error('failed to attach to session', err);
     });
@@ -171,8 +220,8 @@ export default function TerminalContainer({ sessionId }: Props) {
         resizeObserver.unobserve(terminalRef.current);
       }
 
-      runtime.EventsOff(stdout);
-      runtime.EventsOff(stderr);
+      // cleanup signal handlers
+      cleanupSignalHandlers(sessionId);
 
       DetachSession(sessionId).then(() => {
         console.log('detached from session %s', sessionId);

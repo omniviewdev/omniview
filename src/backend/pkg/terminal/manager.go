@@ -6,7 +6,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/creack/pty"  // Import the pty package for creating pseudo-terminal devices.
 	"github.com/google/uuid" // UUID package for generating unique identifiers.
@@ -125,8 +127,7 @@ func (m *Manager) StartSession(
 	}
 
 	session := sdkexec.NewSessionFromOpts(ctx, cancel, opts)
-	session.SetStdin(ptyFile)
-	session.SetStdout(ptyFile)
+	session.SetPty(ptyFile)
 	// TODO: separate stderr to the separate stream
 
 	m.mux.Lock()
@@ -141,6 +142,9 @@ func (m *Manager) StartSession(
 
 	// Start handling terminal output in a separate goroutine.
 	go m.handleOutStream(ctx, opts.ID, ptyFile)
+	go m.handleSignals(ctx, opts.ID, cmd)
+	go m.handleWaitForCompletion(ctx, opts.ID, cmd)
+
 	return session, nil
 }
 
@@ -160,51 +164,97 @@ func (m *Manager) ResizeSession(sessionID string, rows, cols uint16) error {
 	return nil
 }
 
+func (m *Manager) handleWaitForCompletion(ctx context.Context, sessionID string, cmd *exec.Cmd) {
+	if err := cmd.Wait(); err != nil {
+		m.log.Errorw("error waiting for command", "session", sessionID, "error", err)
+	}
+	m.terminateSession(m.sessions[sessionID])
+	ctx.Done()
+}
+
+func (m *Manager) handleSignals(ctx context.Context, sessionID string, cmd *exec.Cmd) {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGTERM)
+	signal.Notify(ch, syscall.SIGINT)
+	signal.Notify(ch, syscall.SIGQUIT)
+
+	defer func() { signal.Stop(ch); close(ch) }()
+
+	for {
+		select {
+		case sig := <-ch:
+			switch sig {
+			case syscall.SIGTERM:
+				m.log.Debug("SIGTERM received")
+				cmd.Process.Signal(syscall.SIGTERM)
+			case syscall.SIGINT:
+				m.log.Debug("SIGINT received")
+				cmd.Process.Signal(syscall.SIGINT)
+			case syscall.SIGQUIT:
+				m.log.Debug("SIGQUIT received")
+				cmd.Process.Signal(syscall.SIGQUIT)
+			}
+		case <-ctx.Done():
+			m.log.Debugw(
+				"context cancelled, stopping signal handling",
+				"session", sessionID,
+			)
+
+			// signal to ide we're done
+			m.outMux <- sdkexec.StreamOutput{
+				SessionID: sessionID,
+				Target:    sdkexec.StreamTargetStdOut,
+				Data:      []byte("Session terminated"),
+				Signal:    sdkexec.StreamSignalClose,
+			}
+
+			return
+		}
+	}
+}
+
 func (m *Manager) handleOutStream(
 	ctx context.Context,
 	sessionID string,
 	stream io.Reader,
 ) {
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		m.log.Errorw("failed to write to session buffer: couldn't find session")
+	}
 	for {
-		select {
-		case <-ctx.Done():
-			m.log.Debugw(
-				"context cancelled, stopping read stream handling",
-				"session", sessionID,
-			)
-			if err := m.CloseSession(sessionID); err != nil {
-				m.log.Errorw("error closing session", "session", sessionID, "error", err)
+		buf := make([]byte, DefaultReadBufferSize)
+		read, err := stream.Read(buf)
+		if err != nil {
+			if err != io.EOF {
+				m.log.Errorw(
+					"error reading from stream",
+					"session", sessionID,
+					"error", err,
+				)
 			}
+
+			if session != nil && m.sessions[session.ID] != nil {
+				session.Close()
+			}
+
 			return
-		default:
-			buf := make([]byte, DefaultReadBufferSize)
-			read, err := stream.Read(buf)
-			if err != nil {
-				if err != io.EOF {
-					m.log.Errorw(
-						"error reading from stream",
-						"session", sessionID,
-						"error", err,
-					)
-				}
-				return
+		}
+
+		if len(buf) > 0 {
+			m.outMux <- sdkexec.StreamOutput{
+				SessionID: sessionID,
+				Target:    sdkexec.StreamTargetStdOut,
+				Data:      buf[:read],
 			}
 
-			if len(buf) > 0 {
-				m.outMux <- sdkexec.StreamOutput{
-					SessionID: sessionID,
-					Target:    sdkexec.StreamTargetStdOut,
-					Data:      buf[:read],
-				}
-
-				session, ok := m.sessions[sessionID]
-				if !ok {
-					// soft error
-					m.log.Errorw("failed to write to session buffer: couldn't find session")
-					continue
-				}
-				session.RecordToBuffer(buf[:read])
+			session, ok := m.sessions[sessionID]
+			if !ok {
+				// soft error
+				m.log.Errorw("failed to write to session buffer: couldn't find session")
+				continue
 			}
+			session.RecordToBuffer(buf[:read])
 		}
 	}
 }

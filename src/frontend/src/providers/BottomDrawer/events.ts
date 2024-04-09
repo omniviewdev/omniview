@@ -9,11 +9,16 @@ type OnCreateSessionOpts = {
   label?: string;
 };
 
+type OnSessionClosedOpts = {
+  id: string;
+};
+
 type BottomDrawerEvents = {
   onResize: (height: number) => void;
   onFullscreen: () => void;
   onMinimize: () => void;
   onCreateSession: (opts: OnCreateSessionOpts) => void;
+  onSessionClosed: (opts: OnSessionClosedOpts) => void;
 };
 
 export const bottomDrawerChannel = eventbus<BottomDrawerEvents>();

@@ -177,10 +177,16 @@ const BottomDrawerTabs: React.FC = () => {
         });
     });
 
+    const unsubscribeSessionClosed = bottomDrawerChannel.on('onSessionClosed', ({ id: sessionId }) => {
+      console.log('onSessionClosed', sessionId);
+      closeTab({ id: sessionId });
+    });
+
     return () => {
       unsubscribeCreateSession();
+      unsubscribeSessionClosed();
     };
-  }, []);
+  }, [tabs]);
 
   const handleRemove = React.useCallback((index: number) => {
     closeTab({ index });

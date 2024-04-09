@@ -127,6 +127,5 @@ function ActionMenuListItem({
 }
 
 ActionMenuListItem.displayName = 'ActionMenuListItem';
-ActionMenuListItem.whyDidYouRender = true;
 
 export default ActionMenuListItem;

@@ -384,7 +384,7 @@ const calcMemoKey = (data: any, memoizer?: Memoizer) => {
   }
 
   if (typeof memoizer === 'string') {
-    return get(data, memoizer);
+    return memoizer.split(',').map(key => get(data, key)).join('-');
   }
 
   // memoizer is not provided, so there isn't really a way we can memoize this.
@@ -392,7 +392,16 @@ const calcMemoKey = (data: any, memoizer?: Memoizer) => {
 };
 
 const MemoizedRow = React.memo(RowContainer, (prev, next) => {
-  return calcMemoKey(prev.row.original, prev.memoizer) === calcMemoKey(next.row.original, next.memoizer)
+  const prevMemoKey = calcMemoKey(prev.row.original, prev.memoizer);
+  const nextMemoKey = calcMemoKey(next.row.original, next.memoizer);
+  if (prevMemoKey !== nextMemoKey) {
+    console.log(`recalculated ${prev.row.id}`, {
+      prevMemoKey,
+      nextMemoKey,
+    });
+  }
+
+  return prevMemoKey === nextMemoKey
     && prev.virtualRow.start === next.virtualRow.start && prev.isSelected === next.isSelected
     && prev.columnVisibility === next.columnVisibility;
 });

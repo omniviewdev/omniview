@@ -168,5 +168,4 @@ const ActionsMenuList: React.FC<Props> = ({
 };
 
 ActionMenu.displayName = 'ActionMenu';
-ActionMenu.whyDidYouRender = true;
 export default ActionMenu;
