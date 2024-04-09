@@ -14,6 +14,9 @@ dependencies:
   '@dnd-kit/sortable':
     specifier: ^8.0.0
     version: 8.0.0(@dnd-kit/core@6.1.0)(react@18.2.0)
+  '@dnd-kit/utilities':
+    specifier: ^3.2.2
+    version: 3.2.2(react@18.2.0)
   '@emotion/react':
     specifier: ^11.11.4
     version: 11.11.4(@types/react@18.2.67)(react@18.2.0)
@@ -101,6 +104,9 @@ dependencies:
   lodash.get:
     specifier: ^4.4.2
     version: 4.4.2
+  monaco-editor:
+    specifier: ^0.47.0
+    version: 0.47.0
   monaco-editor-nginx:
     specifier: ^1.0.16
     version: 1.0.16(@babel/runtime@7.24.0)(monaco-editor@0.47.0)(react-dom@18.2.0)(react@18.2.0)
@@ -131,6 +137,9 @@ dependencies:
   react-router-dom:
     specifier: ^6.22.3
     version: 6.22.3(react-dom@18.2.0)(react@18.2.0)
+  react-transition-group:
+    specifier: ^4.4.5
+    version: 4.4.5(react-dom@18.2.0)(react@18.2.0)
   react-use:
     specifier: ^17.5.0
     version: 17.5.0(react-dom@18.2.0)(react@18.2.0)
@@ -172,6 +181,9 @@ devDependencies:
   '@types/jsonpath':
     specifier: ^0.2.4
     version: 0.2.4
+  '@types/lodash.get':
+    specifier: ^4.4.9
+    version: 4.4.9
   '@types/node':
     specifier: ^20.11.30
     version: 20.11.30
@@ -2130,6 +2142,16 @@ packages:
 
   /@types/jsonpath@0.2.4:
     resolution: {integrity: sha512-K3hxB8Blw0qgW6ExKgMbXQv2UPZBoE2GqLpVY+yr7nMD2Pq86lsuIzyAaiQ7eMqFL5B6di6pxSkogLJEyEHoGA==}
+    dev: true
+
+  /@types/lodash.get@4.4.9:
+    resolution: {integrity: sha512-J5dvW98sxmGnamqf+/aLP87PYXyrha9xIgc2ZlHl6OHMFR2Ejdxep50QfU0abO1+CH6+ugx+8wEUN1toImAinA==}
+    dependencies:
+      '@types/lodash': 4.17.0
+    dev: true
+
+  /@types/lodash@4.17.0:
+    resolution: {integrity: sha512-t7dhREVv6dbNj0q17X12j7yDG4bD/DHYX7o5/DbDxobP0HnGPgpRz2Ej77aL7TZT3DSw13fqUTj8J4mMnqa7WA==}
     dev: true
 
   /@types/mdast@4.0.3:
