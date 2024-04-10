@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"runtime"
+
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Shutdownable is an interface that can be implemented by any struct that needs to
@@ -32,6 +34,44 @@ func (a *App) GetOperatingSystem() string {
 	default:
 		return "linux"
 	}
+}
+
+// FileFilter defines a filter for dialog boxes
+type FileFilter struct {
+	DisplayName string `json:"displayName"` // Filter information EG: "Image Files (*.jpg, *.png)"
+	Pattern     string `json:"pattern"`     // semicolon separated list of extensions, EG: "*.jpg;*.png"
+}
+
+type FileDialogOptions struct {
+	DefaultDirectory           string       `json:"defaultDirectory"`
+	DefaultFilename            string       `json:"defaultFilename"`
+	Title                      string       `json:"title"`
+	Filters                    []FileFilter `json:"filters"`
+	ShowHiddenFiles            bool         `json:"showHiddenFiles"`
+	CanCreateDirectories       bool         `json:"canCreateDirectories"`
+	ResolvesAliases            bool         `json:"resolvesAliases"`
+	TreatPackagesAsDirectories bool         `json:"treatPackagesAsDirectories"`
+}
+
+func (a *App) OpenFileSelectionDialog(opts FileDialogOptions) ([]string, error) {
+	wailsopts := wailsruntime.OpenDialogOptions{
+		DefaultDirectory:           opts.DefaultDirectory,
+		DefaultFilename:            opts.DefaultFilename,
+		Title:                      opts.Title,
+		ShowHiddenFiles:            opts.ShowHiddenFiles,
+		CanCreateDirectories:       opts.CanCreateDirectories,
+		ResolvesAliases:            opts.ResolvesAliases,
+		TreatPackagesAsDirectories: opts.TreatPackagesAsDirectories,
+	}
+	filters := make([]wailsruntime.FileFilter, len(opts.Filters))
+	for i, filter := range opts.Filters {
+		filters[i] = wailsruntime.FileFilter{
+			DisplayName: filter.DisplayName,
+			Pattern:     filter.Pattern,
+		}
+	}
+	wailsopts.Filters = filters
+	return wailsruntime.OpenMultipleFilesDialog(a.ctx, wailsopts)
 }
 
 // startup is called at application startup.

@@ -387,7 +387,8 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 			"exec":     &ep.Plugin{},
 			"settings": &sp.SettingsPlugin{},
 		},
-		GRPCDialOptions:  sdk.GRPCDialOptions(),
+		GRPCDialOptions: sdk.GRPCDialOptions(),
+		//nolint:gosec // this is completely software controlled
 		Cmd:              exec.Command(filepath.Join(location, "bin", "plugin")),
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
 		Logger:           logger,

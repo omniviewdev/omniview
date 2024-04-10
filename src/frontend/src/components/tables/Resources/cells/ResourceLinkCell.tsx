@@ -72,6 +72,10 @@ const ResourceLinkCell: React.FC<Props> = ({
     });
   };
 
+  if (typeof value === 'string' && value === '') {
+    return null;
+  }
+
   return (
     <Tooltip size='sm' variant='plain' title={resourceID}>
       <Chip 

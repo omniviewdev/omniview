@@ -1,7 +1,6 @@
 package resource
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -24,7 +23,7 @@ func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
 	// Get the kubeconfigs from the settings provider
 	kubeconfigs, settingsErr := ctx.PluginConfig.GetStringSlice("kubeconfigs")
 	if settingsErr != nil {
-		return nil, errors.New("failed to get kubeconfigs from settings")
+		return nil, fmt.Errorf("failed to get kubeconfigs from settings: %w", settingsErr)
 	}
 
 	// let's make a guestimate of the number of connections we might have

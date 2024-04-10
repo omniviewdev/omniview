@@ -1,14 +1,18 @@
 import React from 'react';
 
 // Material-ui
+import Autocomplete from '@mui/joy/Autocomplete';
+import IconButton from '@mui/joy/IconButton';
 import Checkbox from '@mui/joy/Checkbox';
 import Input from '@mui/joy/Input';
 import Select from '@mui/joy/Select';
+import Stack from '@mui/joy/Stack';
 import Option from '@mui/joy/Option';
 
 // Hooks
-import { settings } from '@api/models';
-import { Autocomplete } from '@mui/joy';
+import { main, settings } from '@api/models';
+import { LuFile } from 'react-icons/lu';
+import { OpenFileSelectionDialog } from '@api/main/App';
 
 type Props = {
   setting: settings.Setting;
@@ -40,25 +44,61 @@ const SettingsEntry: React.FC<Props> = ({ setting, id, draftValue, handleChange 
 const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
   const isChanged = draftValue !== undefined;
 
+  console.log('Setting:', draftValue);
+
+  const handleFileSelection = async () => {
+    if (!setting.fileSelection?.enabled) {
+      return;
+    }
+
+    let newValue = isChanged ? draftValue as string[] : setting.value as string[];
+    if (!newValue) {
+      newValue = [];
+    }
+
+    OpenFileSelectionDialog(main.FileDialogOptions.createFrom({
+      showHiddenFiles: true,
+    })).then((result) => {
+      console.log('File selection dialog result:', result);
+      if (result) {
+        newValue.push(...result);
+        console.log('New value:', newValue);
+        handleChange(id, newValue);
+      }
+    }).catch((err) => {
+      console.error('Error opening file selection dialog:', err);
+    });
+  };
+
   if (Array.isArray(setting.value)) {
     return (
-      <Autocomplete
-        multiple
-        freeSolo={setting.options?.length === 0}
-        placeholder={setting.value.length > 0 ? undefined : 'Kubeconfigs'}
-        value={isChanged ? draftValue as string[] : setting.value as string[]}
-        onChange={(_, val) => {
-          handleChange(id, val);
-        }}
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        options={setting.options.map(option => ({ label: option.label, id: option.value }))}
-        sx={{
-          ...(isChanged && {
-            outline: '2px solid var(--Select-focusedHighlight)',
-            outlineOffset: '2px',
-          }),
-        }}
-      />
+      <Stack direction='row' spacing={1} width={'100%'}>
+        <Autocomplete
+          multiple
+          freeSolo={setting.options?.length === 0}
+          placeholder={setting.value.length > 0 ? undefined : 'Kubeconfigs'}
+          value={isChanged ? draftValue as string[] : setting.value as string[]}
+          onChange={(_, val) => {
+            console.log('Autocomplete value:', val);
+            handleChange(id, val);
+          }}
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          options={setting.options.map(option => ({ label: option.label, id: option.value }))}
+          sx={{
+            width: '100%',
+            ...(isChanged && {
+              outline: '2px solid var(--Select-focusedHighlight)',
+              outlineOffset: '2px',
+            }),
+          }}
+        />
+        {setting.fileSelection?.enabled ? (
+          <IconButton size='sm' variant='soft' onClick={async () => handleFileSelection()}>
+            <LuFile />
+          </IconButton>
+        ) : undefined
+        }
+      </Stack>
     );
   }
 

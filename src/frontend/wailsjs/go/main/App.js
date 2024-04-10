@@ -5,3 +5,7 @@
 export function GetOperatingSystem() {
   return window['go']['main']['App']['GetOperatingSystem']();
 }
+
+export function OpenFileSelectionDialog(arg1) {
+  return window['go']['main']['App']['OpenFileSelectionDialog'](arg1);
+}

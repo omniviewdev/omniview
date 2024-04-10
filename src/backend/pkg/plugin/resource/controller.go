@@ -521,6 +521,7 @@ func (c *controller) getClientConnection(
 			pluginID,
 		)
 	}
+
 	return client, conn, nil
 }
 
