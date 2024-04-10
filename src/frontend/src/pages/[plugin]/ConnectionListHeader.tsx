@@ -26,14 +26,14 @@ const ConnectionListHeader: React.FC<Props> = ({ search, onSearchChange }) => (
       px: 2,
       py: 1,
       backgroundColor: 'background.surface',
-      borderTopLeftRadius: 8,
-      borderTopRightRadius: 8,
       display: 'flex',
+      width: '100%',
+      borderRadius: 'sm',
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 1,
     }}
-    variant='plain'
+    variant='outlined'
   >
     {/* Left side of the header */}
     <Stack direction='row' alignItems='center' gap={1.5}>

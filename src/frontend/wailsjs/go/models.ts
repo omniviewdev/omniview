@@ -306,68 +306,6 @@ export namespace exec {
 
 }
 
-export namespace resources {
-	
-	export class GetOptions {
-	    cluster: string;
-	    name: string;
-	    namespace: string;
-	    labels?: {[key: string]: string};
-	
-	    static createFrom(source: any = {}) {
-	        return new GetOptions(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.cluster = source["cluster"];
-	        this.name = source["name"];
-	        this.namespace = source["namespace"];
-	        this.labels = source["labels"];
-	    }
-	}
-	export class ListOptions {
-	    clusters: string[];
-	    name?: string;
-	    namespaces?: string[];
-	    labels?: {[key: string]: string};
-	
-	    static createFrom(source: any = {}) {
-	        return new ListOptions(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.clusters = source["clusters"];
-	        this.name = source["name"];
-	        this.namespaces = source["namespaces"];
-	        this.labels = source["labels"];
-	    }
-	}
-
-}
-
-export namespace services {
-	
-	export class ClusterContext {
-	    resourceStates: {[key: string]: number};
-	    name: string;
-	    kubeconfig: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ClusterContext(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.resourceStates = source["resourceStates"];
-	        this.name = source["name"];
-	        this.kubeconfig = source["kubeconfig"];
-	    }
-	}
-
-}
-
 export namespace settings {
 	
 	export enum SettingType {
@@ -378,6 +316,28 @@ export namespace settings {
 	    COLOR = "color",
 	    DATETIME = "datetime",
 	    PASSWORD = "password",
+	}
+	export class SettingFileSelection {
+	    enabled: boolean;
+	    allowFolders: boolean;
+	    extensions: string[];
+	    multiple: boolean;
+	    relative: boolean;
+	    defaultPath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SettingFileSelection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.allowFolders = source["allowFolders"];
+	        this.extensions = source["extensions"];
+	        this.multiple = source["multiple"];
+	        this.relative = source["relative"];
+	        this.defaultPath = source["defaultPath"];
+	    }
 	}
 	export class SettingOption {
 	    label: string;
@@ -403,6 +363,7 @@ export namespace settings {
 	    value: any;
 	    default: any;
 	    options: SettingOption[];
+	    fileSelection?: SettingFileSelection;
 	
 	    static createFrom(source: any = {}) {
 	        return new Setting(source);
@@ -417,6 +378,7 @@ export namespace settings {
 	        this.value = source["value"];
 	        this.default = source["default"];
 	        this.options = this.convertValues(source["options"], SettingOption);
+	        this.fileSelection = this.convertValues(source["fileSelection"], SettingFileSelection);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -475,6 +437,7 @@ export namespace settings {
 		    return a;
 		}
 	}
+	
 	
 
 }

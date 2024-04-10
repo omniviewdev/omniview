@@ -25,7 +25,7 @@ import {
 import get from 'lodash.get';
 
 // Project imports
-import NamespaceSelect from '@/components/selects/NamespaceSelect';
+// import NamespaceSelect from '@/components/selects/NamespaceSelect';
 import { DebouncedInput } from './DebouncedInput';
 import { RowContainer } from './RowContainer';
 import { plural } from '@/utils/language';
@@ -148,8 +148,17 @@ const ResourceTableContainer: React.FC<Props> = ({
   React.useLayoutEffect(() => {
     // check local storage to see if they've saved this
     const storedColumnVisibility = window.localStorage.getItem(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`);
-    if (storedColumnVisibility) {
-      setColumnVisibility(JSON.parse(storedColumnVisibility));
+    if (storedColumnVisibility && initialColumnVisibility) {
+      const current = JSON.parse(storedColumnVisibility);
+
+      // make sure any new filters are added if they weren't there before
+      Object.entries(initialColumnVisibility).forEach(([key, value]) => {
+        if (!current.hasOwnProperty(key)) {
+          current[key] = value;
+        }
+      });
+
+      setColumnVisibility(current);
     } else if (initialColumnVisibility) {
       setColumnVisibility(initialColumnVisibility);
     }
@@ -163,22 +172,6 @@ const ResourceTableContainer: React.FC<Props> = ({
     }
   }, [columnVisibility]);
 
-  const setNamespaces = (namespaces: string[]) => {
-    setColumnFilters(prev => {
-      const namespaceFilter = prev.find(f => f.id === 'namespace');
-      if (namespaceFilter) {
-        return prev.map(f => {
-          if (f.id === 'namespace') {
-            return { ...f, value: namespaces };
-          }
-
-          return f;
-        });
-      }
-
-      return prev;
-    });
-  };
 
   const [search, setSearch] = useState<string>('');
 
@@ -243,12 +236,12 @@ const ResourceTableContainer: React.FC<Props> = ({
           }}
           placeholder={placeHolderText()}
         />
-        {namespaced && 
-          <NamespaceSelect 
-            namespaces={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []} 
-            setNamespaces={setNamespaces} 
-          />
-        }
+        {/* {namespaced &&  */}
+        {/*   <NamespaceSelect  */}
+        {/*     namespaces={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []}  */}
+        {/*     setNamespaces={setNamespaces}  */}
+        {/*   /> */}
+        {/* } */}
       </Stack>
       <Sheet
         className={'table-container'}

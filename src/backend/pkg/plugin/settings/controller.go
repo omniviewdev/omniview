@@ -31,15 +31,17 @@ type Controller interface {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	logger  *zap.SugaredLogger
-	clients map[string]sdksettings.Provider
+	logger           *zap.SugaredLogger
+	settingsProvider pkgsettings.Provider
+	clients          map[string]sdksettings.Provider
 }
 
 // NewController returns a new Controller instance.
-func NewController(logger *zap.SugaredLogger) Controller {
+func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controller {
 	return &controller{
-		logger:  logger.Named("SettingsController"),
-		clients: make(map[string]sdksettings.Provider),
+		logger:           logger.Named("SettingsController"),
+		settingsProvider: sp,
+		clients:          make(map[string]sdksettings.Provider),
 	}
 }
 

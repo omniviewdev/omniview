@@ -20,6 +20,11 @@ import Layout from '@/layouts/core/sidenav';
 
 // Project import
 import NavMenu from '@infraview/navigation/NavMenu';
+import ResourceTable from '@/components/tables/Resources';
+import PluginBackdrop from '../../PluginBackdrop';
+import { usePluginContext } from '@/contexts/PluginContext';
+import useResourceGroups from '@/hooks/resource/useResourceGroups';
+import useSnackbar from '@/providers/SnackbarProvider';
 import { type SidebarSection, type SidebarItem } from '@infraview/navigation/types';
 import { useConnection } from '@/hooks/connection/useConnection';
 import { stringAvatar } from '@/utils/color';
@@ -27,12 +32,6 @@ import { Link } from '@infraview/router';
 
 // Icons
 import { LuCog } from 'react-icons/lu';
-// import ResourceTable from './ResourceTable';
-import ResourceTable from '@/components/tables/Resources';
-import PluginBackdrop from '../../PluginBackdrop';
-import { usePluginContext } from '@/contexts/PluginContext';
-import useResourceGroups from '@/hooks/resource/useResourceGroups';
-import useSnackbar from '@/providers/SnackbarProvider';
 
 /**
  * Get the ID from the meta object

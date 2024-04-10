@@ -1,23 +1,20 @@
 import React from 'react';
 
-// Material-ui
+// material-ui
 import Avatar from '@mui/joy/Avatar';
-import Divider from '@mui/joy/Divider';
 import Sheet from '@mui/joy/Sheet';
-import List from '@mui/joy/List';
 import Stack from '@mui/joy/Stack';
 import Typography from '@mui/joy/Typography';
 
-// Project imports
+// project imports
 import { usePluginContext } from '@/contexts/PluginContext';
 import { useConnections } from '@/hooks/connection/useConnections';
-import ConnectionListItem from './ConnectionListItem';
+import ConnectionTable from './ConnectionTable';
 import ConnectionListHeader from './ConnectionListHeader';
 import PluginBackdrop from './PluginBackdrop';
 
 // Third-party
 import tinycolor from 'tinycolor2';
-import { ListItem, Skeleton } from '@mui/joy';
 
 /**
  * Default home landing for the plugin.
@@ -62,42 +59,14 @@ export default function PluginHome(): React.ReactElement {
         </Stack>
         <Typography level='title-sm' >{plugin.metadata.description}</Typography>
       </Sheet>
-      <Sheet sx={{ backgroundColor: 'transparent', borderRadius: 8, width: '100%' }} variant='outlined'>
+      <Stack direction='column' gap={0.5}>
         <ConnectionListHeader plugin={plugin.id} search={search} onSearchChange={setSearch} />
-        <Divider />
 
         {/* List of connections */}
         {Boolean(connections.data?.length) && (
-          <List
-            variant='plain'
-            component='nav'
-            size='md'
-            sx={{
-              p: 0.5,
-              width: '100%',
-              borderTopLeftRadius: 0,
-              borderTopRightRadius: 0,
-              borderBottomRightRadius: 'sm',
-              borderBottomLeftRadius: 'sm',
-              backgroundColor: theme => theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)',
-              opacity: 0.9,
-              '--ListItem-paddingY': '0px',
-            }}
-          >
-            {connections.isLoading 
-              ?  Array.from(new Array(4)).map((_, idx ) => 
-                <ListItem key={idx} sx={{ borderRadius: 'sm' }}>
-                  <Skeleton variant='rectangular' height={40} />
-                </ListItem>
-              )
-              : connections.data
-                ?.filter(connection => connection.name.toLowerCase().includes(search.toLowerCase()))
-                .map(connection => (
-                  <ConnectionListItem key={connection.id} {...connection} />
-                ))}
-          </List>
+          <ConnectionTable connections={connections.data ?? []} />
         )}
-      </Sheet>
+      </Stack>
     </Stack>
   );
 }

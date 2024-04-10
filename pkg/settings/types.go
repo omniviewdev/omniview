@@ -19,6 +19,21 @@ const (
 	Password SettingType = "password"
 )
 
+type SettingFileSelection struct {
+	// Whether file selection should be allowed.
+	Enabled bool `json:"enabled"`
+	// Allow the selection of folders.
+	AllowFolders bool `json:"allowFolders"`
+	// The allowed extensions that should be selectable.
+	Extensions []string `json:"extensions"`
+	// Multiple files can be selected.
+	Multiple bool `json:"multiple"`
+	// Whether the file selection should be saved as a relative path.
+	Relative bool `json:"relative"`
+	// DefaultPath is the default path for the file selection.
+	DefaultPath string `json:"defaultPath"`
+}
+
 // AllSettingTypes is a list of all setting types. Necessary for Wails
 // to bind the enums.
 //
@@ -63,6 +78,8 @@ type Setting struct {
 	Validator func(interface{}) error `json:"-"`
 	// Options is an optional list of options for a select setting
 	Options []SettingOption `json:"options"`
+	// FileSelection is an optional setting for file selection
+	FileSelection *SettingFileSelection `json:"fileSelection"`
 }
 
 func (s *Setting) Validate(value interface{}) error {

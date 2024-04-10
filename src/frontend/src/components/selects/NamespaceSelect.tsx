@@ -13,10 +13,7 @@ import ChipDelete from '@mui/joy/ChipDelete';
 import { LuGroup } from 'react-icons/lu';
 
 // Backend
-import { type Namespace } from 'kubernetes-types/core/v1';
-import { List } from '../../../wailsjs/go/resources/NamespaceService';
 import { Typography } from '@mui/joy';
-import { usePluginRouter } from '@infraview/router';
 
 type Props = {
   /**
@@ -38,28 +35,28 @@ type Props = {
 /**
   * Renders a select for choosing namespaces.
   */
-const NamespaceSelect: FC<Props> = ({ namespaces, setNamespaces, clusters = [] }) => {
-  const [availableNS, setAvailableNS] = useState<string[]>([]);
-  const { contextID } = usePluginRouter();
+const NamespaceSelect: FC<Props> = ({ namespaces, setNamespaces }) => {
+  const [availableNS, _setAvailableNS] = useState<string[]>([]);
+  // const { contextID } = usePluginRouter();
 
   console.log('namespaces', namespaces);
 
   useEffect(() => {
-    List({
-      clusters: clusters?.length ? clusters : [contextID],
-      namespaces: [],
-      labels: {},
-      name: '',
-    }).then((namespaces: Record<string, Namespace[]>) => {
-      // Reduce down, for now just put it all in the same thing
-      setAvailableNS(Object.values(namespaces)
-        .flat()
-        .map(n => n.metadata?.name)
-        .filter(n => n !== undefined)
-        .sort() as string[]);
-    }).catch(() => {
-    // Todo - handle error
-    });
+    // List({
+    //   clusters: clusters?.length ? clusters : [contextID],
+    //   namespaces: [],
+    //   labels: {},
+    //   name: '',
+    // }).then((namespaces: Record<string, Namespace[]>) => {
+    //   // Reduce down, for now just put it all in the same thing
+    //   setAvailableNS(Object.values(namespaces)
+    //     .flat()
+    //     .map(n => n.metadata?.name)
+    //     .filter(n => n !== undefined)
+    //     .sort() as string[]);
+    // }).catch(() => {
+    // // Todo - handle error
+    // });
   }, []);
 
   const handleChange = (

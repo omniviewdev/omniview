@@ -18,6 +18,12 @@ func main() {
 				Description: "A list of available Kubeconfigs to use",
 				Type:        settings.Text,
 				Default:     []string{"~/.kube/config"},
+				FileSelection: &settings.SettingFileSelection{
+					Enabled:      true,
+					AllowFolders: false,
+					Multiple:     true,
+					DefaultPath:  "~/.kube",
+				},
 			},
 			{
 				ID:          "shell",

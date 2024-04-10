@@ -8,10 +8,8 @@ import get from 'lodash.get';
 // project imports
 import { GetResourceDefinition } from '@api/resource/Client';
 import { type types } from '@api/models';
-import {
-  SelectBoxHeader, 
-  SelectBoxRow, 
-} from '@/components/tables/ResourceTable/components';
+import SelectBoxHeader from '@/components/tables/Resources/cells/SelectBoxHeader';
+import SelectBoxRow from '@/components/tables/Resources/cells/SelectBoxRow';
 import { type Actions } from '@/components/tables/Resources/actions/types';
 import ActionMenu from '@/components/tables/Resources/actions/ActionMenu';
 import { TextCell } from '@/components/tables/Resources/cells';
