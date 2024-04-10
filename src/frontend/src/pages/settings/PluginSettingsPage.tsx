@@ -46,8 +46,11 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
     }, {});
 
     console.log('committing', values);
-    setSettings(values);
-    clearDraftValues();
+    setSettings(values).then(() => {
+      clearDraftValues();
+    }).catch((err) => {
+      console.error('Failed to save settings', err);
+    });
   };
 
   /**

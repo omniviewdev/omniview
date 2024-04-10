@@ -27,11 +27,7 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
 
     // If changing back to initial value, remove from draft values
     // otherwise, add to draft values
-    if (value === settings[name].value) {
-      setDraftValues({ ...draftValues, [id]: undefined });
-    } else {
-      setDraftValues({ ...draftValues, [id]: value });
-    }
+    setDraftValues({ ...draftValues, [id]: value });
   };
 
   // Todo - make this a bit better

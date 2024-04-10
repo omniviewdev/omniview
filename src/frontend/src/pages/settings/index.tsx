@@ -62,7 +62,5 @@ const GetSettingsPage = (section: Section, id: string) => {
       return <CoreSettingsPage id={id} />;
     case Section.Plugins:
       return <PluginSettingsPage id={id} />;
-    default:
-      return null;
   }
 };

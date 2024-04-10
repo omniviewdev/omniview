@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ListConnections, StartConnectionInformer, StopConnectionInformer } from '@api/resource/Client';
+import { LoadConnections, StartConnectionInformer, StopConnectionInformer } from '@api/resource/Client';
 import { type types } from '@api/models';
 import { useSnackbar } from '@/providers/SnackbarProvider';
 
@@ -46,7 +46,7 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
 
   const connections = useQuery({
     queryKey,
-    queryFn: async () => ListConnections(plugin),
+    queryFn: async () => LoadConnections(plugin),
   });
 
   return {

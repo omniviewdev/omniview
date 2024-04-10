@@ -516,11 +516,26 @@ func (p *provider) GetStringSlice(id string) ([]string, error) {
 	if setting.Type != Text {
 		return nil, ErrSettingTypeMismatch
 	}
-	val, ok := setting.Value.([]string)
-	if !ok {
-		return nil, ErrSettingTypeMismatch
+	// Initialize a slice to hold the converted strings
+	var strs []string
+
+	// Check if the setting.Value is of type []interface{}
+	if slice, ok := setting.Value.([]interface{}); ok {
+		// Iterate over the slice, asserting each element to a string
+		for _, item := range slice {
+			if str, valOk := item.(string); valOk {
+				strs = append(strs, str)
+			} else {
+				// If an item in the slice is not a string, return an error
+				return nil, fmt.Errorf("expected []string, but item is not a string")
+			}
+		}
+	} else {
+		// If setting.Value is not of type []interface{}, return an error
+		return nil, fmt.Errorf("expected []string, got %T", setting.Value)
 	}
-	return val, nil
+
+	return strs, nil
 }
 
 // GetInt returns the value of the setting by ID as an int.

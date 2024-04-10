@@ -24,13 +24,13 @@ export const usePluginSettings = ({ plugin }: PluginSettingsOptions) => {
 
   const { mutateAsync: setSettings } = useMutation({
     mutationFn: async (newSettings: Record<string, any>) => SetSettings(plugin, newSettings),
-    onSuccess(_, _vars) {
+    onSuccess: async (_, _vars) => {
       showSnackbar('Settings saved', 'success');
       // TODO - invalidate each one individually
-      queryClient.invalidateQueries({ queryKey });
+      await queryClient.invalidateQueries({ queryKey });
     },
     onError(error) {
-      showSnackbar(`Failed to save ${plugin} plugin settings: ${error}`, 'error');
+      showSnackbar(`Failed to save ${plugin} plugin settings: ${error.toString()}`, 'error');
     },
   });
 
