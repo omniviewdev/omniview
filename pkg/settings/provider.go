@@ -516,22 +516,17 @@ func (p *provider) GetStringSlice(id string) ([]string, error) {
 	if setting.Type != Text {
 		return nil, ErrSettingTypeMismatch
 	}
-	// Initialize a slice to hold the converted strings
-	var strs []string
 
-	// Check if the setting.Value is of type []interface{}
+	var strs []string
 	if slice, ok := setting.Value.([]interface{}); ok {
-		// Iterate over the slice, asserting each element to a string
 		for _, item := range slice {
 			if str, valOk := item.(string); valOk {
 				strs = append(strs, str)
 			} else {
-				// If an item in the slice is not a string, return an error
-				return nil, fmt.Errorf("expected []string, but item is not a string")
+				return nil, errors.New("expected []string, but item is not a string")
 			}
 		}
 	} else {
-		// If setting.Value is not of type []interface{}, return an error
 		return nil, fmt.Errorf("expected []string, got %T", setting.Value)
 	}
 
@@ -563,11 +558,32 @@ func (p *provider) GetIntSlice(id string) ([]int, error) {
 	if setting.Type != Integer {
 		return nil, ErrSettingTypeMismatch
 	}
-	val, ok := setting.Value.([]int)
-	if !ok {
-		return nil, ErrSettingTypeMismatch
+
+	var vals []int
+	if slice, ok := setting.Value.([]interface{}); ok {
+		for _, item := range slice {
+			switch item := item.(type) {
+			case int:
+				vals = append(vals, item)
+			case int32:
+				vals = append(vals, int(item))
+			case int64:
+				vals = append(vals, int(item))
+			case uint:
+				vals = append(vals, int(item))
+			case uint32:
+				vals = append(vals, int(item))
+			case uint64:
+				vals = append(vals, int(item))
+			default:
+				return nil, errors.New("expected []int, but item is not an int")
+			}
+		}
+	} else {
+		return nil, fmt.Errorf("expected []int, got %T", setting.Value)
 	}
-	return val, nil
+
+	return vals, nil
 }
 
 // GetFloat returns the value of the setting by ID as a float64.
@@ -595,11 +611,24 @@ func (p *provider) GetFloatSlice(id string) ([]float64, error) {
 	if setting.Type != Float {
 		return nil, ErrSettingTypeMismatch
 	}
-	val, ok := setting.Value.([]float64)
-	if !ok {
-		return nil, ErrSettingTypeMismatch
+
+	var vals []float64
+	if slice, ok := setting.Value.([]interface{}); ok {
+		for _, item := range slice {
+			switch item := item.(type) {
+			case float64:
+				vals = append(vals, item)
+			case float32:
+				vals = append(vals, float64(item))
+			default:
+				return nil, errors.New("expected []float64, but item is not a float")
+			}
+		}
+	} else {
+		return nil, fmt.Errorf("expected []float64, got %T", setting.Value)
 	}
-	return val, nil
+
+	return vals, nil
 }
 
 // GetBool returns the value of the setting by ID as a bool.
