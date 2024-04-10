@@ -117,6 +117,28 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
   }, []);
 
   /**
+   * Close the resource drawer on escape key press
+   */
+  const escFunction = useCallback((event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      if (!isOpen) {
+        return;
+      }
+
+      event.preventDefault();
+      closeDrawer();
+    }
+  }, [isOpen]);
+
+  React.useEffect(() => {
+    document.addEventListener('keydown', escFunction, false);
+
+    return () => {
+      document.removeEventListener('keydown', escFunction, false);
+    };
+  }, [escFunction]);
+
+  /**
    * Show the resource sidebar
    */
   const showResourceSidebar: RightDrawerContextType['showResourceSidebar'] = useCallback((params) => {
@@ -147,7 +169,7 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
           bottom: 0,
           zIndex: 1300,
           minHeight: 'calc(100vh)',
-          transition: 'transform 0.3s ease',
+          transition: 'transform 0.2s ease',
           transform: isOpen ? 'translateX(0)' : 'translateX(110%)',
           overflow: 'hidden',
         }}

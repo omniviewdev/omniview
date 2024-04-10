@@ -87,11 +87,13 @@ var DefaultResourceDef = types.ResourceDefinition{
 }
 
 var ResourceDefs = map[string]types.ResourceDefinition{
-	"apps::v1::Deployment":         GenerateResourceDef(appsv1.DeploymentCols, true),
-	"apps::v1::StatefulSet":        GenerateResourceDef(appsv1.StatefulSetCols, true),
-	"apps::v1::ReplicaSet":         GenerateResourceDef(appsv1.ReplicaSetCols, true),
-	"apps::v1::DaemonSet":          GenerateResourceDef(appsv1.DaemonSetCols, true),
-	"apps::v1::ControllerRevision": GenerateResourceDef(appsv1.ControllerRevisionCols, true),
-	"core::v1::Node":               corev1.NodeDef,
-	"core::v1::Pod":                corev1.PodDef,
+	"apps::v1::Deployment":            GenerateResourceDef(appsv1.DeploymentCols, true),
+	"apps::v1::StatefulSet":           GenerateResourceDef(appsv1.StatefulSetCols, true),
+	"apps::v1::ReplicaSet":            GenerateResourceDef(appsv1.ReplicaSetCols, true),
+	"apps::v1::DaemonSet":             GenerateResourceDef(appsv1.DaemonSetCols, true),
+	"apps::v1::ControllerRevision":    GenerateResourceDef(appsv1.ControllerRevisionCols, true),
+	"core::v1::Node":                  corev1.NodeDef,
+	"core::v1::Pod":                   corev1.PodDef,
+	"core::v1::Service":               corev1.ServiceDef,
+	"core::v1::PersistentVolumeClaim": corev1.PVCDef,
 }
