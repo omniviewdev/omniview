@@ -43,9 +43,6 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-//go:embed build/favicon.icns
-var icon []byte
-
 type FileLoader struct {
 	http.Handler
 	logger *zap.SugaredLogger
@@ -413,7 +410,6 @@ func main() {
 			About: &mac.AboutInfo{
 				Title:   "Omniview",
 				Message: "",
-				Icon:    icon,
 			},
 		},
 	})
