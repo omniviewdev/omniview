@@ -10,6 +10,9 @@ dev:
 	cd src/frontend && pnpm install
 	cd src && wails dev
 
+build:
+	cd src && wails build
+
 lint: lint-core lint-plugin lint-kubernetes
 
 lint-core:
