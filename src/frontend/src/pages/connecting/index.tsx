@@ -12,7 +12,7 @@ import { produce } from 'immer';
 import { type FC, useEffect, useReducer } from 'react';
 import { usePluginRouter } from '@infraview/router';
 
-import { StartContext } from '@api/services/ClusterManager';
+// import { StartContext } from '@api/services/ClusterManager';
 import { EventsOff, EventsOn } from '@runtime/runtime';
 import { handleRemoveTab } from '@/store/tabs/slice';
 import { useDispatch } from 'react-redux';
@@ -139,9 +139,6 @@ function reducer(state: AppState, action: AppAction): AppState {
         totalResources: calculateTotalResources(newState),
       };
     }
-
-    default:
-      return state;
   }
 }
 
@@ -197,38 +194,38 @@ const Connecting: FC = () => {
       return;
     }
 
-    const READY_EVENT = `${contextID}::RESOURCE::READY`;
-    const ERROR_EVENT = `${contextID}::RESOURCE::ERROR`;
-    const ALL_READY_EVENT = `${contextID}::RESOURCE::ALL_READY`;
+    const ReadyEvent = `${contextID}::RESOURCE::READY`;
+    const ErrorEvent = `${contextID}::RESOURCE::ERROR`;
+    const AllReadyEvent = `${contextID}::RESOURCE::ALL_READY`;
 
     // Go is much faster here, so we may actually receive the event before we're done setting up the listeners
     // so we need to make sure we're listening before we start the switch context
-    EventsOn(READY_EVENT, (resource: string) => {
+    EventsOn(ReadyEvent, (resource: string) => {
       dispatch({ type: 'MARK_RESOURCE_READY', payload: resource });
     });
-    EventsOn(ERROR_EVENT, (resource: string) => {
+    EventsOn(ErrorEvent, (resource: string) => {
       dispatch({ type: 'MARK_RESOURCE_ERROR', payload: resource });
     });
-    EventsOn(ALL_READY_EVENT, () => {
+    EventsOn(AllReadyEvent, () => {
       handleInitialized();
     });
-
-    StartContext(contextID).then(resources => {
-      // Resources is a map of gvr strings to booleans, split and convert to the expected format
-      dispatch({ type: 'SET_RESOURCES', payload: { resources } });
-    }).catch(err => {
-      console.error('Error switching context:', err);
-      // Unsubscribe
-      EventsOff(READY_EVENT);
-      EventsOff(ERROR_EVENT);
-      EventsOff(ALL_READY_EVENT);
-    });
-
+    //
+    // StartContext(contextID).then(resources => {
+    //   // Resources is a map of gvr strings to booleans, split and convert to the expected format
+    //   dispatch({ type: 'SET_RESOURCES', payload: { resources } });
+    // }).catch(err => {
+    //   console.error('Error switching context:', err);
+    //   // Unsubscribe
+    //   EventsOff(ReadyEvent);
+    //   EventsOff(ErrorEvent);
+    //   EventsOff(AllReadyEvent);
+    // });
+    //
     return () => {
       // Unsubscribe
-      EventsOff(READY_EVENT);
-      EventsOff(ERROR_EVENT);
-      EventsOff(ALL_READY_EVENT);
+      EventsOff(ReadyEvent);
+      EventsOff(ErrorEvent);
+      EventsOff(AllReadyEvent);
     };
   }, []);
 

@@ -19,6 +19,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resourcetypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	pkgsettings "github.com/omniviewdev/settings"
 )
 
 const (
@@ -46,6 +47,7 @@ type controller struct {
 	// wails context
 	ctx               context.Context
 	logger            *zap.SugaredLogger
+	settingsProvider  pkgsettings.Provider
 	connections       map[string][]types.Connection
 	clients           map[string]resourcetypes.ResourceProvider
 	informerStopChans map[string]chan struct{}
@@ -57,9 +59,10 @@ type controller struct {
 }
 
 // NewController returns a new Controller instance.
-func NewController(logger *zap.SugaredLogger) Controller {
+func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controller {
 	return &controller{
 		logger:            logger.Named("ResourceController"),
+		settingsProvider:  sp,
 		connections:       make(map[string][]types.Connection),
 		clients:           make(map[string]resourcetypes.ResourceProvider),
 		informerStopChans: make(map[string]chan struct{}),

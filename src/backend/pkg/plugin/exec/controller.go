@@ -16,6 +16,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/exec"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	pkgsettings "github.com/omniviewdev/settings"
 )
 
 type Controller interface {
@@ -44,18 +45,20 @@ type sessionIndex struct {
 
 func NewController(
 	logger *zap.SugaredLogger,
+	sp pkgsettings.Provider,
 	resourceClient resource.IClient,
 ) Controller {
 	return &controller{
-		logger:         logger.Named("ExecController"),
-		stops:          make(map[string]chan struct{}),
-		sessionIndex:   make(map[string]sessionIndex),
-		inChans:        make(map[string]chan exec.StreamInput),
-		inputMux:       make(chan exec.StreamInput),
-		outputMux:      make(chan exec.StreamOutput),
-		resizeMux:      make(chan exec.StreamResize),
-		resourceClient: resourceClient,
-		handlerMap:     make(map[string]map[string]exec.Handler),
+		logger:           logger.Named("ExecController"),
+		settingsProvider: sp,
+		stops:            make(map[string]chan struct{}),
+		sessionIndex:     make(map[string]sessionIndex),
+		inChans:          make(map[string]chan exec.StreamInput),
+		inputMux:         make(chan exec.StreamInput),
+		outputMux:        make(chan exec.StreamOutput),
+		resizeMux:        make(chan exec.StreamResize),
+		resourceClient:   resourceClient,
+		handlerMap:       make(map[string]map[string]exec.Handler),
 	}
 }
 
@@ -63,10 +66,11 @@ var _ Controller = &controller{}
 
 type controller struct {
 	// wails context
-	ctx          context.Context
-	logger       *zap.SugaredLogger
-	clients      map[string]exec.Provider
-	sessionIndex map[string]sessionIndex
+	ctx              context.Context
+	logger           *zap.SugaredLogger
+	settingsProvider pkgsettings.Provider
+	clients          map[string]exec.Provider
+	sessionIndex     map[string]sessionIndex
 
 	// session channels
 	stops   map[string]chan struct{}
