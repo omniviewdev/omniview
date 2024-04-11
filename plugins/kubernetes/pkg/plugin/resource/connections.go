@@ -42,7 +42,7 @@ func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
 
 // CheckConnectionFunc checks the connection to the cluster, using the discovery client.
 func CheckConnectionFunc(
-	ctx *types.PluginContext,
+	_ *types.PluginContext,
 	conn *types.Connection,
 	client *clients.ClientSet,
 ) (types.ConnectionStatus, error) {
