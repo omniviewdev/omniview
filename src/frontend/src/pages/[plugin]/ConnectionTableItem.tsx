@@ -31,6 +31,8 @@ import { useSnackbar } from '@/providers/SnackbarProvider';
 
 type Props = Omit<types.Connection, 'createFrom' | 'convertValues'>;
 
+const truncate = (input: string) => input.length > 60 ? `${input.substring(0, 60)}...` : input;
+
 function stringAvatar(name: string) {
   if (!name) {
     return {
@@ -212,8 +214,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
             size='sm'
             sx={{ pointerEvents: 'none', borderRadius: 'sm' }}
           >
-
-            {value}
+            {truncate(value)}
           </Chip>
         </td>
       ))}

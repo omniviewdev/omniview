@@ -17,7 +17,8 @@ type Props = {
 };
 
 const getConnectionOrderedLabelCols = (connections: types.Connection[]) => {
-  const px = 6;
+  const px = 7;
+  const maxLabelWidth = 400;
 
   // reduce all the connections to build out the label columns
   let cols: Record<string, number> = {};
@@ -28,7 +29,7 @@ const getConnectionOrderedLabelCols = (connections: types.Connection[]) => {
       let calcedWidth = val.length * px;
 
       if (!currentWidth || (currentWidth && currentWidth < calcedWidth)) {
-        cols[key] = calcedWidth;
+        cols[key] = calcedWidth > maxLabelWidth ? maxLabelWidth : calcedWidth;
       }
     });
   });
@@ -73,7 +74,7 @@ const ConnectionTable: React.FC<Props> = ({ connections }) => {
                   })}</Typography>
               </th>
             ))}
-            <th style={{ width: 40 }}></th>
+            <th style={{ width: 48 }}></th>
           </tr>
         </thead>
         <tbody>

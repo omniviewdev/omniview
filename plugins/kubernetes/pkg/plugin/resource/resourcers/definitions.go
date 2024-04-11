@@ -80,7 +80,7 @@ var DefaultResourceDef = types.ResourceDefinition{
 			Header:    "Age",
 			Accessors: "metadata.creationTimestamp",
 			Alignment: types.CellAlignmentLeft,
-			Width:     120,
+			Width:     80,
 			Formatter: types.CellValueFormatterAge,
 		},
 	},
