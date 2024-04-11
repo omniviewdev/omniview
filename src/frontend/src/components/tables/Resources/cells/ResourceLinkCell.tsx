@@ -30,6 +30,7 @@ const ResourceLinkCell: React.FC<Props> = ({
   keyAccessor, 
   keyMap,
   namespaced,
+  displayId,
 }) => {
   const { showResourceSidebar } = useRightDrawer();
 
@@ -87,7 +88,10 @@ const ResourceLinkCell: React.FC<Props> = ({
         }} 
         onClick={handleClick}>
         <Typography level='body-xs' noWrap>
-          {typeof value === 'string' ? value : resourceKey}
+          {displayId 
+            ? resourceID
+            : typeof value === 'string' ? value : resourceKey
+          }
         </Typography>
       </Chip>
     </Tooltip>

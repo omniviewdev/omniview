@@ -3,6 +3,7 @@ package resourcers
 
 import (
 	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers/appsv1"
+	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers/autoscalingv2"
 	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers/corev1"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
@@ -87,13 +88,35 @@ var DefaultResourceDef = types.ResourceDefinition{
 }
 
 var ResourceDefs = map[string]types.ResourceDefinition{
-	"apps::v1::Deployment":            GenerateResourceDef(appsv1.DeploymentCols, true),
-	"apps::v1::StatefulSet":           GenerateResourceDef(appsv1.StatefulSetCols, true),
-	"apps::v1::ReplicaSet":            GenerateResourceDef(appsv1.ReplicaSetCols, true),
-	"apps::v1::DaemonSet":             GenerateResourceDef(appsv1.DaemonSetCols, true),
-	"apps::v1::ControllerRevision":    GenerateResourceDef(appsv1.ControllerRevisionCols, true),
+	"apps::v1::Deployment": GenerateResourceDef(
+		appsv1.DeploymentCols,
+		true,
+	),
+	"apps::v1::StatefulSet": GenerateResourceDef(
+		appsv1.StatefulSetCols,
+		true,
+	),
+	"apps::v1::ReplicaSet": GenerateResourceDef(
+		appsv1.ReplicaSetCols,
+		true,
+	),
+	"apps::v1::DaemonSet": GenerateResourceDef(
+		appsv1.DaemonSetCols,
+		true,
+	),
+	"apps::v1::ControllerRevision": GenerateResourceDef(
+		appsv1.ControllerRevisionCols,
+		true,
+	),
 	"core::v1::Node":                  corev1.NodeDef,
 	"core::v1::Pod":                   corev1.PodDef,
 	"core::v1::Service":               corev1.ServiceDef,
 	"core::v1::PersistentVolumeClaim": corev1.PVCDef,
+	"core::v1::PersistentVolume":      corev1.PVDef,
+	"core::v1::Namespace":             corev1.NamespaceDef,
+	"core::v1::ComponentStatus":       corev1.ComponentStatusDef,
+	"autoscaling::v2::HorizontalPodAutoscaler": GenerateResourceDef(
+		autoscalingv2.HPACols,
+		true,
+	),
 }

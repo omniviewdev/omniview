@@ -548,6 +548,7 @@ export namespace types {
 	    keyAccessor: string;
 	    keyMap: {[key: string]: string};
 	    detailExtractors: {[key: string]: string};
+	    displayId: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ResourceLink(source);
@@ -562,6 +563,7 @@ export namespace types {
 	        this.keyAccessor = source["keyAccessor"];
 	        this.keyMap = source["keyMap"];
 	        this.detailExtractors = source["detailExtractors"];
+	        this.displayId = source["displayId"];
 	    }
 	}
 	export class ColumnDef {
