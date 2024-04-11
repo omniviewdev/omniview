@@ -67,10 +67,10 @@ const ConnectionTable: React.FC<Props> = ({ connections }) => {
               <Typography sx={{ pl: 0.5 }}>Name</Typography> 
             </th>
             {Object.entries(getConnectionOrderedLabelCols(connections)).sort().map(([label, width]) => (
-              <th style={{ width: width + 8, verticalAlign: 'middle', paddingLeft: 4 }}>
+              <th key={label} style={{ width: width + 8, verticalAlign: 'middle', paddingLeft: 4 }}>
                 <Typography sx={{ pl: 1 }}>{label.replace(/(\w)(\w*)/g,
-                  function (_, g1: string, g2: string) {
-                    return g1.toUpperCase() + g2.toLowerCase();
+                  function (_, g1?: string, g2?: string) {
+                    return g1?.toUpperCase() ?? '' + g2?.toLowerCase() ?? '';
                   })}</Typography>
               </th>
             ))}

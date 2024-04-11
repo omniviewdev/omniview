@@ -29,7 +29,10 @@ type IClusterContextClient interface {
 	// GetLister returns the lister for the resource type.
 	GetLister() cache.GenericLister
 	// Initialize initializes the informer and lister for the resource type, but does not start the
-	Initialize(informerFactory informers.SharedInformerFactory, resourceType schema.GroupVersionResource) error
+	Initialize(
+		informerFactory informers.SharedInformerFactory,
+		resourceType schema.GroupVersionResource,
+	) error
 	// Starts initiates a cache sync for the informer, and then starts running the informer, if it
 	Start() error
 	// Stop stops the informer from running without tearing it down, so that it can be started again
@@ -206,7 +209,10 @@ func (c *ClusterContextClient[T]) Initialize(
 
 	newErr := func(err error) error {
 		c.status = ClusterContextClientStatusError
-		errPrefix := fmt.Sprintf("error initializing informer for resource '%s'", resourceType.String())
+		errPrefix := fmt.Sprintf(
+			"error initializing informer for resource '%s'",
+			resourceType.String(),
+		)
 		return fmt.Errorf("%s: %w", errPrefix, err)
 	}
 
@@ -219,7 +225,9 @@ func (c *ClusterContextClient[T]) Initialize(
 	// check to make sure the resource type isn't changing if it was already setup
 	if !c.gvr.Empty() && c.gvr.String() != resourceType.String() {
 		if c.gvr != resourceType {
-			return newErr(fmt.Errorf("resource type cannot be changed after the client has been initialized"))
+			return newErr(
+				fmt.Errorf("resource type cannot be changed after the client has been initialized"),
+			)
 		}
 	}
 
