@@ -22,7 +22,7 @@ import ContainerStatusCard from './KubernetesContainerStatusCard';
 // third party
 import { formatRelative } from 'date-fns';
 
-const KeyValuePairs = ({ message }) => {
+const KeyValuePairs = ({ message }: { message: string }) => {
   // Regex to find key=value pairs
   const regex = /(\w+)=(?:"([^"]*)"|(\S*))/g;
   const pairs = [];
