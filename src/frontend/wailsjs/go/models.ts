@@ -577,6 +577,7 @@ export namespace types {
 	    width?: number;
 	    formatter?: string;
 	    component?: string;
+	    componentParams?: any;
 	    resourceLink?: ResourceLink;
 	
 	    static createFrom(source: any = {}) {
@@ -595,6 +596,7 @@ export namespace types {
 	        this.width = source["width"];
 	        this.formatter = source["formatter"];
 	        this.component = source["component"];
+	        this.componentParams = source["componentParams"];
 	        this.resourceLink = this.convertValues(source["resourceLink"], ResourceLink);
 	    }
 	

@@ -1,32 +1,32 @@
-import * as React from "react";
+import * as React from 'react';
 
 // material-ui
-import Card from "@mui/joy/Card";
-import CardContent from "@mui/joy/CardContent";
-import Divider from "@mui/joy/Divider";
-import Stack from "@mui/joy/Stack";
-import Typography from "@mui/joy/Typography";
-import Chip from "@mui/joy/Chip";
+import Card from '@mui/joy/Card';
+import CardContent from '@mui/joy/CardContent';
+import Divider from '@mui/joy/Divider';
+import Stack from '@mui/joy/Stack';
+import Typography from '@mui/joy/Typography';
+import Chip from '@mui/joy/Chip';
 
 // project imports
-import Icon from "../../../shared/Icon";
-import { getStatus } from "./utils";
+import Icon from '@/components/icons/Icon';
+import { getStatus } from './utils';
 
 // types
-import { ContainerStatus } from "kubernetes-types/core/v1";
+import { type ContainerStatus } from 'kubernetes-types/core/v1';
 import {
   ContainerTerminatedStatusInfo,
   ContainerWaitingStatusInfo,
-} from "./ContainerStatuses";
+} from './KubernetesContainerStatuses';
 
 // third-party
-import { formatRelative } from "date-fns";
+import { formatRelative } from 'date-fns';
 
-interface Props {
+type Props = {
   status: ContainerStatus;
   showContainerName?: boolean;
   showStartedAt?: boolean;
-}
+};
 
 const ContainerStatusCard: React.FC<Props> = ({ 
   status, 
@@ -37,22 +37,23 @@ const ContainerStatusCard: React.FC<Props> = ({
 
   const getVariant = () => {
     switch (statusInfo.text) {
-      case "Completed":
-        return "outlined";
-      case "Waiting":
-        return "soft";
+      case 'Completed':
+        return 'outlined';
+      case 'Waiting':
+        return 'soft';
       default:
-        return "solid";
+        return 'solid';
     }
   };
 
   const getStatusText = () => {
     if (status.ready && status.started) {
-      return "Ready";
+      return 'Ready';
     } else if (!status.ready && status.started) {
-      return "Started";
+      return 'Started';
     }
-    return "Not Ready";
+
+    return 'Not Ready';
   };
 
   return (
@@ -61,22 +62,23 @@ const ContainerStatusCard: React.FC<Props> = ({
       sx={{
         p: 0.5,
         minWidth: 300,
+        maxWidth: 800,
       }}
     >
       <Stack
         direction="row"
         alignItems="center"
-        justifyContent={"space-between"}
+        justifyContent={'space-between'}
         spacing={2}
       >
 
         {showContainerName && <Typography level="body-sm">{status.name}</Typography>}
-        <Stack gap={1} direction={"row"} alignItems={"center"}>
+        <Stack gap={1} direction={'row'} alignItems={'center'}>
           <Chip
             size="sm"
             color={statusInfo.color}
             variant={getVariant()}
-            sx={{ borderRadius: "sm" }}
+            sx={{ borderRadius: 'sm' }}
             startDecorator={
               statusInfo.icon && <Icon name={statusInfo.icon} size={16} />
             }
@@ -85,16 +87,16 @@ const ContainerStatusCard: React.FC<Props> = ({
           </Chip>
           <Chip
             size="sm"
-            color={status.ready ? "primary" : "warning"}
-            variant={"outlined"}
-            sx={{ borderRadius: "sm" }}
+            color={status.ready ? 'primary' : 'warning'}
+            variant={'outlined'}
+            sx={{ borderRadius: 'sm' }}
           >
             {getStatusText()}
           </Chip>
         </Stack>
-        {showStartedAt && status.state?.running && status.state.running.startedAt && (
+        {showStartedAt && status.state?.running?.startedAt && (
           <Typography level="body-sm">
-            Started{" "}
+            Started{' '}
             {formatRelative(
               new Date(status.state.running.startedAt),
               new Date(),
@@ -118,8 +120,8 @@ const ContainerStatusCard: React.FC<Props> = ({
               <Stack
                 direction="row"
                 spacing={1}
-                alignItems={"center"}
-                justifyContent={"space-between"}
+                alignItems={'center'}
+                justifyContent={'space-between'}
               >
                 <Typography fontSize={12} textColor="neutral.50">
                   Last State
@@ -128,7 +130,7 @@ const ContainerStatusCard: React.FC<Props> = ({
                   size="sm"
                   color="danger"
                   variant="outlined"
-                  sx={{ borderRadius: "sm" }}
+                  sx={{ borderRadius: 'sm' }}
                 >
                   Terminated
                 </Chip>

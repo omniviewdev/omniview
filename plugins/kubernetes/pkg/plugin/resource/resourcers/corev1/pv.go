@@ -17,7 +17,6 @@ var PVDef = types.ResourceDefinition{
 			ID:        "claimRef",
 			Header:    "ClaimRef",
 			Accessors: "$.spec.claimRef",
-			Component: string(types.CellComponentResourceLink),
 			Width:     280,
 			ResourceLink: &types.ResourceLink{
 				IDAccessor:        "name",
