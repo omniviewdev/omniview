@@ -13,8 +13,10 @@ import SelectBoxRow from '@/components/tables/Resources/cells/SelectBoxRow';
 import { type Actions } from '@/components/tables/Resources/actions/types';
 import ActionMenu from '@/components/tables/Resources/actions/ActionMenu';
 import { TextCell } from '@/components/tables/Resources/cells';
-import ColumnFilter from '@/components/tables/Resources/ColumnFilter';
 import { GetHandler } from '@api/exec/Client';
+
+// custom cells
+import KubernetesContainerStatusCell from '@/components/tables/Resources/cells/custom/KubernetesContainerStatusCell';
 
 
 type UseResourceDefinitionOptions = {
@@ -102,21 +104,28 @@ const parseColumnDef = ({
 
         return get(data, def.accessor, '');
       },
-      cell: ({ getValue, row }) => 
-        <TextCell 
-          align={getAlignment(def.align)} 
-          value={getValue() as string} 
-          formatter={def.formatter} 
-          colorMap={def.colorMap}
-          resourceLink={def.resourceLink}
-          metadata={{
-            pluginID,
-            connectionID,
-            resourceKey,
-            resourceID: row.id,
-            namespace: namespaceAccessor ? get(row.original, namespaceAccessor, '') : '',
-          }}
-        />,
+      cell: ({ getValue, row }) => {
+        switch (def.component) {
+          case 'KubernetesContainerStatusCell':
+            // TODO: Remove once we fix the loading optimization from federated components.
+            return <KubernetesContainerStatusCell data={getValue()} />;
+          default:
+            return <TextCell 
+              align={getAlignment(def.align)} 
+              value={getValue() as string} 
+              formatter={def.formatter} 
+              colorMap={def.colorMap}
+              resourceLink={def.resourceLink}
+              metadata={{
+                pluginID,
+                connectionID,
+                resourceKey,
+                resourceID: row.id,
+                namespace: namespaceAccessor ? get(row.original, namespaceAccessor, '') : '',
+              }}
+            />;
+        }
+      },
     };
 
     if (def.width) {
@@ -130,7 +139,6 @@ const parseColumnDef = ({
   // add the actions to the end
     defs.push({
       id: 'menu',
-      header: ({ table }) => <ColumnFilter columns={table.getAllFlatColumns()} />,
       cell: ({ row }) => <ActionMenu actions={actions} plugin={pluginID} connection={connectionID} resource={resourceKey} data={row.original} />,
       size: 50,
       enableSorting: false,

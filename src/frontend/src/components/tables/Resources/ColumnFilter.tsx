@@ -6,10 +6,9 @@ import Card from '@mui/joy/Card';
 import CardContent from '@mui/joy/CardContent';
 import Divider from '@mui/joy/Divider';
 import Typography from '@mui/joy/Typography';
-import IconButton from '@mui/joy/IconButton';
 import { Unstable_Popup as BasePopup } from '@mui/base/Unstable_Popup';
 import { ClickAwayListener } from '@mui/base';
-import { Switch, styled } from '@mui/joy';
+import { IconButton, Switch, styled } from '@mui/joy';
 
 // icons
 import { LuColumns, LuSettings2 } from 'react-icons/lu';
@@ -32,38 +31,34 @@ const PopupBody = styled('div')(
 );
 
 type Props = {
+  anchorEl: HTMLElement | undefined;
   columns: Array<Column<any>>;
+  onClose: () => void;
+  onClick: React.MouseEventHandler<HTMLAnchorElement>;
 };
 
-const ColumnFilter: React.FC<Props> = ({ columns }) => {
-  const [anchor, setAnchor] = React.useState<undefined | HTMLElement>(undefined);
-
-  const handleClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchor(anchor ? undefined : event.currentTarget);
-  };
-
-  const open = Boolean(anchor);
+const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick }) => {
+  const open = Boolean(anchorEl);
 
   return (
     <React.Fragment>
-      <IconButton 
-        size='sm'
-        onClick={handleClick}
-        variant='soft'
+      <IconButton
+        variant='outlined'
         color='neutral'
+        onClick={onClick}
       >
-        <LuSettings2 size={18} />
+        <LuSettings2 size={20} />
       </IconButton>
       <BasePopup 
         style={{ zIndex: 1000 }} 
         id={'table-filter-menu'}
         open={open} 
-        anchor={anchor}
+        anchor={anchorEl}
         placement='bottom-end'
       >
         <ClickAwayListener 
           onClickAway={() => {
-            setAnchor(undefined); 
+            onClose();
           } }
         >
           <PopupBody>
@@ -107,11 +102,7 @@ const ColumnFilter: React.FC<Props> = ({ columns }) => {
   );
 };
 
-export const MemoizedColumnFilter = React.memo(ColumnFilter, (prevProps, nextProps) => {
-  // only re-render if the columns have changed
-  return prevProps.columns.toString() === nextProps.columns.toString();
-});
-
 ColumnFilter.displayName = 'ColumnFilter';
+ColumnFilter.whyDidYouRender = true;
 
 export default ColumnFilter;

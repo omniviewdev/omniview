@@ -15,8 +15,8 @@ type PluginComponentProps = {
  * Dynamically load a federated plugin component from the plugin system.
  */
 const PluginComponent: React.FC<PluginComponentProps> = ({ plugin, component, fallback, ...rest }) => {
-  const RemotePluginComponent = lazy(() => {
-    __federation_method_setRemote(plugin, {
+  const RemotePluginComponent = lazy(async () => {
+    await __federation_method_setRemote(plugin, {
       url: async () => Promise.resolve(`${window.location.protocol + '//' + window.location.host}/_/plugins/${plugin}/assets/remoteEntry.js`),
       format: 'esm',
       from: 'vite',
@@ -27,7 +27,10 @@ const PluginComponent: React.FC<PluginComponentProps> = ({ plugin, component, fa
     }
 
     return __federation_method_getRemote(plugin, component)
-      .catch((error: Error) => ({ default: () => <div>{`${error.message}`}</div> }));
+      .catch((error: Error) => {
+        console.error(error);
+        return { default: () => <div>{`${error.message}`}</div> };
+      });
   });
 
   return (

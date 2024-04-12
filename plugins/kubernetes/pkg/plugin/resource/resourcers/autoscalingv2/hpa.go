@@ -8,7 +8,6 @@ var HPACols = []types.ColumnDef{
 		ID:        "targetRef",
 		Header:    "Target Ref",
 		Accessors: "$.spec.scaleTargetRef",
-		Component: string(types.CellComponentResourceLink),
 		Width:     200,
 		ResourceLink: &types.ResourceLink{
 			IDAccessor:  "name",

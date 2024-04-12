@@ -18,15 +18,20 @@ var PodDef = types.ResourceDefinition{
 			ID:        "namespace",
 			Header:    "Namespace",
 			Accessors: "metadata.namespace",
-			Alignment: types.CellAlignmentLeft,
 			Width:     180,
+		},
+		{
+			ID:        "containers",
+			Header:    "Containers",
+			Accessors: "$.status.containerStatuses",
+			Width:     200,
+			Component: "KubernetesContainerStatusCell",
 		},
 		{
 			ID:        "restarts",
 			Header:    "Restarts",
 			Accessors: "$.status.containerStatuses[*].restartCount",
 			Formatter: types.CellValueFormatterSum,
-			Alignment: types.CellAlignmentLeft,
 			ColorMap: map[string]string{
 				"0": "neutral",
 				"1": "warning",
@@ -38,7 +43,6 @@ var PodDef = types.ResourceDefinition{
 			ID:        "controlledBy",
 			Header:    "Controlled By",
 			Accessors: "$.metadata.ownerReferences[0]",
-			Component: string(types.CellComponentResourceLink),
 			Width:     150,
 			ResourceLink: &types.ResourceLink{
 				IDAccessor:  "name",
@@ -61,7 +65,6 @@ var PodDef = types.ResourceDefinition{
 			ID:        "node",
 			Header:    "Node",
 			Accessors: "spec.nodeName",
-			Component: string(types.CellComponentResourceLink),
 			Width:     300,
 			ResourceLink: &types.ResourceLink{
 				IDAccessor: ".",
@@ -74,12 +77,14 @@ var PodDef = types.ResourceDefinition{
 			Header:    "Host IP",
 			Accessors: "status.hostIP",
 			Hidden:    true,
+			Width:     120,
 		},
 		{
 			ID:        "podIP",
 			Header:    "Pod IP",
 			Accessors: "status.podIP",
 			Hidden:    true,
+			Width:     120,
 		},
 		{
 			ID:        "qos",
@@ -113,7 +118,7 @@ var PodDef = types.ResourceDefinition{
 			Header:    "Priority",
 			Accessors: "spec.priority",
 			Hidden:    true,
-			Width:     100,
+			Width:     120,
 		},
 		{
 			ID:        "schedulerName",

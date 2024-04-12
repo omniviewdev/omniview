@@ -34,6 +34,7 @@ export default defineConfig({
         "./SecretSidebar": "./src/components/kubernetes/sidebar/SecretSidebar",
         "./StatefulSetSidebar":
           "./src/components/kubernetes/sidebar/appsv1/StatefulSet",
+        "./ContainerStatusCell": "./src/components/kubernetes/table/corev1/Pod/ContainerStatusCell",
       },
       shared: [
         "react",

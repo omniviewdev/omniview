@@ -23,6 +23,7 @@ theme:
 
 components:
   resource:
+    ############################## SIDEBARS #####################################
     - name: ControllerRevisionSidebar
       plugin: kubernetes
       area: SIDEBAR
@@ -87,3 +88,9 @@ components:
       plugin: kubernetes
       area: SIDEBAR
       resources: ["core::v1::ConfigMap"]
+
+    ############################## TABLE CELLS #####################################
+    - name: ContainerStatusCell
+      plugin: kubernetes
+      area: TABLE_CELL
+      resources: ["core::v1::Pod"]

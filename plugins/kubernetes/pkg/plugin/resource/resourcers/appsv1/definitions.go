@@ -183,7 +183,6 @@ var (
 			ID:        "controlledBy",
 			Header:    "Controlled By",
 			Accessors: "$.metadata.ownerReferences[0]",
-			Component: string(types.CellComponentResourceLink),
 			Width:     150,
 			ResourceLink: &types.ResourceLink{
 				IDAccessor:  "name",
@@ -209,7 +208,6 @@ var (
 			ID:        "ownerReferences",
 			Header:    "Owner Reference",
 			Accessors: "$.metadata.ownerReferences[0]",
-			Component: string(types.CellComponentResourceLink),
 			Width:     150,
 			ResourceLink: &types.ResourceLink{
 				IDAccessor:  "name",

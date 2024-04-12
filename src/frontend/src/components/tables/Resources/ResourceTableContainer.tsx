@@ -30,6 +30,7 @@ import { DebouncedInput } from './DebouncedInput';
 import { RowContainer } from './RowContainer';
 import { plural } from '@/utils/language';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import ColumnFilter from './ColumnFilter';
 
 export type Memoizer = string | string[] | ((data: any) => string);
 export type IdAccessor = string | ((data: any) => string);
@@ -134,12 +135,20 @@ const ResourceTableContainer: React.FC<Props> = ({
     columns.find(c => c.id === 'namespace')!.filterFn = namespaceFilter;
   }
 
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
+  const [filterAnchor, setFilterAnchor] = React.useState<undefined | HTMLElement>(undefined);
 
+  const handleFilterClick = (event: React.MouseEvent<HTMLElement>) => {
+    setFilterAnchor(filterAnchor ? undefined : event.currentTarget);
+  };
+
+  const handleFilterClose = () => {
+    setFilterAnchor(undefined);
+  };
+
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(namespaced ? [
     { id: 'namespace', value: [] },
   ] : []);
-
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
@@ -235,6 +244,12 @@ const ResourceTableContainer: React.FC<Props> = ({
             setSearch(String(value));
           }}
           placeholder={placeHolderText()}
+        />
+        <ColumnFilter 
+          anchorEl={filterAnchor}
+          onClose={handleFilterClose}
+          columns={table.getAllFlatColumns()}
+          onClick={handleFilterClick}
         />
         {/* {namespaced &&  */}
         {/*   <NamespaceSelect  */}
