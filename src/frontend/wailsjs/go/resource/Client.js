@@ -26,6 +26,10 @@ export function GetConnection(arg1, arg2) {
   return window['go']['resource']['Client']['GetConnection'](arg1, arg2);
 }
 
+export function GetConnectionNamespaces(arg1, arg2) {
+  return window['go']['resource']['Client']['GetConnectionNamespaces'](arg1, arg2);
+}
+
 export function GetDefaultLayout(arg1) {
   return window['go']['resource']['Client']['GetDefaultLayout'](arg1);
 }

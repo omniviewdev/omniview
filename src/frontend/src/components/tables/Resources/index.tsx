@@ -69,11 +69,12 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
     return null;
   }
 
-  const { isLoading, isError, data, columns } = useResourceDefinition({ pluginID, connectionID, resourceKey });
+  const { isLoading, isError, data, columns, namespaces } = useResourceDefinition({ pluginID, connectionID, resourceKey });
   const { resources } = useResources({ pluginID, connectionID, resourceKey });
 
   // TODO: replace these with loaders
-  if (isLoading || resources.isLoading) {
+  if (isLoading || resources.isLoading || namespaces.isLoading) {
+    console.log('Loading resources...');
     return (
       <Box sx={{
         display: 'flex',
@@ -170,6 +171,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
     <ResourceTableContainer
       columns={columns.defs}
       data={Object.values(resources.data.result)}
+      namespaces={namespaces.data || []}
       idAccessor={getIDAccessor()}
       namespaceAccessor={data.namespace_accessor}
       memoizer={data.memoizer_accessor}

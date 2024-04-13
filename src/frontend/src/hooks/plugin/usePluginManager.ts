@@ -189,10 +189,16 @@ export const usePluginManager = () => {
     queryKey: [Entity.PLUGINS],
     queryFn: async () => {
       const plugins = await ListPlugins();
+      if (!plugins) {
+        return [];
+      }
+
       plugins.forEach(plugin => {
         // run the component preloads
         Object.values(plugin.metadata.components?.resource).forEach(component => {
-          preload(plugin.id, component.name);
+          preload(plugin.id, component.name).catch(err => {
+            console.error(`Failed to preload component ${component.name} for plugin ${plugin.id}`, err);
+          });
         });
       });
       return plugins;

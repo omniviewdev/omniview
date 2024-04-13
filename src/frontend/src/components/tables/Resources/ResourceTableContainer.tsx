@@ -31,6 +31,7 @@ import { RowContainer } from './RowContainer';
 import { plural } from '@/utils/language';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import ColumnFilter from './ColumnFilter';
+import NamespaceSelect from '@/components/selects/NamespaceSelect';
 
 export type Memoizer = string | string[] | ((data: any) => string);
 export type IdAccessor = string | ((data: any) => string);
@@ -45,6 +46,11 @@ export type Props = {
    * The data coming in
    */
   data: any[];
+
+  /**
+   * The available namespaces for viewing, if the resource is namespaced.
+   */
+  namespaces?: string[];
 
   /**
    * The visibility state to start with for the columns.
@@ -120,6 +126,7 @@ export const namespaceFilter: FilterFn<any> = (row, columnId, value: string[]) =
 const ResourceTableContainer: React.FC<Props> = ({ 
   columns,
   data,
+  namespaces,
   idAccessor,
   namespaceAccessor,
   memoizer,
@@ -151,6 +158,20 @@ const ResourceTableContainer: React.FC<Props> = ({
   ] : []);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+
+  /**
+  * Set the namespaces filter
+  */
+  const setNamespaces = (value: string[]) => {
+    setColumnFilters((prev) => {
+      const namespaceFilter = prev.find(f => f.id === 'namespace');
+      if (namespaceFilter) {
+        return prev.map(f => f.id === 'namespace' ? { ...f, value } : f);
+      }
+
+      return [...prev, { id: 'namespace', value }];
+    });
+  };
 
   // we have to use layout effect to set the column visibility before the table is repainted, use effect will cause a flicker
   // also can't just put it in the initial state because it will cause an issue with table render as well
@@ -245,18 +266,21 @@ const ResourceTableContainer: React.FC<Props> = ({
           }}
           placeholder={placeHolderText()}
         />
-        <ColumnFilter 
-          anchorEl={filterAnchor}
-          onClose={handleFilterClose}
-          columns={table.getAllFlatColumns()}
-          onClick={handleFilterClick}
-        />
-        {/* {namespaced &&  */}
-        {/*   <NamespaceSelect  */}
-        {/*     namespaces={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []}  */}
-        {/*     setNamespaces={setNamespaces}  */}
-        {/*   /> */}
-        {/* } */}
+        <Stack direction='row' gap={1}>
+          {namespaced && 
+          <NamespaceSelect
+            available={namespaces ?? []}
+            selected={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []} 
+            setNamespaces={setNamespaces} 
+          />
+          }
+          <ColumnFilter 
+            anchorEl={filterAnchor}
+            onClose={handleFilterClose}
+            columns={table.getAllFlatColumns()}
+            onClick={handleFilterClick}
+          />
+        </Stack>
       </Stack>
       <Sheet
         className={'table-container'}

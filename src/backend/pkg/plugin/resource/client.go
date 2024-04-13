@@ -53,6 +53,9 @@ type IClient interface {
 	// The pluginID should match the name of the plugin in the plugin metadata.
 	GetConnection(pluginID, connectionID string) (types.Connection, error)
 
+	// GetConnectionNamespaces returns a list of connection namespaces for a plugin.
+	GetConnectionNamespaces(pluginID, connectionID string) ([]string, error)
+
 	// AddConnection adds a new connection for the plugin.
 	// The pluginID should match the name of the plugin in the plugin metadata.
 	AddConnection(pluginID string, connection types.Connection) error
@@ -175,6 +178,10 @@ func (c *Client) ListConnections(pluginID string) ([]types.Connection, error) {
 
 func (c *Client) GetConnection(pluginID, connectionID string) (types.Connection, error) {
 	return c.controller.GetConnection(pluginID, connectionID)
+}
+
+func (c *Client) GetConnectionNamespaces(pluginID, connectionID string) ([]string, error) {
+	return c.controller.GetConnectionNamespaces(pluginID, connectionID)
 }
 
 func (c *Client) AddConnection(pluginID string, connection types.Connection) error {
