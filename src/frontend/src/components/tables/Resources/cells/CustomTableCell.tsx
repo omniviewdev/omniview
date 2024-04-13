@@ -13,7 +13,6 @@ const CustomTableCell: React.FC<Props> = ({ plugin, component, data }) => {
     <PluginComponent
       plugin={plugin}
       component={component}
-      fallback={<React.Fragment />}
       data={data}
     />
   );

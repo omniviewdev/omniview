@@ -39,8 +39,6 @@ export default defineConfig({
       shared: [
         "react",
         "react-dom",
-        "@mui/joy",
-        "@emotion/react",
         "@monaco-editor/react",
         "monaco-editor",
       ],

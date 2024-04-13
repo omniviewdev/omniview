@@ -34,7 +34,7 @@ export const ContainerStatusCell: React.FC<Props> = ({ data }) => {
 
     if (status.state?.terminated) {
       if (status.state.terminated.exitCode === 0) {
-        return theme.palette.neutral[400]
+        return theme.palette.neutral[800];
       }
 
       return theme.palette.danger[400]
@@ -46,7 +46,7 @@ export const ContainerStatusCell: React.FC<Props> = ({ data }) => {
       return theme.palette.warning[400]
     }
 
-    return theme.palette.neutral[400]
+    return theme.palette.neutral[600];
   };
 
 
