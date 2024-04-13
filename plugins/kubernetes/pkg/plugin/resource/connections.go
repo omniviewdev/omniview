@@ -5,7 +5,11 @@ import (
 	"strings"
 
 	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"
 
 	resourcetypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
@@ -38,6 +42,35 @@ func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
 	}
 
 	return connections, nil
+}
+
+// LoadConnectionNamespacesFunc loads the available namespaces for the connection.
+func LoadConnectionNamespacesFunc(
+	ctx *types.PluginContext,
+	client *clients.ClientSet,
+) ([]string, error) {
+	lister := client.DynamicInformerFactory.
+		ForResource(corev1.SchemeGroupVersion.WithResource("namespaces")).
+		Lister()
+
+	resources, err := lister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	namespaces := make([]string, 0, len(resources))
+
+	for _, r := range resources {
+		var obj map[string]interface{}
+		obj, err = runtime.DefaultUnstructuredConverter.ToUnstructured(r)
+		if err != nil {
+			return nil, err
+		}
+		res := unstructured.Unstructured{Object: obj}
+		namespaces = append(namespaces, res.GetName())
+	}
+
+	return namespaces, nil
 }
 
 // CheckConnectionFunc checks the connection to the cluster, using the discovery client.

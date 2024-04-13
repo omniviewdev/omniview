@@ -518,19 +518,21 @@ func (p *provider) GetStringSlice(id string) ([]string, error) {
 	}
 
 	var strs []string
-	if slice, ok := setting.Value.([]interface{}); ok {
-		for _, item := range slice {
+	switch v := setting.Value.(type) {
+	case []string:
+		return v, nil
+	case []interface{}:
+		for _, item := range v {
 			if str, valOk := item.(string); valOk {
 				strs = append(strs, str)
 			} else {
 				return nil, errors.New("expected []string, but item is not a string")
 			}
 		}
-	} else {
-		return nil, fmt.Errorf("expected []string, got %T", setting.Value)
+		return strs, nil
+	default:
+		return nil, fmt.Errorf("expected []string or []interface{}, got %T", setting.Value)
 	}
-
-	return strs, nil
 }
 
 // GetInt returns the value of the setting by ID as an int.

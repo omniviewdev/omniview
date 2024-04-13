@@ -14,6 +14,8 @@ export function Get(arg1:string,arg2:string,arg3:string,arg4:types.GetInput):Pro
 
 export function GetConnection(arg1:string,arg2:string):Promise<types.Connection>;
 
+export function GetConnectionNamespaces(arg1:string,arg2:string):Promise<Array<string>>;
+
 export function GetDefaultLayout(arg1:string):Promise<Array<types.LayoutItem>>;
 
 export function GetLayout(arg1:string,arg2:string):Promise<Array<types.LayoutItem>>;

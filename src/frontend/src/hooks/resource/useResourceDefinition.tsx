@@ -6,7 +6,7 @@ import jsonpath from 'jsonpath';
 import get from 'lodash.get';
 
 // project imports
-import { GetResourceDefinition } from '@api/resource/Client';
+import { GetConnectionNamespaces, GetResourceDefinition } from '@api/resource/Client';
 import { type types } from '@api/models';
 import SelectBoxHeader from '@/components/tables/Resources/cells/SelectBoxHeader';
 import SelectBoxRow from '@/components/tables/Resources/cells/SelectBoxRow';
@@ -175,8 +175,15 @@ export const useResourceDefinition = ({ pluginID, resourceKey, connectionID }: U
     retry: false,
   });
 
+  const namespaces = useQuery({
+    queryKey: [pluginID, 'connection', 'namespaces', connectionID],
+    queryFn: async () => GetConnectionNamespaces(pluginID, connectionID),
+    retry: false,
+  });
+
   return {
     data: definition.data,
+    namespaces,
     isLoading: definition.isLoading,
     isError: definition.isError,
     error: definition.error,

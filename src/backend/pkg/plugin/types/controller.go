@@ -47,6 +47,9 @@ type ConnectedController interface {
 	// GetConnection returns a connection for a plugin by ID.
 	GetConnection(pluginID, connectionID string) (types.Connection, error)
 
+	// GetConnectionNamespaces returns a list of connection namespaces for a plugin.
+	GetConnectionNamespaces(pluginID, connectionID string) ([]string, error)
+
 	// ListPluginConnections returns a list of connections for the plugin.
 	ListConnections(pluginID string) ([]types.Connection, error)
 

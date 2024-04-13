@@ -40,16 +40,17 @@ func Register(plugin *sdk.Plugin) {
 	sdk.RegisterResourcePlugin(
 		plugin,
 		sdk.ResourcePluginOpts[clients.ClientSet, clients.DiscoveryClient, dynamicinformer.DynamicSharedInformerFactory]{
-			ClientFactory:             clients.NewKubernetesClientFactory(),
-			DiscoveryClientFactory:    clients.NewKubernetesDiscoverClientFactory(),
-			DiscoveryFunc:             DiscoveryFunc,
-			LoadConnectionFunc:        LoadConnectionsFunc,
-			CheckConnectionFunc:       CheckConnectionFunc,
-			InformerOpts:              NewInformerOptions(),
-			ResourceGroups:            ResourceGroups,
-			ResourceDefinitions:       resourcers.ResourceDefs,
-			DefaultResourceDefinition: resourcers.DefaultResourceDef,
-			Resourcers:                map[types.ResourceMeta]types.Resourcer[clients.ClientSet]{
+			ClientFactory:                clients.NewKubernetesClientFactory(),
+			DiscoveryClientFactory:       clients.NewKubernetesDiscoverClientFactory(),
+			DiscoveryFunc:                DiscoveryFunc,
+			LoadConnectionFunc:           LoadConnectionsFunc,
+			LoadConnectionNamespacesFunc: LoadConnectionNamespacesFunc,
+			CheckConnectionFunc:          CheckConnectionFunc,
+			InformerOpts:                 NewInformerOptions(),
+			ResourceGroups:               ResourceGroups,
+			ResourceDefinitions:          resourcers.ResourceDefs,
+			DefaultResourceDefinition:    resourcers.DefaultResourceDef,
+			Resourcers:                   map[types.ResourceMeta]types.Resourcer[clients.ClientSet]{
         {{- range .Resources}}
 				{
           Group:   "{{.Group}}", 

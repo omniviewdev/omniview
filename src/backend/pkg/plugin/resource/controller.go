@@ -457,6 +457,38 @@ func (c *controller) GetConnection(
 	)
 }
 
+func (c *controller) GetConnectionNamespaces(
+	pluginID, connectionID string,
+) ([]string, error) {
+	c.logger.Debug("GetConnectionNamespaces")
+	client, ok := c.clients[pluginID]
+	if !ok {
+		return nil, fmt.Errorf("plugin '%s' not found", pluginID)
+	}
+
+	connections, ok := c.connections[pluginID]
+	if !ok {
+		return nil, fmt.Errorf("plugin '%s' has no connections", pluginID)
+	}
+	// find the connection
+	found := false
+	var connection types.Connection
+	for _, conn := range connections {
+		if conn.ID == connectionID {
+			connection = conn
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("connection '%s' not found for plugin '%s'", connectionID, pluginID)
+	}
+
+	ctx := types.NewPluginContextWithConnection(context.TODO(), "CORE", nil, nil, &connection)
+	return client.GetConnectionNamespaces(ctx, connectionID)
+}
+
 func (c *controller) AddConnection(pluginID string, connection types.Connection) error {
 	c.logger.Debug("AddConnection")
 	connections, ok := c.connections[pluginID]
