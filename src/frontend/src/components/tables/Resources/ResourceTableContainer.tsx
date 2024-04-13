@@ -202,7 +202,6 @@ const ResourceTableContainer: React.FC<Props> = ({
     }
   }, [columnVisibility]);
 
-
   const [search, setSearch] = useState<string>('');
 
   const table = useReactTable({

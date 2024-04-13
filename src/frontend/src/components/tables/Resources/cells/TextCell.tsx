@@ -202,6 +202,13 @@ const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorat
       flex={1} 
       justifyContent={getAlignment()}
       alignItems='center'
+      sx={{
+        // allow vertical scrolling, but hide scrollbar
+        overflowY: 'hidden',
+        overflowX: 'scroll',
+        scrollbarWidth: 'none',
+        '&::-webkit-scrollbar': { display: 'none' },
+      }}
     >
       {children ??
       <Typography 

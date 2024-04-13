@@ -24,7 +24,7 @@ var PodDef = types.ResourceDefinition{
 			ID:        "containers",
 			Header:    "Containers",
 			Accessors: "$.status.containerStatuses",
-			Width:     200,
+			Width:     150,
 			Component: "ContainerStatusCell",
 		},
 		{
@@ -65,7 +65,7 @@ var PodDef = types.ResourceDefinition{
 			ID:        "node",
 			Header:    "Node",
 			Accessors: "spec.nodeName",
-			Width:     300,
+			Width:     200,
 			ResourceLink: &types.ResourceLink{
 				IDAccessor: ".",
 				Namespaced: false,
