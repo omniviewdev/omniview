@@ -109,6 +109,7 @@ function ActionMenuListItem({
           onLeaveMenu(() => isOnButton.current);
         },
         modifiers,
+        size: 'sm',
         slotProps: {
           listbox: {
             id: `resource-action-submenu-${label}`,
@@ -116,11 +117,6 @@ function ActionMenuListItem({
           },
         },
         placement: 'left-start',
-        // sx: {
-        //   [`& .${menuClasses.listbox}`]: {
-        //     '--List-padding': 'var(--ListDivider-gap)',
-        //   },
-        // },
       })}
     </Dropdown>
   );

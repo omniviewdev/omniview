@@ -96,11 +96,40 @@ const parseColumnDef = ({
       id: def.id,
       header: def.header,
       accessorFn: (data) => {
-        if (def.accessor.startsWith('$.')) {
-          return jsonpath.value(data, def.accessor) ?? '';
+        const val = def.accessor.split(',').map((accessor) => {
+          if (accessor.startsWith('$.')) {
+            return jsonpath.value(data, accessor) ?? '';
+          }
+
+          return get(data, accessor, '');
+        }).filter((v) => v !== undefined && v !== '');
+
+        let prioritized = '';
+        switch (def.accessorPriority) {
+          case 'FIRST':
+            prioritized = val[0];
+            break;
+          case 'LAST':
+            prioritized = val[val.length - 1];
+            break;
+          default:
+            break;
         }
 
-        return get(data, def.accessor, '');
+        if (def.valueMap) {
+          // process the prioritized value through the value map, each key being the regex to match
+          // and the value being the replacement
+          Object.entries(def.valueMap).forEach(([key, val]) => {
+            console.log('replacing', key, val);
+            prioritized = prioritized.replace(new RegExp(key), val);
+          });
+        }
+
+        if (prioritized !== '') {
+          return prioritized;
+        }
+
+        return val.length === 1 ? val[0] : val;
       },
       cell: ({ getValue, row }) => 
         !!def.component 
@@ -138,7 +167,15 @@ const parseColumnDef = ({
   // add the actions to the end
     defs.push({
       id: 'menu',
-      cell: ({ row }) => <ActionMenu actions={actions} plugin={pluginID} connection={connectionID} resource={resourceKey} data={row.original} />,
+      cell: ({ row }) => <ActionMenu 
+        actions={actions} 
+        plugin={pluginID} 
+        connection={connectionID} 
+        resource={resourceKey} 
+        data={row.original} 
+        id={row.id} 
+        namespace={namespaceAccessor ? get(row.original, namespaceAccessor, '') : ''}
+      />,
       size: 50,
       enableSorting: false,
       enableHiding: false,

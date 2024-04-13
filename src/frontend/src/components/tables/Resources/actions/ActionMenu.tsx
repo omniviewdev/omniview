@@ -15,13 +15,20 @@ import MoreHorizRoundedIcon from '@mui/icons-material/MoreHorizRounded';
 
 // types
 import { type Actions } from './types';
+import DeleteAction from './DeleteAction';
 
 type Props = {
   plugin: string;
   connection: string;
   resource: string;
+  namespace: string;
+  id: string;
   data: Record<string, unknown>;
   actions: Actions;
+};
+
+type ActionMenuListProps = Props & {
+  dismissMenu: () => void;
 };
 
 const PopupBody = styled('div')(
@@ -91,7 +98,9 @@ const ActionMenu: React.FC<Props> = (props) => {
           }}
         >
           <PopupBody>
-            <ActionsMenuList {...props}/>
+            <ActionsMenuList {...props} dismissMenu={() => {
+              setSelected(null); 
+            }}/>
           </PopupBody>
         </ClickAwayListener>
       </BasePopup>
@@ -99,12 +108,15 @@ const ActionMenu: React.FC<Props> = (props) => {
   );
 };
 
-const ActionsMenuList: React.FC<Props> = ({
+const ActionsMenuList: React.FC<ActionMenuListProps> = ({
   plugin,
   connection,
   resource,
   data,
   actions,
+  id,
+  namespace,
+  dismissMenu,
 }) => {
   const [menuSelected, setMenuSelected] = React.useState<undefined | string>(undefined);
 
@@ -139,7 +151,6 @@ const ActionsMenuList: React.FC<Props> = ({
         maxWidth: 400,
         minWidth: 110,
         borderRadius: 'sm',
-        zIndex: 1,
         backgroundColor: 'background.body',
         paddingBlock: 0,
         '--IconButton-size': '28px',
@@ -156,6 +167,7 @@ const ActionsMenuList: React.FC<Props> = ({
           setMenuSelected(undefined);
         }}
         handleLeaveMenu={createHandleLeaveMenu('exec')}
+        handleDismiss={dismissMenu}
         itemProps={itemProps}
         action={actions.exec}
         plugin={plugin}
@@ -163,6 +175,20 @@ const ActionsMenuList: React.FC<Props> = ({
         resource={resource}
         data={data}
       />}
+      <DeleteAction 
+        plugin={plugin}
+        connection={connection}
+        resource={resource}
+        namespace={namespace}
+        id={id}
+        handleSelect={() => {
+          setMenuSelected('delete');
+        }}
+        handleDeselect={() => {
+          setMenuSelected(undefined);
+        }}
+        handleDismiss={dismissMenu}
+      />
     </List>
   );
 };
