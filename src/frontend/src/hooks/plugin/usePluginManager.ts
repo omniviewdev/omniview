@@ -7,27 +7,11 @@ import React from 'react';
 import { EventsOff, EventsOn } from '@runtime/runtime';
 import { type config } from '@api/models';
 
-/* @ts-expect-error - accessing window object primative */
-import { __federation_method_setRemote, __federation_method_getRemote, __federation_method_ensure } from '__federation__';
+import { preload } from '@/federation';
 
 enum Entity {
   PLUGINS = 'plugins',
 }
-
-const _remoteCache = new Map<string, any>();
-
-const setFederatedPluginRemote = async (plugin: string) => {
-  if (!_remoteCache.has(plugin)) {
-    console.log('Setting remote for plugin', plugin);
-    __federation_method_setRemote(plugin, {
-      url: async () => Promise.resolve(`${window.location.protocol + '//' + window.location.host}/_/plugins/${plugin}/assets/remoteEntry.js`),
-      format: 'esm',
-      from: 'vite',
-    });
-
-    _remoteCache.set(plugin, true);
-  }
-};
 
 /**
  * Interact with the plugin manager to get, list, install, uninstall, and update plugins.
@@ -205,7 +189,12 @@ export const usePluginManager = () => {
     queryKey: [Entity.PLUGINS],
     queryFn: async () => {
       const plugins = await ListPlugins();
-      await Promise.all(plugins.map(async (plugin) => setFederatedPluginRemote(plugin.id)));
+      plugins.forEach(plugin => {
+        // run the component preloads
+        Object.values(plugin.metadata.components?.resource).forEach(component => {
+          preload(plugin.id, component.name);
+        });
+      });
       return plugins;
     },
   });

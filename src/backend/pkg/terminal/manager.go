@@ -50,7 +50,7 @@ func NewManager(
 	resizeMux := make(chan sdkexec.StreamResize)
 
 	return &Manager{
-		log:       log.With("service", "Manager"),
+		log:       log.Named("TerminalManager"),
 		sessions:  make(map[string]*sdkexec.Session),
 		ptys:      make(map[string]*os.File),
 		inMux:     inMux,
@@ -131,6 +131,7 @@ func (m *Manager) StartSession(
 	// TODO: separate stderr to the separate stream
 
 	m.mux.Lock()
+	logger.Debug("past lock")
 	m.sessions[opts.ID] = session
 	m.ptys[opts.ID] = ptyFile
 	m.mux.Unlock()
@@ -164,12 +165,11 @@ func (m *Manager) ResizeSession(sessionID string, rows, cols uint16) error {
 	return nil
 }
 
-func (m *Manager) handleWaitForCompletion(ctx context.Context, sessionID string, cmd *exec.Cmd) {
+func (m *Manager) handleWaitForCompletion(_ context.Context, sessionID string, cmd *exec.Cmd) {
 	if err := cmd.Wait(); err != nil {
 		m.log.Errorw("error waiting for command", "session", sessionID, "error", err)
 	}
 	m.terminateSession(m.sessions[sessionID])
-	ctx.Done()
 }
 
 func (m *Manager) handleSignals(ctx context.Context, sessionID string, cmd *exec.Cmd) {
@@ -214,7 +214,7 @@ func (m *Manager) handleSignals(ctx context.Context, sessionID string, cmd *exec
 }
 
 func (m *Manager) handleOutStream(
-	ctx context.Context,
+	_ context.Context,
 	sessionID string,
 	stream io.Reader,
 ) {
@@ -339,6 +339,9 @@ func (m *Manager) CloseSession(sessionID string) error {
 }
 
 func (m *Manager) terminateSession(session *sdkexec.Session) {
+	if session == nil {
+		return
+	}
 	session.Close()
 	delete(m.sessions, session.ID)
 	m.log.Debugw("session terminated", "session", session.ID)

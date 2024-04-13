@@ -25,7 +25,7 @@ var PodDef = types.ResourceDefinition{
 			Header:    "Containers",
 			Accessors: "$.status.containerStatuses",
 			Width:     200,
-			Component: "KubernetesContainerStatusCell",
+			Component: "ContainerStatusCell",
 		},
 		{
 			ID:        "restarts",

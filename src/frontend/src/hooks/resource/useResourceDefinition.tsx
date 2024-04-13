@@ -14,9 +14,7 @@ import { type Actions } from '@/components/tables/Resources/actions/types';
 import ActionMenu from '@/components/tables/Resources/actions/ActionMenu';
 import { TextCell } from '@/components/tables/Resources/cells';
 import { GetHandler } from '@api/exec/Client';
-
-// custom cells
-import KubernetesContainerStatusCell from '@/components/tables/Resources/cells/custom/KubernetesContainerStatusCell';
+import CustomTableCell from '@/components/tables/Resources/cells/CustomTableCell';
 
 
 type UseResourceDefinitionOptions = {
@@ -104,28 +102,29 @@ const parseColumnDef = ({
 
         return get(data, def.accessor, '');
       },
-      cell: ({ getValue, row }) => {
-        switch (def.component) {
-          case 'KubernetesContainerStatusCell':
-            // TODO: Remove once we fix the loading optimization from federated components.
-            return <KubernetesContainerStatusCell data={getValue()} />;
-          default:
-            return <TextCell 
-              align={getAlignment(def.align)} 
-              value={getValue() as string} 
-              formatter={def.formatter} 
-              colorMap={def.colorMap}
-              resourceLink={def.resourceLink}
-              metadata={{
-                pluginID,
-                connectionID,
-                resourceKey,
-                resourceID: row.id,
-                namespace: namespaceAccessor ? get(row.original, namespaceAccessor, '') : '',
-              }}
-            />;
-        }
-      },
+      cell: ({ getValue, row }) => 
+        !!def.component 
+          // using a custom federated component
+          ? <CustomTableCell 
+            plugin={pluginID} 
+            data={getValue()}
+            component={def.component}
+          />
+          // in-house component
+          : <TextCell 
+            align={getAlignment(def.align)} 
+            value={getValue() as string} 
+            formatter={def.formatter} 
+            colorMap={def.colorMap}
+            resourceLink={def.resourceLink}
+            metadata={{
+              pluginID,
+              connectionID,
+              resourceKey,
+              resourceID: row.id,
+              namespace: namespaceAccessor ? get(row.original, namespaceAccessor, '') : '',
+            }}
+          />,
     };
 
     if (def.width) {

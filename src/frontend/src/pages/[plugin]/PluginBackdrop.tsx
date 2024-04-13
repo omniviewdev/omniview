@@ -11,6 +11,8 @@ type Props = {
 };
 
 export default function PluginBackdrop({ ref, open, message }: Props): React.ReactElement {
+  console.log('PluginBackdrop', open, message);
+
   return (
     <Modal
       container={ref?.current}
@@ -19,7 +21,7 @@ export default function PluginBackdrop({ ref, open, message }: Props): React.Rea
       slotProps={{
         backdrop: {
           sx: {
-            opacity: 0,
+            // opacity: 0,
             backdropFilter: 'none',
             transition: 'opacity 400ms, backdrop-filter 400ms',
           },
@@ -28,7 +30,7 @@ export default function PluginBackdrop({ ref, open, message }: Props): React.Rea
     >
       <ModalDialog
         sx={{
-          opacity: 0,
+          // opacity: 0,
           transition: 'opacity 300ms',
           display: 'flex',
           flexDirection: 'column',

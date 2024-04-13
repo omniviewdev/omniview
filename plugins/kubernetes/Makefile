@@ -22,12 +22,13 @@ lint:
 	golangci-lint run --fix
 
 install: build
-	mkdir -p ~/.omniview/plugins/kubernetes && \
+	mkdir -p ~/.omniview/plugins/kubernetes/bin && \
 		mkdir -p ~/.omniview/plugins/kubernetes/assets && \
 		mkdir -p ~/.omniview/plugins/kubernetes/store && \
-		cp plugin ~/.omniview/plugins/kubernetes/ && \
+		cp bin/plugin ~/.omniview/plugins/kubernetes/bin/ && \
 		cp plugin.yaml ~/.omniview/plugins/kubernetes/ && \
-		rm plugin
+	  cp -r ui/dist/assets/* ~/.omniview/plugins/kubernetes/assets/
+		rm bin/plugin
 
 package: build
 	tar -czvf kubernetes.tar.gz plugin.yaml bin/plugin
