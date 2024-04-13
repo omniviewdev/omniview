@@ -77,6 +77,23 @@ const ResourceLinkCell: React.FC<Props> = ({
     return null;
   }
 
+  if (displayId) {
+    return (
+      <Chip 
+        size='sm'
+        variant='soft'
+        color={typeof value === 'string' ? 'neutral' : 'primary'}
+        sx={{
+          borderRadius: 'sm',
+        }} 
+        onClick={handleClick}>
+        <Typography level='body-xs' noWrap>
+          {resourceID}
+        </Typography>
+      </Chip>
+    );
+  }
+
   return (
     <Tooltip size='sm' variant='plain' title={resourceID}>
       <Chip 
@@ -88,10 +105,7 @@ const ResourceLinkCell: React.FC<Props> = ({
         }} 
         onClick={handleClick}>
         <Typography level='body-xs' noWrap>
-          {displayId 
-            ? resourceID
-            : typeof value === 'string' ? value : resourceKey
-          }
+          {typeof value === 'string' ? value : resourceKey}
         </Typography>
       </Chip>
     </Tooltip>
