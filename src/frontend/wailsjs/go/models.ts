@@ -570,6 +570,7 @@ export namespace types {
 	    id: string;
 	    header: string;
 	    accessor: string;
+	    accessorPriority?: string;
 	    colorMap?: {[key: string]: string};
 	    color?: string;
 	    align?: string;
@@ -579,6 +580,7 @@ export namespace types {
 	    component?: string;
 	    componentParams?: any;
 	    resourceLink?: ResourceLink;
+	    valueMap?: {[key: string]: string};
 	
 	    static createFrom(source: any = {}) {
 	        return new ColumnDef(source);
@@ -589,6 +591,7 @@ export namespace types {
 	        this.id = source["id"];
 	        this.header = source["header"];
 	        this.accessor = source["accessor"];
+	        this.accessorPriority = source["accessorPriority"];
 	        this.colorMap = source["colorMap"];
 	        this.color = source["color"];
 	        this.align = source["align"];
@@ -598,6 +601,7 @@ export namespace types {
 	        this.component = source["component"];
 	        this.componentParams = source["componentParams"];
 	        this.resourceLink = this.convertValues(source["resourceLink"], ResourceLink);
+	        this.valueMap = source["valueMap"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -336,6 +336,7 @@ func transferPluginBuild(path string) (*config.PluginMeta, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metadata file: %w", err)
 	}
+
 	defer destMetaFile.Close()
 
 	if _, err = io.Copy(destMetaFile, sourceMetaFile); err != nil {

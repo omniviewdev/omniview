@@ -27,6 +27,7 @@ type Props = {
   handleSelect: () => void;
   handleDeselect: () => void;
   handleLeaveMenu: (getIsOnButton: () => boolean) => void;
+  handleDismiss: () => void;
   itemProps: Record<string, unknown>;
   action: exec.Handler;
   plugin: string;
@@ -80,6 +81,7 @@ const ExecAction: React.FC<Props> = ({
   resource,
   data,
   itemProps,
+  handleDismiss,
 }) => {
   const targets = calcTargets(action, data);
 
@@ -123,6 +125,8 @@ const ExecAction: React.FC<Props> = ({
                   if (typeof itemProps.onClick == 'function') {
                     itemProps.onClick();
                   }
+
+                  handleDismiss();
                 }}
               >
                 <Typography level='body-sm'>{target.label}</Typography>
