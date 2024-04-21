@@ -128,7 +128,6 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
 
   const createHandleLeaveMenu =
     (id: string) => (getIsOnButton: () => boolean) => {
-      console.log('createHandleLeaveMenu', id);
       setTimeout(() => {
         const isOnButton = getIsOnButton();
         if (!isOnButton) {
@@ -153,9 +152,12 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
         borderRadius: 'sm',
         backgroundColor: 'background.body',
         paddingBlock: 0,
+        paddingX: '2px',
         '--IconButton-size': '28px',
-        '--ListItem-paddingRight': '4px',
-        '--ListItem-paddingLeft': '4px',
+        '--ListItem-paddingRight': '0px',
+        '--ListItem-paddingLeft': '0px',
+        '--ListItem-paddingY': '0px',
+        '--ListItem-gap': '0px',
       }}
     >
       {actions.exec && <ExecAction

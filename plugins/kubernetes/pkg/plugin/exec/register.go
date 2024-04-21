@@ -3,7 +3,6 @@ package exec
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"os"
 
@@ -12,9 +11,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	restclient "k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
 
+	"github.com/omniview/kubernetes/pkg/utils"
 	"github.com/omniviewdev/plugin-sdk/pkg/exec"
 	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
@@ -50,37 +49,9 @@ func PodHandler(
 	stopCh chan struct{},
 	resize <-chan exec.SessionResizeInput,
 ) error {
-	// create a new kubernetes client
-	if ctx.Connection == nil {
-		return errors.New("connection is required")
-	}
-
-	kubeconfig, ok := ctx.Connection.GetDataKey("kubeconfig")
-	if !ok {
-		return errors.New("kubeconfig is required")
-	}
-	val, ok := kubeconfig.(string)
-	if !ok {
-		return errors.New("kubeconfig in connection is required and must be a string")
-	}
-
-	// Change this to get from settings provider
-	os.Setenv("SHELL", "/bin/zsh")
-	os.Setenv("PATH", os.Getenv("PATH")+":/usr/local/bin:/usr/bin")
-
-	// connect to a cluster using the provided kubeconfig and context
-	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: val},
-		&clientcmd.ConfigOverrides{CurrentContext: ctx.Connection.ID},
-	).ClientConfig()
+	clientset, config, err := utils.ClientsetAndConfigFromPluginCtx(ctx)
 	if err != nil {
-		return fmt.Errorf("error creating client: %w", err)
-	}
-
-	// create a clientset for being able to initialize informers
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return fmt.Errorf("error creating clientset: %w", err)
+		return err
 	}
 
 	// get the namespace and pod off the data obj

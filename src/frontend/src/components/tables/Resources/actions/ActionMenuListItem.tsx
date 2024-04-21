@@ -67,7 +67,7 @@ function ActionMenuListItem({
       <MenuButton
         size="sm"
         slots={{ root: IconButton }}
-        slotProps={{ root: { variant: 'plain', color: 'neutral', width: '100%' } }}
+        slotProps={{ root: { variant: 'plain', color: 'neutral', width: '100%', borderRadius: '2px' } }}
         onMouseDown={() => {
           internalOpen.current = open;
         }}
@@ -87,6 +87,7 @@ function ActionMenuListItem({
         sx={{
           display: 'flex',
           flex: 1,
+          borderRadius: '2px',
           bgcolor: open ? 'neutral.plainHoverBg' : undefined,
           '&:focus-visible': {
             bgcolor: 'neutral.plainHoverBg',

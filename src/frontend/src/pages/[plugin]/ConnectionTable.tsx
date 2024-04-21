@@ -70,7 +70,7 @@ const ConnectionTable: React.FC<Props> = ({ connections }) => {
               <th key={label} style={{ width: width + 8, verticalAlign: 'middle', paddingLeft: 4 }}>
                 <Typography sx={{ pl: 1 }}>{label.replace(/(\w)(\w*)/g,
                   function (_, g1?: string, g2?: string) {
-                    return g1?.toUpperCase() ?? '' + g2?.toLowerCase() ?? '';
+                    return (g1?.toUpperCase() ?? '') + (g2?.toLowerCase() ?? '');
                   })}</Typography>
               </th>
             ))}

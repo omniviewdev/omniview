@@ -171,7 +171,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
     <ResourceTableContainer
       columns={columns.defs}
       data={Object.values(resources.data.result)}
-      namespaces={namespaces.data || []}
+      namespaces={namespaces.data ?? []}
       idAccessor={getIDAccessor()}
       namespaceAccessor={data.namespace_accessor}
       memoizer={data.memoizer_accessor}
