@@ -2,10 +2,12 @@ package main
 
 import (
 	"github.com/omniview/kubernetes/pkg/plugin/exec"
+	"github.com/omniview/kubernetes/pkg/plugin/networker"
 	"github.com/omniview/kubernetes/pkg/plugin/resource"
 	"github.com/omniviewdev/settings"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
+
 	_ "k8s.io/client-go/plugin/pkg/client/auth/azure"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/exec"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -61,6 +63,7 @@ func main() {
 	// Register the capabilities
 	resource.Register(plugin)
 	exec.Register(plugin)
+	networker.Register(plugin)
 
 	// Serve the plugin
 	plugin.Serve()

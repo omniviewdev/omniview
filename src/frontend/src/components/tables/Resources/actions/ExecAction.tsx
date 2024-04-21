@@ -113,6 +113,9 @@ const ExecAction: React.FC<Props> = ({
         menu={
           <Menu
             size='sm'
+            sx={{
+              padding: 0,
+            }}
             onClose={handleDeselect}
           >
             {targets.map((target) => (

@@ -53,6 +53,7 @@ export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection
           }}
           sx={{
             display: 'flex',
+            borderRadius: '2px',
             flex: 1,
             bgcolor: open ? 'neutral.plainHoverBg' : undefined,
             '&:focus-visible': {

@@ -236,10 +236,8 @@ const ResourceTableContainer: React.FC<Props> = ({
 
   const virtualizer = useVirtualizer({
     count: rows.length,
-    // GetItemKey: useCallback((index: number) => rows[index]?.id ?? index, [rows]),
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 40, // Estimate row height for accurate scrollbar dragging
-    // getItemKey: useCallback((index: number) => rows[index]?.id ?? index, [rows]),
+    estimateSize: () => 36,
     overscan: 40,
     // Measure dynamic row height, except in firefox because it measures table border height incorrectly
     measureElement:
@@ -287,7 +285,7 @@ const ResourceTableContainer: React.FC<Props> = ({
         ref={parentRef}
         sx={{
           width: '100%',
-          borderRadius: 'sm',
+          borderRadius: '4px',
           flex: 1,
           overflow: 'scroll',
           minHeight: 0, 
@@ -304,6 +302,7 @@ const ResourceTableContainer: React.FC<Props> = ({
           aria-labelledby={'table-title'}
           stickyHeader
           hoverRow
+          size={'sm'}
           sx={{
             display: 'grid',
             '--TableCell-headBackground':
@@ -311,8 +310,9 @@ const ResourceTableContainer: React.FC<Props> = ({
             '--Table-headerUnderlineThickness': '1px',
             '--TableRow-hoverBackground':
               'var(--joy-palette-background-level1)',
-            '--TableCell-paddingY': '2px',
+            '--TableCell-paddingY': '0px',
             '--TableCell-paddingX': '8px',
+            '--TableCell-height': '36px',
             WebkitUserSelect: 'none',
           }}
         >

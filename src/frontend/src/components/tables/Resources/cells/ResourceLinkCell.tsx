@@ -73,7 +73,7 @@ const ResourceLinkCell: React.FC<Props> = ({
     });
   };
 
-  if (typeof value === 'string' && value === '') {
+  if (typeof value !== 'string' && !resourceKey) {
     return null;
   }
 

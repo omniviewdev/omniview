@@ -1,18 +1,15 @@
 package clients
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"runtime"
 	"time"
 
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 
+	"github.com/omniview/kubernetes/pkg/utils"
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/factories"
 	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -37,60 +34,14 @@ type ClientSet struct {
 
 var _ factories.ResourceClientFactory[ClientSet] = &KubernetesClientFactory{}
 
-// The program may not start up with the default login shell, so make sure to add the necessary
-// locations to the PATH environment variable that may be in use using common locations for each
-// platform.
-func getPathAdditions() string {
-	switch os := runtime.GOOS; os {
-	case "darwin":
-		return "/usr/local/bin:/usr/bin:/opt/homebrew/bin"
-	case "linux":
-		return "/usr/local/bin:/usr/bin"
-	case "windows":
-		return ""
-	}
-	return ""
-}
-
 // CreateClient creates a new client for interacting with the API server for a given cluster, given a
 // path to the kubeconfig file and the context to use.
 func (f *KubernetesClientFactory) CreateClient(
 	ctx *pkgtypes.PluginContext,
 ) (*ClientSet, error) {
-	if ctx.Connection == nil {
-		return nil, errors.New("kubeconfig is required")
-	}
-
-	kubeconfig, ok := ctx.Connection.GetDataKey("kubeconfig")
-	if !ok {
-		return nil, errors.New("kubeconfig is required")
-	}
-	val, ok := kubeconfig.(string)
-	if !ok {
-		return nil, errors.New("kubeconfig is required and must be a string")
-	}
-
-	// Change this to get from settings provider
-	os.Setenv("SHELL", "/bin/zsh")
-	// make sure we invoke the shell to load the environment variables
-	// this is necessary for the kubeconfig to be loaded
-
-	// ensure PATH includes locations for common dependencies
-	os.Setenv("PATH", os.Getenv("PATH")+getPathAdditions())
-
-	// connect to a cluster using the provided kubeconfig and context
-	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: val},
-		&clientcmd.ConfigOverrides{CurrentContext: ctx.Connection.ID},
-	).ClientConfig()
+	clientset, config, err := utils.ClientsetAndConfigFromPluginCtx(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error creating client: %w", err)
-	}
-
-	// create a clientset for being able to initialize informers
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("error creating clientset: %w", err)
+		return nil, err
 	}
 
 	// create a dynamic client for interacting with the API server
