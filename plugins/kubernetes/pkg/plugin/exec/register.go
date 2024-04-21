@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/omniview/kubernetes/pkg/utils"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/kubernetes"
@@ -13,7 +14,6 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 
-	"github.com/omniview/kubernetes/pkg/utils"
 	"github.com/omniviewdev/plugin-sdk/pkg/exec"
 	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"

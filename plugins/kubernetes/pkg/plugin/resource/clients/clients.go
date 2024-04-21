@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/omniview/kubernetes/pkg/utils"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/omniview/kubernetes/pkg/utils"
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/factories"
 	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
