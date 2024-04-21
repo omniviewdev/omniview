@@ -13,11 +13,12 @@ import (
 	"syscall"
 
 	"github.com/omniview/kubernetes/pkg/utils"
+	"k8s.io/client-go/tools/portforward"
+	"k8s.io/client-go/transport/spdy"
+
 	"github.com/omniviewdev/plugin-sdk/pkg/networker"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	"k8s.io/client-go/tools/portforward"
-	"k8s.io/client-go/transport/spdy"
 )
 
 func Register(plugin *sdk.Plugin) {

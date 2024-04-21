@@ -6,13 +6,14 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
-// some shells may not load the necessary environment variables
+// some shells may not load the necessary environment variables.
 func getPathAdditions() string {
 	switch os := runtime.GOOS; os {
 	case "darwin":
