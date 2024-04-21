@@ -33,7 +33,7 @@ func Register(plugin *sdk.Plugin) {
 	}
 }
 
-// PodPortForwarder forwards a port from a pod to the local machine
+// PodPortForwarder forwards a port from a pod to the local machine.
 func PodPortForwarder(
 	ctx *types.PluginContext,
 	opts networker.ResourcePortForwardHandlerOpts,
