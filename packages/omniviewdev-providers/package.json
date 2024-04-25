@@ -1,0 +1,39 @@
+{
+  "name": "@omniviewdev/providers",
+  "version": "0.0.1",
+  "description": "Package to interact with the various providers in Omniview via the UI.",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "directory": "pkg/providers",
+    "url": "https://github.com/omniviewdev/omniview"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup index.ts --minify --dts --format cjs,esm --out-dir dist",
+    "lint": "eslint --cache --ext .js,.jsx,.ts,.tsx ./src",
+    "lint:fix": "npm run lint -- --fix"
+  },
+  "keywords": [
+    "omniview"
+  ],
+  "author": "Omniview",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.1",
+    "@types/node": "^20.12.7",
+    "@types/react": "^18.2.79",
+    "@vitejs/plugin-react": "^4.2.1",
+    "react": "^18.2.0",
+    "tsup": "^8.0.2",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.10"
+  }
+}

@@ -7,6 +7,7 @@ import Stack from "@mui/joy/Stack";
 // types
 import { Container, ContainerStatus, Probe } from "kubernetes-types/core/v1";
 import DetailsCard, { DetailsCardEntry } from "../../../shared/DetailsCard";
+import PortDetailsCard from "./PortDetailsCard";
 
 export interface Props {
   status?: ContainerStatus;
@@ -151,7 +152,7 @@ const ContainerSection: React.FC<Props> = (obj) => {
         )}
         {obj.container.ports && (
           <Grid xs={12}>
-            <DetailsCard
+            <PortDetailsCard
               title="Ports"
               icon="LuNetwork"
               titleSize="sm"
