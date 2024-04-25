@@ -1,0 +1,31 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Omniview",
+  "outputfilename": "Omniview",
+  "frontend:dir": "./ui",
+  "frontend:install": "pnpm install",
+  "frontend:build": "pnpm run build",
+  "frontend:dev:watcher": "pnpm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "wailsjsdir": "../packages/omniviewdev-runtime/",
+  "author": {
+    "name": "Joshua Pare",
+    "email": "jpare@omniview.dev"
+  },
+  "bindings": {
+    "ts_generation": {
+      "prefix": "",
+      "suffix": "",
+      "outputType": "classes"
+    }
+  },
+  "fileAssociations": [
+    {
+      "ext": "icns",
+      "name": "favicon",
+      "description": "AppIcon",
+      "iconName": "fileIcon",
+      "role": "Editor"
+    }
+  ]
+}

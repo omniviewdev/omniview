@@ -1,17 +1,14 @@
 .PHONY: docs
 
-docs:
-	cd docs && hugo server -D
-
 sync:
 	go work sync
 
 dev:
-	cd src/frontend && pnpm install
-	cd src && wails dev
+	pnpm install
+	wails dev
 
 build:
-	cd src && wails build
+	wails build
 
 lint: lint-core lint-plugin lint-kubernetes
 

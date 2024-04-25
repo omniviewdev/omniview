@@ -1,5 +1,5 @@
 # builds
-src/build/
+build/bin/
 
 ### Frontend
 
@@ -38,3 +38,6 @@ dist-ssr
 *.sln
 *.sw?
 
+
+
+.nx/cache
