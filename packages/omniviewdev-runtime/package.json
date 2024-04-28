@@ -37,5 +37,8 @@
     "tsup": "^8.0.2",
     "typescript": "^5.4.5",
     "vite": "^5.2.10"
+  },
+  "dependencies": {
+    "ts-invariant": "^0.10.3"
   }
 }

@@ -17,6 +17,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query';
+import { createExtensionRegistry, ExtensionProvider } from '@omniviewdev/runtime/extensionpoint';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -37,31 +38,38 @@ function fallbackRender({ error }: { error: Error }) {
 }
 
 /**
+ * Create the primary extension registry for other applications to expand upon.
+ */
+const registry = createExtensionRegistry();
+
+/**
  * Render out the core layout for the application
  */
 const App: React.FC = () => (
   <ErrorBoundary FallbackComponent={fallbackRender}>
-    <AppSnackbarProvider>
-      <QueryClientProvider client={queryClient}>
-        <StyledEngineProvider injectFirst>
-          <Provider store={store}>
-            <CssVarsProvider
-              defaultMode='dark'
-              modeStorageKey='omniview_identify-system-mode'
-              // Set as root provider
-              disableNestedContext
-            >
-              <WindowProvider>
-                <RightDrawerProvider>
-                  <Renderer />
-                </RightDrawerProvider>
-              </WindowProvider>
-            </CssVarsProvider>
-          </Provider>
-        </StyledEngineProvider>
-        <ReactQueryDevtools initialIsOpen={false} buttonPosition='bottom-right' />
-      </QueryClientProvider>
-    </AppSnackbarProvider>
+    <ExtensionProvider registry={registry}>
+      <AppSnackbarProvider>
+        <QueryClientProvider client={queryClient}>
+          <StyledEngineProvider injectFirst>
+            <Provider store={store}>
+              <CssVarsProvider
+                defaultMode='dark'
+                modeStorageKey='omniview_identify-system-mode'
+                // Set as root provider
+                disableNestedContext
+              >
+                <WindowProvider>
+                  <RightDrawerProvider>
+                    <Renderer />
+                  </RightDrawerProvider>
+                </WindowProvider>
+              </CssVarsProvider>
+            </Provider>
+          </StyledEngineProvider>
+          <ReactQueryDevtools initialIsOpen={false} buttonPosition='bottom-right' />
+        </QueryClientProvider>
+      </AppSnackbarProvider>
+    </ExtensionProvider>
   </ErrorBoundary>
 );
 

@@ -41,7 +41,7 @@ export type PortForwardResourceOpts = {
   /**
   * Parameters to pass to the resource to configure the port forward.
   */
-  parameters?: Record<string, string>
+  parameters?: Record<string, string>;
   /**
   * Whether to open the forwarded port in the default browser. Default is false.
   */
@@ -52,21 +52,19 @@ export type PortForwardResourceOpts = {
   labels?: Record<string, string>;
 };
 
-export interface PortForwardResourceFunction {
-  (opts: PortForwardResourceOpts): Promise<networker.PortForwardSession>;
-}
+export type PortForwardResourceFunction = (opts: PortForwardResourceOpts) => Promise<networker.PortForwardSession>;
 
-export interface ResourcePortForwarder {
-  sessions: Array<networker.PortForwardSession>;
+export type ResourcePortForwarder = {
+  sessions: networker.PortForwardSession[];
   forward: PortForwardResourceFunction;
   close: (sessionId: string) => Promise<void>;
-}
+};
 
 /**
 * Programatically forward a port from a resource object to the host.
 */
-export function useResourcePortForwarder({ pluginID, connectionID, resourceID }: { pluginID: string, connectionID: string, resourceID: string }): ResourcePortForwarder {
-  const [sessions, setSessions] = React.useState<Array<networker.PortForwardSession>>([]);
+export function useResourcePortForwarder({ pluginID, connectionID, resourceID }: { pluginID: string; connectionID: string; resourceID: string }): ResourcePortForwarder {
+  const [sessions, setSessions] = React.useState<networker.PortForwardSession[]>([]);
 
   React.useEffect(() => {
     if (!pluginID || !connectionID || !resourceID) {
@@ -86,11 +84,11 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
   }, [pluginID, connectionID]);
 
   const forward: PortForwardResourceFunction = React.useCallback(async (opts) => {
-    const sessionOpts =networker.PortForwardSessionOptions.createFrom({
+    const sessionOpts = networker.PortForwardSessionOptions.createFrom({
       source_port: opts.fromPort,
       destination_port: opts.toPort || 0,
       protocol: opts.protocol || 'TCP',
-      connection_type: "RESOURCE",
+      connection_type: 'RESOURCE',
       connection: {
         resource_data: opts.resource,
         connection_id: connectionID,
@@ -98,12 +96,12 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
         resource_id: opts.resourceId,
         resource_key: opts.resourceKey,
       },
-      labels: opts.labels || {},
-      params: opts.parameters || {},
+      labels: opts.labels ?? {},
+      params: opts.parameters ?? {},
     });
 
     try {
-      const session = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts)
+      const session = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts);
       setSessions([...sessions, session]);
       if (opts.openInBrowser) {
         BrowserOpenURL(`http://localhost:${session.destination_port}`);
@@ -116,6 +114,7 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
         // into the provider.
         console.log(e);
       }
+
       throw e;
     }
   }, [pluginID, connectionID, sessions]);
@@ -130,6 +129,7 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
         // into the provider.
         console.log(e);
       }
+
       throw e;
     }
   }, [sessions]);
@@ -138,5 +138,5 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
     sessions,
     forward,
     close,
-  }
+  };
 }

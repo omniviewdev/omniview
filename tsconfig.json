@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ESNext",
     "useDefineForClassFields": true,
-    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
@@ -19,20 +23,47 @@
     "rootDir": ".",
     "baseUrl": "./",
     "paths": {
-      "@/*": ["./ui/*"],
-      "@api/*": ["./packages/omniviewdev-runtime/wailsjs/go/*"],
-      "@components/*": ["./ui/components/*"],
-      "@hooks/*": ["./ui/hooks/*"],
-      "@infraview/*": ["./ui/pkg/*"],
-      "@layouts/*": ["./ui/layouts/*"],
-      "@pages/*": ["./ui/pages/*"],
-      "@runtime/*": ["./packages/omniviewdev-runtime/wailsjs/runtime/*"],
-      "@theme/*": ["./ui/theme/*"],
-      "@types/*": ["./ui/types/*"],
-      "@utils/*": ["./ui/utils/*"]
+      "@/*": [
+        "./ui/*"
+      ],
+      "@api/*": [
+        "./packages/omniviewdev-runtime/wailsjs/go/*"
+      ],
+      "@components/*": [
+        "./ui/components/*"
+      ],
+      "@hooks/*": [
+        "./ui/hooks/*"
+      ],
+      "@infraview/*": [
+        "./ui/pkg/*"
+      ],
+      "@layouts/*": [
+        "./ui/layouts/*"
+      ],
+      "@pages/*": [
+        "./ui/pages/*"
+      ],
+      "@runtime/*": [
+        "./packages/omniviewdev-runtime/wailsjs/runtime/*"
+      ],
+      "@theme/*": [
+        "./ui/theme/*"
+      ],
+      "@types/*": [
+        "./ui/types/*"
+      ],
+      "@utils/*": [
+        "./ui/utils/*"
+      ]
     }
   },
-  "include": ["ui", "vite.config.ts", ".eslintrc.cjs"],
+  "include": [
+    "ui",
+    "vite.config.ts",
+    ".eslintrc.cjs",
+    "packages"
+  ],
   "references": [
     {
       "path": "./tsconfig.node.json"
