@@ -12,7 +12,12 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
+    "jsx": "react",
     "noUncheckedIndexedAccess": true,
-    "skipLibCheck": true
-  }
+    "skipLibCheck": true,
+    "rootDir": "."
+  },
+  "include": [
+    "lib"
+  ]
 }

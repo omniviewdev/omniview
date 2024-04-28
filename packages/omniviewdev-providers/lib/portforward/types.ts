@@ -1,9 +1,10 @@
 import React from 'react';
 
-export interface PortForwardContextObject {}
+export type PortForwardContextObject = Record<string, unknown>;
 
-export const PortForwardContext = React.createContext<PortForwardContextObject | null>(null);
+// eslint-disable-next-line
+export const PortForwardContext = React.createContext<PortForwardContextObject | undefined>(undefined);
 
 if (import.meta.env.DEV) {
-  PortForwardContext.displayName = "PortForwardContext"
+  PortForwardContext.displayName = 'PortForwardContext';
 }
