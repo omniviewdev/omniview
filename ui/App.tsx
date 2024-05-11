@@ -17,7 +17,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query';
-import { createExtensionRegistry, ExtensionProvider } from '@omniviewdev/runtime/extensionpoint';
+import ExtensionProvider, { createExtensionRegistry } from '@omniviewdev/runtime/extensions/provider';
 
 // Create a client
 const queryClient = new QueryClient({
