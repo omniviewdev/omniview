@@ -11,10 +11,12 @@ import Layout from '@/layouts/core/sidenav';
 import SettingsNav from './SettingsNav';
 import CoreSettingsPage from './CoreSettingsPage';
 import PluginSettingsPage from './PluginSettingsPage';
+import ExtensionSettingsPage from './ExtensionSettingsPage';
 
 export enum Section {
   Core = 'core',
   Plugins = 'plugins',
+  Extensions = 'extensions',
 }
 
 export type SectionSelection = {
@@ -35,8 +37,8 @@ export default function SettingsPage() {
       <CssBaseline />
       <Layout.Root
         sx={{
-          p: 8,
-          gap: 8,
+          p: 4,
+          gap: 4,
         }}
       >
         <Layout.SideNav>
@@ -59,8 +61,16 @@ const GetSettingsPage = (section: Section, id: string) => {
 
   switch (section) {
     case Section.Core:
-      return <CoreSettingsPage id={id} />;
+      switch (id) {
+        case 'extensions':
+          return <ExtensionSettingsPage />;
+        default:
+          return <CoreSettingsPage id={id} />;
+      }
+
     case Section.Plugins:
       return <PluginSettingsPage id={id} />;
+    case Section.Extensions:
+      return <ExtensionSettingsPage />;
   }
 };

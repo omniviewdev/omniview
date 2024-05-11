@@ -18,7 +18,7 @@ const getNamingConventionRule = ({ isTsx }) => ({
         'typeMethod',
         'accessor',
       ],
-      format: ['camelCase', isTsx && 'StrictPascalCase'].filter(Boolean),
+      format: ['camelCase', 'UPPER_CASE', isTsx && 'StrictPascalCase'].filter(Boolean),
       // We allow double underscore because of GraphQL type names and some React names.
       leadingUnderscore: 'allowSingleOrDouble',
       trailingUnderscore: 'allow',

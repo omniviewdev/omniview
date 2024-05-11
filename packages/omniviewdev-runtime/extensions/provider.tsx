@@ -1,19 +1,29 @@
 import React, { createContext, useContext, useEffect, useRef } from 'react';
-import { type ExtensionRegistry } from '../ExtensionRegistry';
+import { ExtensionPointRegistry } from './registry';
 import invariant from 'ts-invariant';
+import initialStores from './defaultStores';
 
 type ExtensionProviderProps = {
   registry: ExtensionRegistry;
   children: React.ReactNode;
 };
 
-export type ExtensionProviderType = React.FC<ExtensionProviderProps>;
+type ExtensionRegistry = {
+  extensionPointRegistry: ExtensionPointRegistry;
+};
 
+export type ExtensionProviderType = React.FC<ExtensionProviderProps>;
 const ExtensionRegistryContext = createContext<ExtensionRegistry | undefined>(undefined);
 
 const useExtensionRegistry = (): ExtensionRegistry | undefined => {
   const registry = useContext(ExtensionRegistryContext);
   return registry;
+};
+
+export const createExtensionRegistry = (): ExtensionRegistry => {
+  return {
+    extensionPointRegistry: new ExtensionPointRegistry({ initialStores }),
+  };
 };
 
 const ExtensionProvider: React.FC<ExtensionProviderProps> = ({ registry, children }) => {

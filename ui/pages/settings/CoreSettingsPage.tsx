@@ -45,8 +45,11 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
     }, {});
 
     console.log('committing', values);
-    setSettings(values);
-    clearDraftValues();
+    setSettings(values).then(() => {
+      clearDraftValues();
+    }).catch((err) => {
+      console.error('Failed to save settings', err);
+    });
   };
 
   /**

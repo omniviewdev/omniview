@@ -76,6 +76,21 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
               </ListItemButton>
             </ListItem>
           ))}
+
+          <ListItem key={'extensions'}>
+            <ListItemButton
+              selected={selected.id === 'extensions' && selected.section === Section.Core}
+              onClick={() => {
+                onChange({ section: Section.Core, id: 'extensions' });
+              }}
+            >
+              <ListItemDecorator>
+                <Icon name={'LuBrainCircuit'} />
+              </ListItemDecorator>
+              <ListItemContent>{'Extensions'}</ListItemContent>
+            </ListItemButton>
+          </ListItem>
+
         </List>
       </ListItem>
 
@@ -115,7 +130,6 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
           ))}
         </List>
       </ListItem>
-
     </List>
   );
 };
