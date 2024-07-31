@@ -21,6 +21,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/ui"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
+	"github.com/omniviewdev/omniview/backend/pkg/trivy"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -54,6 +55,7 @@ func main() {
 	}
 
 	utilsClient := utils.NewClient()
+	trivyClient := trivy.NewManager(log)
 
 	// Setup the plugin systems
 	resourceController := resource.NewController(log, settingsProvider)
@@ -138,6 +140,7 @@ func main() {
 
 			// core engines/providers
 			settingsProvider,
+			trivyClient,
 
 			// plugin system
 			pluginManager,
@@ -150,6 +153,8 @@ func main() {
 		},
 		EnumBind: []interface{}{
 			pkgsettings.AllSettingTypes,
+			trivy.AllCommands,
+			trivy.AllScanners,
 			sdktypes.AllConnectionStatusCodes,
 		},
 		// Windows platform specific options

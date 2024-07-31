@@ -7,7 +7,7 @@
   "frontend:build": "pnpm run build",
   "frontend:dev:watcher": "pnpm run dev",
   "frontend:dev:serverUrl": "auto",
-  "wailsjsdir": "../packages/omniviewdev-runtime/",
+  "wailsjsdir": "./packages/omniviewdev-runtime/",
   "author": {
     "name": "Joshua Pare",
     "email": "jpare@omniview.dev"

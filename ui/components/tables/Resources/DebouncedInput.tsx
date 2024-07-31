@@ -22,6 +22,10 @@ export function DebouncedInput({
 }: InputProps & DebounceProps) {
   const [value, setValue] = useState(initialValue);
 
+  const handleClear = () => {
+    onChange('');
+  };
+
   useEffect(() => {
     setValue(initialValue);
   }, [initialValue]);
@@ -48,12 +52,18 @@ export function DebouncedInput({
       onChange={e => {
         setValue(e.target.value);
       }}
-      startDecorator={<SearchIcon />}
+      startDecorator={<SearchIcon fontSize='small' />}
       // Clearing should not be debounced
-      endDecorator={<IconButton onClick={() => {
-        onChange('');
-      }}><CloseIcon /></IconButton>}
-      sx={{ flexGrow: 1, maxWidth: 500, minHeight: 36 }}
+      endDecorator={value ? (
+        <IconButton
+          sx={{ padding: 0 }}
+          onClick={handleClear}
+        >
+          <CloseIcon fontSize='small' />
+        </IconButton>
+
+      ) : undefined}
+      sx={{ flexGrow: 1, maxWidth: 500, minWidth: 300, minHeight: 36 }}
       slotProps={{
         input: {
           // Keep the input from auto capitalizing and autocorrecting, doesn't work

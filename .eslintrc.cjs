@@ -142,11 +142,11 @@ module.exports = {
             fixWith: 'Record<string, unknown>',
           },
           Function: 'Use a specific function type instead, like `() => void`.',
-          null: {
-            message:
-              'Use `undefined` instead. See: https://github.com/sindresorhus/meta/issues/7',
-            fixWith: 'undefined',
-          },
+          // null: {
+          //   message:
+          //     'Use `undefined` instead. See: https://github.com/sindresorhus/meta/issues/7',
+          //   fixWith: 'undefined',
+          // },
           Buffer: {
             message:
               'Use Uint8Array instead. See: https://sindresorhus.com/blog/goodbye-nodejs-buffer',

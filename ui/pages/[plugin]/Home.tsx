@@ -2,6 +2,7 @@ import React from 'react';
 
 // material-ui
 import Avatar from '@mui/joy/Avatar';
+import Divider from '@mui/joy/Divider';
 import Sheet from '@mui/joy/Sheet';
 import Stack from '@mui/joy/Stack';
 import Typography from '@mui/joy/Typography';
@@ -14,7 +15,7 @@ import ConnectionListHeader from './ConnectionListHeader';
 import PluginBackdrop from './PluginBackdrop';
 
 // Third-party
-import tinycolor from 'tinycolor2';
+// import tinycolor from 'tinycolor2';
 
 /**
  * Default home landing for the plugin.
@@ -27,16 +28,11 @@ export default function PluginHome(): React.ReactElement {
 
   return (
     <Stack
-      p={2}
-      spacing={2}
       overflow={'auto'}
       direction={'column'}
       alignItems={'flex-start'}
       minHeight={0}
       flex={1}
-      sx={{
-        background: `linear-gradient(109.6deg, rgb(36, 45, 57) 2.2%, ${tinycolor(plugin.metadata.theme.colors.primary).setAlpha(0.2).toString()} 50.2%, rgb(0, 0, 0) 98.6%);`,
-      }}
     >
       <PluginBackdrop
         open={plugin.loading}
@@ -45,21 +41,29 @@ export default function PluginHome(): React.ReactElement {
       <Sheet
         sx={{
           width: '100%',
-          backgroundColor: 'transparent',
           display: 'flex',
-          gap: 1.5,
+          gap: 1,
+          p: 1,
           alignItems: 'center',
           justifyContent: 'space-between',
         }}
-        variant='soft'
       >
         <Stack direction='row' alignItems='center' gap={1.5}>
-          <Avatar size='sm' src={plugin.metadata.icon} variant='plain' sx={{ borderRadius: 4 }} />
-          <Typography level='h3' >{plugin.metadata.name}</Typography>
+          <Avatar
+            src={plugin.metadata.icon}
+            variant='plain'
+            sx={{
+              borderRadius: 'sm',
+              width: 22,
+              height: 22,
+            }}
+          />
+          <Typography level='h4' >{plugin.metadata.name}</Typography>
         </Stack>
-        <Typography level='title-sm' >{plugin.metadata.description}</Typography>
+        <Typography level='body-sm' >{plugin.metadata.description}</Typography>
       </Sheet>
-      <Stack direction='column' gap={0.5}>
+      <Divider />
+      <Stack direction='column' gap={1} p={1}>
         <ConnectionListHeader plugin={plugin.id} search={search} onSearchChange={setSearch} />
 
         {/* List of connections */}

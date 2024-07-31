@@ -56,23 +56,21 @@ const HeaderItemsArea: React.FC<Props> = ({ items }) => {
       sx={{
         display: 'flex',
         flexDirection: 'row',
-        gap: 1,
+        gap: 0.5,
         width: '100%',
         height: '100%',
         justifyContent: 'flex-end',
         alignItems: 'center',
-        px: 0.5,
+        px: 1,
         WebkitUserSelect: 'none',
       }}
     >
       {items.map(item => <HeaderItemComponent key={item.id} item={item} />)}
       {/* Temporary to test the panes */}
       <Tooltip enterDelay={1000} title='Add Pane' variant='soft' >
-
         <IconButton
           name={'add-pane'}
           size='sm'
-          variant='outlined'
           color='neutral'
           sx={{
             '--wails-draggable': 'no-drag',

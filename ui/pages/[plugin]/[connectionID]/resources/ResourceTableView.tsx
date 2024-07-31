@@ -107,7 +107,7 @@ export default function ResourceTableView(): React.ReactElement {
         crdSection.push(group);
       } else {
         coreSection.push(group);
-      }  
+      }
     });
 
     const sections: SidebarSection[] = [
@@ -129,7 +129,7 @@ export default function ResourceTableView(): React.ReactElement {
         open={plugin.loading}
         message={`${plugin.metadata.name} plugin is reloading`}
       />
-      <Layout.SideNav type='bordered' padding={1} width={300} >
+      <Layout.SideNav type='bordered' padding={0.5} width={300} >
         <Stack direction='column' maxHeight='100%' gap={0.5}>
           <Sheet
             variant='outlined'
@@ -139,7 +139,6 @@ export default function ResourceTableView(): React.ReactElement {
               justifyContent: 'space-between',
               p: 1,
               borderRadius: 'sm',
-              boxShadow: theme => theme.shadow.sm,
             }}
           >
             <Stack direction='row' alignItems='center' gap={1}>
@@ -184,7 +183,7 @@ export default function ResourceTableView(): React.ReactElement {
          fully epand up to the top of the container (since the padding get's accounted for in the sizing, which essentially
          just end up creating a gutter at the top equal to the top and bottom padding combined) */}
         <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          {selected && 
+          {selected &&
             <ResourceTable resourceKey={selected} pluginID={pluginID} connectionID={connectionID} />
           }
         </Box>

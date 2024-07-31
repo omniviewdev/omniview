@@ -20,7 +20,6 @@ const HeaderIconLink: React.FC<Props> = ({ id, helpText, icon, href }) => (
       <IconButton
         name={id}
         size='sm'
-        variant='outlined'
         color='neutral'
         sx={{
           '--wails-draggable': 'no-drag',

@@ -123,15 +123,15 @@ export const namespaceFilter: FilterFn<any> = (row, columnId, value: string[]) =
   * @param data - The data to display in the table.
   * @returns The resource table.
   */
-const ResourceTableContainer: React.FC<Props> = ({ 
+const ResourceTableContainer: React.FC<Props> = ({
   columns,
   data,
   namespaces,
   idAccessor,
   namespaceAccessor,
   memoizer,
-  pluginID, 
-  connectionID, 
+  pluginID,
+  connectionID,
   resourceKey,
   initialColumnVisibility,
 }) => {
@@ -243,18 +243,18 @@ const ResourceTableContainer: React.FC<Props> = ({
     measureElement:
       typeof window !== 'undefined'
         && !navigator.userAgent.includes('Firefox')
-      	? element => element?.getBoundingClientRect().height
-      	: undefined,
+        ? element => element?.getBoundingClientRect().height
+        : undefined,
   });
 
   const placeHolderText = () => {
-    const keyparts = resourceKey.split('::'); 
+    const keyparts = resourceKey.split('::');
     const resource = plural(keyparts[keyparts.length - 1]);
     return `Search ${data.length} ${resource}...`;
   };
 
   return (
-    <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', p: 1, gap: 1, minHeight: 0 }} >
+    <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', p: 0.75, gap: 0.75, minHeight: 0 }} >
       <Stack direction='row' justifyContent={'space-between'} className='NamespaceAndSearch' sx={{ width: '100%' }}>
         <DebouncedInput
           value={search ?? ''}
@@ -264,14 +264,14 @@ const ResourceTableContainer: React.FC<Props> = ({
           placeholder={placeHolderText()}
         />
         <Stack direction='row' gap={1}>
-          {namespaced && 
-          <NamespaceSelect
-            available={namespaces ?? []}
-            selected={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []} 
-            setNamespaces={setNamespaces} 
-          />
+          {namespaced &&
+            <NamespaceSelect
+              available={namespaces ?? []}
+              selected={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []}
+              setNamespaces={setNamespaces}
+            />
           }
-          <ColumnFilter 
+          <ColumnFilter
             anchorEl={filterAnchor}
             onClose={handleFilterClose}
             columns={table.getAllFlatColumns()}
@@ -288,7 +288,7 @@ const ResourceTableContainer: React.FC<Props> = ({
           borderRadius: '4px',
           flex: 1,
           overflow: 'scroll',
-          minHeight: 0, 
+          minHeight: 0,
           // TODO: make this a prop
           // Hide the scrollbars
           '&::-webkit-scrollbar': {
@@ -325,13 +325,13 @@ const ResourceTableContainer: React.FC<Props> = ({
             }}
           >
             {table.getHeaderGroups().map(headerGroup => (
-              <tr 
-                key={headerGroup.id} 
+              <tr
+                key={headerGroup.id}
                 style={{ display: 'flex', width: '100%', cursor: 'pointer' }}
               >
                 {headerGroup.headers.map(header => (
-                  <th 
-                    key={header.id} 
+                  <th
+                    key={header.id}
                     style={{
                       alignContent: 'center',
                       display: 'flex',
@@ -342,7 +342,7 @@ const ResourceTableContainer: React.FC<Props> = ({
                       minWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
                       maxWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
                       flex: 1,
-                    }} 
+                    }}
                   >
                     {header.column.getCanSort()
                       ? <Link
@@ -356,7 +356,7 @@ const ResourceTableContainer: React.FC<Props> = ({
                           '& svg': {
                             transition: '0.2s',
                             transform:
-                                header.column.getIsSorted() as string === 'desc' ? 'rotate(180deg)' : 'rotate(0deg)',
+                              header.column.getIsSorted() as string === 'desc' ? 'rotate(180deg)' : 'rotate(0deg)',
                           },
                         }}
                       >
@@ -388,8 +388,8 @@ const ResourceTableContainer: React.FC<Props> = ({
                   namespace={namespaceAccessor ? get(row.original, namespaceAccessor) : undefined}
                   row={row}
                   memoizer={memoizer}
-                  virtualizer={virtualizer} 
-                  virtualRow={virtualRow} 
+                  virtualizer={virtualizer}
+                  virtualRow={virtualRow}
                   isSelected={rowSelection[row.id]}
                   columnVisibility={JSON.stringify(columnVisibility)}
                 />

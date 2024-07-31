@@ -45,7 +45,7 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
       display: 'none',
     },
   };
-  
+
   // memoize the scrollable styles to prevent rerenders
   const scrollStyle = React.useMemo(() => scrollableSx, [scrollable]);
 
@@ -179,8 +179,8 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
           >
             {MemoizedIcon}
           </IconButton>
-        ) : ( 
-          typeof item.decorator === 'string' 
+        ) : (
+          typeof item.decorator === 'string'
             ? (
               <Chip size='sm' variant='outlined' color='neutral' sx={{ borderRadius: 'sm' }}>
                 <Typography level='body-xs' fontSize={10}>{item.decorator}</Typography>
@@ -196,9 +196,9 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
           {item.icon && (
             <ListItemDecorator>
               {typeof item.icon === 'string' ? (
-                IsImage(item.icon) 
+                IsImage(item.icon)
                   ? <Avatar size='sm' src={item.icon} sx={{ borderRadius: 'sm', maxHeight: 20, maxWidth: 20 }} />
-                  : <Icon name={item.icon} size={16}/>
+                  : <Icon name={item.icon} size={16} />
               ) : (
                 item.icon
               )}
