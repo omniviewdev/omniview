@@ -58,6 +58,11 @@
       ]
     }
   },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build"
+  ],
   "include": [
     "ui",
     "vite.config.ts",

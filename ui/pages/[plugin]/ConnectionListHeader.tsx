@@ -23,8 +23,8 @@ type Props = {
 const ConnectionListHeader: React.FC<Props> = ({ search, onSearchChange }) => (
   <Sheet
     sx={{
-      px: 2,
-      py: 1,
+      px: 0.5,
+      py: 0.5,
       backgroundColor: 'background.surface',
       display: 'flex',
       width: '100%',
@@ -36,7 +36,12 @@ const ConnectionListHeader: React.FC<Props> = ({ search, onSearchChange }) => (
     variant='outlined'
   >
     {/* Left side of the header */}
-    <Stack direction='row' alignItems='center' gap={1.5}>
+    <Stack
+      direction='row'
+      alignItems='center'
+      gap={1}
+      pl={1}
+    >
       <TbCloudDataConnection size={20} />
       <Typography fontSize={16} fontWeight={600}>Connections</Typography>
     </Stack>

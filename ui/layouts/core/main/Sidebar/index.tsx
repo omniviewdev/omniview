@@ -53,7 +53,7 @@ export default function CoreLayoutSidebar() {
           },
         }}
       />
-      {/* Cluster List */}
+      {/* Dynamic Plugins */}
       <List size='sm' sx={{ '--ListItem-radius': '6px', '--List-gap': '8px', '--ListItem-paddingY': '0px' }}>
         {!plugins.isLoading && plugins.data?.map(({ id, metadata }) => (
           <ListItem key={id}>
@@ -73,6 +73,36 @@ export default function CoreLayoutSidebar() {
             </Link>
           </ListItem>
         ))}
+
+        <ListItem key={'trivy'}>
+          <Link to={'/trivy'}>
+            <IconButton variant={pathname.startsWith('/trivy') ? 'solid' : 'plain'} size='lg'>
+              <Avatar
+                size='sm'
+                src={'https://raw.githubusercontent.com/aquasecurity/trivy-docker-extension/main/trivy.svg'}
+                variant='plain'
+                sx={{
+                  borderRadius: 4, backgroundColor: 'transparent', objectFit: 'contain', border: 0,
+                }}
+              />
+            </IconButton>
+          </Link>
+        </ListItem>
+
+        <ListItem key={'apollo'}>
+          <Link to={'/apollo'}>
+            <IconButton variant={pathname.startsWith('/apollo') ? 'solid' : 'plain'} size='lg'>
+              <Avatar
+                size='sm'
+                src={'https://apollographql.gallerycdn.vsassets.io/extensions/apollographql/vscode-apollo/1.20.0/1697476209611/Microsoft.VisualStudio.Services.Icons.Default'}
+                variant='plain'
+                sx={{
+                  borderRadius: 4, backgroundColor: 'transparent', objectFit: 'contain', border: 0,
+                }}
+              />
+            </IconButton>
+          </Link>
+        </ListItem>
       </List>
     </Sheet>
   );

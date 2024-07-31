@@ -16,18 +16,17 @@ const HeaderSearchArea: React.FC = () => (
     size='sm'
     variant='outlined'
     placeholder='Search anything…'
-    startDecorator={<SearchRoundedIcon color='primary' />}
+    startDecorator={<SearchRoundedIcon color='primary' fontSize='small' />}
     endDecorator={
       <IconButton variant='outlined' color='neutral'>
         <Typography fontWeight='lg' fontSize='sm' textColor='text.icon'>
-            ⌘ + k
+          ⌘ + k
         </Typography>
       </IconButton>
     }
     sx={{
       flexBasis: '500px',
       display: 'flex',
-      boxShadow: 'sm',
       minWidth: {
         md: 400,
         lg: 400,

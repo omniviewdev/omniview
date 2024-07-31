@@ -35,7 +35,7 @@ const getConnectionOrderedLabelCols = (connections: types.Connection[]) => {
   });
 
   return cols;
-};  
+};
 
 /**
  * Main connection table component.
@@ -44,7 +44,10 @@ const ConnectionTable: React.FC<Props> = ({ connections }) => {
   return (
     <Sheet
       variant="outlined"
-      sx={{ width: '100%', boxShadow: 'sm', borderRadius: 'sm' }}
+      sx={{
+        width: '100%',
+        borderRadius: 'sm',
+      }}
     >
       <Table
         aria-label='connections table'
@@ -52,10 +55,10 @@ const ConnectionTable: React.FC<Props> = ({ connections }) => {
         hoverRow
         sx={{
           '--TableCell-headBackground':
-              'var(--joy-palette-background-level1)',
+            'var(--joy-palette-background-level1)',
           '--Table-headerUnderlineThickness': '1px',
           '--TableRow-hoverBackground':
-              'var(--joy-palette-background-level1)',
+            'var(--joy-palette-background-level1)',
           '--TableCell-paddingY': '2px',
           '--TableCell-paddingX': '8px',
           WebkitUserSelect: 'none',
@@ -64,7 +67,7 @@ const ConnectionTable: React.FC<Props> = ({ connections }) => {
         <thead>
           <tr>
             <th style={{ width: '40%', verticalAlign: 'middle' }}>
-              <Typography sx={{ pl: 0.5 }}>Name</Typography> 
+              <Typography sx={{ pl: 0.5 }}>Name</Typography>
             </th>
             {Object.entries(getConnectionOrderedLabelCols(connections)).sort().map(([label, width]) => (
               <th key={label} style={{ width: width + 8, verticalAlign: 'middle', paddingLeft: 4 }}>

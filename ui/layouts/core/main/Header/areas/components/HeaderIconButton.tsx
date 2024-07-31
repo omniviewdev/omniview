@@ -18,7 +18,6 @@ const HeaderIconButton: React.FC<Props> = ({ id, helpText, icon, onClick }) => (
     <IconButton
       name={id}
       size='sm'
-      variant='outlined'
       color='neutral'
       onClick={onClick}
       sx={{

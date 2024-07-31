@@ -5,9 +5,16 @@ import { store } from './store/store';
 import './utils/globalutils';
 import './providers/monaco/bootstrap';
 
+import {
+  experimental_extendTheme as materialExtendTheme,
+  Experimental_CssVarsProvider as MaterialCssVarsProvider,
+  THEME_ID as MATERIAL_THEME_ID,
+} from '@mui/material/styles';
+
 // Providers
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+// import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { CssVarsProvider, StyledEngineProvider } from '@mui/joy/styles';
+import theme from './theme';
 import { WindowProvider } from '@/providers/WindowProvider';
 import { Renderer } from '@/providers/PaneProvider';
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
@@ -37,6 +44,8 @@ function fallbackRender({ error }: { error: Error }) {
   );
 }
 
+const materialTheme = materialExtendTheme();
+
 /**
  * Create the primary extension registry for other applications to expand upon.
  */
@@ -50,23 +59,29 @@ const App: React.FC = () => (
     <ExtensionProvider registry={registry}>
       <AppSnackbarProvider>
         <QueryClientProvider client={queryClient}>
-          <StyledEngineProvider injectFirst>
-            <Provider store={store}>
-              <CssVarsProvider
-                defaultMode='dark'
-                modeStorageKey='omniview_identify-system-mode'
-                // Set as root provider
-                disableNestedContext
-              >
-                <WindowProvider>
-                  <RightDrawerProvider>
-                    <Renderer />
-                  </RightDrawerProvider>
-                </WindowProvider>
-              </CssVarsProvider>
-            </Provider>
-          </StyledEngineProvider>
-          <ReactQueryDevtools initialIsOpen={false} buttonPosition='bottom-right' />
+          <MaterialCssVarsProvider
+            defaultMode="dark"
+            theme={{ [MATERIAL_THEME_ID]: materialTheme }}
+          >
+            <StyledEngineProvider injectFirst>
+              <Provider store={store}>
+                <CssVarsProvider
+                  defaultMode='dark'
+                  modeStorageKey='omniview_identify-system-mode'
+                  // Set as root provider
+                  disableNestedContext
+                  theme={theme}
+                >
+                  <WindowProvider>
+                    <RightDrawerProvider>
+                      <Renderer />
+                    </RightDrawerProvider>
+                  </WindowProvider>
+                </CssVarsProvider>
+              </Provider>
+            </StyledEngineProvider>
+          </MaterialCssVarsProvider>
+          {/* <ReactQueryDevtools initialIsOpen={false} buttonPosition='bottom-right' /> */}
         </QueryClientProvider>
       </AppSnackbarProvider>
     </ExtensionProvider>

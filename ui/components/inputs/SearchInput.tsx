@@ -34,7 +34,7 @@ const SearchInput: React.FC<Props> = ({ placeholder, value, onChange }) => {
       variant='outlined'
       autoComplete='off'
       type='text'
-      placeholder={placeholder || 'Search'}
+      placeholder={placeholder ?? 'Search'}
       startDecorator={<SearchRoundedIcon color='primary' />}
       endDecorator={endDecorator}
       value={value}
@@ -44,7 +44,6 @@ const SearchInput: React.FC<Props> = ({ placeholder, value, onChange }) => {
       sx={{
         flexBasis: '500px',
         display: 'flex',
-        boxShadow: 'sm',
         minWidth: {
           md: 400,
           lg: 400,

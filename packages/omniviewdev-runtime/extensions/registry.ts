@@ -50,6 +50,22 @@ export class ExtensionPointRegistry {
   }
 
   /**
+   * List extension points, grouped by owner
+   */
+  listExtensionPointsByOwner(): Record<string, ExtensionRegistrySettings[]> {
+    const byOwner: Record<string, ExtensionRegistrySettings[]> = {};
+    Object.values(this.store).forEach((store) => {
+      const owner = store.settings().owner;
+      if (!byOwner[owner]) {
+        byOwner[owner] = [];
+      }
+
+      byOwner[owner].push(store.settings());
+    });
+    return byOwner;
+  }
+
+  /**
    * List all extensions in the registry.
    */
   listExtensionPoints(): ExtensionRegistrySettings[] {

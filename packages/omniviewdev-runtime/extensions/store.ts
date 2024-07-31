@@ -1,5 +1,10 @@
 export type ExtensionRegistrySettings = {
   /**
+  * The ID of the plugin (or 'core') that owns the extension point
+  */
+  owner: string;
+
+  /**
   * The ID of the extension point
   */
   id: string;
