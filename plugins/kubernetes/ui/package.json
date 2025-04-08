@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && nx build",
+    "build": "tsc && vite build",
     "lint": "nx lint --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "nx preview",
     "storybook": "storybook dev -p 6006",

@@ -25,4 +25,4 @@ lint-kubernetes:
 	cd plugins/kubernetes && golangci-lint run --fix
 
 install-kubernetes:
-	cd plugins/kubernetes && go build
+	cd plugins/kubernetes && go build pkg/main.go

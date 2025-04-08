@@ -1,6 +1,6 @@
 module github.com/omniview/kubernetes
 
-go 1.21.3
+go 1.23.8
 
 require (
 	github.com/gobuffalo/flect v1.0.2
@@ -70,8 +70,8 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace github.com/omniviewdev/plugin-sdk => ../../packages/plugin-sdk
+replace github.com/omniviewdev/omniview => ../../
 
-replace github.com/omniviewdev/omniview => ../../src
+replace github.com/omniviewdev/plugin-sdk => ../../pkg/plugin-sdk
 
 replace github.com/omniviewdev/settings => ../../pkg/settings

@@ -284,6 +284,7 @@ const ResourceTableContainer: React.FC<Props> = ({
         variant='outlined'
         ref={parentRef}
         sx={{
+          backgroundColor: 'inherit',
           width: '100%',
           borderRadius: '4px',
           flex: 1,
@@ -309,7 +310,7 @@ const ResourceTableContainer: React.FC<Props> = ({
               'var(--joy-palette-background-level1)',
             '--Table-headerUnderlineThickness': '1px',
             '--TableRow-hoverBackground':
-              'var(--joy-palette-background-level1)',
+              'var(--joy-palette-background-level2)',
             '--TableCell-paddingY': '0px',
             '--TableCell-paddingX': '8px',
             '--TableCell-height': '36px',

@@ -206,7 +206,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
           )}
           <ListItemContent>
             <Typography
-              level={item.children?.length ? 'inherit' : 'body-sm'}
+              level={item.children?.length ? 'title-sm' : 'body-xs'}
             >
               {item.label}
             </Typography>

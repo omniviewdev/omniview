@@ -140,7 +140,7 @@ const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
     }
 
     const updateAge = () => {
-      setTime(formatTimeDifference(date)); 
+      setTime(formatTimeDifference(date));
     };
 
     // Set the interval to update the age every 60 seconds
@@ -148,7 +148,7 @@ const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
 
     // Cleanup the interval on component unmount
     return () => {
-      clearInterval(intervalId); 
+      clearInterval(intervalId);
     };
   }, [value, initialAge]);
 
@@ -159,7 +159,7 @@ const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
 const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorator, endDecorator, formatter, children }) => {
   const getColor = () => {
     if (colorMap) {
-      let val = colorMap[value] ?? colorMap['*'] ?? 'neutral';
+      let val = colorMap[value] ?? colorMap['*'] ?? undefined;
 
       switch (val) {
         case 'healthy':
@@ -174,11 +174,11 @@ const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorat
         case 'primary':
           return 'primary';
         default:
-          return 'neutral';
+          return undefined;
       }
     }
 
-    return color ?? 'neutral';
+    return color ?? undefined;
   };
 
   const getAlignment = () => {
@@ -197,9 +197,9 @@ const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorat
   };
 
   return (
-    <Box 
-      display='flex' 
-      flex={1} 
+    <Box
+      display='flex'
+      flex={1}
       justifyContent={getAlignment()}
       alignItems='center'
       sx={{
@@ -211,15 +211,15 @@ const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorat
       }}
     >
       {children ??
-      <Typography 
-        level='body-xs'
-        color={getColor()}
-        startDecorator={startDecorator}
-        endDecorator={endDecorator}
-        noWrap
-      >
-        {formatter && formatters[formatter] ? formatters[formatter](value) : `${value}`}
-      </Typography>
+        <Typography
+          level='body-xs'
+          color={getColor()}
+          startDecorator={startDecorator}
+          endDecorator={endDecorator}
+          noWrap
+        >
+          {formatter && formatters[formatter] ? formatters[formatter](value) : `${value}`}
+        </Typography>
       }
     </Box>
   );
@@ -239,11 +239,11 @@ const TextCell: React.FC<Props> = ({ formatter, ...props }) => {
 
   switch (formatter?.toLowerCase()) {
     case 'age':
-      return <AgeCell {...props}/>;
+      return <AgeCell {...props} />;
     default:
       return <CellBase {...props} formatter={formatter?.toLowerCase()} />;
   }
 };
 
 export default TextCell;
-  
+

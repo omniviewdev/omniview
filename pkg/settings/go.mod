@@ -1,6 +1,6 @@
 module github.com/omniviewdev/settings
 
-go 1.21.3
+go 1.23.8
 
 require go.uber.org/zap v1.27.0
 

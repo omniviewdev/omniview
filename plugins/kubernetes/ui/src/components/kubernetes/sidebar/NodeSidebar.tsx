@@ -3,6 +3,7 @@ import React from "react";
 // material-ui
 import Stack from "@mui/joy/Stack";
 import Table from "@mui/joy/Table";
+import Chip from '@mui/joy/Chip';
 
 // types
 import { Node } from "kubernetes-types/core/v1";
@@ -10,7 +11,7 @@ import { Node } from "kubernetes-types/core/v1";
 // project-imports
 import ObjectMetaSection from "../../shared/ObjectMetaSection";
 import CommonCard from "../../shared/Card";
-import { Avatar, Card, CardContent, Divider, Grid, Typography } from "@mui/joy";
+import { Avatar, Card, CardContent, CardOverflow, Grid, Typography } from "@mui/joy";
 import DynamicIcon from "../../../stories/components/DynamicIcon";
 import { convertKubernetesByteUnits } from "../../../utils/convert";
 
@@ -119,14 +120,14 @@ const ResourcesInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
     <CommonCard title="Resources" icon="LuServer">
       <Table aria-label="resources table">
         <thead>
-          <tr>
+          <tr style={{ height: 30 }}>
             <th style={{ width: "100px" }}></th>
-            <th>CPU</th>
-            <th>Memory</th>
-            <th>Ephemeral Storage</th>
-            <th>Pods</th>
-            <th>Hugepages 1Gi</th>
-            <th>Hugepages 2Mi</th>
+            <th style={{ fontSize: 12 }}>CPU</th>
+            <th style={{ fontSize: 12 }}>Memory</th>
+            <th style={{ fontSize: 12 }}>Ephemeral Storage</th>
+            <th style={{ fontSize: 12 }}>Pods</th>
+            <th style={{ fontSize: 12 }}>Hugepages 1Gi</th>
+            <th style={{ fontSize: 12 }}>Hugepages 2Mi</th>
           </tr>
         </thead>
         <tbody>
@@ -272,6 +273,11 @@ const KubernetesInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
 };
 
 const ImagesInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
+  const totalSize = node?.status?.images?.reduce((prev, curr) => {
+    const additional = curr.sizeBytes ? curr.sizeBytes : 0
+    return prev + additional
+  }, 0)
+
   const data = node?.status?.images?.map((image) => {
     return {
       key: image.names?.find((name) => !name.includes("sha256")),
@@ -282,7 +288,16 @@ const ImagesInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
       ratio: [10, 2],
     };
   }) as DetailsCardEntry[];
-  return <DetailsCard title="Images" icon="LuLayers" data={data} />;
+  return <DetailsCard
+    endAdornment={<Chip variant="soft">{
+      convertKubernetesByteUnits({
+        from: `${totalSize}B`,
+        to: "MB",
+      })}</Chip>}
+    title="Images"
+    icon="LuLayers"
+    data={data}
+  />;
 };
 
 const EndpointsInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
@@ -318,7 +333,7 @@ const KarpenterInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
       key: "Encryption In Transit",
       value:
         node.metadata?.labels?.[
-          "karpenter.k8s.aws/instance-encryption-in-transit-supported"
+        "karpenter.k8s.aws/instance-encryption-in-transit-supported"
         ],
     },
     {
@@ -351,28 +366,36 @@ interface DetailsCardProps {
   title: string;
   icon: string | React.ReactNode;
   data: DetailsCardEntry[];
+  endAdornment?: React.ReactNode;
 }
 
-const DetailsCard: React.FC<DetailsCardProps> = ({ title, icon, data }) => {
+const DetailsCard: React.FC<DetailsCardProps> = ({ title, icon, data, endAdornment }) => {
   return (
-    <Card variant="outlined" sx={{ p: 1, gap: 1 }}>
-      <Stack direction="row" spacing={1} alignItems={"center"}>
-        {typeof icon === "string" ? (
-          icon.startsWith("http") ? (
-            <Avatar
-              src={icon}
-              size="sm"
-              sx={{ maxHeight: 16, maxWidth: 16, borderRadius: 4 }}
-            />
+    <Card
+      variant="outlined"
+      sx={{
+        bgcolor: 'background.level1'
+      }}
+    >
+      <CardOverflow sx={{ p: 1, display: 'flex', flexDirection: 'row', justifyContent: 'space-between', bgcolor: 'background.surface', borderBottom: '1px solid divider' }}>
+        <Stack direction="row" spacing={1} alignItems={"center"}>
+          {typeof icon === "string" ? (
+            icon.startsWith("http") ? (
+              <Avatar
+                src={icon}
+                size="sm"
+                sx={{ maxHeight: 16, maxWidth: 16, borderRadius: 4 }}
+              />
+            ) : (
+              <DynamicIcon name={icon} size={14} />
+            )
           ) : (
-            <DynamicIcon name={icon} size={14} />
-          )
-        ) : (
-          icon
-        )}
-        <Typography level="title-sm">{title}</Typography>
-      </Stack>
-      <Divider />
+            icon
+          )}
+          <Typography level="title-sm">{title}</Typography>
+        </Stack>
+        {endAdornment}
+      </CardOverflow>
       <CardContent>
         <Grid container spacing={1}>
           {data.map((entry) => (

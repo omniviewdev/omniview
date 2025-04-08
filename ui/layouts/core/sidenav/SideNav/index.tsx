@@ -16,7 +16,7 @@ type Props = {
  */
 const SideNav: React.FC<Props> = ({ type = 'inset', scrollable = false, children, width, padding }) => {
   const BorderedSx = {
-    bgcolor: 'background.surface',
+    bgcolor: '#131315',
     borderRight: '1px solid',
     borderColor: 'divider',
   };
