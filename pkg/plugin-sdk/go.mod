@@ -1,6 +1,6 @@
 module github.com/omniviewdev/plugin-sdk
 
-go 1.21.3
+go 1.23.8
 
 require (
 	github.com/creack/pty v1.1.21
@@ -35,4 +35,4 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
 
-replace github.com/omniviewdev/settings => ../../pkg/settings
+// replace github.com/omniviewdev/settings => ../../pkg/settings

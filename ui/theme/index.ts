@@ -10,9 +10,9 @@ export default extendTheme({
         'variant': 'outlined',
       },
       'styleOverrides': {
-        'root': {
-          'boxShadow': 'none',
-        },
+        'root': ({ ownerState }) => ({
+          boxShadow: 'none',
+        })
       },
     },
     'JoyListItemContent': {
@@ -35,18 +35,19 @@ export default extendTheme({
         'background': {
           'body': 'var(--joy-palette-neutral-900)',
           'surface': 'var(--joy-palette-neutral-800)',
+          'level1': '#131315',
         },
         'neutral': {
-          '50': '#fafafa',
-          '100': '#f4f4f5',
-          '200': '#e4e4e7',
-          '300': '#d4d4d8',
-          '400': '#a1a1aa',
-          '500': '#71717a',
-          '600': '#52525b',
-          '700': '#3f3f46',
-          '800': '#27272a',
-          '900': '#18181b',
+          '50': '#f4f4f5',
+          '100': '#e4e4e7',
+          '200': '#d4d4d8',
+          '300': '#a1a1aa',
+          '400': '#71717a',
+          '500': '#52525b',
+          '600': '#3f3f46',
+          '700': '#27272a',
+          '800': '#18181b',
+          '900': '#0E0E10',
         },
         'primary': {
           '50': '#f8fafc',
@@ -62,7 +63,7 @@ export default extendTheme({
         },
         "text": {
           "primary": "var(--joy-palette-primary-50)",
-          "secondary": "var(--joy-palette-primary-200)",
+          "secondary": "var(--joy-palette-primary-100)",
           "tertiary": "var(--joy-palette-primary-300)",
           'icon': 'var(--joy-palette-primary-50)',
         }
