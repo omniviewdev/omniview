@@ -1,5 +1,8 @@
 .PHONY: docs
 
+prepare:
+	go install github.com/wailsapp/wails/v2/cmd/wails@v2.8.0
+
 sync:
 	go work sync
 
