@@ -1,0 +1,49 @@
+syntax = "proto3";
+package com.omniview.pluginsdk;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+option go_package = "./proto";
+
+message HasInformerRequest {
+  string connection = 1;
+}
+
+message StartConnectionInformerRequest {
+  string key = 1;
+  string connection = 2;
+}
+
+message StopConnectionInformerRequest {
+  string key = 1;
+  string connection = 2;
+}
+
+message InformerEvent {
+  string key = 1;
+  string connection = 2;
+  string id = 3;
+  string namespace = 4;
+  oneof action {
+    InformerAddEvent add = 5;
+    InformerUpdateEvent update = 6;
+    InformerDeleteEvent delete = 7;
+  }
+}
+
+message InformerAddEvent {
+  google.protobuf.Struct data = 1;
+}
+
+message InformerUpdateEvent {
+  google.protobuf.Struct old_data = 1;
+  google.protobuf.Struct new_data = 2;
+}
+
+message InformerDeleteEvent {
+  google.protobuf.Struct data = 1;
+}

@@ -1,0 +1,274 @@
+syntax = "proto3";
+package com.omniview.pluginsdk;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/any.proto";
+
+import "proto/resource_connection.proto";
+import "proto/resource_layout.proto";
+import "proto/resource_informer.proto";
+
+option go_package = "./proto";
+
+// Get
+
+message GetRequest {
+  string key = 1;
+  string context = 2;
+
+  string id = 3;
+  string namespace = 4;
+}
+
+message GetResponse {
+  bool success = 1;
+  google.protobuf.Struct data = 2;
+}
+
+// List
+
+message ListRequest {
+  string key = 1;
+  string context = 2;
+  repeated string namespaces = 3;
+}
+
+message ListResponse {
+  bool success = 1;
+  google.protobuf.Struct data = 2;
+}
+
+// Find
+
+message FindRequest {
+  string key = 1;
+  string context = 2;
+  repeated string namespaces = 3;
+}
+
+message FindResponse {
+  bool success = 1;
+  google.protobuf.Struct data = 2;
+}
+
+// Create
+
+message CreateRequest {
+  string key = 1;
+  string context = 2;
+  string id = 3;
+  string namespace = 4;
+  google.protobuf.Struct data = 5;
+}
+
+message CreateResponse {
+  bool success = 1;
+  google.protobuf.Struct data = 2;
+}
+
+// Update
+
+message UpdateRequest {
+  string key = 1;
+  string context = 2;
+  string id = 3;
+  string namespace = 4;
+  google.protobuf.Struct data = 5;
+}
+
+message UpdateResponse {
+  bool success = 1;
+  google.protobuf.Struct data = 2;
+}
+
+// Delete
+
+message DeleteRequest {
+  string key = 1;
+  string context = 2;
+  string id = 3;
+  string namespace = 4;
+}
+
+message DeleteResponse {
+  bool success = 1;
+  google.protobuf.Struct data = 2;
+}
+
+
+message ResourceMeta {
+  string group = 1;
+  string version = 2;
+  string kind = 3;
+  string description = 4;
+  string category = 5;
+}
+
+message ResourceGroup {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string icon = 4;
+  VersionedResourceTypes resources = 5;
+}
+
+message ResourceTypes {
+  repeated ResourceMeta types = 1;
+}
+
+message VersionedResourceTypes {
+  map<string, ResourceTypes> versions = 1;
+}
+
+message ResourceTypeRequest {
+  string id = 1;
+}
+
+message ResourceGroupRequest {
+  string id = 1;
+}
+
+message ResourceGroupListRequest {
+  string connection_id = 1;
+}
+
+message ResourceTypeListRequest {
+  string connection_id = 1;
+}
+
+message ResourceGroupListResponse {
+  map<string, ResourceGroup> groups = 1;
+}
+
+message ColumnDef {
+  enum Alignment {
+    LEFT = 0;
+    RIGHT = 1;
+    CENTER = 2;
+  }
+  enum AccessorPriority {
+    ALL = 0;
+    FIRST = 1;
+    LAST = 2;
+  }
+  enum Formatter {
+    NONE = 0;
+    BYTES = 1;
+    DURATION = 2;
+    PERCENT = 3;
+    TIME = 4;
+    AGE = 5;
+    SUM = 6;
+    COUNT = 7;
+    AVG = 8;
+    MAX = 9;
+    MIN = 10;
+  }
+  string id = 1;
+  string header = 2;
+  string accessors = 3;
+  map<string, string> color_map = 4;
+  string color = 5;
+  Alignment alignment = 6;
+  bool hidden = 7;
+  int32 width = 8;
+  Formatter formatter = 9;
+  string component = 10;
+  google.protobuf.Any component_params = 11;
+  ResourceLink resource_link = 12;
+  AccessorPriority accessor_priority = 13;
+  map<string, string> value_map = 14;
+}
+
+message ResourceLink {
+  string id_accessor = 1;
+  string namespace_accessor = 2;
+  string key = 3;
+  string key_accessor = 4;
+  map<string, string> key_map = 5;
+  map<string, string> detail_extractors = 6;
+  bool namespaced = 7;
+  bool display_id = 8;
+}
+
+// Static target for an action.
+// Defining this outside as we need to use this for the other plugin actions
+message ResourceActionTarget {
+  string label = 1;
+  string icon = 2;
+  string description = 3;
+  map<string, string> selectors = 4;
+}
+
+// Builder to generate a dynamic list of targets
+message ResourceActionTargetBuilder {
+  string label = 1;
+  string label_selector = 2;
+  repeated string paths = 3;
+  map<string, string> selectors = 4;
+}
+
+message ResourceAction {
+  // Built in action types, or a custom action.
+  enum Variant {
+    EXEC = 0;
+    LOGS = 1;
+    CUSTOM = 2;
+  }
+
+  string id = 1;
+  string label = 2;
+  string description = 3;
+  string icon = 4;
+  Variant variant = 5;
+  repeated ResourceActionTarget targets = 6;
+  repeated ResourceActionTargetBuilder target_builders = 7;
+  map<string, string> selectors = 8;
+}
+
+message ResourceDefinition {
+  string id_accessor = 1;
+  string namespace_accessor = 2;
+  string memo_accessor = 3;
+  repeated ColumnDef column_defs = 4;
+}
+
+
+service ResourcePlugin {
+  // Types
+  rpc GetResourceGroups(ResourceGroupListRequest) returns (ResourceGroupListResponse) {}
+  rpc GetResourceGroup(ResourceGroupRequest) returns (ResourceGroup) {}
+  rpc GetResourceTypes(ResourceTypeListRequest) returns (ResourceTypes) {}
+  rpc GetResourceType(ResourceTypeRequest) returns (ResourceMeta) {}
+  rpc HasResourceType(ResourceTypeRequest) returns (google.protobuf.BoolValue) {}
+  rpc GetResourceDefinition(ResourceTypeRequest) returns (ResourceDefinition) {}
+  // Connection
+  rpc StartConnection(ConnectionRequest) returns (ConnectionStatus) {}
+  rpc StopConnection(ConnectionRequest) returns (Connection) {}
+  rpc LoadConnections(google.protobuf.Empty) returns (ConnectionList) {}
+  rpc ListConnections(google.protobuf.Empty) returns (ConnectionList) {}
+  rpc GetConnection(ConnectionRequest) returns (Connection) {}
+  rpc GetConnectionNamespaces(ConnectionRequest) returns (ConnectionNamespacesResponse) {}
+  rpc UpdateConnection(UpdateConnectionRequest) returns (Connection) {}
+  rpc DeleteConnection(ConnectionRequest) returns (google.protobuf.Empty) {}
+  // Resource
+  rpc Get(GetRequest) returns (GetResponse) {}
+  rpc List(ListRequest) returns (ListResponse) {}
+  rpc Find(FindRequest) returns (FindResponse) {}
+  rpc Create(CreateRequest) returns (CreateResponse) {}
+  rpc Update(UpdateRequest) returns (UpdateResponse) {}
+  rpc Delete(DeleteRequest) returns (DeleteResponse) {}
+  // Informers 
+  rpc HasInformer(HasInformerRequest) returns (google.protobuf.BoolValue) {}
+  rpc StartConnectionInformer(StartConnectionInformerRequest) returns (google.protobuf.Empty) {}
+  rpc StopConnectionInformer(StopConnectionInformerRequest) returns (google.protobuf.Empty) {}
+  rpc ListenForEvents(google.protobuf.Empty) returns (stream InformerEvent) {}
+  // Layout
+  rpc GetLayout(GetLayoutRequest) returns (Layout) {}
+  rpc GetDefaultLayout(google.protobuf.Empty) returns (Layout) {}
+  rpc SetLayout(SetLayoutRequest) returns (google.protobuf.Empty) {}
+}
