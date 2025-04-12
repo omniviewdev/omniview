@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
 
 // xterm
-import { Terminal } from 'xterm';
+import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { CanvasAddon } from 'xterm-addon-canvas';
-import { WebglAddon } from 'xterm-addon-webgl';
+import { CanvasAddon } from '@xterm/addon-canvas';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { debounce } from '@/utils/debounce';
 
 // project import
@@ -30,7 +30,7 @@ const setupSignalHandlers = (sessionId: string) => {
 
   // TODO: Implementing these for now just to visualize and prepare, but not actually handling them
   // Will determine if we even need these.
-  
+
   runtime.EventsOn(constructSignalHandler('SIGINT', sessionId), () => {
     console.log('SIGINT');
   });
@@ -58,7 +58,7 @@ const setupSignalHandlers = (sessionId: string) => {
 };
 
 const cleanupSignalHandlers = (sessionId: string) => {
-  [ 'CLOSE', 'SIGINT', 'SIGQUIT', 'SIGTERM', 'SIGKILL', 'SIGHUP', 'SIGUSR1', 'SIGUSR2', 'SIGWINCH' ].forEach((signal) => {
+  ['CLOSE', 'SIGINT', 'SIGQUIT', 'SIGTERM', 'SIGKILL', 'SIGHUP', 'SIGUSR1', 'SIGUSR2', 'SIGWINCH'].forEach((signal) => {
     runtime.EventsOff(constructSignalHandler(signal, sessionId));
   });
 };
@@ -76,8 +76,10 @@ export default function TerminalContainer({ sessionId }: Props) {
   const xtermRef = useRef<Terminal | undefined>(undefined);
 
   const fitAddonRef = useRef<FitAddon | undefined>(undefined);
-  const canvasAddonRef = useRef<CanvasAddon | undefined>(undefined);
-  const webglAddonRef = useRef<WebglAddon | undefined>(undefined);
+  // const canvasAddonRef = useRef<CanvasAddon | undefined>(undefined);
+  // const webglAddonRef = useRef<WebglAddon | undefined>(undefined);
+
+  const textDecoder = new TextDecoder();
 
   const handleFit = () => {
     if (fitAddonRef.current !== undefined) {
@@ -103,39 +105,41 @@ export default function TerminalContainer({ sessionId }: Props) {
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
       scrollback: 0,
-      fontSize: 13,
-      fontFamily: 'Hack,Consolas,Liberation Mono,Menlo,Courier,monospace',
+      fontSize: 12,
+      fontFamily: "Consolas,Liberation Mono,Menlo,Courier,monospace",
       fontWeight: 'normal',
     });
 
     xtermRef.current = terminal;
 
     const fitAddon = new FitAddon();
-    const canvasAddon = new CanvasAddon();
-    const webglAddon = new WebglAddon();
-    webglAddon.onContextLoss(e => {
-      console.log('context loss', e);
-      webglAddon.dispose();
-    });
+    // const canvasAddon = new CanvasAddon();
+    // const webglAddon = new WebglAddon();
+    // webglAddon.onContextLoss(e => {
+    //   console.log('context loss', e);
+    //   webglAddon.dispose();
+    // });
 
     terminal.open(terminalRef.current);
 
     fitAddonRef.current = fitAddon;
-    canvasAddonRef.current = canvasAddon;
-    webglAddonRef.current = webglAddon;
+    // canvasAddonRef.current = canvasAddon;
+    // webglAddonRef.current = webglAddon;
 
     terminal.loadAddon(fitAddon);
-    terminal.loadAddon(canvasAddon);
-    terminal.loadAddon(webglAddon);
+    terminal.loadAddon(new CanvasAddon());
+    terminal.loadAddon(new WebglAddon());
+    // terminal.loadAddon(canvasAddon);
+    // terminal.loadAddon(webglAddon);
 
     terminal.focus();
 
     const debouncedFit = debounce(() => {
       fitAddon.fit();
-    }, 40);
+    }, 10);
 
     window.onresize = () => {
-      handleFit(); 
+      handleFit();
     };
 
     const resizeObserver = new ResizeObserver((_val) => {
@@ -146,7 +150,7 @@ export default function TerminalContainer({ sessionId }: Props) {
 
     terminal.onResize((event) => {
       var rows = event.rows;
-      var cols = event.cols;   
+      var cols = event.cols;
       ResizeSession(sessionId, rows, cols).catch((err) => {
         console.error('failed to set tty size', err);
       });
@@ -159,36 +163,38 @@ export default function TerminalContainer({ sessionId }: Props) {
     const attachToSession = async () => {
       console.log('attaching to session', sessionId);
 
-      try {
-        const data = await AttachSession(sessionId);
-        console.log('attach data', data.buffer);
-
-        if (data.buffer !== null && data.buffer !== undefined) {
-          terminal.write(Base64.toUint8Array(data.buffer as unknown as string));
+      runtime.EventsOn(stdout, (data: any) => {
+        if (data !== null && data !== undefined) {
+          console.log("stdout data:", data)
+          terminal.write(textDecoder.decode(Base64.toUint8Array(data)));
         }
+      });
+
+      runtime.EventsOn(stderr, (data: any) => {
+        if (data !== null && data !== undefined) {
+          console.log("stderr data:", data)
+          terminal.write(textDecoder.decode(Base64.toUint8Array(data)));
+        }
+      });
+
+      try {
+        await AttachSession(sessionId);
+        //
+        // if (data.buffer !== null && data.buffer !== undefined) {
+        //   terminal.write(data.buffer)
+        // }
       } catch (e) {
         console.error('failed to attach to session', e);
       }
-
-      runtime.EventsOn(stdout, (data: number[]) => {
-        if (data !== null && data !== undefined) {
-          terminal.write(Base64.toUint8Array(data as unknown as string));
-        }
-      });
-
-      runtime.EventsOn(stderr, (data: number[]) => {
-        if (data !== null && data !== undefined) {
-          terminal.write(Base64.toUint8Array(data as unknown as string));
-        }
-      });
 
       setupSignalHandlers(sessionId);
     };
 
     attachToSession().then(() => {
       console.log('attached to session %s', sessionId);
-
+      fitAddon.fit()
       terminal.onData(data => {
+        console.log("Typed", data)
         WriteSession(sessionId, data)
           .catch((err) => {
             if (err instanceof Error) {
@@ -234,15 +240,14 @@ export default function TerminalContainer({ sessionId }: Props) {
     };
   }, [sessionId]);
 
-  return <div 
-    ref={terminalRef} 
-    style={{ 
+  return <div
+    ref={terminalRef}
+    style={{
       backgroundColor: 'black',
       // a bit hacky, but works
       height: 'calc(100% - 28px)',
       paddingBottom: '34px',
-      // paddingLeft: '10px',
-    }} 
+    }}
   />;
 }
 

@@ -3,7 +3,6 @@ package utils
 import (
 	"errors"
 	"fmt"
-	"os"
 	"runtime"
 
 	"k8s.io/client-go/kubernetes"
@@ -41,10 +40,22 @@ func ClientsetAndConfigFromPluginCtx(
 	if !ok {
 		return nil, nil, errors.New("kubeconfig is required and must be a string")
 	}
+	//
+	// // build up the path with some defaults for finding binaries
+	// pathVar := api.ExecEnvVar{
+	// 	Name:  "PATH",
+	// 	Value: getPathAdditions(),
+	// }
+	// envVars = append(envVars, pathVar)
+	//
+	// authInfo := api.NewAuthInfo()
+	// authInfo.Exec = &api.ExecConfig{
+	// 	Env: envVars,
+	// }
 
 	// TODO: Change this to get from settings provider
-	os.Setenv("SHELL", "/bin/zsh")
-	os.Setenv("PATH", os.Getenv("PATH")+getPathAdditions())
+	// os.Setenv("SHELL", "/bin/zsh")
+	// os.Setenv("PATH", os.Getenv("PATH")+getPathAdditions())
 
 	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: val},

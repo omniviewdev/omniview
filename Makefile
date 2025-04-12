@@ -1,5 +1,5 @@
-.PHONY: docs
 
+.PHONY: docs
 prepare:
 	go install github.com/wailsapp/wails/v2/cmd/wails@v2.8.0
 
@@ -10,8 +10,13 @@ dev:
 	pnpm install
 	wails dev
 
+.PHONY: build
 build:
 	wails build
+
+.PHONY: build-debug
+build-debug:
+	wails build -debug
 
 lint: lint-core lint-plugin lint-kubernetes
 

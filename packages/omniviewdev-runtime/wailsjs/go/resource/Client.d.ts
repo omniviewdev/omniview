@@ -24,11 +24,11 @@ export function GetResourceDefinition(arg1:string,arg2:string):Promise<types.Res
 
 export function GetResourceGroup(arg1:string,arg2:string):Promise<types.ResourceGroup>;
 
-export function GetResourceGroups(arg1:string,arg2:string):Promise<{[key: string]: types.ResourceGroup}>;
+export function GetResourceGroups(arg1:string,arg2:string):Promise<Record<string, types.ResourceGroup>>;
 
 export function GetResourceType(arg1:string,arg2:string):Promise<types.ResourceMeta>;
 
-export function GetResourceTypes(arg1:string,arg2:string):Promise<{[key: string]: types.ResourceMeta}>;
+export function GetResourceTypes(arg1:string,arg2:string):Promise<Record<string, types.ResourceMeta>>;
 
 export function HasResourceType(arg1:string,arg2:string):Promise<boolean>;
 

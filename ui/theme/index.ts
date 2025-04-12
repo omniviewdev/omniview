@@ -9,11 +9,6 @@ export default extendTheme({
         'size': 'sm',
         'variant': 'outlined',
       },
-      'styleOverrides': {
-        'root': ({ ownerState }) => ({
-          boxShadow: 'none',
-        })
-      },
     },
     'JoyListItemContent': {
       'defaultProps': {

@@ -14,9 +14,9 @@ export function DetachSession(arg1:string):Promise<exec.Session>;
 
 export function GetHandler(arg1:string,arg2:string):Promise<exec.Handler>;
 
-export function GetHandlers():Promise<{[key: string]: {[key: string]: exec.Handler}}>;
+export function GetHandlers():Promise<Record<string, Record<string, exec.Handler>>>;
 
-export function GetPluginHandlers(arg1:string):Promise<{[key: string]: exec.Handler}>;
+export function GetPluginHandlers(arg1:string):Promise<Record<string, exec.Handler>>;
 
 export function GetSession(arg1:string):Promise<exec.Session>;
 

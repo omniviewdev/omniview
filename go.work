@@ -2,7 +2,9 @@ go 1.23.8
 
 use (
 	.
+	../wails/v2
 	./pkg/plugin-sdk
 	./pkg/settings
+	./plugins/aws
 	./plugins/kubernetes
 )

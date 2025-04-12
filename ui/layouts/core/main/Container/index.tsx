@@ -1,22 +1,23 @@
-import React from 'react';
-import { Outlet } from 'react-router-dom';
+// import React from 'react';
+import { Outlet, useInRouterContext } from 'react-router-dom';
 import Layout from '@/layouts/core/main';
 
 // Material-ui
 import Box from '@mui/joy/Box';
-import IconButton from '@mui/joy/IconButton';
-import usePanes, { usePane } from '@/hooks/usePanes';
+// import IconButton from '@mui/joy/IconButton';
+// import usePanes, { usePane } from '@/hooks/usePanes';
 
 // Icon
-import CloseIcon from '@mui/icons-material/Close';
+// import CloseIcon from '@mui/icons-material/Close';
 
 /**
  * The main rendering container for a pane layout.
  */
 export default function Container() {
-  const { numPanes, removePane } = usePanes();
-  const { id } = usePane();
-  const [showCloseButton, setShowCloseButton] = React.useState(false);
+  // const { numPanes, removePane } = usePanes();
+  // const { id } = usePane();
+  // const [showCloseButton, setShowCloseButton] = React.useState(false);
+  console.log("In Router Context", useInRouterContext())
 
   return (
     <Box
@@ -31,14 +32,14 @@ export default function Container() {
         overflow: 'auto',
         gap: 1,
       }}
-      onMouseEnter={() => {
-        if (numPanes > 1) {
-          setShowCloseButton(true);
-        }
-      }}
-      onMouseLeave={() => {
-        setShowCloseButton(false);
-      }}
+    // onMouseEnter={() => {
+    //   if (numPanes > 1) {
+    //     setShowCloseButton(true);
+    //   }
+    // }}
+    // onMouseLeave={() => {
+    //   setShowCloseButton(false);
+    // }}
     >
       <Box sx={{
         display: 'flex', flexDirection: 'column', width: '100%', height: '100%',
@@ -66,23 +67,23 @@ export default function Container() {
           <Layout.BottomDrawer />
         </Box>
       </Box>
-      {showCloseButton && numPanes > 1 && (
-        <IconButton
-          sx={{
-            position: 'absolute',
-            top: 0,
-            right: 0,
-          }}
-
-          color='neutral'
-          size='sm'
-          onClick={() => {
-            removePane(id);
-          }}
-        >
-          <CloseIcon />
-        </IconButton>
-      )}
+      {/* {showCloseButton && numPanes > 1 && ( */}
+      {/*   <IconButton */}
+      {/*     sx={{ */}
+      {/*       position: 'absolute', */}
+      {/*       top: 0, */}
+      {/*       right: 0, */}
+      {/*     }} */}
+      {/**/}
+      {/*     color='neutral' */}
+      {/*     size='sm' */}
+      {/*     onClick={() => { */}
+      {/*       removePane(id); */}
+      {/*     }} */}
+      {/*   > */}
+      {/*     <CloseIcon /> */}
+      {/*   </IconButton> */}
+      {/* )} */}
     </Box>
   );
 }

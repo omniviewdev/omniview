@@ -1,12 +1,10 @@
 module github.com/omniviewdev/aws-plugin
 
-go 1.21.3
+go 1.23.8
 
-replace github.com/omniviewdev/plugin-sdk => ../../packages/plugin-sdk
+replace github.com/omniviewdev/omniview => ../../
 
-replace github.com/omniviewdev/omniview => ../../src
-
-replace github.com/omniviewdev/settings => ../../pkg/settings
+replace github.com/omniviewdev/plugin-sdk => ../../pkg/plugin-sdk
 
 require (
 	github.com/omniviewdev/plugin-sdk v0.0.0-20240318235919-60d1ec21c49c

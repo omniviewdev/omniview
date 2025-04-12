@@ -64,12 +64,12 @@ const BottomDrawerContainer: React.FC = () => {
     const unsubscribeOnResizeDrawer = bottomDrawerChannel.on('onResize', (height) => {
       expandDrawerToHeight(height);
     });
-    
+
     const unsubscribeOnFullScreen = bottomDrawerChannel.on('onFullscreen', () => {
       expandDrawerToHeight(window.innerHeight);
     });
 
-    const unsubscribeOnMinimize = bottomDrawerChannel.on('onMinimize', () => { 
+    const unsubscribeOnMinimize = bottomDrawerChannel.on('onMinimize', () => {
       expandDrawerToHeight(minHeight);
     });
 
@@ -129,7 +129,7 @@ const BottomDrawerContainer: React.FC = () => {
     // Calculate the remaining viewport width to the right of the mouse cursor in pixels
     const remainingHeightPx = window.innerHeight - e.clientY;
     const newHeight = Math.max(remainingHeightPx, minHeight);
-  
+
     // Directly update the drawer's height bypassing React's state
     drawerRef.current.style.minHeight = `${newHeight}px`;
     drawerRef.current.style.maxHeight = `${newHeight}px`;
@@ -157,7 +157,7 @@ const BottomDrawerContainer: React.FC = () => {
 
   React.useEffect(() => {
     const handleMouseUpGlobal = () => {
-      setIsDragging(false); 
+      setIsDragging(false);
     };
 
     if (isDragging) {
@@ -213,17 +213,17 @@ const BottomDrawerContainer: React.FC = () => {
             width: '100%',
             cursor: 'row-resize',
             zIndex: 1291,
-            borderTop: `${isDragging ? 4 : 2 }px solid ${theme.palette.primary[400]}`,
+            borderTop: `${isDragging ? 4 : 2}px solid ${theme.palette.primary[400]}`,
             borderRadius: '0px 0px 0px 0px',
             opacity: isDragging ? 0.5 : isHovering ? 0.2 : 0,
             transition: 'opacity 0.2s, border 0.2s',
           }}
           onClick={handleClick}
           onMouseEnter={() => {
-            setIsHovering(true); 
+            setIsHovering(true);
           }}
           onMouseLeave={() => {
-            setIsHovering(false); 
+            setIsHovering(false);
           }}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
