@@ -370,6 +370,7 @@ func (m *Manager) AttachSession(
 
 	session.Attached = true
 	m.log.Debug("session attached", "session", sessionID)
+
 	return session, session.buffer.GetAll(), nil
 }
 

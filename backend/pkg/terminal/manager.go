@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"regexp"
 	"sync"
 	"syscall"
 
@@ -95,13 +96,18 @@ func (m *Manager) StartSession(
 	// Set up the command to run in a new pseudo-terminal.
 	ctx, cancel := context.WithCancel(context.Background())
 
+	newopts := make([]string, 0, len(opts.Command)+2)
+	newopts = append(newopts, "--login")
+	newopts = append(newopts, "-i")
+	newopts = append(newopts, opts.Command...)
+
 	// start default shell with commands appended to it
 	//nolint:gosec // whole point is to get a local shell from the local IDE, so this is just
 	// going to be exactly what the user wants
-	cmd := exec.CommandContext(ctx, DefaultLocalShell, opts.Command...)
+	cmd := exec.CommandContext(ctx, "/bin/zsh", newopts...)
 
 	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "TERM=xterm-256color", "LANG=en_US.UTF-8")
+	cmd.Env = append(cmd.Env, "SHELL=/bin/zsh", "TERM=xterm-256color")
 
 	if opts.Labels == nil {
 		opts.Labels = make(map[string]string)
@@ -254,6 +260,7 @@ func (m *Manager) handleOutStream(
 				m.log.Errorw("failed to write to session buffer: couldn't find session")
 				continue
 			}
+
 			session.RecordToBuffer(buf[:read])
 		}
 	}
@@ -279,6 +286,14 @@ func (m *Manager) writeToSession(sessionID string, bytes []byte) error {
 	return nil
 }
 
+// cleanPTYOutput removes the `%` symbol and its associated escape sequences.
+func cleanPTYOutput(output string) string {
+	// Define a regex pattern to match the escape sequence for `%`
+	pattern := `\x1b\[1m\x1b\[7m%\x1b\[27m\x1b\[1m\x1b\[0m`
+	re := regexp.MustCompile(pattern)
+	return re.ReplaceAllString(output, "")
+}
+
 // WriteSession writes data to the session's input.
 func (m *Manager) WriteSession(sessionID string, input []byte) error {
 	return m.writeToSession(sessionID, input)
@@ -296,8 +311,17 @@ func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, err
 		return nil, nil, err
 	}
 
+	// log the buffer data to see what's wrong
+	data := session.GetBufferData()
+	m.log.Debugf("session buffer data: %q", data)
+
 	// pointer, no need to reassign
 	session.Attached = true
+	m.outMux <- sdkexec.StreamOutput{
+		SessionID: sessionID,
+		Target:    sdkexec.StreamTargetStdOut,
+		Data:      data,
+	}
 
 	m.log.Debugw("session attached", "session", sessionID)
 	return session, session.GetBufferData(), nil

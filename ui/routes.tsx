@@ -10,8 +10,8 @@ import Plugins from './pages/plugins';
 import Settings from './pages/settings';
 
 // New core
-import PaneRenderer from './providers/PaneProvider';
-import Container from './layouts/core/main/Container';
+// import PaneRenderer from './providers/PaneProvider';
+// import Container from './layouts/core/main/Container';
 import Welcome from './pages/welcome';
 import PluginContainer from './layouts/core/main/PluginContainer';
 
@@ -34,13 +34,16 @@ import TrivyLicenses from './pages/trivy/pages/licenses';
 import TrivySBOM from './pages/trivy/pages/sbom';
 import TrivyMisconfiguration from './pages/trivy/pages/misconfiguration';
 
-// Apollo
-import ApolloSandboxPage from './pages/apollo';
+// // Apollo
+// import ApolloSandboxPage from './pages/apollo';
 
+/**
+ * We're having a bit of trouble with the nested context here
+ */
 export const scoped: RouteObject[] = [
   {
     path: '/',
-    Component: Container,
+    Component: CoreLayout,
     ErrorBoundary: RouterErrorBoundary,
     children: [
       {
@@ -49,8 +52,12 @@ export const scoped: RouteObject[] = [
         Component: Welcome,
       },
       {
-        path: 'apollo',
-        Component: ApolloSandboxPage,
+        path: 'plugins',
+        Component: Plugins,
+      },
+      {
+        path: 'settings',
+        Component: Settings,
       },
       {
         path: 'trivy',
@@ -125,35 +132,35 @@ export const scoped: RouteObject[] = [
   },
 ];
 
-/**
- *
- * The core router exists at the root of the application, and is used to provide
- * the global layout and navigation to the rest of the application.
- * Routes withing this router will override any display within the pane renderer,
- * with the root route displaying the pane renderer.
- */
-export const core = [
-  {
-    path: '/',
-    Component: CoreLayout,
-    children: [
-      {
-        path: '/',
-        index: true,
-        Component: PaneRenderer,
-      },
-      {
-        path: 'plugin',
-        Component: PaneRenderer,
-      },
-      {
-        path: 'settings',
-        Component: Settings,
-      },
-      {
-        path: 'plugins',
-        Component: Plugins,
-      },
-    ],
-  },
-];
+// /**
+//  *
+//  * The core router exists at the root of the application, and is used to provide
+//  * the global layout and navigation to the rest of the application.
+//  * Routes withing this router will override any display within the pane renderer,
+//  * with the root route displaying the pane renderer.
+//  */
+// export const core = [
+//   {
+//     path: '/',
+//     Component: CoreLayout,
+//     children: [
+//       {
+//         path: '',
+//         index: true,
+//         Component: PaneRenderer,
+//       },
+//       {
+//         path: 'plugin',
+//         Component: PaneRenderer,
+//       },
+//       {
+//         path: 'settings',
+//         Component: Settings,
+//       },
+//       {
+//         path: 'plugins',
+//         Component: Plugins,
+//       },
+//     ],
+//   },
+// ];

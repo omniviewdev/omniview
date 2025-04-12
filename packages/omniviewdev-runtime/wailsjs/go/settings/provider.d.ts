@@ -9,7 +9,7 @@ export function GetCategories():Promise<Array<settings.Category>>;
 
 export function GetCategory(arg1:string):Promise<settings.Category>;
 
-export function GetCategoryValues(arg1:string):Promise<{[key: string]: any}>;
+export function GetCategoryValues(arg1:string):Promise<Record<string, any>>;
 
 export function GetFloat(arg1:string):Promise<number>;
 
@@ -45,4 +45,4 @@ export function SaveSettings():Promise<void>;
 
 export function SetSetting(arg1:string,arg2:any):Promise<void>;
 
-export function SetSettings(arg1:{[key: string]: any}):Promise<void>;
+export function SetSettings(arg1:Record<string, any>):Promise<void>;

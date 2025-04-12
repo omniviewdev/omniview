@@ -16,7 +16,6 @@ import {
 import { CssVarsProvider, StyledEngineProvider } from '@mui/joy/styles';
 import theme from './theme';
 import { WindowProvider } from '@/providers/WindowProvider';
-import { Renderer } from '@/providers/PaneProvider';
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
 import RightDrawerProvider from '@/providers/RightDrawer';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -25,6 +24,9 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query';
 import ExtensionProvider, { createExtensionRegistry } from '@omniviewdev/runtime/extensions/provider';
+import { RouterProvider, createHashRouter } from 'react-router-dom';
+import { scoped } from './routes';
+import BottomDrawerProvider from './providers/BottomDrawer/provider';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -44,7 +46,10 @@ function fallbackRender({ error }: { error: Error }) {
   );
 }
 
+const coreRouter = createHashRouter(scoped);
 const materialTheme = materialExtendTheme();
+
+console.log("Router:", coreRouter)
 
 /**
  * Create the primary extension registry for other applications to expand upon.
@@ -74,7 +79,9 @@ const App: React.FC = () => (
                 >
                   <WindowProvider>
                     <RightDrawerProvider>
-                      <Renderer />
+                      <BottomDrawerProvider>
+                        <RouterProvider router={coreRouter} />
+                      </BottomDrawerProvider>
                     </RightDrawerProvider>
                   </WindowProvider>
                 </CssVarsProvider>

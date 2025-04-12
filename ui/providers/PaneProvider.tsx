@@ -1,7 +1,7 @@
-import { core, scoped } from '@/routes';
+import { scoped } from '@/routes';
 import React, { useMemo } from 'react';
 import {
-  createBrowserRouter, createMemoryRouter, Outlet, RouterProvider, UNSAFE_LocationContext, useLocation,
+  createHashRouter, createMemoryRouter, Outlet, RouterProvider, UNSAFE_LocationContext, useLocation,
 } from 'react-router-dom';
 import Box from '@mui/joy/Box';
 import PaneProviderContext, { PaneContext, type PaneProviderContextType, type Pane } from '@/contexts/PaneContext';
@@ -14,7 +14,7 @@ import BottomDrawerProvider from './BottomDrawer/provider';
 * layout.
 */
 export const Renderer: React.FC = () => {
-  const coreRouter = createBrowserRouter(core);
+  const coreRouter = createHashRouter(scoped);
 
   /** Start with a single pane */
   const [panes, setPanesStore] = React.useState<Pane[]>([{
@@ -49,6 +49,8 @@ export const Renderer: React.FC = () => {
     removePane,
   }), [panes, setPanes, addNewPane, removePane]);
 
+  console.log("PANES: ", panes)
+
   return (
     <PaneProviderContext.Provider value={contextValue}>
       <RouterProvider router={coreRouter} />
@@ -60,6 +62,9 @@ export default function PaneRenderer() {
   const { pathname } = useLocation();
   const { panes } = usePanes();
 
+  console.log("IN PANE RENDERER, PATHNAME: %s", pathname)
+  console.log("IN PANE RENDERER, PANES", panes)
+
   /**
    * If the pathname is the root, we're within the context
    * of the pane renderer. Other routes are pure application routes controlled by
@@ -70,6 +75,7 @@ export default function PaneRenderer() {
       <Box sx={{ width: 1 }}>
         <Box display='grid' gridTemplateColumns='repeat(12, 1fr)' gap={0}>
           {panes.map((pane, index) => {
+            console.log("rendering pane")
             const addRightBorder = index !== panes.length - 1;
             return (
               <Box

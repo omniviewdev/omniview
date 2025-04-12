@@ -6,8 +6,8 @@ export function GetSetting(arg1:string,arg2:string):Promise<settings.Setting>;
 
 export function ListPlugins():Promise<Array<string>>;
 
-export function ListSettings(arg1:string):Promise<{[key: string]: settings.Setting}>;
+export function ListSettings(arg1:string):Promise<Record<string, settings.Setting>>;
 
 export function SetSetting(arg1:string,arg2:string,arg3:any):Promise<void>;
 
-export function SetSettings(arg1:string,arg2:{[key: string]: any}):Promise<void>;
+export function SetSettings(arg1:string,arg2:Record<string, any>):Promise<void>;

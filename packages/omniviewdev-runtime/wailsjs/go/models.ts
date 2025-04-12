@@ -36,7 +36,7 @@ export namespace config {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -81,7 +81,7 @@ export namespace config {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -135,7 +135,7 @@ export namespace config {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -158,8 +158,8 @@ export namespace exec {
 	export class Session {
 	    // Go type: time
 	    created_at: any;
-	    labels: {[key: string]: string};
-	    params: {[key: string]: string};
+	    labels: Record<string, string>;
+	    params: Record<string, string>;
 	    id: string;
 	    command: string[];
 	    attached: boolean;
@@ -182,7 +182,7 @@ export namespace exec {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -198,7 +198,7 @@ export namespace exec {
 	}
 	export class AttachSessionResult {
 	    session?: Session;
-	    buffer: number[];
+	    buffer: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AttachSessionResult(source);
@@ -214,7 +214,7 @@ export namespace exec {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -229,7 +229,7 @@ export namespace exec {
 		}
 	}
 	export class CreateTerminalOptions {
-	    labels: {[key: string]: string};
+	    labels: Record<string, string>;
 	    command: string[];
 	
 	    static createFrom(source: any = {}) {
@@ -262,7 +262,7 @@ export namespace exec {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -278,12 +278,12 @@ export namespace exec {
 	}
 	
 	export class SessionOptions {
-	    params: {[key: string]: string};
-	    labels: {[key: string]: string};
+	    params: Record<string, string>;
+	    labels: Record<string, string>;
 	    id: string;
 	    resource_plugin: string;
 	    resource_key: string;
-	    resource_data: {[key: string]: any};
+	    resource_data: Record<string, any>;
 	    command: string[];
 	    tty: boolean;
 	
@@ -352,7 +352,7 @@ export namespace main {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -407,7 +407,7 @@ export namespace networker {
 	    // Go type: time
 	    updated_at: any;
 	    connection: any;
-	    labels: {[key: string]: string};
+	    labels: Record<string, string>;
 	    id: string;
 	    protocol: string;
 	    state: string;
@@ -439,7 +439,7 @@ export namespace networker {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -456,8 +456,8 @@ export namespace networker {
 	
 	export class PortForwardSessionOptions {
 	    connection: any;
-	    labels: {[key: string]: string};
-	    params: {[key: string]: string};
+	    labels: Record<string, string>;
+	    params: Record<string, string>;
 	    protocol: string;
 	    connection_type: string;
 	    encryption: PortForwardSessionEncryption;
@@ -484,7 +484,46 @@ export namespace networker {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace plugin {
+	
+	export class LoadPluginOptions {
+	    DevMode: boolean;
+	    DevModePath: string;
+	    ExistingState?: types.PluginState;
+	
+	    static createFrom(source: any = {}) {
+	        return new LoadPluginOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.DevMode = source["DevMode"];
+	        this.DevModePath = source["DevModePath"];
+	        this.ExistingState = this.convertValues(source["ExistingState"], types.PluginState);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -580,7 +619,7 @@ export namespace settings {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -595,7 +634,7 @@ export namespace settings {
 		}
 	}
 	export class Category {
-	    settings: {[key: string]: Setting};
+	    settings: Record<string, Setting>;
 	    id: string;
 	    label: string;
 	    description: string;
@@ -618,7 +657,7 @@ export namespace settings {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -675,7 +714,7 @@ export namespace trivy {
 	export class ScanResult {
 	    // Go type: time
 	    timestamp: any;
-	    result: {[key: string]: any};
+	    result: Record<string, any>;
 	    id: string;
 	    command: Command;
 	
@@ -695,7 +734,7 @@ export namespace trivy {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -730,7 +769,7 @@ export namespace types {
 	    REQUEST_ENTITY_TOO_LARGE = "REQUEST_ENTITY_TOO_LARGE",
 	}
 	export class ActionTargetBuilder {
-	    selectors: {[key: string]: string};
+	    selectors: Record<string, string>;
 	    label_selector: string;
 	    label: string;
 	    paths: string[];
@@ -753,8 +792,8 @@ export namespace types {
 	    namespaced: boolean;
 	    resourceKey: string;
 	    keyAccessor: string;
-	    keyMap: {[key: string]: string};
-	    detailExtractors: {[key: string]: string};
+	    keyMap: Record<string, string>;
+	    detailExtractors: Record<string, string>;
 	    displayId: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -778,7 +817,7 @@ export namespace types {
 	    header: string;
 	    accessor: string;
 	    accessorPriority?: string;
-	    colorMap?: {[key: string]: string};
+	    colorMap?: Record<string, string>;
 	    color?: string;
 	    align?: string;
 	    hidden?: boolean;
@@ -787,7 +826,7 @@ export namespace types {
 	    component?: string;
 	    componentParams?: any;
 	    resourceLink?: ResourceLink;
-	    valueMap?: {[key: string]: string};
+	    valueMap?: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
 	        return new ColumnDef(source);
@@ -815,7 +854,7 @@ export namespace types {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -832,8 +871,8 @@ export namespace types {
 	export class Connection {
 	    // Go type: time
 	    last_refresh: any;
-	    data: {[key: string]: any};
-	    labels: {[key: string]: any};
+	    data: Record<string, any>;
+	    labels: Record<string, any>;
 	    id: string;
 	    uid: string;
 	    name: string;
@@ -862,7 +901,7 @@ export namespace types {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -898,7 +937,7 @@ export namespace types {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -914,7 +953,7 @@ export namespace types {
 	}
 	export class CreateInput {
 	    params: any;
-	    input: {[key: string]: any};
+	    input: Record<string, any>;
 	    namespace: string;
 	
 	    static createFrom(source: any = {}) {
@@ -929,7 +968,7 @@ export namespace types {
 	    }
 	}
 	export class CreateResult {
-	    result: {[key: string]: any};
+	    result: Record<string, any>;
 	    success: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -943,8 +982,8 @@ export namespace types {
 	    }
 	}
 	export class DeleteInput {
-	    input: {[key: string]: any};
-	    params: {[key: string]: any};
+	    input: Record<string, any>;
+	    params: Record<string, any>;
 	    id: string;
 	    namespace: string;
 	
@@ -961,7 +1000,7 @@ export namespace types {
 	    }
 	}
 	export class DeleteResult {
-	    result: {[key: string]: any};
+	    result: Record<string, any>;
 	    success: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -1003,8 +1042,8 @@ export namespace types {
 	    }
 	}
 	export class FindInput {
-	    params: {[key: string]: any};
-	    conditions: {[key: string]: any};
+	    params: Record<string, any>;
+	    conditions: Record<string, any>;
 	    namespaces: string[];
 	    order: OrderParams;
 	    pagination: PaginationParams;
@@ -1026,7 +1065,7 @@ export namespace types {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -1059,7 +1098,7 @@ export namespace types {
 	    }
 	}
 	export class FindResult {
-	    result: {[key: string]: any};
+	    result: Record<string, any>;
 	    success: boolean;
 	    pagination: PaginationResult;
 	
@@ -1078,7 +1117,7 @@ export namespace types {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -1093,7 +1132,7 @@ export namespace types {
 		}
 	}
 	export class GetInput {
-	    params: {[key: string]: any};
+	    params: Record<string, any>;
 	    id: string;
 	    namespace: string;
 	
@@ -1109,7 +1148,7 @@ export namespace types {
 	    }
 	}
 	export class GetResult {
-	    result: {[key: string]: any};
+	    result: Record<string, any>;
 	    success: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -1146,7 +1185,7 @@ export namespace types {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -1161,7 +1200,7 @@ export namespace types {
 		}
 	}
 	export class ListInput {
-	    params: {[key: string]: any};
+	    params: Record<string, any>;
 	    namespaces: string[];
 	    order: OrderParams;
 	    pagination: PaginationParams;
@@ -1182,7 +1221,7 @@ export namespace types {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -1197,7 +1236,7 @@ export namespace types {
 		}
 	}
 	export class ListResult {
-	    result: {[key: string]: any};
+	    result: Record<string, any>;
 	    success: boolean;
 	    pagination: PaginationResult;
 	
@@ -1216,7 +1255,7 @@ export namespace types {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -1268,7 +1307,45 @@ export namespace types {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PluginState {
+	    Metadata: config.PluginMeta;
+	    ID: string;
+	    DevPath: string;
+	    Enabled: boolean;
+	    DevMode: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Metadata = this.convertValues(source["Metadata"], config.PluginMeta);
+	        this.ID = source["ID"];
+	        this.DevPath = source["DevPath"];
+	        this.Enabled = source["Enabled"];
+	        this.DevMode = source["DevMode"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -1304,7 +1381,7 @@ export namespace types {
 		    if (!a) {
 		        return a;
 		    }
-		    if (a.slice) {
+		    if (a.slice && a.map) {
 		        return (a as any[]).map(elem => this.convertValues(elem, classs));
 		    } else if ("object" === typeof a) {
 		        if (asMap) {
@@ -1323,7 +1400,7 @@ export namespace types {
 	    name: string;
 	    description: string;
 	    icon: string;
-	    resources: {[key: string]: ResourceMeta[]};
+	    resources: Record<string, Array<ResourceMeta>>;
 	
 	    static createFrom(source: any = {}) {
 	        return new ResourceGroup(source);
@@ -1335,8 +1412,26 @@ export namespace types {
 	        this.name = source["name"];
 	        this.description = source["description"];
 	        this.icon = source["icon"];
-	        this.resources = source["resources"];
+	        this.resources = this.convertValues(source["resources"], Array<ResourceMeta>, true);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	
 	export class ResourceMeta {
@@ -1364,8 +1459,8 @@ export namespace types {
 	    }
 	}
 	export class UpdateInput {
-	    input: {[key: string]: any};
-	    params: {[key: string]: any};
+	    input: Record<string, any>;
+	    params: Record<string, any>;
 	    id: string;
 	    namespace: string;
 	
@@ -1382,7 +1477,7 @@ export namespace types {
 	    }
 	}
 	export class UpdateResult {
-	    result: {[key: string]: any};
+	    result: Record<string, any>;
 	    success: boolean;
 	
 	    static createFrom(source: any = {}) {

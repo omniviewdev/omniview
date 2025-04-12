@@ -108,7 +108,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
           message: `Connected to '${name}'`,
           icon: 'LuCheckCircle',
         });
-        navigate(`/connection/${id}/resources`);
+        navigate(`/connection/${encodeURIComponent(id)}/resources`);
         break;
       default:
         showSnackbar({
@@ -122,14 +122,14 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
 
   const handleClick = () => {
     if (isConnected()) {
-      navigate(`/connection/${id}/resources`);
+      navigate(`/connection/${encodeURIComponent(id)}/resources`);
       return;
     }
 
     setConnecting(true);
     startConnection()
       .then(status => {
-        handleConnectionStatus(status); 
+        handleConnectionStatus(status);
       })
       .catch(err => {
         if (err instanceof Error) {
@@ -162,7 +162,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
   };
 
   return (
-    <tr 
+    <tr
       id={`connection-${id}`}
       onClick={handleClick}
       style={{
@@ -171,9 +171,9 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
     >
       {/* Name */}
       <td style={{ display: 'flex', flex: 1, gap: 14, justifyContent: 'flex-start', alignItems: 'center' }} >
-        <Badge 
-          color="success" 
-          invisible={!isConnected()} 
+        <Badge
+          color="success"
+          invisible={!isConnected()}
           size='sm'
           anchorOrigin={{
             vertical: 'top',
@@ -238,14 +238,14 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
                 <ListItemDecorator>
                   <LuPencil />
                 </ListItemDecorator>{' '}
-            Edit '{name}'
+                Edit '{name}'
               </MenuItem>
             </Link>
             <MenuItem>
               <ListItemDecorator>
                 <LuTrash />
               </ListItemDecorator>{' '}
-          Delete '{name}'
+              Delete '{name}'
             </MenuItem>
           </Menu>
         </Dropdown>

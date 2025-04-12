@@ -41,6 +41,12 @@ export default defineConfig({
       shared: [
         'react',
         'react-dom',
+        // Running into issue with top level await:
+        // [vite:esbuild-transpile] Transform failed with 3 errors:
+        // assets/__federation_shared_react-router-dom-!~{01o}~.js:4575:16: ERROR: Top-level await is not available in the configured target environment ("chrome87", "edge88", "es2020", "firefox78", "safari14" + 2 overrides)
+        // assets/__federation_shared_react-router-dom-!~{01o}~.js:5499:14: ERROR: Top-level await is not available in the configured target environment ("chrome87", "edge88", "es2020", "firefox78", "safari14" + 2 overrides)
+        // assets/__federation_shared_react-router-dom-!~{01o}~.js:5501:17: ERROR: Top-level await is not available in the configured target environment ("chrome87", "edge88", "es2020", "firefox78", "safari14" + 2 overrides)
+        // 'react-router-dom',
       ],
     }),
     // Webkit doesn't support top level await

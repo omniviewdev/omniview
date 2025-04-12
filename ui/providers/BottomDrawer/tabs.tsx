@@ -9,7 +9,7 @@ import TabList from '@mui/joy/TabList';
 import Tab from '@mui/joy/Tab';
 import Typography from '@mui/joy/Typography';
 import Stack from '@mui/joy/Stack';
-import {  styled } from '@mui/joy';
+import { styled } from '@mui/joy';
 import { Unstable_Popup as BasePopup } from '@mui/base/Unstable_Popup';
 import { ClickAwayListener } from '@mui/base';
 
@@ -42,8 +42,6 @@ type TabContextMenuProps = {
 
 const TabContextMenu: React.FC<TabContextMenuProps> = ({ selected, onClose }) => {
   const { tabs, closeTab, closeTabs } = useBottomDrawer();
-
-
 
   const handleCloseTab = () => {
     closeTab({ index: selected });
@@ -85,7 +83,7 @@ const TabContextMenu: React.FC<TabContextMenuProps> = ({ selected, onClose }) =>
     closeTabs(indices.map(index => ({ index })));
     onClose();
   };
-    
+
 
   return (
     <List
@@ -138,6 +136,8 @@ const BottomDrawerTabs: React.FC = () => {
   }, [focusTab]);
 
   const handleCreate = (variant: 'terminal' | 'browser') => {
+    console.log(variant)
+
     switch (variant) {
       case 'terminal':
         CreateTerminal(exec.CreateTerminalOptions.createFrom({ command: [] }))
@@ -145,12 +145,12 @@ const BottomDrawerTabs: React.FC = () => {
             createTab({
               id: session.id,
               title: `Session ${session.id.substring(0, 8)}`,
-              variant: 'terminal', 
+              variant: 'terminal',
               icon: 'LuTerminalSquare',
             });
           })
           .catch(err => {
-            console.error(err); 
+            console.error(err);
           });
         break;
       case 'browser':
@@ -168,8 +168,8 @@ const BottomDrawerTabs: React.FC = () => {
           createTab({
             id: session.id,
             title: label ?? `Session ${session.id.substring(0, 8)}`,
-            variant: 'terminal', 
-            icon: icon ?? 'LuTerminalSquare', 
+            variant: 'terminal',
+            icon: icon ?? 'LuTerminalSquare',
           });
         })
         .catch(err => {
@@ -218,7 +218,6 @@ const BottomDrawerTabs: React.FC = () => {
   React.useEffect(() => {
     ListSessions()
       .then(sessions => {
-        console.log('sessions', sessions);
         const newTabs: BottomDrawerTab[] = [];
 
         // find and upsert any missing sessions where the id doesn't exist
@@ -247,29 +246,29 @@ const BottomDrawerTabs: React.FC = () => {
   }, []);
 
   return (
-    <Stack 
-      direction="row" 
-      alignItems={'center'} 
-      height={33} 
-      maxHeight={33} 
-      minHeight={33} 
-      gap={0.25} 
+    <Stack
+      direction="row"
+      alignItems={'center'}
+      height={33}
+      maxHeight={33}
+      minHeight={33}
+      gap={0.25}
       px={0.25}
       sx={{
         borderBottom: '1px solid',
         borderBottomColor: 'divider',
       }}
     >
-      <IconButton 
+      <IconButton
         size="sm"
         variant="plain"
-        sx={{ 
+        sx={{
           flex: 'none',
           minHeight: 28,
           minWidth: 28,
         }}
         onClick={() => {
-          handleCreate('terminal'); 
+          handleCreate('terminal');
         }}
       >
         <LuPlus size={16} />
@@ -278,58 +277,57 @@ const BottomDrawerTabs: React.FC = () => {
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
-        modifiers={[restrictToParentElement, restrictToHorizontalAxis]} 
+        modifiers={[restrictToParentElement, restrictToHorizontalAxis]}
       >
-
         <SortableContext items={tabs.map((_, index) => index)} strategy={horizontalListSortingStrategy}>
           {tabs.length !== 0 &&
-          <Tabs 
-            size='sm'
-            aria-label="bottom drawer tabs"
-            value={focused}
-            onChange={handleChange}
-            sx={{
-              flex: 1,
-              overflow: 'hidden',
-            }}
-          >
-            <TabList
-              disableUnderline
-              variant='plain'
-              color='neutral'
+            <Tabs
+              size='sm'
+              aria-label="bottom drawer tabs"
+              value={focused}
+              onChange={handleChange}
               sx={{
-                overflow: 'auto',
-                scrollSnapType: 'x mandatory',
-                '&::-webkit-scrollbar': { display: 'none' },
+                flex: 1,
+                overflow: 'hidden',
               }}
             >
-              {tabs.map((tab, index) => (
-                <MemoizedBottomDrawerTabComponent 
-                  key={`bottom-drawer-tab-${index}`} 
-                  {...tab} 
-                  index={index} 
-                  selected={focused === index}
-                  onRemove={handleRemove}
-                  onChange={handleChange}
-                  handleContextMenuClick={handleContextMenuClick}
-                />
-              ))}
-            </TabList>
-          </Tabs>
+              <TabList
+                disableUnderline
+                variant='plain'
+                color='neutral'
+                sx={{
+                  overflow: 'auto',
+                  scrollSnapType: 'x mandatory',
+                  '&::-webkit-scrollbar': { display: 'none' },
+                }}
+              >
+                {tabs.map((tab, index) => (
+                  <MemoizedBottomDrawerTabComponent
+                    key={`bottom-drawer-tab-${index}`}
+                    {...tab}
+                    index={index}
+                    selected={focused === index}
+                    onRemove={handleRemove}
+                    onChange={handleChange}
+                    handleContextMenuClick={handleContextMenuClick}
+                  />
+                ))}
+              </TabList>
+            </Tabs>
           }
 
         </SortableContext>
       </DndContext>
       <BasePopup style={{ zIndex: 9999 }} id={'tab-context-menu'} open={contextMenuOpen} anchor={contextSelected?.el}>
-        <ClickAwayListener 
+        <ClickAwayListener
           onClickAway={() => {
             setContextSelected(null);
           }}
         >
           <PopupBody>
-            <TabContextMenu 
+            <TabContextMenu
               selected={contextSelected === null ? -1 : contextSelected.index}
-              onClose={() => { 
+              onClose={() => {
                 setContextSelected(null);
               }} />
           </PopupBody>
@@ -353,11 +351,10 @@ const PopupBody = styled('div')(
   border-radius: 8px;
   border: 1px solid ${theme.palette.divider};
   background-color: ${theme.palette.background.popup};
-  box-shadow: ${
-  theme.palette.mode === 'dark'
-    ? '0px 4px 8px rgb(0 0 0 / 0.7)'
-    : '0px 4px 8px rgb(0 0 0 / 0.1)'
-};
+  box-shadow: ${theme.palette.mode === 'dark'
+      ? '0px 4px 8px rgb(0 0 0 / 0.7)'
+      : '0px 4px 8px rgb(0 0 0 / 0.1)'
+    };
   font-family: 'IBM Plex Sans', sans-serif;
   font-size: 0.875rem;
   z-index: 1;
@@ -378,8 +375,8 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, t
   } = useSortable({ id: index });
 
   return (
-    <Tab 
-      key={`bottom-drawer-tab-${id}`} 
+    <Tab
+      key={`bottom-drawer-tab-${id}`}
       ref={setNodeRef}
       variant='plain'
       {...attributes}
@@ -390,7 +387,7 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, t
         px: 1,
         alignItems: 'center',
         minWidth: 150,
-        flex: 'none', 
+        flex: 'none',
         scrollSnapAlign: 'start',
         borderRightColor: 'divider',
         borderLeftColor: index === 0 ? 'divider' : 'transparent',
@@ -403,14 +400,14 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, t
         handleClick(event);
       }}
     >
-      <Stack 
-        direction="row" 
-        justifyContent={'space-between'} 
-        alignItems={'center'} 
+      <Stack
+        direction="row"
+        justifyContent={'space-between'}
+        alignItems={'center'}
         gap={2}
         width={'100%'}
       >
-        <Typography 
+        <Typography
           fontSize={13}
           textColor={selected ? 'neutral.50' : 'text'}
           fontWeight={selected ? 500 : 400}
@@ -427,7 +424,7 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, t
         >
           {title}
         </Typography>
-        <LuX size={16} onClick={() => { 
+        <LuX size={16} onClick={() => {
           onRemove(index);
         }} />
       </Stack>

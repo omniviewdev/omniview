@@ -2,16 +2,16 @@ import React from 'react';
 
 // Material-ui
 import Box from '@mui/joy/Box';
-import IconButton from '@mui/joy/IconButton';
-import Icon from '@/components/icons/Icon';
+// import IconButton from '@mui/joy/IconButton';
+// import Icon from '@/components/icons/Icon';
 import HeaderIconMenu from './components/HeaderIconMenu';
 import HeaderIconButton from './components/HeaderIconButton';
 import HeaderIconLink from './components/HeaderIconLink';
 
 // Project-imports
 import { type HeaderAreaItemList, type HeaderAreaItemListType, HeaderAreaItemType } from '@/store/header/types';
-import usePanes from '@/hooks/usePanes';
-import { Tooltip } from '@mui/joy';
+// import usePanes from '@/hooks/usePanes';
+// import { Tooltip } from '@mui/joy';
 import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@runtime/runtime';
 
 type Props = {
@@ -23,7 +23,7 @@ type Props = {
  * Display items within an item area on the header
  */
 const HeaderItemsArea: React.FC<Props> = ({ items }) => {
-  const { addNewPane } = usePanes();
+  // const { addNewPane } = usePanes();
 
   /**
    * Provide the functionality of the double click behavior like on MacOS
@@ -67,19 +67,19 @@ const HeaderItemsArea: React.FC<Props> = ({ items }) => {
     >
       {items.map(item => <HeaderItemComponent key={item.id} item={item} />)}
       {/* Temporary to test the panes */}
-      <Tooltip enterDelay={1000} title='Add Pane' variant='soft' >
-        <IconButton
-          name={'add-pane'}
-          size='sm'
-          color='neutral'
-          sx={{
-            '--wails-draggable': 'no-drag',
-          }}
-          onClick={addNewPane}
-        >
-          <Icon name={'LuSplitSquareHorizontal'} size={18} />
-        </IconButton>
-      </Tooltip>
+      {/* <Tooltip enterDelay={1000} title='Add Pane' variant='soft' > */}
+      {/*   <IconButton */}
+      {/*     name={'add-pane'} */}
+      {/*     size='sm' */}
+      {/*     color='neutral' */}
+      {/*     sx={{ */}
+      {/*       '--wails-draggable': 'no-drag', */}
+      {/*     }} */}
+      {/*     onClick={addNewPane} */}
+      {/*   > */}
+      {/*     <Icon name={'LuSplitSquareHorizontal'} size={18} /> */}
+      {/*   </IconButton> */}
+      {/* </Tooltip> */}
     </Box>
   );
 };

@@ -4,6 +4,7 @@ import React from "react";
 import Stack from "@mui/joy/Stack";
 import Card from "@mui/joy/Card";
 import CardContent from "@mui/joy/CardContent";
+import CardOverflow from "@mui/joy/CardOverflow";
 import Avatar from "@mui/joy/Avatar";
 import Divider from "@mui/joy/Divider";
 import Grid from "@mui/joy/Grid";
@@ -19,6 +20,8 @@ export interface DetailsCardEntry {
   ratio?: [number, number];
   used?: string;
   defaultValue?: string;
+  endAdornment?: React.ReactNode;
+  startAdornment?: React.ReactNode;
 }
 
 export interface DetailsCardProps {
@@ -26,6 +29,7 @@ export interface DetailsCardProps {
   titleSize?: "sm" | "md" | "lg";
   icon?: string | React.ReactNode;
   data: DetailsCardEntry[];
+  endAdornment?: React.ReactNode;
   /** Show the kv pair even if the value is undefined */
   showUndefined?: boolean;
 }
@@ -77,15 +81,20 @@ export const DetailsCard: React.FC<DetailsCardProps> = ({
   titleSize = "md",
   icon,
   data,
+  endAdornment,
   showUndefined = false,
 }) => {
   return (
     <Card
       variant="outlined"
-      sx={{ p: 1, gap: getTitleContainerSpacing(titleSize) }}
+      sx={{
+        p: 1,
+        gap: getTitleContainerSpacing(titleSize),
+        bgcolor: 'background.level1'
+      }}
     >
       {title && (
-        <>
+        <CardOverflow sx={{ p: 1, display: 'flex', flexDirection: 'row', justifyContent: 'space-between', bgcolor: 'background.surface', borderBottom: '1px solid divider' }}>
           <Stack
             direction="row"
             spacing={getTitleContainerSpacing(titleSize)}
@@ -109,11 +118,15 @@ export const DetailsCard: React.FC<DetailsCardProps> = ({
               {title}
             </Typography>
           </Stack>
+          {endAdornment}
           <Divider />
-        </>
+        </CardOverflow>
       )}
       <CardContent>
-        <Grid container spacing={1}>
+        <Grid
+          container
+          spacing={1}
+        >
           {data.map((entry) => {
             if (entry.value || showUndefined) {
               return (
@@ -134,15 +147,18 @@ export const DetailsCard: React.FC<DetailsCardProps> = ({
                     </Stack>
                   </Grid>
                   <Grid xs={entry.ratio?.[1] ?? 7}>
-                    <Typography
-                      textColor={"neutral.300"}
-                      level="body-xs"
-                      noWrap
-                    >
-                      {entry.used
-                        ? `${entry.used} / ${entry.value}`
-                        : entry.value}
-                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems={"center"} justifyContent={'space-between'}>
+                      <Typography
+                        textColor={"neutral.200"}
+                        level="body-xs"
+                        noWrap
+                      >
+                        {entry.used
+                          ? `${entry.used} / ${entry.value}`
+                          : entry.value}
+                      </Typography>
+                      {entry.endAdornment}
+                    </Stack>
                   </Grid>
                 </>
               );

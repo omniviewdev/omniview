@@ -40,7 +40,7 @@ func (c *Client) ListSessions() ([]*sdkexec.Session, error) {
 
 type AttachSessionResult struct {
 	Session *sdkexec.Session `json:"session"`
-	Buffer  []byte           `json:"buffer"`
+	Buffer  string           `json:"buffer"`
 }
 
 func (c *Client) AttachSession(sessionID string) (AttachSessionResult, error) {
@@ -50,7 +50,7 @@ func (c *Client) AttachSession(sessionID string) (AttachSessionResult, error) {
 	}
 	return AttachSessionResult{
 		Session: session,
-		Buffer:  buffer,
+		Buffer:  string(buffer),
 	}, nil
 }
 
