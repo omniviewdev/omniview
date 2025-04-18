@@ -35,16 +35,15 @@ export default function SettingsPage() {
   return (
     <CssVarsProvider disableTransitionOnChange>
       <CssBaseline />
-      <Layout.Root
-        sx={{
-          p: 4,
-          gap: 4,
-        }}
-      >
-        <Layout.SideNav>
+      <Layout.Root>
+        <Layout.SideNav type='bordered'>
           <SettingsNav selected={selected} onChange={setSelected} />
         </Layout.SideNav>
-        <Layout.Main>
+        <Layout.Main
+          sx={{
+            p: 2
+          }}
+        >
           {GetSettingsPage(selected.section, selected.id)}
         </Layout.Main>
       </Layout.Root>

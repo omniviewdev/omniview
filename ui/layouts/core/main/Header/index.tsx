@@ -51,7 +51,7 @@ const CoreLayoutHeader: React.FC<BoxProps> = props => {
         styles={{
           // eslint-disable-next-line @typescript-eslint/naming-convention
           ':root': {
-            '--CoreLayoutHeader-height': '41px',
+            '--CoreLayoutHeader-height': '38px',
             '--CoreLayoutHeader-inset': shouldIndent ? '68px' : '0px',
           },
         }}

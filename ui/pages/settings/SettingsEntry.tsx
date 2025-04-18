@@ -44,8 +44,6 @@ const SettingsEntry: React.FC<Props> = ({ setting, id, draftValue, handleChange 
 const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
   const isChanged = draftValue !== undefined;
 
-  console.log('Setting:', draftValue);
-
   const handleFileSelection = async () => {
     if (!setting.fileSelection?.enabled) {
       return;
@@ -62,7 +60,6 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
       console.log('File selection dialog result:', result);
       if (result) {
         newValue.push(...result);
-        console.log('New value:', newValue);
         handleChange(id, newValue);
       }
     }).catch((err) => {
@@ -74,6 +71,7 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
     return (
       <Stack direction='row' spacing={1} width={'100%'}>
         <Autocomplete
+          size='sm'
           multiple
           freeSolo={setting.options?.length === 0}
           placeholder={setting.value.length > 0 ? undefined : 'Kubeconfigs'}
@@ -104,8 +102,9 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
 
   if (setting.options?.length) {
     return (
-    // Options selection
+      // Options selection
       <Select
+        size='sm'
         variant='outlined'
         name={id}
         value={isChanged ? draftValue as string : setting.value as string}
@@ -137,6 +136,7 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
   // Normal single input
   return (
     <Input
+      size='sm'
       variant='outlined'
       name={id}
       value={isChanged ? draftValue as string : setting.value as string}
@@ -178,12 +178,13 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
   if (!setting.options?.length) {
     return (
       <Input
+        size='sm'
         type='number'
         variant='outlined'
         name={id}
         value={isChanged ? +draftValue : +setting.value}
         onChange={e => {
-          handleChange(id, e.target.value);
+          handleChange(id, +e.target.value);
         }}
         sx={{
           '&::before': {
@@ -210,6 +211,7 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
 
   return (
     <Select
+      size='sm'
       variant='outlined'
       name={id}
       value={isChanged ? !!draftValue : !!setting.value}

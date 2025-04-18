@@ -12,7 +12,7 @@ import {
 } from '@mui/material/styles';
 
 // Providers
-// import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { CssVarsProvider, StyledEngineProvider } from '@mui/joy/styles';
 import theme from './theme';
 import { WindowProvider } from '@/providers/WindowProvider';
@@ -49,7 +49,6 @@ function fallbackRender({ error }: { error: Error }) {
 const coreRouter = createHashRouter(scoped);
 const materialTheme = materialExtendTheme();
 
-console.log("Router:", coreRouter)
 
 /**
  * Create the primary extension registry for other applications to expand upon.
@@ -88,7 +87,7 @@ const App: React.FC = () => (
               </Provider>
             </StyledEngineProvider>
           </MaterialCssVarsProvider>
-          {/* <ReactQueryDevtools initialIsOpen={false} buttonPosition='bottom-right' /> */}
+          <ReactQueryDevtools initialIsOpen={false} buttonPosition='bottom-right' />
         </QueryClientProvider>
       </AppSnackbarProvider>
     </ExtensionProvider>

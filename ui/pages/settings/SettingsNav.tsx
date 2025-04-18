@@ -1,7 +1,6 @@
 import React from 'react';
 
 // Material-ui
-import IconButton from '@mui/joy/IconButton';
 import List from '@mui/joy/List';
 import ListSubheader from '@mui/joy/ListSubheader';
 import ListItem from '@mui/joy/ListItem';
@@ -9,13 +8,10 @@ import ListItemButton from '@mui/joy/ListItemButton';
 import ListItemDecorator from '@mui/joy/ListItemDecorator';
 import ListItemContent from '@mui/joy/ListItemContent';
 
-// Icons import
-import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
-
 // Custom
 import Icon from '@/components/icons/Icon';
 import { type SectionSelection, Section } from '.';
-import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
+// import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { Avatar } from '@mui/joy';
 
@@ -41,24 +37,23 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
   }
 
   return (
-    <List size='sm' sx={{ '--ListItem-radius': '8px', '--List-gap': '4px' }}>
+    <List
+      size='sm'
+      sx={{
+        '--ListItem-radius': '8px',
+        '--List-padding': '8px',
+        '--List-gap': '6px',
+      }}>
       {/** Core section */}
       <ListItem key={Section.Core} nested>
-        <ListSubheader>
+        <ListSubheader variant='outlined'>
           {Section.Core}
-          <IconButton
-            size='sm'
-            variant='outlined'
-            color='primary'
-            sx={{ '--IconButton-size': '24px', ml: 'auto' }}
-          >
-            <KeyboardArrowDownRoundedIcon fontSize='small' color='primary' />
-          </IconButton>
         </ListSubheader>
         <List
           aria-labelledby='nav-list-browse'
           sx={{
             '& .JoyListItemButton-root': { p: '8px' },
+            '--List-gap': '0px',
           }}
         >
           {Object.values(settings.data).map(category => (
@@ -96,21 +91,22 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
 
       {/** Plugins section */}
       <ListItem key={Section.Plugins} nested>
-        <ListSubheader>
+        <ListSubheader variant='outlined'>
           {Section.Plugins}
-          <IconButton
-            size='sm'
-            variant='outlined'
-            color='primary'
-            sx={{ '--IconButton-size': '24px', ml: 'auto' }}
-          >
-            <KeyboardArrowDownRoundedIcon fontSize='small' color='primary' />
-          </IconButton>
+          {/* <IconButton */}
+          {/*   size='sm' */}
+          {/*   variant='outlined' */}
+          {/*   color='primary' */}
+          {/*   sx={{ '--IconButton-size': '24px', ml: 'auto' }} */}
+          {/* > */}
+          {/*   <KeyboardArrowDownRoundedIcon fontSize='small' color='primary' /> */}
+          {/* </IconButton> */}
         </ListSubheader>
         <List
           aria-labelledby='nav-list-browse'
           sx={{
             '& .JoyListItemButton-root': { p: '8px' },
+            '--List-gap': '0px',
           }}
         >
           {plugins.data?.map(plugin => (
