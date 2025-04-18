@@ -71,7 +71,6 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
   return (
     <Stack
       direction={'column'}
-      // JustifyContent={'space-between'}
       gap={2}
       sx={{
         width: '100%',
@@ -86,9 +85,10 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
-          borderRadius: 12,
+          borderRadius: 8,
           width: '100%',
-          padding: 2,
+          paddingY: 1,
+          paddingX: 2,
           gap: 1.5,
         }}
       >
@@ -108,12 +108,12 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
               xs: 'flex-start',
               lg: 'center',
             },
-            borderRadius: 12,
+            borderRadius: 6,
             width: '100%',
           }}
         >
           <Typography level={isNormalScreenSize ? 'title-lg' : 'title-md'}>{plugin.data.metadata.name}</Typography>
-          <Typography level={isNormalScreenSize ? 'body-sm' : 'body-xs'}>{plugin.data.metadata.description}</Typography>
+          <Typography level={isNormalScreenSize ? 'body-xs' : 'body-xs'}>{plugin.data.metadata.description}</Typography>
         </Stack>
       </Sheet>
 
