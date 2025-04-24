@@ -33,11 +33,18 @@ const loadIconComponent = (name: string) => {
 
 export const Icon: React.FC<NamedIconProps> = ({ name, ...props }) => {
   let DynamicIcon;
+
+  const prefix = name.substring(0, 2);
+  if (prefix === 'Lu' && !props.strokeWidth) {
+    // manually adjust stroke width for Lu icons
+    props.strokeWidth = 1.5;
+  }
+
   try {
     DynamicIcon = loadIconComponent(name) as any;
   } catch (error) {
     console.error(error);
-    return <><LuFileQuestion /></>; // Or any other fallback UI
+    return <LuFileQuestion {...props} />;
   }
 
   return (

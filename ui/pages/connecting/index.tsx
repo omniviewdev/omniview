@@ -13,7 +13,7 @@ import { type FC, useEffect, useReducer } from 'react';
 import { usePluginRouter } from '@infraview/router';
 
 // import { StartContext } from '@api/services/ClusterManager';
-import { EventsOff, EventsOn } from '@runtime/runtime';
+import { EventsOff, EventsOn } from '@omniviewdev/runtime/runtime';
 import { handleRemoveTab } from '@/store/tabs/slice';
 import { useDispatch } from 'react-redux';
 
@@ -265,10 +265,10 @@ const Connecting: FC = () => {
                           <Typography level='body-xs'>{resource}</Typography>
                           {curr.initialized && <CheckCircle color='success' sx={{ height: '14px' }} />}
                           {curr.error
-                              && <>
-                              	<ErrorIcon color='error' sx={{ height: '14px' }} />
-                              	<Typography level='body-xs' color='danger'>{curr.message}</Typography>
-                              </>
+                            && <>
+                              <ErrorIcon color='error' sx={{ height: '14px' }} />
+                              <Typography level='body-xs' color='danger'>{curr.message}</Typography>
+                            </>
                           }
                           {!curr.initialized && !curr.error && <CircularProgress
                             sx={{

@@ -1,20 +1,20 @@
 import React from 'react';
-import { useExtensionRegistry } from '@omniviewdev/runtime/extensions/provider';
+import { useExtensionRegistry } from '@omniviewdev/runtime';
 import { Stack, List, ListItem, ListItemButton, ListItemContent, Typography, Sheet, useTheme, Box, Card, CardContent, Chip } from '@mui/joy';
 import { useMediaQuery } from '@mui/material';
 import Icon from '@/components/icons/Icon';
-import { type ExtensionRegistrySettings, type ExtensionRegistryStore } from '@omniviewdev/runtime/extensions/store';
+import { type ExtensionPointSettings, type ExtensionPointStore } from '@omniviewdev/runtime';
 
 const ExtensionSettingsPage: React.FC = () => {
   const theme = useTheme();
   const extensions = useExtensionRegistry();
   const isNormalScreenSize = useMediaQuery(theme.breakpoints.up('lg'));
 
-  const [selected, setSelected] = React.useState<ExtensionRegistryStore<any> | undefined>(undefined);
-  const [selectedSettings, setSelectedSettings] = React.useState<ExtensionRegistrySettings | undefined>(undefined);
+  const [selected, setSelected] = React.useState<ExtensionPointStore<any> | undefined>(undefined);
+  const [selectedSettings, setSelectedSettings] = React.useState<ExtensionPointSettings | undefined>(undefined);
 
   const selectExtensionPoint = (id: string) => {
-    const extension = extensions?.extensionPointRegistry.getExtensionPoint(id);
+    const extension = extensions?.getExtensionPoint(id);
 
     if (extension) {
       setSelected(extension);
@@ -98,7 +98,7 @@ const ExtensionSettingsPage: React.FC = () => {
                 size={'sm'}
                 sx={{ width: 350, borderRadius: 8 }}
               >
-                {extensions?.extensionPointRegistry.listExtensionPoints().map((extension) => (
+                {extensions?.listExtensionPoints().map((extension) => (
                   <ListItem key={extension.id}>
                     <ListItemButton
                       selected={selected?.settings().id === extension.id}
@@ -162,7 +162,7 @@ const ExtensionSettingsPage: React.FC = () => {
 };
 
 type ExtensionPointDisplayProps = {
-  extensionPoint: ExtensionRegistryStore<any>;
+  extensionPoint: ExtensionPointStore<any>;
 };
 
 const ExtensionPointDisplay: React.FC<ExtensionPointDisplayProps> = ({ extensionPoint }) => {

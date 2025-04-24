@@ -52,7 +52,7 @@ import {
 // Icons
 import { LuAppWindow, LuBox, LuHome, LuSettings, LuX } from 'react-icons/lu';
 import { FaPlus } from 'react-icons/fa';
-import { WindowIsFullscreen } from '@runtime/runtime';
+import { WindowIsFullscreen } from '@omniviewdev/runtime/runtime';
 
 type Props = {
   children?: React.ReactNode;
@@ -197,7 +197,7 @@ const HeaderTab: FC<HeaderTabProps> = ({
 
 type HeaderTabBarProps = Record<string, unknown>;
 
-const HeaderTabBar: FC<HeaderTabBarProps> = ({}) => {
+const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { clusterId } = useParams<{ clusterId: string }>();
   const navigate = useNavigate();

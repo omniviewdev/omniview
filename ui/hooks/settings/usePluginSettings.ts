@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar } from '@/providers/SnackbarProvider';
+import { useSnackbar } from '@omniviewdev/runtime';
 
 // Underlying client
-import { ListSettings, SetSettings } from '@api/settings/Client';
-import { type settings } from '@api/models';
+import { SettingsClient } from '@omniviewdev/runtime/api';
+import { type settings } from '@omniviewdev/runtime/models';
 
 type PluginSettingsOptions = {
   /**
@@ -23,7 +23,7 @@ export const usePluginSettings = ({ plugin }: PluginSettingsOptions) => {
   const queryKey = ['settings', plugin];
 
   const { mutateAsync: setSettings } = useMutation({
-    mutationFn: async (newSettings: Record<string, any>) => SetSettings(plugin, newSettings),
+    mutationFn: async (newSettings: Record<string, any>) => SettingsClient.SetSettings(plugin, newSettings),
     onSuccess: async (_, _vars) => {
       showSnackbar('Settings saved', 'success');
       // TODO - invalidate each one individually
@@ -36,7 +36,7 @@ export const usePluginSettings = ({ plugin }: PluginSettingsOptions) => {
 
   const settings = useQuery({
     queryKey,
-    queryFn: async () => ListSettings(plugin) as Promise<Record<string, settings.Setting>>,
+    queryFn: async () => SettingsClient.ListSettings(plugin) as Promise<Record<string, settings.Setting>>,
   });
 
   return {

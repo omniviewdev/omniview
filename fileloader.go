@@ -111,7 +111,7 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-Type", contentType)
 
 	// if remoteEntry.js, do NOT cache
-	if strings.HasSuffix(requestedFilename, "remoteEntry.js") {
+	if strings.HasSuffix(requestedFilename, "entry.js") {
 		res.Header().Set("Cache-Control", "no-store")
 	}
 

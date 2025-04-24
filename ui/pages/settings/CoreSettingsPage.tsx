@@ -17,6 +17,7 @@ import Icon from '@/components/icons/Icon';
 import { useCategorySettings } from '@/hooks/settings/useCategorySettings';
 import SettingsEntries from './SettingsEntries';
 import { Section } from '.';
+import { useSettings } from '@omniviewdev/runtime';
 
 type Props = {
   id: string;
@@ -31,6 +32,7 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
   const isNormalScreenSize = useMediaQuery(theme.breakpoints.up('lg'));
 
   const { settings, setSettings } = useCategorySettings({ category: categoryID });
+  const { reload } = useSettings()
 
   /**
    * Commit the drafted settings into the settings store.
@@ -47,6 +49,7 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
     console.log('committing', values);
     setSettings(values).then(() => {
       clearDraftValues();
+      reload();
     }).catch((err) => {
       console.error('Failed to save settings', err);
     });

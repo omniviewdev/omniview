@@ -3,6 +3,7 @@ package categories
 import (
 	"fmt"
 	"os"
+	"os/exec"
 
 	"github.com/omniviewdev/settings"
 )
@@ -12,7 +13,7 @@ var Terminal = settings.Category{
 	ID:          "terminal",
 	Label:       "Terminal",
 	Description: "Customize the behavior of the terminal",
-	Icon:        "LuTerminalSquare",
+	Icon:        "LuSquareTerminal",
 	Settings: map[string]settings.Setting{
 		"defaultShell": {
 			ID:          "defaultShell",
@@ -25,9 +26,12 @@ var Terminal = settings.Category{
 				if !ok {
 					return settings.ErrSettingTypeMismatch
 				}
-
+				path, err := exec.LookPath(val)
+				if err != nil {
+					return fmt.Errorf("could not find executable: %w", err)
+				}
 				// make sure the shell exists on the users system
-				if _, err := os.Stat(val); os.IsNotExist(err) {
+				if _, err := os.Stat(path); os.IsNotExist(err) {
 					return fmt.Errorf("could not find shell '%s'", val)
 				}
 
@@ -39,7 +43,7 @@ var Terminal = settings.Category{
 			ID:          "fontSize",
 			Type:        settings.Integer,
 			Label:       "Font Size",
-			Default:     14, //nolint:gomnd // this is a reasonable default
+			Default:     12, //nolint:gomnd // this is a reasonable default
 			Description: "The size of the font in the terminal",
 		},
 		"cursorStyle": {

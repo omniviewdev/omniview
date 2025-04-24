@@ -18,25 +18,21 @@ import { IsImage } from '@/utils/url';
 export default function CoreLayoutSidebar() {
   const { pathname } = useLocation();
   const { plugins } = usePluginManager();
-  var matched = pathname.match(/^\/plugin\/([A-Za-z0-9]+).*/)?.[1] || '';
+  var matched = pathname.match(/^\/_plugin\/([A-Za-z0-9]+).*/)?.[1] || '';
 
   return (
     <Sheet
       className='CoreLayoutSidebar'
       sx={{
-        position: {
-          xs: 'fixed',
-        },
+        position: 'fixed',
         transform: {
           xs: 'translateX(calc(100% * (var(--SideNavigation-slideIn, 0) - 1)))',
           lg: 'none',
         },
         transition: 'transform 0.4s',
         zIndex: 1,
-        height: 'calc(100dvh - var(--CoreLayoutHeader-height))',
+        height: 'calc(100dvh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height))',
         maxWidth: 'var(--CoreLayoutSidebar-width)',
-        bottom: 0,
-        // p: 0.5,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
@@ -88,18 +84,21 @@ export default function CoreLayoutSidebar() {
               value={id}
               indicatorPlacement='left'
               sx={{
-                p: 1,
+                px: 1,
+                py: 1.2,
                 width: 'var(--CoreLayoutSidebar-width)',
                 display: 'flex',
               }}
             >
               <Link
-                to={`/plugin/${id}`}
+                to={`/_plugin/${id}`}
                 style={{
                   display: 'flex',
                   width: 'var(--CoreLayoutSidebar-width)',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  textDecoration: 'none',
+                  color: 'inherit',
                 }}
               >
                 {IsImage(metadata?.icon) ? (
@@ -108,10 +107,15 @@ export default function CoreLayoutSidebar() {
                     src={metadata.icon}
                     variant='plain'
                     sx={{
-                      borderRadius: 4, backgroundColor: 'transparent', objectFit: 'contain', border: 0,
+                      borderRadius: 4,
+                      backgroundColor: 'transparent',
+                      objectFit: 'contain',
+                      border: 0,
+                      width: '30px',
+                      height: '30px',
                     }}
                   />
-                ) : <Icon name={metadata?.icon || ''} size={44} />}
+                ) : <Icon name={metadata?.icon || ''} size={26} />}
               </Link>
             </Tab>
           ))}

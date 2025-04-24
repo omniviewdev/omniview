@@ -9,6 +9,12 @@ type IClient interface {
 	// ListPlugins returns a list of all the plugins that are registered with the settings controller
 	ListPlugins() ([]string, error)
 
+	// Values returns a list of all of the values calculated in the current setting store
+	Values() map[string]any
+
+	// PluginValues returns a list of all of the values calculated in the plugin's setting store
+	PluginValues(plugin string) map[string]any
+
 	// ListSettings returns the settings store
 	ListSettings(plugin string) map[string]pkgsettings.Setting
 
@@ -39,6 +45,14 @@ func NewClient(controller Controller) *Client {
 }
 
 var _ IClient = (*Client)(nil)
+
+func (c *Client) Values() map[string]any {
+	return c.controller.Values()
+}
+
+func (c *Client) PluginValues(plugin string) map[string]any {
+	return c.controller.PluginValues(plugin)
+}
 
 func (c *Client) ListPlugins() ([]string, error) {
 	return c.controller.ListPlugins()

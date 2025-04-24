@@ -2,7 +2,7 @@ import React from 'react';
 
 // material-ui
 import Box from '@mui/joy/Box';
-import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@runtime/runtime';
+import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@omniviewdev/runtime/runtime';
 
 // import TabBarProvider from '@/providers/header/TabBarProvider';
 
@@ -10,7 +10,7 @@ import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@runtime/ru
  * The tabs area in the header
  */
 const HeaderTabsArea: React.FC = () => {
-  
+
   /**
    * Provide the functionality of the double click behavior like on MacOS
    */

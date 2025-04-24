@@ -62,6 +62,7 @@ func (cm *componentManager) OnPluginShutdown(_ context.Context, meta config.Plug
 	logger := cm.logger.With("plugin", meta.ID, "action", "OnPluginShutdown")
 	logger.Debug("shutting down plugin")
 	cm.resourceComponentStore.RemovePlugin(meta.ID)
+	logger.Debug("plugin shutdown complete")
 	return nil
 }
 

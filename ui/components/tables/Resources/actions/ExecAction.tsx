@@ -10,10 +10,10 @@ import Typography from '@mui/joy/Typography';
 import jsonpath from 'jsonpath';
 
 // icons
-import { LuTerminalSquare } from 'react-icons/lu';
+import { LuSquareTerminal } from 'react-icons/lu';
 
 // types
-import { exec } from '@api/models';
+import { exec } from '@omniviewdev/runtime/models';
 
 // project imports
 import ActionMenuListItem from './ActionMenuListItem';
@@ -106,7 +106,7 @@ const ExecAction: React.FC<Props> = ({
     <ListItem>
       <ActionMenuListItem
         label="Exec"
-        icon={<LuTerminalSquare />}
+        icon={<LuSquareTerminal />}
         open={selected}
         onOpen={handleSelect}
         onLeaveMenu={handleLeaveMenu}
@@ -120,9 +120,9 @@ const ExecAction: React.FC<Props> = ({
           >
             {targets.map((target) => (
               <MenuItem
-                key={target.label} 
+                key={target.label}
                 {...itemProps}
-                onClick={() => { 
+                onClick={() => {
                   handlePerformExec(target.label, target.params);
                   handleDeselect();
                   if (typeof itemProps.onClick == 'function') {

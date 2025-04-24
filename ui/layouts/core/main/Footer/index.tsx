@@ -1,6 +1,6 @@
 import React from 'react';
 
-// Material-ui
+// material-ui
 import Box, { type BoxProps } from '@mui/joy/Box';
 import GlobalStyles from '@mui/joy/GlobalStyles';
 
@@ -25,8 +25,8 @@ const Footer: React.FC<BoxProps> = props => (
           borderTop: (theme: any) => `1px solid ${theme.palette.divider}`,
           bgcolor: 'background.level1',
           minWidth: '100vw',
-          minHeight: '16px',
-          maxHeight: '16px',
+          minHeight: 'var(--CoreLayoutFooter-height)',
+          maxHeight: 'var(--CoreLayoutFooter-height)',
         },
         ...(Array.isArray(props.sx) ? props.sx : [props.sx]),
       ]}

@@ -10,10 +10,15 @@ import Typography from '@mui/joy/Typography';
 import { Box, useTheme } from '@mui/joy';
 
 // Hooks
-import { useResourceTypes } from '@/hooks/resource/useResourceTypes';
+import {
+  useConnection,
+  useResourceTypes,
+  useResourceGroups,
+  useSnackbar,
+} from '@omniviewdev/runtime';
 
 // Types
-import { type types } from '@api/models';
+import { type types } from '@omniviewdev/runtime/models';
 
 // Layout
 import Layout from '@/layouts/core/sidenav';
@@ -23,10 +28,7 @@ import NavMenu from '@infraview/navigation/NavMenu';
 import ResourceTable from '@/components/tables/Resources';
 import PluginBackdrop from '../../PluginBackdrop';
 import { usePluginContext } from '@/contexts/PluginContext';
-import useResourceGroups from '@/hooks/resource/useResourceGroups';
-import useSnackbar from '@/providers/SnackbarProvider';
 import { type SidebarSection, type SidebarItem } from '@infraview/navigation/types';
-import { useConnection } from '@/hooks/connection/useConnection';
 import { stringAvatar } from '@/utils/color';
 import { Link } from '@infraview/router';
 

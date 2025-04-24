@@ -1,53 +1,54 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import federation from "@originjs/vite-plugin-federation";
+
+const externals = [
+  // MUI
+  "@emotion/react",
+  "@mui/joy",
+  "@mui/base",
+  "@mui/x-charts",
+  "@mui/material",
+  "@mui/material-icons",
+
+  // REACT
+  "react",
+  "react/jsx-runtime",
+  "react-router-dom",
+  "react-dom",
+  "react-icons",
+  "@tanstack/react-query",
+
+  // Monaco
+  "@monaco-editor/react",
+  "monaco-editor",
+
+  // OMNIVIEW
+  "@omniviewdev/runtime",
+]
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
-    federation({
-      name: "kubernetes",
-      filename: "remoteEntry.js",
-      exposes: {
-        "./ConfigMapSidebar":
-          "./src/components/kubernetes/sidebar/ConfigMapSidebar",
-        "./ControllerRevisionSidebar":
-          "./src/components/kubernetes/sidebar/appsv1/ControllerRevision",
-        "./CrobJobSidebar": "./src/components/kubernetes/sidebar/CronJob",
-        "./DaemonSetSidebar":
-          "./src/components/kubernetes/sidebar/appsv1/DaemonSet",
-        "./DeploymentSidebar":
-          "./src/components/kubernetes/sidebar/appsv1/Deployment",
-        "./EndpointSidebar": "./src/components/kubernetes/sidebar/Endpoint",
-        "./IngressSidebar": "./src/components/kubernetes/sidebar/Ingress",
-        "./JobSidebar": "./src/components/kubernetes/sidebar/Job",
-        "./NamespaceSidebar": "./src/components/kubernetes/sidebar/Namespace",
-        "./NodeSidebar": "./src/components/kubernetes/sidebar/NodeSidebar",
-        "./PersistentVolumeSidebar":
-          "./src/components/kubernetes/sidebar/PersistentVolumeSidebar",
-        "./PersistentVolumeClaimSidebar":
-          "./src/components/kubernetes/sidebar/PersistentVolumeClaimSidebar",
-        "./PodSidebar": "./src/components/kubernetes/sidebar/Pod",
-        "./ReplicaSetSidebar":
-          "./src/components/kubernetes/sidebar/appsv1/ReplicaSet",
-        "./SecretSidebar": "./src/components/kubernetes/sidebar/SecretSidebar",
-        "./StatefulSetSidebar":
-          "./src/components/kubernetes/sidebar/appsv1/StatefulSet",
-        "./ContainerStatusCell": "./src/components/kubernetes/table/corev1/Pod/ContainerStatusCell",
-      },
-      shared: [
-        "react",
-        "react-dom",
-        "@monaco-editor/react",
-        "monaco-editor",
-      ],
-    }),
   ],
   build: {
-    modulePreload: false,
-    target: "esnext",
-    minify: false,
     cssCodeSplit: false,
+    rollupOptions: {
+      input: "src/entry.ts",
+      output: {
+        entryFileNames: "assets/entry.js",
+        chunkFileNames: "assets/[name].js",
+        assetFileNames: "assets/[name].[ext]",
+        format: 'system',
+        globals: {
+          'react': 'react',
+          'react-dom': 'ReactDOM',
+          'react/jsx-runtime': 'react/jsx-runtime',
+        },
+      },
+      preserveEntrySignatures: 'strict',
+      external: externals,
+    }
   },
 });
+

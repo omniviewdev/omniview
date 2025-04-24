@@ -7,11 +7,11 @@ import Typography from '@mui/joy/Typography';
 import Alert from '@mui/joy/Alert';
 
 // icons
-import { LuAlertCircle } from 'react-icons/lu';
+import { LuCircleAlert } from 'react-icons/lu';
 
 // project imports
 import useResourceDefinition from '@/hooks/resource/useResourceDefinition';
-import { useResources } from '@/hooks/resource/useResources';
+import { useResources } from '@omniviewdev/runtime';
 import ResourceTableContainer from './ResourceTableContainer';
 
 
@@ -134,7 +134,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
         <Alert
           variant='soft'
           size='lg'
-          startDecorator={<LuAlertCircle size={20} />}
+          startDecorator={<LuCircleAlert size={20} />}
           color='danger'
         >
           <Typography level='title-lg' color='danger'>

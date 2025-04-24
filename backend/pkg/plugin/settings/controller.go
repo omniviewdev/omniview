@@ -128,6 +128,52 @@ func (c *controller) HasPlugin(pluginID string) bool {
 
 // ================================== CLIENT METHODS ================================== //
 
+// Values returns all of the values for all of the plugins
+func (c *controller) Values() map[string]any {
+	logger := c.logger.With("method", "Values")
+	logger.Debug("Listing all settings values")
+
+	// create a new map to hold the values
+	values := make(map[string]any)
+	// call all plugin clients simultaneously to collect them into the key value store
+	for pluginID, client := range c.clients {
+		clientValues := client.ListSettings()
+		for settingID, setting := range clientValues {
+			// create the key for the setting
+			key := fmt.Sprintf("%s.%s", pluginID, settingID)
+			// add the setting to the map
+			values[key] = setting.Value
+		}
+	}
+
+	return values
+}
+
+func (c *controller) PluginValues(plugin string) map[string]any {
+	logger := c.logger.With("plugin", plugin, "method", "PluginValues")
+	logger.Debug("Listing settings values for plugin")
+
+	if plugin == "" {
+		return nil
+	}
+	client, ok := c.clients[plugin]
+	if !ok {
+		logger.Error(errors.New("plugin not found"))
+		return nil
+	}
+
+	values := make(map[string]any)
+	clientValues := client.ListSettings()
+	for settingID, setting := range clientValues {
+		// create the key for the setting
+		key := fmt.Sprintf("%s.%s", plugin, settingID)
+		// add the setting to the map
+		values[key] = setting.Value
+	}
+
+	return values
+}
+
 // ListSettings returns the settings store.
 func (c *controller) ListSettings(plugin string) map[string]pkgsettings.Setting {
 	logger := c.logger.With("plugin", plugin, "method", "ListSettings")

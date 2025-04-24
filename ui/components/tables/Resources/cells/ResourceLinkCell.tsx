@@ -9,7 +9,7 @@ import Tooltip from '@mui/joy/Tooltip';
 import get from 'lodash.get';
 
 // types
-import { type types } from '@api/models';
+import { type types } from '@omniviewdev/runtime/models';
 import useRightDrawer from '@/hooks/useRightDrawer';
 import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
 
@@ -21,13 +21,13 @@ type Props = types.ResourceLink & {
 /**
  * Display the cell as a link to another resource
  */
-const ResourceLinkCell: React.FC<Props> = ({ 
-  value, 
-  metadata, 
-  idAccessor, 
-  namespaceAccessor, 
-  resourceKey, 
-  keyAccessor, 
+const ResourceLinkCell: React.FC<Props> = ({
+  value,
+  metadata,
+  idAccessor,
+  namespaceAccessor,
+  resourceKey,
+  keyAccessor,
   keyMap,
   namespaced,
   displayId,
@@ -57,16 +57,16 @@ const ResourceLinkCell: React.FC<Props> = ({
     e.preventDefault();
 
     console.log('opening resource sidebar', {
-      pluginID: metadata.pluginID, 
-      connectionID: metadata.connectionID, 
+      pluginID: metadata.pluginID,
+      connectionID: metadata.connectionID,
       resourceKey: keyMap ? keyMap[resourceKey] ?? resourceKey : resourceKey,
       resourceID,
       namespace,
     });
 
-    showResourceSidebar({ 
-      pluginID: metadata.pluginID, 
-      connectionID: metadata.connectionID, 
+    showResourceSidebar({
+      pluginID: metadata.pluginID,
+      connectionID: metadata.connectionID,
       resourceKey: keyMap ? keyMap[resourceKey] ?? resourceKey : resourceKey,
       resourceID,
       namespace,
@@ -79,13 +79,13 @@ const ResourceLinkCell: React.FC<Props> = ({
 
   if (displayId) {
     return (
-      <Chip 
+      <Chip
         size='sm'
         variant='soft'
         color={typeof value === 'string' ? 'neutral' : 'primary'}
         sx={{
           borderRadius: 'sm',
-        }} 
+        }}
         onClick={handleClick}>
         <Typography level='body-xs' noWrap>
           {resourceID}
@@ -96,13 +96,13 @@ const ResourceLinkCell: React.FC<Props> = ({
 
   return (
     <Tooltip size='sm' variant='plain' title={resourceID}>
-      <Chip 
+      <Chip
         size='sm'
         variant='soft'
         color={typeof value === 'string' ? 'neutral' : 'primary'}
         sx={{
           borderRadius: 'sm',
-        }} 
+        }}
         onClick={handleClick}>
         <Typography level='body-xs' noWrap>
           {typeof value === 'string' ? value : resourceKey}

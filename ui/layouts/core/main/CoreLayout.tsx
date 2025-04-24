@@ -2,7 +2,6 @@ import { CssVarsProvider } from '@mui/joy/styles';
 import CssBaseline from '@mui/joy/CssBaseline';
 import Box from '@mui/joy/Box';
 import Layout from '@/layouts/core/main';
-import { useLocation } from 'react-router-dom';
 import Container from './Container';
 
 /**
@@ -10,11 +9,6 @@ import Container from './Container';
  * and hacks the react router to provide a nested memory router within the scope
  */
 export default function CoreLayout() {
-  const loc = useLocation()
-
-  console.log("In CORE LAYOUT")
-  console.log("Core Layout location state", loc)
-
   return (
     <CssVarsProvider
       defaultMode='dark'
@@ -40,6 +34,7 @@ export default function CoreLayout() {
           <Layout.Sidebar />
           <Container />
         </Box>
+        <Layout.Footer />
       </Box>
     </CssVarsProvider>
   );
