@@ -18,8 +18,8 @@ import Typography from '@mui/joy/Typography';
 
 // icons
 import WarningRoundedIcon from '@mui/icons-material/WarningRounded';
-import { LuAlertCircle, LuTrash } from 'react-icons/lu';
-import useResource from '@/hooks/resource/useResource';
+import { LuCircleAlert, LuTrash } from 'react-icons/lu';
+import { useResource } from '@omniviewdev/runtime';
 import { CircularProgress } from '@mui/joy';
 
 type Props = {
@@ -61,12 +61,12 @@ export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection
             },
           }}
         >
-          <Stack 
-            direction='row' 
-            spacing={1} 
+          <Stack
+            direction='row'
+            spacing={1}
             flex={1}
             px={1}
-            alignItems={'center'} 
+            alignItems={'center'}
             justifyContent='flex-start'
           >
             <LuTrash />
@@ -75,7 +75,7 @@ export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection
         </ListItemButton>
       </ListItem>
       <Modal open={open} onClose={() => {
-        setOpen(false); 
+        setOpen(false);
       }}>
         <ModalDialog variant="outlined" role="alertdialog">
           <DialogTitle>
@@ -85,12 +85,12 @@ export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection
           <Divider />
           <DialogContent sx={{ gap: 2 }}>
             <Typography level='body-sm'>
-            Are you sure you want to delete {resource} '{id}'?
+              Are you sure you want to delete {resource} '{id}'?
             </Typography>
             {alert && <Box sx={{ display: 'flex', gap: 2, width: '100%', flexDirection: 'column' }}>
               <Alert
                 sx={{ alignItems: 'flex-start' }}
-                startDecorator={<LuAlertCircle />}
+                startDecorator={<LuCircleAlert />}
                 variant="soft"
                 color={'danger'}
               >

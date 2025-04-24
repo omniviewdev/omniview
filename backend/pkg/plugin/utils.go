@@ -35,6 +35,8 @@ func validateInstalledPlugin(metadata config.PluginMeta) error {
 			return validateHasBinary(path)
 		case types.MetricPlugin.String():
 			return validateHasBinary(path)
+		case types.UIPlugin.String():
+			return validateHasUiPackage(path)
 		default:
 			return fmt.Errorf("error validating plugin: unknown plugin capability type '%s'", p)
 		}
@@ -56,6 +58,16 @@ func validateHasBinary(path string) error {
 		return fmt.Errorf("resource plugin binary is not executable: %s", path)
 	}
 
+	return nil
+}
+
+// validateHasUiPackage checks if the plugin has a UI package, which is signified by the
+// existence of a `/assets` folder in the ui plugin directory.
+func validateHasUiPackage(path string) error {
+	_, err := os.Stat(filepath.Join(path, "assets"))
+	if os.IsNotExist(err) {
+		return fmt.Errorf("expected compiled ui at path but none found: %s", path)
+	}
 	return nil
 }
 

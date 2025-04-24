@@ -7,7 +7,7 @@ import Grid from '@mui/joy/Grid';
 import Stack from '@mui/joy/Stack';
 
 // Project imports
-import { useConnection } from '@/hooks/connection/useConnection';
+import { useConnection } from '@omniviewdev/runtime';
 import { Textarea } from '@mui/joy';
 import { useParams } from 'react-router-dom';
 

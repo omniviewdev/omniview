@@ -10,9 +10,9 @@ import Stack from '@mui/joy/Stack';
 import Option from '@mui/joy/Option';
 
 // Hooks
-import { main, settings } from '@api/models';
+import { main, settings } from '@omniviewdev/runtime/models';
 import { LuFile } from 'react-icons/lu';
-import { OpenFileSelectionDialog } from '@api/main/App';
+import { OpenFileSelectionDialog } from '@omniviewdev/runtime/api';
 
 type Props = {
   setting: settings.Setting;

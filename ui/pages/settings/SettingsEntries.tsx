@@ -8,7 +8,7 @@ import Chip from '@mui/joy/Chip';
 // Types
 import { type SectionSelection } from '.';
 import SettingsEntry from './SettingsEntry';
-import { type settings } from '@api/models';
+import { type settings } from '@omniviewdev/runtime/models';
 
 type Props = SectionSelection & {
   settings: Record<string, settings.Setting>;
@@ -49,7 +49,7 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
       <Stack
         direction={'column'}
         justifyContent={'flex-start'}
-        gap={4}
+        gap={2}
         sx={{
           // Account for the 1px border highlight we put on the selected items
           // otherwise, it get's cut off

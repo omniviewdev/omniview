@@ -11,7 +11,7 @@ import ListItemContent from '@mui/joy/ListItemContent';
 // Custom
 import Icon from '@/components/icons/Icon';
 import { type SectionSelection, Section } from '.';
-// import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
+import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { Avatar } from '@mui/joy';
 
@@ -93,14 +93,6 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
       <ListItem key={Section.Plugins} nested>
         <ListSubheader variant='outlined'>
           {Section.Plugins}
-          {/* <IconButton */}
-          {/*   size='sm' */}
-          {/*   variant='outlined' */}
-          {/*   color='primary' */}
-          {/*   sx={{ '--IconButton-size': '24px', ml: 'auto' }} */}
-          {/* > */}
-          {/*   <KeyboardArrowDownRoundedIcon fontSize='small' color='primary' /> */}
-          {/* </IconButton> */}
         </ListSubheader>
         <List
           aria-labelledby='nav-list-browse'

@@ -9,7 +9,7 @@ import Stack from '@mui/joy/Stack';
 
 // project imports
 import { usePluginContext } from '@/contexts/PluginContext';
-import { useConnections } from '@/hooks/connection/useConnections';
+import { useConnections } from '@omniviewdev/runtime';
 import ConnectionTable from './ConnectionTable';
 import ConnectionListHeader from './ConnectionListHeader';
 import PluginBackdrop from './PluginBackdrop';

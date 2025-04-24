@@ -12,7 +12,7 @@ import HeaderIconLink from './components/HeaderIconLink';
 import { type HeaderAreaItemList, type HeaderAreaItemListType, HeaderAreaItemType } from '@/store/header/types';
 // import usePanes from '@/hooks/usePanes';
 // import { Tooltip } from '@mui/joy';
-import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@runtime/runtime';
+import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@omniviewdev/runtime/runtime';
 
 type Props = {
   /** The items to display in the header. */

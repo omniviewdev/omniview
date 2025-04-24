@@ -36,6 +36,25 @@ type PluginMeta struct {
 	Components   PluginComponents   `json:"components"   yaml:"components"`
 }
 
+// HasUICapabilities checks if the plugin has UI capabilities. This is used
+// to verify plugin loading and staring.
+func (m *PluginMeta) HasUICapabilities() bool {
+	for _, capability := range m.Capabilities {
+		if capability == "ui" {
+			return true
+		}
+	}
+	return false
+}
+
+// HasBackendCapabilities checks if the plugin has UI capabilities. This is used
+// to verify plugin loading and staring.
+func (m *PluginMeta) HasBackendCapabilities() bool {
+	// if it has any capabilities and it doesn't have UI capabilities, then it has backend capabilities
+	// TODO: this might change in the future
+	return len(m.Capabilities) > 0 && !m.HasUICapabilities()
+}
+
 type PluginMaintainer struct {
 	Name  string `json:"name"  yaml:"name"`
 	Email string `json:"email" yaml:"email"`

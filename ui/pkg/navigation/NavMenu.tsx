@@ -14,7 +14,6 @@ import Stack from '@mui/joy/Stack';
 // Icons import
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
 
-
 // Custom
 import { type SidebarListItemProps, type SidebarProps } from './types';
 import { Chip, Typography } from '@mui/joy';
@@ -81,7 +80,6 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
           py: 0,
           userSelect: 'none',
           '--ListItem-radius': '8px',
-          '--List-gap': '0px',
           '--List-nestedInsetStart': '0px',
         }}
       >

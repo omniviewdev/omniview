@@ -1,5 +1,5 @@
 import { eventbus } from '@/events/eventbus';
-import { type exec } from '@api/models';
+import { type exec } from '@omniviewdev/runtime/models';
 
 type OnCreateSessionOpts = {
   plugin: string;

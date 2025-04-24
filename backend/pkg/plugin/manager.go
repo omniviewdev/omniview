@@ -378,45 +378,13 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 		)
 	}
 
-	logger := hclog.New(&hclog.LoggerOptions{
-		Name:   id,
-		Output: os.Stdout,
-		Level:  hclog.Debug,
-	})
-
-	// We're a host. Start by launching the plugin process.
-	pluginClient := plugin.NewClient(&plugin.ClientConfig{
-		HandshakeConfig: metadata.GenerateHandshakeConfig(),
-		Plugins: map[string]plugin.Plugin{
-			"resource":  &rp.ResourcePlugin{},
-			"exec":      &ep.Plugin{},
-			"networker": &np.Plugin{},
-			"settings":  &sp.SettingsPlugin{},
-		},
-		GRPCDialOptions: sdk.GRPCDialOptions(),
-		//nolint:gosec // this is completely software controlled
-		Cmd:              exec.Command(filepath.Join(location, "bin", "plugin")),
-		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
-		Logger:           logger,
-	})
-
-	// Connect via RPC
-	rpcClient, err := pluginClient.Client()
-	if err != nil {
-		err = fmt.Errorf("error initializing plugin: %w", err)
-		pm.logger.Error(err)
-		return types.Plugin{}, err
-	}
-
 	// all good, add to the map
 	newPlugin := types.Plugin{
-		ID:           id,
-		Metadata:     metadata,
-		Running:      false,
-		Enabled:      true,
-		Config:       *config.NewEmptyPluginConfig(),
-		RPCClient:    rpcClient,
-		PluginClient: pluginClient,
+		ID:       id,
+		Metadata: metadata,
+		Running:  false,
+		Enabled:  true,
+		Config:   *config.NewEmptyPluginConfig(),
 	}
 
 	if opts != nil && opts.ExistingState != nil {
@@ -435,23 +403,62 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 		pm.AddTarget(newPlugin.DevPath)
 	}
 
+	pm.logger.Debugw("found metadata",
+		"metadata", metadata,
+		"hasBackendCapabilities", metadata.HasBackendCapabilities(),
+		"hasUiCapabilities", metadata.HasUICapabilities(),
+	)
+
+	// we have backend capabilities, so we need to start the plugin
+	if metadata.HasBackendCapabilities() {
+		pluginClient := plugin.NewClient(&plugin.ClientConfig{
+			HandshakeConfig: metadata.GenerateHandshakeConfig(),
+			Plugins: map[string]plugin.Plugin{
+				"resource":  &rp.ResourcePlugin{},
+				"exec":      &ep.Plugin{},
+				"networker": &np.Plugin{},
+				"settings":  &sp.SettingsPlugin{},
+			},
+			GRPCDialOptions: sdk.GRPCDialOptions(),
+			//nolint:gosec // this is completely software controlled
+			Cmd:              exec.Command(filepath.Join(location, "bin", "plugin")),
+			AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+			Logger: hclog.New(&hclog.LoggerOptions{
+				Name:   id,
+				Output: os.Stdout,
+				Level:  hclog.Debug,
+			}),
+		})
+
+		// Connect via RPC
+		rpcClient, err := pluginClient.Client()
+		if err != nil {
+			err = fmt.Errorf("error initializing plugin: %w", err)
+			pm.logger.Error(err)
+			return types.Plugin{}, err
+		}
+
+		newPlugin.RPCClient = rpcClient
+		newPlugin.PluginClient = pluginClient
+
+		// init the controllers
+		if err = pm.initPlugin(&newPlugin); err != nil {
+			newPlugin.LoadError = err.Error()
+			pm.plugins[id] = newPlugin
+
+			return types.Plugin{}, fmt.Errorf("error initializing plugin: %w", err)
+		}
+
+		// start the controllers
+		if err = pm.startPlugin(&newPlugin); err != nil {
+			newPlugin.LoadError = err.Error()
+			pm.plugins[id] = newPlugin
+
+			return types.Plugin{}, fmt.Errorf("error starting plugin: %w", err)
+		}
+	}
+
 	pm.plugins[id] = newPlugin
-
-	// init the controllers
-	if err = pm.initPlugin(&newPlugin); err != nil {
-		newPlugin.LoadError = err.Error()
-		pm.plugins[id] = newPlugin
-
-		return types.Plugin{}, fmt.Errorf("error initializing plugin: %w", err)
-	}
-
-	// start the controllers
-	if err = pm.startPlugin(&newPlugin, rpcClient); err != nil {
-		newPlugin.LoadError = err.Error()
-		pm.plugins[id] = newPlugin
-
-		return types.Plugin{}, fmt.Errorf("error starting plugin: %w", err)
-	}
 
 	return newPlugin, nil
 }
@@ -461,6 +468,7 @@ func (pm *pluginManager) UninstallPlugin(id string) (types.Plugin, error) {
 	l := pm.logger.With("name", "UninstallPlugin", "pluginID", id)
 	defer pm.writePluginState()
 
+	l.Debugw("uninstalling plugin", "pluginID", id)
 	plugin, ok := pm.plugins[id]
 	if !ok {
 		err := fmt.Errorf("plugin with id '%s' is not currently loaded", id)
@@ -473,6 +481,7 @@ func (pm *pluginManager) UninstallPlugin(id string) (types.Plugin, error) {
 		l.Error(err)
 		return types.Plugin{}, err
 	}
+	l.Debugw("unloaded plugin", "pluginID", id)
 
 	// remove from the filesystem
 	location := getPluginLocation(id)
@@ -481,6 +490,10 @@ func (pm *pluginManager) UninstallPlugin(id string) (types.Plugin, error) {
 		l.Error(err)
 		return types.Plugin{}, err
 	}
+	l.Debugw("removed plugin", "pluginID", id)
+
+	l.Debugw("uninstalled plugin", "pluginID", id)
+
 	return plugin, nil
 }
 
@@ -522,6 +535,9 @@ func (pm *pluginManager) GetPlugin(id string) (types.Plugin, error) {
 
 // ListPlugins returns a list of all plugins that are currently registered with the manager.
 func (pm *pluginManager) ListPlugins() []types.Plugin {
+	l := pm.logger.With("name", "ListPlugins")
+	l.Debug("listing plugins", "plugins", pm.plugins)
+
 	var plugins []types.Plugin
 	for _, plugin := range pm.plugins {
 		plugins = append(plugins, plugin)
@@ -606,7 +622,7 @@ func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
 }
 
 // startPlugin starts the plugin and calls all the plugin controller start handlers.
-func (pm *pluginManager) startPlugin(plugin *types.Plugin, client plugin.ClientProtocol) error {
+func (pm *pluginManager) startPlugin(plugin *types.Plugin) error {
 	if plugin == nil {
 		return errors.New("plugin is nil")
 	}
@@ -631,7 +647,7 @@ func (pm *pluginManager) startPlugin(plugin *types.Plugin, client plugin.ClientP
 
 	// manually start the required capabilities first
 
-	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
 		return fmt.Errorf("error starting settings plugin: %w", err)
 	}
 
@@ -639,31 +655,31 @@ func (pm *pluginManager) startPlugin(plugin *types.Plugin, client plugin.ClientP
 	for _, capability := range plugin.Metadata.Capabilities {
 		switch capability {
 		case types.ResourcePlugin.String():
-			if err := pm.connfullControllers[types.ResourcePlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+			if err := pm.connfullControllers[types.ResourcePlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
 				return fmt.Errorf("error starting resource plugin: %w", err)
 			}
 		case types.ExecutorPlugin.String():
-			if err := pm.connlessControllers[types.ExecutorPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+			if err := pm.connlessControllers[types.ExecutorPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
 				return fmt.Errorf("error starting executor plugin: %w", err)
 			}
 		case types.NetworkerPlugin.String():
-			if err := pm.connlessControllers[types.NetworkerPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+			if err := pm.connlessControllers[types.NetworkerPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
 				return fmt.Errorf("error starting networker plugin: %w", err)
 			}
 		case types.FilesystemPlugin.String():
-			if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+			if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
 				return fmt.Errorf("error starting filesystem plugin: %w", err)
 			}
 		case types.LogPlugin.String():
-			if err := pm.connfullControllers[types.LogPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+			if err := pm.connfullControllers[types.LogPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
 				return fmt.Errorf("error starting log plugin: %w", err)
 			}
 		case types.MetricPlugin.String():
-			if err := pm.connfullControllers[types.MetricPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+			if err := pm.connfullControllers[types.MetricPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
 				return fmt.Errorf("error starting metric plugin: %w", err)
 			}
 		case types.ReporterPlugin.String():
-			if err := pm.connlessControllers[types.ReporterPlugin].OnPluginStart(plugin.Metadata, client); err != nil {
+			if err := pm.connlessControllers[types.ReporterPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
 				return fmt.Errorf("error starting reporter plugin: %w", err)
 			}
 		}
@@ -764,16 +780,16 @@ func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 	}
 
 	// stop the plugin client
-	if err := plugin.RPCClient.Close(); err != nil {
-		return fmt.Errorf("error stopping plugin client: %w", err)
-	}
+	if plugin.Metadata.HasBackendCapabilities() {
+		if err := plugin.RPCClient.Close(); err != nil {
+			return fmt.Errorf("error stopping plugin client: %w", err)
+		}
+		plugin.PluginClient.Kill()
 
-	plugin.PluginClient.Kill()
-
-	// manually shutdown the required capabilities first
-
-	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
-		return fmt.Errorf("error shutting down settings plugin: %w", err)
+		// manually shutdown the required capabilities first
+		if err := pm.connlessControllers[types.SettingsPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
+			return fmt.Errorf("error shutting down settings plugin: %w", err)
+		}
 	}
 
 	// go through the controllers and stop them based on the capabilities

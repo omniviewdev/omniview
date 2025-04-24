@@ -1,20 +1,20 @@
 import React, { type ReactNode } from 'react';
 import BottomDrawerContext from '@/contexts/BottomDrawerContext';
-import { 
-  type BottomDrawerTab, 
-  type CloseDrawer, 
-  type CreateTab, 
-  type CreateTabOpts, 
-  type FindTabOpts, 
-  type FocusTab, 
-  type FullscreenDrawer, 
-  type ResizeDrawer, 
+import {
+  type BottomDrawerTab,
+  type CloseDrawer,
+  type CreateTab,
+  type CreateTabOpts,
+  type FindTabOpts,
+  type FocusTab,
+  type FullscreenDrawer,
+  type ResizeDrawer,
   type CloseTab,
   type ReorderTab,
   type CreateTabs,
   type CloseTabs,
 } from './types';
-import { CloseSession } from '@api/exec/Client';
+import { ExecClient } from '@omniviewdev/runtime/api';
 
 type BottomDrawerProviderProps = {
   children: ReactNode;
@@ -86,10 +86,8 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
       variant: opts.variant,
       properties: opts.properties,
     };
-    console.log('newTab:', newTab);
-    console.log('tabs:', tabs);
     setTabs([...tabs, newTab]);
-    setFocused(tabs.length); 
+    setFocused(tabs.length);
   };
 
   const createTabs: CreateTabs = (newTabs: CreateTabOpts[]) => {
@@ -108,7 +106,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     setTabs([...tabs, ...toCreate]);
   };
 
-  const focusTab: FocusTab = (opts: FindTabOpts) => {  
+  const focusTab: FocusTab = (opts: FindTabOpts) => {
     const foundIndex = findTabIndex(tabs, { actionOnMultiple: 'newest', ...opts });
     if (foundIndex === -1) {
       return;
@@ -143,7 +141,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
 
     // if terminal, close the session
     if (tab.variant === 'terminal') {
-      CloseSession(tab.id).catch((err) => {
+      ExecClient.CloseSession(tab.id).catch((err) => {
         if (err instanceof Error) {
           console.error('failed to terminate session: ', err.message);
           return;
@@ -170,7 +168,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     });
 
     // close all the selected sessions
-    const closesPromises = Promise.all(terminalTabs.map(async (tab) => CloseSession(tab.id)));
+    const closesPromises = Promise.all(terminalTabs.map(async (tab) => ExecClient.CloseSession(tab.id)));
     closesPromises.catch((err) => {
       if (err instanceof Error) {
         console.error('failed to terminate sessions: ', err.message);

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar } from '@/providers/SnackbarProvider';
+import { useSnackbar } from '@omniviewdev/runtime';
 
 // Underlying client
-import { GetCategory, SetSettings } from '@api/settings/provider';
+import { SettingsProvider } from '@omniviewdev/runtime/api';
 
 type UseCategorySettingsOptions = {
   /**
@@ -24,11 +24,11 @@ export const useCategorySettings = ({ category }: UseCategorySettingsOptions) =>
 
   const settings = useQuery({
     queryKey,
-    queryFn: async () => GetCategory(category),
+    queryFn: async () => SettingsProvider.GetCategory(category),
   });
 
   const { mutateAsync: setSettings } = useMutation({
-    mutationFn: async (newSettings: Record<string, any>) => SetSettings(newSettings),
+    mutationFn: async (newSettings: Record<string, any>) => SettingsProvider.SetSettings(newSettings),
     onSuccess(_, _vars) {
       showSnackbar('Settings saved', 'success');
 

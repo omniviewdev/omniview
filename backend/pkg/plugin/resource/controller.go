@@ -419,7 +419,6 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 }
 
 func (c *controller) ListConnections(pluginID string) ([]types.Connection, error) {
-	c.logger.Debug("ListConnections")
 	connections, ok := c.connections[pluginID]
 	if !ok {
 		return nil, fmt.Errorf("plugin '%s' has no connections", pluginID)
@@ -440,7 +439,6 @@ func (c *controller) ListAllConnections() (map[string][]types.Connection, error)
 func (c *controller) GetConnection(
 	pluginID, connectionID string,
 ) (types.Connection, error) {
-	c.logger.Debug("GetConnection")
 	connections, ok := c.connections[pluginID]
 	if !ok {
 		return types.Connection{}, fmt.Errorf("plugin '%s' has no connections", pluginID)
