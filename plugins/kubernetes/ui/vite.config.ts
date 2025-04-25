@@ -17,6 +17,8 @@ const externals = [
   "react-dom",
   "react-icons",
   "@tanstack/react-query",
+  '@tanstack/react-table',
+  '@tanstack/react-virtual',
 
   // Monaco
   "@monaco-editor/react",
@@ -24,6 +26,9 @@ const externals = [
 
   // OMNIVIEW
   "@omniviewdev/runtime",
+  "@omniviewdev/runtime/api",
+  "@omniviewdev/runtime/models",
+  "@omniviewdev/runtime/runtime",
 ]
 
 // https://vitejs.dev/config/
@@ -33,6 +38,7 @@ export default defineConfig({
   ],
   build: {
     cssCodeSplit: false,
+    sourcemap: true,
     rollupOptions: {
       input: "src/entry.ts",
       output: {

@@ -139,7 +139,7 @@ type ListResult struct {
 	//
 	// Due to limitations with method bindings with Wails v2, this needs to
 	// be a map of resources by their ID instead of an array.
-	Result map[string]interface{} `json:"result"`
+	Result []map[string]interface{} `json:"result"`
 
 	// Success is a flag that indicates if the operation was successful.
 	Success bool `json:"success"`
@@ -155,7 +155,7 @@ type FindResult struct {
 	//
 	// Due to limitations with method bindings with Wails v2, this needs to
 	// be a map of resources by their ID instead of an array.
-	Result map[string]interface{} `json:"result"`
+	Result []map[string]interface{} `json:"result"`
 
 	// Success is a flag that indicates if the operation was successful.
 	Success bool `json:"success"`

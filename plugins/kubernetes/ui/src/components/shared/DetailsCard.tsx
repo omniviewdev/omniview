@@ -1,14 +1,16 @@
 import React from "react";
 
 // material-ui
-import Stack from "@mui/joy/Stack";
-import Card from "@mui/joy/Card";
-import CardContent from "@mui/joy/CardContent";
-import CardOverflow from "@mui/joy/CardOverflow";
-import Avatar from "@mui/joy/Avatar";
-import Divider from "@mui/joy/Divider";
-import Grid from "@mui/joy/Grid";
-import Typography from "@mui/joy/Typography";
+import {
+  Avatar,
+  Card,
+  CardContent,
+  CardOverflow,
+  Divider,
+  Grid,
+  Stack,
+  Typography,
+} from '@mui/joy';
 
 // project imports
 import Icon from "./Icon";

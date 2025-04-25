@@ -46,7 +46,23 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
 
   const connections = useQuery({
     queryKey,
-    queryFn: async () => LoadConnections(plugin),
+    queryFn: async () => {
+      try {
+        const result = await LoadConnections(plugin)
+        return result
+      } catch (error) {
+        // log the error
+        if (error instanceof Error) {
+          showSnackbar({
+            message: 'Failed to stop connection informer',
+            status: 'error',
+            details: `${error.message}`,
+          });
+        }
+      }
+
+      return []
+    }
   });
 
   return {

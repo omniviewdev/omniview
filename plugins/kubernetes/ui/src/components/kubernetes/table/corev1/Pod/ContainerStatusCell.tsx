@@ -1,8 +1,10 @@
 import React from 'react'
 
 // material-ui
-import Stack from '@mui/joy/Stack'
-import Tooltip from '@mui/joy/Tooltip'
+import {
+  Stack,
+  Tooltip
+} from '@mui/joy'
 
 import { ContainerStatus } from "kubernetes-types/core/v1";
 import ContainerStatusCard from '../../../sidebar/Pod/ContainerStatusCard';
@@ -54,28 +56,28 @@ export const ContainerStatusCell: React.FC<Props> = ({ data }) => {
     <Stack direction="row" width={"100%"} alignItems={'center'} justifyContent={'flex-start'} spacing={1}>
       {obj.map((status) => (
 
-    <Tooltip
-      placement="top-end"
-      variant="soft"
-      sx={{
-        border: (theme) => `1px solid ${theme.palette.divider}`,
-      }}
-      title={<ContainerStatusCard status={status} showStartedAt={false} />}
-    >
-      <div
-        color={getColor(status)}
-        style={{
-          backgroundColor: getColor(status),
-          borderRadius: 3, 
-          width: 10, 
-          height: 10, 
-          maxWidth: 10, 
-          maxHeight: 10, 
-          minWidth: 10, 
-          minHeight: 10,
-        }}
-      />
-    </Tooltip>
+        <Tooltip
+          placement="top-end"
+          variant="soft"
+          sx={{
+            border: (theme) => `1px solid ${theme.palette.divider}`,
+          }}
+          title={<ContainerStatusCard status={status} showStartedAt={false} />}
+        >
+          <div
+            color={getColor(status)}
+            style={{
+              backgroundColor: getColor(status),
+              borderRadius: 3,
+              width: 10,
+              height: 10,
+              maxWidth: 10,
+              maxHeight: 10,
+              minWidth: 10,
+              minHeight: 10,
+            }}
+          />
+        </Tooltip>
       ))}
     </Stack>
   )

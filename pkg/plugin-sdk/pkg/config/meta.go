@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 
 	"github.com/hashicorp/go-plugin"
 	"gopkg.in/yaml.v3"
@@ -50,9 +51,14 @@ func (m *PluginMeta) HasUICapabilities() bool {
 // HasBackendCapabilities checks if the plugin has UI capabilities. This is used
 // to verify plugin loading and staring.
 func (m *PluginMeta) HasBackendCapabilities() bool {
-	// if it has any capabilities and it doesn't have UI capabilities, then it has backend capabilities
-	// TODO: this might change in the future
-	return len(m.Capabilities) > 0 && !m.HasUICapabilities()
+	caps := []string{"resource", "exec", "networker", "settings"}
+
+	for _, capability := range m.Capabilities {
+		if slices.Contains(caps, capability) {
+			return true
+		}
+	}
+	return false
 }
 
 type PluginMaintainer struct {

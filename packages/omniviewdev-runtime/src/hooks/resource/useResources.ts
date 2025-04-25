@@ -9,6 +9,7 @@ import { types } from '../../wailsjs/go/models';
 import { List, Create } from '../../wailsjs/go/resource/Client';
 import { EventsOff, EventsOn } from '../../wailsjs/runtime/runtime';
 import { produce } from 'immer';
+import get from 'lodash.get';
 
 type AddPayload = {
   data: any;
@@ -64,6 +65,12 @@ type UseResourcesOptions = {
   namespaces?: string[];
 
   /**
+   * The dot-delimited path on which id's can be used for updates. In order for the informer
+   * live functionality to work, this must be set to the path on which the ID is located.
+   */
+  idAccessor?: string;
+
+  /**
    * Optional parameters to pass to the resource fetch
    * @example { labelSelector: "app=nginx" }
    */
@@ -87,6 +94,7 @@ export const useResources = ({
   pluginID,
   connectionID,
   resourceKey,
+  idAccessor,
   namespaces = [],
   listParams = {},
   createParams = {},
@@ -155,6 +163,10 @@ export const useResources = ({
    * Handle adding new resources to the resource list
    */
   const onResourceAdd = React.useCallback((newResource: AddPayload) => {
+    if (!idAccessor) {
+      return;
+    }
+
     queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
       return produce(oldData, (draft) => {
         if (!draft) {
@@ -165,7 +177,11 @@ export const useResources = ({
           });
         }
 
-        draft.result[newResource.id] = newResource.data;
+        const index = draft.result.findIndex(item => get(idAccessor, newResource.data) === get(idAccessor, item));
+        if (index !== -1) {
+          draft.result[index] = newResource.data;
+          return;
+        }
       });
     });
     queryClient.setQueryData(getResourceKey(newResource.id, newResource.namespace), { result: newResource.data });
@@ -175,6 +191,10 @@ export const useResources = ({
    * Handle updating resources in the resource list
    */
   const onResourceUpdate = React.useCallback((updateEvent: UpdatePayload) => {
+    if (!idAccessor) {
+      return;
+    }
+
     queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
       return produce(oldData, (draft) => {
         if (!draft) {
@@ -185,7 +205,11 @@ export const useResources = ({
           });
         }
 
-        draft.result[updateEvent.id] = updateEvent.newData;
+        const index = draft.result.findIndex(item => get(idAccessor, updateEvent.newData) === get(idAccessor, item));
+        if (index !== -1) {
+          draft.result[index] = updateEvent.newData;
+          return;
+        }
       });
     });
     queryClient.setQueryData(getResourceKey(updateEvent.id, updateEvent.namespace), { result: updateEvent.newData });
@@ -195,13 +219,21 @@ export const useResources = ({
    * Handle deleting pods from the resource list
    */
   const onResourceDelete = React.useCallback((deletedResource: DeletePayload) => {
+    if (!idAccessor) {
+      return;
+    }
+
     queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
       return produce(oldData, (draft) => {
         if (!draft) {
           return;
         }
-        /* eslint-disable-next-line */
-        delete draft.result[deletedResource.id];
+
+        const index = draft.result.findIndex(item => get(idAccessor, deletedResource.data) === get(idAccessor, item));
+        if (index !== -1) {
+          draft.result.splice(index, 1);
+          return;
+        }
       });
     });
     // TODO - don't delete yet, just set to undefined
@@ -210,14 +242,18 @@ export const useResources = ({
 
   // *Only on mount*, we want subscribe to new resources, updates and deletes
   React.useEffect(() => {
-    EventsOn(`${pluginID}/${connectionID}/${resourceKey}/ADD`, onResourceAdd);
-    EventsOn(`${pluginID}/${connectionID}/${resourceKey}/UPDATE`, onResourceUpdate);
-    EventsOn(`${pluginID}/${connectionID}/${resourceKey}/DELETE`, onResourceDelete);
+    if (idAccessor) {
+      EventsOn(`${pluginID}/${connectionID}/${resourceKey}/ADD`, onResourceAdd);
+      EventsOn(`${pluginID}/${connectionID}/${resourceKey}/UPDATE`, onResourceUpdate);
+      EventsOn(`${pluginID}/${connectionID}/${resourceKey}/DELETE`, onResourceDelete);
+    }
 
     return () => {
-      EventsOff(`${pluginID}/${connectionID}/${resourceKey}/ADD`);
-      EventsOff(`${pluginID}/${connectionID}/${resourceKey}/UPDATE`);
-      EventsOff(`${pluginID}/${connectionID}/${resourceKey}/DELETE`);
+      if (idAccessor) {
+        EventsOff(`${pluginID}/${connectionID}/${resourceKey}/ADD`);
+        EventsOff(`${pluginID}/${connectionID}/${resourceKey}/UPDATE`);
+        EventsOff(`${pluginID}/${connectionID}/${resourceKey}/DELETE`);
+      }
     };
   }, []);
 

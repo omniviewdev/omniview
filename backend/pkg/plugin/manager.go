@@ -522,7 +522,7 @@ func (pm *pluginManager) UnloadPlugin(id string) error {
 
 // GetPlugin returns the plugin with the given plugin ID.
 func (pm *pluginManager) GetPlugin(id string) (types.Plugin, error) {
-	l := pm.logger.With("name", "GetPlugin", "pluginID", id)
+	l := pm.logger.Named("GetPlugin").With("pluginID", id)
 
 	plugin, ok := pm.plugins[id]
 	if !ok {
@@ -535,8 +535,8 @@ func (pm *pluginManager) GetPlugin(id string) (types.Plugin, error) {
 
 // ListPlugins returns a list of all plugins that are currently registered with the manager.
 func (pm *pluginManager) ListPlugins() []types.Plugin {
-	l := pm.logger.With("name", "ListPlugins")
-	l.Debug("listing plugins", "plugins", pm.plugins)
+	l := pm.logger.Named("ListPlugins")
+	l.Debug("listing plugins", "count", len(pm.plugins))
 
 	var plugins []types.Plugin
 	for _, plugin := range pm.plugins {
@@ -547,7 +547,7 @@ func (pm *pluginManager) ListPlugins() []types.Plugin {
 
 // GetPluginConfig returns the plugin configuration for the given plugin ID.
 func (pm *pluginManager) GetPluginMeta(id string) (config.PluginMeta, error) {
-	l := pm.logger.With("name", "GetPluginMeta", "pluginID", id)
+	l := pm.logger.Named("GetPluginMeta").With("pluginID", id)
 
 	plugin, ok := pm.plugins[id]
 	if !ok {

@@ -318,6 +318,9 @@ importers:
 
   packages/omniviewdev-runtime:
     dependencies:
+      lodash.get:
+        specifier: ^4.4.2
+        version: 4.4.2
       ts-invariant:
         specifier: ^0.10.3
         version: 0.10.3
@@ -509,9 +512,18 @@ importers:
       '@mui/joy':
         specifier: 5.0.0-beta.32
         version: 5.0.0-beta.32(@emotion/react@11.14.0(@types/react@18.3.20)(react@18.3.1))(@emotion/styled@11.14.0(@emotion/react@11.14.0(@types/react@18.3.20)(react@18.3.1))(@types/react@18.3.20)(react@18.3.1))(@types/react@18.3.20)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@omniviewdev/runtime':
+        specifier: workspace:*
+        version: link:../../../packages/omniviewdev-runtime
+      '@tanstack/react-query':
+        specifier: ^5.28.4
+        version: 5.74.4(react@18.3.1)
       '@tanstack/react-table':
         specifier: ^8.15.3
         version: 8.21.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@tanstack/react-virtual':
+        specifier: ^3.2.0
+        version: 3.13.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       date-fns:
         specifier: ^3.6.0
         version: 3.6.0

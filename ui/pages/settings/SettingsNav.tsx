@@ -14,6 +14,7 @@ import { type SectionSelection, Section } from '.';
 import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { Avatar } from '@mui/joy';
+import { IsImage } from '@/utils/url';
 
 type Props = {
   selected: SectionSelection;
@@ -110,7 +111,21 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
                 }}
               >
                 <ListItemDecorator>
-                  <Avatar size='sm' src={plugin.metadata.icon} variant='plain' sx={{ borderRadius: 4, height: 20, width: 20 }} />
+                  {IsImage(plugin.metadata?.icon) ? (
+                    <Avatar
+                      size='sm'
+                      src={plugin.metadata.icon}
+                      variant='plain'
+                      sx={{
+                        borderRadius: 4,
+                        backgroundColor: 'transparent',
+                        objectFit: 'contain',
+                        border: 0,
+                        width: 20,
+                        height: 20,
+                      }}
+                    />
+                  ) : <Icon name={plugin.metadata.icon} />}
                 </ListItemDecorator>
                 <ListItemContent>{plugin.metadata.name}</ListItemContent>
               </ListItemButton>

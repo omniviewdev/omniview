@@ -2,6 +2,8 @@ import React from 'react';
 
 import { PluginContext } from './PluginContext';
 import { PluginValues } from '../../wailsjs/go/settings/Client';
+import { config } from '../../wailsjs/go/models';
+import { GetPluginMeta } from '../../wailsjs/go/plugin/pluginManager';
 
 export type PluginContextProviderProps = {
   pluginId: string;
@@ -10,6 +12,7 @@ export type PluginContextProviderProps = {
 export function PluginContextProvider(props: React.PropsWithChildren<PluginContextProviderProps>): React.ReactElement {
   const { children, pluginId } = props;
   const [settings, setSettings] = React.useState<Record<string, any>>({});
+  const [meta, setMeta] = React.useState<config.PluginMeta>(new config.PluginMeta);
 
   /**
    * Fetch the settings from the backend stores
@@ -29,10 +32,29 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
       })
   }
 
+  /**
+   * Fetch the metadata for the plugin from the backend stores
+   */
+  const fetchMeta = () => {
+    if (pluginId === undefined || pluginId === '') {
+      return
+    }
+
+    GetPluginMeta(pluginId)
+      .then((values) => {
+        console.log('Fetched plugin metadata:', values);
+        setMeta(values)
+      })
+      .catch((error) => {
+        console.error('Error fetching plugin settings:', error);
+      })
+  }
+
   React.useEffect(() => {
     fetchSettings();
+    fetchMeta();
   }, [pluginId])
 
 
-  return <PluginContext.Provider value={{ settings }}>{children}</PluginContext.Provider>;
+  return <PluginContext.Provider value={{ settings, meta }}>{children}</PluginContext.Provider>;
 }

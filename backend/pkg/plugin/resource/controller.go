@@ -368,9 +368,10 @@ func (c *controller) StartConnection(
 }
 
 func (c *controller) StopConnection(pluginID, connectionID string) (types.Connection, error) {
-	c.logger.Debug("StopConnection")
+	log := c.logger.Named("StopConnection").With("pluginID", pluginID, "connectionID", connectionID)
 	client, ok := c.clients[pluginID]
 	if !ok {
+		log.Error("plugin not found")
 		return types.Connection{}, fmt.Errorf("plugin '%s' not found", pluginID)
 	}
 	ctx := types.NewPluginContextWithConnection(
@@ -390,10 +391,12 @@ func (c *controller) StopConnection(pluginID, connectionID string) (types.Connec
 }
 
 func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error) {
-	c.logger.Debug("LoadConnections")
+	log := c.logger.Named("LoadConnections").With("pluginID", pluginID)
+	log.Debug("calling LoadConnections")
 
 	client, ok := c.clients[pluginID]
 	if !ok {
+		log.Error("plugin not found")
 		return nil, fmt.Errorf("plugin '%s' not found", pluginID)
 	}
 
@@ -405,12 +408,14 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 		nil, // no associated connection
 	)
 
+	log.Debug("loading connections from plugin")
 	connections, err := client.LoadConnections(ctx)
 	if err != nil {
+		log.Errorw("failed to load connections from plugin", "error", err)
 		return nil, err
 	}
 
-	c.logger.Debug("loaded connections from backend", "connections", connections)
+	log.Debug("loaded connections from backend", "count", len(connections))
 
 	// writethrough to local state
 	c.connections[pluginID] = mergeConnections(c.connections[pluginID], connections)
@@ -419,6 +424,9 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 }
 
 func (c *controller) ListConnections(pluginID string) ([]types.Connection, error) {
+	log := c.logger.Named("ListConnections").With("pluginID", pluginID)
+	log.Debug("calling ListConnections")
+
 	connections, ok := c.connections[pluginID]
 	if !ok {
 		return nil, fmt.Errorf("plugin '%s' has no connections", pluginID)

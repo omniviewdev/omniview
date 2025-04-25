@@ -50,7 +50,7 @@ import {
 } from '@/store/tabs/slice';
 
 // Icons
-import { LuAppWindow, LuBox, LuHome, LuSettings, LuX } from 'react-icons/lu';
+import { LuAppWindow, LuBox, LuHouse, LuSettings, LuX } from 'react-icons/lu';
 import { FaPlus } from 'react-icons/fa';
 import { WindowIsFullscreen } from '@omniviewdev/runtime/runtime';
 
@@ -350,7 +350,7 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
             color="neutral"
             sx={{ minWidth: 40 }}
           >
-            <LuHome />
+            <LuHouse />
           </IconButton>
         </Link>
 

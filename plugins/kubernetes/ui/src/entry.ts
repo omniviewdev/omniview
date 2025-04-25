@@ -1,20 +1,35 @@
+/// <reference types="@welldone-software/why-did-you-render" />
 import { PluginWindow } from '@omniviewdev/runtime';
-import RootLayout from './pages/RootLayout';
 import { RouteObject } from 'react-router-dom';
-import RootPage from './pages/RootPage';
-import ScanPage from './pages/ScanPage';
+
+import ClustersPage from './pages/ClustersPage';
+import ClusterEditPage from './pages/ClusterEditPage';
+import ClusterResourcesPage from './pages/ClusterResourcesPage';
 
 const routes: Array<RouteObject> = [
   {
     path: '/',
-    Component: RootLayout,
+    Component: ClustersPage,
+  },
+  {
+    path: '/clusters',
+    Component: ClustersPage,
+  },
+  {
+    path: '/cluster/:id',
     children: [
-      { index: true, Component: RootPage },
-      { path: 'scan', Component: ScanPage }
+      {
+        path: 'edit',
+        Component: ClusterEditPage,
+      },
+      {
+        path: 'resources',
+        Component: ClusterResourcesPage,
+      }
     ]
   }
 ]
 
 export const plugin = new PluginWindow()
-  .setRootPage(RootLayout)
+  .setRootPage(ClustersPage)
   .withRoutes(routes)

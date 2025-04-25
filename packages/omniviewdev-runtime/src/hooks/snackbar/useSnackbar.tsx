@@ -12,8 +12,8 @@ import {
 
 // Icons
 import {
-  LuCheckCircle,
-  LuAlertTriangle,
+  LuCircleCheck,
+  LuTriangleAlert,
   LuCircleAlert,
   LuInfo,
   LuX,
@@ -51,7 +51,7 @@ const snackbarContent: Record<VariantType, SnackbarContent> = {
   },
   success: {
     color: 'success',
-    icon: <LuCheckCircle />,
+    icon: <LuCircleCheck />,
   },
   error: {
     color: 'danger',
@@ -59,7 +59,7 @@ const snackbarContent: Record<VariantType, SnackbarContent> = {
   },
   warning: {
     color: 'warning',
-    icon: <LuAlertTriangle />,
+    icon: <LuTriangleAlert />,
   },
   info: {
     color: 'primary',
@@ -77,14 +77,13 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
   };
 
   // Updated showSnackbar function to handle both overloads
-  const showSnackbar: SnackbarContextType['showSnackbar'] = (messageOrOptions: string | ShowSnackbarOptions, status?: VariantType, icon?: string, details?: string) => {
+  const showSnackbar: SnackbarContextType['showSnackbar'] = (messageOrOptions: string | ShowSnackbarOptions, status?: VariantType, details?: string) => {
     // Determine if the function was called with ShowSnackbarOptions or individual arguments
     const isOptions = typeof messageOrOptions === 'object';
 
     // Extract options if provided
     let _message = '';
     let _status: VariantType = 'info';
-    let _icon: string | undefined;
     let _details: string | undefined;
     let _autoHideDuration: number | undefined = 5000;
 
@@ -101,13 +100,11 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
       }
 
       _status = messageOrOptions.status;
-      _icon = messageOrOptions.icon;
       _details = messageOrOptions.details;
       _autoHideDuration = messageOrOptions.autoHideDuration ?? 5000;
     } else {
       _message = messageOrOptions;
       _status = status!;
-      _icon = icon;
       _details = details;
     }
 
