@@ -3,6 +3,7 @@ package plugin
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -18,7 +19,9 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/exp/slices"
+	"golang.org/x/sync/errgroup"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
@@ -217,7 +220,7 @@ func (pm *pluginManager) installAndWatchDevPlugin(dir string) (*config.PluginMet
 	runtime.EventsEmit(pm.ctx, PluginDevInstallEventStart, meta)
 
 	// start the package
-	if err = buildAndTransferPlugin(dir, meta); err != nil {
+	if err = buildAndTransferPlugin(dir, meta, types.BuildOpts{}); err != nil {
 		return nil, fmt.Errorf("failed to build and package plugin: %w", err)
 	}
 
@@ -234,6 +237,20 @@ func (pm *pluginManager) handleWatchEvent(event fsnotify.Event) error {
 		return nil
 	}
 
+	opts := types.BuildOpts{
+		ExcludeBackend: true,
+		ExcludeUI:      true,
+	}
+
+	// determine if which portions we need to build
+	if strings.HasPrefix(event.Name, filepath.Join(target, "pkg")) {
+		opts.ExcludeBackend = false
+	}
+
+	if strings.HasPrefix(event.Name, filepath.Join(target, "ui")) {
+		opts.ExcludeUI = false
+	}
+
 	meta, err := parseMetadataFromPluginPath(target)
 	if err != nil {
 		return fmt.Errorf("failed to parse metadata from plugin path: %w", err)
@@ -243,7 +260,7 @@ func (pm *pluginManager) handleWatchEvent(event fsnotify.Event) error {
 	runtime.EventsEmit(pm.ctx, PluginReloadEventStart, meta)
 
 	// start the package
-	if err = buildAndTransferPlugin(target, meta); err != nil {
+	if err = buildAndTransferPlugin(target, meta, opts); err != nil {
 		runtime.EventsEmit(pm.ctx, PluginReloadEventError, meta, err.Error())
 		return fmt.Errorf("failed to build and package plugin: %w", err)
 	}
@@ -263,7 +280,7 @@ func (pm *pluginManager) handleWatchEvent(event fsnotify.Event) error {
 // building a go binary.
 func buildPluginBinary(path string) error {
 	if path == "" {
-		return errors.New("Cannot build plugin binary: path is empty")
+		return errors.New("cannot build plugin binary: path is empty")
 	}
 
 	// validate we actually have the right files here:
@@ -343,7 +360,7 @@ func buildPluginUi(path string) error {
 	return nil
 }
 
-func transferPluginBuild(path string, meta *config.PluginMeta) error {
+func transferPluginBuild(path string, meta *config.PluginMeta, opts types.BuildOpts) error {
 	installLocation := getPluginLocation(meta.ID)
 
 	// ensure the install location exists
@@ -351,63 +368,74 @@ func transferPluginBuild(path string, meta *config.PluginMeta) error {
 		return fmt.Errorf("failed to create plugin install location: %w", err)
 	}
 
-	// 1. Plugin Metadata (copy)
-	metaPath := filepath.Join(path, "plugin.yaml")
-	targetMetaPath := filepath.Join(installLocation, "plugin.yaml")
+	ctx := context.Background()
+	g, _ := errgroup.WithContext(ctx)
 
-	sourceMetaFile, err := os.Open(metaPath)
-	if err != nil {
-		return fmt.Errorf("failed to open metadata file: %w", err)
-	}
-	defer sourceMetaFile.Close()
+	g.Go(func() error {
+		// 1. Plugin Metadata (copy)
+		metaPath := filepath.Join(path, "plugin.yaml")
+		targetMetaPath := filepath.Join(installLocation, "plugin.yaml")
 
-	destMetaFile, err := os.Create(targetMetaPath)
-	if err != nil {
-		return fmt.Errorf("failed to create metadata file: %w", err)
-	}
-
-	defer destMetaFile.Close()
-
-	if _, err = io.Copy(destMetaFile, sourceMetaFile); err != nil {
-		return fmt.Errorf("failed to copy metadata to plugin location: %w", err)
-	}
-
-	// 2. Plugin Binary (move)
-	if meta.HasBackendCapabilities() {
-		binaryPath := filepath.Join(path, "build", "bin", "plugin")
-		targetBinPath := filepath.Join(installLocation, "bin", "plugin")
-
-		if err = os.MkdirAll(filepath.Dir(targetBinPath), 0755); err != nil {
-			return fmt.Errorf("failed to create plugin binary directory: %w", err)
+		sourceMetaFile, err := os.Open(metaPath)
+		if err != nil {
+			return fmt.Errorf("failed to open metadata file: %w", err)
 		}
-		if err = os.Rename(binaryPath, targetBinPath); err != nil {
-			return fmt.Errorf("failed to move binary to plugin location: %w", err)
+		defer sourceMetaFile.Close()
+
+		destMetaFile, err := os.Create(targetMetaPath)
+		if err != nil {
+			return fmt.Errorf("failed to create metadata file: %w", err)
 		}
+
+		defer destMetaFile.Close()
+
+		if _, err = io.Copy(destMetaFile, sourceMetaFile); err != nil {
+			return fmt.Errorf("failed to copy metadata to plugin location: %w", err)
+		}
+		return nil
+	})
+
+	if meta.HasBackendCapabilities() && !opts.ExcludeBackend {
+		g.Go(func() error {
+			binaryPath := filepath.Join(path, "build", "bin", "plugin")
+			targetBinPath := filepath.Join(installLocation, "bin", "plugin")
+
+			if err := os.MkdirAll(filepath.Dir(targetBinPath), 0755); err != nil {
+				return fmt.Errorf("failed to create plugin binary directory: %w", err)
+			}
+			if err := os.Rename(binaryPath, targetBinPath); err != nil {
+				return fmt.Errorf("failed to move binary to plugin location: %w", err)
+			}
+			return nil
+		})
 	}
 
 	// 3. UI (recursive copy)
-	if meta.HasUICapabilities() {
-		uiPath := filepath.Join(path, "ui", "dist", "assets")
-		targetUIPath := filepath.Join(installLocation, "assets")
+	if meta.HasUICapabilities() && !opts.ExcludeUI {
+		g.Go(func() error {
+			uiPath := filepath.Join(path, "ui", "dist", "assets")
+			targetUIPath := filepath.Join(installLocation, "assets")
 
-		if err = os.RemoveAll(targetUIPath); err != nil {
-			return fmt.Errorf("failed to remove existing UI directory: %w", err)
-		}
-		if err = os.MkdirAll(targetUIPath, 0755); err != nil {
-			return fmt.Errorf("failed to create UI directory: %w", err)
-		}
-
-		if _, err = os.Stat(uiPath); err == nil {
-			if err = CopyDirectory(uiPath, targetUIPath); err != nil {
-				return fmt.Errorf("failed to copy UI to plugin location: %w", err)
+			if err := os.RemoveAll(targetUIPath); err != nil {
+				return fmt.Errorf("failed to remove existing UI directory: %w", err)
 			}
-		}
+			if err := os.MkdirAll(targetUIPath, 0755); err != nil {
+				return fmt.Errorf("failed to create UI directory: %w", err)
+			}
+
+			if _, err := os.Stat(uiPath); err == nil {
+				if err = CopyDirectory(uiPath, targetUIPath); err != nil {
+					return fmt.Errorf("failed to copy UI to plugin location: %w", err)
+				}
+			}
+			return nil
+		})
 	}
 
-	return nil
+	return g.Wait()
 }
 
-func buildAndTransferPlugin(path string, meta *config.PluginMeta) error {
+func buildAndTransferPlugin(path string, meta *config.PluginMeta, opts types.BuildOpts) error {
 	// load the plugin meta and check capabilities so we know what we need to build
 	if meta == nil {
 		return errors.New("failed to build and transfer plugin: metadata is nil")
@@ -416,18 +444,36 @@ func buildAndTransferPlugin(path string, meta *config.PluginMeta) error {
 		return errors.New("failed to build and transfer plugin: no capabilities found")
 	}
 
-	if meta.HasBackendCapabilities() {
-		if err := buildPluginBinary(path); err != nil {
-			return err
-		}
-	}
-	if meta.HasUICapabilities() {
-		if err := buildPluginUi(path); err != nil {
-			return err
-		}
+	// perform the builds concurrently
+	var buildtasks sync.WaitGroup
+	var beError, feError error
+
+	if meta.HasBackendCapabilities() && !opts.ExcludeBackend {
+		buildtasks.Add(1)
+		go func() {
+			defer buildtasks.Done()
+			beError = buildPluginBinary(path)
+		}()
 	}
 
-	if err := transferPluginBuild(path, meta); err != nil {
+	if meta.HasUICapabilities() && !opts.ExcludeUI {
+		buildtasks.Add(1)
+		go func() {
+			defer buildtasks.Done()
+			feError = buildPluginUi(path)
+		}()
+	}
+
+	buildtasks.Wait()
+
+	if beError != nil {
+		return fmt.Errorf("failed to build plugin binary: %w", beError)
+	}
+	if feError != nil {
+		return fmt.Errorf("failed to build plugin UI: %w", feError)
+	}
+
+	if err := transferPluginBuild(path, meta, opts); err != nil {
 		return err
 	}
 	return nil

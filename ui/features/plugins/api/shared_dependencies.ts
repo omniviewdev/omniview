@@ -21,6 +21,11 @@ export const shared = {
   'react-dom': () => import('react-dom'),
   'react-icons': () => import('react-icons'),
 
+  /** Tanstack */
+  '@tanstack/react-query': () => import('@tanstack/react-query'),
+  '@tanstack/react-table': () => import('@tanstack/react-table'),
+  '@tanstack/react-virtual': () => import('@tanstack/react-virtual'),
+
   /** Omniview */
   '@omniviewdev/runtime': () => import('@omniviewdev/runtime'),
   '@omniviewdev/runtime/api': () => import('@omniviewdev/runtime/api'),

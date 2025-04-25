@@ -16,6 +16,7 @@ const externals = [
   "react-router-dom",
   "react-dom",
   "react-icons",
+  "@tanstack/react-query",
 
   // OMNIVIEW
   "@omniviewdev/runtime",

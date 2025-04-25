@@ -2,6 +2,7 @@ package resource
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
@@ -24,11 +25,14 @@ const (
 
 // LoadConnectionsFunc loads the available connections for the plugin.
 func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
+	log.Println("Loading connections")
 	// Get the kubeconfigs from the settings provider
 	kubeconfigs, settingsErr := ctx.PluginConfig.GetStringSlice("kubeconfigs")
 	if settingsErr != nil {
+		log.Printf("failed to get kubeconfigs from settings: %v", settingsErr)
 		return nil, fmt.Errorf("failed to get kubeconfigs from settings: %w", settingsErr)
 	}
+	log.Printf("kubeconfigs: %v", kubeconfigs)
 
 	// let's make a guestimate of the number of connections we might have
 	connections := make([]types.Connection, 0, len(kubeconfigs)*EstimatedContexts)

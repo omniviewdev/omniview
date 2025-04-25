@@ -11,7 +11,7 @@ import {
 import SearchInput from '../shared/SearchInput';
 
 // Icons
-import { TbCloudDataConnection } from 'react-icons/tb';
+import { SiKubernetes } from 'react-icons/si';
 
 type Props = {
   search: string;
@@ -44,8 +44,8 @@ const ConnectionListHeader: React.FC<Props> = ({ search, onSearchChange }) => (
       gap={1}
       pl={1}
     >
-      <TbCloudDataConnection size={20} />
-      <Typography fontSize={16} fontWeight={600}>Connections</Typography>
+      <SiKubernetes size={20} />
+      <Typography fontSize={16} fontWeight={600}>Clusters</Typography>
     </Stack>
 
     {/* Right side of the header */}

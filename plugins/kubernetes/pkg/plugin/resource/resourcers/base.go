@@ -112,8 +112,6 @@ func (s *KubernetesResourcerBase[T]) List(
 	client *clients.ClientSet,
 	_ pkgtypes.ListInput,
 ) (*pkgtypes.ListResult, error) {
-	result := make(map[string]interface{})
-
 	// if the informer isn't synced yet, do a normal call while the informer catches up
 	// informer := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Informer()
 	// if !informer.HasSynced() {
@@ -140,16 +138,14 @@ func (s *KubernetesResourcerBase[T]) List(
 		return nil, err
 	}
 
+	result := make([]map[string]interface{}, 0, len(resources))
 	for _, r := range resources {
-		var obj map[string]interface{}
-		obj, err = runtime.DefaultUnstructuredConverter.ToUnstructured(r)
+		obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(r)
 		if err != nil {
 			return nil, err
 		}
-		res := unstructured.Unstructured{Object: obj}
-		result[res.GetName()] = obj
+		result = append(result, obj)
 	}
-	//}
 
 	return &pkgtypes.ListResult{Success: true, Result: result}, nil
 }
@@ -168,14 +164,13 @@ func (s *KubernetesResourcerBase[T]) Find(
 		return nil, err
 	}
 
-	result := make(map[string]interface{})
+	result := make([]map[string]interface{}, 0, len(resources))
 	for _, r := range resources {
 		obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(r)
 		if err != nil {
 			return nil, err
 		}
-		res := unstructured.Unstructured{Object: obj}
-		result[res.GetName()] = obj
+		result = append(result, obj)
 	}
 
 	return &pkgtypes.FindResult{Success: true, Result: result}, nil

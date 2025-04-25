@@ -20,7 +20,7 @@ const sections: SidebarSection[] = [
     id: 'overview',
     title: 'Overview',
     items: [
-      { id: '/', label: 'Dashboard', icon: 'LuHome' },
+      { id: '/', label: 'Dashboard', icon: 'LuHouse' },
       { id: '/scan', label: 'Scan', icon: 'LuCamera' },
     ]
   }

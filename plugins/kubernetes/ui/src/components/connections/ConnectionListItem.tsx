@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, usePluginRouter } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 // Material-ui
 import {
@@ -24,75 +24,21 @@ import {
   useConnection,
   useSnackbar,
 } from '@omniviewdev/runtime';
-
-// Types
-import { stringToColor } from '@/utils/color';
-import { types } from '@omniviewdev/runtime';
+import { types } from '@omniviewdev/runtime/models';
+import NamedAvatar from '../shared/NamedAvatar';
 
 // Icons
 import { MoreVert } from '@mui/icons-material';
 import { LuPencil, LuTrash } from 'react-icons/lu';
 
-
 type Props = Omit<types.Connection, 'createFrom' | 'convertValues'>;
 
-function stringAvatar(name: string) {
-  if (!name) {
-    return {
-      sx: {
-        bgcolor: 'grey.500',
-        borderRadius: 6,
-      },
-      children: 'NA',
-    };
-  }
-
-  if (name.length === 1) {
-    return {
-      sx: {
-        bgcolor: stringToColor(name),
-        borderRadius: 6,
-      },
-      children: name.toUpperCase(),
-    };
-  }
-
-  // Try splitting on space
-  let nameArr = name.split(' ');
-  if (nameArr.length === 1) {
-    // Try splitting on dash
-    nameArr = name.split('-');
-  }
-
-  if (nameArr.length === 1) {
-    return {
-      sx: {
-        maxHeight: 28,
-        maxWidth: 28,
-        bgcolor: stringToColor(name),
-        borderRadius: 6,
-      },
-      children: `${name[0].toUpperCase()}${name[1].toUpperCase()}`,
-    };
-  }
-
-  return {
-    sx: {
-      maxHeight: 28,
-      maxWidth: 28,
-      bgcolor: stringToColor(name),
-      borderRadius: 6,
-    },
-    children: `${nameArr[0][0].toUpperCase()}${nameArr[1][0].toUpperCase()}`,
-  };
-}
-
 const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, labels, last_refresh, expiry_time }) => {
-  const plugin = usePluginContext();
-  const { navigate } = usePluginRouter();
+  const { meta } = usePluginContext();
+  const navigate = useNavigate();
   const { showSnackbar } = useSnackbar();
 
-  const { startConnection } = useConnection({ pluginID: plugin.id, connectionID: id });
+  const { startConnection } = useConnection({ pluginID: meta.id, connectionID: id });
   const [connecting, setConnecting] = React.useState(false);
 
   const handleConnectionStatus = (status: types.ConnectionStatus) => {
@@ -224,10 +170,7 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
                   maxWidth: 28,
                 }}
               />
-              : <Avatar
-                size='sm'
-                {...stringAvatar(id || '')}
-              />
+              : <NamedAvatar value={name} />
             }
           </Badge>
         </ListItemDecorator>

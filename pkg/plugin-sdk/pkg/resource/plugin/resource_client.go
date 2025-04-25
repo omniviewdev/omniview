@@ -276,8 +276,14 @@ func (r *ResourcePluginClient) List(
 		return nil, err
 	}
 
+	data := resp.GetData()
+	res := make([]map[string]interface{}, 0, len(data))
+	for _, d := range data {
+		res = append(res, d.AsMap())
+	}
+
 	result := &types.ListResult{
-		Result:  resp.GetData().AsMap(),
+		Result:  res,
 		Success: resp.GetSuccess(),
 	}
 
@@ -302,8 +308,14 @@ func (r *ResourcePluginClient) Find(
 		return nil, err
 	}
 
+	data := resp.GetData()
+	res := make([]map[string]interface{}, 0, len(data))
+	for _, d := range data {
+		res = append(res, d.AsMap())
+	}
+
 	result := &types.FindResult{
-		Result:  resp.GetData().AsMap(),
+		Result:  res,
 		Success: resp.GetSuccess(),
 	}
 

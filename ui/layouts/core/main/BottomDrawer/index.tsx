@@ -21,6 +21,7 @@ const TerminalContainerMemo = React.memo(TerminalContainer, (prev, next) => {
   return prev.sessionId === next.sessionId;
 });
 
+
 /**
  * Sticky resizable drawer at the bottom of the screen used to display
  * interactive context items, such as terminals and reports.

@@ -121,43 +121,6 @@ export default function CoreLayoutSidebar() {
           ))}
         </TabList>
       </Tabs>
-
-      {/* Dynamic Plugins */}
-      {/* <List size='sm' sx={{ '--ListItem-radius': '6px', '--List-gap': '8px', '--ListItem-paddingY': '0px' }}> */}
-      {/*   {!plugins.isLoading && plugins.data?.map(({ id, metadata }) => ( */}
-      {/*     <ListItem key={id}> */}
-      {/*       <Link to={`/plugin/${id}`}> */}
-      {/*         <IconButton variant={pathname.startsWith(`/plugin/${id}`) ? 'solid' : 'plain'} size='lg'> */}
-      {/*           {IsImage(metadata?.icon) ? ( */}
-      {/*             <Avatar */}
-      {/*               size='sm' */}
-      {/*               src={metadata.icon} */}
-      {/*               variant='plain' */}
-      {/*               sx={{ */}
-      {/*                 borderRadius: 4, backgroundColor: 'transparent', objectFit: 'contain', border: 0, */}
-      {/*               }} */}
-      {/*             /> */}
-      {/*           ) : <Icon name={metadata?.icon || ''} size={44} />} */}
-      {/*         </IconButton> */}
-      {/*       </Link> */}
-      {/*     </ListItem> */}
-      {/*   ))} */}
-      {/**/}
-      {/*   <ListItem key={'trivy'}> */}
-      {/*     <Link to={'/trivy'}> */}
-      {/*       <IconButton variant={pathname.startsWith('/trivy') ? 'solid' : 'plain'} size='lg'> */}
-      {/*         <Avatar */}
-      {/*           size='sm' */}
-      {/*           src={'https://raw.githubusercontent.com/aquasecurity/trivy-docker-extension/main/trivy.svg'} */}
-      {/*           variant='plain' */}
-      {/*           sx={{ */}
-      {/*             borderRadius: 4, backgroundColor: 'transparent', objectFit: 'contain', border: 0, */}
-      {/*           }} */}
-      {/*         /> */}
-      {/*       </IconButton> */}
-      {/*     </Link> */}
-      {/*   </ListItem> */}
-      {/* </List> */}
     </Sheet>
   );
 }

@@ -248,13 +248,17 @@ func (s *ResourcePluginServer) List(
 		return nil, status.Errorf(codes.Internal, "failed to list resources: %s", err.Error())
 	}
 
-	data, err := structpb.NewStruct(resp.Result)
-	if err != nil {
-		return nil, status.Errorf(
-			codes.Internal,
-			"failed to convert resources to struct: %s",
-			err.Error(),
-		)
+	data := make([]*structpb.Struct, 0, len(resp.Result))
+	for _, item := range resp.Result {
+		dataItem, err := structpb.NewStruct(item)
+		if err != nil {
+			return nil, status.Errorf(
+				codes.Internal,
+				"failed to convert resources to struct: %s",
+				err.Error(),
+			)
+		}
+		data = append(data, dataItem)
 	}
 
 	return &proto.ListResponse{
@@ -282,13 +286,17 @@ func (s *ResourcePluginServer) Find(
 		return nil, status.Errorf(codes.Internal, "failed to find resources: %s", err.Error())
 	}
 
-	data, err := structpb.NewStruct(resp.Result)
-	if err != nil {
-		return nil, status.Errorf(
-			codes.Internal,
-			"failed to convert resources to struct: %s",
-			err.Error(),
-		)
+	data := make([]*structpb.Struct, 0, len(resp.Result))
+	for _, item := range resp.Result {
+		dataItem, err := structpb.NewStruct(item)
+		if err != nil {
+			return nil, status.Errorf(
+				codes.Internal,
+				"failed to convert resources to struct: %s",
+				err.Error(),
+			)
+		}
+		data = append(data, dataItem)
 	}
 
 	return &proto.FindResponse{

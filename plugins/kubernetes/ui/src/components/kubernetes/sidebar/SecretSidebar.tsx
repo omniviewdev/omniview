@@ -42,7 +42,7 @@ import {
   LuRotate3D,
   LuSave,
   LuX,
-  LuXCircle,
+  LuCircleX,
 } from "react-icons/lu";
 
 const decodeEntries = (data?: Record<string, string>) => {
@@ -389,7 +389,7 @@ export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
           <Button
             variant="outlined"
             color="neutral"
-            startDecorator={<LuXCircle />}
+            startDecorator={<LuCircleX />}
             size="sm"
             onClick={handleClear}
           >
@@ -400,10 +400,10 @@ export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
       {(!!deployments?.data?.length ||
         !!statefulsets?.data?.length ||
         !!daemonsets?.data?.length) && (
-        <Typography level="title-md" pl={1}>
-          Used By
-        </Typography>
-      )}
+          <Typography level="title-md" pl={1}>
+            Used By
+          </Typography>
+        )}
       <UsedDeploymentsCard deployments={deployments} />
       <UsedStatefulSetsCard statefulsets={statefulsets} />
       <UsedDaemonSetsCard daemonsets={daemonsets} />

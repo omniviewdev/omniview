@@ -1100,7 +1100,7 @@ export namespace types {
 	    }
 	}
 	export class FindResult {
-	    result: Record<string, any>;
+	    result: any[];
 	    success: boolean;
 	    pagination: PaginationResult;
 	
@@ -1238,7 +1238,7 @@ export namespace types {
 		}
 	}
 	export class ListResult {
-	    result: Record<string, any>;
+	    result: any[];
 	    success: boolean;
 	    pagination: PaginationResult;
 	

@@ -42,7 +42,7 @@ var ResourceGroups = []types.ResourceGroup{
 	{
 		ID:   "metrics",
 		Name: "Metrics",
-		Icon: "LuBarChartBig",
+		Icon: "LuChartBarBig",
 	},
 	{
 		ID:   "networking",

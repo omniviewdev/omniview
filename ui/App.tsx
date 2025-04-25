@@ -14,7 +14,6 @@ import {
 // Providers
 import { CssVarsProvider, StyledEngineProvider } from '@mui/joy/styles';
 import theme from './theme';
-import { WindowProvider } from '@/providers/WindowProvider';
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
 import RightDrawerProvider from '@/providers/RightDrawer';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -73,13 +72,11 @@ const App: React.FC = () => (
                     disableNestedContext
                     theme={theme}
                   >
-                    <WindowProvider>
-                      <RightDrawerProvider>
-                        <BottomDrawerProvider>
-                          <RouterProvider router={coreRouter} />
-                        </BottomDrawerProvider>
-                      </RightDrawerProvider>
-                    </WindowProvider>
+                    <RightDrawerProvider>
+                      <BottomDrawerProvider>
+                        <RouterProvider router={coreRouter} />
+                      </BottomDrawerProvider>
+                    </RightDrawerProvider>
                   </CssVarsProvider>
                 </Provider>
               </StyledEngineProvider>
