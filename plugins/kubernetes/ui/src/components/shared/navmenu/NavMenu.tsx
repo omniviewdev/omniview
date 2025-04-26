@@ -23,11 +23,22 @@ import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownR
 import { type SidebarListItemProps, type SidebarProps } from './types';
 import { IsImage } from '../../../utils/url';
 import Icon from '../Icon';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 /**
  * Render a navigation menu in a sidebar layout
  */
-const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scrollable, selected, onSelect }) => {
+const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scrollable }) => {
+  const { id } = useParams<{ id: string }>()
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const selected = location.pathname.split('/').pop();
+
+  const onSelect = (resourceID: string) => {
+    navigate(`/cluster/${id}/resources/${resourceID}`);
+  }
+
   if (items == null && sections == null) {
     throw new Error('You must pass either items or sections');
   }
@@ -152,10 +163,8 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
 
     if (item.children?.length) {
       // Shouldn't be selectable if it has children
-      console.log('toggle', id);
       onToggleOpen(id);
     } else {
-      console.log('select', id);
       onSelect(id);
     }
   };
@@ -165,80 +174,84 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
   ), [openState[id]]);
 
   return (
-    <>
-      <ListItem
-        key={id}
-        sx={{
-          userSelect: 'none',
-        }}
-        nested={Boolean(item.children?.length)}
-        endAction={Boolean(item.children?.length) ? (
-          <IconButton
-            variant='plain'
-            size='sm'
-            color='neutral'
-            onClick={handleClick}
-          >
-            {MemoizedIcon}
-          </IconButton>
-        ) : (
-          typeof item.decorator === 'string'
-            ? (
-              <Chip size='sm' variant='outlined' color='neutral' sx={{ borderRadius: 'sm' }}>
-                <Typography level='body-xs' fontSize={10}>{item.decorator}</Typography>
-              </Chip>
-            ) : item.decorator
-        )}
-      >
-        <ListItemButton
-          // Should not be selectable if it has children
-          selected={selected === id}
+    <ListItem
+      key={id}
+      sx={{
+        userSelect: 'none',
+        paddingY: 0,
+      }}
+      nested={Boolean(item.children?.length)}
+      endAction={Boolean(item.children?.length) ? (
+        <IconButton
+          variant='plain'
+          size='sm'
+          color='neutral'
           onClick={handleClick}
         >
-          {item.icon && (
-            <ListItemDecorator>
-              {typeof item.icon === 'string' ? (
-                IsImage(item.icon)
-                  ? <Avatar size='sm' src={item.icon} sx={{ borderRadius: 'sm', maxHeight: 20, maxWidth: 20 }} />
-                  : <Icon name={item.icon} size={16} />
-              ) : (
-                item.icon
-              )}
-            </ListItemDecorator>
-          )}
-          <ListItemContent>
-            <Typography
-              level={item.children?.length ? 'title-sm' : 'body-xs'}
-            >
-              {item.label}
-            </Typography>
-          </ListItemContent>
-        </ListItemButton>
-        {Boolean(item.children?.length) && Boolean(openState[id]) && (
-          <List
-            aria-labelledby={`nav-list-${id}`}
-            size='sm'
-            sx={{
-              '--ListItem-radius': '8px',
-              '--List-gap': '0px',
-            }}
-          >
-            {item.children?.map(child => (
-              <SidebarListItem
-                level={level + 1}
-                key={child.id}
-                item={child}
-                parentID={id}
-                openState={openState}
-                onToggleOpen={onToggleOpen}
-                selected={selected}
-                onSelect={onSelect}
-              />
-            ))}
-          </List>
+          {MemoizedIcon}
+        </IconButton>
+      ) : (
+        typeof item.decorator === 'string'
+          ? (
+            <Chip size='sm' variant='outlined' color='neutral' sx={{ borderRadius: 'sm' }}>
+              <Typography level='body-xs' fontSize={10}>{item.decorator}</Typography>
+            </Chip>
+          ) : item.decorator
+      )}
+    >
+      <ListItemButton
+        // Should not be selectable if it has children
+        selected={selected === id}
+        onClick={handleClick}
+        sx={{
+          paddingY: 0,
+          minHeight: level === 0 ? 32 : 24,
+        }}
+      >
+        {item.icon && (
+          <ListItemDecorator>
+            {typeof item.icon === 'string' ? (
+              IsImage(item.icon)
+                ? <Avatar size='sm' src={item.icon} sx={{ borderRadius: 'sm', maxHeight: 20, maxWidth: 20 }} />
+                : <Icon name={item.icon} size={16} />
+            ) : (
+              item.icon
+            )}
+          </ListItemDecorator>
         )}
-      </ListItem>
-    </>
+        <ListItemContent>
+          <Typography
+            level={item.children?.length ? 'title-sm' : 'body-xs'}
+          >
+            {item.label}
+          </Typography>
+        </ListItemContent>
+      </ListItemButton>
+      {Boolean(item.children?.length) && Boolean(openState[id]) && (
+        <List
+          aria-labelledby={`nav-list-${id}`}
+          size='sm'
+          sx={{
+            '--ListItem-radius': '8px',
+            '--ListItem-minHeight': level === 0 ? '32px' : '24px',
+            '--List-gap': '0px',
+          }}
+        >
+          {item.children?.map(child => (
+            <SidebarListItem
+              level={level + 1}
+              key={child.id}
+              item={child}
+              parentID={id}
+              openState={openState}
+              onToggleOpen={onToggleOpen}
+              selected={selected}
+              onSelect={onSelect}
+            />
+          ))}
+        </List>
+      )}
+    </ListItem>
   );
 };
 

@@ -7,28 +7,20 @@ import {
 } from '@tanstack/react-table';
 // import useRightDrawer from '@/hooks/useRightDrawer';
 
-import { type Memoizer } from './ResourceTableContainer';
+import { type Memoizer } from './types';
 import { type Virtualizer, type VirtualItem } from '@tanstack/react-virtual';
 
-export type Props = {
-  /** ID of the plugin */
-  pluginID: string;
-  /** ID of the connection */
-  connectionID: string;
-  /** ID of this resource */
-  resourceID: string;
-  /** The hash key of this resource type. For exaample, 'core::v1::Pod' */
-  resourceKey: string;
-  /** The resource namespace is the backend used the namespacing support. */
-  namespace?: string;
-  /** An optional memoizer function to optimize rendering */
+export type Props<T = any> = {
   memoizer?: Memoizer;
+  resourceKey: string;
+  resourceID: string;
+  connectionID: string;
+  columnVisibility: string;
   virtualizer: Virtualizer<HTMLDivElement, Element>;
   virtualRow: VirtualItem;
   isSelected: boolean;
   /** The row data */
-  row: Row<any>;
-  columnVisibility: string;
+  row: Row<T>;
 };
 
 /**
@@ -36,11 +28,6 @@ export type Props = {
  * memoizing the cells based on the memoizer function provided.
  */
 export const RowContainer: React.FC<Props> = ({
-  // pluginID, 
-  // connectionID, 
-  // resourceID,
-  // resourceKey,
-  // namespace = '',
   virtualizer,
   virtualRow,
   isSelected,
@@ -96,6 +83,7 @@ export const RowContainer: React.FC<Props> = ({
             textOverflow: 'ellipsis',
             overflow: 'hidden',
             alignItems: 'center',
+            whiteSpace: 'nowrap',
           }}
         >
           {flexRender(cell.column.columnDef.cell, cell.getContext())}

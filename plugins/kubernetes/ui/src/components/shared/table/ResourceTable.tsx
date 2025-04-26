@@ -16,7 +16,6 @@ import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import {
   type ColumnDef,
   type ColumnFiltersState,
-  type FilterFn,
   type SortingState,
   type VisibilityState,
   flexRender,
@@ -30,7 +29,7 @@ import get from 'lodash.get';
 
 // Project imports
 // import NamespaceSelect from '@/components/selects/NamespaceSelect';
-import MemoizedRow from './MemoizedRow';
+import ResourceTableRow from './ResourceTableRow';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useResources } from '@omniviewdev/runtime';
 import { LuCircleAlert } from 'react-icons/lu';
@@ -38,16 +37,26 @@ import { LuCircleAlert } from 'react-icons/lu';
 export type Memoizer = string | string[] | ((data: any) => string);
 export type IdAccessor = string | ((data: any) => string);
 
-export type Props = {
+export type Props<T = any> = {
+  /**
+   * The ID of the connection which we are using to fetch the resources
+   */
+  connectionID: string;
+
+  /**
+   * The key that uniquely identifies the resource (e.g core::v1::Pod)
+   */
+  resourceKey: string;
+
   /**
    * Column defenition for the table.
    */
-  columns: Array<ColumnDef<any>>;
+  columns: Array<ColumnDef<T>>;
 
   /**
-   * The available namespaces for viewing, if the resource is namespaced.
+   * The visibility state of the columns
    */
-  namespaces?: string[];
+  columnVisibility: VisibilityState;
 
   /**
    * The visibility state to start with for the columns.
@@ -60,11 +69,6 @@ export type Props = {
   idAccessor: IdAccessor;
 
   /**
-   * Namespace accessor
-   */
-  namespaceAccessor?: string;
-
-  /**
    * Memoizer is a function that takes in the data and returns a key or hash
    * to determine if the data has changed or not. If provided, it will be used
    * to optimize rerenders of columns.
@@ -74,21 +78,6 @@ export type Props = {
    * limit the comparison work to only what is required.
    */
   memoizer?: Memoizer;
-
-  /**
-   * ID for the plugin.
-   */
-  pluginID: string;
-
-  /**
-  * ID for the connection.
-  */
-  connectionID: string;
-
-  /**
-   * The resource key that uniquely identifies the resource.
-   */
-  resourceKey: string;
 
   /**
    * Search string for the table.
@@ -107,70 +96,55 @@ const idAccessorResolver = (data: any, accessor: IdAccessor): string => {
   }
 };
 
-export const namespaceFilter: FilterFn<any> = (row, columnId, value: string[]) => {
-  // If not selected namespaces, return true
-  if (!value?.length) {
-    return true;
-  }
-
-  return value.includes(row.getValue(columnId));
-};
-
-
 /**
   * Render a generic resource table with sorting, filtering, column visibility and row selection.
   * Use this component to display a generic table for any Kubernetes resource using tanstack/react-table.
   *
-  * @param columns - The columns to display in the table.
-  * @param data - The data to display in the table.
   * @returns The resource table.
   */
 const ResourceTableContainer: React.FC<Props> = ({
-  columns,
-  idAccessor,
-  namespaceAccessor,
-  memoizer,
-  pluginID,
   connectionID,
   resourceKey,
-  initialColumnVisibility,
+  columns,
+  columnVisibility,
+  idAccessor,
+  memoizer,
   search,
 }) => {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([{ id: 'namespace', value: [] }]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
-  // we have to use layout effect to set the column visibility before the table is repainted, use effect will cause a flicker
-  // also can't just put it in the initial state because it will cause an issue with table render as well
-  React.useLayoutEffect(() => {
-    // check local storage to see if they've saved this
-    const storedColumnVisibility = window.localStorage.getItem(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`);
-    if (storedColumnVisibility && initialColumnVisibility) {
-      const current = JSON.parse(storedColumnVisibility);
+  // // we have to use layout effect to set the column visibility before the table is repainted, use effect will cause a flicker
+  // // also can't just put it in the initial state because it will cause an issue with table render as well
+  // React.useLayoutEffect(() => {
+  //   // check local storage to see if they've saved this
+  //   const storedColumnVisibility = window.localStorage.getItem(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`);
+  //   if (storedColumnVisibility && initialColumnVisibility) {
+  //     const current = JSON.parse(storedColumnVisibility);
+  //
+  //     // make sure any new filters are added if they weren't there before
+  //     Object.entries(initialColumnVisibility).forEach(([key, value]) => {
+  //       if (!current.hasOwnProperty(key)) {
+  //         current[key] = value;
+  //       }
+  //     });
+  //
+  //     setColumnVisibility(current);
+  //   } else if (initialColumnVisibility) {
+  //     setColumnVisibility(initialColumnVisibility);
+  //   }
+  // }, [initialColumnVisibility]);
+  //
+  // React.useEffect(() => {
+  //   let visibility = JSON.stringify(columnVisibility);
+  //   // save changes to local storage
+  //   if (visibility !== '{}') {
+  //     window.localStorage.setItem(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`, visibility);
+  //   }
+  // }, [columnVisibility]);
 
-      // make sure any new filters are added if they weren't there before
-      Object.entries(initialColumnVisibility).forEach(([key, value]) => {
-        if (!current.hasOwnProperty(key)) {
-          current[key] = value;
-        }
-      });
-
-      setColumnVisibility(current);
-    } else if (initialColumnVisibility) {
-      setColumnVisibility(initialColumnVisibility);
-    }
-  }, [initialColumnVisibility]);
-
-  React.useEffect(() => {
-    let visibility = JSON.stringify(columnVisibility);
-    // save changes to local storage
-    if (visibility !== '{}') {
-      window.localStorage.setItem(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`, visibility);
-    }
-  }, [columnVisibility]);
-
-  const { resources } = useResources({ pluginID, connectionID, resourceKey });
+  const { resources } = useResources({ pluginID: 'kubernetes', connectionID, resourceKey });
 
   const table = useReactTable({
     data: resources.data?.result || [],
@@ -181,7 +155,6 @@ const ResourceTableContainer: React.FC<Props> = ({
     // GetPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
     getRowId: (row) => idAccessorResolver(row, idAccessor),
     state: {
@@ -302,7 +275,6 @@ const ResourceTableContainer: React.FC<Props> = ({
       >
         <thead
           style={{
-            display: 'grid',
             position: 'sticky',
             top: 0,
             zIndex: 1,
@@ -355,21 +327,18 @@ const ResourceTableContainer: React.FC<Props> = ({
         </thead>
         <tbody
           style={{
-            display: 'grid',
             height: `${virtualizer.getTotalSize()}px`, // Tells scrollbar how big the table is
-            position: 'relative', // Needed for absolute positioning of rows
+            // position: 'relative', // Needed for absolute positioning of rows
           }}
         >
           {virtualizer.getVirtualItems().map(virtualRow => {
             const row = rows[virtualRow.index];
             return (
-              <MemoizedRow
+              <ResourceTableRow
                 key={row.id}
-                pluginID={pluginID}
                 connectionID={connectionID}
                 resourceID={row.id}
                 resourceKey={resourceKey}
-                namespace={namespaceAccessor ? get(row.original, namespaceAccessor) : undefined}
                 row={row}
                 memoizer={memoizer}
                 virtualizer={virtualizer}

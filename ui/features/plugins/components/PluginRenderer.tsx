@@ -1,39 +1,39 @@
 import React from 'react';
 
 import { PluginContextProvider, PluginWindow } from '@omniviewdev/runtime';
-import { MemoryRouter, Route, Routes, UNSAFE_LocationContext, useParams } from 'react-router-dom';
-import { importPluginWindow } from '../api/loader';
+import { UNSAFE_LocationContext, useParams } from 'react-router-dom';
+import { clearPlugin, importPluginWindow } from '../api/loader';
 import { EventsOff, EventsOn } from '@omniviewdev/runtime/runtime';
 import { type config } from '@omniviewdev/runtime/models';
 
 export type PluginRendererProps = {}
 
-/**
- * Renders out the plugin routes using the component router.
- *
- * NOTE: tried using the RouterProvider, but it doesn't reload when navigating
- * between plugins. I assume something to with memoization, so we can come back
- * to this eventually if we need to.
- */
-const PluginRoutes: React.FC<{ plugin: PluginWindow }> = ({ plugin }) => {
-  if (!plugin?.root) {
-    console.log('Plugin does not have a root page')
-    return <></>
-  }
-
-  console.log('Rendering plugin routes', plugin.pages)
-
-  return (
-    <MemoryRouter>
-      <Routes>
-        <Route path="/" element={<plugin.root />} />
-        {Object.entries(plugin.pages || {}).map(([path, Element]) => (
-          <Route key={path} path={path} element={<Element />} />
-        ))}
-      </Routes>
-    </MemoryRouter>
-  )
-}
+// /**
+//  * Renders out the plugin routes using the component router.
+//  *
+//  * NOTE: tried using the RouterProvider, but it doesn't reload when navigating
+//  * between plugins. I assume something to with memoization, so we can come back
+//  * to this eventually if we need to.
+//  */
+// const PluginRoutes: React.FC<{ plugin: PluginWindow }> = ({ plugin }) => {
+//   if (!plugin?.root) {
+//     console.log('Plugin does not have a root page')
+//     return <></>
+//   }
+//
+//   console.log('Rendering plugin routes', plugin.pages)
+//
+//   return (
+//     <MemoryRouter>
+//       <Routes>
+//         <Route path="/" element={<plugin.root />} />
+//         {Object.entries(plugin.pages || {}).map(([path, Element]) => (
+//           <Route key={path} path={path} element={<Element />} />
+//         ))}
+//       </Routes>
+//     </MemoryRouter>
+//   )
+// }
 
 /**
  * PluginRenderer loads a plugin with a UI entrypoint, injecting the necessary
@@ -82,7 +82,11 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
 
     EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
       if (meta.id === pluginId) {
-        loadPlugin()
+        clearPlugin({ pluginId }).then(() => {
+          loadPlugin()
+        }).catch((error) => {
+          console.error('Error clearing plugin', error)
+        })
       }
     })
     return () => {

@@ -74,16 +74,6 @@ export type SidebarProps = {
    * Mark the list as scrollable and takes the full height of the container
    */
   scrollable?: boolean;
-
-  /**
-  * The currently selected item
-  */
-  selected: string | undefined;
-
-  /**
-  * Callback to handle the selection of an item
-  */
-  onSelect: (id: string) => void;
 };
 
 /**
