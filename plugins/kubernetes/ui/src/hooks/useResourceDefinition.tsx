@@ -1,3 +1,4 @@
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 // third party
@@ -226,20 +227,22 @@ export const useResourceDefinition = ({ pluginID, resourceKey, connectionID }: U
     retry: false,
   });
 
+  const columns = React.useMemo(() => parseColumnDef({
+    columnDefs: definition.data?.columnDefs,
+    actions: actions.data,
+    pluginID,
+    connectionID,
+    resourceKey,
+    namespaceAccessor: definition.data?.namespace_accessor,
+  }), [pluginID, connectionID, resourceKey]);
+
   return {
     data: definition.data,
     namespaces,
     isLoading: definition.isLoading,
     isError: definition.isError,
     error: definition.error,
-    columns: parseColumnDef({
-      columnDefs: definition.data?.columnDefs,
-      actions: actions.data,
-      pluginID,
-      connectionID,
-      resourceKey,
-      namespaceAccessor: definition.data?.namespace_accessor,
-    }),
+    columns,
   };
 };
 

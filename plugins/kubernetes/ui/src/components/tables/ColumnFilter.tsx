@@ -17,7 +17,7 @@ import {
 
 // icons
 import { LuColumns2, LuSettings2 } from 'react-icons/lu';
-import { type Column } from '@tanstack/react-table';
+import { VisibilityState, type ColumnDef } from '@tanstack/react-table';
 
 const PopupBody = styled('div')(
   ({ theme }) => `
@@ -37,12 +37,14 @@ const PopupBody = styled('div')(
 
 type Props = {
   anchorEl: HTMLElement | undefined;
-  columns: Array<Column<any>>;
+  columns: Array<ColumnDef<any>>;
+  visibility: VisibilityState;
+  setVisibility: (columnId: string, value: boolean) => void;
   onClose: () => void;
   onClick: React.MouseEventHandler<HTMLAnchorElement>;
 };
 
-const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick }) => {
+const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick, visibility, setVisibility }) => {
   const open = Boolean(anchorEl);
 
   return (
@@ -87,16 +89,24 @@ const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick }) 
                   gap: 1.5,
                 }}
               >
-                {columns.filter(col => col.getCanHide()).map((column) => (
+                {columns.filter(col => col.enableHiding !== false && !!col.id).map((column) => (
                   <Typography
-                    key={column.columnDef.id}
+                    key={column.id || ''}
                     startDecorator={
-                      <Switch sx={{ color: 'primary', mr: 1 }} size='sm' checked={column.getIsVisible()} onChange={column.getToggleVisibilityHandler()} />
+                      <Switch
+                        sx={{
+                          color: 'primary',
+                          mr: 1,
+                        }}
+                        size='sm'
+                        checked={visibility[column.id || ''] ?? true}
+                        onChange={() => setVisibility(column.id || '', !visibility[column.id || ''])}
+                      />
                     }
                     component='label'
                     level='body-xs'
                   >
-                    {column.columnDef.header?.toString()}
+                    {column.header?.toString()}
                   </Typography>
                 ))}
               </CardContent>

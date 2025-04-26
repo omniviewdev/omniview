@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, Outlet, useParams } from 'react-router-dom';
 
 // Material-ui
 import {
@@ -27,7 +27,7 @@ import { type types } from '@omniviewdev/runtime/models';
 import Layout from '../layouts/resource';
 
 // Project import
-import ResourceTable from '../components/tables/Resources';
+// import ResourceTable from '../components/tables/Resources';
 
 import NavMenu from '../components/shared/navmenu/NavMenu';
 import { type SidebarSection, type SidebarItem } from '../components/shared/navmenu/types';
@@ -40,13 +40,12 @@ import { LuCog } from 'react-icons/lu';
 /**
  * Get the ID from the meta object
  */
-const toID = (meta: types.ResourceMeta) => `${meta.group}::${meta.version}::${meta.kind}`;
+const toID = (meta: types.ResourceMeta) => `${meta.group}_${meta.version}_${meta.kind}`;
 
 export default function ClusterResourcesPage(): React.ReactElement {
   const theme = useTheme();
 
   const { id = '' } = useParams<{ id: string }>();
-  const [selected, setSelected] = React.useState<string | undefined>(undefined);
 
   const { types } = useResourceTypes({ pluginID: 'kubernetes', connectionID: id });
   const { groups } = useResourceGroups({ pluginID: 'kubernetes', connectionID: id });
@@ -103,7 +102,7 @@ export default function ClusterResourcesPage(): React.ReactElement {
 
     grouped.forEach((group) => {
       // This is kubernetes specific, let's eventually allow plugins to define this somehow
-      if (group.label.includes('.') && !group.label.includes('k8s.io')) {
+      if (group.label.includes('.') && !group.label.includes('.k8s.io')) {
         // custom resource definition
         crdSection.push(group);
       } else {
@@ -166,7 +165,11 @@ export default function ClusterResourcesPage(): React.ReactElement {
               </Link>
             </Stack>
           </Sheet>
-          <NavMenu selected={selected} onSelect={setSelected} size='sm' sections={getSections()} scrollable />
+          <NavMenu
+            size='sm'
+            sections={getSections()}
+            scrollable
+          />
         </Stack>
       </Layout.SideNav>
       <Layout.Main
@@ -179,9 +182,10 @@ export default function ClusterResourcesPage(): React.ReactElement {
          fully epand up to the top of the container (since the padding get's accounted for in the sizing, which essentially
          just end up creating a gutter at the top equal to the top and bottom padding combined) */}
         <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          {selected &&
-            <ResourceTable resourceKey={selected} pluginID={'kubernetes'} connectionID={id} />
-          }
+          {/* {selected && */}
+          {/*   <ResourceTable resourceKey={selected} pluginID={'kubernetes'} connectionID={id} /> */}
+          {/* } */}
+          <Outlet />
         </Box>
       </Layout.Main>
     </Layout.Root>
