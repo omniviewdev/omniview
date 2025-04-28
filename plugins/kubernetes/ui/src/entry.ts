@@ -41,6 +41,8 @@ const routes: Array<RouteObject> = [
             path: 'core_v1_Node',
             Component: NodeTable
           },
+          // TODO: This is causing a massive performance issue for some reason when switching
+          // between routes that match
           {
             path: ':resourceKey',
             Component: DefaultTable

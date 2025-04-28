@@ -45,6 +45,9 @@ const NodeTable: React.FC = () => {
         size: 120,
         enableSorting: true,
         enableHiding: false,
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'osImage',
@@ -57,6 +60,9 @@ const NodeTable: React.FC = () => {
         header: 'Kernel Version',
         accessorKey: 'status.nodeInfo.kernelVersion',
         size: 150,
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'containerRuntimeVersion',
@@ -75,24 +81,36 @@ const NodeTable: React.FC = () => {
         header: 'CPU',
         accessorKey: 'status.capacity.cpu',
         size: 100,
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'memoryCapacity',
         header: 'memory',
         accessorFn: (row) => convertByteUnits({ from: row?.status?.capacity?.memory || '' }),
         size: 120,
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'podsCapacity',
         header: 'Pods',
         accessorKey: 'status.capacity.pods',
         size: 80,
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'ephemeralStorageCapacity',
         header: 'Ephemeral Storage',
         accessorFn: (row) => convertByteUnits({ from: row?.status?.capacity?.['ephemeral-storage'] || '' }),
         size: 120,
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'age',
@@ -105,23 +123,12 @@ const NodeTable: React.FC = () => {
     [id],
   )
 
-  const [columnVisibility, _] = React.useState({
-    'os': false,
-    'kernelVersion': false,
-    'containerRuntime': false,
-    'cpuCapacity': false,
-    'memoryCapacity': false,
-    'podsCapacity': false,
-    'ephemeralStorageCapacity': false,
-  })
-
   return (
     <ResourceTable
       columns={columns}
       connectionID={id}
       resourceKey='core::v1::Node'
       idAccessor='metadata.uid'
-      columnVisibility={columnVisibility}
       memoizer={'metadata.uid,metadata.resourceVersion'}
     />
   )

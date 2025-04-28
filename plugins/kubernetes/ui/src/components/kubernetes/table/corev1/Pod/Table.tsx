@@ -11,6 +11,7 @@ import ResourceTable from '../../../../shared/table/ResourceTable';
 import ContainerStatusCell from './ContainerStatusCell';
 import { OwnerReference } from 'kubernetes-types/meta/v1';
 import AgeCell from './cells/AgeCell';
+import { namespaceFilter } from '../../default/filters';
 
 const ownerRefKeyMap: Record<string, string> = {
   "ReplicaSet": "apps::v1::ReplicaSet",
@@ -48,6 +49,7 @@ const PodTable: React.FC = () => {
         size: 150,
         enableSorting: true,
         enableHiding: false,
+        filterFn: namespaceFilter,
       },
       {
         id: 'containers',
@@ -92,6 +94,9 @@ const PodTable: React.FC = () => {
         header: 'Host IP',
         accessorKey: 'status.hostIP',
         size: 120,
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'podIP',
@@ -110,6 +115,9 @@ const PodTable: React.FC = () => {
         header: 'DNS Policy',
         accessorKey: 'spec.dnsPolicy',
         size: 100,
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'serviceAccount',
@@ -124,28 +132,43 @@ const PodTable: React.FC = () => {
             resourceName={getValue() as string}
           />
         },
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'preemptionPolicy',
         header: 'Preemption Policy',
         accessorKey: 'spec.preemptionPolicy',
         size: 200,
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'priority',
         header: 'Priority',
         accessorKey: 'spec.priority',
         size: 100,
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'schedulerName',
         header: 'Scheduler Name',
         accessorKey: 'spec.schedulerName',
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'hostname',
         header: 'Hostname',
         accessorKey: 'spec.hostname',
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'restarts',
@@ -170,23 +193,12 @@ const PodTable: React.FC = () => {
     [id],
   )
 
-  const [columnVisibility, _] = React.useState({
-    'hostname': false,
-    'schedulerName': false,
-    'preemptionPolicy': false,
-    'priority': false,
-    'serviceAccount': false,
-    'dnsPolicy': false,
-    'hostIP': false,
-  })
-
   return (
     <ResourceTable
       columns={columns}
       connectionID={id}
       resourceKey='core::v1::Pod'
       idAccessor='metadata.uid'
-      columnVisibility={columnVisibility}
       memoizer={'metadata.uid,metadata.resourceVersion'}
     />
   )

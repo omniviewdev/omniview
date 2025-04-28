@@ -209,12 +209,6 @@ const ResourceTableContainer: React.FC<Props> = ({
     estimateSize: React.useCallback(() => 36, []),
     // the number of items *above and below to render
     overscan: 10,
-    // // Measure dynamic row height, except in firefox because it measures table border height incorrectly
-    // measureElement:
-    //   typeof window !== 'undefined'
-    //     && !navigator.userAgent.includes('Firefox')
-    //     ? element => element?.getBoundingClientRect().height
-    //     : undefined,
   });
 
   if (resources.isError) {

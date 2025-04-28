@@ -1,23 +1,18 @@
 import React from 'react';
 
+
 // material-ui
-import {
-  Card,
-  CardContent,
-  Divider,
-  IconButton,
-  Switch,
-  styled,
-  Typography,
-} from '@mui/joy';
-import {
-  Unstable_Popup as BasePopup,
-  ClickAwayListener,
-} from '@mui/base'
+import Card from '@mui/joy/Card';
+import CardContent from '@mui/joy/CardContent';
+import Divider from '@mui/joy/Divider';
+import Typography from '@mui/joy/Typography';
+import { Unstable_Popup as BasePopup } from '@mui/base/Unstable_Popup';
+import { ClickAwayListener } from '@mui/base';
+import { IconButton, Switch, styled } from '@mui/joy';
 
 // icons
 import { LuColumns2, LuSettings2 } from 'react-icons/lu';
-import { VisibilityState, type ColumnDef } from '@tanstack/react-table';
+import { type Column } from '@tanstack/react-table';
 
 const PopupBody = styled('div')(
   ({ theme }) => `
@@ -37,23 +32,23 @@ const PopupBody = styled('div')(
 
 type Props = {
   anchorEl: HTMLElement | undefined;
-  columns: Array<ColumnDef<any>>;
-  visibility: VisibilityState;
-  setVisibility: (columnId: string, value: boolean) => void;
+  columns: Array<Column<any>>;
   onClose: () => void;
   onClick: React.MouseEventHandler<HTMLAnchorElement>;
 };
 
-const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick, visibility, setVisibility }) => {
+const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick }) => {
   const open = Boolean(anchorEl);
 
   return (
     <React.Fragment>
       <IconButton
-        size='sm'
         variant='outlined'
         color='neutral'
         onClick={onClick}
+        sx={{
+          "--IconButton-size": "32px"
+        }}
       >
         <LuSettings2 size={20} />
       </IconButton>
@@ -89,24 +84,21 @@ const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick, vi
                   gap: 1.5,
                 }}
               >
-                {columns.filter(col => col.enableHiding !== false && !!col.id).map((column) => (
+                {columns.filter(col => col.getCanHide()).map((column) => (
                   <Typography
-                    key={column.id || ''}
+                    key={column.columnDef.id}
                     startDecorator={
                       <Switch
-                        sx={{
-                          color: 'primary',
-                          mr: 1,
-                        }}
+                        sx={{ color: 'primary', mr: 1 }}
                         size='sm'
-                        checked={visibility[column.id || ''] ?? true}
-                        onChange={() => setVisibility(column.id || '', !visibility[column.id || ''])}
+                        checked={column.getIsVisible()}
+                        onChange={column.getToggleVisibilityHandler()}
                       />
                     }
                     component='label'
                     level='body-xs'
                   >
-                    {column.header?.toString()}
+                    {column.columnDef.header?.toString()}
                   </Typography>
                 ))}
               </CardContent>
@@ -119,6 +111,7 @@ const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick, vi
 };
 
 ColumnFilter.displayName = 'ColumnFilter';
-//ColumnFilter.whyDidYouRender = true;
+ColumnFilter.whyDidYouRender = true;
 
 export default ColumnFilter;
+

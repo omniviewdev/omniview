@@ -12,11 +12,12 @@ import {
 
 // Icons
 import { LuGroup } from 'react-icons/lu';
+import { useConnectionNamespaces } from '@omniviewdev/runtime';
 
 
 type Props = {
-  /** The available namespaces. */
-  available: string[];
+  /** The active connection being used */
+  connectionID: string;
 
   /** The currently selected namespaces. */
   selected: string[];
@@ -28,7 +29,9 @@ type Props = {
 /**
   * Renders a select for choosing namespaces.
   */
-const NamespaceSelect: React.FC<Props> = ({ available, selected, setNamespaces }) => {
+const NamespaceSelect: React.FC<Props> = ({ connectionID, selected, setNamespaces }) => {
+  const { namespaces } = useConnectionNamespaces({ pluginID: 'kubernetes', connectionID });
+
   const handleChange = (
     _event: any,
     newValue: string[] | undefined,
@@ -89,7 +92,7 @@ const NamespaceSelect: React.FC<Props> = ({ available, selected, setNamespaces }
         },
       }}
     >
-      {available.map(ns => (
+      {namespaces.data?.map(ns => (
         <Option key={ns} value={ns}>
           <Typography level='body-sm'>{ns}</Typography>
         </Option>
