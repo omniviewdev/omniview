@@ -7,9 +7,12 @@ import SelectBoxRow from '../../../tables/cells/SelectBoxRow';
 import { useParams } from 'react-router-dom';
 import ResourceTable from '../../../shared/table/ResourceTable';
 import AgeCell from '../corev1/Pod/cells/AgeCell';
+import { namespaceFilter } from './filters';
 
 const DefaultTable: React.FC = () => {
   const { id = '', resourceKey = '' } = useParams<{ id: string, resourceKey: string }>()
+  const key = resourceKey.replace(/_/g, '::')
+  console.log(key)
 
   const columns = React.useMemo<Array<ColumnDef<any>>>(
     () => [
@@ -35,6 +38,7 @@ const DefaultTable: React.FC = () => {
         size: 150,
         enableSorting: true,
         enableHiding: false,
+        filterFn: namespaceFilter,
       },
       {
         id: 'age',
@@ -47,15 +51,12 @@ const DefaultTable: React.FC = () => {
     [id],
   )
 
-  const [columnVisibility, _] = React.useState({})
-
   return (
     <ResourceTable
       columns={columns}
       connectionID={id}
-      resourceKey={resourceKey.replace(/_/g, '::')}
+      resourceKey={key}
       idAccessor='metadata.name'
-      columnVisibility={columnVisibility}
       memoizer={'metadata.uid,metadata.resourceVersion'}
     />
   )
