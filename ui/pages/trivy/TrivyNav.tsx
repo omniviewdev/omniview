@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocation, Link } from 'react-router-dom';
 
 // Material-ui
 import List from '@mui/joy/List';
@@ -10,7 +11,6 @@ import ListSubheader from '@mui/joy/ListSubheader';
 
 // Custom
 import Icon from '@/components/icons/Icon';
-import { useLocation, Link } from 'react-router-dom';
 
 type Props = {
   sections: Array<{ id: string; label: string; icon: string }>;

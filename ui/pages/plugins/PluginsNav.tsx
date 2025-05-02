@@ -1,17 +1,19 @@
 import React from 'react';
 
 // Material-ui
-import Avatar from '@mui/joy/Avatar';
-import Stack from '@mui/joy/Stack';
-import List from '@mui/joy/List';
-import ListItem from '@mui/joy/ListItem';
-import ListItemButton from '@mui/joy/ListItemButton';
-import ListItemDecorator from '@mui/joy/ListItemDecorator';
-import Typography from '@mui/joy/Typography';
+import {
+  Avatar,
+  Chip,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemDecorator,
+  Stack,
+  Typography,
+} from '@mui/joy';
 
 // Mock data
 import mock from './mock/plugins.json';
-import { Chip } from '@mui/joy';
 import { LuCheck } from 'react-icons/lu';
 
 type Props = {

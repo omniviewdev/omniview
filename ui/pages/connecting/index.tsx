@@ -1,14 +1,19 @@
 import { type FC, useEffect, useReducer } from 'react';
 import ErrorIcon from '@mui/icons-material/Error';
 import CheckCircle from '@mui/icons-material/CheckCircle';
-import { CircularProgress, ListSubheader, Stack } from '@mui/joy';
-import Box from '@mui/joy/Box';
-import Button from '@mui/joy/Button';
-import List from '@mui/joy/List';
-import ListItem from '@mui/joy/ListItem';
-import LinearProgress from '@mui/joy/LinearProgress';
-import Sheet from '@mui/joy/Sheet';
-import Typography from '@mui/joy/Typography';
+
+import {
+  Box,
+  Button,
+  List,
+  ListItem,
+  LinearProgress,
+  Sheet,
+  Typography,
+  CircularProgress,
+  ListSubheader,
+  Stack,
+} from '@mui/joy';
 import { produce } from 'immer';
 import { usePluginRouter } from '@infraview/router';
 

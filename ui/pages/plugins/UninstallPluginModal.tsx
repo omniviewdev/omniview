@@ -1,12 +1,14 @@
 import * as React from 'react';
 
 // Material-ui
-import Box from '@mui/joy/Box';
-import Button from '@mui/joy/Button';
-import Modal from '@mui/joy/Modal';
-import ModalDialog from '@mui/joy/ModalDialog';
-import Typography from '@mui/joy/Typography';
-import { CircularProgress } from '@mui/joy';
+import {
+  Box,
+  Button,
+  CircularProgress,
+  Modal,
+  ModalDialog,
+  Typography,
+} from '@mui/joy';
 
 type Props = {
   open: boolean;

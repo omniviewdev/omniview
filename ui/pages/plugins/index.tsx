@@ -1,12 +1,15 @@
 import React from 'react';
 
 // Material-ui
-import { CssVarsProvider } from '@mui/joy/styles';
-import Typography from '@mui/joy/Typography';
-import Input from '@mui/joy/Input';
-import IconButton from '@mui/joy/IconButton';
-import Stack from '@mui/joy/Stack';
-import CssBaseline from '@mui/joy/CssBaseline';
+import {
+  CssBaseline,
+  CssVarsProvider,
+  Input,
+  IconButton,
+  Stack,
+  Sheet,
+  Typography,
+} from '@mui/joy';
 
 // Icons
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
@@ -18,7 +21,6 @@ import Layout from '@/layouts/core/sidenav';
 import PluginsNav from './PluginsNav';
 import PluginPreview from './PluginPreview';
 import { LuSlidersHorizontal } from 'react-icons/lu';
-import { Sheet } from '@mui/joy';
 import InstalledPlugins from './InstalledPlugins';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 
