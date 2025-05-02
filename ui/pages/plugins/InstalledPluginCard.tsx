@@ -1,17 +1,20 @@
 import * as React from 'react';
 
 // Material-ui
-import Avatar from '@mui/joy/Avatar';
-import Box from '@mui/joy/Box';
-import Button from '@mui/joy/Button';
-import Card from '@mui/joy/Card';
-import CardContent from '@mui/joy/CardContent';
-import CardActions from '@mui/joy/CardActions';
-import Chip from '@mui/joy/Chip';
-import IconButton from '@mui/joy/IconButton';
-import Stack from '@mui/joy/Stack';
-import Tooltip from '@mui/joy/Tooltip';
-import Typography from '@mui/joy/Typography';
+import {
+  Avatar,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CardActions,
+  CircularProgress,
+  Chip,
+  IconButton,
+  Stack,
+  Tooltip,
+  Typography,
+} from '@mui/joy';
 
 // Icons
 import Icon from '@/components/icons/Icon';
@@ -22,7 +25,6 @@ import { LuAtom, LuRefreshCcwDot } from 'react-icons/lu';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
 import { BrowserOpenURL } from '@omniviewdev/runtime/runtime';
 import UninstallPluginModal from './UninstallPluginModal';
-import { CircularProgress } from '@mui/joy';
 
 // Bindings
 

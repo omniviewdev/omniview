@@ -33,7 +33,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Build wails
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: |
+            - args: []
+            - args: [--global, typescript]
+
+      - name: Build runtime
+        run: pnpm run build
+        working-directory: packages/omniviewdev-runtime
+
+      - name: Build Omniview
         uses: dAppServer/wails-build-action@main
         id: build
         with:
@@ -42,3 +53,4 @@ jobs:
           package: false
           go-version: "1.24"
           node-version: "20.x"
+          wails-version: "master"

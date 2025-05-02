@@ -1,9 +1,8 @@
-import React from 'react';
-import { useExtensionRegistry } from '@omniviewdev/runtime';
-import { Stack, List, ListItem, ListItemButton, ListItemContent, Typography, Sheet, useTheme, Box, Card, CardContent, Chip } from '@mui/joy';
-import { useMediaQuery } from '@mui/material';
 import Icon from '@/components/icons/Icon';
-import { type ExtensionPointSettings, type ExtensionPointStore } from '@omniviewdev/runtime';
+import { Box, Card, CardContent, Chip, List, ListItem, ListItemButton, ListItemContent, Sheet, Stack, Typography, useTheme } from '@mui/joy';
+import { useMediaQuery } from '@mui/material';
+import { useExtensionRegistry, type ExtensionPointSettings, type ExtensionPointStore } from '@omniviewdev/runtime';
+import React from 'react';
 
 const ExtensionSettingsPage: React.FC = () => {
   const theme = useTheme();

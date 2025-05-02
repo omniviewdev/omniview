@@ -1,4 +1,5 @@
 import React from 'react';
+import { Outlet } from 'react-router-dom';
 
 // material-ui
 import Avatar from '@mui/joy/Avatar';
@@ -10,7 +11,6 @@ import Typography from '@mui/joy/Typography';
 // Layout
 import Layout from '@/layouts/core/sidenav';
 import TrivyNav from './TrivyNav';
-import { Outlet } from 'react-router-dom';
 
 const sections = [
   { id: 'vulnerability', label: 'Vulnerability', icon: 'LuShieldCheck' },
