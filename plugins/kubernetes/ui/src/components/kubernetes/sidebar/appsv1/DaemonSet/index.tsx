@@ -9,11 +9,12 @@ import { DaemonSet } from "kubernetes-types/apps/v1";
 // project-imports
 import ObjectMetaSection from "../../../../shared/ObjectMetaSection";
 import { ContainersSectionFromPodSpec } from "../../Pod/containers";
+import { ResourceSidebarProps } from "../../../../../types/resource";
 
 /**
  * Renders a sidebar for a ConfigMap resource
  */
-export const DaemonSetSidebar: React.FC<{ data: object }> = ({ data }) => {
+export const DaemonSetSidebar: React.FC<ResourceSidebarProps> = ({ data }) => {
   if (!data) {
     return <React.Fragment />;
   }

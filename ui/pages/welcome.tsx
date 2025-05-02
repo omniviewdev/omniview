@@ -24,8 +24,8 @@ const logos = [
 ];
 
 const images = [
-  '/ui/assets/images/app_preview.png',
-  '/ui/assets/images/app_preview_2.png',
+  '/public/images/app_preview.png',
+  '/public/images/app_preview_2.png',
 ];
 
 const MotionBox = motion(Box);

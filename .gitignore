@@ -1,5 +1,7 @@
 # builds
 build/bin/
+bin/
+.package/
 
 ### Frontend
 
