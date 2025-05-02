@@ -107,6 +107,7 @@ const BottomDrawerContainer: React.FC = () => {
         drawerRef.current.style.minHeight = `${defaultHeight}px`;
         drawerRef.current.style.maxHeight = `${defaultHeight}px`;
         setDrawerHeight(defaultHeight);
+        bottomDrawerChannel.emit('onResizeReset')
         return;
       }
 
@@ -114,6 +115,7 @@ const BottomDrawerContainer: React.FC = () => {
       drawerRef.current.style.maxHeight = `${minHeight}px`;
 
       setDrawerHeight(minHeight);
+      bottomDrawerChannel.emit('onResizeReset')
     }
   }, []);
 
@@ -134,6 +136,7 @@ const BottomDrawerContainer: React.FC = () => {
     // Directly update the drawer's height bypassing React's state
     drawerRef.current.style.minHeight = `${newHeight}px`;
     drawerRef.current.style.maxHeight = `${newHeight}px`;
+    bottomDrawerChannel.emit('onResizeHandler', newHeight);
   }, [isDragging, minHeight]);
 
   const handleMouseUp = React.useCallback(() => {
@@ -147,12 +150,12 @@ const BottomDrawerContainer: React.FC = () => {
       // to keep the drawer open, close it
       if (newHeight < 100) {
         setDrawerHeight(minHeight);
+        bottomDrawerChannel.emit('onResizeReset')
         drawerRef.current.style.minHeight = `${minHeight}px`;
         drawerRef.current.style.maxHeight = `${minHeight}px`;
         return;
       }
 
-      setDrawerHeight(newHeight);
     }
   }, []);
 

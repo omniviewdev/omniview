@@ -118,9 +118,10 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
       autoHideDuration: _autoHideDuration,
       content: (key, message) => (
         <Alert
+          size='sm'
           variant='soft'
           sx={{
-            maxWidth: 600,
+            maxWidth: 800,
           }}
           color={snackbarContent[_status].color}
           endDecorator={
@@ -133,7 +134,7 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
         >
           <Stack direction='column' spacing={0} alignItems='flex-start'>
             <Typography level='title-sm'>{message}</Typography>
-            {Boolean(_details) && <Typography level='body-sm' color={snackbarContent[_status].color} >{_details}</Typography>}
+            {Boolean(_details) && <Typography level='body-xs' color={snackbarContent[_status].color} >{_details}</Typography>}
           </Stack>
         </Alert>
       ),

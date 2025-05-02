@@ -61,7 +61,7 @@ export default function ClusterResourcesPage(): React.ReactElement {
       showOnce: true,
       autoHideDuration: 15000,
     });
-  }, []);
+  }, [showSnackbar]);
 
   if (groups.isLoading || connection.isLoading || !groups.data || !connection.data) {
     return (<></>);
@@ -84,13 +84,12 @@ export default function ClusterResourcesPage(): React.ReactElement {
         children: [],
       };
 
-      Object.entries(group.resources).forEach(([version, metas]) => {
+      Object.entries(group.resources).forEach(([_, metas]) => {
         metas.forEach((meta) => {
           item.children?.push({
             id: toID(meta),
             label: meta.kind,
             icon: meta.icon,
-            decorator: version,
           });
         });
       });
@@ -124,7 +123,7 @@ export default function ClusterResourcesPage(): React.ReactElement {
         gap: 0,
       }}
     >
-      <Layout.SideNav type='bordered' padding={0.5} width={300} >
+      <Layout.SideNav type='bordered' padding={0.5} >
         <Stack direction='column' maxHeight='100%' gap={0.5}>
           <Sheet
             variant='outlined'

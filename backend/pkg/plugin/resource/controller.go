@@ -82,10 +82,12 @@ func (c *controller) Run(ctx context.Context) {
 
 // Listens for informer events and emits them over the frontend IPC.
 func (c *controller) informerListener() {
+	log := c.logger.Named("informerListener")
 	for {
 		select {
 		case <-c.ctx.Done():
 			// shutting down
+			log.Debugw("shutting down informer listeners")
 			for _, stopChan := range c.informerStopChans {
 				stopChan <- struct{}{}
 			}
@@ -97,6 +99,7 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
+			log.Debugw("received add event", "event", eventKey)
 			runtime.EventsEmit(c.ctx, eventKey, event)
 		case event := <-c.updateChan:
 			eventKey := fmt.Sprintf(
@@ -105,6 +108,7 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
+			log.Debugw("received update event", "event", eventKey)
 
 			runtime.EventsEmit(
 				c.ctx,
@@ -118,6 +122,7 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
+			log.Debugw("received delete event", "event", eventKey)
 			runtime.EventsEmit(c.ctx, eventKey, event)
 		}
 	}

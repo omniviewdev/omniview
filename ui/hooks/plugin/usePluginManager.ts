@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '@omniviewdev/runtime';
 import { PluginManager } from '@omniviewdev/runtime/api';
 import React from 'react';
-import { EventsOff, EventsOn } from '@omniviewdev/runtime/runtime';
+import { EventsOn } from '@omniviewdev/runtime/runtime';
 import { type config } from '@omniviewdev/runtime/models';
 
 import { clearPlugin } from '@/features/plugins/api/loader';
@@ -21,7 +21,7 @@ export const usePluginManager = () => {
   // === Watchers === //
   React.useEffect(() => {
     // Set up watchers for plugin reload and install events
-    EventsOn('plugin/dev_reload_start', (meta: config.PluginMeta) => {
+    const closer1 = EventsOn('plugin/dev_reload_start', (meta: config.PluginMeta) => {
       // Find the plugin in the list of plugins and update the status
       // to show that it's reloading
       queryClient.setQueryData([Entity.PLUGINS], (oldData: config.PluginMeta[]) => oldData.map(plugin => {
@@ -42,12 +42,12 @@ export const usePluginManager = () => {
         loadError: '',
       }));
 
-      showSnackbar({
-        message: `Reloading plugin '${meta.name}'`,
-        status: 'info',
-      });
+      // showSnackbar({
+      //   message: `Reloading plugin '${meta.name}'`,
+      //   status: 'info',
+      // });
     });
-    EventsOn('plugin/dev_reload_rror', (meta: config.PluginMeta, error: string) => {
+    const closer2 = EventsOn('plugin/dev_reload_rror', (meta: config.PluginMeta, error: string) => {
       // Find the plugin in the list of plugins and update the status
       // to show that it's reloading
       queryClient.setQueryData([Entity.PLUGINS], (oldData: config.PluginMeta[]) => oldData.map(plugin => {
@@ -74,7 +74,7 @@ export const usePluginManager = () => {
         details: error,
       });
     });
-    EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
+    const closer3 = EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
       // Find the plugin in the list of plugins and update the status
       // to show that it's reloading
       queryClient.setQueryData([Entity.PLUGINS], (oldData: config.PluginMeta[]) => oldData.map(plugin => {
@@ -98,25 +98,25 @@ export const usePluginManager = () => {
       // Trigger a reload of the plugin ui
       clearPlugin({ pluginId: meta.id })
 
-      showSnackbar({
-        message: `Plugin '${meta.name}' reloaded`,
-        status: 'success',
-      });
+      // showSnackbar({
+      //   message: `Plugin '${meta.name}' reloaded`,
+      //   status: 'success',
+      // });
     });
 
-    EventsOn('plugin/dev_install_start', (meta: config.PluginMeta) => {
-      showSnackbar({
-        message: `Installing plugin '${meta.name}' in development mode`,
-        status: 'info',
-      });
-    });
+    // const closer4 = EventsOn('plugin/dev_install_start', (meta: config.PluginMeta) => {
+    //   showSnackbar({
+    //     message: `Installing plugin '${meta.name}' in development mode`,
+    //     status: 'info',
+    //   });
+    // });
 
     return () => {
       // Cleanup watchers
-      EventsOff('plugin/dev_reload_start');
-      EventsOff('plugin/dev_reload_error');
-      EventsOff('plugin/dev_reload_complete');
-      EventsOff('plugin/dev_install_start');
+      closer1()
+      closer2()
+      closer3()
+      // closer4()
     };
   }, []);
 

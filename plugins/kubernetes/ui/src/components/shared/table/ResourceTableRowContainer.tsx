@@ -5,10 +5,10 @@ import {
   type Row,
   flexRender,
 } from '@tanstack/react-table';
-// import useRightDrawer from '@/hooks/useRightDrawer';
 
 import { type Memoizer } from './types';
 import { type Virtualizer, type VirtualItem } from '@tanstack/react-virtual';
+import { getCommonPinningStyles } from './utils';
 
 export type Props<T = any> = {
   memoizer?: Memoizer;
@@ -19,6 +19,7 @@ export type Props<T = any> = {
   virtualizer: Virtualizer<HTMLDivElement, Element>;
   virtualRow: VirtualItem;
   isSelected: boolean;
+  onRowClick: (id: string, data: any) => void;
   /** The row data */
   row: Row<T>;
 };
@@ -28,10 +29,12 @@ export type Props<T = any> = {
  * memoizing the cells based on the memoizer function provided.
  */
 export const RowContainer: React.FC<Props> = ({
+  resourceID,
   virtualizer,
   virtualRow,
   isSelected,
   row,
+  onRowClick,
 }) => {
   // const { showResourceSidebar } = useRightDrawer();
 
@@ -42,13 +45,7 @@ export const RowContainer: React.FC<Props> = ({
 
   const handleRowClick = (column: string) => {
     if (column !== 'select' && column !== 'menu') {
-      // showResourceSidebar({ 
-      //   pluginID, 
-      //   connectionID, 
-      //   resourceKey, 
-      //   resourceID,
-      //   namespace,
-      // });
+      onRowClick(resourceID, row.original)
     }
   };
 
@@ -75,15 +72,19 @@ export const RowContainer: React.FC<Props> = ({
             handleRowClick(cell.column.id);
           }}
           style={{
-            width: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
-            minWidth: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
-            maxWidth: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
+            ...((cell.column.columnDef.meta as { flex?: number } | undefined)?.flex && {
+              minWidth: cell.column.getSize(),
+              flex: (cell.column.columnDef.meta as { flex?: number | undefined })?.flex
+            }),
+            width: cell.column.getSize(),
+            // minWidth: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
+            // maxWidth: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
             display: 'flex',
-            flex: 1,
             textOverflow: 'ellipsis',
             overflow: 'hidden',
             alignItems: 'center',
             whiteSpace: 'nowrap',
+            ...getCommonPinningStyles(cell.column, false)
           }}
         >
           {flexRender(cell.column.columnDef.cell, cell.getContext())}

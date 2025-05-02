@@ -15,7 +15,7 @@ import {
 import { CssVarsProvider, StyledEngineProvider } from '@mui/joy/styles';
 import theme from './theme';
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
-import RightDrawerProvider from '@/providers/RightDrawer';
+import RightDrawerProvider from '@/providers/RightDrawerProvider';
 import { ErrorBoundary } from 'react-error-boundary';
 import {
   QueryClient,

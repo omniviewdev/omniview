@@ -151,6 +151,7 @@ func CheckConnectionFunc(
 		return result, nil
 	}
 
+	// wait for an informer cache sync so that we don't get a bunch of empty resources
 	result.Status = types.ConnectionStatusConnected
 	result.Details = "Connection is valid"
 	return result, nil

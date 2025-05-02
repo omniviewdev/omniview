@@ -3,41 +3,21 @@ import React from 'react'
 import { ColumnDef } from '@tanstack/react-table'
 import { Node } from 'kubernetes-types/core/v1'
 
-import SelectBoxHeader from '../../../../tables/cells/SelectBoxHeader';
-import SelectBoxRow from '../../../../tables/cells/SelectBoxRow';
 import { useParams } from 'react-router-dom';
 import ResourceTable from '../../../../shared/table/ResourceTable';
-import AgeCell from '../Pod/cells/AgeCell';
 import { convertByteUnits } from '../../../../../utils/units';
+import { withClusterResourceColumns } from '../../shared/columns';
+import { LuBox } from 'react-icons/lu';
+import NodeSidebar from '../../../sidebar/NodeSidebar';
+import { DrawerComponent } from '@omniviewdev/runtime';
+
+const resourceKey = 'core::v1::Node'
 
 const NodeTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()
 
   const columns = React.useMemo<Array<ColumnDef<Node>>>(
-    () => [
-      {
-        id: 'select',
-        header: SelectBoxHeader,
-        cell: SelectBoxRow,
-        size: 40,
-        enableSorting: false,
-        enableHiding: false,
-      },
-      {
-        id: 'name',
-        header: 'Name',
-        accessorKey: 'metadata.name',
-        enableSorting: true,
-        enableHiding: false,
-      },
-      {
-        id: 'architecture',
-        header: 'Architecture',
-        accessorKey: 'status.nodeInfo.architecture',
-        size: 120,
-        enableSorting: true,
-        enableHiding: false,
-      },
+    () => withClusterResourceColumns([
       {
         id: 'os',
         header: 'OS',
@@ -112,24 +92,31 @@ const NodeTable: React.FC = () => {
           defaultHidden: true,
         }
       },
+    ], { connectionID: id, resourceKey }),
+    [],
+  )
+
+  const drawer: DrawerComponent = React.useMemo(() => ({
+    title: resourceKey, // TODO: change runtime sdk to accept a function
+    icon: <LuBox />,
+    views: [
       {
-        id: 'age',
-        header: 'Age',
-        accessorKey: 'metadata.creationTimestamp',
-        size: 100,
-        cell: ({ getValue }) => <AgeCell value={getValue() as string} />
+        title: 'Overview',
+        icon: <LuBox />,
+        component: (data: any) => <NodeSidebar data={data} />
       },
     ],
-    [id],
-  )
+    actions: []
+  }), [])
 
   return (
     <ResourceTable
       columns={columns}
       connectionID={id}
-      resourceKey='core::v1::Node'
+      resourceKey={resourceKey}
       idAccessor='metadata.uid'
       memoizer={'metadata.uid,metadata.resourceVersion'}
+      drawer={drawer}
     />
   )
 }
