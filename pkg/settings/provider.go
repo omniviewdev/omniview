@@ -51,6 +51,9 @@ type Provider interface {
 	// ListSettings returns the settings store
 	ListSettings() Store
 
+	// Values returns all of the values in the store as a map
+	Values() map[string]any
+
 	// GetSetting returns the setting by ID. This ID should be in the form of a dot separated string
 	// that represents the path to the setting. For example, "appearance.theme"
 	GetSetting(id string) (Setting, error)
@@ -315,6 +318,17 @@ func (p *provider) ListSettings() Store {
 	return p.store
 }
 
+func (p *provider) Values() map[string]any {
+	m := make(map[string]any, len(p.store))
+	for categoryID, category := range p.store {
+		for settingID, setting := range category.Settings {
+			m[fmt.Sprintf("%s.%s", categoryID, settingID)] = setting.Value
+		}
+	}
+
+	return m
+}
+
 func (p *provider) GetSetting(id string) (Setting, error) {
 	category, id, err := p.parseSettingID(id)
 	if err != nil {
@@ -345,42 +359,12 @@ func (p *provider) SetSettings(settings map[string]any) error {
 	return p.SaveSettings()
 }
 
-func tryConvertSlice(value any) ([]interface{}, bool) {
-	valReflect := reflect.ValueOf(value)
-	if valReflect.Kind() != reflect.Slice {
-		return nil, false
-	}
-	result := make([]interface{}, valReflect.Len())
-	for i := 0; i < valReflect.Len(); i++ {
-		result[i] = valReflect.Index(i).Interface()
-	}
-	return result, true
-}
-
 // private method so we can save after a bulk vs individual setting change.
 func (p *provider) setSetting(id string, value any) error {
 	setting, err := p.GetSetting(id)
 	if err != nil {
 		return err
 	}
-	currentVal := setting.Value
-
-	if reflect.TypeOf(currentVal).Kind() == reflect.Slice &&
-		reflect.TypeOf(value).Kind() == reflect.Slice {
-		// convert slice elements one by one if the destination is []interface{}
-		if slice, ok := tryConvertSlice(value); ok {
-			value = slice
-		}
-	} else if !reflect.TypeOf(value).AssignableTo(reflect.TypeOf(currentVal)) {
-		// for non-slice types, fall back to the original type check
-		return fmt.Errorf(
-			"setting type mismatch: %s. currently has %s, tried to assign %s",
-			id,
-			reflect.TypeOf(currentVal).String(),
-			reflect.TypeOf(value).String(),
-		)
-	}
-
 	if err = setting.SetValue(value); err != nil {
 		return err
 	}

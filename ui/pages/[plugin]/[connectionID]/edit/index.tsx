@@ -8,7 +8,7 @@ import Typography from '@mui/joy/Typography';
 
 // Project imports
 import { usePluginContext } from '@/contexts/PluginContext';
-import { useConnection } from '@/hooks/connection/useConnection';
+import { useConnection } from '@omniviewdev/runtime';
 
 // Layout
 import Layout from '@/layouts/core/sidenav';
@@ -61,9 +61,9 @@ export default function EditConnectionPage(): React.ReactElement {
       alignItems={'flex-start'}
       maxHeight={'100%'}
       minHeight={'100%'}
-      // Sx={{
-      //   background: `linear-gradient(109.6deg, rgb(36, 45, 57) 2.2%, ${tinycolor(plugin.metadata.theme.colors.primary).setAlpha(0.2).toString()} 50.2%, rgb(0, 0, 0) 98.6%);`,
-      // }}
+    // Sx={{
+    //   background: `linear-gradient(109.6deg, rgb(36, 45, 57) 2.2%, ${tinycolor(plugin.metadata.theme.colors.primary).setAlpha(0.2).toString()} 50.2%, rgb(0, 0, 0) 98.6%);`,
+    // }}
     >
       <Stack direction='row' alignItems='center' justifyContent={'space-between'} width={'100%'} gap={1.5}>
         <Breadcrumbs separator='›' aria-label='breadcrumbs'>

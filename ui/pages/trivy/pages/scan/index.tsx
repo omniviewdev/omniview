@@ -1,11 +1,11 @@
 import Grid from '@mui/joy/Grid';
 import { Stack, Divider, LinearProgress, Typography, Box } from '@mui/joy';
 import React from 'react';
-import { Scan } from '@api/trivy/Manager';
+// import { Scan } from '@api/trivy/Manager';
+// import { trivy } from '@omniviewdev/runtime/models';
 
-import { trivy } from '@api/models';
 import TrivyVulnerabilitiesReport from '../vulnerabilities/VulnerabilityReport';
-import TrivyScanHeader from './TrivyScanHeader';
+// import TrivyScanHeader from './TrivyScanHeader';
 
 // Underlying client
 // import { Get, Update, Delete } from '@api/trivy/Manager';
@@ -18,29 +18,29 @@ const TrivyDashboard = () => {
   //   { scanner: 'sbom', title: 'SBOM', description: 'View the SBOM in your project', icon: 'LuPackageSearch' },
   // ];
 
-  const [output, setOutput] = React.useState<Record<string, unknown> | null>(null);
-  const [loading, setLoading] = React.useState(false);
+  const [output, _] = React.useState<Record<string, unknown> | null>(null);
+  const [loading, __] = React.useState(false);
 
-  const scanImage = (target: trivy.Command, value: string, scanners: trivy.Scanner[]) => {
-    setLoading(true);
-
-    Scan(target, value, trivy.ScanOptions.createFrom({
-      scanners: scanners,
-    }))
-      .then((output) => {
-        setOutput(output.result);
-      })
-      .catch((err) => {
-        console.error('Error scanning image:', err);
-      }).finally(() => {
-        setLoading(false);
-      });
-  };
+  // const scanImage = (target: trivy.Command, value: string, scanners: trivy.Scanner[]) => {
+  //   setLoading(true);
+  //
+  //   Scan(target, value, trivy.ScanOptions.createFrom({
+  //     scanners: scanners,
+  //   }))
+  //     .then((output) => {
+  //       setOutput(output.result);
+  //     })
+  //     .catch((err) => {
+  //       console.error('Error scanning image:', err);
+  //     }).finally(() => {
+  //       setLoading(false);
+  //     });
+  // };
 
   return (
     <Grid container>
       <Grid xs={12}>
-        <TrivyScanHeader scan={scanImage} isScanning={loading} />
+        {/* <TrivyScanHeader scan={scanImage} isScanning={loading} /> */}
       </Grid>
       <Grid xs={12}>
         <Divider />

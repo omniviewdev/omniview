@@ -21,7 +21,7 @@ import {
   getFacetedUniqueValues,
   getFacetedMinMaxValues,
 } from '@tanstack/react-table';
-import { LuAreaChart, LuFileText } from 'react-icons/lu';
+import { LuChartArea, LuFileText } from 'react-icons/lu';
 
 import { TrivyReport } from '../../parser';
 import { columns } from './VulnerabilityReportColumns';
@@ -80,7 +80,7 @@ const TrivyVulnerabilitiesPage = () => {
       p={1}
     >
       <Stack direction='row' gap={1.5} alignItems='center' justifyContent={'space-between'}>
-        <Typography level='h4' p={0.5} startDecorator={<LuAreaChart />} >{'Vulnerability Report'}</Typography>
+        <Typography level='h4' p={0.5} startDecorator={<LuChartArea />} >{'Vulnerability Report'}</Typography>
         <Stack direction='row' gap={1.5} alignItems='center'>
           <Button variant='soft' startDecorator={<LuFileText />} color='primary'>{'Generate Report'}</Button>
           <DebouncedInput

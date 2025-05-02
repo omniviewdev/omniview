@@ -9,7 +9,7 @@ import { ContainerStatus, Pod, PodSpec } from "kubernetes-types/core/v1";
 import { logoMap } from "./logos";
 import { ContainerStatusDecorator } from "./ContainerStatuses";
 import { Alert, Stack } from "@mui/joy";
-import { LuAlertCircle } from "react-icons/lu";
+import { LuCircleAlert } from "react-icons/lu";
 
 interface Props {
   obj: Pod;
@@ -47,7 +47,7 @@ const ContainerHeaderDecorator: React.FC<{ status?: ContainerStatus }> = ({
       {!!status.restartCount && (
         <Alert
           variant="soft"
-          startDecorator={<LuAlertCircle size={16} />}
+          startDecorator={<LuCircleAlert size={16} />}
           color="warning"
           sx={{ height: "18px", py: 0.1 }}
           size="sm"

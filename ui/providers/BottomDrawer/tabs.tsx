@@ -9,7 +9,7 @@ import TabList from '@mui/joy/TabList';
 import Tab from '@mui/joy/Tab';
 import Typography from '@mui/joy/Typography';
 import Stack from '@mui/joy/Stack';
-import { styled } from '@mui/joy';
+import { Divider, styled } from '@mui/joy';
 import { Unstable_Popup as BasePopup } from '@mui/base/Unstable_Popup';
 import { ClickAwayListener } from '@mui/base';
 
@@ -30,8 +30,9 @@ import { type BottomDrawerTab } from '@/providers/BottomDrawer/types';
 import Icon from '@/components/icons/Icon';
 import { LuPlus, LuX } from 'react-icons/lu';
 import useBottomDrawer from '@/hooks/useBottomDrawer';
-import { ListSessions, CreateTerminal, CreateSession } from '@api/exec/Client';
-import { exec } from '@api/models';
+import { useSettings } from '@omniviewdev/runtime';
+import { exec } from '@omniviewdev/runtime/models';
+import { ExecClient } from '@omniviewdev/runtime/api';
 
 import { bottomDrawerChannel } from './events';
 
@@ -88,7 +89,6 @@ const TabContextMenu: React.FC<TabContextMenuProps> = ({ selected, onClose }) =>
   return (
     <List
       size='sm'
-      variant="outlined"
       sx={{
         maxWidth: 400,
         borderRadius: 'sm',
@@ -113,6 +113,7 @@ const TabContextMenu: React.FC<TabContextMenuProps> = ({ selected, onClose }) =>
  */
 const BottomDrawerTabs: React.FC = () => {
   const { tabs, focused, focusTab, closeTab, createTab, createTabs, reorderTab } = useBottomDrawer();
+  const { settings } = useSettings();
 
   // run our tooltip from the parent so we only render one of them
   // eslint-disable-next-line @typescript-eslint/ban-types
@@ -140,13 +141,13 @@ const BottomDrawerTabs: React.FC = () => {
 
     switch (variant) {
       case 'terminal':
-        CreateTerminal(exec.CreateTerminalOptions.createFrom({ command: [] }))
+        ExecClient.CreateTerminal(exec.CreateTerminalOptions.createFrom({ command: [settings['terminal.defaultShell'] || '/bin/sh'] }))
           .then(session => {
             createTab({
               id: session.id,
               title: `Session ${session.id.substring(0, 8)}`,
               variant: 'terminal',
-              icon: 'LuTerminalSquare',
+              icon: 'LuSquareTerminal',
             });
           })
           .catch(err => {
@@ -162,14 +163,14 @@ const BottomDrawerTabs: React.FC = () => {
   React.useEffect(() => {
     const unsubscribeCreateSession = bottomDrawerChannel.on('onCreateSession', ({ plugin, connection, opts, icon, label }) => {
       console.log('onCreateSession', { plugin, connection, opts, icon, label });
-      CreateSession(plugin, connection, opts)
+      ExecClient.CreateSession(plugin, connection, opts)
         .then(session => {
           console.log('created session', session);
           createTab({
             id: session.id,
             title: label ?? `Session ${session.id.substring(0, 8)}`,
             variant: 'terminal',
-            icon: icon ?? 'LuTerminalSquare',
+            icon: icon ?? 'LuSquareTerminal',
           });
         })
         .catch(err => {
@@ -216,7 +217,7 @@ const BottomDrawerTabs: React.FC = () => {
   };
 
   React.useEffect(() => {
-    ListSessions()
+    ExecClient.ListSessions()
       .then(sessions => {
         const newTabs: BottomDrawerTab[] = [];
 
@@ -231,7 +232,7 @@ const BottomDrawerTabs: React.FC = () => {
             id: session.id,
             title: `Session ${session.id.substring(0, 8)}`,
             variant: 'terminal',
-            icon: 'LuTerminalSquare',
+            icon: 'LuSquareTerminal',
             properties: session.labels,
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -261,7 +262,8 @@ const BottomDrawerTabs: React.FC = () => {
     >
       <IconButton
         size="sm"
-        variant="plain"
+        variant='soft'
+        color='neutral'
         sx={{
           flex: 'none',
           minHeight: 28,
@@ -273,6 +275,12 @@ const BottomDrawerTabs: React.FC = () => {
       >
         <LuPlus size={16} />
       </IconButton>
+      <Divider
+        orientation='vertical'
+        sx={{
+          '--_Divider-inset': '4px'
+        }}
+      />
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}

@@ -1,46 +1,46 @@
 import * as monaco from "monaco-editor";
-import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { configureMonacoYaml } from "monaco-yaml";
-import YamlWorker from "monaco-yaml/yaml.worker?worker";
 
 window.MonacoEnvironment = {
-  getWorker(_moduleId, label) {
+  getWorker(_, label) {
     switch (label) {
-      case "editorWorkerService":
-        return new EditorWorker();
-      case "yaml":
-        return new YamlWorker();
+      case 'editorWorkerService':
+        return new Worker(new URL('monaco-editor/esm/vs/editor/editor.worker', import.meta.url))
+      case 'css':
+      case 'less':
+      case 'scss':
+        return new Worker(new URL('monaco-editor/esm/vs/language/css/css.worker', import.meta.url))
+      case 'handlebars':
+      case 'html':
+      case 'razor':
+        return new Worker(
+          new URL('monaco-editor/esm/vs/language/html/html.worker', import.meta.url)
+        )
+      case 'json':
+        return new Worker(
+          new URL('monaco-editor/esm/vs/language/json/json.worker', import.meta.url)
+        )
+      case 'javascript':
+      case 'typescript':
+        return new Worker(
+          new URL('monaco-editor/esm/vs/language/typescript/ts.worker', import.meta.url)
+        )
+      case 'yaml':
+        return new Worker(new URL('monaco-yaml/yaml.worker', import.meta.url))
       default:
-        throw new Error(`Unknown label ${label}`);
+        throw new Error(`Unknown label ${label}`)
     }
-  },
-};
+  }
+}
 
 configureMonacoYaml(monaco, {
   enableSchemaRequest: true,
   schemas: [
     {
       // If YAML file is opened matching this glob
-      fileMatch: ["**/person.yaml"],
-      // The following schema will be applied
-      schema: {
-        type: "object",
-        properties: {
-          name: {
-            type: "string",
-            description: "The person’s display name",
-          },
-          age: {
-            type: "integer",
-            description: "How old is the person in years?",
-          },
-          occupation: {
-            enum: ["Delivery person", "Software engineer", "Astronaut"],
-          },
-        },
-      },
-      // And the following URI will be linked to as the source.
-      uri: "https://github.com/remcohaszing/monaco-yaml#usage",
+      fileMatch: ['**/.prettierrc.*'],
+      // Then this schema will be downloaded from the internet and used.
+      uri: 'https://json.schemastore.org/prettierrc.json'
     },
   ],
 });

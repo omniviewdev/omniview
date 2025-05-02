@@ -5,7 +5,7 @@ import Box from '@mui/joy/Box';
 import Typography from '@mui/joy/Typography';
 import { formatTimeDifference } from '@/utils/time';
 import { convertByteUnits } from '@/utils/units';
-import { type types } from '@api/models';
+import { type types } from '@omniviewdev/runtime/models';
 import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
 import ResourceLinkCell from './ResourceLinkCell';
 

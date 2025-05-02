@@ -2,7 +2,7 @@ import ClearIcon from '@mui/icons-material/Clear';
 import { Button, Input, Stack, Select, Option, ToggleButtonGroup, IconButton } from '@mui/joy';
 import React from 'react';
 
-import { trivy } from '@api/models';
+import { trivy } from '@omniviewdev/runtime/models';
 import { LuContainer, LuFileScan, LuFileText } from 'react-icons/lu';
 import { SiKubernetes } from 'react-icons/si';
 

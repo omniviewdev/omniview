@@ -12,12 +12,16 @@ import Typography from '@mui/joy/Typography';
 
 // project imports
 import PluginComponent from '.';
-import useResourceAreaComponent from '@/hooks/resource/useResourceAreaComponent';
-import useResource from '@/hooks/resource/useResource';
-import useResourceType from '@/hooks/resource/useResourceType';
+import {
+  useResourceAreaComponent,
+  useResource,
+  useResourceType,
+  useResourceSearch,
+  useSnackbar,
+} from '@omniviewdev/runtime'
 
 // types
-import { types, ui } from '@api/models';
+import { types, ui } from '@omniviewdev/runtime/models';
 
 // icons
 import Icon from '@/components/icons/Icon';
@@ -27,8 +31,6 @@ import { LuFileCode, LuFileDiff, LuList, LuPencil, LuRotateCw, LuX } from 'react
 import { parse, stringify } from 'yaml';
 import MonacoEditor, { DiffEditor } from '@monaco-editor/react';
 import { Box, Button, ToggleButtonGroup } from '@mui/joy';
-import { useSnackbar } from '@/providers/SnackbarProvider';
-import useResourceSearch from '@/hooks/resource/useResourceSearch';
 
 type Props = {
   pluginID: string;
@@ -170,12 +172,12 @@ const ResourceDrawerContainer: React.FC<Props> = ({
           'ms-overflow-style': 'none',
         }}
       >
-        <ResourceSidebarView 
+        <ResourceSidebarView
           plugin={pluginID}
           connection={connectionID}
-          resource={resourceKey} 
-          data={resource.data.result} 
-          view={view} 
+          resource={resourceKey}
+          data={resource.data.result}
+          view={view}
           onSubmit={onResourceUpdate}
           onCancel={onResourceCancel}
         />
@@ -289,22 +291,22 @@ const ResourceEditor: React.FC<ResourceEditorProps> = ({ resourceKey, data, data
         showSnackbar({
           message: 'Invalid Resource',
           status: 'error',
-          icon: 'LuAlertCircle',
+          icon: 'LuCircleAlert',
           details: error.message,
         });
-      } 
+      }
     }
   };
 
   return (
-    <Stack 
-      direction="column" 
+    <Stack
+      direction="column"
       gap={1}
       display='flex'
       flex={1}
-    > 
+    >
       {viewDiff ? (
-        <DiffEditor 
+        <DiffEditor
           height='100%'
           original={originalData}
           theme='vs-dark'
@@ -332,7 +334,7 @@ const ResourceEditor: React.FC<ResourceEditorProps> = ({ resourceKey, data, data
       )}
       <Stack direction="row" justifyContent={'space-between'} gap={1}>
         <Stack direction="row" gap={1}>
-          <Button 
+          <Button
             variant='soft'
             color='primary'
             disabled={!changed}
@@ -358,7 +360,7 @@ const ResourceEditor: React.FC<ResourceEditorProps> = ({ resourceKey, data, data
             variant='outlined'
             startDecorator={viewDiff ? <LuFileCode size={18} /> : <LuFileDiff size={16} />}
             onClick={() => {
-              setViewDiff(!viewDiff); 
+              setViewDiff(!viewDiff);
             }}
           >{viewDiff ? 'Return to Code Editor' : 'View in Diff Editor'}</Button>
         </Stack>
@@ -372,9 +374,9 @@ const ResourceSidebarView: React.FC<ResourceSidebarViewProps> = ({ plugin, conne
   * Provide a searchable function to the resource sidebar,
   * but limit access to the underlying behavior
   */
-  const searchFunc = (options: ResourceSearch) => useResourceSearch({ 
-    pluginID: plugin, 
-    connectionID: connection, 
+  const searchFunc = (options: ResourceSearch) => useResourceSearch({
+    pluginID: plugin,
+    connectionID: connection,
     searches: options.searches,
   }).map((result, idx) => {
     console.log('got the following:', result);
@@ -390,27 +392,27 @@ const ResourceSidebarView: React.FC<ResourceSidebarViewProps> = ({ plugin, conne
 
   switch (view) {
     case 'view':
-      return <ResourceSidebarComponent 
-        plugin={plugin} 
-        resource={resource} 
-        data={data} 
-        onSubmit={onSubmit} 
-        onCancel={onCancel} 
+      return <ResourceSidebarComponent
+        plugin={plugin}
+        resource={resource}
+        data={data}
+        onSubmit={onSubmit}
+        onCancel={onCancel}
         useSearch={searchFunc}
       />;
     case 'edit':
-      return <ResourceEditor 
-        data={data} 
-        datatype='yaml' 
-        onSubmit={onSubmit} 
-        onCancel={onCancel} 
-        resourceKey={resource} 
+      return <ResourceEditor
+        data={data}
+        datatype='yaml'
+        onSubmit={onSubmit}
+        onCancel={onCancel}
+        resourceKey={resource}
       />;
     default:
       return <React.Fragment />;
   }
 };
- 
+
 
 type ResourceSidebarComponentProps = {
   plugin: string;

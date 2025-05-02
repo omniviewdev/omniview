@@ -10,8 +10,14 @@ import (
 
 	"k8s.io/client-go/dynamic/dynamicinformer"
   "k8s.io/apimachinery/pkg/runtime/schema"
-  {{ range .Packages }}
+  {{- range .Packages }}
+  {{- if eq .ImportName "apiextensionsv1" }}
+  {{.ImportName}} "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+  {{- else if eq .ImportName "apiregistrationv1"}}
+  {{.ImportName}} "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
+  {{- else }}
 	{{.ImportName}} "k8s.io/api/{{.ImportPath}}"
+  {{- end }}
   {{- end }}
 )
 
@@ -50,6 +56,9 @@ func Register(plugin *sdk.Plugin) {
 			ResourceGroups:               ResourceGroups,
 			ResourceDefinitions:          resourcers.ResourceDefs,
 			DefaultResourceDefinition:    resourcers.DefaultResourceDef,
+			DynamicResourcers: map[string]types.DynamicResourcer[clients.ClientSet]{
+				"*": resourcers.NewKubernetesDynamicResourcer(logger),
+			},
 			Resourcers:                   map[types.ResourceMeta]types.Resourcer[clients.ClientSet]{
         {{- range .Resources}}
 				{

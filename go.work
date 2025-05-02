@@ -1,4 +1,6 @@
-go 1.23.8
+go 1.24.0
+
+toolchain go1.24.1
 
 use (
 	.
@@ -7,4 +9,5 @@ use (
 	./pkg/settings
 	./plugins/aws
 	./plugins/kubernetes
+	./plugins/kubernetes/generators
 )

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,8 @@ func validateInstalledPlugin(metadata config.PluginMeta) error {
 			return validateHasBinary(path)
 		case types.MetricPlugin.String():
 			return validateHasBinary(path)
+		case types.UIPlugin.String():
+			return validateHasUiPackage(path)
 		default:
 			return fmt.Errorf("error validating plugin: unknown plugin capability type '%s'", p)
 		}
@@ -56,6 +59,16 @@ func validateHasBinary(path string) error {
 		return fmt.Errorf("resource plugin binary is not executable: %s", path)
 	}
 
+	return nil
+}
+
+// validateHasUiPackage checks if the plugin has a UI package, which is signified by the
+// existence of a `/assets` folder in the ui plugin directory.
+func validateHasUiPackage(path string) error {
+	_, err := os.Stat(filepath.Join(path, "assets"))
+	if os.IsNotExist(err) {
+		return fmt.Errorf("expected compiled ui at path but none found: %s", path)
+	}
 	return nil
 }
 
@@ -106,15 +119,16 @@ func checkTarball(filePath string) error {
 
 			return err
 		}
+		log.Println("has inside tarball", header.Name)
 
 		// check for required files and executable
 		switch header.Name {
-		case "bin/plugin":
+		case "./bin/plugin":
 			hasBinPlugin = true
 			if header.FileInfo().Mode()&0111 == 0 {
 				return errors.New("bin/plugin is not executable")
 			}
-		case "plugin.yaml":
+		case "./plugin.yaml":
 			hasPluginYaml = true
 		}
 	}
@@ -255,7 +269,7 @@ func parseMetadataFromArchive(path string) (*config.PluginMeta, error) {
 			return nil, err
 		}
 
-		if header.Name == "plugin.yaml" {
+		if header.Name == "./plugin.yaml" {
 			var metadata config.PluginMeta
 			if err = yaml.NewDecoder(tr).Decode(&metadata); err != nil {
 				return nil, err

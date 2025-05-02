@@ -25,3 +25,14 @@ type PluginManager interface {
 	// clean up any resources associated with the plugin before it is uninstalled.
 	OnPluginDestroy(context.Context, config.PluginMeta) error
 }
+
+// BuildOpts specifies how a plugin should be built.
+type BuildOpts struct {
+	// ExcludeBackend tells the builder to not build the plugin binary. This is useful
+	// when we only have changes to UI components.
+	ExcludeBackend bool
+
+	// ExcludeUI tells the builder to not rebuild the plugin UI. This is useful
+	// when we only have changes to the plugin binary.
+	ExcludeUI bool
+}

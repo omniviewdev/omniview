@@ -1,0 +1,14 @@
+id: testui
+version: 0.1.0
+name: Test UI Plugin
+icon: LuBox
+description: Test plugin to ensure UI plugin feature
+repository: github.com/omniviewdev/omniview/plugins/test
+website: omniview.dev
+maintainers:
+  - name: Omniview Maintainers
+    email: info@omniview.dev
+tags:
+  - testing
+capabilities:
+  - ui

@@ -18,11 +18,11 @@ import Typography from '@mui/joy/Typography';
 
 // Project imports
 import { usePluginContext } from '@/contexts/PluginContext';
-import { useConnection } from '@/hooks/connection/useConnection';
+import { useConnection } from '@omniviewdev/runtime';
 
 // Types
 import { stringToColor } from '@/utils/color';
-import { types } from '@api/models';
+import { types } from '@omniviewdev/runtime/models';
 
 // Icons
 import { MoreVert } from '@mui/icons-material';
@@ -30,7 +30,7 @@ import { LuPencil, LuTrash } from 'react-icons/lu';
 
 // Third-party
 import { Link, usePluginRouter } from '@infraview/router';
-import { useSnackbar } from '@/providers/SnackbarProvider';
+import { useSnackbar } from '@omniviewdev/runtime';
 
 type Props = Omit<types.Connection, 'createFrom' | 'convertValues'>;
 
@@ -104,11 +104,11 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
         });
         break;
       case types.ConnectionStatusCode.CONNECTED:
-        showSnackbar({
-          status: 'success',
-          message: `Connected to '${name}'`,
-          icon: 'LuCheckCircle',
-        });
+        // showSnackbar({
+        //   status: 'success',
+        //   message: `Connected to '${name}'`,
+        //   icon: 'LuCheckCircle',
+        // });
         navigate(`/connection/${id}/resources`);
         break;
       default:
@@ -116,7 +116,7 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
           status: 'error',
           message: `Failed to connect to '${name}'`,
           details: status.details,
-          icon: 'LuAlertCircle',
+          icon: 'LuCircleAlert',
         });
     }
   };
@@ -130,14 +130,14 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
     setConnecting(true);
     startConnection()
       .then(status => {
-        handleConnectionStatus(status); 
+        handleConnectionStatus(status);
       })
       .catch(err => {
         if (err instanceof Error) {
           showSnackbar({
             status: 'error',
             message: err.message,
-            icon: 'LuAlertCircle',
+            icon: 'LuCircleAlert',
           });
         }
       })
@@ -182,27 +182,27 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
                 <ListItemDecorator>
                   <LuPencil />
                 </ListItemDecorator>{' '}
-                  Edit '{name}'
+                Edit '{name}'
               </MenuItem>
             </Link>
             <MenuItem>
               <ListItemDecorator>
                 <LuTrash />
               </ListItemDecorator>{' '}
-                Delete '{name}'
+              Delete '{name}'
             </MenuItem>
           </Menu>
         </Dropdown>
       }
     >
-      <ListItemButton 
+      <ListItemButton
         sx={{ borderRadius: 'sm' }}
         onClick={handleClick}
       >
         <ListItemDecorator >
-          <Badge 
-            color="success" 
-            invisible={!isConnected()} 
+          <Badge
+            color="success"
+            invisible={!isConnected()}
             size='sm'
             anchorOrigin={{
               vertical: 'top',

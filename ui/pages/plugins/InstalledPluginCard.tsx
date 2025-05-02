@@ -20,7 +20,7 @@ import { LuAtom, LuRefreshCcwDot } from 'react-icons/lu';
 
 // Hooks
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
-import { BrowserOpenURL } from '@runtime/runtime';
+import { BrowserOpenURL } from '@omniviewdev/runtime/runtime';
 import UninstallPluginModal from './UninstallPluginModal';
 import { CircularProgress } from '@mui/joy';
 
@@ -96,28 +96,28 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
             <Chip size='sm' sx={{ borderRadius: 'sm', maxHeight: 20 }} color='neutral'>
               {plugin.data?.metadata.version}
             </Chip>
-            {plugin.data?.devMode && 
-              <Tooltip 
-                sx={{ p: 1 }} 
+            {plugin.data?.devMode &&
+              <Tooltip
+                sx={{ p: 1 }}
                 title={
                   <Typography level='title-sm'>
                     {plugin.data?.devPath}
                   </Typography>
-                } 
+                }
                 variant='soft'
                 color='warning'
                 arrow
               >
-                <Chip 
-                  size='sm' 
-                  sx={{ borderRadius: 'sm', maxHeight: 20 }} 
+                <Chip
+                  size='sm'
+                  sx={{ borderRadius: 'sm', maxHeight: 20 }}
                   color='warning'
                   variant='outlined'
                   startDecorator={
                     <LuAtom />
                   }
                 >
-                Dev Mode
+                  Dev Mode
                 </Chip>
               </Tooltip>
             }
@@ -130,9 +130,9 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
               sx={{
                 borderRadius: 4, position: 'absolute', top: 10, right: 10,
               }} />
-          ) : <Icon name={plugin.data?.metadata.icon ?? ''} size={44} />}
+          ) : <Icon name={plugin.data?.metadata.icon ?? ''} size={30} />}
         </Box>
-        <CardContent>
+        <CardContent sx={{ minHeight: 42 }}>
           <Typography
             level='body-sm'
             sx={{

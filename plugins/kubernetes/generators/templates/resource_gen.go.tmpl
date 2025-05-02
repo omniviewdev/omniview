@@ -5,7 +5,11 @@ import (
 	"github.com/joshuapare/kubede/backend/services/resources"
 	"go.uber.org/zap"
 
+  {{if eq .ImportPath "apiextensions" }}
+  k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
+  {{else}}
 	k8sapi "k8s.io/api/{{.ImportPath}}"
+  {{end}}
 )
 
 // {{.ResourceName}}Service is a service for managing {{.ResourceName}} resources.

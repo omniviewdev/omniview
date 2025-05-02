@@ -19,9 +19,6 @@ type Story = StoryObj<typeof meta>;
 export const Primary: Story = {
   args: {
     data,
-    onSubmit: () => {},
-    onCancel: () => {},
-    useSearch: () => [],
   },
 };
 
@@ -31,7 +28,7 @@ Primary.decorators = [
       type="apps::v1::ControllerRevision"
       title={c.args.data.metadata.name}
       open
-      onClose={() => {}}
+      onClose={() => { }}
     >
       <Story />
     </ResourceDrawerContainer>

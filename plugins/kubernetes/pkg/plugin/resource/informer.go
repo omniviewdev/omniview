@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"log"
 	"slices"
+	"time"
 
 	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
-	coordinationv1 "k8s.io/api/coordination/v1"
+	authenticationv1 "k8s.io/api/authentication/v1"
+	authenticationv1beta1 "k8s.io/api/authentication/v1beta1"
+	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -22,8 +25,16 @@ import (
 var ignoreResources = []schema.GroupVersionResource{
 	// too much noise for now
 	corev1.SchemeGroupVersion.WithResource("events"),
+	corev1.SchemeGroupVersion.WithResource("bindings"),
 	eventsv1.SchemeGroupVersion.WithResource("events"),
-	coordinationv1.SchemeGroupVersion.WithResource("leases"),
+	authenticationv1beta1.SchemeGroupVersion.WithResource("selfsubjectreviews"),
+	authenticationv1.SchemeGroupVersion.WithResource("selfsubjectreviews"),
+	authenticationv1.SchemeGroupVersion.WithResource("tokenrequests"),
+	authenticationv1.SchemeGroupVersion.WithResource("tokenreviews"),
+	authorizationv1.SchemeGroupVersion.WithResource("localsubjectaccessreviews"),
+	authorizationv1.SchemeGroupVersion.WithResource("selfsubjectaccessreviews"),
+	authorizationv1.SchemeGroupVersion.WithResource("selfsubjectrulesreviews"),
+	authorizationv1.SchemeGroupVersion.WithResource("subjectaccessreviews"),
 }
 
 func NewInformerOptions() *types.InformerOptions[clients.ClientSet, dynamicinformer.DynamicSharedInformerFactory] {
@@ -64,7 +75,7 @@ func RegisterResourceInformer(
 	i := informer.ForResource(gvk).Informer()
 
 	handlers := cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
+		AddFunc: func(obj any) {
 			r, ok := obj.(*unstructured.Unstructured)
 			if !ok || r == nil {
 				log.Print("object is not an unstructured object")
@@ -78,6 +89,7 @@ func RegisterResourceInformer(
 			}
 			key := fmt.Sprintf("%s::%s::%s", group, kind.Version, kind.Kind)
 
+			log.Println("Got create for: ", key, r.GetName())
 			// send it into the channel
 			addChan <- types.InformerAddPayload{
 				Key:        key,
@@ -87,7 +99,7 @@ func RegisterResourceInformer(
 				Data:       r.Object,
 			}
 		},
-		UpdateFunc: func(oldObj, obj interface{}) {
+		UpdateFunc: func(oldObj, obj any) {
 			orig, ok := oldObj.(*unstructured.Unstructured)
 			if !ok || orig == nil {
 				log.Print("object is not an unstructured object")
@@ -107,6 +119,8 @@ func RegisterResourceInformer(
 			}
 			key := fmt.Sprintf("%s::%s::%s", group, kind.Version, kind.Kind)
 
+			log.Println("Got update for: ", key, updated.GetName())
+
 			// send it into the channel
 			updateChan <- types.InformerUpdatePayload{
 				Key:        key,
@@ -117,7 +131,7 @@ func RegisterResourceInformer(
 				NewData:    updated.Object,
 			}
 		},
-		DeleteFunc: func(obj interface{}) {
+		DeleteFunc: func(obj any) {
 			r, ok := obj.(*unstructured.Unstructured)
 			if !ok {
 				log.Print("object is not an unstructured object")
@@ -134,6 +148,7 @@ func RegisterResourceInformer(
 				group = "core"
 			}
 			key := fmt.Sprintf("%s::%s::%s", group, kind.Version, kind.Kind)
+			log.Println("Got delete for: ", key, r.GetName())
 
 			// send it into the channel
 			deleteChan <- types.InformerDeletePayload{
@@ -163,9 +178,25 @@ func StartInformer(
 	_ chan types.InformerDeletePayload,
 ) error {
 	log.Print("Starting informer")
-	go informer.Start(stopCh)
-	resources := informer.WaitForCacheSync(stopCh)
-	log.Print("Informers started", resources)
+	informer.Start(stopCh)
+	log.Print("Starting informers. Waiting for cache sync...")
+
+	synced := make(chan struct{})
+	cacheStop := make(chan struct{})
+	go func() {
+		resources := informer.WaitForCacheSync(cacheStop)
+		log.Print("Cache sync done. Informers used:", resources)
+		close(synced)
+	}()
+
+	select {
+	case <-synced:
+		// all good
+	case <-time.After(2 * time.Minute):
+		log.Print("cache sync timed out after 2m")
+		close(cacheStop)
+	}
+
 	return nil
 }
 

@@ -1,5 +1,5 @@
 import { eventbus } from '@/events/eventbus';
-import { type exec } from '@api/models';
+import { type exec } from '@omniviewdev/runtime/models';
 
 type OnCreateSessionOpts = {
   plugin: string;
@@ -15,6 +15,8 @@ type OnSessionClosedOpts = {
 
 type BottomDrawerEvents = {
   onResize: (height: number) => void;
+  onResizeHandler: (height: number) => void;
+  onResizeReset: () => void;
   onFullscreen: () => void;
   onMinimize: () => void;
   onCreateSession: (opts: OnCreateSessionOpts) => void;

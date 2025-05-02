@@ -1,6 +1,6 @@
 import React, { type ReactNode } from 'react';
 import { SnackbarProvider as NotistackProvider } from 'notistack';
-import { SnackbarProvider } from '@/providers/SnackbarProvider';
+import { SnackbarProvider } from '@omniviewdev/runtime';
 
 type AppSnackbarProviderProps = {
   children: ReactNode;

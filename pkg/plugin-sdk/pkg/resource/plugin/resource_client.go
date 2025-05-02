@@ -276,8 +276,14 @@ func (r *ResourcePluginClient) List(
 		return nil, err
 	}
 
+	data := resp.GetData()
+	res := make([]map[string]interface{}, 0, len(data))
+	for _, d := range data {
+		res = append(res, d.AsMap())
+	}
+
 	result := &types.ListResult{
-		Result:  resp.GetData().AsMap(),
+		Result:  res,
 		Success: resp.GetSuccess(),
 	}
 
@@ -302,8 +308,14 @@ func (r *ResourcePluginClient) Find(
 		return nil, err
 	}
 
+	data := resp.GetData()
+	res := make([]map[string]interface{}, 0, len(data))
+	for _, d := range data {
+		res = append(res, d.AsMap())
+	}
+
 	result := &types.FindResult{
-		Result:  resp.GetData().AsMap(),
+		Result:  res,
 		Success: resp.GetSuccess(),
 	}
 
@@ -464,6 +476,7 @@ func (r *ResourcePluginClient) ListenForEvents(
 			switch msg.GetAction().(type) {
 			case *proto.InformerEvent_Add:
 				add := msg.GetAdd()
+				log.Println("recieved add event in client", add)
 				addStream <- types.InformerAddPayload{
 					Key:        msg.GetKey(),
 					Connection: msg.GetConnection(),
@@ -473,6 +486,7 @@ func (r *ResourcePluginClient) ListenForEvents(
 				}
 			case *proto.InformerEvent_Update:
 				update := msg.GetUpdate()
+				log.Println("recieved update event in client", update)
 				updateStream <- types.InformerUpdatePayload{
 					Key:        msg.GetKey(),
 					Connection: msg.GetConnection(),
@@ -483,6 +497,7 @@ func (r *ResourcePluginClient) ListenForEvents(
 				}
 			case *proto.InformerEvent_Delete:
 				del := msg.GetDelete()
+				log.Println("recieved delete event in client", del)
 				deleteStream <- types.InformerDeletePayload{
 					Key:        msg.GetKey(),
 					Connection: msg.GetConnection(),

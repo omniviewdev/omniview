@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	DefaultLocalShell     = "zsh"
+	DefaultLocalShell     = "/bin/zsh"
 	DefaultReadBufferSize = 20480
 	InitialRows           = 27
 	InitialCols           = 72
@@ -96,18 +96,43 @@ func (m *Manager) StartSession(
 	// Set up the command to run in a new pseudo-terminal.
 	ctx, cancel := context.WithCancel(context.Background())
 
-	newopts := make([]string, 0, len(opts.Command)+2)
-	newopts = append(newopts, "--login")
-	newopts = append(newopts, "-i")
-	newopts = append(newopts, opts.Command...)
+	// determine the default shell from the commands passed in, since we may want to add flags
+	shell := DefaultLocalShell
+	newopts := []string{}
+
+	if len(opts.Command) > 0 {
+		switch opts.Command[0] {
+		// test for active shells
+		case "zsh":
+			shell = "zsh"
+			newopts = []string{"--login", "-i"}
+			newopts = append(newopts, opts.Command[1:]...)
+		case "/bin/zsh":
+			shell = "/bin/zsh"
+			newopts = []string{"--login", "-i"}
+			newopts = append(newopts, opts.Command[1:]...)
+		case "bash":
+			shell = "bash"
+			newopts = []string{"--login"}
+			newopts = append(newopts, opts.Command[1:]...)
+		case "/bin/bash":
+			shell = "/bin/bash"
+			newopts = []string{"--login"}
+			newopts = append(newopts, opts.Command[1:]...)
+		case "sh":
+			shell = "sh"
+		case "/bin/sh":
+			shell = "/bin/sh"
+		}
+	}
 
 	// start default shell with commands appended to it
 	//nolint:gosec // whole point is to get a local shell from the local IDE, so this is just
 	// going to be exactly what the user wants
-	cmd := exec.CommandContext(ctx, "/bin/zsh", newopts...)
+	cmd := exec.CommandContext(ctx, shell, newopts...)
 
 	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "SHELL=/bin/zsh", "TERM=xterm-256color")
+	cmd.Env = append(cmd.Env, fmt.Sprintf("SHELL=%s", shell), "TERM=xterm-256color")
 
 	if opts.Labels == nil {
 		opts.Labels = make(map[string]string)

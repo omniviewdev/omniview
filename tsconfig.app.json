@@ -1,0 +1,66 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "paths": {
+      "@/*": [
+        "./ui/*"
+      ],
+      "@components/*": [
+        "./ui/components/*"
+      ],
+      "@hooks/*": [
+        "./ui/hooks/*"
+      ],
+      "@infraview/*": [
+        "./ui/pkg/*"
+      ],
+      "@layouts/*": [
+        "./ui/layouts/*"
+      ],
+      "@pages/*": [
+        "./ui/pages/*"
+      ],
+      "@theme/*": [
+        "./ui/theme/*"
+      ],
+      "@types/*": [
+        "./ui/types/*"
+      ],
+      "@utils/*": [
+        "./ui/utils/*"
+      ]
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build"
+  ],
+  "include": [
+    "ui",
+    "packages",
+    "vite.config.ts",
+  ],
+}

@@ -44,6 +44,7 @@ const SearchInput: React.FC<Props> = ({ placeholder, value, onChange }) => {
       sx={{
         flexBasis: '500px',
         display: 'flex',
+        boxShadow: 'none',
         minWidth: {
           md: 400,
           lg: 400,

@@ -1,13 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar } from '@/providers/SnackbarProvider';
-import {
-  ListPlugins, InstallFromPathPrompt, ReloadPlugin, GetPlugin, UninstallPlugin, InstallInDevMode,
-} from '@api/plugin/pluginManager';
+import { useSnackbar } from '@omniviewdev/runtime';
+import { PluginManager } from '@omniviewdev/runtime/api';
 import React from 'react';
-import { EventsOff, EventsOn } from '@runtime/runtime';
-import { type config } from '@api/models';
+import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { type config } from '@omniviewdev/runtime/models';
 
-import { preload } from '@/federation';
+import { clearPlugin } from '@/features/plugins/api/loader';
 
 enum Entity {
   PLUGINS = 'plugins',
@@ -23,7 +21,7 @@ export const usePluginManager = () => {
   // === Watchers === //
   React.useEffect(() => {
     // Set up watchers for plugin reload and install events
-    EventsOn('plugin/dev_reload_start', (meta: config.PluginMeta) => {
+    const closer1 = EventsOn('plugin/dev_reload_start', (meta: config.PluginMeta) => {
       // Find the plugin in the list of plugins and update the status
       // to show that it's reloading
       queryClient.setQueryData([Entity.PLUGINS], (oldData: config.PluginMeta[]) => oldData.map(plugin => {
@@ -44,12 +42,12 @@ export const usePluginManager = () => {
         loadError: '',
       }));
 
-      showSnackbar({
-        message: `Reloading plugin '${meta.name}'`,
-        status: 'info',
-      });
+      // showSnackbar({
+      //   message: `Reloading plugin '${meta.name}'`,
+      //   status: 'info',
+      // });
     });
-    EventsOn('plugin/dev_reload_rror', (meta: config.PluginMeta, error: string) => {
+    const closer2 = EventsOn('plugin/dev_reload_rror', (meta: config.PluginMeta, error: string) => {
       // Find the plugin in the list of plugins and update the status
       // to show that it's reloading
       queryClient.setQueryData([Entity.PLUGINS], (oldData: config.PluginMeta[]) => oldData.map(plugin => {
@@ -76,7 +74,7 @@ export const usePluginManager = () => {
         details: error,
       });
     });
-    EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
+    const closer3 = EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
       // Find the plugin in the list of plugins and update the status
       // to show that it's reloading
       queryClient.setQueryData([Entity.PLUGINS], (oldData: config.PluginMeta[]) => oldData.map(plugin => {
@@ -97,25 +95,28 @@ export const usePluginManager = () => {
         loadError: '',
       }));
 
-      showSnackbar({
-        message: `Plugin '${meta.name}' reloaded`,
-        status: 'success',
-      });
+      // Trigger a reload of the plugin ui
+      clearPlugin({ pluginId: meta.id })
+
+      // showSnackbar({
+      //   message: `Plugin '${meta.name}' reloaded`,
+      //   status: 'success',
+      // });
     });
 
-    EventsOn('plugin/dev_install_start', (meta: config.PluginMeta) => {
-      showSnackbar({
-        message: `Installing plugin '${meta.name}' in development mode`,
-        status: 'info',
-      });
-    });
+    // const closer4 = EventsOn('plugin/dev_install_start', (meta: config.PluginMeta) => {
+    //   showSnackbar({
+    //     message: `Installing plugin '${meta.name}' in development mode`,
+    //     status: 'info',
+    //   });
+    // });
 
     return () => {
       // Cleanup watchers
-      EventsOff('plugin/dev_reload_start');
-      EventsOff('plugin/dev_reload_error');
-      EventsOff('plugin/dev_reload_complete');
-      EventsOff('plugin/dev_install_start');
+      closer1()
+      closer2()
+      closer3()
+      // closer4()
     };
   }, []);
 
@@ -125,7 +126,7 @@ export const usePluginManager = () => {
    * Prompt the user to install a plugin from a path
    */
   const { mutateAsync: promptInstallFromPath } = useMutation({
-    mutationFn: InstallFromPathPrompt,
+    mutationFn: PluginManager.InstallFromPathPrompt,
     onSuccess(data) {
       showSnackbar(`${data.name} plugin successfully installed`, 'success');
       // Invalidate the plugins query to refetch the list of plugins
@@ -146,7 +147,7 @@ export const usePluginManager = () => {
    * Prompt for installing a plugin in development mode
    */
   const { mutateAsync: promptInstallDev } = useMutation({
-    mutationFn: InstallInDevMode,
+    mutationFn: PluginManager.InstallInDevMode,
     onSuccess(data) {
       showSnackbar({
         message: `${data.name} plugin successfully installed in development mode`,
@@ -172,7 +173,7 @@ export const usePluginManager = () => {
    * Reload a plugin by ID
    */
   const { mutateAsync: reloadPlugin } = useMutation({
-    mutationFn: ReloadPlugin,
+    mutationFn: PluginManager.ReloadPlugin,
     onSuccess({ metadata }) {
       showSnackbar(`${metadata.name} plugin reloaded`, 'success');
       // Invalidate the plugins query to refetch the list of plugins
@@ -188,19 +189,22 @@ export const usePluginManager = () => {
   const plugins = useQuery({
     queryKey: [Entity.PLUGINS],
     queryFn: async () => {
-      const plugins = await ListPlugins();
+      const plugins = await PluginManager.ListPlugins();
+      console.log("got plugins", plugins)
       if (!plugins) {
         return [];
       }
 
       plugins.forEach(plugin => {
         // run the component preloads
-        Object.values(plugin.metadata.components?.resource).forEach(component => {
-          preload(plugin.id, component.name).catch(err => {
-            console.error(`Failed to preload component ${component.name} for plugin ${plugin.id}`, err);
-          });
+        Object.values(plugin.metadata.components?.resource || {}).forEach(_ => {
+          // preload(plugin.id, component.name).catch(err => {
+          //   console.error(`Failed to preload component ${component.name} for plugin ${plugin.id}`, err);
+          // });
         });
       });
+
+      console.log("preloaded plugins", plugins)
       return plugins;
     },
   });
@@ -221,7 +225,7 @@ export const usePlugin = ({ id }: { id: string }) => {
     queryKey: [Entity.PLUGINS, id],
     async queryFn({ queryKey }) {
       const [, id] = queryKey;
-      return GetPlugin(id);
+      return PluginManager.GetPlugin(id);
     },
   });
 
@@ -229,7 +233,7 @@ export const usePlugin = ({ id }: { id: string }) => {
    * Reload the plugin
    */
   const { mutateAsync: reload } = useMutation({
-    mutationFn: async () => ReloadPlugin(id),
+    mutationFn: async () => PluginManager.ReloadPlugin(id),
     onSuccess({ id, metadata }) {
       showSnackbar(`Plugin '${metadata.name}' sucessfully reloaded`, 'success');
       // Invalidate the plugins query to refetch the list of plugins
@@ -245,7 +249,7 @@ export const usePlugin = ({ id }: { id: string }) => {
    * so whatever is calling this should handle that.
    */
   const { mutateAsync: uninstall } = useMutation({
-    mutationFn: async () => UninstallPlugin(id),
+    mutationFn: async () => PluginManager.UninstallPlugin(id),
     onSuccess({ id, metadata }) {
       showSnackbar(`Plugin '${metadata.name}' sucessfully uninstalled`, 'success');
       // Invalidate the plugins query to refetch the list of plugins

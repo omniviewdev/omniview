@@ -43,17 +43,14 @@ func NewKubernetesDynamicResourcer(
 	return &service
 }
 
-func parseList(list *unstructured.UnstructuredList) (map[string]interface{}, error) {
-	result := make(map[string]interface{})
+func parseList(list *unstructured.UnstructuredList) ([]map[string]interface{}, error) {
+	result := make([]map[string]interface{}, 0, len(list.Items))
 	for _, r := range list.Items {
-		var obj map[string]interface{}
-		p := r
-		obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&p)
+		obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&r)
 		if err != nil {
 			return nil, err
 		}
-		res := unstructured.Unstructured{Object: obj}
-		result[res.GetName()] = obj
+		result = append(result, obj)
 	}
 	return result, nil
 }

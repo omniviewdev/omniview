@@ -1,20 +1,20 @@
 import React from 'react';
-import { useExtensionRegistry } from '@omniviewdev/runtime/extensions/provider';
+import { useExtensionRegistry } from '@omniviewdev/runtime';
 import { Stack, List, ListItem, ListItemButton, ListItemContent, Typography, Sheet, useTheme, Box, Card, CardContent, Chip } from '@mui/joy';
 import { useMediaQuery } from '@mui/material';
 import Icon from '@/components/icons/Icon';
-import { type ExtensionRegistrySettings, type ExtensionRegistryStore } from '@omniviewdev/runtime/extensions/store';
+import { type ExtensionPointSettings, type ExtensionPointStore } from '@omniviewdev/runtime';
 
 const ExtensionSettingsPage: React.FC = () => {
   const theme = useTheme();
   const extensions = useExtensionRegistry();
   const isNormalScreenSize = useMediaQuery(theme.breakpoints.up('lg'));
 
-  const [selected, setSelected] = React.useState<ExtensionRegistryStore<any> | undefined>(undefined);
-  const [selectedSettings, setSelectedSettings] = React.useState<ExtensionRegistrySettings | undefined>(undefined);
+  const [selected, setSelected] = React.useState<ExtensionPointStore<any> | undefined>(undefined);
+  const [selectedSettings, setSelectedSettings] = React.useState<ExtensionPointSettings | undefined>(undefined);
 
   const selectExtensionPoint = (id: string) => {
-    const extension = extensions?.extensionPointRegistry.getExtensionPoint(id);
+    const extension = extensions?.getExtensionPoint(id);
 
     if (extension) {
       setSelected(extension);
@@ -39,9 +39,10 @@ const ExtensionSettingsPage: React.FC = () => {
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
-          borderRadius: 12,
+          borderRadius: 8,
           width: '100%',
-          padding: 2,
+          paddingY: 1,
+          paddingX: 2,
           gap: 1.5,
         }}
       >
@@ -68,7 +69,7 @@ const ExtensionSettingsPage: React.FC = () => {
           <Typography level={isNormalScreenSize ? 'title-lg' : 'title-md'}>
             Extension
           </Typography>
-          <Typography level={isNormalScreenSize ? 'body-sm' : 'body-xs'}>
+          <Typography level={isNormalScreenSize ? 'body-xs' : 'body-xs'}>
             View and manage the installed extensions in the IDE
           </Typography>
         </Stack>
@@ -85,33 +86,31 @@ const ExtensionSettingsPage: React.FC = () => {
         }}
       >
 
-        <Card 
+        <Card
           variant='outlined'
           sx={{ p: 0.5 }}
         >
           <CardContent>
             <Stack spacing={0} direction={'column'}>
-              <Typography p={1}level={'h4'}>Extension Points</Typography>
-              <List 
+              <Typography p={1} level={'h4'}>Extension Points</Typography>
+              <List
                 variant={'soft'}
-                size={'sm'} 
+                size={'sm'}
                 sx={{ width: 350, borderRadius: 8 }}
               >
-                {extensions?.extensionPointRegistry.listExtensionPoints().map((extension) => (
-                  <>
-                    <ListItem>
-                      <ListItemButton 
-                        selected={selected?.settings().id === extension.id}
-                        onClick={() => {
-                          selectExtensionPoint(extension.id); 
-                        }}
-                      >
-                        <ListItemContent>
-                          {extension.id}
-                        </ListItemContent>
-                      </ListItemButton>
-                    </ListItem>
-                  </>
+                {extensions?.listExtensionPoints().map((extension) => (
+                  <ListItem key={extension.id}>
+                    <ListItemButton
+                      selected={selected?.settings().id === extension.id}
+                      onClick={() => {
+                        selectExtensionPoint(extension.id);
+                      }}
+                    >
+                      <ListItemContent>
+                        {extension.id}
+                      </ListItemContent>
+                    </ListItemButton>
+                  </ListItem>
                 ))}
               </List>
             </Stack>
@@ -133,7 +132,7 @@ const ExtensionSettingsPage: React.FC = () => {
             <Card variant="outlined">
               <CardContent>
                 <Stack direction="row" gap={2} justifyContent={'space-between'}>
-                  <Typography 
+                  <Typography
                     level="title-md"
                     endDecorator={
                       <Chip variant={'outlined'} sx={{ borderRadius: 'sm', ml: 1 }}>
@@ -143,10 +142,10 @@ const ExtensionSettingsPage: React.FC = () => {
                   >
                     {selectedSettings?.name}
                   </Typography>
-                  {selectedSettings?.mode && 
-                  <Chip color={'primary'} sx={{ borderRadius: 'sm' }}>
-                    {selectedSettings?.id}
-                  </Chip>
+                  {selectedSettings?.mode &&
+                    <Chip color={'primary'} sx={{ borderRadius: 'sm' }}>
+                      {selectedSettings?.id}
+                    </Chip>
                   }
                 </Stack>
                 <Stack direction="row" gap={2} justifyContent={'space-between'}>
@@ -163,7 +162,7 @@ const ExtensionSettingsPage: React.FC = () => {
 };
 
 type ExtensionPointDisplayProps = {
-  extensionPoint: ExtensionRegistryStore<any>;
+  extensionPoint: ExtensionPointStore<any>;
 };
 
 const ExtensionPointDisplay: React.FC<ExtensionPointDisplayProps> = ({ extensionPoint }) => {
