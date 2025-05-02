@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 
 	"github.com/hashicorp/go-plugin"
 	"gopkg.in/yaml.v3"
@@ -34,6 +35,30 @@ type PluginMeta struct {
 	Capabilities []string           `json:"capabilities" yaml:"capabilities"`
 	Theme        PluginTheme        `json:"theme"        yaml:"theme"`
 	Components   PluginComponents   `json:"components"   yaml:"components"`
+}
+
+// HasUICapabilities checks if the plugin has UI capabilities. This is used
+// to verify plugin loading and staring.
+func (m *PluginMeta) HasUICapabilities() bool {
+	for _, capability := range m.Capabilities {
+		if capability == "ui" {
+			return true
+		}
+	}
+	return false
+}
+
+// HasBackendCapabilities checks if the plugin has UI capabilities. This is used
+// to verify plugin loading and staring.
+func (m *PluginMeta) HasBackendCapabilities() bool {
+	caps := []string{"resource", "exec", "networker", "settings"}
+
+	for _, capability := range m.Capabilities {
+		if slices.Contains(caps, capability) {
+			return true
+		}
+	}
+	return false
 }
 
 type PluginMaintainer struct {

@@ -20,13 +20,13 @@ var PodDef = types.ResourceDefinition{
 			Accessors: "metadata.namespace",
 			Width:     180,
 		},
-		{
-			ID:        "containers",
-			Header:    "Containers",
-			Accessors: "$.status.containerStatuses",
-			Width:     150,
-			Component: "ContainerStatusCell",
-		},
+		// {
+		// 	ID:        "containers",
+		// 	Header:    "Containers",
+		// 	Accessors: "$.status.containerStatuses",
+		// 	Width:     150,
+		// 	Component: "ContainerStatusCell",
+		// },
 		{
 			ID:        "restarts",
 			Header:    "Restarts",

@@ -6,7 +6,7 @@ export const initialState: TerminalSettings = {
   id: 'terminal',
   label: 'Terminal',
   description: 'Customize the terminal',
-  icon: 'LuTerminalSquare',
+  icon: 'LuSquareTerminal',
   settings: {
     defaultShell: {
       label: 'Default Shell',

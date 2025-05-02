@@ -1,7 +1,7 @@
 import React from 'react';
-import { WindowIsFullscreen } from '@runtime/runtime';
+import { WindowIsFullscreen } from '@omniviewdev/runtime/runtime';
 import { useDebounce } from 'react-use';
-import { GetOperatingSystem } from '@api/main/App';
+import { GetOperatingSystem } from '@omniviewdev/runtime/api';
 
 export const useWindow = () => {
   const [isFullscreen, setIsFullscreen] = React.useState(false);

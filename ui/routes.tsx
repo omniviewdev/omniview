@@ -33,6 +33,7 @@ import TrivyVulnerabilities from './pages/trivy/pages/vulnerabilities';
 import TrivyLicenses from './pages/trivy/pages/licenses';
 import TrivySBOM from './pages/trivy/pages/sbom';
 import TrivyMisconfiguration from './pages/trivy/pages/misconfiguration';
+import PluginRenderer from './features/plugins/components/PluginRenderer';
 
 // // Apollo
 // import ApolloSandboxPage from './pages/apollo';
@@ -91,6 +92,19 @@ export const scoped: RouteObject[] = [
           },
         ],
       },
+
+      /**
+       * NOTE: The new UI implementation will exist here
+       */
+      {
+        path: '_plugin/:pluginId/*',
+        Component: PluginRenderer,
+        ErrorBoundary: RouterErrorBoundary,
+      },
+
+      /**
+       * NOTE: Old implementation
+       */
       {
         path: 'plugin',
         Component: PluginContainer,

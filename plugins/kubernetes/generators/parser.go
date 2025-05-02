@@ -94,9 +94,9 @@ func ParseOpenAPI(location string, resources *[]Resource, packages *[]Package) {
 				}
 
 				// skip CRDs
-				if gvk.Kind == "CustomResourceDefinition" {
-					continue
-				}
+				// if gvk.Kind == "CustomResourceDefinition" {
+				// 	continue
+				// }
 				group := gvk.Group
 
 				// if group ends in .k8s.io, remove it
@@ -144,19 +144,24 @@ func ParseOpenAPI(location string, resources *[]Resource, packages *[]Package) {
 
 				process := true
 
-				// skip our whitelisted resources
-				switch group {
-				case "storagemigration":
-					process = false
-				case "apiregistration":
+				// // skip our whitelisted resources
+				// switch group {
+				// case "storagemigration":
+				// 	process = false
+				// case "apiregistration":
+				// 	process = false
+				// }
+
+				// only alpha resources for the latest version (for now - we'll find a way to work these in at a later point)
+				if strings.Contains(gvk.Version, "alpha") {
 					process = false
 				}
 
-				// yet another whitelist
-				switch {
-				case group == "resource" && gvk.Version == "v1alpha1":
-					process = false
-				}
+				// // yet another whitelist
+				// switch {
+				// case group == "resource" && gvk.Version == "v1alpha1":
+				// 	process = false
+				// }
 
 				if !process {
 					continue

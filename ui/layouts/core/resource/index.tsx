@@ -7,7 +7,7 @@ import Divider from '@mui/joy/Divider';
 
 // Layout components
 import ResourceSidebar from './Sidebar';
-import RightDrawer from './RightDrawer';
+// import RightDrawer from './RightDrawer';
 // import BottomDrawer from './BottomDrawer';
 
 /**
@@ -58,8 +58,8 @@ const ResourceLayout: React.FC = () => (
       }}
     >
       <Divider />
-
-      <RightDrawer />
+      {/**/}
+      {/* <RightDrawer /> */}
     </Box>
   </>
 );

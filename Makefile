@@ -8,7 +8,13 @@ sync:
 
 dev:
 	pnpm install
-	wails dev
+	wails dev -loglevel Error
+
+dev-plugin:
+	wails dev -noreload -loglevel Error
+
+runtime:
+	cd packages/omniviewdev-runtime && pnpm run build
 
 .PHONY: build
 build:

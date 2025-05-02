@@ -15,11 +15,14 @@ import Typography from '@mui/joy/Typography';
 
 // Project imports
 import { usePluginContext } from '@/contexts/PluginContext';
-import { useConnection } from '@/hooks/connection/useConnection';
+import {
+  useConnection,
+  useSnackbar,
+} from '@omniviewdev/runtime';
 
 // Types
 import { stringToColor } from '@/utils/color';
-import { types } from '@api/models';
+import { types } from '@omniviewdev/runtime/models';
 
 // Icons
 import { MoreVert } from '@mui/icons-material';
@@ -27,7 +30,6 @@ import { LuPencil, LuTrash } from 'react-icons/lu';
 
 // Third-party
 import { Link, usePluginRouter } from '@infraview/router';
-import { useSnackbar } from '@/providers/SnackbarProvider';
 
 type Props = Omit<types.Connection, 'createFrom' | 'convertValues'>;
 
@@ -115,7 +117,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
           status: 'error',
           message: `Failed to connect to '${name}'`,
           details: status.details,
-          icon: 'LuAlertCircle',
+          icon: 'LuCircleAlert',
         });
     }
   };
@@ -136,7 +138,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
           showSnackbar({
             status: 'error',
             message: err.message,
-            icon: 'LuAlertCircle',
+            icon: 'LuCircleAlert',
           });
         }
       })

@@ -18,6 +18,7 @@ interface Props {
 
 export const PodSidebar: React.FC<Props> = ({ data }) => {
   if (!data) {
+    console.log("did not get any data")
     return <React.Fragment />;
   }
 

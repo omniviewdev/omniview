@@ -1,14 +1,17 @@
 import * as React from "react";
 
 // material-ui
-import Avatar from "@mui/joy/Avatar";
-import AccordionGroup from "@mui/joy/AccordionGroup";
-import Accordion, { accordionClasses } from "@mui/joy/Accordion";
-import AccordionDetails from "@mui/joy/AccordionDetails";
-import AccordionSummary from "@mui/joy/AccordionSummary";
-import Chip from "@mui/joy/Chip";
-import Stack from "@mui/joy/Stack";
-import Typography from "@mui/joy/Typography";
+import {
+  Avatar,
+  Accordion,
+  AccordionDetails,
+  AccordionGroup,
+  AccordionSummary,
+  Chip,
+  Stack,
+  Typography,
+  accordionClasses
+} from '@mui/joy';
 
 // project imports
 import DynamicIcon from "../../stories/components/DynamicIcon";

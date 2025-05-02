@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar } from '@/providers/SnackbarProvider';
+import { useSnackbar } from '@omniviewdev/runtime';
 
 // Underlying client
-import { ListSettings, LoadSettings, SetSettings } from '@api/settings/provider';
-import { type settings } from '@api/models';
+import { SettingsProvider } from '@omniviewdev/runtime/api';
+import { type settings } from '@omniviewdev/runtime/models';
 
 /**
  * Interact with the global settings provider. Intended for use in the settings UI. If you need to read or write settings
@@ -16,7 +16,7 @@ export const useSettingsProvider = () => {
   const queryKey = ['settings'];
 
   const { mutateAsync: reload } = useMutation({
-    mutationFn: async () => LoadSettings(),
+    mutationFn: async () => SettingsProvider.LoadSettings(),
     onSuccess() {
       showSnackbar('Settings reloaded', 'success');
       queryClient.invalidateQueries({ queryKey });
@@ -28,7 +28,7 @@ export const useSettingsProvider = () => {
   });
 
   const { mutateAsync: setSettings } = useMutation({
-    mutationFn: async (newSettings: Record<string, any>) => SetSettings(newSettings),
+    mutationFn: async (newSettings: Record<string, any>) => SettingsProvider.SetSettings(newSettings),
     onSuccess(_, _vars) {
       showSnackbar('Settings saved', 'success');
       // TODO - invalidate each one individually
@@ -42,7 +42,7 @@ export const useSettingsProvider = () => {
 
   const settings = useQuery({
     queryKey,
-    queryFn: async () => ListSettings() as Promise<Record<string, settings.Category>>,
+    queryFn: async () => SettingsProvider.ListSettings() as Promise<Record<string, settings.Category>>,
   });
 
   return {

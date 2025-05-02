@@ -8,7 +8,7 @@ import Chip from '@mui/joy/Chip';
 // Types
 import { type SectionSelection } from '.';
 import SettingsEntry from './SettingsEntry';
-import { type settings } from '@api/models';
+import { type settings } from '@omniviewdev/runtime/models';
 
 type Props = SectionSelection & {
   settings: Record<string, settings.Setting>;
@@ -24,6 +24,8 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
 
   const handleChange = (name: string, value: any) => {
     const id = `${sectionID}.${name}`;
+    console.log(value)
+    console.log(typeof value)
 
     // If changing back to initial value, remove from draft values
     // otherwise, add to draft values
@@ -47,7 +49,7 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
       <Stack
         direction={'column'}
         justifyContent={'flex-start'}
-        gap={4}
+        gap={2}
         sx={{
           // Account for the 1px border highlight we put on the selected items
           // otherwise, it get's cut off
@@ -61,14 +63,14 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
       >
         {Object.entries(settings).map(([id, setting]) => (
           <div key={id}>
-            <Stack key={id} direction={'column'} gap={1}>
+            <Stack key={id} direction={'column'} gap={0.5}>
               <Stack direction={'column'}>
                 <Stack direction={'row'} justifyContent={'space-between'}>
-                  <Typography level='title-md'>{setting.label}</Typography>
+                  <Typography level='title-sm'>{setting.label}</Typography>
                   {showSettingID && sectionID !== 'plugin' && <Chip size='sm' variant='outlined' sx={{ borderRadius: 4 }}>{`${sectionID}.${id}`}</Chip>}
                   {showSettingID && sectionID === 'plugin' && <Chip size='sm' variant='outlined' sx={{ borderRadius: 4 }}>{`${id}`}</Chip>}
                 </Stack>
-                <Typography level='body-sm'>{setting.description}</Typography>
+                <Typography level='body-xs' color='neutral'>{setting.description}</Typography>
               </Stack>
               <SettingsEntry
                 setting={setting}

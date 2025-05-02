@@ -6,7 +6,7 @@ import Typography from '@mui/joy/Typography';
 import Sheet from '@mui/joy/Sheet';
 
 // types
-import { type types } from '@api/models';
+import { type types } from '@omniviewdev/runtime/models';
 
 // icons
 import ConnectionTableItem from './ConnectionTableItem';

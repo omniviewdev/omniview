@@ -82,10 +82,12 @@ func (c *controller) Run(ctx context.Context) {
 
 // Listens for informer events and emits them over the frontend IPC.
 func (c *controller) informerListener() {
+	log := c.logger.Named("informerListener")
 	for {
 		select {
 		case <-c.ctx.Done():
 			// shutting down
+			log.Debugw("shutting down informer listeners")
 			for _, stopChan := range c.informerStopChans {
 				stopChan <- struct{}{}
 			}
@@ -97,6 +99,7 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
+			log.Debugw("received add event", "event", eventKey)
 			runtime.EventsEmit(c.ctx, eventKey, event)
 		case event := <-c.updateChan:
 			eventKey := fmt.Sprintf(
@@ -105,6 +108,7 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
+			log.Debugw("received update event", "event", eventKey)
 
 			runtime.EventsEmit(
 				c.ctx,
@@ -118,6 +122,7 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
+			log.Debugw("received delete event", "event", eventKey)
 			runtime.EventsEmit(c.ctx, eventKey, event)
 		}
 	}
@@ -368,9 +373,10 @@ func (c *controller) StartConnection(
 }
 
 func (c *controller) StopConnection(pluginID, connectionID string) (types.Connection, error) {
-	c.logger.Debug("StopConnection")
+	log := c.logger.Named("StopConnection").With("pluginID", pluginID, "connectionID", connectionID)
 	client, ok := c.clients[pluginID]
 	if !ok {
+		log.Error("plugin not found")
 		return types.Connection{}, fmt.Errorf("plugin '%s' not found", pluginID)
 	}
 	ctx := types.NewPluginContextWithConnection(
@@ -390,10 +396,12 @@ func (c *controller) StopConnection(pluginID, connectionID string) (types.Connec
 }
 
 func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error) {
-	c.logger.Debug("LoadConnections")
+	log := c.logger.Named("LoadConnections").With("pluginID", pluginID)
+	log.Debug("calling LoadConnections")
 
 	client, ok := c.clients[pluginID]
 	if !ok {
+		log.Error("plugin not found")
 		return nil, fmt.Errorf("plugin '%s' not found", pluginID)
 	}
 
@@ -405,12 +413,14 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 		nil, // no associated connection
 	)
 
+	log.Debug("loading connections from plugin")
 	connections, err := client.LoadConnections(ctx)
 	if err != nil {
+		log.Errorw("failed to load connections from plugin", "error", err)
 		return nil, err
 	}
 
-	c.logger.Debug("loaded connections from backend", "connections", connections)
+	log.Debug("loaded connections from backend", "count", len(connections))
 
 	// writethrough to local state
 	c.connections[pluginID] = mergeConnections(c.connections[pluginID], connections)
@@ -419,7 +429,9 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 }
 
 func (c *controller) ListConnections(pluginID string) ([]types.Connection, error) {
-	c.logger.Debug("ListConnections")
+	log := c.logger.Named("ListConnections").With("pluginID", pluginID)
+	log.Debug("calling ListConnections")
+
 	connections, ok := c.connections[pluginID]
 	if !ok {
 		return nil, fmt.Errorf("plugin '%s' has no connections", pluginID)
@@ -440,7 +452,6 @@ func (c *controller) ListAllConnections() (map[string][]types.Connection, error)
 func (c *controller) GetConnection(
 	pluginID, connectionID string,
 ) (types.Connection, error) {
-	c.logger.Debug("GetConnection")
 	connections, ok := c.connections[pluginID]
 	if !ok {
 		return types.Connection{}, fmt.Errorf("plugin '%s' has no connections", pluginID)

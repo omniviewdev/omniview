@@ -10,8 +10,7 @@ import { useSelector } from 'react-redux';
 import { type RootState } from '@/store/store';
 import HeaderTabsArea from './areas/HeaderTabsArea';
 import { WindowContext } from '@/contexts/WindowContext';
-import { useSetting } from '@/hooks/useSettings';
-import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@runtime/runtime';
+import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@omniviewdev/runtime/runtime';
 
 /**
  * Primary header component for the core main layout
@@ -51,7 +50,7 @@ const CoreLayoutHeader: React.FC<BoxProps> = props => {
         styles={{
           // eslint-disable-next-line @typescript-eslint/naming-convention
           ':root': {
-            '--CoreLayoutHeader-height': '41px',
+            '--CoreLayoutHeader-height': '38px',
             '--CoreLayoutHeader-inset': shouldIndent ? '68px' : '0px',
           },
         }}
@@ -92,18 +91,12 @@ const CoreLayoutHeader: React.FC<BoxProps> = props => {
 };
 
 const HeaderItemAreaComponent = ({ area }: { area: HeaderArea }): React.ReactElement => {
-  // Const useHeaderSearch = useSelector((state: RootState) => state.settings['core'].sections['appearance'].settings['headerSearch'].value)
-  const useHeaderSearch = useSetting('core.appearance.headerSearch');
 
   switch (area.type) {
     case 'items':
       return <HeaderItemsArea items={area.items as HeaderAreaItemListType[]} />;
     case 'search':
-      if (useHeaderSearch) {
-        return <HeaderSearchArea />;
-      }
-
-      return <></>;
+      return <HeaderSearchArea />;
     case 'context':
       return <HeaderContextArea title='' />;
     case 'tabs':

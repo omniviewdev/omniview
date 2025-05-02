@@ -29,13 +29,15 @@ func isAllowed(path string) bool {
 	// - /assets/*.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|html)
 
 	tester := regexp.MustCompile(
-		`^/plugins/[^/]+/(assets|dist)/.*\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|html)$`,
+		`^/plugins/[^/]+/(assets|dist)/.*\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|html|js\.map)$`,
 	)
 	return tester.MatchString(path)
 }
 
 func forceMimeType(path string) string {
 	switch {
+	case strings.HasSuffix(path, ".js.map"):
+		return "application/javascript"
 	case strings.HasSuffix(path, ".js"):
 		return "application/javascript"
 	case strings.HasSuffix(path, ".css"):
@@ -111,7 +113,7 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-Type", contentType)
 
 	// if remoteEntry.js, do NOT cache
-	if strings.HasSuffix(requestedFilename, "remoteEntry.js") {
+	if strings.HasSuffix(requestedFilename, "entry.js") {
 		res.Header().Set("Cache-Control", "no-store")
 	}
 

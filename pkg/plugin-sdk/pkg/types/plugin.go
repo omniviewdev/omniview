@@ -22,6 +22,7 @@ const (
 	ResourcePlugin
 	SettingsPlugin // Special plugin capabity that allow for settings to be defined
 	NetworkerPlugin
+	UIPlugin
 )
 
 func (pt PluginType) String() string {
@@ -42,6 +43,8 @@ func (pt PluginType) String() string {
 		return "settings"
 	case NetworkerPlugin:
 		return "networker"
+	case UIPlugin:
+		return "ui"
 	default:
 		return "unknown"
 	}

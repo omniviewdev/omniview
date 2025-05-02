@@ -1,16 +1,18 @@
 import React from "react";
 
 // material-ui
-import Stack from "@mui/joy/Stack";
-import MuiCard from "@mui/joy/Card";
-import CardContent from "@mui/joy/CardContent";
-import Avatar from "@mui/joy/Avatar";
-import Divider from "@mui/joy/Divider";
-import Typography from "@mui/joy/Typography";
+import {
+  Stack,
+  Card as MuiCard,
+  CardContent,
+  Chip,
+  Avatar,
+  Divider,
+  Typography,
+} from '@mui/joy';
 
 // project imports
 import Icon from "./Icon";
-import { Chip } from "@mui/joy";
 
 export interface Props {
   title: string;
@@ -56,7 +58,7 @@ export const Card: React.FC<Props> = ({
         </Stack>
         {titleDecorator &&
           (typeof titleDecorator === "string" ||
-          typeof titleDecorator === "number" ? (
+            typeof titleDecorator === "number" ? (
             <Chip
               sx={{ borderRadius: "4px" }}
               size="sm"

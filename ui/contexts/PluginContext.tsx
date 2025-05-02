@@ -1,5 +1,5 @@
 import React from 'react';
-import { type types } from '@api/models';
+import { type types } from '@omniviewdev/runtime/models';
 
 /**
  * PluginContext provides data about the current plugin that is within scope.

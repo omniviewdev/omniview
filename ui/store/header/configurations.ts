@@ -3,7 +3,7 @@ import { type HeaderAreaItemList, HeaderAreaItemType, type HeaderState } from '.
 // Various configurations for how the header should look. This includes combinations of areas and types to display.
 const defaultItems: HeaderAreaItemList = [
   {
-    id: 'home', type: HeaderAreaItemType.LINK, icon: 'LuHome', href: '/',
+    id: 'home', type: HeaderAreaItemType.LINK, icon: 'LuHouse', href: '/',
   },
   {
     id: 'settings', type: HeaderAreaItemType.LINK, icon: 'LuSettings', href: '/settings',

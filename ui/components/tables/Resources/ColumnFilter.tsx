@@ -11,7 +11,7 @@ import { ClickAwayListener } from '@mui/base';
 import { IconButton, Switch, styled } from '@mui/joy';
 
 // icons
-import { LuColumns, LuSettings2 } from 'react-icons/lu';
+import { LuColumns2, LuSettings2 } from 'react-icons/lu';
 import { type Column } from '@tanstack/react-table';
 
 const PopupBody = styled('div')(
@@ -72,7 +72,7 @@ const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick }) 
                 gap: 1.25,
               }}
             >
-              <Typography startDecorator={<LuColumns size={14}/>} level='title-sm'>Columns</Typography>
+              <Typography startDecorator={<LuColumns2 size={14}/>} level='title-sm'>Columns</Typography>
               <Divider/>
               <CardContent 
                 sx={{

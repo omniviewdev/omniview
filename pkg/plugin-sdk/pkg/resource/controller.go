@@ -489,6 +489,7 @@ func (c *resourceController[ClientT, InformerT]) StartConnectionInformer(
 
 	// get all the resource types
 	resourceTypes := c.GetResourceTypes(connectionID)
+	log.Println("got resource types in StartConnectionInformer: ", resourceTypes)
 	for _, resource := range resourceTypes {
 		if err = c.informerManager.RegisterResource(ctx, ctx.Connection, resource); err != nil {
 			return fmt.Errorf("unable to register resource: %w", err)
@@ -658,7 +659,18 @@ func (c *resourceController[ClientT, InformerT]) GetResourceGroup(
 func (c *resourceController[ClientT, InformerT]) GetResourceTypes(
 	connID string,
 ) map[string]types.ResourceMeta {
-	return c.resourceTypeManager.GetResourceTypes(connID)
+	// switch this to be the other
+	res, err := c.resourceTypeManager.GetConnectionResourceTypes(connID)
+	if err != nil {
+		return map[string]types.ResourceMeta{}
+	}
+
+	resources := make(map[string]types.ResourceMeta, len(res))
+	for _, rm := range res {
+		resources[rm.String()] = rm
+	}
+
+	return resources
 }
 
 // GetResourceType gets the resource type information by its string representation.

@@ -8,7 +8,7 @@ import Typography from '@mui/joy/Typography';
 
 // Project imports
 import { usePluginContext } from '@/contexts/PluginContext';
-import { useConnection } from '@/hooks/connection/useConnection';
+import { useConnection } from '@omniviewdev/runtime';
 
 // Third-party
 import { useParams, Link, useNavigate } from 'react-router-dom';

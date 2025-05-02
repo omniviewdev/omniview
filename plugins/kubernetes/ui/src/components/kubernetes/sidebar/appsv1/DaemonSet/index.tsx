@@ -5,11 +5,11 @@ import Stack from "@mui/joy/Stack";
 
 // types
 import { DaemonSet } from "kubernetes-types/apps/v1";
-import { ResourceSidebarProps } from "../../../../../types/resource";
 
 // project-imports
 import ObjectMetaSection from "../../../../shared/ObjectMetaSection";
 import { ContainersSectionFromPodSpec } from "../../Pod/containers";
+import { ResourceSidebarProps } from "../../../../../types/resource";
 
 /**
  * Renders a sidebar for a ConfigMap resource

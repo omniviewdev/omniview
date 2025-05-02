@@ -1,0 +1,16 @@
+id: containers
+version: 0.1.0
+name: Containers
+icon: SiDocsdotrs
+description: Inspect, scan, and view details for containers and images
+repository: github.com/omniviewdev/omniview/plugins/containers
+website: omniview.dev
+maintainers:
+  - name: Omniview Maintainers
+    email: info@omniview.dev
+tags:
+  - docker
+  - containers
+  - kubernetes
+capabilities:
+  - ui

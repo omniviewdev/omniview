@@ -6,14 +6,13 @@ import jsonpath from 'jsonpath';
 import get from 'lodash.get';
 
 // project imports
-import { GetConnectionNamespaces, GetResourceDefinition } from '@api/resource/Client';
-import { type types } from '@api/models';
+import { ResourceClient, ExecClient } from '@omniviewdev/runtime/api';
+import { type types } from '@omniviewdev/runtime/models';
 import SelectBoxHeader from '@/components/tables/Resources/cells/SelectBoxHeader';
 import SelectBoxRow from '@/components/tables/Resources/cells/SelectBoxRow';
 import { type Actions } from '@/components/tables/Resources/actions/types';
 import ActionMenu from '@/components/tables/Resources/actions/ActionMenu';
 import { TextCell } from '@/components/tables/Resources/cells';
-import { GetHandler } from '@api/exec/Client';
 import CustomTableCell from '@/components/tables/Resources/cells/CustomTableCell';
 
 
@@ -131,19 +130,19 @@ const parseColumnDef = ({
 
         return val.length === 1 ? val[0] : val;
       },
-      cell: ({ getValue, row }) => 
-        !!def.component 
+      cell: ({ getValue, row }) =>
+        !!def.component
           // using a custom federated component
-          ? <CustomTableCell 
-            plugin={pluginID} 
+          ? <CustomTableCell
+            plugin={pluginID}
             data={getValue()}
             component={def.component}
           />
           // in-house component
-          : <TextCell 
-            align={getAlignment(def.align)} 
-            value={getValue() as string} 
-            formatter={def.formatter} 
+          : <TextCell
+            align={getAlignment(def.align)}
+            value={getValue() as string}
+            formatter={def.formatter}
             colorMap={def.colorMap}
             resourceLink={def.resourceLink}
             metadata={{
@@ -164,16 +163,16 @@ const parseColumnDef = ({
   });
 
   if (actions !== undefined) {
-  // add the actions to the end
+    // add the actions to the end
     defs.push({
       id: 'menu',
-      cell: ({ row }) => <ActionMenu 
-        actions={actions} 
-        plugin={pluginID} 
-        connection={connectionID} 
-        resource={resourceKey} 
-        data={row.original} 
-        id={row.id} 
+      cell: ({ row }) => <ActionMenu
+        actions={actions}
+        plugin={pluginID}
+        connection={connectionID}
+        resource={resourceKey}
+        data={row.original}
+        id={row.id}
         namespace={namespaceAccessor ? get(row.original, namespaceAccessor, '') : ''}
       />,
       size: 50,
@@ -186,25 +185,25 @@ const parseColumnDef = ({
     defs,
     visibility: Object.fromEntries(columnDefs?.map((def) => [def.id, !def.hidden])),
   };
-}; 
+};
 
 /**
  * Fetches the resource definition for the given resource key and returns calculated resource
  * schema objects for rendering the resource.
  */
 export const useResourceDefinition = ({ pluginID, resourceKey, connectionID }: UseResourceDefinitionOptions) => {
-  const queryKey = [pluginID, 'resource_definition',  resourceKey];
+  const queryKey = [pluginID, 'resource_definition', resourceKey];
 
   const definition = useQuery({
     queryKey,
-    queryFn: async () => GetResourceDefinition(pluginID, resourceKey),
+    queryFn: async () => ResourceClient.GetResourceDefinition(pluginID, resourceKey),
     retry: false,
   });
 
   const actions = useQuery({
     queryKey: ['executions', pluginID, resourceKey, 'actions'],
     queryFn: async () => {
-      const exec = await GetHandler(pluginID, resourceKey);
+      const exec = await ExecClient.GetHandler(pluginID, resourceKey);
       return {
         exec,
       };
@@ -214,7 +213,7 @@ export const useResourceDefinition = ({ pluginID, resourceKey, connectionID }: U
 
   const namespaces = useQuery({
     queryKey: [pluginID, 'connection', 'namespaces', connectionID],
-    queryFn: async () => GetConnectionNamespaces(pluginID, connectionID),
+    queryFn: async () => ResourceClient.GetConnectionNamespaces(pluginID, connectionID),
     retry: false,
   });
 

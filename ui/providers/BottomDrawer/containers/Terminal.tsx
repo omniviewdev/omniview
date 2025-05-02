@@ -8,10 +8,11 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { debounce } from '@/utils/debounce';
 
 // project import
-import { AttachSession, DetachSession, ResizeSession, WriteSession } from '@api/exec/Client';
+import { ExecClient } from '@omniviewdev/runtime/api';
 import { bottomDrawerChannel } from '../events';
-import * as runtime from '@runtime/runtime.js';
+import * as runtime from '@omniviewdev/runtime/runtime';
 import { Base64 } from 'js-base64';
+import { useSettings } from '@omniviewdev/runtime';
 
 type Props = {
   /** The session ID */
@@ -70,6 +71,8 @@ const cleanupSignalHandlers = (sessionId: string) => {
 * context area.
 */
 export default function TerminalContainer({ sessionId }: Props) {
+  const { settings } = useSettings();
+
   const terminalRef = useRef<HTMLDivElement>(null);
 
   const disposers = useRef<Array<() => void>>([]);
@@ -99,13 +102,13 @@ export default function TerminalContainer({ sessionId }: Props) {
 
     // Initialize Terminal
     const terminal = new Terminal({
-      cursorBlink: true,
+      cursorBlink: settings['terminal.cursorBlink'],
+      cursorStyle: settings['terminal.cursorStyle'],
       allowProposedApi: true,
       allowTransparency: true,
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
-      scrollback: 0,
-      fontSize: 12,
+      fontSize: settings['terminal.fontSize'] || 12,
       fontFamily: "Consolas,Liberation Mono,Menlo,Courier,monospace",
       fontWeight: 'normal',
     });
@@ -113,24 +116,14 @@ export default function TerminalContainer({ sessionId }: Props) {
     xtermRef.current = terminal;
 
     const fitAddon = new FitAddon();
-    // const canvasAddon = new CanvasAddon();
-    // const webglAddon = new WebglAddon();
-    // webglAddon.onContextLoss(e => {
-    //   console.log('context loss', e);
-    //   webglAddon.dispose();
-    // });
 
     terminal.open(terminalRef.current);
 
     fitAddonRef.current = fitAddon;
-    // canvasAddonRef.current = canvasAddon;
-    // webglAddonRef.current = webglAddon;
 
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(new CanvasAddon());
     terminal.loadAddon(new WebglAddon());
-    // terminal.loadAddon(canvasAddon);
-    // terminal.loadAddon(webglAddon);
 
     terminal.focus();
 
@@ -151,7 +144,7 @@ export default function TerminalContainer({ sessionId }: Props) {
     terminal.onResize((event) => {
       var rows = event.rows;
       var cols = event.cols;
-      ResizeSession(sessionId, rows, cols).catch((err) => {
+      ExecClient.ResizeSession(sessionId, rows, cols).catch((err) => {
         console.error('failed to set tty size', err);
       });
     });
@@ -161,28 +154,20 @@ export default function TerminalContainer({ sessionId }: Props) {
 
     // Function to handle attachment logic
     const attachToSession = async () => {
-      console.log('attaching to session', sessionId);
-
       runtime.EventsOn(stdout, (data: any) => {
         if (data !== null && data !== undefined) {
-          console.log("stdout data:", data)
           terminal.write(textDecoder.decode(Base64.toUint8Array(data)));
         }
       });
 
       runtime.EventsOn(stderr, (data: any) => {
         if (data !== null && data !== undefined) {
-          console.log("stderr data:", data)
           terminal.write(textDecoder.decode(Base64.toUint8Array(data)));
         }
       });
 
       try {
-        await AttachSession(sessionId);
-        //
-        // if (data.buffer !== null && data.buffer !== undefined) {
-        //   terminal.write(data.buffer)
-        // }
+        await ExecClient.AttachSession(sessionId);
       } catch (e) {
         console.error('failed to attach to session', e);
       }
@@ -191,11 +176,9 @@ export default function TerminalContainer({ sessionId }: Props) {
     };
 
     attachToSession().then(() => {
-      console.log('attached to session %s', sessionId);
       fitAddon.fit()
       terminal.onData(data => {
-        console.log("Typed", data)
-        WriteSession(sessionId, data)
+        ExecClient.WriteSession(sessionId, data)
           .catch((err) => {
             if (err instanceof Error) {
               console.error('failed to write to session: ', err.message);
@@ -228,9 +211,7 @@ export default function TerminalContainer({ sessionId }: Props) {
 
       // cleanup signal handlers
       cleanupSignalHandlers(sessionId);
-
-      DetachSession(sessionId).then(() => {
-        console.log('detached from session %s', sessionId);
+      ExecClient.DetachSession(sessionId).then(() => {
       }).catch((err) => {
         if (err instanceof Error) {
           console.error('failed to detach from session: ', err.message);
@@ -238,7 +219,7 @@ export default function TerminalContainer({ sessionId }: Props) {
         }
       });
     };
-  }, [sessionId]);
+  }, [sessionId, settings]);
 
   return <div
     ref={terminalRef}
