@@ -7,32 +7,30 @@ import FormHelperText from "@mui/joy/FormHelperText";
 import Grid from "@mui/joy/Grid";
 import IconButton from "@mui/joy/IconButton";
 import Input from "@mui/joy/Input";
-import List from "@mui/joy/List";
-import ListItem from "@mui/joy/ListItem";
-import ListItemButton from "@mui/joy/ListItemButton";
+// import List from "@mui/joy/List";
+// import ListItem from "@mui/joy/ListItem";
+// import ListItemButton from "@mui/joy/ListItemButton";
 import Textarea from "@mui/joy/Textarea";
 import Typography from "@mui/joy/Typography";
 import Stack from "@mui/joy/Stack";
 
 // types
 import { Secret } from "kubernetes-types/core/v1";
-import { DaemonSet, Deployment, StatefulSet } from "kubernetes-types/apps/v1";
-import {
-  ResourceSearchResult,
-  ResourceSidebarProps,
-} from "../../../types/resource";
+// import { DaemonSet, Deployment, StatefulSet } from "kubernetes-types/apps/v1";
+// import {
+//   ResourceSearchResult,
+// } from "../../../types/resource";
 
 // project-imports
 import ObjectMetaSection from "../../shared/ObjectMetaSection";
 import { isMultiLine } from "../../../utils/text";
-import { deplomentUsesSecret } from "../../../utils/filters/appsv1/deployment";
-import { statefulSetUsesSecret } from "../../../utils/filters/appsv1/statefulset";
-import { daemonSetUsesSecret } from "../../../utils/filters/appsv1/daemonset";
-import Card from "../../shared/Card";
+// import { deplomentUsesSecret } from "../../../utils/filters/appsv1/deployment";
+// import { statefulSetUsesSecret } from "../../../utils/filters/appsv1/statefulset";
+// import { daemonSetUsesSecret } from "../../../utils/filters/appsv1/daemonset";
+// import Card from "../../shared/Card";
 
 // icons
 import {
-  LuBox,
   LuClipboardCheck,
   LuClipboardCopy,
   LuEye,
@@ -62,15 +60,15 @@ const decodeEntries = (data?: Record<string, string>) => {
 /**
  * Renders a sidebar for a ConfigMap resource
  */
-export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
+export const SecretSidebar: React.FC<{ data: object }> = ({
   data,
-  onSubmit,
-  useSearch,
 }) => {
+  const secret = data as Secret;
+
   const [shown, setShown] = React.useState<Record<string, boolean>>({});
   const [copied, setCopied] = React.useState<string | undefined>(undefined);
 
-  const originalValues = decodeEntries(data?.data);
+  const originalValues = decodeEntries(secret?.data);
   const [values, setValues] =
     React.useState<Record<string, string>>(originalValues);
   const [newValues, setNewValues] = React.useState<
@@ -80,31 +78,30 @@ export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
   const [newErrors, setNewErrors] = React.useState<Record<number, string>>({});
 
   // look for other resources using this secret
-  const [deployments, statefulsets, daemonsets] = useSearch({
-    searches: [
-      {
-        key: "apps::v1::Deployment",
-        namespaces: [],
-        postFilter: (deployment: Deployment) =>
-          deplomentUsesSecret(deployment, data as Secret),
-      },
-      {
-        key: "apps::v1::StatefulSet",
-        namespaces: [],
-        postFilter: (statefulset: StatefulSet) =>
-          statefulSetUsesSecret(statefulset, data as Secret),
-      },
-      {
-        key: "apps::v1::DaemonSet",
-        namespaces: [],
-        postFilter: (daemonset: DaemonSet) =>
-          daemonSetUsesSecret(daemonset, data as Secret),
-      },
-    ],
-  });
+  // const [deployments, statefulsets, daemonsets] = useSearch({
+  //   searches: [
+  //     {
+  //       key: "apps::v1::Deployment",
+  //       namespaces: [],
+  //       postFilter: (deployment: Deployment) =>
+  //         deplomentUsesSecret(deployment, data as Secret),
+  //     },
+  //     {
+  //       key: "apps::v1::StatefulSet",
+  //       namespaces: [],
+  //       postFilter: (statefulset: StatefulSet) =>
+  //         statefulSetUsesSecret(statefulset, data as Secret),
+  //     },
+  //     {
+  //       key: "apps::v1::DaemonSet",
+  //       namespaces: [],
+  //       postFilter: (daemonset: DaemonSet) =>
+  //         daemonSetUsesSecret(daemonset, data as Secret),
+  //     },
+  //   ],
+  // });
 
   // assert this is in fact a secret
-  const secret = data as Secret;
   if (secret?.kind !== "Secret") {
     throw new Error("Invalid resource kind");
   }
@@ -199,7 +196,6 @@ export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
     });
 
     try {
-      onSubmit(draft as Record<string, unknown>);
       setEdited(false);
       setNewValues([]);
     } catch (e) {
@@ -397,107 +393,107 @@ export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
           </Button>
         </Stack>
       )}
-      {(!!deployments?.data?.length ||
-        !!statefulsets?.data?.length ||
-        !!daemonsets?.data?.length) && (
-          <Typography level="title-md" pl={1}>
-            Used By
-          </Typography>
-        )}
-      <UsedDeploymentsCard deployments={deployments} />
-      <UsedStatefulSetsCard statefulsets={statefulsets} />
-      <UsedDaemonSetsCard daemonsets={daemonsets} />
+      {/* {(!!deployments?.data?.length || */}
+      {/*   !!statefulsets?.data?.length || */}
+      {/*   !!daemonsets?.data?.length) && ( */}
+      {/*     <Typography level="title-md" pl={1}> */}
+      {/*       Used By */}
+      {/*     </Typography> */}
+      {/*   )} */}
+      {/* <UsedDeploymentsCard deployments={deployments} /> */}
+      {/* <UsedStatefulSetsCard statefulsets={statefulsets} /> */}
+      {/* <UsedDaemonSetsCard daemonsets={daemonsets} /> */}
     </Stack>
   );
 };
-
-const UsedDeploymentsCard: React.FC<{ deployments: ResourceSearchResult }> = ({
-  deployments,
-}) => {
-  if (deployments?.isLoading || !deployments?.data || deployments?.isError) {
-    return <React.Fragment />;
-  }
-
-  const result = deployments.data as Array<Deployment>;
-  if (result.length === 0) {
-    return <React.Fragment />;
-  }
-
-  return (
-    <Card title="Deployments" icon={<LuBox />} titleDecorator={result.length}>
-      <List
-        size="sm"
-        sx={{
-          borderRadius: "sm",
-        }}
-      >
-        {result.map((deployment) => (
-          <ListItem>
-            <ListItemButton>{deployment.metadata?.name}</ListItemButton>
-          </ListItem>
-        ))}
-      </List>
-    </Card>
-  );
-};
-
-const UsedStatefulSetsCard: React.FC<{
-  statefulsets: ResourceSearchResult;
-}> = ({ statefulsets }) => {
-  if (statefulsets?.isLoading || !statefulsets?.data || statefulsets?.isError) {
-    return <React.Fragment />;
-  }
-  const result = statefulsets.data as Array<StatefulSet>;
-  if (result.length === 0) {
-    return <React.Fragment />;
-  }
-  return (
-    <Card title="StatefulSets" icon={<LuBox />} titleDecorator={result.length}>
-      <List
-        size="sm"
-        sx={{
-          borderRadius: "sm",
-        }}
-      >
-        {result.map((statefulset) => (
-          <ListItem>
-            <ListItemButton>{statefulset.metadata?.name}</ListItemButton>
-          </ListItem>
-        ))}
-      </List>
-    </Card>
-  );
-};
-
-const UsedDaemonSetsCard: React.FC<{ daemonsets: ResourceSearchResult }> = ({
-  daemonsets,
-}) => {
-  if (daemonsets?.isLoading || !daemonsets?.data || daemonsets?.isError) {
-    return <React.Fragment />;
-  }
-  const result = daemonsets.data as Array<DaemonSet>;
-  if (result.length === 0) {
-    return <React.Fragment />;
-  }
-  return (
-    <Card title="DaemonSets" icon={<LuBox />} titleDecorator={result.length}>
-      <List
-        size="sm"
-        sx={{
-          borderRadius: "sm",
-        }}
-      >
-        {result.map((daemonset) => (
-          <ListItem sx={{ borderRadius: "sm" }}>
-            <ListItemButton sx={{ borderRadius: "sm" }}>
-              {daemonset.metadata?.name}
-            </ListItemButton>
-          </ListItem>
-        ))}
-      </List>
-    </Card>
-  );
-};
+//
+// const UsedDeploymentsCard: React.FC<{ deployments: ResourceSearchResult }> = ({
+//   deployments,
+// }) => {
+//   if (deployments?.isLoading || !deployments?.data || deployments?.isError) {
+//     return <React.Fragment />;
+//   }
+//
+//   const result = deployments.data as Array<Deployment>;
+//   if (result.length === 0) {
+//     return <React.Fragment />;
+//   }
+//
+//   return (
+//     <Card title="Deployments" icon={<LuBox />} titleDecorator={result.length}>
+//       <List
+//         size="sm"
+//         sx={{
+//           borderRadius: "sm",
+//         }}
+//       >
+//         {result.map((deployment) => (
+//           <ListItem>
+//             <ListItemButton>{deployment.metadata?.name}</ListItemButton>
+//           </ListItem>
+//         ))}
+//       </List>
+//     </Card>
+//   );
+// };
+//
+// const UsedStatefulSetsCard: React.FC<{
+//   statefulsets: ResourceSearchResult;
+// }> = ({ statefulsets }) => {
+//   if (statefulsets?.isLoading || !statefulsets?.data || statefulsets?.isError) {
+//     return <React.Fragment />;
+//   }
+//   const result = statefulsets.data as Array<StatefulSet>;
+//   if (result.length === 0) {
+//     return <React.Fragment />;
+//   }
+//   return (
+//     <Card title="StatefulSets" icon={<LuBox />} titleDecorator={result.length}>
+//       <List
+//         size="sm"
+//         sx={{
+//           borderRadius: "sm",
+//         }}
+//       >
+//         {result.map((statefulset) => (
+//           <ListItem>
+//             <ListItemButton>{statefulset.metadata?.name}</ListItemButton>
+//           </ListItem>
+//         ))}
+//       </List>
+//     </Card>
+//   );
+// };
+//
+// const UsedDaemonSetsCard: React.FC<{ daemonsets: ResourceSearchResult }> = ({
+//   daemonsets,
+// }) => {
+//   if (daemonsets?.isLoading || !daemonsets?.data || daemonsets?.isError) {
+//     return <React.Fragment />;
+//   }
+//   const result = daemonsets.data as Array<DaemonSet>;
+//   if (result.length === 0) {
+//     return <React.Fragment />;
+//   }
+//   return (
+//     <Card title="DaemonSets" icon={<LuBox />} titleDecorator={result.length}>
+//       <List
+//         size="sm"
+//         sx={{
+//           borderRadius: "sm",
+//         }}
+//       >
+//         {result.map((daemonset) => (
+//           <ListItem sx={{ borderRadius: "sm" }}>
+//             <ListItemButton sx={{ borderRadius: "sm" }}>
+//               {daemonset.metadata?.name}
+//             </ListItemButton>
+//           </ListItem>
+//         ))}
+//       </List>
+//     </Card>
+//   );
+// };
 
 SecretSidebar.displayName = "SecretSidebar";
 export default SecretSidebar;

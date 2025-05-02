@@ -25,10 +25,24 @@ import { IsImage } from '../../../utils/url';
 import Icon from '../Icon';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
+
+// memoize the scrollable styles to prevent rerenders
+const scrollableSx = {
+  overflow: 'auto',
+  maxHeight: '100%',
+  scrollbarWidth: 'none',
+  '&::-webkit-scrollbar': {
+    display: 'none',
+  },
+  '&-ms-overflow-style:': {
+    display: 'none',
+  },
+};
+
 /**
  * Render a navigation menu in a sidebar layout
  */
-const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scrollable }) => {
+const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections }) => {
   const { id } = useParams<{ id: string }>()
   const location = useLocation();
   const navigate = useNavigate();
@@ -47,21 +61,9 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
     throw new Error('You can only pass items or sections, not both');
   }
 
-  // memoize the scrollable styles to prevent rerenders
-  const scrollableSx = {
-    overflow: 'auto',
-    maxHeight: '100%',
-    scrollbarWidth: 'none',
-    '&::-webkit-scrollbar': {
-      display: 'none',
-    },
-    '&-ms-overflow-style:': {
-      display: 'none',
-    },
-  };
 
   // memoize the scrollable styles to prevent rerenders
-  const scrollStyle = React.useMemo(() => scrollableSx, [scrollable]);
+  const scrollStyle = React.useMemo(() => scrollableSx, []);
 
   const [open, setOpen] = React.useState<Record<string, boolean>>({});
 
@@ -69,7 +71,6 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
    * Handle the selection of a sidebar item
    */
   const handleSelect = (id: string) => {
-    console.log('selected', id);
     onSelect(id);
   };
 
@@ -171,7 +172,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
 
   const MemoizedIcon = React.useMemo(() => (
     <KeyboardArrowDownRoundedIcon sx={{ transform: openState[id] ? 'initial' : 'rotate(-90deg)' }} />
-  ), [openState[id]]);
+  ), [openState, id]);
 
   return (
     <ListItem
@@ -181,7 +182,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         paddingY: 0,
       }}
       nested={Boolean(item.children?.length)}
-      endAction={Boolean(item.children?.length) ? (
+      endAction={item.children?.length ? (
         <IconButton
           variant='plain'
           size='sm'
@@ -205,7 +206,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         onClick={handleClick}
         sx={{
           paddingY: 0,
-          minHeight: level === 0 ? 32 : 24,
+          maxHeight: level === 0 ? 32 : 24,
         }}
       >
         {item.icon && (
@@ -222,6 +223,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         <ListItemContent>
           <Typography
             level={item.children?.length ? 'title-sm' : 'body-xs'}
+            fontWeight={selected == id ? 600 : 400}
           >
             {item.label}
           </Typography>

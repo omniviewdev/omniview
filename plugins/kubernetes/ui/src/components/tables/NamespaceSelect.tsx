@@ -33,7 +33,7 @@ const NamespaceSelect: React.FC<Props> = ({ connectionID, selected, setNamespace
   const { namespaces } = useConnectionNamespaces({ pluginID: 'kubernetes', connectionID });
 
   const handleChange = (
-    _event: any,
+    _event: unknown,
     newValue: string[] | undefined,
   ) => {
     setNamespaces(newValue ?? []);

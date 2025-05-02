@@ -21,6 +21,12 @@ export const shared = {
   'react-dom': () => import('react-dom'),
   'react-icons': () => import('react-icons'),
 
+  /** Monaco */
+  'monaco-editor': () => import('monaco-editor'),
+  'monaco-types': () => import('monaco-types'),
+  'monaco-yaml': () => import('monaco-yaml'),
+  '@monaco-editor/react': () => import('@monaco-editor/react'),
+
   /** Tanstack */
   '@tanstack/react-query': () => import('@tanstack/react-query'),
   '@tanstack/react-table': () => import('@tanstack/react-table'),

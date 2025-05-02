@@ -19,7 +19,7 @@ var Terminal = settings.Category{
 			ID:          "defaultShell",
 			Type:        settings.Text,
 			Label:       "Default Shell",
-			Default:     "/bin/bash",
+			Default:     "/bin/zsh",
 			Description: "The default shell to use when opening a terminal",
 			Validator: func(value interface{}) error {
 				val, ok := value.(string)

@@ -3,6 +3,7 @@ import CssBaseline from '@mui/joy/CssBaseline';
 import Box from '@mui/joy/Box';
 import Layout from '@/layouts/core/main';
 import Container from './Container';
+import Footer from '@/components/displays/Footer';
 
 /**
  * The core layout for the application. This layout wraps the entire application
@@ -34,7 +35,9 @@ export default function CoreLayout() {
           <Layout.Sidebar />
           <Container />
         </Box>
-        <Layout.Footer />
+        <Layout.Footer>
+          <Footer />
+        </Layout.Footer>
       </Box>
     </CssVarsProvider>
   );

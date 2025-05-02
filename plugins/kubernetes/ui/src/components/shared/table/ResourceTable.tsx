@@ -9,6 +9,7 @@ import {
   Stack,
   Table,
   Typography,
+  styled,
 } from '@mui/joy';
 
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
@@ -32,15 +33,47 @@ import get from 'lodash.get';
 // import NamespaceSelect from '@/components/selects/NamespaceSelect';
 import ResourceTableRow from './ResourceTableRow';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useResources } from '@omniviewdev/runtime';
+import { useResources, DrawerComponent, useRightDrawer } from '@omniviewdev/runtime';
 import { LuCircleAlert } from 'react-icons/lu';
 import { plural } from '../../../utils/language';
 import { DebouncedInput } from '../../tables/DebouncedInput';
 import NamespaceSelect from '../../tables/NamespaceSelect';
 import ColumnFilter from '../../tables/ColumnFilter';
+import { getCommonPinningStyles } from './utils';
+import { ColumnMeta } from './types';
+import { useDynamicResourceColumns } from '../../tables/ColumnFilter/useDynamicResourceColumns';
+import { useStoredState } from '../hooks/useStoredState';
 
 export type Memoizer = string | string[] | ((data: any) => string);
-export type IdAccessor = string | ((data: any) => string);
+
+const TableContainer = styled(Sheet)(
+  ({ }) => `
+  background-color: inherit;
+  width: 100%;
+  border-radius: 4px;
+  flex: 1;
+  overflow: scroll;
+  overscroll-behavior: none;
+  min-height: 0;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  scrollbar-width: none;
+  -webkit-user-select: none;
+`,
+)
+
+const StyledTable = styled(Table)(
+  ({ }) => `
+  display: grid;
+  --TableCell-headBackground: var(--joy-palette-background-level1);
+  --Table-headerUnderlineThickness: 1px;
+  --TableRow-hoverBackground: var(--joy-palette-background-level2);
+  --TableCell-paddingY: 0px;
+  --TableCell-paddingX: 8px;
+  -webkit-user-select: none;
+`,
+)
 
 export type Props<T = any> = {
   /**
@@ -56,12 +89,12 @@ export type Props<T = any> = {
   /**
    * Column defenition for the table.
    */
-  columns: Array<ColumnDef<T>>;
+  columns: Array<ColumnDef<T> & ColumnMeta>;
 
   /**
    * The ID accessor for the data.
    */
-  idAccessor: IdAccessor;
+  idAccessor: string;
 
   /**
    * Memoizer is a function that takes in the data and returns a key or hash
@@ -75,21 +108,23 @@ export type Props<T = any> = {
   memoizer?: Memoizer;
 
   /**
-   * Search string for the table.
+   * Drawer component to display with the data upon clicking the row. If this is not provided,
+   * then the drawer will not open on the right upon click.
    */
-  search?: string;
+  drawer?: DrawerComponent
 };
 
-const idAccessorResolver = (data: any, accessor: IdAccessor): string => {
-  switch (typeof accessor) {
-    case 'function':
-      return accessor(data);
-    case 'string':
-      return get(data, accessor);
-    default:
-      throw new Error('Invalid ID accessor');
-  }
-};
+
+// const idAccessorResolver = (data: any, accessor: IdAccessor): string => {
+//   switch (typeof accessor) {
+//     case 'function':
+//       return accessor(data);
+//     case 'string':
+//       return get(data, accessor);
+//     default:
+//       throw new Error('Invalid ID accessor');
+//   }
+// };
 
 const defaultData: any[] = []
 
@@ -103,16 +138,18 @@ const ResourceTableContainer: React.FC<Props> = ({
   connectionID,
   resourceKey,
   columns,
-  idAccessor,
+  // idAccessor,
   memoizer,
+  drawer,
 }) => {
   console.log(resourceKey, 'ResourceTableContainer', 'rendered');
 
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([{ id: 'namespace', value: [] }]);
+  const [columnVisibility, setColumnVisibility] = useStoredState<VisibilityState>(`kubernetes-${connectionID}-${resourceKey}-column-visibility`, {});
+  const [columnFilters, setColumnFilters] = useStoredState<ColumnFiltersState>(`kubernetes-${connectionID}-${resourceKey}-column-filters`, [{ id: 'namespace', value: [] }]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [search, setSearch] = useState<string>('');
+  const { openDrawer } = useRightDrawer()
 
   /** Filtering behavior */
   const [filterAnchor, setFilterAnchor] = React.useState<undefined | HTMLElement>(undefined);
@@ -122,6 +159,22 @@ const ResourceTableContainer: React.FC<Props> = ({
   const handleFilterClose = () => {
     setFilterAnchor(undefined);
   };
+
+  /** Row Clicking */
+  const onRowClick = React.useCallback((id: string, data: any) => {
+    if (drawer === undefined) {
+      /** nothing to do */
+      return
+    }
+    openDrawer(drawer, {
+      data,
+      resource: {
+        id,
+        key: resourceKey,
+        connectionID
+      }
+    })
+  }, [drawer])
 
   /**
   * Set the namespaces filter
@@ -137,53 +190,26 @@ const ResourceTableContainer: React.FC<Props> = ({
     });
   };
 
-  // we have to use layout effect to set the column visibility before the table is repainted, use effect will cause a flicker
-  // also can't just put it in the initial state because it will cause an issue with table render as well
-  React.useLayoutEffect(() => {
-    const initialColumnVisibility = columns.reduce((prev, def) => {
-      if (!def.id) {
-        return prev;
-      }
+  const { resources } = useResources({ pluginID: 'kubernetes', connectionID, resourceKey, idAccessor: 'metadata.uid' });
+  const {
+    labels,
+    setLabels,
+    annotations,
+    setAnnotations,
+    columnDefs,
+  } = useDynamicResourceColumns({ connectionID, resourceKey })
 
-      const meta = def.meta as { defaultHidden?: boolean } | undefined
-      if (meta?.defaultHidden) {
-        prev[def.id] = false;
-      }
+  const handleLabels = (vals: Record<string, boolean>) => {
+    setLabels((prev) => ({ ...prev, ...vals }))
+  }
 
-      return prev;
-    }, {} as VisibilityState);
-
-    // check local storage to see if they've saved this
-    const storedColumnVisibility = window.localStorage.getItem(`kubernetes-${connectionID}-${resourceKey}-column-visibility`);
-    if (storedColumnVisibility && initialColumnVisibility) {
-      const current = JSON.parse(storedColumnVisibility);
-
-      // make sure any new filters are added if they weren't there before
-      Object.entries(initialColumnVisibility).forEach(([key, value]) => {
-        if (!current.hasOwnProperty(key)) {
-          current[key] = value;
-        }
-      });
-
-      setColumnVisibility(current);
-    } else if (initialColumnVisibility) {
-      setColumnVisibility(initialColumnVisibility);
-    }
-  }, [columns]);
-
-  React.useEffect(() => {
-    let visibility = JSON.stringify(columnVisibility);
-    // save changes to local storage
-    if (visibility !== '{}') {
-      window.localStorage.setItem(`kubernetes-${connectionID}-${resourceKey}-column-visibility`, visibility);
-    }
-  }, [columnVisibility]);
-
-  const { resources } = useResources({ pluginID: 'kubernetes', connectionID, resourceKey });
+  const handleAnnotations = (vals: Record<string, boolean>) => {
+    setAnnotations((prev) => ({ ...prev, ...vals }))
+  }
 
   const table = useReactTable({
     data: resources.data?.result || defaultData,
-    columns,
+    columns: [...columns, ...columnDefs],
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
@@ -192,19 +218,20 @@ const ResourceTableContainer: React.FC<Props> = ({
     getFilteredRowModel: getFilteredRowModel(),
     onRowSelectionChange: setRowSelection,
     onColumnVisibilityChange: setColumnVisibility,
-    getRowId: (row) => idAccessorResolver(row, idAccessor),
+    getRowId: (row) => get(row, 'metadata.uid'),
     state: {
       sorting,
       columnFilters,
       columnVisibility,
       rowSelection,
       globalFilter: search,
+      columnPinning: { left: ['select'], right: ['menu'] }
     },
-    defaultColumn: {
-      minSize: 0,
-      size: Number.MAX_SAFE_INTEGER,
-      maxSize: Number.MAX_SAFE_INTEGER,
-    },
+    // defaultColumn: {
+    //   minSize: 0,
+    //   size: Number.MAX_SAFE_INTEGER,
+    //   maxSize: Number.MAX_SAFE_INTEGER,
+    // },
   });
 
   const { rows } = table.getRowModel();
@@ -293,6 +320,10 @@ const ResourceTableContainer: React.FC<Props> = ({
             setNamespaces={setNamespaces}
           />
           <ColumnFilter
+            labels={labels}
+            setLabels={handleLabels}
+            annotations={annotations}
+            setAnnotations={handleAnnotations}
             anchorEl={filterAnchor}
             onClose={handleFilterClose}
             columns={table.getAllFlatColumns()}
@@ -300,46 +331,21 @@ const ResourceTableContainer: React.FC<Props> = ({
           />
         </Stack>
       </Stack>
-      <Sheet
+      <TableContainer
         className={'table-container'}
         variant='outlined'
         ref={parentRef}
-        sx={{
-          backgroundColor: 'inherit',
-          width: '100%',
-          borderRadius: '4px',
-          flex: 1,
-          overflow: 'scroll',
-          minHeight: 0,
-          // TODO: make this a prop
-          // Hide the scrollbars
-          '&::-webkit-scrollbar': {
-            display: 'none',
-          },
-          scrollbarWidth: 'none',
-          WebkitUserSelect: 'none',
-        }}
       >
-        <Table
+        <StyledTable
           aria-labelledby={'table-title'}
           stickyHeader
+          borderAxis="x"
           hoverRow
           size={'sm'}
-          sx={{
-            display: 'grid',
-            '--TableCell-headBackground':
-              'var(--joy-palette-background-level1)',
-            '--Table-headerUnderlineThickness': '1px',
-            '--TableRow-hoverBackground':
-              'var(--joy-palette-background-level2)',
-            '--TableCell-paddingY': '0px',
-            '--TableCell-paddingX': '8px',
-            '--TableCell-height': '36px',
-            WebkitUserSelect: 'none',
-          }}
         >
           <thead
             style={{
+              display: 'grid',
               position: 'sticky',
               top: 0,
               zIndex: 1,
@@ -353,16 +359,22 @@ const ResourceTableContainer: React.FC<Props> = ({
                 {headerGroup.headers.map(header => (
                   <th
                     key={header.id}
+                    onClick={header.column.getToggleSortingHandler()}
                     style={{
                       alignContent: 'center',
                       display: 'flex',
                       alignItems: 'center',
+                      overflow: 'hidden',
                       // paddingTop: '12px', 
                       // paddingBottom: '12px', 
-                      width: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
-                      minWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
-                      maxWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
-                      flex: 1,
+                      width: header.getSize(),
+                      ...((header.column.columnDef.meta as { flex?: number | undefined })?.flex && {
+                        minWidth: header.column.getSize(),
+                        flex: (header.column.columnDef.meta as { flex?: number | undefined })?.flex
+                      }),
+                      // minWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
+                      // maxWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
+                      ...getCommonPinningStyles(header.column, true)
                     }}
                   >
                     {header.column.getCanSort()
@@ -370,7 +382,6 @@ const ResourceTableContainer: React.FC<Props> = ({
                         underline='none'
                         color='primary'
                         component='button'
-                        onClick={header.column.getToggleSortingHandler()}
                         fontWeight='lg'
                         endDecorator={header.column.getIsSorted() && <ArrowDropDownIcon />}
                         sx={{
@@ -392,8 +403,9 @@ const ResourceTableContainer: React.FC<Props> = ({
           </thead>
           <tbody
             style={{
+              display: 'grid',
               height: `${virtualizer.getTotalSize()}px`, // Tells scrollbar how big the table is
-              // position: 'relative', // Needed for absolute positioning of rows
+              position: 'relative', // Needed for absolute positioning of rows
             }}
           >
             {virtualizer.getVirtualItems().map(virtualRow => {
@@ -409,13 +421,14 @@ const ResourceTableContainer: React.FC<Props> = ({
                   virtualizer={virtualizer}
                   virtualRow={virtualRow}
                   isSelected={rowSelection[row.id]}
-                  columnVisibility={JSON.stringify(columnVisibility)}
+                  columnVisibility={JSON.stringify({ columnVisibility, customCols: columnDefs.length })}
+                  onRowClick={onRowClick}
                 />
               );
             })}
           </tbody>
-        </Table>
-      </Sheet>
+        </StyledTable>
+      </TableContainer>
     </Box>
   );
 };

@@ -15,6 +15,8 @@ type OnSessionClosedOpts = {
 
 type BottomDrawerEvents = {
   onResize: (height: number) => void;
+  onResizeHandler: (height: number) => void;
+  onResizeReset: () => void;
   onFullscreen: () => void;
   onMinimize: () => void;
   onCreateSession: (opts: OnCreateSessionOpts) => void;

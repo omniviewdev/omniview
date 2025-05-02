@@ -104,11 +104,11 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
         });
         break;
       case types.ConnectionStatusCode.CONNECTED:
-        showSnackbar({
-          status: 'success',
-          message: `Connected to '${name}'`,
-          icon: 'LuCheckCircle',
-        });
+        // showSnackbar({
+        //   status: 'success',
+        //   message: `Connected to '${name}'`,
+        //   icon: 'LuCheckCircle',
+        // });
         navigate(`/connection/${id}/resources`);
         break;
       default:

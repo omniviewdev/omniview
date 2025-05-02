@@ -5,7 +5,6 @@ import Stack from "@mui/joy/Stack";
 
 // types
 import { DaemonSet } from "kubernetes-types/apps/v1";
-import { ResourceSidebarProps } from "../../../../../types/resource";
 
 // project-imports
 import ObjectMetaSection from "../../../../shared/ObjectMetaSection";
@@ -14,7 +13,7 @@ import { ContainersSectionFromPodSpec } from "../../Pod/containers";
 /**
  * Renders a sidebar for a ConfigMap resource
  */
-export const DaemonSetSidebar: React.FC<ResourceSidebarProps> = ({ data }) => {
+export const DaemonSetSidebar: React.FC<{ data: object }> = ({ data }) => {
   if (!data) {
     return <React.Fragment />;
   }

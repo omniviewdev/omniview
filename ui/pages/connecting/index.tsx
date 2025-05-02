@@ -1,3 +1,4 @@
+import { type FC, useEffect, useReducer } from 'react';
 import ErrorIcon from '@mui/icons-material/Error';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import { CircularProgress, ListSubheader, Stack } from '@mui/joy';
@@ -9,11 +10,9 @@ import LinearProgress from '@mui/joy/LinearProgress';
 import Sheet from '@mui/joy/Sheet';
 import Typography from '@mui/joy/Typography';
 import { produce } from 'immer';
-import { type FC, useEffect, useReducer } from 'react';
 import { usePluginRouter } from '@infraview/router';
 
-// import { StartContext } from '@api/services/ClusterManager';
-import { EventsOff, EventsOn } from '@omniviewdev/runtime/runtime';
+import { EventsOn } from '@omniviewdev/runtime/runtime';
 import { handleRemoveTab } from '@/store/tabs/slice';
 import { useDispatch } from 'react-redux';
 
@@ -200,13 +199,13 @@ const Connecting: FC = () => {
 
     // Go is much faster here, so we may actually receive the event before we're done setting up the listeners
     // so we need to make sure we're listening before we start the switch context
-    EventsOn(ReadyEvent, (resource: string) => {
+    const readyCloser = EventsOn(ReadyEvent, (resource: string) => {
       dispatch({ type: 'MARK_RESOURCE_READY', payload: resource });
     });
-    EventsOn(ErrorEvent, (resource: string) => {
+    const errorCloser = EventsOn(ErrorEvent, (resource: string) => {
       dispatch({ type: 'MARK_RESOURCE_ERROR', payload: resource });
     });
-    EventsOn(AllReadyEvent, () => {
+    const allReadyCloser = EventsOn(AllReadyEvent, () => {
       handleInitialized();
     });
     //
@@ -223,9 +222,9 @@ const Connecting: FC = () => {
     //
     return () => {
       // Unsubscribe
-      EventsOff(ReadyEvent);
-      EventsOff(ErrorEvent);
-      EventsOff(AllReadyEvent);
+      readyCloser()
+      errorCloser()
+      allReadyCloser()
     };
   }, []);
 

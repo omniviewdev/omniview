@@ -163,8 +163,7 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
     }
 
     // attempt to find a well known id accessor
-    const testObjectKey = Object.keys(resources.data.result)[0];
-    return wellKnownIDAccessors(resources.data.result[testObjectKey]);
+    return wellKnownIDAccessors(resources.data.result[0]);
   };
 
   return (

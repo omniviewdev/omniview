@@ -59,7 +59,7 @@ const ResourceLinkCell: React.FC<Props> = ({
       variant='soft'
       color={'primary'}
       sx={{
-        borderRadius: 'sm',
+        borderRadius: 2,
       }}
       onClick={handleClick}>
       {resourceName}

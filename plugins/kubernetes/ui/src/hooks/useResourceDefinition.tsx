@@ -178,7 +178,6 @@ const parseColumnDef = ({
       id: 'menu',
       cell: ({ row }) => <ActionMenu
         actions={actions}
-        plugin={pluginID}
         connection={connectionID}
         resource={resourceKey}
         data={row.original}

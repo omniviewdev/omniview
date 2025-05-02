@@ -1,17 +1,19 @@
 import React from 'react'
-
-import { ColumnDef } from '@tanstack/react-table'
-import { Pod } from 'kubernetes-types/core/v1'
-
-import SelectBoxHeader from '../../../../tables/cells/SelectBoxHeader';
-import SelectBoxRow from '../../../../tables/cells/SelectBoxRow';
-import ResourceLinkCell from './cells/ResourceLinkCell';
 import { useParams } from 'react-router-dom';
-import ResourceTable from '../../../../shared/table/ResourceTable';
-import ContainerStatusCell from './ContainerStatusCell';
+import { ContainerStatus, Pod } from 'kubernetes-types/core/v1'
 import { OwnerReference } from 'kubernetes-types/meta/v1';
-import AgeCell from './cells/AgeCell';
-import { namespaceFilter } from '../../default/filters';
+import { ColumnDef } from '@tanstack/react-table'
+
+import ResourceLinkCell from './cells/ResourceLinkCell';
+import ContainerPhaseCell from './cells/ContainerPhaseCell';
+import ContainerStatusCell from './cells/ContainerStatusCell';
+import { withNamespacedResourceColumns } from '../../shared/columns';
+import ResourceTable from '../../../../shared/table/ResourceTable';
+import { DrawerComponent } from '@omniviewdev/runtime';
+import { LuBox } from 'react-icons/lu';
+import PodSidebar from '../../../sidebar/Pod';
+
+const resourceKey = 'core::v1::Pod'
 
 const ownerRefKeyMap: Record<string, string> = {
   "ReplicaSet": "apps::v1::ReplicaSet",
@@ -20,43 +22,20 @@ const ownerRefKeyMap: Record<string, string> = {
   "DaemonSet": "apps::v1::DaemonSet",
   "Job": "batch::v1::Job",
   "CronJob": "batch::v1::CronJob",
+  "Node": "core::v1::Node",
 }
 
 const PodTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()
 
   const columns = React.useMemo<Array<ColumnDef<Pod>>>(
-    () => [
-      {
-        id: 'select',
-        header: SelectBoxHeader,
-        cell: SelectBoxRow,
-        size: 40,
-        enableSorting: false,
-        enableHiding: false,
-      },
-      {
-        id: 'name',
-        header: 'Name',
-        accessorKey: 'metadata.name',
-        enableSorting: true,
-        enableHiding: false,
-      },
-      {
-        id: 'namespace',
-        header: 'Namespace',
-        accessorKey: 'metadata.namespace',
-        size: 150,
-        enableSorting: true,
-        enableHiding: false,
-        filterFn: namespaceFilter,
-      },
+    () => withNamespacedResourceColumns([
       {
         id: 'containers',
         header: 'Containers',
         accessorKey: 'status.containerStatuses',
         size: 150,
-        cell: ({ getValue }) => <ContainerStatusCell data={getValue() as any} />,
+        cell: ({ getValue }) => <ContainerStatusCell data={getValue() as Array<ContainerStatus>} />,
       },
       {
         id: 'controlledBy',
@@ -75,13 +54,13 @@ const PodTable: React.FC = () => {
           />
           )
         },
-        size: 150,
+        size: 120,
       },
       {
         id: 'node',
         header: 'Node',
         accessorKey: 'spec.nodeName',
-        size: 200,
+        size: 150,
         cell: ({ getValue }) => <ResourceLinkCell
           connectionId={id}
           resourceId={getValue() as string}
@@ -124,14 +103,12 @@ const PodTable: React.FC = () => {
         header: 'Service Account',
         accessorKey: 'spec.serviceAccountName',
         size: 120,
-        cell: ({ getValue }) => {
-          <ResourceLinkCell
-            connectionId={id}
-            resourceId={getValue() as string}
-            resourceKey={'core::v1::ServiceAccount'}
-            resourceName={getValue() as string}
-          />
-        },
+        cell: ({ getValue }) => <ResourceLinkCell
+          connectionId={id}
+          resourceId={getValue() as string}
+          resourceKey={'core::v1::ServiceAccount'}
+          resourceName={getValue() as string}
+        />,
         meta: {
           defaultHidden: true,
         }
@@ -181,25 +158,49 @@ const PodTable: React.FC = () => {
           return count
         },
         size: 80,
+        meta: {
+          defaultHidden: false,
+        }
       },
       {
-        id: 'age',
-        header: 'Age',
-        accessorKey: 'metadata.creationTimestamp',
+        id: 'status',
+        header: 'Status',
+        accessorFn: (row) => {
+          return row.metadata?.deletionTimestamp
+            ? 'Terminated'
+            : row.status?.phase
+        },
+        cell: ({ getValue }) => <ContainerPhaseCell value={getValue() as string} />,
         size: 100,
-        cell: ({ getValue }) => <AgeCell value={getValue() as string} />
-      },
-    ],
+        meta: {
+          defaultHidden: false,
+        }
+      }
+    ], { connectionID: id, resourceKey }),
     [id],
   )
+
+  const drawer: DrawerComponent = React.useMemo(() => ({
+    title: resourceKey, // TODO: change runtime sdk to accept a function
+    icon: <LuBox />,
+    views: [
+      {
+        title: 'Overview',
+        icon: <LuBox />,
+        component: (data: any) => <PodSidebar data={data} />
+      },
+    ],
+    actions: []
+  }), [])
 
   return (
     <ResourceTable
       columns={columns}
       connectionID={id}
-      resourceKey='core::v1::Pod'
+      resourceKey={resourceKey}
       idAccessor='metadata.uid'
       memoizer={'metadata.uid,metadata.resourceVersion'}
+      drawer={drawer}
     />
   )
 }

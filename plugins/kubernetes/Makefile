@@ -5,6 +5,7 @@ prepare:
 
 generate:
 	cd generators && go run .
+	go mod tidy
 	golangci-lint run --fix ./pkg/plugin/resource/register_gen.go
 
 build:

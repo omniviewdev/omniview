@@ -22,11 +22,10 @@ import { type Actions } from './types';
 import DeleteAction from './DeleteAction';
 
 type Props = {
-  plugin: string;
+  id: string;
   connection: string;
   resource: string;
   namespace: string;
-  id: string;
   data: Record<string, unknown>;
   actions: Actions;
 };
@@ -112,7 +111,6 @@ const ActionMenu: React.FC<Props> = (props) => {
 };
 
 const ActionsMenuList: React.FC<ActionMenuListProps> = ({
-  plugin,
   connection,
   resource,
   data,
@@ -175,13 +173,13 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
         handleDismiss={dismissMenu}
         itemProps={itemProps}
         action={actions.exec}
-        plugin={plugin}
+        plugin={'kubernetes'}
         connection={connection}
         resource={resource}
         data={data}
       />}
       <DeleteAction
-        plugin={plugin}
+        plugin={'kubernetes'}
         connection={connection}
         resource={resource}
         namespace={namespace}

@@ -3,7 +3,7 @@ import React from 'react';
 import { PluginContextProvider, PluginWindow } from '@omniviewdev/runtime';
 import { UNSAFE_LocationContext, useParams } from 'react-router-dom';
 import { clearPlugin, importPluginWindow } from '../api/loader';
-import { EventsOff, EventsOn } from '@omniviewdev/runtime/runtime';
+import { EventsOn, WindowReloadApp } from '@omniviewdev/runtime/runtime';
 import { type config } from '@omniviewdev/runtime/models';
 
 export type PluginRendererProps = {}
@@ -80,18 +80,19 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
 
     loadPlugin()
 
-    EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
+    const closer = EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
       if (meta.id === pluginId) {
-        clearPlugin({ pluginId }).then(() => {
-          loadPlugin()
-        }).catch((error) => {
-          console.error('Error clearing plugin', error)
-        })
+        clearPlugin({ pluginId })
+          .then(loadPlugin)
+          .then(WindowReloadApp)
+          .catch((error) => {
+            console.error('Error clearing plugin', error)
+          })
       }
     })
     return () => {
       // Cleanup watchers
-      EventsOff('plugin/dev_reload_complete');
+      closer()
     };
   }, [pluginId])
 

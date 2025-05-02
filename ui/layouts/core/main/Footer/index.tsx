@@ -27,6 +27,8 @@ const Footer: React.FC<BoxProps> = props => (
           minWidth: '100vw',
           minHeight: 'var(--CoreLayoutFooter-height)',
           maxHeight: 'var(--CoreLayoutFooter-height)',
+          display: 'flex',
+          p: '4px',
         },
         ...(Array.isArray(props.sx) ? props.sx : [props.sx]),
       ]}

@@ -20,10 +20,13 @@ const (
 
 // Versions to compile against. These are the tags we'll check out
 var Versions = []string{
-	"v1.30.0-beta.0",
-	"v1.29.3",
-	"v1.28.8",
-	"v1.27.12",
+	"v1.33.0",
+	"v1.32.4",
+	"v1.31.8",
+	"v1.30.12",
+	"v1.29.15",
+	"v1.28.15",
+	"v1.27.16",
 	"v1.26.15",
 	"v1.25.16",
 }
