@@ -1,4 +1,4 @@
-name: Wails build
+name: Build and Release
 
 on:
   push:
@@ -16,13 +16,13 @@ jobs:
       fail-fast: false
       matrix:
         build:
-          - name: "App"
+          - name: "Omniview"
             platform: "linux/amd64"
             os: "ubuntu-latest"
-          - name: "App"
+          - name: "Omniview"
             platform: "windows/amd64"
             os: "windows-latest"
-          - name: "App"
+          - name: "Omniview"
             platform: "darwin/universal"
             os: "macos-latest"
 
@@ -34,7 +34,7 @@ jobs:
           submodules: recursive
 
       - name: Build wails
-        uses: dAppServer/wails-build-action@v2.2
+        uses: dAppServer/wails-build-action@main
         id: build
         with:
           build-name: ${{ matrix.build.name }}
