@@ -42,6 +42,7 @@ import {
   LuX,
   LuCircleX,
 } from "react-icons/lu";
+import { ResourceSidebarProps } from "../../../types/resource";
 
 const decodeEntries = (data?: Record<string, string>) => {
   if (!data) {
@@ -60,7 +61,7 @@ const decodeEntries = (data?: Record<string, string>) => {
 /**
  * Renders a sidebar for a ConfigMap resource
  */
-export const SecretSidebar: React.FC<{ data: object }> = ({
+export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
   data,
 }) => {
   const secret = data as Secret;

@@ -19,9 +19,6 @@ type Story = StoryObj<typeof meta>;
 export const Primary: Story = {
   args: {
     data,
-    onSubmit: () => {},
-    onCancel: () => {},
-    useSearch: () => [],
   },
 };
 
@@ -32,7 +29,7 @@ Primary.decorators = [
       icon="LuFileKey"
       title={c.args.data.metadata.name}
       open
-      onClose={() => {}}
+      onClose={() => { }}
     >
       <Story />
     </ResourceDrawerContainer>

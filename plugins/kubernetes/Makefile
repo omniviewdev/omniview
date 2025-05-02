@@ -31,8 +31,19 @@ install: build
 	  cp -r ui/dist/assets/* ~/.omniview/plugins/kubernetes/assets/
 		rm bin/plugin
 
-package: build
-	tar -czvf kubernetes.tar.gz plugin.yaml bin/plugin
+package:
+	mkdir -p .package
+	rm -rf ./.package && rm -f kubernetes.tar.gz
+
+	# Binary
+	mkdir -p ./.package/bin && go build -o ./.package/bin/plugin ./pkg	
+	# UI
+	mkdir -p ./.package/assets && cd ./ui && pnpm run build && cd .. && cp -r ui/dist/assets/* ./.package/assets/
+	# Metadata file
+	cp plugin.yaml ./.package/ 
+
+	# package it up
+	tar -czvf kubernetes.tar.gz -C .package .
 
 installui: 
 	cd ui && pnpm run build

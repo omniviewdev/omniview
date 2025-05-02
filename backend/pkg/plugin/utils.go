@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -118,15 +119,16 @@ func checkTarball(filePath string) error {
 
 			return err
 		}
+		log.Println("has inside tarball", header.Name)
 
 		// check for required files and executable
 		switch header.Name {
-		case "bin/plugin":
+		case "./bin/plugin":
 			hasBinPlugin = true
 			if header.FileInfo().Mode()&0111 == 0 {
 				return errors.New("bin/plugin is not executable")
 			}
-		case "plugin.yaml":
+		case "./plugin.yaml":
 			hasPluginYaml = true
 		}
 	}
@@ -267,7 +269,7 @@ func parseMetadataFromArchive(path string) (*config.PluginMeta, error) {
 			return nil, err
 		}
 
-		if header.Name == "plugin.yaml" {
+		if header.Name == "./plugin.yaml" {
 			var metadata config.PluginMeta
 			if err = yaml.NewDecoder(tr).Decode(&metadata); err != nil {
 				return nil, err
