@@ -16,18 +16,32 @@ jobs:
       fail-fast: false
       matrix:
         build:
-          - name: "Omniview"
+          - name: "linux"
             platform: "linux/amd64"
             os: "ubuntu-latest"
-          - name: "Omniview"
+          - name: "windows"
             platform: "windows/amd64"
             os: "windows-latest"
-          - name: "Omniview"
+          - name: "macos"
             platform: "darwin/universal"
             os: "macos-latest"
 
     runs-on: ${{ matrix.build.os }}
     steps:
+      # - name: Normalise platform tag
+      #   id: normalise_platform
+      #   shell: bash
+      #   run: |
+      #     tag=$(echo ${{ matrix.build.platform }} | sed -e 's/\//_/g' -e 's/darwin/mac/g' -e 's/amd64/intel/g')
+      #     echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      #
+      # - name: Normalize version tag
+      #   id: normalise_version
+      #   shell: bash
+      #   run: |
+      #     version=$(echo "${{ github.ref_name }}" | sed -e 's/^v//' | sed -e 's/-//')
+      #     echo "version=${version}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v2
         with:
@@ -48,9 +62,17 @@ jobs:
         uses: dAppServer/wails-build-action@main
         id: build
         with:
-          build-name: ${{ matrix.build.name }}
+          build-name: Omniview
           build-platform: ${{ matrix.build.platform }}
           package: false
           go-version: "1.24"
           node-version: "20.x"
           wails-version: "master"
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: github.ref_type == 'tag'
+        with:
+          files: |
+            ./build/bin/*
+          token: ${{ secrets.GITHUB_TOKEN }}
