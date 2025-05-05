@@ -66,8 +66,8 @@ jobs:
         working-directory: plugins/${{ matrix.plugin }}
         run: |
           # Clean
-          mkdir -p ./build
           rm -rf ./build
+          mkdir -p ./build
           # Copy metadata (shared)
           cp plugin.yaml ./build/
 
