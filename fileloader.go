@@ -90,7 +90,12 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	toFetch := filepath.Join(os.Getenv("HOME"), ".omniview", requestedFilename)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+
+	toFetch := filepath.Join(homeDir, ".omniview", requestedFilename)
 	h.logger.Infow("fetching file", "path", toFetch)
 
 	fileData, err := os.ReadFile(toFetch)

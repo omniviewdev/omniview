@@ -10,7 +10,7 @@ import { useTheme } from '@mui/joy';
 // project imports
 import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
 import TerminalContainer from '@/providers/BottomDrawer/containers/Terminal';
-import useBottomDrawer from '@/hooks/useBottomDrawer';
+import { useBottomDrawer } from '@omniviewdev/runtime';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
 
 
@@ -57,6 +57,18 @@ const BottomDrawerContainer: React.FC = () => {
     drawerRef.current.style.maxHeight = `${height}px`;
     setDrawerHeight(height);
   }, []);
+
+  // minimize
+  const minimize = React.useCallback(() => {
+    expandDrawerToHeight(minHeight)
+    bottomDrawerChannel.emit('onResizeReset')
+  }, []);
+
+  // expand to default
+  const expand = React.useCallback(() => {
+    expandDrawerToHeight(defaultHeight)
+    bottomDrawerChannel.emit('onResizeReset')
+  }, [])
 
 
   // ========================== EVENT BUS HANDLING ========================== //
@@ -155,26 +167,27 @@ const BottomDrawerContainer: React.FC = () => {
         drawerRef.current.style.maxHeight = `${minHeight}px`;
         return;
       }
+      setDrawerHeight(newHeight)
 
     }
   }, []);
 
   React.useEffect(() => {
-    const handleMouseUpGlobal = () => {
-      setIsDragging(false);
-    };
+    // const handleMouseUpGlobal = () => {
+    //   setIsDragging(false);
+    // };
 
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUpGlobal);
+      document.addEventListener('mouseup', handleMouseUp);
     } else {
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUpGlobal);
+      document.removeEventListener('mouseup', handleMouseUp);
     }
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUpGlobal);
+      document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDragging, handleMouseMove]);
 
@@ -244,7 +257,11 @@ const BottomDrawerContainer: React.FC = () => {
           }}
         >
           <Divider />
-          <BottomDrawerTabs />
+          <BottomDrawerTabs
+            isMinimized={height === minHeight}
+            onMinimize={minimize}
+            onExpand={expand}
+          />
           <Box
             sx={{
               flex: 1,

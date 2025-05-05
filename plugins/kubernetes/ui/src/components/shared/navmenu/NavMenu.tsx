@@ -157,6 +157,7 @@ NavMenu.displayName = 'NavMenu';
  */
 const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, openState, onToggleOpen, selected, onSelect }) => {
   const { id } = item;
+  const height = level === 0 ? 28 : 24
 
   const handleClick = (e: React.SyntheticEvent) => {
     e.preventDefault();
@@ -206,7 +207,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         onClick={handleClick}
         sx={{
           paddingY: 0,
-          maxHeight: level === 0 ? 32 : 24,
+          maxHeight: height,
         }}
       >
         {item.icon && (
@@ -223,7 +224,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         <ListItemContent>
           <Typography
             level={item.children?.length ? 'title-sm' : 'body-xs'}
-            fontWeight={selected == id ? 600 : 400}
+            fontWeight={selected == id ? 600 : 500}
           >
             {item.label}
           </Typography>
@@ -235,8 +236,9 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
           size='sm'
           sx={{
             '--ListItem-radius': '8px',
-            '--ListItem-minHeight': level === 0 ? '32px' : '24px',
+            '--ListItem-minHeight': `${height}px`,
             '--List-gap': '0px',
+            paddingY: 0.5,
           }}
         >
           {item.children?.map(child => (

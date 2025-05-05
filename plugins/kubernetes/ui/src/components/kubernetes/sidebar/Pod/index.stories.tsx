@@ -3,6 +3,7 @@ import { PodSidebar } from ".";
 
 import data from "./mock.json";
 import ResourceDrawerContainer from "../../../../stories/containers/SidebarContainer";
+import { Pod } from "kubernetes-types/core/v1";
 
 // More on how to set up stories at: https://storybook.js.org/docs/writing-stories#default-export
 const meta = {
@@ -18,7 +19,7 @@ type Story = StoryObj<typeof meta>;
 // More on writing stories with args: https://storybook.js.org/docs/writing-stories/args
 export const Primary: Story = {
   args: {
-    data,
+    data: data as unknown as Pod,
   },
 };
 
@@ -30,7 +31,7 @@ Primary.decorators = [
       // @ts-expect-error - arbitrary json
       title={c.args.data.metadata.name}
       open
-      onClose={() => {}}
+      onClose={() => { }}
     >
       <Story />
     </ResourceDrawerContainer>

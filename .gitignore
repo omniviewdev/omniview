@@ -3,6 +3,9 @@ build/bin/
 bin/
 .package/
 
+go.work
+go.work.sum
+
 ### Frontend
 
 # Editor directories and files

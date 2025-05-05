@@ -24,12 +24,14 @@ import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modi
 import { CSS } from '@dnd-kit/utilities';
 
 // provider
-import { type BottomDrawerTab } from '@/providers/BottomDrawer/types';
+import {
+  type BottomDrawerTab,
+  useBottomDrawer,
+} from '@omniviewdev/runtime';
 
 // project imports
 import Icon from '@/components/icons/Icon';
-import { LuPlus, LuX } from 'react-icons/lu';
-import useBottomDrawer from '@/hooks/useBottomDrawer';
+import { LuMaximize, LuMinimize, LuPlus, LuX } from 'react-icons/lu';
 import { useSettings } from '@omniviewdev/runtime';
 import { exec } from '@omniviewdev/runtime/models';
 import { ExecClient } from '@omniviewdev/runtime/api';
@@ -107,11 +109,17 @@ const TabContextMenu: React.FC<TabContextMenuProps> = ({ selected, onClose }) =>
   );
 };
 
+type Props = {
+  isMinimized: boolean;
+  onMinimize: () => void;
+  onExpand: () => void;
+}
+
 
 /**
  * Renders the tabs for the bottom drawer.
  */
-const BottomDrawerTabs: React.FC = () => {
+const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }) => {
   const { tabs, focused, focusTab, closeTab, createTab, createTabs, reorderTab } = useBottomDrawer();
   const { settings } = useSettings();
 
@@ -248,99 +256,136 @@ const BottomDrawerTabs: React.FC = () => {
 
   return (
     <Stack
-      direction="row"
+      direction={'row'}
       alignItems={'center'}
-      height={33}
-      maxHeight={33}
-      minHeight={33}
-      gap={0.25}
-      px={0.25}
-      sx={{
-        borderBottom: '1px solid',
-        borderBottomColor: 'divider',
-      }}
+      justifyContent={'space-between'}
     >
-      <IconButton
-        size="sm"
-        variant='soft'
-        color='neutral'
+      <Stack
+        direction="row"
+        alignItems={'center'}
+        height={33}
+        maxHeight={33}
+        minHeight={33}
+        gap={0.25}
+        px={0.25}
         sx={{
-          flex: 'none',
-          minHeight: 28,
-          minWidth: 28,
-        }}
-        onClick={() => {
-          handleCreate('terminal');
+          borderBottom: '1px solid',
+          borderBottomColor: 'divider',
         }}
       >
-        <LuPlus size={16} />
-      </IconButton>
-      <Divider
-        orientation='vertical'
-        sx={{
-          '--_Divider-inset': '4px'
-        }}
-      />
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-        modifiers={[restrictToParentElement, restrictToHorizontalAxis]}
-      >
-        <SortableContext items={tabs.map((_, index) => index)} strategy={horizontalListSortingStrategy}>
-          {tabs.length !== 0 &&
-            <Tabs
-              size='sm'
-              aria-label="bottom drawer tabs"
-              value={focused}
-              onChange={handleChange}
-              sx={{
-                flex: 1,
-                overflow: 'hidden',
-              }}
-            >
-              <TabList
-                disableUnderline
-                variant='plain'
-                color='neutral'
-                sx={{
-                  overflow: 'auto',
-                  scrollSnapType: 'x mandatory',
-                  '&::-webkit-scrollbar': { display: 'none' },
-                }}
-              >
-                {tabs.map((tab, index) => (
-                  <MemoizedBottomDrawerTabComponent
-                    key={`bottom-drawer-tab-${index}`}
-                    {...tab}
-                    index={index}
-                    selected={focused === index}
-                    onRemove={handleRemove}
-                    onChange={handleChange}
-                    handleContextMenuClick={handleContextMenuClick}
-                  />
-                ))}
-              </TabList>
-            </Tabs>
-          }
-
-        </SortableContext>
-      </DndContext>
-      <BasePopup style={{ zIndex: 9999 }} id={'tab-context-menu'} open={contextMenuOpen} anchor={contextSelected?.el}>
-        <ClickAwayListener
-          onClickAway={() => {
-            setContextSelected(null);
+        <IconButton
+          size="sm"
+          variant='soft'
+          color='neutral'
+          sx={{
+            flex: 'none',
+            minHeight: 28,
+            minWidth: 28,
+          }}
+          onClick={() => {
+            handleCreate('terminal');
           }}
         >
-          <PopupBody>
-            <TabContextMenu
-              selected={contextSelected === null ? -1 : contextSelected.index}
-              onClose={() => {
-                setContextSelected(null);
-              }} />
-          </PopupBody>
-        </ClickAwayListener>
-      </BasePopup>
+          <LuPlus size={16} />
+        </IconButton>
+        <Divider
+          orientation='vertical'
+          sx={{
+            '--_Divider-inset': '4px'
+          }}
+        />
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+          modifiers={[restrictToParentElement, restrictToHorizontalAxis]}
+        >
+          <SortableContext items={tabs.map((_, index) => index)} strategy={horizontalListSortingStrategy}>
+            {tabs.length !== 0 &&
+              <Tabs
+                size='sm'
+                aria-label="bottom drawer tabs"
+                value={focused}
+                onChange={handleChange}
+                sx={{
+                  flex: 1,
+                  overflow: 'hidden',
+                }}
+              >
+                <TabList
+                  disableUnderline
+                  variant='plain'
+                  color='neutral'
+                  sx={{
+                    overflow: 'auto',
+                    scrollSnapType: 'x mandatory',
+                    '&::-webkit-scrollbar': { display: 'none' },
+                  }}
+                >
+                  {tabs.map((tab, index) => (
+                    <MemoizedBottomDrawerTabComponent
+                      key={`bottom-drawer-tab-${index}`}
+                      {...tab}
+                      index={index}
+                      selected={focused === index}
+                      onRemove={handleRemove}
+                      onChange={handleChange}
+                      handleContextMenuClick={handleContextMenuClick}
+                    />
+                  ))}
+                </TabList>
+              </Tabs>
+            }
+
+          </SortableContext>
+        </DndContext>
+        <BasePopup style={{ zIndex: 9999 }} id={'tab-context-menu'} open={contextMenuOpen} anchor={contextSelected?.el}>
+          <ClickAwayListener
+            onClickAway={() => {
+              setContextSelected(null);
+            }}
+          >
+            <PopupBody>
+              <TabContextMenu
+                selected={contextSelected === null ? -1 : contextSelected.index}
+                onClose={() => {
+                  setContextSelected(null);
+                }} />
+            </PopupBody>
+          </ClickAwayListener>
+        </BasePopup>
+      </Stack>
+
+      <Stack
+        direction="row"
+        alignItems={'center'}
+        height={33}
+        maxHeight={33}
+        minHeight={33}
+        gap={0.25}
+        px={1}
+        pb={'1px'}
+      >
+        <IconButton
+          size="sm"
+          variant='soft'
+          color='neutral'
+          sx={{
+            flex: 'none',
+            minHeight: 28,
+            minWidth: 28,
+          }}
+          onClick={() => {
+            if (isMinimized) {
+              onExpand()
+            } else {
+              onMinimize()
+            }
+          }}
+        >
+          {isMinimized ? <LuMaximize /> : <LuMinimize />}
+        </IconButton>
+      </Stack>
     </Stack>
   );
 };

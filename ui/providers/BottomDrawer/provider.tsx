@@ -1,5 +1,4 @@
 import React, { type ReactNode } from 'react';
-import BottomDrawerContext from '@/contexts/BottomDrawerContext';
 import {
   type BottomDrawerTab,
   type CloseDrawer,
@@ -13,7 +12,8 @@ import {
   type ReorderTab,
   type CreateTabs,
   type CloseTabs,
-} from './types';
+  BottomDrawerContext,
+} from '@omniviewdev/runtime';
 import { ExecClient } from '@omniviewdev/runtime/api';
 
 type BottomDrawerProviderProps = {

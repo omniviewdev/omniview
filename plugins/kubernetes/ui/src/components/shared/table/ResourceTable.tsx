@@ -162,6 +162,7 @@ const ResourceTableContainer: React.FC<Props> = ({
 
   /** Row Clicking */
   const onRowClick = React.useCallback((id: string, data: any) => {
+    console.log("onRowClick called", { id, data })
     if (drawer === undefined) {
       /** nothing to do */
       return

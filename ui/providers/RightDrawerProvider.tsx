@@ -25,7 +25,7 @@ type Props = {
 
 
 /** Length of the core layout sidebar */
-const innerWidthBuffer = 100
+const innerWidthBuffer = 47
 
 const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   // TODO - calculate these based on window width
@@ -46,31 +46,38 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
 
 
   React.useEffect(() => {
+    const sizeReset = () => {
+      if (!sidebarRef.current) {
+        return;
+      }
+
+      // reset back to state level since the other container has set it
+      sidebarRef.current.style.height = 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))'
+      sidebarRef.current.style.minHeight = 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))'
+      sidebarRef.current.style.maxHeight = 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))'
+    }
+
     const unsubscribeOnResizeDrawer = bottomDrawerChannel.on('onResizeHandler', (height) => {
       if (!sidebarRef.current) {
         return;
       }
 
       // more performant resizing while the resize handler is actually doing it's thing, otherwise we get cascading rerenders
-      sidebarRef.current.style.height = `calc(100vh - var(--CoreLayoutFooter-height) - ${height}px)`
-      sidebarRef.current.style.minHeight = `calc(100vh - var(--CoreLayoutFooter-height) - ${height}px)`
-      sidebarRef.current.style.maxHeight = `calc(100vh - var(--CoreLayoutFooter-height) - ${height}px)`
+      sidebarRef.current.style.height = `calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - ${height}px)`
+      sidebarRef.current.style.minHeight = `calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - ${height}px)`
+      sidebarRef.current.style.maxHeight = `calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - ${height}px)`
     });
 
-    const unsubsribeOnResizeReset = bottomDrawerChannel.on('onResizeReset', () => {
-      if (!sidebarRef.current) {
-        return;
-      }
+    const unsubsribeOnResizeReset = bottomDrawerChannel.on('onResizeReset', () => sizeReset())
+    const unsubsribeOnFullscreen = bottomDrawerChannel.on('onFullscreen', () => sizeReset())
+    const unsubsribeOnMinimize = bottomDrawerChannel.on('onMinimize', () => sizeReset())
 
-      // reset back to state level since the other container has set it
-      sidebarRef.current.style.height = `calc(100vh - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))`
-      sidebarRef.current.style.minHeight = `calc(100vh - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))`
-      sidebarRef.current.style.maxHeight = `calc(100vh - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))`
-    })
 
     return () => {
       unsubscribeOnResizeDrawer();
       unsubsribeOnResizeReset();
+      unsubsribeOnFullscreen();
+      unsubsribeOnMinimize();
     };
   }, []);
 
@@ -200,20 +207,18 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       {children}
       <Sheet
         ref={sidebarRef}
-        variant='outlined'
         sx={{
-          borderColor: 'divider',
-          borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 12px 12px 0px' : '8px 8px 0px 0px',
           width: initialWidth,
+          borderLeft: (theme) => `1px solid ${theme.palette.divider}`,
           bgcolor: 'background.surface',
           p: 0,
           position: 'absolute',
-          top: 0,
+          top: 'calc(var(--CoreLayoutHeader-height) - 1px)',
           right: 0,
-          zIndex: 1200,
-          height: 'calc(100vh - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))',
-          minHeight: 'calc(100vh - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))',
-          maxHeight: 'calc(100vh - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))',
+          zIndex: 999,
+          height: 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))',
+          minHeight: 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))',
+          maxHeight: 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))',
           transition: 'transform 0.2s ease',
           transform: isOpen ? 'translateX(0)' : 'translateX(110%)',
           overflow: 'hidden',
@@ -236,8 +241,9 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
             bottom: 0,
             width: '10px', // This is the width of the draggable area
             cursor: 'col-resize',
+            zIndex: 1201,
             borderLeft: `${isDragging ? 4 : 2}px solid ${theme.palette.primary[400]}`,
-            borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 0px 0px 2px' : '6px 0px 0px 6px',
+            // borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 0px 0px 2px' : '6px 0px 0px 6px',
             opacity: isDragging ? 0.5 : isHovering ? 0.2 : 0,
             transition: 'opacity 0.2s, border 0.2s',
           }}

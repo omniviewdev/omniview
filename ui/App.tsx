@@ -27,6 +27,7 @@ import { scoped } from './routes';
 import BottomDrawerProvider from './providers/BottomDrawer/provider';
 import { SettingsProvider } from '@omniviewdev/runtime';
 import { EXTENSION_REGISTRY } from './features/extensions/store'
+import { ConfirmationModalProvider } from './contexts/ConfirmationModalContext';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -72,11 +73,13 @@ const App: React.FC = () => (
                     disableNestedContext
                     theme={theme}
                   >
-                    <RightDrawerProvider>
-                      <BottomDrawerProvider>
-                        <RouterProvider router={coreRouter} />
-                      </BottomDrawerProvider>
-                    </RightDrawerProvider>
+                    <ConfirmationModalProvider>
+                      <RightDrawerProvider>
+                        <BottomDrawerProvider>
+                          <RouterProvider router={coreRouter} />
+                        </BottomDrawerProvider>
+                      </RightDrawerProvider>
+                    </ConfirmationModalProvider>
                   </CssVarsProvider>
                 </Provider>
               </StyledEngineProvider>
