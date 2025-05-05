@@ -100,5 +100,5 @@ jobs:
         if: github.ref_type == 'tag'
         with:
           name: plugin-${{ matrix.plugin }}-${{ github.ref_name }}
-          files: plugin-${{ matrix.plugin }}-${{ github.ref_name }}-${{ matrix.build.os }}-${{ matrix.build.arch }}.tar.gz
+          files: ./plugins/${{ matrix.plugin }}/plugin-${{ matrix.plugin }}-${{ github.ref_name }}-${{ matrix.build.os }}-${{ matrix.build.arch }}.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
