@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import path from "node:path";
 
 const externals = [
   // MUI
@@ -36,6 +37,17 @@ export default defineConfig({
   plugins: [
     react(),
   ],
+  server: {
+    port: 15173,
+    cors: true,
+    origin: "http://localhost:15173",
+    strictPort: true,
+    hmr: {
+      protocol: "ws",
+      host: "localhost",
+      port: 15173,
+    },
+  },
   build: {
     cssCodeSplit: false,
     sourcemap: true,
@@ -52,7 +64,7 @@ export default defineConfig({
           'react/jsx-runtime': 'react/jsx-runtime',
         },
       },
-      preserveEntrySignatures: 'strict',
+      preserveEntrySignatures: "exports-only",
       external: externals,
     }
   },

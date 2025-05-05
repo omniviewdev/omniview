@@ -74,10 +74,12 @@ const CodeEditor: FC<Props> = ({
   if (diff && original && lang) {
     return (
       <DiffEditor
+        theme={lang === "nginx" ? "nginx-theme-dark" : "vs-dark"}
+        language={lang}
         original={original}
         modified={value || controlledValue}
-        language={lang}
-        options={{ readOnly }}
+        height={height ?? "100%"}
+        options={{ readOnly, fontSize: 11 }}
       />
     );
   }
@@ -90,14 +92,13 @@ const CodeEditor: FC<Props> = ({
         value={
           lang === "json"
             ? // pretty print it
-              JSON.stringify(JSON.parse(value), null, 2)
+            JSON.stringify(JSON.parse(value), null, 2)
             : value || controlledValue
         }
         onChange={(value) => {
           handleChange(value || "");
         }}
-        height={height ?? "100%"}
-        options={{ readOnly }}
+        options={{ readOnly, fontSize: 11 }}
       />
     );
   }

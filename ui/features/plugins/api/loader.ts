@@ -7,6 +7,8 @@ import { EXTENSION_REGISTRY } from '../../extensions/store';
 type PluginImportInfo = {
   pluginId: string;
   moduleHash?: string;
+  dev?: boolean;
+  devPort?: 15173
 }
 
 /**
@@ -51,6 +53,7 @@ export async function importPlugin({ pluginId, moduleHash }: PluginImportInfo): 
   // const modulePath = `/plugin/${pluginId}/dist/entry.js`;
 
   const modulePath = `${window.location.protocol}//${window.location.host}/_/plugins/${pluginId}/assets/entry.js`
+  // const modulePath = `http://localhost:15173/plugin-entry`
 
   // inject integrity hash into SystemJS import map
   const resolvedModule = System.resolve(modulePath);

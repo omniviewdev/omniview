@@ -132,7 +132,7 @@ export const DetailsCard: React.FC<DetailsCardProps> = ({
           {data.map((entry) => {
             if (entry.value || showUndefined) {
               return (
-                <>
+                <React.Fragment key={entry.key}>
                   <Grid xs={entry.ratio?.[0] ?? 5}>
                     <Stack direction="row" spacing={1} alignItems={"center"}>
                       {entry.icon &&
@@ -162,7 +162,7 @@ export const DetailsCard: React.FC<DetailsCardProps> = ({
                       {entry.endAdornment}
                     </Stack>
                   </Grid>
-                </>
+                </React.Fragment>
               );
             }
           })}

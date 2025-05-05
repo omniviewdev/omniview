@@ -74,19 +74,25 @@ func validateHasUiPackage(path string) error {
 
 // make sure our plugin dir is all set.
 func auditPluginDir() error {
-	plugindir := filepath.Join(os.Getenv("HOME"), ".omniview", "plugins")
-
-	// make sure our plugin dir is all set
-	if err := os.MkdirAll(plugindir, 0755); err != nil {
+	if err := os.MkdirAll(getPluginDir(), 0755); err != nil {
 		return fmt.Errorf("error creating plugin directory: %w", err)
 	}
 
 	return nil
 }
 
+func getPluginDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+	// TODO - do we want to make this dynamic?
+	return filepath.Join(homeDir, ".omniview", "plugins")
+}
+
 func getPluginLocation(id string) string {
 	// TODO - do we want to make this dynamic?
-	return filepath.Join(os.Getenv("HOME"), ".omniview", "plugins", id)
+	return filepath.Join(getPluginDir(), id)
 }
 
 func checkTarball(filePath string) error {

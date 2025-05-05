@@ -182,7 +182,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	pm.logger.Debugw("Loading plugins states from disk", "states", states)
 
 	// load all the plugins in the plugin directory
-	files, err := os.ReadDir(filepath.Join(os.Getenv("HOME"), ".omniview", "plugins"))
+	files, err := os.ReadDir(getPluginDir())
 	if err != nil {
 		return fmt.Errorf("error reading plugin directory: %w", err)
 	}
@@ -201,7 +201,8 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 			}
 
 			if _, err = pm.LoadPlugin(file.Name(), opts); err != nil {
-				return fmt.Errorf("error loading plugin: %w", err)
+				// don't fail on one plugin not loading
+				pm.logger.Errorf("error loading plugin: %w", err)
 			}
 		}
 	}
@@ -342,11 +343,14 @@ type LoadPluginOptions struct {
 }
 
 func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.Plugin, error) {
+	log := pm.logger.Named("LoadPlugin").With("id", id, "ops", opts)
+
 	if _, ok := pm.plugins[id]; ok {
 		return types.Plugin{}, fmt.Errorf("plugin with id '%s' already loaded", id)
 	}
 
 	location := getPluginLocation(id)
+	log.Debugw("loading plugin from location", "location", location)
 
 	// make sure it exists, and load the metadata file
 	if _, err := os.Stat(location); os.IsNotExist(err) {

@@ -9,9 +9,10 @@ import ContainerPhaseCell from './cells/ContainerPhaseCell';
 import ContainerStatusCell from './cells/ContainerStatusCell';
 import { withNamespacedResourceColumns } from '../../shared/columns';
 import ResourceTable from '../../../../shared/table/ResourceTable';
-import { DrawerComponent } from '@omniviewdev/runtime';
-import { LuBox } from 'react-icons/lu';
+import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useExec, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime';
+import { LuBugPlay, LuCode, LuContainer, LuLogs, LuScaling, LuSquareChartGantt, LuTerminal, LuTrash } from 'react-icons/lu';
 import PodSidebar from '../../../sidebar/Pod';
+import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage';
 
 const resourceKey = 'core::v1::Pod'
 
@@ -27,6 +28,11 @@ const ownerRefKeyMap: Record<string, string> = {
 
 const PodTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()
+
+  const { remove } = useResourceMutations({ pluginID: 'kubernetes' })
+  const { createSession } = useExec({ pluginID: 'kubernetes' })
+  const { show } = useConfirmationModal()
+  const { closeDrawer } = useRightDrawer()
 
   const columns = React.useMemo<Array<ColumnDef<Pod>>>(
     () => withNamespacedResourceColumns([
@@ -180,17 +186,127 @@ const PodTable: React.FC = () => {
     [id],
   )
 
-  const drawer: DrawerComponent = React.useMemo(() => ({
+  const drawer: DrawerComponent<Pod> = React.useMemo(() => ({
     title: resourceKey, // TODO: change runtime sdk to accept a function
-    icon: <LuBox />,
+    icon: <LuContainer />,
     views: [
       {
         title: 'Overview',
-        icon: <LuBox />,
-        component: (data: any) => <PodSidebar data={data} />
+        icon: <LuSquareChartGantt />,
+        component: (ctx) => <PodSidebar data={ctx.data} />
       },
+      {
+        title: 'Editor',
+        icon: <LuCode />,
+        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
+      }
     ],
-    actions: []
+    actions: [
+      {
+        title: 'Delete',
+        icon: <LuTrash />,
+        action: (ctx) => show({
+          title: <span>Delete <strong>{ctx.data?.metadata?.name}</strong>?</span>,
+          body: <span>Are you sure you want to delete the Pod <code>{ctx.data?.metadata?.name}</code> from <strong>{ctx.data?.metadata?.namespace}</strong>?</span>,
+          confirmLabel: 'Delete',
+          cancelLabel: 'Cancel',
+          onConfirm: async () => {
+            await remove({
+              opts: {
+                connectionID: id,
+                resourceKey,
+                resourceID: ctx.data?.metadata?.name as string,
+                namespace: ctx.data?.metadata?.namespace as string,
+              },
+              input: {},
+            })
+            closeDrawer()
+          },
+        })
+      },
+      {
+        title: 'Exec',
+        icon: <LuTerminal />,
+        enabled: true,
+        list: (ctx) => {
+          const list: Array<DrawerComponentActionListItem> = []
+
+          ctx.data?.spec?.containers?.forEach((container) => {
+            list.push({
+              title: container.name,
+              action: () => createSession({
+                connectionID: id,
+                label: `${ctx.data?.metadata?.name}/${container.name}`,
+                icon: 'LuContainer',
+                opts: {
+                  resource_plugin: 'kubernetes',
+                  resource_data: ctx.data,
+                  resource_key: ctx.resource?.key,
+                }
+              }).then(() => closeDrawer())
+            })
+          })
+          ctx.data?.spec?.ephemeralContainers?.forEach((container) => {
+            list.push({
+              title: container.name,
+              action: () => createSession({
+                connectionID: id,
+                label: `${ctx.data?.metadata?.name}/${container.name}`,
+                icon: 'LuContainer',
+                opts: {
+                  resource_plugin: 'kubernetes',
+                  resource_data: ctx.data,
+                  resource_key: ctx.resource?.key,
+                }
+              }).then(() => closeDrawer())
+            })
+          })
+
+          return list
+        }
+      },
+      {
+        title: 'Logs',
+        icon: <LuLogs />,
+        enabled: true,
+        list: (ctx) => {
+          const list: Array<DrawerComponentActionListItem> = []
+
+          ctx.data?.spec?.containers?.forEach((container) => {
+            list.push({
+              title: container.name,
+              action: () => console.log(`Getting logs for ${container.name}`)
+            })
+          })
+          ctx.data?.spec?.initContainers?.forEach((container) => {
+            list.push({
+              title: container.name,
+              action: () => console.log(`Getting logs for ${container.name}`)
+            })
+          })
+          ctx.data?.spec?.ephemeralContainers?.forEach((container) => {
+            list.push({
+              title: container.name,
+              action: () => console.log(`Getting logs for ${container.name}`)
+            })
+          })
+
+          return list
+        }
+      },
+      {
+        title: 'Add Debug Container',
+        icon: <LuBugPlay />,
+        enabled: false,
+        action: (_) => console.log('adding debug container'),
+      },
+      {
+        title: 'Resize',
+        icon: <LuScaling />,
+        enabled: false,
+        action: (_) => console.log('resize'),
+      },
+    ]
   }), [])
 
   return (

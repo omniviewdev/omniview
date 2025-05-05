@@ -91,6 +91,7 @@ func main() {
 			coresettings.General,
 			coresettings.Appearance,
 			coresettings.Terminal,
+			coresettings.Editor,
 		); err != nil {
 			log.Errorw("error while initializing settings system", "error", err)
 		}

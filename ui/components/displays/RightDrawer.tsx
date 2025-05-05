@@ -1,7 +1,8 @@
-import React from 'react';
-import { IconButton, ButtonGroup, Sheet, DialogTitle, DialogContent, Stack, Typography, Tooltip, Divider } from '@mui/joy';
+import { Box, Chip, DialogContent, DialogTitle, Divider, IconButton, ListItemDecorator, Sheet, Stack, Tab, TabList, Tabs } from '@mui/joy';
 import { DrawerComponent, DrawerContext } from '@omniviewdev/runtime';
+import React from 'react';
 import { LuX } from 'react-icons/lu';
+import RightDrawerActions from './RightDrawerActions';
 
 type Props = DrawerComponent & {
   ctx?: DrawerContext;
@@ -17,6 +18,16 @@ const RightDrawer: React.FC<Props> = ({
   onClose,
 }) => {
   const [currentView, setCurrentView] = React.useState<number>(0)
+  console.log(ctx)
+
+  const handleChangeView = (_: React.SyntheticEvent | null, value: string | number | null) => {
+    if (!value) {
+      setCurrentView(0)
+    }
+    if (typeof value === 'number') {
+      setCurrentView(value)
+    }
+  }
 
   return (
     <Sheet
@@ -26,16 +37,16 @@ const RightDrawer: React.FC<Props> = ({
         flexDirection: 'column',
         height: '100%',
         overflow: 'auto',
-        p: 1,
-        gap: 1,
+        p: 0,
       }}
     >
-      <DialogTitle>
+      <DialogTitle component={'div'}>
         <Stack
           direction='row'
           justifyContent={'space-between'}
           alignItems={'center'}
           flex={1}
+          p={0.75}
           sx={{
             bgcolor: 'background.surface'
           }}
@@ -44,25 +55,34 @@ const RightDrawer: React.FC<Props> = ({
           {/** Left Side (title and information)*/}
           <Stack
             direction='row'
-            alignItems={'center'}
             justifyContent={'flex-start'}
             gap={1}
           >
             {typeof title === 'string'
-              ? <Typography
+              ? <Chip
                 startDecorator={icon}
-                level={'title-sm'}
+                size={'md'}
+                variant={'outlined'}
+                color='neutral'
+                sx={{
+                  gap: 1,
+                  px: 1,
+                  py: 0.5,
+                  borderRadius: 'sm',
+                  fontWeight: 600,
+                }}
               >
                 {title}
-              </Typography>
+              </Chip>
               : <>
                 {icon}
                 {title}
               </>
             }
+
           </Stack>
 
-          {/** Right Side (pages and actions)*/}
+          {/** Right Side (actions)*/}
           <Stack
             id={'pages-actions-menus'}
             direction='row'
@@ -70,45 +90,68 @@ const RightDrawer: React.FC<Props> = ({
             justifyContent={'flex-end'}
             gap={1}
           >
-            <ButtonGroup id={'pages-menu'} size='sm' variant='outlined'>
-              {views.map((view, idx) => (
-                <Tooltip arrow title={view.title} variant='plain'>
-                  <span>
-                    <IconButton
-                      color={currentView === idx ? 'primary' : 'neutral'}
-                      onClick={() => setCurrentView(idx)}
-                    >
-                      {view.icon}
-                    </IconButton>
-                  </span>
-                </Tooltip>
-              ))}
-            </ButtonGroup>
-
-            {!!actions.length &&
-              <ButtonGroup id={'actions-menu'} size='sm' variant='outlined'>
-                {actions.map((action) => (
-                  <Tooltip arrow title={action.title} variant='soft'>
-                    <span>
-                      <IconButton
-                        onClick={() => action.action(ctx?.data)}
-                      >
-                        {action.icon}
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                ))}
-              </ButtonGroup>
-            }
-            <IconButton variant='outlined' size={'sm'} onClick={onClose}>
+            {!!actions.length && <RightDrawerActions ctx={ctx || {}} actions={actions} />}
+            <IconButton
+              variant='outlined'
+              color='neutral'
+              size={'sm'}
+              onClick={onClose}
+            >
               <LuX />
             </IconButton>
           </Stack>
         </Stack>
       </DialogTitle>
       <Divider />
-      <DialogContent sx={{ p: 0 }}>
-        {views[currentView]?.component(ctx?.data)}
+      <DialogContent
+        sx={{
+          p: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'auto',
+        }}
+      >
+        <Tabs
+          value={currentView}
+          onChange={handleChangeView}
+        >
+          <TabList
+            disableUnderline
+            variant='outlined'
+            color='neutral'
+            size='sm'
+            sx={{
+              borderRadius: 'none',
+              overflow: 'auto',
+              scrollSnapType: 'x mandatory',
+              '&::-webkit-scrollbar': { display: 'none' },
+            }}
+          >
+            {views.map((view, idx) => (
+              <Tab
+                value={idx}
+                variant='plain'
+                sx={{
+                  alignItems: 'center',
+                  flex: 'none',
+                  scrollSnapAlign: 'start',
+                  borderRightColor: 'divider',
+                  borderLeftColor: 'transparent',
+                  fontSize: 14,
+                  fontWeight: 500,
+                }}
+              >
+                <ListItemDecorator>
+                  {view.icon}
+                </ListItemDecorator>
+                {view.title}
+              </Tab>
+            ))}
+          </TabList>
+        </Tabs>
+        <Box display={'flex'} flex={1} p={1} overflow={'auto'}>
+          {views[currentView]?.component(ctx || {})}
+        </Box>
       </DialogContent>
     </Sheet>
   )

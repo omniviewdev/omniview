@@ -5,3 +5,4 @@ export * from './useResourceSearch';
 export * from './useResourceType';
 export * from './useResourceTypes';
 export * from './useResources';
+export * from './useResourceMutations'
