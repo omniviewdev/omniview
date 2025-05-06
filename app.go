@@ -91,8 +91,3 @@ func (a App) domReady(_ context.Context) {
 func (a *App) beforeClose(_ context.Context) (prevent bool) {
 	return false
 }
-
-// shutdown is called at application termination.
-func (a *App) shutdown(_ context.Context) {
-	// Perform your teardown here
-}

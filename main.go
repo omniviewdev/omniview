@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
 
 	pkgsettings "github.com/omniviewdev/settings"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/linux"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 
@@ -36,6 +38,11 @@ const (
 
 //go:embed all:dist
 var assets embed.FS
+
+//go:embed build/appicon.png
+var icon []byte
+
+var Version = "0.0.0"
 
 //nolint:funlen // main function is expected to be long
 func main() {
@@ -136,7 +143,7 @@ func main() {
 			pluginManager.Shutdown()
 		},
 		WindowStartState: options.Normal,
-		Bind: []interface{}{
+		Bind: []any{
 			app,
 
 			// core engines/providers
@@ -152,7 +159,7 @@ func main() {
 			uiClient,
 			utilsClient,
 		},
-		EnumBind: []interface{}{
+		EnumBind: []any{
 			pkgsettings.AllSettingTypes,
 			trivy.AllCommands,
 			trivy.AllScanners,
@@ -174,10 +181,17 @@ func main() {
 			WebviewIsTransparent: true,
 			WindowIsTranslucent:  true,
 			About: &mac.AboutInfo{
-				Title: "Omniview",
+				Title: fmt.Sprintf("Omniview %s", Version),
 				//nolint:lll // about info is naturally long
-				Message: "The future-proof, highly extendable IDE for DevOps engineering, transforming how you visualize, manage, and interact with your infrastructure",
+				Message: "The modern, lightweight, pluggable cross-platform IDE for DevOps engineers.\n\nCopyright © 2025",
+				Icon:    icon,
 			},
+		},
+		Linux: &linux.Options{
+			ProgramName:         "Omniview",
+			Icon:                icon,
+			WebviewGpuPolicy:    linux.WebviewGpuPolicyOnDemand,
+			WindowIsTranslucent: true,
 		},
 	})
 	if err != nil {
