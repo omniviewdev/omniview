@@ -2,75 +2,32 @@ package utils
 
 import (
 	"errors"
-	"fmt"
-	"runtime"
+	"log"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-
+	"github.com/omniview/kubernetes/pkg/utils/kubeauth"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
-// some shells may not load the necessary environment variables.
-func getPathAdditions() string {
-	switch os := runtime.GOOS; os {
-	case "darwin":
-		return "/usr/local/bin:/usr/bin:/opt/homebrew/bin"
-	case "linux":
-		return "/usr/local/bin:/usr/bin"
-	case "windows":
-		return ""
-	}
-	return ""
-}
-
-func ClientsetAndConfigFromPluginCtx(
-	ctx *types.PluginContext,
-) (*kubernetes.Clientset, *rest.Config, error) {
+// Returns a kube client bundle given the incoming plugin context
+func KubeClientsFromContext(ctx *types.PluginContext) (*kubeauth.KubeClientBundle, error) {
 	if ctx.Connection == nil {
-		return nil, nil, errors.New("kubeconfig is required")
+		return nil, errors.New("kubeconfig is required")
 	}
 
-	kubeconfig, ok := ctx.Connection.GetDataKey("kubeconfig")
+	val, ok := ctx.Connection.GetDataKey("kubeconfig")
 	if !ok {
-		return nil, nil, errors.New("kubeconfig is required")
+		return nil, errors.New("kubeconfig is required")
 	}
-	val, ok := kubeconfig.(string)
+	kubeconfigPath, ok := val.(string)
 	if !ok {
-		return nil, nil, errors.New("kubeconfig is required and must be a string")
-	}
-	//
-	// // build up the path with some defaults for finding binaries
-	// pathVar := api.ExecEnvVar{
-	// 	Name:  "PATH",
-	// 	Value: getPathAdditions(),
-	// }
-	// envVars = append(envVars, pathVar)
-	//
-	// authInfo := api.NewAuthInfo()
-	// authInfo.Exec = &api.ExecConfig{
-	// 	Env: envVars,
-	// }
-
-	// TODO: Change this to get from settings provider
-	// os.Setenv("SHELL", "/bin/zsh")
-	// os.Setenv("PATH", os.Getenv("PATH")+getPathAdditions())
-
-	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: val},
-		&clientcmd.ConfigOverrides{
-			CurrentContext: ctx.Connection.ID,
-		},
-	).ClientConfig()
-	if err != nil {
-		return nil, nil, fmt.Errorf("error creating client: %w", err)
+		return nil, errors.New("kubeconfig is required and must be a string")
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error creating clientset: %w", err)
-	}
+	log.Printf(
+		"Loading kube clients at path %s with connection %s",
+		kubeconfigPath,
+		ctx.Connection.ID,
+	)
 
-	return clientset, config, nil
+	return kubeauth.LoadKubeClients(kubeconfigPath, ctx.Connection.ID)
 }

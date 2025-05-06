@@ -101,13 +101,10 @@ func (i *InformerManager[CT, IT]) Run(
 			close(informer.cancel)
 			delete(i.informers, id)
 		case event := <-i.addChan:
-			log.Println("recieved add event", event)
 			controllerAddChan <- event
 		case event := <-i.updateChan:
-			log.Println("recieved update event", event)
 			controllerUpdateChan <- event
 		case event := <-i.deleteChan:
-			log.Println("recieved delete event", event)
 			controllerDeleteChan <- event
 		}
 	}
