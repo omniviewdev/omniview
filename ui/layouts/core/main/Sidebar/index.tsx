@@ -32,6 +32,8 @@ export default function CoreLayoutSidebar() {
         transition: 'transform 0.4s',
         zIndex: 1,
         height: 'calc(100dvh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height))',
+        width: 'var(--CoreLayoutSidebar-width)',
+        minWidth: 'var(--CoreLayoutSidebar-width)',
         maxWidth: 'var(--CoreLayoutSidebar-width)',
         flexShrink: 0,
         display: 'flex',
