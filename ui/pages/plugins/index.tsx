@@ -1,4 +1,3 @@
-import React from 'react';
 
 // Material-ui
 import {
@@ -19,16 +18,14 @@ import Layout from '@/layouts/core/sidenav';
 
 // Components
 import PluginsNav from './PluginsNav';
-import PluginPreview from './PluginPreview';
 import { LuSlidersHorizontal } from 'react-icons/lu';
-import InstalledPlugins from './InstalledPlugins';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
+import { Outlet } from 'react-router-dom';
 
 /**
  * The main settings page for the application.
  */
 const SettingsPage = () => {
-  const [selected, setSelected] = React.useState();
   const { plugins } = usePluginManager();
 
   if (plugins.isLoading) {
@@ -70,13 +67,10 @@ const SettingsPage = () => {
               }}
             />
           </Stack>
-          <PluginsNav selected={selected} onChange={setSelected} installed={plugins.data?.map((p => p.id))} />
+          <PluginsNav installed={plugins.data?.map((p => p.id))} />
         </Layout.SideNav>
         <Layout.Main>
-          {selected !== undefined
-            ? <PluginPreview plugin={selected} />
-            : <InstalledPlugins />
-          }
+          <Outlet />
         </Layout.Main>
       </Layout.Root>
     </CssVarsProvider>

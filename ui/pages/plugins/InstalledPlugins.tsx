@@ -32,7 +32,7 @@ const InstalledPlugins: React.FC<Props> = () => {
   }
 
   return (
-    <Grid container spacing={4} p={4}>
+    <Grid container spacing={3} p={3}>
       <Grid xs={12} pb={2}>
         <Stack direction='row' spacing={2} alignItems='center' justifyContent={'space-between'}>
           <Typography level='h2'>Installed Plugins</Typography>
