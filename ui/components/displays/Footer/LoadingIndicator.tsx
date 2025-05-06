@@ -57,18 +57,26 @@ const LoadingIndicator: React.FC = () => {
       })
     })
 
+    const cancelInstallComplete = EventsOn('plugin/install_complete', (meta: config.PluginMeta) => {
+      setLoading((prev) => {
+        return {
+          ...prev,
+          [meta.name]: ''
+        }
+      })
+    })
+
     return () => {
       // Cleanup watchers
       cancelDevInstallStart()
       cancelReloadStart()
       cancelReloadError()
       cancelReloadComplete()
+      cancelInstallComplete()
     };
   }, [])
 
   const message = loadingMessage()
-  console.log('message', message)
-  console.log('loading', loading)
 
   if (!message) {
     return <></>
