@@ -35,7 +35,7 @@ export default function ClustersPage(): React.ReactElement {
       />
 
       {Boolean(connections.data?.length) && (
-        <ConnectionTable connections={connections.data ?? []} />
+        <ConnectionTable connections={connections.data ?? []} search={search} />
       )}
     </Stack>
   );
