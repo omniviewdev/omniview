@@ -14,6 +14,7 @@ import ConnectionTableItem from './ConnectionTableItem';
 
 type Props = {
   connections: types.Connection[];
+  search: string
 };
 
 const getConnectionOrderedLabelCols = (connections: types.Connection[]) => {
@@ -40,7 +41,9 @@ const getConnectionOrderedLabelCols = (connections: types.Connection[]) => {
 /**
  * Main connection table component.
  */
-const ConnectionTable: React.FC<Props> = ({ connections }) => {
+const ConnectionTable: React.FC<Props> = ({ connections, search }) => {
+  const filtered = connections.filter((conn) => search === "" || conn.name.includes(search))
+
   return (
     <Sheet
       variant="outlined"
@@ -82,7 +85,7 @@ const ConnectionTable: React.FC<Props> = ({ connections }) => {
           </tr>
         </thead>
         <tbody>
-          {connections.map((connection) => (
+          {filtered.map((connection) => (
             <ConnectionTableItem key={connection.id} {...connection} />
           ))}
         </tbody>
