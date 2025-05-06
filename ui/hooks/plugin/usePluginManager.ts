@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '@omniviewdev/runtime';
 import { PluginManager } from '@omniviewdev/runtime/api';
 import React from 'react';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { EventsEmit, EventsOn } from '@omniviewdev/runtime/runtime';
 import { type config } from '@omniviewdev/runtime/models';
 
 import { clearPlugin } from '@/features/plugins/api/loader';
@@ -132,9 +132,11 @@ export const usePluginManager = () => {
       // Invalidate the plugins query to refetch the list of plugins
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
+
+      EventsEmit('plugin/install_complete', data)
     },
     onError(error) {
-      if (`${error.name}` === 'cancelled') {
+      if (`${error.message}` === 'cancelled' || `${error.message}` === 'undefined') {
         // User cancelled the prompt, nothing actually wrong
         return;
       }
@@ -155,12 +157,13 @@ export const usePluginManager = () => {
         details: 'This plugin will be reloaded automatically when the source files change.',
       });
 
+      EventsEmit('plugin/install_complete', data)
       // Invalidate the plugins query to refetch the list of plugins
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
     },
     onError(error) {
-      if (`${error.message}` === 'cancelled') {
+      if (`${error.message}` === 'cancelled' || `${error.message}` === 'undefined') {
         // User cancelled the prompt, nothing actually wrong
         return;
       }
