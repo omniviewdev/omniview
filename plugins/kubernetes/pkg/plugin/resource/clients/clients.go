@@ -1,7 +1,7 @@
 package clients
 
 import (
-	"fmt"
+	"log"
 	"time"
 
 	"github.com/omniview/kubernetes/pkg/utils"
@@ -27,7 +27,7 @@ func NewKubernetesClientFactory() factories.ResourceClientFactory[ClientSet] {
 // Use a custom type here since we want multiple clients to use for each namespace context.
 type ClientSet struct {
 	Clientset              *kubernetes.Clientset
-	DiscoveryClient        *discovery.DiscoveryClient
+	DiscoveryClient        discovery.DiscoveryInterface
 	DynamicClient          dynamic.Interface
 	DynamicInformerFactory dynamicinformer.DynamicSharedInformerFactory
 }
@@ -39,33 +39,17 @@ var _ factories.ResourceClientFactory[ClientSet] = &KubernetesClientFactory{}
 func (f *KubernetesClientFactory) CreateClient(
 	ctx *pkgtypes.PluginContext,
 ) (*ClientSet, error) {
-	clientset, config, err := utils.ClientsetAndConfigFromPluginCtx(ctx)
+	log.Printf("Calling CreateClient")
+	clients, err := utils.KubeClientsFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// create a dynamic client for interacting with the API server
-	client, err := dynamic.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("error creating dynamic client: %w", err)
-	}
-
-	dynamicInformerFactory := dynamicinformer.NewDynamicSharedInformerFactory(
-		client,
-		DefaultResyncPeriod,
-	)
-
-	// create our discovery client
-	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("error creating discovery client: %w", err)
-	}
-
 	return &ClientSet{
-		Clientset:              clientset,
-		DiscoveryClient:        discoveryClient,
-		DynamicClient:          client,
-		DynamicInformerFactory: dynamicInformerFactory,
+		Clientset:              clients.Clientset,
+		DiscoveryClient:        clients.Discovery,
+		DynamicClient:          clients.Dynamic,
+		DynamicInformerFactory: clients.InformerFactory,
 	}, nil
 }
 

@@ -99,7 +99,7 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
-			log.Debugw("received add event", "event", eventKey)
+			// log.Debugw("received add event", "event", eventKey)
 			runtime.EventsEmit(c.ctx, eventKey, event)
 		case event := <-c.updateChan:
 			eventKey := fmt.Sprintf(
@@ -108,7 +108,7 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
-			log.Debugw("received update event", "event", eventKey)
+			// log.Debugw("received update event", "event", eventKey)
 
 			runtime.EventsEmit(
 				c.ctx,
@@ -122,7 +122,7 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
-			log.Debugw("received delete event", "event", eventKey)
+			// log.Debugw("received delete event", "event", eventKey)
 			runtime.EventsEmit(c.ctx, eventKey, event)
 		}
 	}

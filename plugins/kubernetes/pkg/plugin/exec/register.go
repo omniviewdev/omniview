@@ -49,7 +49,7 @@ func PodHandler(
 	stopCh chan struct{},
 	resize <-chan exec.SessionResizeInput,
 ) error {
-	clientset, config, err := utils.ClientsetAndConfigFromPluginCtx(ctx)
+	clients, err := utils.KubeClientsFromContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -74,8 +74,8 @@ func PodHandler(
 
 	return ExecCmd(
 		ctx.Context,
-		clientset,
-		config,
+		clients.Clientset,
+		clients.RestConfig,
 		namespace,
 		pod,
 		container,

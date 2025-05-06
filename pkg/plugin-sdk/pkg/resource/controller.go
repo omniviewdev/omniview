@@ -492,7 +492,8 @@ func (c *resourceController[ClientT, InformerT]) StartConnectionInformer(
 	log.Println("got resource types in StartConnectionInformer: ", resourceTypes)
 	for _, resource := range resourceTypes {
 		if err = c.informerManager.RegisterResource(ctx, ctx.Connection, resource); err != nil {
-			return fmt.Errorf("unable to register resource: %w", err)
+			// don't fail - just log
+			log.Printf("unable to register resource: %s", err.Error())
 		}
 	}
 

@@ -39,13 +39,13 @@ func PodPortForwarder(
 	ctx *types.PluginContext,
 	opts networker.ResourcePortForwardHandlerOpts,
 ) (string, error) {
-	_, config, err := utils.ClientsetAndConfigFromPluginCtx(ctx)
+	clients, err := utils.KubeClientsFromContext(ctx)
 	if err != nil {
 		return "", err
 	}
 
 	// extract name and namespace
-	metadata, ok := opts.Resource.ResourceData["metadata"].(map[string]interface{})
+	metadata, ok := opts.Resource.ResourceData["metadata"].(map[string]any)
 	if !ok {
 		return "", errors.New("metadata is required")
 	}
@@ -60,9 +60,9 @@ func PodPortForwarder(
 
 	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward", namespace, name)
 	regexURLScheme := regexp.MustCompile(`(?i)^https?://`)
-	hostIP := regexURLScheme.ReplaceAllString(config.Host, "")
+	hostIP := regexURLScheme.ReplaceAllString(clients.RestConfig.Host, "")
 
-	transport, upgrader, err := spdy.RoundTripperFor(config)
+	transport, upgrader, err := spdy.RoundTripperFor(clients.RestConfig)
 	if err != nil {
 		return "", err
 	}

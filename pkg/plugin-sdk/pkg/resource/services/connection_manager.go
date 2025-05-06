@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -238,14 +239,10 @@ func (r *connectionManager[ClientT]) UpdateConnection(
 		current.Avatar = conn.Avatar
 	}
 	if len(conn.Labels) > 0 {
-		for k, v := range conn.Labels {
-			current.Labels[k] = v
-		}
+		maps.Copy(current.Labels, conn.Labels)
 	}
 	if len(conn.Data) > 0 {
-		for k, v := range conn.Data {
-			current.Data[k] = v
-		}
+		maps.Copy(current.Data, conn.Data)
 	}
 
 	r.connections[conn.ID] = current
