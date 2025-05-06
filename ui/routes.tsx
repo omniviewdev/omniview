@@ -34,6 +34,8 @@ import TrivyLicenses from './pages/trivy/pages/licenses';
 import TrivySBOM from './pages/trivy/pages/sbom';
 import TrivyMisconfiguration from './pages/trivy/pages/misconfiguration';
 import PluginRenderer from './features/plugins/components/PluginRenderer';
+import PluginDetails from './pages/plugins/PluginDetails';
+import InstalledPlugins from './pages/plugins/InstalledPlugins';
 
 // // Apollo
 // import ApolloSandboxPage from './pages/apollo';
@@ -55,6 +57,10 @@ export const scoped: RouteObject[] = [
       {
         path: 'plugins',
         Component: Plugins,
+        children: [
+          { path: '', index: true, Component: InstalledPlugins },
+          { path: ':id', Component: PluginDetails }
+        ]
       },
       {
         path: 'settings',
