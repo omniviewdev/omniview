@@ -19,16 +19,24 @@ type Props = {
   resourceKey: string;
 
   /** The readable name of the resource (e.g. Node) */
-  resourceName: string;
+  resourceName?: string;
 }
 
 /**
  * Display the cell as a link to another resource
  */
 const ResourceLinkCell: React.FC<Props> = ({
-  connectionId, namespace, resourceId, resourceKey, resourceName
+  connectionId,
+  namespace,
+  resourceId,
+  resourceKey,
+  resourceName,
 }) => {
   // const { showResourceSidebar } = useRightDrawer();
+  if (!resourceName) {
+    // nothing to display - don't render
+    return <></>
+  }
 
   /**
    * Open the sidebar at the link to the linked resource
