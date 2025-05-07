@@ -3,6 +3,7 @@ import { PluginWindow } from '@omniviewdev/runtime';
 import { shared } from './shared_dependencies';
 import { buildImportMap } from './utils';
 import { EXTENSION_REGISTRY } from '../../extensions/store';
+import { registerPlugin } from '../PluginManager';
 
 type PluginImportInfo = {
   pluginId: string;
@@ -94,4 +95,9 @@ export async function importPluginWindow(opts: PluginWindowImportInfo): Promise<
   }
 
   return plugin
+}
+
+export async function loadAndRegisterPlugin(pluginID: string): Promise<void> {
+  const pluginWindow = await importPluginWindow({ pluginId: pluginID });
+  registerPlugin(pluginID, pluginWindow);
 }

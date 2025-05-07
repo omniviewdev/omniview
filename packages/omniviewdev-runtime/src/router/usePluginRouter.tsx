@@ -1,5 +1,6 @@
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useMemo } from 'react';
+import { usePluginContext } from '../context';
 
 /**
  * Options for customizing navigation behavior
@@ -7,16 +8,6 @@ import { useMemo } from 'react';
 type PluginNavigateOptions = {
   /** Replace the current entry in the history stack */
   replace?: boolean;
-  /**
-   * Navigate within the current active context. If there is no active
-   * context, it will be ignored.
-   */
-  withinContext?: boolean;
-  /**
-   * Navigate to a specific known context. For example, switching between
-   * account authorization contexts within a cloud.
-   */
-  toContext?: string;
 };
 
 /**
@@ -39,9 +30,9 @@ type PluginNavigateOptions = {
 function usePluginRouter() {
   const originalNavigate = useNavigate();
   const location = useLocation();
-  const { pluginId, connectionID } = useParams<{ pluginId: string; connectionID: string }>();
+  const { meta } = usePluginContext()
 
-  if (!pluginId) {
+  if (!meta.id) {
     console.error('Link used outside of a plugin context');
   }
 
@@ -57,15 +48,8 @@ function usePluginRouter() {
    * @throws If both `withinContext` and `toContext` are provided together
    */
   const navigate = (path: string, opts?: PluginNavigateOptions) => {
-    const { withinContext, toContext, ...rest } = opts ?? {};
-
-    const resolvedTo = Boolean(withinContext) && pluginId
-      ? `/_plugin/${pluginId}/connection/${connectionID}${path.startsWith('/') ? '' : '/'}${path}`
-      : `/_plugin/${pluginId}${path.startsWith('/') ? '' : '/'}${path}`;
-
-    if (opts?.withinContext && Boolean(opts?.toContext)) {
-      throw new Error('Cannot use both "withinContext" and "toContext" options together.');
-    }
+    const { ...rest } = opts ?? {};
+    const resolvedTo = `/_plugin/${meta.id}${path.startsWith('/') ? '' : '/'}${path}`;
 
     // Account for possible leading slashes
     originalNavigate(resolvedTo, rest);
@@ -73,9 +57,8 @@ function usePluginRouter() {
 
   return useMemo(() => ({
     location,
-    contextID: connectionID ?? '',
     navigate,
-  }), [connectionID, location.pathname]);
+  }), [location.pathname]);
 }
 
 export default usePluginRouter;
