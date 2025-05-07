@@ -1,5 +1,6 @@
 import React from 'react';
-import { Link as OriginalLink, type LinkProps as OriginalLinkProps, useParams } from 'react-router-dom';
+import { Link as OriginalLink, type LinkProps as OriginalLinkProps } from 'react-router-dom';
+import { usePluginContext } from '../context';
 
 type LinkProps = {
   /** The path to link to */
@@ -23,19 +24,13 @@ type LinkProps = {
  * <Link to="/dashboard">Go to Dashboard</Link>
  */
 const Link: React.FC<LinkProps> = ({ to, withinContext, ...props }) => {
-  const { pluginId, connectionID } = useParams<{ pluginId: string; connectionID: string }>();
+  const { meta } = usePluginContext()
 
-  if (!pluginId) {
+  if (!meta.id) {
     console.error('Link used outside of a plugin context');
   }
 
-  if (!connectionID && withinContext) {
-    console.error('Link used within a context without a connectionID');
-  }
-
-  const resolvedTo = Boolean(withinContext) && pluginId
-    ? `/_plugin/${pluginId}/connection/${connectionID}${to.startsWith('/') ? '' : '/'}${to}`
-    : `/_plugin/${pluginId}${to.startsWith('/') ? '' : '/'}${to}`;
+  const resolvedTo = `/_plugin/${meta.id}${to.startsWith('/') ? '' : '/'}${to}`;
 
   // Memoize the link, and default to not adding underline
   return React.useMemo(() => <OriginalLink style={{ textDecoration: 'none', color: 'inherit' }} {...props} to={resolvedTo} />, [props, resolvedTo]);

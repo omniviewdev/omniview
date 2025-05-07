@@ -22,12 +22,12 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query';
 import { ExtensionProvider } from '@omniviewdev/runtime';
-import { RouterProvider, createHashRouter } from 'react-router-dom';
-import { scoped } from './routes';
 import BottomDrawerProvider from './providers/BottomDrawer/provider';
 import { SettingsProvider } from '@omniviewdev/runtime';
 import { EXTENSION_REGISTRY } from './features/extensions/store'
 import { ConfirmationModalProvider } from './contexts/ConfirmationModalContext';
+import { PluginRegistryProvider } from './features/plugins/PluginRegistryProvider';
+import { RouteProvider } from './features/router/RouteProvider';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -47,7 +47,6 @@ function fallbackRender({ error }: { error: Error }) {
   );
 }
 
-const coreRouter = createHashRouter(scoped);
 const materialTheme = materialExtendTheme();
 
 
@@ -76,7 +75,9 @@ const App: React.FC = () => (
                     <ConfirmationModalProvider>
                       <RightDrawerProvider>
                         <BottomDrawerProvider>
-                          <RouterProvider router={coreRouter} />
+                          <PluginRegistryProvider>
+                            <RouteProvider />
+                          </PluginRegistryProvider>
                         </BottomDrawerProvider>
                       </RightDrawerProvider>
                     </ConfirmationModalProvider>

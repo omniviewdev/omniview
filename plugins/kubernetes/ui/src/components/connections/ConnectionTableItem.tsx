@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, usePluginRouter } from '@omniviewdev/runtime';
 
 // Material-ui
 import {
@@ -37,7 +37,7 @@ const truncate = (input: string) => input.length > 60 ? `${input.substring(0, 60
 
 const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, labels, last_refresh, expiry_time }) => {
   const { meta } = usePluginContext();
-  const navigate = useNavigate();
+  const { navigate } = usePluginRouter();
   const { showSnackbar } = useSnackbar();
 
   const { startConnection } = useConnection({ pluginID: meta.id, connectionID: id });

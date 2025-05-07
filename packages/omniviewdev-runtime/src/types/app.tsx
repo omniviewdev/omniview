@@ -2,8 +2,10 @@ import React, { ComponentType } from "react";
 import { ExtensionPointSettings } from "./extensions";
 import { RouteObject, RouterProvider, createMemoryRouter } from "react-router-dom";
 
+
 /** TODO: Add whatever props we need here */
 export class PluginWindowRootProps { }
+
 
 /**
  * Plugin container is the main type that is rendered for a visual component within the
@@ -52,6 +54,25 @@ export class PluginWindow {
 
   get extensions() {
     return this._extensions || [];
+  }
+
+  get Routes(): Array<RouteObject> {
+    if (!this._routes && !!this.root) {
+      return [{
+        path: '',
+        index: true,
+        Component: this.root,
+      }]
+    }
+
+    // we don't have routes or a root page, this shouldn't be possible or the developer has
+    // not registered either
+    if (!this._routes?.length) {
+      // Switch this to rendering a plugin misconfigured page
+      throw new Error("cannot use plugin without a root page or router")
+    }
+
+    return this._routes
   }
 
   /**

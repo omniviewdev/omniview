@@ -5,7 +5,7 @@ import React from 'react';
 import { EventsEmit, EventsOn } from '@omniviewdev/runtime/runtime';
 import { type config } from '@omniviewdev/runtime/models';
 
-import { clearPlugin } from '@/features/plugins/api/loader';
+import { clearPlugin, loadAndRegisterPlugin } from '@/features/plugins/api/loader';
 
 enum Entity {
   PLUGINS = 'plugins',
@@ -132,7 +132,7 @@ export const usePluginManager = () => {
       // Invalidate the plugins query to refetch the list of plugins
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
-
+      loadAndRegisterPlugin(data.id);
       EventsEmit('plugin/install_complete', data)
     },
     onError(error) {
@@ -156,6 +156,7 @@ export const usePluginManager = () => {
         status: 'success',
         details: 'This plugin will be reloaded automatically when the source files change.',
       });
+      loadAndRegisterPlugin(data.id);
 
       EventsEmit('plugin/install_complete', data)
       // Invalidate the plugins query to refetch the list of plugins

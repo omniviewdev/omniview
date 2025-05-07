@@ -90,35 +90,33 @@ export default function CoreLayoutSidebar() {
                 py: 1.2,
                 width: 'var(--CoreLayoutSidebar-width)',
                 display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                WebkitUserSelect: 'none',
+                WebkitUserDrag: 'none',
+              }}
+              component={Link}
+              to={`/_plugin/${id}`}
+              style={{
+                textDecoration: 'none',
+                color: 'inherit',
               }}
             >
-              <Link
-                to={`/_plugin/${id}`}
-                style={{
-                  display: 'flex',
-                  width: 'var(--CoreLayoutSidebar-width)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textDecoration: 'none',
-                  color: 'inherit',
-                }}
-              >
-                {IsImage(metadata?.icon) ? (
-                  <Avatar
-                    size='sm'
-                    src={metadata.icon}
-                    variant='plain'
-                    sx={{
-                      borderRadius: 4,
-                      backgroundColor: 'transparent',
-                      objectFit: 'contain',
-                      border: 0,
-                      width: '30px',
-                      height: '30px',
-                    }}
-                  />
-                ) : <Icon name={metadata?.icon || ''} size={26} />}
-              </Link>
+              {IsImage(metadata?.icon) ? (
+                <Avatar
+                  size='sm'
+                  src={metadata.icon}
+                  variant='plain'
+                  sx={{
+                    borderRadius: 4,
+                    backgroundColor: 'transparent',
+                    objectFit: 'contain',
+                    border: 0,
+                    width: '30px',
+                    height: '30px',
+                  }}
+                />
+              ) : <Icon name={metadata?.icon || ''} size={26} />}
             </Tab>
           ))}
         </TabList>

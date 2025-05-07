@@ -23,7 +23,8 @@ import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownR
 import { type SidebarListItemProps, type SidebarProps } from './types';
 import { IsImage } from '../../../utils/url';
 import Icon from '../Icon';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { usePluginRouter } from '@omniviewdev/runtime';
 
 
 // memoize the scrollable styles to prevent rerenders
@@ -44,8 +45,7 @@ const scrollableSx = {
  */
 const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections }) => {
   const { id } = useParams<{ id: string }>()
-  const location = useLocation();
-  const navigate = useNavigate();
+  const { location, navigate } = usePluginRouter();
 
   const selected = location.pathname.split('/').pop();
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, usePluginRouter } from '@omniviewdev/runtime';
 
 // Material-ui
 import {
@@ -35,7 +35,7 @@ type Props = Omit<types.Connection, 'createFrom' | 'convertValues'>;
 
 const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, labels, last_refresh, expiry_time }) => {
   const { meta } = usePluginContext();
-  const navigate = useNavigate();
+  const { navigate } = usePluginRouter();
   const { showSnackbar } = useSnackbar();
 
   const { startConnection } = useConnection({ pluginID: meta.id, connectionID: id });

@@ -109,17 +109,48 @@ jobs:
       ###########################################################################
       # Sign and Package
       ###########################################################################
-      - name: Codesign and Notarization
-        uses: lando/code-sign-action@v3
+      # - name: Codesign and Notarization
+      #   uses: lando/code-sign-action@v3
+      #   with:
+      #     file: build/bin/Omniview.app/Contents/MacOS/Omniview
+      #     certificate-data: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_P12_BASE64 }}
+      #     certificate-id: ${{ secrets.CLI_MACOS_TEAM_ID }}
+      #     certificate-password: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+      #     apple-notary-user: ${{ secrets.CLI_MACOS_NOTARY_USER }}
+      #     apple-notary-password: ${{ secrets.CLI_MACOS_NOTARY_PWD }}
+      #     apple-product-id: com.omniview.omniview
+      #     options: --options runtime --entitlements ./build/darwin/entitlements.xml
+      - name: Import Code-Signing Certificates for macOS
+        uses: Apple-Actions/import-codesign-certs@v1
         with:
-          file: build/bin/Omniview.app/Contents/MacOS/Omniview
-          certificate-data: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_P12_BASE64 }}
-          certificate-id: ${{ secrets.CLI_MACOS_TEAM_ID }}
-          certificate-password: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
-          apple-notary-user: ${{ secrets.CLI_MACOS_NOTARY_USER }}
-          apple-notary-password: ${{ secrets.CLI_MACOS_NOTARY_PWD }}
-          apple-product-id: com.omniview.omniview
-          options: --options runtime --entitlements ./build/darwin/entitlements.xml
+          p12-file-base64: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+
+      - name: Sign and Notarize
+        shell: bash
+        run: |
+          # 1. Sign the .app
+          codesign --deep --force \
+            --options runtime \
+            --entitlements build/darwin/entitlements.plist \
+            --sign "Developer ID Application: Joshua Pare (696AD8J8ZT)" \
+            build/bin/Omniview.app
+
+          # 2. Zip the .app
+          ditto -c -k --keepParent --rsrc build/bin/Omniview.app archive.zip
+
+          # 3. Submit for notarization
+          xcrun notarytool submit archive.zip \
+          --apple-id "${{ secrets.CLI_MACOS_NOTARY_USER }}" \
+          --password "${{ secrets.CLI_MACOS_NOTARY_PWD }}" \
+          --team-id "${{ secrets.CLI_MACOS_TEAM_ID }}" \
+          --wait
+
+          # 4. Staple the ticket to the .app
+          xcrun stapler staple build/bin/Omniview.app
+
+          # 5. (Optional) Verify everything
+          spctl --assess --type execute --verbose build/bin/Omniview.app
 
       - name: Checkout create-image
         uses: actions/checkout@v2

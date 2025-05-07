@@ -1,5 +1,6 @@
 import React from 'react';
-import { Link, Outlet, useParams } from 'react-router-dom';
+import { Outlet, useParams } from 'react-router-dom';
+import { Link } from '@omniviewdev/runtime';
 
 // Material-ui
 import {

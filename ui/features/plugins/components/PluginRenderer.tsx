@@ -1,8 +1,8 @@
 import React from 'react';
 
-import { PluginContextProvider, PluginWindow } from '@omniviewdev/runtime';
-import { UNSAFE_LocationContext, useParams } from 'react-router-dom';
-import { clearPlugin, importPluginWindow } from '../api/loader';
+import { PluginContextProvider } from '@omniviewdev/runtime';
+import { Outlet, useLoaderData } from 'react-router-dom';
+import { clearPlugin, loadAndRegisterPlugin } from '../api/loader';
 import { EventsOn, WindowReloadApp } from '@omniviewdev/runtime/runtime';
 import { type config } from '@omniviewdev/runtime/models';
 
@@ -48,42 +48,16 @@ export type PluginRendererProps = {}
  * to deal with various loading states.
  */
 const PluginRenderer: React.FC<PluginRendererProps> = () => {
-  const { pluginId } = useParams<{ pluginId: string }>()
-  const [plugin, setPlugin] = React.useState<PluginWindow | undefined>()
-  const [loading, setLoading] = React.useState(true)
-  const [error, setError] = React.useState<Error | undefined>()
+  const data = useLoaderData() as { pluginID: string } | undefined
 
   /**
    * Load the plugin window on first mount
    */
   React.useEffect(() => {
-    console.log('Loading plugin', pluginId)
-
-    if (!pluginId) {
-      return
-    }
-    const loadPlugin = async () => {
-      try {
-        const loaded = await importPluginWindow({ pluginId })
-        setPlugin(loaded)
-        setError(undefined)
-      } catch (error) {
-        console.log(error)
-        if (error instanceof Error) {
-          setError(error)
-        }
-        setPlugin(undefined)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadPlugin()
-
     const closer = EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
-      if (meta.id === pluginId) {
-        clearPlugin({ pluginId })
-          .then(loadPlugin)
+      if (!!data?.pluginID && meta.id === data.pluginID) {
+        clearPlugin({ pluginId: data?.pluginID })
+          .then(() => loadAndRegisterPlugin(data.pluginID))
           .then(WindowReloadApp)
           .catch((error) => {
             console.error('Error clearing plugin', error)
@@ -94,46 +68,16 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
       // Cleanup watchers
       closer()
     };
-  }, [pluginId])
+  }, [data?.pluginID])
 
 
-  /** TODO: make this more robust */
-  if (!pluginId) {
-    return <div></div>
-  }
-
-  /** TODO: make this more robust */
-  if (!plugin && loading) {
-    return <div></div>
-  }
-
-  if (!plugin && error) {
-    return (
-      <div>
-        Error loading plugin
-        <pre>
-          {error.name}
-        </pre>
-        <pre>
-          {error.message}
-        </pre>
-        <pre>
-          {error.stack}
-        </pre>
-      </div>
-    )
-  }
-
-  if (!plugin?.root) {
-    return <div>Plugin does not have a root page</div>
+  if (!data?.pluginID) {
+    return <>No Plugin ID found</>
   }
 
   return (
-    <PluginContextProvider pluginId={pluginId}>
-      {/* @ts-expect-error - Dirty hack to kill the route context propogation https://github.com/remix-run/react-router/issues/7375#issuecomment-975431736 */}
-      <UNSAFE_LocationContext.Provider value={null}>
-        {plugin.Window}
-      </UNSAFE_LocationContext.Provider>
+    <PluginContextProvider pluginId={data.pluginID}>
+      <Outlet />
     </PluginContextProvider>
   )
 }
