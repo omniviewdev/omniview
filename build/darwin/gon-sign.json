@@ -1,0 +1,19 @@
+{
+  "source": [
+    "./build/bin/Omniview.app"
+  ],
+  "bundle_id": "com.omniview.omniview",
+  "apple_id": {
+    "username": "@env:APPLE_USERNAME",
+    "password": "@env:APPLE_PASSWORD",
+    "providers": "696AD8J8ZT"
+  },
+  "sign": {
+    "application_identity": "Developer ID Application: Joshua Pare",
+    "entitlements_file": "./build/darwin/entitlements.xml"
+  },
+  "dmg": {
+    "output_path": "./build/bin/Omniview.dmg",
+    "volume_name": "Omniview"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "notarize": [
+    {
+      "path": "./build/bin/Omniview.pkg",
+      "bundle_id": "com.omniview.omniview",
+      "staple": true
+    },
+    {
+      "path": "./build/bin/Omniview.app.zip",
+      "bundle_id": "com.omniview.omniview",
+      "staple": false
+    }
+  ],
+  "apple_id": {
+    "username": "@env:APPLE_USERNAME",
+    "password": "@env:APPLE_PASSWORD",
+    "providers": "696AD8J8ZT"
+  }
+}

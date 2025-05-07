@@ -109,46 +109,95 @@ jobs:
       ###########################################################################
       # Sign and Package
       ###########################################################################
-      - name: Codesign and Notarization
-        uses: lando/code-sign-action@v3
+      # Package and Sign MacOS
+      - name: Import Code-Signing Certificates for macOS
+        uses: Apple-Actions/import-codesign-certs@v1
         with:
-          file: build/bin/Omniview.app/Contents/MacOS/Omniview
-          certificate-data: ${{ secrets.CLI_MACOS_CERTIFICATE }}
-          certificate-id: ${{ secrets.CLI_MACOS_TEAM_ID }}
-          certificate-password: ${{ secrets.CLI_MACOS_CERTIFICATE_PWD }}
-          apple-notary-user: ${{ secrets.CLI_MACOS_NOTARY_USER }}
-          apple-notary-password: ${{ secrets.CLI_MACOS_NOTARY_PWD }}
-          apple-product-id: com.omniview.omniview
-          options: --options runtime --entitlements ./build/darwin/entitlements.xml
+          keychain-password: ${{ secrets.CLI_MACOS_NOTARY_PWD }}
+          p12-file-base64: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
 
-      - name: Checkout create-image
-        uses: actions/checkout@v2
+      - name: Import Code-Signing Certificates for macOS Installer
+        uses: Apple-Actions/import-codesign-certs@v1
         with:
-          repository: create-dmg/create-dmg
-          path: ./build/create-dmg
-          ref: master
+          keychain-password: ${{ inputs.sign-macos-apple-password }}
+          p12-file-base64: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+          create-keychain: false
 
-      - name: Create DMG
+      - name: Sign our macOS binary
         shell: bash
-        working-directory: ./build
+        env:
+          APPLE_USERNAME: ${{ secrets.CLI_MACOS_NOTARY_USER }}
+          APPLE_PASSWORD: ${{ secrets.CLI_MACOS_NOTARY_PWD }}
         run: |
-          ./create-dmg/create-dmg \
-            --no-internet-enable \
-            --volname "Omniview" \
-            --volicon "bin/Omniview.app/Contents/Resources/iconfile.icns" \
-            --text-size 12 \
-            --window-pos 400 400 \
-            --window-size 660 450 \
-            --icon-size 80 \
-            --icon "Omniview.app" 180 180 \
-            --hide-extension "Omniview.app" \
-            --app-drop-link 480 180 \
-            "bin/Omniview-${{ steps.normalise_platform.outputs.tag }}.dmg" \
-            "bin"
+          echo "Signing Package"
+          gon -log-level=info ./build/darwin/gon-sign.json
+
+      - name: Build .app zip file
+        shell: bash
+        run: |
+          ditto -c -k --keepParent ./build/bin/.app ./build/bin/Omniview.app.zip
+
+      - name: Building Installer
+        shell: bash
+        run: |
+          productbuild --sign "Developer ID Application: Joshua Pare (696AD8J8ZT)" --component ./build/bin/Omniview.app /Applications ./build/bin/Omniview.pkg
+
+      - name: Building Installer
+        shell: bash
+        run: |
+          productbuild --component ./build/bin/Omniview.app /Applications ./build/bin/Omniview.pkg
+
+      - name: Notarising Installer and zip
+        shell: bash
+        env:
+          APPLE_USERNAME: ${{ secrets.CLI_MACOS_NOTARY_USER }}
+          APPLE_PASSWORD: ${{ secrets.CLI_MACOS_NOTARY_PWD }}
+        run: |
+          gon -log-level=info ./build/darwin/gon-notarize.json
+
+      #
+      # - name: Codesign and Notarization
+      #   uses: lando/code-sign-action@v3
+      #   with:
+      #     file: build/bin/Omniview.app/Contents/MacOS/Omniview
+      #     certificate-data: ${{ secrets.CLI_MACOS_CERTIFICATE }}
+      #     certificate-id: ${{ secrets.CLI_MACOS_TEAM_ID }}
+      #     certificate-password: ${{ secrets.CLI_MACOS_CERTIFICATE_PWD }}
+      #     apple-notary-user: ${{ secrets.CLI_MACOS_NOTARY_USER }}
+      #     apple-notary-password: ${{ secrets.CLI_MACOS_NOTARY_PWD }}
+      #     apple-product-id: com.omniview.omniview
+      #     options: --options runtime --entitlements ./build/darwin/entitlements.xml
+      #
+      # - name: Checkout create-image
+      #   uses: actions/checkout@v2
+      #   with:
+      #     repository: create-dmg/create-dmg
+      #     path: ./build/create-dmg
+      #     ref: master
+      #
+      # - name: Create DMG
+      #   shell: bash
+      #   working-directory: ./build
+      #   run: |
+      #     ./create-dmg/create-dmg \
+      #       --no-internet-enable \
+      #       --volname "Omniview" \
+      #       --volicon "bin/Omniview.app/Contents/Resources/iconfile.icns" \
+      #       --text-size 12 \
+      #       --window-pos 400 400 \
+      #       --window-size 660 450 \
+      #       --icon-size 80 \
+      #       --icon "Omniview.app" 180 180 \
+      #       --hide-extension "Omniview.app" \
+      #       --app-drop-link 480 180 \
+      #       "bin/Omniview-${{ steps.normalise_platform.outputs.tag }}.dmg" \
+      #       "bin"
 
       - name: Rename dmg
         working-directory: ./build/bin
-        run: mv "Omniview-${{ steps.normalise_platform.outputs.tag }}.dmg" "Omniview_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.dmg"
+        run: mv "Omniview.dmg" "Omniview_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.dmg"
 
       ###########################################################################
       # Sign and Package
