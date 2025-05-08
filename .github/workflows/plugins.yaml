@@ -10,26 +10,26 @@ env:
   NODE_OPTIONS: "--max-old-space-size=4096"
 
 jobs:
-  tag-release:
-    strategy:
-      matrix:
-        plugin: ["kubernetes"]
-    runs-on: ubuntu-latest
-    if: github.ref_type == 'tag'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Create Plugin Release Tag
-        uses: actions/github-script@v5
-        with:
-          script: |
-            github.rest.git.createRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: 'refs/tags/plugin-${{ matrix.plugin }}-${{ github.ref_name }}',
-              sha: context.sha
-            })
+  # tag-release:
+  #   strategy:
+  #     matrix:
+  #       plugin: ["kubernetes"]
+  #   runs-on: ubuntu-latest
+  #   if: github.ref_type == 'tag'
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v3
+  #
+  #     - name: Create Plugin Release Tag
+  #       uses: actions/github-script@v5
+  #       with:
+  #         script: |
+  #           github.rest.git.createRef({
+  #             owner: context.repo.owner,
+  #             repo: context.repo.repo,
+  #             ref: 'refs/tags/plugin-${{ matrix.plugin }}-${{ github.ref_name }}',
+  #             sha: context.sha
+  #           })
 
   build:
     strategy:
@@ -72,7 +72,7 @@ jobs:
           version: 10
           run_install: |
             - args: []
-            - args: [--global, typescript]
+            - args: [--global, typescript, yq]
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -116,11 +116,34 @@ jobs:
         run: |
           tar -czvf ./plugin-${{ matrix.plugin }}-${{ github.ref_name }}-${{ matrix.build.os }}-${{ matrix.build.arch }}.tar.gz -C ./build .
 
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        if: github.ref_type == 'tag'
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          tag_name: plugin-${{ matrix.plugin }}-${{ github.ref_name }}
-          name: plugin-${{ matrix.plugin }}-${{ github.ref_name }}
-          files: ./plugins/${{ matrix.plugin }}/plugin-${{ matrix.plugin }}-${{ github.ref_name }}-${{ matrix.build.os }}-${{ matrix.build.arch }}.tar.gz
-          token: ${{ secrets.GITHUB_TOKEN }}
+          aws-access-key-id: ${{ secrets.PLUGIN_DEPLOY_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.PLUGIN_DEPLOY_AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Upload plugin tarballs
+        working-directory: plugins/${{ matrix.plugin }}
+        run: |
+          aws s3 cp \
+            plugin-${{ matrix.plugin }}-${{ github.ref_name }}-${{ matrix.build.os }}-${{ matrix.build.arch }}.tar.gz \
+            s3://${{ vars.PLUGIN_DEPLOY_BUCKET_NAME }}/${{ matrix.plugin }}/${{ github.ref_name}}/
+
+      - name: Convert YAML → JSON
+        run: |
+          yq -o=json plugins/${{ matrix.plugin }}/plugin.yaml > plugin.json
+
+      - name: Upload plugin.json
+        run: |
+          aws s3 cp plugin.json \
+            s3://${{ vars.PLUGIN_DEPLOY_BUCKET_NAME }}/${{ matrix.plugin }}/${{ github.ref_name}}/plugin.json
+
+      # - name: Release
+      #   uses: softprops/action-gh-release@v1
+      #   if: github.ref_type == 'tag'
+      #   with:
+      #     tag_name: plugin-${{ matrix.plugin }}-${{ github.ref_name }}
+      #     name: plugin-${{ matrix.plugin }}-${{ github.ref_name }}
+      #     files: ./plugins/${{ matrix.plugin }}/plugin-${{ matrix.plugin }}-${{ github.ref_name }}-${{ matrix.build.os }}-${{ matrix.build.arch }}.tar.gz
+      #     token: ${{ secrets.GITHUB_TOKEN }}

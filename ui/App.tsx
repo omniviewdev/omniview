@@ -28,6 +28,7 @@ import { EXTENSION_REGISTRY } from './features/extensions/store'
 import { ConfirmationModalProvider } from './contexts/ConfirmationModalContext';
 import { PluginRegistryProvider } from './features/plugins/PluginRegistryProvider';
 import { RouteProvider } from './features/router/RouteProvider';
+import log from '@/features/logger'
 
 // Create a client
 const queryClient = new QueryClient({
@@ -49,6 +50,7 @@ function fallbackRender({ error }: { error: Error }) {
 
 const materialTheme = materialExtendTheme();
 
+log.debug("starting up the application")
 
 /**
  * Render out the core layout for the application

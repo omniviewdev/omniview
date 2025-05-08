@@ -11,6 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-hclog v1.6.2
 	github.com/hashicorp/go-plugin v1.6.0
+	github.com/nxadm/tail v1.4.11
 	github.com/omniviewdev/plugin-sdk v0.0.0-20240314004425-c2572eb4a1c1
 	github.com/omniviewdev/settings v0.0.0-00010101000000-000000000000
 	github.com/vrischmann/userdir v0.0.0-20151206171402-20f291cebd68
@@ -83,6 +84,7 @@ require (
 	google.golang.org/protobuf v1.36.5 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
+	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	k8s.io/api v0.33.0 // indirect
 	k8s.io/apimachinery v0.33.0 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
