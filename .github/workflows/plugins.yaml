@@ -95,10 +95,18 @@ jobs:
         run: |
           tar -czvf ./plugin-${{ matrix.plugin }}-${{ github.ref_name }}-${{ matrix.build.os }}-${{ matrix.build.arch }}.tar.gz -C ./build .
 
+      - uses: rickstaa/action-create-tag@v1
+        name: Create plugin release tag
+        with:
+          tag: plugin-${{ matrix.plugin }}-${{ github.ref_name }}
+          tag_exists_error: false
+          message: "Latest release"
+
       - name: Release
         uses: softprops/action-gh-release@v1
         if: github.ref_type == 'tag'
         with:
+          tag_name: plugin-${{ matrix.plugin }}-${{ github.ref_name }}
           name: plugin-${{ matrix.plugin }}-${{ github.ref_name }}
           files: ./plugins/${{ matrix.plugin }}/plugin-${{ matrix.plugin }}-${{ github.ref_name }}-${{ matrix.build.os }}-${{ matrix.build.arch }}.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}

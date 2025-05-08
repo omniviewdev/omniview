@@ -79,7 +79,7 @@ jobs:
       - name: Rename executable (Windows)
         working-directory: ./build/bin
         if: github.ref_type == 'tag' && matrix.build.os == 'windows-latest'
-        run: Rename-Item -Path "Omniview.exe" -NewName "Omniview_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe"
+        run: Rename-Item -Path "Omniview" -NewName "Omniview_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe"
 
       - name: Release (Windows)
         uses: softprops/action-gh-release@v1
