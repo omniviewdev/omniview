@@ -1,34 +1,82 @@
 package clients
 
 import (
+	"fmt"
+	"net/url"
 	"os"
+	"path"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// Create
+type lumberjackSink struct {
+	*lumberjack.Logger
+}
 
-// CreateLogger creates a new logger for the application.
-func CreateLogger(debug bool) *zap.SugaredLogger {
-	pe := zap.NewProductionEncoderConfig()
+func (lumberjackSink) Sync() error {
+	return nil
+}
 
-	// fileEncoder := zapcore.NewJSONEncoder(pe)
-
-	pe.EncodeTime = zapcore.ISO8601TimeEncoder
-	pe.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	consoleEncoder := zapcore.NewConsoleEncoder(pe)
-
-	level := zap.InfoLevel
-	if debug {
+func CreateLogger(dev bool) *zap.SugaredLogger {
+	var level zapcore.Level
+	if dev {
 		level = zap.DebugLevel
+	} else {
+		level = zap.ErrorLevel
 	}
 
-	core := zapcore.NewTee(
-		// zapcore.NewCore(fileEncoder, zapcore.AddSync(f), level),
-		zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), level),
-	)
+	// store the logs in the dot directory
+	baseDir, err := os.UserHomeDir()
+	if err != nil {
+		baseDir = os.TempDir()
+	} else {
+		baseDir = path.Join(baseDir, ".omniview", "logs")
+	}
 
-	l := zap.New(core)
-	return l.Sugar()
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		return zap.L().Sugar()
+	}
+
+	logFile := path.Join(baseDir, "app.log")
+
+	encoderConfig := zapcore.EncoderConfig{
+		TimeKey:        "ts",
+		LevelKey:       "level",
+		NameKey:        "logger",
+		CallerKey:      "caller",
+		MessageKey:     "msg",
+		StacktraceKey:  "stacktrace",
+		LineEnding:     zapcore.DefaultLineEnding,
+		EncodeLevel:    zapcore.LowercaseLevelEncoder,
+		EncodeTime:     zapcore.ISO8601TimeEncoder,
+		EncodeDuration: zapcore.SecondsDurationEncoder,
+		EncodeCaller:   zapcore.ShortCallerEncoder,
+	}
+	ll := lumberjack.Logger{
+		Filename:   logFile,
+		MaxSize:    1024, // MB
+		MaxBackups: 30,
+		MaxAge:     90, // days
+		Compress:   true,
+	}
+	zap.RegisterSink("lumberjack", func(*url.URL) (zap.Sink, error) {
+		return lumberjackSink{
+			Logger: &ll,
+		}, nil
+	})
+	loggerConfig := zap.Config{
+		Level:         zap.NewAtomicLevelAt(level),
+		Development:   dev,
+		Encoding:      "console",
+		EncoderConfig: encoderConfig,
+		OutputPaths:   []string{fmt.Sprintf("lumberjack:%s", logFile)},
+	}
+	_globalLogger, err := loggerConfig.Build()
+	if err != nil {
+		panic(fmt.Sprintf("build zap logger from config error: %v", err))
+	}
+	zap.ReplaceGlobals(_globalLogger)
+	return _globalLogger.Sugar()
 }

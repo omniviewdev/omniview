@@ -26,6 +26,7 @@ import (
 )
 
 const (
+	PluginInstallStart         = "plugin/install_start"
 	PluginDevInstallEventStart = "plugin/dev_install_start"
 	PluginReloadEventStart     = "plugin/dev_reload_start"
 	PluginReloadEventError     = "plugin/dev_reload_error"
@@ -295,7 +296,10 @@ func buildPluginBinary(path string) error {
 		joined := filepath.Join(path, file)
 		_, err := os.Stat(joined)
 		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("failed to build plugin binary: required file %s not found in plugin path", joined)
+			return fmt.Errorf(
+				"failed to build plugin binary: required file %s not found in plugin path",
+				joined,
+			)
 		}
 	}
 
@@ -342,7 +346,10 @@ func buildPluginUi(path string) error {
 		joined := filepath.Join(path, file)
 		_, err := os.Stat(joined)
 		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("failed to build plugin ui bundle: required file %s not found in plugin path", joined)
+			return fmt.Errorf(
+				"failed to build plugin ui bundle: required file %s not found in plugin path",
+				joined,
+			)
 		}
 	}
 	out := filepath.Join(path, "ui")

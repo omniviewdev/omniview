@@ -127,40 +127,14 @@ func (e *EKSAuthStrategy) BuildRestConfig(
 		e.useDefault = true
 		return clientLoader.ClientConfig()
 	}
-	//
-	// for i := range len(authInfo.Exec.Args) - 1 {
-	// 	if authInfo.Exec.Args[i] == "--cluster-name" {
-	// 		e.clusterName = authInfo.Exec.Args[i+1]
-	// 	}
-	// 	if authInfo.Exec.Args[i] == "--role-arn" {
-	// 		e.roleArn = authInfo.Exec.Args[i+1]
-	// 	}
-	// 	if authInfo.Exec.Args[i] == "--region" {
-	// 		e.region = authInfo.Exec.Args[i+1]
-	// 	}
-	// }
-	// // try to see if there's a profile we can use
-	// for _, entry := range authInfo.Exec.Env {
-	// 	if entry.Name == "AWS_PROFILE" {
-	// 		e.profile = entry.Value
-	// 	}
-	// 	if entry.Name == "AWS_REGION" {
-	// 		e.region = entry.Value
-	// 	}
-	// }
-	//
-	// if e.clusterName == "" {
-	// 	// fallback to parsing from user name: arn:aws:eks:region:acct:cluster/my-cluster
-	// 	parts := strings.Split(authInfo.Exec.Args[0], "/")
-	// 	if len(parts) > 1 {
-	// 		e.clusterName = parts[len(parts)-1]
-	// 	}
-	// }
 
 	baseConfig, err := clientLoader.ClientConfig()
 	if err != nil {
 		return nil, err
 	}
+
+	// clear out the exec provider so it's not used
+	baseConfig.ExecProvider = nil
 
 	configShallowCopy := *baseConfig
 
