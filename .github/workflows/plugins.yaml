@@ -10,6 +10,27 @@ env:
   NODE_OPTIONS: "--max-old-space-size=4096"
 
 jobs:
+  tag-release:
+    strategy:
+      matrix:
+        plugin: ["kubernetes"]
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Create Plugin Release Tag
+        uses: actions/github-script@v5
+        with:
+          script: |
+            github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: 'refs/tags/plugin-${{ matrix.plugin }}-${{ github.ref_name }}',
+              sha: context.sha
+            })
+
   build:
     strategy:
       # Failure in one platform build won't impact the others
@@ -94,13 +115,6 @@ jobs:
         working-directory: plugins/${{ matrix.plugin }}
         run: |
           tar -czvf ./plugin-${{ matrix.plugin }}-${{ github.ref_name }}-${{ matrix.build.os }}-${{ matrix.build.arch }}.tar.gz -C ./build .
-
-      - uses: rickstaa/action-create-tag@v1
-        name: Create plugin release tag
-        with:
-          tag: plugin-${{ matrix.plugin }}-${{ github.ref_name }}
-          tag_exists_error: false
-          message: "Latest release"
 
       - name: Release
         uses: softprops/action-gh-release@v1
