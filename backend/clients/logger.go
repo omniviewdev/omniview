@@ -73,10 +73,10 @@ func CreateLogger(dev bool) *zap.SugaredLogger {
 		EncoderConfig: encoderConfig,
 		OutputPaths:   []string{fmt.Sprintf("lumberjack:%s", logFile)},
 	}
-	_globalLogger, err := loggerConfig.Build()
+	logger, err := loggerConfig.Build()
 	if err != nil {
 		panic(fmt.Sprintf("build zap logger from config error: %v", err))
 	}
-	zap.ReplaceGlobals(_globalLogger)
-	return _globalLogger.Sugar()
+
+	return logger.Sugar()
 }

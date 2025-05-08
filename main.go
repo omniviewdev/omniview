@@ -15,6 +15,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 
 	"github.com/omniviewdev/omniview/backend/clients"
+	"github.com/omniviewdev/omniview/backend/diagnostics"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
@@ -42,12 +43,16 @@ var assets embed.FS
 //go:embed build/appicon.png
 var icon []byte
 
-var Version = "0.0.0"
+var (
+	Version     = "0.0.0"
+	Development = true
+)
 
 //nolint:funlen // main function is expected to be long
 func main() {
 	// nillogger := logger.NewFileLogger("/dev/null")
-	log := clients.CreateLogger(true)
+	log := clients.CreateLogger(Development)
+	diagnosticsClient := diagnostics.NewDiagnosticsClient(Development)
 
 	settingsProvider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{
 		Logger: log,
@@ -145,6 +150,7 @@ func main() {
 		WindowStartState: options.Normal,
 		Bind: []any{
 			app,
+			diagnosticsClient,
 
 			// core engines/providers
 			settingsProvider,
