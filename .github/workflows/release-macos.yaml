@@ -2,8 +2,8 @@ name: Build and Release (MacOS)
 
 on:
   push:
-    branches:
-      - "macos-build-test"
+    tags:
+      - "*"
 
 env:
   # Necessary for most environments as build failure can occur due to OOM issues
@@ -109,17 +109,6 @@ jobs:
       ###########################################################################
       # Sign and Package
       ###########################################################################
-      # - name: Codesign and Notarization
-      #   uses: lando/code-sign-action@v3
-      #   with:
-      #     file: build/bin/Omniview.app/Contents/MacOS/Omniview
-      #     certificate-data: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_P12_BASE64 }}
-      #     certificate-id: ${{ secrets.CLI_MACOS_TEAM_ID }}
-      #     certificate-password: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
-      #     apple-notary-user: ${{ secrets.CLI_MACOS_NOTARY_USER }}
-      #     apple-notary-password: ${{ secrets.CLI_MACOS_NOTARY_PWD }}
-      #     apple-product-id: com.omniview.omniview
-      #     options: --options runtime --entitlements ./build/darwin/entitlements.xml
       - name: Import Code-Signing Certificates for macOS
         uses: Apple-Actions/import-codesign-certs@v1
         with:
@@ -133,7 +122,7 @@ jobs:
           codesign --deep --force \
             --options runtime \
             --entitlements build/darwin/entitlements.plist \
-            --sign "Developer ID Application: Joshua Pare (696AD8J8ZT)" \
+            --sign "${{ secrets.APPLE_DEVELOPER_SIGN_ID }}" \
             build/bin/Omniview.app
 
           # 2. Zip the .app

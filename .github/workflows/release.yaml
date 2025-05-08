@@ -22,25 +22,29 @@ jobs:
           - name: "windows"
             platform: "windows/amd64"
             os: "windows-latest"
-          - name: "macos"
-            platform: "darwin/universal"
-            os: "macos-latest"
 
     runs-on: ${{ matrix.build.os }}
     steps:
-      # - name: Normalise platform tag
-      #   id: normalise_platform
-      #   shell: bash
-      #   run: |
-      #     tag=$(echo ${{ matrix.build.platform }} | sed -e 's/\//_/g' -e 's/darwin/mac/g' -e 's/amd64/intel/g')
-      #     echo "tag=$tag" >> "$GITHUB_OUTPUT"
-      #
-      # - name: Normalize version tag
-      #   id: normalise_version
-      #   shell: bash
-      #   run: |
-      #     version=$(echo "${{ github.ref_name }}" | sed -e 's/^v//' | sed -e 's/-//')
-      #     echo "version=${version}" >> "$GITHUB_OUTPUT"
+      ###########################################################################
+      # Prepare release information
+      ###########################################################################
+      - name: Normalize version tag
+        id: normalise_version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            version=$(echo "${{ github.ref_name }}" | sed -e 's/^v//' | sed -e 's/-//')
+          else
+            version="0.0.1"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Normalise platform tag
+        id: normalise_platform
+        shell: bash
+        run: |
+          tag=$(echo ${{ matrix.build.platform }} | sed -e 's/\//_/g')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         uses: actions/checkout@v2
@@ -69,10 +73,32 @@ jobs:
           node-version: "20.x"
           wails-version: "master"
 
-      - name: Release
+      ###########################################################################
+      # Windows preparation
+      ###########################################################################
+      - name: Rename executable (Windows)
+        working-directory: ./build/bin
+        if: github.ref_type == 'tag' && matrix.build.os == 'windows-latest'
+        run: Rename-Item -Path "Omniview.exe" -NewName "Omniview_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe"
+
+      - name: Release (Windows)
         uses: softprops/action-gh-release@v1
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' && matrix.build.os == 'windows-latest'
         with:
-          files: |
-            ./build/bin/*
+          files: ./build/bin/Omniview_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}.exe
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      ###########################################################################
+      # Linux preparation
+      ###########################################################################
+      - name: Rename executable (Linux)
+        working-directory: ./build/bin
+        if: github.ref_type == 'tag' && matrix.build.os == 'ubuntu-latest'
+        run: mv "Omniview" "Omniview_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}"
+
+      - name: Release (Linux)
+        uses: softprops/action-gh-release@v1
+        if: github.ref_type == 'tag' && matrix.build.os == 'ubuntu-latest'
+        with:
+          files: ./build/bin/Omniview_${{ steps.normalise_version.outputs.version }}_${{ steps.normalise_platform.outputs.tag }}
           token: ${{ secrets.GITHUB_TOKEN }}
