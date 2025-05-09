@@ -30,6 +30,24 @@ import { PluginRegistryProvider } from './features/plugins/PluginRegistryProvide
 import { RouteProvider } from './features/router/RouteProvider';
 import log from '@/features/logger'
 
+// 2. Global handlers for uncaught errors + promise rejections
+window.addEventListener("error", event => {
+  // event.error may be undefined (e.g. script load failures)
+  const err = event.error || new Error(String(event.message));
+  log.error(err, {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+
+window.addEventListener("unhandledrejection", event => {
+  const reason = event.reason instanceof Error
+    ? event.reason
+    : new Error(JSON.stringify(event.reason));
+  log.error(reason, { unhandledRejection: true });
+});
+
 // Create a client
 const queryClient = new QueryClient({
   defaultOptions: {
