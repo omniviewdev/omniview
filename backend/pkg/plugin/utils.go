@@ -369,7 +369,7 @@ func CopyDir(dst, src string) error {
 		// copy contents of regular file efficiently
 
 		// open input
-		in, _ := os.Open(path)
+		in, err := os.Open(path)
 		if err != nil {
 			return err
 		}

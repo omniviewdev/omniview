@@ -12,6 +12,7 @@ import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
 import TerminalContainer from '@/providers/BottomDrawer/containers/Terminal';
 import { useBottomDrawer } from '@omniviewdev/runtime';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
+import { EventsOn } from '@omniviewdev/runtime/runtime';
 
 
 /**
@@ -78,10 +79,16 @@ const BottomDrawerContainer: React.FC = () => {
       expandDrawerToHeight(height);
     });
 
+    const closerFullScreen = EventsOn("menu/view/bottomdrawer/fullscreen", () => {
+      expandDrawerToHeight(window.innerHeight);
+    })
     const unsubscribeOnFullScreen = bottomDrawerChannel.on('onFullscreen', () => {
       expandDrawerToHeight(window.innerHeight);
     });
 
+    const closerMinimize = EventsOn("menu/view/bottomdrawer/minimize", () => {
+      expandDrawerToHeight(minHeight);
+    });
     const unsubscribeOnMinimize = bottomDrawerChannel.on('onMinimize', () => {
       expandDrawerToHeight(minHeight);
     });
@@ -90,6 +97,9 @@ const BottomDrawerContainer: React.FC = () => {
       unsubscribeOnResizeDrawer();
       unsubscribeOnFullScreen();
       unsubscribeOnMinimize();
+
+      closerFullScreen();
+      closerMinimize();
     };
   }, []);
 

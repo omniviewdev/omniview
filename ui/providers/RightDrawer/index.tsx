@@ -12,6 +12,7 @@ import RightDrawerContext, { type RightDrawerContextType } from '@/contexts/Righ
 
 // local imports
 import ResourceDrawerContainer from '@/federation/ResourceSidebarComponent';
+import { EventsOn } from '@omniviewdev/runtime/runtime';
 
 type RightDrawerProviderProps = {
   children: ReactNode;
@@ -68,7 +69,7 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
 
     // Calculate the remaining viewport width to the right of the mouse cursor in pixels
     const newWidth = window.innerWidth - e.clientX;
-    
+
     // Clamp the width between min and max values
     if (newWidth < minWidth) {
       sidebarRef.current.style.width = minWidth + 'px';
@@ -84,10 +85,11 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
   // const handleMouseUp = useCallback(() => {
   //   setIsDragging(false);
   // }, []);
+  //
 
   React.useEffect(() => {
     const handleMouseUpGlobal = () => {
-      setIsDragging(false); 
+      setIsDragging(false);
     };
 
     if (isDragging) {
@@ -146,6 +148,14 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
     setIsOpen(true);
   }, []);
 
+  React.useEffect(() => {
+    const closerMinimize = EventsOn("menu/view/sidebar/minimize", () => closeDrawer())
+
+    return () => {
+      closerMinimize()
+    }
+  }, [])
+
   const contextValue = useMemo(() => ({
     closeDrawer,
     showResourceSidebar,
@@ -184,16 +194,16 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
             bottom: 0,
             width: '10px', // This is the width of the draggable area
             cursor: 'col-resize',
-            borderLeft: `${isDragging ? 4 : 2 }px solid ${theme.palette.primary[400]}`,
+            borderLeft: `${isDragging ? 4 : 2}px solid ${theme.palette.primary[400]}`,
             borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 0px 0px 2px' : '6px 0px 0px 6px',
             opacity: isDragging ? 0.5 : isHovering ? 0.2 : 0,
             transition: 'opacity 0.2s, border 0.2s',
           }}
           onMouseEnter={() => {
-            setIsHovering(true); 
+            setIsHovering(true);
           }}
           onMouseLeave={() => {
-            setIsHovering(false); 
+            setIsHovering(false);
           }}
           onMouseDown={handleMouseDown}
           onClick={handleClick}

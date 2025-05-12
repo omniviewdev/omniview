@@ -5,8 +5,9 @@ import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import { DrawerComponent } from '@omniviewdev/runtime'
-import { LuBox } from 'react-icons/lu'
+import { LuBox, LuCode } from 'react-icons/lu'
 import ReplicaSetSidebar from '../../../sidebar/appsv1/ReplicaSet'
+import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
 
 const resourceKey = 'apps::v1::ReplicaSet'
 
@@ -18,15 +19,20 @@ const ReplicaSetTable: React.FC = () => {
     [],
   )
 
-  const drawer: DrawerComponent = React.useMemo(() => ({
+  const drawer: DrawerComponent<ReplicaSet> = React.useMemo(() => ({
     title: resourceKey, // TODO: change runtime sdk to accept a function
     icon: <LuBox />,
     views: [
       {
         title: 'Overview',
         icon: <LuBox />,
-        component: (data: any) => <ReplicaSetSidebar data={data} />
+        component: (ctx) => <ReplicaSetSidebar data={ctx.data || {}} />
       },
+      {
+        title: 'Editor',
+        icon: <LuCode />,
+        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
+      }
     ],
     actions: []
   }), [])

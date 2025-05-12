@@ -5,8 +5,9 @@ import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import { DrawerComponent } from '@omniviewdev/runtime'
-import { LuBox } from 'react-icons/lu'
+import { LuBox, LuCode } from 'react-icons/lu'
 import DeploymentSidebar from '../../../sidebar/appsv1/Deployment'
+import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
 
 const resourceKey = 'apps::v1::Deployment'
 const DeploymentTable: React.FC = () => {
@@ -17,15 +18,20 @@ const DeploymentTable: React.FC = () => {
     [],
   )
 
-  const drawer: DrawerComponent = React.useMemo(() => ({
+  const drawer: DrawerComponent<Deployment> = React.useMemo(() => ({
     title: resourceKey, // TODO: change runtime sdk to accept a function
     icon: <LuBox />,
     views: [
       {
         title: 'Overview',
         icon: <LuBox />,
-        component: (data: any) => <DeploymentSidebar data={data} />
+        component: (ctx) => <DeploymentSidebar data={ctx.data || {}} />
       },
+      {
+        title: 'Editor',
+        icon: <LuCode />,
+        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
+      }
     ],
     actions: []
   }), [])

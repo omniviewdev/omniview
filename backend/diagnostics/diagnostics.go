@@ -49,7 +49,6 @@ func (c *DiagnosticsClient) Error(msg string, fields map[string]any) {
 
 // Log records an arbitrary log with a set level to the log sink
 func (c *DiagnosticsClient) Log(level, msg string, fields map[string]any) {
-	log.Println("got log from ui")
 	ctx := context.TODO()
 	c.UI.Log(ctx, level, msg, fields)
 }

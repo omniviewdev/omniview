@@ -1,15 +1,17 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import path from "node:path";
 
-const externals = [
+const external = [
   // MUI
   "@emotion/react",
-  "@mui/joy",
   "@mui/base",
   "@mui/x-charts",
   "@mui/material",
   "@mui/material-icons",
+  "@mui/material-icons/si",
+  "@mui/material-icons/lu",
+
+  "@mui/joy",
 
   // REACT
   "react",
@@ -58,14 +60,14 @@ export default defineConfig({
         chunkFileNames: "assets/[name].js",
         assetFileNames: "assets/[name].[ext]",
         format: 'system',
-        globals: {
-          'react': 'react',
-          'react-dom': 'ReactDOM',
-          'react/jsx-runtime': 'react/jsx-runtime',
-        },
-      },
-      preserveEntrySignatures: "exports-only",
-      external: externals,
+      },      // Keep exports as defined in source
+      preserveEntrySignatures: 'exports-only',
+      external,
+      // external: (id) => {
+      //   const match = external.some(pkg => id === pkg || id.startsWith(pkg))
+      //   if (match) console.log(`EXTERNAL: ${id}`)
+      //   return match
+      // }
     }
   },
 });

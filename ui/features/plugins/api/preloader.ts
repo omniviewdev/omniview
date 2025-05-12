@@ -1,33 +1,9 @@
-/**
- * Helpers to add a preload module to the SystemJS registry for plugins
- */
-function addPreload(id: string, preload: (() => Promise<System.Module>) | System.Module) {
-  if (System.has(id)) {
-    return;
-  }
+import { shared } from './shared_dependencies';
+import { SystemJS } from './systemjs';
+import { buildImportMap } from './utils';
 
-  let resolvedId;
-  try {
-    resolvedId = System.resolve(id);
-  } catch (e) {
-    console.log(e);
-  }
-
-  if (resolvedId && System.has(resolvedId)) {
-    return;
-  }
-
-  const moduleId = resolvedId || id;
-  if (typeof preload === 'function') {
-    System.register(id, [], (_export) => {
-      return {
-        execute: async function () {
-          const module = await preload();
-          _export(module);
-        },
-      };
-    });
-  } else {
-    System.set(moduleId, preload);
-  }
+export function preloadSharedDeps() {
+  const imports = buildImportMap(shared);
+  console.log("got import map", imports)
+  SystemJS.addImportMap({ imports });
 }

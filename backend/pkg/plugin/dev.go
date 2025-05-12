@@ -1,13 +1,16 @@
 package plugin
 
 import (
-	"archive/tar"
-	"compress/gzip"
+	// "archive/tar"
+	"bytes"
+
+	// "compress/gzip"
 	"context"
 	"errors"
 	"fmt"
 	"io"
-	"log"
+
+	// "log"
 	"math"
 	"os"
 	"os/exec"
@@ -26,11 +29,13 @@ import (
 )
 
 const (
-	PluginInstallStart         = "plugin/install_start"
-	PluginDevInstallEventStart = "plugin/dev_install_start"
-	PluginReloadEventStart     = "plugin/dev_reload_start"
-	PluginReloadEventError     = "plugin/dev_reload_error"
-	PluginReloadEventComplete  = "plugin/dev_reload_complete"
+	PluginInstallStart            = "plugin/install_start"
+	PluginDevInstallEventStart    = "plugin/dev_install_start"
+	PluginDevInstallEventError    = "plugin/dev_install_error"
+	PluginDevInstallEventComplete = "plugin/dev_install_complete"
+	PluginReloadEventStart        = "plugin/dev_reload_start"
+	PluginReloadEventError        = "plugin/dev_reload_error"
+	PluginReloadEventComplete     = "plugin/dev_reload_complete"
 )
 
 const (
@@ -211,7 +216,10 @@ func (pm *pluginManager) RemoveTarget(dir string) {
 	delete(pm.watchTargets, dir)
 }
 
-func (pm *pluginManager) installAndWatchDevPlugin(dir string) (*config.PluginMeta, error) {
+func (pm *pluginManager) installAndWatchDevPlugin(
+	dir string,
+	opts types.BuildOpts,
+) (*config.PluginMeta, error) {
 	meta, err := parseMetadataFromPluginPath(dir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse metadata from plugin path: %w", err)
@@ -221,10 +229,13 @@ func (pm *pluginManager) installAndWatchDevPlugin(dir string) (*config.PluginMet
 	runtime.EventsEmit(pm.ctx, PluginDevInstallEventStart, meta)
 
 	// start the package
-	if err = buildAndTransferPlugin(dir, meta, types.BuildOpts{}); err != nil {
+	if err = buildAndTransferPlugin(dir, meta, opts); err != nil {
+		// signal to UI the install has ended
+		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, meta)
 		return nil, fmt.Errorf("failed to build and package plugin: %w", err)
 	}
 
+	runtime.EventsEmit(pm.ctx, PluginDevInstallEventComplete, meta)
 	return meta, nil
 }
 
@@ -242,6 +253,9 @@ func (pm *pluginManager) handleWatchEvent(event fsnotify.Event) error {
 		ExcludeBackend: true,
 		ExcludeUI:      true,
 	}
+	opts.GoPath, _ = pm.settingsProvider.GetString("developer.gopath")
+	opts.PnpmPath, _ = pm.settingsProvider.GetString("developer.pnpmpath")
+	opts.NodePath, _ = pm.settingsProvider.GetString("developer.nodepath")
 
 	// determine if which portions we need to build
 	if strings.HasPrefix(event.Name, filepath.Join(target, "pkg")) {
@@ -279,7 +293,7 @@ func (pm *pluginManager) handleWatchEvent(event fsnotify.Event) error {
 // Builds the go plugin binary for the given path (if it exists). If
 // this is being built, we're assuming it has the capabilities that necessitate
 // building a go binary.
-func buildPluginBinary(path string) error {
+func buildPluginBinary(path string, opts types.BuildOpts) error {
 	if path == "" {
 		return errors.New("cannot build plugin binary: path is empty")
 	}
@@ -311,16 +325,23 @@ func buildPluginBinary(path string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
 	// Build the binary
-	cmd := exec.Command("go", "build", "-o", "build/bin/plugin", "./pkg")
+	cmd := exec.Command(
+		opts.GoPath,
+		"build",
+		"-o",
+		"build/bin/plugin",
+		"./pkg")
+
 	cmd.Dir = path
-	buildResult, err := cmd.Output()
-	if err != nil {
-		// get the ExitError
-		if exitError, ok := err.(*exec.ExitError); ok {
-			return fmt.Errorf("failed to build plugin: %s", string(exitError.Stderr))
-		}
-		return fmt.Errorf("failed to build plugin: %s", string(buildResult))
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to build plugin: %s: %s", fmt.Sprint(err), stderr.String())
 	}
 
 	return nil
@@ -329,7 +350,7 @@ func buildPluginBinary(path string) error {
 // Builds the UI bundles for the given path (if it exists). If
 // this is being built, we're assuming it has the ui capabilities that necessitate
 // compiling a frontend.
-func buildPluginUi(path string) error {
+func buildPluginUi(path string, opts types.BuildOpts) error {
 	if path == "" {
 		return errors.New("failed to build plugin ui bundle: path is empty")
 	}
@@ -338,6 +359,7 @@ func buildPluginUi(path string) error {
 	requiredFiles := []string{
 		"plugin.yaml",
 		"ui/package.json",
+
 		// we're using vite here as part of the distribution
 		"ui/vite.config.ts",
 	}
@@ -352,16 +374,33 @@ func buildPluginUi(path string) error {
 			)
 		}
 	}
+
 	out := filepath.Join(path, "ui")
-	cmd := exec.Command("pnpm", "run", "build")
-	cmd.Dir = filepath.Join(out)
-	result, err := cmd.Output()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	cmd, err := PrepareCommandWithBinaries(
+		opts.PnpmPath,
+		[]string{"run", "build"},
+		opts.PnpmPath,
+		opts.NodePath,
+	)
 	if err != nil {
-		// get the ExitError
-		if exitError, ok := err.(*exec.ExitError); ok {
-			return fmt.Errorf("failed to build plugin ui bundle: %s", string(exitError.Stderr))
-		}
-		return fmt.Errorf("failed to build plugin ui bundle: %s", string(result))
+		return err
+	}
+
+	cmd.Dir = filepath.Join(out)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err = cmd.Run(); err != nil {
+		return fmt.Errorf(
+			"failed to build plugin ui bundle: %s: %s - %s",
+			fmt.Sprint(err),
+			stderr.String(),
+			stdout.String(),
+		)
 	}
 
 	return nil
@@ -451,6 +490,10 @@ func buildAndTransferPlugin(path string, meta *config.PluginMeta, opts types.Bui
 		return errors.New("failed to build and transfer plugin: no capabilities found")
 	}
 
+	if err := HydrateBuildOpts(&opts); err != nil {
+		return err
+	}
+
 	// perform the builds concurrently
 	var buildtasks sync.WaitGroup
 	var beError, feError error
@@ -459,7 +502,7 @@ func buildAndTransferPlugin(path string, meta *config.PluginMeta, opts types.Bui
 		buildtasks.Add(1)
 		go func() {
 			defer buildtasks.Done()
-			beError = buildPluginBinary(path)
+			beError = buildPluginBinary(path, opts)
 		}()
 	}
 
@@ -467,7 +510,7 @@ func buildAndTransferPlugin(path string, meta *config.PluginMeta, opts types.Bui
 		buildtasks.Add(1)
 		go func() {
 			defer buildtasks.Done()
-			feError = buildPluginUi(path)
+			feError = buildPluginUi(path, opts)
 		}()
 	}
 
@@ -486,112 +529,112 @@ func buildAndTransferPlugin(path string, meta *config.PluginMeta, opts types.Bui
 	return nil
 }
 
-func buildAndPackage(basePath string) (string, error) {
-	buildOutputPath := filepath.Join(basePath, "build")
+// func buildAndPackage(basePath string) (string, error) {
+// 	buildOutputPath := filepath.Join(basePath, "build")
+//
+// 	// build output paths
+// 	binPath := filepath.Join(buildOutputPath, "bin")
+// 	devTarGz := filepath.Join(buildOutputPath, "_dev.tar.gz")
+//
+// 	// build asset paths
+// 	pluginPath := filepath.Join(binPath, "plugin")
+// 	metaPath := filepath.Join(basePath, "plugin.yaml")
+//
+// 	// remove any existing dirs
+// 	if err := os.RemoveAll(binPath); err != nil {
+// 		return "", fmt.Errorf("failed to remove 'bin' directory: %w", err)
+// 	}
+// 	if err := os.Remove(devTarGz); err != nil && !os.IsNotExist(err) {
+// 		return "", fmt.Errorf("failed to remove existing dev package: %w", err)
+// 	}
+//
+// 	// recreate the dirs
+// 	if err := os.MkdirAll(buildOutputPath, 0755); err != nil {
+// 		return "", fmt.Errorf("failed to create build output directory: %w", err)
+// 	}
+// 	if err := os.MkdirAll(binPath, 0755); err != nil {
+// 		return "", fmt.Errorf("failed to create 'bin' directory: %w", err)
+// 	}
+//
+// 	log.Printf(
+// 		"Building plugin from %s. Output: %s Package: %s",
+// 		basePath,
+// 		pluginPath,
+// 		filepath.Join(basePath, "pkg"),
+// 	)
+//
+// 	// Build the binary
+// 	cmd := exec.Command("go", "build", "-o", "build/bin/plugin", "./pkg")
+// 	cmd.Dir = basePath
+//
+// 	out, err := cmd.Output()
+// 	if err != nil {
+// 		// get the ExitError
+// 		if exitError, ok := err.(*exec.ExitError); ok {
+// 			log.Printf("Build output: %s", string(exitError.Stderr))
+// 			return "", fmt.Errorf("failed to build plugin: %w", err)
+// 		}
+// 		return "", fmt.Errorf("failed to build plugin: %w", err)
+// 	}
+// 	log.Printf("Build output: %s", out)
+//
+// 	// Create the tar.gz archive using Go's standard library
+// 	file, err := os.Create(devTarGz)
+// 	if err != nil {
+// 		return "", fmt.Errorf("failed to create tar.gz file: %w", err)
+// 	}
+// 	defer file.Close()
+//
+// 	gw := gzip.NewWriter(file)
+// 	defer gw.Close()
+//
+// 	tw := tar.NewWriter(gw)
+// 	defer tw.Close()
+//
+// 	// Add metadata file to the archive
+// 	if err = addFileToTar(tw, metaPath, ""); err != nil {
+// 		return "", fmt.Errorf("failed to add plugin.yaml to tar: %w", err)
+// 	}
+//
+// 	// Add plugin binary to the archive
+// 	if err = addFileToTar(tw, pluginPath, "bin"); err != nil {
+// 		return "", fmt.Errorf("failed to add plugin to tar: %w", err)
+// 	}
+//
+// 	return devTarGz, nil
+// }
 
-	// build output paths
-	binPath := filepath.Join(buildOutputPath, "bin")
-	devTarGz := filepath.Join(buildOutputPath, "_dev.tar.gz")
-
-	// build asset paths
-	pluginPath := filepath.Join(binPath, "plugin")
-	metaPath := filepath.Join(basePath, "plugin.yaml")
-
-	// remove any existing dirs
-	if err := os.RemoveAll(binPath); err != nil {
-		return "", fmt.Errorf("failed to remove 'bin' directory: %w", err)
-	}
-	if err := os.Remove(devTarGz); err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("failed to remove existing dev package: %w", err)
-	}
-
-	// recreate the dirs
-	if err := os.MkdirAll(buildOutputPath, 0755); err != nil {
-		return "", fmt.Errorf("failed to create build output directory: %w", err)
-	}
-	if err := os.MkdirAll(binPath, 0755); err != nil {
-		return "", fmt.Errorf("failed to create 'bin' directory: %w", err)
-	}
-
-	log.Printf(
-		"Building plugin from %s. Output: %s Package: %s",
-		basePath,
-		pluginPath,
-		filepath.Join(basePath, "pkg"),
-	)
-
-	// Build the binary
-	cmd := exec.Command("go", "build", "-o", "build/bin/plugin", "./pkg")
-	cmd.Dir = basePath
-
-	out, err := cmd.Output()
-	if err != nil {
-		// get the ExitError
-		if exitError, ok := err.(*exec.ExitError); ok {
-			log.Printf("Build output: %s", string(exitError.Stderr))
-			return "", fmt.Errorf("failed to build plugin: %w", err)
-		}
-		return "", fmt.Errorf("failed to build plugin: %w", err)
-	}
-	log.Printf("Build output: %s", out)
-
-	// Create the tar.gz archive using Go's standard library
-	file, err := os.Create(devTarGz)
-	if err != nil {
-		return "", fmt.Errorf("failed to create tar.gz file: %w", err)
-	}
-	defer file.Close()
-
-	gw := gzip.NewWriter(file)
-	defer gw.Close()
-
-	tw := tar.NewWriter(gw)
-	defer tw.Close()
-
-	// Add metadata file to the archive
-	if err = addFileToTar(tw, metaPath, ""); err != nil {
-		return "", fmt.Errorf("failed to add plugin.yaml to tar: %w", err)
-	}
-
-	// Add plugin binary to the archive
-	if err = addFileToTar(tw, pluginPath, "bin"); err != nil {
-		return "", fmt.Errorf("failed to add plugin to tar: %w", err)
-	}
-
-	return devTarGz, nil
-}
-
-func addFileToTar(tw *tar.Writer, filePath string, tarDir string) error {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	stat, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to get file info: %w", err)
-	}
-
-	location := filepath.Base(filePath)
-	if tarDir != "" {
-		location = filepath.Join(tarDir, location)
-	}
-
-	header := &tar.Header{
-		Name:    location,
-		Size:    stat.Size(),
-		Mode:    int64(stat.Mode()),
-		ModTime: stat.ModTime(),
-	}
-
-	if err = tw.WriteHeader(header); err != nil {
-		return fmt.Errorf("failed to write header to tar: %w", err)
-	}
-
-	if _, err = io.Copy(tw, file); err != nil {
-		return fmt.Errorf("failed to copy file to tar: %w", err)
-	}
-
-	return nil
-}
+// func addFileToTar(tw *tar.Writer, filePath string, tarDir string) error {
+// 	file, err := os.Open(filePath)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to open file: %w", err)
+// 	}
+// 	defer file.Close()
+//
+// 	stat, err := file.Stat()
+// 	if err != nil {
+// 		return fmt.Errorf("failed to get file info: %w", err)
+// 	}
+//
+// 	location := filepath.Base(filePath)
+// 	if tarDir != "" {
+// 		location = filepath.Join(tarDir, location)
+// 	}
+//
+// 	header := &tar.Header{
+// 		Name:    location,
+// 		Size:    stat.Size(),
+// 		Mode:    int64(stat.Mode()),
+// 		ModTime: stat.ModTime(),
+// 	}
+//
+// 	if err = tw.WriteHeader(header); err != nil {
+// 		return fmt.Errorf("failed to write header to tar: %w", err)
+// 	}
+//
+// 	if _, err = io.Copy(tw, file); err != nil {
+// 		return fmt.Errorf("failed to copy file to tar: %w", err)
+// 	}
+//
+// 	return nil
+// }

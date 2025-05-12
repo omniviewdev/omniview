@@ -10,7 +10,7 @@ import {
   Typography,
 } from '@mui/joy';
 
-import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import { ArrowDropDown } from '@mui/icons-material';
 
 // Tanstack/react-table
 import {
@@ -329,7 +329,7 @@ const ResourceTableContainer: React.FC<Props> = ({
                       component='button'
                       onClick={header.column.getToggleSortingHandler()}
                       fontWeight='lg'
-                      endDecorator={header.column.getIsSorted() && <ArrowDropDownIcon />}
+                      endDecorator={header.column.getIsSorted() && <ArrowDropDown />}
                       sx={{
                         '& svg': {
                           transition: '0.2s',

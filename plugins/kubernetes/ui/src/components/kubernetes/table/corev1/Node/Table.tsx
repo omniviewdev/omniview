@@ -7,9 +7,10 @@ import { useParams } from 'react-router-dom';
 import ResourceTable from '../../../../shared/table/ResourceTable';
 import { convertByteUnits } from '../../../../../utils/units';
 import { withClusterResourceColumns } from '../../shared/columns';
-import { LuBox } from 'react-icons/lu';
+import { LuBox, LuCode } from 'react-icons/lu';
 import NodeSidebar from '../../../sidebar/NodeSidebar';
 import { DrawerComponent } from '@omniviewdev/runtime';
+import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage';
 
 const resourceKey = 'core::v1::Node'
 
@@ -96,15 +97,20 @@ const NodeTable: React.FC = () => {
     [],
   )
 
-  const drawer: DrawerComponent = React.useMemo(() => ({
+  const drawer: DrawerComponent<Node> = React.useMemo(() => ({
     title: resourceKey, // TODO: change runtime sdk to accept a function
     icon: <LuBox />,
     views: [
       {
         title: 'Overview',
         icon: <LuBox />,
-        component: (data: any) => <NodeSidebar data={data} />
+        component: (ctx) => <NodeSidebar data={ctx.data || {}} />
       },
+      {
+        title: 'Editor',
+        icon: <LuCode />,
+        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
+      }
     ],
     actions: []
   }), [])

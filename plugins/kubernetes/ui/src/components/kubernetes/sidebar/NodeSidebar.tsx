@@ -279,15 +279,30 @@ const ImagesInfo: React.FC<NodeInfoSectionProps> = ({ node }) => {
   }, 0)
 
   const data = node?.status?.images?.map((image) => {
-    return {
-      key: image.names?.find((name) => !name.includes("sha256")),
-      value: convertKubernetesByteUnits({
-        from: `${image.sizeBytes}B`,
-        to: "MB",
-      }),
-      ratio: [10, 2],
-    };
-  }) as DetailsCardEntry[];
+    const entries: Array<DetailsCardEntry> = []
+    image.names?.forEach((name) => {
+      entries.push({
+        key: name,
+        value: convertKubernetesByteUnits({
+          from: `${image.sizeBytes}B`,
+          to: "MB",
+        }),
+        ratio: [10, 2],
+      })
+    })
+
+    // return {
+    //   key: image.names?.find((name) => !name.includes("sha256")),
+    //   value: convertKubernetesByteUnits({
+    //     from: `${image.sizeBytes}B`,
+    //     to: "MB",
+    //   }),
+    //   ratio: [10, 2],
+    // };
+
+    return entries
+  }).flat() as DetailsCardEntry[];
+
   return <DetailsCard
     endAdornment={<Chip variant="soft">{
       convertKubernetesByteUnits({

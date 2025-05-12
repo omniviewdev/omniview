@@ -1,4 +1,9 @@
 import React from 'react';
+
+// ensure we preload deps first before anything
+import { preloadSharedDeps } from './features/plugins/api/preloader';
+preloadSharedDeps()
+
 import { Provider } from 'react-redux';
 import { store } from './store/store';
 

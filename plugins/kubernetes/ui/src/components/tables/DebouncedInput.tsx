@@ -6,8 +6,7 @@ import {
   type InputProps,
   IconButton,
 } from '@mui/joy';
-import SearchIcon from '@mui/icons-material/Search';
-import CloseIcon from '@mui/icons-material/Close';
+import { Search, Close } from '@mui/icons-material';
 
 export type DebounceProps = {
   value: string;
@@ -55,14 +54,14 @@ export function DebouncedInput({
       onChange={e => {
         setValue(e.target.value);
       }}
-      startDecorator={<SearchIcon fontSize='small' />}
+      startDecorator={<Search fontSize='small' />}
       // Clearing should not be debounced
       endDecorator={value ? (
         <IconButton
           sx={{ padding: 0 }}
           onClick={handleClear}
         >
-          <CloseIcon fontSize='small' />
+          <Close fontSize='small' />
         </IconButton>
 
       ) : undefined}
