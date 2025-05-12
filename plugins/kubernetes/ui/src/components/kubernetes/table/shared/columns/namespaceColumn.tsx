@@ -6,7 +6,7 @@ export const namespaceColumn = <T extends { metadata?: { namespace?: string } }>
   header: 'Namespace',
   accessorKey: 'metadata.namespace',
   enableSorting: true,
-  enableHiding: false,
+  enableHiding: true,
   filterFn: namespaceFilter,
   size: 150,
 })
