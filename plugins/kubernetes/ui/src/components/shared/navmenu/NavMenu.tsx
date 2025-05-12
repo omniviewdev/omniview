@@ -17,7 +17,7 @@ import {
 } from '@mui/joy';
 
 // Icons import
-import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
+import { KeyboardArrowDownRounded } from '@mui/icons-material';
 
 // Custom
 import { type SidebarListItemProps, type SidebarProps } from './types';
@@ -172,7 +172,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
   };
 
   const MemoizedIcon = React.useMemo(() => (
-    <KeyboardArrowDownRoundedIcon sx={{ transform: openState[id] ? 'initial' : 'rotate(-90deg)' }} />
+    <KeyboardArrowDownRounded sx={{ transform: openState[id] ? 'initial' : 'rotate(-90deg)' }} />
   ), [openState, id]);
 
   return (

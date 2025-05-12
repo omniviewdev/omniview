@@ -19,7 +19,7 @@ import {
   Typography,
 } from '@mui/joy';
 // icons
-import WarningRoundedIcon from '@mui/icons-material/WarningRounded';
+import { WarningRounded } from '@mui/icons-material';
 import { LuCircleAlert, LuTrash } from 'react-icons/lu';
 import { useResource } from '@omniviewdev/runtime';
 
@@ -80,7 +80,7 @@ export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection
       }}>
         <ModalDialog variant="outlined" role="alertdialog">
           <DialogTitle>
-            <WarningRoundedIcon />
+            <WarningRounded />
             Confirmation
           </DialogTitle>
           <Divider />

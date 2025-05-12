@@ -24,24 +24,20 @@ export class OmniviewLogger {
   private async ship(level: string, msg: string, fields?: LogFields) {
     try {
       await DiagnosticsClient.Log(level, msg, this.envelope(fields));
-    } catch (err) {
-      // If the backend call fails, at least show it in-console
-      console.error("[Logger] failed to deliver log to Go:", err);
+    } catch {
+      // swallow any error
     }
   }
 
   debug(msg: string, fields?: LogFields) {
-    console.debug(msg, fields);
     this.ship("debug", msg, fields);
   }
 
   info(msg: string, fields?: LogFields) {
-    console.info(msg, fields);
     this.ship("info", msg, fields);
   }
 
   warn(msg: string, fields?: LogFields) {
-    console.warn(msg, fields);
     this.ship("warn", msg, fields);
   }
 
@@ -52,7 +48,6 @@ export class OmniviewLogger {
       fields = { ...fields, stack: err.stack };
       msg = err.message;
     }
-    console.error(msg, fields);
     this.ship("error", msg as string, fields);
   }
 

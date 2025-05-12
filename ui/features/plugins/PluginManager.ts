@@ -11,7 +11,10 @@ const pluginRoutes = new Map<string, RouteObject[]>();
 export function registerPlugin(pluginID: string, pluginWindow: PluginWindow) {
   pluginRegistry.set(pluginID, pluginWindow);
   if (pluginWindow.Routes) {
-    pluginRoutes.set(pluginID, normalizePluginRoutes(pluginWindow.Routes));
+    const routes = normalizePluginRoutes(pluginWindow.Routes)
+    console.log(`got routes for plugin ${pluginID}`, routes)
+
+    pluginRoutes.set(pluginID, routes);
   }
 }
 
@@ -37,7 +40,7 @@ export function getAllPluginRoutes(): RouteObject[] {
  * - Preserves index routes
  */
 export function normalizePluginRoutes(routes: RouteObject[]): RouteObject[] {
-  return routes.map((route) => {
+  const r = routes.map((route) => {
     const normalized: RouteObject = {
       ...route,
       path: route.index ? undefined : route.path?.replace(/^\/+/, ''), // strip leading /
@@ -49,4 +52,5 @@ export function normalizePluginRoutes(routes: RouteObject[]): RouteObject[] {
 
     return normalized;
   });
+  return r
 }

@@ -18,14 +18,14 @@ const ConfigMapTable: React.FC = () => {
     [],
   )
 
-  const drawer: DrawerComponent = React.useMemo(() => ({
+  const drawer: DrawerComponent<ConfigMap> = React.useMemo(() => ({
     title: resourceKey, // TODO: change runtime sdk to accept a function
     icon: <LuBox />,
     views: [
       {
         title: 'Overview',
         icon: <LuBox />,
-        component: (data: any) => <ConfigMapSidebar data={data} />
+        component: (ctx) => <ConfigMapSidebar data={ctx.data || {}} />
       },
     ],
     actions: []

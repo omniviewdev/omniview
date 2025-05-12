@@ -13,9 +13,11 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/omniviewdev/omniview/backend/clients"
 	"github.com/omniviewdev/omniview/backend/diagnostics"
+	"github.com/omniviewdev/omniview/backend/menus"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
@@ -89,6 +91,7 @@ func main() {
 		execController,
 		networkerController,
 		managers,
+		settingsProvider,
 	)
 
 	// Create an instance of the app structure
@@ -104,6 +107,7 @@ func main() {
 			coresettings.Appearance,
 			coresettings.Terminal,
 			coresettings.Editor,
+			coresettings.Developer,
 		); err != nil {
 			log.Errorw("error while initializing settings system", "error", err)
 		}
@@ -116,6 +120,7 @@ func main() {
 			log.Errorw("error while initializing plugin system", "error", err)
 		}
 		pluginManager.Run(ctx)
+		runtime.MenuSetApplicationMenu(ctx, menus.GetMenus(ctx))
 	}
 
 	// Create application with options
@@ -138,8 +143,6 @@ func main() {
 			Assets:  assets,
 			Handler: NewFileLoader(log),
 		},
-		Menu: nil,
-		// start logger that sends to dev null
 		LogLevel:      logger.DEBUG,
 		OnStartup:     startup,
 		OnDomReady:    app.domReady,

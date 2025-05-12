@@ -1,5 +1,5 @@
 /* eslint @typescript-eslint/naming-convention: 0 */  // firing on the route objects
-import { type RouteObject } from 'react-router-dom';
+import { Outlet, type RouteObject } from 'react-router-dom';
 
 import CoreLayout from '../../layouts/core/main/CoreLayout';
 import { RouterErrorBoundary } from './components/ErrorBoundary';
@@ -81,4 +81,12 @@ export const coreRoutes: RouteObject[] = [
       },
     ],
   },
+  {
+    path: '*',
+    Component: CoreLayout,
+    ErrorBoundary: RouterErrorBoundary,
+    children: [
+      { path: '*', Component: Outlet }
+    ]
+  }
 ];

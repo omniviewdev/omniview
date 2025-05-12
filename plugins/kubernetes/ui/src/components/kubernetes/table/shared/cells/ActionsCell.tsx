@@ -12,7 +12,7 @@ import {
 } from '@mui/base';
 
 // icons
-import MoreHorizRoundedIcon from '@mui/icons-material/MoreHorizRounded';
+import { MoreHorizRounded } from '@mui/icons-material';
 
 // common actions
 import DeleteAction from './actions/DeleteAction';
@@ -100,7 +100,7 @@ const ActionMenu: React.FC<Props> = (props) => {
         }}
         onClick={handleClick}
       >
-        <MoreHorizRoundedIcon />
+        <MoreHorizRounded />
       </IconButton>
       <BasePopup
         style={{ zIndex: 9999 }}

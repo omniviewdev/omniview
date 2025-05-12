@@ -35,4 +35,13 @@ type BuildOpts struct {
 	// ExcludeUI tells the builder to not rebuild the plugin UI. This is useful
 	// when we only have changes to the plugin binary.
 	ExcludeUI bool
+
+	// GoPath defines a predefined path to the Go binary
+	GoPath string
+
+	// PnpmPath defines a predefined path to the PNPM binary
+	PnpmPath string
+
+	// NodePath defines a predefined path to the Node binary
+	NodePath string
 }

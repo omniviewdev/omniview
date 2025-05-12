@@ -13,6 +13,7 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
   const { children, pluginId } = props;
   const [settings, setSettings] = React.useState<Record<string, any>>({});
   const [meta, setMeta] = React.useState<config.PluginMeta>(new config.PluginMeta);
+  const [metaLoaded, setMetaLoaded] = React.useState(false);
 
   /**
    * Fetch the settings from the backend stores
@@ -44,9 +45,11 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
       .then((values) => {
         console.log('Fetched plugin metadata:', values);
         setMeta(values)
+        setMetaLoaded(true)
       })
       .catch((error) => {
         console.error('Error fetching plugin settings:', error);
+        setMetaLoaded(false)
       })
   }
 
@@ -55,6 +58,8 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
     fetchMeta();
   }, [pluginId])
 
+  if (!metaLoaded) return <div>
+  </div>;
 
   return <PluginContext.Provider value={{ settings, meta }}>{children}</PluginContext.Provider>;
 }

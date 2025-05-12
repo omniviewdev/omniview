@@ -7,7 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
+
+	// "sync"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/hashicorp/go-hclog"
@@ -28,6 +29,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sp "github.com/omniviewdev/plugin-sdk/pkg/settings"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	pkgsettings "github.com/omniviewdev/settings"
 )
 
 const (
@@ -93,6 +95,7 @@ func NewManager(
 	execController pluginexec.Controller,
 	networkerController networker.Controller,
 	managers map[string]plugintypes.PluginManager,
+	settingsProvider pkgsettings.Provider,
 ) Manager {
 	l := logger.Named("PluginManager")
 
@@ -125,9 +128,10 @@ func NewManager(
 			types.LogPlugin:        nil, // TODO: implement
 			types.MetricPlugin:     nil, // TODO: implement
 		},
-		watcher:      watcher,
-		watchTargets: make(map[string][]string),
-		managers:     managers,
+		watcher:          watcher,
+		watchTargets:     make(map[string][]string),
+		managers:         managers,
+		settingsProvider: settingsProvider,
 	}
 }
 
@@ -140,6 +144,7 @@ type pluginManager struct {
 	connfullControllers map[types.PluginType]plugintypes.ConnectedController
 	watcher             *fsnotify.Watcher
 	watchTargets        map[string][]string
+	settingsProvider    pkgsettings.Provider
 	// extendable amount of plugin managers
 	managers map[string]plugintypes.PluginManager
 }
@@ -227,9 +232,20 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 		return nil, errors.New("cancelled")
 	}
 
+	// build out our opts, including any paths we've detected
+	opts := plugintypes.BuildOpts{}
+	opts.GoPath, _ = pm.settingsProvider.GetString("developer.gopath")
+	opts.PnpmPath, _ = pm.settingsProvider.GetString("developer.pnpmpath")
+	opts.NodePath, _ = pm.settingsProvider.GetString("developer.nodepath")
+
+	pm.logger.Infow("installing plugin from path",
+		"path", path,
+		"opts", opts,
+	)
+
 	// perform initial install
 	var metadata *config.PluginMeta
-	metadata, err = pm.installAndWatchDevPlugin(path)
+	metadata, err = pm.installAndWatchDevPlugin(path, opts)
 	if err != nil {
 		pm.logger.Error(err)
 		return nil, err
@@ -833,95 +849,95 @@ func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 }
 
 // Destroy the plugin and call all the plugin controller destroy handlers.
-func (pm *pluginManager) destroyPlugin(plugin *types.Plugin) error {
-	if plugin == nil {
-		return errors.New("plugin is nil")
-	}
-
-	ctx := context.Background()
-	var managerwg sync.WaitGroup
-
-	// all of our managers satisfy the PluginManager interface, so we can iterate over them
-	// and call the destroy method on each one
-	for name, manager := range pm.managers {
-		managerwg.Add(1)
-
-		// invoke the manager destroy in a goroutine
-		go func(meta config.PluginMeta, manager plugintypes.PluginManager, name string) {
-			defer managerwg.Done()
-			if err := manager.OnPluginDestroy(ctx, meta); err != nil {
-				// log the error
-				pm.logger.Errorw(
-					"error invoking manager destroy for plugin",
-					"manager", name,
-					plugin, meta.ID,
-					"error", err,
-				)
-			}
-		}(plugin.Metadata, manager, name)
-	}
-
-	managerwg.Wait()
-
-	// manually destroy the required capabilities first
-	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
-		return fmt.Errorf("error destroying settings plugin: %w", err)
-	}
-
-	// define our plugin types that should call the connfullControllers
-	confull := []types.PluginType{
-		types.ResourcePlugin,
-		types.ExecutorPlugin,
-		types.FilesystemPlugin,
-		types.LogPlugin,
-		types.MetricPlugin,
-		types.ReporterPlugin,
-	}
-	conless := []types.PluginType{
-		types.ExecutorPlugin,
-	}
-
-	for _, capability := range plugin.Metadata.Capabilities {
-		// find the capability type
-		var ctype types.PluginType
-		var connfull bool
-
-		found := false
-		for _, t := range confull {
-			if capability == t.String() {
-				// found
-				ctype = t
-				connfull = true
-				break
-			}
-		}
-		for _, t := range conless {
-			if capability == t.String() {
-				// found
-				ctype = t
-				connfull = false
-				break
-			}
-		}
-
-		if !found {
-			return fmt.Errorf(
-				"error destroying plugin: unknown plugin capability type '%s'",
-				capability,
-			)
-		}
-
-		var err error
-		if connfull {
-			err = pm.connfullControllers[ctype].OnPluginDestroy(plugin.Metadata)
-		} else {
-			err = pm.connlessControllers[ctype].OnPluginDestroy(plugin.Metadata)
-		}
-
-		if err != nil {
-			return fmt.Errorf("error destroying %s plugin: %w", capability, err)
-		}
-	}
-
-	return nil
-}
+// func (pm *pluginManager) destroyPlugin(plugin *types.Plugin) error {
+// 	if plugin == nil {
+// 		return errors.New("plugin is nil")
+// 	}
+//
+// 	ctx := context.Background()
+// 	var managerwg sync.WaitGroup
+//
+// 	// all of our managers satisfy the PluginManager interface, so we can iterate over them
+// 	// and call the destroy method on each one
+// 	for name, manager := range pm.managers {
+// 		managerwg.Add(1)
+//
+// 		// invoke the manager destroy in a goroutine
+// 		go func(meta config.PluginMeta, manager plugintypes.PluginManager, name string) {
+// 			defer managerwg.Done()
+// 			if err := manager.OnPluginDestroy(ctx, meta); err != nil {
+// 				// log the error
+// 				pm.logger.Errorw(
+// 					"error invoking manager destroy for plugin",
+// 					"manager", name,
+// 					plugin, meta.ID,
+// 					"error", err,
+// 				)
+// 			}
+// 		}(plugin.Metadata, manager, name)
+// 	}
+//
+// 	managerwg.Wait()
+//
+// 	// manually destroy the required capabilities first
+// 	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginDestroy(plugin.Metadata); err != nil {
+// 		return fmt.Errorf("error destroying settings plugin: %w", err)
+// 	}
+//
+// 	// define our plugin types that should call the connfullControllers
+// 	confull := []types.PluginType{
+// 		types.ResourcePlugin,
+// 		types.ExecutorPlugin,
+// 		types.FilesystemPlugin,
+// 		types.LogPlugin,
+// 		types.MetricPlugin,
+// 		types.ReporterPlugin,
+// 	}
+// 	conless := []types.PluginType{
+// 		types.ExecutorPlugin,
+// 	}
+//
+// 	for _, capability := range plugin.Metadata.Capabilities {
+// 		// find the capability type
+// 		var ctype types.PluginType
+// 		var connfull bool
+//
+// 		found := false
+// 		for _, t := range confull {
+// 			if capability == t.String() {
+// 				// found
+// 				ctype = t
+// 				connfull = true
+// 				break
+// 			}
+// 		}
+// 		for _, t := range conless {
+// 			if capability == t.String() {
+// 				// found
+// 				ctype = t
+// 				connfull = false
+// 				break
+// 			}
+// 		}
+//
+// 		if !found {
+// 			return fmt.Errorf(
+// 				"error destroying plugin: unknown plugin capability type '%s'",
+// 				capability,
+// 			)
+// 		}
+//
+// 		var err error
+// 		if connfull {
+// 			err = pm.connfullControllers[ctype].OnPluginDestroy(plugin.Metadata)
+// 		} else {
+// 			err = pm.connlessControllers[ctype].OnPluginDestroy(plugin.Metadata)
+// 		}
+//
+// 		if err != nil {
+// 			return fmt.Errorf("error destroying %s plugin: %w", capability, err)
+// 		}
+// 	}
+//
+// 	return nil
+// }

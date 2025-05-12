@@ -15,7 +15,7 @@ import {
 import ExecAction from './ExecAction';
 
 // icons
-import MoreHorizRoundedIcon from '@mui/icons-material/MoreHorizRounded';
+import { MoreHorizRounded } from '@mui/icons-material';
 
 // types
 import { type Actions } from './types';
@@ -85,7 +85,7 @@ const ActionMenu: React.FC<Props> = (props) => {
         }}
         onClick={handleClick}
       >
-        <MoreHorizRoundedIcon />
+        <MoreHorizRounded />
       </IconButton>
       <BasePopup
         style={{ zIndex: 9999 }}

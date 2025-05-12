@@ -108,7 +108,6 @@ func zapFields(fields map[string]any) []any {
 
 func (b *BackendLogger) Debug(ctx context.Context, msg string, fields map[string]any) {
 	if len(fields) > 0 {
-		log.Println(("writing debug log"))
 		b.Sugared.With(zapFields(fields)...).Debug(msg)
 	} else {
 		b.Sugared.Debug(msg)
@@ -117,7 +116,6 @@ func (b *BackendLogger) Debug(ctx context.Context, msg string, fields map[string
 
 func (b *BackendLogger) Info(ctx context.Context, msg string, fields map[string]any) {
 	if len(fields) > 0 {
-		log.Println(("writing info log"))
 		b.Sugared.With(zapFields(fields)...).Info(msg)
 	} else {
 		b.Sugared.Info(msg)
@@ -126,7 +124,6 @@ func (b *BackendLogger) Info(ctx context.Context, msg string, fields map[string]
 
 func (b *BackendLogger) Warn(ctx context.Context, msg string, fields map[string]any) {
 	if len(fields) > 0 {
-		log.Println(("writing warn log"))
 		b.Sugared.With(zapFields(fields)...).Warn(msg)
 	} else {
 		b.Sugared.Warn(msg)
@@ -135,7 +132,6 @@ func (b *BackendLogger) Warn(ctx context.Context, msg string, fields map[string]
 
 func (b *BackendLogger) Error(ctx context.Context, msg string, fields map[string]any) {
 	if len(fields) > 0 {
-		log.Println(("writing error log"))
 		b.Sugared.With(zapFields(fields)...).Error(msg)
 	} else {
 		b.Sugared.Error(msg)
@@ -218,7 +214,7 @@ func (b *BackendLogger) StartTail(ctx context.Context, name string) error {
 
 	go func() {
 		for line := range t.Lines {
-			runtime.EventsEmit(ctx, fmt.Sprintf("logUpdate:%s", name), line.Text)
+			runtime.EventsEmit(ctx, fmt.Sprintf(LOG_UPDATE_FMT, name), line.Text)
 		}
 	}()
 	return nil

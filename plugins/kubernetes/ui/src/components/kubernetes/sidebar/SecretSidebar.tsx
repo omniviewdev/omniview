@@ -24,6 +24,7 @@ import { Secret } from "kubernetes-types/core/v1";
 // project-imports
 import ObjectMetaSection from "../../shared/ObjectMetaSection";
 import { isMultiLine } from "../../../utils/text";
+import { useSnackbar } from '@omniviewdev/runtime';
 // import { deplomentUsesSecret } from "../../../utils/filters/appsv1/deployment";
 // import { statefulSetUsesSecret } from "../../../utils/filters/appsv1/statefulset";
 // import { daemonSetUsesSecret } from "../../../utils/filters/appsv1/daemonset";
@@ -66,6 +67,7 @@ export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
 }) => {
   const secret = data as Secret;
 
+  const { showSnackbar } = useSnackbar();
   const [shown, setShown] = React.useState<Record<string, boolean>>({});
   const [copied, setCopied] = React.useState<string | undefined>(undefined);
 
@@ -214,6 +216,10 @@ export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
   const handleCopyToClipboard = (key: string, value: string) => {
     navigator.clipboard.writeText(atob(value));
     setCopied(key);
+    showSnackbar({
+      message: "Copied value to clipboard",
+      status: 'success'
+    })
   };
 
   // compose your component here

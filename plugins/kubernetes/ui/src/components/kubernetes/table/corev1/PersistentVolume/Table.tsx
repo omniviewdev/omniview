@@ -5,8 +5,9 @@ import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { withClusterResourceColumns } from '../../shared/columns'
 import { DrawerComponent } from '@omniviewdev/runtime'
-import { LuBox } from 'react-icons/lu'
+import { LuBox, LuCode } from 'react-icons/lu'
 import PersistentVolumeSidebar from '../../../sidebar/PersistentVolumeSidebar'
+import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
 
 const resourceKey = 'core::v1::PersistentVolume'
 
@@ -18,15 +19,20 @@ const PersistentVolumeTable: React.FC = () => {
     [],
   )
 
-  const drawer: DrawerComponent = React.useMemo(() => ({
+  const drawer: DrawerComponent<PersistentVolume> = React.useMemo(() => ({
     title: resourceKey, // TODO: change runtime sdk to accept a function
     icon: <LuBox />,
     views: [
       {
         title: 'Overview',
         icon: <LuBox />,
-        component: (data: any) => <PersistentVolumeSidebar data={data} />
+        component: (ctx) => <PersistentVolumeSidebar data={ctx.data || {}} />
       },
+      {
+        title: 'Editor',
+        icon: <LuCode />,
+        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
+      }
     ],
     actions: []
   }), [])

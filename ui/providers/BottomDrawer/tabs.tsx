@@ -37,6 +37,7 @@ import { exec } from '@omniviewdev/runtime/models';
 import { ExecClient } from '@omniviewdev/runtime/api';
 
 import { bottomDrawerChannel } from './events';
+import { EventsOn } from '@omniviewdev/runtime/runtime';
 
 type TabContextMenuProps = {
   selected: number;
@@ -252,6 +253,13 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
       }).catch(err => {
         console.error(err);
       });
+
+    const closerTerminal = EventsOn("menu/view/terminal/create", () => handleCreate('terminal'))
+
+    return () => {
+      closerTerminal()
+    }
+
   }, []);
 
   return (

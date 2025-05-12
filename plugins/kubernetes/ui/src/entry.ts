@@ -1,4 +1,9 @@
 /// <reference types="@welldone-software/why-did-you-render" />
+import React from 'react'
+//@ts-ignore
+window.PluginReact = React
+
+/// <reference types="@welldone-software/why-did-you-render" />
 import { PluginWindow } from '@omniviewdev/runtime';
 import { Outlet, RouteObject } from 'react-router-dom';
 
@@ -22,6 +27,7 @@ import CronJobTable from './components/kubernetes/table/batchv1/CronJob/Table';
 import JobTable from './components/kubernetes/table/batchv1/Job/Table';
 
 // core.v1
+import ComponentStatusTable from './components/kubernetes/table/corev1/ComponentStatus/Table';
 import ConfigMapTable from './components/kubernetes/table/corev1/ConfigMap/Table';
 import EndpointsTable from './components/kubernetes/table/corev1/Endpoints/Table';
 import EventTable from './components/kubernetes/table/corev1/Event/Table';
@@ -96,6 +102,7 @@ const routes: Array<RouteObject> = [
           { path: 'batch_v1_Job', Component: JobTable },
 
           // core.v1
+          { path: 'core_v1_ComponentStatus', Component: ComponentStatusTable },
           { path: 'core_v1_ConfigMap', Component: ConfigMapTable },
           { path: 'core_v1_Endpoints', Component: EndpointsTable },
           { path: 'core_v1_Event', Component: EventTable },
@@ -124,6 +131,7 @@ const routes: Array<RouteObject> = [
           // scheduling.v1
           { path: 'scheduling_v1_PriorityClass', Component: PriorityClassTable },
 
+          // storage.v1
           { path: 'storage_v1_CSIDriver', Component: CSIDriverTable },
           { path: 'storage_v1_CSINode', Component: CSINodeTable },
           { path: 'storage_v1_CSIStorageCapacity', Component: CSIStorageCapacityTable },

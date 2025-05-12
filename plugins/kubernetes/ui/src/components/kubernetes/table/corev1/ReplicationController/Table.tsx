@@ -4,6 +4,9 @@ import { ReplicationController } from 'kubernetes-types/core/v1'
 import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { withNamespacedResourceColumns } from '../../shared/columns'
+import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuBox, LuCode } from 'react-icons/lu'
+import { DrawerComponent } from '@omniviewdev/runtime'
 
 const resourceKey = 'core::v1::ReplicationController'
 
@@ -15,6 +18,19 @@ const ReplicationControllerTable: React.FC = () => {
     [],
   )
 
+  const drawer: DrawerComponent<ReplicationController> = React.useMemo(() => ({
+    title: resourceKey, // TODO: change runtime sdk to accept a function
+    icon: <LuBox />,
+    views: [
+      {
+        title: 'Editor',
+        icon: <LuCode />,
+        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
+      }
+    ],
+    actions: []
+  }), [])
+
   return (
     <ResourceTable
       columns={columns}
@@ -22,6 +38,7 @@ const ReplicationControllerTable: React.FC = () => {
       resourceKey={resourceKey}
       idAccessor='metadata.uid'
       memoizer='metadata.uid,metadata.resourceVersion'
+      drawer={drawer}
     />
   )
 }

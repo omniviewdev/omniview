@@ -1,9 +1,8 @@
 import builtInPlugins from './builtins';
 import { PluginWindow } from '@omniviewdev/runtime';
-import { shared } from './shared_dependencies';
-import { buildImportMap } from './utils';
 import { EXTENSION_REGISTRY } from '../../extensions/store';
 import { registerPlugin } from '../PluginManager';
+import { SystemJS } from './systemjs';
 
 type PluginImportInfo = {
   pluginId: string;
@@ -19,17 +18,12 @@ const getModuleId = ({ pluginId }: PluginImportInfo): string => {
   return `${window.location.protocol}//${window.location.host}/_/plugins/${pluginId}/assets/entry.js`
 }
 
-/**
- * Add the shared dependencies that don't get bundled into plugins
- */
-const imports = buildImportMap(shared);
-System.addImportMap({ imports });
 
 // const PLUGIN_WINDOW_CACHE: Record<string, PluginWindow> = {};
 
 export async function clearPlugin({ pluginId }: PluginImportInfo) {
   /** remove the import */
-  System.delete(getModuleId({ pluginId }));
+  SystemJS.delete(getModuleId({ pluginId }));
 }
 
 /**
@@ -57,11 +51,11 @@ export async function importPlugin({ pluginId, moduleHash }: PluginImportInfo): 
   // const modulePath = `http://localhost:15173/plugin-entry`
 
   // inject integrity hash into SystemJS import map
-  const resolvedModule = System.resolve(modulePath);
-  const integrityMap = System.getImportMap().integrity;
+  const resolvedModule = SystemJS.resolve(modulePath);
+  const integrityMap = SystemJS.getImportMap().integrity;
 
   if (moduleHash && integrityMap && !integrityMap[resolvedModule]) {
-    System.addImportMap({
+    SystemJS.addImportMap({
       integrity: {
         [resolvedModule]: moduleHash,
       },
@@ -69,7 +63,8 @@ export async function importPlugin({ pluginId, moduleHash }: PluginImportInfo): 
   }
 
   // load the plugin
-  return System.import(modulePath)
+  console.log("importing the plugin")
+  return SystemJS.import(modulePath)
 }
 
 // TODO: we'll need to see what other info to grab for this, most notable we'll likely need to use

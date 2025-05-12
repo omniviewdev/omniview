@@ -12,7 +12,7 @@ import {
   styled,
 } from '@mui/joy';
 
-import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import { ArrowDropDown } from '@mui/icons-material';
 
 // Tanstack/react-table
 import {
@@ -257,7 +257,10 @@ const ResourceTableContainer: React.FC<Props> = ({
   const placeHolderText = () => {
     const keyparts = resourceKey.split('::');
     const resource = plural(keyparts[keyparts.length - 1]);
-    return `Search ${resources.data?.result.length} ${resource}...`;
+
+    const count = resources.data?.result.length
+
+    return `Search ${count ? `${count} ` : ''}${resource}...`;
   };
 
   if (resources.isError) {
@@ -384,7 +387,7 @@ const ResourceTableContainer: React.FC<Props> = ({
                         color='primary'
                         component='button'
                         fontWeight='lg'
-                        endDecorator={header.column.getIsSorted() && <ArrowDropDownIcon />}
+                        endDecorator={header.column.getIsSorted() && <ArrowDropDown />}
                         sx={{
                           '& svg': {
                             transition: '0.2s',

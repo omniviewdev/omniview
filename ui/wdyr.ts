@@ -2,10 +2,10 @@
 
 import React from 'react';
 
-if (import.meta.env.DEV) {
-  import('@welldone-software/why-did-you-render').then((wdyr) => {
-    wdyr.default(React, {
-      trackAllPureComponents: true,
-    });
-  })
-}
+// if (import.meta.env.DEV) {
+//   import('@welldone-software/why-did-you-render').then((wdyr) => {
+//     wdyr.default(React, {
+//       trackAllPureComponents: true,
+//     });
+//   })
+// }

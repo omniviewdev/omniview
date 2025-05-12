@@ -30,6 +30,13 @@ export const BaseEditorPage: React.FC<Props> = ({ data, kind }) => {
     setValue(value)
   }
 
+  /**
+   * Make sure we update whenever the input data changes
+   */
+  React.useEffect(() => {
+    setValue(stringify(data))
+  }, [data])
+
   const toggleDiff = () => setUsingDiff(prev => !prev)
 
   const resetValue = () => {

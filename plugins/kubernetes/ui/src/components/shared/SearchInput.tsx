@@ -4,8 +4,7 @@ import React from 'react';
 import { Input } from '@mui/joy';
 
 // Icons
-import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
-import ClearIcon from '@mui/icons-material/Clear';
+import { SearchRounded, Clear } from '@mui/icons-material';
 
 type Props = {
   /** Placeholder for the search input. */
@@ -26,7 +25,7 @@ const SearchInput: React.FC<Props> = ({ placeholder, value, onChange }) => {
 
   // Recompute only if the value changes
   const hasValue = React.useMemo(() => value !== '', [value]);
-  const endDecorator = React.useMemo(() => hasValue ? <ClearIcon onClick={handleClear} /> : null, [hasValue]);
+  const endDecorator = React.useMemo(() => hasValue ? <Clear onClick={handleClear} /> : null, [hasValue]);
 
   return (
     <Input
@@ -35,7 +34,7 @@ const SearchInput: React.FC<Props> = ({ placeholder, value, onChange }) => {
       autoComplete='off'
       type='text'
       placeholder={placeholder ?? 'Search'}
-      startDecorator={<SearchRoundedIcon color='primary' />}
+      startDecorator={<SearchRounded color='primary' />}
       endDecorator={endDecorator}
       value={value}
       onChange={e => {
