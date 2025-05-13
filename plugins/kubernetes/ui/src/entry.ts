@@ -40,6 +40,12 @@ import SecretTable from './components/kubernetes/table/corev1/Secret/Table';
 import ServiceTable from './components/kubernetes/table/corev1/Service/Table';
 import ServiceAccountTable from './components/kubernetes/table/corev1/ServiceAccount/Table';
 
+// coordination.v1
+import LeaseTable from './components/kubernetes/table/coordinationv1/Lease/Table';
+
+// flowcontrol.v1
+import PriorityLevelConfigurationTable from './components/kubernetes/table/flowcontrolv1/PriorityLevelConfiguration/Table';
+
 // networking.v1
 import IngressTable from './components/kubernetes/table/networkingv1/Ingress/Table';
 import NetworkPolicyTable from './components/kubernetes/table/networkingv1/NetworkPolicy/Table';
@@ -114,6 +120,12 @@ const routes: Array<RouteObject> = [
           { path: 'core_v1_Service', Component: ServiceTable },
           { path: 'core_v1_ServiceAccount', Component: ServiceAccountTable },
           { path: 'core_v1_ReplicationController', Component: ReplicationControllerTable },
+
+          // coordination.v1
+          { path: 'coordination_v1_Lease', Component: LeaseTable },
+
+          // flowcontrol.v1
+          { path: 'flowcontrol_v1_PriorityLevelConfiguration', Component: PriorityLevelConfigurationTable },
 
           // networking.v1
           { path: 'networking_v1_Ingress', Component: IngressTable },

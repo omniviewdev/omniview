@@ -11,6 +11,8 @@ import { LuBox, LuCode } from 'react-icons/lu';
 import NodeSidebar from '../../../sidebar/NodeSidebar';
 import { DrawerComponent } from '@omniviewdev/runtime';
 import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage';
+import ConditionsCell from '../../shared/cells/ConditionsCell';
+import { Condition } from 'kubernetes-types/meta/v1';
 
 const resourceKey = 'core::v1::Node'
 
@@ -50,6 +52,9 @@ const NodeTable: React.FC = () => {
         header: 'Container Runtime',
         accessorKey: 'status.nodeInfo.containerRuntimeVersion',
         size: 200,
+        meta: {
+          defaultHidden: true,
+        }
       },
       {
         id: 'kubeletVersion',
@@ -68,7 +73,7 @@ const NodeTable: React.FC = () => {
       },
       {
         id: 'memoryCapacity',
-        header: 'memory',
+        header: 'Memory',
         accessorFn: (row) => convertByteUnits({ from: row?.status?.capacity?.memory || '' }),
         size: 120,
         meta: {
@@ -93,6 +98,12 @@ const NodeTable: React.FC = () => {
           defaultHidden: true,
         }
       },
+      {
+        id: 'conditions',
+        header: 'Conditions',
+        accessorFn: (row) => row?.status?.conditions,
+        cell: ({ getValue }) => <ConditionsCell conditions={getValue() as Condition[] | undefined} />
+      }
     ], { connectionID: id, resourceKey }),
     [],
   )

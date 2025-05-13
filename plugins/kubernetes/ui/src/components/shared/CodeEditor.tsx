@@ -98,6 +98,7 @@ const CodeEditor: FC<Props> = ({
         onChange={(value) => {
           handleChange(value || "");
         }}
+        height={height ?? "100%"}
         options={{ readOnly, fontSize: 11 }}
       />
     );
