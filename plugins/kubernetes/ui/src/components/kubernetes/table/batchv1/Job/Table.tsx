@@ -5,8 +5,11 @@ import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import { DrawerComponent } from '@omniviewdev/runtime'
-import { LuBox } from 'react-icons/lu'
+import { LuBox, LuCode } from 'react-icons/lu'
 import JobSidebar from '../../../sidebar/Job'
+import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import ConditionsCell from '../../shared/cells/ConditionsCell'
+import { Condition } from 'kubernetes-types/meta/v1'
 
 const resourceKey = 'batch::v1::Job'
 
@@ -14,18 +17,31 @@ const JobTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()
 
   const columns = React.useMemo<Array<ColumnDef<Job>>>(
-    () => withNamespacedResourceColumns([], { connectionID: id, resourceKey }),
+    () => withNamespacedResourceColumns([
+      {
+        id: 'conditions',
+        header: 'Conditions',
+        accessorFn: (row) => row?.status?.conditions,
+        cell: ({ getValue }) => <ConditionsCell conditions={getValue() as Condition[] | undefined} defaultHealthyColor={'success'} defaultUnhealthyColor={'faded'} />,
+        size: 250,
+      },
+    ], { connectionID: id, resourceKey }),
     [],
   )
 
-  const drawer: DrawerComponent = React.useMemo(() => ({
+  const drawer: DrawerComponent<Job> = React.useMemo(() => ({
     title: resourceKey, // TODO: change runtime sdk to accept a function
     icon: <LuBox />,
     views: [
       {
         title: 'Overview',
         icon: <LuBox />,
-        component: (data: any) => <JobSidebar data={data} />
+        component: (ctx) => <JobSidebar data={ctx.data || {}} />
+      },
+      {
+        title: 'Editor',
+        icon: <LuCode />,
+        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
       },
     ],
     actions: []

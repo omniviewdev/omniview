@@ -5,8 +5,9 @@ import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import { DrawerComponent } from '@omniviewdev/runtime'
-import { LuBox } from 'react-icons/lu'
-import ConfigMapSidebar from '../../../sidebar/ConfigMapSidebar'
+import { LuBox, LuCode } from 'react-icons/lu'
+import ConfigMapSidebar from './Sidebar'
+import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
 
 const resourceKey = 'core::v1::ConfigMap'
 
@@ -26,6 +27,11 @@ const ConfigMapTable: React.FC = () => {
         title: 'Overview',
         icon: <LuBox />,
         component: (ctx) => <ConfigMapSidebar data={ctx.data || {}} />
+      },
+      {
+        title: 'Editor',
+        icon: <LuCode />,
+        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
       },
     ],
     actions: []

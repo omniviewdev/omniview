@@ -46,6 +46,20 @@ import { useStoredState } from '../hooks/useStoredState';
 
 export type Memoizer = string | string[] | ((data: any) => string);
 
+const visibilityFromColumnDefs = (defs: Array<ColumnDef<any>>): VisibilityState => {
+  const visibility: VisibilityState = {}
+  defs.forEach((def) => {
+    let meta = def?.meta as { defaultHidden?: boolean } || undefined
+    if (meta === undefined) {
+      meta = {}
+    }
+    if (def.id && meta?.defaultHidden !== undefined) {
+      visibility[def.id] = !meta.defaultHidden
+    }
+  })
+  return visibility
+}
+
 const TableContainer = styled(Sheet)(
   ({ }) => `
   background-color: inherit;
@@ -145,7 +159,7 @@ const ResourceTableContainer: React.FC<Props> = ({
   console.log(resourceKey, 'ResourceTableContainer', 'rendered');
 
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
-  const [columnVisibility, setColumnVisibility] = useStoredState<VisibilityState>(`kubernetes-${connectionID}-${resourceKey}-column-visibility`, {});
+  const [columnVisibility, setColumnVisibility] = useStoredState<VisibilityState>(`kubernetes-${connectionID}-${resourceKey}-column-visibility`, visibilityFromColumnDefs(columns));
   const [columnFilters, setColumnFilters] = useStoredState<ColumnFiltersState>(`kubernetes-${connectionID}-${resourceKey}-column-filters`, [{ id: 'namespace', value: [] }]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [search, setSearch] = useState<string>('');

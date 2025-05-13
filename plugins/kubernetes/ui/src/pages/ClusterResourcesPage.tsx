@@ -22,7 +22,7 @@ import {
 } from '@omniviewdev/runtime';
 
 // Types
-import { type types } from '@omniviewdev/runtime/models';
+// import { type types } from '@omniviewdev/runtime/models';
 
 // Layout
 import Layout from '../layouts/resource';
@@ -31,17 +31,14 @@ import Layout from '../layouts/resource';
 // import ResourceTable from '../components/tables/Resources';
 
 import NavMenu from '../components/shared/navmenu/NavMenu';
-import { type SidebarSection, type SidebarItem } from '../components/shared/navmenu/types';
+// import { type SidebarSection, type SidebarItem } from '../components/shared/navmenu/types';
 
 import { stringAvatar } from '../utils/color';
 
 // Icons
 import { LuCog } from 'react-icons/lu';
+import { useSidebarLayout } from '../hooks/useSidebarLayout';
 
-/**
- * Get the ID from the meta object
- */
-const toID = (meta: types.ResourceMeta) => `${meta.group}_${meta.version}_${meta.kind}`;
 
 export default function ClusterResourcesPage(): React.ReactElement {
   const theme = useTheme();
@@ -51,6 +48,7 @@ export default function ClusterResourcesPage(): React.ReactElement {
   const { types } = useResourceTypes({ pluginID: 'kubernetes', connectionID: id });
   const { groups } = useResourceGroups({ pluginID: 'kubernetes', connectionID: id });
   const { connection } = useConnection({ pluginID: 'kubernetes', connectionID: id });
+  const { layout } = useSidebarLayout({ connectionID: id })
 
   const { showSnackbar } = useSnackbar();
 
@@ -72,50 +70,50 @@ export default function ClusterResourcesPage(): React.ReactElement {
     return (<>{types.error}</>);
   }
 
-  const getSections = () => {
-    const coreSection: SidebarItem[] = [];
-
-    const crdSection: SidebarItem[] = [];
-
-    const grouped: SidebarItem[] = Object.values(groups.data).map((group) => {
-      const item: SidebarItem = {
-        id: group.id,
-        label: group.name,
-        icon: group.icon,
-        children: [],
-      };
-
-      Object.entries(group.resources).forEach(([_, metas]) => {
-        metas.forEach((meta) => {
-          item.children?.push({
-            id: toID(meta),
-            label: meta.kind,
-            icon: meta.icon,
-          });
-        });
-      });
-
-      // Sort the children
-      item.children = item.children?.sort((a, b) => a.label.localeCompare(b.label));
-      return item;
-    }).sort((a, b) => a.label.localeCompare(b.label));
-
-    grouped.forEach((group) => {
-      // This is kubernetes specific, let's eventually allow plugins to define this somehow
-      if (group.label.includes('.') && !group.label.includes('.k8s.io')) {
-        // custom resource definition
-        crdSection.push(group);
-      } else {
-        coreSection.push(group);
-      }
-    });
-
-    const sections: SidebarSection[] = [
-      { id: 'core', title: '', items: coreSection },
-      { id: 'crd', title: 'Custom Resource Definitions', items: crdSection },
-    ];
-    return sections;
-  };
+  // const getSections = () => {
+  //   const coreSection: SidebarItem[] = [];
+  //
+  //   const crdSection: SidebarItem[] = [];
+  //
+  //   const grouped: SidebarItem[] = Object.values(groups.data).map((group) => {
+  //     const item: SidebarItem = {
+  //       id: group.id,
+  //       label: group.name,
+  //       icon: group.icon,
+  //       children: [],
+  //     };
+  //
+  //     Object.entries(group.resources).forEach(([_, metas]) => {
+  //       metas.forEach((meta) => {
+  //         item.children?.push({
+  //           id: toID(meta),
+  //           label: meta.kind,
+  //           icon: meta.icon,
+  //         });
+  //       });
+  //     });
+  //
+  //     // Sort the children
+  //     item.children = item.children?.sort((a, b) => a.label.localeCompare(b.label));
+  //     return item;
+  //   }).sort((a, b) => a.label.localeCompare(b.label));
+  //
+  //   grouped.forEach((group) => {
+  //     // This is kubernetes specific, let's eventually allow plugins to define this somehow
+  //     if (group.label.includes('.') && !group.label.includes('.k8s.io')) {
+  //       // custom resource definition
+  //       crdSection.push(group);
+  //     } else {
+  //       coreSection.push(group);
+  //     }
+  //   });
+  //
+  //   const sections: SidebarSection[] = [
+  //     { id: 'core', title: '', items: coreSection },
+  //     { id: 'crd', title: 'Custom Resource Definitions', items: crdSection },
+  //   ];
+  //   return sections;
+  // };
 
   return (
     <Layout.Root
@@ -167,7 +165,7 @@ export default function ClusterResourcesPage(): React.ReactElement {
           </Sheet>
           <NavMenu
             size='sm'
-            sections={getSections()}
+            sections={layout}
             scrollable
           />
         </Stack>

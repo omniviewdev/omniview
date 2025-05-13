@@ -20,7 +20,7 @@ import {
 import { KeyboardArrowDownRounded } from '@mui/icons-material';
 
 // Custom
-import { type SidebarListItemProps, type SidebarProps } from './types';
+import { SidebarItem, SidebarSection, type SidebarListItemProps, type SidebarProps } from './types';
 import { IsImage } from '../../../utils/url';
 import Icon from '../Icon';
 import { useParams } from 'react-router-dom';
@@ -39,6 +39,29 @@ const scrollableSx = {
     display: 'none',
   },
 };
+
+const getInitialOpenState = (items: SidebarItem[] | undefined, sections: SidebarSection[] | undefined) => {
+  const state: Record<string, boolean> = {}
+
+  items?.forEach((item) => {
+    if (item.defaultExpanded) {
+      state[item.id] = true
+    }
+  })
+
+  sections?.forEach((section) => {
+
+    section.items?.forEach((item) => {
+      if (item.defaultExpanded) {
+        state[item.id] = true
+      }
+    })
+  })
+
+  console.log("got open state: ", state)
+
+  return state
+}
 
 /**
  * Render a navigation menu in a sidebar layout
@@ -67,6 +90,11 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections }) => {
 
   const [open, setOpen] = React.useState<Record<string, boolean>>({});
 
+  React.useLayoutEffect(() => {
+    const initialOpen = getInitialOpenState(items, sections)
+    setOpen(initialOpen)
+  }, [items, sections])
+
   /**
    * Handle the selection of a sidebar item
    */
@@ -78,6 +106,7 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections }) => {
    * Toggle the open state of a sidebar section
    */
   const toggleOpenState = (id: string) => {
+    console.log('toggling: ', id)
     setOpen(prev => ({
       ...prev,
       [id]: !prev[id],
@@ -206,6 +235,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         selected={selected === id}
         onClick={handleClick}
         sx={{
+          marginY: 0,
           paddingY: 0,
           maxHeight: height,
         }}
@@ -223,7 +253,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         )}
         <ListItemContent>
           <Typography
-            level={item.children?.length ? 'title-sm' : 'body-xs'}
+            level={level == 0 || item.children?.length ? 'title-sm' : 'body-xs'}
             fontWeight={selected == id ? 600 : 500}
           >
             {item.label}
@@ -238,7 +268,9 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
             '--ListItem-radius': '8px',
             '--ListItem-minHeight': `${height}px`,
             '--List-gap': '0px',
-            paddingY: 0.5,
+            '--ListItem-paddingLeft': '40px',
+            paddingTop: 0.5,
+            paddingBottom: 0,
           }}
         >
           {item.children?.map(child => (

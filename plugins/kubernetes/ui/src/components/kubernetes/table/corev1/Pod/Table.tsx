@@ -1,7 +1,7 @@
 import React from 'react'
 import { useParams } from 'react-router-dom';
 import { ContainerStatus, Pod } from 'kubernetes-types/core/v1'
-import { OwnerReference } from 'kubernetes-types/meta/v1';
+import { Condition, OwnerReference } from 'kubernetes-types/meta/v1';
 import { ColumnDef } from '@tanstack/react-table'
 
 import ResourceLinkCell from './cells/ResourceLinkCell';
@@ -13,6 +13,7 @@ import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, u
 import { LuBugPlay, LuCode, LuContainer, LuLogs, LuScaling, LuSquareChartGantt, LuTerminal, LuTrash } from 'react-icons/lu';
 import PodSidebar from '../../../sidebar/Pod';
 import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage';
+import ConditionsCell from '../../shared/cells/ConditionsCell';
 
 const resourceKey = 'core::v1::Pod'
 
@@ -166,6 +167,16 @@ const PodTable: React.FC = () => {
         size: 80,
         meta: {
           defaultHidden: false,
+        }
+      },
+      {
+        id: 'conditions',
+        header: 'Conditions',
+        accessorFn: (row) => row?.status?.conditions,
+        cell: ({ getValue }) => <ConditionsCell conditions={getValue() as Condition[] | undefined} defaultHealthyColor={'neutral'} defaultUnhealthyColor={'faded'} />,
+        size: 250,
+        meta: {
+          defaultHidden: true,
         }
       },
       {

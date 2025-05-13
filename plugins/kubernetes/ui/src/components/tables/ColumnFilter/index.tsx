@@ -85,7 +85,10 @@ const ColumnFilter: React.FC<Props> = ({
         <LuSettings2 size={20} />
       </IconButton>
       <BasePopup
-        style={{ zIndex: 1000 }}
+        style={{
+          zIndex: 1000,
+          maxHeight: '50vh',
+        }}
         id={'table-filter-menu'}
         open={open}
         anchor={anchorEl}
@@ -101,9 +104,9 @@ const ColumnFilter: React.FC<Props> = ({
               variant="outlined"
               sx={{
                 bgcolor: '#131315',
-                maxHeight: 'max-content',
                 maxWidth: '100%',
                 minWidth: '300px',
+                maxHeight: '50vh',
                 p: 0,
                 gap: 0,
               }}
@@ -116,7 +119,12 @@ const ColumnFilter: React.FC<Props> = ({
                 Columns
               </Typography>
               <Divider />
-              <CardContent sx={{ p: 0 }}>
+              <CardContent
+                sx={{
+                  p: 0,
+                  overflow: 'hidden',
+                }}
+              >
                 <Grid
                   container
                   sx={{
@@ -124,6 +132,8 @@ const ColumnFilter: React.FC<Props> = ({
                     '& > div': {
                       minWidth: '200px',
                     },
+                    flexWrap: 'nowrap',
+                    overflow: 'hidden',
                   }}
                 >
                   <Grid
@@ -132,6 +142,7 @@ const ColumnFilter: React.FC<Props> = ({
                       flexDirection: 'column',
                       gap: 1.5,
                       p: 1,
+                      overflow: 'auto',
                     }}
                   >
                     {columns.filter(col => col.getCanHide()).map((column) => (
@@ -155,7 +166,8 @@ const ColumnFilter: React.FC<Props> = ({
                   <Divider orientation='vertical' />
                   <Grid
                     sx={{
-                      minWidth: '400px'
+                      minWidth: '400px',
+                      overflow: 'auto',
                     }}
                   >
                     <Typography p={1} startDecorator={<LuTag size={14} />} level='title-sm'>Labels</Typography>
@@ -194,7 +206,8 @@ const ColumnFilter: React.FC<Props> = ({
                   <Divider orientation='vertical' />
                   <Grid
                     sx={{
-                      minWidth: '400px'
+                      minWidth: '400px',
+                      overflow: 'auto',
                     }}
                   >
                     <Typography p={1} startDecorator={<LuStickyNote size={14} />} level='title-sm'>Annotations</Typography>

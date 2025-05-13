@@ -61,19 +61,19 @@ func main() {
 			{
 				ID:          "layout",
 				Label:       "Layout",
-				Description: "The layout to use for the main sidebar",
+				Description: "The layout to use for the cluster resource sidebar",
 				Type:        settings.Text,
-				Default:     "default",
+				Default:     "modern",
 				Options: []settings.SettingOption{
 					{
-						Label:       "Default",
-						Description: "The default layout",
-						Value:       "default",
+						Label:       "Modern",
+						Description: "A modern, pregrouped layout for those familiar with Kubernetes Dashboard",
+						Value:       "modern",
 					},
 					{
-						Label:       "Compact",
-						Description: "A more compact layout",
-						Value:       "compact",
+						Label:       "Full",
+						Description: "Layout showing all resources available in the cluster",
+						Value:       "full",
 					},
 				},
 			},
