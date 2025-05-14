@@ -123,7 +123,13 @@ export default function ClusterResourcesPage(): React.ReactElement {
       }}
     >
       <Layout.SideNav type='bordered' padding={0.5} >
-        <Stack direction='column' maxHeight='100%' gap={0.5}>
+        <Stack
+          direction='column'
+          maxHeight='100%'
+          height={'100%'}
+          overflow={'hidden'}
+          gap={0.5}
+        >
           <Sheet
             variant='outlined'
             sx={{
