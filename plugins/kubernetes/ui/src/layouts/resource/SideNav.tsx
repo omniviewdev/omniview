@@ -57,15 +57,15 @@ const SideNav: React.FC<Props> = ({ type = 'inset', scrollable = false, children
           padding: padding ?? 0,
           minWidth: {
             xs: width ?? 0,
-            sm: width ?? 200,
-            md: width ?? 240,
-            lg: width ?? 280,
+            sm: width ?? 220,
+            md: width ?? 260,
+            lg: width ?? 300,
           },
           maxWidth: {
             xs: width ?? 0,
-            sm: width ?? 200,
-            md: width ?? 240,
-            lg: width ?? 280,
+            sm: width ?? 220,
+            md: width ?? 260,
+            lg: width ?? 300,
           },
           display: {
             xs: 'none',

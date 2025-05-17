@@ -16,8 +16,8 @@ export type Props<T = any> = {
   resourceID: string;
   connectionID: string;
   columnVisibility: string;
-  virtualizer: Virtualizer<HTMLDivElement, Element>;
   virtualRow: VirtualItem;
+  rowVirtualizer: Virtualizer<HTMLDivElement, HTMLTableRowElement>;
   isSelected: boolean;
   onRowClick: (id: string, data: any) => void;
   /** The row data */
@@ -30,8 +30,8 @@ export type Props<T = any> = {
  */
 export const RowContainer: React.FC<Props> = ({
   resourceID,
-  virtualizer,
   virtualRow,
+  rowVirtualizer,
   isSelected,
   row,
   onRowClick,
@@ -39,9 +39,9 @@ export const RowContainer: React.FC<Props> = ({
   // const { showResourceSidebar } = useRightDrawer();
 
   // Use the provided ref callback to measure items
-  const ref = React.useCallback((node: HTMLTableRowElement) => {
-    virtualizer.measureElement(node);
-  }, [virtualizer, virtualRow.index]);
+  // const ref = React.useCallback((node: HTMLTableRowElement) => {
+  //   virtualizer.measureElement(node);
+  // }, [virtualizer, virtualRow.index]);
 
   const handleRowClick = (column: string) => {
     if (column !== 'select' && column !== 'menu') {
@@ -53,7 +53,8 @@ export const RowContainer: React.FC<Props> = ({
   return (
     <tr
       data-index={virtualRow.index}
-      ref={ref} // Measure dynamic row height
+      ref={node => rowVirtualizer.measureElement(node)}
+      // ref={ref} // Measure dynamic row height
       key={row.id}
       data-state={isSelected ? 'selected' : undefined}
       style={{

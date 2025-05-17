@@ -4,12 +4,14 @@ import react from "@vitejs/plugin-react";
 const external = [
   // MUI
   "@emotion/react",
+  "@emotion/styled",
   "@mui/base",
   "@mui/x-charts",
   "@mui/material",
   "@mui/material-icons",
   "@mui/material-icons/si",
   "@mui/material-icons/lu",
+  "date-fns",
 
   "@mui/joy",
 
@@ -26,6 +28,8 @@ const external = [
   // Monaco
   "@monaco-editor/react",
   "monaco-editor",
+  "monaco-yaml",
+  "yaml",
 
   // OMNIVIEW
   "@omniviewdev/runtime",
@@ -62,12 +66,11 @@ export default defineConfig({
         format: 'system',
       },      // Keep exports as defined in source
       preserveEntrySignatures: 'exports-only',
-      external,
-      // external: (id) => {
-      //   const match = external.some(pkg => id === pkg || id.startsWith(pkg))
-      //   if (match) console.log(`EXTERNAL: ${id}`)
-      //   return match
-      // }
+      external: (id) => {
+        const match = external.some(pkg => id === pkg || id.startsWith(pkg))
+        if (match) console.log(`EXTERNAL: ${id}`)
+        return match
+      }
     }
   },
 });

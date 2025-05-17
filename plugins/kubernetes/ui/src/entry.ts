@@ -13,6 +13,12 @@ import ClusterResourcesPage from './pages/ClusterResourcesPage';
 
 import DefaultTable from './components/kubernetes/table/default/Table';
 
+// admissionregistration.v1
+import MutatingWebhookConfigurationTable from './components/kubernetes/table/admissionregistrationv1/MutatingWebhookConfiguration/Table'
+import ValidatingAdmissionPolicyTable from './components/kubernetes/table/admissionregistrationv1/ValidatingAdmissionPolicy/Table'
+import ValidatingAdmissionPolicyBindingTable from './components/kubernetes/table/admissionregistrationv1/ValidatingAdmissionPolicyBinding/Table'
+import ValidatingWebhookConfigurationTable from './components/kubernetes/table/admissionregistrationv1/ValidatingWebhookConfiguration/Table'
+
 // apps.v1
 import DaemonSetTable from './components/kubernetes/table/appsv1/DaemonSet/Table';
 import DeploymentTable from './components/kubernetes/table/appsv1/Deployment/Table';
@@ -31,6 +37,7 @@ import ComponentStatusTable from './components/kubernetes/table/corev1/Component
 import ConfigMapTable from './components/kubernetes/table/corev1/ConfigMap/Table';
 import EndpointsTable from './components/kubernetes/table/corev1/Endpoints/Table';
 import EventTable from './components/kubernetes/table/corev1/Event/Table';
+import NamespaceTable from './components/kubernetes/table/corev1/Namespace/Table';
 import NodeTable from './components/kubernetes/table/corev1/Node/Table';
 import PersistentVolumeTable from './components/kubernetes/table/corev1/PersistentVolume/Table';
 import PersistentVolumeClaimTable from './components/kubernetes/table/corev1/PersistentVolumeClaim/Table';
@@ -45,6 +52,7 @@ import LeaseTable from './components/kubernetes/table/coordinationv1/Lease/Table
 
 // flowcontrol.v1
 import PriorityLevelConfigurationTable from './components/kubernetes/table/flowcontrolv1/PriorityLevelConfiguration/Table';
+import FlowSchemaTable from './components/kubernetes/table/flowcontrolv1/FlowSchema/Table';
 
 // networking.v1
 import IngressTable from './components/kubernetes/table/networkingv1/Ingress/Table';
@@ -68,6 +76,11 @@ import CSINodeTable from './components/kubernetes/table/storagev1/CSINode/Table'
 import CSIStorageCapacityTable from './components/kubernetes/table/storagev1/CSIStorageCapacity/Table';
 import StorageClassTable from './components/kubernetes/table/storagev1/StorageClass/Table';
 import VolumeAttachmentTable from './components/kubernetes/table/storagev1/VolumeAttachment/Table';
+import LimitRangeTable from './components/kubernetes/table/corev1/LimitRange/Table';
+import ResourceQuotaTable from './components/kubernetes/table/corev1/ResourceQuota/Table';
+import RuntimeClassTable from './components/kubernetes/table/nodev1/RuntimeClass/Table';
+import EndpointSliceTable from './components/kubernetes/table/discoveryv1/EndpointSlice/Table';
+import IngressClassTable from './components/kubernetes/table/networkingv1/IngressClass/Table';
 
 const routes: Array<RouteObject> = [
   {
@@ -94,6 +107,12 @@ const routes: Array<RouteObject> = [
             Component: Outlet
           },
 
+          // admissionregistration.v1
+          { path: 'admissionregistration_v1_MutatingWebhookConfiguration', Component: MutatingWebhookConfigurationTable },
+          { path: 'admissionregistration_v1_ValidatingAdmissionPolicy', Component: ValidatingAdmissionPolicyTable },
+          { path: 'admissionregistration_v1_ValidatingAdmissionPolicyBinding', Component: ValidatingAdmissionPolicyBindingTable },
+          { path: 'admissionregistration_v1_ValidatingWebhookConfiguration', Component: ValidatingWebhookConfigurationTable },
+
           // apps.v1
           { path: 'apps_v1_DaemonSet', Component: DaemonSetTable },
           { path: 'apps_v1_Deployment', Component: DeploymentTable },
@@ -102,6 +121,9 @@ const routes: Array<RouteObject> = [
 
           // autoscaling.v1
           { path: 'autoscaling_v1_HorizontalPodAutoscaler', Component: HorizontalPodAutoscalerTable },
+
+          // autoscaling.v2
+          { path: 'autoscaling_v2_HorizontalPodAutoscaler', Component: HorizontalPodAutoscalerTable },
 
           // batch.v1
           { path: 'batch_v1_CronJob', Component: CronJobTable },
@@ -112,10 +134,13 @@ const routes: Array<RouteObject> = [
           { path: 'core_v1_ConfigMap', Component: ConfigMapTable },
           { path: 'core_v1_Endpoints', Component: EndpointsTable },
           { path: 'core_v1_Event', Component: EventTable },
+          { path: 'core_v1_LimitRange', Component: LimitRangeTable },
+          { path: 'core_v1_Namespace', Component: NamespaceTable },
           { path: 'core_v1_Node', Component: NodeTable },
           { path: 'core_v1_PersistentVolume', Component: PersistentVolumeTable },
           { path: 'core_v1_PersistentVolumeClaim', Component: PersistentVolumeClaimTable },
           { path: 'core_v1_Pod', Component: PodTable },
+          { path: 'core_v1_ResourceQuota', Component: ResourceQuotaTable },
           { path: 'core_v1_Secret', Component: SecretTable },
           { path: 'core_v1_Service', Component: ServiceTable },
           { path: 'core_v1_ServiceAccount', Component: ServiceAccountTable },
@@ -124,12 +149,20 @@ const routes: Array<RouteObject> = [
           // coordination.v1
           { path: 'coordination_v1_Lease', Component: LeaseTable },
 
+          // discovery.v1
+          { path: 'discovery_v1_EndpointSlice', Component: EndpointSliceTable },
+
           // flowcontrol.v1
           { path: 'flowcontrol_v1_PriorityLevelConfiguration', Component: PriorityLevelConfigurationTable },
+          { path: 'flowcontrol_v1_FlowSchema', Component: FlowSchemaTable },
 
           // networking.v1
           { path: 'networking_v1_Ingress', Component: IngressTable },
+          { path: 'networking_v1_IngressClass', Component: IngressClassTable },
           { path: 'networking_v1_NetworkPolicy', Component: NetworkPolicyTable },
+
+          // node.v1
+          { path: 'node_v1_RuntimeClass', Component: RuntimeClassTable },
 
           // policy.v1
           { path: 'policy_v1_PodDisruptionBudget', Component: PodDisruptionBudgetTable },

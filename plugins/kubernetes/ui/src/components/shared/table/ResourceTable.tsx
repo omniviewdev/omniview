@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 // Material-ui
 import {
@@ -31,9 +31,10 @@ import get from 'lodash.get';
 
 // Project imports
 // import NamespaceSelect from '@/components/selects/NamespaceSelect';
-import ResourceTableRow from './ResourceTableRow';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { useResources, DrawerComponent, useRightDrawer } from '@omniviewdev/runtime';
+// import ResourceTableRow from './ResourceTableRow';
+import ResourceTableBody from './ResourceTableBody'
+// import { useVirtualizer } from '@tanstack/react-virtual';
+import { useResources, DrawerComponent } from '@omniviewdev/runtime';
 import { LuCircleAlert } from 'react-icons/lu';
 import { plural } from '../../../utils/language';
 import { DebouncedInput } from '../../tables/DebouncedInput';
@@ -142,6 +143,22 @@ export type Props<T = any> = {
 
 const defaultData: any[] = []
 
+function useTraceUpdate(props: any) {
+  const prev = useRef(props);
+  useEffect(() => {
+    const changedProps = Object.entries(props).reduce((ps: any, [k, v]) => {
+      if (prev.current[k] !== v) {
+        ps[k] = [prev.current[k], v];
+      }
+      return ps;
+    }, {});
+    if (Object.keys(changedProps).length > 0) {
+      console.log('Changed props:', changedProps);
+    }
+    prev.current = props;
+  });
+}
+
 /**
   * Render a generic resource table with sorting, filtering, column visibility and row selection.
   * Use this component to display a generic table for any Kubernetes resource using tanstack/react-table.
@@ -156,6 +173,7 @@ const ResourceTableContainer: React.FC<Props> = ({
   memoizer,
   drawer,
 }) => {
+  useTraceUpdate({ connectionID, resourceKey, columns, memoizer, drawer })
   console.log(resourceKey, 'ResourceTableContainer', 'rendered');
 
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
@@ -163,7 +181,7 @@ const ResourceTableContainer: React.FC<Props> = ({
   const [columnFilters, setColumnFilters] = useStoredState<ColumnFiltersState>(`kubernetes-${connectionID}-${resourceKey}-column-filters`, [{ id: 'namespace', value: [] }]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [search, setSearch] = useState<string>('');
-  const { openDrawer } = useRightDrawer()
+  // const { openDrawer } = useRightDrawer()
 
   /** Filtering behavior */
   const [filterAnchor, setFilterAnchor] = React.useState<undefined | HTMLElement>(undefined);
@@ -175,21 +193,21 @@ const ResourceTableContainer: React.FC<Props> = ({
   };
 
   /** Row Clicking */
-  const onRowClick = React.useCallback((id: string, data: any) => {
-    console.log("onRowClick called", { id, data })
-    if (drawer === undefined) {
-      /** nothing to do */
-      return
-    }
-    openDrawer(drawer, {
-      data,
-      resource: {
-        id,
-        key: resourceKey,
-        connectionID
-      }
-    })
-  }, [drawer])
+  // const onRowClick = React.useCallback((id: string, data: any) => {
+  //   console.log("onRowClick called", { id, data })
+  //   if (drawer === undefined) {
+  //     /** nothing to do */
+  //     return
+  //   }
+  //   openDrawer(drawer, {
+  //     data,
+  //     resource: {
+  //       id,
+  //       key: resourceKey,
+  //       connectionID
+  //     }
+  //   })
+  // }, [drawer])
 
   /**
   * Set the namespaces filter
@@ -249,24 +267,24 @@ const ResourceTableContainer: React.FC<Props> = ({
     // },
   });
 
-  const { rows } = table.getRowModel();
+  // const { rows } = table.getRowModel();
 
   const parentRef = React.useRef<HTMLDivElement>(null);
 
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => parentRef.current,
-    // Actual height of each row
-    estimateSize: React.useCallback(() => 36, []),
-    // the number of items *above and below to render
-    overscan: 10,
-    // // Measure dynamic row height, except in firefox because it measures table border height incorrectly
-    // measureElement:
-    //   typeof window !== 'undefined'
-    //     && !navigator.userAgent.includes('Firefox')
-    //     ? element => element?.getBoundingClientRect().height
-    //     : undefined,
-  });
+  // const virtualizer = useVirtualizer({
+  //   count: rows.length,
+  //   getScrollElement: () => parentRef.current,
+  //   // Actual height of each row
+  //   estimateSize: React.useCallback(() => 36, []),
+  //   // the number of items *above and below to render
+  //   overscan: 10,
+  //   // // Measure dynamic row height, except in firefox because it measures table border height incorrectly
+  //   // measureElement:
+  //   //   typeof window !== 'undefined'
+  //   //     && !navigator.userAgent.includes('Firefox')
+  //   //     ? element => element?.getBoundingClientRect().height
+  //   //     : undefined,
+  // });
 
   const placeHolderText = () => {
     const keyparts = resourceKey.split('::');
@@ -419,32 +437,43 @@ const ResourceTableContainer: React.FC<Props> = ({
               </tr>
             ))}
           </thead>
-          <tbody
-            style={{
-              display: 'grid',
-              height: `${virtualizer.getTotalSize()}px`, // Tells scrollbar how big the table is
-              position: 'relative', // Needed for absolute positioning of rows
-            }}
-          >
-            {virtualizer.getVirtualItems().map(virtualRow => {
-              const row = rows[virtualRow.index];
-              return (
-                <ResourceTableRow
-                  key={row.id}
-                  connectionID={connectionID}
-                  resourceID={row.id}
-                  resourceKey={resourceKey}
-                  row={row}
-                  memoizer={memoizer}
-                  virtualizer={virtualizer}
-                  virtualRow={virtualRow}
-                  isSelected={rowSelection[row.id]}
-                  columnVisibility={JSON.stringify({ columnVisibility, customCols: columnDefs.length })}
-                  onRowClick={onRowClick}
-                />
-              );
-            })}
-          </tbody>
+          <ResourceTableBody
+            table={table}
+            tableContainerRef={parentRef}
+            connectionID={connectionID}
+            resourceKey={resourceKey}
+            columnVisibility={JSON.stringify({ columnVisibility, customCols: columnDefs.length })}
+            rowSelection={rowSelection}
+            drawer={drawer}
+            memoizer={memoizer}
+          />
+          {/* <tbody */}
+          {/*   style={{ */}
+          {/*     display: 'grid', */}
+          {/*     height: `${virtualizer.getTotalSize()}px`, // Tells scrollbar how big the table is */}
+          {/*     position: 'relative', // Needed for absolute positioning of rows */}
+          {/*   }} */}
+          {/* > */}
+          {/*   {virtualizer.getVirtualItems().map(virtualRow => { */}
+          {/*     const row = rows[virtualRow.index]; */}
+          {/*     return ( */}
+          {/*       <ResourceTableRow */}
+          {/*         key={row.id} */}
+          {/*         connectionID={connectionID} */}
+          {/*         resourceID={row.id} */}
+          {/*         resourceKey={resourceKey} */}
+          {/*         row={row} */}
+          {/*         memoizer={memoizer} */}
+          {/*         virtualizer={virtualizer} */}
+          {/*         virtualRow={virtualRow} */}
+          {/*         isSelected={rowSelection[row.id]} */}
+          {/*         columnVisibility={JSON.stringify({ columnVisibility, customCols: columnDefs.length })} */}
+          {/*         onRowClick={onRowClick} */}
+          {/*       /> */}
+          {/*     ); */}
+          {/*   })} */}
+          {/* </tbody> */}
+
         </StyledTable>
       </TableContainer>
     </Box>
