@@ -2,6 +2,7 @@ import React, { ComponentProps } from "react"
 import { Typography } from "@mui/joy"
 
 const colorMap: Record<string, ComponentProps<typeof Typography>['color']> = {
+  "Active": "success",
   "Pending": "warning",
   "Running": "success",
   "Succeeded": "success",

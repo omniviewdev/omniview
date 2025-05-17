@@ -326,7 +326,7 @@ const PodTable: React.FC = () => {
       connectionID={id}
       resourceKey={resourceKey}
       idAccessor='metadata.uid'
-      memoizer={'metadata.uid,metadata.resourceVersion'}
+      memoizer={'metadata.uid,metadata.resourceVersion,status.phase'}
       drawer={drawer}
     />
   )

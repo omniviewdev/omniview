@@ -72,9 +72,9 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections }) => {
 
   const selected = location.pathname.split('/').pop();
 
-  const onSelect = (resourceID: string) => {
+  const onSelect = React.useCallback((resourceID: string) => {
     navigate(`/cluster/${id}/resources/${resourceID}`);
-  }
+  }, [navigate])
 
   if (items == null && sections == null) {
     throw new Error('You must pass either items or sections');
@@ -98,20 +98,19 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections }) => {
   /**
    * Handle the selection of a sidebar item
    */
-  const handleSelect = (id: string) => {
+  const handleSelect = React.useCallback((id: string) => {
     onSelect(id);
-  };
+  }, [onSelect])
 
   /**
    * Toggle the open state of a sidebar section
    */
-  const toggleOpenState = (id: string) => {
-    console.log('toggling: ', id)
+  const toggleOpenState = React.useCallback((id: string) => {
     setOpen(prev => ({
       ...prev,
       [id]: !prev[id],
     }));
-  };
+  }, [setOpen])
 
   return (
     <Stack
@@ -179,6 +178,8 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections }) => {
 NavMenu.displayName = 'NavMenu';
 // NavMenu.whyDidYouRender = true;
 
+
+
 /**
  * Recursively render the sidebar items
  *
@@ -188,7 +189,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
   const { id } = item;
   const height = level === 0 ? 28 : 24
 
-  const handleClick = (e: React.SyntheticEvent) => {
+  const handleClick = React.useCallback((e: React.SyntheticEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -198,7 +199,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
     } else {
       onSelect(id);
     }
-  };
+  }, [onToggleOpen, onSelect, item.children])
 
   const MemoizedIcon = React.useMemo(() => (
     <KeyboardArrowDownRounded sx={{ transform: openState[id] ? 'initial' : 'rotate(-90deg)' }} />
@@ -210,6 +211,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
       sx={{
         userSelect: 'none',
         paddingY: 0,
+        paddingInlineStart: !!item.icon ? undefined : '2rem',
       }}
       nested={Boolean(item.children?.length)}
       endAction={item.children?.length ? (
@@ -241,7 +243,11 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         }}
       >
         {item.icon && (
-          <ListItemDecorator>
+          <ListItemDecorator
+            sx={{
+              marginInlineEnd: '-1rem',
+            }}
+          >
             {typeof item.icon === 'string' ? (
               IsImage(item.icon)
                 ? <Avatar size='sm' src={item.icon} sx={{ borderRadius: 'sm', maxHeight: 20, maxWidth: 20 }} />
@@ -268,7 +274,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
             '--ListItem-radius': '8px',
             '--ListItem-minHeight': `${height}px`,
             '--List-gap': '0px',
-            '--ListItem-paddingLeft': '40px',
+            '--ListItem-paddingLeft': '1rem',
             paddingTop: 0.5,
             paddingBottom: 0,
           }}

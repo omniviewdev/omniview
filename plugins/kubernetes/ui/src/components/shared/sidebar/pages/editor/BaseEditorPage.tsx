@@ -9,7 +9,7 @@ import { LuFileCode, LuSave, LuX } from "react-icons/lu";
 
 interface Props {
   kind?: string;
-  data: KubernetesResourceObject;
+  data?: KubernetesResourceObject;
   children?: React.ReactNode;
 }
 
@@ -21,7 +21,7 @@ export const BaseEditorPage: React.FC<Props> = ({ data, kind }) => {
   const [usingDiff, setUsingDiff] = React.useState<boolean>(false)
   const [changed, setChanged] = React.useState<boolean>(false)
 
-  const filename = kind ? `${kind}/${data.metadata?.uid}/spec.yaml` : `${data.metadata?.uid}/spec.yaml`
+  const filename = kind ? `${kind}/${data?.metadata?.uid}/spec.yaml` : `${data?.metadata?.uid}/spec.yaml`
 
   const onChange = (value: string) => {
     if (!changed) {

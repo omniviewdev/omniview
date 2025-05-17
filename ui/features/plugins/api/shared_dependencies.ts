@@ -6,6 +6,7 @@
 export const shared = {
   // Material UI
   '@emotion/react': () => import('@emotion/react'),
+  '@emotion/styled': () => import('@emotion/styled'),
 
   '@mui/joy': () => import('@mui/joy'),
   '@mui/joy/Table': () => import('@mui/joy/Table'),
@@ -64,4 +65,8 @@ export const shared = {
   '@omniviewdev/runtime/api': () => import('@omniviewdev/runtime/api'),
   '@omniviewdev/runtime/runtime': () => import('@omniviewdev/runtime/runtime'),
   '@omniviewdev/runtime/models': () => import('@omniviewdev/runtime/models'),
+
+  // Utilities
+  'date-fns': () => import('date-fns'),
+  'yaml': () => import('yaml')
 };
