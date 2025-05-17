@@ -80,10 +80,10 @@ log.debug("starting up the application")
  */
 const App: React.FC = () => (
   <ErrorBoundary FallbackComponent={fallbackRender}>
-    <SettingsProvider>
-      <ExtensionProvider registry={EXTENSION_REGISTRY}>
-        <AppSnackbarProvider>
-          <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={queryClient}>
+      <SettingsProvider>
+        <ExtensionProvider registry={EXTENSION_REGISTRY}>
+          <AppSnackbarProvider>
             <MaterialCssVarsProvider
               defaultMode="dark"
               theme={{ [MATERIAL_THEME_ID]: materialTheme }}
@@ -110,10 +110,10 @@ const App: React.FC = () => (
                 </Provider>
               </StyledEngineProvider>
             </MaterialCssVarsProvider>
-          </QueryClientProvider>
-        </AppSnackbarProvider>
-      </ExtensionProvider>
-    </SettingsProvider>
+          </AppSnackbarProvider>
+        </ExtensionProvider>
+      </SettingsProvider>
+    </QueryClientProvider>
   </ErrorBoundary>
 );
 
