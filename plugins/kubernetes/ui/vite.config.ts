@@ -6,6 +6,7 @@ const external = [
   "@emotion/react",
   "@emotion/styled",
   "@mui/base",
+  '@mui/base/Unstable_Popup',
   "@mui/x-charts",
   "@mui/material",
   "@mui/material-icons",
@@ -14,6 +15,28 @@ const external = [
   "date-fns",
 
   "@mui/joy",
+  '@mui/joy/Table',
+  '@mui/joy/Typography',
+  '@mui/joy/Sheet',
+  '@mui/joy/Stack',
+  '@mui/joy/Box',
+  '@mui/joy/Card',
+  '@mui/joy/CardContent',
+  '@mui/joy/Divider',
+  '@mui/joy/Grid',
+  '@mui/joy/AccordionGroup',
+  '@mui/joy/Accordion',
+  '@mui/joy/AccordionDetails',
+  '@mui/joy/AccordionSummary',
+  '@mui/joy/Avatar',
+  '@mui/joy/Chip',
+  '@mui/joy/Tooltip',
+  '@mui/joy/Button',
+  '@mui/joy/FormControl',
+  '@mui/joy/FormHelperText',
+  '@mui/joy/IconButton',
+  '@mui/joy/Input',
+  '@mui/joy/Textarea',
 
   // REACT
   "react",
@@ -66,11 +89,12 @@ export default defineConfig({
         format: 'system',
       },      // Keep exports as defined in source
       preserveEntrySignatures: 'exports-only',
-      external: (id) => {
-        const match = external.some(pkg => id === pkg || id.startsWith(pkg))
-        if (match) console.log(`EXTERNAL: ${id}`)
-        return match
-      }
+      external,
+      // external: (id) => {
+      //   const match = external.some(pkg => id === pkg || id.startsWith(pkg))
+      //   if (match) console.log(`EXTERNAL: ${id}`)
+      //   return match
+      // }
     }
   },
 });
