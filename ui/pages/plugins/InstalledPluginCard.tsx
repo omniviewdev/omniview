@@ -19,12 +19,13 @@ import {
 // Icons
 import Icon from '@/components/icons/Icon';
 import { FaGithub } from 'react-icons/fa6';
-import { LuAtom, LuRefreshCcwDot } from 'react-icons/lu';
+import { LuAtom, LuRefreshCcwDot, LuView } from 'react-icons/lu';
 
 // Hooks
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
 import { BrowserOpenURL } from '@omniviewdev/runtime/runtime';
 import UninstallPluginModal from './UninstallPluginModal';
+import PluginUpdateButton from './PluginUpdateButton';
 
 // Bindings
 
@@ -77,6 +78,7 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
       {plugin.data?.loading && <CircularProgress size={'lg'} thickness={8} sx={{
         position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
       }} />}
+
       <div style={{
         height: '100%',
         width: '100%',
@@ -169,15 +171,19 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
             </IconButton>
           </Tooltip>
 
-          <Button
-            variant='solid'
-            color='primary'
-            onClick={() => {
-              handleOpenInBrowser(plugin.data?.metadata.website);
-            }}
-          >
-            View
-          </Button>
+          <Tooltip title='View plugin' variant='soft' arrow>
+            <IconButton
+              variant='outlined'
+              color='neutral'
+              sx={{ mr: 'auto' }}
+              onClick={() => {
+                handleOpenInBrowser(plugin.data?.metadata.website);
+              }}
+            >
+              <LuView />
+            </IconButton>
+          </Tooltip>
+
           <Button
             variant='outlined'
             color='neutral'
@@ -187,6 +193,8 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
           >
             Uninstall
           </Button>
+
+          <PluginUpdateButton installed={true} currentVersion={plugin.data?.metadata.version || ''} pluginID={id} />
           <UninstallPluginModal open={uninstallModalOpen} onClose={() => {
             setUninstallModalOpen(false);
           }} name={plugin.data?.metadata.name ?? ''} uninstall={uninstall} />

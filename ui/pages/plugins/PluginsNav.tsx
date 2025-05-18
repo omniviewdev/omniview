@@ -3,7 +3,9 @@ import React from 'react';
 // Material-ui
 import {
   Avatar,
+  Box,
   Chip,
+  CircularProgress,
   List,
   ListItem,
   ListItemButton,
@@ -13,9 +15,11 @@ import {
 } from '@mui/joy';
 
 // Mock data
-import mock from './mock/plugins.json';
 import { LuCheck } from 'react-icons/lu';
 import { Link, useParams } from 'react-router-dom';
+import { usePluginManager } from '@/hooks/plugin/usePluginManager';
+import { IsImage } from '@/utils/url';
+import Icon from '@/components/icons/Icon';
 
 type Props = {
   installed: string[] | undefined;
@@ -26,6 +30,13 @@ type Props = {
  */
 const PluginsNav: React.FC<Props> = ({ installed }) => {
   const { id = '' } = useParams<{ id: string }>()
+  const { available } = usePluginManager()
+
+  if (available.isLoading) {
+    return <Box sx={{ height: '100%', width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+      <CircularProgress />
+    </Box>
+  }
 
   return (
     <List
@@ -38,7 +49,7 @@ const PluginsNav: React.FC<Props> = ({ installed }) => {
       }}
       aria-label='plugins list'
     >
-      {mock.map(plugin => (
+      {available.data?.map(plugin => (
         <ListItem
           key={plugin.id}
           component={Link}
@@ -50,7 +61,21 @@ const PluginsNav: React.FC<Props> = ({ installed }) => {
             sx={{ py: 1, px: 2 }}
           >
             <ListItemDecorator>
-              <Avatar size='md' src={plugin.icon} variant='plain' sx={{ borderRadius: 4 }} />
+              {IsImage(plugin?.icon) ? (
+                <Avatar
+                  size='sm'
+                  src={plugin.icon}
+                  variant='plain'
+                  sx={{
+                    borderRadius: 4,
+                    backgroundColor: 'transparent',
+                    objectFit: 'contain',
+                    border: 0,
+                    width: '42px',
+                    height: '42px',
+                  }}
+                />
+              ) : <Icon name={plugin?.icon || ''} size={42} />}
             </ListItemDecorator>
             <div>
               <Stack direction='row' spacing={2} justifyContent={'space-between'}>

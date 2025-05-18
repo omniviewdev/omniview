@@ -21,6 +21,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
@@ -84,6 +85,7 @@ func main() {
 	networkerController := networker.NewController(log, settingsProvider, resourceClient)
 	networkerClient := networker.NewClient(networkerController)
 
+	pluginRegistryClient := registry.NewRegistryClient()
 	pluginManager := plugin.NewManager(
 		log,
 		resourceController,
@@ -92,6 +94,7 @@ func main() {
 		networkerController,
 		managers,
 		settingsProvider,
+		pluginRegistryClient,
 	)
 
 	// Create an instance of the app structure

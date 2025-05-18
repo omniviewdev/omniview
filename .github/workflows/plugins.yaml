@@ -10,59 +10,14 @@ env:
   NODE_OPTIONS: "--max-old-space-size=4096"
 
 jobs:
-  # tag-release:
-  #   strategy:
-  #     matrix:
-  #       plugin: ["kubernetes"]
-  #   runs-on: ubuntu-latest
-  #   if: github.ref_type == 'tag'
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v3
-  #
-  #     - name: Create Plugin Release Tag
-  #       uses: actions/github-script@v5
-  #       with:
-  #         script: |
-  #           github.rest.git.createRef({
-  #             owner: context.repo.owner,
-  #             repo: context.repo.repo,
-  #             ref: 'refs/tags/plugin-${{ matrix.plugin }}-${{ steps.vars.outputs.version }}',
-  #             sha: context.sha
-  #           })
-
   build:
     strategy:
       # Failure in one platform build won't impact the others
       fail-fast: false
       matrix:
         plugin: ["kubernetes"]
-        build:
-          # Linux builds
-          - os: linux
-            arch: amd64
-            runner: "ubuntu-latest"
-          - os: linux
-            arch: arm64
-            runner: "ubuntu-latest"
 
-          # Windows Builds (we can do on ubuntu)
-          - os: "windows"
-            arch: "amd64"
-            runner: "ubuntu-latest"
-          - os: "windows"
-            arch: "arm64"
-            runner: "ubuntu-latest"
-
-          # Mac Builds
-          - os: darwin
-            arch: amd64
-            runner: "macos-latest"
-          - os: darwin
-            arch: arm64
-            runner: "macos-latest"
-
-    runs-on: ${{ matrix.build.runner }}
+    runs-on: ubuntu-latest
     steps:
       - name: Extract version
         id: vars
@@ -82,104 +37,12 @@ jobs:
             - args: []
             - args: [--global, typescript, yq]
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          go-version: "^1.24.2"
-
-      - name: Build runtime
-        working-directory: packages/omniviewdev-runtime
-        run: pnpm run build
-
-      - name: Prepare directory
-        working-directory: plugins/${{ matrix.plugin }}
-        run: |
-          # Clean
-          rm -rf ./build
-          mkdir -p ./build
-          # Copy metadata (shared)
-          cp plugin.yaml ./build/
-
-      # Compile the ui
-      - name: Compile UI
-        working-directory: plugins/${{ matrix.plugin }}
-        run: |
-          mkdir -p ./build/assets;
-          cd ./ui && pnpm run build && cd ..;
-          cp -r ui/dist/assets/* ./build/assets/;
-
-      # Compile the binary
-      - name: Compile Binary
-        working-directory: plugins/${{ matrix.plugin }}
-        env:
-          OUTFILE: plugin
-        run: |
-          mkdir -p ./build/bin;
-          if [ "$${{matrix.build.os}}" = "windows" ]; then OUTFILE=plugin.exe; fi;
-          env GOOS=${{matrix.build.os}} GOARCH=${{matrix.build.arch}} go build -o ./build/bin/$OUTFILE ./pkg;
-
-      # Package up the plugin
-      - name: Package
-        working-directory: plugins/${{ matrix.plugin }}
-        run: |
-          tar -czvf ./archive.tar.gz -C ./build .
-
-      - name: Archive Package
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.plugin }}-${{ matrix.build.os }}-${{ matrix.build.arch }}
-          path: plugins/${{ matrix.plugin }}/archive.tar.gz
-
-      # - name: Configure AWS credentials
-      #   uses: aws-actions/configure-aws-credentials@v2
-      #   with:
-      #     aws-access-key-id: ${{ secrets.PLUGIN_DEPLOY_AWS_ACCESS_KEY_ID }}
-      #     aws-secret-access-key: ${{ secrets.PLUGIN_DEPLOY_AWS_SECRET_ACCESS_KEY }}
-      #     aws-region: us-west-2
-      #
-      # - name: Upload plugin tarballs
-      #   working-directory: plugins/${{ matrix.plugin }}
-      #   run: |
-      #     aws s3 cp \
-      #       plugin-${{ matrix.plugin }}-${{ steps.vars.outputs.version }}-${{ matrix.build.os }}-${{ matrix.build.arch }}.tar.gz \
-      #       s3://${{ vars.PLUGIN_DEPLOY_BUCKET_NAME }}/${{ matrix.plugin }}/${{ github.ref_name}}/
-      #
-      # - name: Convert YAML → JSON
-      #   run: |
-      #     yq -o=json plugins/${{ matrix.plugin }}/plugin.yaml > plugin.json
-      #
-      # - name: Upload plugin.json
-      #   run: |
-      #     aws s3 cp plugin.json \
-      #       s3://${{ vars.PLUGIN_DEPLOY_BUCKET_NAME }}/${{ matrix.plugin }}/${{ github.ref_name}}/plugin.json
-      #
-      # - name: Release
-      #   uses: softprops/action-gh-release@v1
-      #   if: github.ref_type == 'tag'
-      #   with:
-      #     tag_name: plugin-${{ matrix.plugin }}-${{ steps.vars.outputs.version }}
-      #     name: plugin-${{ matrix.plugin }}-${{ steps.vars.outputs.version }}
-      #     files: ./plugins/${{ matrix.plugin }}/plugin-${{ matrix.plugin }}-${{ steps.vars.outputs.version }}-${{ matrix.build.os }}-${{ matrix.build.arch }}.tar.gz
-      #     token: ${{ secrets.GITHUB_TOKEN }}
-
-  release:
-    runs-on: ubuntu-latest
-    needs: build
-
-    if: github.ref_type == 'tag'
-
-    strategy:
-      matrix:
-        plugin: ["kubernetes"]
-
-    steps:
-      - name: Extract version
-        id: vars
-        run: |
-          echo "version=${GITHUB_REF#refs/tags/plugins/}" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout
-        uses: actions/checkout@v3
+          aws-access-key-id: ${{ secrets.PLUGIN_DEPLOY_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.PLUGIN_DEPLOY_AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -191,28 +54,14 @@ jobs:
           go install github.com/omniviewdev/registry-cli@latest
           registry-cli
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.PLUGIN_DEPLOY_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.PLUGIN_DEPLOY_AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-2
+      - name: Build runtime
+        working-directory: packages/omniviewdev-runtime
+        run: pnpm run build
 
-      - name: Download all workflow run artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-
-      - run: ls -R ./dist
-
-      - name: Publish to registry
+      - name: Build and publish
         run: |
-          registry-cli publish ${{ matrix.plugin }} ${{ steps.vars.outputs.version }} \
-            --metadata plugins/${{ matrix.plugin }}/plugin.yaml \
-            --bucket ${{ vars.PLUGIN_DEPLOY_BUCKET_NAME }} \
-            --darwin_amd64 dist/${{ matrix.plugin }}-darwin-amd64/archive.tar.gz \
-            --darwin_arm64 dist/${{ matrix.plugin }}-darwin-arm64/archive.tar.gz \
-            --windows_amd64 dist/${{ matrix.plugin }}-windows-amd64/archive.tar.gz \
-            --windows_arm64 dist/${{ matrix.plugin }}-windows-arm64/archive.tar.gz \
-            --linux_amd64 dist/${{ matrix.plugin }}-linux-amd64/archive.tar.gz \
-            --linux_arm64 dist/${{ matrix.plugin }}-linux-arm64/archive.tar.gz
+          cd plugins/${{ matrix.plugin }} && \
+          registry-cli package ./ \
+            -v ${{ steps.vars.outputs.version }} \
+            --publish \
+            --bucket ${{ vars.PLUGIN_DEPLOY_BUCKET_NAME }}

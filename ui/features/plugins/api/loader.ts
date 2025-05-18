@@ -3,6 +3,7 @@ import { PluginWindow } from '@omniviewdev/runtime';
 import { EXTENSION_REGISTRY } from '../../extensions/store';
 import { registerPlugin } from '../PluginManager';
 import { SystemJS } from './systemjs';
+import { EventsEmit } from '@omniviewdev/runtime/runtime';
 
 type PluginImportInfo = {
   pluginId: string;
@@ -23,7 +24,7 @@ const getModuleId = ({ pluginId }: PluginImportInfo): string => {
 
 export async function clearPlugin({ pluginId }: PluginImportInfo) {
   /** remove the import */
-  SystemJS.delete(getModuleId({ pluginId }));
+  await SystemJS.delete(getModuleId({ pluginId }));
 }
 
 /**
@@ -95,4 +96,5 @@ export async function importPluginWindow(opts: PluginWindowImportInfo): Promise<
 export async function loadAndRegisterPlugin(pluginID: string): Promise<void> {
   const pluginWindow = await importPluginWindow({ pluginId: pluginID });
   registerPlugin(pluginID, pluginWindow);
+  EventsEmit("core/window/recalc_routes")
 }

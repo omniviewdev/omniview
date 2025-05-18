@@ -5,7 +5,7 @@ import React from 'react';
 import { EventsEmit, EventsOn } from '@omniviewdev/runtime/runtime';
 import { type config } from '@omniviewdev/runtime/models';
 
-import { clearPlugin, loadAndRegisterPlugin } from '@/features/plugins/api/loader';
+import { clearPlugin, importPlugin, loadAndRegisterPlugin } from '@/features/plugins/api/loader';
 
 enum Entity {
   PLUGINS = 'plugins',
@@ -213,8 +213,21 @@ export const usePluginManager = () => {
     },
   });
 
+  const available = useQuery({
+    queryKey: [Entity.PLUGINS, 'registry'],
+    queryFn: async () => {
+      const available = await PluginManager.ListAvailablePlugins();
+      if (!available) {
+        return [];
+      }
+
+      return available
+    }
+  })
+
   return {
     plugins,
+    available,
     promptInstallFromPath,
     promptInstallDev,
     reloadPlugin,
@@ -233,6 +246,15 @@ export const usePlugin = ({ id }: { id: string }) => {
     },
   });
 
+
+  const versions = useQuery({
+    queryKey: [Entity.PLUGINS, id, 'versions'],
+    queryFn: async () => {
+      const versions = await PluginManager.GetPluginVersions(id);
+      return versions
+    },
+  });
+
   /**
    * Reload the plugin
    */
@@ -242,6 +264,8 @@ export const usePlugin = ({ id }: { id: string }) => {
       showSnackbar(`Plugin '${metadata.name}' sucessfully reloaded`, 'success');
       // Invalidate the plugins query to refetch the list of plugins
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
+      clearPlugin({ pluginId: metadata.id })
+      loadAndRegisterPlugin(metadata.id)
     },
     onError(error) {
       showSnackbar(`Failed to reload plugin: ${error.message}`, 'error');
@@ -259,15 +283,47 @@ export const usePlugin = ({ id }: { id: string }) => {
       // Invalidate the plugins query to refetch the list of plugins
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
+      clearPlugin({ pluginId: metadata.id })
     },
     onError(error) {
       showSnackbar(`Failed to uninstall plugin: ${error.message}`, 'error');
     },
   });
 
+  /**
+   * Update the plugin to a specified version
+   */
+  const { mutateAsync: update } = useMutation({
+    mutationFn: async (version: string) => {
+      console.log(`running update with plugin ${id} and version ${version}`)
+      const resp = await PluginManager.InstallPluginVersion(id, version)
+      return resp
+    },
+    onSuccess(meta) {
+      showSnackbar(`Plugin '${meta.name}' sucessfully updated to version '${meta.version}`, 'success');
+      // Invalidate the plugins query to refetch the list of plugins
+      void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
+      void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
+      EventsEmit('plugin/install_complete', meta)
+
+      loadAndRegisterPlugin(meta.id)
+    },
+
+    onError(error) {
+      if (`${error.message}` === 'cancelled' || `${error.message}` === 'undefined') {
+        // User cancelled the prompt, nothing actually wrong
+        return;
+      }
+
+      showSnackbar(`Plugin update failed: ${error.name}`, 'error');
+    },
+  });
+
   return {
     plugin,
+    versions,
     reload,
     uninstall,
+    update,
   };
 };

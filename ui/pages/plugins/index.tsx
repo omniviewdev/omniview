@@ -45,7 +45,7 @@ const SettingsPage = () => {
           gap: 0,
         }}
       >
-        <Layout.SideNav type='bordered-inset'>
+        <Layout.SideNav type='bordered-inset' width={300}>
           <Stack component={Sheet} variant={'outlined'} direction='row' alignItems={'center'} spacing={8} sx={{
             px: 2, py: 1.5, m: 1, borderRadius: 'md',
           }}>
