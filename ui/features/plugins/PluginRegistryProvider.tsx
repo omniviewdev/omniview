@@ -2,6 +2,7 @@ import React, { createContext, useLayoutEffect, useState } from 'react';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { importPluginWindow } from './api/loader';
 import { registerPlugin } from './PluginManager';
+import PrimaryLoading from '@/components/util/PrimaryLoading';
 
 interface PluginRegistryContextValue {
   ready: boolean;
@@ -39,7 +40,7 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
     loadAll();
   }, [plugins.data]);
 
-  if (!ready) return <div>Loading plugins…</div>;
+  if (!ready) return <PrimaryLoading />
 
   return (
     <PluginRegistryContext.Provider value={{ ready }}>

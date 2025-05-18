@@ -9,7 +9,6 @@ import TabList from '@mui/joy/TabList';
 import TabPanel from '@mui/joy/TabPanel';
 import Tab, { tabClasses } from '@mui/joy/Tab';
 import { Avatar, Stack, Typography } from '@mui/joy';
-import { InstallDesktop } from '@mui/icons-material';
 
 // mock
 import mock from './mock/plugins.json';
@@ -19,12 +18,17 @@ import MarkdownPreview from '@uiw/react-markdown-preview';
 import PluginChangelog from './sections/PluginChangelog';
 import { useNavigate, useParams } from 'react-router-dom';
 import { LuChevronLeft } from 'react-icons/lu';
+import { usePluginManager } from '@/hooks/plugin/usePluginManager';
+import PluginUpdateButton from './PluginUpdateButton';
 
 const PluginDetails: FC = () => {
   const { id = '' } = useParams<{ id: string }>()
   const plugin = mock.find((plugin) => plugin.id === id)
   const [_readme, setReadme] = React.useState('');
   const navigate = useNavigate()
+  const { plugins } = usePluginManager();
+
+  const installed = plugins.data?.find((p => p.id == id))
 
   React.useEffect(() => {
     setReadme('');
@@ -66,7 +70,7 @@ const PluginDetails: FC = () => {
           <Typography level='body-xs'>{plugin.description}</Typography>
         </Stack>
         <Box height={'100%'} >
-          <Button size='lg' variant='outlined' color='primary' startDecorator={<InstallDesktop />}>Install</Button>
+          <PluginUpdateButton pluginID={id} installed={!!installed} currentVersion={installed?.metadata.version || ''} />
         </Box>
       </Stack>
 

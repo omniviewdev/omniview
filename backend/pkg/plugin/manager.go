@@ -18,6 +18,7 @@ import (
 
 	pluginexec "github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
@@ -33,8 +34,11 @@ import (
 )
 
 const (
-	MaxPluginSize             = 1024 * 1024 * 1024 // 1GB
-	PluginInstallStartedEvent = "plugin/install_started"
+	MaxPluginSize              = 1024 * 1024 * 1024 // 1GB
+	PluginUpdateStartedEvent   = "plugin/update_started"
+	PluginInstallStartedEvent  = "plugin/install_started"
+	PluginInstallFinishedEvent = "plugin/install_finished"
+	PluginInstallErrorEvent    = "plugin/install_error"
 )
 
 // Manager manages the lifecycle and registration of plugins. It is responsible
@@ -63,6 +67,10 @@ type Manager interface {
 	// and then load it into the manager.
 	InstallPluginFromPath(path string) (*config.PluginMeta, error)
 
+	// InstallPluginVersion installs a plugin with a specified version from the plugin registry.
+	// It returns an error if it does not exist.
+	InstallPluginVersion(pluginID string, version string) (*config.PluginMeta, error)
+
 	// LoadPlugin loads a plugin at the given path. It will validate the plugin
 	// and then load it into the manager.
 	LoadPlugin(id string, opts *LoadPluginOptions) (types.Plugin, error)
@@ -80,6 +88,13 @@ type Manager interface {
 	// ListPlugins returns a list of all plugins that are currently registered with the manager.
 	ListPlugins() []types.Plugin
 
+	// ListAvailablePlugins returns a list of all plugins that are available and suppported for the
+	// users IDE environment.
+	ListAvailablePlugins() ([]registry.Plugin, error)
+
+	// // ListAvailablePluginVersions returns a list of the versions available for a specified plugin
+	// GetAvailablePluginIndex() []registry.PluginIndex
+
 	// GetPluginMeta returns the plugin metadata for the given plugin ID.
 	GetPluginMeta(id string) (config.PluginMeta, error)
 
@@ -96,6 +111,7 @@ func NewManager(
 	networkerController networker.Controller,
 	managers map[string]plugintypes.PluginManager,
 	settingsProvider pkgsettings.Provider,
+	registryClient *registry.RegistryClient,
 ) Manager {
 	l := logger.Named("PluginManager")
 
@@ -132,6 +148,7 @@ func NewManager(
 		watchTargets:     make(map[string][]string),
 		managers:         managers,
 		settingsProvider: settingsProvider,
+		registryClient:   registryClient,
 	}
 }
 
@@ -145,6 +162,7 @@ type pluginManager struct {
 	watcher             *fsnotify.Watcher
 	watchTargets        map[string][]string
 	settingsProvider    pkgsettings.Provider
+	registryClient      *registry.RegistryClient
 	// extendable amount of plugin managers
 	managers map[string]plugintypes.PluginManager
 }
@@ -274,7 +292,35 @@ func (pm *pluginManager) InstallFromPathPrompt() (*config.PluginMeta, error) {
 	if path == "" {
 		return nil, errors.New("cancelled")
 	}
+
 	return pm.InstallPluginFromPath(path)
+}
+
+func (pm *pluginManager) GetPluginVersions(pluginID string) registry.PluginVersions {
+	return pm.registryClient.GetPluginVersions(pluginID)
+}
+
+// InstallPluginVersion installs a plugin from the registry
+func (pm *pluginManager) InstallPluginVersion(
+	pluginID string,
+	version string,
+) (*config.PluginMeta, error) {
+	// signal to UI the install has started
+	runtime.EventsEmit(pm.ctx, PluginUpdateStartedEvent, pluginID, version)
+
+	// Fetch from the registry
+	tmpPath, err := pm.registryClient.DownloadAndPrepare(pluginID, version)
+	if err != nil {
+		pm.logger.Errorw("failed to download and prepare", "error", err)
+		return nil, err
+	}
+
+	pm.logger.Debug("installing plugin from downloaded tmp path", "path", tmpPath)
+	return pm.InstallPluginFromPath(tmpPath)
+}
+
+func (pm *pluginManager) ListAvailablePlugins() ([]registry.Plugin, error) {
+	return pm.registryClient.ListPlugins()
 }
 
 func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta, error) {
@@ -298,22 +344,25 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 		return nil, fmt.Errorf("error parsing plugin metadata: %w", err)
 	}
 
-	// signal to UI the install has started
-	runtime.EventsEmit(pm.ctx, PluginInstallStartedEvent, metadata)
-
 	// ensure the plugin directory exists
 	location := getPluginLocation(metadata.ID)
 	if err = os.MkdirAll(location, 0755); err != nil {
+		// signal to UI the install has started
+		runtime.EventsEmit(pm.ctx, PluginInstallErrorEvent, metadata)
 		return nil, fmt.Errorf("error creating plugin directory: %w", err)
 	}
 
 	if err = unpackPluginArchive(path, location); err != nil {
+		runtime.EventsEmit(pm.ctx, PluginInstallErrorEvent, metadata)
 		return nil, fmt.Errorf("error unpacking plugin download: %w", err)
 	}
 
-	// all set, load it in
+	// all set, load it in, uninstalling a current one if necessary
+	pm.UnloadPlugin(metadata.ID)
+
 	_, err = pm.LoadPlugin(metadata.ID, nil)
 	if err != nil {
+		runtime.EventsEmit(pm.ctx, PluginInstallErrorEvent, metadata)
 		return nil, fmt.Errorf("error loading plugin: %w", err)
 	}
 
@@ -322,6 +371,7 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 		pm.logger.Error(err)
 	}
 
+	runtime.EventsEmit(pm.ctx, PluginInstallFinishedEvent, metadata)
 	return metadata, nil
 }
 

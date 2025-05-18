@@ -24,7 +24,17 @@ const LoadingIndicator: React.FC = () => {
       setLoading((prev) => {
         return {
           ...prev,
-          [meta.name]: `Installing plugin '${meta.name}' in development mode`
+          [meta.id]: `Installing plugin '${meta.name}' in development mode`
+        }
+      })
+    });
+
+
+    const cancelInstallStart = EventsOn('plugin/update_started', (id: string, version: string) => {
+      setLoading((prev) => {
+        return {
+          ...prev,
+          [id]: `Updating plugin '${id}' to '${version}`
         }
       })
     });
@@ -34,7 +44,7 @@ const LoadingIndicator: React.FC = () => {
       setLoading((prev) => {
         return {
           ...prev,
-          [meta.name]: `Reloading plugin '${meta.name}'`
+          [meta.id]: `Reloading plugin '${meta.name}'`
         }
       })
     })
@@ -43,7 +53,7 @@ const LoadingIndicator: React.FC = () => {
       setLoading((prev) => {
         return {
           ...prev,
-          [meta.name]: ''
+          [meta.id]: ''
         }
       })
     });
@@ -52,29 +62,51 @@ const LoadingIndicator: React.FC = () => {
       setLoading((prev) => {
         return {
           ...prev,
-          [meta.name]: ''
+          [meta.id]: ''
         }
       })
     })
 
     const cancelInstallComplete = EventsOn('plugin/install_complete', (meta: config.PluginMeta) => {
+      console.log("got install complete", loading)
       setLoading((prev) => {
         return {
           ...prev,
-          [meta.name]: ''
+          [meta.id]: ''
+        }
+      })
+    })
+
+    const cancelInstallFinished = EventsOn('plugin/install_finished', (meta: config.PluginMeta) => {
+      setLoading((prev) => {
+        return {
+          ...prev,
+          [meta.id]: ''
+        }
+      })
+    })
+
+    const cancelInstallError = EventsOn('plugin/install_error', (meta: config.PluginMeta) => {
+      setLoading((prev) => {
+        return {
+          ...prev,
+          [meta.id]: ''
         }
       })
     })
 
     return () => {
       // Cleanup watchers
+      cancelInstallStart()
       cancelDevInstallStart()
       cancelReloadStart()
       cancelReloadError()
       cancelReloadComplete()
       cancelInstallComplete()
+      cancelInstallError()
+      cancelInstallFinished()
     };
-  }, [])
+  }, [loading, setLoading])
 
   const message = loadingMessage()
 

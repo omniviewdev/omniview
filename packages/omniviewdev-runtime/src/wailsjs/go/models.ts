@@ -540,6 +540,123 @@ export namespace plugin {
 
 }
 
+export namespace registry {
+	
+	export class PluginArtifact {
+	    checksum: string;
+	    download_url: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginArtifact(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.checksum = source["checksum"];
+	        this.download_url = source["download_url"];
+	        this.size = source["size"];
+	    }
+	}
+	export class PluginVersion {
+	    metadata: config.PluginMeta;
+	    version: string;
+	    architectures: Record<string, PluginArtifact>;
+	    // Go type: time
+	    created: any;
+	    // Go type: time
+	    updated: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginVersion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.metadata = this.convertValues(source["metadata"], config.PluginMeta);
+	        this.version = source["version"];
+	        this.architectures = this.convertValues(source["architectures"], PluginArtifact, true);
+	        this.created = this.convertValues(source["created"], null);
+	        this.updated = this.convertValues(source["updated"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Plugin {
+	    id: string;
+	    name: string;
+	    icon: string;
+	    description: string;
+	    official: boolean;
+	    latest_version: PluginVersion;
+	
+	    static createFrom(source: any = {}) {
+	        return new Plugin(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.icon = source["icon"];
+	        this.description = source["description"];
+	        this.official = source["official"];
+	        this.latest_version = this.convertValues(source["latest_version"], PluginVersion);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	export class PluginVersions {
+	    Latest: string;
+	    Versions: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginVersions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Latest = source["Latest"];
+	        this.Versions = source["Versions"];
+	    }
+	}
+
+}
+
 export namespace settings {
 	
 	export enum SettingType {
@@ -680,12 +797,6 @@ export namespace settings {
 
 export namespace trivy {
 	
-	export enum Scanner {
-	    VULN = "vuln",
-	    MISCONFIG = "misconfig",
-	    SECRET = "secret",
-	    LICENSE = "license",
-	}
 	export enum Command {
 	    CONFIG = "config",
 	    FILESYSTEM = "fs",
@@ -694,6 +805,12 @@ export namespace trivy {
 	    REPOSITORY = "repository",
 	    ROOTFS = "rootfs",
 	    SBOM = "sbom",
+	}
+	export enum Scanner {
+	    VULN = "vuln",
+	    MISCONFIG = "misconfig",
+	    SECRET = "secret",
+	    LICENSE = "license",
 	}
 	export class ScanOptions {
 	    filePatterns: string[];

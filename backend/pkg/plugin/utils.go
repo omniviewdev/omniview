@@ -134,7 +134,14 @@ func checkTarball(filePath string) error {
 			if header.FileInfo().Mode()&0111 == 0 {
 				return errors.New("bin/plugin is not executable")
 			}
+		case "bin/plugin":
+			hasBinPlugin = true
+			if header.FileInfo().Mode()&0111 == 0 {
+				return errors.New("bin/plugin is not executable")
+			}
 		case "./plugin.yaml":
+			hasPluginYaml = true
+		case "plugin.yaml":
 			hasPluginYaml = true
 		}
 	}
@@ -275,7 +282,7 @@ func parseMetadataFromArchive(path string) (*config.PluginMeta, error) {
 			return nil, err
 		}
 
-		if header.Name == "./plugin.yaml" {
+		if header.Name == "./plugin.yaml" || header.Name == "plugin.yaml" {
 			var metadata config.PluginMeta
 			if err = yaml.NewDecoder(tr).Decode(&metadata); err != nil {
 				return nil, err

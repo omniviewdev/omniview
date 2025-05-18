@@ -1,98 +1,23 @@
 id: kubernetes
-version: 0.1.1
+version: 0.0.1-alpha.21
 name: Kubernetes
 icon: SiKubernetes
 description: Kubernetes is an open-source system for automating deployment, scaling, and management of containerized applications.
 repository: github.com/omniviewdev/omniview/plugins/kubernetes
 website: kubernetes.io
 maintainers:
-  - name: Omniview Maintainers
-    email: info@omniview.dev
+    - name: Omniview Maintainers
+      email: info@omniview.dev
 tags:
-  - kubernetes
-  - container
-  - orchestration
-  - cloud
+    - kubernetes
+    - container
+    - orchestration
+    - cloud
 capabilities:
-  - ui
-  - resource
-  - exec
-  - networker
-
+    - ui
+    - resource
+    - exec
+    - networker
 theme:
-  colors:
-    primary: "#326CE5"
-
-components:
-  resource:
-    ############################## SIDEBARS #####################################
-    - name: ControllerRevisionSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["apps::v1::ControllerRevision"]
-    - name: DaemonSetSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["apps::v1::DaemonSet"]
-    - name: DeploymentSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["apps::v1::Deployment"]
-    - name: ReplicaSetSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["apps::v1::ReplicaSet"]
-    - name: StatefulSetSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["apps::v1::StatefulSet"]
-    - name: CronJobSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["batch::v1::CronJob"]
-    - name: EndpointSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["core::v1::Endpoints"]
-    - name: IngressSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["networking::v1::Ingress"]
-    - name: JobSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["batch::v1::Job"]
-    - name: NamespaceSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["core::v1::Namespace"]
-    - name: PodSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["core::v1::Pod"]
-    - name: NodeSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["core::v1::Node"]
-    - name: PersistentVolumeSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["core::v1::PersistentVolume"]
-    - name: PersistentVolumeClaimSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["core::v1::PersistentVolumeClaim"]
-    - name: SecretSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["core::v1::Secret"]
-    - name: ConfigMapSidebar
-      plugin: kubernetes
-      area: SIDEBAR
-      resources: ["core::v1::ConfigMap"]
-
-    ############################## TABLE CELLS #####################################
-    - name: ContainerStatusCell
-      plugin: kubernetes
-      area: TABLE_CELL
-      resources: ["core::v1::Pod"]
+    colors:
+        primary: '#326CE5'

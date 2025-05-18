@@ -1,8 +1,10 @@
-import { useContext, useLayoutEffect, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useState } from 'react';
 import { createHashRouter, RouterProvider } from 'react-router-dom';
 import { PluginRegistryContext } from '../plugins/PluginRegistryProvider';
 import { getAllPluginRoutes } from '../plugins/PluginManager';
 import { coreRoutes } from './routes';
+import { EventsOn } from '@omniviewdev/runtime/runtime';
+import PrimaryLoading from '@/components/util/PrimaryLoading';
 
 const buildPluginRouteWrapper = () => {
   const routes = [...coreRoutes]
@@ -33,21 +35,26 @@ export const RouteProvider = () => {
   }, [ready])
 
 
-  ///**
-  // * Listen for changes to the dev plugins for when they reload so that we 
-  // * can react to them.
-  // */
-  //useEffect(() => {
-  //
-  //}, [])
+  /**
+   * Listen for changes to the dev plugins for when they reload so that we 
+   * can react to them.
+   */
+  useEffect(() => {
+    if (!ready) {
+      // don't have anything to render yet
+      return
+    }
+
+    const cleanup = EventsOn("core/window/recalc_routes", () => {
+      setRouter(createHashRouter(buildPluginRouteWrapper()))
+    })
+
+    return () => cleanup()
+  }, [ready])
 
   // If we're not ready yet, don't render it out
-  if (!ready) {
-    return <div>Not Ready</div>
-  }
-
-  if (!router) {
-    return <div>No Router</div>;
+  if (!ready || !router) {
+    return <PrimaryLoading />
   }
 
   return <RouterProvider router={router} />;
