@@ -48,7 +48,7 @@ export interface ConnectionOverride {
   displayName?: string;
   description?: string;
   avatar?: string;
-  customLabels?: Record<string, string>;
+  avatarColor?: string;
   tags?: string[];
 }
 
@@ -70,6 +70,8 @@ export interface EnrichedConnection {
   isConnected: boolean;
   displayName: string;
   displayDescription: string;
+  avatar?: string;
+  avatarColor?: string;
   tags: string[];
   lastAccessed?: number;
   accessCount?: number;

@@ -50,6 +50,8 @@ function enrichConnection(
     isConnected: isConnected(conn),
     displayName: override?.displayName || conn.name,
     displayDescription: override?.description || conn.description || '',
+    avatar: override?.avatar || conn.avatar || undefined,
+    avatarColor: override?.avatarColor || undefined,
     tags: override?.tags ?? [],
     lastAccessed: recent?.lastAccessed,
     accessCount: recent?.accessCount,

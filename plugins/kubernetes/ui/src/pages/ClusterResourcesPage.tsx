@@ -34,6 +34,7 @@ import NavMenu from '../components/shared/navmenu/NavMenu';
 // import { type SidebarSection, type SidebarItem } from '../components/shared/navmenu/types';
 
 import { stringAvatar } from '../utils/color';
+import { useClusterPreferences } from '../hooks/useClusterPreferences';
 
 // Icons
 import { LuCog } from 'react-icons/lu';
@@ -48,6 +49,7 @@ export default function ClusterResourcesPage(): React.ReactElement {
   const { types } = useResourceTypes({ pluginID: 'kubernetes', connectionID: id });
   const { groups } = useResourceGroups({ pluginID: 'kubernetes', connectionID: id });
   const { connection } = useConnection({ pluginID: 'kubernetes', connectionID: id });
+  const { connectionOverrides } = useClusterPreferences('kubernetes');
   const { layout } = useSidebarLayout({ connectionID: id })
 
   const { showSnackbar } = useSnackbar();
@@ -141,25 +143,34 @@ export default function ClusterResourcesPage(): React.ReactElement {
             }}
           >
             <Stack direction='row' alignItems='center' gap={1}>
-              {connection.data?.avatar
-                ? <Avatar
-                  size='sm'
-                  src={connection.data?.avatar}
-                  sx={{
-                    borderRadius: 6,
-                    backgroundColor: 'transparent',
-                    objectFit: 'contain',
-                    border: 0,
-                    maxHeight: 28,
-                    maxWidth: 28,
-                  }}
-                />
-                : <Avatar
-                  size='sm'
-                  {...stringAvatar(connection.data?.name || '')}
-                />
-              }
-              <Typography level='title-sm' textOverflow={'ellipsis'}>{connection.data?.name}</Typography>
+              {(() => {
+                const override = connectionOverrides[id];
+                const avatarSrc = override?.avatar || connection.data?.avatar;
+                if (avatarSrc) {
+                  return (
+                    <Avatar
+                      size='sm'
+                      src={avatarSrc}
+                      sx={{
+                        borderRadius: 6,
+                        backgroundColor: 'transparent',
+                        objectFit: 'contain',
+                        border: 0,
+                        maxHeight: 28,
+                        maxWidth: 28,
+                      }}
+                    />
+                  );
+                }
+                const avatarProps = stringAvatar(override?.displayName || connection.data?.name || '');
+                if (override?.avatarColor) {
+                  avatarProps.sx = { ...avatarProps.sx, bgcolor: override.avatarColor };
+                }
+                return <Avatar size='sm' {...avatarProps} />;
+              })()}
+              <Typography level='title-sm' textOverflow={'ellipsis'}>
+                {connectionOverrides[id]?.displayName || connection.data?.name}
+              </Typography>
             </Stack>
             <Stack direction='row' alignItems='center' gap={1}>
               <Link to={`/cluster/${id}/edit`}>

@@ -21,7 +21,7 @@ const HubClusterRow: React.FC<Props> = ({
   onToggleFavorite,
   onClick,
 }) => {
-  const { connection, provider, isConnected, displayName } = enriched;
+  const { provider, isConnected, displayName } = enriched;
 
   return (
     <Card
@@ -36,10 +36,10 @@ const HubClusterRow: React.FC<Props> = ({
     >
       <Stack direction='row' alignItems='center' gap={1}>
         <ConnectionStatusBadge isConnected={isConnected}>
-          {connection.avatar ? (
+          {enriched.avatar ? (
             <Avatar
               size='sm'
-              src={connection.avatar}
+              src={enriched.avatar}
               sx={{
                 borderRadius: 6,
                 backgroundColor: 'transparent',
@@ -49,7 +49,7 @@ const HubClusterRow: React.FC<Props> = ({
               }}
             />
           ) : (
-            <NamedAvatar value={connection.name} />
+            <NamedAvatar value={displayName} color={enriched.avatarColor} />
           )}
         </ConnectionStatusBadge>
         <Stack sx={{ flex: 1, minWidth: 0 }}>

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "composite": true,
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "allowImportingTsExtensions": false,
+    "esModuleInterop": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "types": ["jest", "node", "@testing-library/jest-dom"]
+  },
+  "include": ["ui/**/*.spec.ts", "ui/**/*.spec.tsx", "jest.setup.ts"]
+}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { EventsOn, EventsOff } from '@omniviewdev/runtime/runtime';
 import type { LogEntry, LogStreamEvent, RawLogLine } from '../types';
-import { parseRawLogLine, resetLineCounter } from '../utils/parseLogLine';
+import { parseRawLogLine } from '../utils/parseLogLine';
 
 interface UseLogStreamOpts {
   sessionId: string;
@@ -14,6 +14,7 @@ export function useLogStream({ sessionId, onLines, onEvent, paused }: UseLogStre
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
+  const lineCounterRef = useRef(0);
   const pauseBufferRef = useRef<LogEntry[]>([]);
 
   const flushPauseBuffer = useCallback(() => {
@@ -26,7 +27,7 @@ export function useLogStream({ sessionId, onLines, onEvent, paused }: UseLogStre
   useEffect(() => {
     if (!sessionId) return;
 
-    resetLineCounter();
+    lineCounterRef.current = 0;
 
     const linesKey = `core/logs/lines/${sessionId}`;
     const eventKey = `core/logs/event/${sessionId}`;
@@ -34,7 +35,7 @@ export function useLogStream({ sessionId, onLines, onEvent, paused }: UseLogStre
     const linesCleanup = EventsOn(linesKey, (data: string) => {
       try {
         const rawLines: RawLogLine[] = JSON.parse(data);
-        const entries = rawLines.map(parseRawLogLine);
+        const entries = rawLines.map(raw => parseRawLogLine(raw, ++lineCounterRef.current));
 
         if (pausedRef.current) {
           pauseBufferRef.current.push(...entries);

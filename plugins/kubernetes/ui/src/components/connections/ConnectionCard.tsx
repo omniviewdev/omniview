@@ -52,14 +52,14 @@ const ConnectionCard: React.FC<Props> = ({
           {/* Header row */}
           <Stack direction='row' alignItems='center' gap={1}>
             <ConnectionStatusBadge isConnected={isConnected}>
-              {connection.avatar ? (
+              {enriched.avatar ? (
                 <Avatar
                   size='sm'
-                  src={connection.avatar}
+                  src={enriched.avatar}
                   sx={{ borderRadius: 6, backgroundColor: 'transparent', maxHeight: 28, maxWidth: 28 }}
                 />
               ) : (
-                <NamedAvatar value={connection.name} />
+                <NamedAvatar value={displayName} color={enriched.avatarColor} />
               )}
             </ConnectionStatusBadge>
             <Stack sx={{ flex: 1, minWidth: 0 }}>

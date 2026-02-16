@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"runtime"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -72,6 +73,32 @@ func (a *App) OpenFileSelectionDialog(opts FileDialogOptions) ([]string, error) 
 	}
 	wailsopts.Filters = filters
 	return wailsruntime.OpenMultipleFilesDialog(a.ctx, wailsopts)
+}
+
+// SaveFileDialog opens a native save file dialog and returns the selected path.
+func (a *App) SaveFileDialog(opts FileDialogOptions) (string, error) {
+	wailsopts := wailsruntime.SaveDialogOptions{
+		DefaultDirectory:           opts.DefaultDirectory,
+		DefaultFilename:            opts.DefaultFilename,
+		Title:                      opts.Title,
+		ShowHiddenFiles:            opts.ShowHiddenFiles,
+		CanCreateDirectories:       opts.CanCreateDirectories,
+		TreatPackagesAsDirectories: opts.TreatPackagesAsDirectories,
+	}
+	filters := make([]wailsruntime.FileFilter, len(opts.Filters))
+	for i, filter := range opts.Filters {
+		filters[i] = wailsruntime.FileFilter{
+			DisplayName: filter.DisplayName,
+			Pattern:     filter.Pattern,
+		}
+	}
+	wailsopts.Filters = filters
+	return wailsruntime.SaveFileDialog(a.ctx, wailsopts)
+}
+
+// WriteFileContent writes string content to the given file path.
+func (a *App) WriteFileContent(path string, content string) error {
+	return os.WriteFile(path, []byte(content), 0644)
 }
 
 // startup is called at application startup.

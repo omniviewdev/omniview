@@ -15,10 +15,6 @@ import { useBottomDrawer } from '@omniviewdev/runtime';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
 
-
-/**
- * Resize handler is causing a rerender which we don't want
- */
 const TerminalContainerMemo = React.memo(TerminalContainer, (prev, next) => {
   return prev.sessionId === next.sessionId;
 });
@@ -26,7 +22,6 @@ const TerminalContainerMemo = React.memo(TerminalContainer, (prev, next) => {
 const LogViewerContainerMemo = React.memo(LogViewerContainer, (prev, next) => {
   return prev.sessionId === next.sessionId;
 });
-
 
 /**
  * Sticky resizable drawer at the bottom of the screen used to display
@@ -264,7 +259,8 @@ const BottomDrawerContainer: React.FC = () => {
           className='BottomDrawerContainer'
           variant='plain'
           sx={{
-            display: { xs: 'none', sm: 'initial' },
+            display: { xs: 'none', sm: 'flex' },
+            flexDirection: 'column',
             backgroundColor: 'background.surface',
             flex: 1,
             overflow: 'hidden',
@@ -280,17 +276,31 @@ const BottomDrawerContainer: React.FC = () => {
           <Box
             sx={{
               flex: 1,
-              overflow: 'auto',
+              overflow: 'hidden',
               minHeight: 0,
-              height: '100%',
               maxWidth: 'calc(100vw - var(--CoreLayoutSidebar-width))',
               minWidth: 'calc(100vw - var(--CoreLayoutSidebar-width))',
-            }}>
-            {tabs[focused]?.variant === 'logs' ? (
-              <LogViewerContainerMemo sessionId={tabs[focused]?.id ?? ''} />
-            ) : (
-              <TerminalContainerMemo sessionId={tabs[focused]?.id ?? ''} />
-            )}
+              position: 'relative',
+            }}
+          >
+            {tabs.map((tab) => (
+              <Box
+                key={tab.id}
+                sx={{
+                  display: tabs[focused]?.id === tab.id ? 'flex' : 'none',
+                  flexDirection: 'column',
+                  position: 'absolute',
+                  inset: 0,
+                  overflow: 'hidden',
+                }}
+              >
+                {tab.variant === 'logs' ? (
+                  <LogViewerContainerMemo sessionId={tab.id} />
+                ) : (
+                  <TerminalContainerMemo sessionId={tab.id} />
+                )}
+              </Box>
+            ))}
           </Box>
         </Sheet>
       </Box>

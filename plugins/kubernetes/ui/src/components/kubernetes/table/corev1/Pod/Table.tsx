@@ -302,8 +302,29 @@ const PodTable: React.FC = () => {
         enabled: true,
         list: (ctx) => {
           const list: Array<DrawerComponentActionListItem> = []
+          const containers = ctx.data?.spec?.containers ?? []
+          const initContainers = ctx.data?.spec?.initContainers ?? []
+          const ephemeralContainers = ctx.data?.spec?.ephemeralContainers ?? []
+          const allContainers = [...containers, ...initContainers, ...ephemeralContainers]
+          const filterParams = { filter_labels: 'container' }
 
-          ctx.data?.spec?.containers?.forEach((container) => {
+          if (allContainers.length > 1) {
+            list.push({
+              title: 'All Containers',
+              action: () => createLogSession({
+                connectionID: id,
+                resourceKey,
+                resourceID: ctx.data?.metadata?.name as string,
+                resourceData: ctx.data as Record<string, any>,
+                target: '',
+                label: `Pod ${ctx.data?.metadata?.name}`,
+                icon: 'LuLogs',
+                params: filterParams,
+              }).then(() => closeDrawer())
+            })
+          }
+
+          containers.forEach((container) => {
             list.push({
               title: container.name,
               action: () => createLogSession({
@@ -312,12 +333,13 @@ const PodTable: React.FC = () => {
                 resourceID: ctx.data?.metadata?.name as string,
                 resourceData: ctx.data as Record<string, any>,
                 target: container.name,
-                label: `${ctx.data?.metadata?.name}/${container.name}`,
+                label: `Pod ${ctx.data?.metadata?.name}`,
                 icon: 'LuLogs',
+                params: filterParams,
               }).then(() => closeDrawer())
             })
           })
-          ctx.data?.spec?.initContainers?.forEach((container) => {
+          initContainers.forEach((container) => {
             list.push({
               title: `${container.name} (init)`,
               action: () => createLogSession({
@@ -326,12 +348,13 @@ const PodTable: React.FC = () => {
                 resourceID: ctx.data?.metadata?.name as string,
                 resourceData: ctx.data as Record<string, any>,
                 target: container.name,
-                label: `${ctx.data?.metadata?.name}/${container.name}`,
+                label: `Pod ${ctx.data?.metadata?.name}`,
                 icon: 'LuLogs',
+                params: filterParams,
               }).then(() => closeDrawer())
             })
           })
-          ctx.data?.spec?.ephemeralContainers?.forEach((container) => {
+          ephemeralContainers.forEach((container) => {
             list.push({
               title: `${container.name} (ephemeral)`,
               action: () => createLogSession({
@@ -340,8 +363,9 @@ const PodTable: React.FC = () => {
                 resourceID: ctx.data?.metadata?.name as string,
                 resourceData: ctx.data as Record<string, any>,
                 target: container.name,
-                label: `${ctx.data?.metadata?.name}/${container.name}`,
+                label: `Pod ${ctx.data?.metadata?.name}`,
                 icon: 'LuLogs',
+                params: filterParams,
               }).then(() => closeDrawer())
             })
           })

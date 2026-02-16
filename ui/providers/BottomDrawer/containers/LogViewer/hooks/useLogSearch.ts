@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { LogEntry, SearchMatch } from '../types';
+import { compileSearchPattern, execSafeSearch } from '../utils/regexSafety';
 
 interface UseLogSearchOpts {
   entries: LogEntry[];
@@ -18,6 +19,8 @@ interface UseLogSearchResult {
   nextMatch: () => void;
   prevMatch: () => void;
   totalMatches: number;
+  /** True when results were truncated (match cap or time budget hit). */
+  capped: boolean;
 }
 
 export function useLogSearch({ entries, version }: UseLogSearchOpts): UseLogSearchResult {
@@ -26,32 +29,27 @@ export function useLogSearch({ entries, version }: UseLogSearchOpts): UseLogSear
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
 
-  const matches = useMemo(() => {
-    if (!query) return [];
+  const searchResult = useMemo(() => {
+    const empty = { matches: [] as SearchMatch[], capped: false };
 
-    const result: SearchMatch[] = [];
-    let pattern: RegExp;
-    try {
-      const flags = caseSensitive ? 'g' : 'gi';
-      pattern = isRegex ? new RegExp(query, flags) : new RegExp(escapeRegex(query), flags);
-    } catch {
-      return [];
-    }
+    const pattern = compileSearchPattern(query, { isRegex, caseSensitive });
+    if (!pattern) return empty;
 
-    for (let i = 0; i < entries.length; i++) {
-      let match: RegExpExecArray | null;
-      pattern.lastIndex = 0;
-      while ((match = pattern.exec(entries[i].content)) !== null) {
-        result.push({
-          lineIndex: i,
-          startOffset: match.index,
-          endOffset: match.index + match[0].length,
-        });
-      }
-    }
+    const { results, capped } = execSafeSearch(
+      pattern,
+      entries.length,
+      (i) => entries[i].content,
+      (lineIndex, start, end) => ({
+        lineIndex,
+        startOffset: start,
+        endOffset: end,
+      }),
+    );
 
-    return result;
+    return { matches: results, capped };
   }, [query, isRegex, caseSensitive, entries, version]);
+
+  const { matches, capped } = searchResult;
 
   const nextMatch = useCallback(() => {
     if (matches.length === 0) return;
@@ -75,9 +73,6 @@ export function useLogSearch({ entries, version }: UseLogSearchOpts): UseLogSear
     nextMatch,
     prevMatch,
     totalMatches: matches.length,
+    capped,
   };
-}
-
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

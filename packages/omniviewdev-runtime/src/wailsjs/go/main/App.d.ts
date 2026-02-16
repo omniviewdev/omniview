@@ -5,3 +5,7 @@ import {main} from '../models';
 export function GetOperatingSystem():Promise<string>;
 
 export function OpenFileSelectionDialog(arg1:main.FileDialogOptions):Promise<Array<string>>;
+
+export function SaveFileDialog(arg1:main.FileDialogOptions):Promise<string>;
+
+export function WriteFileContent(arg1:string,arg2:string):Promise<void>;

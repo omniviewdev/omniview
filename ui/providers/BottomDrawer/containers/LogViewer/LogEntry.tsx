@@ -1,6 +1,5 @@
 import React from 'react';
 import Box from '@mui/joy/Box';
-import Chip from '@mui/joy/Chip';
 import Typography from '@mui/joy/Typography';
 import type { LogEntry as LogEntryType, SearchMatch } from './types';
 import { LEVEL_COLORS } from './types';
@@ -9,9 +8,37 @@ interface Props {
   entry: LogEntryType;
   showTimestamps: boolean;
   showSources: boolean;
+  showLineNumbers: boolean;
   wrap: boolean;
   searchMatches?: SearchMatch[];
-  isCurrentMatch?: boolean;
+  /** startOffset of the current match on this line, or -1 if current match is on another line */
+  currentMatchOffset?: number;
+}
+
+// Visually distinct colors for source badges (dark-theme-friendly, muted pastels).
+// Each entry is [background, text].
+const SOURCE_COLORS: [string, string][] = [
+  ['#1a3a4a', '#7ec8e3'], // teal
+  ['#3a1a4a', '#c87ee3'], // purple
+  ['#1a4a2a', '#7ee3a0'], // green
+  ['#4a3a1a', '#e3c87e'], // amber
+  ['#1a2a4a', '#7ea0e3'], // blue
+  ['#4a1a2a', '#e37e8c'], // rose
+  ['#2a4a1a', '#a0e37e'], // lime
+  ['#4a1a4a', '#e37ec8'], // magenta
+  ['#1a4a4a', '#7ee3d8'], // cyan
+  ['#4a2a1a', '#e3a07e'], // orange
+  ['#2a1a4a', '#a07ee3'], // indigo
+  ['#3a4a1a', '#c8e37e'], // yellow-green
+];
+
+/** Deterministic hash for a string → index into the color palette. */
+function sourceColorIndex(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+  }
+  return ((hash % SOURCE_COLORS.length) + SOURCE_COLORS.length) % SOURCE_COLORS.length;
 }
 
 function formatTimestamp(ts: string): string {
@@ -34,18 +61,27 @@ const LogEntryComponent: React.FC<Props> = ({
   entry,
   showTimestamps,
   showSources,
+  showLineNumbers,
   wrap,
   searchMatches,
-  isCurrentMatch,
+  currentMatchOffset = -1,
 }) => {
   const levelColor = entry.level ? LEVEL_COLORS[entry.level] : undefined;
+
+  const scrollToMatchRef = React.useCallback((node: HTMLSpanElement | null) => {
+    if (node) {
+      requestAnimationFrame(() => {
+        node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      });
+    }
+  }, []);
 
   const renderContent = () => {
     if (!searchMatches || searchMatches.length === 0) {
       return entry.content;
     }
 
-    // Highlight search matches
+    // Highlight search matches — only the current match gets orange
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
 
@@ -53,11 +89,13 @@ const LogEntryComponent: React.FC<Props> = ({
       if (match.startOffset > lastIndex) {
         parts.push(entry.content.slice(lastIndex, match.startOffset));
       }
+      const isCurrent = match.startOffset === currentMatchOffset;
       parts.push(
         <span
           key={match.startOffset}
+          ref={isCurrent ? scrollToMatchRef : undefined}
           style={{
-            backgroundColor: isCurrentMatch ? '#ff9800' : '#ffeb3b',
+            backgroundColor: isCurrent ? '#ff9800' : '#ffeb3b',
             color: '#000',
             borderRadius: 2,
           }}
@@ -96,20 +134,22 @@ const LogEntryComponent: React.FC<Props> = ({
       }}
     >
       {/* Line number */}
-      <Typography
-        sx={{
-          minWidth: '4ch',
-          textAlign: 'right',
-          color: 'text.tertiary',
-          userSelect: 'none',
-          flexShrink: 0,
-          fontSize: 'inherit',
-          fontFamily: 'inherit',
-          lineHeight: 'inherit',
-        }}
-      >
-        {entry.lineNumber}
-      </Typography>
+      {showLineNumbers && (
+        <Typography
+          sx={{
+            minWidth: '4ch',
+            textAlign: 'right',
+            color: 'text.tertiary',
+            userSelect: 'none',
+            flexShrink: 0,
+            fontSize: 'inherit',
+            fontFamily: 'inherit',
+            lineHeight: 'inherit',
+          }}
+        >
+          {entry.lineNumber}
+        </Typography>
+      )}
 
       {/* Timestamp */}
       {showTimestamps && entry.timestamp && (
@@ -126,20 +166,23 @@ const LogEntryComponent: React.FC<Props> = ({
         </Typography>
       )}
 
-      {/* Source badges */}
+      {/* Source badge */}
       {showSources && entry.sourceId && (
-        <Chip
-          size="sm"
-          variant="soft"
-          color="primary"
-          sx={{
+        <span
+          style={{
             fontSize: '10px',
-            height: '16px',
+            lineHeight: '16px',
+            height: 16,
+            padding: '0 6px',
+            borderRadius: 4,
+            backgroundColor: SOURCE_COLORS[sourceColorIndex(entry.sourceId)][0],
+            color: SOURCE_COLORS[sourceColorIndex(entry.sourceId)][1],
             flexShrink: 0,
+            whiteSpace: 'nowrap',
           }}
         >
           {entry.sourceId}
-        </Chip>
+        </span>
       )}
 
       {/* Content */}
@@ -152,7 +195,7 @@ const LogEntryComponent: React.FC<Props> = ({
           lineHeight: 'inherit',
           whiteSpace: wrap ? 'pre-wrap' : 'pre',
           wordBreak: wrap ? 'break-all' : 'normal',
-          overflow: 'hidden',
+          overflow: wrap ? 'hidden' : 'visible',
         }}
       >
         {renderContent()}
@@ -166,8 +209,9 @@ export default React.memo(LogEntryComponent, (prev, next) => {
     prev.entry.lineNumber === next.entry.lineNumber &&
     prev.showTimestamps === next.showTimestamps &&
     prev.showSources === next.showSources &&
+    prev.showLineNumbers === next.showLineNumbers &&
     prev.wrap === next.wrap &&
     prev.searchMatches === next.searchMatches &&
-    prev.isCurrentMatch === next.isCurrentMatch
+    prev.currentMatchOffset === next.currentMatchOffset
   );
 });

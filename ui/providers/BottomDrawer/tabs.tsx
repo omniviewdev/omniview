@@ -188,7 +188,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
     });
 
     const unsubscribeCreateLogSession = bottomDrawerChannel.on('onCreateLogSession', ({
-      plugin, connection, resourceKey, resourceID, resourceData, target, follow, tailLines, icon, label,
+      plugin, connection, resourceKey, resourceID, resourceData, target, follow, tailLines, icon, label, params,
     }) => {
       const opts = logs.CreateSessionOptions.createFrom({
         resource_key: resourceKey,
@@ -203,7 +203,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
           since_seconds: 0,
           limit_bytes: 0,
           include_source_events: true,
-          params: {},
+          params: params ?? {},
         }),
       });
       LogsClient.CreateSession(plugin, connection, opts)
@@ -486,7 +486,7 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, t
         scrollSnapAlign: 'start',
         borderRightColor: 'divider',
         borderLeftColor: index === 0 ? 'divider' : 'transparent',
-        transform: CSS.Transform.toString(transform),
+        transform: CSS.Translate.toString(transform),
         transition,
       }}
       onChange={onChange}

@@ -23,6 +23,7 @@
     "@mui/joy": "5.0.0-beta.52",
     "@mui/material": "^5.15.14",
     "@mui/x-charts": "^7.4.0",
+    "@mui/x-date-pickers": "^8.27.0",
     "@omniviewdev/providers": "workspace:*",
     "@omniviewdev/runtime": "workspace:*",
     "@reduxjs/toolkit": "^2.2.1",
@@ -59,6 +60,7 @@
   },
   "devDependencies": {
     "@tanstack/react-query-devtools": "^5.76.1",
+    "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^14.2.1",
     "@types/jest": "^29.5.12",
     "@types/jsonpath": "^0.2.4",
@@ -80,6 +82,7 @@
     "eslint-plugin-n": "^15.0.0 || ^16.0.0 ",
     "eslint-plugin-promise": "^6.0.0",
     "eslint-plugin-react": "^7.34.1",
+    "identity-obj-proxy": "^3.0.0",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "ts-jest": "^29.1.2",

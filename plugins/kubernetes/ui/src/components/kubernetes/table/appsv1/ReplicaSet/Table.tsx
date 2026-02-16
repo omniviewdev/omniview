@@ -7,8 +7,8 @@ import { Condition, OwnerReference } from 'kubernetes-types/meta/v1'
 import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
-import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuScaling, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
+import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
+import { LuCode, LuLogs, LuScaling, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
 import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
 import ResourceLinkCell from '../../corev1/Pod/cells/ResourceLinkCell'
 import ReplicaSetSidebar from './Sidebar'
@@ -29,6 +29,7 @@ const ReplicaSetTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()
 
   const { remove } = useResourceMutations({ pluginID: 'kubernetes' })
+  const { createLogSession } = useLogs({ pluginID: 'kubernetes' })
   const { show } = useConfirmationModal()
   const { closeDrawer } = useRightDrawer()
 
@@ -142,6 +143,48 @@ const ReplicaSetTable: React.FC = () => {
               closeDrawer()
             },
           }),
+      },
+      {
+        title: 'Logs',
+        icon: <LuLogs />,
+        enabled: true,
+        list: (ctx) => {
+          const list: Array<DrawerComponentActionListItem> = []
+          const containers = ctx.data?.spec?.template?.spec?.containers ?? []
+          const filterParams = { filter_labels: 'pod,container' }
+
+          list.push({
+            title: 'All Containers',
+            action: () => createLogSession({
+              connectionID: id,
+              resourceKey,
+              resourceID: ctx.data?.metadata?.name as string,
+              resourceData: ctx.data as Record<string, any>,
+              target: '',
+              label: `ReplicaSet ${ctx.data?.metadata?.name}`,
+              icon: 'LuLogs',
+              params: filterParams,
+            }).then(() => closeDrawer())
+          })
+
+          containers.forEach((container) => {
+            list.push({
+              title: container.name,
+              action: () => createLogSession({
+                connectionID: id,
+                resourceKey,
+                resourceID: ctx.data?.metadata?.name as string,
+                resourceData: ctx.data as Record<string, any>,
+                target: container.name,
+                label: `ReplicaSet ${ctx.data?.metadata?.name}`,
+                icon: 'LuLogs',
+                params: filterParams,
+              }).then(() => closeDrawer())
+            })
+          })
+
+          return list
+        }
       },
     ],
   }), [])

@@ -1,8 +1,7 @@
-// set up jest to use ts-jest
 export default {
   preset: 'ts-jest',
   testEnvironment: 'jsdom',
-  // setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
   },
@@ -11,9 +10,7 @@ export default {
     '<rootDir>/build/',
     '<rootDir>/dist/',
   ],
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.json',
-    },
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', { tsconfig: 'tsconfig.test.json' }],
   },
 };

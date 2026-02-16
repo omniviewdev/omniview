@@ -48,7 +48,7 @@ const ConnectionTableItem: React.FC<Props> = ({
   onRecordAccess,
 }) => {
   const { connection, provider, isFavorite, isConnected, displayName, displayDescription } = enriched;
-  const { id, avatar, labels } = connection;
+  const { id, labels } = connection;
 
   const { meta } = usePluginContext();
   const { navigate } = usePluginRouter();
@@ -144,13 +144,13 @@ const ConnectionTableItem: React.FC<Props> = ({
         style={{ display: 'flex', flex: 1, gap: 10, justifyContent: 'flex-start', alignItems: 'center' }}
       >
         <ConnectionStatusBadge isConnected={isConnected}>
-          {avatar
+          {enriched.avatar
             ? <Avatar
               size='sm'
-              src={avatar}
+              src={enriched.avatar}
               sx={{ borderRadius: 6, backgroundColor: 'transparent', maxHeight: 28, maxWidth: 28 }}
             />
-            : <NamedAvatar value={connection.name} />
+            : <NamedAvatar value={displayName} color={enriched.avatarColor} />
           }
         </ConnectionStatusBadge>
         <ProviderIcon provider={provider} size={16} />

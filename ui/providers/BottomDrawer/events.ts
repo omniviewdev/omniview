@@ -20,6 +20,7 @@ type OnCreateLogSessionOpts = {
   tailLines?: number;
   icon?: string;
   label?: string;
+  params?: Record<string, string>;
 };
 
 type OnSessionClosedOpts = {

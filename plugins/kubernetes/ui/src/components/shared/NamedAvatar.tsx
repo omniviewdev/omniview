@@ -7,6 +7,7 @@ import { stringToColor } from '../../utils/color';
 
 type Props = {
   value?: string
+  color?: string
 }
 
 /**
@@ -67,9 +68,13 @@ function stringAvatar(name: string) {
 /**
  * Renders an avatar with names and a deterministic color
  */
-const NamedAvatar: React.FC<Props> = ({ value = '' }) => {
+const NamedAvatar: React.FC<Props> = ({ value = '', color }) => {
+  const avatarProps = stringAvatar(value);
+  if (color) {
+    avatarProps.sx = { ...avatarProps.sx, bgcolor: color };
+  }
   return (
-    <Avatar size='sm'{...stringAvatar(value)} />
+    <Avatar size='sm'{...avatarProps} />
   )
 }
 

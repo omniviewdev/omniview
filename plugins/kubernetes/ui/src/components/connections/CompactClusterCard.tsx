@@ -13,7 +13,7 @@ type Props = {
 };
 
 const CompactClusterCard: React.FC<Props> = ({ enriched, subtitle, onClick }) => {
-  const { connection, provider, isConnected, displayName } = enriched;
+  const { provider, isConnected, displayName } = enriched;
 
   return (
     <Card
@@ -31,14 +31,14 @@ const CompactClusterCard: React.FC<Props> = ({ enriched, subtitle, onClick }) =>
     >
       <Stack direction='row' alignItems='center' gap={1}>
         <ConnectionStatusBadge isConnected={isConnected}>
-          {connection.avatar ? (
+          {enriched.avatar ? (
             <Avatar
               size='sm'
-              src={connection.avatar}
+              src={enriched.avatar}
               sx={{ borderRadius: 6, backgroundColor: 'transparent', maxHeight: 24, maxWidth: 24, '--Avatar-size': '24px' }}
             />
           ) : (
-            <NamedAvatar value={connection.name} />
+            <NamedAvatar value={displayName} color={enriched.avatarColor} />
           )}
         </ConnectionStatusBadge>
         <Stack sx={{ flex: 1, minWidth: 0 }}>

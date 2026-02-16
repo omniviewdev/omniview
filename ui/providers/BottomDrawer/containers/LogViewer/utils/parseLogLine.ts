@@ -33,20 +33,13 @@ const ORIGIN_MAP: Record<number, LogEntry['origin']> = {
   2: 'SYSTEM',
 };
 
-let lineCounter = 0;
-
-export function resetLineCounter(): void {
-  lineCounter = 0;
-}
-
-export function parseRawLogLine(raw: RawLogLine): LogEntry {
-  lineCounter++;
+export function parseRawLogLine(raw: RawLogLine, lineNumber: number): LogEntry {
   const content = typeof raw.content === 'string'
     ? raw.content
     : new TextDecoder().decode(new Uint8Array(Object.values(raw.content)));
 
   return {
-    lineNumber: lineCounter,
+    lineNumber,
     sessionId: raw.session_id,
     sourceId: raw.source_id,
     labels: raw.labels || {},

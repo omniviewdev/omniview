@@ -16,7 +16,7 @@ export interface LogSource {
 }
 
 export interface LogStreamEvent {
-  type: string;
+  type: number;
   source_id: string;
   message: string;
   timestamp: string;
@@ -36,6 +36,16 @@ export interface SearchMatch {
   startOffset: number;
   endOffset: number;
 }
+
+// LogStreamEvent type values (matches Go SDK LogStreamEventType iota)
+export const StreamEventType = {
+  SOURCE_ADDED: 0,
+  SOURCE_REMOVED: 1,
+  STREAM_ERROR: 2,
+  RECONNECTING: 3,
+  RECONNECTED: 4,
+  STREAM_ENDED: 5,
+} as const;
 
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace';
 

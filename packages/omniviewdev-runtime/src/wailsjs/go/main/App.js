@@ -9,3 +9,11 @@ export function GetOperatingSystem() {
 export function OpenFileSelectionDialog(arg1) {
   return window['go']['main']['App']['OpenFileSelectionDialog'](arg1);
 }
+
+export function SaveFileDialog(arg1) {
+  return window['go']['main']['App']['SaveFileDialog'](arg1);
+}
+
+export function WriteFileContent(arg1, arg2) {
+  return window['go']['main']['App']['WriteFileContent'](arg1, arg2);
+}
