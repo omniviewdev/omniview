@@ -30,7 +30,7 @@ export default function PluginUpdateButton({ pluginID, currentVersion, installed
     update(version)
   };
 
-  if (!versions.data) {
+  if (!versions.data?.Versions) {
     return <></>
   }
 

@@ -1,6 +1,4 @@
 import React from 'react';
-
-// Material-ui
 import {
   Box,
   Chip,
@@ -9,11 +7,8 @@ import {
   Select,
   Typography,
 } from '@mui/joy';
-
-// Icons
 import { LuGroup } from 'react-icons/lu';
-import { useConnectionNamespaces } from '@omniviewdev/runtime';
-
+import { useResources } from '@omniviewdev/runtime';
 
 type Props = {
   /** The active connection being used */
@@ -28,9 +23,23 @@ type Props = {
 
 /**
   * Renders a select for choosing namespaces.
+  * Uses useResources to subscribe to namespace informer events for live updates.
   */
 const NamespaceSelect: React.FC<Props> = ({ connectionID, selected, setNamespaces }) => {
-  const { namespaces } = useConnectionNamespaces({ pluginID: 'kubernetes', connectionID });
+  const { resources } = useResources({
+    pluginID: 'kubernetes',
+    connectionID,
+    resourceKey: 'core::v1::Namespace',
+    idAccessor: 'metadata.name',
+  });
+
+  const namespaceNames = React.useMemo(() => {
+    const items: Record<string, any>[] = resources.data?.result ?? [];
+    return items
+      .map(ns => ns.metadata?.name as string)
+      .filter(Boolean)
+      .sort();
+  }, [resources.data]);
 
   const handleChange = (
     _event: unknown,
@@ -93,7 +102,7 @@ const NamespaceSelect: React.FC<Props> = ({ connectionID, selected, setNamespace
         },
       }}
     >
-      {namespaces.data?.map(ns => (
+      {namespaceNames.map(ns => (
         <Option key={ns} value={ns}>
           <Typography level='body-sm'>{ns}</Typography>
         </Option>
