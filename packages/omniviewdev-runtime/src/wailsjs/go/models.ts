@@ -64,9 +64,24 @@ export namespace config {
 	        this.email = source["email"];
 	    }
 	}
+	export class PluginThemeColors {
+	    primary: string;
+	    secondary: string;
+	    tertiary: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginThemeColors(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.primary = source["primary"];
+	        this.secondary = source["secondary"];
+	        this.tertiary = source["tertiary"];
+	    }
+	}
 	export class PluginTheme {
-	    // Go type: struct { Primary string "json:\"primary\"   yaml:\"primary\""; Secondary string "json:\"secondary\" yaml:\"secondary\""; Tertiary string "json:\"tertiary\"  yaml:\"tertiary\"" }
-	    colors: any;
+	    colors: PluginThemeColors;
 	
 	    static createFrom(source: any = {}) {
 	        return new PluginTheme(source);
@@ -74,7 +89,7 @@ export namespace config {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.colors = this.convertValues(source["colors"], Object);
+	        this.colors = this.convertValues(source["colors"], PluginThemeColors);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -149,6 +164,7 @@ export namespace config {
 		    return a;
 		}
 	}
+	
 	
 
 }
@@ -306,6 +322,192 @@ export namespace exec {
 
 }
 
+export namespace logs {
+	
+	export class LogSessionOptions {
+	    target: string;
+	    follow: boolean;
+	    include_previous: boolean;
+	    include_timestamps: boolean;
+	    tail_lines: number;
+	    since_seconds: number;
+	    // Go type: time
+	    since_time?: any;
+	    limit_bytes: number;
+	    include_source_events: boolean;
+	    params: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogSessionOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.target = source["target"];
+	        this.follow = source["follow"];
+	        this.include_previous = source["include_previous"];
+	        this.include_timestamps = source["include_timestamps"];
+	        this.tail_lines = source["tail_lines"];
+	        this.since_seconds = source["since_seconds"];
+	        this.since_time = this.convertValues(source["since_time"], null);
+	        this.limit_bytes = source["limit_bytes"];
+	        this.include_source_events = source["include_source_events"];
+	        this.params = source["params"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CreateSessionOptions {
+	    resource_key: string;
+	    resource_id: string;
+	    resource_data: Record<string, any>;
+	    options: LogSessionOptions;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateSessionOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.resource_key = source["resource_key"];
+	        this.resource_id = source["resource_id"];
+	        this.resource_data = source["resource_data"];
+	        this.options = this.convertValues(source["options"], LogSessionOptions);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Handler {
+	    plugin: string;
+	    resource: string;
+	    target_builder: types.ActionTargetBuilder;
+	
+	    static createFrom(source: any = {}) {
+	        return new Handler(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.plugin = source["plugin"];
+	        this.resource = source["resource"];
+	        this.target_builder = this.convertValues(source["target_builder"], types.ActionTargetBuilder);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class LogSource {
+	    id: string;
+	    labels: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogSource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.labels = source["labels"];
+	    }
+	}
+	export class LogSession {
+	    id: string;
+	    plugin_id: string;
+	    connection_id: string;
+	    resource_key: string;
+	    resource_id: string;
+	    options: LogSessionOptions;
+	    status: number;
+	    active_sources: LogSource[];
+	    // Go type: time
+	    created_at: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogSession(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.plugin_id = source["plugin_id"];
+	        this.connection_id = source["connection_id"];
+	        this.resource_key = source["resource_key"];
+	        this.resource_id = source["resource_id"];
+	        this.options = this.convertValues(source["options"], LogSessionOptions);
+	        this.status = source["status"];
+	        this.active_sources = this.convertValues(source["active_sources"], LogSource);
+	        this.created_at = this.convertValues(source["created_at"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+
+}
+
 export namespace main {
 	
 	export class FileFilter {
@@ -413,8 +615,8 @@ export namespace networker {
 	    state: string;
 	    connection_type: string;
 	    encryption: PortForwardSessionEncryption;
-	    source_port: number;
-	    destination_port: number;
+	    local_port: number;
+	    remote_port: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new PortForwardSession(source);
@@ -431,8 +633,8 @@ export namespace networker {
 	        this.state = source["state"];
 	        this.connection_type = source["connection_type"];
 	        this.encryption = this.convertValues(source["encryption"], PortForwardSessionEncryption);
-	        this.source_port = source["source_port"];
-	        this.destination_port = source["destination_port"];
+	        this.local_port = source["local_port"];
+	        this.remote_port = source["remote_port"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -461,8 +663,8 @@ export namespace networker {
 	    protocol: string;
 	    connection_type: string;
 	    encryption: PortForwardSessionEncryption;
-	    source_port: number;
-	    destination_port: number;
+	    local_port: number;
+	    remote_port: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new PortForwardSessionOptions(source);
@@ -476,8 +678,8 @@ export namespace networker {
 	        this.protocol = source["protocol"];
 	        this.connection_type = source["connection_type"];
 	        this.encryption = this.convertValues(source["encryption"], PortForwardSessionEncryption);
-	        this.source_port = source["source_port"];
-	        this.destination_port = source["destination_port"];
+	        this.local_port = source["local_port"];
+	        this.remote_port = source["remote_port"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -797,6 +999,12 @@ export namespace settings {
 
 export namespace trivy {
 	
+	export enum Scanner {
+	    VULN = "vuln",
+	    MISCONFIG = "misconfig",
+	    SECRET = "secret",
+	    LICENSE = "license",
+	}
 	export enum Command {
 	    CONFIG = "config",
 	    FILESYSTEM = "fs",
@@ -805,12 +1013,6 @@ export namespace trivy {
 	    REPOSITORY = "repository",
 	    ROOTFS = "rootfs",
 	    SBOM = "sbom",
-	}
-	export enum Scanner {
-	    VULN = "vuln",
-	    MISCONFIG = "misconfig",
-	    SECRET = "secret",
-	    LICENSE = "license",
 	}
 	export class ScanOptions {
 	    filePatterns: string[];
@@ -998,6 +1200,7 @@ export namespace types {
 	    description: string;
 	    avatar: string;
 	    expiry_time: number;
+	    Client: any;
 	
 	    static createFrom(source: any = {}) {
 	        return new Connection(source);
@@ -1014,6 +1217,7 @@ export namespace types {
 	        this.description = source["description"];
 	        this.avatar = source["avatar"];
 	        this.expiry_time = source["expiry_time"];
+	        this.Client = source["Client"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1394,8 +1598,6 @@ export namespace types {
 	export class Plugin {
 	    id: string;
 	    metadata: config.PluginMeta;
-	    // Go type: config
-	    config: any;
 	    enabled: boolean;
 	    running: boolean;
 	    devMode: boolean;
@@ -1412,7 +1614,6 @@ export namespace types {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.metadata = this.convertValues(source["metadata"], config.PluginMeta);
-	        this.config = this.convertValues(source["config"], null);
 	        this.enabled = source["enabled"];
 	        this.running = source["running"];
 	        this.devMode = source["devMode"];

@@ -59,6 +59,7 @@ const NamespaceSelect: React.FC<Props> = ({ connectionID, selected, setNamespace
         <Box sx={{ display: 'flex', gap: '0.25rem' }}>
           {selected.map(selectedOption => (
             <Chip
+              key={selectedOption.value}
               variant='outlined'
               color='neutral'
               endDecorator={

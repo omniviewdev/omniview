@@ -66,6 +66,12 @@ export const shared = {
   '@omniviewdev/runtime/runtime': () => import('@omniviewdev/runtime/runtime'),
   '@omniviewdev/runtime/models': () => import('@omniviewdev/runtime/models'),
 
+  // DND Kit
+  '@dnd-kit/core': () => import('@dnd-kit/core'),
+  '@dnd-kit/modifiers': () => import('@dnd-kit/modifiers'),
+  '@dnd-kit/sortable': () => import('@dnd-kit/sortable'),
+  '@dnd-kit/utilities': () => import('@dnd-kit/utilities'),
+
   // Utilities
   'date-fns': () => import('date-fns'),
   'yaml': () => import('yaml')

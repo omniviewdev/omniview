@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	pluginexec "github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
+	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	ep "github.com/omniviewdev/plugin-sdk/pkg/exec"
+	lp "github.com/omniviewdev/plugin-sdk/pkg/logs"
 	np "github.com/omniviewdev/plugin-sdk/pkg/networker"
 	rp "github.com/omniviewdev/plugin-sdk/pkg/resource/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
@@ -109,6 +111,7 @@ func NewManager(
 	settingsController settings.Controller,
 	execController pluginexec.Controller,
 	networkerController networker.Controller,
+	logsController pluginlogs.Controller,
 	managers map[string]plugintypes.PluginManager,
 	settingsProvider pkgsettings.Provider,
 	registryClient *registry.RegistryClient,
@@ -131,7 +134,7 @@ func NewManager(
 			types.NetworkerPlugin:  networkerController,
 			types.ResourcePlugin:   nil, // not connless
 			types.FilesystemPlugin: nil, // not connless
-			types.LogPlugin:        nil, // not connless
+			types.LogPlugin:        logsController,
 			types.MetricPlugin:     nil, // not connless
 		},
 		connfullControllers: map[types.PluginType]plugintypes.ConnectedController{
@@ -141,7 +144,7 @@ func NewManager(
 			types.ReporterPlugin:   nil, // connless
 			types.SettingsPlugin:   nil, // connless
 			types.FilesystemPlugin: nil, // TODO: implement
-			types.LogPlugin:        nil, // TODO: implement
+			types.LogPlugin:        nil, // managed via connlessControllers
 			types.MetricPlugin:     nil, // TODO: implement
 		},
 		watcher:          watcher,
@@ -487,6 +490,7 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 				"resource":  &rp.ResourcePlugin{},
 				"exec":      &ep.Plugin{},
 				"networker": &np.Plugin{},
+				"log":       &lp.Plugin{},
 				"settings":  &sp.SettingsPlugin{},
 			},
 			GRPCDialOptions: sdk.GRPCDialOptions(),
@@ -680,7 +684,7 @@ func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
 		case types.FilesystemPlugin.String():
 			pm.connfullControllers[types.FilesystemPlugin].OnPluginInit(plugin.Metadata)
 		case types.LogPlugin.String():
-			pm.connfullControllers[types.LogPlugin].OnPluginInit(plugin.Metadata)
+			pm.connlessControllers[types.LogPlugin].OnPluginInit(plugin.Metadata)
 		case types.MetricPlugin.String():
 			pm.connfullControllers[types.MetricPlugin].OnPluginInit(plugin.Metadata)
 		case types.ReporterPlugin.String():
@@ -741,7 +745,7 @@ func (pm *pluginManager) startPlugin(plugin *types.Plugin) error {
 				return fmt.Errorf("error starting filesystem plugin: %w", err)
 			}
 		case types.LogPlugin.String():
-			if err := pm.connfullControllers[types.LogPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
+			if err := pm.connlessControllers[types.LogPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
 				return fmt.Errorf("error starting log plugin: %w", err)
 			}
 		case types.MetricPlugin.String():
@@ -808,7 +812,7 @@ func (pm *pluginManager) stopPlugin(plugin *types.Plugin) error {
 				return fmt.Errorf("error stopping filesystem plugin: %w", err)
 			}
 		case types.LogPlugin.String():
-			if err := pm.connfullControllers[types.LogPlugin].OnPluginStop(plugin.Metadata); err != nil {
+			if err := pm.connlessControllers[types.LogPlugin].OnPluginStop(plugin.Metadata); err != nil {
 				return fmt.Errorf("error stopping log plugin: %w", err)
 			}
 		case types.MetricPlugin.String():
@@ -882,7 +886,7 @@ func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 				return fmt.Errorf("error shutting down filesystem plugin: %w", err)
 			}
 		case types.LogPlugin.String():
-			if err := pm.connfullControllers[types.LogPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
+			if err := pm.connlessControllers[types.LogPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
 				return fmt.Errorf("error shutting down log plugin: %w", err)
 			}
 		case types.MetricPlugin.String():

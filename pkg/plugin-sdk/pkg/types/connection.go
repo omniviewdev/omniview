@@ -34,17 +34,17 @@ type Connection struct {
 	// This data is exposed to the user in the UI under the settings panel for the namespace. If the data is sensitive,
 	// it should be stored in the SensitiveData field.
 	// +optional
-	Data map[string]interface{} `json:"data"`
+	Data map[string]any `json:"data"`
 
 	// SensitiveData is an optional map of arbitrary data that can be used to store additional information about the
 	// connection. This information is not exposed to the client in the UI, and can be used to store information that is
 	// is only necessary within the plugin context, such as credentials necessary to create a client.
 	// +optional
-	sensitiveData map[string]interface{} `json:"-"`
+	sensitiveData map[string]any `json:"-"`
 
 	// Labels is a map of arbitrary key-value pairs that can be used to store additional information about the connection.
 	// Users will likely use and modify these labels to help organize and categorize their connections.
-	Labels map[string]interface{} `json:"labels"`
+	Labels map[string]any `json:"labels"`
 
 	// ID is the unique identifier for the connection that makes sense to the plugin implementation.
 	// +required
@@ -70,39 +70,42 @@ type Connection struct {
 	// ExpiryTime is the amount of time before the connection expires.
 	// +optional
 	ExpiryTime time.Duration `json:"expiry_time"`
+
+	// Client is a client structure that should be populated when the connection is created and used for connections
+	Client any
 }
 
-func (c *Connection) GetSensitiveData() map[string]interface{} {
+func (c *Connection) GetSensitiveData() map[string]any {
 	return c.sensitiveData
 }
 
-func (c *Connection) SetSensitiveData(data map[string]interface{}) {
+func (c *Connection) SetSensitiveData(data map[string]any) {
 	c.sensitiveData = data
 }
 
-func (c *Connection) SetSensitiveDataKey(key string, value interface{}) {
+func (c *Connection) SetSensitiveDataKey(key string, value any) {
 	c.sensitiveData[key] = value
 }
 
-func (c *Connection) GetSensitiveDataKey(key string) (interface{}, bool) {
+func (c *Connection) GetSensitiveDataKey(key string) (any, bool) {
 	val, ok := c.sensitiveData[key]
 	return val, ok
 }
 
-func (c *Connection) GetData() map[string]interface{} {
+func (c *Connection) GetData() map[string]any {
 	return c.Data
 }
 
-func (c *Connection) SetData(data map[string]interface{}) {
+func (c *Connection) SetData(data map[string]any) {
 	c.Data = data
 }
 
-func (c *Connection) GetDataKey(key string) (interface{}, bool) {
+func (c *Connection) GetDataKey(key string) (any, bool) {
 	val, ok := c.Data[key]
 	return val, ok
 }
 
-func (c *Connection) SetDataKey(key string, value interface{}) {
+func (c *Connection) SetDataKey(key string, value any) {
 	c.Data[key] = value
 }
 
@@ -113,13 +116,13 @@ func (c *Connection) IsAuthed() bool {
 
 type ConnectionOpts struct {
 	// Data is an optional map of arbitrary data that can be used to store additional information about the namespace.
-	Data map[string]interface{}
+	Data map[string]any
 
 	// SensitiveData is an optional map of arbitrary data that can be used to store additional information about the
-	SensitiveData map[string]interface{}
+	SensitiveData map[string]any
 
 	// Labels is a map of arbitrary key-value pairs that can be used to store additional information about the namespace.
-	Labels map[string]interface{}
+	Labels map[string]any
 
 	// ID is the unique identifier for the authorization context that makes sense to the
 	ID string
@@ -152,13 +155,13 @@ func NewConnection(opts ConnectionOpts) (*Connection, error) {
 		opts.UID = uuid.New().String()
 	}
 	if opts.Data == nil {
-		opts.Data = make(map[string]interface{})
+		opts.Data = make(map[string]any)
 	}
 	if opts.Labels == nil {
-		opts.Labels = make(map[string]interface{})
+		opts.Labels = make(map[string]any)
 	}
 	if opts.SensitiveData == nil {
-		opts.SensitiveData = make(map[string]interface{})
+		opts.SensitiveData = make(map[string]any)
 	}
 	if opts.ExpiryTime == 0 {
 		// default to 24 hours

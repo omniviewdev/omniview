@@ -10,6 +10,8 @@ import DetailsCard, { DetailsCardEntry } from "../../../shared/DetailsCard";
 import PortDetailsCard from "./PortDetailsCard";
 
 export interface Props {
+  resourceID: string;
+  connectionID: string;
   status?: ContainerStatus;
   container: Container;
 }
@@ -82,14 +84,7 @@ const ContainerSection: React.FC<Props> = (obj) => {
     } as DetailsCardEntry;
   });
 
-  const portsData =
-    obj.container.ports?.map((port) => {
-      return {
-        key: port.name || port.containerPort.toString(),
-        value: port.containerPort.toString() + "/" + port.protocol,
-        ratio: [4, 8],
-      } as DetailsCardEntry;
-    }) || [];
+  const portsData = obj.container.ports || [];
 
   const resourcesData = [
     {
@@ -153,6 +148,8 @@ const ContainerSection: React.FC<Props> = (obj) => {
         {obj.container.ports && (
           <Grid xs={12}>
             <PortDetailsCard
+              resourceID={obj.resourceID}
+              connectionID={obj.connectionID}
               title="Ports"
               icon="LuNetwork"
               titleSize="sm"

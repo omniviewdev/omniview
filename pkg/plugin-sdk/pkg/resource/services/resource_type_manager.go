@@ -5,7 +5,6 @@ import (
 	"log"
 	"sync"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/resource/factories"
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -44,7 +43,7 @@ type ResourceTypeManager interface {
 	// HasResourceType checks to see if the resource type exists
 	HasResourceType(string) bool
 
-	// GetAvailableResourceTypes returns the available resource types for the given namespace
+	// GetConnectionResourceTypes returns the available resource types for the given connection
 	GetConnectionResourceTypes(string) ([]types.ResourceMeta, error)
 
 	// SyncResourceNamespace sets up a given connection with the manager, and syncs the available resource types
@@ -319,113 +318,54 @@ func (r *StaticResourceTypeManager) RemoveConnection(
 	return nil
 }
 
-func (r *StaticResourceTypeManager) GetAvailableResourceTypes(
-	ctx *pkgtypes.PluginContext,
-	connection *pkgtypes.Connection,
-) ([]types.ResourceMeta, error) {
-	r.RLock()
-	defer r.RUnlock()
-
-	if availableResourceTypes, ok := r.namespacedResourceTypes[connection.ID]; ok {
-		return availableResourceTypes, nil
-	}
-	return nil, fmt.Errorf("no available resource types for connection %s", connection.ID)
-}
-
-// DynamicResourceTypeManager is an resource type manager that provides a dynamic set of resource types
+// DynamicResourceTypeManager is a resource type manager that provides a dynamic set of resource types
 // that can change with each connection. This is useful for resource backends that have a dynamic
 // set of resource types that can change with each connection, for example, different Kubernetes
 // Clusters running different versions.
 //
-// The discovery manager requires defining the the type of the discovery client, as well as
-// the options type for the discovery client. The discovery client is responsible for
-// discovering the available resource types within a connection, e.g. a Kubernetes
-// cluster, AWS account, etc.
-//
 // This discovery manager is optional, and if none is provided, the resource manager will
 // use all resource types provided by the resource type manager.
-type DynamicResourceTypeManager[DiscoveryClientT any] struct {
-	// clientFactory is the client factory for the resource type discovery manager
-	clientFactory factories.ResourceDiscoveryClientFactory[DiscoveryClientT]
-
-	// clients is a map of clients for the resource type discovery manager
-	clients map[string]*DiscoveryClientT
-
-	// syncer is the getter function that, taking in the respective client, can retrieve and then
-	// return the available resource types for a given namespace
-	syncer func(ctx *pkgtypes.PluginContext, client *DiscoveryClientT) ([]types.ResourceMeta, error)
+type DynamicResourceTypeManager struct {
+	// provider handles discovery client lifecycle and resource type discovery
+	provider types.DiscoveryProvider
 
 	*StaticResourceTypeManager // embed this last for pointer receiver semantics
 }
 
 // NewDynamicResourceTypeManager creates a new resource type discovery manager to be
-// used with the the resource backend, given a client factory and a sync function.
-func NewDynamicResourceTypeManager[DiscoveryClientT any](
+// used with the resource backend, given a DiscoveryProvider.
+func NewDynamicResourceTypeManager(
 	resourceTypes []types.ResourceMeta,
 	resourceGroups []types.ResourceGroup,
 	resourceDefinitions map[string]types.ResourceDefinition,
 	defaultResourceDefinition types.ResourceDefinition,
-	factory factories.ResourceDiscoveryClientFactory[DiscoveryClientT],
-	syncer func(ctx *pkgtypes.PluginContext, client *DiscoveryClientT) ([]types.ResourceMeta, error),
+	provider types.DiscoveryProvider,
 ) ResourceTypeManager {
-	return &DynamicResourceTypeManager[DiscoveryClientT]{
+	return &DynamicResourceTypeManager{
 		StaticResourceTypeManager: newStaticResourceTypeManager(
 			resourceTypes,
 			resourceGroups,
 			resourceDefinitions,
 			defaultResourceDefinition,
 		),
-		clientFactory: factory,
-		clients:       make(map[string]*DiscoveryClientT),
-		syncer:        syncer,
+		provider: provider,
 	}
 }
 
-func (r *DynamicResourceTypeManager[DiscoveryClientT]) SyncConnection(
+func (r *DynamicResourceTypeManager) SyncConnection(
 	ctx *pkgtypes.PluginContext,
 	connection *pkgtypes.Connection,
 ) error {
 	r.Lock()
 	defer r.Unlock()
 
-	// ensure the connection is on the context
-	ctx.Connection = connection
-
-	// check if the client already exists for the namespace
-	if _, ok := r.clients[connection.ID]; !ok {
-		// create the client for the namespace
-		client, err := r.clientFactory.CreateClient(ctx)
-		if err != nil {
-			err = fmt.Errorf(
-				"failed to create client for connection %s: %w",
-				connection.ID,
-				err,
-			)
-			return err
-		}
-
-		// start the client
-		if err = r.clientFactory.StartClient(ctx, client); err != nil {
-			err = fmt.Errorf(
-				"failed to start client for connection %s: %w",
-				connection.ID,
-				err,
-			)
-			return err
-		}
-
-		r.clients[connection.ID] = client
-	}
-
-	// get the client for the namespace and sync the available resource types
-	client := r.clients[connection.ID]
-	availableResourceTypes, err := r.syncer(ctx, client)
+	availableResourceTypes, err := r.provider.Discover(ctx, connection)
 	if err != nil {
 		return err
 	}
 	if availableResourceTypes == nil {
 		return fmt.Errorf(
-			"syncer returned nil available resource types for connection %s",
+			"discovery returned nil available resource types for connection %s",
 			connection.ID,
 		)
 	}
@@ -439,34 +379,28 @@ func (r *DynamicResourceTypeManager[DiscoveryClientT]) SyncConnection(
 	return nil
 }
 
-func (r *DynamicResourceTypeManager[DiscoveryClientT]) RemoveConnection(
+func (r *DynamicResourceTypeManager) RemoveConnection(
 	ctx *pkgtypes.PluginContext,
 	connection *pkgtypes.Connection,
 ) error {
 	r.Lock()
 	defer r.Unlock()
 
-	// stop the client for the namespace if the namespace exists
-	if client, ok := r.clients[connection.ID]; ok {
-		if err := r.clientFactory.StopClient(ctx, client); err != nil {
-			return err
-		}
+	if err := r.provider.RemoveConnection(ctx, connection); err != nil {
+		return err
 	}
 
-	// delete the client and the available resource types for the namespace if the namespace exists
-	delete(r.clients, connection.ID)
 	delete(r.namespacedResourceTypes, connection.ID)
 
 	return nil
 }
 
-func (r *DynamicResourceTypeManager[DiscoveryClientT]) GetConnectionResourceTypes(
+func (r *DynamicResourceTypeManager) GetConnectionResourceTypes(
 	connectionID string,
 ) ([]types.ResourceMeta, error) {
 	r.Lock()
 	defer r.Unlock()
 
-	// check if the available resource types for the namespace exist
 	if availableResourceTypes, ok := r.namespacedResourceTypes[connectionID]; ok {
 		return availableResourceTypes, nil
 	}
@@ -474,7 +408,7 @@ func (r *DynamicResourceTypeManager[DiscoveryClientT]) GetConnectionResourceType
 	return nil, fmt.Errorf("no available resource types for connection %s", connectionID)
 }
 
-func (r *DynamicResourceTypeManager[DiscoveryClientT]) GetGroups(
+func (r *DynamicResourceTypeManager) GetGroups(
 	connID string,
 ) map[string]types.ResourceGroup {
 	r.RLock()

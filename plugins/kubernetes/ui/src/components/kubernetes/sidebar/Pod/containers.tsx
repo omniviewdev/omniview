@@ -12,6 +12,8 @@ import { Alert, Stack } from "@mui/joy";
 import { LuCircleAlert } from "react-icons/lu";
 
 interface Props {
+  resourceID: string;
+  connectionID: string;
   obj: Pod;
 }
 
@@ -60,10 +62,10 @@ const ContainerHeaderDecorator: React.FC<{ status?: ContainerStatus }> = ({
   );
 };
 
-const ContainersSection: React.FC<Props> = ({ obj }) => {
+const ContainersSection: React.FC<Props> = ({ obj, connectionID }) => {
   return (
     <ExpandableSections
-      sections={parseContainers(obj).map((container, idx) => ({
+      sections={parseContainers(obj, obj.metadata?.name || '', connectionID).map((container, idx) => ({
         title: container.container.name,
         icon: lookupLogo(container.container.name, container.container.image),
         endDecorator: <ContainerHeaderDecorator status={container.status} />,
@@ -74,25 +76,29 @@ const ContainersSection: React.FC<Props> = ({ obj }) => {
   );
 };
 
-export const ContainersSectionFromPodSpec: React.FC<{ spec?: PodSpec }> = ({
+export const ContainersSectionFromPodSpec: React.FC<{ resourceID: string, connectionID: string, spec?: PodSpec }> = ({
   spec,
+  resourceID,
+  connectionID,
 }) => {
   const sections =
     spec?.containers.map((container, idx) => ({
       title: container.name,
       icon: lookupLogo(container.name, container.image),
       defaultExpanded: idx === 0,
-      children: <ContainerSection container={container} />,
+      children: <ContainerSection resourceID={resourceID} connectionID={connectionID} container={container} />,
     })) || [];
 
   return <ExpandableSections sections={sections} />;
 };
 
-function parseContainers(pod: Pod) {
+function parseContainers(pod: Pod, resourceID: string, connectionID: string) {
   const containers = {} as Record<string, ContainerProps>;
 
   pod.spec?.containers?.forEach((container) => {
     containers[container.name] = {
+      resourceID,
+      connectionID,
       container: container,
       status: undefined,
     };

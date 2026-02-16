@@ -58,7 +58,7 @@ func (pt PluginType) MarshalText() ([]byte, error) {
 type Plugin struct {
 	ID           string                `json:"id"`
 	Metadata     config.PluginMeta     `json:"metadata"`
-	Config       config.PluginConfig   `json:"config"`
+	Config       config.PluginConfig   `json:"-"`
 	Enabled      bool                  `json:"enabled"`
 	Running      bool                  `json:"running"`
 	DevMode      bool                  `json:"devMode"`

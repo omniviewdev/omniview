@@ -3,6 +3,8 @@ package networker
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -45,6 +47,7 @@ func NewManager(
 		settingsProvider:       settingsProvider,
 		resourcePortForwarders: make(map[string]ResourcePortForwarder),
 		staticPortForwarders:   make(map[string]StaticPortForwarder),
+		sessions:               make(map[string]sessionStoreEntry),
 	}
 
 	if opts.ResourcePortForwarders != nil {
@@ -98,13 +101,19 @@ func (m *Manager) FindPortForwardSessions(
 	_ *types.PluginContext,
 	req FindPortForwardSessionRequest,
 ) ([]*PortForwardSession, error) {
+	log.Printf(
+		"finding port forward requests for resource %s and connection %s\n",
+		req.ResourceID,
+		req.ConnectionID,
+	)
+
 	m.RLock()
 	defer m.RUnlock()
 
 	sessions := make([]*PortForwardSession, 0)
-	for connID, entry := range m.sessions {
+	for _, entry := range m.sessions {
 		passesResourceCheck := req.ResourceID == ""
-		passesConnectionCheck := req.ConnectionID == "" || req.ConnectionID == connID
+		passesConnectionCheck := req.ConnectionID == ""
 
 		// need to type assert connection since it could be a static session
 		if entry.session == nil {
@@ -114,12 +123,20 @@ func (m *Manager) FindPortForwardSessions(
 		resource, ok := entry.session.Connection.(PortForwardResourceConnection)
 		if ok {
 			passesResourceCheck = resource.ResourceID == req.ResourceID
+			passesConnectionCheck = resource.ConnectionID == req.ConnectionID
 		}
 
 		if passesResourceCheck && passesConnectionCheck {
 			sessions = append(sessions, entry.session)
 		}
 	}
+
+	log.Printf(
+		"found %d port forward requests for resource %s and connection %s\n",
+		len(sessions),
+		req.ResourceID,
+		req.ConnectionID,
+	)
 
 	return sessions, nil
 }
@@ -138,7 +155,9 @@ func (m *Manager) handleResourcePortForward(
 		Resource: resource,
 	}
 
-	handler, ok := m.resourcePortForwarders[resource.PluginID+"/"+resource.ResourceKey]
+	log.Printf("looking for resource port forwarder for key: %s\n", resource.ResourceKey)
+
+	handler, ok := m.resourcePortForwarders[resource.ResourceKey]
 	if !ok {
 		return "", errors.New("no handler found for resource port forward")
 	}
@@ -161,6 +180,9 @@ func (m *Manager) StartPortForwardSession(
 	m.Lock()
 	defer m.Unlock()
 
+	log.Printf("starting session with opts: %v\n", opts)
+	log.Printf("connection type: %s", string(opts.ConnectionType))
+
 	var target targetType
 	var resultID string
 	var err error
@@ -170,13 +192,13 @@ func (m *Manager) StartPortForwardSession(
 	ctx.Context = cancellable
 
 	// make sure our port is available to listen on, assigning a random one if not specified
-	if opts.SourcePort == 0 {
-		opts.SourcePort, err = FindFreeTCPPort()
+	if opts.LocalPort == 0 {
+		opts.LocalPort, err = FindFreeTCPPort()
 		if err != nil {
 			cancel()
 			return nil, err
 		}
-	} else if IsPortUnavailable(opts.SourcePort) {
+	} else if IsPortUnavailable(opts.LocalPort) {
 		cancel()
 		return nil, errors.New("source port is unavailable to listen on")
 	}
@@ -188,6 +210,9 @@ func (m *Manager) StartPortForwardSession(
 	case PortForwardConnectionTypeStatic:
 		target = targetTypeStatic
 		resultID, err = m.handleStaticPortForward(ctx, opts)
+	default:
+		cancel()
+		return nil, fmt.Errorf("unsupported connection type %s", string(opts.ConnectionType))
 	}
 
 	if err != nil {
@@ -195,18 +220,21 @@ func (m *Manager) StartPortForwardSession(
 		return nil, err
 	}
 
+	log.Printf("created port forward session")
+	log.Printf("connection type for port forward session: %T", opts.Connection)
+
 	newSession := &PortForwardSession{
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
-		Labels:          opts.Labels,
-		Connection:      opts.Connection,
-		ID:              resultID,
-		Protocol:        opts.Protocol,
-		State:           SessionStateActive,
-		ConnectionType:  string(opts.ConnectionType),
-		Encryption:      opts.Encryption,
-		SourcePort:      opts.SourcePort,
-		DestinationPort: opts.DestinationPort,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+		Labels:         opts.Labels,
+		Connection:     opts.Connection,
+		ID:             resultID,
+		Protocol:       opts.Protocol,
+		State:          SessionStateActive,
+		ConnectionType: string(opts.ConnectionType),
+		Encryption:     opts.Encryption,
+		LocalPort:      opts.LocalPort,
+		RemotePort:     opts.RemotePort,
 	}
 
 	m.sessions[resultID] = sessionStoreEntry{

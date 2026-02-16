@@ -98,6 +98,7 @@ const MetadataSection: React.FC<Props> = ({ data }) => {
               <Stack direction={'row'}>
                 {data.ownerReferences.map((ref) => (
                   <Chip
+                    key={ref.uid}
                     size='sm'
                     variant='soft'
                     color={'primary'}
@@ -117,6 +118,7 @@ const MetadataSection: React.FC<Props> = ({ data }) => {
               <Stack direction={'row'}>
                 {data.finalizers.map((finalizer) => (
                   <Chip
+                    key={finalizer}
                     size='sm'
                     variant='soft'
                     color={'primary'}

@@ -3,12 +3,12 @@ package services
 import (
 	"errors"
 	"fmt"
+	"log"
 	"maps"
 	"slices"
 	"sync"
 	"time"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/resource/factories"
 	rt "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -59,14 +59,22 @@ type ConnectionManager[ClientT any] interface {
 // NewConnectionManager creates a new service to manage the various auth contexts for a
 // plugin with an authenticated backend.
 func NewConnectionManager[ClientT any](
-	factory factories.ResourceClientFactory[ClientT],
+	createClient func(*types.PluginContext) (*ClientT, error),
+	refreshClient func(*types.PluginContext, *ClientT) error,
+	startClient func(*types.PluginContext, *ClientT) error,
+	stopClient func(*types.PluginContext, *ClientT) error,
 	loader func(*types.PluginContext) ([]types.Connection, error),
+	watcher func(*types.PluginContext) (chan []types.Connection, error),
 	checker func(*types.PluginContext, *types.Connection, *ClientT) (types.ConnectionStatus, error),
 	namespaceLoader func(*types.PluginContext, *ClientT) ([]string, error),
 ) ConnectionManager[ClientT] {
 	return &connectionManager[ClientT]{
-		factory:         factory,
+		createClient:    createClient,
+		refreshClient:   refreshClient,
+		startClient:     startClient,
+		stopClient:      stopClient,
 		loader:          loader,
+		watcher:         watcher,
 		namespaceLoader: namespaceLoader,
 		checker:         checker,
 		connections:     make(map[string]types.Connection),
@@ -75,13 +83,49 @@ func NewConnectionManager[ClientT any](
 }
 
 type connectionManager[ClientT any] struct {
-	factory         factories.ResourceClientFactory[ClientT]
+	createClient    func(*types.PluginContext) (*ClientT, error)
+	refreshClient   func(*types.PluginContext, *ClientT) error
+	startClient     func(*types.PluginContext, *ClientT) error
+	stopClient      func(*types.PluginContext, *ClientT) error
 	loader          func(*types.PluginContext) ([]types.Connection, error)
+	watcher         func(*types.PluginContext) (chan []types.Connection, error)
 	namespaceLoader func(*types.PluginContext, *ClientT) ([]string, error)
 	checker         func(*types.PluginContext, *types.Connection, *ClientT) (types.ConnectionStatus, error)
 	connections     map[string]types.Connection
 	clients         map[string]*ClientT
 	sync.RWMutex
+}
+
+// WatchConnections starts the watcher in a goroutine until the context is cancelled
+func (r *connectionManager[ClientT]) WatchConnections(
+	ctx *types.PluginContext,
+	connectionChan chan []types.Connection,
+) error {
+	if r.watcher == nil {
+		// nothing to do here, no watcher provided
+		log.Printf("no watcher provided\n")
+		return nil
+	}
+
+	watchChan, err := r.watcher(ctx)
+	if err != nil {
+		log.Printf("got error in watcher function: %v\n", err)
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Context.Done():
+			return nil
+		case <-watchChan:
+			log.Println("ConnectionManager: connection update recieved")
+			conns, err := r.LoadConnections(ctx)
+			if err != nil {
+				continue
+			}
+			connectionChan <- conns
+		}
+	}
 }
 
 func (r *connectionManager[ClientT]) InjectConnection(
@@ -115,6 +159,25 @@ func (r *connectionManager[ClientT]) CheckConnection(
 	return r.checker(ctx, conn, client)
 }
 
+func (r *connectionManager[ClientT]) removeStaleConnections(
+	ctx *types.PluginContext,
+	connections []types.Connection,
+) {
+	// Create a set of connection IDs for the provided connections
+	connectedIDs := make(map[string]struct{})
+	for _, conn := range connections {
+		connectedIDs[conn.ID] = struct{}{}
+	}
+
+	// Iterate through the existing connections and remove those not present in the connected IDs set
+	for connID := range r.connections {
+		if _, exists := connectedIDs[connID]; !exists {
+			// no matching connection - remove it
+			r.DeleteConnection(ctx, connID)
+		}
+	}
+}
+
 func (r *connectionManager[ClientT]) LoadConnections(
 	ctx *types.PluginContext,
 ) ([]types.Connection, error) {
@@ -127,6 +190,9 @@ func (r *connectionManager[ClientT]) LoadConnections(
 	if err != nil {
 		return nil, err
 	}
+
+	// prune the stale clients
+	r.removeStaleConnections(ctx, connections)
 
 	// if we have existing connections, we need to merge the new ones in
 	for _, conn := range connections {
@@ -156,7 +222,7 @@ func (r *connectionManager[ClientT]) LoadConnections(
 	for _, conn := range connections {
 		if _, ok := r.clients[conn.ID]; !ok {
 			ctx.Connection = &conn
-			client, clienterr := r.factory.CreateClient(ctx)
+			client, clienterr := r.createClient(ctx)
 			if clienterr == nil {
 				r.clients[conn.ID] = client
 			}
@@ -258,8 +324,10 @@ func (r *connectionManager[ClientT]) DeleteConnection(
 	client, ok := r.clients[id]
 	if ok && client != nil {
 		delete(r.clients, id)
-		if err := r.factory.StopClient(ctx, client); err != nil {
-			return err
+		if r.stopClient != nil {
+			if err := r.stopClient(ctx, client); err != nil {
+				return err
+			}
 		}
 	}
 	delete(r.connections, id)
@@ -280,7 +348,7 @@ func (r *connectionManager[ClientT]) CreateConnection(
 		return fmt.Errorf("auth %s already exists", auth.ID)
 	}
 
-	client, err := r.factory.CreateClient(ctx)
+	client, err := r.createClient(ctx)
 	if err != nil {
 		return err
 	}
@@ -323,8 +391,10 @@ func (r *connectionManager[ClientT]) RefreshConnectionClient(
 		return fmt.Errorf("connection %s does not exist", id)
 	}
 
-	if err := r.factory.RefreshClient(ctx, client); err != nil {
-		return err
+	if r.refreshClient != nil {
+		if err := r.refreshClient(ctx, client); err != nil {
+			return err
+		}
 	}
 
 	r.clients[id] = client
@@ -368,8 +438,10 @@ func (r *connectionManager[ClientT]) RefreshCurrentConnectionClient(
 		return fmt.Errorf("connection %s does not exist", ctx.Connection.ID)
 	}
 
-	if err := r.factory.RefreshClient(ctx, client); err != nil {
-		return err
+	if r.refreshClient != nil {
+		if err := r.refreshClient(ctx, client); err != nil {
+			return err
+		}
 	}
 	r.clients[ctx.Connection.ID] = client
 	return nil
@@ -391,13 +463,15 @@ func (r *connectionManager[ClientT]) StartConnection(
 		}, nil
 	}
 
-	if err := r.factory.StartClient(ctx, client); err != nil {
-		return types.ConnectionStatus{
-			Status:     types.ConnectionStatusFailed,
-			Connection: &types.Connection{},
-			Error:      err.Error(),
-			Details:    fmt.Sprintf("Failed to start client for connection %s", connectionID),
-		}, nil
+	if r.startClient != nil {
+		if err := r.startClient(ctx, client); err != nil {
+			return types.ConnectionStatus{
+				Status:     types.ConnectionStatusFailed,
+				Connection: &types.Connection{},
+				Error:      err.Error(),
+				Details:    fmt.Sprintf("Failed to start client for connection %s", connectionID),
+			}, nil
+		}
 	}
 
 	// get the connection and run the check to make sure we can in fact connect
@@ -441,8 +515,10 @@ func (r *connectionManager[ClientT]) StopConnection(
 			connectionID,
 		)
 	}
-	if err := r.factory.StopClient(ctx, client); err != nil {
-		return types.Connection{}, err
+	if r.stopClient != nil {
+		if err := r.stopClient(ctx, client); err != nil {
+			return types.Connection{}, err
+		}
 	}
 	conn, ok := r.connections[connectionID]
 	if !ok {

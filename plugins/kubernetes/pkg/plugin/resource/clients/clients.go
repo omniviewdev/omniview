@@ -1,7 +1,6 @@
 package clients
 
 import (
-	"log"
 	"time"
 
 	"github.com/omniview/kubernetes/pkg/utils"
@@ -9,8 +8,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/resource/factories"
 	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -18,28 +17,18 @@ const (
 	DefaultResyncPeriod = 30 * time.Minute
 )
 
-type KubernetesClientFactory struct{}
-
-func NewKubernetesClientFactory() factories.ResourceClientFactory[ClientSet] {
-	return &KubernetesClientFactory{}
-}
-
 // Use a custom type here since we want multiple clients to use for each namespace context.
 type ClientSet struct {
 	Clientset              *kubernetes.Clientset
 	DiscoveryClient        discovery.DiscoveryInterface
 	DynamicClient          dynamic.Interface
 	DynamicInformerFactory dynamicinformer.DynamicSharedInformerFactory
+	RESTConfig             *rest.Config
 }
-
-var _ factories.ResourceClientFactory[ClientSet] = &KubernetesClientFactory{}
 
 // CreateClient creates a new client for interacting with the API server for a given cluster, given a
 // path to the kubeconfig file and the context to use.
-func (f *KubernetesClientFactory) CreateClient(
-	ctx *pkgtypes.PluginContext,
-) (*ClientSet, error) {
-	log.Printf("Calling CreateClient")
+func CreateClient(ctx *pkgtypes.PluginContext) (*ClientSet, error) {
 	clients, err := utils.KubeClientsFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -50,28 +39,15 @@ func (f *KubernetesClientFactory) CreateClient(
 		DiscoveryClient:        clients.Discovery,
 		DynamicClient:          clients.Dynamic,
 		DynamicInformerFactory: clients.InformerFactory,
+		RESTConfig:             clients.RestConfig,
 	}, nil
 }
 
-// We'll need to refresh just the dynamic informers when the client is refreshed.
-func (f *KubernetesClientFactory) RefreshClient(
-	_ *pkgtypes.PluginContext,
-	client *ClientSet,
-) error {
-	// dynamic informers will need to be reinited
+// RefreshClient refreshes the dynamic informer factory on an existing client.
+func RefreshClient(_ *pkgtypes.PluginContext, client *ClientSet) error {
 	client.DynamicInformerFactory = dynamicinformer.NewDynamicSharedInformerFactory(
 		client.DynamicClient,
 		DefaultResyncPeriod,
 	)
-	return nil
-}
-
-// StartClient starts the given client, and returns an error if the client could not be started.
-func (f *KubernetesClientFactory) StartClient(_ *pkgtypes.PluginContext, _ *ClientSet) error {
-	return nil
-}
-
-// StopClient stops the given client, and returns an error if the client could not be stopped.
-func (f *KubernetesClientFactory) StopClient(_ *pkgtypes.PluginContext, _ *ClientSet) error {
 	return nil
 }

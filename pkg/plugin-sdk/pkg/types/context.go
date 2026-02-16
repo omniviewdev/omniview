@@ -47,59 +47,6 @@ type PluginContext struct {
 	RequesterID string `json:"requester_id"`
 }
 
-// TODO: don't think we need to do all this pointer deserialization.
-//
-//	type SerializedPluginContext struct {
-//		RequestOptions  RequestOptions      `json:"request_options"`
-//		Connection      Connection          `json:"connection"`
-//		ResourceContext ResourceContext     `json:"resource_context"`
-//		GlobalConfig    config.GlobalConfig `json:"global_config"`
-//		RequestID       string              `json:"request_id"`
-//		RequesterID     string              `json:"requester_id"`
-//	}
-//
-//	func (pc *PluginContext) MarshalJSON() ([]byte, error) {
-//		conn := Connection{}
-//		if pc.Connection != nil {
-//			conn = *pc.Connection
-//		}
-//		res := ResourceContext{}
-//		if pc.ResourceContext != nil {
-//			res = *pc.ResourceContext
-//		}
-//		reqOpts := RequestOptions{}
-//		if pc.RequestOptions != nil {
-//			reqOpts = *pc.RequestOptions
-//		}
-//		globalConfig := config.GlobalConfig{}
-//		if pc.GlobalConfig != nil {
-//			globalConfig = *pc.GlobalConfig
-//		}
-//		serialize := &SerializedPluginContext{
-//			RequestOptions:  reqOpts,
-//			Connection:      conn,
-//			ResourceContext: res,
-//			GlobalConfig:    globalConfig,
-//			RequestID:       pc.RequestID,
-//			RequesterID:     pc.RequesterID,
-//		}
-//		return json.Marshal(serialize)
-//	}
-//
-//	func (pc *PluginContext) UnmarshalJSON(data []byte) error {
-//		var spc SerializedPluginContext
-//		if err := json.Unmarshal(data, &spc); err != nil {
-//			return err
-//		}
-//		pc.RequestOptions = &spc.RequestOptions
-//		pc.Connection = &spc.Connection
-//		pc.ResourceContext = &spc.ResourceContext
-//		pc.GlobalConfig = &spc.GlobalConfig
-//		pc.RequestID = spc.RequestID
-//		pc.RequesterID = spc.RequesterID
-//		return nil
-//	}
-
 func WithPluginContext(ctx context.Context, pluginContext *PluginContext) context.Context {
 	pluginContext.Context = nil
 	return context.WithValue(ctx, pluginCtxKey{}, pluginContext)

@@ -665,3 +665,36 @@ func (r *ResourcePluginClient) DeleteConnection(
 	})
 	return err
 }
+
+// ListenForEvents listens for events from the resource provider
+// and pipes them back to the event subsystem, stopping when stopCh is closed.
+// This method is blocking, and should be run as part of the resourcer
+// controller's event loop.
+func (r *ResourcePluginClient) WatchConnections(
+	ctx *pkgtypes.PluginContext,
+	connStream chan []pkgtypes.Connection,
+) error {
+	stream, err := r.client.WatchConnections(ctx.Context, &emptypb.Empty{})
+	if err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Context.Done():
+			return nil
+		default:
+			msg, msgErr := stream.Recv()
+			if msgErr != nil {
+				return msgErr
+			}
+
+			connections := msg.GetConnections()
+			data := make([]pkgtypes.Connection, 0, len(connections))
+			for _, connection := range connections {
+				data = append(data, protoToConnection(connection))
+			}
+
+			connStream <- data
+		}
+	}
+}

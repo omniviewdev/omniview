@@ -41,6 +41,8 @@ type ResourceConnectionProvider interface {
 	) (types.Connection, error)
 	// DeleteConnection deletes the connection for the resource provider
 	DeleteConnection(ctx *types.PluginContext, id string) error
+	// WatchConnections will call the watcher function if it exists, returning the list of connections as things change
+	WatchConnections(ctx *types.PluginContext, stream chan []types.Connection) error
 }
 
 type ResourceInformerProvider interface {

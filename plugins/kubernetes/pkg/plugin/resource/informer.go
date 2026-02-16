@@ -37,25 +37,23 @@ var ignoreResources = []schema.GroupVersionResource{
 	authorizationv1.SchemeGroupVersion.WithResource("subjectaccessreviews"),
 }
 
-func NewInformerOptions() *types.InformerOptions[clients.ClientSet, dynamicinformer.DynamicSharedInformerFactory] {
-	return &types.InformerOptions[clients.ClientSet, dynamicinformer.DynamicSharedInformerFactory]{
-		CreateInformerFunc:   CreateInformer,
-		RegisterResourceFunc: RegisterResourceInformer,
-		RunInformerFunc:      StartInformer,
-	}
+// kubeInformerHandle wraps a DynamicSharedInformerFactory to implement types.InformerHandle.
+type kubeInformerHandle struct {
+	factory dynamicinformer.DynamicSharedInformerFactory
 }
 
-func CreateInformer(
+// NewKubeInformerHandle creates an InformerHandle for the kubernetes plugin.
+// It matches the types.CreateInformerHandleFunc[clients.ClientSet] signature.
+func NewKubeInformerHandle(
 	_ *pkgtypes.PluginContext,
 	client *clients.ClientSet,
-) (dynamicinformer.DynamicSharedInformerFactory, error) {
-	return client.DynamicInformerFactory, nil
+) (types.InformerHandle, error) {
+	return &kubeInformerHandle{factory: client.DynamicInformerFactory}, nil
 }
 
-func RegisterResourceInformer(
+func (h *kubeInformerHandle) RegisterResource(
 	ctx *pkgtypes.PluginContext,
 	resource types.ResourceMeta,
-	informer dynamicinformer.DynamicSharedInformerFactory,
 	addChan chan types.InformerAddPayload,
 	updateChan chan types.InformerUpdatePayload,
 	deleteChan chan types.InformerDeletePayload,
@@ -72,7 +70,7 @@ func RegisterResourceInformer(
 	}
 
 	// create the informer
-	i := informer.ForResource(gvk).Informer()
+	i := h.factory.ForResource(gvk).Informer()
 
 	handlers := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
@@ -169,22 +167,20 @@ func RegisterResourceInformer(
 	return nil
 }
 
-// StartInformer starts the informer for the registered resources.
-func StartInformer(
-	informer dynamicinformer.DynamicSharedInformerFactory,
+func (h *kubeInformerHandle) Run(
 	stopCh chan struct{},
 	_ chan types.InformerAddPayload,
 	_ chan types.InformerUpdatePayload,
 	_ chan types.InformerDeletePayload,
 ) error {
 	log.Print("Starting informer")
-	informer.Start(stopCh)
+	h.factory.Start(stopCh)
 	log.Print("Starting informers. Waiting for cache sync...")
 
 	synced := make(chan struct{})
 	cacheStop := make(chan struct{})
 	go func() {
-		resources := informer.WaitForCacheSync(cacheStop)
+		resources := h.factory.WaitForCacheSync(cacheStop)
 		log.Print("Cache sync done. Informers used:", resources)
 		close(synced)
 	}()
@@ -197,18 +193,5 @@ func StartInformer(
 		close(cacheStop)
 	}
 
-	return nil
-}
-
-// StopInformer stops the informer for the registered resources.
-func StopInformer(
-	factory dynamicinformer.DynamicSharedInformerFactory,
-	stopCh chan struct{},
-) error {
-	close(stopCh)
-
-	// Wait for all informers to stop
-	factory.Shutdown()
-	log.Print("Informers stopped")
 	return nil
 }

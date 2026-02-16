@@ -11,27 +11,11 @@ import (
 // InformerManager is an interface for managing informers for the various resource services.
 // An informer watches for changes to resources and broadcasts those changes to the IDE event
 // subsystem.
-//
-// The Informer system is heavily inspired and built around the concept pioneered by the
-// Kubernetes API Server, and as such, the informer system is a generalized manager for
-// informer implementation similar to that of the Kubernetes API Server and the corresponding
-// client-go library.
-//
-// More information on the Kubernetes informer design can be found here:
-// https://www.cncf.io/blog/2019/10/15/extend-kubernetes-via-a-shared-informer/
-//
-// An important note here is that due to the desired behavior of the resourcer clients being able
-// to use the informer local cache for their operations, the informer manager will be provided the
-// same client that the resourcer clients use for their operations. If multiple clients are used
-// to set up informers, they should be injected as a dependency into the Client setup in the
-// ResourceClientFactory.
-type InformerManager[ClientT, InformerT any] struct {
-	createHandler   types.CreateInformerFunc[ClientT, InformerT]
-	registerHandler types.RegisterResourceInformerFunc[InformerT]
-	runHandler      types.RunInformerFunc[InformerT]
+type InformerManager[ClientT any] struct {
+	createHandler types.CreateInformerHandleFunc[ClientT]
 
 	// map of connection ids to informers
-	informers map[string]informer[InformerT]
+	informers map[string]informerEntry
 
 	addChan             chan types.InformerAddPayload
 	updateChan          chan types.InformerUpdatePayload
@@ -40,24 +24,22 @@ type InformerManager[ClientT, InformerT any] struct {
 	stopConnectionChan  chan string
 }
 
-type informer[InformerT any] struct {
-	// informer client
-	informer InformerT
-	// informer cancel function
+type informerEntry struct {
+	// handle is the informer handle
+	handle types.InformerHandle
+	// cancel channel to stop the informer
 	cancel chan struct{}
 }
 
-func NewInformerManager[ClientT, InformerT any](
-	opts *types.InformerOptions[ClientT, InformerT],
+func NewInformerManager[ClientT any](
+	createFunc types.CreateInformerHandleFunc[ClientT],
 	addChan chan types.InformerAddPayload,
 	updateChan chan types.InformerUpdatePayload,
 	deleteChan chan types.InformerDeletePayload,
-) *InformerManager[ClientT, InformerT] {
-	return &InformerManager[ClientT, InformerT]{
-		createHandler:       opts.CreateInformerFunc,
-		registerHandler:     opts.RegisterResourceFunc,
-		runHandler:          opts.RunInformerFunc,
-		informers:           make(map[string]informer[InformerT]),
+) *InformerManager[ClientT] {
+	return &InformerManager[ClientT]{
+		createHandler:       createFunc,
+		informers:           make(map[string]informerEntry),
 		addChan:             addChan,
 		updateChan:          updateChan,
 		deleteChan:          deleteChan,
@@ -68,7 +50,7 @@ func NewInformerManager[ClientT, InformerT any](
 
 // Run starts the informer manager, and blocks until the stop channel is closed.
 // Acts as a fan-in aggregator for the various informer channels.
-func (i *InformerManager[CT, IT]) Run(
+func (i *InformerManager[ClientT]) Run(
 	stopCh <-chan struct{},
 	controllerAddChan chan types.InformerAddPayload,
 	controllerUpdateChan chan types.InformerUpdatePayload,
@@ -80,25 +62,27 @@ func (i *InformerManager[CT, IT]) Run(
 			return nil
 		case id := <-i.startConnectionChan:
 			log.Println("InformerManager: start event received", id)
-			informer := i.informers[id]
-			// TODO - handle this error case at some point
-			go i.runHandler(
-				informer.informer,
-				informer.cancel,
-				i.addChan,
-				i.updateChan,
-				i.deleteChan,
-			)
+			entry := i.informers[id]
+			go func(id string) {
+				if err := entry.handle.Run(
+					entry.cancel,
+					i.addChan,
+					i.updateChan,
+					i.deleteChan,
+				); err != nil {
+					log.Printf("InformerManager: error running informer for connection %s: %v", id, err)
+				}
+			}(id)
 		case id := <-i.stopConnectionChan:
 			log.Println("InformerManager: stop event received", id)
 			// stop the informer
-			informer, ok := i.informers[id]
+			entry, ok := i.informers[id]
 			if !ok {
-				// ignore, probobly already stopped
+				// ignore, probably already stopped
 				break
 			}
 			// close the connection and delete it
-			close(informer.cancel)
+			close(entry.cancel)
 			delete(i.informers, id)
 		case event := <-i.addChan:
 			controllerAddChan <- event
@@ -110,45 +94,44 @@ func (i *InformerManager[CT, IT]) Run(
 	}
 }
 
-func (i *InformerManager[CT, IT]) CreateConnectionInformer(
+func (i *InformerManager[ClientT]) CreateConnectionInformer(
 	ctx *pkgtypes.PluginContext,
 	connection *pkgtypes.Connection,
-	client *CT,
+	client *ClientT,
 ) error {
 	// make sure we don't already have an informer for this connection
 	if _, ok := i.informers[connection.ID]; ok {
 		return fmt.Errorf("informer already exists for connection %s", connection.ID)
 	}
 
-	// get an informer from the factory
-	cache, err := i.createHandler(ctx, client)
+	// get an informer handle from the factory
+	handle, err := i.createHandler(ctx, client)
 	if err != nil {
 		return fmt.Errorf("error creating informer for connection %s: %w", connection.ID, err)
 	}
 
 	// add to map
-	i.informers[connection.ID] = informer[IT]{informer: cache, cancel: make(chan struct{})}
+	i.informers[connection.ID] = informerEntry{handle: handle, cancel: make(chan struct{})}
 	return nil
 }
 
 // RegisterResource registers a resource with the informer manager for a given client. This is
 // called when a new context has been started for the first time.
-func (i *InformerManager[CT, IT]) RegisterResource(
+func (i *InformerManager[ClientT]) RegisterResource(
 	ctx *pkgtypes.PluginContext,
 	connection *pkgtypes.Connection,
 	resource types.ResourceMeta,
 ) error {
 	// get the informer
-	informer, ok := i.informers[connection.ID]
+	entry, ok := i.informers[connection.ID]
 	if !ok {
 		return fmt.Errorf("informer not found for connection %s", connection.ID)
 	}
 
 	// register the resource
-	return i.registerHandler(
+	return entry.handle.RegisterResource(
 		ctx,
 		resource,
-		informer.informer,
 		i.addChan,
 		i.updateChan,
 		i.deleteChan,
@@ -157,7 +140,7 @@ func (i *InformerManager[CT, IT]) RegisterResource(
 
 // StartConnection starts the informer for a given resource connection, and sends events to the given
 // event channels.
-func (i *InformerManager[CT, IT]) StartConnection(
+func (i *InformerManager[ClientT]) StartConnection(
 	_ *pkgtypes.PluginContext,
 	connectionID string,
 ) error {
@@ -172,7 +155,7 @@ func (i *InformerManager[CT, IT]) StartConnection(
 }
 
 // StopConnection stops the informer for a given resource connection.
-func (i *InformerManager[CT, IT]) StopConnection(
+func (i *InformerManager[ClientT]) StopConnection(
 	_ *pkgtypes.PluginContext,
 	connectionID string,
 ) error {
@@ -186,7 +169,7 @@ func (i *InformerManager[CT, IT]) StopConnection(
 }
 
 // HasInformer checks to see if the informer manager has an informer for the given connection.
-func (i *InformerManager[CT, IT]) HasInformer(
+func (i *InformerManager[ClientT]) HasInformer(
 	_ *pkgtypes.PluginContext,
 	connectionID string,
 ) bool {

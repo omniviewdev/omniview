@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	pkgsettings "github.com/omniviewdev/settings"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -18,7 +19,28 @@ import (
 // Here is the gRPC server that GRPCClient talks to.
 type ResourcePluginServer struct {
 	// This is the real implementation
-	Impl types.ResourceProvider
+	Impl             types.ResourceProvider
+	settingsProvider pkgsettings.Provider
+}
+
+// newPluginContext creates a PluginContext with settings injected.
+// Used by non-CRUD methods (connections, informers, etc.).
+func (s *ResourcePluginServer) newPluginContext(ctx context.Context) *pkgtypes.PluginContext {
+	pctx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pctx.SetSettingsProvider(s.settingsProvider)
+	return pctx
+}
+
+// newCRUDContext creates a PluginContext with settings and connection injected.
+// Used by Get, List, Find, Create, Update, Delete.
+func (s *ResourcePluginServer) newCRUDContext(ctx context.Context, connectionID string) (*pkgtypes.PluginContext, error) {
+	pctx := s.newPluginContext(ctx)
+	conn, err := s.Impl.GetConnection(pctx, connectionID)
+	if err != nil {
+		return nil, err
+	}
+	pctx.SetConnection(&conn)
+	return pctx, nil
 }
 
 func metaToProtoResourceMeta(meta types.ResourceMeta) *proto.ResourceMeta {
@@ -198,13 +220,10 @@ func (s *ResourcePluginServer) Get(
 	ctx context.Context,
 	in *proto.GetRequest,
 ) (*proto.GetResponse, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
-
-	conn, err := s.Impl.GetConnection(pluginCtx, in.GetContext())
+	pluginCtx, err := s.newCRUDContext(ctx, in.GetContext())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get connection: %s", err.Error())
 	}
-	pluginCtx.SetConnection(&conn)
 
 	resp, err := s.Impl.Get(pluginCtx, in.GetKey(), types.GetInput{
 		ID:        in.GetId(),
@@ -233,13 +252,10 @@ func (s *ResourcePluginServer) List(
 	ctx context.Context,
 	in *proto.ListRequest,
 ) (*proto.ListResponse, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
-
-	conn, err := s.Impl.GetConnection(pluginCtx, in.GetContext())
+	pluginCtx, err := s.newCRUDContext(ctx, in.GetContext())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get connection: %s", err.Error())
 	}
-	pluginCtx.SetConnection(&conn)
 
 	resp, err := s.Impl.List(pluginCtx, in.GetKey(), types.ListInput{
 		Namespaces: in.GetNamespaces(),
@@ -271,13 +287,10 @@ func (s *ResourcePluginServer) Find(
 	ctx context.Context,
 	in *proto.FindRequest,
 ) (*proto.FindResponse, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
-
-	conn, err := s.Impl.GetConnection(pluginCtx, in.GetContext())
+	pluginCtx, err := s.newCRUDContext(ctx, in.GetContext())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get connection: %s", err.Error())
 	}
-	pluginCtx.SetConnection(&conn)
 
 	resp, err := s.Impl.Find(pluginCtx, in.GetKey(), types.FindInput{
 		Namespaces: in.GetNamespaces(),
@@ -309,13 +322,10 @@ func (s *ResourcePluginServer) Create(
 	ctx context.Context,
 	in *proto.CreateRequest,
 ) (*proto.CreateResponse, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
-
-	conn, err := s.Impl.GetConnection(pluginCtx, in.GetContext())
+	pluginCtx, err := s.newCRUDContext(ctx, in.GetContext())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get connection: %s", err.Error())
 	}
-	pluginCtx.SetConnection(&conn)
 
 	resp, err := s.Impl.Create(pluginCtx, in.GetKey(), types.CreateInput{
 		Namespace: in.GetNamespace(),
@@ -344,13 +354,10 @@ func (s *ResourcePluginServer) Update(
 	ctx context.Context,
 	in *proto.UpdateRequest,
 ) (*proto.UpdateResponse, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
-
-	conn, err := s.Impl.GetConnection(pluginCtx, in.GetContext())
+	pluginCtx, err := s.newCRUDContext(ctx, in.GetContext())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get connection: %s", err.Error())
 	}
-	pluginCtx.SetConnection(&conn)
 
 	resp, err := s.Impl.Update(pluginCtx, in.GetKey(), types.UpdateInput{
 		ID:        in.GetId(),
@@ -380,13 +387,10 @@ func (s *ResourcePluginServer) Delete(
 	ctx context.Context,
 	in *proto.DeleteRequest,
 ) (*proto.DeleteResponse, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
-
-	conn, err := s.Impl.GetConnection(pluginCtx, in.GetContext())
+	pluginCtx, err := s.newCRUDContext(ctx, in.GetContext())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get connection: %s", err.Error())
 	}
-	pluginCtx.SetConnection(&conn)
 
 	resp, err := s.Impl.Delete(pluginCtx, in.GetKey(), types.DeleteInput{
 		ID:        in.GetId(),
@@ -417,7 +421,7 @@ func (s *ResourcePluginServer) HasInformer(
 	ctx context.Context,
 	in *proto.HasInformerRequest,
 ) (*wrapperspb.BoolValue, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pluginCtx := s.newPluginContext(ctx)
 	resp := s.Impl.HasInformer(pluginCtx, in.GetConnection())
 	return &wrapperspb.BoolValue{Value: resp}, nil
 }
@@ -426,7 +430,7 @@ func (s *ResourcePluginServer) StartConnectionInformer(
 	ctx context.Context,
 	in *proto.StartConnectionInformerRequest,
 ) (*emptypb.Empty, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pluginCtx := s.newPluginContext(ctx)
 	if err := s.Impl.StartConnectionInformer(pluginCtx, in.GetConnection()); err != nil {
 		return nil, status.Errorf(
 			codes.Internal,
@@ -441,7 +445,7 @@ func (s *ResourcePluginServer) StopConnectionInformer(
 	ctx context.Context,
 	in *proto.StopConnectionInformerRequest,
 ) (*emptypb.Empty, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pluginCtx := s.newPluginContext(ctx)
 	if err := s.Impl.StopConnectionInformer(pluginCtx, in.GetConnection()); err != nil {
 		return nil, status.Errorf(
 			codes.Internal,
@@ -458,7 +462,7 @@ func (s *ResourcePluginServer) ListenForEvents(
 	stream proto.ResourcePlugin_ListenForEventsServer,
 ) error {
 	log.Printf("ListenForEvents")
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(stream.Context())
+	pluginCtx := s.newPluginContext(stream.Context())
 
 	addChan := make(chan types.InformerAddPayload)
 	updateChan := make(chan types.InformerUpdatePayload)
@@ -613,7 +617,7 @@ func (s *ResourcePluginServer) StartConnection(
 	ctx context.Context,
 	in *proto.ConnectionRequest,
 ) (*proto.ConnectionStatus, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pluginCtx := s.newPluginContext(ctx)
 
 	conn, err := s.Impl.StartConnection(pluginCtx, in.GetId())
 	if err != nil {
@@ -641,7 +645,7 @@ func (s *ResourcePluginServer) StopConnection(
 	ctx context.Context,
 	in *proto.ConnectionRequest,
 ) (*proto.Connection, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pluginCtx := s.newPluginContext(ctx)
 
 	conn, err := s.Impl.StopConnection(pluginCtx, in.GetId())
 	if err != nil {
@@ -664,7 +668,7 @@ func (s *ResourcePluginServer) LoadConnections(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*proto.ConnectionList, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pluginCtx := s.newPluginContext(ctx)
 
 	connections, err := s.Impl.LoadConnections(pluginCtx)
 	if err != nil {
@@ -693,7 +697,7 @@ func (s *ResourcePluginServer) ListConnections(
 	ctx context.Context,
 	_ *emptypb.Empty,
 ) (*proto.ConnectionList, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pluginCtx := s.newPluginContext(ctx)
 
 	connections, err := s.Impl.ListConnections(pluginCtx)
 	if err != nil {
@@ -722,7 +726,7 @@ func (s *ResourcePluginServer) GetConnection(
 	ctx context.Context,
 	in *proto.ConnectionRequest,
 ) (*proto.Connection, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pluginCtx := s.newPluginContext(ctx)
 
 	conn, err := s.Impl.GetConnection(pluginCtx, in.GetId())
 	if err != nil {
@@ -745,7 +749,7 @@ func (s *ResourcePluginServer) GetConnectionNamespaces(
 	ctx context.Context,
 	in *proto.ConnectionRequest,
 ) (*proto.ConnectionNamespacesResponse, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pluginCtx := s.newPluginContext(ctx)
 	namespaces, err := s.Impl.GetConnectionNamespaces(pluginCtx, in.GetId())
 	if err != nil {
 		return nil, status.Errorf(
@@ -763,7 +767,7 @@ func (s *ResourcePluginServer) UpdateConnection(
 	ctx context.Context,
 	in *proto.UpdateConnectionRequest,
 ) (*proto.Connection, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pluginCtx := s.newPluginContext(ctx)
 
 	conn := pkgtypes.Connection{
 		ID: in.GetId(),
@@ -804,9 +808,52 @@ func (s *ResourcePluginServer) DeleteConnection(
 	ctx context.Context,
 	in *proto.ConnectionRequest,
 ) (*emptypb.Empty, error) {
-	pluginCtx := pkgtypes.NewPluginContextFromCtx(ctx)
+	pluginCtx := s.newPluginContext(ctx)
 	if err := s.Impl.DeleteConnection(pluginCtx, in.GetId()); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete connection: %s", err.Error())
 	}
 	return &emptypb.Empty{}, nil
+}
+
+func (s *ResourcePluginServer) WatchConnections(
+	_ *emptypb.Empty,
+	stream proto.ResourcePlugin_WatchConnectionsServer,
+) error {
+	log.Printf("WatchConnections")
+	pluginCtx := s.newPluginContext(stream.Context())
+
+	eventChan := make(chan []pkgtypes.Connection)
+
+	go func() {
+		if err := s.Impl.WatchConnections(pluginCtx, eventChan); err != nil {
+			log.Printf("failed to listen for connection change events: %s", err.Error())
+			return
+		}
+	}()
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			log.Printf("Context Done")
+			return status.Errorf(codes.Canceled, "context canceled")
+		case event := <-eventChan:
+			// convert and send
+			connections := make([]*proto.Connection, 0, len(event))
+			for _, connection := range event {
+				converted, err := connectionToProto(connection)
+				if err != nil {
+					log.Printf("failed to convert connection: %s\n", err)
+					continue
+				}
+				connections = append(connections, converted)
+			}
+
+			if err := stream.Send(&proto.ConnectionList{
+				Connections: connections,
+			}); err != nil {
+				// do nothing for now
+				log.Printf("failed to send add event: %s\n", err.Error())
+			}
+		}
+	}
 }

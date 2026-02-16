@@ -167,64 +167,56 @@ func (p *Plugin) Serve() {
 
 // RegisterResourcePlugin registers a resource plugin with the given options. Resource plugins are
 // plugins that manage resources, such as clouds, Kubernetes clusters, etc.
-func RegisterResourcePlugin[ClientT, DiscoveryT, InformerT any](
+func RegisterResourcePlugin[ClientT any](
 	p *Plugin,
-	opts IResourcePluginOpts[ClientT, DiscoveryT, InformerT],
+	opts ResourcePluginOpts[ClientT],
 ) {
 	if p == nil {
 		// improper use of plugin
 		panic("plugin cannot be nil")
 	}
 
-	resourcers := opts.GetResourcers()
-	metas := make([]types.ResourceMeta, 0, len(opts.GetResourcers()))
-	for meta := range resourcers {
+	metas := make([]types.ResourceMeta, 0, len(opts.Resourcers))
+	for meta := range opts.Resourcers {
 		metas = append(metas, meta)
 	}
 
 	// check for discovery
 	var typeManager services.ResourceTypeManager
-	hasDiscovery, err := opts.HasDiscovery()
-	if err != nil {
-		panic(err)
-	}
-	if hasDiscovery {
+	if opts.DiscoveryProvider != nil {
 		// dynamic resource plugin
 		typeManager = services.NewDynamicResourceTypeManager(
 			metas,
-			opts.GetResourceGroups(),
-			opts.GetResourceDefinitions(),
-			opts.GetDefaultResourceDefinition(),
-			opts.GetDiscoveryClientFactory(),
-			opts.GetDiscoveryFunc(),
+			opts.ResourceGroups,
+			opts.ResourceDefinitions,
+			opts.DefaultResourceDefinition,
+			opts.DiscoveryProvider,
 		)
 	} else {
 		// static resource plugin
 		typeManager = services.NewStaticResourceTypeManager(
 			metas,
-			opts.GetResourceGroups(),
-			opts.GetResourceDefinitions(),
-			opts.GetDefaultResourceDefinition(),
+			opts.ResourceGroups,
+			opts.ResourceDefinitions,
+			opts.DefaultResourceDefinition,
 		)
 	}
 
 	// create the layouts
-	layoutOpts := opts.GetLayoutOpts()
-	layoutManager := services.NewLayoutManager(layoutOpts)
-	if layoutOpts != nil {
+	layoutManager := services.NewLayoutManager(opts.LayoutOpts)
+	if opts.LayoutOpts != nil {
 		// generate from the metas
 		layoutManager.GenerateLayoutFromMetas(metas)
 	}
 
 	// create the resourcer
 	resourcer := services.NewResourcerManager[ClientT]()
-	if err = resourcer.RegisterResourcersFromMap(resourcers); err != nil {
+	if err := resourcer.RegisterResourcersFromMap(opts.Resourcers); err != nil {
 		panic(err)
 	}
 
-	if opts.HasDynamicResourcers() {
-		dynamicResourcers := opts.GetDynamicResourcers()
-		if err = resourcer.RegisterDynamicResourcersFromMap(dynamicResourcers); err != nil {
+	if len(opts.PatternResourcers) > 0 {
+		if err := resourcer.RegisterPatternResourcersFromMap(opts.PatternResourcers); err != nil {
 			panic(err)
 		}
 	}
@@ -232,17 +224,23 @@ func RegisterResourcePlugin[ClientT, DiscoveryT, InformerT any](
 	controller := resource.NewResourceController(
 		resourcer,
 		services.NewConnectionManager(
-			opts.GetClientFactory(),
-			opts.GetLoadConnectionFunc(),
-			opts.GetCheckConnectionFunc(),
-			opts.GetLoadConnectionNamespacesFunc(),
+			opts.CreateClient,
+			opts.RefreshClient,
+			opts.StartClient,
+			opts.StopClient,
+			opts.LoadConnectionFunc,
+			opts.WatchConnectionsFunc,
+			opts.CheckConnectionFunc,
+			opts.LoadConnectionNamespacesFunc,
 		),
 		typeManager,
 		layoutManager,
-		opts.GetInformerOpts(),
-		p.SettingsProvider,
+		opts.CreateInformerFunc,
 	)
 
 	// Register the resource plugin with the plugin system.
-	p.RegisterCapability("resource", &rp.ResourcePlugin{Impl: controller})
+	p.RegisterCapability("resource", &rp.ResourcePlugin{
+		Impl:            controller,
+		SettingsProvider: p.SettingsProvider,
+	})
 }

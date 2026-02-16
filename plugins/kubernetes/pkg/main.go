@@ -4,6 +4,7 @@ import (
 	"flag"
 
 	"github.com/omniview/kubernetes/pkg/plugin/exec"
+	pluginlogs "github.com/omniview/kubernetes/pkg/plugin/logs"
 	"github.com/omniview/kubernetes/pkg/plugin/networker"
 	"github.com/omniview/kubernetes/pkg/plugin/resource"
 	"github.com/omniviewdev/settings"
@@ -84,6 +85,7 @@ func main() {
 	resource.Register(plugin)
 	exec.Register(plugin)
 	networker.Register(plugin)
+	pluginlogs.Register(plugin)
 
 	// Serve the plugin
 	plugin.Serve()

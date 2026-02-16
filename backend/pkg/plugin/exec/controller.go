@@ -307,8 +307,8 @@ func (c *controller) getConnectedCtx(
 	return sdktypes.NewPluginContextWithConnection(
 		ctx,
 		"exec",
-		nil, // TODO: pass pluginConfig
-		nil, // TODO: pass globalConfig
+		nil,
+		nil,
 		&connection,
 	)
 }
@@ -320,8 +320,8 @@ func (c *controller) getUnconnectedCtx(
 	return sdktypes.NewPluginContext(
 		ctx,
 		"exec",
-		nil, // TODO: pass pluginConfig
-		nil, // TODO: pass globalConfig
+		nil,
+		nil,
 		nil,
 	)
 }

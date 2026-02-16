@@ -111,7 +111,7 @@ const ReplicaSetTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <ReplicaSetSidebar data={ctx.data || {}} />
+        component: (ctx) => <ReplicaSetSidebar ctx={ctx} />
       },
       {
         title: 'Editor',

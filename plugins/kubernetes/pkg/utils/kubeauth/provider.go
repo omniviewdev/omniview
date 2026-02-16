@@ -28,7 +28,7 @@ type KubeClientBundle struct {
 // and active kubeconfig context to use
 func LoadKubeClients(kubeconfigPath string, kubeContext string) (*KubeClientBundle, error) {
 	ctx := context.Background()
-	log.Printf("loading kube clients at path %s for context %s", kubeconfigPath, kubeContext)
+	// log.Printf("loading kube clients at path %s for context %s", kubeconfigPath, kubeContext)
 
 	strategy, err := DetectAuthStrategy(kubeconfigPath, kubeContext)
 	if err != nil {

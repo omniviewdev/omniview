@@ -35,6 +35,7 @@ const (
 	ResourcePlugin_GetConnectionNamespaces_FullMethodName = "/com.omniview.pluginsdk.ResourcePlugin/GetConnectionNamespaces"
 	ResourcePlugin_UpdateConnection_FullMethodName        = "/com.omniview.pluginsdk.ResourcePlugin/UpdateConnection"
 	ResourcePlugin_DeleteConnection_FullMethodName        = "/com.omniview.pluginsdk.ResourcePlugin/DeleteConnection"
+	ResourcePlugin_WatchConnections_FullMethodName        = "/com.omniview.pluginsdk.ResourcePlugin/WatchConnections"
 	ResourcePlugin_Get_FullMethodName                     = "/com.omniview.pluginsdk.ResourcePlugin/Get"
 	ResourcePlugin_List_FullMethodName                    = "/com.omniview.pluginsdk.ResourcePlugin/List"
 	ResourcePlugin_Find_FullMethodName                    = "/com.omniview.pluginsdk.ResourcePlugin/Find"
@@ -70,6 +71,7 @@ type ResourcePluginClient interface {
 	GetConnectionNamespaces(ctx context.Context, in *ConnectionRequest, opts ...grpc.CallOption) (*ConnectionNamespacesResponse, error)
 	UpdateConnection(ctx context.Context, in *UpdateConnectionRequest, opts ...grpc.CallOption) (*Connection, error)
 	DeleteConnection(ctx context.Context, in *ConnectionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	WatchConnections(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (ResourcePlugin_WatchConnectionsClient, error)
 	// Resource
 	Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error)
 	List(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (*ListResponse, error)
@@ -222,6 +224,38 @@ func (c *resourcePluginClient) DeleteConnection(ctx context.Context, in *Connect
 	return out, nil
 }
 
+func (c *resourcePluginClient) WatchConnections(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (ResourcePlugin_WatchConnectionsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ResourcePlugin_ServiceDesc.Streams[0], ResourcePlugin_WatchConnections_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &resourcePluginWatchConnectionsClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ResourcePlugin_WatchConnectionsClient interface {
+	Recv() (*ConnectionList, error)
+	grpc.ClientStream
+}
+
+type resourcePluginWatchConnectionsClient struct {
+	grpc.ClientStream
+}
+
+func (x *resourcePluginWatchConnectionsClient) Recv() (*ConnectionList, error) {
+	m := new(ConnectionList)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *resourcePluginClient) Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error) {
 	out := new(GetResponse)
 	err := c.cc.Invoke(ctx, ResourcePlugin_Get_FullMethodName, in, out, opts...)
@@ -304,7 +338,7 @@ func (c *resourcePluginClient) StopConnectionInformer(ctx context.Context, in *S
 }
 
 func (c *resourcePluginClient) ListenForEvents(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (ResourcePlugin_ListenForEventsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ResourcePlugin_ServiceDesc.Streams[0], ResourcePlugin_ListenForEvents_FullMethodName, opts...)
+	stream, err := c.cc.NewStream(ctx, &ResourcePlugin_ServiceDesc.Streams[1], ResourcePlugin_ListenForEvents_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -382,6 +416,7 @@ type ResourcePluginServer interface {
 	GetConnectionNamespaces(context.Context, *ConnectionRequest) (*ConnectionNamespacesResponse, error)
 	UpdateConnection(context.Context, *UpdateConnectionRequest) (*Connection, error)
 	DeleteConnection(context.Context, *ConnectionRequest) (*emptypb.Empty, error)
+	WatchConnections(*emptypb.Empty, ResourcePlugin_WatchConnectionsServer) error
 	// Resource
 	Get(context.Context, *GetRequest) (*GetResponse, error)
 	List(context.Context, *ListRequest) (*ListResponse, error)
@@ -445,6 +480,9 @@ func (UnimplementedResourcePluginServer) UpdateConnection(context.Context, *Upda
 }
 func (UnimplementedResourcePluginServer) DeleteConnection(context.Context, *ConnectionRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteConnection not implemented")
+}
+func (UnimplementedResourcePluginServer) WatchConnections(*emptypb.Empty, ResourcePlugin_WatchConnectionsServer) error {
+	return status.Errorf(codes.Unimplemented, "method WatchConnections not implemented")
 }
 func (UnimplementedResourcePluginServer) Get(context.Context, *GetRequest) (*GetResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Get not implemented")
@@ -747,6 +785,27 @@ func _ResourcePlugin_DeleteConnection_Handler(srv interface{}, ctx context.Conte
 		return srv.(ResourcePluginServer).DeleteConnection(ctx, req.(*ConnectionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
+}
+
+func _ResourcePlugin_WatchConnections_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(emptypb.Empty)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ResourcePluginServer).WatchConnections(m, &resourcePluginWatchConnectionsServer{stream})
+}
+
+type ResourcePlugin_WatchConnectionsServer interface {
+	Send(*ConnectionList) error
+	grpc.ServerStream
+}
+
+type resourcePluginWatchConnectionsServer struct {
+	grpc.ServerStream
+}
+
+func (x *resourcePluginWatchConnectionsServer) Send(m *ConnectionList) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 func _ResourcePlugin_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1099,6 +1158,11 @@ var ResourcePlugin_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "WatchConnections",
+			Handler:       _ResourcePlugin_WatchConnections_Handler,
+			ServerStreams: true,
+		},
 		{
 			StreamName:    "ListenForEvents",
 			Handler:       _ResourcePlugin_ListenForEvents_Handler,

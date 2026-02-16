@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/omniviewdev/settings"
-
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/services"
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -18,29 +16,27 @@ import (
 //
 // This controller is the primary entrypoint for executing operations on resources, and
 // operates as the plugin host for the installed resource plugin.
-func NewResourceController[ClientT, InformerT any](
+func NewResourceController[ClientT any](
 	resourcerManager services.ResourcerManager[ClientT],
 	connectionManager services.ConnectionManager[ClientT],
 	resourceTypeManager services.ResourceTypeManager,
 	layoutManager services.LayoutManager,
-	informerOpts *types.InformerOptions[ClientT, InformerT],
-	settingsProvider settings.Provider,
+	createInformerFunc types.CreateInformerHandleFunc[ClientT],
 ) types.ResourceProvider {
-	controller := &resourceController[ClientT, InformerT]{
+	controller := &resourceController[ClientT]{
 		stopChan:            make(chan struct{}),
 		resourcerManager:    resourcerManager,
 		connectionManager:   connectionManager,
 		resourceTypeManager: resourceTypeManager,
 		layoutManager:       layoutManager,
-		settingsProvider:    settingsProvider,
 	}
-	if informerOpts != nil {
+	if createInformerFunc != nil {
 		controller.withInformer = true
 		controller.addChan = make(chan types.InformerAddPayload)
 		controller.updateChan = make(chan types.InformerUpdatePayload)
 		controller.deleteChan = make(chan types.InformerDeletePayload)
 		controller.informerManager = services.NewInformerManager(
-			informerOpts,
+			createInformerFunc,
 			controller.addChan,
 			controller.updateChan,
 			controller.deleteChan,
@@ -49,72 +45,28 @@ func NewResourceController[ClientT, InformerT any](
 	return controller
 }
 
-type resourceController[ClientT, InformerT any] struct {
+type resourceController[ClientT any] struct {
 	resourcerManager    services.ResourcerManager[ClientT]
 	connectionManager   services.ConnectionManager[ClientT]
 	resourceTypeManager services.ResourceTypeManager
 	layoutManager       services.LayoutManager
-	settingsProvider    settings.Provider
 	stopChan            chan struct{}
-	informerManager     *services.InformerManager[ClientT, InformerT]
+	informerManager     *services.InformerManager[ClientT]
 	addChan             chan types.InformerAddPayload
 	updateChan          chan types.InformerUpdatePayload
 	deleteChan          chan types.InformerDeletePayload
 	withInformer        bool
 }
 
-func (c *resourceController[ClientT, InformerT]) retrieveDynamicClientResourcer(
-	ctx *pkgtypes.PluginContext,
-	resource string,
-) (*ClientT, types.DynamicResourcer[ClientT], error) {
-	var nilResourcer types.DynamicResourcer[ClientT]
-
-	// set up the plugin context
-	if ctx.Connection == nil {
-		return nil, nilResourcer, errors.New("connection is nil")
-	}
-	ctx.SetSettingsProvider(c.settingsProvider)
-
-	resourcer, err := c.resourcerManager.GetDynamicResourcer(resource)
-	if err != nil {
-		return nil, nilResourcer, fmt.Errorf(
-			"resourcer not found for resource type %s: %w",
-			resource,
-			err,
-		)
-	}
-
-	// 2. Get the client for the given resource namespace, ensuring it is of the correct type
-	client, err := c.connectionManager.GetCurrentConnectionClient(ctx)
-	if err != nil {
-		return nil, nilResourcer, fmt.Errorf(
-			"client unable to be retrieved for auth context %s: %w",
-			ctx.Connection.ID,
-			err,
-		)
-	}
-
-	return client, resourcer, nil
-}
-
-// get our client and resourcer outside to slim down the methods.
-func (c *resourceController[ClientT, InformerT]) retrieveClientResourcer(
+// retrieveClientResourcer gets our client and resourcer outside to slim down the methods.
+// The unified GetResourcer handles both exact and pattern matches.
+func (c *resourceController[ClientT]) retrieveClientResourcer(
 	ctx *pkgtypes.PluginContext,
 	resource string,
 ) (*ClientT, types.Resourcer[ClientT], error) {
 	var nilResourcer types.Resourcer[ClientT]
 	if ctx.Connection == nil {
 		return nil, nilResourcer, errors.New("connection is nil")
-	}
-	// make sure we attach the current settings provider before calling the resourcer
-	ctx.SetSettingsProvider(c.settingsProvider)
-
-	// get the resourcer for the given resource type, and check type
-	if ok := c.resourceTypeManager.HasResourceType(resource); !ok {
-		return nil, nilResourcer, fmt.Errorf(
-			"resource type %s not found in resource type manager",
-			resource,
-		)
 	}
 
 	resourcer, err := c.resourcerManager.GetResourcer(resource)
@@ -126,7 +78,6 @@ func (c *resourceController[ClientT, InformerT]) retrieveClientResourcer(
 		)
 	}
 
-	// 2. Get the client for the given resource namespace, ensuring it is of the correct type
 	client, err := c.connectionManager.GetCurrentConnectionClient(ctx)
 	if err != nil {
 		return nil, nilResourcer, fmt.Errorf(
@@ -141,316 +92,87 @@ func (c *resourceController[ClientT, InformerT]) retrieveClientResourcer(
 
 // ================================= Operation Methods ================================= //
 
-// TODO - combine the common logic for the operations here, lots of repetativeness
 // Get gets a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT]) Get(
+func (c *resourceController[ClientT]) Get(
 	ctx *pkgtypes.PluginContext,
 	resource string,
 	input types.GetInput,
 ) (*types.GetResult, error) {
-	var (
-		useDynamic       bool
-		client           *ClientT
-		resourcer        types.Resourcer[ClientT]
-		dynamicResourcer types.DynamicResourcer[ClientT]
-
-		result *types.GetResult
-		err    error
-	)
-
-	hasDynamic := c.resourcerManager.HasDynamicResourcers()
-
-	client, resourcer, err = c.retrieveClientResourcer(ctx, resource)
-	if err != nil && !hasDynamic {
+	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
+	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
-
-	// check for dynamic resourcer
-	if err != nil && hasDynamic {
-		client, dynamicResourcer, err = c.retrieveDynamicClientResourcer(ctx, resource)
-		if err != nil {
-			return nil, fmt.Errorf("unable to retrieve dynamic client and resourcer: %w", err)
-		}
-		useDynamic = true
-	}
-
-	// execute the resourcer
-	if useDynamic {
-		result, err = dynamicResourcer.Get(
-			ctx,
-			client,
-			types.ResourceMetaFromString(resource),
-			input,
-		)
-	} else {
-		result, err = resourcer.Get(ctx, client, input)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	return resourcer.Get(ctx, client, types.ResourceMetaFromString(resource), input)
 }
 
 // List lists resources within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT]) List(
+func (c *resourceController[ClientT]) List(
 	ctx *pkgtypes.PluginContext,
 	resource string,
 	input types.ListInput,
 ) (*types.ListResult, error) {
-	var (
-		useDynamic       bool
-		client           *ClientT
-		resourcer        types.Resourcer[ClientT]
-		dynamicResourcer types.DynamicResourcer[ClientT]
-
-		result *types.ListResult
-		err    error
-	)
-
-	hasDynamic := c.resourcerManager.HasDynamicResourcers()
-
-	client, resourcer, err = c.retrieveClientResourcer(ctx, resource)
-	if err != nil && !hasDynamic {
+	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
+	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
-
-	// check for dynamic resourcer
-	if err != nil && hasDynamic {
-		client, dynamicResourcer, err = c.retrieveDynamicClientResourcer(ctx, resource)
-		if err != nil {
-			return nil, fmt.Errorf("unable to retrieve dynamic client and resourcer: %w", err)
-		}
-		useDynamic = true
-	}
-
-	// execute the resourcer
-	if useDynamic {
-		result, err = dynamicResourcer.List(
-			ctx,
-			client,
-			types.ResourceMetaFromString(resource),
-			input,
-		)
-	} else {
-		result, err = resourcer.List(ctx, client, input)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	return resourcer.List(ctx, client, types.ResourceMetaFromString(resource), input)
 }
 
 // Find finds resources within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT]) Find(
+func (c *resourceController[ClientT]) Find(
 	ctx *pkgtypes.PluginContext,
 	resource string,
 	input types.FindInput,
 ) (*types.FindResult, error) {
-	var (
-		useDynamic       bool
-		client           *ClientT
-		resourcer        types.Resourcer[ClientT]
-		dynamicResourcer types.DynamicResourcer[ClientT]
-
-		result *types.FindResult
-		err    error
-	)
-
-	hasDynamic := c.resourcerManager.HasDynamicResourcers()
-
-	client, resourcer, err = c.retrieveClientResourcer(ctx, resource)
-	if err != nil && !hasDynamic {
+	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
+	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
-
-	// check for dynamic resourcer
-	if err != nil && hasDynamic {
-		client, dynamicResourcer, err = c.retrieveDynamicClientResourcer(ctx, resource)
-		if err != nil {
-			return nil, fmt.Errorf("unable to retrieve dynamic client and resourcer: %w", err)
-		}
-		useDynamic = true
-	}
-
-	// execute the resourcer
-	if useDynamic {
-		result, err = dynamicResourcer.Find(
-			ctx,
-			client,
-			types.ResourceMetaFromString(resource),
-			input,
-		)
-	} else {
-		result, err = resourcer.Find(ctx, client, input)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	return resourcer.Find(ctx, client, types.ResourceMetaFromString(resource), input)
 }
 
 // Create creates a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT]) Create(
+func (c *resourceController[ClientT]) Create(
 	ctx *pkgtypes.PluginContext,
 	resource string,
 	input types.CreateInput,
 ) (*types.CreateResult, error) {
-	var (
-		useDynamic       bool
-		client           *ClientT
-		resourcer        types.Resourcer[ClientT]
-		dynamicResourcer types.DynamicResourcer[ClientT]
-
-		result *types.CreateResult
-		err    error
-	)
-
-	hasDynamic := c.resourcerManager.HasDynamicResourcers()
-
-	client, resourcer, err = c.retrieveClientResourcer(ctx, resource)
-	if err != nil && !hasDynamic {
+	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
+	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
-
-	// check for dynamic resourcer
-	if err != nil && hasDynamic {
-		client, dynamicResourcer, err = c.retrieveDynamicClientResourcer(ctx, resource)
-		if err != nil {
-			return nil, fmt.Errorf("unable to retrieve dynamic client and resourcer: %w", err)
-		}
-		useDynamic = true
-	}
-
-	// execute the resourcer
-	if useDynamic {
-		result, err = dynamicResourcer.Create(
-			ctx,
-			client,
-			types.ResourceMetaFromString(resource),
-			input,
-		)
-	} else {
-		result, err = resourcer.Create(ctx, client, input)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	return resourcer.Create(ctx, client, types.ResourceMetaFromString(resource), input)
 }
 
 // Update updates a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT]) Update(
+func (c *resourceController[ClientT]) Update(
 	ctx *pkgtypes.PluginContext,
 	resource string,
 	input types.UpdateInput,
 ) (*types.UpdateResult, error) {
-	var (
-		useDynamic       bool
-		client           *ClientT
-		resourcer        types.Resourcer[ClientT]
-		dynamicResourcer types.DynamicResourcer[ClientT]
-
-		result *types.UpdateResult
-		err    error
-	)
-
-	hasDynamic := c.resourcerManager.HasDynamicResourcers()
-
-	client, resourcer, err = c.retrieveClientResourcer(ctx, resource)
-	if err != nil && !hasDynamic {
+	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
+	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
-
-	// check for dynamic resourcer
-	if err != nil && hasDynamic {
-		client, dynamicResourcer, err = c.retrieveDynamicClientResourcer(ctx, resource)
-		if err != nil {
-			return nil, fmt.Errorf("unable to retrieve dynamic client and resourcer: %w", err)
-		}
-		useDynamic = true
-	}
-
-	// execute the resourcer
-	if useDynamic {
-		result, err = dynamicResourcer.Update(
-			ctx,
-			client,
-			types.ResourceMetaFromString(resource),
-			input,
-		)
-	} else {
-		result, err = resourcer.Update(ctx, client, input)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	return resourcer.Update(ctx, client, types.ResourceMetaFromString(resource), input)
 }
 
 // Delete deletes a resource within a resource namespace given an identifier and input options.
-func (c *resourceController[ClientT, InformerT]) Delete(
+func (c *resourceController[ClientT]) Delete(
 	ctx *pkgtypes.PluginContext,
 	resource string,
 	input types.DeleteInput,
 ) (*types.DeleteResult, error) {
-	var (
-		useDynamic       bool
-		client           *ClientT
-		resourcer        types.Resourcer[ClientT]
-		dynamicResourcer types.DynamicResourcer[ClientT]
-
-		result *types.DeleteResult
-		err    error
-	)
-
-	hasDynamic := c.resourcerManager.HasDynamicResourcers()
-
-	client, resourcer, err = c.retrieveClientResourcer(ctx, resource)
-	if err != nil && !hasDynamic {
+	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
+	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
 	}
-
-	// check for dynamic resourcer
-	if err != nil && hasDynamic {
-		client, dynamicResourcer, err = c.retrieveDynamicClientResourcer(ctx, resource)
-		if err != nil {
-			return nil, fmt.Errorf("unable to retrieve dynamic client and resourcer: %w", err)
-		}
-		useDynamic = true
-	}
-
-	// execute the resourcer
-	if useDynamic {
-		result, err = dynamicResourcer.Delete(
-			ctx,
-			client,
-			types.ResourceMetaFromString(resource),
-			input,
-		)
-	} else {
-		result, err = resourcer.Delete(ctx, client, input)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	return resourcer.Delete(ctx, client, types.ResourceMetaFromString(resource), input)
 }
 
 // ================================= Informer Methods ================================= //
 
-func (c *resourceController[ClientT, InformerT]) HasInformer(
+func (c *resourceController[ClientT]) HasInformer(
 	ctx *pkgtypes.PluginContext,
 	connectionID string,
 ) bool {
@@ -462,7 +184,7 @@ func (c *resourceController[ClientT, InformerT]) HasInformer(
 //
 // This typically should not be called by the client, but there may be situations where we need
 // to start the informer manually. This gets handled on the StartConnection method.
-func (c *resourceController[ClientT, InformerT]) StartConnectionInformer(
+func (c *resourceController[ClientT]) StartConnectionInformer(
 	ctx *pkgtypes.PluginContext,
 	connectionID string,
 ) error {
@@ -470,9 +192,6 @@ func (c *resourceController[ClientT, InformerT]) StartConnectionInformer(
 		// safety guard just in case
 		return nil
 	}
-
-	// setup plugin context
-	ctx.SetSettingsProvider(c.settingsProvider)
 
 	if err := c.connectionManager.InjectConnection(ctx, connectionID); err != nil {
 		return fmt.Errorf("unable to inject connection: %w", err)
@@ -502,7 +221,7 @@ func (c *resourceController[ClientT, InformerT]) StartConnectionInformer(
 }
 
 // StopContextInformer signals to the listen runner to stop the informer for the given context.
-func (c *resourceController[ClientT, InformerT]) StopConnectionInformer(
+func (c *resourceController[ClientT]) StopConnectionInformer(
 	ctx *pkgtypes.PluginContext,
 	connectionID string,
 ) error {
@@ -513,7 +232,6 @@ func (c *resourceController[ClientT, InformerT]) StopConnectionInformer(
 	if err := c.connectionManager.InjectConnection(ctx, connectionID); err != nil {
 		return fmt.Errorf("unable to inject connection: %w", err)
 	}
-	ctx.SetSettingsProvider(c.settingsProvider)
 
 	if err := c.informerManager.StopConnection(ctx, connectionID); err != nil {
 		return fmt.Errorf("unable to stop connection: %w", err)
@@ -526,7 +244,7 @@ func (c *resourceController[ClientT, InformerT]) StopConnectionInformer(
 // ListenForEvents listens for events from the informer and sends them to the given event channels.
 // This method will block until the context is cancelled, and given this will block, the parent
 // gRPC plugin host will spin this up in a goroutine.
-func (c *resourceController[ClientT, InformerT]) ListenForEvents(
+func (c *resourceController[ClientT]) ListenForEvents(
 	ctx *pkgtypes.PluginContext,
 	addChan chan types.InformerAddPayload,
 	updateChan chan types.InformerUpdatePayload,
@@ -536,7 +254,6 @@ func (c *resourceController[ClientT, InformerT]) ListenForEvents(
 		log.Println("informer not enabled")
 		return nil
 	}
-	ctx.SetSettingsProvider(c.settingsProvider)
 	if err := c.informerManager.Run(c.stopChan, addChan, updateChan, deleteChan); err != nil {
 		log.Println("error running informer manager:", err)
 		return fmt.Errorf("error running informer manager: %w", err)
@@ -547,12 +264,10 @@ func (c *resourceController[ClientT, InformerT]) ListenForEvents(
 // ================================= Connection Methods ================================= //
 
 // StartConnection starts a connection, initializing any informers as necessary.
-func (c *resourceController[ClientT, InformerT]) StartConnection(
+func (c *resourceController[ClientT]) StartConnection(
 	ctx *pkgtypes.PluginContext,
 	connectionID string,
 ) (pkgtypes.ConnectionStatus, error) {
-	ctx.SetSettingsProvider(c.settingsProvider)
-
 	conn, err := c.connectionManager.StartConnection(ctx, connectionID)
 	if err != nil {
 		return conn, fmt.Errorf("unable to start connection: %w", err)
@@ -575,12 +290,10 @@ func (c *resourceController[ClientT, InformerT]) StartConnection(
 }
 
 // StopConnection stops a connection, stopping any informers as necessary.
-func (c *resourceController[ClientT, InformerT]) StopConnection(
+func (c *resourceController[ClientT]) StopConnection(
 	ctx *pkgtypes.PluginContext,
 	connectionID string,
 ) (pkgtypes.Connection, error) {
-	ctx.SetSettingsProvider(c.settingsProvider)
-
 	if err := c.StopConnectionInformer(ctx, connectionID); err != nil {
 		return pkgtypes.Connection{}, fmt.Errorf("unable to stop connection informer: %w", err)
 	}
@@ -589,75 +302,77 @@ func (c *resourceController[ClientT, InformerT]) StopConnection(
 
 // LoadConnections calls the custom connection loader func to provide the the IDE the possible connections
 // available.
-func (c *resourceController[ClientT, InformerT]) LoadConnections(
+func (c *resourceController[ClientT]) LoadConnections(
 	ctx *pkgtypes.PluginContext,
 ) ([]pkgtypes.Connection, error) {
-	ctx.SetSettingsProvider(c.settingsProvider)
 	return c.connectionManager.LoadConnections(ctx)
 }
 
 // ListConnections calls the custom connection loader func to provide the the IDE the possible connections.
-func (c *resourceController[ClientT, InformerT]) ListConnections(
+func (c *resourceController[ClientT]) ListConnections(
 	ctx *pkgtypes.PluginContext,
 ) ([]pkgtypes.Connection, error) {
-	ctx.SetSettingsProvider(c.settingsProvider)
 	return c.connectionManager.ListConnections(ctx)
 }
 
 // GetConnection gets a connection by its ID.
-func (c *resourceController[ClientT, InformerT]) GetConnection(
+func (c *resourceController[ClientT]) GetConnection(
 	ctx *pkgtypes.PluginContext,
 	connectionID string,
 ) (pkgtypes.Connection, error) {
-	ctx.SetSettingsProvider(c.settingsProvider)
 	return c.connectionManager.GetConnection(ctx, connectionID)
 }
 
 // GetConnectionNamespaces get's the list of namespaces for the connection.
-func (c *resourceController[ClientT, InformerT]) GetConnectionNamespaces(
+func (c *resourceController[ClientT]) GetConnectionNamespaces(
 	ctx *pkgtypes.PluginContext,
 	connectionID string,
 ) ([]string, error) {
-	ctx.SetSettingsProvider(c.settingsProvider)
 	return c.connectionManager.GetConnectionNamespaces(ctx, connectionID)
 }
 
 // UpdateConnection updates a connection by its ID.
-func (c *resourceController[ClientT, InformerT]) UpdateConnection(
+func (c *resourceController[ClientT]) UpdateConnection(
 	ctx *pkgtypes.PluginContext,
 	connection pkgtypes.Connection,
 ) (pkgtypes.Connection, error) {
-	ctx.SetSettingsProvider(c.settingsProvider)
 	return c.connectionManager.UpdateConnection(ctx, connection)
 }
 
 // DeleteConnection deletes a connection by its ID.
-func (c *resourceController[ClientT, InformerT]) DeleteConnection(
+func (c *resourceController[ClientT]) DeleteConnection(
 	ctx *pkgtypes.PluginContext,
 	connectionID string,
 ) error {
-	ctx.SetSettingsProvider(c.settingsProvider)
 	return c.connectionManager.DeleteConnection(ctx, connectionID)
+}
+
+// WatchConnections watches for connection changes.
+func (c *resourceController[ClientT]) WatchConnections(
+	ctx *pkgtypes.PluginContext,
+	eventChan chan []pkgtypes.Connection,
+) error {
+	return c.connectionManager.WatchConnections(ctx, eventChan)
 }
 
 // ================================= Resource Type Methods ================================= //
 
 // GetResourceGroups gets the resource groups available to the resource controller.
-func (c *resourceController[ClientT, InformerT]) GetResourceGroups(
+func (c *resourceController[ClientT]) GetResourceGroups(
 	connID string,
 ) map[string]types.ResourceGroup {
 	return c.resourceTypeManager.GetGroups(connID)
 }
 
 // GetResourceGroup gets the resource group by its name.
-func (c *resourceController[ClientT, InformerT]) GetResourceGroup(
+func (c *resourceController[ClientT]) GetResourceGroup(
 	name string,
 ) (types.ResourceGroup, error) {
 	return c.resourceTypeManager.GetGroup(name)
 }
 
 // GetResourceTypes gets the resource types available to the resource controller.
-func (c *resourceController[ClientT, InformerT]) GetResourceTypes(
+func (c *resourceController[ClientT]) GetResourceTypes(
 	connID string,
 ) map[string]types.ResourceMeta {
 	// switch this to be the other
@@ -675,37 +390,37 @@ func (c *resourceController[ClientT, InformerT]) GetResourceTypes(
 }
 
 // GetResourceType gets the resource type information by its string representation.
-func (c *resourceController[ClientT, InformerT]) GetResourceType(
+func (c *resourceController[ClientT]) GetResourceType(
 	resource string,
 ) (*types.ResourceMeta, error) {
 	return c.resourceTypeManager.GetResourceType(resource)
 }
 
 // HasResourceType checks to see if the resource type exists.
-func (c *resourceController[ClientT, InformerT]) HasResourceType(resource string) bool {
+func (c *resourceController[ClientT]) HasResourceType(resource string) bool {
 	return c.resourceTypeManager.HasResourceType(resource)
 }
 
 // GetResourceDefinition gets the resource definition for the resource type.
-func (c *resourceController[ClientT, InformerT]) GetResourceDefinition(
+func (c *resourceController[ClientT]) GetResourceDefinition(
 	resource string,
 ) (types.ResourceDefinition, error) {
 	return c.resourceTypeManager.GetResourceDefinition(resource)
 }
 
-// ================================= Resource Type Methods ================================= //
+// ================================= Layout Methods ================================= //
 
-func (c *resourceController[ClientT, InformerT]) GetLayout(
+func (c *resourceController[ClientT]) GetLayout(
 	layoutID string,
 ) ([]types.LayoutItem, error) {
 	return c.layoutManager.GetLayout(layoutID)
 }
 
-func (c *resourceController[ClientT, InformerT]) GetDefaultLayout() ([]types.LayoutItem, error) {
+func (c *resourceController[ClientT]) GetDefaultLayout() ([]types.LayoutItem, error) {
 	return c.layoutManager.GetDefaultLayout()
 }
 
-func (c *resourceController[ClientT, InformerT]) SetLayout(
+func (c *resourceController[ClientT]) SetLayout(
 	id string,
 	layout []types.LayoutItem,
 ) error {

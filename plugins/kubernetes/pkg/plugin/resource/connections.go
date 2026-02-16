@@ -1,17 +1,26 @@
 package resource
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/fsnotify/fsnotify"
 
 	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
+	"github.com/omniview/kubernetes/pkg/utils/kubeauth"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	resourcetypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -26,13 +35,13 @@ const (
 // LoadConnectionsFunc loads the available connections for the plugin.
 func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
 	log.Println("Loading connections")
+
 	// Get the kubeconfigs from the settings provider
 	kubeconfigs, settingsErr := ctx.PluginConfig.GetStringSlice("kubeconfigs")
 	if settingsErr != nil {
 		log.Printf("failed to get kubeconfigs from settings: %v", settingsErr)
 		return nil, fmt.Errorf("failed to get kubeconfigs from settings: %w", settingsErr)
 	}
-	log.Printf("kubeconfigs: %v", kubeconfigs)
 
 	// let's make a guestimate of the number of connections we might have
 	connections := make([]types.Connection, 0, len(kubeconfigs)*EstimatedContexts)
@@ -45,7 +54,170 @@ func LoadConnectionsFunc(ctx *types.PluginContext) ([]types.Connection, error) {
 		connections = append(connections, kubeconfigConnections...)
 	}
 
+	sort.Slice(connections, func(i, j int) bool {
+		return connections[i].Name < connections[j].Name
+	})
+
 	return connections, nil
+}
+
+// WatchConnectionsFunc watches kubeconfig files for changes and emits a refreshed
+// list of connections whenever they change (write/create/rename/remove).
+func WatchConnectionsFunc(ctx *types.PluginContext) (chan []types.Connection, error) {
+	log.Println("Watching connections")
+
+	// Load the configured kubeconfig paths up-front
+	kubeconfigs, settingsErr := ctx.PluginConfig.GetStringSlice("kubeconfigs")
+	if settingsErr != nil {
+		log.Printf("failed to get kubeconfigs from settings: %v", settingsErr)
+		return nil, fmt.Errorf("failed to get kubeconfigs from settings: %w", settingsErr)
+	}
+
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create fsnotify watcher: %w", err)
+	}
+
+	// Channel to deliver full lists to the UI
+	out := make(chan []types.Connection, 1)
+
+	// Track which paths we’ve successfully added to avoid duplicates and to re-add after rotations
+	type watchSet struct {
+		mu    sync.Mutex
+		files map[string]struct{}
+		dirs  map[string]struct{}
+	}
+	ws := &watchSet{
+		files: make(map[string]struct{}),
+		dirs:  make(map[string]struct{}),
+	}
+
+	addWatch := func(path string) {
+		ws.mu.Lock()
+		defer ws.mu.Unlock()
+
+		expandedPath, err := utils.ExpandTilde(path)
+		if err != nil {
+			// ignore for now
+		}
+
+		// Watch parent dir to catch file replacement/creation
+		dir := filepath.Dir(expandedPath)
+		if _, ok := ws.dirs[dir]; !ok {
+			if err := w.Add(dir); err != nil {
+				log.Printf("watch add (dir) %q failed: %v", dir, err)
+			} else {
+				ws.dirs[dir] = struct{}{}
+			}
+		}
+
+		// Also watch the file itself when possible (fsnotify allows it and helps with CHMOD/WRITE)
+		if _, ok := ws.files[expandedPath]; !ok {
+			if err := w.Add(expandedPath); err != nil {
+				// It might not exist yet—directory watch will pick up when it is created.
+				log.Printf(
+					"watch add (file) %q failed: %v (will rely on dir watch)",
+					expandedPath,
+					err,
+				)
+			} else {
+				ws.files[path] = struct{}{}
+			}
+		}
+	}
+
+	// Initialize watches
+	for _, p := range kubeconfigs {
+		addWatch(p)
+	}
+
+	// Helper to refresh and push
+	pushRefresh := func() {
+		conns, err := LoadConnectionsFunc(ctx)
+		if err != nil {
+			// We still want to surface something; log and skip push if completely failed
+			log.Printf("LoadConnectionsFunc failed during refresh: %v", err)
+			return
+		}
+		// Non-blocking send with “latest wins” behavior
+		select {
+		case out <- conns:
+			// sent
+		default:
+			// channel full; drop stale value then send latest
+			select {
+			case <-out:
+			default:
+			}
+			select {
+			case out <- conns:
+			default:
+			}
+		}
+	}
+
+	// Send initial list
+	pushRefresh()
+
+	// Debounce timer for bursty events (atomic replaces, etc.)
+	const debounce = 250 * time.Millisecond
+	timer := time.NewTimer(time.Hour)
+	if !timer.Stop() {
+		<-timer.C
+	}
+
+	// Kick off the watch loop
+	go func(c context.Context) {
+		defer func() {
+			_ = w.Close()
+			close(out)
+		}()
+
+		// guard to coalesce events
+		trigger := func() {
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(debounce)
+		}
+
+		for {
+			select {
+			case <-c.Done():
+				return
+
+			case ev := <-w.Events:
+				// If the event is on a parent dir, ev.Name will be the affected file path.
+				// If it references one of our kubeconfigs (or its parent dir changes),
+				// we’ll re-add the file watch in case it was replaced, then trigger.
+				// We treat Write/Create/Rename/Remove/Chmod as triggers.
+				_ = ev // avoid unused in case of future refine
+				// Try re-adding watch for any configured file that now exists
+				for _, p := range kubeconfigs {
+					// If the event happened in the parent dir of p, we might need to (re-)add p
+					if filepath.Dir(p) == filepath.Dir(ev.Name) || p == ev.Name {
+						addWatch(p)
+					}
+				}
+				switch {
+				case ev.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove|fsnotify.Rename|fsnotify.Chmod) != 0:
+					trigger()
+				}
+
+			case err := <-w.Errors:
+				log.Printf("fsnotify error: %v", err)
+
+			case <-timer.C:
+				// Debounced refresh
+				pushRefresh()
+			}
+		}
+	}(ctx.Context)
+
+	return out, nil
 }
 
 // LoadConnectionNamespacesFunc loads the available namespaces for the connection.
@@ -173,16 +345,19 @@ func connectionsFromKubeconfig(kubeconfigPath string) ([]types.Connection, error
 	connections := make([]types.Connection, 0, len(config.Contexts))
 
 	for contextName, context := range config.Contexts {
+		labels := map[string]interface{}{
+			"kubeconfig": utils.DeexpandTilde(kubeconfigPath),
+			"cluster":    context.Cluster,
+			"user":       context.AuthInfo,
+		}
+		enrichConnectionLabels(labels, config, context)
+
 		connections = append(connections, types.Connection{
 			ID:          contextName,
 			Name:        contextName,
 			Description: "",
 			Avatar:      "",
-			Labels: map[string]interface{}{
-				"kubeconfig": utils.DeexpandTilde(kubeconfigPath),
-				"cluster":    context.Cluster,
-				"user":       context.AuthInfo,
-			},
+			Labels:      labels,
 			Data: map[string]interface{}{
 				"kubeconfig": kubeconfigPath,
 				"cluster":    context.Cluster,
@@ -193,6 +368,118 @@ func connectionsFromKubeconfig(kubeconfigPath string) ([]types.Connection, error
 	}
 
 	return connections, nil
+}
+
+// enrichConnectionLabels extracts cloud metadata from kubeconfig into connection labels
+// so they can be used for dynamic grouping, filtering, and display in the frontend.
+func enrichConnectionLabels(
+	labels map[string]interface{},
+	config *clientcmdapi.Config,
+	context *clientcmdapi.Context,
+) {
+	if cluster := config.Clusters[context.Cluster]; cluster != nil {
+		labels["server"] = cluster.Server
+	}
+
+	authInfo := config.AuthInfos[context.AuthInfo]
+	if authInfo == nil || authInfo.Exec == nil {
+		labels["auth_method"] = "default"
+		return
+	}
+
+	switch {
+	case kubeauth.IsEKSAuth(authInfo):
+		labels["auth_method"] = "eks"
+		enrichEKSLabels(labels, authInfo)
+	case kubeauth.IsGCPAuth(authInfo):
+		labels["auth_method"] = "gke"
+		enrichGKELabels(labels, authInfo)
+	case kubeauth.IsAKSAuth(authInfo):
+		labels["auth_method"] = "aks"
+		enrichAKSLabels(labels, authInfo)
+	default:
+		labels["auth_method"] = authInfo.Exec.Command
+	}
+}
+
+// enrichEKSLabels extracts region, account, profile, and role from EKS auth config.
+func enrichEKSLabels(labels map[string]interface{}, authInfo *clientcmdapi.AuthInfo) {
+	var region, profile, roleArn string
+
+	// Parse args for both aws CLI and aws-iam-authenticator
+	for i := 0; i < len(authInfo.Exec.Args)-1; i++ {
+		switch authInfo.Exec.Args[i] {
+		case "--region":
+			region = authInfo.Exec.Args[i+1]
+		case "--role-arn", "--role", "-r":
+			roleArn = authInfo.Exec.Args[i+1]
+		}
+	}
+
+	// Parse env vars
+	for _, entry := range authInfo.Exec.Env {
+		switch entry.Name {
+		case "AWS_PROFILE":
+			profile = entry.Value
+		case "AWS_REGION":
+			if region == "" {
+				region = entry.Value
+			}
+		case "AWS_DEFAULT_REGION":
+			if region == "" {
+				region = entry.Value
+			}
+		}
+	}
+
+	if region != "" {
+		labels["region"] = region
+	}
+	if profile != "" {
+		labels["profile"] = profile
+	}
+	if roleArn != "" {
+		labels["role"] = roleArn
+		// Extract account ID from ARN: arn:aws:iam::ACCOUNT_ID:...
+		if parts := strings.SplitN(roleArn, ":", 6); len(parts) >= 5 {
+			labels["account"] = parts[4]
+		}
+	}
+}
+
+// enrichGKELabels extracts project, zone/region from GKE gcloud exec config.
+func enrichGKELabels(labels map[string]interface{}, authInfo *clientcmdapi.AuthInfo) {
+	for i := 0; i < len(authInfo.Exec.Args)-1; i++ {
+		switch authInfo.Exec.Args[i] {
+		case "--project":
+			labels["project"] = authInfo.Exec.Args[i+1]
+		case "--zone":
+			labels["zone"] = authInfo.Exec.Args[i+1]
+		case "--region":
+			labels["region"] = authInfo.Exec.Args[i+1]
+		}
+	}
+
+	// Check env vars as fallback
+	for _, entry := range authInfo.Exec.Env {
+		if entry.Name == "CLOUDSDK_CORE_PROJECT" {
+			if _, ok := labels["project"]; !ok {
+				labels["project"] = entry.Value
+			}
+		}
+	}
+}
+
+// enrichAKSLabels extracts subscription and resource group from Azure CLI exec config.
+func enrichAKSLabels(labels map[string]interface{}, authInfo *clientcmdapi.AuthInfo) {
+	for i := 0; i < len(authInfo.Exec.Args)-1; i++ {
+		switch authInfo.Exec.Args[i] {
+		case "--subscription":
+			labels["subscription"] = authInfo.Exec.Args[i+1]
+		case "--resource-group":
+			labels["resource_group"] = authInfo.Exec.Args[i+1]
+		}
+	}
 }
 
 func processGroupVersion(gv string) (string, string) {

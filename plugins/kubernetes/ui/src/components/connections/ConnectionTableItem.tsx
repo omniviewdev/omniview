@@ -1,22 +1,13 @@
 import React from 'react';
-import { Link, usePluginRouter } from '@omniviewdev/runtime';
+import { usePluginRouter } from '@omniviewdev/runtime';
 
-// Material-ui
 import {
   Avatar,
-  Badge,
   Chip,
   CircularProgress,
-  Dropdown,
-  IconButton,
-  ListItemDecorator,
-  Menu,
-  MenuButton,
-  MenuItem,
   Typography,
 } from '@mui/joy';
 
-// Project imports
 import {
   usePluginContext,
   useConnection,
@@ -24,23 +15,45 @@ import {
 } from '@omniviewdev/runtime';
 import { types } from '@omniviewdev/runtime/models';
 
-// Icons
-import { MoreVert } from '@mui/icons-material';
-import { LuPencil, LuTrash } from 'react-icons/lu';
+import type { EnrichedConnection, ConnectionGroup } from '../../types/clusters';
+import FavoriteButton from './FavoriteButton';
+import ProviderIcon from './ProviderIcon';
+import ConnectionStatusBadge from './ConnectionStatusBadge';
+import ConnectionContextMenu from './ConnectionContextMenu';
 import NamedAvatar from '../shared/NamedAvatar';
 
-// Third-party
-
-type Props = Omit<types.Connection, 'createFrom' | 'convertValues'>;
+type Props = {
+  enriched: EnrichedConnection;
+  visibleColumns: string[];
+  customGroups: ConnectionGroup[];
+  onToggleFavorite: () => void;
+  onAssignToGroup: (groupId: string) => void;
+  onRemoveFromGroup?: (groupId: string) => void;
+  onCreateFolder?: (connectionId: string) => void;
+  onDelete: () => void;
+  onRecordAccess: () => void;
+};
 
 const truncate = (input: string) => input.length > 60 ? `${input.substring(0, 60)}...` : input;
 
-const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, labels, last_refresh, expiry_time }) => {
+const ConnectionTableItem: React.FC<Props> = ({
+  enriched,
+  visibleColumns,
+  customGroups,
+  onToggleFavorite,
+  onAssignToGroup,
+  onRemoveFromGroup,
+  onCreateFolder,
+  onDelete,
+  onRecordAccess,
+}) => {
+  const { connection, provider, isFavorite, isConnected, displayName, displayDescription } = enriched;
+  const { id, avatar, labels } = connection;
+
   const { meta } = usePluginContext();
   const { navigate } = usePluginRouter();
   const { showSnackbar } = useSnackbar();
-
-  const { startConnection } = useConnection({ pluginID: meta.id, connectionID: id });
+  const { startConnection, stopConnection } = useConnection({ pluginID: meta.id, connectionID: id });
   const [connecting, setConnecting] = React.useState(false);
 
   const handleConnectionStatus = (status: types.ConnectionStatus) => {
@@ -48,7 +61,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
       case types.ConnectionStatusCode.UNAUTHORIZED:
         showSnackbar({
           status: 'warning',
-          message: `Failed to authorize to '${name}'`,
+          message: `Failed to authorize to '${displayName}'`,
           details: status.details,
           icon: 'LuShieldClose',
         });
@@ -56,7 +69,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
       case types.ConnectionStatusCode.CONNECTED:
         showSnackbar({
           status: 'success',
-          message: `Connected to '${name}'`,
+          message: `Connected to '${displayName}'`,
           icon: 'LuCheckCircle',
         });
         navigate(`/cluster/${encodeURIComponent(id)}/resources`);
@@ -64,7 +77,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
       default:
         showSnackbar({
           status: 'error',
-          message: `Failed to connect to '${name}'`,
+          message: `Failed to connect to '${displayName}'`,
           details: status.details,
           icon: 'LuCircleAlert',
         });
@@ -72,16 +85,14 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
   };
 
   const handleClick = () => {
-    if (isConnected()) {
+    onRecordAccess();
+    if (isConnected) {
       navigate(`/cluster/${encodeURIComponent(id)}/resources`);
       return;
     }
-
     setConnecting(true);
     startConnection()
-      .then(status => {
-        handleConnectionStatus(status);
-      })
+      .then(status => handleConnectionStatus(status))
       .catch(err => {
         if (err instanceof Error) {
           showSnackbar({
@@ -91,117 +102,99 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
           });
         }
       })
-      .finally(() => {
-        setConnecting(false);
-      });
+      .finally(() => setConnecting(false));
   };
 
-  /**
-   * Determines if we're connected
-   */
-  const isConnected = () => {
-    // compute from last refresh (timestamp) and expiry time (duration)
-    const refreshTime = new Date(last_refresh);
-    // if we have no valid refresh time, we can't determine if the connection is connected, so assume we are
-    if (refreshTime.toString() === 'Invalid Date') {
-      console.log('Invalid Date for refresh time', last_refresh);
-      return true;
-    }
+  const handleConnect = () => {
+    onRecordAccess();
+    setConnecting(true);
+    startConnection()
+      .then(status => handleConnectionStatus(status))
+      .catch(err => {
+        if (err instanceof Error) {
+          showSnackbar({ status: 'error', message: err.message, icon: 'LuCircleAlert' });
+        }
+      })
+      .finally(() => setConnecting(false));
+  };
 
-    const now = new Date();
-    return (refreshTime.getTime() + expiry_time) > now.getTime();
+  const handleDisconnect = () => {
+    stopConnection().catch(err => {
+      if (err instanceof Error) {
+        showSnackbar({ status: 'error', message: err.message, icon: 'LuCircleAlert' });
+      }
+    });
+  };
+
+  const handleCopyId = () => {
+    navigator.clipboard.writeText(id);
+    showSnackbar({ status: 'success', message: 'Connection ID copied' });
   };
 
   return (
-    <tr
-      id={`connection-${id}`}
-      style={{
-        cursor: 'pointer',
-      }}
-    >
+    <tr id={`connection-${id}`} style={{ cursor: 'pointer' }}>
+      {/* Favorite */}
+      <td style={{ width: 40, textAlign: 'center' }}>
+        <FavoriteButton isFavorite={isFavorite} onToggle={onToggleFavorite} />
+      </td>
+
       {/* Name */}
       <td
         onClick={handleClick}
-        style={{ display: 'flex', flex: 1, gap: 14, justifyContent: 'flex-start', alignItems: 'center' }}
+        style={{ display: 'flex', flex: 1, gap: 10, justifyContent: 'flex-start', alignItems: 'center' }}
       >
-        <Badge
-          color="success"
-          invisible={!isConnected()}
-          size='sm'
-          anchorOrigin={{
-            vertical: 'top',
-            horizontal: 'right',
-          }}
-        >
+        <ConnectionStatusBadge isConnected={isConnected}>
           {avatar
             ? <Avatar
               size='sm'
               src={avatar}
-              sx={{
-                borderRadius: 6,
-                backgroundColor: 'transparent',
-                objectFit: 'contain',
-                border: 0,
-                maxHeight: 28,
-                maxWidth: 28,
-              }}
+              sx={{ borderRadius: 6, backgroundColor: 'transparent', maxHeight: 28, maxWidth: 28 }}
             />
-            : <NamedAvatar value={name} />
+            : <NamedAvatar value={connection.name} />
           }
-        </Badge>
-        <Typography level='title-sm' noWrap>{name}</Typography>
-        {Boolean(description) && <Typography level='body-sm' noWrap>{description}</Typography>}
+        </ConnectionStatusBadge>
+        <ProviderIcon provider={provider} size={16} />
+        <Typography level='title-sm' noWrap>{displayName}</Typography>
+        {Boolean(displayDescription) && <Typography level='body-sm' noWrap sx={{ opacity: 0.7 }}>{displayDescription}</Typography>}
+        {enriched.tags.length > 0 && enriched.tags.map(tag => (
+          <Chip key={tag} size='sm' variant='soft' color='warning' sx={{ fontSize: '0.65rem' }}>
+            {tag}
+          </Chip>
+        ))}
         {connecting && <CircularProgress size='sm' />}
       </td>
 
-      {/* Labels */}
-      {labels && Object.entries(labels).sort().map(([key, value]) => (
-        <td
-          key={`${id}-${key}`}
-          onClick={handleClick}
-        >
+      {/* Visible label columns only */}
+      {visibleColumns.map(col => (
+        <td key={`${id}-${col}`} onClick={handleClick}>
           <Chip
-            id={`${id}-${key}`}
             variant='outlined'
             color='neutral'
             size='sm'
             sx={{ pointerEvents: 'none', borderRadius: 'sm' }}
           >
-            {truncate(value)}
+            {truncate(String(labels?.[col] ?? ''))}
           </Chip>
         </td>
       ))}
 
-
       {/* Actions */}
-      <td>
-        <Dropdown>
-          <MenuButton
-            aria-label='More'
-            size='sm'
-            color='primary'
-            slots={{ root: IconButton }}
-            slotProps={{ root: { variant: 'plain', color: 'neutral' } }}
-          >
-            <MoreVert />
-          </MenuButton>
-          <Menu size='sm' placement='bottom-end'>
-            <Link to={`/cluster/${id}/edit`} style={{ textDecoration: 'none', color: 'inherit' }}>
-              <MenuItem>
-                <ListItemDecorator>
-                  <LuPencil />
-                </ListItemDecorator>{' '}
-                Edit '{name}'
-              </MenuItem>
-            </Link>
-            <MenuItem>
-              <ListItemDecorator>
-                <LuTrash />
-              </ListItemDecorator>{' '}
-              Delete '{name}'
-            </MenuItem>
-          </Menu>
-        </Dropdown>
+      <td onClick={e => e.stopPropagation()}>
+        <ConnectionContextMenu
+          connectionId={id}
+          connectionName={displayName}
+          isConnected={isConnected}
+          isFavorite={isFavorite}
+          customGroups={customGroups}
+          onConnect={handleConnect}
+          onDisconnect={handleDisconnect}
+          onToggleFavorite={onToggleFavorite}
+          onAssignToGroup={onAssignToGroup}
+          onRemoveFromGroup={onRemoveFromGroup}
+          onCreateFolder={onCreateFolder}
+          onCopyId={handleCopyId}
+          onDelete={onDelete}
+        />
       </td>
     </tr>
   );

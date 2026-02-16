@@ -11,24 +11,21 @@ import Typography from "@mui/joy/Typography";
 
 // project imports
 import Icon from "../../../shared/Icon";
-import { Button } from "@mui/joy";
-
-export interface DetailsCardEntry {
-  key: string;
-  value: string;
-  icon?: string | React.ReactNode;
-  ratio?: [number, number];
-  used?: string;
-  defaultValue?: string;
-}
+import { Button, Chip, Tooltip } from "@mui/joy";
+import { useResourcePortForwarder } from "@omniviewdev/runtime";
+import { BrowserOpenURL } from "@omniviewdev/runtime/runtime";
+import { networker } from "@omniviewdev/runtime/models";
+import { ContainerPort } from "kubernetes-types/core/v1";
 
 export interface DetailsCardProps {
   title?: string;
   titleSize?: "sm" | "md" | "lg";
   icon?: string | React.ReactNode;
-  data: DetailsCardEntry[];
+  data: ContainerPort[];
   /** Show the kv pair even if the value is undefined */
   showUndefined?: boolean;
+  resourceID: string;
+  connectionID: string;
 }
 
 const getTitleFontSize = (size: "sm" | "md" | "lg") => {
@@ -74,12 +71,43 @@ const getTitleIconSize = (size: "sm" | "md" | "lg") => {
  * Renders a card for showing a key-value pairs of details
  */
 export const PortDetailsCard: React.FC<DetailsCardProps> = ({
+  resourceID,
+  connectionID,
   title,
   titleSize = "md",
   icon,
   data,
-  showUndefined = false,
 }) => {
+  const { sessions, forward, close } = useResourcePortForwarder({ pluginID: 'kubernetes', connectionID, resourceID })
+  console.log(sessions.data)
+  const portMap = sessions.data?.reduce((prev, curr) => {
+    return { ...prev, [curr.remote_port]: curr }
+  }, {} as Record<number, networker.PortForwardSession>) || {}
+
+  const handleStartPortForward = (port: number, protocol: string = 'TCP') => {
+    console.log('starting port forwarding session', { port, protocol })
+    forward({
+      opts: {
+        resourceId: resourceID,
+        resourceKey: 'core::v1::Pod',
+        resource: {
+          metadata: {
+            name: resourceID,
+            namespace: 'default',
+          }
+        },
+        remotePort: port,
+        openInBrowser: true,
+        parameters: {}
+      }
+    })
+  }
+
+  const handleStopPortForward = (sessionID: string) => {
+    console.log('stopping port forwarding session', { sessionID })
+    close({ opts: { sessionID } })
+  }
+
   return (
     <Card
       variant="outlined"
@@ -116,60 +144,64 @@ export const PortDetailsCard: React.FC<DetailsCardProps> = ({
       <CardContent>
         <Grid container spacing={0.5}>
           {data.map((entry) => {
-            if (entry.value || showUndefined) {
-              return (
-                <>
-                  <Grid 
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                    xs={entry.ratio?.[0] ?? 5}
-                  >
-                    <Stack direction="row" spacing={1} alignItems={"center"}>
-                      {entry.icon &&
-                        (typeof entry.icon === "string" ? (
-                          entry.icon.startsWith("http") ? (
-                            <Avatar src={entry.icon} size="sm" />
-                          ) : (
-                            <Icon name={entry.icon} size={14} />
-                          )
-                        ) : (
-                          icon
-                        ))}
-                      <Typography level="body-xs">{entry.key}</Typography>
-                    </Stack>
-                  </Grid>
-                  <Grid xs={entry.ratio?.[1] ?? 7}>
-                    <Stack direction="row" spacing={1} justifyContent={"space-between"} alignItems={"center"}>
-                      <Typography
-                        textColor={"neutral.300"}
-                        level="body-xs"
-                        noWrap
-                      >
-                        {entry.used
-                          ? `${entry.used} / ${entry.value}`
-                          : entry.value}
+            const existing = portMap[Number(entry.containerPort)]
+            return (
+              <React.Fragment key={entry.containerPort}>
+                <Grid
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  xs={4}
+                >
+                  <Typography level="body-xs">{entry.name || entry.containerPort}</Typography>
+                </Grid>
+
+                <Grid xs={8}>
+                  <Stack direction="row" spacing={1} justifyContent={"space-between"} alignItems={"center"}>
+                    <Typography
+                      textColor={"neutral.300"}
+                      level="body-xs"
+                      noWrap
+                    >
+                      {entry.containerPort}/{entry.protocol}
+                    </Typography>
+                    {!!existing &&
+                      <Tooltip title={'Open in browser'} variant="outlined" size="sm">
+                        <Chip
+                          variant='soft'
+                          sx={{ borderRadius: 'sm' }}
+                          onClick={() => BrowserOpenURL(`http://localhost:${existing.local_port}`)}
+                        >
+                          {`http://localhost:${existing.local_port}`}
+                        </Chip>
+                      </Tooltip>
+                    }
+                    <Button
+                      sx={{
+                        py: 0,
+                        px: 4,
+                        minHeight: 28,
+                      }}
+                      color="primary"
+                      variant="soft"
+                      size="sm"
+                      onClick={() => {
+                        if (!existing) {
+                          handleStartPortForward(Number(entry.containerPort), 'TCP')
+                        } else {
+                          handleStopPortForward(existing.id)
+                        }
+                      }}
+                    >
+                      <Typography fontSize={12}>
+                        {!existing ? 'Forward' : 'Stop'}
                       </Typography>
-                      <Button 
-                        sx={{
-                          py: 0,
-                          px: 4,
-                          minHeight: 28,
-                        }}
-                        color="primary"
-                        variant="soft" 
-                        size="sm"
-                      >
-                        <Typography fontSize={12}>
-                          Forward
-                        </Typography>
-                      </Button>
-                    </Stack>
-                  </Grid>
-                </>
-              );
-            }
+                    </Button>
+                  </Stack>
+                </Grid>
+              </React.Fragment>
+            );
           })}
         </Grid>
       </CardContent>

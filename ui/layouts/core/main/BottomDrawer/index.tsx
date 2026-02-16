@@ -10,6 +10,7 @@ import { useTheme } from '@mui/joy';
 // project imports
 import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
 import TerminalContainer from '@/providers/BottomDrawer/containers/Terminal';
+import LogViewerContainer from '@/providers/BottomDrawer/containers/LogViewer';
 import { useBottomDrawer } from '@omniviewdev/runtime';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
@@ -19,6 +20,10 @@ import { EventsOn } from '@omniviewdev/runtime/runtime';
  * Resize handler is causing a rerender which we don't want
  */
 const TerminalContainerMemo = React.memo(TerminalContainer, (prev, next) => {
+  return prev.sessionId === next.sessionId;
+});
+
+const LogViewerContainerMemo = React.memo(LogViewerContainer, (prev, next) => {
   return prev.sessionId === next.sessionId;
 });
 
@@ -281,7 +286,11 @@ const BottomDrawerContainer: React.FC = () => {
               maxWidth: 'calc(100vw - var(--CoreLayoutSidebar-width))',
               minWidth: 'calc(100vw - var(--CoreLayoutSidebar-width))',
             }}>
-            <TerminalContainerMemo sessionId={tabs[focused]?.id ?? ''} />
+            {tabs[focused]?.variant === 'logs' ? (
+              <LogViewerContainerMemo sessionId={tabs[focused]?.id ?? ''} />
+            ) : (
+              <TerminalContainerMemo sessionId={tabs[focused]?.id ?? ''} />
+            )}
           </Box>
         </Sheet>
       </Box>

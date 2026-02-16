@@ -32,6 +32,7 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
       queryClient.setQueryData(queryKey, data);
     },
     onError(error) {
+      console.log(error)
       showSnackbar(`Failed to start connection: ${error.message}`, 'error');
     },
   });
@@ -43,6 +44,7 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
       queryClient.setQueryData(queryKey, data);
     },
     onError(error) {
+      console.log(error)
       showSnackbar(`Failed to stop connection: ${error.message}`, 'error');
     },
   });
@@ -59,6 +61,7 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
       );
     },
     onError(error) {
+      console.log(error)
       showSnackbar(`Failed to update connection: ${error.message}`, 'error');
     },
   });
@@ -75,6 +78,7 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
       );
     },
     onError(error) {
+      console.log(error)
       showSnackbar(`Failed to remove connection: ${error.message}`, 'error');
     },
   });

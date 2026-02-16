@@ -33,8 +33,8 @@ import {
 import Icon from '@/components/icons/Icon';
 import { LuMaximize, LuMinimize, LuPlus, LuX } from 'react-icons/lu';
 import { useSettings } from '@omniviewdev/runtime';
-import { exec } from '@omniviewdev/runtime/models';
-import { ExecClient } from '@omniviewdev/runtime/api';
+import { exec, logs } from '@omniviewdev/runtime/models';
+import { ExecClient, LogsClient } from '@omniviewdev/runtime/api';
 
 import { bottomDrawerChannel } from './events';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
@@ -187,6 +187,39 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
         });
     });
 
+    const unsubscribeCreateLogSession = bottomDrawerChannel.on('onCreateLogSession', ({
+      plugin, connection, resourceKey, resourceID, resourceData, target, follow, tailLines, icon, label,
+    }) => {
+      const opts = logs.CreateSessionOptions.createFrom({
+        resource_key: resourceKey,
+        resource_id: resourceID,
+        resource_data: resourceData,
+        options: logs.LogSessionOptions.createFrom({
+          target: target ?? '',
+          follow: follow ?? true,
+          include_previous: false,
+          include_timestamps: true,
+          tail_lines: tailLines ?? 1000,
+          since_seconds: 0,
+          limit_bytes: 0,
+          include_source_events: true,
+          params: {},
+        }),
+      });
+      LogsClient.CreateSession(plugin, connection, opts)
+        .then(session => {
+          createTab({
+            id: session.id,
+            title: label ?? `Logs ${session.id.substring(0, 8)}`,
+            variant: 'logs',
+            icon: icon ?? 'LuLogs',
+          });
+        })
+        .catch(err => {
+          console.error('Failed to create log session:', err);
+        });
+    });
+
     const unsubscribeSessionClosed = bottomDrawerChannel.on('onSessionClosed', ({ id: sessionId }) => {
       console.log('onSessionClosed', sessionId);
       closeTab({ id: sessionId });
@@ -194,6 +227,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
 
     return () => {
       unsubscribeCreateSession();
+      unsubscribeCreateLogSession();
       unsubscribeSessionClosed();
     };
   }, [tabs]);

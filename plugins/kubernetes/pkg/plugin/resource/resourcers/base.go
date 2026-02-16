@@ -68,6 +68,7 @@ func (s *KubernetesResourcerBase[T]) GroupVersionResource() schema.GroupVersionR
 func (s *KubernetesResourcerBase[T]) Get(
 	_ *types.PluginContext,
 	client *clients.ClientSet,
+	_ pkgtypes.ResourceMeta,
 	input pkgtypes.GetInput,
 ) (*pkgtypes.GetResult, error) {
 	var resource runtime.Object
@@ -110,6 +111,7 @@ func (s *KubernetesResourcerBase[T]) Get(
 func (s *KubernetesResourcerBase[T]) List(
 	_ *types.PluginContext,
 	client *clients.ClientSet,
+	_ pkgtypes.ResourceMeta,
 	_ pkgtypes.ListInput,
 ) (*pkgtypes.ListResult, error) {
 	// if the informer isn't synced yet, do a normal call while the informer catches up
@@ -155,6 +157,7 @@ func (s *KubernetesResourcerBase[T]) List(
 func (s *KubernetesResourcerBase[T]) Find(
 	_ *types.PluginContext,
 	client *clients.ClientSet,
+	_ pkgtypes.ResourceMeta,
 	_ pkgtypes.FindInput,
 ) (*pkgtypes.FindResult, error) {
 	lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
@@ -180,6 +183,7 @@ func (s *KubernetesResourcerBase[T]) Find(
 func (s *KubernetesResourcerBase[T]) Create(
 	ctx *types.PluginContext,
 	client *clients.ClientSet,
+	_ pkgtypes.ResourceMeta,
 	input pkgtypes.CreateInput,
 ) (*pkgtypes.CreateResult, error) {
 	result := new(pkgtypes.CreateResult)
@@ -198,6 +202,7 @@ func (s *KubernetesResourcerBase[T]) Create(
 func (s *KubernetesResourcerBase[T]) Update(
 	ctx *types.PluginContext,
 	client *clients.ClientSet,
+	_ pkgtypes.ResourceMeta,
 	input pkgtypes.UpdateInput,
 ) (*pkgtypes.UpdateResult, error) {
 	result := new(pkgtypes.UpdateResult)
@@ -222,6 +227,7 @@ func (s *KubernetesResourcerBase[T]) Update(
 func (s *KubernetesResourcerBase[T]) Delete(
 	ctx *types.PluginContext,
 	client *clients.ClientSet,
+	_ pkgtypes.ResourceMeta,
 	input pkgtypes.DeleteInput,
 ) (*pkgtypes.DeleteResult, error) {
 	result := new(pkgtypes.DeleteResult)

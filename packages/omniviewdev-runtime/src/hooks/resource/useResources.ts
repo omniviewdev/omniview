@@ -155,6 +155,7 @@ export const useResources = ({
       },
       namespaces,
     })),
+    placeholderData: (previousData, _) => previousData,
     retry: false,
   });
 

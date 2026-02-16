@@ -9,7 +9,7 @@ import ContainerPhaseCell from './cells/ContainerPhaseCell';
 import ContainerStatusCell from './cells/ContainerStatusCell';
 import { withNamespacedResourceColumns } from '../../shared/columns';
 import ResourceTable from '../../../../shared/table/ResourceTable';
-import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useExec, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime';
+import { DrawerComponent, DrawerComponentActionListItem, DrawerContext, useConfirmationModal, useExec, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime';
 import { LuBugPlay, LuCode, LuContainer, LuLogs, LuScaling, LuSquareChartGantt, LuTerminal, LuTrash } from 'react-icons/lu';
 import PodSidebar from '../../../sidebar/Pod';
 import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage';
@@ -30,10 +30,30 @@ const ownerRefKeyMap: Record<string, string> = {
 const PodTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()
 
-  const { remove } = useResourceMutations({ pluginID: 'kubernetes' })
+  const { remove, update } = useResourceMutations({ pluginID: 'kubernetes' })
   const { createSession } = useExec({ pluginID: 'kubernetes' })
+  const { createLogSession } = useLogs({ pluginID: 'kubernetes' })
   const { show } = useConfirmationModal()
   const { closeDrawer } = useRightDrawer()
+
+  /**
+   * Handler to go ahead and submit a resource change
+   */
+  const onEditorSubmit = (ctx: DrawerContext<Pod>, value: Record<string, any>) => {
+    update({
+      opts: {
+        connectionID: id,
+        resourceKey,
+        resourceID: ctx.data?.metadata?.name as string,
+        namespace: ctx.data?.metadata?.namespace as string,
+      },
+      input: {
+        input: value,
+      },
+    }).then(() => {
+      closeDrawer()
+    })
+  }
 
   const columns = React.useMemo<Array<ColumnDef<Pod>>>(
     () => withNamespacedResourceColumns([
@@ -204,12 +224,12 @@ const PodTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <PodSidebar data={ctx.data} />
+        component: (ctx) => <PodSidebar ctx={ctx} />
       },
       {
         title: 'Editor',
         icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
+        component: (ctx) => <BaseEditorPage data={ctx.data} onSubmit={(val) => onEditorSubmit(ctx, val)} />
       }
     ],
     actions: [
@@ -286,19 +306,43 @@ const PodTable: React.FC = () => {
           ctx.data?.spec?.containers?.forEach((container) => {
             list.push({
               title: container.name,
-              action: () => console.log(`Getting logs for ${container.name}`)
+              action: () => createLogSession({
+                connectionID: id,
+                resourceKey,
+                resourceID: ctx.data?.metadata?.name as string,
+                resourceData: ctx.data as Record<string, any>,
+                target: container.name,
+                label: `${ctx.data?.metadata?.name}/${container.name}`,
+                icon: 'LuLogs',
+              }).then(() => closeDrawer())
             })
           })
           ctx.data?.spec?.initContainers?.forEach((container) => {
             list.push({
-              title: container.name,
-              action: () => console.log(`Getting logs for ${container.name}`)
+              title: `${container.name} (init)`,
+              action: () => createLogSession({
+                connectionID: id,
+                resourceKey,
+                resourceID: ctx.data?.metadata?.name as string,
+                resourceData: ctx.data as Record<string, any>,
+                target: container.name,
+                label: `${ctx.data?.metadata?.name}/${container.name}`,
+                icon: 'LuLogs',
+              }).then(() => closeDrawer())
             })
           })
           ctx.data?.spec?.ephemeralContainers?.forEach((container) => {
             list.push({
-              title: container.name,
-              action: () => console.log(`Getting logs for ${container.name}`)
+              title: `${container.name} (ephemeral)`,
+              action: () => createLogSession({
+                connectionID: id,
+                resourceKey,
+                resourceID: ctx.data?.metadata?.name as string,
+                resourceData: ctx.data as Record<string, any>,
+                target: container.name,
+                label: `${ctx.data?.metadata?.name}/${container.name}`,
+                icon: 'LuLogs',
+              }).then(() => closeDrawer())
             })
           })
 

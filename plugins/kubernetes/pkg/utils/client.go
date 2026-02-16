@@ -2,7 +2,6 @@ package utils
 
 import (
 	"errors"
-	"log"
 
 	"github.com/omniview/kubernetes/pkg/utils/kubeauth"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -23,11 +22,11 @@ func KubeClientsFromContext(ctx *types.PluginContext) (*kubeauth.KubeClientBundl
 		return nil, errors.New("kubeconfig is required and must be a string")
 	}
 
-	log.Printf(
-		"Loading kube clients at path %s with connection %s",
-		kubeconfigPath,
-		ctx.Connection.ID,
-	)
+	// log.Printf(
+	// 	"Loading kube clients at path %s with connection %s",
+	// 	kubeconfigPath,
+	// 	ctx.Connection.ID,
+	// )
 
 	return kubeauth.LoadKubeClients(kubeconfigPath, ctx.Connection.ID)
 }

@@ -6,8 +6,8 @@ import "github.com/omniviewdev/plugin-sdk/pkg/sdk"
 func Register(plugin *sdk.Plugin) {
 	sdk.RegisterResourcePlugin(
 		plugin,
-		sdk.ResourcePluginOpts[Client, DiscoveryClient, Informer]{
-			ClientFactory:      NewClientFactory(),
+		sdk.ResourcePluginOpts[Client]{
+			CreateClient:       CreateClient,
 			LoadConnectionFunc: LoadConnectionsFunc,
 		},
 	)

@@ -3,11 +3,66 @@
 import { extendTheme } from '@mui/joy/styles';
 
 export default extendTheme({
+  shadow: {
+    xs: 'none',
+    sm: 'none',
+    md: '0 2px 8px 0 rgba(0,0,0,0.3)',
+    lg: '0 4px 16px 0 rgba(0,0,0,0.4)',
+    xl: '0 8px 32px 0 rgba(0,0,0,0.5)',
+  },
   'components': {
     'JoyInput': {
       'defaultProps': {
         'size': 'sm',
         'variant': 'outlined',
+      },
+      styleOverrides: {
+        root: {
+          boxShadow: 'none',
+        },
+      },
+    },
+    'JoySelect': {
+      defaultProps: {
+        size: 'sm',
+        variant: 'outlined',
+        slotProps: {
+          listbox: {
+            disablePortal: true,
+            sx: {
+              fontSize: '0.75rem',
+              '--List-padding': '3px',
+              '--ListItem-minHeight': '28px',
+              '--ListItemDecorator-size': '22px',
+              '--ListItem-paddingY': '2px',
+              '--ListItem-paddingX': '6px',
+              '--ListDivider-gap': '3px',
+            },
+          },
+        },
+      },
+      styleOverrides: {
+        root: {
+          boxShadow: 'none',
+        },
+        listbox: {
+          boxShadow: 'var(--joy-shadow-md)',
+          zIndex: 1300,
+        },
+      },
+    },
+    'JoyMenu': {
+      styleOverrides: {
+        root: {
+          boxShadow: 'var(--joy-shadow-md)',
+        },
+      },
+    },
+    'JoyAutocomplete': {
+      styleOverrides: {
+        root: {
+          boxShadow: 'none',
+        },
       },
     },
     'JoyListItemContent': {
@@ -26,6 +81,7 @@ export default extendTheme({
       'palette': {},
     },
     'dark': {
+      shadowChannel: '0 0 0',
       'palette': {
         'background': {
           'body': 'var(--joy-palette-neutral-900)',

@@ -3,12 +3,9 @@ package utils
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/metadata"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -74,73 +71,8 @@ func NewServerInterceptors() ([]grpc.UnaryServerInterceptor, []grpc.StreamServer
 	var unaryinterceptors []grpc.UnaryServerInterceptor
 	var streaminterceptors []grpc.StreamServerInterceptor
 
-	// logging
-	logger, _ := zap.NewDevelopment()
-	unaryinterceptor, streaminterceptor := addLoggingInterceptor(logger)
-	unaryinterceptors = append(unaryinterceptors, unaryinterceptor)
-	streaminterceptors = append(streaminterceptors, streaminterceptor)
-
 	// context injection
 	unaryinterceptors = append(unaryinterceptors, ServerPluginContextInterceptor)
 
 	return unaryinterceptors, streaminterceptors
-}
-
-// addLoggingInterceptor adds logging interceptor to the server.
-func addLoggingInterceptor(
-	logger *zap.Logger,
-) (grpc.UnaryServerInterceptor, grpc.StreamServerInterceptor) {
-	opts := []logging.Option{
-		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
-	}
-
-	return logging.UnaryServerInterceptor(
-			interceptorLogger(logger),
-			opts...,
-		), logging.StreamServerInterceptor(
-			interceptorLogger(logger),
-			opts...,
-		)
-}
-
-// InterceptorLogger adapts zap logger to interceptor logger.
-// This code is simple enough to be copied and not imported.
-func interceptorLogger(l *zap.Logger) logging.Logger {
-	return logging.LoggerFunc(
-		func(_ context.Context, lvl logging.Level, msg string, fields ...any) {
-			//nolint:gomnd // this is a reasonable default, kv pairs are passed in
-			f := make([]zap.Field, 0, len(fields)/2)
-
-			for i := 0; i < len(fields); i += 2 {
-				key := fields[i]
-				value := fields[i+1]
-
-				switch v := value.(type) {
-				case string:
-					f = append(f, zap.String(key.(string), v))
-				case int:
-					f = append(f, zap.Int(key.(string), v))
-				case bool:
-					f = append(f, zap.Bool(key.(string), v))
-				default:
-					f = append(f, zap.Any(key.(string), v))
-				}
-			}
-
-			logger := l.WithOptions(zap.AddCallerSkip(1)).With(f...)
-
-			switch lvl {
-			case logging.LevelDebug:
-				logger.Debug(msg)
-			case logging.LevelInfo:
-				logger.Info(msg)
-			case logging.LevelWarn:
-				logger.Warn(msg)
-			case logging.LevelError:
-				logger.Error(msg)
-			default:
-				panic(fmt.Sprintf("unknown level %v", lvl))
-			}
-		},
-	)
 }

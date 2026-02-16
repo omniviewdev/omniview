@@ -148,7 +148,6 @@ type ListResult struct {
 	Pagination PaginationResult `json:"pagination"`
 }
 
-// TODO - we should combine list and find results into a single action
 type FindResult struct {
 	// Result is the result of the operation, as a map of resources from the
 	// operation by their ID.

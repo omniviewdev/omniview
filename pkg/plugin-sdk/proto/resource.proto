@@ -1,16 +1,15 @@
 syntax = "proto3";
 package com.omniview.pluginsdk;
 
-import "google/protobuf/struct.proto";
-import "google/protobuf/empty.proto";
+import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
-import "google/protobuf/any.proto";
-
 import "proto/resource_connection.proto";
-import "proto/resource_layout.proto";
 import "proto/resource_informer.proto";
+import "proto/resource_layout.proto";
 
 option go_package = "./proto";
 
@@ -98,7 +97,6 @@ message DeleteResponse {
   bool success = 1;
   google.protobuf.Struct data = 2;
 }
-
 
 message ResourceMeta {
   string group = 1;
@@ -237,7 +235,6 @@ message ResourceDefinition {
   repeated ColumnDef column_defs = 4;
 }
 
-
 service ResourcePlugin {
   // Types
   rpc GetResourceGroups(ResourceGroupListRequest) returns (ResourceGroupListResponse) {}
@@ -255,6 +252,7 @@ service ResourcePlugin {
   rpc GetConnectionNamespaces(ConnectionRequest) returns (ConnectionNamespacesResponse) {}
   rpc UpdateConnection(UpdateConnectionRequest) returns (Connection) {}
   rpc DeleteConnection(ConnectionRequest) returns (google.protobuf.Empty) {}
+  rpc WatchConnections(google.protobuf.Empty) returns (stream ConnectionList) {}
   // Resource
   rpc Get(GetRequest) returns (GetResponse) {}
   rpc List(ListRequest) returns (ListResponse) {}
@@ -262,7 +260,7 @@ service ResourcePlugin {
   rpc Create(CreateRequest) returns (CreateResponse) {}
   rpc Update(UpdateRequest) returns (UpdateResponse) {}
   rpc Delete(DeleteRequest) returns (DeleteResponse) {}
-  // Informers 
+  // Informers
   rpc HasInformer(HasInformerRequest) returns (google.protobuf.BoolValue) {}
   rpc StartConnectionInformer(StartConnectionInformerRequest) returns (google.protobuf.Empty) {}
   rpc StopConnectionInformer(StopConnectionInformerRequest) returns (google.protobuf.Empty) {}

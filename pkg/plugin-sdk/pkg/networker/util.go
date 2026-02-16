@@ -7,7 +7,7 @@ import (
 )
 
 // FindFreePort finds an available port by letting the OS pick a free port.
-func FindFreeTCPPort() (int, error) {
+func FindFreeTCPPort() (int32, error) {
 	lis, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		return 0, fmt.Errorf("error listening on a port: %w", err)
@@ -25,11 +25,11 @@ func FindFreeTCPPort() (int, error) {
 		return 0, fmt.Errorf("error converting port string to int: %w", err)
 	}
 
-	return port, nil
+	return int32(port), nil
 }
 
 // IsPortUnavailable checks if a port is unavailable (i.e., in use).
-func IsPortUnavailable(port int) bool {
+func IsPortUnavailable(port int32) bool {
 	conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
 		return false // The port is not in use, hence available.

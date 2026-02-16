@@ -19,7 +19,9 @@ import (
 	"github.com/omniviewdev/omniview/backend/diagnostics"
 	"github.com/omniviewdev/omniview/backend/menus"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/data"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
+	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
@@ -85,6 +87,12 @@ func main() {
 	networkerController := networker.NewController(log, settingsProvider, resourceClient)
 	networkerClient := networker.NewClient(networkerController)
 
+	logsController := pluginlogs.NewController(log, settingsProvider, resourceClient)
+	logsClient := pluginlogs.NewClient(logsController)
+
+	dataController := data.NewController(log)
+	dataClient := data.NewClient(dataController)
+
 	pluginRegistryClient := registry.NewRegistryClient()
 	pluginManager := plugin.NewManager(
 		log,
@@ -92,6 +100,7 @@ func main() {
 		settingsController,
 		execController,
 		networkerController,
+		logsController,
 		managers,
 		settingsProvider,
 		pluginRegistryClient,
@@ -117,6 +126,7 @@ func main() {
 
 		resourceController.Run(ctx)
 		execController.Run(ctx)
+		logsController.Run(ctx)
 
 		// Initialize the plugin system
 		if err := pluginManager.Initialize(ctx); err != nil {
@@ -168,6 +178,8 @@ func main() {
 			settingsClient,
 			execClient,
 			networkerClient,
+			logsClient,
+			dataClient,
 			uiClient,
 			utilsClient,
 		},

@@ -14,37 +14,38 @@ import (
 type ResourcerManager[ClientT any] interface {
 	// RegisterResourcer registers a new resourcer for the given resource type
 	RegisterResourcer(resourceType string, resourcer types.Resourcer[ClientT]) error
-	// RegisterDynamicResourcer registers a new dynamic resourcer for the given resource type
-	RegisterDynamicResourcer(resourceType string, resourcer types.DynamicResourcer[ClientT]) error
 	// RegisterResourcersFromMap registers a new resourcer for the given resource type given
 	// a map of meta objects
 	RegisterResourcersFromMap(resourcerMap map[types.ResourceMeta]types.Resourcer[ClientT]) error
-	// RegisterDunamicResourcersFromMap registers a new dynamic resourcer for the given resource type given
-	// a map of patterns
-	RegisterDynamicResourcersFromMap(resourcerMap map[string]types.DynamicResourcer[ClientT]) error
+	// RegisterPatternResourcer registers a resourcer that matches resource types by pattern
+	RegisterPatternResourcer(pattern string, resourcer types.Resourcer[ClientT]) error
+	// RegisterPatternResourcersFromMap registers pattern resourcers from a map of patterns
+	RegisterPatternResourcersFromMap(resourcerMap map[string]types.Resourcer[ClientT]) error
 	// DeregisterResourcer deregisters the resourcer for the given resource type
 	DeregisterResourcer(resourceType string) error
-	// GetResourcer returns the resourcer for the given resource type
+	// GetResourcer returns the resourcer for the given resource type.
+	// It first tries an exact match in the store, then falls back to pattern matching.
 	GetResourcer(resourceType string) (types.Resourcer[ClientT], error)
-	// GetDynamicResourcer attempts to find a dynamic resourcer for the given resource type
-	GetDynamicResourcer(resourceType string) (types.DynamicResourcer[ClientT], error)
-	// HasDynamicResourcers returns true if there are dynamic resourcers associated with the manager
-	HasDynamicResourcers() bool
+}
+
+// patternEntry holds a pattern string and its associated resourcer for fallback matching.
+type patternEntry[ClientT any] struct {
+	pattern   string
+	resourcer types.Resourcer[ClientT]
 }
 
 type resourcerManager[ClientT any] struct {
-	// map of resource type to resourcer
+	// map of resource type to resourcer (exact match)
 	store map[string]types.Resourcer[ClientT]
-	// dynamic resourcer store to fallback to
-	dynamicResourcers map[string]types.DynamicResourcer[ClientT]
+	// pattern resourcers for wildcard fallback
+	patternResourcers []patternEntry[ClientT]
 	// put this last for pointer byte alignment
 	sync.RWMutex
 }
 
 func NewResourcerManager[ClientT any]() ResourcerManager[ClientT] {
 	return &resourcerManager[ClientT]{
-		store:             make(map[string]types.Resourcer[ClientT]),
-		dynamicResourcers: make(map[string]types.DynamicResourcer[ClientT]),
+		store: make(map[string]types.Resourcer[ClientT]),
 	}
 }
 
@@ -62,27 +63,6 @@ func (r *resourcerManager[ClientT]) RegisterResourcer(
 
 	r.store[resourceType] = resourcer
 	return nil
-}
-
-// RegisterDynamicResourcer registers a new dynamic resourcer for the given resource type.
-func (r *resourcerManager[ClientT]) RegisterDynamicResourcer(
-	resourceType string,
-	resourcer types.DynamicResourcer[ClientT],
-) error {
-	r.Lock()
-	defer r.Unlock()
-	if _, exists := r.dynamicResourcers[resourceType]; exists {
-		return fmt.Errorf("dynamic resourcer for resource type %s already exists", resourceType)
-	}
-	r.dynamicResourcers[resourceType] = resourcer
-	return nil
-}
-
-// Has dynamic resourcers returns true if there are dynamic resourcers associated with the manager.
-func (r *resourcerManager[ClientT]) HasDynamicResourcers() bool {
-	r.RLock()
-	defer r.RUnlock()
-	return len(r.dynamicResourcers) > 0
 }
 
 // RegisterResourcersFromMap registers a new resourcer for the given resource type given
@@ -104,18 +84,41 @@ func (r *resourcerManager[ClientT]) RegisterResourcersFromMap(
 	return nil
 }
 
-// RegisterDynamicResourcersFromMap registers a new dynamic resourcer for the given resource type given
-// a map of patterns.
-func (r *resourcerManager[ClientT]) RegisterDynamicResourcersFromMap(
-	resourcerMap map[string]types.DynamicResourcer[ClientT],
+// RegisterPatternResourcer registers a resourcer that matches resource types by wildcard pattern.
+func (r *resourcerManager[ClientT]) RegisterPatternResourcer(
+	pattern string,
+	resourcer types.Resourcer[ClientT],
+) error {
+	r.Lock()
+	defer r.Unlock()
+	for _, entry := range r.patternResourcers {
+		if entry.pattern == pattern {
+			return fmt.Errorf("pattern resourcer for pattern %s already exists", pattern)
+		}
+	}
+	r.patternResourcers = append(r.patternResourcers, patternEntry[ClientT]{
+		pattern:   pattern,
+		resourcer: resourcer,
+	})
+	return nil
+}
+
+// RegisterPatternResourcersFromMap registers pattern resourcers from a map of patterns.
+func (r *resourcerManager[ClientT]) RegisterPatternResourcersFromMap(
+	resourcerMap map[string]types.Resourcer[ClientT],
 ) error {
 	r.Lock()
 	defer r.Unlock()
 	for pattern, resourcer := range resourcerMap {
-		if _, exists := r.dynamicResourcers[pattern]; exists {
-			return fmt.Errorf("dynamic resourcer for resource type %s already exists", pattern)
+		for _, entry := range r.patternResourcers {
+			if entry.pattern == pattern {
+				return fmt.Errorf("pattern resourcer for pattern %s already exists", pattern)
+			}
 		}
-		r.dynamicResourcers[pattern] = resourcer
+		r.patternResourcers = append(r.patternResourcers, patternEntry[ClientT]{
+			pattern:   pattern,
+			resourcer: resourcer,
+		})
 	}
 	return nil
 }
@@ -132,28 +135,22 @@ func (r *resourcerManager[ClientT]) DeregisterResourcer(resourceType string) err
 }
 
 // GetResourcer returns the resourcer for the given resource type.
+// It first tries an exact match in the store, then falls back to pattern matching.
 func (r *resourcerManager[ClientT]) GetResourcer(
 	resourceType string,
 ) (types.Resourcer[ClientT], error) {
 	r.RLock()
 	defer r.RUnlock()
-	resourcer, exists := r.store[resourceType]
-	if !exists {
-		return nil, fmt.Errorf("resourcer for resource type %s does not exist", resourceType)
-	}
-	return resourcer, nil
-}
 
-// GetDynamicResourcer returns a dynamic resourcer to use for fetching a resource, if it exists.
-// TODO: convert to trie structure for specificity, for now we'll just do first match.
-func (r *resourcerManager[ClientT]) GetDynamicResourcer(
-	resourceType string,
-) (types.DynamicResourcer[ClientT], error) {
-	r.RLock()
-	defer r.RUnlock()
-	for pattern, resourcer := range r.dynamicResourcers {
-		if match(pattern, resourceType) {
-			return resourcer, nil
+	// exact match first
+	if resourcer, exists := r.store[resourceType]; exists {
+		return resourcer, nil
+	}
+
+	// pattern fallback
+	for _, entry := range r.patternResourcers {
+		if match(entry.pattern, resourceType) {
+			return entry.resourcer, nil
 		}
 	}
 

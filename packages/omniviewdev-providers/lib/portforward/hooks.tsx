@@ -2,9 +2,9 @@ import React from 'react';
 
 import { networker } from '../../internal/models';
 import { BrowserOpenURL } from '../../internal/runtime/runtime';
-import { 
-  ClosePortForwardSession, 
-  FindPortForwardSessions, 
+import {
+  ClosePortForwardSession,
+  FindPortForwardSessions,
   StartResourcePortForwardingSession,
 } from '../../internal/networker/Client';
 
@@ -70,7 +70,7 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
     if (!pluginID || !connectionID || !resourceID) {
       return;
     }
-     
+
     FindPortForwardSessions(pluginID, connectionID, networker.FindPortForwardSessionRequest.createFrom({
       resource_id: resourceID,
       connection_id: connectionID,
@@ -85,8 +85,8 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
 
   const forward: PortForwardResourceFunction = React.useCallback(async (opts) => {
     const sessionOpts = networker.PortForwardSessionOptions.createFrom({
-      source_port: opts.fromPort,
-      destination_port: opts.toPort || 0,
+      source_port: opts.toPort || 0,
+      destination_port: opts.fromPort,
       protocol: opts.protocol || 'TCP',
       connection_type: 'RESOURCE',
       connection: {

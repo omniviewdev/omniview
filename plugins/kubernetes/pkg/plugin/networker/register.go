@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"regexp"
 	"syscall"
 
+	"github.com/google/uuid"
 	"github.com/omniview/kubernetes/pkg/utils"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
@@ -64,6 +66,7 @@ func PodPortForwarder(
 
 	transport, upgrader, err := spdy.RoundTripperFor(clients.RestConfig)
 	if err != nil {
+		log.Printf("error while building round-tripper: %s\n", err.Error())
 		return "", err
 	}
 
@@ -80,32 +83,37 @@ func PodPortForwarder(
 		http.MethodPost,
 		&url.URL{Scheme: "https", Path: path, Host: hostIP},
 	)
+
 	fw, err := portforward.New(
 		dialer,
-		[]string{fmt.Sprintf("%d:%d", opts.Options.DestinationPort, opts.Options.SourcePort)},
+		[]string{fmt.Sprintf("%d:%d", opts.Options.LocalPort, opts.Options.RemotePort)},
 		stopCh,
 		readyCh,
 		out,
 		errOut,
 	)
 	if err != nil {
+		log.Printf("error while starting portforward: %s\n", err.Error())
 		return "", err
 	}
 
 	// start the forwarder
 	go func() {
-		errCh <- fw.ForwardPorts()
-		close(errCh)
+		err := fw.ForwardPorts()
+		if err != nil {
+			log.Printf("error while forwarding ports: %s\n", err.Error())
+			errCh <- err
+			close(errCh)
+		}
 	}()
 
 	go func(ctx context.Context, stopCh chan struct{}) {
 		select {
 		case <-stopCh:
-			return
-		case <-ctx.Done():
-			close(stopCh)
+			log.Println("stopping")
 			return
 		case <-sigs:
+			log.Println("got a signal")
 			close(stopCh)
 			return
 		}
@@ -113,5 +121,5 @@ func PodPortForwarder(
 
 	// wait until ready first
 	<-fw.Ready
-	return "", nil
+	return uuid.NewString(), nil
 }

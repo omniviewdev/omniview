@@ -5,11 +5,12 @@ window.PluginReact = React
 
 /// <reference types="@welldone-software/why-did-you-render" />
 import { PluginWindow } from '@omniviewdev/runtime';
-import { Outlet, RouteObject } from 'react-router-dom';
+import { RouteObject } from 'react-router-dom';
 
 import ClustersPage from './pages/ClustersPage';
 import ClusterEditPage from './pages/ClusterEditPage';
 import ClusterResourcesPage from './pages/ClusterResourcesPage';
+import ClusterDashboardPage from './pages/dashboard'
 
 import DefaultTable from './components/kubernetes/table/default/Table';
 
@@ -81,6 +82,8 @@ import ResourceQuotaTable from './components/kubernetes/table/corev1/ResourceQuo
 import RuntimeClassTable from './components/kubernetes/table/nodev1/RuntimeClass/Table';
 import EndpointSliceTable from './components/kubernetes/table/discoveryv1/EndpointSlice/Table';
 import IngressClassTable from './components/kubernetes/table/networkingv1/IngressClass/Table';
+import ClusterDashboardOverviewPage from './pages/dashboard/overview';
+import ClusterDashboardBenchmarksPage from './pages/dashboard/benchmarks';
 
 const routes: Array<RouteObject> = [
   {
@@ -103,10 +106,13 @@ const routes: Array<RouteObject> = [
         Component: ClusterResourcesPage,
         children: [
           {
-            index: true,
-            Component: Outlet
+            path: '',
+            Component: ClusterDashboardPage,
+            children: [
+              { path: '', index: true, Component: ClusterDashboardOverviewPage },
+              { path: 'benchmarks', Component: ClusterDashboardBenchmarksPage },
+            ]
           },
-
           // admissionregistration.v1
           { path: 'admissionregistration_v1_MutatingWebhookConfiguration', Component: MutatingWebhookConfigurationTable },
           { path: 'admissionregistration_v1_ValidatingAdmissionPolicy', Component: ValidatingAdmissionPolicyTable },

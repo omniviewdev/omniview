@@ -129,7 +129,7 @@ const StatefulSetTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <StatefulSetSidebar data={ctx.data || {}} />,
+        component: (ctx) => <StatefulSetSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

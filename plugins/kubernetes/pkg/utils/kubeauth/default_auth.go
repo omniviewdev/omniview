@@ -2,7 +2,6 @@ package kubeauth
 
 import (
 	"context"
-	"log"
 
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -17,7 +16,7 @@ func (s *DefaultAuthStrategy) BuildRestConfig(
 	ctx context.Context,
 	kubeconfigPath, kubeContext string,
 ) (*rest.Config, error) {
-	log.Print("processing auth info with default")
+	// log.Print("processing auth info with default")
 
 	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfigPath},

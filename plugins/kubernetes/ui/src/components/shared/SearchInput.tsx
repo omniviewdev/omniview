@@ -13,12 +13,14 @@ type Props = {
   value: string;
   /** Handler for the text input. */
   onChange: (value: string) => void;
+  /** Whether to autofocus the input on mount. */
+  autoFocus?: boolean;
 };
 
 /**
  * Search input component.
  */
-const SearchInput: React.FC<Props> = ({ placeholder, value, onChange }) => {
+const SearchInput: React.FC<Props> = ({ placeholder, value, onChange, autoFocus }) => {
   const handleClear = () => {
     onChange('');
   };
@@ -34,6 +36,7 @@ const SearchInput: React.FC<Props> = ({ placeholder, value, onChange }) => {
       autoComplete='off'
       type='text'
       placeholder={placeholder ?? 'Search'}
+      autoFocus={autoFocus}
       startDecorator={<SearchRounded color='primary' />}
       endDecorator={endDecorator}
       value={value}

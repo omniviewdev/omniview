@@ -116,7 +116,7 @@ const DaemonSetTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <DaemonSetSidebar data={ctx.data || {}} />,
+        component: (ctx) => <DaemonSetSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

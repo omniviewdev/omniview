@@ -250,12 +250,49 @@ func (c *controller) StartResourcePortForwardingSession(
 	pluginID, connectionID string,
 	opts networker.PortForwardSessionOptions,
 ) (*networker.PortForwardSession, error) {
-	panic("implement me")
+	provider, ok := c.clients[pluginID]
+	if !ok {
+		return nil, fmt.Errorf("plugin %s not found", pluginID)
+	}
+
+	session, err := provider.StartPortForwardSession(
+		c.getConnectedCtx(pluginID, connectionID),
+		opts,
+	)
+	if err != nil {
+		return nil, err
+	}
+	c.sessionIndex[session.ID] = sessionIndex{
+		pluginID:     pluginID,
+		connectionID: connectionID,
+	}
+
+	return session, nil
 }
 
 // ClosePortForwardSession closes a port forward session
 func (c *controller) ClosePortForwardSession(
 	sessionID string,
 ) (*networker.PortForwardSession, error) {
-	panic("implement me")
+	index, ok := c.sessionIndex[sessionID]
+	if !ok {
+		return nil, fmt.Errorf("session %s does not exist", sessionID)
+	}
+
+	provider, ok := c.clients[index.pluginID]
+	if !ok {
+		return nil, fmt.Errorf("plugin %s not found", index.pluginID)
+	}
+
+	session, err := provider.ClosePortForwardSession(
+		c.getConnectedCtx(index.pluginID, index.connectionID),
+		sessionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	delete(c.sessionIndex, sessionID)
+
+	return session, nil
 }

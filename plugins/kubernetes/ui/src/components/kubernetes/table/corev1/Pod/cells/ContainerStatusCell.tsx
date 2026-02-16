@@ -60,8 +60,9 @@ export const ContainerStatusCell: React.FC<Props> = ({ data }) => {
       justifyContent={'flex-start'}
       spacing={1}
     >
-      {obj.map((status) => (
+      {obj.map((status, idx) => (
         <div
+          key={idx}
           color={getColor(status)}
           style={{
             backgroundColor: getColor(status),

@@ -1,0 +1,168 @@
+syntax = "proto3";
+package com.omniview.pluginsdk;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+import "proto/resource.proto";
+
+option go_package = "./proto";
+
+// ===================== ENUMS ===================== //
+
+enum LogLineOrigin {
+  LOG_LINE_ORIGIN_CURRENT = 0;
+  LOG_LINE_ORIGIN_PREVIOUS = 1;
+  LOG_LINE_ORIGIN_SYSTEM = 2;
+}
+
+enum LogStreamEventType {
+  LOG_STREAM_EVENT_SOURCE_ADDED = 0;
+  LOG_STREAM_EVENT_SOURCE_REMOVED = 1;
+  LOG_STREAM_EVENT_STREAM_ERROR = 2;
+  LOG_STREAM_EVENT_RECONNECTING = 3;
+  LOG_STREAM_EVENT_RECONNECTED = 4;
+  LOG_STREAM_EVENT_STREAM_ENDED = 5;
+}
+
+enum LogStreamCommand {
+  LOG_STREAM_COMMAND_PAUSE = 0;
+  LOG_STREAM_COMMAND_RESUME = 1;
+  LOG_STREAM_COMMAND_CLOSE = 2;
+}
+
+enum LogSessionStatus {
+  LOG_SESSION_STATUS_ACTIVE = 0;
+  LOG_SESSION_STATUS_PAUSED = 1;
+  LOG_SESSION_STATUS_CLOSED = 2;
+  LOG_SESSION_STATUS_ERROR = 3;
+}
+
+// ===================== CORE TYPES ===================== //
+
+message LogLine {
+  string session_id = 1;
+  string source_id = 2;
+  map<string, string> labels = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  bytes content = 5;
+  LogLineOrigin origin = 6;
+}
+
+message LogSource {
+  string id = 1;
+  map<string, string> labels = 2;
+}
+
+message LogStreamEvent {
+  LogStreamEventType type = 1;
+  string source_id = 2;
+  string message = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+message LogSessionOptions {
+  string target = 1;
+  bool follow = 2;
+  bool include_previous = 3;
+  bool include_timestamps = 4;
+  int64 tail_lines = 5;
+  int64 since_seconds = 6;
+  google.protobuf.Timestamp since_time = 7;
+  int64 limit_bytes = 8;
+  bool include_source_events = 9;
+  map<string, string> params = 10;
+}
+
+message LogSession {
+  string id = 1;
+  string plugin_id = 2;
+  string connection_id = 3;
+  string resource_key = 4;
+  string resource_id = 5;
+  LogSessionOptions options = 6;
+  LogSessionStatus status = 7;
+  repeated LogSource active_sources = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+// ===================== LOG HANDLER ===================== //
+
+message LogHandler {
+  string plugin = 1;
+  string resource = 2;
+  ResourceActionTargetBuilder target_builder = 3;
+}
+
+// ===================== REQUESTS/RESPONSES ===================== //
+
+message GetSupportedLogResourcesResponse {
+  repeated LogHandler handlers = 1;
+}
+
+message CreateLogSessionRequest {
+  string resource_key = 1;
+  string resource_id = 2;
+  google.protobuf.Struct resource_data = 3;
+  LogSessionOptions options = 4;
+}
+
+message CreateLogSessionResponse {
+  LogSession session = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message LogSessionByIdRequest {
+  string session_id = 1;
+}
+
+message LogSessionByIdResponse {
+  LogSession session = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message ListLogSessionsResponse {
+  repeated LogSession sessions = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message CloseLogSessionResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message UpdateLogSessionOptionsRequest {
+  string session_id = 1;
+  LogSessionOptions options = 2;
+}
+
+// ===================== STREAMS  ===================== //
+
+message LogStreamInput {
+  string session_id = 1;
+  LogStreamCommand command = 2;
+}
+
+message LogStreamOutput {
+  string session_id = 1;
+  oneof payload {
+    LogLine line = 2;
+    LogStreamEvent event = 3;
+  }
+}
+
+// ===================== SERVICE ===================== //
+
+service LogPlugin {
+  rpc GetSupportedResources(google.protobuf.Empty) returns (GetSupportedLogResourcesResponse);
+  rpc CreateSession(CreateLogSessionRequest) returns (CreateLogSessionResponse);
+  rpc GetSession(LogSessionByIdRequest) returns (LogSessionByIdResponse);
+  rpc ListSessions(google.protobuf.Empty) returns (ListLogSessionsResponse);
+  rpc CloseSession(LogSessionByIdRequest) returns (CloseLogSessionResponse);
+  rpc UpdateSessionOptions(UpdateLogSessionOptionsRequest) returns (LogSessionByIdResponse);
+  rpc Stream(stream LogStreamInput) returns (stream LogStreamOutput);
+}

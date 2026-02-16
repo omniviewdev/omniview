@@ -1,7 +1,9 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LoadConnections, StartConnectionInformer, StopConnectionInformer } from '../../wailsjs/go/resource/Client';
 import { type types } from '../../wailsjs/go/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
+import { EventsOn } from '../../wailsjs/runtime/runtime';
+import React from 'react';
 
 type UseConnectionsOptions = {
   /**
@@ -14,7 +16,7 @@ type UseConnectionsOptions = {
 * Get and retreive connections from a plugin's connection manager..
  */
 export const useConnections = ({ plugin }: UseConnectionsOptions) => {
-  // Const queryClient = useQueryClient();
+  const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
   const queryKey = [plugin, 'connection', 'list'];
@@ -23,6 +25,7 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
   const { mutateAsync: startInformer } = useMutation({
     mutationFn: async (conn: types.Connection) => StartConnectionInformer(plugin, conn.id),
     onError(error) {
+      console.log(error)
       showSnackbar({
         message: 'Failed to start connection informer',
         status: 'error',
@@ -34,6 +37,7 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
   const { mutateAsync: stopInformer } = useMutation({
     mutationFn: async (conn: types.Connection) => StopConnectionInformer(plugin, conn.id),
     onError(error) {
+      console.log(error)
       showSnackbar({
         message: 'Failed to stop connection informer',
         status: 'error',
@@ -41,6 +45,23 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
       });
     },
   });
+
+  /**
+   * Handle sync of connections from the backend
+   */
+  const onConnectionSync = React.useCallback((connections: types.Connection[]) => {
+    console.log("got update to connections", connections)
+    queryClient.setQueryData(queryKey, connections)
+  }, []);
+
+  // *Only on mount*, we want subscribe to new resources, updates and deletes
+  React.useEffect(() => {
+    const syncCloser = EventsOn(`${plugin}/connection/sync`, onConnectionSync);
+
+    return () => {
+      syncCloser()
+    };
+  }, []);
 
   // === Queries === //
 
@@ -51,6 +72,7 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
         const result = await LoadConnections(plugin)
         return result
       } catch (error) {
+        console.log(error)
         // log the error
         if (error instanceof Error) {
           showSnackbar({

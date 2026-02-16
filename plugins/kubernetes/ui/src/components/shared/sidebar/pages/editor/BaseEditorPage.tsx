@@ -4,19 +4,20 @@ import React from "react";
 import { KubernetesResourceObject } from "../../../../../types/resource";
 import CodeEditor from "../../../CodeEditor";
 import { Button, ButtonGroup, Stack } from "@mui/joy";
-import { stringify } from 'yaml'
+import { stringify, parse } from 'yaml'
 import { LuFileCode, LuSave, LuX } from "react-icons/lu";
 
 interface Props {
   kind?: string;
   data?: KubernetesResourceObject;
   children?: React.ReactNode;
+  onSubmit?: (value: Record<string, any>) => void;
 }
 
 /**
  * Displays the baseline editor for the monaco editor
  */
-export const BaseEditorPage: React.FC<Props> = ({ data, kind }) => {
+export const BaseEditorPage: React.FC<Props> = ({ data, kind, onSubmit }) => {
   const [value, setValue] = React.useState<string>(stringify(data))
   const [usingDiff, setUsingDiff] = React.useState<boolean>(false)
   const [changed, setChanged] = React.useState<boolean>(false)
@@ -28,6 +29,13 @@ export const BaseEditorPage: React.FC<Props> = ({ data, kind }) => {
       setChanged(true)
     }
     setValue(value)
+  }
+
+  const handleSubmit = () => {
+    if (onSubmit) {
+      const val = parse(value)
+      onSubmit(val)
+    }
   }
 
   /**
@@ -87,7 +95,7 @@ export const BaseEditorPage: React.FC<Props> = ({ data, kind }) => {
               color={'primary'}
               disabled={!changed}
               size={'sm'}
-              onClick={() => console.log("submitting")}
+              onClick={handleSubmit}
             >
               Submit
             </Button>

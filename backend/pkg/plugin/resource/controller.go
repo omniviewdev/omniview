@@ -51,11 +51,10 @@ type controller struct {
 	connections       map[string][]types.Connection
 	clients           map[string]resourcetypes.ResourceProvider
 	informerStopChans map[string]chan struct{}
-
-	// informer channels
-	addChan    chan resourcetypes.InformerControllerAddPayload
-	updateChan chan resourcetypes.InformerControllerUpdatePayload
-	deleteChan chan resourcetypes.InformerControllerDeletePayload
+	addChan           chan resourcetypes.InformerAddPayload
+	updateChan        chan resourcetypes.InformerUpdatePayload
+	deleteChan        chan resourcetypes.InformerDeletePayload
+	connChan          chan resourcetypes.ConnectionControllerEvent
 }
 
 // NewController returns a new Controller instance.
@@ -68,9 +67,12 @@ func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controlle
 		informerStopChans: make(map[string]chan struct{}),
 
 		// informer channels
-		addChan:    make(chan resourcetypes.InformerControllerAddPayload),
-		updateChan: make(chan resourcetypes.InformerControllerUpdatePayload),
-		deleteChan: make(chan resourcetypes.InformerControllerDeletePayload),
+		addChan:    make(chan resourcetypes.InformerAddPayload),
+		updateChan: make(chan resourcetypes.InformerUpdatePayload),
+		deleteChan: make(chan resourcetypes.InformerDeletePayload),
+
+		// connection update channels
+		connChan: make(chan resourcetypes.ConnectionControllerEvent),
 	}
 }
 
@@ -78,6 +80,22 @@ func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controlle
 func (c *controller) Run(ctx context.Context) {
 	c.ctx = ctx
 	go c.informerListener()
+	go c.connectionListener()
+}
+
+func (c *controller) connectionListener() {
+	log := c.logger.Named("connectionListener")
+	for {
+		select {
+		case <-c.ctx.Done():
+			// shutting down
+			log.Debugw("shutting down connection listeners")
+			return
+		case event := <-c.connChan:
+			eventKey := fmt.Sprintf("%s/connection/sync", event.PluginID)
+			runtime.EventsEmit(c.ctx, eventKey, event.Connections)
+		}
+	}
 }
 
 // Listens for informer events and emits them over the frontend IPC.
@@ -243,13 +261,20 @@ func (c *controller) OnPluginStart(
 
 	c.clients[meta.ID] = resourceClient
 
-	// try to load the connections from the plugin
+	// start running informer receivers
+	stopChan := make(chan struct{})
+
+	// try to load the connections from the plugin, start connection watcher
 	if _, err := c.LoadConnections(meta.ID); err != nil {
 		logger.Errorw("failed to load connections from plugin", "error", err)
 	}
+	go c.listenForPluginConnectionEvents(
+		meta.ID,
+		resourceClient,
+		stopChan,
+		c.connChan,
+	)
 
-	// start running informer receivers
-	stopChan := make(chan struct{})
 	c.informerStopChans[meta.ID] = stopChan
 	go c.listenForPluginInformerEvents(
 		meta.ID,
@@ -346,13 +371,7 @@ func (c *controller) StartConnection(
 	if !ok {
 		return types.ConnectionStatus{}, fmt.Errorf("plugin '%s' not found", pluginID)
 	}
-	ctx := types.NewPluginContextWithConnection(
-		context.TODO(),
-		"CORE",
-		nil, // pluginconfig is managed plugin side
-		nil, // TODO: GlobalConfig - fill this in
-		nil, // no associated connection
-	)
+	ctx := c.unconnectedCtx()
 	conn, err := client.StartConnection(ctx, connectionID)
 	if err != nil {
 		return types.ConnectionStatus{}, err
@@ -379,13 +398,7 @@ func (c *controller) StopConnection(pluginID, connectionID string) (types.Connec
 		log.Error("plugin not found")
 		return types.Connection{}, fmt.Errorf("plugin '%s' not found", pluginID)
 	}
-	ctx := types.NewPluginContextWithConnection(
-		context.TODO(),
-		"CORE",
-		nil, // pluginconfig is managed plugin side
-		nil, // TODO: GlobalConfig - fill this in
-		nil, // no associated connection
-	)
+	ctx := c.unconnectedCtx()
 	conn, err := client.StopConnection(ctx, connectionID)
 	if err != nil {
 		return types.Connection{}, err
@@ -405,13 +418,7 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 		return nil, fmt.Errorf("plugin '%s' not found", pluginID)
 	}
 
-	ctx := types.NewPluginContextWithConnection(
-		context.TODO(),
-		"CORE",
-		nil, // pluginconfig is managed plugin side
-		nil, // TODO: GlobalConfig - fill this in
-		nil, // no associated connection
-	)
+	ctx := c.unconnectedCtx()
 
 	log.Debug("loading connections from plugin")
 	connections, err := client.LoadConnections(ctx)
@@ -496,7 +503,7 @@ func (c *controller) GetConnectionNamespaces(
 		return nil, fmt.Errorf("connection '%s' not found for plugin '%s'", connectionID, pluginID)
 	}
 
-	ctx := types.NewPluginContextWithConnection(context.TODO(), "CORE", nil, nil, &connection)
+	ctx := c.connectedCtx(&connection)
 	return client.GetConnectionNamespaces(ctx, connectionID)
 }
 
@@ -540,11 +547,21 @@ func (c *controller) RemoveConnection(pluginID, connectionID string) error {
 	}
 	for i, conn := range connections {
 		if conn.ID == connectionID {
-			c.connections[pluginID] = append(connections[:i], connections[i+1:]...)
+			c.connections[pluginID] = slices.Delete(connections, i, i+1)
 			return nil
 		}
 	}
 	return fmt.Errorf("connection '%s' not found for plugin '%s'", connectionID, pluginID)
+}
+
+// ================================== CONTEXT HELPERS ================================== //
+
+func (c *controller) connectedCtx(conn *types.Connection) *types.PluginContext {
+	return types.NewPluginContextWithConnection(context.Background(), "CORE", nil, nil, conn)
+}
+
+func (c *controller) unconnectedCtx() *types.PluginContext {
+	return types.NewPluginContext(context.Background(), "CORE", nil, nil, nil)
 }
 
 // ================================== CLIENT METHODS ================================== //
@@ -582,14 +599,7 @@ func (c *controller) Get(
 		return nil, err
 	}
 
-	ctx := types.NewPluginContextWithConnection(
-		context.Background(),
-		"CORE",
-		nil, // TODO: PluginConfig - fill this in
-		nil, // TODO: GlobalConfig - fill this in
-		&conn,
-	)
-
+	ctx := c.connectedCtx(&conn)
 	return client.Get(ctx, key, input)
 }
 
@@ -607,13 +617,7 @@ func (c *controller) List(
 		return nil, err
 	}
 
-	ctx := types.NewPluginContextWithConnection(
-		context.Background(),
-		"CORE",
-		nil, // TODO: PluginConfig - fill this in
-		nil, // TODO: GlobalConfig - fill this in
-		&conn,
-	)
+	ctx := c.connectedCtx(&conn)
 	return client.List(ctx, key, input)
 }
 
@@ -631,13 +635,7 @@ func (c *controller) Find(
 		return nil, err
 	}
 
-	ctx := types.NewPluginContextWithConnection(
-		context.Background(),
-		"CORE",
-		nil, // TODO: PluginConfig - fill this in
-		nil, // TODO: GlobalConfig - fill this in
-		&conn,
-	)
+	ctx := c.connectedCtx(&conn)
 	return client.Find(ctx, key, input)
 }
 
@@ -655,13 +653,7 @@ func (c *controller) Create(
 		return nil, err
 	}
 
-	ctx := types.NewPluginContextWithConnection(
-		context.Background(),
-		"CORE",
-		nil, // TODO: PluginConfig - fill this in
-		nil, // TODO: GlobalConfig - fill this in
-		&conn,
-	)
+	ctx := c.connectedCtx(&conn)
 	return client.Create(ctx, key, input)
 }
 
@@ -678,13 +670,7 @@ func (c *controller) Update(
 		logger.Error(err)
 		return nil, err
 	}
-	ctx := types.NewPluginContextWithConnection(
-		context.Background(),
-		"CORE",
-		nil, // TODO: PluginConfig - fill this in
-		nil, // TODO: GlobalConfig - fill this in
-		&conn,
-	)
+	ctx := c.connectedCtx(&conn)
 	return client.Update(ctx, key, input)
 }
 
@@ -701,13 +687,7 @@ func (c *controller) Delete(
 		logger.Error(err)
 		return nil, err
 	}
-	ctx := types.NewPluginContextWithConnection(
-		context.Background(),
-		"CORE",
-		nil, // TODO: PluginConfig - fill this in
-		nil, // TODO: GlobalConfig - fill this in
-		&conn,
-	)
+	ctx := c.connectedCtx(&conn)
 	return client.Delete(ctx, key, input)
 }
 
@@ -722,13 +702,7 @@ func (c *controller) StartConnectionInformer(pluginID, connectionID string) erro
 		return err
 	}
 
-	ctx := types.NewPluginContextWithConnection(
-		context.Background(),
-		"CORE",
-		nil, // TODO: PluginConfig - fill this in
-		nil, // TODO: GlobalConfig - fill this in
-		&conn,
-	)
+	ctx := c.connectedCtx(&conn)
 	return client.StartConnectionInformer(ctx, connectionID)
 }
 
@@ -743,13 +717,7 @@ func (c *controller) StopConnectionInformer(pluginID, connectionID string) error
 		return err
 	}
 
-	ctx := types.NewPluginContextWithConnection(
-		context.Background(),
-		"CORE",
-		nil, // TODO: PluginConfig - fill this in
-		nil, // TODO: GlobalConfig - fill this in
-		&conn,
-	)
+	ctx := c.connectedCtx(&conn)
 	return client.StopConnectionInformer(ctx, connectionID)
 }
 
@@ -875,14 +843,14 @@ func (c *controller) listenForPluginInformerEvents(
 	pluginID string,
 	client resourcetypes.ResourceProvider,
 	stopChan <-chan struct{},
-	addChan chan resourcetypes.InformerControllerAddPayload,
-	updateChan chan resourcetypes.InformerControllerUpdatePayload,
-	deleteChan chan resourcetypes.InformerControllerDeletePayload,
+	addChan chan resourcetypes.InformerAddPayload,
+	updateChan chan resourcetypes.InformerUpdatePayload,
+	deleteChan chan resourcetypes.InformerDeletePayload,
 ) {
 	l := c.logger.With("pluginID", pluginID)
 	l.Debug("listenForPluginInformerEvents")
 
-	ctx := types.NewPluginContext(context.Background(), "CORE", nil, nil, nil)
+	ctx := c.unconnectedCtx()
 
 	addStream := make(chan resourcetypes.InformerAddPayload)
 	updateStream := make(chan resourcetypes.InformerUpdatePayload)
@@ -905,32 +873,51 @@ func (c *controller) listenForPluginInformerEvents(
 		case <-stopChan:
 			return
 		case event := <-addStream:
-			addChan <- resourcetypes.InformerControllerAddPayload{
-				PluginID:   pluginID,
-				Key:        event.Key,
-				Connection: event.Connection,
-				ID:         event.ID,
-				Namespace:  event.Namespace,
-				Data:       event.Data,
-			}
+			event.PluginID = pluginID
+			addChan <- event
 		case event := <-updateStream:
-			updateChan <- resourcetypes.InformerControllerUpdatePayload{
-				PluginID:   pluginID,
-				Key:        event.Key,
-				Connection: event.Connection,
-				ID:         event.ID,
-				Namespace:  event.Namespace,
-				OldData:    event.OldData,
-				NewData:    event.NewData,
-			}
+			event.PluginID = pluginID
+			updateChan <- event
 		case event := <-deleteStream:
-			deleteChan <- resourcetypes.InformerControllerDeletePayload{
-				PluginID:   pluginID,
-				Key:        event.Key,
-				Connection: event.Connection,
-				ID:         event.ID,
-				Namespace:  event.Namespace,
-				Data:       event.Data,
+			event.PluginID = pluginID
+			deleteChan <- event
+		}
+	}
+}
+
+// listenForPluginEvents listens for events from the plugin in a blocking event
+// loop, and emits them to the controller. this should be run in a goroutine.
+func (c *controller) listenForPluginConnectionEvents(
+	pluginID string,
+	client resourcetypes.ResourceProvider,
+	stopChan <-chan struct{},
+	eventChan chan resourcetypes.ConnectionControllerEvent,
+) {
+	l := c.logger.With("pluginID", pluginID)
+	l.Debug("listenForPluginConnectionEvents")
+
+	ctx := c.unconnectedCtx()
+	connStream := make(chan []types.Connection)
+	errChan := make(chan error)
+
+	go func(errChan chan error) {
+		if err := client.WatchConnections(ctx, connStream); err != nil {
+			l.Errorw("failed to listen for connection events", "error", err)
+			errChan <- err
+			return
+		}
+	}(errChan)
+
+	for {
+		select {
+		case <-errChan:
+			return
+		case <-stopChan:
+			return
+		case event := <-connStream:
+			eventChan <- resourcetypes.ConnectionControllerEvent{
+				PluginID:    pluginID,
+				Connections: event,
 			}
 		}
 	}

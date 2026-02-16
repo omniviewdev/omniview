@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/hashicorp/go-plugin"
+	pkgsettings "github.com/omniviewdev/settings"
 	"google.golang.org/grpc"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
@@ -15,11 +16,15 @@ type ResourcePlugin struct {
 	plugin.Plugin
 	// Concrete implementation, written in Go. This is only used for plugins
 	// that are written in Go.
-	Impl types.ResourceProvider
+	Impl             types.ResourceProvider
+	SettingsProvider pkgsettings.Provider
 }
 
 func (p *ResourcePlugin) GRPCServer(_ *plugin.GRPCBroker, s *grpc.Server) error {
-	proto.RegisterResourcePluginServer(s, &ResourcePluginServer{Impl: p.Impl})
+	proto.RegisterResourcePluginServer(s, &ResourcePluginServer{
+		Impl:             p.Impl,
+		settingsProvider: p.SettingsProvider,
+	})
 	return nil
 }
 

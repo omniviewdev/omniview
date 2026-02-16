@@ -15,36 +15,9 @@ const (
 	InformerActionDelete
 )
 
-type InformerControllerAddPayload struct {
-	Data       map[string]interface{} `json:"data"`
-	PluginID   string                 `json:"pluginId"`
-	Key        string                 `json:"key"`
-	Connection string                 `json:"connection"`
-	ID         string                 `json:"id"`
-	Namespace  string                 `json:"namespace"`
-}
-
-type InformerControllerUpdatePayload struct {
-	OldData    map[string]interface{} `json:"oldData"`
-	NewData    map[string]interface{} `json:"newData"`
-	PluginID   string                 `json:"pluginId"`
-	Key        string                 `json:"key"`
-	Connection string                 `json:"connection"`
-	ID         string                 `json:"id"`
-	Namespace  string                 `json:"namespace"`
-}
-
-type InformerControllerDeletePayload struct {
-	Data       map[string]interface{} `json:"data"`
-	PluginID   string                 `json:"pluginId"`
-	Key        string                 `json:"key"`
-	Connection string                 `json:"connection"`
-	ID         string                 `json:"id"`
-	Namespace  string                 `json:"namespace"`
-}
-
 type InformerAddPayload struct {
 	Data       map[string]interface{} `json:"data"`
+	PluginID   string                 `json:"pluginId"`
 	Key        string                 `json:"key"`
 	Connection string                 `json:"connection"`
 	ID         string                 `json:"id"`
@@ -54,6 +27,7 @@ type InformerAddPayload struct {
 type InformerUpdatePayload struct {
 	OldData    map[string]interface{} `json:"oldData"`
 	NewData    map[string]interface{} `json:"newData"`
+	PluginID   string                 `json:"pluginId"`
 	Key        string                 `json:"key"`
 	Connection string                 `json:"connection"`
 	ID         string                 `json:"id"`
@@ -62,6 +36,7 @@ type InformerUpdatePayload struct {
 
 type InformerDeletePayload struct {
 	Data       map[string]interface{} `json:"data"`
+	PluginID   string                 `json:"pluginId"`
 	Key        string                 `json:"key"`
 	Connection string                 `json:"connection"`
 	ID         string                 `json:"id"`
@@ -72,39 +47,30 @@ type InformerPayload interface {
 	InformerAddPayload | InformerUpdatePayload | InformerDeletePayload
 }
 
-// InformerOptions defines the behavior for the integrating informers into a resource plugin..
-type InformerOptions[ClientT, InformerT any] struct {
-	// CreateInformerFunc is a function that should create a new informer base for a given resource connection.
-	CreateInformerFunc CreateInformerFunc[ClientT, InformerT]
+// InformerHandle is a non-generic interface that encapsulates an informer instance.
+// Implementations manage resource registration and running the informer loop internally.
+type InformerHandle interface {
+	// RegisterResource registers a resource with the informer, setting up event handlers
+	// that push events to the provided channels.
+	RegisterResource(
+		ctx *pkgtypes.PluginContext,
+		resource ResourceMeta,
+		addChan chan InformerAddPayload,
+		updateChan chan InformerUpdatePayload,
+		deleteChan chan InformerDeletePayload,
+	) error
 
-	// RegisterResourceInformerFunc is a function that should register an informer with a resource
-	RegisterResourceFunc RegisterResourceInformerFunc[InformerT]
-
-	// RunInformerFunc is a function that should run the informer, submitting events to the three
-	// channels, and blocking until the stop channel is closed.
-	RunInformerFunc RunInformerFunc[InformerT]
+	// Run starts the informer and blocks until stopCh is closed.
+	Run(
+		stopCh chan struct{},
+		addChan chan InformerAddPayload,
+		updateChan chan InformerUpdatePayload,
+		deleteChan chan InformerDeletePayload,
+	) error
 }
 
-type CreateInformerFunc[ClientT, InformerT any] func(
+// CreateInformerHandleFunc creates an InformerHandle for a given connection client.
+type CreateInformerHandleFunc[ClientT any] func(
 	ctx *pkgtypes.PluginContext,
 	client *ClientT,
-) (InformerT, error)
-
-type RegisterResourceInformerFunc[InformerT any] func(
-	ctx *pkgtypes.PluginContext,
-	resource ResourceMeta,
-	informer InformerT,
-	addChan chan InformerAddPayload,
-	updateChan chan InformerUpdatePayload,
-	deleteChan chan InformerDeletePayload,
-) error
-
-// RunInformerFunc is a function that should run the informer, submitting events to the three
-// channels, and blocking until the stop channel is closed.
-type RunInformerFunc[InformerT any] func(
-	informer InformerT,
-	stopCh chan struct{},
-	addChan chan InformerAddPayload,
-	updateChan chan InformerUpdatePayload,
-	deleteChan chan InformerDeletePayload,
-) error
+) (InformerHandle, error)

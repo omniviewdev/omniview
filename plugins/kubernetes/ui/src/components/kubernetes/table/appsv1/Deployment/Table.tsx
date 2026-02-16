@@ -8,7 +8,7 @@ import { Condition } from 'kubernetes-types/meta/v1'
 import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
-import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
+import { DrawerComponent, DrawerContext, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
 import { LuCode, LuScaling, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
 import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
 import DeploymentSidebar from './Sidebar'
@@ -18,9 +18,28 @@ const resourceKey = 'apps::v1::Deployment'
 const DeploymentTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()
 
-  const { remove } = useResourceMutations({ pluginID: 'kubernetes' })
+  const { remove, update } = useResourceMutations({ pluginID: 'kubernetes' })
   const { show } = useConfirmationModal()
   const { closeDrawer } = useRightDrawer()
+
+  /**
+   * Handler to go ahead and submit a resource change
+   */
+  const onEditorSubmit = (ctx: DrawerContext<Deployment>, value: Record<string, any>) => {
+    update({
+      opts: {
+        connectionID: id,
+        resourceKey,
+        resourceID: ctx.data?.metadata?.name as string,
+        namespace: ctx.data?.metadata?.namespace as string,
+      },
+      input: {
+        input: value,
+      },
+    }).then(() => {
+      closeDrawer()
+    })
+  }
 
   const columns = React.useMemo<Array<ColumnDef<Deployment>>>(
     () =>
@@ -124,12 +143,12 @@ const DeploymentTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <DeploymentSidebar data={ctx.data || {}} />,
+        component: (ctx) => <DeploymentSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',
         icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
+        component: (ctx) => <BaseEditorPage data={ctx.data} onSubmit={(val) => onEditorSubmit(ctx, val)} />,
       },
     ],
     actions: [

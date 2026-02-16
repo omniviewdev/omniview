@@ -51,7 +51,7 @@ func (m *PluginMeta) HasUICapabilities() bool {
 // HasBackendCapabilities checks if the plugin has UI capabilities. This is used
 // to verify plugin loading and staring.
 func (m *PluginMeta) HasBackendCapabilities() bool {
-	caps := []string{"resource", "exec", "networker", "settings"}
+	caps := []string{"resource", "exec", "networker", "settings", "log"}
 
 	for _, capability := range m.Capabilities {
 		if slices.Contains(caps, capability) {
@@ -66,12 +66,14 @@ type PluginMaintainer struct {
 	Email string `json:"email" yaml:"email"`
 }
 
+type PluginThemeColors struct {
+	Primary   string `json:"primary"   yaml:"primary"`
+	Secondary string `json:"secondary" yaml:"secondary"`
+	Tertiary  string `json:"tertiary"  yaml:"tertiary"`
+}
+
 type PluginTheme struct {
-	Colors struct {
-		Primary   string `json:"primary"   yaml:"primary"`
-		Secondary string `json:"secondary" yaml:"secondary"`
-		Tertiary  string `json:"tertiary"  yaml:"tertiary"`
-	} `json:"colors" yaml:"colors"`
+	Colors PluginThemeColors `json:"colors" yaml:"colors"`
 }
 
 type PluginComponents struct {

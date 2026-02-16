@@ -5,19 +5,20 @@ import { Pod } from "kubernetes-types/core/v1";
 
 import ContainersSection from "./containers";
 import BaseOverviewPage from "../../../shared/sidebar/pages/overview/BaseOverviewPage";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 interface Props {
-  data?: Pod;
+  ctx: DrawerContext<Pod>
 }
 
-export const PodSidebar: React.FC<Props> = ({ data }) => {
-  if (!data) {
+export const PodSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
     return <></>
   }
 
   return (
-    <BaseOverviewPage data={data} >
-      <ContainersSection obj={data} />
+    <BaseOverviewPage data={ctx.data} >
+      <ContainersSection resourceID={ctx.resource?.id || ''} connectionID={ctx.resource?.connectionID || ''} obj={ctx.data} />
     </BaseOverviewPage>
   );
 };

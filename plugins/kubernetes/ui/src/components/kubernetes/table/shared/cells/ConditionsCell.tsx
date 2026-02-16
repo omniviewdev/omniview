@@ -43,7 +43,7 @@ const ConditionsCell: React.FC<Props> = ({ conditions, defaultHealthyColor, defa
       }}
     >
       {conditions.filter(condition => condition.status === 'True').map((condition) => (
-        <ConditionChip condition={condition} healthyColor={defaultHealthyColor} unhealthyColor={defaultUnhealthyColor} />
+        <ConditionChip key={condition.type} condition={condition} healthyColor={defaultHealthyColor} unhealthyColor={defaultUnhealthyColor} />
       ))}
     </Stack >
   )

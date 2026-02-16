@@ -9,6 +9,19 @@ type OnCreateSessionOpts = {
   label?: string;
 };
 
+type OnCreateLogSessionOpts = {
+  plugin: string;
+  connection: string;
+  resourceKey: string;
+  resourceID: string;
+  resourceData: Record<string, any>;
+  target?: string;
+  follow?: boolean;
+  tailLines?: number;
+  icon?: string;
+  label?: string;
+};
+
 type OnSessionClosedOpts = {
   id: string;
 };
@@ -20,6 +33,7 @@ type BottomDrawerEvents = {
   onFullscreen: () => void;
   onMinimize: () => void;
   onCreateSession: (opts: OnCreateSessionOpts) => void;
+  onCreateLogSession: (opts: OnCreateLogSessionOpts) => void;
   onSessionClosed: (opts: OnSessionClosedOpts) => void;
 };
 

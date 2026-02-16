@@ -1,11 +1,10 @@
 syntax = "proto3";
 package com.omniview.pluginsdk;
 
-import "google/protobuf/empty.proto";
-import "google/protobuf/timestamp.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
-
+import "google/protobuf/timestamp.proto";
 import "proto/resource.proto";
 
 option go_package = "./proto";
@@ -17,8 +16,8 @@ option go_package = "./proto";
 // - SSH port forwarding
 message PortForwardSession {
   string id = 1;
-  int32 source_port = 2;
-  int32 destination_port = 3;
+  int32 local_port = 2;
+  int32 remote_port = 3;
   PortForwardProtocol protocol = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
@@ -63,13 +62,13 @@ message PortForwardStaticConnection {
 message PortForwardSessionEncryption {
   bool enabled = 1;
   string algorithm = 2;
-  string key = 3; 
+  string key = 3;
 }
 
 // Options for creating a new port forwarding session
 message PortForwardSessionOptions {
-  int32 source_port = 1;
-  int32 destination_port = 2;
+  int32 local_port = 1;
+  int32 remote_port = 2;
   PortForwardProtocol protocol = 3;
   map<string, string> labels = 4;
   map<string, string> params = 5;
@@ -103,11 +102,10 @@ message GetSupportedPortForwardTargetsResponse {
   repeated string resources = 1;
 }
 
-
 // ===================== SERVICE ===================== //
 
 service NetworkerPlugin {
-  // Resource Forwarding Management 
+  // Resource Forwarding Management
   rpc GetSupportedPortForwardTargets(google.protobuf.Empty) returns (GetSupportedPortForwardTargetsResponse);
   rpc GetPortForwardSession(PortForwardSessionByIdRequest) returns (PortForwardSessionByIdResponse);
   rpc ListPortForwardSessions(google.protobuf.Empty) returns (PortForwardSessionListResponse);

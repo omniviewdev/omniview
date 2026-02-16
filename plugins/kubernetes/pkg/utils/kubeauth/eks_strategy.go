@@ -3,7 +3,6 @@ package kubeauth
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
@@ -95,8 +94,6 @@ func (e *EKSAuthStrategy) BuildRestConfig(
 	ctx context.Context,
 	kubeconfigPath, kubeContext string,
 ) (*rest.Config, error) {
-	log.Printf("building eks rest config with ")
-
 	clientLoader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfigPath},
 		&clientcmd.ConfigOverrides{
@@ -163,8 +160,6 @@ func (e *EKSAuthStrategy) BuildRestConfig(
 		Transport: roundTripper,
 		Timeout:   configShallowCopy.Timeout,
 	}
-
-	log.Print(baseConfig)
 
 	return baseConfig, nil
 }
