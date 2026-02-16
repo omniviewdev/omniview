@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { omniviewExternals } from "@omniviewdev/vite-plugin";
 
 const externals = [
   // MUI
@@ -19,13 +20,24 @@ const externals = [
 
   // OMNIVIEW
   "@omniviewdev/runtime",
-]
+];
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
+    omniviewExternals(),
   ],
+  server: {
+    host: '127.0.0.1',
+    port: 15173,
+    cors: true,
+    strictPort: false,
+    hmr: {
+      protocol: "ws",
+      host: "127.0.0.1",
+    },
+  },
   build: {
     cssCodeSplit: false,
     rollupOptions: {

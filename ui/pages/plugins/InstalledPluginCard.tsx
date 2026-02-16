@@ -26,6 +26,7 @@ import { usePlugin } from '@/hooks/plugin/usePluginManager';
 import { BrowserOpenURL } from '@omniviewdev/runtime/runtime';
 import UninstallPluginModal from './UninstallPluginModal';
 import PluginUpdateButton from './PluginUpdateButton';
+import DevModeSection from './DevModeSection';
 
 // Bindings
 
@@ -147,6 +148,12 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
             }}
           >{plugin.data?.metadata.description}</Typography>
         </CardContent>
+        {plugin.data?.devMode && (
+          <DevModeSection
+            pluginId={id}
+            devPath={plugin.data?.devPath ?? ''}
+          />
+        )}
         <CardActions buttonFlex='0 1 120px'>
           <Tooltip title='View on GitHub' variant='soft' arrow>
             <IconButton

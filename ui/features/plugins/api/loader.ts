@@ -4,54 +4,68 @@ import { EXTENSION_REGISTRY } from '../../extensions/store';
 import { registerPlugin } from '../PluginManager';
 import { SystemJS } from './systemjs';
 import { EventsEmit } from '@omniviewdev/runtime/runtime';
+import { devSharedReady } from './devSharedReady';
 
 type PluginImportInfo = {
   pluginId: string;
   moduleHash?: string;
   dev?: boolean;
-  devPort?: 15173
+  devPort?: number;
 }
 
 /**
- * Get's the calculated module ID for the plugin
+ * Get's the calculated module ID for the plugin (SystemJS path)
  */
 const getModuleId = ({ pluginId }: PluginImportInfo): string => {
-  return `${window.location.protocol}//${window.location.host}/_/plugins/${pluginId}/assets/entry.js`
-}
+  return `${window.location.protocol}//${window.location.host}/_/plugins/${pluginId}/assets/entry.js`;
+};
 
-
-// const PLUGIN_WINDOW_CACHE: Record<string, PluginWindow> = {};
-
-export async function clearPlugin({ pluginId }: PluginImportInfo) {
-  /** remove the import */
+export async function clearPlugin({ pluginId, dev }: PluginImportInfo) {
+  if (dev) {
+    // Dev-mode modules loaded via native ESM; nothing to clear from SystemJS.
+    // Vite HMR handles UI updates. For Go changes, caller re-imports via importPluginWindow.
+    return;
+  }
   await SystemJS.delete(getModuleId({ pluginId }));
 }
 
 /**
- * Performs the necessary work of importing the plugin, registering to the cache,
- * and then returning the plugin module so that it can be used within the main
- * plugin renderer.
+ * Imports a plugin module. In dev mode, uses native ESM import from the Vite
+ * dev server. In production, uses SystemJS import from the Wails asset server.
  *
- * This relies on the Wails asset server to properly route the requests for the entrypoint and
- * it's built dependencies to the proper location on the filesystem, as defined here:
+ * Dev mode enables:
+ * - Vite HMR via WebSocket (injected by @vite/client into every module)
+ * - React Fast Refresh for sub-100ms, state-preserving updates
+ * - No SystemJS involvement for the plugin's module graph
  *
- * @see {@link file://fileloader.go}
+ * @see {@link file://fileloader.go} for the production asset serving path
  */
-export async function importPlugin({ pluginId, moduleHash }: PluginImportInfo): Promise<System.Module> {
-
-  // Check if the plugin is a built-in plugin
+export async function importPlugin({ pluginId, moduleHash, dev, devPort }: PluginImportInfo): Promise<System.Module> {
+  // Built-in plugins (unchanged)
   const builtInPlugin = builtInPlugins[pluginId];
   if (builtInPlugin) {
     return typeof builtInPlugin === 'function' ? await builtInPlugin() : builtInPlugin;
   }
 
-  // // calculate the plugins expected entrypoint file
-  // const modulePath = `/plugin/${pluginId}/dist/entry.js`;
+  // DEV MODE: native ESM import from Vite dev server
+  if (dev && devPort) {
+    // Ensure shared deps are available on window before loading dev plugin
+    await devSharedReady;
 
-  const modulePath = `${window.location.protocol}//${window.location.host}/_/plugins/${pluginId}/assets/entry.js`
-  // const modulePath = `http://localhost:15173/plugin-entry`
+    const devUrl = `http://127.0.0.1:${devPort}/src/entry.ts`;
+    try {
+      console.log(`[plugin:${pluginId}] Loading from dev server: ${devUrl}`);
+      const module = await import(/* @vite-ignore */ devUrl);
+      return module;
+    } catch (err) {
+      console.error(`[plugin:${pluginId}] Dev server import failed, falling back to static`, err);
+      // Fall through to SystemJS path
+    }
+  }
 
-  // inject integrity hash into SystemJS import map
+  // PRODUCTION: SystemJS import (existing code)
+  const modulePath = `${window.location.protocol}//${window.location.host}/_/plugins/${pluginId}/assets/entry.js`;
+
   const resolvedModule = SystemJS.resolve(modulePath);
   const integrityMap = SystemJS.getImportMap().integrity;
 
@@ -63,38 +77,37 @@ export async function importPlugin({ pluginId, moduleHash }: PluginImportInfo): 
     });
   }
 
-  // load the plugin
-  console.log("importing the plugin")
-  return SystemJS.import(modulePath)
+  console.log(`[plugin:${pluginId}] Loading from SystemJS: ${modulePath}`);
+  return SystemJS.import(modulePath);
 }
 
-// TODO: we'll need to see what other info to grab for this, most notable we'll likely need to use
-// metadata about the plugin here, but for now it's not needed.
 type PluginWindowImportInfo = PluginImportInfo & {}
 
 /**
  * Imports the plugin window component so that it may be shown within the plugin renderer.
- *
- * NOTE: this does not interact with the cache. The cache will be externalized to a separate wrapper. Reaching
- * this function assumes that the cache has not been hit.
  */
 export async function importPluginWindow(opts: PluginWindowImportInfo): Promise<PluginWindow> {
   const exports = await importPlugin(opts);
 
-  // ensure we at least have a base plugin window (like for example, when we don't actually have one
-  // and the plugin is just exporting components as a safegaurd)
   const { plugin = new PluginWindow() } = exports as { plugin?: PluginWindow };
 
-  // register any extension points that the plugin has
+  // register any extension points
   for (const extension of plugin.extensions) {
     EXTENSION_REGISTRY.addExtensionPoint(extension);
   }
 
-  return plugin
+  return plugin;
 }
 
-export async function loadAndRegisterPlugin(pluginID: string): Promise<void> {
-  const pluginWindow = await importPluginWindow({ pluginId: pluginID });
+export async function loadAndRegisterPlugin(
+  pluginID: string,
+  opts?: { dev?: boolean; devPort?: number }
+): Promise<void> {
+  const pluginWindow = await importPluginWindow({
+    pluginId: pluginID,
+    dev: opts?.dev,
+    devPort: opts?.devPort,
+  });
   registerPlugin(pluginID, pluginWindow);
-  EventsEmit("core/window/recalc_routes")
+  EventsEmit('core/window/recalc_routes');
 }

@@ -1,0 +1,292 @@
+package devserver
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"go.uber.org/zap"
+)
+
+const (
+	// viteReadyTimeout is how long we wait for Vite to print its "Local:" URL.
+	viteReadyTimeout = 30 * time.Second
+
+	// viteStopGracePeriod is how long we wait after SIGTERM before sending SIGKILL.
+	viteStopGracePeriod = 5 * time.Second
+)
+
+// viteProcess manages a single Vite dev server child process.
+type viteProcess struct {
+	ctx       context.Context
+	logger    *zap.SugaredLogger
+	pluginID  string
+	devPath   string
+	port      int
+	buildOpts BuildOpts
+
+	appendLog func(LogEntry)
+	setStatus func(DevProcessStatus)
+
+	mu   sync.Mutex
+	cmd  *exec.Cmd
+	done chan struct{} // closed when the process exits
+}
+
+// newViteProcess creates a viteProcess. Call Start() to spawn.
+func newViteProcess(
+	ctx context.Context,
+	logger *zap.SugaredLogger,
+	pluginID string,
+	devPath string,
+	port int,
+	buildOpts BuildOpts,
+	appendLog func(LogEntry),
+	setStatus func(DevProcessStatus),
+) *viteProcess {
+	return &viteProcess{
+		ctx:       ctx,
+		logger:    logger.Named("vite"),
+		pluginID:  pluginID,
+		devPath:   devPath,
+		port:      port,
+		buildOpts: buildOpts,
+		appendLog: appendLog,
+		setStatus: setStatus,
+		done:      make(chan struct{}),
+	}
+}
+
+// Start spawns `pnpm run dev --port <port> --strictPort` in the plugin's ui/ directory.
+// It returns once the command is spawned (not when Vite is ready).
+// Ready detection happens asynchronously; the status will transition to "ready"
+// when Vite's "Local:" output line is detected.
+func (vp *viteProcess) Start() error {
+	vp.mu.Lock()
+	defer vp.mu.Unlock()
+
+	vp.setStatus(DevProcessStatusStarting)
+
+	uiDir := filepath.Join(vp.devPath, "ui")
+	if _, err := os.Stat(uiDir); os.IsNotExist(err) {
+		return fmt.Errorf("plugin ui directory does not exist: %s", uiDir)
+	}
+
+	// Resolve pnpm path.
+	pnpmPath := vp.buildOpts.PnpmPath
+	if pnpmPath == "" {
+		return fmt.Errorf("pnpm path not configured; set developer.pnpmpath in settings")
+	}
+
+	// Build the command: pnpm run dev -- --port <port> --strictPort --host 127.0.0.1
+	args := []string{
+		"run", "dev",
+		"--", // pass remaining args to vite
+		"--port", fmt.Sprintf("%d", vp.port),
+		"--strictPort",
+		"--host", "127.0.0.1",
+	}
+
+	cmd := exec.CommandContext(vp.ctx, pnpmPath, args...)
+	cmd.Dir = uiDir
+
+	// Set up environment with proper PATH including node and pnpm directories.
+	env := os.Environ()
+	extraDirs := []string{}
+	if vp.buildOpts.PnpmPath != "" {
+		extraDirs = append(extraDirs, filepath.Dir(vp.buildOpts.PnpmPath))
+	}
+	if vp.buildOpts.NodePath != "" {
+		extraDirs = append(extraDirs, filepath.Dir(vp.buildOpts.NodePath))
+	}
+	env = prependToPath(env, extraDirs)
+	cmd.Env = env
+
+	// Use a process group so we can kill all child processes.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// Capture stdout and stderr.
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start vite process: %w", err)
+	}
+
+	vp.cmd = cmd
+	vp.logger.Infow("vite process spawned", "pid", cmd.Process.Pid, "port", vp.port)
+
+	vp.appendLog(LogEntry{
+		Source:  "vite",
+		Level:   "info",
+		Message: fmt.Sprintf("Vite dev server starting on port %d (pid %d)", vp.port, cmd.Process.Pid),
+	})
+
+	// Channel to signal when the "ready" line is detected.
+	readyCh := make(chan struct{}, 1)
+
+	// Pipe stdout, scanning for the ready signal.
+	go func() {
+		scanner := bufio.NewScanner(stdoutPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			vp.appendLog(LogEntry{
+				Source:  "vite",
+				Level:   "info",
+				Message: line,
+			})
+
+			// Vite prints something like:
+			//   ➜  Local:   http://127.0.0.1:15173/
+			// We detect readiness by finding "Local:" in the output.
+			if strings.Contains(line, "Local:") && strings.Contains(line, fmt.Sprintf("%d", vp.port)) {
+				select {
+				case readyCh <- struct{}{}:
+				default:
+				}
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			vp.logger.Warnw("vite stdout scanner error", "error", err)
+		}
+	}()
+
+	// Pipe stderr.
+	go func() {
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			vp.appendLog(LogEntry{
+				Source:  "vite",
+				Level:   "error",
+				Message: line,
+			})
+		}
+	}()
+
+	// Wait for the process to exit in a goroutine.
+	go func() {
+		err := cmd.Wait()
+		if err != nil {
+			vp.logger.Warnw("vite process exited with error", "error", err)
+			vp.appendLog(LogEntry{
+				Source:  "vite",
+				Level:   "error",
+				Message: fmt.Sprintf("Vite process exited: %v", err),
+			})
+		} else {
+			vp.logger.Info("vite process exited cleanly")
+			vp.appendLog(LogEntry{
+				Source:  "vite",
+				Level:   "info",
+				Message: "Vite process exited",
+			})
+		}
+		close(vp.done)
+	}()
+
+	// Wait for the "ready" signal or timeout.
+	go func() {
+		select {
+		case <-readyCh:
+			vp.setStatus(DevProcessStatusReady)
+			vp.logger.Infow("vite dev server is ready", "port", vp.port)
+			vp.appendLog(LogEntry{
+				Source:  "vite",
+				Level:   "info",
+				Message: fmt.Sprintf("Vite dev server ready at http://127.0.0.1:%d", vp.port),
+			})
+		case <-time.After(viteReadyTimeout):
+			vp.setStatus(DevProcessStatusError)
+			vp.logger.Errorw("vite dev server did not become ready in time", "timeout", viteReadyTimeout)
+			vp.appendLog(LogEntry{
+				Source:  "vite",
+				Level:   "error",
+				Message: fmt.Sprintf("Vite did not become ready within %s", viteReadyTimeout),
+			})
+		case <-vp.done:
+			// Process exited before ready.
+			vp.setStatus(DevProcessStatusError)
+		case <-vp.ctx.Done():
+			// Context cancelled.
+			return
+		}
+	}()
+
+	return nil
+}
+
+// Stop sends SIGTERM to the Vite process group, waits up to viteStopGracePeriod,
+// then sends SIGKILL if it's still running.
+func (vp *viteProcess) Stop() {
+	vp.mu.Lock()
+	cmd := vp.cmd
+	vp.mu.Unlock()
+
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+
+	vp.logger.Info("stopping vite process")
+
+	// Send SIGTERM to the process group (negative PID = process group).
+	pgid, err := syscall.Getpgid(cmd.Process.Pid)
+	if err == nil {
+		_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	} else {
+		_ = cmd.Process.Signal(syscall.SIGTERM)
+	}
+
+	// Wait for exit or timeout.
+	select {
+	case <-vp.done:
+		vp.logger.Info("vite process stopped after SIGTERM")
+		return
+	case <-time.After(viteStopGracePeriod):
+		vp.logger.Warn("vite process did not stop after SIGTERM; sending SIGKILL")
+		if pgid > 0 {
+			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+		} else {
+			_ = cmd.Process.Kill()
+		}
+	}
+
+	// Wait for final exit after SIGKILL.
+	select {
+	case <-vp.done:
+		vp.logger.Info("vite process stopped after SIGKILL")
+	case <-time.After(3 * time.Second):
+		vp.logger.Error("vite process did not exit after SIGKILL; giving up")
+	}
+}
+
+// prependToPath adds directories to the front of the PATH environment variable.
+func prependToPath(env []string, dirs []string) []string {
+	if len(dirs) == 0 {
+		return env
+	}
+	prefix := strings.Join(dirs, string(os.PathListSeparator))
+
+	for i, e := range env {
+		if strings.HasPrefix(e, "PATH=") {
+			current := strings.TrimPrefix(e, "PATH=")
+			env[i] = "PATH=" + prefix + string(os.PathListSeparator) + current
+			return env
+		}
+	}
+	// PATH not found; add it.
+	return append(env, "PATH="+prefix)
+}

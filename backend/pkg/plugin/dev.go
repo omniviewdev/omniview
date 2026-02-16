@@ -249,6 +249,19 @@ func (pm *pluginManager) handleWatchEvent(event fsnotify.Event) error {
 		return nil
 	}
 
+	// If DevServerManager owns this plugin, skip the old rebuild pipeline.
+	// DevServerManager handles its own Vite HMR and Go rebuild flow.
+	if pm.devServerCheck != nil {
+		meta, err := parseMetadataFromPluginPath(target)
+		if err == nil && pm.devServerCheck.IsManaged(meta.ID) {
+			l.Debugw("skipping watch event for DevServerManager-managed plugin",
+				"pluginID", meta.ID,
+				"target", target,
+			)
+			return nil
+		}
+	}
+
 	opts := types.BuildOpts{
 		ExcludeBackend: true,
 		ExcludeUI:      true,

@@ -5,12 +5,14 @@ import {
   Chip,
 } from '@mui/joy';
 
+import PluginDevStatusIndicators from './PluginDevStatusIndicators';
+
 /**
  * Display on the bottom left side of the footer
  */
 const FooterLeftSide: React.FC = () => {
   return (
-    <Stack direction={'row'} alignItems={'center'} justifyContent={'flex-start'}>
+    <Stack direction={'row'} alignItems={'center'} justifyContent={'flex-start'} gap={1}>
       {import.meta.env.DEV && (
         <Chip
           color='warning'
@@ -27,6 +29,7 @@ const FooterLeftSide: React.FC = () => {
           DEVELOPMENT MODE
         </Chip>
       )}
+      <PluginDevStatusIndicators />
     </Stack>
   )
 }
