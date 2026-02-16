@@ -20,6 +20,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/menus"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/data"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
@@ -52,6 +53,25 @@ var (
 	Version     = "0.0.0"
 	Development = true
 )
+
+// pluginRefAdapter adapts plugin.Manager to devserver.PluginRef.
+type pluginRefAdapter struct{ mgr plugin.Manager }
+
+func (a *pluginRefAdapter) GetDevPluginInfo(pluginID string) (bool, string, error) {
+	p, err := a.mgr.GetPlugin(pluginID)
+	if err != nil {
+		return false, "", err
+	}
+	return p.DevMode, p.DevPath, nil
+}
+
+// pluginReloaderAdapter adapts plugin.Manager to devserver.PluginReloader.
+type pluginReloaderAdapter struct{ mgr plugin.Manager }
+
+func (a *pluginReloaderAdapter) ReloadPlugin(id string) error {
+	_, err := a.mgr.ReloadPlugin(id)
+	return err
+}
 
 //nolint:funlen // main function is expected to be long
 func main() {
@@ -106,6 +126,17 @@ func main() {
 		pluginRegistryClient,
 	)
 
+	devServerManager := devserver.NewDevServerManager(
+		log,
+		&pluginRefAdapter{mgr: pluginManager},
+		&pluginReloaderAdapter{mgr: pluginManager},
+		settingsProvider,
+	)
+
+	// Wire the dev server checker into the plugin manager so the old watcher
+	// skips plugins managed by DevServerManager.
+	pluginManager.SetDevServerChecker(devServerManager)
+
 	// Create an instance of the app structure
 	app := NewApp()
 	startup := func(ctx context.Context) {
@@ -133,6 +164,7 @@ func main() {
 			log.Errorw("error while initializing plugin system", "error", err)
 		}
 		pluginManager.Run(ctx)
+		devServerManager.Initialize(ctx)
 		runtime.MenuSetApplicationMenu(ctx, menus.GetMenus(ctx))
 	}
 
@@ -161,6 +193,7 @@ func main() {
 		OnDomReady:    app.domReady,
 		OnBeforeClose: app.beforeClose,
 		OnShutdown: func(_ context.Context) {
+			devServerManager.Shutdown()
 			pluginManager.Shutdown()
 		},
 		WindowStartState: options.Normal,
@@ -174,6 +207,7 @@ func main() {
 
 			// plugin system
 			pluginManager,
+			devServerManager,
 			resourceClient,
 			settingsClient,
 			execClient,

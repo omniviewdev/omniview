@@ -1,8 +1,13 @@
 package sdk
 
 import (
+	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
@@ -153,7 +158,89 @@ func GRPCDialOptions() []grpc.DialOption {
 
 // Serve begins serving the plugin over the given RPC server. This should be called
 // after all capabilities have been registered.
+//
+// When the OMNIVIEW_DEV environment variable is set to "1", the function will:
+//   - Intercept the go-plugin handshake line from stdout to capture the listen address
+//   - Write a .devinfo file so the IDE can connect via ReattachConfig
+//   - Register a signal handler to clean up .devinfo on graceful shutdown
 func (p *Plugin) Serve() {
+	isDev := os.Getenv("OMNIVIEW_DEV") == "1"
+	if !isDev {
+		p.serveNormal()
+		return
+	}
+
+	// Register cleanup handler for graceful shutdown.
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		_ = CleanupDevInfo(p.meta.ID)
+		os.Exit(0)
+	}()
+
+	// Intercept stdout to capture the go-plugin handshake line.
+	origStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		p.Logger.Errorw("failed to create pipe for dev info capture", "error", err)
+		p.serveNormal()
+		return
+	}
+
+	os.Stdout = w
+
+	// Start serving in a goroutine.
+	done := make(chan struct{})
+	go func() {
+		plugin.Serve(&plugin.ServeConfig{
+			HandshakeConfig: p.meta.GenerateHandshakeConfig(),
+			Plugins:         p.pluginMap,
+			GRPCServer:      GRPCServerFactory,
+			Logger: hclog.New(&hclog.LoggerOptions{
+				Name:  "plugin",
+				Level: hclog.Debug,
+			}),
+		})
+		close(done)
+	}()
+
+	// Read the handshake line from the pipe.
+	buf := make([]byte, 4096)
+	n, readErr := r.Read(buf)
+
+	// Restore stdout immediately.
+	os.Stdout = origStdout
+
+	if readErr != nil {
+		p.Logger.Errorw("failed to read handshake line", "error", readErr)
+	} else {
+		handshakeLine := string(buf[:n])
+		// Write it to real stdout so go-plugin host can read it.
+		fmt.Print(handshakeLine)
+
+		// Parse vite port from env (set by CLI tool or manually).
+		vitePort := 0
+		if vp := os.Getenv("OMNIVIEW_VITE_PORT"); vp != "" {
+			vitePort, _ = strconv.Atoi(vp)
+		}
+
+		if err := WriteDevInfo(p.meta.ID, p.meta.Version, strings.TrimSpace(handshakeLine), vitePort); err != nil {
+			p.Logger.Errorw("failed to write devinfo", "error", err)
+		} else {
+			p.Logger.Infow("wrote .devinfo file",
+				"pluginID", p.meta.ID,
+				"handshake", strings.TrimSpace(handshakeLine),
+			)
+		}
+	}
+
+	// Wait for serve to complete.
+	<-done
+	_ = CleanupDevInfo(p.meta.ID)
+}
+
+func (p *Plugin) serveNormal() {
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: p.meta.GenerateHandshakeConfig(),
 		Plugins:         p.pluginMap,

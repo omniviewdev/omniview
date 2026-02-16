@@ -37,6 +37,7 @@ import { exec, logs } from '@omniviewdev/runtime/models';
 import { ExecClient, LogsClient } from '@omniviewdev/runtime/api';
 
 import { bottomDrawerChannel } from './events';
+import { devToolsChannel } from '@/features/devtools/events';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
 
 type TabContextMenuProps = {
@@ -225,10 +226,29 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
       closeTab({ id: sessionId });
     });
 
+    const unsubscribeOpenBuildOutput = devToolsChannel.on('onOpenBuildOutput', (pluginId) => {
+      const tabId = `devbuild-${pluginId}`;
+      const existing = tabs.find(
+        (tab) => tab.variant === 'devbuild' && tab.id === tabId,
+      );
+
+      if (existing) {
+        focusTab({ id: existing.id });
+      } else {
+        createTab({
+          id: tabId,
+          title: `Build: ${pluginId}`,
+          variant: 'devbuild',
+          icon: 'LuHammer',
+        });
+      }
+    });
+
     return () => {
       unsubscribeCreateSession();
       unsubscribeCreateLogSession();
       unsubscribeSessionClosed();
+      unsubscribeOpenBuildOutput();
     };
   }, [tabs]);
 

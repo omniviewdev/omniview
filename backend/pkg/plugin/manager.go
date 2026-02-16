@@ -102,6 +102,10 @@ type Manager interface {
 
 	// ListPlugins returns a list of all plugins that are currently registered with the manager.
 	ListPluginMetas() []config.PluginMeta
+
+	// SetDevServerChecker sets the dev server checker used to skip the old
+	// rebuild pipeline for plugins managed by the DevServerManager.
+	SetDevServerChecker(checker DevServerChecker)
 }
 
 // NewManager returns a new plugin manager for the IDE to use to manager installed plugins.
@@ -155,6 +159,12 @@ func NewManager(
 	}
 }
 
+// DevServerChecker allows the plugin manager to check if a plugin is managed
+// by the dev server system, without importing the devserver package.
+type DevServerChecker interface {
+	IsManaged(pluginID string) bool
+}
+
 // concrete implementation of the plugin manager.
 type pluginManager struct {
 	ctx                 context.Context
@@ -167,7 +177,8 @@ type pluginManager struct {
 	settingsProvider    pkgsettings.Provider
 	registryClient      *registry.RegistryClient
 	// extendable amount of plugin managers
-	managers map[string]plugintypes.PluginManager
+	managers       map[string]plugintypes.PluginManager
+	devServerCheck DevServerChecker
 }
 
 // Run starts until the the passed in context is cancelled.
@@ -187,6 +198,12 @@ func (pm *pluginManager) Shutdown() {
 	for _, plugin := range pm.plugins {
 		pm.shutdownPlugin(&plugin)
 	}
+}
+
+// SetDevServerChecker sets the dev server checker. Call this after both the
+// plugin manager and dev server manager are created.
+func (pm *pluginManager) SetDevServerChecker(checker DevServerChecker) {
+	pm.devServerCheck = checker
 }
 
 func (pm *pluginManager) Initialize(ctx context.Context) error {

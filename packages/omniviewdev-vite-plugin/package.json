@@ -1,0 +1,51 @@
+{
+  "name": "@omniviewdev/vite-plugin",
+  "version": "0.0.1",
+  "description": "Vite plugin for Omniview plugin development. Redirects shared dependency imports to the host app's singleton instances via window.__OMNIVIEW_SHARED__.",
+  "license": "AGPL-3.0-only",
+  "author": "Omniview",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "shims"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "generate-shims": "tsx scripts/generate-shims.ts",
+    "prepublishOnly": "pnpm run build"
+  },
+  "repository": {
+    "type": "git",
+    "directory": "packages/omniviewdev-vite-plugin",
+    "url": "https://github.com/omniviewdev/omniview.git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "keywords": [
+    "omniview",
+    "vite",
+    "plugin",
+    "shared-dependencies"
+  ],
+  "dependencies": {},
+  "devDependencies": {
+    "tsup": "^8.0.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.8.3",
+    "vite": "^5.2.0"
+  },
+  "peerDependencies": {
+    "vite": ">=5.0.0"
+  }
+}

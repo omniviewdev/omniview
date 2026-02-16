@@ -2,7 +2,13 @@ import React from 'react';
 
 // ensure we preload deps first before anything
 import { preloadSharedDeps } from './features/plugins/api/preloader';
-preloadSharedDeps()
+preloadSharedDeps();
+
+// In dev mode, eagerly export shared deps to window.__OMNIVIEW_SHARED__
+// so that dev-mode plugins (loaded via native ESM from Vite) get the host's
+// singleton instances of React, MUI, etc.
+import { initDevSharedDeps } from './features/plugins/api/devSharedReady';
+initDevSharedDeps(import.meta.env.DEV);
 
 import { Provider } from 'react-redux';
 import { store } from './store/store';

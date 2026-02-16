@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { omniviewExternals } from "@omniviewdev/vite-plugin";
 
 const external = [
   // DND Kit
@@ -65,22 +66,22 @@ const external = [
   "@omniviewdev/runtime/api",
   "@omniviewdev/runtime/models",
   "@omniviewdev/runtime/runtime",
-]
+];
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
+    omniviewExternals(),
   ],
   server: {
+    host: '127.0.0.1',
     port: 15173,
     cors: true,
-    origin: "http://localhost:15173",
-    strictPort: true,
+    strictPort: false,
     hmr: {
       protocol: "ws",
-      host: "localhost",
-      port: 15173,
+      host: "127.0.0.1",
     },
   },
   build: {
@@ -93,15 +94,9 @@ export default defineConfig({
         chunkFileNames: "assets/[name].js",
         assetFileNames: "assets/[name].[ext]",
         format: 'system',
-      },      // Keep exports as defined in source
+      },
       preserveEntrySignatures: 'exports-only',
       external,
-      // external: (id) => {
-      //   const match = external.some(pkg => id === pkg || id.startsWith(pkg))
-      //   if (match) console.log(`EXTERNAL: ${id}`)
-      //   return match
-      // }
     }
   },
 });
-

@@ -11,6 +11,7 @@ import { useTheme } from '@mui/joy';
 import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
 import TerminalContainer from '@/providers/BottomDrawer/containers/Terminal';
 import LogViewerContainer from '@/providers/BottomDrawer/containers/LogViewer';
+import DevBuildOutput from '@/providers/BottomDrawer/containers/DevBuildOutput';
 import { useBottomDrawer } from '@omniviewdev/runtime';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
@@ -294,7 +295,9 @@ const BottomDrawerContainer: React.FC = () => {
                   overflow: 'hidden',
                 }}
               >
-                {tab.variant === 'logs' ? (
+                {tab.variant === 'devbuild' ? (
+                  <DevBuildOutput pluginId={tab.id} />
+                ) : tab.variant === 'logs' ? (
                   <LogViewerContainerMemo sessionId={tab.id} />
                 ) : (
                   <TerminalContainerMemo sessionId={tab.id} />

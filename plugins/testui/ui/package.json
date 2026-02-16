@@ -54,6 +54,7 @@
     "eslint-plugin-storybook": "^0.8.0",
     "storybook": "^8.0.4",
     "typescript": "^5.2.2",
+    "@omniviewdev/vite-plugin": "workspace:*",
     "vite": "^5.2.0"
   }
 }
