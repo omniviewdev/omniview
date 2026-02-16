@@ -16,6 +16,7 @@ import (
 	"github.com/omniview/kubernetes/pkg/utils/kubeauth"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -278,7 +279,7 @@ func CheckConnectionFunc(
 	}
 
 	// our check is simply if we can get all the server groups
-	_, err := client.DiscoveryClient.ServerGroups()
+	groups, err := client.DiscoveryClient.ServerGroups()
 	if err != nil {
 		switch {
 		case k8serrors.IsUnauthorized(err):
@@ -323,10 +324,51 @@ func CheckConnectionFunc(
 		return result, nil
 	}
 
+	// Enrich connection data with cluster metadata (best-effort)
+	enrichConnectionData(conn, client, groups)
+
 	// wait for an informer cache sync so that we don't get a bunch of empty resources
 	result.Status = types.ConnectionStatusConnected
 	result.Details = "Connection is valid"
 	return result, nil
+}
+
+// enrichConnectionData populates conn.Data with cluster metadata discovered on
+// successful connection. This data is persisted by the backend controller and
+// available to the UI even when the cluster is not currently connected.
+func enrichConnectionData(
+	conn *types.Connection,
+	client *clients.ClientSet,
+	groups *metav1.APIGroupList,
+) {
+	if conn.Data == nil {
+		conn.Data = make(map[string]interface{})
+	}
+
+	// Server URL from the resolved REST config
+	if client.RESTConfig != nil && client.RESTConfig.Host != "" {
+		conn.Data["server_url"] = client.RESTConfig.Host
+	}
+
+	// API group count from already-fetched ServerGroups
+	if groups != nil {
+		conn.Data["api_groups"] = len(groups.Groups)
+	}
+
+	// Kubernetes version and platform
+	if info, verErr := client.DiscoveryClient.ServerVersion(); verErr == nil && info != nil {
+		conn.Data["k8s_version"] = info.GitVersion
+		conn.Data["k8s_platform"] = info.Platform
+	}
+
+	// Node count (best-effort — may fail with restricted RBAC)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if nodeList, nodeErr := client.Clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{}); nodeErr == nil {
+		conn.Data["node_count"] = len(nodeList.Items)
+	}
+
+	conn.Data["last_checked"] = time.Now().UTC().Format(time.RFC3339)
 }
 
 func connectionsFromKubeconfig(kubeconfigPath string) ([]types.Connection, error) {

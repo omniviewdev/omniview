@@ -5,17 +5,35 @@ import {
   Button,
   Card,
   CardContent,
-  Divider,
+  Chip,
   FormControl,
   FormLabel,
+  Grid,
   IconButton,
   Input,
-  Sheet,
   Stack,
+  Tab,
+  TabList,
+  TabPanel,
+  Tabs,
   Textarea,
   Typography,
 } from '@mui/joy';
-import { LuArrowLeft, LuSave } from 'react-icons/lu';
+import {
+  LuArrowLeft,
+  LuCircle,
+  LuCpu,
+  LuFileText,
+  LuGlobe,
+  LuKey,
+  LuLayers,
+  LuBox,
+  LuRefreshCw,
+  LuSave,
+  LuServer,
+  LuTag,
+  LuUser,
+} from 'react-icons/lu';
 import {
   usePluginContext,
   useConnection,
@@ -69,6 +87,13 @@ const ClusterEditPage: React.FC = () => {
 
   const handleBack = () => navigate('/');
 
+  const connected = React.useMemo(() => {
+    if (!conn) return false;
+    const refreshTime = new Date(conn.last_refresh);
+    if (refreshTime.toString() === 'Invalid Date') return false;
+    return (refreshTime.getTime() + conn.expiry_time) > Date.now();
+  }, [conn]);
+
   const formatTime = (timestamp: any): string => {
     if (!timestamp) return 'Never';
     const date = new Date(timestamp);
@@ -86,12 +111,10 @@ const ClusterEditPage: React.FC = () => {
   return (
     <Stack
       direction='column'
-      gap={2}
-      p={2}
-      sx={{ width: '100%', height: '100%', overflow: 'auto' }}
+      sx={{ width: '100%', height: '100%', overflow: 'hidden' }}
     >
       {/* Header */}
-      <Stack direction='row' alignItems='center' gap={1}>
+      <Stack direction='row' alignItems='center' gap={1} sx={{ px: 2, pt: 2, pb: 1 }}>
         <IconButton size='sm' variant='plain' onClick={handleBack}>
           <LuArrowLeft size={20} />
         </IconButton>
@@ -99,6 +122,14 @@ const ClusterEditPage: React.FC = () => {
         <Typography level='body-sm' sx={{ opacity: 0.6 }}>
           {connectionId}
         </Typography>
+        <Chip
+          size='sm'
+          variant='soft'
+          color={connected ? 'success' : 'neutral'}
+          startDecorator={<LuCircle size={8} fill='currentColor' />}
+        >
+          {connected ? 'Connected' : 'Disconnected'}
+        </Chip>
         <Box sx={{ flex: 1 }} />
         <Button
           size='sm'
@@ -114,89 +145,188 @@ const ClusterEditPage: React.FC = () => {
         </Button>
       </Stack>
 
-      <Divider />
+      {/* Tabs */}
+      <Tabs
+        defaultValue='general'
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          '& > [hidden]': { display: 'none !important', flex: 'none' },
+        }}
+      >
+        <TabList
+          size='sm'
+          sx={{
+            px: 1,
+            pt: 0.5,
+            gap: 0.5,
+            '--ListItem-radius': '6px',
+          }}
+        >
+          <Tab value='general' variant='soft'>General</Tab>
+        </TabList>
 
-      {/* Identity section */}
-      <Card variant='outlined'>
-        <CardContent>
-          <Typography level='title-md' sx={{ mb: 2 }}>Identity</Typography>
-          <Stack direction='row' gap={3} alignItems='flex-start'>
-            <AvatarEditor
-              name={displayName || conn?.name || connectionId}
-              avatarUrl={avatarUrl}
-              avatarColor={avatarColor}
-              onAvatarUrlChange={setAvatarUrl}
-              onAvatarColorChange={setAvatarColor}
-            />
-            <Stack gap={2} sx={{ flex: 1 }}>
-              <FormControl>
-                <FormLabel>Display Name</FormLabel>
-                <Input
-                  size='sm'
-                  placeholder={conn?.name ?? 'Enter display name'}
-                  value={displayName}
-                  onChange={e => setDisplayName(e.target.value)}
+        <TabPanel
+          value='general'
+          sx={{ p: 2, flex: 1, minHeight: 0, overflow: 'auto' }}
+        >
+          <Stack direction='column' gap={2}>
+            {/* Identity section */}
+            <Card variant='outlined'>
+              <CardContent>
+                <Typography level='title-md' sx={{ mb: 2 }}>Identity</Typography>
+                <Stack direction='row' gap={3} alignItems='flex-start'>
+                  <AvatarEditor
+                    name={displayName || conn?.name || connectionId}
+                    avatarUrl={avatarUrl}
+                    avatarColor={avatarColor}
+                    onAvatarUrlChange={setAvatarUrl}
+                    onAvatarColorChange={setAvatarColor}
+                  />
+                  <Stack gap={2} sx={{ flex: 1 }}>
+                    <FormControl>
+                      <FormLabel>Display Name</FormLabel>
+                      <Input
+                        size='sm'
+                        placeholder={conn?.name ?? 'Enter display name'}
+                        value={displayName}
+                        onChange={e => setDisplayName(e.target.value)}
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Description</FormLabel>
+                      <Textarea
+                        size='sm'
+                        minRows={2}
+                        maxRows={4}
+                        placeholder='Optional description for this cluster'
+                        value={description}
+                        onChange={e => setDescription(e.target.value)}
+                      />
+                    </FormControl>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+
+            {/* Tags section */}
+            <Card variant='outlined'>
+              <CardContent>
+                <Typography level='title-md' sx={{ mb: 1 }}>Tags</Typography>
+                <Typography level='body-sm' sx={{ mb: 1.5, opacity: 0.7 }}>
+                  Organize clusters by environment, team, or any custom category.
+                </Typography>
+                <TagInput
+                  tags={tags}
+                  availableTags={availableTags}
+                  onChange={setTags}
                 />
-              </FormControl>
-              <FormControl>
-                <FormLabel>Description</FormLabel>
-                <Textarea
-                  size='sm'
-                  minRows={2}
-                  maxRows={4}
-                  placeholder='Optional description for this cluster'
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                />
-              </FormControl>
-            </Stack>
+              </CardContent>
+            </Card>
+
+            {/* Cluster info + Connection side-by-side */}
+            {conn && (
+              <Grid container spacing={2}>
+                {/* Cluster info (discovered on connect) */}
+                <Grid xs={12} md={6}>
+                  <Card variant='outlined' sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Typography level='title-md' sx={{ mb: 1.5 }}>Cluster Info</Typography>
+                      <Grid container spacing={1}>
+                        <Grid xs={12}>
+                          <InfoCell icon={<LuGlobe size={14} />} label='Server' value={String(conn.data?.server_url ?? conn.labels?.server ?? '-')} />
+                        </Grid>
+                        <Grid xs={6}>
+                          <InfoCell icon={<LuTag size={14} />} label='K8s Version' value={String(conn.data?.k8s_version ?? '-')} />
+                        </Grid>
+                        <Grid xs={6}>
+                          <InfoCell icon={<LuCpu size={14} />} label='Platform' value={String(conn.data?.k8s_platform ?? '-')} />
+                        </Grid>
+                        <Grid xs={6}>
+                          <InfoCell icon={<LuServer size={14} />} label='Nodes' value={conn.data?.node_count != null ? String(conn.data.node_count) : '-'} />
+                        </Grid>
+                        <Grid xs={6}>
+                          <InfoCell icon={<LuLayers size={14} />} label='API Groups' value={conn.data?.api_groups != null ? String(conn.data.api_groups) : '-'} />
+                        </Grid>
+                        <Grid xs={12}>
+                          <InfoCell icon={<LuRefreshCw size={14} />} label='Last Checked' value={conn.data?.last_checked ? formatTime(conn.data.last_checked) : '-'} />
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* Connection config (from kubeconfig) */}
+                <Grid xs={12} md={6}>
+                  <Card variant='outlined' sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Typography level='title-md' sx={{ mb: 1.5 }}>Connection</Typography>
+                      <Grid container spacing={1}>
+                        <Grid xs={6}>
+                          <InfoCell icon={<LuBox size={14} />} label='Context' value={conn.id} />
+                        </Grid>
+                        <Grid xs={6}>
+                          <InfoCell icon={<LuServer size={14} />} label='Cluster' value={String(conn.labels?.cluster ?? conn.data?.cluster ?? '-')} />
+                        </Grid>
+                        <Grid xs={12}>
+                          <InfoCell icon={<LuFileText size={14} />} label='Kubeconfig' value={String(conn.labels?.kubeconfig ?? conn.data?.kubeconfig ?? '-')} />
+                        </Grid>
+                        <Grid xs={6}>
+                          <InfoCell icon={<LuUser size={14} />} label='User' value={String(conn.labels?.user ?? conn.data?.user ?? '-')} />
+                        </Grid>
+                        <Grid xs={6}>
+                          <InfoCell icon={<LuKey size={14} />} label='Auth Method' value={String(conn.labels?.auth_method ?? '-')} />
+                        </Grid>
+                        <Grid xs={6}>
+                          <InfoCell icon={<LuLayers size={14} />} label='Namespace' value={String(conn.data?.namespace ?? '(default)')} />
+                        </Grid>
+                        <Grid xs={6}>
+                          <InfoCell icon={<LuRefreshCw size={14} />} label='Last Refresh' value={formatTime(conn.last_refresh)} />
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            )}
           </Stack>
-        </CardContent>
-      </Card>
-
-      {/* Tags section */}
-      <Card variant='outlined'>
-        <CardContent>
-          <Typography level='title-md' sx={{ mb: 1 }}>Tags</Typography>
-          <Typography level='body-sm' sx={{ mb: 1.5, opacity: 0.7 }}>
-            Organize clusters by environment, team, or any custom category.
-          </Typography>
-          <TagInput
-            tags={tags}
-            availableTags={availableTags}
-            onChange={setTags}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Connection details (read-only) */}
-      {conn && (
-        <Card variant='outlined'>
-          <CardContent>
-            <Typography level='title-md' sx={{ mb: 2 }}>Connection Details</Typography>
-            <Sheet variant='soft' sx={{ borderRadius: 'sm', p: 2 }}>
-              <Stack gap={1.5}>
-                <DetailRow label='Connection ID' value={conn.id} />
-                <DetailRow label='Cluster' value={String(conn.labels?.cluster ?? conn.data?.cluster ?? '-')} />
-                <DetailRow label='Kubeconfig' value={String(conn.labels?.kubeconfig ?? conn.data?.kubeconfig ?? '-')} />
-                <DetailRow label='User' value={String(conn.labels?.user ?? conn.data?.user ?? '-')} />
-                <DetailRow label='Namespace' value={String(conn.data?.namespace ?? '(default)')} />
-                <DetailRow label='Last Refresh' value={formatTime(conn.last_refresh)} />
-              </Stack>
-            </Sheet>
-          </CardContent>
-        </Card>
-      )}
+        </TabPanel>
+      </Tabs>
     </Stack>
   );
 };
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function InfoCell({ icon, label, value }: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  const empty = value === '-';
   return (
-    <Stack direction='row' gap={2}>
-      <Typography level='body-sm' fontWeight={600} sx={{ minWidth: 120 }}>{label}</Typography>
-      <Typography level='body-sm' sx={{ wordBreak: 'break-all' }}>{value}</Typography>
-    </Stack>
+    <Box sx={{
+      borderRadius: 'sm',
+      bgcolor: 'background.level1',
+      px: 1.5,
+      py: 1,
+    }}>
+      <Stack direction='row' gap={0.75} alignItems='center' sx={{ mb: 0.25 }}>
+        <Box sx={{ color: 'text.tertiary', display: 'flex' }}>{icon}</Box>
+        <Typography level='body-xs' sx={{ color: 'text.tertiary' }}>{label}</Typography>
+      </Stack>
+      <Typography
+        level='body-sm'
+        fontWeight={500}
+        sx={{
+          wordBreak: 'break-all',
+          opacity: empty ? 0.4 : 1,
+          fontStyle: empty ? 'italic' : undefined,
+        }}
+      >
+        {empty ? 'Not discovered' : value}
+      </Typography>
+    </Box>
   );
 }
 

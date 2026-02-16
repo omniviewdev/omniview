@@ -2,8 +2,7 @@ import React from 'react';
 import { Avatar, Box, Button, Stack, Typography } from '@mui/joy';
 import { LuUpload, LuPalette, LuRotateCcw } from 'react-icons/lu';
 import { PRESET_COLORS } from '../../utils/folderIcons';
-import { getInitials } from '../../utils/avatarUtils';
-import { processImageFile } from '../../utils/avatarUtils';
+import { getInitials, processImageFile } from '../../utils/avatarUtils';
 import { stringToColor } from '../../utils/color';
 
 type AvatarEditorProps = {
@@ -68,50 +67,67 @@ const AvatarEditor: React.FC<AvatarEditorProps> = ({
   };
 
   return (
-    <Stack gap={1.5} sx={{ minWidth: 200 }}>
-      {/* Preview */}
+    <Stack alignItems='center' gap={1.5} sx={{ minWidth: 180 }}>
+      {/* Preview with drag-drop and hover overlay */}
       <Box
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         sx={{
-          width: 80,
-          height: 80,
+          position: 'relative',
+          width: 96,
+          height: 96,
           borderRadius: 'sm',
           border: dragOver ? '2px dashed' : '2px solid transparent',
           borderColor: dragOver ? 'primary.500' : 'transparent',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           transition: 'border-color 0.15s',
         }}
       >
         {avatarUrl ? (
           <Avatar
             src={avatarUrl}
-            sx={{ width: 80, height: 80, borderRadius: 'sm', '--Avatar-size': '80px' }}
+            sx={{ width: 96, height: 96, borderRadius: 'sm', '--Avatar-size': '96px' }}
           />
         ) : (
           <Avatar
             sx={{
-              width: 80,
-              height: 80,
+              width: 96,
+              height: 96,
               borderRadius: 'sm',
               bgcolor: bgColor,
-              fontSize: '1.5rem',
-              '--Avatar-size': '80px',
+              fontSize: '1.75rem',
+              '--Avatar-size': '96px',
             }}
           >
             {initials}
           </Avatar>
         )}
+        {/* Hover overlay */}
+        <Box
+          onClick={() => fileInputRef.current?.click()}
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 'sm',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: 'rgba(0,0,0,0.4)',
+            opacity: 0,
+            '&:hover': { opacity: 1 },
+            transition: 'opacity 0.2s',
+            cursor: 'pointer',
+          }}
+        >
+          <LuUpload size={24} color='white' />
+        </Box>
       </Box>
 
       {/* Actions */}
-      <Stack direction='row' gap={0.5} flexWrap='wrap'>
+      <Stack direction='row' gap={0.75}>
         <Button
           size='sm'
-          variant='soft'
+          variant='outlined'
           color='neutral'
           startDecorator={<LuUpload size={14} />}
           onClick={() => fileInputRef.current?.click()}
@@ -120,7 +136,7 @@ const AvatarEditor: React.FC<AvatarEditorProps> = ({
         </Button>
         <Button
           size='sm'
-          variant={showColors ? 'solid' : 'soft'}
+          variant={showColors ? 'solid' : 'outlined'}
           color={showColors ? 'primary' : 'neutral'}
           startDecorator={<LuPalette size={14} />}
           onClick={() => setShowColors(v => !v)}
@@ -130,7 +146,7 @@ const AvatarEditor: React.FC<AvatarEditorProps> = ({
         {(avatarUrl || avatarColor) && (
           <Button
             size='sm'
-            variant='soft'
+            variant='outlined'
             color='neutral'
             startDecorator={<LuRotateCcw size={14} />}
             onClick={handleReset}
@@ -150,14 +166,14 @@ const AvatarEditor: React.FC<AvatarEditorProps> = ({
 
       {/* Color swatches */}
       {showColors && (
-        <Stack direction='row' gap={0.5} flexWrap='wrap'>
+        <Stack direction='row' gap={0.75} flexWrap='wrap' justifyContent='center'>
           {PRESET_COLORS.map(color => (
             <Box
               key={color}
               onClick={() => handleColorPick(color)}
               sx={{
-                width: 24,
-                height: 24,
+                width: 28,
+                height: 28,
                 borderRadius: '50%',
                 bgcolor: color,
                 cursor: 'pointer',
