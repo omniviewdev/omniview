@@ -1,0 +1,96 @@
+{
+  "id": "aws",
+  "version": "0.1.0",
+  "name": "AWS",
+  "icon": "https://yt3.googleusercontent.com/HRJKaJg70sqBrCNh7Tf2RSjXTb_5hCUn7Hht7mxUJMg77EWkihh55JklD-KhwAMhwY31ox5O=s900-c-k-c0x00ffffff-no-rj",
+  "description": "Amazon Web Services (AWS) is the world's most comprehensive and broadly adopted cloud, offering over 200 fully featured services from data centers globally",
+  "repository": "github.com/omniviewdev/omniview/plugins/aws",
+  "website": "https://aws.amazon.com/",
+  "maintainers": [
+    {
+      "name": "Omniview Maintainers",
+      "email": "info@omniview.dev"
+    }
+  ],
+  "tags": [
+    "aws",
+    "cloud"
+  ],
+  "capabilities": [
+    "ui",
+    "resource"
+  ],
+  "theme": {
+    "colors": {
+      "primary": "#FF9900"
+    }
+  },
+  "components": {
+    "resource": [
+      {
+        "name": "EC2InstanceSidebar",
+        "plugin": "aws",
+        "area": "SIDEBAR",
+        "resources": [
+          "ec2::v1::Instance"
+        ]
+      },
+      {
+        "name": "VPCSidebar",
+        "plugin": "aws",
+        "area": "SIDEBAR",
+        "resources": [
+          "vpc::v1::VPC"
+        ]
+      },
+      {
+        "name": "SecurityGroupSidebar",
+        "plugin": "aws",
+        "area": "SIDEBAR",
+        "resources": [
+          "vpc::v1::SecurityGroup"
+        ]
+      },
+      {
+        "name": "S3BucketSidebar",
+        "plugin": "aws",
+        "area": "SIDEBAR",
+        "resources": [
+          "s3::v1::Bucket"
+        ]
+      },
+      {
+        "name": "RDSInstanceSidebar",
+        "plugin": "aws",
+        "area": "SIDEBAR",
+        "resources": [
+          "rds::v1::DBInstance"
+        ]
+      },
+      {
+        "name": "LambdaFunctionSidebar",
+        "plugin": "aws",
+        "area": "SIDEBAR",
+        "resources": [
+          "lambda::v1::Function"
+        ]
+      },
+      {
+        "name": "LoadBalancerSidebar",
+        "plugin": "aws",
+        "area": "SIDEBAR",
+        "resources": [
+          "elbv2::v1::LoadBalancer"
+        ]
+      },
+      {
+        "name": "EKSClusterSidebar",
+        "plugin": "aws",
+        "area": "SIDEBAR",
+        "resources": [
+          "eks::v1::Cluster"
+        ]
+      }
+    ]
+  }
+}
