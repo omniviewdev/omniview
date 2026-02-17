@@ -38,6 +38,8 @@ export function RemoveTarget(arg1:string):Promise<void>;
 
 export function Run(arg1:context.Context):Promise<void>;
 
+export function SetDevServerChecker(arg1:plugin.DevServerChecker):Promise<void>;
+
 export function Shutdown():Promise<void>;
 
 export function UninstallPlugin(arg1:string):Promise<types.Plugin>;

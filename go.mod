@@ -12,6 +12,7 @@ require (
 	github.com/nxadm/tail v1.4.11
 	github.com/omniviewdev/plugin-sdk v0.0.0-20240314004425-c2572eb4a1c1
 	github.com/omniviewdev/settings v0.0.0-00010101000000-000000000000
+	github.com/stretchr/testify v1.10.0
 	github.com/vrischmann/userdir v0.0.0-20151206171402-20f291cebd68
 	github.com/wailsapp/mimetype v1.4.1
 	github.com/wailsapp/wails/v2 v2.10.1
@@ -64,6 +65,7 @@ require (
 	github.com/onsi/gomega v1.36.1 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/samber/lo v1.49.1 // indirect
 	github.com/tkrajina/go-reflector v0.5.8 // indirect

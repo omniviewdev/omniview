@@ -169,6 +169,127 @@ export namespace config {
 
 }
 
+export namespace devserver {
+	
+	export class DevInfoFile {
+	    pid: number;
+	    protocol: string;
+	    protocolVersion: number;
+	    addr: string;
+	    vitePort?: number;
+	    pluginId?: string;
+	    version?: string;
+	    startedAt?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DevInfoFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pid = source["pid"];
+	        this.protocol = source["protocol"];
+	        this.protocolVersion = source["protocolVersion"];
+	        this.addr = source["addr"];
+	        this.vitePort = source["vitePort"];
+	        this.pluginId = source["pluginId"];
+	        this.version = source["version"];
+	        this.startedAt = source["startedAt"];
+	    }
+	}
+	export class DevServerState {
+	    pluginID: string;
+	    mode: string;
+	    devPath: string;
+	    vitePort: number;
+	    viteURL: string;
+	    viteStatus: string;
+	    goStatus: string;
+	    lastBuildDuration: number;
+	    // Go type: time
+	    lastBuildTime: any;
+	    lastError: string;
+	    grpcConnected: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DevServerState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pluginID = source["pluginID"];
+	        this.mode = source["mode"];
+	        this.devPath = source["devPath"];
+	        this.vitePort = source["vitePort"];
+	        this.viteURL = source["viteURL"];
+	        this.viteStatus = source["viteStatus"];
+	        this.goStatus = source["goStatus"];
+	        this.lastBuildDuration = source["lastBuildDuration"];
+	        this.lastBuildTime = this.convertValues(source["lastBuildTime"], null);
+	        this.lastError = source["lastError"];
+	        this.grpcConnected = source["grpcConnected"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class LogEntry {
+	    // Go type: time
+	    timestamp: any;
+	    source: string;
+	    level: string;
+	    message: string;
+	    pluginID: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = this.convertValues(source["timestamp"], null);
+	        this.source = source["source"];
+	        this.level = source["level"];
+	        this.message = source["message"];
+	        this.pluginID = source["pluginID"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace exec {
 	
 	export class Session {
