@@ -71,7 +71,7 @@ const NamespaceTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <NamespaceSidebar data={ctx.data || {}} />,
+        component: (ctx) => <NamespaceSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

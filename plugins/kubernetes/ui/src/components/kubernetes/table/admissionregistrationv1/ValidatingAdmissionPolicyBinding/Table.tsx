@@ -61,7 +61,7 @@ const ValidatingAdmissionPolicyBindingTable: React.FC = () => {
     title: resourceKey,
     icon: <LuLink2 />,
     views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ValidatingAdmissionPolicyBindingSidebar data={ctx.data} /> },
+      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ValidatingAdmissionPolicyBindingSidebar ctx={ctx} /> },
       { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data || {}} /> },
     ],
     actions: [

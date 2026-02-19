@@ -97,7 +97,7 @@ const ClusterRoleBindingTable: React.FC = () => {
     title: resourceKey,
     icon: <LuLink />,
     views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ClusterRoleBindingSidebar data={ctx.data} /> },
+      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ClusterRoleBindingSidebar ctx={ctx} /> },
       { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
     ],
     actions: [

@@ -70,6 +70,10 @@ export function SetDevServerChecker(arg1) {
   return window['go']['plugin']['pluginManager']['SetDevServerChecker'](arg1);
 }
 
+export function SetDevServerManager(arg1) {
+  return window['go']['plugin']['pluginManager']['SetDevServerManager'](arg1);
+}
+
 export function Shutdown() {
   return window['go']['plugin']['pluginManager']['Shutdown']();
 }

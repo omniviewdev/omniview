@@ -5,6 +5,7 @@ import {config} from '../models';
 import {registry} from '../models';
 import {context} from '../models';
 import {plugin} from '../models';
+import {devserver} from '../models';
 
 export function AddTarget(arg1:string):Promise<void>;
 
@@ -39,6 +40,8 @@ export function RemoveTarget(arg1:string):Promise<void>;
 export function Run(arg1:context.Context):Promise<void>;
 
 export function SetDevServerChecker(arg1:plugin.DevServerChecker):Promise<void>;
+
+export function SetDevServerManager(arg1:devserver.DevServerManager):Promise<void>;
 
 export function Shutdown():Promise<void>;
 

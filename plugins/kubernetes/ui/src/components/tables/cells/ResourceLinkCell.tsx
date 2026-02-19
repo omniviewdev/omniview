@@ -12,7 +12,7 @@ import get from 'lodash.get';
 
 // types
 import { type types } from '@omniviewdev/runtime/models';
-// import useRightDrawer from '@/hooks/useRightDrawer';
+import { useRightDrawer } from '@omniviewdev/runtime';
 import { type ResourceMetadata } from '../../../hooks/useResourceDefinition';
 
 type Props = types.ResourceLink & {
@@ -34,7 +34,7 @@ const ResourceLinkCell: React.FC<Props> = ({
   namespaced,
   displayId,
 }) => {
-  // const { showResourceSidebar } = useRightDrawer();
+  const { showResourceSidebar } = useRightDrawer();
 
   if (resourceKey === '') {
     resourceKey = get(value, keyAccessor, '');
@@ -58,21 +58,13 @@ const ResourceLinkCell: React.FC<Props> = ({
     e.stopPropagation();
     e.preventDefault();
 
-    console.log('opening resource sidebar', {
+    showResourceSidebar({
       pluginID: metadata.pluginID,
       connectionID: metadata.connectionID,
       resourceKey: keyMap ? keyMap[resourceKey] ?? resourceKey : resourceKey,
       resourceID,
       namespace,
     });
-
-    // showResourceSidebar({
-    //   pluginID: metadata.pluginID,
-    //   connectionID: metadata.connectionID,
-    //   resourceKey: keyMap ? keyMap[resourceKey] ?? resourceKey : resourceKey,
-    //   resourceID,
-    //   namespace,
-    // });
   };
 
   if (typeof value !== 'string' && !resourceKey) {

@@ -10,5 +10,7 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const buttonClasses = mod.buttonClasses;
+export const getButtonUtilityClass = mod.getButtonUtilityClass;
+
 export default mod.default !== undefined ? mod.default : mod;

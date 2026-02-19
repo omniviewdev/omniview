@@ -5,21 +5,24 @@ import Stack from "@mui/joy/Stack";
 
 // types
 import { RuntimeClass } from "kubernetes-types/node/v1";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 // project-imports
 import ObjectMetaSection from "../../../../../shared/ObjectMetaSection";
 
 interface Props {
-  data?: RuntimeClass;
+  ctx: DrawerContext<RuntimeClass>;
 }
 
 /**
  * Renders a sidebar for a RuntimeClass resource
  */
-export const RuntimeClassSidebar: React.FC<Props> = ({ data }) => {
-  if (!data) {
-    return (<></>)
+export const RuntimeClassSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
   }
+
+  const data = ctx.data;
 
   // compose your component here
   return (

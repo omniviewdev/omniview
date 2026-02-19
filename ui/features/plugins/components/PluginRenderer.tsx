@@ -1,5 +1,6 @@
 import React from 'react';
 import Box from '@mui/joy/Box';
+import { ErrorBoundary } from 'react-error-boundary';
 
 import { PluginContextProvider } from '@omniviewdev/runtime';
 import { Outlet, useLoaderData } from 'react-router-dom';
@@ -7,6 +8,7 @@ import { clearPlugin, loadAndRegisterPlugin } from '../api/loader';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
 import { type config } from '@omniviewdev/runtime/models';
 import PluginDevOverlay from '@/features/devtools/components/PluginDevOverlay';
+import { PanelErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
 
 export type PluginRendererProps = {}
 
@@ -32,21 +34,26 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
   const data = useLoaderData() as { pluginID: string } | undefined;
   const [reloadKey, setReloadKey] = React.useState(0);
 
+  console.debug(`[PluginRenderer] render`, { pluginID: data?.pluginID, reloadKey });
+
   React.useEffect(() => {
     if (!data?.pluginID) return;
 
+    console.debug(`[PluginRenderer] subscribing to dev_reload_complete`, { plugin: data.pluginID });
+
     const closer = EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
       if (meta.id === data.pluginID) {
+        console.debug(`[PluginRenderer] Go reload event for "${data.pluginID}" — clearing and re-importing`, { plugin: data.pluginID });
         // Go backend changed: clear old module, re-import, then re-mount
         // via key increment (NOT a full page refresh)
         clearPlugin({ pluginId: data.pluginID })
           .then(() => loadAndRegisterPlugin(data.pluginID))
           .then(() => {
             setReloadKey(k => k + 1);
-            console.log(`[plugin:${data.pluginID}] Go reload complete, re-mounting plugin`);
+            console.debug(`[PluginRenderer] Go reload complete for "${data.pluginID}" — re-mounting`, { plugin: data.pluginID });
           })
           .catch((error) => {
-            console.error(`[plugin:${data.pluginID}] Error during Go reload`, error);
+            console.error(error instanceof Error ? error : new Error(String(error)), { plugin: data.pluginID, event: 'go_reload' });
           });
       }
     });
@@ -57,15 +64,22 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
   }, [data?.pluginID]);
 
   if (!data?.pluginID) {
+    console.warn('[PluginRenderer] no pluginID in loader data');
     return <>No Plugin ID found</>;
   }
 
   return (
     <Box sx={{ position: 'relative', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <PluginDevOverlay pluginId={data.pluginID} />
-      <PluginContextProvider pluginId={data.pluginID} key={reloadKey}>
-        <Outlet />
-      </PluginContextProvider>
+      <ErrorBoundary
+        FallbackComponent={(props) => <PanelErrorFallback {...props} label={`Plugin: ${data.pluginID}`} boundary="Plugin Renderer" />}
+        onError={onBoundaryError}
+        resetKeys={[reloadKey]}
+      >
+        <PluginContextProvider pluginId={data.pluginID} key={reloadKey}>
+          <Outlet />
+        </PluginContextProvider>
+      </ErrorBoundary>
     </Box>
   );
 };

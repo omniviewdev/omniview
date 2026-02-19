@@ -2,6 +2,7 @@
 package resource
 
 import (
+	"github.com/omniview/kubernetes/pkg/plugin/helm"
 	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
 	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers"
 	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers/extras/benchmark"
@@ -239,6 +240,19 @@ var gvrMap = map[schema.GroupVersionResource]string{
 func Register(plugin *sdk.Plugin) {
 	logger := zap.S()
 
+	// Merge Helm resource definitions into the K8s definitions.
+	resourceDefs := make(map[string]types.ResourceDefinition, len(resourcers.ResourceDefs))
+	for k, v := range resourcers.ResourceDefs {
+		resourceDefs[k] = v
+	}
+	for k, v := range helm.HelmResourceDefinitions() {
+		resourceDefs[k] = v
+	}
+
+	// Helm resourcers.
+	helmSvc := helm.NewHelmService()
+	helmResourcers := helm.HelmResourcers(logger, helmSvc)
+
 	sdk.RegisterResourcePlugin(
 		plugin,
 		sdk.ResourcePluginOpts[clients.ClientSet]{
@@ -250,7 +264,7 @@ func Register(plugin *sdk.Plugin) {
 			CheckConnectionFunc:          CheckConnectionFunc,
 			CreateInformerFunc:           NewKubeInformerHandle,
 			ResourceGroups:               ResourceGroups,
-			ResourceDefinitions:          resourcers.ResourceDefs,
+			ResourceDefinitions:          resourceDefs,
 			DefaultResourceDefinition:    resourcers.DefaultResourceDef,
 			PatternResourcers: map[string]types.Resourcer[clients.ClientSet]{
 				"*": resourcers.NewKubernetesPatternResourcer(logger),
@@ -1153,6 +1167,10 @@ VolumeAttachment objects are non-namespaced.`,
 					logger,
           storagev1.SchemeGroupVersion.WithResource("volumeattachments"),
 				),
+
+				// Helm resourcers
+				helm.ReleaseMeta: helmResourcers[helm.ReleaseMeta],
+				helm.RepoMeta:    helmResourcers[helm.RepoMeta],
 			},
 		},
 	)

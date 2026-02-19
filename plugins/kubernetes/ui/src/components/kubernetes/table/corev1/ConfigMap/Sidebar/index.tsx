@@ -12,17 +12,21 @@ import { LuCode } from "react-icons/lu";
 import ExpandableSections from "../../../../../shared/ExpandableSections";
 import CodeEditor from "../../../../../shared/CodeEditor";
 import ObjectMetaSection from "../../../../../shared/ObjectMetaSection";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 interface Props {
-  data: object;
+  ctx: DrawerContext<ConfigMap>;
 }
 
 /**
  * Renders a sidebar for a ConfigMap resource
  */
-export const ConfigMapSidebar: React.FC<Props> = ({ data }) => {
-  // assert this is a ConfigMap
-  const configMap = data as ConfigMap;
+export const ConfigMapSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
+  }
+
+  const configMap = ctx.data;
 
   // compose your component here
   return (

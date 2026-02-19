@@ -10,5 +10,7 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const tooltipClasses = mod.tooltipClasses;
+export const getTooltipUtilityClass = mod.getTooltipUtilityClass;
+
 export default mod.default !== undefined ? mod.default : mod;

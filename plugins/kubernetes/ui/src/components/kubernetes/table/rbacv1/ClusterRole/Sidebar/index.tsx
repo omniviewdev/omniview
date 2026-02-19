@@ -5,21 +5,24 @@ import Stack from "@mui/joy/Stack";
 
 // types
 import { ClusterRole } from "kubernetes-types/rbac/v1";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 // project-imports
 import ObjectMetaSection from "../../../../../shared/ObjectMetaSection";
 
 interface Props {
-  data?: ClusterRole;
+  ctx: DrawerContext<ClusterRole>;
 }
 
 /**
  * Renders a sidebar for a ClusterRole resource
  */
-export const ClusterRoleSidebar: React.FC<Props> = ({ data }) => {
-  if (!data) {
-    return <></>
+export const ClusterRoleSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
   }
+
+  const data = ctx.data;
 
   // compose your component here
   return (

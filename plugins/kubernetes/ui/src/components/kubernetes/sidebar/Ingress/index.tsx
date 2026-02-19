@@ -8,6 +8,7 @@ import Typography from "@mui/joy/Typography";
 
 // types
 import { Ingress } from "kubernetes-types/networking/v1";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 // project-imports
 import ObjectMetaSection from "../../../shared/ObjectMetaSection";
@@ -18,15 +19,15 @@ import RuleTable from "./RuleTable";
 import { BrowserOpenURL } from "../../../../utils/ide";
 
 interface Props {
-  data: object;
+  ctx: DrawerContext<Ingress>;
 }
 
-export const IngressSidebar: React.FC<Props> = ({ data }) => {
-  if (!data) {
-    return <React.Fragment />;
+export const IngressSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
   }
 
-  const obj = data as Ingress;
+  const obj = ctx.data;
 
   // compose your component here
   return (

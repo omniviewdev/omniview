@@ -68,7 +68,7 @@ const SecretTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuBox />,
-        component: (ctx) => <SecretSidebar data={ctx.data} />
+        component: (ctx) => <SecretSidebar ctx={ctx} />
       },
       {
         title: 'Editor',

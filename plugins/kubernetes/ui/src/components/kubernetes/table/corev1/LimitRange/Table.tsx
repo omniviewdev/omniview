@@ -95,7 +95,7 @@ const LimitRangeTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <LimitRangeSidebar data={ctx.data || {}} />,
+        component: (ctx) => <LimitRangeSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

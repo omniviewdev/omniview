@@ -49,6 +49,9 @@ const (
 	ResourcePlugin_GetLayout_FullMethodName               = "/com.omniview.pluginsdk.ResourcePlugin/GetLayout"
 	ResourcePlugin_GetDefaultLayout_FullMethodName        = "/com.omniview.pluginsdk.ResourcePlugin/GetDefaultLayout"
 	ResourcePlugin_SetLayout_FullMethodName               = "/com.omniview.pluginsdk.ResourcePlugin/SetLayout"
+	ResourcePlugin_GetActions_FullMethodName              = "/com.omniview.pluginsdk.ResourcePlugin/GetActions"
+	ResourcePlugin_ExecuteAction_FullMethodName           = "/com.omniview.pluginsdk.ResourcePlugin/ExecuteAction"
+	ResourcePlugin_StreamAction_FullMethodName            = "/com.omniview.pluginsdk.ResourcePlugin/StreamAction"
 )
 
 // ResourcePluginClient is the client API for ResourcePlugin service.
@@ -88,6 +91,10 @@ type ResourcePluginClient interface {
 	GetLayout(ctx context.Context, in *GetLayoutRequest, opts ...grpc.CallOption) (*Layout, error)
 	GetDefaultLayout(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Layout, error)
 	SetLayout(ctx context.Context, in *SetLayoutRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Actions
+	GetActions(ctx context.Context, in *GetActionsRequest, opts ...grpc.CallOption) (*GetActionsResponse, error)
+	ExecuteAction(ctx context.Context, in *ExecuteActionRequest, opts ...grpc.CallOption) (*ExecuteActionResponse, error)
+	StreamAction(ctx context.Context, in *ExecuteActionRequest, opts ...grpc.CallOption) (ResourcePlugin_StreamActionClient, error)
 }
 
 type resourcePluginClient struct {
@@ -396,6 +403,56 @@ func (c *resourcePluginClient) SetLayout(ctx context.Context, in *SetLayoutReque
 	return out, nil
 }
 
+func (c *resourcePluginClient) GetActions(ctx context.Context, in *GetActionsRequest, opts ...grpc.CallOption) (*GetActionsResponse, error) {
+	out := new(GetActionsResponse)
+	err := c.cc.Invoke(ctx, ResourcePlugin_GetActions_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *resourcePluginClient) ExecuteAction(ctx context.Context, in *ExecuteActionRequest, opts ...grpc.CallOption) (*ExecuteActionResponse, error) {
+	out := new(ExecuteActionResponse)
+	err := c.cc.Invoke(ctx, ResourcePlugin_ExecuteAction_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *resourcePluginClient) StreamAction(ctx context.Context, in *ExecuteActionRequest, opts ...grpc.CallOption) (ResourcePlugin_StreamActionClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ResourcePlugin_ServiceDesc.Streams[2], ResourcePlugin_StreamAction_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &resourcePluginStreamActionClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ResourcePlugin_StreamActionClient interface {
+	Recv() (*StreamActionEvent, error)
+	grpc.ClientStream
+}
+
+type resourcePluginStreamActionClient struct {
+	grpc.ClientStream
+}
+
+func (x *resourcePluginStreamActionClient) Recv() (*StreamActionEvent, error) {
+	m := new(StreamActionEvent)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ResourcePluginServer is the server API for ResourcePlugin service.
 // All implementations should embed UnimplementedResourcePluginServer
 // for forward compatibility
@@ -433,6 +490,10 @@ type ResourcePluginServer interface {
 	GetLayout(context.Context, *GetLayoutRequest) (*Layout, error)
 	GetDefaultLayout(context.Context, *emptypb.Empty) (*Layout, error)
 	SetLayout(context.Context, *SetLayoutRequest) (*emptypb.Empty, error)
+	// Actions
+	GetActions(context.Context, *GetActionsRequest) (*GetActionsResponse, error)
+	ExecuteAction(context.Context, *ExecuteActionRequest) (*ExecuteActionResponse, error)
+	StreamAction(*ExecuteActionRequest, ResourcePlugin_StreamActionServer) error
 }
 
 // UnimplementedResourcePluginServer should be embedded to have forward compatible implementations.
@@ -522,6 +583,15 @@ func (UnimplementedResourcePluginServer) GetDefaultLayout(context.Context, *empt
 }
 func (UnimplementedResourcePluginServer) SetLayout(context.Context, *SetLayoutRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetLayout not implemented")
+}
+func (UnimplementedResourcePluginServer) GetActions(context.Context, *GetActionsRequest) (*GetActionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetActions not implemented")
+}
+func (UnimplementedResourcePluginServer) ExecuteAction(context.Context, *ExecuteActionRequest) (*ExecuteActionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExecuteAction not implemented")
+}
+func (UnimplementedResourcePluginServer) StreamAction(*ExecuteActionRequest, ResourcePlugin_StreamActionServer) error {
+	return status.Errorf(codes.Unimplemented, "method StreamAction not implemented")
 }
 
 // UnsafeResourcePluginServer may be embedded to opt out of forward compatibility for this service.
@@ -1045,6 +1115,63 @@ func _ResourcePlugin_SetLayout_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ResourcePlugin_GetActions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetActionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ResourcePluginServer).GetActions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ResourcePlugin_GetActions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ResourcePluginServer).GetActions(ctx, req.(*GetActionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ResourcePlugin_ExecuteAction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExecuteActionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ResourcePluginServer).ExecuteAction(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ResourcePlugin_ExecuteAction_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ResourcePluginServer).ExecuteAction(ctx, req.(*ExecuteActionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ResourcePlugin_StreamAction_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExecuteActionRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ResourcePluginServer).StreamAction(m, &resourcePluginStreamActionServer{stream})
+}
+
+type ResourcePlugin_StreamActionServer interface {
+	Send(*StreamActionEvent) error
+	grpc.ServerStream
+}
+
+type resourcePluginStreamActionServer struct {
+	grpc.ServerStream
+}
+
+func (x *resourcePluginStreamActionServer) Send(m *StreamActionEvent) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // ResourcePlugin_ServiceDesc is the grpc.ServiceDesc for ResourcePlugin service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1156,6 +1283,14 @@ var ResourcePlugin_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "SetLayout",
 			Handler:    _ResourcePlugin_SetLayout_Handler,
 		},
+		{
+			MethodName: "GetActions",
+			Handler:    _ResourcePlugin_GetActions_Handler,
+		},
+		{
+			MethodName: "ExecuteAction",
+			Handler:    _ResourcePlugin_ExecuteAction_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -1166,6 +1301,11 @@ var ResourcePlugin_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ListenForEvents",
 			Handler:       _ResourcePlugin_ListenForEvents_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "StreamAction",
+			Handler:       _ResourcePlugin_StreamAction_Handler,
 			ServerStreams: true,
 		},
 	},

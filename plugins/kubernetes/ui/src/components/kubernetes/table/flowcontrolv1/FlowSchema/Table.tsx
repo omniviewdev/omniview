@@ -81,7 +81,7 @@ const FlowSchemaTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <FlowSchemaSidebar data={ctx.data || {}} />,
+        component: (ctx) => <FlowSchemaSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

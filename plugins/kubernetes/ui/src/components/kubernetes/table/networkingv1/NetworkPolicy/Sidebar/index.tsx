@@ -5,21 +5,24 @@ import Stack from "@mui/joy/Stack";
 
 // types
 import { NetworkPolicy } from "kubernetes-types/networking/v1";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 // project-imports
 import ObjectMetaSection from "../../../../../shared/ObjectMetaSection";
 
 interface Props {
-  data?: NetworkPolicy;
+  ctx: DrawerContext<NetworkPolicy>;
 }
 
 /**
  * Renders a sidebar for a NetworkPolicy resource
  */
-export const NetworkPolicySidebar: React.FC<Props> = ({ data }) => {
-  if (!data) {
-    return <></>
+export const NetworkPolicySidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
   }
+
+  const data = ctx.data;
 
   // compose your component here
   return (

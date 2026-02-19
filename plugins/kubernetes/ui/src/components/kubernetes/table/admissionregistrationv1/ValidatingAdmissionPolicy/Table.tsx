@@ -48,7 +48,7 @@ const ValidatingAdmissionPolicyTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuBox />,
-        component: (ctx) => <ValidatingAdmissionPolicySidebar data={ctx.data} />
+        component: (ctx) => <ValidatingAdmissionPolicySidebar ctx={ctx} />
       },
       {
         title: 'Editor',

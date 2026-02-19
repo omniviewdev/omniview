@@ -206,11 +206,17 @@ func (s *ResourcePluginServer) GetResourceDefinition(
 		columnDefs = append(columnDefs, col.ToProto())
 	}
 
+	ops := make([]int32, 0, len(resp.SupportedOperations))
+	for _, op := range resp.SupportedOperations {
+		ops = append(ops, int32(op))
+	}
+
 	return &proto.ResourceDefinition{
-		IdAccessor:        resp.IDAccessor,
-		NamespaceAccessor: resp.NamespaceAccessor,
-		MemoAccessor:      resp.MemoizerAccessor,
-		ColumnDefs:        columnDefs,
+		IdAccessor:          resp.IDAccessor,
+		NamespaceAccessor:   resp.NamespaceAccessor,
+		MemoAccessor:        resp.MemoizerAccessor,
+		ColumnDefs:          columnDefs,
+		SupportedOperations: ops,
 	}, nil
 }
 
@@ -609,6 +615,131 @@ func (s *ResourcePluginServer) SetLayout(
 		return nil, status.Errorf(codes.Internal, "failed to set layout: %s", err.Error())
 	}
 	return &emptypb.Empty{}, nil
+}
+
+// ============================== Actions ============================== //
+
+func (s *ResourcePluginServer) GetActions(
+	ctx context.Context,
+	in *proto.GetActionsRequest,
+) (*proto.GetActionsResponse, error) {
+	pluginCtx, err := s.newCRUDContext(ctx, in.GetContext())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get connection: %s", err.Error())
+	}
+
+	actions, err := s.Impl.GetActions(pluginCtx, in.GetKey())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get actions: %s", err.Error())
+	}
+
+	protoActions := make([]*proto.ActionDescriptor, 0, len(actions))
+	for _, a := range actions {
+		scope := proto.ActionScope_ACTION_SCOPE_INSTANCE
+		if a.Scope == types.ActionScopeType {
+			scope = proto.ActionScope_ACTION_SCOPE_TYPE
+		}
+		protoActions = append(protoActions, &proto.ActionDescriptor{
+			Id:          a.ID,
+			Label:       a.Label,
+			Description: a.Description,
+			Icon:        a.Icon,
+			Scope:       scope,
+			Streaming:   a.Streaming,
+		})
+	}
+
+	return &proto.GetActionsResponse{Actions: protoActions}, nil
+}
+
+func (s *ResourcePluginServer) ExecuteAction(
+	ctx context.Context,
+	in *proto.ExecuteActionRequest,
+) (*proto.ExecuteActionResponse, error) {
+	pluginCtx, err := s.newCRUDContext(ctx, in.GetContext())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get connection: %s", err.Error())
+	}
+
+	input := types.ActionInput{
+		ID:        in.GetId(),
+		Namespace: in.GetNamespace(),
+	}
+	if in.GetParams() != nil {
+		input.Params = in.GetParams().AsMap()
+	}
+
+	result, err := s.Impl.ExecuteAction(pluginCtx, in.GetKey(), in.GetActionId(), input)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to execute action: %s", err.Error())
+	}
+
+	var data *structpb.Struct
+	if result.Data != nil {
+		data, err = structpb.NewStruct(result.Data)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to convert action result: %s", err.Error())
+		}
+	}
+
+	return &proto.ExecuteActionResponse{
+		Success: result.Success,
+		Data:    data,
+		Message: result.Message,
+	}, nil
+}
+
+func (s *ResourcePluginServer) StreamAction(
+	in *proto.ExecuteActionRequest,
+	stream proto.ResourcePlugin_StreamActionServer,
+) error {
+	pluginCtx, err := s.newCRUDContext(stream.Context(), in.GetContext())
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to get connection: %s", err.Error())
+	}
+
+	input := types.ActionInput{
+		ID:        in.GetId(),
+		Namespace: in.GetNamespace(),
+	}
+	if in.GetParams() != nil {
+		input.Params = in.GetParams().AsMap()
+	}
+
+	eventChan := make(chan types.ActionEvent)
+
+	go func() {
+		if err := s.Impl.StreamAction(pluginCtx, in.GetKey(), in.GetActionId(), input, eventChan); err != nil {
+			log.Printf("failed to stream action: %s", err.Error())
+		}
+		close(eventChan)
+	}()
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			return status.Errorf(codes.Canceled, "context canceled")
+		case event, ok := <-eventChan:
+			if !ok {
+				return nil // channel closed, stream complete
+			}
+			var data *structpb.Struct
+			if event.Data != nil {
+				data, err = structpb.NewStruct(event.Data)
+				if err != nil {
+					log.Printf("failed to convert event data: %s", err.Error())
+					continue
+				}
+			}
+			if err = stream.Send(&proto.StreamActionEvent{
+				Type: event.Type,
+				Data: data,
+			}); err != nil {
+				log.Printf("failed to send stream action event: %s", err.Error())
+				return err
+			}
+		}
+	}
 }
 
 // ============================== Connection ============================== //

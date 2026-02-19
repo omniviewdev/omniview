@@ -119,6 +119,50 @@ func (m *DevServerManager) StartDevServer(pluginID string) (DevServerState, erro
 	l := m.logger.With("method", "StartDevServer", "pluginID", pluginID)
 	l.Info("starting dev server")
 
+	// Fast path: if already running, return existing state without looking up the plugin.
+	m.mu.RLock()
+	if inst, exists := m.instances[pluginID]; exists {
+		m.mu.RUnlock()
+		l.Warn("dev server already running")
+		return inst.State(), nil
+	}
+	m.mu.RUnlock()
+
+	// Look up the plugin to get DevPath.
+	devMode, devPath, err := m.pluginRef.GetDevPluginInfo(pluginID)
+	if err != nil {
+		return DevServerState{}, fmt.Errorf("plugin not found: %w", err)
+	}
+	if !devMode {
+		return DevServerState{}, fmt.Errorf("plugin %q is not in dev mode", pluginID)
+	}
+	if devPath == "" {
+		return DevServerState{}, fmt.Errorf("plugin %q has no DevPath set", pluginID)
+	}
+
+	return m.startDevServer(pluginID, devPath)
+}
+
+// StartDevServerForPath starts a managed dev server for a plugin using the
+// provided devPath directly, without requiring the plugin to be loaded first.
+// This is used during InstallInDevMode and Initialize where the plugin hasn't
+// been loaded yet but we need the dev server (and its initial Go build) to run
+// before LoadPlugin.
+func (m *DevServerManager) StartDevServerForPath(pluginID, devPath string) (DevServerState, error) {
+	l := m.logger.With("method", "StartDevServerForPath", "pluginID", pluginID, "devPath", devPath)
+	l.Info("starting dev server for path")
+
+	if devPath == "" {
+		return DevServerState{}, fmt.Errorf("plugin %q has no devPath", pluginID)
+	}
+
+	return m.startDevServer(pluginID, devPath)
+}
+
+// startDevServer is the shared implementation for StartDevServer and StartDevServerForPath.
+func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerState, error) {
+	l := m.logger.With("method", "startDevServer", "pluginID", pluginID)
+
 	m.mu.Lock()
 
 	// Check if already running.
@@ -126,21 +170,6 @@ func (m *DevServerManager) StartDevServer(pluginID string) (DevServerState, erro
 		m.mu.Unlock()
 		l.Warn("dev server already running")
 		return inst.State(), nil
-	}
-
-	// Look up the plugin to get DevPath.
-	devMode, devPath, err := m.pluginRef.GetDevPluginInfo(pluginID)
-	if err != nil {
-		m.mu.Unlock()
-		return DevServerState{}, fmt.Errorf("plugin not found: %w", err)
-	}
-	if !devMode {
-		m.mu.Unlock()
-		return DevServerState{}, fmt.Errorf("plugin %q is not in dev mode", pluginID)
-	}
-	if devPath == "" {
-		m.mu.Unlock()
-		return DevServerState{}, fmt.Errorf("plugin %q has no DevPath set", pluginID)
 	}
 
 	// Allocate a port for the Vite dev server.

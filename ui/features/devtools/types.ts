@@ -4,13 +4,16 @@
  */
 
 /** The mode a dev server instance is running in. */
-export type DevServerMode = 'managed' | 'external';
+export type DevServerMode = 'managed' | 'external' | 'idle';
+
+/** Status of either the Vite dev server or Go watcher process. Mirrors Go DevProcessStatus. */
+export type DevProcessStatus = 'idle' | 'starting' | 'building' | 'running' | 'ready' | 'error' | 'stopped';
 
 /** Status of the Vite dev server. */
-export type ViteStatus = 'idle' | 'starting' | 'running' | 'ready' | 'error' | 'stopped';
+export type ViteStatus = DevProcessStatus;
 
 /** Status of the Go backend. */
-export type GoStatus = 'idle' | 'building' | 'ready' | 'error' | 'stopped';
+export type GoStatus = DevProcessStatus;
 
 /** Aggregate status for display purposes. */
 export type DevServerAggregateStatus = 'ready' | 'building' | 'error' | 'stopped' | 'connecting';

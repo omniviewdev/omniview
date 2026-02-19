@@ -6,3 +6,4 @@ export * from './useResourceType';
 export * from './useResourceTypes';
 export * from './useResources';
 export * from './useResourceMutations'
+export * from './useResourceActions'

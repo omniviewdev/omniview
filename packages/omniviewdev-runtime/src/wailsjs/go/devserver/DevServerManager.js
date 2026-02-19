@@ -38,6 +38,10 @@ export function StartDevServer(arg1) {
   return window['go']['devserver']['DevServerManager']['StartDevServer'](arg1);
 }
 
+export function StartDevServerForPath(arg1, arg2) {
+  return window['go']['devserver']['DevServerManager']['StartDevServerForPath'](arg1, arg2);
+}
+
 export function StopDevServer(arg1) {
   return window['go']['devserver']['DevServerManager']['StopDevServer'](arg1);
 }

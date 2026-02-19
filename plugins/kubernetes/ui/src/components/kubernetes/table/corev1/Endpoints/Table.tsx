@@ -76,7 +76,7 @@ const EndpointsTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <EndpointsSidebar data={ctx.data} />,
+        component: (ctx) => <EndpointsSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

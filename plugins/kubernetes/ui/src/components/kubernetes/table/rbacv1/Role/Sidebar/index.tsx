@@ -5,21 +5,24 @@ import Stack from "@mui/joy/Stack";
 
 // types
 import { Role } from "kubernetes-types/rbac/v1";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 // project-imports
 import ObjectMetaSection from "../../../../../shared/ObjectMetaSection";
 
 interface Props {
-  data?: Role;
+  ctx: DrawerContext<Role>;
 }
 
 /**
  * Renders a sidebar for a Role resource
  */
-export const RoleSidebar: React.FC<Props> = ({ data }) => {
-  if (!data) {
-    return <></>
+export const RoleSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
   }
+
+  const data = ctx.data;
 
   // compose your component here
   return (

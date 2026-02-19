@@ -56,7 +56,9 @@
   "exclude": [
     "node_modules",
     "dist",
-    "build"
+    "build",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
   ],
   "include": [
     "ui",

@@ -113,7 +113,7 @@ Note: Audience in each TokenRequest should be different and at most one token is
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <CSIDriverSidebar data={ctx.data} />,
+        component: (ctx) => <CSIDriverSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

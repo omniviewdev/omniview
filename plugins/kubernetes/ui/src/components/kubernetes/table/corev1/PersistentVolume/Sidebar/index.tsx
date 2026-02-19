@@ -8,16 +8,20 @@ import Stack from "@mui/joy/Stack";
 // types
 import { PersistentVolume } from "kubernetes-types/core/v1";
 import ObjectMetaSection from "../../../../../shared/ObjectMetaSection";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 interface Props {
-  data: PersistentVolume;
+  ctx: DrawerContext<PersistentVolume>;
 }
 
-export const PersistentVolumeSidebar: React.FC<Props> = ({ data }) => {
+export const PersistentVolumeSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
+  }
 
   return (
     <Stack direction="column" width={"100%"} spacing={1}>
-      <ObjectMetaSection data={data.metadata} />
+      <ObjectMetaSection data={ctx.data.metadata} />
     </Stack>
   );
 };

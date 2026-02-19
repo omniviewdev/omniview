@@ -5,7 +5,12 @@ import {
   Chip,
 } from '@mui/joy';
 
+import { useRightDrawer } from '@omniviewdev/runtime';
+
 type Props = {
+  /** ID of the plugin this resource belongs to */
+  pluginID: string;
+
   /** ID of the connection this is connecting to */
   connectionId: string;
 
@@ -26,13 +31,15 @@ type Props = {
  * Display the cell as a link to another resource
  */
 const ResourceLinkCell: React.FC<Props> = ({
+  pluginID,
   connectionId,
   namespace,
   resourceId,
   resourceKey,
   resourceName,
 }) => {
-  // const { showResourceSidebar } = useRightDrawer();
+  const { showResourceSidebar } = useRightDrawer();
+
   if (!resourceName) {
     // nothing to display - don't render
     return <></>
@@ -45,20 +52,13 @@ const ResourceLinkCell: React.FC<Props> = ({
     e.stopPropagation();
     e.preventDefault();
 
-    console.log('opening resource sidebar', {
-      connectionId,
+    showResourceSidebar({
+      pluginID,
+      connectionID: connectionId,
       resourceKey,
-      resourceId,
+      resourceID: resourceId,
       namespace,
     });
-
-    // showResourceSidebar({
-    //   pluginID: metadata.pluginID,
-    //   connectionID: metadata.connectionID,
-    //   resourceKey: keyMap ? keyMap[resourceKey] ?? resourceKey : resourceKey,
-    //   resourceID,
-    //   namespace,
-    // });
   };
 
   return (

@@ -80,7 +80,7 @@ const NetworkPolicyTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <NetworkPolicySidebar data={ctx.data} />,
+        component: (ctx) => <NetworkPolicySidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

@@ -10,5 +10,12 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const createSnapModifier = mod.createSnapModifier;
+export const restrictToFirstScrollableAncestor = mod.restrictToFirstScrollableAncestor;
+export const restrictToHorizontalAxis = mod.restrictToHorizontalAxis;
+export const restrictToParentElement = mod.restrictToParentElement;
+export const restrictToVerticalAxis = mod.restrictToVerticalAxis;
+export const restrictToWindowEdges = mod.restrictToWindowEdges;
+export const snapCenterToCursor = mod.snapCenterToCursor;
+
 export default mod.default !== undefined ? mod.default : mod;

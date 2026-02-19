@@ -16,6 +16,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	pluginexec "github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
@@ -106,6 +107,10 @@ type Manager interface {
 	// SetDevServerChecker sets the dev server checker used to skip the old
 	// rebuild pipeline for plugins managed by the DevServerManager.
 	SetDevServerChecker(checker DevServerChecker)
+
+	// SetDevServerManager sets the dev server manager used to auto-start
+	// dev servers for plugins in dev mode.
+	SetDevServerManager(mgr *devserver.DevServerManager)
 }
 
 // NewManager returns a new plugin manager for the IDE to use to manager installed plugins.
@@ -179,6 +184,7 @@ type pluginManager struct {
 	// extendable amount of plugin managers
 	managers       map[string]plugintypes.PluginManager
 	devServerCheck DevServerChecker
+	devServerMgr   *devserver.DevServerManager
 }
 
 // Run starts until the the passed in context is cancelled.
@@ -204,6 +210,12 @@ func (pm *pluginManager) Shutdown() {
 // plugin manager and dev server manager are created.
 func (pm *pluginManager) SetDevServerChecker(checker DevServerChecker) {
 	pm.devServerCheck = checker
+}
+
+// SetDevServerManager sets the dev server manager. Call this after both the
+// plugin manager and dev server manager are created.
+func (pm *pluginManager) SetDevServerManager(mgr *devserver.DevServerManager) {
+	pm.devServerMgr = mgr
 }
 
 func (pm *pluginManager) Initialize(ctx context.Context) error {
@@ -234,12 +246,28 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	for _, file := range files {
 		if file.IsDir() {
 			var opts *LoadPluginOptions
+			var isDevMode bool
+			var devPath string
 
 			for _, state := range states {
 				if state.ID == file.Name() {
 					opts = &LoadPluginOptions{
 						ExistingState: state,
 					}
+					isDevMode = state.DevMode
+					devPath = state.DevPath
+				}
+			}
+
+			// For dev mode plugins: start the dev server BEFORE LoadPlugin.
+			// GoWatcher.Start() performs an initial build, placing the binary at
+			// ~/.omniview/plugins/<id>/bin/plugin so LoadPlugin validation passes.
+			if isDevMode && devPath != "" && pm.devServerMgr != nil {
+				pm.logger.Infow("auto-starting dev server before load",
+					"pluginID", file.Name(), "devPath", devPath)
+				if _, startErr := pm.devServerMgr.StartDevServerForPath(file.Name(), devPath); startErr != nil {
+					pm.logger.Warnw("failed to auto-start dev server",
+						"pluginID", file.Name(), "error", startErr)
 				}
 			}
 
@@ -260,42 +288,72 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 }
 
 func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
+	l := pm.logger.Named("InstallInDevMode")
+
 	// have to pass wails context
 	path, err := runtime.OpenDirectoryDialog(pm.ctx, runtime.OpenDialogOptions{})
 	if err != nil {
-		pm.logger.Error(err)
+		l.Error(err)
 		return nil, err
 	}
 	if path == "" {
 		return nil, errors.New("cancelled")
 	}
 
-	// build out our opts, including any paths we've detected
-	opts := plugintypes.BuildOpts{}
-	opts.GoPath, _ = pm.settingsProvider.GetString("developer.gopath")
-	opts.PnpmPath, _ = pm.settingsProvider.GetString("developer.pnpmpath")
-	opts.NodePath, _ = pm.settingsProvider.GetString("developer.nodepath")
+	l.Infow("installing plugin in dev mode", "path", path)
 
-	pm.logger.Infow("installing plugin from path",
-		"path", path,
-		"opts", opts,
-	)
-
-	// perform initial install
-	var metadata *config.PluginMeta
-	metadata, err = pm.installAndWatchDevPlugin(path, opts)
+	// 1. Parse metadata from the plugin source directory.
+	metadata, err := parseMetadataFromPluginPath(path)
 	if err != nil {
-		pm.logger.Error(err)
-		return nil, err
+		return nil, fmt.Errorf("failed to parse metadata from plugin path: %w", err)
 	}
+	l.Infow("parsed plugin metadata", "pluginID", metadata.ID)
+
+	runtime.EventsEmit(pm.ctx, PluginDevInstallEventStart, metadata)
+
+	// 2. Copy only plugin.yaml to ~/.omniview/plugins/<id>/ so LoadPlugin can find metadata.
+	//    The binary will be built by the dev server's GoWatcher initial build.
+	if err = transferPluginBuild(path, metadata, plugintypes.BuildOpts{
+		ExcludeBackend: true,
+		ExcludeUI:      true,
+	}); err != nil {
+		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
+		return nil, fmt.Errorf("failed to copy metadata: %w", err)
+	}
+
+	// 3. Ensure the bin directory exists for the GoWatcher to transfer into.
+	installLocation := getPluginLocation(metadata.ID)
+	if err = os.MkdirAll(filepath.Join(installLocation, "bin"), 0755); err != nil {
+		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
+		return nil, fmt.Errorf("failed to create plugin bin directory: %w", err)
+	}
+
+	// 4. Start the dev server (Vite + GoWatcher with initial build) BEFORE LoadPlugin.
+	//    GoWatcher.Start() performs an initial `go build` + transferBinary, placing the
+	//    binary at ~/.omniview/plugins/<id>/bin/plugin so LoadPlugin validation passes.
+	if pm.devServerMgr != nil {
+		l.Infow("starting dev server (triggers initial build)", "pluginID", metadata.ID)
+		if _, startErr := pm.devServerMgr.StartDevServerForPath(metadata.ID, path); startErr != nil {
+			l.Warnw("failed to start dev server", "pluginID", metadata.ID, "error", startErr)
+			// Continue anyway — LoadPlugin will fail validation if binary doesn't exist,
+			// which is the correct behavior (build error should be visible in dev panel).
+		}
+	} else {
+		l.Warnw("no dev server manager set, skipping dev server start")
+	}
+
+	// 5. Load the plugin — binary should now exist from GoWatcher initial build.
+	l.Infow("loading plugin", "pluginID", metadata.ID)
 	_, err = pm.LoadPlugin(metadata.ID, &LoadPluginOptions{DevMode: true, DevModePath: path})
 	if err != nil {
+		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
 		return nil, fmt.Errorf("error loading plugin: %w", err)
 	}
 
+	runtime.EventsEmit(pm.ctx, PluginDevInstallEventComplete, metadata)
+
 	if err = pm.writePluginState(); err != nil {
-		// skip for now, but should probobly do some other action
-		pm.logger.Error(err)
+		l.Error(err)
 	}
 
 	return metadata, nil
@@ -460,12 +518,24 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 		)
 	}
 
-	if err = validateInstalledPlugin(metadata); err != nil {
-		return types.Plugin{}, fmt.Errorf(
-			"plugin with id '%s' failed validation during loading: %w",
-			id,
-			err,
-		)
+	// Dev mode: only validate binary exists (UI assets are served live by Vite dev server).
+	// Production: full validation including UI assets.
+	if opts != nil && opts.DevMode {
+		if err = validateHasBinary(location); err != nil {
+			return types.Plugin{}, fmt.Errorf("plugin %q failed dev validation: %w", id, err)
+		}
+	} else if opts != nil && opts.ExistingState != nil && opts.ExistingState.DevMode {
+		if err = validateHasBinary(location); err != nil {
+			return types.Plugin{}, fmt.Errorf("plugin %q failed dev validation: %w", id, err)
+		}
+	} else {
+		if err = validateInstalledPlugin(metadata); err != nil {
+			return types.Plugin{}, fmt.Errorf(
+				"plugin with id '%s' failed validation during loading: %w",
+				id,
+				err,
+			)
+		}
 	}
 
 	// all good, add to the map
@@ -488,8 +558,9 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 		newPlugin.DevPath = opts.DevModePath
 	}
 
-	// add watchers if in dev mode
-	if newPlugin.DevMode {
+	// Add old-style watchers if in dev mode and not managed by DevServerManager.
+	// DevServerManager-managed plugins use GoWatcher for rebuilds instead.
+	if newPlugin.DevMode && (pm.devServerCheck == nil || !pm.devServerCheck.IsManaged(id)) {
 		pm.AddTarget(newPlugin.DevPath)
 	}
 

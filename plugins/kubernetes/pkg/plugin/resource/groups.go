@@ -119,4 +119,9 @@ var ResourceGroups = []types.ResourceGroup{
 		Name: "API Server Internal",
 		Icon: "LuServerCog",
 	},
+	{
+		ID:   "helm",
+		Name: "Helm",
+		Icon: "SiHelm",
+	},
 }

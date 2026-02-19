@@ -497,3 +497,53 @@ func TestManager_RestartDevServer_NotRunning(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "plugin not found")
 }
+
+// ============================================================================
+// StartDevServerForPath tests
+// ============================================================================
+
+func TestManager_StartDevServerForPath_EmptyPath(t *testing.T) {
+	mgr := newTestManager(t)
+
+	_, err := mgr.StartDevServerForPath("test-plugin", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no devPath")
+}
+
+func TestManager_StartDevServerForPath_AlreadyRunning(t *testing.T) {
+	mgr := newTestManager(t)
+
+	// Inject a pre-existing instance.
+	noop := func(string, DevServerState) {}
+	noopLogs := func(string, []LogEntry) {}
+	noopErrors := func(string, []BuildError) {}
+	inst := NewDevServerInstance(
+		context.Background(), zap.NewNop().Sugar(),
+		"dup-plugin", "/dev/path", 15173, BuildOpts{}, nil,
+		noop, noopLogs, noopErrors,
+	)
+
+	mgr.mu.Lock()
+	mgr.instances["dup-plugin"] = inst
+	mgr.mu.Unlock()
+
+	// Should return existing state, no error.
+	state, err := mgr.StartDevServerForPath("dup-plugin", "/some/other/path")
+	require.NoError(t, err)
+	assert.Equal(t, "dup-plugin", state.PluginID)
+	assert.Equal(t, DevServerModeManaged, state.Mode)
+}
+
+func TestManager_StartDevServerForPath_PortExhaustion(t *testing.T) {
+	mgr := newTestManager(t)
+	mgr.ctx = context.Background()
+
+	// Fill all ports so Allocate fails.
+	for port := PortRangeStart; port < PortRangeEnd; port++ {
+		mgr.ports.assigned[port] = fmt.Sprintf("plugin-%d", port)
+	}
+
+	_, err := mgr.StartDevServerForPath("new-plugin", "/some/path")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "port allocation failed")
+}

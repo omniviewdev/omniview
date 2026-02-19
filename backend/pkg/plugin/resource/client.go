@@ -93,6 +93,12 @@ type IClient interface {
 	// GetResourceDefinition returns the resource definition for a given resource
 	GetResourceDefinition(pluginID, typeID string) (rt.ResourceDefinition, error)
 
+	// GetActions returns available actions for a resource type
+	GetActions(pluginID, connectionID, key string) ([]rt.ActionDescriptor, error)
+
+	// ExecuteAction executes a named action on a resource
+	ExecuteAction(pluginID, connectionID, key, actionID string, input rt.ActionInput) (*rt.ActionResult, error)
+
 	// GetLayout returns the layout for the plugin
 	GetLayout(pluginID string, layoutID string) ([]rt.LayoutItem, error)
 
@@ -229,6 +235,17 @@ func (c *Client) HasResourceType(pluginID, typeID string) bool {
 
 func (c *Client) GetResourceDefinition(pluginID, typeID string) (rt.ResourceDefinition, error) {
 	return c.controller.GetResourceDefinition(pluginID, typeID)
+}
+
+func (c *Client) GetActions(pluginID, connectionID, key string) ([]rt.ActionDescriptor, error) {
+	return c.controller.GetActions(pluginID, connectionID, key)
+}
+
+func (c *Client) ExecuteAction(
+	pluginID, connectionID, key, actionID string,
+	input rt.ActionInput,
+) (*rt.ActionResult, error) {
+	return c.controller.ExecuteAction(pluginID, connectionID, key, actionID, input)
 }
 
 func (c *Client) GetLayout(pluginID string, layoutID string) ([]rt.LayoutItem, error) {

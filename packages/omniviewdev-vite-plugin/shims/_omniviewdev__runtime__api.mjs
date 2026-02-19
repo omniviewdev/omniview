@@ -10,5 +10,19 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const DiagnosticsClient = mod.DiagnosticsClient;
+export const ExecClient = mod.ExecClient;
+export const GetOperatingSystem = mod.GetOperatingSystem;
+export const LogsClient = mod.LogsClient;
+export const NetworkerClient = mod.NetworkerClient;
+export const OpenFileSelectionDialog = mod.OpenFileSelectionDialog;
+export const PluginManager = mod.PluginManager;
+export const ResourceClient = mod.ResourceClient;
+export const SaveFileDialog = mod.SaveFileDialog;
+export const SettingsClient = mod.SettingsClient;
+export const SettingsProvider = mod.SettingsProvider;
+export const UIClient = mod.UIClient;
+export const UtilsClient = mod.UtilsClient;
+export const WriteFileContent = mod.WriteFileContent;
+
 export default mod.default !== undefined ? mod.default : mod;

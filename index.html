@@ -1,6 +1,36 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!--
+      Pre-create React DevTools hook with an inject() that stores renderers.
+      Without this, @vitejs/plugin-react's injectIntoGlobalHook creates a mock
+      hook whose inject() does NOT populate hook.renderers. This breaks HMR for
+      plugin modules loaded from separate Vite dev servers, because the plugin's
+      RefreshRuntime discovers renderers via hook.renderers.forEach() — which is
+      empty with the default mock.
+
+      This MUST be a classic (non-module) script so it runs synchronously before
+      the React Fast Refresh preamble (a module script injected by Vite).
+    -->
+    <script>
+      (function () {
+        if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__) return;
+        var nextID = 0;
+        window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+          renderers: new Map(),
+          supportsFiber: true,
+          inject: function (injected) {
+            var id = nextID++;
+            this.renderers.set(id, injected);
+            return id;
+          },
+          onScheduleFiberRoot: function () {},
+          onCommitFiberRoot: function () {},
+          onCommitFiberUnmount: function () {},
+        };
+      })();
+    </script>
+
     <!-- <script -->
     <!--   crossOrigin="anonymous" -->
     <!--   src="https://unpkg.com/react-scan/dist/auto.global.js" -->

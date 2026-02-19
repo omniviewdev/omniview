@@ -98,7 +98,7 @@ const CronJobTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <CronJobSidebar data={ctx.data || {}} />,
+        component: (ctx) => <CronJobSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

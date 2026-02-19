@@ -10,5 +10,7 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const textareaClasses = mod.textareaClasses;
+export const getTextareaUtilityClass = mod.getTextareaUtilityClass;
+
 export default mod.default !== undefined ? mod.default : mod;

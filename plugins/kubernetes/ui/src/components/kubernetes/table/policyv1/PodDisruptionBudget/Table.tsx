@@ -83,7 +83,7 @@ const PodDisruptionBudgetTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <PodDisruptionBudgetSidebar data={ctx.data || {}} />,
+        component: (ctx) => <PodDisruptionBudgetSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

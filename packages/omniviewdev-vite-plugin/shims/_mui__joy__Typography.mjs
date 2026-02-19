@@ -10,5 +10,7 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const typographyClasses = mod.typographyClasses;
+export const getTypographyUtilityClass = mod.getTypographyUtilityClass;
+
 export default mod.default !== undefined ? mod.default : mod;

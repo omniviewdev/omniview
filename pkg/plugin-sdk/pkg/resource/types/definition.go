@@ -6,10 +6,11 @@ import (
 )
 
 type ResourceDefinition struct {
-	IDAccessor        string      `json:"id_accessor"`
-	NamespaceAccessor string      `json:"namespace_accessor"`
-	MemoizerAccessor  string      `json:"memoizer_accessor"`
-	ColumnDefs        []ColumnDef `json:"columnDefs"`
+	IDAccessor          string          `json:"id_accessor"`
+	NamespaceAccessor   string          `json:"namespace_accessor"`
+	MemoizerAccessor    string          `json:"memoizer_accessor"`
+	ColumnDefs          []ColumnDef     `json:"columnDefs"`
+	SupportedOperations []OperationType `json:"supportedOperations,omitempty"`
 }
 
 type ColorVariant string

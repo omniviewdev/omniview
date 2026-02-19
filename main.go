@@ -136,6 +136,7 @@ func main() {
 	// Wire the dev server checker into the plugin manager so the old watcher
 	// skips plugins managed by DevServerManager.
 	pluginManager.SetDevServerChecker(devServerManager)
+	pluginManager.SetDevServerManager(devServerManager)
 
 	// Create an instance of the app structure
 	app := NewApp()
@@ -159,12 +160,15 @@ func main() {
 		execController.Run(ctx)
 		logsController.Run(ctx)
 
+		// Initialize dev server manager first so it has a context before
+		// pluginManager.Initialize() auto-starts dev servers.
+		devServerManager.Initialize(ctx)
+
 		// Initialize the plugin system
 		if err := pluginManager.Initialize(ctx); err != nil {
 			log.Errorw("error while initializing plugin system", "error", err)
 		}
 		pluginManager.Run(ctx)
-		devServerManager.Initialize(ctx)
 		runtime.MenuSetApplicationMenu(ctx, menus.GetMenus(ctx))
 	}
 

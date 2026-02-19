@@ -1,29 +1,22 @@
 import React from 'react';
-import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useRouteError } from 'react-router-dom';
-
-function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
-  return (
-    <div role="alert">
-      <p>Something went wrong:</p>
-      <pre>{error.message}</pre>
-      <button onClick={resetErrorBoundary}>Try again</button>
-    </div>
-  );
-}
-
-export default function ErrorB({ children }: { children: React.ReactNode }) {
-  return (
-    <ErrorBoundary FallbackComponent={ErrorFallback}>
-      {children}
-    </ErrorBoundary>
-  );
-}
+import { FullPageErrorFallback } from '@/components/errors/ErrorFallback';
+import log from '@/features/logger';
 
 export function RouterErrorBoundary() {
-  const error = useRouteError()
-  console.error(error);
+  const error = useRouteError();
+  const resolvedError = error instanceof Error ? error : new Error(String(error));
+
+  React.useEffect(() => {
+    console.error('[RouterErrorBoundary] route error caught:', resolvedError);
+    log.error(resolvedError, { boundary: 'RouterErrorBoundary' });
+  }, []);
+
   return (
-    <ErrorBoundary FallbackComponent={ErrorFallback} />
+    <FullPageErrorFallback
+      error={resolvedError}
+      resetErrorBoundary={() => window.location.reload()}
+      boundary="Router"
+    />
   );
 }

@@ -15,6 +15,7 @@ import {
   BottomDrawerContext,
 } from '@omniviewdev/runtime';
 import { ExecClient } from '@omniviewdev/runtime/api';
+import log from '@/features/logger';
 
 type BottomDrawerProviderProps = {
   children: ReactNode;
@@ -143,7 +144,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     if (tab.variant === 'terminal') {
       ExecClient.CloseSession(tab.id).catch((err) => {
         if (err instanceof Error) {
-          console.error('failed to terminate session: ', err.message);
+          log.error(err, { event: 'terminate_session', sessionId: tab.id });
           return;
         }
       });
@@ -171,7 +172,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     const closesPromises = Promise.all(terminalTabs.map(async (tab) => ExecClient.CloseSession(tab.id)));
     closesPromises.catch((err) => {
       if (err instanceof Error) {
-        console.error('failed to terminate sessions: ', err.message);
+        log.error(err, { event: 'terminate_sessions' });
         return;
       }
     });

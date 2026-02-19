@@ -1,6 +1,11 @@
 package types
 
-import "github.com/omniviewdev/plugin-sdk/proto"
+import (
+	"fmt"
+
+	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/proto"
+)
 
 type ActionVariant string
 
@@ -178,4 +183,70 @@ func ActionTargetFromProto(p *proto.ResourceActionTarget) ActionTarget {
 		Description: p.GetDescription(),
 		Selectors:   p.GetSelectors(),
 	}
+}
+
+// ==================== Resource Action Descriptors ==================== //
+
+// ActionScope defines whether an action operates on a specific resource instance
+// or on the resource type as a whole.
+type ActionScope string
+
+const (
+	ActionScopeInstance ActionScope = "instance"
+	ActionScopeType    ActionScope = "type"
+)
+
+// ActionDescriptor describes an available action on a resource type.
+type ActionDescriptor struct {
+	ID          string      `json:"id"`
+	Label       string      `json:"label"`
+	Description string      `json:"description"`
+	Icon        string      `json:"icon"`
+	Scope       ActionScope `json:"scope"`
+	Streaming   bool        `json:"streaming"`
+}
+
+// ActionInput contains the parameters for executing an action.
+type ActionInput struct {
+	ID        string                 `json:"id"`
+	Namespace string                 `json:"namespace"`
+	Params    map[string]interface{} `json:"params"`
+}
+
+// ActionResult contains the result of executing an action.
+type ActionResult struct {
+	Success bool                   `json:"success"`
+	Data    map[string]interface{} `json:"data"`
+	Message string                 `json:"message"`
+}
+
+// ActionEvent represents a streaming event from a long-running action.
+type ActionEvent struct {
+	Type string                 `json:"type"` // "progress", "output", "error", "complete"
+	Data map[string]interface{} `json:"data"`
+}
+
+// ActionResourcer is an optional interface that Resourcer implementations can
+// satisfy to support custom actions beyond CRUD. The resourceController will
+// type-assert to this interface when dispatching action requests.
+type ActionResourcer[ClientT any] interface {
+	GetActions(ctx *pkgtypes.PluginContext, client *ClientT, meta ResourceMeta) ([]ActionDescriptor, error)
+	ExecuteAction(ctx *pkgtypes.PluginContext, client *ClientT, meta ResourceMeta, actionID string, input ActionInput) (*ActionResult, error)
+	StreamAction(ctx *pkgtypes.PluginContext, client *ClientT, meta ResourceMeta, actionID string, input ActionInput, stream chan ActionEvent) error
+}
+
+// NoOpActionProvider provides a default no-op implementation of
+// ResourceActionProvider for plugins that don't support actions.
+type NoOpActionProvider struct{}
+
+func (n NoOpActionProvider) GetActions(_ *pkgtypes.PluginContext, _ string) ([]ActionDescriptor, error) {
+	return nil, nil
+}
+
+func (n NoOpActionProvider) ExecuteAction(_ *pkgtypes.PluginContext, _ string, _ string, _ ActionInput) (*ActionResult, error) {
+	return nil, fmt.Errorf("actions not supported")
+}
+
+func (n NoOpActionProvider) StreamAction(_ *pkgtypes.PluginContext, _ string, _ string, _ ActionInput, _ chan ActionEvent) error {
+	return fmt.Errorf("streaming actions not supported")
 }

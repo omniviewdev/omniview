@@ -90,7 +90,7 @@ const RuntimeClassTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <RuntimeClassSidebar data={ctx.data} />,
+        component: (ctx) => <RuntimeClassSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

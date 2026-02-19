@@ -10,5 +10,23 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const capitalize = mod.capitalize;
+export const createChainedFunction = mod.createChainedFunction;
+export const createSvgIcon = mod.createSvgIcon;
+export const debounce = mod.debounce;
+export const deprecatedPropType = mod.deprecatedPropType;
+export const isMuiElement = mod.isMuiElement;
+export const ownerDocument = mod.ownerDocument;
+export const ownerWindow = mod.ownerWindow;
+export const requirePropFactory = mod.requirePropFactory;
+export const setRef = mod.setRef;
+export const unstable_ClassNameGenerator = mod.unstable_ClassNameGenerator;
+export const unstable_useEnhancedEffect = mod.unstable_useEnhancedEffect;
+export const unstable_useId = mod.unstable_useId;
+export const unsupportedProp = mod.unsupportedProp;
+export const useControlled = mod.useControlled;
+export const useEventCallback = mod.useEventCallback;
+export const useForkRef = mod.useForkRef;
+export const useIsFocusVisible = mod.useIsFocusVisible;
+
 export default mod.default !== undefined ? mod.default : mod;

@@ -10,5 +10,7 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const stackClasses = mod.stackClasses;
+export const getStackUtilityClass = mod.getStackUtilityClass;
+
 export default mod.default !== undefined ? mod.default : mod;

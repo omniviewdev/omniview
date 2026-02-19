@@ -10,5 +10,6 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const boxClasses = mod.boxClasses;
+
 export default mod.default !== undefined ? mod.default : mod;

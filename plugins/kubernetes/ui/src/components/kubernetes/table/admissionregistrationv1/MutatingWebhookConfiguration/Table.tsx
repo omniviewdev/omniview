@@ -57,7 +57,7 @@ const LeaseTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuBox />,
-        component: (ctx) => <MutatingWebhookConfigurationSidebar data={ctx.data} />
+        component: (ctx) => <MutatingWebhookConfigurationSidebar ctx={ctx} />
       },
       {
         title: 'Editor',

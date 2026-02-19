@@ -121,7 +121,48 @@ func (gw *goWatcherProcess) Start() error {
 		Level:   "info",
 		Message: fmt.Sprintf("Watching %d directories under pkg/", watchCount),
 	})
-	gw.setStatus(DevProcessStatusReady)
+
+	// Perform initial build so the binary exists for LoadPlugin validation.
+	gw.setStatus(DevProcessStatusBuilding)
+	gw.appendLog(LogEntry{
+		Source:  "go-build",
+		Level:   "info",
+		Message: "Running initial build...",
+	})
+
+	startTime := time.Now()
+	if err := gw.runGoBuild(); err != nil {
+		gw.logger.Warnw("initial go build failed", "error", err)
+		gw.appendLog(LogEntry{
+			Source:  "go-build",
+			Level:   "error",
+			Message: fmt.Sprintf("Initial build failed: %v", err),
+		})
+		gw.setBuild(time.Since(startTime), err.Error())
+		gw.setStatus(DevProcessStatusError)
+		// Don't return error — still start watcher so user can fix and rebuild.
+	} else {
+		duration := time.Since(startTime)
+		if err := gw.transferBinary(); err != nil {
+			gw.logger.Errorw("initial binary transfer failed", "error", err)
+			gw.appendLog(LogEntry{
+				Source:  "go-build",
+				Level:   "error",
+				Message: fmt.Sprintf("Binary transfer failed: %v", err),
+			})
+			gw.setBuild(duration, err.Error())
+			gw.setStatus(DevProcessStatusError)
+		} else {
+			gw.logger.Infow("initial build succeeded", "duration", duration)
+			gw.appendLog(LogEntry{
+				Source:  "go-build",
+				Level:   "info",
+				Message: fmt.Sprintf("Initial build succeeded in %s", duration.Round(time.Millisecond)),
+			})
+			gw.setBuild(duration, "")
+			gw.setStatus(DevProcessStatusReady)
+		}
+	}
 
 	// Start the event loop.
 	go gw.eventLoop()

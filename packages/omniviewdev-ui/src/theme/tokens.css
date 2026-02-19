@@ -1,0 +1,252 @@
+/*
+ * Omniview Design Tokens
+ *
+ * Three-tier token architecture:
+ *   Tier 1 — Primitives: raw scale values (colors, spacing units)
+ *   Tier 2 — Semantic: purpose-named tokens that reference primitives
+ *   Tier 3 — Component: scoped to specific UI regions (deferred)
+ *
+ * Naming convention: --ov-{category}-{role}-{modifier}
+ */
+
+:root {
+  /* ================================================================
+   * TIER 1 — PRIMITIVES
+   * Raw scale values. Never use these directly in components.
+   * ================================================================ */
+
+  /* Neutral scale (14-step, cool-tinted) */
+  --ov-scale-gray-0:  #0D1117;
+  --ov-scale-gray-1:  #10141A;
+  --ov-scale-gray-2:  #151B23;
+  --ov-scale-gray-3:  #1A2130;
+  --ov-scale-gray-4:  #1F2937;
+  --ov-scale-gray-5:  #253345;
+  --ov-scale-gray-6:  #2D3D52;
+  --ov-scale-gray-7:  #364559;
+  --ov-scale-gray-8:  #3E4F66;
+  --ov-scale-gray-9:  #6B7D96;
+  --ov-scale-gray-10: #8B9BB5;
+  --ov-scale-gray-11: #ABB8CC;
+  --ov-scale-gray-12: #CBD5E1;
+  --ov-scale-gray-13: #ECF0F6;
+
+  /* ================================================================
+   * TIER 2 — SEMANTIC TOKENS (default: dark theme)
+   * ================================================================ */
+
+  /* --- Backgrounds --- */
+  --ov-bg-base:             var(--ov-scale-gray-0);
+  --ov-bg-surface:          var(--ov-scale-gray-2);
+  --ov-bg-surface-raised:   var(--ov-scale-gray-3);
+  --ov-bg-surface-overlay:  var(--ov-scale-gray-4);
+  --ov-bg-surface-inset:    var(--ov-scale-gray-1);
+
+  /* --- Foreground / text --- */
+  --ov-fg-base:     #ECF0F6;
+  --ov-fg-default:  rgba(236, 240, 246, 0.92);
+  --ov-fg-muted:    rgba(236, 240, 246, 0.64);
+  --ov-fg-faint:    rgba(236, 240, 246, 0.44);
+  --ov-fg-disabled: rgba(236, 240, 246, 0.28);
+  --ov-fg-accent:   #79C0FF;
+
+  /* --- Borders --- */
+  --ov-border-default:  var(--ov-scale-gray-8);
+  --ov-border-muted:    var(--ov-scale-gray-7);
+  --ov-border-emphasis: var(--ov-scale-gray-9);
+
+  /* --- Accent --- */
+  --ov-accent:        #58A6FF;
+  --ov-accent-muted:  rgba(88, 166, 255, 0.20);
+  --ov-accent-subtle: rgba(88, 166, 255, 0.10);
+  --ov-accent-fg:     #79C0FF;
+
+  /* --- Status: Success --- */
+  --ov-success-emphasis: #1A7F37;
+  --ov-success-default:  #56D364;
+  --ov-success-muted:    rgba(86, 211, 100, 0.12);
+
+  /* --- Status: Warning --- */
+  --ov-warning-emphasis: #9A6700;
+  --ov-warning-default:  #E3B341;
+  --ov-warning-muted:    rgba(227, 179, 65, 0.12);
+
+  /* --- Status: Danger --- */
+  --ov-danger-emphasis: #CF222E;
+  --ov-danger-default:  #F47067;
+  --ov-danger-muted:    rgba(244, 112, 103, 0.12);
+
+  /* --- Status: Info --- */
+  --ov-info-emphasis: #1F6FEB;
+  --ov-info-default:  #58A6FF;
+  --ov-info-muted:    rgba(88, 166, 255, 0.12);
+
+  /* --- Typography --- */
+  --ov-font-ui:   -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+                  Helvetica, Arial, sans-serif;
+  --ov-font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", "Fira Code",
+                  Menlo, Consolas, "Liberation Mono", monospace;
+
+  --ov-text-xs:   0.6875rem;   /* 11px */
+  --ov-text-sm:   0.75rem;     /* 12px */
+  --ov-text-base: 0.875rem;    /* 14px */
+  --ov-text-md:   0.9375rem;   /* 15px */
+  --ov-text-lg:   1rem;        /* 16px */
+  --ov-text-xl:   1.25rem;     /* 20px */
+  --ov-text-2xl:  1.5rem;      /* 24px */
+
+  --ov-weight-regular:  400;
+  --ov-weight-medium:   500;
+  --ov-weight-semibold: 600;
+
+  --ov-mono-size:    13px;
+  --ov-mono-leading: 1.54;
+  --ov-mono-weight:  400;
+
+  /* --- Spacing (4px grid) --- */
+  --ov-space-0:  0px;
+  --ov-space-1:  4px;
+  --ov-space-2:  8px;
+  --ov-space-3:  12px;
+  --ov-space-4:  16px;
+  --ov-space-5:  20px;
+  --ov-space-6:  24px;
+  --ov-space-8:  32px;
+  --ov-space-10: 40px;
+  --ov-space-12: 48px;
+
+  /* --- Layout dimensions --- */
+  --ov-header-height:        38px;
+  --ov-footer-height:        24px;
+  --ov-sidenav-width:        42px;
+  --ov-sidebar-width:        260px;
+  --ov-sidebar-min-width:    200px;
+  --ov-sidebar-max-width:    400px;
+  --ov-detail-panel-width:   560px;
+  --ov-detail-panel-min:     400px;
+  --ov-detail-panel-max:     800px;
+  --ov-bottom-drawer-height: 280px;
+
+  /* --- Elevation: Shadows --- */
+  --ov-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.30), 0 1px 2px rgba(0, 0, 0, 0.20);
+  --ov-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.25);
+  --ov-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.40), 0 4px 8px rgba(0, 0, 0, 0.30);
+  --ov-shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.45);
+
+  /* --- Elevation: Radius --- */
+  --ov-radius-none: 0;
+  --ov-radius-sm:   4px;
+  --ov-radius-md:   6px;
+  --ov-radius-lg:   8px;
+  --ov-radius-xl:   12px;
+  --ov-radius-full: 9999px;
+
+  /* --- Motion: Durations --- */
+  --ov-duration-instant: 0ms;
+  --ov-duration-fast:    100ms;
+  --ov-duration-normal:  200ms;
+  --ov-duration-slow:    300ms;
+
+  /* --- Motion: Easing --- */
+  --ov-ease-default: cubic-bezier(0.2, 0, 0, 1);
+  --ov-ease-in:      cubic-bezier(0.4, 0, 1, 1);
+  --ov-ease-out:     cubic-bezier(0, 0, 0.2, 1);
+
+  /* --- Interactive states --- */
+  --ov-state-hover:    rgba(255, 255, 255, 0.04);
+  --ov-state-active:   rgba(255, 255, 255, 0.07);
+  --ov-state-selected: var(--ov-accent-subtle);
+  --ov-state-focus:    0 0 0 2px var(--ov-accent);
+}
+
+/* ================================================================
+ * LIGHT THEME OVERRIDES
+ * ================================================================ */
+[data-ov-theme="light"] {
+  --ov-bg-base:             #FFFFFF;
+  --ov-bg-surface:          #F6F8FA;
+  --ov-bg-surface-raised:   #FFFFFF;
+  --ov-bg-surface-overlay:  #FFFFFF;
+  --ov-bg-surface-inset:    #EFF2F5;
+
+  --ov-fg-base:     #1F2328;
+  --ov-fg-default:  rgba(31, 35, 40, 0.92);
+  --ov-fg-muted:    rgba(31, 35, 40, 0.64);
+  --ov-fg-faint:    rgba(31, 35, 40, 0.44);
+  --ov-fg-disabled: rgba(31, 35, 40, 0.28);
+  --ov-fg-accent:   #0969DA;
+
+  --ov-border-default: #D0D7DE;
+  --ov-border-muted:   #D8DEE4;
+  --ov-border-emphasis: #636C76;
+
+  --ov-accent:        #0969DA;
+  --ov-accent-muted:  rgba(9, 105, 218, 0.20);
+  --ov-accent-subtle: rgba(9, 105, 218, 0.10);
+  --ov-accent-fg:     #0550AE;
+
+  --ov-success-emphasis: #1A7F37;
+  --ov-success-default:  #1A7F37;
+  --ov-success-muted:    rgba(26, 127, 55, 0.10);
+
+  --ov-warning-emphasis: #9A6700;
+  --ov-warning-default:  #9A6700;
+  --ov-warning-muted:    rgba(154, 103, 0, 0.10);
+
+  --ov-danger-emphasis: #CF222E;
+  --ov-danger-default:  #CF222E;
+  --ov-danger-muted:    rgba(207, 34, 46, 0.10);
+
+  --ov-info-emphasis: #0969DA;
+  --ov-info-default:  #0969DA;
+  --ov-info-muted:    rgba(9, 105, 218, 0.10);
+
+  --ov-shadow-sm: 0 1px 3px rgba(31, 35, 40, 0.10), 0 1px 2px rgba(31, 35, 40, 0.06);
+  --ov-shadow-md: 0 4px 12px rgba(31, 35, 40, 0.12), 0 2px 4px rgba(31, 35, 40, 0.08);
+  --ov-shadow-lg: 0 8px 24px rgba(31, 35, 40, 0.16), 0 4px 8px rgba(31, 35, 40, 0.10);
+  --ov-shadow-xl: 0 16px 48px rgba(31, 35, 40, 0.20);
+
+  --ov-state-hover:    rgba(31, 35, 40, 0.04);
+  --ov-state-active:   rgba(31, 35, 40, 0.07);
+  --ov-state-selected: var(--ov-accent-subtle);
+  --ov-state-focus:    0 0 0 2px var(--ov-accent);
+}
+
+/* ================================================================
+ * HIGH CONTRAST THEME OVERRIDES
+ * ================================================================ */
+[data-ov-theme="high-contrast"] {
+  --ov-bg-base:             #010409;
+  --ov-bg-surface:          #0D1117;
+  --ov-bg-surface-raised:   #161B22;
+  --ov-bg-surface-overlay:  #1F2937;
+  --ov-bg-surface-inset:    #010409;
+
+  --ov-fg-base:     #FFFFFF;
+  --ov-fg-default:  #F0F6FC;
+  --ov-fg-muted:    #C9D1D9;
+  --ov-fg-faint:    #8B949E;
+  --ov-fg-disabled: #484F58;
+  --ov-fg-accent:   #79C0FF;
+
+  --ov-border-default: #6E7681;
+  --ov-border-muted:   #3D444D;
+  --ov-border-emphasis: #F0F6FC;
+
+  --ov-accent:        #58A6FF;
+  --ov-accent-muted:  rgba(88, 166, 255, 0.30);
+  --ov-accent-subtle: rgba(88, 166, 255, 0.15);
+  --ov-accent-fg:     #79C0FF;
+}
+
+/* ================================================================
+ * REDUCED MOTION
+ * ================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ov-duration-instant: 0ms;
+    --ov-duration-fast:    0ms;
+    --ov-duration-normal:  0ms;
+    --ov-duration-slow:    0ms;
+  }
+}

@@ -332,7 +332,7 @@ func TestGoWatcherStart_WatchesNestedSubdirs(t *testing.T) {
 		zap.NewNop().Sugar(),
 		"nested-test",
 		devPath,
-		BuildOpts{},
+		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
 		&mockPluginReloader{},
 		func(e LogEntry) { logs = append(logs, e) },
 		func(DevProcessStatus) {},
@@ -343,8 +343,8 @@ func TestGoWatcherStart_WatchesNestedSubdirs(t *testing.T) {
 	require.NoError(t, gw.Start())
 	defer gw.Stop()
 
-	// Should watch all 4 directories: pkg/, pkg/api/, pkg/api/v1/, pkg/internal/
-	require.Len(t, logs, 1)
+	// First log: "Watching 4 directories under pkg/"
+	require.GreaterOrEqual(t, len(logs), 1)
 	assert.Contains(t, logs[0].Message, "Watching 4 directories")
 }
 
@@ -362,7 +362,7 @@ func TestGoWatcherStart_SkipsHiddenVendorNodeModules(t *testing.T) {
 		zap.NewNop().Sugar(),
 		"skip-test",
 		devPath,
-		BuildOpts{},
+		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
 		&mockPluginReloader{},
 		func(e LogEntry) { logs = append(logs, e) },
 		func(DevProcessStatus) {},
@@ -373,9 +373,84 @@ func TestGoWatcherStart_SkipsHiddenVendorNodeModules(t *testing.T) {
 	require.NoError(t, gw.Start())
 	defer gw.Stop()
 
-	// Only pkg/ and pkg/valid/ should be watched (hidden, vendor, node_modules skipped).
-	require.Len(t, logs, 1)
+	// First log: "Watching 2 directories under pkg/"
+	require.GreaterOrEqual(t, len(logs), 1)
 	assert.Contains(t, logs[0].Message, "Watching 2 directories")
+}
+
+// ============================================================================
+// Initial build tests
+// ============================================================================
+
+func TestGoWatcherStart_InitialBuild_FailsGracefully(t *testing.T) {
+	// When GoPath is empty, initial build fails but Start() should NOT return error.
+	// The watcher should still start so the user can fix the issue and rebuild.
+	devPath := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(devPath, "pkg"), 0755))
+
+	var logs []LogEntry
+	var statuses []DevProcessStatus
+	gw := newGoWatcherProcess(
+		context.Background(),
+		zap.NewNop().Sugar(),
+		"fail-build",
+		devPath,
+		BuildOpts{GoPath: ""}, // Empty → build will fail
+		&mockPluginReloader{},
+		func(e LogEntry) { logs = append(logs, e) },
+		func(s DevProcessStatus) { statuses = append(statuses, s) },
+		func(time.Duration, string) {},
+		func(string, []BuildError) {},
+	)
+
+	// Start should succeed even though the initial build fails.
+	require.NoError(t, gw.Start())
+	defer gw.Stop()
+
+	// Verify status progression: Building → Error (from initial build failure)
+	require.GreaterOrEqual(t, len(statuses), 2)
+	assert.Equal(t, DevProcessStatusBuilding, statuses[0])
+	assert.Equal(t, DevProcessStatusError, statuses[1])
+
+	// Verify logs contain initial build messages.
+	var hasInitialBuildMsg, hasFailMsg bool
+	for _, log := range logs {
+		if log.Message == "Running initial build..." {
+			hasInitialBuildMsg = true
+		}
+		if log.Source == "go-build" && log.Level == "error" {
+			hasFailMsg = true
+		}
+	}
+	assert.True(t, hasInitialBuildMsg, "should log initial build start")
+	assert.True(t, hasFailMsg, "should log build failure")
+}
+
+func TestGoWatcherStart_InitialBuild_StatusProgression(t *testing.T) {
+	// Verify the status transitions through Building when Start() is called.
+	devPath := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(devPath, "pkg"), 0755))
+
+	var statuses []DevProcessStatus
+	gw := newGoWatcherProcess(
+		context.Background(),
+		zap.NewNop().Sugar(),
+		"status-test",
+		devPath,
+		BuildOpts{GoPath: "nonexistent-go-binary"},
+		&mockPluginReloader{},
+		func(e LogEntry) {},
+		func(s DevProcessStatus) { statuses = append(statuses, s) },
+		func(time.Duration, string) {},
+		func(string, []BuildError) {},
+	)
+
+	require.NoError(t, gw.Start())
+	defer gw.Stop()
+
+	// Should have at least Building status (first status set by initial build).
+	require.GreaterOrEqual(t, len(statuses), 1)
+	assert.Equal(t, DevProcessStatusBuilding, statuses[0])
 }
 
 func TestTransferBinary_ReadOnlyDestDir(t *testing.T) {

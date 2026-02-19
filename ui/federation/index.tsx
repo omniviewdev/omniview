@@ -1,7 +1,8 @@
 import React from 'react';
 
 // import { __federation_method_setRemote, __federation_method_getRemote, __federation_method_unwrapDefault } from '__federation__';
-import EB from '@/ErrorBoundary';
+import { ErrorBoundary as EB } from 'react-error-boundary';
+import { InlineErrorFallback } from '@/components/errors/ErrorFallback';
 
 type PluginComponentProps = {
   [key: string]: any;
@@ -63,7 +64,7 @@ const PluginComponent: React.FC<PluginComponentProps> = (_) => {
   // const cacheKey = `${plugin}:${component}`;
 
   return (
-    <EB>
+    <EB FallbackComponent={InlineErrorFallback}>
       <div></div>
     </EB>
   );

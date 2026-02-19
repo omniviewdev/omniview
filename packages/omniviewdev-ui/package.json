@@ -1,0 +1,238 @@
+{
+  "author": "Omniview",
+  "license": "AGPL-3.0-only",
+  "name": "@omniviewdev/ui",
+  "version": "0.0.1",
+  "description": "Shared UI components, tokens, and theming for Omniview",
+  "sideEffects": [
+    "*.css"
+  ],
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./cells": {
+      "import": "./dist/cells.js",
+      "require": "./dist/cells.cjs"
+    },
+    "./table": {
+      "import": "./dist/table.js",
+      "require": "./dist/table.cjs"
+    },
+    "./inputs": {
+      "import": "./dist/inputs.js",
+      "require": "./dist/inputs.cjs"
+    },
+    "./utils": {
+      "import": "./dist/utils.js",
+      "require": "./dist/utils.cjs"
+    },
+    "./theme": {
+      "import": "./dist/theme.js",
+      "require": "./dist/theme.cjs"
+    },
+    "./theme/tokens.css": "./dist/tokens.css",
+    "./types": {
+      "import": "./dist/types.js",
+      "require": "./dist/types.cjs"
+    },
+    "./buttons": {
+      "import": "./dist/buttons.js",
+      "require": "./dist/buttons.cjs"
+    },
+    "./feedback": {
+      "import": "./dist/feedback.js",
+      "require": "./dist/feedback.cjs"
+    },
+    "./typography": {
+      "import": "./dist/typography.js",
+      "require": "./dist/typography.cjs"
+    },
+    "./overlays": {
+      "import": "./dist/overlays.js",
+      "require": "./dist/overlays.cjs"
+    },
+    "./navigation": {
+      "import": "./dist/navigation.js",
+      "require": "./dist/navigation.cjs"
+    },
+    "./editors": {
+      "import": "./dist/editors.js",
+      "require": "./dist/editors.cjs"
+    },
+    "./domain": {
+      "import": "./dist/domain.js",
+      "require": "./dist/domain.cjs"
+    },
+    "./layout": {
+      "import": "./dist/layout.js",
+      "require": "./dist/layout.cjs"
+    },
+    "./menus": {
+      "import": "./dist/menus.js",
+      "require": "./dist/menus.cjs"
+    },
+    "./sidebars": {
+      "import": "./dist/sidebars.js",
+      "require": "./dist/sidebars.cjs"
+    },
+    "./charts": {
+      "import": "./dist/charts.js",
+      "require": "./dist/charts.cjs"
+    }
+  },
+  "types": "dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "cells": [
+        "dist/cells/index.d.ts"
+      ],
+      "table": [
+        "dist/table/index.d.ts"
+      ],
+      "inputs": [
+        "dist/inputs/index.d.ts"
+      ],
+      "utils": [
+        "dist/utils/index.d.ts"
+      ],
+      "theme": [
+        "dist/theme/index.d.ts"
+      ],
+      "types": [
+        "dist/types/index.d.ts"
+      ],
+      "buttons": [
+        "dist/buttons/index.d.ts"
+      ],
+      "feedback": [
+        "dist/feedback/index.d.ts"
+      ],
+      "typography": [
+        "dist/typography/index.d.ts"
+      ],
+      "overlays": [
+        "dist/overlays/index.d.ts"
+      ],
+      "navigation": [
+        "dist/navigation/index.d.ts"
+      ],
+      "editors": [
+        "dist/editors/index.d.ts"
+      ],
+      "domain": [
+        "dist/domain/index.d.ts"
+      ],
+      "layout": [
+        "dist/layout/index.d.ts"
+      ],
+      "menus": [
+        "dist/menus/index.d.ts"
+      ],
+      "sidebars": [
+        "dist/sidebars/index.d.ts"
+      ],
+      "charts": [
+        "dist/charts/index.d.ts"
+      ]
+    }
+  },
+  "repository": {
+    "type": "git",
+    "directory": "packages/omniviewdev-ui",
+    "url": "https://github.com/omniviewdev/omniview.git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc && vite build",
+    "lint": "eslint --cache --ext .js,.jsx,.ts,.tsx ./src",
+    "lint:fix": "npm run lint -- --fix",
+    "showcase": "vite serve src/showcase --config src/showcase/vite.config.showcase.ts"
+  },
+  "keywords": [
+    "omniview",
+    "ui",
+    "design-system"
+  ],
+  "devDependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@monaco-editor/react": "^4.7.0",
+    "@mui/icons-material": "^7.3.0",
+    "@mui/material": "^7.3.0",
+    "@mui/x-charts": "^8.27.0",
+    "@mui/x-date-pickers": "^8.27.0",
+    "@tanstack/react-router": "^1.160.0",
+    "@tanstack/react-table": "^8.21.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "@xterm/addon-fit": "^0.9.0",
+    "@xterm/addon-webgl": "^0.17.0",
+    "@xterm/xterm": "^5.5.0",
+    "date-fns": "^4.1.0",
+    "monaco-editor": "^0.47.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-icons": "^5.5.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.3.0",
+    "vite-plugin-dts": "^4.5.3",
+    "vite-plugin-static-copy": "^3.0.0"
+  },
+  "peerDependencies": {
+    "@emotion/react": ">=11.0.0",
+    "@emotion/styled": ">=11.0.0",
+    "@monaco-editor/react": ">=4.0.0",
+    "@mui/icons-material": ">=7.0.0",
+    "@mui/material": ">=7.0.0",
+    "@mui/x-charts": ">=8.0.0",
+    "@mui/x-date-pickers": ">=8.0.0",
+    "@tanstack/react-table": ">=8.0.0",
+    "@xterm/addon-fit": ">=0.8.0",
+    "@xterm/addon-webgl": ">=0.16.0",
+    "@xterm/xterm": ">=5.0.0",
+    "date-fns": ">=4.0.0",
+    "monaco-editor": ">=0.40.0",
+    "react": ">=19.0.0",
+    "react-dom": ">=19.0.0",
+    "react-icons": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/react-table": {
+      "optional": true
+    },
+    "date-fns": {
+      "optional": true
+    },
+    "monaco-editor": {
+      "optional": true
+    },
+    "@monaco-editor/react": {
+      "optional": true
+    },
+    "@xterm/xterm": {
+      "optional": true
+    },
+    "@xterm/addon-fit": {
+      "optional": true
+    },
+    "@xterm/addon-webgl": {
+      "optional": true
+    },
+    "@mui/x-charts": {
+      "optional": true
+    },
+    "@mui/x-date-pickers": {
+      "optional": true
+    }
+  }
+}

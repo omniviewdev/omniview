@@ -9,6 +9,7 @@ import { debounce } from '@/utils/debounce';
 
 // project import
 import { ExecClient } from '@omniviewdev/runtime/api';
+import log from '@/features/logger';
 import { bottomDrawerChannel } from '../events';
 import * as runtime from '@omniviewdev/runtime/runtime';
 import { Base64 } from 'js-base64';
@@ -145,7 +146,7 @@ export default function TerminalContainer({ sessionId }: Props) {
       var rows = event.rows;
       var cols = event.cols;
       ExecClient.ResizeSession(sessionId, rows, cols).catch((err) => {
-        console.error('failed to set tty size', err);
+        log.error(err instanceof Error ? err : new Error(String(err)), { event: 'resize_session', sessionId });
       });
     });
 
@@ -169,7 +170,7 @@ export default function TerminalContainer({ sessionId }: Props) {
       try {
         await ExecClient.AttachSession(sessionId);
       } catch (e) {
-        console.error('failed to attach to session', e);
+        log.error(e instanceof Error ? e : new Error(String(e)), { event: 'attach_session', sessionId });
       }
 
       setupSignalHandlers(sessionId);
@@ -181,14 +182,14 @@ export default function TerminalContainer({ sessionId }: Props) {
         ExecClient.WriteSession(sessionId, data)
           .catch((err) => {
             if (err instanceof Error) {
-              console.error('failed to write to session: ', err.message);
+              log.error(err, { event: 'write_session', sessionId });
               return;
             }
           });
       });
 
     }).catch((err) => {
-      console.error('failed to attach to session', err);
+      log.error(err instanceof Error ? err : new Error(String(err)), { event: 'attach_session', sessionId });
     });
 
 
@@ -214,7 +215,7 @@ export default function TerminalContainer({ sessionId }: Props) {
       ExecClient.DetachSession(sessionId).then(() => {
       }).catch((err) => {
         if (err instanceof Error) {
-          console.error('failed to detach from session: ', err.message);
+          log.error(err, { event: 'detach_session', sessionId });
           return;
         }
       });

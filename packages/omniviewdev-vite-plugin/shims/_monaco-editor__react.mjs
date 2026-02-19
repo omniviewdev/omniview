@@ -10,5 +10,9 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const DiffEditor = mod.DiffEditor;
+export const Editor = mod.Editor;
+export const loader = mod.loader;
+export const useMonaco = mod.useMonaco;
+
 export default mod.default !== undefined ? mod.default : mod;

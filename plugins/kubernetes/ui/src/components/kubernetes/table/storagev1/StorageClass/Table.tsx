@@ -63,7 +63,7 @@ const StorageClassTable: React.FC = () => {
     title: resourceKey,
     icon: <LuLayers />,
     views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <StorageClassSidebar data={ctx.data} /> },
+      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <StorageClassSidebar ctx={ctx} /> },
       { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
     ],
     actions: [

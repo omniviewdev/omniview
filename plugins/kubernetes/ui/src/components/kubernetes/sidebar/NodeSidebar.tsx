@@ -7,6 +7,7 @@ import Chip from '@mui/joy/Chip';
 
 // types
 import { Node } from "kubernetes-types/core/v1";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 // project-imports
 import ObjectMetaSection from "../../shared/ObjectMetaSection";
@@ -16,11 +17,15 @@ import DynamicIcon from "../../../stories/components/DynamicIcon";
 import { convertKubernetesByteUnits } from "../../../utils/convert";
 
 interface Props {
-  data: object;
+  ctx: DrawerContext<Node>;
 }
 
-export const NodeSidebar: React.FC<Props> = ({ data }) => {
-  const node = data as Node;
+export const NodeSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
+  }
+
+  const node = ctx.data;
 
   // compose your component here
   return (

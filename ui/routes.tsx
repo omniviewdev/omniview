@@ -23,7 +23,7 @@ import EditConnectionPage from './pages/[plugin]/[connectionID]/edit';
 import ConnectionDetails from './pages/[plugin]/[connectionID]/edit/ConnectionDetails';
 import ResourceTableView from './pages/[plugin]/[connectionID]/resources/ResourceTableView';
 
-import { RouterErrorBoundary } from './ErrorBoundary';
+import { RouterErrorBoundary } from './features/router/components/ErrorBoundary';
 
 // Trivy
 import TrivyLayout from './pages/trivy';

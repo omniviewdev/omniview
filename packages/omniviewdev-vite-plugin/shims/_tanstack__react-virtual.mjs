@@ -10,5 +10,21 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const Virtualizer = mod.Virtualizer;
+export const approxEqual = mod.approxEqual;
+export const debounce = mod.debounce;
+export const defaultKeyExtractor = mod.defaultKeyExtractor;
+export const defaultRangeExtractor = mod.defaultRangeExtractor;
+export const elementScroll = mod.elementScroll;
+export const measureElement = mod.measureElement;
+export const memo = mod.memo;
+export const notUndefined = mod.notUndefined;
+export const observeElementOffset = mod.observeElementOffset;
+export const observeElementRect = mod.observeElementRect;
+export const observeWindowOffset = mod.observeWindowOffset;
+export const observeWindowRect = mod.observeWindowRect;
+export const useVirtualizer = mod.useVirtualizer;
+export const useWindowVirtualizer = mod.useWindowVirtualizer;
+export const windowScroll = mod.windowScroll;
+
 export default mod.default !== undefined ? mod.default : mod;

@@ -61,7 +61,7 @@ const CSINodeTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <CSINodeSidebar data={ctx.data} />,
+        component: (ctx) => <CSINodeSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

@@ -197,6 +197,18 @@ export namespace devserver {
 	        this.startedAt = source["startedAt"];
 	    }
 	}
+	export class DevServerManager {
+	
+	
+	    static createFrom(source: any = {}) {
+	        return new DevServerManager(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	
+	    }
+	}
 	export class DevServerState {
 	    pluginID: string;
 	    mode: string;
@@ -1800,11 +1812,66 @@ export namespace types {
 		    return a;
 		}
 	}
+	export class ActionDescriptor {
+	    id: string;
+	    label: string;
+	    description: string;
+	    icon: string;
+	    scope: string;
+	    streaming: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new ActionDescriptor(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.description = source["description"];
+	        this.icon = source["icon"];
+	        this.scope = source["scope"];
+	        this.streaming = source["streaming"];
+	    }
+	}
+	export class ActionInput {
+	    id: string;
+	    namespace: string;
+	    params: Record<string, any>;
+
+	    static createFrom(source: any = {}) {
+	        return new ActionInput(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.namespace = source["namespace"];
+	        this.params = source["params"];
+	    }
+	}
+	export class ActionResult {
+	    success: boolean;
+	    data: Record<string, any>;
+	    message: string;
+
+	    static createFrom(source: any = {}) {
+	        return new ActionResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.success = source["success"];
+	        this.data = source["data"];
+	        this.message = source["message"];
+	    }
+	}
 	export class ResourceDefinition {
 	    id_accessor: string;
 	    namespace_accessor: string;
 	    memoizer_accessor: string;
 	    columnDefs: ColumnDef[];
+	    supportedOperations?: number[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ResourceDefinition(source);
@@ -1816,6 +1883,7 @@ export namespace types {
 	        this.namespace_accessor = source["namespace_accessor"];
 	        this.memoizer_accessor = source["memoizer_accessor"];
 	        this.columnDefs = this.convertValues(source["columnDefs"], ColumnDef);
+	        this.supportedOperations = source["supportedOperations"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

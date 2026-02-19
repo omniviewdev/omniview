@@ -193,22 +193,13 @@ export const usePluginManager = () => {
   const plugins = useQuery({
     queryKey: [Entity.PLUGINS],
     queryFn: async () => {
+      console.debug('[usePluginManager] fetching plugin list');
       const plugins = await PluginManager.ListPlugins();
-      console.log("got plugins", plugins)
+      console.debug('[usePluginManager] got plugins', { count: plugins?.length ?? 0, ids: plugins?.map(p => p.id) });
       if (!plugins) {
         return [];
       }
 
-      plugins.forEach(plugin => {
-        // run the component preloads
-        Object.values(plugin.metadata.components?.resource || {}).forEach(_ => {
-          // preload(plugin.id, component.name).catch(err => {
-          //   console.error(`Failed to preload component ${component.name} for plugin ${plugin.id}`, err);
-          // });
-        });
-      });
-
-      console.log("preloaded plugins", plugins)
       return plugins;
     },
   });
@@ -295,7 +286,7 @@ export const usePlugin = ({ id }: { id: string }) => {
    */
   const { mutateAsync: update } = useMutation({
     mutationFn: async (version: string) => {
-      console.log(`running update with plugin ${id} and version ${version}`)
+      console.debug(`[usePluginManager] updating plugin "${id}" to version "${version}"`, { plugin: id, version })
       const resp = await PluginManager.InstallPluginVersion(id, version)
       return resp
     },

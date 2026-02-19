@@ -2,6 +2,7 @@ import React from 'react';
 
 // Material-ui
 import Box from '@mui/joy/Box';
+import log from '@/features/logger';
 // import IconButton from '@mui/joy/IconButton';
 // import Icon from '@/components/icons/Icon';
 import HeaderIconMenu from './components/HeaderIconMenu';
@@ -44,7 +45,7 @@ const HeaderItemsArea: React.FC<Props> = ({ items }) => {
             WindowMaximise();
           }
         }).catch((err) => {
-          console.error(err);
+          log.error(err instanceof Error ? err : new Error(String(err)), { event: 'window_maximize_toggle' });
         });
         break;
     }

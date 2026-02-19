@@ -43,7 +43,7 @@ import {
   LuX,
   LuCircleX,
 } from "react-icons/lu";
-import { ResourceSidebarProps } from "../../../types/resource";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 const decodeEntries = (data?: Record<string, string>) => {
   if (!data) {
@@ -59,13 +59,21 @@ const decodeEntries = (data?: Record<string, string>) => {
   );
 };
 
+interface Props {
+  ctx: DrawerContext<Secret>;
+}
+
 /**
- * Renders a sidebar for a ConfigMap resource
+ * Renders a sidebar for a Secret resource
  */
-export const SecretSidebar: React.FC<ResourceSidebarProps> = ({
-  data,
+export const SecretSidebar: React.FC<Props> = ({
+  ctx,
 }) => {
-  const secret = data as Secret;
+  if (!ctx.data) {
+    return null;
+  }
+
+  const secret = ctx.data;
 
   const { showSnackbar } = useSnackbar();
   const [shown, setShown] = React.useState<Record<string, boolean>>({});

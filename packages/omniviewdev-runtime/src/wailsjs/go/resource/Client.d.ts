@@ -6,6 +6,10 @@ export function AddConnection(arg1:string,arg2:types.Connection):Promise<void>;
 
 export function Create(arg1:string,arg2:string,arg3:string,arg4:types.CreateInput):Promise<types.CreateResult>;
 
+export function ExecuteAction(arg1:string,arg2:string,arg3:string,arg4:string,arg5:types.ActionInput):Promise<types.ActionResult>;
+
+export function GetActions(arg1:string,arg2:string,arg3:string):Promise<Array<types.ActionDescriptor>>;
+
 export function Delete(arg1:string,arg2:string,arg3:string,arg4:types.DeleteInput):Promise<types.DeleteResult>;
 
 export function Find(arg1:string,arg2:string,arg3:string,arg4:types.FindInput):Promise<types.FindResult>;

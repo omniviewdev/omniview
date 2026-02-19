@@ -97,7 +97,7 @@ const PersistentVolumeTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <PersistentVolumeSidebar data={ctx.data || {}} />,
+        component: (ctx) => <PersistentVolumeSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

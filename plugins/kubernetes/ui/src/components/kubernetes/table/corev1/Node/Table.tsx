@@ -115,7 +115,7 @@ const NodeTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuBox />,
-        component: (ctx) => <NodeSidebar data={ctx.data || {}} />
+        component: (ctx) => <NodeSidebar ctx={ctx} />
       },
       {
         title: 'Editor',

@@ -75,7 +75,7 @@ const ReplicationControllerTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <ReplicationControllerSidebar data={ctx.data || {}} />,
+        component: (ctx) => <ReplicationControllerSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

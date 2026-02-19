@@ -202,7 +202,7 @@ This field is beta-level. It can be used when the \`JobPodFailurePolicy\` featur
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <JobSidebar data={ctx.data || {}} />,
+        component: (ctx) => <JobSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

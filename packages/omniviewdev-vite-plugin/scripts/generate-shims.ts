@@ -114,11 +114,33 @@ function generateGenericShim(packageName: string): string {
   return lines.join('\n') + '\n';
 }
 
+/**
+ * Attempt to dynamically import a package and return its named export keys.
+ * Falls back to KNOWN_EXPORTS or empty array on failure.
+ */
+async function discoverExports(packageName: string): Promise<string[]> {
+  // Use hardcoded list if available
+  if (KNOWN_EXPORTS[packageName]) {
+    return KNOWN_EXPORTS[packageName];
+  }
+
+  try {
+    const mod = await import(packageName);
+    const keys = Object.keys(mod).filter(
+      (k) => k !== 'default' && k !== '__esModule' && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k)
+    );
+    return keys;
+  } catch {
+    // Package can't be imported at generation time (e.g. native module, missing peer dep)
+    return [];
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────────────────────────────────────
 
-function main(): void {
+async function main(): Promise<void> {
   // Ensure shims directory exists
   if (!fs.existsSync(SHIMS_DIR)) {
     fs.mkdirSync(SHIMS_DIR, { recursive: true });
@@ -131,14 +153,17 @@ function main(): void {
   }
 
   let generated = 0;
+  let autoDiscovered = 0;
 
   for (const pkg of SHARED_PACKAGES) {
     const filename = safeFilename(pkg) + '.mjs';
     const filepath = path.join(SHIMS_DIR, filename);
 
+    const exports = await discoverExports(pkg);
     let content: string;
-    if (KNOWN_EXPORTS[pkg]) {
-      content = generateExplicitShim(pkg, KNOWN_EXPORTS[pkg]);
+    if (exports.length > 0) {
+      content = generateExplicitShim(pkg, exports);
+      if (!KNOWN_EXPORTS[pkg]) autoDiscovered++;
     } else {
       content = generateGenericShim(pkg);
     }
@@ -147,7 +172,7 @@ function main(): void {
     generated++;
   }
 
-  console.log(`Generated ${generated} shim files in ${SHIMS_DIR}`);
+  console.log(`Generated ${generated} shim files in ${SHIMS_DIR} (${autoDiscovered} auto-discovered)`);
 }
 
 main();

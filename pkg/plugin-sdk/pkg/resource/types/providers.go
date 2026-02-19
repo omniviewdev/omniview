@@ -95,6 +95,15 @@ type ResourceLayoutProvider interface {
 	GetDefaultLayout() ([]LayoutItem, error)
 }
 
+type ResourceActionProvider interface {
+	// GetActions returns available actions for a resource type
+	GetActions(ctx *types.PluginContext, key string) ([]ActionDescriptor, error)
+	// ExecuteAction executes a named action and returns result
+	ExecuteAction(ctx *types.PluginContext, key string, actionID string, input ActionInput) (*ActionResult, error)
+	// StreamAction executes a streaming action, sending events on the channel
+	StreamAction(ctx *types.PluginContext, key string, actionID string, input ActionInput, stream chan ActionEvent) error
+}
+
 // ResourceProvider provides an interface for performing operations against a resource backend
 // given a resource namespace and a resource identifier.
 type ResourceProvider interface {
@@ -103,4 +112,5 @@ type ResourceProvider interface {
 	ResourceInformerProvider
 	ResourceLayoutProvider
 	ResourceOperationProvider
+	ResourceActionProvider
 }

@@ -45,7 +45,7 @@ const ClusterRoleTable: React.FC = () => {
     title: resourceKey,
     icon: <LuShieldQuestion />,
     views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ClusterRoleSidebar data={ctx.data} /> },
+      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ClusterRoleSidebar ctx={ctx} /> },
       { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
     ],
     actions: [

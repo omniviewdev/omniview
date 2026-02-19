@@ -5,24 +5,24 @@ import Stack from "@mui/joy/Stack";
 
 // types
 import { Endpoints } from "kubernetes-types/core/v1";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 // project-imports
 import ObjectMetaSection from "../../../shared/ObjectMetaSection";
 
 interface Props {
-  data: object;
+  ctx: DrawerContext<Endpoints>;
 }
 
 /**
- * Renders a sidebar for a ConfigMap resource
+ * Renders a sidebar for an Endpoint resource
  */
-export const EndpointSidebar: React.FC<Props> = ({ data }) => {
-  if (!data) {
-    return <React.Fragment />;
+export const EndpointSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
   }
 
-  // assert this is a ConfigMap
-  const obj = data as Endpoints;
+  const obj = ctx.data;
 
   // compose your component here
   return (

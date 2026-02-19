@@ -124,6 +124,16 @@ const DevBuildOutput: React.FC<Props> = ({ pluginId }) => {
   const [serverState, setServerState] = useState<DevServerState | null>(null);
   const isAutoScrolling = useRef(false);
 
+  // Fetch historical logs from the backend ring buffer on mount
+  useEffect(() => {
+    if (!pluginId) return;
+    (window as any).go?.devserver?.DevServerManager?.GetDevServerLogs(pluginId, 0)
+      ?.then((entries: DevBuildLine[]) => {
+        if (entries?.length) setLines(entries);
+      })
+      ?.catch(() => {/* swallow – logs just won't pre-populate */});
+  }, [pluginId]);
+
   useEffect(() => {
     const unsubLog = devToolsChannel.on('onBuildLog', (line) => {
       if (pluginId && line.pluginID !== pluginId) return;

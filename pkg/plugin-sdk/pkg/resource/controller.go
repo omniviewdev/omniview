@@ -408,6 +408,62 @@ func (c *resourceController[ClientT]) GetResourceDefinition(
 	return c.resourceTypeManager.GetResourceDefinition(resource)
 }
 
+// ================================= Action Methods ================================= //
+
+// GetActions returns available actions for a resource type by checking if
+// the resourcer implements the ActionResourcer interface.
+func (c *resourceController[ClientT]) GetActions(
+	ctx *pkgtypes.PluginContext,
+	resource string,
+) ([]types.ActionDescriptor, error) {
+	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
+	if err != nil {
+		return nil, nil // no actions if resourcer not found
+	}
+	ar, ok := resourcer.(types.ActionResourcer[ClientT])
+	if !ok {
+		return nil, nil
+	}
+	return ar.GetActions(ctx, client, types.ResourceMetaFromString(resource))
+}
+
+// ExecuteAction executes a named action on a resource.
+func (c *resourceController[ClientT]) ExecuteAction(
+	ctx *pkgtypes.PluginContext,
+	resource string,
+	actionID string,
+	input types.ActionInput,
+) (*types.ActionResult, error) {
+	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
+	}
+	ar, ok := resourcer.(types.ActionResourcer[ClientT])
+	if !ok {
+		return nil, fmt.Errorf("resource type %s does not support actions", resource)
+	}
+	return ar.ExecuteAction(ctx, client, types.ResourceMetaFromString(resource), actionID, input)
+}
+
+// StreamAction executes a streaming action on a resource.
+func (c *resourceController[ClientT]) StreamAction(
+	ctx *pkgtypes.PluginContext,
+	resource string,
+	actionID string,
+	input types.ActionInput,
+	stream chan types.ActionEvent,
+) error {
+	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
+	if err != nil {
+		return fmt.Errorf("unable to retrieve client and resourcer: %w", err)
+	}
+	ar, ok := resourcer.(types.ActionResourcer[ClientT])
+	if !ok {
+		return fmt.Errorf("resource type %s does not support streaming actions", resource)
+	}
+	return ar.StreamAction(ctx, client, types.ResourceMetaFromString(resource), actionID, input, stream)
+}
+
 // ================================= Layout Methods ================================= //
 
 func (c *resourceController[ClientT]) GetLayout(

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -14,6 +15,9 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// ansiRegex matches ANSI escape sequences (colors, cursor movement, etc.).
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 const (
 	// viteReadyTimeout is how long we wait for Vite to print its "Local:" URL.
@@ -85,10 +89,13 @@ func (vp *viteProcess) Start() error {
 		return fmt.Errorf("pnpm path not configured; set developer.pnpmpath in settings")
 	}
 
-	// Build the command: pnpm run dev -- --port <port> --strictPort --host 127.0.0.1
+	// Build the command: pnpm run dev --port <port> --strictPort --host 127.0.0.1
+	// NOTE: Do NOT use "--" separator. pnpm passes it through literally to the
+	// script, and Vite's CLI parser (cac) interprets "--" as end-of-options,
+	// causing --port/--host/--strictPort to be ignored. pnpm forwards
+	// unrecognized flags to the script automatically.
 	args := []string{
 		"run", "dev",
-		"--", // pass remaining args to vite
 		"--port", fmt.Sprintf("%d", vp.port),
 		"--strictPort",
 		"--host", "127.0.0.1",
@@ -142,7 +149,7 @@ func (vp *viteProcess) Start() error {
 	go func() {
 		scanner := bufio.NewScanner(stdoutPipe)
 		for scanner.Scan() {
-			line := scanner.Text()
+			line := ansiRegex.ReplaceAllString(scanner.Text(), "")
 			vp.appendLog(LogEntry{
 				Source:  "vite",
 				Level:   "info",
@@ -168,7 +175,7 @@ func (vp *viteProcess) Start() error {
 	go func() {
 		scanner := bufio.NewScanner(stderrPipe)
 		for scanner.Scan() {
-			line := scanner.Text()
+			line := ansiRegex.ReplaceAllString(scanner.Text(), "")
 			vp.appendLog(LogEntry{
 				Source:  "vite",
 				Level:   "error",

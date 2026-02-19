@@ -97,7 +97,7 @@ const RoleBindingTable: React.FC = () => {
     title: resourceKey,
     icon: <LuLink />,
     views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <RoleBindingSidebar data={ctx.data} /> },
+      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <RoleBindingSidebar ctx={ctx} /> },
       { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
     ],
     actions: [

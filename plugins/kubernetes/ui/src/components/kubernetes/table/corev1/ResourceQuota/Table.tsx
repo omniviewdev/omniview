@@ -108,7 +108,7 @@ const ResourceQuotaTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <ResourceQuotaSidebar data={ctx.data || {}} />,
+        component: (ctx) => <ResourceQuotaSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

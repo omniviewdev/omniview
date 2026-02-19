@@ -1,5 +1,5 @@
 // import React from 'react';
-import { Outlet, useInRouterContext } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import Layout from '@/layouts/core/main';
 
 // Material-ui
@@ -12,7 +12,7 @@ export default function Container() {
   // const { numPanes, removePane } = usePanes();
   // const { id } = usePane();
   // const [showCloseButton, setShowCloseButton] = React.useState(false);
-  console.log("In Router Context", useInRouterContext())
+
 
   return (
     <Box

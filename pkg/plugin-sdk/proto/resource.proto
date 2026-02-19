@@ -233,6 +233,54 @@ message ResourceDefinition {
   string namespace_accessor = 2;
   string memo_accessor = 3;
   repeated ColumnDef column_defs = 4;
+  repeated int32 supported_operations = 5;
+}
+
+// ==================== Resource Actions ==================== //
+
+enum ActionScope {
+  ACTION_SCOPE_INSTANCE = 0;   // Operates on a specific resource (needs id/namespace)
+  ACTION_SCOPE_TYPE = 1;       // Operates on the resource type level (no specific resource)
+}
+
+// Describes an available action on a resource type
+message ActionDescriptor {
+  string id = 1;              // e.g., "upgrade", "rollback", "dry-run"
+  string label = 2;           // "Upgrade Release"
+  string description = 3;     // Human-readable description
+  string icon = 4;            // Icon identifier (react-icons)
+  ActionScope scope = 5;      // INSTANCE or TYPE
+  bool streaming = 6;         // Whether this returns a streaming response
+}
+
+message GetActionsRequest {
+  string key = 1;             // Resource type key (e.g., "helm::v1::Release")
+  string context = 2;         // Connection ID
+}
+
+message GetActionsResponse {
+  repeated ActionDescriptor actions = 1;
+}
+
+message ExecuteActionRequest {
+  string key = 1;             // Resource type key
+  string context = 2;         // Connection ID
+  string action_id = 3;       // Action identifier
+  string id = 4;              // Resource ID (for INSTANCE scope)
+  string namespace = 5;       // Resource namespace
+  google.protobuf.Struct params = 6;  // Action-specific parameters
+}
+
+message ExecuteActionResponse {
+  bool success = 1;
+  google.protobuf.Struct data = 2;    // Action result
+  string message = 3;                  // Human-readable message
+}
+
+// Streaming action events (for long-running actions like test, lint)
+message StreamActionEvent {
+  string type = 1;            // "progress", "output", "error", "complete"
+  google.protobuf.Struct data = 2;
 }
 
 service ResourcePlugin {
@@ -269,4 +317,8 @@ service ResourcePlugin {
   rpc GetLayout(GetLayoutRequest) returns (Layout) {}
   rpc GetDefaultLayout(google.protobuf.Empty) returns (Layout) {}
   rpc SetLayout(SetLayoutRequest) returns (google.protobuf.Empty) {}
+  // Actions
+  rpc GetActions(GetActionsRequest) returns (GetActionsResponse) {}
+  rpc ExecuteAction(ExecuteActionRequest) returns (ExecuteActionResponse) {}
+  rpc StreamAction(ExecuteActionRequest) returns (stream StreamActionEvent) {}
 }

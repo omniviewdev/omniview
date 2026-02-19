@@ -10,5 +10,30 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const CSS = mod.CSS;
+export const add = mod.add;
+export const canUseDOM = mod.canUseDOM;
+export const findFirstFocusableNode = mod.findFirstFocusableNode;
+export const getEventCoordinates = mod.getEventCoordinates;
+export const getOwnerDocument = mod.getOwnerDocument;
+export const getWindow = mod.getWindow;
+export const hasViewportRelativeCoordinates = mod.hasViewportRelativeCoordinates;
+export const isDocument = mod.isDocument;
+export const isHTMLElement = mod.isHTMLElement;
+export const isKeyboardEvent = mod.isKeyboardEvent;
+export const isNode = mod.isNode;
+export const isSVGElement = mod.isSVGElement;
+export const isTouchEvent = mod.isTouchEvent;
+export const isWindow = mod.isWindow;
+export const subtract = mod.subtract;
+export const useCombinedRefs = mod.useCombinedRefs;
+export const useEvent = mod.useEvent;
+export const useInterval = mod.useInterval;
+export const useIsomorphicLayoutEffect = mod.useIsomorphicLayoutEffect;
+export const useLatestValue = mod.useLatestValue;
+export const useLazyMemo = mod.useLazyMemo;
+export const useNodeRef = mod.useNodeRef;
+export const usePrevious = mod.usePrevious;
+export const useUniqueId = mod.useUniqueId;
+
 export default mod.default !== undefined ? mod.default : mod;

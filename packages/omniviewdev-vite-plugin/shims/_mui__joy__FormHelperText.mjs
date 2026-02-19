@@ -10,5 +10,7 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const formHelperTextClasses = mod.formHelperTextClasses;
+export const getFormHelperTextUtilityClass = mod.getFormHelperTextUtilityClass;
+
 export default mod.default !== undefined ? mod.default : mod;

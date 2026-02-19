@@ -296,7 +296,7 @@ const BottomDrawerContainer: React.FC = () => {
                 }}
               >
                 {tab.variant === 'devbuild' ? (
-                  <DevBuildOutput pluginId={tab.id} />
+                  <DevBuildOutput pluginId={tab.id.replace(/^devbuild-/, '')} />
                 ) : tab.variant === 'logs' ? (
                   <LogViewerContainerMemo sessionId={tab.id} />
                 ) : (

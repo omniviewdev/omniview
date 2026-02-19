@@ -10,5 +10,7 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const iconButtonClasses = mod.iconButtonClasses;
+export const getIconButtonUtilityClass = mod.getIconButtonUtilityClass;
+
 export default mod.default !== undefined ? mod.default : mod;

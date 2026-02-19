@@ -61,7 +61,7 @@ const VolumeAttachmentTable: React.FC = () => {
     title: resourceKey,
     icon: <LuPlugZap />,
     views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <VolumeAttachmentSidebar data={ctx.data} /> },
+      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <VolumeAttachmentSidebar ctx={ctx} /> },
       { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
     ],
     actions: [

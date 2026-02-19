@@ -835,6 +835,43 @@ func (c *controller) SetLayout(
 	return client.SetLayout(layoutID, layout)
 }
 
+// ================================== ACTION METHODS ================================== //
+
+func (c *controller) GetActions(
+	pluginID, connectionID, key string,
+) ([]resourcetypes.ActionDescriptor, error) {
+	logger := c.logger.With("pluginID", pluginID, "connectionID", connectionID)
+	logger.Debug("GetActions")
+
+	client, conn, err := c.getClientConnection(pluginID, connectionID)
+	if err != nil {
+		err = fmt.Errorf("failed to call GetActions for connection: %w", err)
+		logger.Error(err)
+		return nil, err
+	}
+
+	ctx := c.connectedCtx(&conn)
+	return client.GetActions(ctx, key)
+}
+
+func (c *controller) ExecuteAction(
+	pluginID, connectionID, key, actionID string,
+	input resourcetypes.ActionInput,
+) (*resourcetypes.ActionResult, error) {
+	logger := c.logger.With("pluginID", pluginID, "connectionID", connectionID)
+	logger.Debug("ExecuteAction", "key", key, "actionID", actionID)
+
+	client, conn, err := c.getClientConnection(pluginID, connectionID)
+	if err != nil {
+		err = fmt.Errorf("failed to call ExecuteAction for connection: %w", err)
+		logger.Error(err)
+		return nil, err
+	}
+
+	ctx := c.connectedCtx(&conn)
+	return client.ExecuteAction(ctx, key, actionID, input)
+}
+
 // ================================== INFORMER METHODS ================================== //
 
 // listenForPluginEvents listens for events from the plugin in a blocking event

@@ -10,5 +10,7 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const chipClasses = mod.chipClasses;
+export const getChipUtilityClass = mod.getChipUtilityClass;
+
 export default mod.default !== undefined ? mod.default : mod;

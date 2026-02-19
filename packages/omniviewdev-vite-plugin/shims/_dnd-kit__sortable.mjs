@@ -10,5 +10,17 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const SortableContext = mod.SortableContext;
+export const arrayMove = mod.arrayMove;
+export const arraySwap = mod.arraySwap;
+export const defaultAnimateLayoutChanges = mod.defaultAnimateLayoutChanges;
+export const defaultNewIndexGetter = mod.defaultNewIndexGetter;
+export const hasSortableData = mod.hasSortableData;
+export const horizontalListSortingStrategy = mod.horizontalListSortingStrategy;
+export const rectSortingStrategy = mod.rectSortingStrategy;
+export const rectSwappingStrategy = mod.rectSwappingStrategy;
+export const sortableKeyboardCoordinates = mod.sortableKeyboardCoordinates;
+export const useSortable = mod.useSortable;
+export const verticalListSortingStrategy = mod.verticalListSortingStrategy;
+
 export default mod.default !== undefined ? mod.default : mod;

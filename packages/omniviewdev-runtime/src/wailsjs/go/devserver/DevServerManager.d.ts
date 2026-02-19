@@ -21,4 +21,6 @@ export function Shutdown():Promise<void>;
 
 export function StartDevServer(arg1:string):Promise<devserver.DevServerState>;
 
+export function StartDevServerForPath(arg1:string,arg2:string):Promise<devserver.DevServerState>;
+
 export function StopDevServer(arg1:string):Promise<void>;

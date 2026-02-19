@@ -68,16 +68,18 @@ const PodTable: React.FC = () => {
         id: 'controlledBy',
         header: 'Controlled By',
         accessorKey: 'metadata.ownerReferences',
-        cell: ({ getValue }) => {
+        cell: ({ getValue, row }) => {
           const refs = getValue() as Array<OwnerReference> | undefined
           if (refs == undefined || refs.length === 0) {
             return <></>;
           }
           return (<ResourceLinkCell
+            pluginID='kubernetes'
             connectionId={id}
             resourceId={refs[0].name}
             resourceKey={ownerRefKeyMap[refs[0].kind]}
             resourceName={refs[0].kind}
+            namespace={row.original.metadata?.namespace}
           />
           )
         },
@@ -89,6 +91,7 @@ const PodTable: React.FC = () => {
         accessorKey: 'spec.nodeName',
         size: 150,
         cell: ({ getValue }) => <ResourceLinkCell
+          pluginID='kubernetes'
           connectionId={id}
           resourceId={getValue() as string}
           resourceKey='core::v1::Node'
@@ -130,11 +133,13 @@ const PodTable: React.FC = () => {
         header: 'Service Account',
         accessorKey: 'spec.serviceAccountName',
         size: 120,
-        cell: ({ getValue }) => <ResourceLinkCell
+        cell: ({ getValue, row }) => <ResourceLinkCell
+          pluginID='kubernetes'
           connectionId={id}
           resourceId={getValue() as string}
           resourceKey={'core::v1::ServiceAccount'}
           resourceName={getValue() as string}
+          namespace={row.original.metadata?.namespace}
         />,
         meta: {
           defaultHidden: true,

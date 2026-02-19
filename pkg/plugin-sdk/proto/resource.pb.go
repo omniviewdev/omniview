@@ -27,6 +27,52 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ActionScope int32
+
+const (
+	ActionScope_ACTION_SCOPE_INSTANCE ActionScope = 0 // Operates on a specific resource (needs id/namespace)
+	ActionScope_ACTION_SCOPE_TYPE     ActionScope = 1 // Operates on the resource type level (no specific resource)
+)
+
+// Enum value maps for ActionScope.
+var (
+	ActionScope_name = map[int32]string{
+		0: "ACTION_SCOPE_INSTANCE",
+		1: "ACTION_SCOPE_TYPE",
+	}
+	ActionScope_value = map[string]int32{
+		"ACTION_SCOPE_INSTANCE": 0,
+		"ACTION_SCOPE_TYPE":     1,
+	}
+)
+
+func (x ActionScope) Enum() *ActionScope {
+	p := new(ActionScope)
+	*p = x
+	return p
+}
+
+func (x ActionScope) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ActionScope) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_resource_proto_enumTypes[0].Descriptor()
+}
+
+func (ActionScope) Type() protoreflect.EnumType {
+	return &file_proto_resource_proto_enumTypes[0]
+}
+
+func (x ActionScope) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ActionScope.Descriptor instead.
+func (ActionScope) EnumDescriptor() ([]byte, []int) {
+	return file_proto_resource_proto_rawDescGZIP(), []int{0}
+}
+
 type ColumnDef_Alignment int32
 
 const (
@@ -60,11 +106,11 @@ func (x ColumnDef_Alignment) String() string {
 }
 
 func (ColumnDef_Alignment) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_resource_proto_enumTypes[0].Descriptor()
+	return file_proto_resource_proto_enumTypes[1].Descriptor()
 }
 
 func (ColumnDef_Alignment) Type() protoreflect.EnumType {
-	return &file_proto_resource_proto_enumTypes[0]
+	return &file_proto_resource_proto_enumTypes[1]
 }
 
 func (x ColumnDef_Alignment) Number() protoreflect.EnumNumber {
@@ -109,11 +155,11 @@ func (x ColumnDef_AccessorPriority) String() string {
 }
 
 func (ColumnDef_AccessorPriority) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_resource_proto_enumTypes[1].Descriptor()
+	return file_proto_resource_proto_enumTypes[2].Descriptor()
 }
 
 func (ColumnDef_AccessorPriority) Type() protoreflect.EnumType {
-	return &file_proto_resource_proto_enumTypes[1]
+	return &file_proto_resource_proto_enumTypes[2]
 }
 
 func (x ColumnDef_AccessorPriority) Number() protoreflect.EnumNumber {
@@ -182,11 +228,11 @@ func (x ColumnDef_Formatter) String() string {
 }
 
 func (ColumnDef_Formatter) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_resource_proto_enumTypes[2].Descriptor()
+	return file_proto_resource_proto_enumTypes[3].Descriptor()
 }
 
 func (ColumnDef_Formatter) Type() protoreflect.EnumType {
-	return &file_proto_resource_proto_enumTypes[2]
+	return &file_proto_resource_proto_enumTypes[3]
 }
 
 func (x ColumnDef_Formatter) Number() protoreflect.EnumNumber {
@@ -232,11 +278,11 @@ func (x ResourceAction_Variant) String() string {
 }
 
 func (ResourceAction_Variant) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_resource_proto_enumTypes[3].Descriptor()
+	return file_proto_resource_proto_enumTypes[4].Descriptor()
 }
 
 func (ResourceAction_Variant) Type() protoreflect.EnumType {
-	return &file_proto_resource_proto_enumTypes[3]
+	return &file_proto_resource_proto_enumTypes[4]
 }
 
 func (x ResourceAction_Variant) Number() protoreflect.EnumNumber {
@@ -1916,13 +1962,14 @@ func (x *ResourceAction) GetSelectors() map[string]string {
 }
 
 type ResourceDefinition struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	IdAccessor        string                 `protobuf:"bytes,1,opt,name=id_accessor,json=idAccessor,proto3" json:"id_accessor,omitempty"`
-	NamespaceAccessor string                 `protobuf:"bytes,2,opt,name=namespace_accessor,json=namespaceAccessor,proto3" json:"namespace_accessor,omitempty"`
-	MemoAccessor      string                 `protobuf:"bytes,3,opt,name=memo_accessor,json=memoAccessor,proto3" json:"memo_accessor,omitempty"`
-	ColumnDefs        []*ColumnDef           `protobuf:"bytes,4,rep,name=column_defs,json=columnDefs,proto3" json:"column_defs,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	IdAccessor          string                 `protobuf:"bytes,1,opt,name=id_accessor,json=idAccessor,proto3" json:"id_accessor,omitempty"`
+	NamespaceAccessor   string                 `protobuf:"bytes,2,opt,name=namespace_accessor,json=namespaceAccessor,proto3" json:"namespace_accessor,omitempty"`
+	MemoAccessor        string                 `protobuf:"bytes,3,opt,name=memo_accessor,json=memoAccessor,proto3" json:"memo_accessor,omitempty"`
+	ColumnDefs          []*ColumnDef           `protobuf:"bytes,4,rep,name=column_defs,json=columnDefs,proto3" json:"column_defs,omitempty"`
+	SupportedOperations []int32                `protobuf:"varint,5,rep,packed,name=supported_operations,json=supportedOperations,proto3" json:"supported_operations,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *ResourceDefinition) Reset() {
@@ -1979,6 +2026,391 @@ func (x *ResourceDefinition) GetMemoAccessor() string {
 func (x *ResourceDefinition) GetColumnDefs() []*ColumnDef {
 	if x != nil {
 		return x.ColumnDefs
+	}
+	return nil
+}
+
+func (x *ResourceDefinition) GetSupportedOperations() []int32 {
+	if x != nil {
+		return x.SupportedOperations
+	}
+	return nil
+}
+
+// Describes an available action on a resource type
+type ActionDescriptor struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                                // e.g., "upgrade", "rollback", "dry-run"
+	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`                                          // "Upgrade Release"
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`                              // Human-readable description
+	Icon          string                 `protobuf:"bytes,4,opt,name=icon,proto3" json:"icon,omitempty"`                                            // Icon identifier (react-icons)
+	Scope         ActionScope            `protobuf:"varint,5,opt,name=scope,proto3,enum=com.omniview.pluginsdk.ActionScope" json:"scope,omitempty"` // INSTANCE or TYPE
+	Streaming     bool                   `protobuf:"varint,6,opt,name=streaming,proto3" json:"streaming,omitempty"`                                 // Whether this returns a streaming response
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ActionDescriptor) Reset() {
+	*x = ActionDescriptor{}
+	mi := &file_proto_resource_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActionDescriptor) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActionDescriptor) ProtoMessage() {}
+
+func (x *ActionDescriptor) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_resource_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActionDescriptor.ProtoReflect.Descriptor instead.
+func (*ActionDescriptor) Descriptor() ([]byte, []int) {
+	return file_proto_resource_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *ActionDescriptor) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ActionDescriptor) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *ActionDescriptor) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *ActionDescriptor) GetIcon() string {
+	if x != nil {
+		return x.Icon
+	}
+	return ""
+}
+
+func (x *ActionDescriptor) GetScope() ActionScope {
+	if x != nil {
+		return x.Scope
+	}
+	return ActionScope_ACTION_SCOPE_INSTANCE
+}
+
+func (x *ActionDescriptor) GetStreaming() bool {
+	if x != nil {
+		return x.Streaming
+	}
+	return false
+}
+
+type GetActionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`         // Resource type key (e.g., "helm::v1::Release")
+	Context       string                 `protobuf:"bytes,2,opt,name=context,proto3" json:"context,omitempty"` // Connection ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetActionsRequest) Reset() {
+	*x = GetActionsRequest{}
+	mi := &file_proto_resource_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetActionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetActionsRequest) ProtoMessage() {}
+
+func (x *GetActionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_resource_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetActionsRequest.ProtoReflect.Descriptor instead.
+func (*GetActionsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_resource_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *GetActionsRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *GetActionsRequest) GetContext() string {
+	if x != nil {
+		return x.Context
+	}
+	return ""
+}
+
+type GetActionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Actions       []*ActionDescriptor    `protobuf:"bytes,1,rep,name=actions,proto3" json:"actions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetActionsResponse) Reset() {
+	*x = GetActionsResponse{}
+	mi := &file_proto_resource_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetActionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetActionsResponse) ProtoMessage() {}
+
+func (x *GetActionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_resource_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetActionsResponse.ProtoReflect.Descriptor instead.
+func (*GetActionsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_resource_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *GetActionsResponse) GetActions() []*ActionDescriptor {
+	if x != nil {
+		return x.Actions
+	}
+	return nil
+}
+
+type ExecuteActionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`                           // Resource type key
+	Context       string                 `protobuf:"bytes,2,opt,name=context,proto3" json:"context,omitempty"`                   // Connection ID
+	ActionId      string                 `protobuf:"bytes,3,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"` // Action identifier
+	Id            string                 `protobuf:"bytes,4,opt,name=id,proto3" json:"id,omitempty"`                             // Resource ID (for INSTANCE scope)
+	Namespace     string                 `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"`               // Resource namespace
+	Params        *structpb.Struct       `protobuf:"bytes,6,opt,name=params,proto3" json:"params,omitempty"`                     // Action-specific parameters
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecuteActionRequest) Reset() {
+	*x = ExecuteActionRequest{}
+	mi := &file_proto_resource_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecuteActionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecuteActionRequest) ProtoMessage() {}
+
+func (x *ExecuteActionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_resource_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecuteActionRequest.ProtoReflect.Descriptor instead.
+func (*ExecuteActionRequest) Descriptor() ([]byte, []int) {
+	return file_proto_resource_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ExecuteActionRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *ExecuteActionRequest) GetContext() string {
+	if x != nil {
+		return x.Context
+	}
+	return ""
+}
+
+func (x *ExecuteActionRequest) GetActionId() string {
+	if x != nil {
+		return x.ActionId
+	}
+	return ""
+}
+
+func (x *ExecuteActionRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ExecuteActionRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *ExecuteActionRequest) GetParams() *structpb.Struct {
+	if x != nil {
+		return x.Params
+	}
+	return nil
+}
+
+type ExecuteActionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Data          *structpb.Struct       `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`       // Action result
+	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"` // Human-readable message
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecuteActionResponse) Reset() {
+	*x = ExecuteActionResponse{}
+	mi := &file_proto_resource_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecuteActionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecuteActionResponse) ProtoMessage() {}
+
+func (x *ExecuteActionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_resource_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecuteActionResponse.ProtoReflect.Descriptor instead.
+func (*ExecuteActionResponse) Descriptor() ([]byte, []int) {
+	return file_proto_resource_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ExecuteActionResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *ExecuteActionResponse) GetData() *structpb.Struct {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *ExecuteActionResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+// Streaming action events (for long-running actions like test, lint)
+type StreamActionEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"` // "progress", "output", "error", "complete"
+	Data          *structpb.Struct       `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamActionEvent) Reset() {
+	*x = StreamActionEvent{}
+	mi := &file_proto_resource_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamActionEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamActionEvent) ProtoMessage() {}
+
+func (x *StreamActionEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_resource_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamActionEvent.ProtoReflect.Descriptor instead.
+func (*StreamActionEvent) Descriptor() ([]byte, []int) {
+	return file_proto_resource_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *StreamActionEvent) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *StreamActionEvent) GetData() *structpb.Struct {
+	if x != nil {
+		return x.Data
 	}
 	return nil
 }
@@ -2168,14 +2600,44 @@ const file_proto_resource_proto_rawDesc = "" +
 	"\x04EXEC\x10\x00\x12\b\n" +
 	"\x04LOGS\x10\x01\x12\n" +
 	"\n" +
-	"\x06CUSTOM\x10\x02\"\xcd\x01\n" +
+	"\x06CUSTOM\x10\x02\"\x80\x02\n" +
 	"\x12ResourceDefinition\x12\x1f\n" +
 	"\vid_accessor\x18\x01 \x01(\tR\n" +
 	"idAccessor\x12-\n" +
 	"\x12namespace_accessor\x18\x02 \x01(\tR\x11namespaceAccessor\x12#\n" +
 	"\rmemo_accessor\x18\x03 \x01(\tR\fmemoAccessor\x12B\n" +
 	"\vcolumn_defs\x18\x04 \x03(\v2!.com.omniview.pluginsdk.ColumnDefR\n" +
-	"columnDefs2\x9e\x15\n" +
+	"columnDefs\x121\n" +
+	"\x14supported_operations\x18\x05 \x03(\x05R\x13supportedOperations\"\xc7\x01\n" +
+	"\x10ActionDescriptor\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x12\n" +
+	"\x04icon\x18\x04 \x01(\tR\x04icon\x129\n" +
+	"\x05scope\x18\x05 \x01(\x0e2#.com.omniview.pluginsdk.ActionScopeR\x05scope\x12\x1c\n" +
+	"\tstreaming\x18\x06 \x01(\bR\tstreaming\"?\n" +
+	"\x11GetActionsRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x18\n" +
+	"\acontext\x18\x02 \x01(\tR\acontext\"X\n" +
+	"\x12GetActionsResponse\x12B\n" +
+	"\aactions\x18\x01 \x03(\v2(.com.omniview.pluginsdk.ActionDescriptorR\aactions\"\xbe\x01\n" +
+	"\x14ExecuteActionRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x18\n" +
+	"\acontext\x18\x02 \x01(\tR\acontext\x12\x1b\n" +
+	"\taction_id\x18\x03 \x01(\tR\bactionId\x12\x0e\n" +
+	"\x02id\x18\x04 \x01(\tR\x02id\x12\x1c\n" +
+	"\tnamespace\x18\x05 \x01(\tR\tnamespace\x12/\n" +
+	"\x06params\x18\x06 \x01(\v2\x17.google.protobuf.StructR\x06params\"x\n" +
+	"\x15ExecuteActionResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12+\n" +
+	"\x04data\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x04data\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\"T\n" +
+	"\x11StreamActionEvent\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12+\n" +
+	"\x04data\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x04data*?\n" +
+	"\vActionScope\x12\x19\n" +
+	"\x15ACTION_SCOPE_INSTANCE\x10\x00\x12\x15\n" +
+	"\x11ACTION_SCOPE_TYPE\x10\x012\xe2\x17\n" +
 	"\x0eResourcePlugin\x12z\n" +
 	"\x11GetResourceGroups\x120.com.omniview.pluginsdk.ResourceGroupListRequest\x1a1.com.omniview.pluginsdk.ResourceGroupListResponse\"\x00\x12i\n" +
 	"\x10GetResourceGroup\x12,.com.omniview.pluginsdk.ResourceGroupRequest\x1a%.com.omniview.pluginsdk.ResourceGroup\"\x00\x12l\n" +
@@ -2204,7 +2666,11 @@ const file_proto_resource_proto_rawDesc = "" +
 	"\x0fListenForEvents\x12\x16.google.protobuf.Empty\x1a%.com.omniview.pluginsdk.InformerEvent\"\x000\x01\x12W\n" +
 	"\tGetLayout\x12(.com.omniview.pluginsdk.GetLayoutRequest\x1a\x1e.com.omniview.pluginsdk.Layout\"\x00\x12L\n" +
 	"\x10GetDefaultLayout\x12\x16.google.protobuf.Empty\x1a\x1e.com.omniview.pluginsdk.Layout\"\x00\x12O\n" +
-	"\tSetLayout\x12(.com.omniview.pluginsdk.SetLayoutRequest\x1a\x16.google.protobuf.Empty\"\x00B\tZ\a./protob\x06proto3"
+	"\tSetLayout\x12(.com.omniview.pluginsdk.SetLayoutRequest\x1a\x16.google.protobuf.Empty\"\x00\x12e\n" +
+	"\n" +
+	"GetActions\x12).com.omniview.pluginsdk.GetActionsRequest\x1a*.com.omniview.pluginsdk.GetActionsResponse\"\x00\x12n\n" +
+	"\rExecuteAction\x12,.com.omniview.pluginsdk.ExecuteActionRequest\x1a-.com.omniview.pluginsdk.ExecuteActionResponse\"\x00\x12k\n" +
+	"\fStreamAction\x12,.com.omniview.pluginsdk.ExecuteActionRequest\x1a).com.omniview.pluginsdk.StreamActionEvent\"\x000\x01B\tZ\a./protob\x06proto3"
 
 var (
 	file_proto_resource_proto_rawDescOnce sync.Once
@@ -2218,159 +2684,177 @@ func file_proto_resource_proto_rawDescGZIP() []byte {
 	return file_proto_resource_proto_rawDescData
 }
 
-var file_proto_resource_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_proto_resource_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_proto_resource_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_proto_resource_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
 var file_proto_resource_proto_goTypes = []any{
-	(ColumnDef_Alignment)(0),               // 0: com.omniview.pluginsdk.ColumnDef.Alignment
-	(ColumnDef_AccessorPriority)(0),        // 1: com.omniview.pluginsdk.ColumnDef.AccessorPriority
-	(ColumnDef_Formatter)(0),               // 2: com.omniview.pluginsdk.ColumnDef.Formatter
-	(ResourceAction_Variant)(0),            // 3: com.omniview.pluginsdk.ResourceAction.Variant
-	(*GetRequest)(nil),                     // 4: com.omniview.pluginsdk.GetRequest
-	(*GetResponse)(nil),                    // 5: com.omniview.pluginsdk.GetResponse
-	(*ListRequest)(nil),                    // 6: com.omniview.pluginsdk.ListRequest
-	(*ListResponse)(nil),                   // 7: com.omniview.pluginsdk.ListResponse
-	(*FindRequest)(nil),                    // 8: com.omniview.pluginsdk.FindRequest
-	(*FindResponse)(nil),                   // 9: com.omniview.pluginsdk.FindResponse
-	(*CreateRequest)(nil),                  // 10: com.omniview.pluginsdk.CreateRequest
-	(*CreateResponse)(nil),                 // 11: com.omniview.pluginsdk.CreateResponse
-	(*UpdateRequest)(nil),                  // 12: com.omniview.pluginsdk.UpdateRequest
-	(*UpdateResponse)(nil),                 // 13: com.omniview.pluginsdk.UpdateResponse
-	(*DeleteRequest)(nil),                  // 14: com.omniview.pluginsdk.DeleteRequest
-	(*DeleteResponse)(nil),                 // 15: com.omniview.pluginsdk.DeleteResponse
-	(*ResourceMeta)(nil),                   // 16: com.omniview.pluginsdk.ResourceMeta
-	(*ResourceGroup)(nil),                  // 17: com.omniview.pluginsdk.ResourceGroup
-	(*ResourceTypes)(nil),                  // 18: com.omniview.pluginsdk.ResourceTypes
-	(*VersionedResourceTypes)(nil),         // 19: com.omniview.pluginsdk.VersionedResourceTypes
-	(*ResourceTypeRequest)(nil),            // 20: com.omniview.pluginsdk.ResourceTypeRequest
-	(*ResourceGroupRequest)(nil),           // 21: com.omniview.pluginsdk.ResourceGroupRequest
-	(*ResourceGroupListRequest)(nil),       // 22: com.omniview.pluginsdk.ResourceGroupListRequest
-	(*ResourceTypeListRequest)(nil),        // 23: com.omniview.pluginsdk.ResourceTypeListRequest
-	(*ResourceGroupListResponse)(nil),      // 24: com.omniview.pluginsdk.ResourceGroupListResponse
-	(*ColumnDef)(nil),                      // 25: com.omniview.pluginsdk.ColumnDef
-	(*ResourceLink)(nil),                   // 26: com.omniview.pluginsdk.ResourceLink
-	(*ResourceActionTarget)(nil),           // 27: com.omniview.pluginsdk.ResourceActionTarget
-	(*ResourceActionTargetBuilder)(nil),    // 28: com.omniview.pluginsdk.ResourceActionTargetBuilder
-	(*ResourceAction)(nil),                 // 29: com.omniview.pluginsdk.ResourceAction
-	(*ResourceDefinition)(nil),             // 30: com.omniview.pluginsdk.ResourceDefinition
-	nil,                                    // 31: com.omniview.pluginsdk.VersionedResourceTypes.VersionsEntry
-	nil,                                    // 32: com.omniview.pluginsdk.ResourceGroupListResponse.GroupsEntry
-	nil,                                    // 33: com.omniview.pluginsdk.ColumnDef.ColorMapEntry
-	nil,                                    // 34: com.omniview.pluginsdk.ColumnDef.ValueMapEntry
-	nil,                                    // 35: com.omniview.pluginsdk.ResourceLink.KeyMapEntry
-	nil,                                    // 36: com.omniview.pluginsdk.ResourceLink.DetailExtractorsEntry
-	nil,                                    // 37: com.omniview.pluginsdk.ResourceActionTarget.SelectorsEntry
-	nil,                                    // 38: com.omniview.pluginsdk.ResourceActionTargetBuilder.SelectorsEntry
-	nil,                                    // 39: com.omniview.pluginsdk.ResourceAction.SelectorsEntry
-	(*structpb.Struct)(nil),                // 40: google.protobuf.Struct
-	(*anypb.Any)(nil),                      // 41: google.protobuf.Any
-	(*ConnectionRequest)(nil),              // 42: com.omniview.pluginsdk.ConnectionRequest
-	(*emptypb.Empty)(nil),                  // 43: google.protobuf.Empty
-	(*UpdateConnectionRequest)(nil),        // 44: com.omniview.pluginsdk.UpdateConnectionRequest
-	(*HasInformerRequest)(nil),             // 45: com.omniview.pluginsdk.HasInformerRequest
-	(*StartConnectionInformerRequest)(nil), // 46: com.omniview.pluginsdk.StartConnectionInformerRequest
-	(*StopConnectionInformerRequest)(nil),  // 47: com.omniview.pluginsdk.StopConnectionInformerRequest
-	(*GetLayoutRequest)(nil),               // 48: com.omniview.pluginsdk.GetLayoutRequest
-	(*SetLayoutRequest)(nil),               // 49: com.omniview.pluginsdk.SetLayoutRequest
-	(*wrapperspb.BoolValue)(nil),           // 50: google.protobuf.BoolValue
-	(*ConnectionStatus)(nil),               // 51: com.omniview.pluginsdk.ConnectionStatus
-	(*Connection)(nil),                     // 52: com.omniview.pluginsdk.Connection
-	(*ConnectionList)(nil),                 // 53: com.omniview.pluginsdk.ConnectionList
-	(*ConnectionNamespacesResponse)(nil),   // 54: com.omniview.pluginsdk.ConnectionNamespacesResponse
-	(*InformerEvent)(nil),                  // 55: com.omniview.pluginsdk.InformerEvent
-	(*Layout)(nil),                         // 56: com.omniview.pluginsdk.Layout
+	(ActionScope)(0),                       // 0: com.omniview.pluginsdk.ActionScope
+	(ColumnDef_Alignment)(0),               // 1: com.omniview.pluginsdk.ColumnDef.Alignment
+	(ColumnDef_AccessorPriority)(0),        // 2: com.omniview.pluginsdk.ColumnDef.AccessorPriority
+	(ColumnDef_Formatter)(0),               // 3: com.omniview.pluginsdk.ColumnDef.Formatter
+	(ResourceAction_Variant)(0),            // 4: com.omniview.pluginsdk.ResourceAction.Variant
+	(*GetRequest)(nil),                     // 5: com.omniview.pluginsdk.GetRequest
+	(*GetResponse)(nil),                    // 6: com.omniview.pluginsdk.GetResponse
+	(*ListRequest)(nil),                    // 7: com.omniview.pluginsdk.ListRequest
+	(*ListResponse)(nil),                   // 8: com.omniview.pluginsdk.ListResponse
+	(*FindRequest)(nil),                    // 9: com.omniview.pluginsdk.FindRequest
+	(*FindResponse)(nil),                   // 10: com.omniview.pluginsdk.FindResponse
+	(*CreateRequest)(nil),                  // 11: com.omniview.pluginsdk.CreateRequest
+	(*CreateResponse)(nil),                 // 12: com.omniview.pluginsdk.CreateResponse
+	(*UpdateRequest)(nil),                  // 13: com.omniview.pluginsdk.UpdateRequest
+	(*UpdateResponse)(nil),                 // 14: com.omniview.pluginsdk.UpdateResponse
+	(*DeleteRequest)(nil),                  // 15: com.omniview.pluginsdk.DeleteRequest
+	(*DeleteResponse)(nil),                 // 16: com.omniview.pluginsdk.DeleteResponse
+	(*ResourceMeta)(nil),                   // 17: com.omniview.pluginsdk.ResourceMeta
+	(*ResourceGroup)(nil),                  // 18: com.omniview.pluginsdk.ResourceGroup
+	(*ResourceTypes)(nil),                  // 19: com.omniview.pluginsdk.ResourceTypes
+	(*VersionedResourceTypes)(nil),         // 20: com.omniview.pluginsdk.VersionedResourceTypes
+	(*ResourceTypeRequest)(nil),            // 21: com.omniview.pluginsdk.ResourceTypeRequest
+	(*ResourceGroupRequest)(nil),           // 22: com.omniview.pluginsdk.ResourceGroupRequest
+	(*ResourceGroupListRequest)(nil),       // 23: com.omniview.pluginsdk.ResourceGroupListRequest
+	(*ResourceTypeListRequest)(nil),        // 24: com.omniview.pluginsdk.ResourceTypeListRequest
+	(*ResourceGroupListResponse)(nil),      // 25: com.omniview.pluginsdk.ResourceGroupListResponse
+	(*ColumnDef)(nil),                      // 26: com.omniview.pluginsdk.ColumnDef
+	(*ResourceLink)(nil),                   // 27: com.omniview.pluginsdk.ResourceLink
+	(*ResourceActionTarget)(nil),           // 28: com.omniview.pluginsdk.ResourceActionTarget
+	(*ResourceActionTargetBuilder)(nil),    // 29: com.omniview.pluginsdk.ResourceActionTargetBuilder
+	(*ResourceAction)(nil),                 // 30: com.omniview.pluginsdk.ResourceAction
+	(*ResourceDefinition)(nil),             // 31: com.omniview.pluginsdk.ResourceDefinition
+	(*ActionDescriptor)(nil),               // 32: com.omniview.pluginsdk.ActionDescriptor
+	(*GetActionsRequest)(nil),              // 33: com.omniview.pluginsdk.GetActionsRequest
+	(*GetActionsResponse)(nil),             // 34: com.omniview.pluginsdk.GetActionsResponse
+	(*ExecuteActionRequest)(nil),           // 35: com.omniview.pluginsdk.ExecuteActionRequest
+	(*ExecuteActionResponse)(nil),          // 36: com.omniview.pluginsdk.ExecuteActionResponse
+	(*StreamActionEvent)(nil),              // 37: com.omniview.pluginsdk.StreamActionEvent
+	nil,                                    // 38: com.omniview.pluginsdk.VersionedResourceTypes.VersionsEntry
+	nil,                                    // 39: com.omniview.pluginsdk.ResourceGroupListResponse.GroupsEntry
+	nil,                                    // 40: com.omniview.pluginsdk.ColumnDef.ColorMapEntry
+	nil,                                    // 41: com.omniview.pluginsdk.ColumnDef.ValueMapEntry
+	nil,                                    // 42: com.omniview.pluginsdk.ResourceLink.KeyMapEntry
+	nil,                                    // 43: com.omniview.pluginsdk.ResourceLink.DetailExtractorsEntry
+	nil,                                    // 44: com.omniview.pluginsdk.ResourceActionTarget.SelectorsEntry
+	nil,                                    // 45: com.omniview.pluginsdk.ResourceActionTargetBuilder.SelectorsEntry
+	nil,                                    // 46: com.omniview.pluginsdk.ResourceAction.SelectorsEntry
+	(*structpb.Struct)(nil),                // 47: google.protobuf.Struct
+	(*anypb.Any)(nil),                      // 48: google.protobuf.Any
+	(*ConnectionRequest)(nil),              // 49: com.omniview.pluginsdk.ConnectionRequest
+	(*emptypb.Empty)(nil),                  // 50: google.protobuf.Empty
+	(*UpdateConnectionRequest)(nil),        // 51: com.omniview.pluginsdk.UpdateConnectionRequest
+	(*HasInformerRequest)(nil),             // 52: com.omniview.pluginsdk.HasInformerRequest
+	(*StartConnectionInformerRequest)(nil), // 53: com.omniview.pluginsdk.StartConnectionInformerRequest
+	(*StopConnectionInformerRequest)(nil),  // 54: com.omniview.pluginsdk.StopConnectionInformerRequest
+	(*GetLayoutRequest)(nil),               // 55: com.omniview.pluginsdk.GetLayoutRequest
+	(*SetLayoutRequest)(nil),               // 56: com.omniview.pluginsdk.SetLayoutRequest
+	(*wrapperspb.BoolValue)(nil),           // 57: google.protobuf.BoolValue
+	(*ConnectionStatus)(nil),               // 58: com.omniview.pluginsdk.ConnectionStatus
+	(*Connection)(nil),                     // 59: com.omniview.pluginsdk.Connection
+	(*ConnectionList)(nil),                 // 60: com.omniview.pluginsdk.ConnectionList
+	(*ConnectionNamespacesResponse)(nil),   // 61: com.omniview.pluginsdk.ConnectionNamespacesResponse
+	(*InformerEvent)(nil),                  // 62: com.omniview.pluginsdk.InformerEvent
+	(*Layout)(nil),                         // 63: com.omniview.pluginsdk.Layout
 }
 var file_proto_resource_proto_depIdxs = []int32{
-	40, // 0: com.omniview.pluginsdk.GetResponse.data:type_name -> google.protobuf.Struct
-	40, // 1: com.omniview.pluginsdk.ListResponse.data:type_name -> google.protobuf.Struct
-	40, // 2: com.omniview.pluginsdk.FindResponse.data:type_name -> google.protobuf.Struct
-	40, // 3: com.omniview.pluginsdk.CreateRequest.data:type_name -> google.protobuf.Struct
-	40, // 4: com.omniview.pluginsdk.CreateResponse.data:type_name -> google.protobuf.Struct
-	40, // 5: com.omniview.pluginsdk.UpdateRequest.data:type_name -> google.protobuf.Struct
-	40, // 6: com.omniview.pluginsdk.UpdateResponse.data:type_name -> google.protobuf.Struct
-	40, // 7: com.omniview.pluginsdk.DeleteResponse.data:type_name -> google.protobuf.Struct
-	19, // 8: com.omniview.pluginsdk.ResourceGroup.resources:type_name -> com.omniview.pluginsdk.VersionedResourceTypes
-	16, // 9: com.omniview.pluginsdk.ResourceTypes.types:type_name -> com.omniview.pluginsdk.ResourceMeta
-	31, // 10: com.omniview.pluginsdk.VersionedResourceTypes.versions:type_name -> com.omniview.pluginsdk.VersionedResourceTypes.VersionsEntry
-	32, // 11: com.omniview.pluginsdk.ResourceGroupListResponse.groups:type_name -> com.omniview.pluginsdk.ResourceGroupListResponse.GroupsEntry
-	33, // 12: com.omniview.pluginsdk.ColumnDef.color_map:type_name -> com.omniview.pluginsdk.ColumnDef.ColorMapEntry
-	0,  // 13: com.omniview.pluginsdk.ColumnDef.alignment:type_name -> com.omniview.pluginsdk.ColumnDef.Alignment
-	2,  // 14: com.omniview.pluginsdk.ColumnDef.formatter:type_name -> com.omniview.pluginsdk.ColumnDef.Formatter
-	41, // 15: com.omniview.pluginsdk.ColumnDef.component_params:type_name -> google.protobuf.Any
-	26, // 16: com.omniview.pluginsdk.ColumnDef.resource_link:type_name -> com.omniview.pluginsdk.ResourceLink
-	1,  // 17: com.omniview.pluginsdk.ColumnDef.accessor_priority:type_name -> com.omniview.pluginsdk.ColumnDef.AccessorPriority
-	34, // 18: com.omniview.pluginsdk.ColumnDef.value_map:type_name -> com.omniview.pluginsdk.ColumnDef.ValueMapEntry
-	35, // 19: com.omniview.pluginsdk.ResourceLink.key_map:type_name -> com.omniview.pluginsdk.ResourceLink.KeyMapEntry
-	36, // 20: com.omniview.pluginsdk.ResourceLink.detail_extractors:type_name -> com.omniview.pluginsdk.ResourceLink.DetailExtractorsEntry
-	37, // 21: com.omniview.pluginsdk.ResourceActionTarget.selectors:type_name -> com.omniview.pluginsdk.ResourceActionTarget.SelectorsEntry
-	38, // 22: com.omniview.pluginsdk.ResourceActionTargetBuilder.selectors:type_name -> com.omniview.pluginsdk.ResourceActionTargetBuilder.SelectorsEntry
-	3,  // 23: com.omniview.pluginsdk.ResourceAction.variant:type_name -> com.omniview.pluginsdk.ResourceAction.Variant
-	27, // 24: com.omniview.pluginsdk.ResourceAction.targets:type_name -> com.omniview.pluginsdk.ResourceActionTarget
-	28, // 25: com.omniview.pluginsdk.ResourceAction.target_builders:type_name -> com.omniview.pluginsdk.ResourceActionTargetBuilder
-	39, // 26: com.omniview.pluginsdk.ResourceAction.selectors:type_name -> com.omniview.pluginsdk.ResourceAction.SelectorsEntry
-	25, // 27: com.omniview.pluginsdk.ResourceDefinition.column_defs:type_name -> com.omniview.pluginsdk.ColumnDef
-	18, // 28: com.omniview.pluginsdk.VersionedResourceTypes.VersionsEntry.value:type_name -> com.omniview.pluginsdk.ResourceTypes
-	17, // 29: com.omniview.pluginsdk.ResourceGroupListResponse.GroupsEntry.value:type_name -> com.omniview.pluginsdk.ResourceGroup
-	22, // 30: com.omniview.pluginsdk.ResourcePlugin.GetResourceGroups:input_type -> com.omniview.pluginsdk.ResourceGroupListRequest
-	21, // 31: com.omniview.pluginsdk.ResourcePlugin.GetResourceGroup:input_type -> com.omniview.pluginsdk.ResourceGroupRequest
-	23, // 32: com.omniview.pluginsdk.ResourcePlugin.GetResourceTypes:input_type -> com.omniview.pluginsdk.ResourceTypeListRequest
-	20, // 33: com.omniview.pluginsdk.ResourcePlugin.GetResourceType:input_type -> com.omniview.pluginsdk.ResourceTypeRequest
-	20, // 34: com.omniview.pluginsdk.ResourcePlugin.HasResourceType:input_type -> com.omniview.pluginsdk.ResourceTypeRequest
-	20, // 35: com.omniview.pluginsdk.ResourcePlugin.GetResourceDefinition:input_type -> com.omniview.pluginsdk.ResourceTypeRequest
-	42, // 36: com.omniview.pluginsdk.ResourcePlugin.StartConnection:input_type -> com.omniview.pluginsdk.ConnectionRequest
-	42, // 37: com.omniview.pluginsdk.ResourcePlugin.StopConnection:input_type -> com.omniview.pluginsdk.ConnectionRequest
-	43, // 38: com.omniview.pluginsdk.ResourcePlugin.LoadConnections:input_type -> google.protobuf.Empty
-	43, // 39: com.omniview.pluginsdk.ResourcePlugin.ListConnections:input_type -> google.protobuf.Empty
-	42, // 40: com.omniview.pluginsdk.ResourcePlugin.GetConnection:input_type -> com.omniview.pluginsdk.ConnectionRequest
-	42, // 41: com.omniview.pluginsdk.ResourcePlugin.GetConnectionNamespaces:input_type -> com.omniview.pluginsdk.ConnectionRequest
-	44, // 42: com.omniview.pluginsdk.ResourcePlugin.UpdateConnection:input_type -> com.omniview.pluginsdk.UpdateConnectionRequest
-	42, // 43: com.omniview.pluginsdk.ResourcePlugin.DeleteConnection:input_type -> com.omniview.pluginsdk.ConnectionRequest
-	43, // 44: com.omniview.pluginsdk.ResourcePlugin.WatchConnections:input_type -> google.protobuf.Empty
-	4,  // 45: com.omniview.pluginsdk.ResourcePlugin.Get:input_type -> com.omniview.pluginsdk.GetRequest
-	6,  // 46: com.omniview.pluginsdk.ResourcePlugin.List:input_type -> com.omniview.pluginsdk.ListRequest
-	8,  // 47: com.omniview.pluginsdk.ResourcePlugin.Find:input_type -> com.omniview.pluginsdk.FindRequest
-	10, // 48: com.omniview.pluginsdk.ResourcePlugin.Create:input_type -> com.omniview.pluginsdk.CreateRequest
-	12, // 49: com.omniview.pluginsdk.ResourcePlugin.Update:input_type -> com.omniview.pluginsdk.UpdateRequest
-	14, // 50: com.omniview.pluginsdk.ResourcePlugin.Delete:input_type -> com.omniview.pluginsdk.DeleteRequest
-	45, // 51: com.omniview.pluginsdk.ResourcePlugin.HasInformer:input_type -> com.omniview.pluginsdk.HasInformerRequest
-	46, // 52: com.omniview.pluginsdk.ResourcePlugin.StartConnectionInformer:input_type -> com.omniview.pluginsdk.StartConnectionInformerRequest
-	47, // 53: com.omniview.pluginsdk.ResourcePlugin.StopConnectionInformer:input_type -> com.omniview.pluginsdk.StopConnectionInformerRequest
-	43, // 54: com.omniview.pluginsdk.ResourcePlugin.ListenForEvents:input_type -> google.protobuf.Empty
-	48, // 55: com.omniview.pluginsdk.ResourcePlugin.GetLayout:input_type -> com.omniview.pluginsdk.GetLayoutRequest
-	43, // 56: com.omniview.pluginsdk.ResourcePlugin.GetDefaultLayout:input_type -> google.protobuf.Empty
-	49, // 57: com.omniview.pluginsdk.ResourcePlugin.SetLayout:input_type -> com.omniview.pluginsdk.SetLayoutRequest
-	24, // 58: com.omniview.pluginsdk.ResourcePlugin.GetResourceGroups:output_type -> com.omniview.pluginsdk.ResourceGroupListResponse
-	17, // 59: com.omniview.pluginsdk.ResourcePlugin.GetResourceGroup:output_type -> com.omniview.pluginsdk.ResourceGroup
-	18, // 60: com.omniview.pluginsdk.ResourcePlugin.GetResourceTypes:output_type -> com.omniview.pluginsdk.ResourceTypes
-	16, // 61: com.omniview.pluginsdk.ResourcePlugin.GetResourceType:output_type -> com.omniview.pluginsdk.ResourceMeta
-	50, // 62: com.omniview.pluginsdk.ResourcePlugin.HasResourceType:output_type -> google.protobuf.BoolValue
-	30, // 63: com.omniview.pluginsdk.ResourcePlugin.GetResourceDefinition:output_type -> com.omniview.pluginsdk.ResourceDefinition
-	51, // 64: com.omniview.pluginsdk.ResourcePlugin.StartConnection:output_type -> com.omniview.pluginsdk.ConnectionStatus
-	52, // 65: com.omniview.pluginsdk.ResourcePlugin.StopConnection:output_type -> com.omniview.pluginsdk.Connection
-	53, // 66: com.omniview.pluginsdk.ResourcePlugin.LoadConnections:output_type -> com.omniview.pluginsdk.ConnectionList
-	53, // 67: com.omniview.pluginsdk.ResourcePlugin.ListConnections:output_type -> com.omniview.pluginsdk.ConnectionList
-	52, // 68: com.omniview.pluginsdk.ResourcePlugin.GetConnection:output_type -> com.omniview.pluginsdk.Connection
-	54, // 69: com.omniview.pluginsdk.ResourcePlugin.GetConnectionNamespaces:output_type -> com.omniview.pluginsdk.ConnectionNamespacesResponse
-	52, // 70: com.omniview.pluginsdk.ResourcePlugin.UpdateConnection:output_type -> com.omniview.pluginsdk.Connection
-	43, // 71: com.omniview.pluginsdk.ResourcePlugin.DeleteConnection:output_type -> google.protobuf.Empty
-	53, // 72: com.omniview.pluginsdk.ResourcePlugin.WatchConnections:output_type -> com.omniview.pluginsdk.ConnectionList
-	5,  // 73: com.omniview.pluginsdk.ResourcePlugin.Get:output_type -> com.omniview.pluginsdk.GetResponse
-	7,  // 74: com.omniview.pluginsdk.ResourcePlugin.List:output_type -> com.omniview.pluginsdk.ListResponse
-	9,  // 75: com.omniview.pluginsdk.ResourcePlugin.Find:output_type -> com.omniview.pluginsdk.FindResponse
-	11, // 76: com.omniview.pluginsdk.ResourcePlugin.Create:output_type -> com.omniview.pluginsdk.CreateResponse
-	13, // 77: com.omniview.pluginsdk.ResourcePlugin.Update:output_type -> com.omniview.pluginsdk.UpdateResponse
-	15, // 78: com.omniview.pluginsdk.ResourcePlugin.Delete:output_type -> com.omniview.pluginsdk.DeleteResponse
-	50, // 79: com.omniview.pluginsdk.ResourcePlugin.HasInformer:output_type -> google.protobuf.BoolValue
-	43, // 80: com.omniview.pluginsdk.ResourcePlugin.StartConnectionInformer:output_type -> google.protobuf.Empty
-	43, // 81: com.omniview.pluginsdk.ResourcePlugin.StopConnectionInformer:output_type -> google.protobuf.Empty
-	55, // 82: com.omniview.pluginsdk.ResourcePlugin.ListenForEvents:output_type -> com.omniview.pluginsdk.InformerEvent
-	56, // 83: com.omniview.pluginsdk.ResourcePlugin.GetLayout:output_type -> com.omniview.pluginsdk.Layout
-	56, // 84: com.omniview.pluginsdk.ResourcePlugin.GetDefaultLayout:output_type -> com.omniview.pluginsdk.Layout
-	43, // 85: com.omniview.pluginsdk.ResourcePlugin.SetLayout:output_type -> google.protobuf.Empty
-	58, // [58:86] is the sub-list for method output_type
-	30, // [30:58] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	47, // 0: com.omniview.pluginsdk.GetResponse.data:type_name -> google.protobuf.Struct
+	47, // 1: com.omniview.pluginsdk.ListResponse.data:type_name -> google.protobuf.Struct
+	47, // 2: com.omniview.pluginsdk.FindResponse.data:type_name -> google.protobuf.Struct
+	47, // 3: com.omniview.pluginsdk.CreateRequest.data:type_name -> google.protobuf.Struct
+	47, // 4: com.omniview.pluginsdk.CreateResponse.data:type_name -> google.protobuf.Struct
+	47, // 5: com.omniview.pluginsdk.UpdateRequest.data:type_name -> google.protobuf.Struct
+	47, // 6: com.omniview.pluginsdk.UpdateResponse.data:type_name -> google.protobuf.Struct
+	47, // 7: com.omniview.pluginsdk.DeleteResponse.data:type_name -> google.protobuf.Struct
+	20, // 8: com.omniview.pluginsdk.ResourceGroup.resources:type_name -> com.omniview.pluginsdk.VersionedResourceTypes
+	17, // 9: com.omniview.pluginsdk.ResourceTypes.types:type_name -> com.omniview.pluginsdk.ResourceMeta
+	38, // 10: com.omniview.pluginsdk.VersionedResourceTypes.versions:type_name -> com.omniview.pluginsdk.VersionedResourceTypes.VersionsEntry
+	39, // 11: com.omniview.pluginsdk.ResourceGroupListResponse.groups:type_name -> com.omniview.pluginsdk.ResourceGroupListResponse.GroupsEntry
+	40, // 12: com.omniview.pluginsdk.ColumnDef.color_map:type_name -> com.omniview.pluginsdk.ColumnDef.ColorMapEntry
+	1,  // 13: com.omniview.pluginsdk.ColumnDef.alignment:type_name -> com.omniview.pluginsdk.ColumnDef.Alignment
+	3,  // 14: com.omniview.pluginsdk.ColumnDef.formatter:type_name -> com.omniview.pluginsdk.ColumnDef.Formatter
+	48, // 15: com.omniview.pluginsdk.ColumnDef.component_params:type_name -> google.protobuf.Any
+	27, // 16: com.omniview.pluginsdk.ColumnDef.resource_link:type_name -> com.omniview.pluginsdk.ResourceLink
+	2,  // 17: com.omniview.pluginsdk.ColumnDef.accessor_priority:type_name -> com.omniview.pluginsdk.ColumnDef.AccessorPriority
+	41, // 18: com.omniview.pluginsdk.ColumnDef.value_map:type_name -> com.omniview.pluginsdk.ColumnDef.ValueMapEntry
+	42, // 19: com.omniview.pluginsdk.ResourceLink.key_map:type_name -> com.omniview.pluginsdk.ResourceLink.KeyMapEntry
+	43, // 20: com.omniview.pluginsdk.ResourceLink.detail_extractors:type_name -> com.omniview.pluginsdk.ResourceLink.DetailExtractorsEntry
+	44, // 21: com.omniview.pluginsdk.ResourceActionTarget.selectors:type_name -> com.omniview.pluginsdk.ResourceActionTarget.SelectorsEntry
+	45, // 22: com.omniview.pluginsdk.ResourceActionTargetBuilder.selectors:type_name -> com.omniview.pluginsdk.ResourceActionTargetBuilder.SelectorsEntry
+	4,  // 23: com.omniview.pluginsdk.ResourceAction.variant:type_name -> com.omniview.pluginsdk.ResourceAction.Variant
+	28, // 24: com.omniview.pluginsdk.ResourceAction.targets:type_name -> com.omniview.pluginsdk.ResourceActionTarget
+	29, // 25: com.omniview.pluginsdk.ResourceAction.target_builders:type_name -> com.omniview.pluginsdk.ResourceActionTargetBuilder
+	46, // 26: com.omniview.pluginsdk.ResourceAction.selectors:type_name -> com.omniview.pluginsdk.ResourceAction.SelectorsEntry
+	26, // 27: com.omniview.pluginsdk.ResourceDefinition.column_defs:type_name -> com.omniview.pluginsdk.ColumnDef
+	0,  // 28: com.omniview.pluginsdk.ActionDescriptor.scope:type_name -> com.omniview.pluginsdk.ActionScope
+	32, // 29: com.omniview.pluginsdk.GetActionsResponse.actions:type_name -> com.omniview.pluginsdk.ActionDescriptor
+	47, // 30: com.omniview.pluginsdk.ExecuteActionRequest.params:type_name -> google.protobuf.Struct
+	47, // 31: com.omniview.pluginsdk.ExecuteActionResponse.data:type_name -> google.protobuf.Struct
+	47, // 32: com.omniview.pluginsdk.StreamActionEvent.data:type_name -> google.protobuf.Struct
+	19, // 33: com.omniview.pluginsdk.VersionedResourceTypes.VersionsEntry.value:type_name -> com.omniview.pluginsdk.ResourceTypes
+	18, // 34: com.omniview.pluginsdk.ResourceGroupListResponse.GroupsEntry.value:type_name -> com.omniview.pluginsdk.ResourceGroup
+	23, // 35: com.omniview.pluginsdk.ResourcePlugin.GetResourceGroups:input_type -> com.omniview.pluginsdk.ResourceGroupListRequest
+	22, // 36: com.omniview.pluginsdk.ResourcePlugin.GetResourceGroup:input_type -> com.omniview.pluginsdk.ResourceGroupRequest
+	24, // 37: com.omniview.pluginsdk.ResourcePlugin.GetResourceTypes:input_type -> com.omniview.pluginsdk.ResourceTypeListRequest
+	21, // 38: com.omniview.pluginsdk.ResourcePlugin.GetResourceType:input_type -> com.omniview.pluginsdk.ResourceTypeRequest
+	21, // 39: com.omniview.pluginsdk.ResourcePlugin.HasResourceType:input_type -> com.omniview.pluginsdk.ResourceTypeRequest
+	21, // 40: com.omniview.pluginsdk.ResourcePlugin.GetResourceDefinition:input_type -> com.omniview.pluginsdk.ResourceTypeRequest
+	49, // 41: com.omniview.pluginsdk.ResourcePlugin.StartConnection:input_type -> com.omniview.pluginsdk.ConnectionRequest
+	49, // 42: com.omniview.pluginsdk.ResourcePlugin.StopConnection:input_type -> com.omniview.pluginsdk.ConnectionRequest
+	50, // 43: com.omniview.pluginsdk.ResourcePlugin.LoadConnections:input_type -> google.protobuf.Empty
+	50, // 44: com.omniview.pluginsdk.ResourcePlugin.ListConnections:input_type -> google.protobuf.Empty
+	49, // 45: com.omniview.pluginsdk.ResourcePlugin.GetConnection:input_type -> com.omniview.pluginsdk.ConnectionRequest
+	49, // 46: com.omniview.pluginsdk.ResourcePlugin.GetConnectionNamespaces:input_type -> com.omniview.pluginsdk.ConnectionRequest
+	51, // 47: com.omniview.pluginsdk.ResourcePlugin.UpdateConnection:input_type -> com.omniview.pluginsdk.UpdateConnectionRequest
+	49, // 48: com.omniview.pluginsdk.ResourcePlugin.DeleteConnection:input_type -> com.omniview.pluginsdk.ConnectionRequest
+	50, // 49: com.omniview.pluginsdk.ResourcePlugin.WatchConnections:input_type -> google.protobuf.Empty
+	5,  // 50: com.omniview.pluginsdk.ResourcePlugin.Get:input_type -> com.omniview.pluginsdk.GetRequest
+	7,  // 51: com.omniview.pluginsdk.ResourcePlugin.List:input_type -> com.omniview.pluginsdk.ListRequest
+	9,  // 52: com.omniview.pluginsdk.ResourcePlugin.Find:input_type -> com.omniview.pluginsdk.FindRequest
+	11, // 53: com.omniview.pluginsdk.ResourcePlugin.Create:input_type -> com.omniview.pluginsdk.CreateRequest
+	13, // 54: com.omniview.pluginsdk.ResourcePlugin.Update:input_type -> com.omniview.pluginsdk.UpdateRequest
+	15, // 55: com.omniview.pluginsdk.ResourcePlugin.Delete:input_type -> com.omniview.pluginsdk.DeleteRequest
+	52, // 56: com.omniview.pluginsdk.ResourcePlugin.HasInformer:input_type -> com.omniview.pluginsdk.HasInformerRequest
+	53, // 57: com.omniview.pluginsdk.ResourcePlugin.StartConnectionInformer:input_type -> com.omniview.pluginsdk.StartConnectionInformerRequest
+	54, // 58: com.omniview.pluginsdk.ResourcePlugin.StopConnectionInformer:input_type -> com.omniview.pluginsdk.StopConnectionInformerRequest
+	50, // 59: com.omniview.pluginsdk.ResourcePlugin.ListenForEvents:input_type -> google.protobuf.Empty
+	55, // 60: com.omniview.pluginsdk.ResourcePlugin.GetLayout:input_type -> com.omniview.pluginsdk.GetLayoutRequest
+	50, // 61: com.omniview.pluginsdk.ResourcePlugin.GetDefaultLayout:input_type -> google.protobuf.Empty
+	56, // 62: com.omniview.pluginsdk.ResourcePlugin.SetLayout:input_type -> com.omniview.pluginsdk.SetLayoutRequest
+	33, // 63: com.omniview.pluginsdk.ResourcePlugin.GetActions:input_type -> com.omniview.pluginsdk.GetActionsRequest
+	35, // 64: com.omniview.pluginsdk.ResourcePlugin.ExecuteAction:input_type -> com.omniview.pluginsdk.ExecuteActionRequest
+	35, // 65: com.omniview.pluginsdk.ResourcePlugin.StreamAction:input_type -> com.omniview.pluginsdk.ExecuteActionRequest
+	25, // 66: com.omniview.pluginsdk.ResourcePlugin.GetResourceGroups:output_type -> com.omniview.pluginsdk.ResourceGroupListResponse
+	18, // 67: com.omniview.pluginsdk.ResourcePlugin.GetResourceGroup:output_type -> com.omniview.pluginsdk.ResourceGroup
+	19, // 68: com.omniview.pluginsdk.ResourcePlugin.GetResourceTypes:output_type -> com.omniview.pluginsdk.ResourceTypes
+	17, // 69: com.omniview.pluginsdk.ResourcePlugin.GetResourceType:output_type -> com.omniview.pluginsdk.ResourceMeta
+	57, // 70: com.omniview.pluginsdk.ResourcePlugin.HasResourceType:output_type -> google.protobuf.BoolValue
+	31, // 71: com.omniview.pluginsdk.ResourcePlugin.GetResourceDefinition:output_type -> com.omniview.pluginsdk.ResourceDefinition
+	58, // 72: com.omniview.pluginsdk.ResourcePlugin.StartConnection:output_type -> com.omniview.pluginsdk.ConnectionStatus
+	59, // 73: com.omniview.pluginsdk.ResourcePlugin.StopConnection:output_type -> com.omniview.pluginsdk.Connection
+	60, // 74: com.omniview.pluginsdk.ResourcePlugin.LoadConnections:output_type -> com.omniview.pluginsdk.ConnectionList
+	60, // 75: com.omniview.pluginsdk.ResourcePlugin.ListConnections:output_type -> com.omniview.pluginsdk.ConnectionList
+	59, // 76: com.omniview.pluginsdk.ResourcePlugin.GetConnection:output_type -> com.omniview.pluginsdk.Connection
+	61, // 77: com.omniview.pluginsdk.ResourcePlugin.GetConnectionNamespaces:output_type -> com.omniview.pluginsdk.ConnectionNamespacesResponse
+	59, // 78: com.omniview.pluginsdk.ResourcePlugin.UpdateConnection:output_type -> com.omniview.pluginsdk.Connection
+	50, // 79: com.omniview.pluginsdk.ResourcePlugin.DeleteConnection:output_type -> google.protobuf.Empty
+	60, // 80: com.omniview.pluginsdk.ResourcePlugin.WatchConnections:output_type -> com.omniview.pluginsdk.ConnectionList
+	6,  // 81: com.omniview.pluginsdk.ResourcePlugin.Get:output_type -> com.omniview.pluginsdk.GetResponse
+	8,  // 82: com.omniview.pluginsdk.ResourcePlugin.List:output_type -> com.omniview.pluginsdk.ListResponse
+	10, // 83: com.omniview.pluginsdk.ResourcePlugin.Find:output_type -> com.omniview.pluginsdk.FindResponse
+	12, // 84: com.omniview.pluginsdk.ResourcePlugin.Create:output_type -> com.omniview.pluginsdk.CreateResponse
+	14, // 85: com.omniview.pluginsdk.ResourcePlugin.Update:output_type -> com.omniview.pluginsdk.UpdateResponse
+	16, // 86: com.omniview.pluginsdk.ResourcePlugin.Delete:output_type -> com.omniview.pluginsdk.DeleteResponse
+	57, // 87: com.omniview.pluginsdk.ResourcePlugin.HasInformer:output_type -> google.protobuf.BoolValue
+	50, // 88: com.omniview.pluginsdk.ResourcePlugin.StartConnectionInformer:output_type -> google.protobuf.Empty
+	50, // 89: com.omniview.pluginsdk.ResourcePlugin.StopConnectionInformer:output_type -> google.protobuf.Empty
+	62, // 90: com.omniview.pluginsdk.ResourcePlugin.ListenForEvents:output_type -> com.omniview.pluginsdk.InformerEvent
+	63, // 91: com.omniview.pluginsdk.ResourcePlugin.GetLayout:output_type -> com.omniview.pluginsdk.Layout
+	63, // 92: com.omniview.pluginsdk.ResourcePlugin.GetDefaultLayout:output_type -> com.omniview.pluginsdk.Layout
+	50, // 93: com.omniview.pluginsdk.ResourcePlugin.SetLayout:output_type -> google.protobuf.Empty
+	34, // 94: com.omniview.pluginsdk.ResourcePlugin.GetActions:output_type -> com.omniview.pluginsdk.GetActionsResponse
+	36, // 95: com.omniview.pluginsdk.ResourcePlugin.ExecuteAction:output_type -> com.omniview.pluginsdk.ExecuteActionResponse
+	37, // 96: com.omniview.pluginsdk.ResourcePlugin.StreamAction:output_type -> com.omniview.pluginsdk.StreamActionEvent
+	66, // [66:97] is the sub-list for method output_type
+	35, // [35:66] is the sub-list for method input_type
+	35, // [35:35] is the sub-list for extension type_name
+	35, // [35:35] is the sub-list for extension extendee
+	0,  // [0:35] is the sub-list for field type_name
 }
 
 func init() { file_proto_resource_proto_init() }
@@ -2386,8 +2870,8 @@ func file_proto_resource_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_resource_proto_rawDesc), len(file_proto_resource_proto_rawDesc)),
-			NumEnums:      4,
-			NumMessages:   36,
+			NumEnums:      5,
+			NumMessages:   42,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

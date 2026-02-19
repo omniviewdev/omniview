@@ -10,5 +10,18 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const CacheProvider = mod.CacheProvider;
+export const ClassNames = mod.ClassNames;
+export const Global = mod.Global;
+export const ThemeContext = mod.ThemeContext;
+export const ThemeProvider = mod.ThemeProvider;
+export const __unsafe_useEmotionCache = mod.__unsafe_useEmotionCache;
+export const createElement = mod.createElement;
+export const css = mod.css;
+export const jsx = mod.jsx;
+export const keyframes = mod.keyframes;
+export const useTheme = mod.useTheme;
+export const withEmotionCache = mod.withEmotionCache;
+export const withTheme = mod.withTheme;
+
 export default mod.default !== undefined ? mod.default : mod;

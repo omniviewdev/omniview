@@ -4,7 +4,7 @@ import React from 'react'
 window.PluginReact = React
 
 /// <reference types="@welldone-software/why-did-you-render" />
-import { PluginWindow } from '@omniviewdev/runtime';
+import { PluginWindow, type DrawerContext } from '@omniviewdev/runtime';
 import { RouteObject } from 'react-router-dom';
 
 import ClustersPage from './pages/ClustersPage';
@@ -13,6 +13,10 @@ import ClusterResourcesPage from './pages/ClusterResourcesPage';
 import ClusterDashboardPage from './pages/dashboard'
 
 import DefaultTable from './components/kubernetes/table/default/Table';
+
+// helm tables
+import HelmReleaseTable from './components/helm/releases/Table';
+import HelmRepoTable from './components/helm/repos/Table';
 
 // admissionregistration.v1
 import MutatingWebhookConfigurationTable from './components/kubernetes/table/admissionregistrationv1/MutatingWebhookConfiguration/Table'
@@ -84,6 +88,135 @@ import EndpointSliceTable from './components/kubernetes/table/discoveryv1/Endpoi
 import IngressClassTable from './components/kubernetes/table/networkingv1/IngressClass/Table';
 import ClusterDashboardOverviewPage from './pages/dashboard/overview';
 import ClusterDashboardBenchmarksPage from './pages/dashboard/benchmarks';
+
+// ── Sidebar components ──────────────────────────────────────────────
+
+// core.v1
+import PodSidebar from './components/kubernetes/sidebar/Pod';
+import NodeSidebar from './components/kubernetes/sidebar/NodeSidebar';
+import SecretSidebar from './components/kubernetes/sidebar/SecretSidebar';
+import ConfigMapSidebar from './components/kubernetes/table/corev1/ConfigMap/Sidebar';
+import NamespaceSidebar from './components/kubernetes/table/corev1/Namespace/Sidebar';
+import ServiceSidebar from './components/kubernetes/table/corev1/Service/Sidebar';
+import ServiceAccountSidebar from './components/kubernetes/table/corev1/ServiceAccount/Sidebar';
+import EndpointsSidebar from './components/kubernetes/table/corev1/Endpoints/Sidebar';
+import ReplicationControllerSidebar from './components/kubernetes/table/corev1/ReplicationController/Sidebar';
+import PersistentVolumeSidebar from './components/kubernetes/table/corev1/PersistentVolume/Sidebar';
+import PersistentVolumeClaimSidebar from './components/kubernetes/table/corev1/PersistentVolumeClaim/Sidebar';
+import LimitRangeSidebar from './components/kubernetes/table/corev1/LimitRange/Sidebar';
+import ResourceQuotaSidebar from './components/kubernetes/table/corev1/ResourceQuota/Sidebar';
+
+// apps.v1
+import ReplicaSetSidebar from './components/kubernetes/table/appsv1/ReplicaSet/Sidebar';
+import DaemonSetSidebar from './components/kubernetes/table/appsv1/DaemonSet/Sidebar';
+import DeploymentSidebar from './components/kubernetes/table/appsv1/Deployment/Sidebar';
+import StatefulSetSidebar from './components/kubernetes/table/appsv1/StatefulSet/Sidebar';
+
+// batch.v1
+import JobSidebar from './components/kubernetes/table/batchv1/Job/Sidebar';
+import CronJobSidebar from './components/kubernetes/table/batchv1/CronJob/Sidebar';
+
+// autoscaling.v1
+import HorizontalPodAutoscalerSidebar from './components/kubernetes/table/autoscalingv1/HorizontalPodAutoscaler/Sidebar';
+
+// policy.v1
+import PodDisruptionBudgetSidebar from './components/kubernetes/table/policyv1/PodDisruptionBudget/Sidebar';
+
+// flowcontrol.v1
+import FlowSchemaSidebar from './components/kubernetes/table/flowcontrolv1/FlowSchema/Sidebar';
+
+// rbac.v1
+import ClusterRoleSidebar from './components/kubernetes/table/rbacv1/ClusterRole/Sidebar';
+import ClusterRoleBindingSidebar from './components/kubernetes/table/rbacv1/ClusterRoleBinding/Sidebar';
+import RoleSidebar from './components/kubernetes/table/rbacv1/Role/Sidebar';
+import RoleBindingSidebar from './components/kubernetes/table/rbacv1/RoleBinding/Sidebar';
+
+// networking.v1
+import NetworkPolicySidebar from './components/kubernetes/table/networkingv1/NetworkPolicy/Sidebar';
+import IngressClassSidebar from './components/kubernetes/table/networkingv1/IngressClass/Sidebar';
+
+// discovery.v1
+import EndpointSliceSidebar from './components/kubernetes/table/discoveryv1/EndpointSlice/Sidebar';
+
+// node.v1
+import RuntimeClassSidebar from './components/kubernetes/table/nodev1/RuntimeClass/Sidebar';
+
+// storage.v1
+import CSIDriverSidebar from './components/kubernetes/table/storagev1/CSIDriver/Sidebar';
+import CSINodeSidebar from './components/kubernetes/table/storagev1/CSINode/Sidebar';
+import StorageClassSidebar from './components/kubernetes/table/storagev1/StorageClass/Sidebar';
+import VolumeAttachmentSidebar from './components/kubernetes/table/storagev1/VolumeAttachment/Sidebar';
+
+// helm.v1
+import ReleaseSidebar from './components/helm/releases/ReleaseSidebar';
+import RepoSidebar from './components/helm/repos/RepoSidebar';
+
+// admissionregistration.v1
+import MutatingWebhookConfigurationSidebar from './components/kubernetes/table/admissionregistrationv1/MutatingWebhookConfiguration/Sidebar';
+import ValidatingAdmissionPolicySidebar from './components/kubernetes/table/admissionregistrationv1/ValidatingAdmissionPolicy/Sidebar';
+import ValidatingAdmissionPolicyBindingSidebar from './components/kubernetes/table/admissionregistrationv1/ValidatingAdmissionPolicyBinding/Sidebar';
+import ValidatingWebhookConfigurationSidebar from './components/kubernetes/table/admissionregistrationv1/ValidatingWebhookConfiguration/Sidebar';
+
+/**
+ * Sidebar components keyed by resource key (group::version::Kind).
+ * Registered with the host's sidebar registry at plugin load time so that
+ * linked-resource chip clicks render the same rich sidebar as table row clicks.
+ */
+export const sidebars: Record<string, React.FC<{ ctx: DrawerContext }>> = {
+  // core.v1
+  'core::v1::Pod': PodSidebar,
+  'core::v1::Node': NodeSidebar,
+  'core::v1::Secret': SecretSidebar,
+  'core::v1::ConfigMap': ConfigMapSidebar,
+  'core::v1::Namespace': NamespaceSidebar,
+  'core::v1::Service': ServiceSidebar,
+  'core::v1::ServiceAccount': ServiceAccountSidebar,
+  'core::v1::Endpoints': EndpointsSidebar,
+  'core::v1::ReplicationController': ReplicationControllerSidebar,
+  'core::v1::PersistentVolume': PersistentVolumeSidebar,
+  'core::v1::PersistentVolumeClaim': PersistentVolumeClaimSidebar,
+  'core::v1::LimitRange': LimitRangeSidebar,
+  'core::v1::ResourceQuota': ResourceQuotaSidebar,
+  // apps.v1
+  'apps::v1::ReplicaSet': ReplicaSetSidebar,
+  'apps::v1::DaemonSet': DaemonSetSidebar,
+  'apps::v1::Deployment': DeploymentSidebar,
+  'apps::v1::StatefulSet': StatefulSetSidebar,
+  // batch.v1
+  'batch::v1::Job': JobSidebar,
+  'batch::v1::CronJob': CronJobSidebar,
+  // autoscaling.v1
+  'autoscaling::v1::HorizontalPodAutoscaler': HorizontalPodAutoscalerSidebar,
+  // policy.v1
+  'policy::v1::PodDisruptionBudget': PodDisruptionBudgetSidebar,
+  // flowcontrol.v1
+  'flowcontrol::v1::FlowSchema': FlowSchemaSidebar,
+  // rbac.v1
+  'rbac::v1::ClusterRole': ClusterRoleSidebar,
+  'rbac::v1::ClusterRoleBinding': ClusterRoleBindingSidebar,
+  'rbac::v1::Role': RoleSidebar,
+  'rbac::v1::RoleBinding': RoleBindingSidebar,
+  // networking.v1
+  'networking::v1::NetworkPolicy': NetworkPolicySidebar,
+  'networking::v1::IngressClass': IngressClassSidebar,
+  // discovery.v1
+  'discovery::v1::EndpointSlice': EndpointSliceSidebar,
+  // node.v1
+  'node::v1::RuntimeClass': RuntimeClassSidebar,
+  // storage.v1
+  'storage::v1::CSIDriver': CSIDriverSidebar,
+  'storage::v1::CSINode': CSINodeSidebar,
+  'storage::v1::StorageClass': StorageClassSidebar,
+  'storage::v1::VolumeAttachment': VolumeAttachmentSidebar,
+  // admissionregistration.v1
+  'admissionregistration::v1::MutatingWebhookConfiguration': MutatingWebhookConfigurationSidebar,
+  'admissionregistration::v1::ValidatingAdmissionPolicy': ValidatingAdmissionPolicySidebar,
+  'admissionregistration::v1::ValidatingAdmissionPolicyBinding': ValidatingAdmissionPolicyBindingSidebar,
+  'admissionregistration::v1::ValidatingWebhookConfiguration': ValidatingWebhookConfigurationSidebar,
+  // helm.v1
+  'helm::v1::Release': ReleaseSidebar,
+  'helm::v1::Repository': RepoSidebar,
+};
 
 const routes: Array<RouteObject> = [
   {
@@ -188,6 +321,10 @@ const routes: Array<RouteObject> = [
           { path: 'storage_v1_CSIStorageCapacity', Component: CSIStorageCapacityTable },
           { path: 'storage_v1_StorageClass', Component: StorageClassTable },
           { path: 'storage_v1_VolumeAttachment', Component: VolumeAttachmentTable },
+
+          // helm.v1
+          { path: 'helm_v1_Release', Component: HelmReleaseTable },
+          { path: 'helm_v1_Repository', Component: HelmRepoTable },
 
           // Custom Resource Definitions / breaking api versions
           { path: ':resourceKey', Component: DefaultTable }

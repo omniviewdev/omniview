@@ -63,7 +63,7 @@ const ConfigMapTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuBox />,
-        component: (ctx) => <ConfigMapSidebar data={ctx.data || {}} />
+        component: (ctx) => <ConfigMapSidebar ctx={ctx} />
       },
       {
         title: 'Editor',

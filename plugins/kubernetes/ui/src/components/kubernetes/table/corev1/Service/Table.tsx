@@ -108,7 +108,7 @@ const ServiceTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <ServiceSidebar data={ctx.data} />,
+        component: (ctx) => <ServiceSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

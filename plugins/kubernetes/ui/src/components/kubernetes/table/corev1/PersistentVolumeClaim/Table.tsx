@@ -9,6 +9,7 @@ import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDr
 import { LuCode, LuHardDrive, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
 import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
 import { ChipListCell } from '../../shared/cells/ChipList'
+import PersistentVolumeClaimSidebar from './Sidebar'
 
 const resourceKey = 'core::v1::PersistentVolumeClaim'
 
@@ -96,7 +97,7 @@ const PersistentVolumeClaimTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
+        component: (ctx) => <PersistentVolumeClaimSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

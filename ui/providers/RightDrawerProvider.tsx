@@ -15,9 +15,16 @@ import {
   DrawerContext,
   RightDrawerContext,
   type RightDrawerContextType,
+  type ShowResourceSidebarParams,
+  useSnackbar,
 } from '@omniviewdev/runtime';
+import { ResourceClient } from '@omniviewdev/runtime/api';
+import { types } from '@omniviewdev/runtime/models';
 import RightDrawer from '@/components/displays/RightDrawer';
 import { bottomDrawerChannel } from './BottomDrawer/events';
+import { createLinkedResourceDrawer } from '@/federation/LinkedResourceDrawer';
+import { getSidebarComponent } from '@/features/plugins/PluginManager';
+import log from '@/features/logger';
 
 type Props = {
   children: ReactNode;
@@ -37,6 +44,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   const [content, setContent] = useState<DrawerComponent | null>(null);
   const [context, setContext] = useState<DrawerContext | undefined>(undefined);
 
+  const { showSnackbar } = useSnackbar();
   const theme = useTheme();
   const [isDragging, setIsDragging] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
@@ -195,12 +203,60 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
     setIsOpen(true);
   }, []);
 
+  /**
+   * Show a linked resource in the sidebar drawer.
+   * Fetches data first, then opens the drawer with ctx.data — same flow as row clicks.
+   */
+  const showResourceSidebar = useCallback((params: ShowResourceSidebarParams) => {
+    const onSubmit = (_ctx: DrawerContext, value: Record<string, any>) => {
+      ResourceClient.Update(
+        params.pluginID,
+        params.connectionID,
+        params.resourceKey,
+        types.UpdateInput.createFrom({
+          input: value,
+          params: {},
+          id: params.resourceID,
+          namespace: params.namespace ?? '',
+        }),
+      ).then(() => closeDrawer());
+    };
+
+    // Look up the plugin's registered sidebar component for this resource type
+    const SidebarComponent = getSidebarComponent(params.pluginID, params.resourceKey);
+    const drawer = createLinkedResourceDrawer(params.resourceKey, onSubmit, closeDrawer, SidebarComponent);
+
+    // Fetch the resource, then open the drawer with data in ctx — same as row clicks
+    ResourceClient.Get(
+      params.pluginID,
+      params.connectionID,
+      params.resourceKey,
+      types.GetInput.createFrom({
+        id: params.resourceID,
+        namespace: params.namespace ?? '',
+        params: {},
+      }),
+    ).then((result) => {
+      openDrawer(drawer, {
+        data: result.result,
+        resource: {
+          id: params.resourceID,
+          key: params.resourceKey,
+          connectionID: params.connectionID,
+        },
+      });
+    }).catch((err) => {
+      log.error(err instanceof Error ? err : new Error(String(err)), { event: 'fetch_linked_resource', resourceID: params.resourceID });
+      showSnackbar(`Failed to load resource: ${params.resourceID}`, 'error');
+    });
+  }, [closeDrawer, openDrawer]);
+
   const contextValue = useMemo(() => ({
     closeDrawer,
     openDrawer,
+    showResourceSidebar,
     isOpen,
-    content,
-  }), [openDrawer, closeDrawer]);
+  }), [openDrawer, closeDrawer, showResourceSidebar]);
 
   return (
     <RightDrawerContext.Provider value={contextValue}>

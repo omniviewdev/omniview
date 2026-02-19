@@ -95,7 +95,7 @@ const EndpointSliceTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <EndpointSliceSidebar data={ctx.data} />,
+        component: (ctx) => <EndpointSliceSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

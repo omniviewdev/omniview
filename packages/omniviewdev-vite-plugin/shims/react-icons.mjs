@@ -10,5 +10,10 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const DefaultContext = mod.DefaultContext;
+export const GenIcon = mod.GenIcon;
+export const IconBase = mod.IconBase;
+export const IconContext = mod.IconContext;
+export const IconsManifest = mod.IconsManifest;
+
 export default mod.default !== undefined ? mod.default : mod;

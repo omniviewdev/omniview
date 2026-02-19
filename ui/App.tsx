@@ -10,6 +10,11 @@ preloadSharedDeps();
 import { initDevSharedDeps } from './features/plugins/api/devSharedReady';
 initDevSharedDeps(import.meta.env.DEV);
 
+// Bridge Go-side Wails events (plugin/devserver/*) to the frontend devToolsChannel
+// event bus so DevModeSection and other consumers receive real-time status updates.
+import { initDevToolsBridge } from './features/devtools/wailsBridge';
+initDevToolsBridge();
+
 import { Provider } from 'react-redux';
 import { store } from './store/store';
 
@@ -28,6 +33,7 @@ import theme from './theme';
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
 import RightDrawerProvider from '@/providers/RightDrawerProvider';
 import { ErrorBoundary } from 'react-error-boundary';
+import { RootErrorFallback, FullPageErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
 import {
   QueryClient,
   QueryClientProvider,
@@ -68,15 +74,6 @@ const queryClient = new QueryClient({
   },
 });
 
-function fallbackRender({ error }: { error: Error }) {
-  return (
-    <div role='alert'>
-      <p>Something went wrong:</p>
-      <pre style={{ color: 'red' }}>{error.message}</pre>
-    </div>
-  );
-}
-
 const materialTheme = materialExtendTheme();
 
 log.debug("starting up the application")
@@ -85,7 +82,7 @@ log.debug("starting up the application")
  * Render out the core layout for the application
  */
 const App: React.FC = () => (
-  <ErrorBoundary FallbackComponent={fallbackRender}>
+  <ErrorBoundary FallbackComponent={RootErrorFallback}>
     <QueryClientProvider client={queryClient}>
       <SettingsProvider>
         <ExtensionProvider registry={EXTENSION_REGISTRY}>
@@ -103,15 +100,20 @@ const App: React.FC = () => (
                     disableNestedContext
                     theme={theme}
                   >
-                    <ConfirmationModalProvider>
-                      <RightDrawerProvider>
-                        <BottomDrawerProvider>
-                          <PluginRegistryProvider>
-                            <RouteProvider />
-                          </PluginRegistryProvider>
-                        </BottomDrawerProvider>
-                      </RightDrawerProvider>
-                    </ConfirmationModalProvider>
+                    <ErrorBoundary
+                      FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
+                      onError={onBoundaryError}
+                    >
+                      <ConfirmationModalProvider>
+                        <RightDrawerProvider>
+                          <BottomDrawerProvider>
+                            <PluginRegistryProvider>
+                              <RouteProvider />
+                            </PluginRegistryProvider>
+                          </BottomDrawerProvider>
+                        </RightDrawerProvider>
+                      </ConfirmationModalProvider>
+                    </ErrorBoundary>
                   </CssVarsProvider>
                 </Provider>
               </StyledEngineProvider>

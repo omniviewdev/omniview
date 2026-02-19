@@ -223,11 +223,18 @@ func (r *ResourcePluginClient) GetResourceDefinition(id string) (types.ResourceD
 		columndefs = append(columndefs, types.ColumnDefFromProto(col))
 	}
 
+	protoOps := resp.GetSupportedOperations()
+	ops := make([]types.OperationType, 0, len(protoOps))
+	for _, op := range protoOps {
+		ops = append(ops, types.OperationType(op))
+	}
+
 	return types.ResourceDefinition{
-		IDAccessor:        resp.GetIdAccessor(),
-		NamespaceAccessor: resp.GetNamespaceAccessor(),
-		MemoizerAccessor:  resp.GetMemoAccessor(),
-		ColumnDefs:        columndefs,
+		IDAccessor:          resp.GetIdAccessor(),
+		NamespaceAccessor:   resp.GetNamespaceAccessor(),
+		MemoizerAccessor:    resp.GetMemoAccessor(),
+		ColumnDefs:          columndefs,
+		SupportedOperations: ops,
 	}, nil
 }
 
@@ -537,6 +544,124 @@ func (r *ResourcePluginClient) GetDefaultLayout() ([]types.LayoutItem, error) {
 
 func (r *ResourcePluginClient) SetLayout(_ string, _ []types.LayoutItem) error {
 	panic("not implemented")
+}
+
+// ============================== Actions ============================== //
+
+func (r *ResourcePluginClient) GetActions(
+	ctx *pkgtypes.PluginContext,
+	key string,
+) ([]types.ActionDescriptor, error) {
+	if ctx.Connection == nil {
+		return nil, ErrNoConnection
+	}
+
+	resp, err := r.client.GetActions(ctx.Context, &proto.GetActionsRequest{
+		Key:     key,
+		Context: ctx.Connection.ID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	protoActions := resp.GetActions()
+	actions := make([]types.ActionDescriptor, 0, len(protoActions))
+	for _, a := range protoActions {
+		scope := types.ActionScopeInstance
+		if a.GetScope() == proto.ActionScope_ACTION_SCOPE_TYPE {
+			scope = types.ActionScopeType
+		}
+		actions = append(actions, types.ActionDescriptor{
+			ID:          a.GetId(),
+			Label:       a.GetLabel(),
+			Description: a.GetDescription(),
+			Icon:        a.GetIcon(),
+			Scope:       scope,
+			Streaming:   a.GetStreaming(),
+		})
+	}
+
+	return actions, nil
+}
+
+func (r *ResourcePluginClient) ExecuteAction(
+	ctx *pkgtypes.PluginContext,
+	key string,
+	actionID string,
+	input types.ActionInput,
+) (*types.ActionResult, error) {
+	if ctx.Connection == nil {
+		return nil, ErrNoConnection
+	}
+
+	params, err := structpb.NewStruct(input.Params)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := r.client.ExecuteAction(ctx.Context, &proto.ExecuteActionRequest{
+		Key:       key,
+		Context:   ctx.Connection.ID,
+		ActionId:  actionID,
+		Id:        input.ID,
+		Namespace: input.Namespace,
+		Params:    params,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.ActionResult{
+		Success: resp.GetSuccess(),
+		Data:    resp.GetData().AsMap(),
+		Message: resp.GetMessage(),
+	}, nil
+}
+
+func (r *ResourcePluginClient) StreamAction(
+	ctx *pkgtypes.PluginContext,
+	key string,
+	actionID string,
+	input types.ActionInput,
+	eventStream chan types.ActionEvent,
+) error {
+	if ctx.Connection == nil {
+		return ErrNoConnection
+	}
+
+	params, err := structpb.NewStruct(input.Params)
+	if err != nil {
+		return err
+	}
+
+	stream, err := r.client.StreamAction(ctx.Context, &proto.ExecuteActionRequest{
+		Key:       key,
+		Context:   ctx.Connection.ID,
+		ActionId:  actionID,
+		Id:        input.ID,
+		Namespace: input.Namespace,
+		Params:    params,
+	})
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Context.Done():
+			return nil
+		default:
+			msg, msgErr := stream.Recv()
+			if msgErr != nil {
+				return msgErr
+			}
+
+			eventStream <- types.ActionEvent{
+				Type: msg.GetType(),
+				Data: msg.GetData().AsMap(),
+			}
+		}
+	}
 }
 
 // ============================== Connection ============================== //

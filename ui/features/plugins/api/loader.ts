@@ -1,7 +1,8 @@
+import React from 'react';
 import builtInPlugins from './builtins';
-import { PluginWindow } from '@omniviewdev/runtime';
+import { PluginWindow, DrawerContext } from '@omniviewdev/runtime';
 import { EXTENSION_REGISTRY } from '../../extensions/store';
-import { registerPlugin } from '../PluginManager';
+import { registerPlugin, registerPluginSidebars } from '../PluginManager';
 import { SystemJS } from './systemjs';
 import { EventsEmit } from '@omniviewdev/runtime/runtime';
 import { devSharedReady } from './devSharedReady';
@@ -52,13 +53,27 @@ export async function importPlugin({ pluginId, moduleHash, dev, devPort }: Plugi
     // Ensure shared deps are available on window before loading dev plugin
     await devSharedReady;
 
-    const devUrl = `http://127.0.0.1:${devPort}/src/entry.ts`;
+    const devBase = `http://127.0.0.1:${devPort}`;
+
+    // Initialize React Fast Refresh for the plugin's Vite dev server.
+    // @vitejs/plugin-react normally does this via an index.html preamble,
+    // but plugins are loaded via import(), not HTML. Without this, the
+    // plugin's RefreshRuntime has no renderer reference and HMR updates
+    // are detected but never applied (performReactRefresh is a no-op).
     try {
-      console.log(`[plugin:${pluginId}] Loading from dev server: ${devUrl}`);
+      const { injectIntoGlobalHook } = await import(/* @vite-ignore */ `${devBase}/@react-refresh`);
+      injectIntoGlobalHook(window);
+    } catch (e) {
+      console.warn(`[loader] plugin "${pluginId}" — failed to init React Fast Refresh, HMR may not work`, { plugin: pluginId, error: String(e) });
+    }
+
+    const devUrl = `${devBase}/src/entry.ts`;
+    try {
+      console.debug(`[loader] plugin "${pluginId}" — loading from dev server`, { plugin: pluginId, devUrl });
       const module = await import(/* @vite-ignore */ devUrl);
       return module;
     } catch (err) {
-      console.error(`[plugin:${pluginId}] Dev server import failed, falling back to static`, err);
+      console.warn(`[loader] plugin "${pluginId}" — dev server import failed, falling back to SystemJS`, { plugin: pluginId, error: String(err) });
       // Fall through to SystemJS path
     }
   }
@@ -77,19 +92,25 @@ export async function importPlugin({ pluginId, moduleHash, dev, devPort }: Plugi
     });
   }
 
-  console.log(`[plugin:${pluginId}] Loading from SystemJS: ${modulePath}`);
+  console.debug(`[loader] plugin "${pluginId}" — loading from SystemJS`, { plugin: pluginId, modulePath });
   return SystemJS.import(modulePath);
 }
 
 type PluginWindowImportInfo = PluginImportInfo & {}
 
 /**
- * Imports the plugin window component so that it may be shown within the plugin renderer.
+ * Extracts a PluginWindow from raw module exports and registers extension points.
  */
-export async function importPluginWindow(opts: PluginWindowImportInfo): Promise<PluginWindow> {
-  const exports = await importPlugin(opts);
-
+function extractPluginWindow(exports: System.Module): PluginWindow {
   const { plugin = new PluginWindow() } = exports as { plugin?: PluginWindow };
+
+  console.debug('[loader] extractPluginWindow', {
+    hasPlugin: !!exports.plugin,
+    extensionCount: plugin.extensions?.length ?? 0,
+    hasRoutes: !!plugin.Routes,
+    routeCount: plugin.Routes?.length ?? 0,
+    exportKeys: Object.keys(exports),
+  });
 
   // register any extension points
   for (const extension of plugin.extensions) {
@@ -99,15 +120,33 @@ export async function importPluginWindow(opts: PluginWindowImportInfo): Promise<
   return plugin;
 }
 
+/**
+ * Imports the plugin window component so that it may be shown within the plugin renderer.
+ */
+export async function importPluginWindow(opts: PluginWindowImportInfo): Promise<PluginWindow> {
+  const exports = await importPlugin(opts);
+  return extractPluginWindow(exports);
+}
+
 export async function loadAndRegisterPlugin(
   pluginID: string,
   opts?: { dev?: boolean; devPort?: number }
 ): Promise<void> {
-  const pluginWindow = await importPluginWindow({
-    pluginId: pluginID,
-    dev: opts?.dev,
-    devPort: opts?.devPort,
-  });
+  console.debug(`[loader] loadAndRegisterPlugin "${pluginID}"`, { plugin: pluginID, dev: opts?.dev, devPort: opts?.devPort });
+
+  const importOpts = { pluginId: pluginID, dev: opts?.dev, devPort: opts?.devPort };
+
+  // Import the raw module so we can extract both PluginWindow and sidebars
+  const exports = await importPlugin(importOpts);
+  const pluginWindow = extractPluginWindow(exports);
   registerPlugin(pluginID, pluginWindow);
+
+  // Register sidebar components if the plugin exports them
+  const { sidebars } = exports as { sidebars?: Record<string, React.FC<{ ctx: DrawerContext }>> };
+  if (sidebars) {
+    registerPluginSidebars(pluginID, sidebars);
+  }
+
+  console.debug(`[loader] loadAndRegisterPlugin "${pluginID}" complete — emitting recalc_routes`, { plugin: pluginID });
   EventsEmit('core/window/recalc_routes');
 }

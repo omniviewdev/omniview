@@ -10,5 +10,7 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const formControlClasses = mod.formControlClasses;
+export const getFormControlUtilityClass = mod.getFormControlUtilityClass;
+
 export default mod.default !== undefined ? mod.default : mod;

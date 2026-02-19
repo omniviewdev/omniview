@@ -6,6 +6,7 @@ import Stack from "@mui/joy/Stack";
 
 // types
 import { ConfigMap } from "kubernetes-types/core/v1";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 // project-imports
 import ExpandableSections from "../../shared/ExpandableSections";
@@ -14,15 +15,18 @@ import ObjectMetaSection from "../../shared/ObjectMetaSection";
 import { LuCode } from "react-icons/lu";
 
 interface Props {
-  data: object;
+  ctx: DrawerContext<ConfigMap>;
 }
 
 /**
  * Renders a sidebar for a ConfigMap resource
  */
-export const ConfigMapSidebar: React.FC<Props> = ({ data }) => {
-  // assert this is a ConfigMap
-  const configMap = data as ConfigMap;
+export const ConfigMapSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
+  }
+
+  const configMap = ctx.data;
 
   // compose your component here
   return (

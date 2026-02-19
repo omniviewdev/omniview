@@ -112,7 +112,7 @@ const HorizontalPodAutoscalerTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <HorizontalPodAutoscalerSidebar data={ctx.data || {}} />,
+        component: (ctx) => <HorizontalPodAutoscalerSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

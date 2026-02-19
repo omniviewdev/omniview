@@ -8,18 +8,23 @@ import ObjectMetaSection from "../../shared/ObjectMetaSection";
 
 // types
 import { PersistentVolumeClaim } from "kubernetes-types/core/v1";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 interface Props {
-  data: object;
+  ctx: DrawerContext<PersistentVolumeClaim>;
 }
 
-export const PersistentVolumeClaimSidebar: React.FC<Props> = ({ data }) => {
-  const node = data as PersistentVolumeClaim;
+export const PersistentVolumeClaimSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
+  }
+
+  const pvc = ctx.data;
 
   return (
     <Stack direction="column" width={"100%"} spacing={1}>
-      <ObjectMetaSection data={node.metadata} />
-      <pre>{JSON.stringify(data, null, 2)}</pre>;
+      <ObjectMetaSection data={pvc.metadata} />
+      <pre>{JSON.stringify(ctx.data, null, 2)}</pre>;
     </Stack>
   );
 };

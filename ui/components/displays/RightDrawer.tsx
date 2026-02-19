@@ -2,7 +2,9 @@ import { Box, Chip, DialogContent, DialogTitle, Divider, IconButton, ListItemDec
 import { DrawerComponent, DrawerContext } from '@omniviewdev/runtime';
 import React from 'react';
 import { LuX } from 'react-icons/lu';
+import { ErrorBoundary } from 'react-error-boundary';
 import RightDrawerActions from './RightDrawerActions';
+import { InlineErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
 
 type Props = DrawerComponent & {
   ctx?: DrawerContext;
@@ -18,7 +20,6 @@ const RightDrawer: React.FC<Props> = ({
   onClose,
 }) => {
   const [currentView, setCurrentView] = React.useState<number>(0)
-  console.log(ctx)
 
   const handleChangeView = (_: React.SyntheticEvent | null, value: string | number | null) => {
     if (!value) {
@@ -129,6 +130,7 @@ const RightDrawer: React.FC<Props> = ({
           >
             {views.map((view, idx) => (
               <Tab
+                key={idx}
                 value={idx}
                 variant='plain'
                 sx={{
@@ -150,7 +152,13 @@ const RightDrawer: React.FC<Props> = ({
           </TabList>
         </Tabs>
         <Box display={'flex'} flex={1} p={1} overflow={'auto'}>
-          {views[currentView]?.component(ctx || {})}
+          <ErrorBoundary
+            FallbackComponent={(props) => <InlineErrorFallback {...props} label={typeof views[currentView]?.title === 'string' ? views[currentView].title : 'View'} />}
+            onError={onBoundaryError}
+            resetKeys={[currentView]}
+          >
+            {views[currentView]?.component(ctx || {})}
+          </ErrorBoundary>
         </Box>
       </DialogContent>
     </Sheet>

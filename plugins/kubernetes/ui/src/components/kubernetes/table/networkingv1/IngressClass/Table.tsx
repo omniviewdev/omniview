@@ -63,7 +63,7 @@ const IngressClassTable: React.FC = () => {
       {
         title: 'Overview',
         icon: <LuSquareChartGantt />,
-        component: (ctx) => <IngressClassSidebar data={ctx.data} />,
+        component: (ctx) => <IngressClassSidebar ctx={ctx} />,
       },
       {
         title: 'Editor',

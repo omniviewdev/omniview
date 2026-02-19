@@ -5,21 +5,24 @@ import Stack from "@mui/joy/Stack";
 
 // types
 import { IngressClass } from "kubernetes-types/networking/v1";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 // project-imports
 import ObjectMetaSection from "../../../../../shared/ObjectMetaSection";
 
 interface Props {
-  data?: IngressClass;
+  ctx: DrawerContext<IngressClass>;
 }
 
 /**
  * Renders a sidebar for a IngressClass resource
  */
-export const IngressClassSidebar: React.FC<Props> = ({ data }) => {
-  if (!data) {
-    return <></>
+export const IngressClassSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
   }
+
+  const data = ctx.data;
 
   // compose your component here
   return (

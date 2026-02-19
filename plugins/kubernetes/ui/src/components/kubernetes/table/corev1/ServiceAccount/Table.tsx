@@ -113,7 +113,7 @@ const ServiceAccountTable: React.FC = () => {
     title: resourceKey,
     icon: <LuUserCheck />,
     views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ServiceAccountSidebar data={ctx.data} /> },
+      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ServiceAccountSidebar ctx={ctx} /> },
       { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
     ],
     actions: [

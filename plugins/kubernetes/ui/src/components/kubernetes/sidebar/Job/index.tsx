@@ -5,24 +5,24 @@ import Stack from "@mui/joy/Stack";
 
 // types
 import { Job } from "kubernetes-types/batch/v1";
+import { DrawerContext } from "@omniviewdev/runtime";
 
 // project-imports
 import ObjectMetaSection from "../../../shared/ObjectMetaSection";
 
 interface Props {
-  data: object;
+  ctx: DrawerContext<Job>;
 }
 
 /**
- * Renders a sidebar for a ConfigMap resource
+ * Renders a sidebar for a Job resource
  */
-export const JobSidebar: React.FC<Props> = ({ data }) => {
-  if (!data) {
-    return <React.Fragment />;
+export const JobSidebar: React.FC<Props> = ({ ctx }) => {
+  if (!ctx.data) {
+    return null;
   }
 
-  // assert this is a ConfigMap
-  const obj = data as Job;
+  const obj = ctx.data;
 
   // compose your component here
   return (

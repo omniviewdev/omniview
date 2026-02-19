@@ -10,5 +10,17 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const config = mod.config;
+export const exec = mod.exec;
+export const logs = mod.logs;
+export const main = mod.main;
+export const networker = mod.networker;
+export const plugin = mod.plugin;
+export const registry = mod.registry;
+export const settings = mod.settings;
+export const trivy = mod.trivy;
+export const types = mod.types;
+export const ui = mod.ui;
+export const utils = mod.utils;
+
 export default mod.default !== undefined ? mod.default : mod;
