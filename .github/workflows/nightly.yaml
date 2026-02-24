@@ -1,16 +1,16 @@
-name: Release
+name: Nightly Build
 
 on:
-  push:
-    tags:
-      - "v*"
+  schedule:
+    - cron: "0 6 * * *" # 6 AM UTC daily
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref_name }}
-  cancel-in-progress: false
+  group: nightly
+  cancel-in-progress: true
 
 env:
   NODE_OPTIONS: "--max-old-space-size=4096"
@@ -20,18 +20,50 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
+  # Skip if no commits in the last 24 hours (unless manual dispatch)
+  # ─────────────────────────────────────────────────────────────────────────────
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      nightly_version: ${{ steps.check.outputs.nightly_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for recent commits
+        id: check
+        shell: bash
+        run: |
+          NIGHTLY_VERSION="0.0.0-nightly.$(date -u +%Y%m%d)"
+          echo "nightly_version=${NIGHTLY_VERSION}" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LAST_COMMIT=$(git log -1 --format=%ct)
+          NOW=$(date +%s)
+          DIFF=$((NOW - LAST_COMMIT))
+
+          if [ "$DIFF" -lt 86400 ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "No commits in the last 24 hours — skipping nightly build"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # macOS (darwin/universal) — sign, notarize, DMG
   # ─────────────────────────────────────────────────────────────────────────────
   build-macos:
     runs-on: macos-latest
+    needs: check-changes
+    if: needs.check-changes.outputs.should_build == 'true'
     steps:
-      - name: Normalize version
-        id: version
-        shell: bash
-        run: |
-          version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -72,10 +104,10 @@ jobs:
           wails build -platform darwin/universal \
             -webview2 download \
             -ldflags "\
-              -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
+              -X github.com/omniviewdev/omniview/internal/version.Version=${{ needs.check-changes.outputs.nightly_version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=false"
+              -X github.com/omniviewdev/omniview/internal/version.Development=true"
 
       - name: Import Code-Signing Certificates
         uses: Apple-Actions/import-codesign-certs@v3
@@ -106,7 +138,6 @@ jobs:
             --wait
 
           xcrun stapler staple build/bin/Omniview.app
-          spctl --assess --type execute --verbose build/bin/Omniview.app
 
       - name: Checkout create-dmg
         uses: actions/checkout@v4
@@ -119,9 +150,10 @@ jobs:
         shell: bash
         working-directory: ./build
         run: |
+          VERSION="${{ needs.check-changes.outputs.nightly_version }}"
           ./create-dmg/create-dmg \
             --no-internet-enable \
-            --volname "Omniview" \
+            --volname "Omniview Nightly" \
             --volicon "bin/Omniview.app/Contents/Resources/iconfile.icns" \
             --text-size 12 \
             --window-pos 400 400 \
@@ -130,14 +162,14 @@ jobs:
             --icon "Omniview.app" 180 180 \
             --hide-extension "Omniview.app" \
             --app-drop-link 480 180 \
-            "bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.dmg" \
+            "bin/Omniview_${VERSION}_darwin_universal.dmg" \
             "bin"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-dmg
-          path: build/bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.dmg
+          name: nightly-macos-dmg
+          path: build/bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_darwin_universal.dmg
           if-no-files-found: error
           retention-days: 1
 
@@ -146,14 +178,9 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   build-linux:
     runs-on: ubuntu-latest
+    needs: check-changes
+    if: needs.check-changes.outputs.should_build == 'true'
     steps:
-      - name: Normalize version
-        id: version
-        shell: bash
-        run: |
-          version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -196,20 +223,20 @@ jobs:
           wails build -platform linux/amd64 \
             -webview2 download \
             -ldflags "\
-              -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
+              -X github.com/omniviewdev/omniview/internal/version.Version=${{ needs.check-changes.outputs.nightly_version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=false"
+              -X github.com/omniviewdev/omniview/internal/version.Development=true"
 
       - name: Rename executable
         working-directory: ./build/bin
-        run: mv Omniview "Omniview_${{ steps.version.outputs.version }}_linux_amd64"
+        run: mv Omniview "Omniview_${{ needs.check-changes.outputs.nightly_version }}_linux_amd64"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-binary
-          path: build/bin/Omniview_${{ steps.version.outputs.version }}_linux_amd64
+          name: nightly-linux-binary
+          path: build/bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_linux_amd64
           if-no-files-found: error
           retention-days: 1
 
@@ -218,14 +245,9 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
+    needs: check-changes
+    if: needs.check-changes.outputs.should_build == 'true'
     steps:
-      - name: Normalize version
-        id: version
-        shell: bash
-        run: |
-          version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -266,36 +288,32 @@ jobs:
           wails build -platform windows/amd64 \
             -webview2 download \
             -ldflags "\
-              -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
+              -X github.com/omniviewdev/omniview/internal/version.Version=${{ needs.check-changes.outputs.nightly_version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=false"
+              -X github.com/omniviewdev/omniview/internal/version.Development=true"
 
       - name: Rename executable
         working-directory: ./build/bin
-        run: Rename-Item -Path "Omniview.exe" -NewName "Omniview_${{ steps.version.outputs.version }}_windows_amd64.exe"
+        run: Rename-Item -Path "Omniview.exe" -NewName "Omniview_${{ needs.check-changes.outputs.nightly_version }}_windows_amd64.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-binary
-          path: build/bin/Omniview_${{ steps.version.outputs.version }}_windows_amd64.exe
+          name: nightly-windows-binary
+          path: build/bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_windows_amd64.exe
           if-no-files-found: error
           retention-days: 1
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Publish — download all artifacts, checksums, GitHub Release, Homebrew
+  # Publish nightly — rolling tag
   # ─────────────────────────────────────────────────────────────────────────────
-  publish:
+  publish-nightly:
     runs-on: ubuntu-latest
-    needs: [build-macos, build-linux, build-windows]
+    needs: [check-changes, build-macos, build-linux, build-windows]
     steps:
-      - name: Normalize version
-        id: version
-        shell: bash
-        run: |
-          version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -306,46 +324,63 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          cp artifacts/macos-dmg/*.dmg release/
-          cp artifacts/linux-binary/* release/
-          cp artifacts/windows-binary/*.exe release/
+          cp artifacts/nightly-macos-dmg/*.dmg release/
+          cp artifacts/nightly-linux-binary/* release/
+          cp artifacts/nightly-windows-binary/*.exe release/
 
       - name: Generate checksums
         shell: bash
         working-directory: release
         run: sha256sum * > checksums_sha256.txt
 
-      - name: Create GitHub Release
+      - name: Delete previous nightly release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+
+      - name: Create nightly release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: nightly
+          name: "Nightly Build (${{ needs.check-changes.outputs.nightly_version }})"
+          body: |
+            Automated nightly build from `main` branch.
+
+            **Version**: `${{ needs.check-changes.outputs.nightly_version }}`
+            **Commit**: ${{ github.sha }}
+
+            > These builds are for testing purposes and may be unstable.
+            >
+            > Install via Homebrew: `brew install --cask omniviewdev/tap/omniview-nightly`
           files: release/*
-          generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update Homebrew Cask
-        if: ${{ !contains(github.ref_name, '-') }}
+      - name: Update Homebrew Nightly Cask
         shell: bash
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
-            echo "::warning::HOMEBREW_TAP_TOKEN not set, skipping Homebrew update"
+            echo "::warning::HOMEBREW_TAP_TOKEN not set, skipping Homebrew nightly update"
             exit 0
           fi
 
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.check-changes.outputs.nightly_version }}"
           DMG_FILE="release/Omniview_${VERSION}_darwin_universal.dmg"
           SHA256=$(sha256sum "$DMG_FILE" | awk '{print $1}')
 
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/omniviewdev/homebrew-tap.git" tap
           cd tap
 
-          sed -i "s/version \".*\"/version \"${VERSION}\"/" Casks/omniview.rb
-          sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/omniview.rb
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" Casks/omniview-nightly.rb
+          sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" Casks/omniview-nightly.rb
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Casks/omniview.rb
-          git commit -m "Update omniview to ${VERSION}"
+          git add Casks/omniview-nightly.rb
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Update omniview-nightly to ${VERSION}"
           git push

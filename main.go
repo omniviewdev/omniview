@@ -33,6 +33,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
 	"github.com/omniviewdev/omniview/backend/pkg/trivy"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
+	"github.com/omniviewdev/omniview/internal/version"
 
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -49,11 +50,6 @@ var assets embed.FS
 
 //go:embed build/appicon.png
 var icon []byte
-
-var (
-	Version     = "0.0.0"
-	Development = true
-)
 
 // pluginRefAdapter adapts plugin.Manager to devserver.PluginRef.
 type pluginRefAdapter struct{ mgr plugin.Manager }
@@ -77,8 +73,8 @@ func (a *pluginReloaderAdapter) ReloadPlugin(id string) error {
 //nolint:funlen // main function is expected to be long
 func main() {
 	// nillogger := logger.NewFileLogger("/dev/null")
-	log := clients.CreateLogger(Development)
-	diagnosticsClient := diagnostics.NewDiagnosticsClient(Development)
+	log := clients.CreateLogger(version.IsDevelopment())
+	diagnosticsClient := diagnostics.NewDiagnosticsClient(version.IsDevelopment())
 
 	settingsProvider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{
 		Logger: log,
@@ -251,7 +247,7 @@ func main() {
 			WebviewIsTransparent: true,
 			WindowIsTranslucent:  true,
 			About: &mac.AboutInfo{
-				Title: fmt.Sprintf("Omniview %s", Version),
+				Title: fmt.Sprintf("Omniview %s", version.Version),
 				//nolint:lll // about info is naturally long
 				Message: "The modern, lightweight, pluggable cross-platform IDE for DevOps engineers.\n\nCopyright © 2025",
 				Icon:    icon,
