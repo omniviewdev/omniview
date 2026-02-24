@@ -6,11 +6,11 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuLink, LuCode, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuLink, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import ClusterRoleBindingSidebar from './Sidebar'
 import ResourceLinkCell from '../../corev1/Pod/cells/ResourceLinkCell'
-import { Stack } from '@mui/joy'
+import { Stack } from '@omniviewdev/ui/layout'
 
 const resourceKey = 'rbac::v1::ClusterRoleBinding'
 
@@ -96,10 +96,7 @@ const ClusterRoleBindingTable: React.FC = () => {
   const drawer: DrawerComponent<ClusterRoleBinding> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuLink />,
-    views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ClusterRoleBindingSidebar ctx={ctx} /> },
-      { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
-    ],
+    views: createStandardViews({ SidebarComponent: ClusterRoleBindingSidebar }),
     actions: [
       {
         title: 'Delete',

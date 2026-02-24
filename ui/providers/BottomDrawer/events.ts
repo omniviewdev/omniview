@@ -33,6 +33,8 @@ type BottomDrawerEvents = {
   onResizeReset: () => void;
   onFullscreen: () => void;
   onMinimize: () => void;
+  /** Fired when a new tab is created so the drawer can auto-expand. */
+  onTabCreated: () => void;
   onCreateSession: (opts: OnCreateSessionOpts) => void;
   onCreateLogSession: (opts: OnCreateLogSessionOpts) => void;
   onSessionClosed: (opts: OnSessionClosedOpts) => void;

@@ -2,18 +2,14 @@ import { type FC, useEffect, useReducer } from 'react';
 import ErrorIcon from '@mui/icons-material/Error';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 
-import {
-  Box,
-  Button,
-  List,
-  ListItem,
-  LinearProgress,
-  Sheet,
-  Typography,
-  CircularProgress,
-  ListSubheader,
-  Stack,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import LinearProgress from '@mui/material/LinearProgress';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text, Heading } from '@omniviewdev/ui/typography';
+import { List, ListItem, ListSubheader } from '@omniviewdev/ui';
+
 import { produce } from 'immer';
 import { usePluginRouter } from '@infraview/router';
 
@@ -236,23 +232,24 @@ const Connecting: FC = () => {
   return (
     <Stack direction='column' width={'100%'} maxHeight={'100%'} p={4} gap={4} justifyContent={'flex-start'}>
       <Stack direction='row' gap={1} alignItems='center'>
-        <Typography level='title-lg'>Connecting To Cluster</Typography>
+        <Heading level={4}>Connecting To Cluster</Heading>
         {Math.floor((state.resourcesReady / state.totalResources) * 100) === 100 && <CheckCircle color='success' sx={{ height: '20px' }} />}
       </Stack>
-      <LinearProgress determinate size='lg' value={Math.floor((state.resourcesReady / state.totalResources) * 100)} />
+      <LinearProgress variant='determinate' value={Math.floor((state.resourcesReady / state.totalResources) * 100)} />
 
       <Stack direction='row' justifyContent='flex-start' gap={2} flexWrap='wrap'>
         {Object.keys(state.resourceStates).map(group => (
-          <Sheet
+          <Box
             key={group}
-            variant='outlined'
             sx={{
               width: 320,
               maxHeight: 300,
-              // Don't grow vertifcally
+              // Don't grow vertically
               flex: '0 0 auto',
               overflow: 'auto',
-              borderRadius: 'sm',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
             }}
           >
             <List sx={{
@@ -266,19 +263,18 @@ const Connecting: FC = () => {
                     return (
                       <ListItem key={resource}>
                         <Stack direction='row' gap={1} alignItems='center' key={resource}>
-                          <Typography level='body-xs'>{resource}</Typography>
+                          <Text size='xs'>{resource}</Text>
                           {curr.initialized && <CheckCircle color='success' sx={{ height: '14px' }} />}
                           {curr.error
                             && <>
                               <ErrorIcon color='error' sx={{ height: '14px' }} />
-                              <Typography level='body-xs' color='danger'>{curr.message}</Typography>
+                              <Text size='xs' sx={{ color: 'error.main' }}>{curr.message}</Text>
                             </>
                           }
                           {!curr.initialized && !curr.error && <CircularProgress
+                            size={14}
                             sx={{
-                              '--CircularProgress-size': '14px',
-                              '--CircularProgress-trackThickness': '2px',
-                              '--CircularProgress-progressThickness': '2px',
+                              thickness: 2,
                             }}
                           />}
                         </Stack>
@@ -288,7 +284,7 @@ const Connecting: FC = () => {
                 </List>
               </ListItem>
             </List>
-          </Sheet>
+          </Box>
         ))}
       </Stack>
       <Box
@@ -299,7 +295,7 @@ const Connecting: FC = () => {
           gap: 1,
         }}
       >
-        <Button variant='outlined' color='neutral' size='sm' onClick={handleCancel}>
+        <Button emphasis='outline' color='neutral' size='sm' onClick={handleCancel}>
           Cancel
         </Button>
       </Box>
@@ -310,4 +306,3 @@ const Connecting: FC = () => {
 Connecting.displayName = 'ConnectingPage';
 
 export default Connecting;
-

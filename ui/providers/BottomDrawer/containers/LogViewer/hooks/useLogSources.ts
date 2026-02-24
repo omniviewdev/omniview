@@ -71,7 +71,7 @@ export function useLogSources({ sessionId, events, entries, version }: UseLogSou
   useEffect(() => {
     if (!sessionId) return;
     LogsClient.GetSession(sessionId)
-      .then((session) => {
+      .then((session: any) => {
         const activeSources: LogSourceInfo[] = (session.active_sources || []).map((s: any) => ({
           id: s.id,
           labels: s.labels || {},

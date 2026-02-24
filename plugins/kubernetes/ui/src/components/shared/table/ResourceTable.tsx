@@ -1,18 +1,15 @@
 import React, { useState } from 'react';
 
-// Material-ui
-import {
-  Alert,
-  Box,
-  Link,
-  Sheet,
-  Stack,
-  Table,
-  Typography,
-  styled,
-} from '@mui/joy';
-
-import { ArrowDropDown } from '@mui/icons-material';
+// @omniviewdev/ui
+import Box from '@mui/material/Box';
+import LinearProgress from '@mui/material/LinearProgress';
+import TableSortLabel from '@mui/material/TableSortLabel';
+import { styled } from '@mui/material/styles';
+import { Alert } from '@omniviewdev/ui/feedback';
+import { Skeleton } from '@omniviewdev/ui/feedback';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Heading } from '@omniviewdev/ui/typography';
 
 // Tanstack/react-table
 import {
@@ -30,10 +27,7 @@ import {
 import get from 'lodash.get';
 
 // Project imports
-// import NamespaceSelect from '@/components/selects/NamespaceSelect';
-// import ResourceTableRow from './ResourceTableRow';
 import ResourceTableBody from './ResourceTableBody'
-// import { useVirtualizer } from '@tanstack/react-virtual';
 import { useResources, DrawerComponent } from '@omniviewdev/runtime';
 import { LuCircleAlert } from 'react-icons/lu';
 import { plural } from '../../../utils/language';
@@ -44,6 +38,7 @@ import { getCommonPinningStyles } from './utils';
 import { ColumnMeta } from './types';
 import { useDynamicResourceColumns } from '../../tables/ColumnFilter/useDynamicResourceColumns';
 import { useStoredState } from '../hooks/useStoredState';
+import { TableDrawerContext } from './TableDrawerContext';
 
 export type Memoizer = string | string[] | ((data: any) => string);
 
@@ -61,11 +56,18 @@ const visibilityFromColumnDefs = (defs: Array<ColumnDef<any>>): VisibilityState 
   return visibility
 }
 
-const TableContainer = styled(Sheet)(
-  ({ }) => `
-  background-color: inherit;
-  width: 100%;
+const TableWrapper = styled('div')`
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--ov-border-default);
   border-radius: 4px;
+  background-color: var(--ov-bg-base);
+  overflow: hidden;
+`
+
+const ScrollContainer = styled('div')`
   flex: 1;
   overflow: scroll;
   overscroll-behavior: none;
@@ -75,110 +77,44 @@ const TableContainer = styled(Sheet)(
   }
   scrollbar-width: none;
   -webkit-user-select: none;
-`,
-)
+`
 
-const StyledTable = styled(Table)(
-  ({ }) => `
+const StyledTable = styled('table')`
   display: grid;
-  --TableCell-headBackground: var(--joy-palette-background-level1);
-  --Table-headerUnderlineThickness: 1px;
-  --TableRow-hoverBackground: var(--joy-palette-background-level2);
-  --TableCell-paddingY: 0px;
-  --TableCell-paddingX: 8px;
+  width: 100%;
+  border-collapse: collapse;
   -webkit-user-select: none;
-`,
-)
+`
 
 export type Props<T = any> = {
-  /**
-   * The ID of the connection which we are using to fetch the resources
-   */
   connectionID: string;
-
-  /**
-   * The key that uniquely identifies the resource (e.g core::v1::Pod)
-   */
   resourceKey: string;
-
-  /**
-   * Column defenition for the table.
-   */
   columns: Array<ColumnDef<T> & ColumnMeta>;
-
-  /**
-   * The ID accessor for the data.
-   */
   idAccessor: string;
-
-  /**
-   * Memoizer is a function that takes in the data and returns a key or hash
-   * to determine if the data has changed or not. If provided, it will be used
-   * to optimize rerenders of columns.
-   *
-   * This can either be a single string key accessor, an array of string key accessors,
-   * of a function that takes in the data and returns a key. If provided as a function,
-   * limit the comparison work to only what is required.
-   */
   memoizer?: Memoizer;
-
-  /**
-   * Drawer component to display with the data upon clicking the row. If this is not provided,
-   * then the drawer will not open on the right upon click.
-   */
-  drawer?: DrawerComponent
+  drawer?: DrawerComponent;
+  /** Hide the namespace selector (for non-namespaced resources like Helm Charts) */
+  hideNamespaceSelector?: boolean;
+  /** Optional toolbar actions rendered to the right of the search bar */
+  toolbarActions?: React.ReactNode;
 };
-
-
-// const idAccessorResolver = (data: any, accessor: IdAccessor): string => {
-//   switch (typeof accessor) {
-//     case 'function':
-//       return accessor(data);
-//     case 'string':
-//       return get(data, accessor);
-//     default:
-//       throw new Error('Invalid ID accessor');
-//   }
-// };
 
 const defaultData: any[] = []
 
-// function useTraceUpdate(props: any) {
-//   const prev = useRef(props);
-//   useEffect(() => {
-//     const changedProps = Object.entries(props).reduce((ps: any, [k, v]) => {
-//       if (prev.current[k] !== v) {
-//         ps[k] = [prev.current[k], v];
-//       }
-//       return ps;
-//     }, {});
-//     if (Object.keys(changedProps).length > 0) {
-//       console.log('Changed props:', changedProps);
-//     }
-//     prev.current = props;
-//   });
-// }
-
-/**
-  * Render a generic resource table with sorting, filtering, column visibility and row selection.
-  * Use this component to display a generic table for any Kubernetes resource using tanstack/react-table.
-  *
-  * @returns The resource table.
-  */
 const ResourceTableContainer: React.FC<Props> = ({
   connectionID,
   resourceKey,
   columns,
-  // idAccessor,
   memoizer,
   drawer,
+  hideNamespaceSelector,
+  toolbarActions,
 }) => {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
   const [columnVisibility, setColumnVisibility] = useStoredState<VisibilityState>(`kubernetes-${connectionID}-${resourceKey}-column-visibility`, visibilityFromColumnDefs(columns));
   const [columnFilters, setColumnFilters] = useStoredState<ColumnFiltersState>(`kubernetes-${connectionID}-${resourceKey}-column-filters`, [{ id: 'namespace', value: [] }]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [search, setSearch] = useState<string>('');
-  // const { openDrawer } = useRightDrawer()
 
   /** Filtering behavior */
   const [filterAnchor, setFilterAnchor] = React.useState<undefined | HTMLElement>(undefined);
@@ -189,26 +125,6 @@ const ResourceTableContainer: React.FC<Props> = ({
     setFilterAnchor(undefined);
   };
 
-  /** Row Clicking */
-  // const onRowClick = React.useCallback((id: string, data: any) => {
-  //   console.log("onRowClick called", { id, data })
-  //   if (drawer === undefined) {
-  //     /** nothing to do */
-  //     return
-  //   }
-  //   openDrawer(drawer, {
-  //     data,
-  //     resource: {
-  //       id,
-  //       key: resourceKey,
-  //       connectionID
-  //     }
-  //   })
-  // }, [drawer])
-
-  /**
-  * Set the namespaces filter
-  */
   const setNamespaces = (value: string[]) => {
     setColumnFilters((prev) => {
       const namespaceFilter = prev.find(f => f.id === 'namespace');
@@ -220,7 +136,8 @@ const ResourceTableContainer: React.FC<Props> = ({
     });
   };
 
-  const { resources } = useResources({ pluginID: 'kubernetes', connectionID, resourceKey, idAccessor: 'metadata.uid' });
+  const { resources, isSyncing } = useResources({ pluginID: 'kubernetes', connectionID, resourceKey, idAccessor: 'metadata.uid' });
+  const showSyncingIndicator = isSyncing && (resources.data?.result?.length ?? 0) > 0;
   const {
     labels,
     setLabels,
@@ -237,13 +154,14 @@ const ResourceTableContainer: React.FC<Props> = ({
     setAnnotations((prev) => ({ ...prev, ...vals }))
   }
 
+  const allColumns = [...columns, ...columnDefs];
+
   const table = useReactTable({
     data: resources.data?.result || defaultData,
-    columns: [...columns, ...columnDefs],
+    columns: allColumns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
-    // GetPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onRowSelectionChange: setRowSelection,
@@ -257,31 +175,9 @@ const ResourceTableContainer: React.FC<Props> = ({
       globalFilter: search,
       columnPinning: { left: ['select'], right: ['menu'] }
     },
-    // defaultColumn: {
-    //   minSize: 0,
-    //   size: Number.MAX_SAFE_INTEGER,
-    //   maxSize: Number.MAX_SAFE_INTEGER,
-    // },
   });
 
-  // const { rows } = table.getRowModel();
-
   const parentRef = React.useRef<HTMLDivElement>(null);
-
-  // const virtualizer = useVirtualizer({
-  //   count: rows.length,
-  //   getScrollElement: () => parentRef.current,
-  //   // Actual height of each row
-  //   estimateSize: React.useCallback(() => 36, []),
-  //   // the number of items *above and below to render
-  //   overscan: 10,
-  //   // // Measure dynamic row height, except in firefox because it measures table border height incorrectly
-  //   // measureElement:
-  //   //   typeof window !== 'undefined'
-  //   //     && !navigator.userAgent.includes('Firefox')
-  //   //     ? element => element?.getBoundingClientRect().height
-  //   //     : undefined,
-  // });
 
   const placeHolderText = () => {
     const keyparts = resourceKey.split('::');
@@ -293,25 +189,60 @@ const ResourceTableContainer: React.FC<Props> = ({
   };
 
   if (resources.isError) {
-    let errstring = resources.error?.toString();
+    const errstring = resources.error?.toString() ?? '';
     console.error('Failed loading resources', errstring);
-    let error = <p>{'An error occurred while loading resources'}</p>;
-    if (errstring?.includes('could not find the requested resource')) {
-      error = <div>
-        <span>{'The resource group could not be found. This may be the result of'}</span>
-        <ol>
-          <li>{'The resource group does not exist (for this connection)'}</li>
-          <li>{'The resource group has been deleted (for this connection)'}</li>
-          <li>{'You do not have permission to access the resource group'}</li>
-        </ol>
-      </div>;
+
+    let title = 'Failed to load resources';
+    let detail = errstring;
+    let suggestions: string[] = [];
+
+    if (errstring.includes('could not find the requested resource')) {
+      title = 'Resource group not found';
+      detail = 'The requested resource type could not be found on this cluster.';
+      suggestions = [
+        'The resource group may not exist on this cluster',
+        'The API group may have been removed or is not installed',
+        'You may not have permission to discover this API group',
+      ];
+    } else if (errstring.includes('forbidden') || errstring.includes('Forbidden') || errstring.includes('403')) {
+      title = 'Access denied';
+      detail = 'You do not have permission to access this resource.';
+      suggestions = [
+        'Check your RBAC permissions for this resource type',
+        'Contact your cluster administrator for access',
+        'Verify your kubeconfig context is correct',
+      ];
+    } else if (errstring.includes('connection refused') || errstring.includes('no such host') || errstring.includes('network') || errstring.includes('timeout') || errstring.includes('ETIMEDOUT') || errstring.includes('ECONNREFUSED')) {
+      title = 'Connection error';
+      detail = 'Unable to reach the cluster API server.';
+      suggestions = [
+        'Check that the cluster is running and reachable',
+        'Verify your network connection',
+        'Check if a VPN or proxy is required',
+      ];
+    } else if (errstring.includes('certificate') || errstring.includes('x509') || errstring.includes('TLS')) {
+      title = 'Certificate error';
+      detail = 'There was a TLS/certificate issue connecting to the cluster.';
+      suggestions = [
+        'The cluster certificate may have expired',
+        'Your kubeconfig may reference outdated certificates',
+        'Check if the CA bundle is configured correctly',
+      ];
+    } else if (errstring.includes('unauthorized') || errstring.includes('Unauthorized') || errstring.includes('401')) {
+      title = 'Authentication failed';
+      detail = 'Your credentials were rejected by the cluster.';
+      suggestions = [
+        'Your auth token may have expired — try re-authenticating',
+        'Check your kubeconfig credentials',
+        'If using OIDC, try refreshing your login',
+      ];
     }
 
     return (
       <Box
         sx={{
           display: 'flex',
-          gap: 4,
+          gap: 2,
           justifyContent: 'center',
           flexDirection: 'column',
           alignItems: 'center',
@@ -320,61 +251,119 @@ const ResourceTableContainer: React.FC<Props> = ({
           userSelect: 'none',
         }}>
         <Alert
-          variant='soft'
+          emphasis='soft'
           size='lg'
-          startDecorator={<LuCircleAlert size={20} />}
+          startAdornment={<LuCircleAlert size={20} />}
           color='danger'
         >
-          <Typography level='title-lg' color='danger'>
-            Failed loading {resourceKey} resources
-          </Typography>
+          <Heading level='h4' sx={{ color: 'danger.main' }}>
+            {title}
+          </Heading>
         </Alert>
-        <Typography level='body-sm' color='danger' textAlign={'center'} maxWidth={500} flexWrap='wrap'>
-          {error}
-        </Typography>
+        <Stack direction="column" spacing={1} sx={{ maxWidth: 560, textAlign: 'center' }}>
+          <Text size='sm' sx={{ color: 'text.secondary' }}>
+            {detail}
+          </Text>
+          {suggestions.length > 0 && (
+            <Box component="ul" sx={{ textAlign: 'left', pl: 2, m: 0 }}>
+              {suggestions.map((s) => (
+                <Box component="li" key={s} sx={{ py: 0.25 }}>
+                  <Text size='xs' sx={{ color: 'text.secondary' }}>{s}</Text>
+                </Box>
+              ))}
+            </Box>
+          )}
+          <Text
+            size='xs'
+            sx={{
+              color: 'text.disabled',
+              fontFamily: 'monospace',
+              mt: 1,
+              p: 1,
+              borderRadius: 1,
+              bgcolor: 'action.hover',
+              wordBreak: 'break-all',
+              maxHeight: 80,
+              overflow: 'auto',
+            }}
+          >
+            {resourceKey}: {errstring || 'Unknown error'}
+          </Text>
+        </Stack>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', p: 0.75, gap: 0.75, minHeight: 0 }} >
-      <Stack direction='row' justifyContent={'space-between'} className='NamespaceAndSearch' sx={{ width: '100%' }}>
-        <DebouncedInput
-          value={search ?? ''}
-          onChange={value => {
-            setSearch(String(value));
+    <TableDrawerContext.Provider value={drawer}>
+    <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', p: 0.75, gap: 0, minHeight: 0 }} >
+      <TableWrapper sx={{ position: 'relative' }}>
+        {showSyncingIndicator && (
+          <LinearProgress
+            variant="indeterminate"
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 2,
+              zIndex: 3,
+              bgcolor: 'transparent',
+              '& .MuiLinearProgress-bar': {
+                bgcolor: 'var(--ov-accent-fg, #58a6ff)',
+              },
+            }}
+          />
+        )}
+        {/* Compact toolbar — outside scroll container so it never scrolls horizontally */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 1,
+            py: 0.5,
+            borderBottom: '1px solid var(--ov-border-default)',
+            bgcolor: 'var(--ov-bg-surface)',
+            flexShrink: 0,
           }}
-          placeholder={placeHolderText()}
-        />
-        <Stack direction='row' gap={1}>
-          <NamespaceSelect
-            connectionID={connectionID}
-            selected={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []}
-            setNamespaces={setNamespaces}
+        >
+          <DebouncedInput
+            value={search ?? ''}
+            onChange={value => {
+              setSearch(String(value));
+            }}
+            placeholder={placeHolderText()}
           />
-          <ColumnFilter
-            labels={labels}
-            setLabels={handleLabels}
-            annotations={annotations}
-            setAnnotations={handleAnnotations}
-            anchorEl={filterAnchor}
-            onClose={handleFilterClose}
-            columns={table.getAllFlatColumns()}
-            onClick={handleFilterClick}
-          />
-        </Stack>
-      </Stack>
-      <TableContainer
-        className={'table-container'}
-        variant='outlined'
-        ref={parentRef}
-      >
+          <Box sx={{ flex: 1 }} />
+          <Stack direction='row' gap={1} alignItems='center'>
+            {toolbarActions}
+            {!hideNamespaceSelector && (
+              <NamespaceSelect
+                connectionID={connectionID}
+                selected={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []}
+                setNamespaces={setNamespaces}
+              />
+            )}
+            <ColumnFilter
+              labels={labels}
+              setLabels={handleLabels}
+              annotations={annotations}
+              setAnnotations={handleAnnotations}
+              anchorEl={filterAnchor}
+              onClose={handleFilterClose}
+              columns={table.getAllFlatColumns()}
+              onClick={handleFilterClick}
+            />
+          </Stack>
+        </Box>
+        <ScrollContainer
+          className={'table-container'}
+          ref={parentRef}
+          style={{ opacity: showSyncingIndicator ? 0.85 : 1, transition: 'opacity 0.2s ease' }}
+        >
         <StyledTable
           aria-labelledby={'table-title'}
-          stickyHeader
-          borderAxis="x"
-          hoverRow
-          size={'sm'}
         >
           <thead
             style={{
@@ -387,46 +376,47 @@ const ResourceTableContainer: React.FC<Props> = ({
             {table.getHeaderGroups().map(headerGroup => (
               <tr
                 key={headerGroup.id}
-                style={{ display: 'flex', width: '100%', cursor: 'pointer' }}
+                style={{ display: 'flex', width: '100%' }}
               >
                 {headerGroup.headers.map(header => (
                   <th
                     key={header.id}
-                    onClick={header.column.getToggleSortingHandler()}
                     style={{
-                      alignContent: 'center',
                       display: 'flex',
                       alignItems: 'center',
                       overflow: 'hidden',
-                      // paddingTop: '12px', 
-                      // paddingBottom: '12px', 
                       width: header.getSize(),
+                      padding: '0px 8px',
+                      height: 32,
+                      fontSize: '0.6875rem',
+                      fontWeight: 600,
+                      color: 'var(--ov-fg-muted)',
+                      backgroundColor: 'var(--ov-bg-surface)',
+                      borderBottom: '1px solid var(--ov-border-default)',
+                      whiteSpace: 'nowrap',
+                      userSelect: 'none',
+                      letterSpacing: '0.01em',
                       ...((header.column.columnDef.meta as { flex?: number | undefined })?.flex && {
                         minWidth: header.column.getSize(),
                         flex: (header.column.columnDef.meta as { flex?: number | undefined })?.flex
                       }),
-                      // minWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
-                      // maxWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
                       ...getCommonPinningStyles(header.column, true)
                     }}
                   >
-                    {header.column.getCanSort()
-                      ? <Link
-                        underline='none'
-                        color='primary'
-                        component='button'
-                        fontWeight='lg'
-                        endDecorator={header.column.getIsSorted() && <ArrowDropDown />}
-                        sx={{
-                          '& svg': {
-                            transition: '0.2s',
-                            transform:
-                              header.column.getIsSorted() as string === 'desc' ? 'rotate(180deg)' : 'rotate(0deg)',
-                          },
-                        }}
-                      >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                      </Link>
+                    {header.isPlaceholder ? null : header.column.getCanSort()
+                      ? <TableSortLabel
+                          active={!!header.column.getIsSorted()}
+                          direction={header.column.getIsSorted() === 'desc' ? 'desc' : 'asc'}
+                          onClick={header.column.getToggleSortingHandler()}
+                          sx={{
+                            fontSize: 'inherit',
+                            fontWeight: 'inherit',
+                            color: 'inherit !important',
+                            '& .MuiTableSortLabel-icon': { fontSize: 12, opacity: 0.5 },
+                          }}
+                        >
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableSortLabel>
                       : flexRender(header.column.columnDef.header, header.getContext())
                     }
                   </th>
@@ -434,46 +424,48 @@ const ResourceTableContainer: React.FC<Props> = ({
               </tr>
             ))}
           </thead>
-          <ResourceTableBody
-            table={table}
-            tableContainerRef={parentRef}
-            connectionID={connectionID}
-            resourceKey={resourceKey}
-            columnVisibility={JSON.stringify({ columnVisibility, customCols: columnDefs.length })}
-            rowSelection={rowSelection}
-            drawer={drawer}
-            memoizer={memoizer}
-          />
-          {/* <tbody */}
-          {/*   style={{ */}
-          {/*     display: 'grid', */}
-          {/*     height: `${virtualizer.getTotalSize()}px`, // Tells scrollbar how big the table is */}
-          {/*     position: 'relative', // Needed for absolute positioning of rows */}
-          {/*   }} */}
-          {/* > */}
-          {/*   {virtualizer.getVirtualItems().map(virtualRow => { */}
-          {/*     const row = rows[virtualRow.index]; */}
-          {/*     return ( */}
-          {/*       <ResourceTableRow */}
-          {/*         key={row.id} */}
-          {/*         connectionID={connectionID} */}
-          {/*         resourceID={row.id} */}
-          {/*         resourceKey={resourceKey} */}
-          {/*         row={row} */}
-          {/*         memoizer={memoizer} */}
-          {/*         virtualizer={virtualizer} */}
-          {/*         virtualRow={virtualRow} */}
-          {/*         isSelected={rowSelection[row.id]} */}
-          {/*         columnVisibility={JSON.stringify({ columnVisibility, customCols: columnDefs.length })} */}
-          {/*         onRowClick={onRowClick} */}
-          {/*       /> */}
-          {/*     ); */}
-          {/*   })} */}
-          {/* </tbody> */}
-
+          {resources.isLoading ? (
+            <tbody style={{ display: 'grid' }}>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <tr key={`skel-${i}`} style={{ display: 'flex', width: '100%', height: 30 }}>
+                  {table.getVisibleLeafColumns().map((col) => (
+                    <td
+                      key={col.id}
+                      style={{
+                        width: col.getSize(),
+                        padding: '0px 8px',
+                        borderBottom: '1px solid var(--ov-border-muted)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        ...((col.columnDef.meta as { flex?: number | undefined })?.flex && {
+                          minWidth: col.getSize(),
+                          flex: (col.columnDef.meta as { flex?: number | undefined })?.flex,
+                        }),
+                      }}
+                    >
+                      <Skeleton variant="text" width="70%" sx={{ fontSize: '0.75rem' }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          ) : (
+            <ResourceTableBody
+              table={table}
+              tableContainerRef={parentRef}
+              connectionID={connectionID}
+              resourceKey={resourceKey}
+              columnVisibility={JSON.stringify({ columnVisibility, customCols: columnDefs.length })}
+              rowSelection={rowSelection}
+              drawer={drawer}
+              memoizer={memoizer}
+            />
+          )}
         </StyledTable>
-      </TableContainer>
+        </ScrollContainer>
+      </TableWrapper>
     </Box>
+    </TableDrawerContext.Provider>
   );
 };
 

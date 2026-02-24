@@ -1,17 +1,13 @@
 import React from 'react';
 
 // Material-ui
-import Box from '@mui/joy/Box';
-import Select from '@mui/joy/Select';
-import Option from '@mui/joy/Option';
-import Chip from '@mui/joy/Chip';
-import ChipDelete from '@mui/joy/ChipDelete';
+import Box from '@mui/material/Box';
+import { Select } from '@omniviewdev/ui/inputs';
+import { Chip } from '@omniviewdev/ui';
+import { Text } from '@omniviewdev/ui/typography';
 
 // Icons
 import { LuGroup } from 'react-icons/lu';
-
-// Backend
-import { Typography } from '@mui/joy';
 
 type Props = {
   /** The available namespaces. */
@@ -42,31 +38,27 @@ const NamespaceSelect: React.FC<Props> = ({ available, selected, setNamespaces }
   return (
     <Select
       multiple
-      startDecorator={<LuGroup />}
+      startAdornment={<LuGroup />}
       value={selected}
       onChange={handleChange}
       placeholder={
-        <Chip variant='soft' color='neutral' sx={{ borderRadius: 2 }}>
-          All Namespaces
-        </Chip>
+        <Chip emphasis='soft' color='neutral' label="All Namespaces" sx={{ borderRadius: 2 }} />
       }
       renderValue={selected => (
         <Box sx={{ display: 'flex', gap: '0.25rem' }}>
           {selected.map(selectedOption => (
             <Chip
-              variant='outlined'
+              emphasis='outline'
               color='neutral'
-              endDecorator={
-                <ChipDelete onDelete={(event) => {
-                  event.stopPropagation();
-                  handleDelete(selectedOption.value);
-                }} />}
+              label={selectedOption.label}
+              onDelete={(event) => {
+                event.stopPropagation();
+                handleDelete(selectedOption.value);
+              }}
               sx={{
                 borderRadius: 2,
               }}
-            >
-              {selectedOption.label}
-            </Chip>
+            />
           ))}
         </Box>
       )}
@@ -85,13 +77,11 @@ const NamespaceSelect: React.FC<Props> = ({ available, selected, setNamespaces }
           },
         },
       }}
-    >
-      {available.map(ns => (
-        <Option key={ns} value={ns}>
-          <Typography level='body-sm'>{ns}</Typography>
-        </Option>
-      ))}
-    </Select>
+      options={available.map(ns => ({
+        value: ns,
+        label: ns,
+      }))}
+    />
   );
 };
 

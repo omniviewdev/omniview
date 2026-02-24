@@ -6,21 +6,27 @@ export function AddConnection(arg1:string,arg2:types.Connection):Promise<void>;
 
 export function Create(arg1:string,arg2:string,arg3:string,arg4:types.CreateInput):Promise<types.CreateResult>;
 
-export function ExecuteAction(arg1:string,arg2:string,arg3:string,arg4:string,arg5:types.ActionInput):Promise<types.ActionResult>;
-
-export function GetActions(arg1:string,arg2:string,arg3:string):Promise<Array<types.ActionDescriptor>>;
-
 export function Delete(arg1:string,arg2:string,arg3:string,arg4:types.DeleteInput):Promise<types.DeleteResult>;
+
+export function EnsureInformerForResource(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function ExecuteAction(arg1:string,arg2:string,arg3:string,arg4:string,arg5:types.ActionInput):Promise<types.ActionResult>;
 
 export function Find(arg1:string,arg2:string,arg3:string,arg4:types.FindInput):Promise<types.FindResult>;
 
 export function Get(arg1:string,arg2:string,arg3:string,arg4:types.GetInput):Promise<types.GetResult>;
+
+export function GetActions(arg1:string,arg2:string,arg3:string):Promise<Array<types.ActionDescriptor>>;
 
 export function GetConnection(arg1:string,arg2:string):Promise<types.Connection>;
 
 export function GetConnectionNamespaces(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function GetDefaultLayout(arg1:string):Promise<Array<types.LayoutItem>>;
+
+export function GetEditorSchemas(arg1:string,arg2:string):Promise<Array<types.EditorSchema>>;
+
+export function GetInformerState(arg1:string,arg2:string):Promise<types.InformerConnectionSummary>;
 
 export function GetLayout(arg1:string,arg2:string):Promise<Array<types.LayoutItem>>;
 
@@ -37,6 +43,8 @@ export function GetResourceTypes(arg1:string,arg2:string):Promise<Record<string,
 export function HasResourceType(arg1:string,arg2:string):Promise<boolean>;
 
 export function List(arg1:string,arg2:string,arg3:string,arg4:types.ListInput):Promise<types.ListResult>;
+
+export function ListAllConnections():Promise<Record<string, Array<types.Connection>>>;
 
 export function ListConnections(arg1:string):Promise<Array<types.Connection>>;
 

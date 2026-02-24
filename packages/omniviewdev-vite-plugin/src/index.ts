@@ -98,7 +98,39 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
     enforce: 'pre', // Run before other plugins (especially @vitejs/plugin-react)
 
     config(config, { command }) {
-      // In build mode, also mark packages as external for Rollup.
+      // In dev mode, prevent the dep optimizer from bundling shared packages
+      // into pre-bundled chunks. Without this, MUI/etc. get their own copy of
+      // React bundled inside, causing "multiple React instances" errors.
+      // We use an esbuild plugin to externalize shared packages when they're
+      // imported from within OTHER packages (not when they ARE the entry point).
+      if (command === 'serve') {
+        config.optimizeDeps = config.optimizeDeps ?? {};
+        config.optimizeDeps.esbuildOptions = config.optimizeDeps.esbuildOptions ?? {};
+        config.optimizeDeps.esbuildOptions.plugins = [
+          ...(config.optimizeDeps.esbuildOptions.plugins ?? []),
+          {
+            name: 'omniview-redirect-shared-to-shims',
+            setup(build: any) {
+              // When the dep optimizer pre-bundles a non-shared package (like
+              // @mui/material/Tabs), and that package imports a shared package
+              // (like react), redirect it to the shim file instead of bundling
+              // from node_modules. The shim reads from window.__OMNIVIEW_SHARED__
+              // at runtime, ensuring a single React instance across host + plugins.
+              build.onResolve({ filter: /.*/ }, (args: any) => {
+                if (args.kind !== 'entry-point' && sharedSet.has(args.path)) {
+                  const shimPath = shimMap.get(args.path);
+                  if (shimPath) {
+                    return { path: shimPath };
+                  }
+                }
+                return null;
+              });
+            },
+          },
+        ];
+      }
+
+      // In build mode, mark packages as external for Rollup.
       // This maintains backward compatibility with the existing SystemJS build.
       if (command === 'build') {
         config.build = config.build ?? {};

@@ -3,12 +3,13 @@ import MuiIconButton from '@mui/material/IconButton';
 import CircularProgress from '@mui/material/CircularProgress';
 import type { SxProps, Theme } from '@mui/material/styles';
 
-import type { SemanticColor, ComponentSize, Shape } from '../types';
+import type { SemanticColor, Emphasis, ComponentSize, Shape } from '../types';
 import { toMuiColor, toMuiSize, toBorderRadius } from '../types';
 
 export interface IconButtonProps {
   children: React.ReactNode;
   color?: SemanticColor;
+  emphasis?: Emphasis;
   size?: ComponentSize;
   shape?: Shape;
   loading?: boolean;
@@ -22,6 +23,7 @@ export interface IconButtonProps {
 export default function IconButton({
   children,
   color = 'neutral',
+  emphasis,
   size = 'sm',
   shape = 'rounded',
   loading = false,

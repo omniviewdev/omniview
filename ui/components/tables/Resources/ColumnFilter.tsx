@@ -2,13 +2,14 @@ import React from 'react';
 
 
 // material-ui
-import Card from '@mui/joy/Card';
-import CardContent from '@mui/joy/CardContent';
-import Divider from '@mui/joy/Divider';
-import Typography from '@mui/joy/Typography';
-import { Unstable_Popup as BasePopup } from '@mui/base/Unstable_Popup';
-import { ClickAwayListener } from '@mui/base';
-import { IconButton, Switch, styled } from '@mui/joy';
+import { Card } from '@omniviewdev/ui';
+import Divider from '@mui/material/Divider';
+import { Text } from '@omniviewdev/ui/typography';
+import { Popover } from '@omniviewdev/ui/overlays';
+import ClickAwayListener from '@mui/material/ClickAwayListener';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Checkbox } from '@omniviewdev/ui/inputs';
+import { styled } from '@mui/material/styles';
 
 // icons
 import { LuColumns2, LuSettings2 } from 'react-icons/lu';
@@ -43,27 +44,27 @@ const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick }) 
   return (
     <React.Fragment>
       <IconButton
-        variant='outlined'
+        emphasis='outline'
         color='neutral'
         onClick={onClick}
       >
         <LuSettings2 size={20} />
       </IconButton>
-      <BasePopup 
-        style={{ zIndex: 1000 }} 
+      <Popover
+        style={{ zIndex: 1000 }}
         id={'table-filter-menu'}
-        open={open} 
+        open={open}
         anchor={anchorEl}
         placement='bottom-end'
       >
-        <ClickAwayListener 
+        <ClickAwayListener
           onClickAway={() => {
             onClose();
           } }
         >
           <PopupBody>
             <Card
-              variant="outlined"
+              emphasis="outline"
               sx={{
                 maxHeight: 'max-content',
                 maxWidth: '100%',
@@ -72,32 +73,29 @@ const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick }) 
                 gap: 1.25,
               }}
             >
-              <Typography startDecorator={<LuColumns2 size={14}/>} level='title-sm'>Columns</Typography>
+              <Text weight="semibold" size="sm"><LuColumns2 size={14}/> Columns</Text>
               <Divider/>
-              <CardContent 
-                sx={{
+              <div
+                style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 1.5,
+                  gap: 12,
                 }}
               >
                 {columns.filter(col => col.getCanHide()).map((column) => (
-                  <Typography
+                  <label
                     key={column.columnDef.id}
-                    startDecorator={
-                      <Switch sx={{ color: 'primary', mr: 1 }} size='sm' checked={column.getIsVisible()} onChange={column.getToggleVisibilityHandler()} />
-                    }
-                    component='label'
-                    level='body-xs'
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem' }}
                   >
+                    <Checkbox size='sm' checked={column.getIsVisible()} onChange={column.getToggleVisibilityHandler()} />
                     {column.columnDef.header?.toString()}
-                  </Typography>
+                  </label>
                 ))}
-              </CardContent>
+              </div>
             </Card>
           </PopupBody>
         </ClickAwayListener>
-      </BasePopup>
+      </Popover>
     </React.Fragment>
   );
 };

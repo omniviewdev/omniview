@@ -1,42 +1,15 @@
-import React from 'react';
-// material-ui
-import { ClickAwayListener } from '@mui/base';
-import { Unstable_Popup as BasePopup } from '@mui/base/Unstable_Popup';
-import {
-  Card,
-  CardContent,
-  Divider,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemContent,
-  Grid,
-  IconButton,
-  Switch,
-  Typography,
-  styled,
-  ListDivider
-} from '@mui/joy';
+import React, { useState } from 'react';
 
-// icons
+import ClickAwayListener from '@mui/material/ClickAwayListener';
+import Popper from '@mui/material/Popper';
+import Box from '@mui/material/Box';
+import MuiCheckbox from '@mui/material/Checkbox';
+import InputBase from '@mui/material/InputBase';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Text } from '@omniviewdev/ui/typography';
+
 import { type Column } from '@tanstack/react-table';
-import { LuColumns2, LuSettings2, LuStickyNote, LuTag } from 'react-icons/lu';
-
-const PopupBody = styled('div')(
-  ({ theme }) => `
-  width: max-content;
-  border-radius: 8px;
-  border: 1px solid ${theme.palette.divider};
-  background-color: ${theme.palette.background.popup};
-  box-shadow: ${theme.palette.mode === 'dark'
-      ? '0px 4px 8px rgb(0 0 0 / 0.7)'
-      : '0px 4px 8px rgb(0 0 0 / 0.1)'
-    };
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-size: 0.875rem;
-  z-index: 1;
-`,
-);
+import { LuColumns2, LuSettings2, LuTag, LuStickyNote, LuSearch } from 'react-icons/lu';
 
 type Props = {
   labels: Record<string, boolean>;
@@ -46,8 +19,93 @@ type Props = {
   anchorEl: HTMLElement | undefined;
   columns: Array<Column<any>>;
   onClose: () => void;
-  onClick: React.MouseEventHandler<HTMLAnchorElement>;
+  onClick: React.MouseEventHandler<HTMLButtonElement>;
 };
+
+/** Compact section header */
+const SectionHeader: React.FC<{ icon: React.ReactNode; title: string; count?: number }> = ({ icon, title, count }) => (
+  <Box sx={{
+    display: 'flex',
+    alignItems: 'center',
+    gap: 0.75,
+    px: 1.5,
+    py: 0.75,
+    bgcolor: 'var(--ov-bg-surface)',
+    borderBottom: '1px solid var(--ov-border-muted)',
+  }}>
+    <Box sx={{ display: 'flex', color: 'var(--ov-fg-faint)', fontSize: 12 }}>{icon}</Box>
+    <Text weight='semibold' size='xs' sx={{ color: 'var(--ov-fg-muted)', flex: 1 }}>{title}</Text>
+    {count !== undefined && count > 0 && (
+      <Text size='xs' sx={{ color: 'var(--ov-fg-faint)' }}>{count}</Text>
+    )}
+  </Box>
+);
+
+/** Compact checkbox row */
+const CheckRow: React.FC<{ label: string; checked: boolean; onChange: () => void }> = ({ label, checked, onChange }) => (
+  <Box
+    component='label'
+    onClick={onChange}
+    sx={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 0.5,
+      px: 1,
+      py: 0,
+      height: 26,
+      cursor: 'pointer',
+      '&:hover': { bgcolor: 'var(--ov-state-hover)' },
+    }}
+  >
+    <MuiCheckbox
+      size='small'
+      checked={checked}
+      tabIndex={-1}
+      sx={{
+        p: 0,
+        color: 'var(--ov-fg-faint)',
+        '&.Mui-checked': { color: 'var(--ov-accent-fg)' },
+        '& .MuiSvgIcon-root': { fontSize: 16 },
+      }}
+    />
+    <Text size='xs' sx={{
+      color: checked ? 'var(--ov-fg-default)' : 'var(--ov-fg-muted)',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    }}>{label}</Text>
+  </Box>
+);
+
+/** Inline search for long lists */
+const ListSearch: React.FC<{ value: string; onChange: (v: string) => void; placeholder?: string }> = ({ value, onChange, placeholder }) => (
+  <Box sx={{
+    display: 'flex',
+    alignItems: 'center',
+    mx: 1,
+    my: 0.5,
+    height: 24,
+    border: '1px solid var(--ov-border-default)',
+    borderRadius: '3px',
+    bgcolor: 'var(--ov-bg-base)',
+    px: 0.5,
+    '&:focus-within': { borderColor: 'var(--ov-accent)' },
+  }}>
+    <LuSearch size={11} style={{ color: 'var(--ov-fg-faint)', marginRight: 4, flexShrink: 0 }} />
+    <InputBase
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      sx={{
+        flex: 1,
+        fontSize: '0.6875rem',
+        color: 'var(--ov-fg-default)',
+        '& input': { py: 0, px: 0 },
+        '& input::placeholder': { color: 'var(--ov-fg-faint)', opacity: 1 },
+      }}
+    />
+  </Box>
+);
 
 const ColumnFilter: React.FC<Props> = ({
   labels,
@@ -60,195 +118,132 @@ const ColumnFilter: React.FC<Props> = ({
   onClick
 }) => {
   const open = Boolean(anchorEl);
+  const [labelSearch, setLabelSearch] = useState('');
+  const [annotationSearch, setAnnotationSearch] = useState('');
 
-  const labelList = Object.entries(labels).sort(([a], [b]) => a.localeCompare(b))
-  const annotationList = Object.entries(annotations).sort(([a], [b]) => a.localeCompare(b))
+  const hideable = columns.filter(col => col.getCanHide());
+  const labelList = Object.entries(labels).sort(([a], [b]) => a.localeCompare(b));
+  const annotationList = Object.entries(annotations).sort(([a], [b]) => a.localeCompare(b));
 
-  const setLabel = (id: string, value: boolean) => {
-    setLabels({ [id]: value })
-  }
+  const filteredLabels = labelSearch
+    ? labelList.filter(([k]) => k.toLowerCase().includes(labelSearch.toLowerCase()))
+    : labelList;
+  const filteredAnnotations = annotationSearch
+    ? annotationList.filter(([k]) => k.toLowerCase().includes(annotationSearch.toLowerCase()))
+    : annotationList;
 
-  const setAnnotation = (id: string, value: boolean) => {
-    setAnnotations({ [id]: value })
-  }
+  const enabledLabelCount = labelList.filter(([, v]) => v).length;
+  const enabledAnnotationCount = annotationList.filter(([, v]) => v).length;
 
   return (
     <React.Fragment>
       <IconButton
-        variant='outlined'
+        emphasis='outline'
         color='neutral'
         onClick={onClick}
-        sx={{
-          "--IconButton-size": "32px"
-        }}
+        sx={{ width: 28, height: 28 }}
       >
-        <LuSettings2 size={20} />
+        <LuSettings2 size={14} />
       </IconButton>
-      <BasePopup
-        style={{
-          zIndex: 1000,
-          maxHeight: '50vh',
-        }}
-        id={'table-filter-menu'}
+      <Popper
+        style={{ zIndex: 1000 }}
+        id='table-filter-menu'
         open={open}
-        anchor={anchorEl}
+        anchorEl={anchorEl}
         placement='bottom-end'
       >
-        <ClickAwayListener
-          onClickAway={() => {
-            onClose();
-          }}
-        >
-          <PopupBody>
-            <Card
-              variant="outlined"
-              sx={{
-                bgcolor: '#131315',
-                maxWidth: '100%',
-                minWidth: '300px',
-                maxHeight: '50vh',
-                p: 0,
-                gap: 0,
-              }}
-            >
-              <Typography
-                startDecorator={<LuColumns2 size={14} />}
-                level='title-sm'
-                p={1}
-              >
-                Columns
-              </Typography>
-              <Divider />
-              <CardContent
-                sx={{
-                  p: 0,
-                  overflow: 'hidden',
-                }}
-              >
-                <Grid
-                  container
-                  sx={{
-                    '--Grid-borderWidth': '1px',
-                    '& > div': {
-                      minWidth: '200px',
-                    },
-                    flexWrap: 'nowrap',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <Grid
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 1.5,
-                      p: 1,
-                      overflow: 'auto',
-                    }}
-                  >
-                    {columns.filter(col => col.getCanHide()).map((column) => (
-                      <Typography
-                        key={column.columnDef.id}
-                        startDecorator={
-                          <Switch
-                            sx={{ color: 'primary', mr: 1 }}
-                            size='sm'
-                            checked={column.getIsVisible()}
-                            onChange={column.getToggleVisibilityHandler()}
-                          />
-                        }
-                        component='label'
-                        level='body-xs'
-                      >
-                        {column.columnDef.header?.toString()}
-                      </Typography>
-                    ))}
-                  </Grid>
-                  <Divider orientation='vertical' />
-                  <Grid
-                    sx={{
-                      minWidth: '400px',
-                      overflow: 'auto',
-                    }}
-                  >
-                    <Typography p={1} startDecorator={<LuTag size={14} />} level='title-sm'>Labels</Typography>
-                    <Divider />
-                    <List
-                      size='sm'
-                      sx={{
-                        '--ListItem-minHeight': '28px',
-                        "--ListDivider-gap": "0px"
-                      }}
-                    >
-                      {labelList.map(([label, selected], idx) => (
-                        <React.Fragment key={label}>
-                          <ListItem key={label} sx={{ maxHeight: '28px' }}>
-                            <ListItemButton
-                              selected={selected}
-                              sx={{
-                                maxHeight: '28px',
-                                '&:hover': {
-                                  bgcolor: 'neutral.700'
-                                }
-                              }}
-                              onClick={() => setLabel(label, !selected)}
-                            >
-                              <ListItemContent>
-                                <Typography level='body-xs'>{label}</Typography>
-                              </ListItemContent>
-                            </ListItemButton>
-                          </ListItem>
-                          {idx !== labelList.length - 1 && <ListDivider />}
-                        </React.Fragment>
-                      ))}
-                    </List>
-                    {/* TODO: Add label column selection creation  */}
-                  </Grid>
-                  <Divider orientation='vertical' />
-                  <Grid
-                    sx={{
-                      minWidth: '400px',
-                      overflow: 'auto',
-                    }}
-                  >
-                    <Typography p={1} startDecorator={<LuStickyNote size={14} />} level='title-sm'>Annotations</Typography>
-                    <Divider />
-                    <List
-                      size='sm'
-                      sx={{
-                        '--ListItem-minHeight': '28px',
-                        "--ListDivider-gap": "0px"
-                      }}
-                    >
-                      {annotationList.map(([annotation, selected], idx) => (
-                        <React.Fragment key={annotation}>
-                          <ListItem key={annotation} sx={{ maxHeight: '28px' }}>
-                            <ListItemButton
-                              selected={selected}
-                              sx={{
-                                maxHeight: '28px',
-                                '&:hover': {
-                                  bgcolor: 'neutral.700'
-                                }
-                              }}
-                              onClick={() => setAnnotation(annotation, !selected)}
-                            >
-                              <ListItemContent>
-                                <Typography level='body-xs'>{annotation}</Typography>
-                              </ListItemContent>
-                            </ListItemButton>
-                          </ListItem>
-                          {idx !== annotationList.length - 1 && <ListDivider />}
-                        </React.Fragment>
-                      ))}
-                    </List>
-                    {/* TODO: Add annotation column selection creation  */}
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </PopupBody>
+        <ClickAwayListener onClickAway={onClose}>
+          <Box sx={{
+            width: 300,
+            maxHeight: '60vh',
+            overflow: 'auto',
+            border: '1px solid var(--ov-border-default)',
+            borderRadius: '6px',
+            bgcolor: 'var(--ov-bg-base)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            mt: 0.5,
+          }}>
+            {/* Columns section */}
+            <SectionHeader icon={<LuColumns2 size={12} />} title='Columns' />
+            <Box sx={{ py: 0.5 }}>
+              {hideable.map(column => (
+                <CheckRow
+                  key={column.id}
+                  label={column.columnDef.header?.toString() ?? column.id}
+                  checked={column.getIsVisible()}
+                  onChange={column.getToggleVisibilityHandler() as () => void}
+                />
+              ))}
+            </Box>
+
+            {/* Labels section */}
+            {labelList.length > 0 && (
+              <>
+                <SectionHeader
+                  icon={<LuTag size={12} />}
+                  title='Labels'
+                  count={enabledLabelCount}
+                />
+                {labelList.length > 8 && (
+                  <ListSearch
+                    value={labelSearch}
+                    onChange={setLabelSearch}
+                    placeholder='Filter labels...'
+                  />
+                )}
+                <Box sx={{ py: 0.5, maxHeight: 200, overflow: 'auto' }}>
+                  {filteredLabels.map(([label, selected]) => (
+                    <CheckRow
+                      key={label}
+                      label={label}
+                      checked={selected}
+                      onChange={() => setLabels({ [label]: !selected })}
+                    />
+                  ))}
+                  {filteredLabels.length === 0 && (
+                    <Text size='xs' sx={{ px: 1.5, py: 1, color: 'var(--ov-fg-faint)' }}>
+                      No matching labels
+                    </Text>
+                  )}
+                </Box>
+              </>
+            )}
+
+            {/* Annotations section */}
+            {annotationList.length > 0 && (
+              <>
+                <SectionHeader
+                  icon={<LuStickyNote size={12} />}
+                  title='Annotations'
+                  count={enabledAnnotationCount}
+                />
+                {annotationList.length > 8 && (
+                  <ListSearch
+                    value={annotationSearch}
+                    onChange={setAnnotationSearch}
+                    placeholder='Filter annotations...'
+                  />
+                )}
+                <Box sx={{ py: 0.5, maxHeight: 200, overflow: 'auto' }}>
+                  {filteredAnnotations.map(([annotation, selected]) => (
+                    <CheckRow
+                      key={annotation}
+                      label={annotation}
+                      checked={selected}
+                      onChange={() => setAnnotations({ [annotation]: !selected })}
+                    />
+                  ))}
+                  {filteredAnnotations.length === 0 && (
+                    <Text size='xs' sx={{ px: 1.5, py: 1, color: 'var(--ov-fg-faint)' }}>
+                      No matching annotations
+                    </Text>
+                  )}
+                </Box>
+              </>
+            )}
+          </Box>
         </ClickAwayListener>
-      </BasePopup>
+      </Popper>
     </React.Fragment>
   );
 };
@@ -257,4 +252,3 @@ ColumnFilter.displayName = 'ColumnFilter';
 ColumnFilter.whyDidYouRender = true;
 
 export default ColumnFilter;
-

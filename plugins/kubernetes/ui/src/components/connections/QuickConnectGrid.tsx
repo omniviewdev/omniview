@@ -1,5 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Box, IconButton, Input, Stack, Tooltip, Typography } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { TextField } from '@omniviewdev/ui/inputs';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Tooltip } from '@omniviewdev/ui/overlays';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuSearch, LuFolderPlus } from 'react-icons/lu';
 import type { EnrichedConnection } from '../../types/clusters';
 import RowHandler from './RowHandler';
@@ -41,37 +46,36 @@ const QuickConnectGrid: React.FC<Props> = ({
     <Stack gap={1} sx={{ px: 0.5, pt: 0.5 }}>
       <Stack direction='row' alignItems='center' justifyContent='space-between' gap={1}>
         <Stack direction='row' alignItems='center' gap={0.75}>
-          <Typography level='title-md'>
+          <Text weight='semibold'>
             All Clusters ({connections.length})
-          </Typography>
+          </Text>
           {onCreateFolder && (
-            <Tooltip title='Create folder' size='sm'>
+            <Tooltip content='Create folder'>
               <IconButton
                 size='sm'
-                variant='plain'
+                emphasis='ghost'
                 color='neutral'
                 onClick={() => onCreateFolder?.()}
-                sx={{ '--IconButton-size': '28px' }}
               >
                 <LuFolderPlus size={16} />
               </IconButton>
             </Tooltip>
           )}
         </Stack>
-        <Input
+        <TextField
           size='sm'
           placeholder='Search clusters...'
-          startDecorator={<LuSearch size={14} />}
+          startAdornment={<LuSearch size={14} />}
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => setSearch(e)}
           autoFocus
           sx={{ maxWidth: 240 }}
         />
       </Stack>
       {filtered.length === 0 ? (
-        <Typography level='body-sm' textAlign='center' sx={{ py: 3, opacity: 0.5 }}>
+        <Text size='sm' sx={{ textAlign: 'center', py: 3, opacity: 0.5 }}>
           No clusters match '{search}'
-        </Typography>
+        </Text>
       ) : (
         <Box
           sx={{

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Stack, Typography } from '@mui/joy';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { usePluginContext, useConnections } from '@omniviewdev/runtime';
 import type { EnrichedConnection, FilterState } from '../types/accounts';
 import { useAccountPreferences } from '../hooks/useAccountPreferences';
@@ -63,7 +64,7 @@ export default function AccountsPage(): React.ReactElement {
   return (
     <Stack direction='column' sx={{ width: '100%', height: '100%', p: 1, gap: 1, overflow: 'auto' }}>
       <Stack direction='row' alignItems='center' justifyContent='space-between'>
-        <Typography level='h4'>AWS Accounts</Typography>
+        <Text weight="semibold" size="lg">AWS Accounts</Text>
       </Stack>
 
       {!noConnections && (

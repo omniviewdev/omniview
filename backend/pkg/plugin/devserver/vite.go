@@ -41,7 +41,8 @@ type viteProcess struct {
 
 	mu   sync.Mutex
 	cmd  *exec.Cmd
-	done chan struct{} // closed when the process exits
+	pgid int             // cached process group ID, set at start
+	done chan struct{}   // closed when the process exits
 }
 
 // newViteProcess creates a viteProcess. Call Start() to spawn.
@@ -134,7 +135,21 @@ func (vp *viteProcess) Start() error {
 	}
 
 	vp.cmd = cmd
-	vp.logger.Infow("vite process spawned", "pid", cmd.Process.Pid, "port", vp.port)
+
+	// Cache the process group ID immediately so it survives process death.
+	vp.pgid, _ = syscall.Getpgid(cmd.Process.Pid)
+	if vp.pgid == 0 {
+		vp.pgid = cmd.Process.Pid // fallback
+	}
+
+	// Override the default context-cancel behavior (which only kills the lead PID)
+	// to kill the entire process group. Go 1.20+ calls cmd.Cancel instead of
+	// cmd.Process.Kill() when the context is cancelled.
+	cmd.Cancel = func() error {
+		return syscall.Kill(-vp.pgid, syscall.SIGKILL)
+	}
+
+	vp.logger.Infow("vite process spawned", "pid", cmd.Process.Pid, "pgid", vp.pgid, "port", vp.port)
 
 	vp.appendLog(LogEntry{
 		Source:  "vite",
@@ -236,11 +251,20 @@ func (vp *viteProcess) Start() error {
 	return nil
 }
 
+// PGID returns the cached process group ID of the Vite process, or 0 if not started.
+func (vp *viteProcess) PGID() int {
+	vp.mu.Lock()
+	defer vp.mu.Unlock()
+	return vp.pgid
+}
+
 // Stop sends SIGTERM to the Vite process group, waits up to viteStopGracePeriod,
-// then sends SIGKILL if it's still running.
+// then sends SIGKILL if it's still running. Uses the cached PGID so it works
+// even if the lead process has already exited.
 func (vp *viteProcess) Stop() {
 	vp.mu.Lock()
 	cmd := vp.cmd
+	pgid := vp.pgid
 	vp.mu.Unlock()
 
 	if cmd == nil || cmd.Process == nil {
@@ -250,8 +274,7 @@ func (vp *viteProcess) Stop() {
 	vp.logger.Info("stopping vite process")
 
 	// Send SIGTERM to the process group (negative PID = process group).
-	pgid, err := syscall.Getpgid(cmd.Process.Pid)
-	if err == nil {
+	if pgid > 0 {
 		_ = syscall.Kill(-pgid, syscall.SIGTERM)
 	} else {
 		_ = cmd.Process.Signal(syscall.SIGTERM)

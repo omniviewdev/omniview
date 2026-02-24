@@ -28,16 +28,13 @@ import { CSS } from '@dnd-kit/utilities';
 import { type Tab } from '@/store/tabs/types';
 
 // Material-ui
-import { CssVarsProvider } from '@mui/joy/styles';
-import CssBaseline from '@mui/joy/CssBaseline';
-import Box from '@mui/joy/Box';
-import Typography from '@mui/joy/Typography';
-import GlobalStyles from '@mui/joy/GlobalStyles';
-import Sheet from '@mui/joy/Sheet';
-import Stack from '@mui/joy/Stack';
-import AspectRatio from '@mui/joy/AspectRatio';
-import Divider from '@mui/joy/Divider';
-import IconButton from '@mui/joy/IconButton';
+import CssBaseline from '@mui/material/CssBaseline';
+import Box from '@mui/material/Box';
+import GlobalStyles from '@mui/material/GlobalStyles';
+import Divider from '@mui/material/Divider';
+import { Text } from '@omniviewdev/ui/typography';
+import { Stack } from '@omniviewdev/ui/layout';
+import { IconButton } from '@omniviewdev/ui/buttons';
 
 // Redux
 import type { RootState } from '@/store/store';
@@ -77,7 +74,7 @@ const AppContainerProvider: FC<Props> = ({ children }) => {
   window.onresize = reportWindowSize;
 
   return (
-    <CssVarsProvider disableTransitionOnChange>
+    <>
       <CssBaseline />
       <Box
         sx={{ display: 'flex', minHeight: '100dvh', flexDirection: 'column' }}
@@ -100,7 +97,7 @@ const AppContainerProvider: FC<Props> = ({ children }) => {
           {children}
         </Box>
       </Box>
-    </CssVarsProvider>
+    </>
   );
 };
 
@@ -128,14 +125,13 @@ const HeaderTab: FC<HeaderTabProps> = ({
   };
 
   return (
-    <Sheet
+    <Box
       key={tab.id}
       ref={setNodeRef}
       style={style}
       {...attributes}
       {...listeners}
       className="Tab"
-      variant="plain"
       onClick={() => {
         handleTabClick(tab.id);
       }}
@@ -146,7 +142,7 @@ const HeaderTab: FC<HeaderTabProps> = ({
         justifyContent: 'flex-start',
         alignItems: 'center',
         textAlign: 'center',
-        borderRadius: 'sm',
+        borderRadius: 1,
         cursor: 'pointer',
         border:
           atob(clusterId || '') == tab.cluster || selectedTabs.includes(tab.id)
@@ -161,23 +157,21 @@ const HeaderTab: FC<HeaderTabProps> = ({
       }}
     >
       {Boolean(tab.icon) && typeof tab.icon === 'string' ? (
-        <AspectRatio ratio="1" sx={{ width: 22, borderRadius: 4 }}>
-          <img src={tab.icon} srcSet={`${tab.icon} 2x`} loading="lazy" alt="" />
-        </AspectRatio>
+        <Box sx={{ width: 22, aspectRatio: '1', borderRadius: 1, overflow: 'hidden' }}>
+          <img src={tab.icon} srcSet={`${tab.icon} 2x`} loading="lazy" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </Box>
       ) : (
         <LuBox />
       )}
-      <Typography
-        level="title-sm"
-        minWidth={100}
-        noWrap
-        flexGrow={1}
-        textAlign={'start'}
+      <Text
+        weight="semibold"
+        size="sm"
+        sx={{ minWidth: 100, flexGrow: 1, textAlign: 'start', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
       >
         {tab.label}
-      </Typography>
+      </Text>
       <IconButton
-        variant="plain"
+        emphasis="ghost"
         size="sm"
         onClick={() => {
           handleCloseTab(tab.id);
@@ -191,7 +185,7 @@ const HeaderTab: FC<HeaderTabProps> = ({
       >
         <LuX />
       </IconButton>
-    </Sheet>
+    </Box>
   );
 };
 
@@ -266,7 +260,7 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
   };
 
   return (
-    <Sheet
+    <Box
       className="TabBar"
       sx={{
         height: '42px',
@@ -276,6 +270,7 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
         justifyContent: 'space-between',
         gap: 0.5,
         p: 0.5,
+        bgcolor: 'background.paper',
       }}
     >
       <GlobalStyles
@@ -286,7 +281,7 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
         }}
       />
       {/* Account for apple menu bar with padding */}
-      <Stack direction="row" gap={1} paddingLeft={isFullscreen ? 0 : 9}>
+      <Stack direction="row" gap={1} sx={{ paddingLeft: isFullscreen ? 0 : 9 }}>
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -312,9 +307,8 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
           </SortableContext>
         </DndContext>
         <Divider orientation="vertical" />
-        <Sheet
+        <Box
           className="Tab"
-          variant="outlined"
           onClick={handleCreateNewTab}
           sx={{
             gap: 1.5,
@@ -323,20 +317,22 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
             justifyContent: 'center',
             alignItems: 'center',
             textAlign: 'center',
-            borderRadius: 'sm',
+            borderRadius: 1,
             cursor: 'pointer',
             px: 1.5,
+            border: '1px solid',
+            borderColor: 'divider',
           }}
         >
           <FaPlus size={12} />
-        </Sheet>
+        </Box>
       </Stack>
       {/* Action items */}
-      <Stack direction="row" gap={0.5} px={1}>
+      <Stack direction="row" gap={0.5} sx={{ px: 1 }}>
         <Link to="/application">
           <IconButton
             size="md"
-            variant="plain"
+            emphasis="ghost"
             color="neutral"
             sx={{ minWidth: 40 }}
           >
@@ -346,7 +342,7 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
         <Link to="/">
           <IconButton
             size="md"
-            variant="plain"
+            emphasis="ghost"
             color="neutral"
             sx={{ minWidth: 40 }}
           >
@@ -357,7 +353,7 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
         <Link to="/settings">
           <IconButton
             size="md"
-            variant="plain"
+            emphasis="ghost"
             color="neutral"
             sx={{ minWidth: 40 }}
           >
@@ -365,7 +361,7 @@ const HeaderTabBar: FC<HeaderTabBarProps> = ({ }) => {
           </IconButton>
         </Link>
       </Stack>
-    </Sheet>
+    </Box>
   );
 };
 

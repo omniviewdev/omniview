@@ -1,5 +1,6 @@
 import React from 'react';
-import { Stack, Typography } from '@mui/joy';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import FormCard, { type FormField } from '../../../shared/forms/FormCard';
 import TagEditor, { type Tag } from '../../../shared/forms/TagEditor';
 import FormSection from '../../../shared/forms/FormSection';
@@ -119,10 +120,10 @@ const StackParametersForm: React.FC<Props> = ({ data, onSave, saving }) => {
           <Stack spacing={0.5}>
             {outputs.map((out) => (
               <Stack key={out.OutputKey} direction='row' spacing={1}>
-                <Typography level='body-xs' sx={{ minWidth: 150, fontWeight: 700 }}>{out.OutputKey}</Typography>
-                <Typography level='body-xs' fontFamily='monospace'>{out.OutputValue}</Typography>
+                <Text size="xs" sx={{ minWidth: 150, fontWeight: 700 }}>{out.OutputKey}</Text>
+                <Text size="xs" sx={{ fontFamily: 'monospace' }}>{out.OutputValue}</Text>
                 {out.Description && (
-                  <Typography level='body-xs' color='neutral'>({out.Description})</Typography>
+                  <Text size="xs" color="neutral">({out.Description})</Text>
                 )}
               </Stack>
             ))}

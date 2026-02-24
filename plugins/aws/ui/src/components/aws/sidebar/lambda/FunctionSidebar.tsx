@@ -1,5 +1,6 @@
 import React from "react";
-import { Stack, Typography } from "@mui/joy";
+import { Stack } from "@omniviewdev/ui/layout";
+import { Text } from "@omniviewdev/ui/typography";
 import MetadataSection from "../../../shared/sidebar/pages/overview/sections/MetadataSection";
 import DetailsCard from "../../../shared/DetailsCard";
 import ExpandableSection from "../../../shared/ExpandableSection";
@@ -127,9 +128,9 @@ const FunctionSidebar: React.FC<Props> = ({ ctx }) => {
                   content: (
                     <Stack spacing={0.5}>
                       {envKeys.map((key) => (
-                        <Typography key={key} level="body-xs" fontFamily="monospace">
+                        <Text key={key} size="xs" sx={{ fontFamily: "monospace" }}>
                           {key}
-                        </Typography>
+                        </Text>
                       ))}
                     </Stack>
                   ),
@@ -146,14 +147,13 @@ const FunctionSidebar: React.FC<Props> = ({ ctx }) => {
                     <Stack spacing={0.5}>
                       {layers.map(
                         (layer: { Arn?: string }, i: number) => (
-                          <Typography
+                          <Text
                             key={i}
-                            level="body-xs"
-                            fontFamily="monospace"
-                            sx={{ wordBreak: "break-all" }}
+                            size="xs"
+                            sx={{ fontFamily: "monospace", wordBreak: "break-all" }}
                           >
                             {layer?.Arn || `Layer ${i + 1}`}
-                          </Typography>
+                          </Text>
                         )
                       )}
                     </Stack>
@@ -178,17 +178,16 @@ const FunctionSidebar: React.FC<Props> = ({ ctx }) => {
                           i: number
                         ) => (
                           <Stack key={i} spacing={0.25}>
-                            <Typography
-                              level="body-xs"
-                              fontFamily="monospace"
-                              sx={{ wordBreak: "break-all" }}
+                            <Text
+                              size="xs"
+                              sx={{ fontFamily: "monospace", wordBreak: "break-all" }}
                             >
                               {config?.Arn || `EFS ${i + 1}`}
-                            </Typography>
+                            </Text>
                             {config?.LocalMountPath && (
-                              <Typography level="body-xs" color="neutral">
+                              <Text size="xs" color="neutral">
                                 Mount: {config.LocalMountPath}
-                              </Typography>
+                              </Text>
                             )}
                           </Stack>
                         )

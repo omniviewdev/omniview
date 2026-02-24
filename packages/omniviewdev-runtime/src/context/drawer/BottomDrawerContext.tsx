@@ -10,6 +10,7 @@ import {
   type CreateTabs,
   type CloseTabs,
   type ReorderTab,
+  type UpdateTab,
 } from './types';
 
 // ===================================== CONTEXT ===================================== //
@@ -20,6 +21,7 @@ export type BottomDrawerContextType = {
   tabs: BottomDrawerTab[];
   createTab: CreateTab;
   createTabs: CreateTabs;
+  updateTab: UpdateTab;
   focusTab: FocusTab;
   closeTab: CloseTab;
   closeTabs: CloseTabs;
@@ -37,6 +39,7 @@ export const defaultState: BottomDrawerContextType = {
   tabs: [],
   createTab: () => { },
   createTabs: () => { },
+  updateTab: () => { },
   focusTab: () => { },
   reorderTab: () => { },
   closeTab: () => { },

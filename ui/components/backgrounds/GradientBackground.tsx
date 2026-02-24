@@ -1,7 +1,6 @@
-import Box from '@mui/joy/Box';
-import { useTheme } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { styled } from '@mui/material/styles';
 import { keyframes } from '@emotion/react';
-import { styled } from '@mui/joy';
 import React from 'react';
 
 // Define the gradient animation using keyframes from Emotion
@@ -16,7 +15,7 @@ const AnimatedBox = styled(Box)(({ theme }) => ({
   width: '100%',
   height: '100%',
   color: '#fff',
-  background: `linear-gradient(-45deg, ${theme.palette.primary[900]}, ${theme.palette.neutral[900]}, ${theme.palette.neutral[900]}, ${theme.palette.primary[900]})`,
+  background: `linear-gradient(-45deg, ${theme.palette.primary.dark}, ${theme.palette.grey[900]}, ${theme.palette.grey[900]}, ${theme.palette.primary.dark})`,
   backgroundSize: '400% 400%',
   animation: `${gradientAnimation} 15s ease infinite`,
 }));
@@ -26,10 +25,8 @@ type Props = {
 };
 
 const GradientBackground: React.FC<Props> = ({ children }) => {
-  const theme = useTheme();
-
   return (
-    <AnimatedBox theme={theme}>
+    <AnimatedBox>
       {children}
     </AnimatedBox>
   );

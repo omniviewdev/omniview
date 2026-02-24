@@ -1,12 +1,8 @@
 import React from 'react';
 
-// material-ui
-import {
-  Menu,
-  MenuItem,
-  ListItem,
-  Typography,
-} from '@mui/joy';
+// @omniviewdev/ui
+import Box from '@mui/material/Box';
+import { Text } from '@omniviewdev/ui/typography';
 
 // third party
 import jsonpath from 'jsonpath';
@@ -19,7 +15,6 @@ import { exec } from '@omniviewdev/runtime/models';
 
 // project imports
 import ActionMenuListItem from './ActionMenuListItem';
-// import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
 
 /** Command to detect the shell */
 const DefaultShellCmd = ['/bin/sh', '-c', 'stty -echo && /bin/sh'];
@@ -53,7 +48,6 @@ const calcTargets = (action: exec.Handler, data: Record<string, unknown>): ExecT
     } else {
       acc.push(values);
     }
-
     return acc;
   }, []);
 
@@ -87,11 +81,7 @@ const ExecAction: React.FC<Props> = ({
 }) => {
   const targets = calcTargets(action, data);
 
-  /**
-   * Perform the exec action on the resource target.
-   */
   const handlePerformExec = (label: string, params: Record<string, string>) => {
-    /* eslint-disable @typescript-eslint/naming-convention */
     const opts = exec.SessionOptions.createFrom({
       params,
       resource_plugin: plugin,
@@ -101,13 +91,11 @@ const ExecAction: React.FC<Props> = ({
       tty: true,
     });
 
-    // TODO: bring this functionality back in
     console.log({ opts, label, connection })
-    // bottomDrawerChannel.emit('onCreateSession', { plugin, connection, opts, label });
   };
 
   return (
-    <ListItem>
+    <Box component='li' sx={{ listStyle: 'none' }}>
       <ActionMenuListItem
         label="Exec"
         icon={<LuSquareTerminal />}
@@ -115,36 +103,49 @@ const ExecAction: React.FC<Props> = ({
         onOpen={handleSelect}
         onLeaveMenu={handleLeaveMenu}
         menu={
-          <Menu
-            size='sm'
+          <Box
+            component='ul'
             sx={{
-              padding: 0,
+              listStyle: 'none',
+              p: 0.5,
+              m: 0,
+              bgcolor: 'background.surface',
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 'sm',
+              boxShadow: 'md',
+              minWidth: 100,
             }}
-            onClose={handleDeselect}
           >
             {targets.map((target) => (
-              <MenuItem
+              <Box
+                component='li'
                 key={target.label}
-                {...itemProps}
+                sx={{
+                  px: 1,
+                  py: 0.5,
+                  cursor: 'pointer',
+                  borderRadius: 'sm',
+                  '&:hover': { bgcolor: 'action.hover' },
+                }}
                 onClick={() => {
                   handlePerformExec(target.label, target.params);
                   handleDeselect();
                   if (typeof itemProps.onClick == 'function') {
                     itemProps.onClick();
                   }
-
                   handleDismiss();
                 }}
               >
-                <Typography level='body-sm'>{target.label}</Typography>
-              </MenuItem>
+                <Text size='sm'>{target.label}</Text>
+              </Box>
             ))}
-          </Menu>
+          </Box>
         }
       >
         Exec
       </ActionMenuListItem>
-    </ListItem>
+    </Box>
   );
 };
 

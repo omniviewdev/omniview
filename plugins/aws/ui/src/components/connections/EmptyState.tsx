@@ -1,5 +1,8 @@
 import React from 'react';
-import { Sheet, Stack, Typography, Button } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button } from '@omniviewdev/ui/buttons';
 import { LuSearch, LuServerOff } from 'react-icons/lu';
 
 type Props = {
@@ -8,15 +11,16 @@ type Props = {
 };
 
 const EmptyState: React.FC<Props> = ({ variant, onClearFilters }) => (
-  <Sheet
-    variant='outlined'
+  <Box
     sx={{
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       p: 6,
-      borderRadius: 'sm',
+      borderRadius: 1,
+      border: '1px solid',
+      borderColor: 'divider',
       gap: 2,
       minHeight: 200,
     }}
@@ -24,26 +28,26 @@ const EmptyState: React.FC<Props> = ({ variant, onClearFilters }) => (
     {variant === 'no-connections' ? (
       <Stack alignItems='center' gap={1.5}>
         <LuServerOff size={40} opacity={0.4} />
-        <Typography level='title-lg'>No AWS Accounts Found</Typography>
-        <Typography level='body-sm' textAlign='center' sx={{ maxWidth: 360 }}>
+        <Text weight="semibold" size="lg">No AWS Accounts Found</Text>
+        <Text size="sm" sx={{ textAlign: 'center', maxWidth: 360 }}>
           No AWS profiles were detected. Configure AWS profiles in ~/.aws/config or plugin settings to get started.
-        </Typography>
+        </Text>
       </Stack>
     ) : (
       <Stack alignItems='center' gap={1.5}>
         <LuSearch size={40} opacity={0.4} />
-        <Typography level='title-lg'>No Results</Typography>
-        <Typography level='body-sm' textAlign='center' sx={{ maxWidth: 360 }}>
+        <Text weight="semibold" size="lg">No Results</Text>
+        <Text size="sm" sx={{ textAlign: 'center', maxWidth: 360 }}>
           No accounts match your current search or filters.
-        </Typography>
+        </Text>
         {onClearFilters && (
-          <Button variant='soft' color='neutral' size='sm' onClick={onClearFilters}>
+          <Button emphasis='soft' color='neutral' size='sm' onClick={onClearFilters}>
             Clear Filters
           </Button>
         )}
       </Stack>
     )}
-  </Sheet>
+  </Box>
 );
 
 export default EmptyState;

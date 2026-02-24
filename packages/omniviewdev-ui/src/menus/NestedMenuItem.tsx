@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import MenuItem from '@mui/material/MenuItem';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
@@ -8,12 +8,16 @@ import { LuChevronRight } from 'react-icons/lu';
 import type { ContextMenuItem } from './types';
 import HotkeyHint from '../components/HotkeyHint';
 
+export type SubmenuDirection = 'left' | 'right';
+
 export interface NestedMenuItemProps {
   item: ContextMenuItem;
   onClose: () => void;
+  /** Which side submenus expand toward. Defaults to 'right'. */
+  submenuDirection?: SubmenuDirection;
 }
 
-export default function NestedMenuItem({ item, onClose }: NestedMenuItemProps) {
+export default function NestedMenuItem({ item, onClose, submenuDirection = 'right' }: NestedMenuItemProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLLIElement>(null);
 
@@ -85,8 +89,14 @@ export default function NestedMenuItem({ item, onClose }: NestedMenuItemProps) {
         open={open}
         anchorEl={ref.current}
         onClose={handleClose}
-        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        anchorOrigin={{
+          vertical: 'top',
+          horizontal: submenuDirection === 'left' ? 'left' : 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: submenuDirection === 'left' ? 'right' : 'left',
+        }}
         slotProps={{
           paper: {
             sx: {
@@ -103,18 +113,24 @@ export default function NestedMenuItem({ item, onClose }: NestedMenuItemProps) {
         disableAutoFocus
         disableEnforceFocus
       >
-        {item.children!.map((child) => (
-          <React.Fragment key={child.key}>
-            <NestedMenuItem item={child} onClose={onClose} />
-            {child.dividerAfter && (
-              <hr style={{
-                margin: '4px 0',
-                border: 'none',
-                borderTop: '1px solid var(--ov-border-muted)',
-              }} />
-            )}
-          </React.Fragment>
-        ))}
+        {item.children!.flatMap((child) => {
+          const elements = [
+            <NestedMenuItem key={child.key} item={child} onClose={onClose} submenuDirection={submenuDirection} />,
+          ];
+          if (child.dividerAfter) {
+            elements.push(
+              <hr
+                key={`${child.key}-divider`}
+                style={{
+                  margin: '4px 0',
+                  border: 'none',
+                  borderTop: '1px solid var(--ov-border-muted)',
+                }}
+              />
+            );
+          }
+          return elements;
+        })}
       </Menu>
     </>
   );

@@ -5,12 +5,14 @@ import type { SxProps, Theme } from '@mui/material/styles';
 
 import type { ComponentSize } from '../types';
 import type { ContextMenuItem } from './types';
-import NestedMenuItem from './NestedMenuItem';
+import NestedMenuItem, { type SubmenuDirection } from './NestedMenuItem';
 
 export interface DropdownMenuProps {
   items: ContextMenuItem[];
   trigger: React.ReactNode;
   placement?: 'bottom-start' | 'bottom-end' | 'top-start' | 'top-end';
+  /** Which side nested submenus expand toward. Inferred from placement if not set. */
+  submenuDirection?: SubmenuDirection;
   size?: ComponentSize;
   width?: number | string;
   sx?: SxProps<Theme>;
@@ -27,6 +29,7 @@ export default function DropdownMenu({
   items,
   trigger,
   placement = 'bottom-start',
+  submenuDirection,
   width,
 }: DropdownMenuProps) {
   const [open, setOpen] = useState(false);
@@ -36,6 +39,9 @@ export default function DropdownMenu({
   const handleToggle = useCallback(() => setOpen((prev) => !prev), []);
 
   const { anchor, transform } = placementMap[placement];
+  // Infer submenu direction: menus anchored to the right side should expand left
+  const resolvedSubmenuDir: SubmenuDirection = submenuDirection
+    ?? (placement.endsWith('-end') ? 'left' : 'right');
 
   return (
     <>
@@ -63,12 +69,15 @@ export default function DropdownMenu({
           },
         }}
       >
-        {items.map((item) => (
-          <React.Fragment key={item.key}>
-            <NestedMenuItem item={item} onClose={handleClose} />
-            {item.dividerAfter && <Divider />}
-          </React.Fragment>
-        ))}
+        {items.flatMap((item) => {
+          const elements = [
+            <NestedMenuItem key={item.key} item={item} onClose={handleClose} submenuDirection={resolvedSubmenuDir} />,
+          ];
+          if (item.dividerAfter) {
+            elements.push(<Divider key={`${item.key}-divider`} />);
+          }
+          return elements;
+        })}
       </Menu>
     </>
   );

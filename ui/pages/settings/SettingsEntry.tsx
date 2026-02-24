@@ -1,13 +1,13 @@
 import React from 'react';
 
 // Material-ui
-import Autocomplete from '@mui/joy/Autocomplete';
-import IconButton from '@mui/joy/IconButton';
-import Checkbox from '@mui/joy/Checkbox';
-import Input from '@mui/joy/Input';
-import Select from '@mui/joy/Select';
-import Stack from '@mui/joy/Stack';
-import Option from '@mui/joy/Option';
+import Autocomplete from '@mui/material/Autocomplete';
+import MuiTextField from '@mui/material/TextField';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Checkbox } from '@omniviewdev/ui/inputs';
+import { TextField } from '@omniviewdev/ui/inputs';
+import { Select } from '@omniviewdev/ui/inputs';
+import { Stack } from '@omniviewdev/ui/layout';
 
 // Hooks
 import { main, settings } from '@omniviewdev/runtime/models';
@@ -71,10 +71,9 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
     return (
       <Stack direction='row' spacing={1} width={'100%'}>
         <Autocomplete
-          size='sm'
+          size='small'
           multiple
           freeSolo={setting.options?.length === 0}
-          placeholder={setting.value.length > 0 ? undefined : 'Kubeconfigs'}
           value={isChanged ? draftValue as string[] : setting.value as string[]}
           onChange={(_, val) => {
             console.log('Autocomplete value:', val);
@@ -89,9 +88,10 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
               outlineOffset: '2px',
             }),
           }}
+          renderInput={(params) => <MuiTextField {...params} placeholder={setting.value.length > 0 ? undefined : 'Kubeconfigs'} />}
         />
         {setting.fileSelection?.enabled ? (
-          <IconButton size='sm' variant='soft' onClick={async () => handleFileSelection()}>
+          <IconButton size='sm' emphasis='soft' onClick={async () => handleFileSelection()}>
             <LuFile />
           </IconButton>
         ) : undefined
@@ -105,12 +105,15 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
       // Options selection
       <Select
         size='sm'
-        variant='outlined'
         name={id}
         value={isChanged ? draftValue as string : setting.value as string}
-        onChange={(_, val) => {
-          handleChange(id, val);
+        onChange={(e) => {
+          handleChange(id, e.target.value);
         }}
+        options={setting.options.map(option => ({
+          value: option.value as string,
+          label: option.label,
+        }))}
         sx={{
           '&::before': {
             display: 'none',
@@ -124,20 +127,14 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
             outlineOffset: '2px',
           }),
         }}
-      >
-        {setting.options.map(option => (
-          /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
-          <Option key={option.value} value={option.value}>{option.label}</Option>
-        ))}
-      </Select>
+      />
     );
   }
 
   // Normal single input
   return (
-    <Input
+    <TextField
       size='sm'
-      variant='outlined'
       name={id}
       value={isChanged ? draftValue as string : setting.value as string}
       onChange={e => {
@@ -162,7 +159,6 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
 
 const ToggleSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => (
   <Checkbox
-    variant='solid'
     name={id}
     checked={draftValue !== undefined ? !!draftValue : !!setting.value}
     onChange={e => {
@@ -177,10 +173,9 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
 
   if (!setting.options?.length) {
     return (
-      <Input
+      <TextField
         size='sm'
         type='number'
-        variant='outlined'
         name={id}
         value={isChanged ? +draftValue : +setting.value}
         onChange={e => {
@@ -199,11 +194,9 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
             outlineOffset: '2px',
           }),
         }}
-        slotProps={{
-          input: {
-            ref: inputRef as React.RefObject<HTMLInputElement>,
-            step: setting.type === settings.SettingType.INTEGER ? 1 : 0.1,
-          },
+        inputRef={inputRef}
+        inputProps={{
+          step: setting.type === settings.SettingType.INTEGER ? 1 : 0.1,
         }}
       />
     );
@@ -212,12 +205,15 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
   return (
     <Select
       size='sm'
-      variant='outlined'
       name={id}
-      value={isChanged ? !!draftValue : !!setting.value}
-      onChange={(_, val) => {
-        handleChange(id, val);
+      value={isChanged ? String(!!draftValue) : String(!!setting.value)}
+      onChange={(e) => {
+        handleChange(id, e.target.value);
       }}
+      options={setting.options.map(option => ({
+        value: option.value as string,
+        label: option.label,
+      }))}
       sx={{
         '&::before': {
           display: 'none',
@@ -231,12 +227,7 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
           outlineOffset: '2px',
         }),
       }}
-    >
-      {setting.options.map(option => (
-        /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
-        <Option key={option.value as string} value={option.value}>{option.label}</Option>
-      ))}
-    </Select>
+    />
   );
 };
 

@@ -1,11 +1,11 @@
 import * as React from 'react';
 
 // material-ui
-import Button from '@mui/joy/Button';
-import Card from '@mui/joy/Card';
-import CardContent from '@mui/joy/CardContent';
-import Typography from '@mui/joy/Typography';
-import Stack from '@mui/joy/Stack';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Card } from '@omniviewdev/ui';
+import Box from '@mui/material/Box';
 import Icon from '@/components/icons/Icon';
 import { Link } from 'react-router-dom';
 
@@ -23,14 +23,14 @@ export const TrivyReportCard: React.FC<Props> = ({ scanner, title, description, 
         <Stack direction="column" spacing={1}>
           <Stack direction="row" spacing={1} alignItems="center">
             <Icon name={icon} size={22} />
-            <Typography level="title-lg">{title}</Typography>
+            <Text weight='semibold' size='lg'>{title}</Text>
           </Stack>
-          <Typography level="body-sm">{description}</Typography>
+          <Text size='sm'>{description}</Text>
         </Stack>
-        <CardContent orientation="horizontal">
+        <Box sx={{ display: 'flex', flexDirection: 'row', p: 2 }}>
           <Button
             fullWidth
-            variant="solid"
+            emphasis="solid"
             size="md"
             color="primary"
             aria-label="Explore Bahamas Islands"
@@ -38,7 +38,7 @@ export const TrivyReportCard: React.FC<Props> = ({ scanner, title, description, 
           >
           Scan Now
           </Button>
-        </CardContent>
+        </Box>
       </Card>
     </Link>
   );

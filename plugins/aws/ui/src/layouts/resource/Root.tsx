@@ -1,12 +1,12 @@
 import React from 'react';
-import { Box, type BoxProps } from '@mui/joy';
+import Box, { type BoxProps } from '@mui/material/Box';
 
 const Root: React.FC<BoxProps> = (props: BoxProps) => (
   <Box
     {...props}
     sx={[
       {
-        bgcolor: 'background.appBody',
+        bgcolor: 'background.default',
         display: 'flex',
         flexDirection: 'row',
         flexGrow: 1,

@@ -6,7 +6,6 @@ import {
   type Column,
   type RowData,
 } from '@tanstack/react-table';
-import { type ColorPaletteProp } from '@mui/joy';
 
 
 import MultiSelectFilter from './MultiSelectFilter';
@@ -26,8 +25,8 @@ declare module '@tanstack/react-table' {
       marks?: Array<{ value: number; label: string }>;
     };
     selectOptions?: {
-      options?: Array<{ label: string; value: string; color?: ColorPaletteProp }>;
-      buildOptions?: (data: TData[]) => Array<{ label: string; value: string; color?: ColorPaletteProp }>;
+      options?: Array<{ label: string; value: string; color?: string }>;
+      buildOptions?: (data: TData[]) => Array<{ label: string; value: string; color?: string }>;
       display?: 'chip' | 'select';
     };
     dateRangeOptions?: {

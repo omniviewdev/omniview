@@ -54,7 +54,6 @@ export const RowContainer: React.FC<Props> = ({
     <tr
       data-index={virtualRow.index}
       ref={node => rowVirtualizer.measureElement(node)}
-      // ref={ref} // Measure dynamic row height
       key={row.id}
       data-state={isSelected ? 'selected' : undefined}
       style={{
@@ -62,8 +61,16 @@ export const RowContainer: React.FC<Props> = ({
         WebkitUserSelect: 'text',
         display: 'flex',
         position: 'absolute',
-        transform: `translateY(${virtualRow.start}px)`, // This should always be a `style` as it changes on scroll
+        transform: `translateY(${virtualRow.start}px)`,
         width: '100%',
+        height: 30,
+        backgroundColor: isSelected ? 'var(--ov-accent-subtle)' : 'var(--ov-bg-base)',
+      }}
+      onMouseEnter={(e) => {
+        if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--ov-state-hover)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = isSelected ? 'var(--ov-accent-subtle)' : 'var(--ov-bg-base)';
       }}
     >
       {row.getVisibleCells().map(cell => (
@@ -78,13 +85,16 @@ export const RowContainer: React.FC<Props> = ({
               flex: (cell.column.columnDef.meta as { flex?: number | undefined })?.flex
             }),
             width: cell.column.getSize(),
-            // minWidth: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
-            // maxWidth: cell.column.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : cell.column.getSize(),
             display: 'flex',
-            textOverflow: 'ellipsis',
             overflow: 'hidden',
             alignItems: 'center',
             whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
+            padding: '0px 8px',
+            fontSize: '0.75rem',
+            color: 'var(--ov-fg-default)',
+            borderBottom: '1px solid var(--ov-border-muted)',
+            lineHeight: '30px',
             ...getCommonPinningStyles(cell.column, false)
           }}
         >

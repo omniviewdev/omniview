@@ -1,9 +1,8 @@
-import { CssVarsProvider } from '@mui/joy/styles';
-import CssBaseline from '@mui/joy/CssBaseline';
-import Box from '@mui/joy/Box';
+import CssBaseline from '@mui/material/CssBaseline';
+import Box from '@mui/material/Box';
 import Layout from '@/layouts/core/main';
 import Container from './Container';
-import Footer from '@/components/displays/Footer';
+import AppStatusFooter from '@/components/displays/Footer/AppStatusFooter';
 
 /**
  * The core layout for the application. This layout wraps the entire application
@@ -11,10 +10,7 @@ import Footer from '@/components/displays/Footer';
  */
 export default function CoreLayout() {
   return (
-    <CssVarsProvider
-      defaultMode='dark'
-      disableTransitionOnChange
-    >
+    <>
       <CssBaseline />
       <Box sx={{ display: 'flex', minHeight: '100dvh', flexDirection: 'column' }}>
         <Layout.Header />
@@ -35,10 +31,8 @@ export default function CoreLayout() {
           <Layout.Sidebar />
           <Container />
         </Box>
-        <Layout.Footer>
-          <Footer />
-        </Layout.Footer>
+        <AppStatusFooter />
       </Box>
-    </CssVarsProvider>
+    </>
   );
 }

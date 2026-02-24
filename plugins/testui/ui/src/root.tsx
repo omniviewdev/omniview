@@ -1,10 +1,6 @@
 import React from 'react'
-// import Stack from '@mui/joy/Stack'
-// import Typography from '@mui/joy/Typography'
-import {
-  Stack,
-  Typography,
-} from '@mui/joy'
+import { Stack } from '@omniviewdev/ui/layout'
+import { Text } from '@omniviewdev/ui/typography'
 import { useExtensionPointComponents } from '@omniviewdev/runtime';
 
 /**
@@ -27,7 +23,7 @@ const ExtensionPoint1Container = () => {
 
   return (
     <Stack>
-      <Typography>Extension Point 1</Typography>
+      <Text>Extension Point 1</Text>
       {components.map((Component, index) => (
         <Stack key={index}>
           {Component.render()}
@@ -42,7 +38,7 @@ const ExtensionPoint2Container = () => {
   const components = useExtensionPointComponents('testui/extension2')
   return (
     <Stack>
-      <Typography>Extension Point 2</Typography>
+      <Text>Extension Point 2</Text>
       {components.map((Component, index) => (
         <Stack key={index}>
           {Component.render()}

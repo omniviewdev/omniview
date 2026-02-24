@@ -1,20 +1,12 @@
 
 import React from 'react';
 
-// Material-ui
-import {
-  Avatar,
-  Chip,
-  IconButton,
-  List,
-  ListSubheader,
-  ListItem,
-  ListItemButton,
-  ListItemDecorator,
-  ListItemContent,
-  Stack,
-  Typography,
-} from '@mui/joy';
+// @omniviewdev/ui
+import { Avatar, Chip, List, ListItem, ListSubheader } from '@omniviewdev/ui';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import Box from '@mui/material/Box';
 
 // Icons import
 import { KeyboardArrowDownRounded } from '@mui/icons-material';
@@ -142,7 +134,6 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections }) => {
                 py: 0,
                 '--List-nestedInsetStart': '13px',
                 '--ListItem-paddingLeft': '8px',
-                '& .JoyListItemButton-root': { p: '8px' },
               }}
             >
               {section.items.map(item => (
@@ -214,38 +205,30 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         paddingInlineStart: !!item.icon ? undefined : '2rem',
       }}
       nested={Boolean(item.children?.length)}
-      endAction={item.children?.length ? (
-        <IconButton
-          variant='plain'
-          size='sm'
-          color='neutral'
-          onClick={handleClick}
-        >
-          {MemoizedIcon}
-        </IconButton>
-      ) : (
-        typeof item.decorator === 'string'
-          ? (
-            <Chip size='sm' variant='outlined' color='neutral' sx={{ borderRadius: 'sm' }}>
-              <Typography level='body-xs' fontSize={10}>{item.decorator}</Typography>
-            </Chip>
-          ) : item.decorator
-      )}
     >
-      <ListItemButton
-        // Should not be selectable if it has children
-        selected={selected === id}
+      <Box
         onClick={handleClick}
         sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          cursor: 'pointer',
           marginY: 0,
           paddingY: 0,
           maxHeight: height,
+          borderRadius: 1,
+          px: 1,
+          bgcolor: selected === id ? 'action.selected' : 'transparent',
+          '&:hover': { bgcolor: selected === id ? 'action.selected' : 'action.hover' },
+          width: '100%',
         }}
       >
         {item.icon && (
-          <ListItemDecorator
+          <Box
             sx={{
-              marginInlineEnd: '-1rem',
+              display: 'flex',
+              alignItems: 'center',
+              marginInlineEnd: '-0.5rem',
             }}
           >
             {typeof item.icon === 'string' ? (
@@ -255,17 +238,35 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
             ) : (
               item.icon
             )}
-          </ListItemDecorator>
+          </Box>
         )}
-        <ListItemContent>
-          <Typography
-            level={level == 0 || item.children?.length ? 'title-sm' : 'body-xs'}
-            fontWeight={selected == id ? 600 : 500}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Text
+            weight={level == 0 || item.children?.length ? 'semibold' : undefined}
+            size={level == 0 || item.children?.length ? 'sm' : 'xs'}
+            sx={{ fontWeight: selected == id ? 600 : 500 }}
           >
             {item.label}
-          </Typography>
-        </ListItemContent>
-      </ListItemButton>
+          </Text>
+        </Box>
+        {item.children?.length ? (
+          <IconButton
+            emphasis='ghost'
+            size='sm'
+            color='neutral'
+            onClick={handleClick}
+          >
+            {MemoizedIcon}
+          </IconButton>
+        ) : (
+          typeof item.decorator === 'string'
+            ? (
+              <Chip size='sm' emphasis='outline' color='neutral' sx={{ borderRadius: 'sm' }}
+                label={<Text size='xs' sx={{ fontSize: 10 }}>{item.decorator}</Text>}
+              />
+            ) : item.decorator
+        )}
+      </Box>
       {Boolean(item.children?.length) && Boolean(openState[id]) && (
         <List
           aria-labelledby={`nav-list-${id}`}

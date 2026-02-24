@@ -1,15 +1,15 @@
 import React from 'react';
-import { Chip } from '@mui/joy';
+import { Chip } from '@omniviewdev/ui';
 
 type Props = {
   value: string | undefined;
 };
 
-const statusColorMap: Record<string, 'success' | 'danger' | 'warning' | 'neutral' | 'primary'> = {
+const statusColorMap: Record<string, 'success' | 'error' | 'warning' | 'default' | 'primary'> = {
   // EC2
   'running': 'success',
-  'stopped': 'danger',
-  'terminated': 'danger',
+  'stopped': 'error',
+  'terminated': 'error',
   'pending': 'warning',
   'stopping': 'warning',
   'shutting-down': 'warning',
@@ -37,29 +37,27 @@ const statusColorMap: Record<string, 'success' | 'danger' | 'warning' | 'neutral
   'Starting': 'warning',
   'Pending': 'warning',
 
-  'deleting': 'danger',
-  'deleted': 'danger',
-  'failed': 'danger',
-  'error': 'danger',
-  'ERROR': 'danger',
-  'FAILED': 'danger',
-  'unhealthy': 'danger',
-  'UNHEALTHY': 'danger',
-  'OutOfService': 'danger',
+  'deleting': 'error',
+  'deleted': 'error',
+  'failed': 'error',
+  'error': 'error',
+  'ERROR': 'error',
+  'FAILED': 'error',
+  'unhealthy': 'error',
+  'UNHEALTHY': 'error',
+  'OutOfService': 'error',
 
-  'detached': 'neutral',
-  'detaching': 'neutral',
+  'detached': 'default',
+  'detaching': 'default',
 };
 
 const StatusCell: React.FC<Props> = ({ value }) => {
   if (!value) return null;
 
-  const color = statusColorMap[value] || 'neutral';
+  const color = statusColorMap[value] || 'default';
 
   return (
-    <Chip size='sm' variant='soft' color={color} sx={{ borderRadius: 'sm' }}>
-      {value}
-    </Chip>
+    <Chip size='sm' variant='filled' color={color} label={value} sx={{ borderRadius: 1 }} />
   );
 };
 

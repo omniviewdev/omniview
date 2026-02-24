@@ -1,8 +1,14 @@
-import { usePluginContext, useResourceGroups } from "@omniviewdev/runtime";
-import { SidebarItem, SidebarSection } from "../components/shared/navmenu/types";
+import { usePluginContext, useResourceGroups, useInformerState, InformerResourceState } from "@omniviewdev/runtime";
+import type { NavSection, NavMenuItem } from "@omniviewdev/ui/sidebars";
 import React from "react";
+import Box from "@mui/material/Box";
+import CircularProgress from "@mui/material/CircularProgress";
 import { types } from "@omniviewdev/runtime/models";
-import { LuBlocks, LuBoxes, LuClipboard, LuCloudLightning, LuDatabase, LuLayers2, LuLock, LuNetwork, LuServer, LuTicket } from "react-icons/lu";
+import { LuBlocks, LuBoxes, LuClipboard, LuCloudLightning, LuDatabase, LuGauge, LuLayers2, LuLock, LuNetwork, LuServer, LuTicket } from "react-icons/lu";
+import { SiHelm } from "react-icons/si";
+import DynamicIcon from "../components/shared/Icon";
+import { IsImage } from "../utils/url";
+import { toResourceKey } from "../utils/resourceKey";
 
 type Opts = {
   connectionID: string;
@@ -19,63 +25,104 @@ const toID = (meta: types.ResourceMeta) => `${meta.group}_${meta.version}_${meta
 const isCrd = (group: string) => group.includes('.') && !group.includes('.k8s.io')
 
 /** sorter for sorting alphabetically by labels */
-const labelSort = (a: SidebarItem, b: SidebarItem) => a.label.localeCompare(b.label)
+const labelSort = (a: NavMenuItem, b: NavMenuItem) => a.label.localeCompare(b.label)
 
-
-/** 
- * Calculates the full sidebar layout given all of the provided resource types available
- * to the client.
+/**
+ * Resolve an icon value (string name, image URL, or ReactNode) to a ReactNode.
  */
-const calculateFullLayout = (data: Record<string, types.ResourceGroup>): Array<SidebarSection> => {
+function resolveIcon(icon: string | React.ReactNode | undefined, size = 16): React.ReactNode | undefined {
+  if (!icon) return undefined;
+  if (typeof icon !== 'string') return icon;
+  if (icon === '') return undefined;
+  if (IsImage(icon)) return <img src={icon} alt="" style={{ width: size, height: size, objectFit: 'contain' }} />;
+  return <DynamicIcon name={icon} size={size} />;
+}
+
+
+// --- Informer state badges ---
+
+const SyncingBadge = () => <CircularProgress size={10} thickness={5} sx={{ color: 'var(--ov-accent-fg, #58a6ff)' }} />;
+const ErrorBadge = () => <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'error.main', flexShrink: 0 }} />;
+
+/** Get a badge for a nav item based on its informer state */
+const getStateBadge = (navId: string, states?: Record<string, InformerResourceState>): React.ReactNode | undefined => {
+  if (!states) return undefined;
+  const state = states[toResourceKey(navId)];
+  if (state === InformerResourceState.Syncing || state === InformerResourceState.Pending) return <SyncingBadge />;
+  if (state === InformerResourceState.Error) return <ErrorBadge />;
+  return undefined;
+};
+
+/** Get a group-level badge by aggregating children states */
+const getGroupBadge = (children: NavMenuItem[], states?: Record<string, InformerResourceState>): React.ReactNode | undefined => {
+  if (!states || !children?.length) return undefined;
+  let hasSyncing = false;
+  let hasError = false;
+  for (const child of children) {
+    const state = states[toResourceKey(child.id)];
+    if (state === InformerResourceState.Syncing || state === InformerResourceState.Pending) hasSyncing = true;
+    if (state === InformerResourceState.Error) hasError = true;
+  }
+  if (hasError) return <ErrorBadge />;
+  if (hasSyncing) return <SyncingBadge />;
+  return undefined;
+};
+
+/**
+ * Calculates the full sidebar layout divided by the API groups
+ */
+const calculateFullLayout = (data: Record<string, types.ResourceGroup>, informerStates?: Record<string, InformerResourceState>): Array<NavSection> => {
   if (!data) {
     return []
   }
 
-  const coreSection: SidebarItem[] = [];
-  const crdSection: SidebarItem[] = [];
+  const coreSection: NavMenuItem[] = [];
+  const crdSection: NavMenuItem[] = [];
 
-  const grouped: SidebarItem[] = Object.values(data).map((group) => {
-    const item: SidebarItem = {
-      id: group.id,
-      label: group.name,
-      icon: group.icon,
-      children: [],
-    };
+  const grouped: NavMenuItem[] = Object.values(data).map((group) => {
+    const children: NavMenuItem[] = [];
 
     Object.entries(group.resources).forEach(([_, metas]) => {
       metas.forEach((meta) => {
-        item.children?.push({
+        children.push({
           id: toID(meta),
           label: meta.kind,
-          icon: meta.icon,
+          icon: resolveIcon(meta.icon),
+          badge: getStateBadge(toID(meta), informerStates),
         });
       });
     });
 
-    // Sort the children
-    item.children = item.children?.sort((a, b) => a.label.localeCompare(b.label));
+    children.sort((a, b) => a.label.localeCompare(b.label));
+
+    const item: NavMenuItem = {
+      id: group.id,
+      label: group.name,
+      icon: resolveIcon(group.icon),
+      children,
+      badge: getGroupBadge(children, informerStates),
+    };
+
     return item;
   }).sort((a, b) => a.label.localeCompare(b.label));
 
   grouped.forEach((group) => {
-    // This is kubernetes specific, let's eventually allow plugins to define this somehow
     if (isCrd(group.label)) {
-      // custom resource definition
       crdSection.push(group);
     } else {
       coreSection.push(group);
     }
   });
 
-  const sections: SidebarSection[] = [
-    { id: 'core', title: '', items: coreSection },
-    { id: 'crd', title: 'Custom Resource Definitions', items: crdSection },
+  const sections: NavSection[] = [
+    { title: '', items: [{ id: '__dashboard__', label: 'Dashboard', icon: <LuGauge /> }, ...coreSection] },
+    { title: 'Custom Resource Definitions', items: crdSection },
   ];
 
   return sections;
 }
 
-type ModernSection = 'workload' | 'config' | 'network' | 'storage' | 'access_control' | 'admission_control'
+type ModernSection = 'workload' | 'config' | 'network' | 'storage' | 'access_control' | 'admission_control' | 'helm'
 
 /**
  * Map of where found resources should go
@@ -132,85 +179,72 @@ const ModernSectionMap: Record<string, ModernSection> = {
   'ValidatingWebhookConfiguration': 'admission_control',
   'ValidatingAdmissionPolicy': 'admission_control',
   'ValidatingAdmissionPolicyBinding': 'admission_control',
+
+  // Helm
+  'Release': 'helm',
+  'Repository': 'helm',
+  'Chart': 'helm',
 }
 
 
-/** 
+/**
  * Calculates a modern sidebar layout inspired by Kubernetes Dashboard for familiarity. Only adds
  * resources that are available.
  */
-const calculateModernLayout = (data: Record<string, types.ResourceGroup>): Array<SidebarSection> => {
+const calculateModernLayout = (data: Record<string, types.ResourceGroup>, informerStates?: Record<string, InformerResourceState>): Array<NavSection> => {
   if (!data) {
     return []
   }
 
-  // Grouped Resource areas
-  const workloadResources: SidebarItem[] = [];
-  const configResources: SidebarItem[] = [];
-  const networkResources: SidebarItem[] = [];
-  const storageResources: SidebarItem[] = [];
-  const accessControlResources: SidebarItem[] = [];
-  const admissionControlResources: SidebarItem[] = [];
+  const withBadge = (id: string, label: string): NavMenuItem => ({
+    id,
+    label,
+    badge: getStateBadge(id, informerStates),
+  });
 
-  const crds: Record<string, Array<SidebarItem>> = {}
+  // Grouped Resource areas
+  const workloadResources: NavMenuItem[] = [];
+  const configResources: NavMenuItem[] = [];
+  const networkResources: NavMenuItem[] = [];
+  const storageResources: NavMenuItem[] = [];
+  const accessControlResources: NavMenuItem[] = [];
+  const admissionControlResources: NavMenuItem[] = [];
+  const helmResources: NavMenuItem[] = [];
+
+  const crds: Record<string, Array<NavMenuItem>> = {}
 
   Object.values(data).forEach((group) => {
     Object.entries(group.resources).forEach(([_, metas]) => {
       metas.forEach((meta) => {
+        const navItem = withBadge(toID(meta), meta.kind);
         // if CRD, push to CRD
         if (isCrd(meta.group)) {
           if (!crds[meta.group]) {
             crds[meta.group] = []
           }
-
-          crds[meta.group].push({
-            id: toID(meta),
-            label: meta.kind,
-            icon: '',
-          })
+          crds[meta.group].push(navItem)
         } else {
           switch (ModernSectionMap[meta.kind]) {
             case "workload":
-              workloadResources.push({
-                id: toID(meta),
-                label: meta.kind,
-                icon: ''
-              })
+              workloadResources.push(navItem)
               break
             case "config":
-              configResources.push({
-                id: toID(meta),
-                label: meta.kind,
-                icon: ''
-              })
+              configResources.push(navItem)
               break
             case "network":
-              networkResources.push({
-                id: toID(meta),
-                label: meta.kind,
-                icon: ''
-              })
+              networkResources.push(navItem)
               break
             case "storage":
-              storageResources.push({
-                id: toID(meta),
-                label: meta.kind,
-                icon: ''
-              })
+              storageResources.push(navItem)
               break
             case "access_control":
-              accessControlResources.push({
-                id: toID(meta),
-                label: meta.kind,
-                icon: ''
-              })
+              accessControlResources.push(navItem)
               break
             case "admission_control":
-              admissionControlResources.push({
-                id: toID(meta),
-                label: meta.kind,
-                icon: ''
-              })
+              admissionControlResources.push(navItem)
+              break
+            case "helm":
+              helmResources.push(navItem)
               break
           }
         }
@@ -218,28 +252,38 @@ const calculateModernLayout = (data: Record<string, types.ResourceGroup>): Array
     });
   });
 
-  const crdChildren: SidebarItem[] = Object.entries(crds).map(([group, entry]) => ({
+  const crdChildren: NavMenuItem[] = Object.entries(crds).map(([group, entry]) => ({
     id: group,
     label: group,
-    icon: '',
-    children: entry.sort(labelSort)
+    children: entry.sort(labelSort),
+    badge: getGroupBadge(entry, informerStates),
   }))
 
-  const sections: SidebarSection[] = [
+  const workloadSorted = workloadResources.sort(labelSort);
+  const configSorted = configResources.sort(labelSort);
+  const networkSorted = networkResources.sort(labelSort);
+  const storageSorted = storageResources.sort(labelSort);
+  const accessSorted = accessControlResources.sort(labelSort);
+  const admissionSorted = admissionControlResources.sort(labelSort);
+  const helmSorted = helmResources.sort(labelSort);
+  const crdSorted = crdChildren.sort(labelSort);
+
+  const sections: NavSection[] = [
     {
-      id: 'native',
       title: '',
       items: [
-        { id: 'core_v1_Node', label: 'Nodes', icon: <LuServer /> },
-        { id: 'events_v1_Event', label: 'Events', icon: <LuCloudLightning /> },
-        { id: 'core_v1_Namespace', label: 'Namespaces', icon: <LuLayers2 /> },
-        { id: 'workload', label: 'Workload', icon: <LuBoxes />, defaultExpanded: true, children: workloadResources.sort(labelSort) },
-        { id: 'config', label: 'Config', icon: <LuClipboard />, defaultExpanded: true, children: configResources.sort(labelSort) },
-        { id: 'network', label: 'Networking', icon: <LuNetwork />, defaultExpanded: true, children: networkResources.sort(labelSort) },
-        { id: 'storage', label: 'Storage', icon: <LuDatabase />, defaultExpanded: true, children: storageResources.sort(labelSort) },
-        { id: 'access_control', label: 'Access Control', icon: <LuLock />, defaultExpanded: true, children: accessControlResources.sort(labelSort) },
-        { id: 'admission_control', label: 'Admission Control', icon: <LuTicket />, defaultExpanded: true, children: admissionControlResources.sort(labelSort) },
-        { id: 'crd', label: 'Custom Resource Definitions', icon: <LuBlocks />, defaultExpanded: true, children: crdChildren.sort(labelSort) },
+        { id: '__dashboard__', label: 'Dashboard', icon: <LuGauge /> },
+        { id: 'core_v1_Node', label: 'Nodes', icon: <LuServer />, badge: getStateBadge('core_v1_Node', informerStates) },
+        { id: 'events_v1_Event', label: 'Events', icon: <LuCloudLightning />, badge: getStateBadge('events_v1_Event', informerStates) },
+        { id: 'core_v1_Namespace', label: 'Namespaces', icon: <LuLayers2 />, badge: getStateBadge('core_v1_Namespace', informerStates) },
+        { id: 'workload', label: 'Workload', icon: <LuBoxes />, defaultExpanded: true, children: workloadSorted, badge: getGroupBadge(workloadSorted, informerStates) },
+        { id: 'config', label: 'Config', icon: <LuClipboard />, defaultExpanded: true, children: configSorted, badge: getGroupBadge(configSorted, informerStates) },
+        { id: 'network', label: 'Networking', icon: <LuNetwork />, defaultExpanded: true, children: networkSorted, badge: getGroupBadge(networkSorted, informerStates) },
+        { id: 'storage', label: 'Storage', icon: <LuDatabase />, defaultExpanded: true, children: storageSorted, badge: getGroupBadge(storageSorted, informerStates) },
+        { id: 'access_control', label: 'Access Control', icon: <LuLock />, defaultExpanded: true, children: accessSorted, badge: getGroupBadge(accessSorted, informerStates) },
+        { id: 'admission_control', label: 'Admission Control', icon: <LuTicket />, defaultExpanded: true, children: admissionSorted, badge: getGroupBadge(admissionSorted, informerStates) },
+        { id: 'helm', label: 'Helm', icon: <SiHelm />, defaultExpanded: true, children: helmSorted, badge: getGroupBadge(helmSorted, informerStates) },
+        { id: 'crd', label: 'Custom Resource Definitions', icon: <LuBlocks />, defaultExpanded: true, children: crdSorted, badge: getGroupBadge(crdSorted, informerStates) },
       ]
     },
   ];
@@ -248,13 +292,16 @@ const calculateModernLayout = (data: Record<string, types.ResourceGroup>): Array
 }
 
 /**
- * Provde one of number of sidebar layouts to the caller
+ * Provide one of number of sidebar layouts to the caller
  */
 export const useSidebarLayout = ({ connectionID }: Opts) => {
   const { settings } = usePluginContext()
   const { groups } = useResourceGroups({ pluginID: 'kubernetes', connectionID });
+  const { summary } = useInformerState({ pluginID: 'kubernetes', connectionID });
 
-  const [layout, setLayout] = React.useState<Array<SidebarSection>>([])
+  const informerStates = summary.data?.resources;
+
+  const [layout, setLayout] = React.useState<Array<NavSection>>([])
   const [isLoading, setIsLoading] = React.useState<boolean>(true)
 
   /**
@@ -269,14 +316,14 @@ export const useSidebarLayout = ({ connectionID }: Opts) => {
 
     switch (settings['kubernetes.layout']) {
       case "modern":
-        setLayout(calculateModernLayout(groups.data))
+        setLayout(calculateModernLayout(groups.data, informerStates))
         break
       case "full":
-        setLayout(calculateFullLayout(groups.data))
+        setLayout(calculateFullLayout(groups.data, informerStates))
         break
     }
     setIsLoading(false)
-  }, [groups.data, settings['kubernetes.layout']])
+  }, [groups.data, settings['kubernetes.layout'], informerStates])
 
   return {
     layout,

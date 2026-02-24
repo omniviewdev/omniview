@@ -1,16 +1,15 @@
 import { useLocation, Link } from 'react-router-dom';
 
 // Material-ui
-import GlobalStyles from '@mui/joy/GlobalStyles';
-import Sheet from '@mui/joy/Sheet';
-import Tabs from '@mui/joy/Tabs';
-import Tab, { tabClasses } from '@mui/joy/Tab';
-import TabList from '@mui/joy/TabList';
+import GlobalStyles from '@mui/material/GlobalStyles';
+import Box from '@mui/material/Box';
+import MuiTabs from '@mui/material/Tabs';
+import MuiTab from '@mui/material/Tab';
+import Avatar from '@mui/material/Avatar';
 
 // Icons
 import Icon from '@/components/icons/Icon';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
-import { Avatar } from '@mui/joy';
 
 // Project imports
 import { IsImage } from '@/utils/url';
@@ -21,7 +20,7 @@ export default function CoreLayoutSidebar() {
   var matched = pathname.match(/^\/_plugin\/([A-Za-z0-9]+).*/)?.[1] || '';
 
   return (
-    <Sheet
+    <Box
       className='CoreLayoutSidebar'
       sx={{
         position: 'fixed',
@@ -42,6 +41,7 @@ export default function CoreLayoutSidebar() {
         gap: 0,
         borderRight: '1px solid',
         borderColor: 'divider',
+        bgcolor: 'background.paper',
       }}
     >
       <GlobalStyles
@@ -54,61 +54,40 @@ export default function CoreLayoutSidebar() {
       />
 
       {/* Dynamic Plugins */}
-      <Tabs
-        size='sm'
+      <MuiTabs
         aria-label="Sidebar Tabs"
         orientation="vertical"
-        value={matched}
+        value={matched || false}
         sx={{
-          "--Tab-indicatorThickness": "3px"
+          '& .MuiTabs-indicator': {
+            left: 0,
+            width: '3px',
+          },
         }}
       >
-        <TabList
-          sx={{
-            justifyContent: 'center',
-            [`&& .${tabClasses.root}`]: {
-              bgcolor: 'transparent',
-              '&:hover': {
-                bgcolor: 'transparent',
-              },
-              [`&.${tabClasses.selected}`]: {
-                color: 'primary.plainColor',
-                '&::after': {
-                  bgcolor: 'primary.500',
-                },
-              },
-            },
-          }}
-        >
-          {!plugins.isLoading && plugins.data?.map(({ id, metadata }) => (
-            <Tab
-              key={id}
-              value={id}
-              indicatorPlacement='left'
-              sx={{
-                px: 1,
-                py: 1.2,
-                width: 'var(--CoreLayoutSidebar-width)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                WebkitUserSelect: 'none',
-                WebkitUserDrag: 'none',
-              }}
-              component={Link}
-              to={`/_plugin/${id}`}
-              style={{
-                textDecoration: 'none',
-                color: 'inherit',
-              }}
-            >
-              {IsImage(metadata?.icon) ? (
+        {!plugins.isLoading && plugins.data?.map(({ id, metadata }) => (
+          <MuiTab
+            key={id}
+            value={id}
+            sx={{
+              px: 1,
+              py: 1.2,
+              minWidth: 'var(--CoreLayoutSidebar-width)',
+              width: 'var(--CoreLayoutSidebar-width)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              WebkitUserSelect: 'none',
+            }}
+            component={Link}
+            to={`/_plugin/${id}`}
+            icon={
+              IsImage(metadata?.icon) ? (
                 <Avatar
-                  size='sm'
                   src={metadata.icon}
-                  variant='plain'
+                  variant='square'
                   sx={{
-                    borderRadius: 4,
+                    borderRadius: 1,
                     backgroundColor: 'transparent',
                     objectFit: 'contain',
                     border: 0,
@@ -116,11 +95,11 @@ export default function CoreLayoutSidebar() {
                     height: '30px',
                   }}
                 />
-              ) : <Icon name={metadata?.icon || ''} size={26} />}
-            </Tab>
-          ))}
-        </TabList>
-      </Tabs>
-    </Sheet>
+              ) : <Icon name={metadata?.icon || ''} size={26} />
+            }
+          />
+        ))}
+      </MuiTabs>
+    </Box>
   );
 }

@@ -1,13 +1,11 @@
 import React from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
-// material-ui
-import {
-  Divider,
-  Sheet,
-  Stack,
-  Typography,
-} from '@mui/joy';
+// UI
+import { Divider } from '@omniviewdev/ui';
+import { Text } from '@omniviewdev/ui/typography';
+import { Stack } from '@omniviewdev/ui/layout';
+import Box from '@mui/material/Box';
 
 
 // Layout
@@ -44,7 +42,7 @@ export default function RootLayout(): React.ReactElement {
       minHeight={300}
       flex={1}
     >
-      <Sheet
+      <Box
         sx={{
           py: 1,
           px: 1,
@@ -53,13 +51,13 @@ export default function RootLayout(): React.ReactElement {
           gap: 1.5,
           alignItems: 'center',
           justifyContent: 'space-between',
+          bgcolor: 'action.hover',
         }}
-        variant='soft'
       >
         <Stack direction='row' alignItems='center' gap={2}>
-          <Typography level='title-md' >{'Container Explorer'}</Typography>
+          <Text weight="semibold" size="md">{'Container Explorer'}</Text>
         </Stack>
-      </Sheet>
+      </Box>
       <Divider />
       <Layout.Root
         sx={{

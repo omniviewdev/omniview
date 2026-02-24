@@ -1,6 +1,9 @@
 import React from 'react';
-import { IconButton, List, styled } from '@mui/joy';
-import { Unstable_Popup as BasePopup, ClickAwayListener } from '@mui/base';
+import List from '@mui/material/List';
+import Popper from '@mui/material/Popper';
+import ClickAwayListener from '@mui/material/ClickAwayListener';
+import { styled } from '@mui/material/styles';
+import { IconButton } from '@omniviewdev/ui/buttons';
 import { MoreHorizRounded } from '@mui/icons-material';
 
 type Props = {
@@ -15,7 +18,7 @@ const PopupBody = styled('div')(
   width: max-content;
   border-radius: 8px;
   border: 1px solid ${theme.palette.divider};
-  background-color: ${theme.palette.background.popup};
+  background-color: ${theme.palette.background.paper};
   box-shadow: ${theme.palette.mode === 'dark'
       ? '0px 4px 8px rgb(0 0 0 / 0.7)'
       : '0px 4px 8px rgb(0 0 0 / 0.1)'
@@ -44,38 +47,39 @@ const ActionsCell: React.FC<Props> = () => {
     <>
       <IconButton
         size="sm"
-        variant="plain"
+        emphasis="ghost"
         sx={{ flex: 'none', minHeight: 28, minWidth: 28 }}
         onClick={handleClick}
       >
         <MoreHorizRounded />
       </IconButton>
-      <BasePopup
+      <Popper
         style={{ zIndex: 9999 }}
         id={'resource-context-menu'}
         open={open}
-        anchor={selected}
+        anchorEl={selected}
         placement={'bottom-end'}
       >
         <ClickAwayListener onClickAway={() => { setSelected(null); }}>
           <PopupBody>
             <List
-              size='sm'
-              variant="outlined"
+              dense
               sx={{
                 maxWidth: 400,
                 minWidth: 110,
-                borderRadius: 'sm',
-                backgroundColor: 'background.body',
-                paddingBlock: 0,
-                paddingX: '2px',
+                borderRadius: 1,
+                bgcolor: 'background.paper',
+                border: '1px solid',
+                borderColor: 'divider',
+                py: 0,
+                px: '2px',
               }}
             >
               {/* AWS plugin is read-only, no actions yet */}
             </List>
           </PopupBody>
         </ClickAwayListener>
-      </BasePopup>
+      </Popper>
     </>
   );
 };

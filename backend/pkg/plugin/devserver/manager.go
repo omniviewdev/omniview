@@ -59,6 +59,12 @@ func NewDevServerManager(
 func (m *DevServerManager) Initialize(ctx context.Context) {
 	m.ctx = ctx
 
+	// Kill any stale Vite dev server processes left over from a previous
+	// unclean shutdown (crash, SIGKILL, etc.). These zombie node processes
+	// hold ports in our allocated range and prevent new dev servers from
+	// starting.
+	m.ports.CleanupStaleProcesses(m.logger)
+
 	// Start the external watcher for .devinfo files.
 	watcher, err := NewExternalWatcher(
 		m.logger,
@@ -102,6 +108,10 @@ func (m *DevServerManager) Shutdown() {
 			)
 		}
 	}
+
+	// All processes stopped — clear the PID file so next startup doesn't
+	// try to kill already-dead processes.
+	m.ports.SavePIDs()
 
 	m.logger.Info("DevServerManager shutdown complete")
 }
@@ -208,6 +218,13 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 		return DevServerState{}, fmt.Errorf("failed to start dev server: %w", err)
 	}
 
+	// Record the Vite process group ID so we can kill zombies on next startup
+	// if the app crashes or gets SIGKILL'd.
+	if pgid := inst.VitePGID(); pgid > 0 {
+		m.ports.RecordPID(port, pgid)
+		m.ports.SavePIDs()
+	}
+
 	state := inst.State()
 	m.emitStatus(pluginID, state)
 
@@ -231,6 +248,7 @@ func (m *DevServerManager) StopDevServer(pluginID string) error {
 
 	inst.Stop()
 	m.ports.ReleaseByPlugin(pluginID)
+	m.ports.SavePIDs()
 
 	state := DevServerState{
 		PluginID:   pluginID,

@@ -1,15 +1,8 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Dropdown,
-  IconButton,
-  ListDivider,
-  ListItemDecorator,
-  Menu,
-  MenuButton,
-  MenuItem,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Text } from '@omniviewdev/ui/typography';
+import Divider from '@mui/material/Divider';
 import { MoreVert } from '@mui/icons-material';
 import {
   LuPencil,
@@ -62,9 +55,17 @@ const ConnectionContextMenu: React.FC<Props> = ({
   onDelete,
 }) => {
   const [foldersExpanded, setFoldersExpanded] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const open = Boolean(anchorEl);
 
-  const handleMenuClick = (e: React.MouseEvent) => {
+  const handleMenuClick = (e: React.MouseEvent<HTMLElement>) => {
     e.stopPropagation();
+    setAnchorEl(e.currentTarget);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+    setFoldersExpanded(false);
   };
 
   // Truncate long names for the delete label
@@ -73,135 +74,163 @@ const ConnectionContextMenu: React.FC<Props> = ({
     : connectionName;
 
   return (
-    <Dropdown onOpenChange={(_e, open) => { if (!open) setFoldersExpanded(false); }}>
-      <MenuButton
+    <>
+      <IconButton
         aria-label='More'
         size='sm'
-        slots={{ root: IconButton }}
-        slotProps={{ root: { variant: 'plain', color: 'neutral', size: 'sm' } }}
+        emphasis='ghost'
+        color='neutral'
         onClick={handleMenuClick}
       >
-        <MoreVert sx={{ fontSize: 18 }} />
-      </MenuButton>
-      <Menu
-        size='sm'
-        placement='bottom-end'
-        sx={{
-          fontSize: '0.75rem',
-          '--List-padding': '3px',
-          '--ListItem-minHeight': '28px',
-          '--ListItemDecorator-size': '22px',
-          '--ListItem-paddingY': '2px',
-          '--ListItem-paddingX': '6px',
-          '--ListDivider-gap': '3px',
-          minWidth: 160,
-        }}
-      >
-        {isConnected ? (
-          <MenuItem onClick={onDisconnect}>
-            <ListItemDecorator><LuUnplug size={ICON_SIZE} /></ListItemDecorator>
-            Disconnect
-          </MenuItem>
-        ) : (
-          <MenuItem onClick={onConnect}>
-            <ListItemDecorator><LuPlug size={ICON_SIZE} /></ListItemDecorator>
-            Connect
-          </MenuItem>
-        )}
-
-        <ListDivider />
-
-        <Link to={`/cluster/${encodeURIComponent(connectionId)}/edit`} style={{ textDecoration: 'none', color: 'inherit' }}>
-          <MenuItem>
-            <ListItemDecorator><LuPencil size={ICON_SIZE} /></ListItemDecorator>
-            Edit
-          </MenuItem>
-        </Link>
-
-        <MenuItem onClick={onToggleFavorite}>
-          <ListItemDecorator><LuStar size={ICON_SIZE} /></ListItemDecorator>
-          {isFavorite ? 'Unfavorite' : 'Favorite'}
-        </MenuItem>
-
-        {(customGroups.length > 0 || onCreateFolder) && (
-          <>
-            <ListDivider />
-            {/* Folders toggle — uses a plain Box so it doesn't auto-close the menu */}
-            <Box
-              role='menuitem'
-              tabIndex={0}
-              onClick={() => setFoldersExpanded(prev => !prev)}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                minHeight: 'var(--ListItem-minHeight)',
-                py: 'var(--ListItem-paddingY)',
-                px: 'var(--ListItem-paddingX)',
-                fontSize: 'inherit',
-                cursor: 'pointer',
-                borderRadius: 'var(--ListItem-radius)',
-                '&:hover': { bgcolor: 'neutral.plainHoverBg' },
-              }}
-            >
-              <Box component='span' sx={{ display: 'inline-flex', minWidth: 'var(--ListItemDecorator-size)', alignItems: 'center' }}>
-                <LuFolder size={ICON_SIZE} />
+        <MoreVert sx={{ fontSize: 16 }} />
+      </IconButton>
+      {/* Note: This menu structure is simplified since DropdownMenu from @omniviewdev/ui/menus
+          may have a different API. Using basic Box-based menu as fallback. */}
+      {open && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+            onClick={handleClose}
+          />
+          <Box
+            sx={{
+              position: 'absolute',
+              right: 0,
+              top: '100%',
+              zIndex: 1000,
+              borderRadius: 'var(--ov-radius-md, 6px)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+              bgcolor: 'var(--ov-bg-surface, #1e1e1e)',
+              border: '1px solid var(--ov-border-default, rgba(255,255,255,0.08))',
+              minWidth: 150,
+              fontSize: '0.75rem',
+              py: 0.375,
+            }}
+          >
+            {isConnected ? (
+              <Box
+                onClick={() => { onDisconnect(); handleClose(); }}
+                sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 0.75, py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))' } }}
+              >
+                <LuUnplug size={ICON_SIZE} />
+                Disconnect
               </Box>
-              <Typography sx={{ flex: 1, fontSize: 'inherit' }}>Folders</Typography>
-              {foldersExpanded
-                ? <LuChevronDown size={ICON_SIZE} style={{ opacity: 0.5, marginLeft: 6 }} />
-                : <LuChevronRight size={ICON_SIZE} style={{ opacity: 0.5, marginLeft: 6 }} />
-              }
+            ) : (
+              <Box
+                onClick={() => { onConnect(); handleClose(); }}
+                sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 0.75, py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))' } }}
+              >
+                <LuPlug size={ICON_SIZE} />
+                Connect
+              </Box>
+            )}
+
+            <Divider sx={{ my: 0.5 }} />
+
+            <Link to={`/cluster/${encodeURIComponent(connectionId)}/edit`} style={{ textDecoration: 'none', color: 'inherit' }}>
+              <Box
+                onClick={handleClose}
+                sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 0.75, py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))' } }}
+              >
+                <LuPencil size={ICON_SIZE} />
+                Edit
+              </Box>
+            </Link>
+
+            <Box
+              onClick={() => { onToggleFavorite(); handleClose(); }}
+              sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 0.75, py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))' } }}
+            >
+              <LuStar size={ICON_SIZE} />
+              {isFavorite ? 'Unfavorite' : 'Favorite'}
             </Box>
-            {foldersExpanded && (
+
+            {(customGroups.length > 0 || onCreateFolder) && (
               <>
-                {customGroups.map(group => {
-                  const isInGroup = group.connectionIds.includes(connectionId);
-                  const Icon = getFolderIcon(group.icon);
-                  return (
-                    <MenuItem
-                      key={group.id}
-                      onClick={() => {
-                        if (isInGroup && onRemoveFromGroup) {
-                          onRemoveFromGroup(group.id);
-                        } else if (!isInGroup) {
-                          onAssignToGroup(group.id);
-                        }
-                      }}
-                      sx={{ pl: 3.5 }}
-                    >
-                      <ListItemDecorator sx={{ color: group.color }}>
-                        {isInGroup ? <LuCheck size={ICON_SIZE} /> : <Icon size={ICON_SIZE} />}
-                      </ListItemDecorator>
-                      {group.name}
-                    </MenuItem>
-                  );
-                })}
-                {onCreateFolder && (
-                  <MenuItem onClick={() => onCreateFolder(connectionId)} sx={{ pl: 3.5 }}>
-                    <ListItemDecorator><LuFolderPlus size={ICON_SIZE} /></ListItemDecorator>
-                    New Folder...
-                  </MenuItem>
+                <Divider sx={{ my: 0.5 }} />
+                <Box
+                  role='menuitem'
+                  tabIndex={0}
+                  onClick={() => setFoldersExpanded(prev => !prev)}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    px: 1,
+                    py: 0.5,
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))' },
+                  }}
+                >
+                  <LuFolder size={ICON_SIZE} />
+                  <Text sx={{ flex: 1, fontSize: 'inherit' }}>Folders</Text>
+                  {foldersExpanded
+                    ? <LuChevronDown size={ICON_SIZE} style={{ opacity: 0.5, marginLeft: 6 }} />
+                    : <LuChevronRight size={ICON_SIZE} style={{ opacity: 0.5, marginLeft: 6 }} />
+                  }
+                </Box>
+                {foldersExpanded && (
+                  <>
+                    {customGroups.map(group => {
+                      const isInGroup = group.connectionIds.includes(connectionId);
+                      const Icon = getFolderIcon(group.icon);
+                      return (
+                        <Box
+                          key={group.id}
+                          onClick={() => {
+                            if (isInGroup && onRemoveFromGroup) {
+                              onRemoveFromGroup(group.id);
+                            } else if (!isInGroup) {
+                              onAssignToGroup(group.id);
+                            }
+                            handleClose();
+                          }}
+                          sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 3, pr: 0.75, py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))' } }}
+                        >
+                          <Box sx={{ color: group.color }}>
+                            {isInGroup ? <LuCheck size={ICON_SIZE} /> : <Icon size={ICON_SIZE} />}
+                          </Box>
+                          {group.name}
+                        </Box>
+                      );
+                    })}
+                    {onCreateFolder && (
+                      <Box
+                        onClick={() => { onCreateFolder(connectionId); handleClose(); }}
+                        sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 3, pr: 0.75, py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))' } }}
+                      >
+                        <LuFolderPlus size={ICON_SIZE} />
+                        New Folder...
+                      </Box>
+                    )}
+                  </>
                 )}
               </>
             )}
-          </>
-        )}
 
-        <ListDivider />
+            <Divider sx={{ my: 0.5 }} />
 
-        <MenuItem onClick={onCopyId}>
-          <ListItemDecorator><LuCopy size={ICON_SIZE} /></ListItemDecorator>
-          Copy Connection ID
-        </MenuItem>
+            <Box
+              onClick={() => { onCopyId(); handleClose(); }}
+              sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 0.75, py: 0.25, cursor: 'pointer', '&:hover': { bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))' } }}
+            >
+              <LuCopy size={ICON_SIZE} />
+              Copy Connection ID
+            </Box>
 
-        <ListDivider />
+            <Divider sx={{ my: 0.5 }} />
 
-        <MenuItem color='danger' onClick={onDelete}>
-          <ListItemDecorator><LuTrash size={ICON_SIZE} /></ListItemDecorator>
-          Delete '{deleteName}'
-        </MenuItem>
-      </Menu>
-    </Dropdown>
+            <Box
+              onClick={() => { onDelete(); handleClose(); }}
+              sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 0.75, py: 0.25, cursor: 'pointer', color: 'error.main', '&:hover': { bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))' } }}
+            >
+              <LuTrash size={ICON_SIZE} />
+              Delete '{deleteName}'
+            </Box>
+          </Box>
+        </>
+      )}
+    </>
   );
 };
 

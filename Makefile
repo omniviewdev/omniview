@@ -1,14 +1,22 @@
 
-.PHONY: docs
+.PHONY: docs prepare sync packages dev dev-plugin runtime build
+
 prepare:
-	go install github.com/wailsapp/wails/v2/cmd/wails@v2.8.0
+	go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 
 sync:
 	go work sync
 
+# Build all workspace packages (runtime, ui, providers, vite-plugin)
+packages:
+	pnpm --filter @omniviewdev/providers run build
+	pnpm --filter @omniviewdev/vite-plugin run build
+	pnpm --filter @omniviewdev/runtime run build
+	pnpm --filter @omniviewdev/ui run build
+
 dev:
 	pnpm install
-	go run ../wails/v2/cmd/wails dev -loglevel Error
+	wails dev -loglevel Error
 
 dev-plugin:
 	wails dev -noreload -loglevel Error
@@ -16,10 +24,11 @@ dev-plugin:
 runtime:
 	cd packages/omniviewdev-runtime && pnpm run build
 
-.PHONY: build
 build:
+	pnpm install
+	$(MAKE) packages
 	rm -f archive.zip
-	go run ../wails/v2/cmd/wails build -clean
+	wails build -clean
 
 .PHONY: sign
 sign:
@@ -35,9 +44,9 @@ sign:
 
 	# 3. Submit for notarization
 	xcrun notarytool submit archive.zip \
-  --apple-id "jpare@turnout.email" \
-  --password "***REMOVED***" \
-  --team-id "696AD8J8ZT" \
+  --apple-id "$(NOTARIZE_APPLE_ID)" \
+  --password "$(NOTARIZE_PASSWORD)" \
+  --team-id "$(NOTARIZE_TEAM_ID)" \
   --wait
 
 	# 4. Staple the ticket to the .app
@@ -48,7 +57,7 @@ sign:
 
 .PHONY: build-debug
 build-debug:
-	go run ../wails/v2/cmd/wails build -clean -debug
+	wails build -clean -debug
 
 lint: lint-core lint-plugin lint-kubernetes
 

@@ -1,21 +1,20 @@
 import React from 'react';
 
 // Material-ui
-import { useTheme } from '@mui/joy/styles';
-import Button from '@mui/joy/Button';
-import Box from '@mui/joy/Box';
-import Grid from '@mui/joy/Grid';
-import Typography from '@mui/joy/Typography';
-import Stack from '@mui/joy/Stack';
-import Sheet from '@mui/joy/Sheet';
+import { useTheme } from '@mui/material/styles';
+import Box from '@mui/material/Box';
+import Grid from '@mui/material/Grid';
 import useMediaQuery from '@mui/material/useMediaQuery';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Avatar } from '@omniviewdev/ui';
 
 // Types
 import SettingsEntries from './SettingsEntries';
 import { Section } from '.';
 import { usePluginSettings } from '@/hooks/settings/usePluginSettings';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
-import { Avatar } from '@mui/joy';
 
 type Props = {
   id: string;
@@ -79,20 +78,21 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
         maxHeight: '100%',
       }}
     >
-      <Sheet
-        variant='outlined'
+      <Box
         sx={{
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
-          borderRadius: 8,
+          borderRadius: 2,
           width: '100%',
-          paddingY: 1,
-          paddingX: 2,
+          py: 1,
+          px: 2,
           gap: 1.5,
+          border: '1px solid',
+          borderColor: 'divider',
         }}
       >
-        <Avatar size='sm' src={plugin.data.metadata.icon} variant='plain' sx={{ borderRadius: 4, height: 20, width: 20 }} />
+        <Avatar size='sm' src={plugin.data.metadata.icon} sx={{ borderRadius: 4, height: 20, width: 20 }} />
         <Stack
           sx={{
             display: 'flex',
@@ -112,10 +112,10 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
             width: '100%',
           }}
         >
-          <Typography level={isNormalScreenSize ? 'title-lg' : 'title-md'}>{plugin.data.metadata.name}</Typography>
-          <Typography level={isNormalScreenSize ? 'body-xs' : 'body-xs'}>{plugin.data.metadata.description}</Typography>
+          <Text weight='semibold' size={isNormalScreenSize ? 'lg' : 'md'}>{plugin.data.metadata.name}</Text>
+          <Text size='xs'>{plugin.data.metadata.description}</Text>
         </Stack>
-      </Sheet>
+      </Box>
 
       {/* Render the settings section here */}
       <Box
@@ -136,21 +136,21 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
       </Box>
 
       <Grid container spacing={2}>
-        <Grid xs={12} md={6} lg={8}>
+        <Grid size={{ xs: 12, md: 6, lg: 8 }}>
           <Button
             fullWidth
-            variant='soft'
+            emphasis='soft'
             onClick={commitDraftValues}
             disabled={Object.values(draftValues).filter(v => v !== undefined).length === 0}
           >
             Save
           </Button>
         </Grid>
-        <Grid xs={12} md={6} lg={4}>
+        <Grid size={{ xs: 12, md: 6, lg: 4 }}>
           <Button
             fullWidth
             color='neutral'
-            variant='soft'
+            emphasis='soft'
             onClick={clearDraftValues}
             disabled={Object.values(draftValues).filter(v => v !== undefined).length === 0}
           >

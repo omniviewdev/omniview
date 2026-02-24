@@ -1,14 +1,10 @@
 import React from "react";
-import {
-  Box,
-  Card,
-  CardContent,
-  Chip,
-  Divider,
-  Grid,
-  Stack,
-  Typography,
-} from "@mui/joy";
+import Box from "@mui/material/Box";
+import Grid from "@mui/material/Grid";
+import Divider from "@mui/material/Divider";
+import { Stack } from "@omniviewdev/ui/layout";
+import { Text } from "@omniviewdev/ui/typography";
+import { Card, Chip } from "@omniviewdev/ui";
 
 type DetailEntry = {
   label: string;
@@ -28,34 +24,31 @@ const DetailRow: React.FC<{ entry: DetailEntry }> = ({ entry }) => {
   let rendered: React.ReactNode;
   if (typeof entry.value === "boolean") {
     rendered = (
-      <Chip size="sm" variant="soft" color={entry.value ? "success" : "neutral"} sx={{ borderRadius: "sm" }}>
-        {entry.value ? "Yes" : "No"}
-      </Chip>
+      <Chip size="sm" label={entry.value ? "Yes" : "No"} color={entry.value ? "success" : "default"} variant="filled" sx={{ borderRadius: 1 }} />
     );
   } else if (entry.color) {
+    const chipColor = entry.color === 'danger' ? 'error' : entry.color === 'neutral' ? 'default' : entry.color;
     rendered = (
-      <Chip size="sm" variant="soft" color={entry.color} sx={{ borderRadius: "sm" }}>
-        {String(entry.value)}
-      </Chip>
+      <Chip size="sm" label={String(entry.value)} color={chipColor} variant="filled" sx={{ borderRadius: 1 }} />
     );
   } else if (React.isValidElement(entry.value)) {
     rendered = entry.value;
   } else {
     rendered = (
-      <Typography fontWeight={600} fontSize={12} level="body-xs" sx={{ wordBreak: "break-all" }}>
+      <Text size="xs" sx={{ fontWeight: 600, fontSize: 12, wordBreak: "break-all" }}>
         {String(entry.value)}
-      </Typography>
+      </Text>
     );
   }
 
   return (
     <Grid container spacing={0}>
-      <Grid xs={4} alignItems="center">
-        <Typography textColor="neutral.300" level="body-xs">
+      <Grid size={4} sx={{ alignItems: "center" }}>
+        <Text size="xs" sx={{ color: 'neutral.300' }}>
           {entry.label}
-        </Typography>
+        </Text>
       </Grid>
-      <Grid xs={8} alignItems="center">
+      <Grid size={8} sx={{ alignItems: "center" }}>
         {rendered}
       </Grid>
     </Grid>
@@ -74,7 +67,7 @@ const DetailsCard: React.FC<Props> = ({ title, icon, entries }) => {
       sx={{
         "--Card-padding": "0px",
         "--Card-gap": "0px",
-        borderRadius: "sm",
+        borderRadius: 1,
         gap: "0px",
       }}
       variant="outlined"
@@ -82,15 +75,15 @@ const DetailsCard: React.FC<Props> = ({ title, icon, entries }) => {
       <Box sx={{ py: 1, px: 1.25 }}>
         <Stack direction="row" spacing={1} alignItems="center">
           {icon}
-          <Typography level="title-sm">{title}</Typography>
+          <Text weight="semibold" size="sm">{title}</Text>
         </Stack>
       </Box>
       <Divider />
-      <CardContent
+      <Box
         sx={{
           p: 1,
           px: 1.5,
-          backgroundColor: "background.level1",
+          backgroundColor: "background.paper",
           borderBottomRightRadius: 6,
           borderBottomLeftRadius: 6,
         }}
@@ -98,7 +91,7 @@ const DetailsCard: React.FC<Props> = ({ title, icon, entries }) => {
         {visibleEntries.map((entry, i) => (
           <DetailRow key={i} entry={entry} />
         ))}
-      </CardContent>
+      </Box>
     </Card>
   );
 };

@@ -1,5 +1,8 @@
 import React from 'react';
-import { Stack, Tab, TabList, TabPanel, Tabs } from '@mui/joy';
+import Box from '@mui/material/Box';
+import MuiTabs from '@mui/material/Tabs';
+import MuiTab from '@mui/material/Tab';
+import { Stack } from '@omniviewdev/ui/layout';
 import { usePluginContext, useConnections, useConnection, useSnackbar } from '@omniviewdev/runtime';
 
 import type {
@@ -229,35 +232,32 @@ export default function ClustersPage(): React.ReactElement {
       direction='column'
       sx={{ width: '100%', height: '100%' }}
     >
-      <Tabs
-        value={activeTab}
-        onChange={(_e, val) => setActiveTab(val as 'hub' | 'all')}
+      <Box
         sx={{
           width: '100%',
           flex: 1,
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
-          // Prevent hidden TabPanel from participating in flex layout
-          '& > [hidden]': { display: 'none !important', flex: 'none' },
         }}
       >
-        <TabList
-          size='sm'
+        <MuiTabs
+          value={activeTab}
+          onChange={(_e, val) => setActiveTab(val as 'hub' | 'all')}
           sx={{
             px: 1,
             pt: 0.5,
-            gap: 0.5,
-            '--ListItem-radius': '6px',
+            minHeight: 0,
           }}
         >
-          <Tab value='hub' variant={activeTab === 'hub' ? 'soft' : 'plain'}>Hub</Tab>
-          <Tab value='all' variant={activeTab === 'all' ? 'soft' : 'plain'}>All Clusters</Tab>
-        </TabList>
+          <MuiTab value='hub' label='Hub' sx={{ minHeight: 32, py: 0.5, textTransform: 'none' }} />
+          <MuiTab value='all' label='All Clusters' sx={{ minHeight: 32, py: 0.5, textTransform: 'none' }} />
+        </MuiTabs>
 
-        <TabPanel
-          value='hub'
-          sx={{ p: 1, flex: 1, minHeight: 0, overflow: 'auto' }}
+        <Box
+          role='tabpanel'
+          hidden={activeTab !== 'hub'}
+          sx={{ px: 1, py: 0.5, flex: 1, minHeight: 0, overflow: 'auto', display: activeTab === 'hub' ? 'block' : 'none' }}
         >
           {noConnections ? (
             <EmptyState variant='no-connections' />
@@ -277,11 +277,12 @@ export default function ClustersPage(): React.ReactElement {
               onEditFolder={handleEditFolder}
             />
           )}
-        </TabPanel>
+        </Box>
 
-        <TabPanel
-          value='all'
-          sx={{ p: 1, flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}
+        <Box
+          role='tabpanel'
+          hidden={activeTab !== 'all'}
+          sx={{ px: 1, py: 0.5, flex: 1, minHeight: 0, overflow: 'auto', display: activeTab === 'all' ? 'flex' : 'none', flexDirection: 'column', gap: 0.75 }}
         >
           <ClustersToolbar
             search={search}
@@ -335,8 +336,8 @@ export default function ClustersPage(): React.ReactElement {
               onRecordAccess={preferences.recordAccess}
             />
           )}
-        </TabPanel>
-      </Tabs>
+        </Box>
+      </Box>
 
       {deleteTarget && (
         <DeleteConnectionHandler

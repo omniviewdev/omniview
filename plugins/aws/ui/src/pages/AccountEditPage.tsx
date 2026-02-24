@@ -1,20 +1,12 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Divider,
-  FormControl,
-  FormLabel,
-  IconButton,
-  Input,
-  Sheet,
-  Stack,
-  Textarea,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button, IconButton } from '@omniviewdev/ui/buttons';
+import { TextField, TextArea } from '@omniviewdev/ui/inputs';
+import { Card } from '@omniviewdev/ui';
 import { LuArrowLeft, LuSave } from 'react-icons/lu';
 import {
   usePluginContext,
@@ -64,23 +56,23 @@ const AccountEditPage: React.FC = () => {
   return (
     <Stack direction='column' gap={2} p={2} sx={{ width: '100%', height: '100%', overflow: 'auto' }}>
       <Stack direction='row' alignItems='center' gap={1}>
-        <IconButton size='sm' variant='plain' onClick={handleBack}>
+        <IconButton size='sm' emphasis='ghost' onClick={handleBack}>
           <LuArrowLeft size={20} />
         </IconButton>
-        <Typography level='h4'>Edit Account</Typography>
-        <Typography level='body-sm' sx={{ opacity: 0.6 }}>{connectionId}</Typography>
+        <Text weight="semibold" size="lg">Edit Account</Text>
+        <Text size="sm" sx={{ opacity: 0.6 }}>{connectionId}</Text>
         <Box sx={{ flex: 1 }} />
-        <Button size='sm' variant='solid' color='primary' startDecorator={<LuSave size={16} />} onClick={handleSave}>
+        <Button size='sm' emphasis='solid' color='primary' startAdornment={<LuSave size={16} />} onClick={handleSave}>
           Save
         </Button>
-        <Button size='sm' variant='plain' color='neutral' onClick={handleBack}>Cancel</Button>
+        <Button size='sm' emphasis='ghost' color='neutral' onClick={handleBack}>Cancel</Button>
       </Stack>
 
       <Divider />
 
       <Card variant='outlined'>
-        <CardContent>
-          <Typography level='title-md' sx={{ mb: 2 }}>Identity</Typography>
+        <Box sx={{ p: 2 }}>
+          <Text weight="semibold" sx={{ mb: 2 }}>Identity</Text>
           <Stack gap={2}>
             <Stack direction='row' gap={2} alignItems='flex-start'>
               <Box>
@@ -91,37 +83,37 @@ const AccountEditPage: React.FC = () => {
                 )}
               </Box>
               <Stack gap={2} sx={{ flex: 1 }}>
-                <FormControl>
-                  <FormLabel>Display Name</FormLabel>
-                  <Input size='sm' placeholder={conn?.name ?? 'Enter display name'} value={displayName} onChange={e => setDisplayName(e.target.value)} />
-                </FormControl>
-                <FormControl>
-                  <FormLabel>Avatar URL</FormLabel>
-                  <Input size='sm' placeholder='https://...' value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)} />
-                </FormControl>
+                <Box>
+                  <Text size="sm" sx={{ mb: 0.5 }}>Display Name</Text>
+                  <TextField size='sm' placeholder={conn?.name ?? 'Enter display name'} value={displayName} onChange={value => setDisplayName(value)} />
+                </Box>
+                <Box>
+                  <Text size="sm" sx={{ mb: 0.5 }}>Avatar URL</Text>
+                  <TextField size='sm' placeholder='https://...' value={avatarUrl} onChange={value => setAvatarUrl(value)} />
+                </Box>
               </Stack>
             </Stack>
-            <FormControl>
-              <FormLabel>Description</FormLabel>
-              <Textarea size='sm' minRows={2} maxRows={4} placeholder='Optional description' value={description} onChange={e => setDescription(e.target.value)} />
-            </FormControl>
+            <Box>
+              <Text size="sm" sx={{ mb: 0.5 }}>Description</Text>
+              <TextArea size='sm' minRows={2} maxRows={4} placeholder='Optional description' value={description} onChange={value => setDescription(value)} />
+            </Box>
           </Stack>
-        </CardContent>
+        </Box>
       </Card>
 
       {conn && (
         <Card variant='outlined'>
-          <CardContent>
-            <Typography level='title-md' sx={{ mb: 2 }}>Connection Details</Typography>
-            <Sheet variant='soft' sx={{ borderRadius: 'sm', p: 2 }}>
+          <Box sx={{ p: 2 }}>
+            <Text weight="semibold" sx={{ mb: 2 }}>Connection Details</Text>
+            <Box sx={{ borderRadius: 1, p: 2, bgcolor: 'background.paper' }}>
               <Stack gap={1.5}>
                 <DetailRow label='Connection ID' value={conn.id} />
                 {conn.labels?.profile && <DetailRow label='Profile' value={String(conn.labels.profile)} />}
                 {conn.labels?.region && <DetailRow label='Region' value={String(conn.labels.region)} />}
                 {conn.labels?.account_id && <DetailRow label='Account ID' value={String(conn.labels.account_id)} />}
               </Stack>
-            </Sheet>
-          </CardContent>
+            </Box>
+          </Box>
         </Card>
       )}
     </Stack>
@@ -131,8 +123,8 @@ const AccountEditPage: React.FC = () => {
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <Stack direction='row' gap={2}>
-      <Typography level='body-sm' fontWeight={600} sx={{ minWidth: 120 }}>{label}</Typography>
-      <Typography level='body-sm' sx={{ wordBreak: 'break-all' }}>{value}</Typography>
+      <Text size="sm" sx={{ fontWeight: 600, minWidth: 120 }}>{label}</Text>
+      <Text size="sm" sx={{ wordBreak: 'break-all' }}>{value}</Text>
     </Stack>
   );
 }

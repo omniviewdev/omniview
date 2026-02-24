@@ -1,5 +1,5 @@
-import './wdyr';
 import "./features/logger/patchConsole";
+import '@omniviewdev/ui/theme/tokens.css';
 
 import 'systemjs/dist/system.js';
 import 'systemjs/dist/extras/amd.js';

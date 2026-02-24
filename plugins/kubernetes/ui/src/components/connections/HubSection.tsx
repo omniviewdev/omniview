@@ -1,5 +1,8 @@
 import React from 'react';
-import { Box, IconButton, Stack, Typography } from '@mui/joy';
+import Box from '@mui/material/Box';
+import MuiIconButton from '@mui/material/IconButton';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuChevronDown, LuChevronRight, LuGripVertical, LuPencil } from 'react-icons/lu';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -112,28 +115,27 @@ const HubSection: React.FC<Props> = ({
               <FolderIcon size={14} />
             </Box>
           )}
-          <Typography level='title-sm'>{title}</Typography>
-          <Typography level='body-xs' sx={{ opacity: 0.5 }}>({count})</Typography>
+          <Text weight='semibold' size='sm'>{title}</Text>
+          <Text size='xs' sx={{ opacity: 0.5 }}>({count})</Text>
         </Stack>
         {onEdit && (
-          <IconButton
+          <MuiIconButton
             className='folder-edit-btn'
-            size='sm'
-            variant='plain'
-            color='neutral'
+            size='small'
+            color='default'
             onClick={(e) => { e.stopPropagation(); onEdit(); }}
-            sx={{ opacity: 0, transition: 'opacity 0.15s', '--IconButton-size': '24px' }}
+            sx={{ opacity: 0, transition: 'opacity 0.15s', width: 24, height: 24 }}
           >
             <LuPencil size={12} />
-          </IconButton>
+          </MuiIconButton>
         )}
       </Stack>
       {!collapsed && (
         isEmpty ? (
           emptyHint ? (
-            <Typography level='body-xs' sx={{ py: 2, px: 1, textAlign: 'center', opacity: 0.5 }}>
+            <Text size='xs' sx={{ py: 2, px: 1, textAlign: 'center', opacity: 0.5 }}>
               {emptyHint}
-            </Typography>
+            </Text>
           ) : null
         ) : variant === 'grid' ? (
           <Box

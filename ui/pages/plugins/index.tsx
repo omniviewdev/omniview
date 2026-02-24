@@ -1,14 +1,10 @@
 
 // Material-ui
-import {
-  CssBaseline,
-  CssVarsProvider,
-  Input,
-  IconButton,
-  Stack,
-  Sheet,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { TextField } from '@omniviewdev/ui/inputs';
 
 // Icons
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
@@ -37,43 +33,39 @@ const SettingsPage = () => {
   }
 
   return (
-    <CssVarsProvider disableTransitionOnChange>
-      <CssBaseline />
-      <Layout.Root
-        sx={{
-          p: 1,
-          gap: 0,
-        }}
-      >
-        <Layout.SideNav type='bordered-inset' width={300}>
-          <Stack component={Sheet} variant={'outlined'} direction='row' alignItems={'center'} spacing={8} sx={{
-            px: 2, py: 1.5, m: 1, borderRadius: 'md',
-          }}>
-            <Typography level='title-lg'>Plugins</Typography>
-            <Input
-              size='sm'
-              variant='outlined'
-              placeholder='Search the plugin repository…'
-              startDecorator={<SearchRoundedIcon color='primary' />}
-              endDecorator={
-                <IconButton variant='outlined' color='primary'>
-                  <LuSlidersHorizontal />
-                </IconButton>
-              }
-              sx={{
-                flexBasis: '500px',
-                display: 'flex',
-                '--wails-draggable': 'no-drag',
-              }}
-            />
-          </Stack>
-          <PluginsNav installed={plugins.data?.map((p => p.id))} />
-        </Layout.SideNav>
-        <Layout.Main>
-          <Outlet />
-        </Layout.Main>
-      </Layout.Root>
-    </CssVarsProvider>
+    <Layout.Root
+      sx={{
+        p: 1,
+        gap: 0,
+      }}
+    >
+      <Layout.SideNav type='bordered-inset' width={300}>
+        <Box component={Stack} direction='row' alignItems={'center'} spacing={8} sx={{
+          px: 2, py: 1.5, m: 1, borderRadius: 2, border: '1px solid', borderColor: 'divider',
+        }}>
+          <Text weight='semibold' size='lg'>Plugins</Text>
+          <TextField
+            size='sm'
+            placeholder='Search the plugin repository...'
+            startAdornment={<SearchRoundedIcon color='primary' />}
+            endAdornment={
+              <IconButton emphasis='outline' color='primary'>
+                <LuSlidersHorizontal />
+              </IconButton>
+            }
+            sx={{
+              flexBasis: '500px',
+              display: 'flex',
+              '--wails-draggable': 'no-drag',
+            }}
+          />
+        </Box>
+        <PluginsNav installed={plugins.data?.map((p => p.id))} />
+      </Layout.SideNav>
+      <Layout.Main>
+        <Outlet />
+      </Layout.Main>
+    </Layout.Root>
   );
 };
 

@@ -55,17 +55,21 @@ export interface FooterStatusDotProps {
   color: string;
   pulse?: boolean;
   tooltip?: string;
+  onClick?: () => void;
 }
 
-function FooterStatusDot({ color, pulse, tooltip }: FooterStatusDotProps) {
+function FooterStatusDot({ color, pulse, tooltip, onClick }: FooterStatusDotProps) {
   const dot = (
     <Box
+      onClick={onClick}
       sx={{
         width: 8,
         height: 8,
         borderRadius: '50%',
         bgcolor: color,
         flexShrink: 0,
+        cursor: onClick ? 'pointer' : 'default',
+        '&:hover': onClick ? { filter: 'brightness(1.3)' } : {},
         ...(pulse && {
           animation: 'ov-footer-pulse 1.5s ease-in-out infinite',
           '@keyframes ov-footer-pulse': {

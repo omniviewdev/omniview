@@ -107,6 +107,18 @@ type IClient interface {
 
 	// SetLayout sets a single layout for a plugin
 	SetLayout(pluginID string, layoutID string, layout []rt.LayoutItem) error
+
+	// GetEditorSchemas returns editor schemas for the given plugin and connection
+	GetEditorSchemas(pluginID, connectionID string) ([]rt.EditorSchema, error)
+
+	// GetInformerState returns the current informer state summary for a connection
+	GetInformerState(pluginID, connectionID string) (*rt.InformerConnectionSummary, error)
+
+	// EnsureInformerForResource ensures an informer is running for a specific resource type
+	EnsureInformerForResource(pluginID, connectionID, resourceKey string) error
+
+	// ListAllConnections returns all connections across all plugins
+	ListAllConnections() (map[string][]types.Connection, error)
 }
 
 // I HATE THIS. WHY CAN'T I JUST USE THE SAME INSTANCE?????
@@ -258,4 +270,20 @@ func (c *Client) GetDefaultLayout(pluginID string) ([]rt.LayoutItem, error) {
 
 func (c *Client) SetLayout(pluginID string, layoutID string, layout []rt.LayoutItem) error {
 	return c.controller.SetLayout(pluginID, layoutID, layout)
+}
+
+func (c *Client) GetEditorSchemas(pluginID, connectionID string) ([]rt.EditorSchema, error) {
+	return c.controller.GetEditorSchemas(pluginID, connectionID)
+}
+
+func (c *Client) GetInformerState(pluginID, connectionID string) (*rt.InformerConnectionSummary, error) {
+	return c.controller.GetInformerState(pluginID, connectionID)
+}
+
+func (c *Client) EnsureInformerForResource(pluginID, connectionID, resourceKey string) error {
+	return c.controller.EnsureInformerForResource(pluginID, connectionID, resourceKey)
+}
+
+func (c *Client) ListAllConnections() (map[string][]types.Connection, error) {
+	return c.controller.ListAllConnections()
 }

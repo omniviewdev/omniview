@@ -8,6 +8,7 @@ import (
 	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers/extras/benchmark"
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
+	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"go.uber.org/zap"
 
   "k8s.io/apimachinery/pkg/runtime/schema"
@@ -253,19 +254,30 @@ func Register(plugin *sdk.Plugin) {
 	helmSvc := helm.NewHelmService()
 	helmResourcers := helm.HelmResourcers(logger, helmSvc)
 
+	// Collect all registered resource keys for OpenAPI schema fetching.
+	registeredKeys := make([]string, 0, len(resourceMap))
+	for key := range resourceMap {
+		registeredKeys = append(registeredKeys, key)
+	}
+
 	sdk.RegisterResourcePlugin(
 		plugin,
 		sdk.ResourcePluginOpts[clients.ClientSet]{
 			CreateClient:                 clients.CreateClient,
 			RefreshClient:               clients.RefreshClient,
+			ErrorClassifier:             classifyResourceError,
 			DiscoveryProvider:            sdk.NewClientDiscoveryProvider(clients.CreateDiscoveryClient, nil, DiscoveryFunc),
 			LoadConnectionFunc:           LoadConnectionsFunc,
+			WatchConnectionsFunc:         WatchConnectionsFunc,
 			LoadConnectionNamespacesFunc: LoadConnectionNamespacesFunc,
 			CheckConnectionFunc:          CheckConnectionFunc,
 			CreateInformerFunc:           NewKubeInformerHandle,
 			ResourceGroups:               ResourceGroups,
 			ResourceDefinitions:          resourceDefs,
 			DefaultResourceDefinition:    resourcers.DefaultResourceDef,
+			SchemaFunc: func(ctx *pkgtypes.PluginContext, client *clients.ClientSet) ([]types.EditorSchema, error) {
+				return FetchOpenAPISchemas(ctx, client, registeredKeys)
+			},
 			PatternResourcers: map[string]types.Resourcer[clients.ClientSet]{
 				"*": resourcers.NewKubernetesPatternResourcer(logger),
 			},
@@ -277,8 +289,8 @@ func Register(plugin *sdk.Plugin) {
 					Description: `ClusterBenchmark shows information on the configuration of a cluster`,
         }: &benchmark.ClusterBenchmarker{},
 				{
-          Group:   "admissionregistration", 
-          Version: "v1beta1", 
+          Group:   "admissionregistration",
+          Version: "v1beta1",
           Kind:    "ValidatingAdmissionPolicy",
           Description: `ValidatingAdmissionPolicy describes the definition of an admission validation policy that accepts or rejects an object without changing it.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -286,8 +298,8 @@ func Register(plugin *sdk.Plugin) {
           admissionregistrationv1beta1.SchemeGroupVersion.WithResource("validatingadmissionpolicies"),
 				),
 				{
-          Group:   "admissionregistration", 
-          Version: "v1beta1", 
+          Group:   "admissionregistration",
+          Version: "v1beta1",
           Kind:    "ValidatingAdmissionPolicyBinding",
           Description: `ValidatingAdmissionPolicyBinding binds the ValidatingAdmissionPolicy with paramerized resources. ValidatingAdmissionPolicyBinding and parameter CRDs together define how cluster administrators configure policies for clusters.
 
@@ -299,8 +311,8 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           admissionregistrationv1beta1.SchemeGroupVersion.WithResource("validatingadmissionpolicybindings"),
 				),
 				{
-          Group:   "admissionregistration", 
-          Version: "v1", 
+          Group:   "admissionregistration",
+          Version: "v1",
           Kind:    "MutatingWebhookConfiguration",
           Description: `MutatingWebhookConfiguration describes the configuration of and admission webhook that accept or reject and may change the object.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -308,8 +320,8 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           admissionregistrationv1.SchemeGroupVersion.WithResource("mutatingwebhookconfigurations"),
 				),
 				{
-          Group:   "admissionregistration", 
-          Version: "v1", 
+          Group:   "admissionregistration",
+          Version: "v1",
           Kind:    "ValidatingAdmissionPolicy",
           Description: `ValidatingAdmissionPolicy describes the definition of an admission validation policy that accepts or rejects an object without changing it.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -317,8 +329,8 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           admissionregistrationv1.SchemeGroupVersion.WithResource("validatingadmissionpolicies"),
 				),
 				{
-          Group:   "admissionregistration", 
-          Version: "v1", 
+          Group:   "admissionregistration",
+          Version: "v1",
           Kind:    "ValidatingAdmissionPolicyBinding",
           Description: `ValidatingAdmissionPolicyBinding binds the ValidatingAdmissionPolicy with paramerized resources. ValidatingAdmissionPolicyBinding and parameter CRDs together define how cluster administrators configure policies for clusters.
 
@@ -330,8 +342,8 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           admissionregistrationv1.SchemeGroupVersion.WithResource("validatingadmissionpolicybindings"),
 				),
 				{
-          Group:   "admissionregistration", 
-          Version: "v1", 
+          Group:   "admissionregistration",
+          Version: "v1",
           Kind:    "ValidatingWebhookConfiguration",
           Description: `ValidatingWebhookConfiguration describes the configuration of and admission webhook that accept or reject and object without changing it.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -339,8 +351,8 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           admissionregistrationv1.SchemeGroupVersion.WithResource("validatingwebhookconfigurations"),
 				),
 				{
-          Group:   "apiextensions", 
-          Version: "v1", 
+          Group:   "apiextensions",
+          Version: "v1",
           Kind:    "CustomResourceDefinition",
           Description: `CustomResourceDefinition represents a resource that should be exposed on the API server.  Its name MUST be in the format &lt;.spec.name&gt;.&lt;.spec.group&gt;.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -348,8 +360,8 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           apiextensionsv1.SchemeGroupVersion.WithResource("customresourcedefinitions"),
 				),
 				{
-          Group:   "apiregistration", 
-          Version: "v1", 
+          Group:   "apiregistration",
+          Version: "v1",
           Kind:    "APIService",
           Description: `APIService represents a server for a particular GroupVersion. Name must be &#34;version.group&#34;.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -357,8 +369,8 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           apiregistrationv1.SchemeGroupVersion.WithResource("apiservices"),
 				),
 				{
-          Group:   "apps", 
-          Version: "v1", 
+          Group:   "apps",
+          Version: "v1",
           Kind:    "ControllerRevision",
           Description: `ControllerRevision implements an immutable snapshot of state data. Clients are responsible for serializing and deserializing the objects that contain their internal state. Once a ControllerRevision has been successfully created, it can not be updated. The API Server will fail validation of all requests that attempt to mutate the Data field. ControllerRevisions may, however, be deleted. Note that, due to its use by both the DaemonSet and StatefulSet controllers for update and rollback, this object is beta. However, it may be subject to name and representation changes in future releases, and clients should not depend on its stability. It is primarily for internal use by controllers.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -366,8 +378,8 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           appsv1.SchemeGroupVersion.WithResource("controllerrevisions"),
 				),
 				{
-          Group:   "apps", 
-          Version: "v1", 
+          Group:   "apps",
+          Version: "v1",
           Kind:    "DaemonSet",
           Description: `DaemonSet represents the configuration of a daemon set.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -375,8 +387,8 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           appsv1.SchemeGroupVersion.WithResource("daemonsets"),
 				),
 				{
-          Group:   "apps", 
-          Version: "v1", 
+          Group:   "apps",
+          Version: "v1",
           Kind:    "Deployment",
           Description: `Deployment enables declarative updates for Pods and ReplicaSets.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -384,8 +396,8 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           appsv1.SchemeGroupVersion.WithResource("deployments"),
 				),
 				{
-          Group:   "apps", 
-          Version: "v1", 
+          Group:   "apps",
+          Version: "v1",
           Kind:    "ReplicaSet",
           Description: `ReplicaSet ensures that a specified number of pod replicas are running at any given time.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -393,8 +405,8 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           appsv1.SchemeGroupVersion.WithResource("replicasets"),
 				),
 				{
-          Group:   "apps", 
-          Version: "v1", 
+          Group:   "apps",
+          Version: "v1",
           Kind:    "StatefulSet",
           Description: `StatefulSet represents a set of pods with consistent identities. Identities are defined as:
   - Network: A single stable DNS and hostname.
@@ -406,8 +418,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           appsv1.SchemeGroupVersion.WithResource("statefulsets"),
 				),
 				{
-          Group:   "authentication", 
-          Version: "v1beta1", 
+          Group:   "authentication",
+          Version: "v1beta1",
           Kind:    "SelfSubjectReview",
           Description: `SelfSubjectReview contains the user information that the kube-apiserver has about the user making this request. When using impersonation, users will receive the user info of the user being impersonated.  If impersonation or request header authentication is used, any extra keys will have their case ignored and returned as lowercase.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -415,8 +427,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           authenticationv1beta1.SchemeGroupVersion.WithResource("selfsubjectreviews"),
 				),
 				{
-          Group:   "authentication", 
-          Version: "v1", 
+          Group:   "authentication",
+          Version: "v1",
           Kind:    "SelfSubjectReview",
           Description: `SelfSubjectReview contains the user information that the kube-apiserver has about the user making this request. When using impersonation, users will receive the user info of the user being impersonated.  If impersonation or request header authentication is used, any extra keys will have their case ignored and returned as lowercase.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -424,8 +436,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           authenticationv1.SchemeGroupVersion.WithResource("selfsubjectreviews"),
 				),
 				{
-          Group:   "authentication", 
-          Version: "v1", 
+          Group:   "authentication",
+          Version: "v1",
           Kind:    "TokenRequest",
           Description: `TokenRequest requests a token for a given service account.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -433,8 +445,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           authenticationv1.SchemeGroupVersion.WithResource("tokenrequests"),
 				),
 				{
-          Group:   "authentication", 
-          Version: "v1", 
+          Group:   "authentication",
+          Version: "v1",
           Kind:    "TokenReview",
           Description: `TokenReview attempts to authenticate a token to a known user. Note: TokenReview requests may be cached by the webhook token authenticator plugin in the kube-apiserver.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -442,8 +454,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           authenticationv1.SchemeGroupVersion.WithResource("tokenreviews"),
 				),
 				{
-          Group:   "authorization", 
-          Version: "v1", 
+          Group:   "authorization",
+          Version: "v1",
           Kind:    "LocalSubjectAccessReview",
           Description: `LocalSubjectAccessReview checks whether or not a user or group can perform an action in a given namespace. Having a namespace scoped resource makes it much easier to grant namespace scoped policy that includes permissions checking.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -451,8 +463,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           authorizationv1.SchemeGroupVersion.WithResource("localsubjectaccessreviews"),
 				),
 				{
-          Group:   "authorization", 
-          Version: "v1", 
+          Group:   "authorization",
+          Version: "v1",
           Kind:    "SelfSubjectAccessReview",
           Description: `SelfSubjectAccessReview checks whether or the current user can perform an action.  Not filling in a spec.namespace means &#34;in all namespaces&#34;.  Self is a special case, because users should always be able to check whether they can perform an action`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -460,8 +472,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           authorizationv1.SchemeGroupVersion.WithResource("selfsubjectaccessreviews"),
 				),
 				{
-          Group:   "authorization", 
-          Version: "v1", 
+          Group:   "authorization",
+          Version: "v1",
           Kind:    "SelfSubjectRulesReview",
           Description: `SelfSubjectRulesReview enumerates the set of actions the current user can perform within a namespace. The returned list of actions may be incomplete depending on the server&#39;s authorization mode, and any errors experienced during the evaluation. SelfSubjectRulesReview should be used by UIs to show/hide actions, or to quickly let an end user reason about their permissions. It should NOT Be used by external systems to drive authorization decisions as this raises confused deputy, cache lifetime/revocation, and correctness concerns. SubjectAccessReview, and LocalAccessReview are the correct way to defer authorization decisions to the API server.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -469,8 +481,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           authorizationv1.SchemeGroupVersion.WithResource("selfsubjectrulesreviews"),
 				),
 				{
-          Group:   "authorization", 
-          Version: "v1", 
+          Group:   "authorization",
+          Version: "v1",
           Kind:    "SubjectAccessReview",
           Description: `SubjectAccessReview checks whether or not a user or group can perform an action.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -478,8 +490,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           authorizationv1.SchemeGroupVersion.WithResource("subjectaccessreviews"),
 				),
 				{
-          Group:   "autoscaling", 
-          Version: "v2beta2", 
+          Group:   "autoscaling",
+          Version: "v2beta2",
           Kind:    "HorizontalPodAutoscaler",
           Description: `HorizontalPodAutoscaler is the configuration for a horizontal pod autoscaler, which automatically manages the replica count of any resource implementing the scale subresource based on the metrics specified.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -487,8 +499,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           autoscalingv2beta2.SchemeGroupVersion.WithResource("horizontalpodautoscalers"),
 				),
 				{
-          Group:   "autoscaling", 
-          Version: "v2", 
+          Group:   "autoscaling",
+          Version: "v2",
           Kind:    "HorizontalPodAutoscaler",
           Description: `HorizontalPodAutoscaler is the configuration for a horizontal pod autoscaler, which automatically manages the replica count of any resource implementing the scale subresource based on the metrics specified.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -496,8 +508,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           autoscalingv2.SchemeGroupVersion.WithResource("horizontalpodautoscalers"),
 				),
 				{
-          Group:   "autoscaling", 
-          Version: "v1", 
+          Group:   "autoscaling",
+          Version: "v1",
           Kind:    "HorizontalPodAutoscaler",
           Description: `configuration of a horizontal pod autoscaler.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -505,8 +517,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           autoscalingv1.SchemeGroupVersion.WithResource("horizontalpodautoscalers"),
 				),
 				{
-          Group:   "autoscaling", 
-          Version: "v1", 
+          Group:   "autoscaling",
+          Version: "v1",
           Kind:    "Scale",
           Description: `Scale represents a scaling request for a resource.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -514,8 +526,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           autoscalingv1.SchemeGroupVersion.WithResource("scales"),
 				),
 				{
-          Group:   "batch", 
-          Version: "v1", 
+          Group:   "batch",
+          Version: "v1",
           Kind:    "CronJob",
           Description: `CronJob represents the configuration of a single cron job.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -523,8 +535,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           batchv1.SchemeGroupVersion.WithResource("cronjobs"),
 				),
 				{
-          Group:   "batch", 
-          Version: "v1", 
+          Group:   "batch",
+          Version: "v1",
           Kind:    "Job",
           Description: `Job represents the configuration of a single job.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -532,8 +544,8 @@ The StatefulSet guarantees that a given network identity will always map to the 
           batchv1.SchemeGroupVersion.WithResource("jobs"),
 				),
 				{
-          Group:   "certificates", 
-          Version: "v1beta1", 
+          Group:   "certificates",
+          Version: "v1beta1",
           Kind:    "ClusterTrustBundle",
           Description: `ClusterTrustBundle is a cluster-scoped container for X.509 trust anchors (root certificates).
 
@@ -545,8 +557,8 @@ It can be optionally associated with a particular assigner, in which case it con
           certificatesv1beta1.SchemeGroupVersion.WithResource("clustertrustbundles"),
 				),
 				{
-          Group:   "certificates", 
-          Version: "v1", 
+          Group:   "certificates",
+          Version: "v1",
           Kind:    "CertificateSigningRequest",
           Description: `CertificateSigningRequest objects provide a mechanism to obtain x509 certificates by submitting a certificate signing request, and having it asynchronously approved and issued.
 
@@ -560,8 +572,8 @@ This API can be used to request client certificates to authenticate to kube-apis
           certificatesv1.SchemeGroupVersion.WithResource("certificatesigningrequests"),
 				),
 				{
-          Group:   "coordination", 
-          Version: "v1beta1", 
+          Group:   "coordination",
+          Version: "v1beta1",
           Kind:    "LeaseCandidate",
           Description: `LeaseCandidate defines a candidate for a Lease object. Candidates are created such that coordinated leader election will pick the best leader from the list of candidates.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -569,8 +581,8 @@ This API can be used to request client certificates to authenticate to kube-apis
           coordinationv1beta1.SchemeGroupVersion.WithResource("leasecandidates"),
 				),
 				{
-          Group:   "coordination", 
-          Version: "v1", 
+          Group:   "coordination",
+          Version: "v1",
           Kind:    "Lease",
           Description: `Lease defines a lease concept.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -578,8 +590,8 @@ This API can be used to request client certificates to authenticate to kube-apis
           coordinationv1.SchemeGroupVersion.WithResource("leases"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "Binding",
           Description: `Binding ties one object to another; for example, a pod is bound to a node by a scheduler.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -587,8 +599,8 @@ This API can be used to request client certificates to authenticate to kube-apis
           corev1.SchemeGroupVersion.WithResource("bindings"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "ComponentStatus",
           Description: `ComponentStatus (and ComponentStatusList) holds the cluster validation info. Deprecated: This API is deprecated in v1.19+`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -596,8 +608,8 @@ This API can be used to request client certificates to authenticate to kube-apis
           corev1.SchemeGroupVersion.WithResource("componentstatuses"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "ConfigMap",
           Description: `ConfigMap holds configuration data for pods to consume.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -605,8 +617,8 @@ This API can be used to request client certificates to authenticate to kube-apis
           corev1.SchemeGroupVersion.WithResource("configmaps"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "Endpoints",
           Description: `Endpoints is a collection of endpoints that implement the actual service. Example:
 
@@ -630,8 +642,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("endpoints"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "Event",
           Description: `Event is a report of an event somewhere in the cluster.  Events have a limited retention time and triggers and messages may evolve with time.  Event consumers should not rely on the timing of an event with a given Reason reflecting a consistent underlying trigger, or the continued existence of events with that Reason.  Events should be treated as informative, best-effort, supplemental data.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -639,8 +651,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("events"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "LimitRange",
           Description: `LimitRange sets resource usage limits for each kind of resource in a Namespace.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -648,8 +660,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("limitranges"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "Namespace",
           Description: `Namespace provides a scope for Names. Use of multiple namespaces is optional.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -657,17 +669,14 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("namespaces"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "Node",
           Description: `Node is a worker node in Kubernetes. Each node will have a unique identifier in the cache (i.e. in etcd).`,
-        }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
-					logger,
-          corev1.SchemeGroupVersion.WithResource("nodes"),
-				),
+        }: resourcers.NewNodeResourcer(logger),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "PersistentVolume",
           Description: `PersistentVolume (PV) is a storage resource provisioned by an administrator. It is analogous to a node. More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -675,8 +684,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("persistentvolumes"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "PersistentVolumeClaim",
           Description: `PersistentVolumeClaim is a user&#39;s request for and claim to a persistent volume`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -684,8 +693,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("persistentvolumeclaims"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "Pod",
           Description: `Pod is a collection of containers that can run on a host. This resource is created by clients and scheduled onto hosts.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -693,8 +702,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("pods"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "PodTemplate",
           Description: `PodTemplate describes a template for creating copies of a predefined pod.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -702,8 +711,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("podtemplates"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "ReplicationController",
           Description: `ReplicationController represents the configuration of a replication controller.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -711,8 +720,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("replicationcontrollers"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "ResourceQuota",
           Description: `ResourceQuota sets aggregate quota restrictions enforced per namespace`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -720,8 +729,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("resourcequotas"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "Secret",
           Description: `Secret holds secret data of a certain type. The total bytes of the values in the Data field must be less than MaxSecretSize bytes.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -729,8 +738,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("secrets"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "Service",
           Description: `Service is a named abstraction of software service (for example, mysql) consisting of local port (for example 3306) that the proxy listens on, and the selector that determines which pods will answer requests sent through the proxy.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -738,8 +747,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("services"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "ServiceAccount",
           Description: `ServiceAccount binds together: * a name, understood by users, and perhaps by peripheral systems, for an identity * a principal that can be authenticated and authorized * a set of secrets`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -747,8 +756,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
 				),
 				{
-          Group:   "core", 
-          Version: "v1", 
+          Group:   "core",
+          Version: "v1",
           Kind:    "Status",
           Description: `Status is a return value for calls that don&#39;t return other objects.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -756,8 +765,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           corev1.SchemeGroupVersion.WithResource("statuses"),
 				),
 				{
-          Group:   "discovery", 
-          Version: "v1", 
+          Group:   "discovery",
+          Version: "v1",
           Kind:    "EndpointSlice",
           Description: `EndpointSlice represents a set of service endpoints. Most EndpointSlices are created by the EndpointSlice controller to represent the Pods selected by Service objects. For a given service there may be multiple EndpointSlice objects which must be joined to produce the full set of endpoints; you can find all of the slices for a given service by listing EndpointSlices in the service&#39;s namespace whose 'kubernetes.io/service-name' label contains the service&#39;s name.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -765,8 +774,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           discoveryv1.SchemeGroupVersion.WithResource("endpointslices"),
 				),
 				{
-          Group:   "events", 
-          Version: "v1", 
+          Group:   "events",
+          Version: "v1",
           Kind:    "Event",
           Description: `Event is a report of an event somewhere in the cluster. It generally denotes some state change in the system. Events have a limited retention time and triggers and messages may evolve with time.  Event consumers should not rely on the timing of an event with a given Reason reflecting a consistent underlying trigger, or the continued existence of events with that Reason.  Events should be treated as informative, best-effort, supplemental data.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -774,8 +783,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           eventsv1.SchemeGroupVersion.WithResource("events"),
 				),
 				{
-          Group:   "flowcontrol", 
-          Version: "v1beta3", 
+          Group:   "flowcontrol",
+          Version: "v1beta3",
           Kind:    "FlowSchema",
           Description: `FlowSchema defines the schema of a group of flows. Note that a flow is made up of a set of inbound API requests with similar attributes and is identified by a pair of strings: the name of the FlowSchema and a &#34;flow distinguisher&#34;.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -783,8 +792,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           flowcontrolv1beta3.SchemeGroupVersion.WithResource("flowschemas"),
 				),
 				{
-          Group:   "flowcontrol", 
-          Version: "v1beta3", 
+          Group:   "flowcontrol",
+          Version: "v1beta3",
           Kind:    "PriorityLevelConfiguration",
           Description: `PriorityLevelConfiguration represents the configuration of a priority level.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -792,8 +801,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           flowcontrolv1beta3.SchemeGroupVersion.WithResource("prioritylevelconfigurations"),
 				),
 				{
-          Group:   "flowcontrol", 
-          Version: "v1beta2", 
+          Group:   "flowcontrol",
+          Version: "v1beta2",
           Kind:    "FlowSchema",
           Description: `FlowSchema defines the schema of a group of flows. Note that a flow is made up of a set of inbound API requests with similar attributes and is identified by a pair of strings: the name of the FlowSchema and a &#34;flow distinguisher&#34;.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -801,8 +810,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           flowcontrolv1beta2.SchemeGroupVersion.WithResource("flowschemas"),
 				),
 				{
-          Group:   "flowcontrol", 
-          Version: "v1beta2", 
+          Group:   "flowcontrol",
+          Version: "v1beta2",
           Kind:    "PriorityLevelConfiguration",
           Description: `PriorityLevelConfiguration represents the configuration of a priority level.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -810,8 +819,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           flowcontrolv1beta2.SchemeGroupVersion.WithResource("prioritylevelconfigurations"),
 				),
 				{
-          Group:   "flowcontrol", 
-          Version: "v1beta1", 
+          Group:   "flowcontrol",
+          Version: "v1beta1",
           Kind:    "FlowSchema",
           Description: `FlowSchema defines the schema of a group of flows. Note that a flow is made up of a set of inbound API requests with similar attributes and is identified by a pair of strings: the name of the FlowSchema and a &#34;flow distinguisher&#34;.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -819,8 +828,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           flowcontrolv1beta1.SchemeGroupVersion.WithResource("flowschemas"),
 				),
 				{
-          Group:   "flowcontrol", 
-          Version: "v1beta1", 
+          Group:   "flowcontrol",
+          Version: "v1beta1",
           Kind:    "PriorityLevelConfiguration",
           Description: `PriorityLevelConfiguration represents the configuration of a priority level.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -828,8 +837,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           flowcontrolv1beta1.SchemeGroupVersion.WithResource("prioritylevelconfigurations"),
 				),
 				{
-          Group:   "flowcontrol", 
-          Version: "v1", 
+          Group:   "flowcontrol",
+          Version: "v1",
           Kind:    "FlowSchema",
           Description: `FlowSchema defines the schema of a group of flows. Note that a flow is made up of a set of inbound API requests with similar attributes and is identified by a pair of strings: the name of the FlowSchema and a &#34;flow distinguisher&#34;.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -837,8 +846,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           flowcontrolv1.SchemeGroupVersion.WithResource("flowschemas"),
 				),
 				{
-          Group:   "flowcontrol", 
-          Version: "v1", 
+          Group:   "flowcontrol",
+          Version: "v1",
           Kind:    "PriorityLevelConfiguration",
           Description: `PriorityLevelConfiguration represents the configuration of a priority level.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -846,8 +855,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           flowcontrolv1.SchemeGroupVersion.WithResource("prioritylevelconfigurations"),
 				),
 				{
-          Group:   "networking", 
-          Version: "v1beta1", 
+          Group:   "networking",
+          Version: "v1beta1",
           Kind:    "IPAddress",
           Description: `IPAddress represents a single IP of a single IP Family. The object is designed to be used by APIs that operate on IP addresses. The object is used by the Service core API for allocation of IP addresses. An IP address can be represented in different formats, to guarantee the uniqueness of the IP, the name of the object is the IP address in canonical format, four decimal digits separated by dots suppressing leading zeros for IPv4 and the representation defined by RFC 5952 for IPv6. Valid: 192.168.1.5 or 2001:db8::1 or 2001:db8:aaaa:bbbb:cccc:dddd:eeee:1 Invalid: 10.01.2.3 or 2001:db8:0:0:0::1`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -855,8 +864,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           networkingv1beta1.SchemeGroupVersion.WithResource("ipaddresses"),
 				),
 				{
-          Group:   "networking", 
-          Version: "v1beta1", 
+          Group:   "networking",
+          Version: "v1beta1",
           Kind:    "ServiceCIDR",
           Description: `ServiceCIDR defines a range of IP addresses using CIDR format (e.g. 192.168.0.0/24 or 2001:db2::/64). This range is used to allocate ClusterIPs to Service objects.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -864,8 +873,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           networkingv1beta1.SchemeGroupVersion.WithResource("servicecidrs"),
 				),
 				{
-          Group:   "networking", 
-          Version: "v1", 
+          Group:   "networking",
+          Version: "v1",
           Kind:    "IPAddress",
           Description: `IPAddress represents a single IP of a single IP Family. The object is designed to be used by APIs that operate on IP addresses. The object is used by the Service core API for allocation of IP addresses. An IP address can be represented in different formats, to guarantee the uniqueness of the IP, the name of the object is the IP address in canonical format, four decimal digits separated by dots suppressing leading zeros for IPv4 and the representation defined by RFC 5952 for IPv6. Valid: 192.168.1.5 or 2001:db8::1 or 2001:db8:aaaa:bbbb:cccc:dddd:eeee:1 Invalid: 10.01.2.3 or 2001:db8:0:0:0::1`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -873,8 +882,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           networkingv1.SchemeGroupVersion.WithResource("ipaddresses"),
 				),
 				{
-          Group:   "networking", 
-          Version: "v1", 
+          Group:   "networking",
+          Version: "v1",
           Kind:    "Ingress",
           Description: `Ingress is a collection of rules that allow inbound connections to reach the endpoints defined by a backend. An Ingress can be configured to give services externally-reachable urls, load balance traffic, terminate SSL, offer name based virtual hosting etc.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -882,8 +891,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           networkingv1.SchemeGroupVersion.WithResource("ingresses"),
 				),
 				{
-          Group:   "networking", 
-          Version: "v1", 
+          Group:   "networking",
+          Version: "v1",
           Kind:    "IngressClass",
           Description: `IngressClass represents the class of the Ingress, referenced by the Ingress Spec. The 'ingressclass.kubernetes.io/is-default-class' annotation can be used to indicate that an IngressClass should be considered default. When a single IngressClass resource has this annotation set to true, new Ingress resources without a class specified will be assigned this default class.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -891,8 +900,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           networkingv1.SchemeGroupVersion.WithResource("ingressclasses"),
 				),
 				{
-          Group:   "networking", 
-          Version: "v1", 
+          Group:   "networking",
+          Version: "v1",
           Kind:    "NetworkPolicy",
           Description: `NetworkPolicy describes what network traffic is allowed for a set of Pods`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -900,8 +909,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           networkingv1.SchemeGroupVersion.WithResource("networkpolicies"),
 				),
 				{
-          Group:   "networking", 
-          Version: "v1", 
+          Group:   "networking",
+          Version: "v1",
           Kind:    "ServiceCIDR",
           Description: `ServiceCIDR defines a range of IP addresses using CIDR format (e.g. 192.168.0.0/24 or 2001:db2::/64). This range is used to allocate ClusterIPs to Service objects.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -909,8 +918,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           networkingv1.SchemeGroupVersion.WithResource("servicecidrs"),
 				),
 				{
-          Group:   "node", 
-          Version: "v1", 
+          Group:   "node",
+          Version: "v1",
           Kind:    "RuntimeClass",
           Description: `RuntimeClass defines a class of container runtime supported in the cluster. The RuntimeClass is used to determine which container runtime is used to run all containers in a pod. RuntimeClasses are manually defined by a user or cluster provisioner, and referenced in the PodSpec. The Kubelet is responsible for resolving the RuntimeClassName reference before running the pod.  For more details, see https://kubernetes.io/docs/concepts/containers/runtime-class/`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -918,8 +927,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           nodev1.SchemeGroupVersion.WithResource("runtimeclasses"),
 				),
 				{
-          Group:   "policy", 
-          Version: "v1", 
+          Group:   "policy",
+          Version: "v1",
           Kind:    "Eviction",
           Description: `Eviction evicts a pod from its node subject to certain policies and safety constraints. This is a subresource of Pod.  A request to cause such an eviction is created by POSTing to .../pods/&lt;pod name&gt;/evictions.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -927,8 +936,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           policyv1.SchemeGroupVersion.WithResource("evictions"),
 				),
 				{
-          Group:   "policy", 
-          Version: "v1", 
+          Group:   "policy",
+          Version: "v1",
           Kind:    "PodDisruptionBudget",
           Description: `PodDisruptionBudget is an object to define the max disruption that can be caused to a collection of pods`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -936,8 +945,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets"),
 				),
 				{
-          Group:   "rbac", 
-          Version: "v1", 
+          Group:   "rbac",
+          Version: "v1",
           Kind:    "ClusterRole",
           Description: `ClusterRole is a cluster level, logical grouping of PolicyRules that can be referenced as a unit by a RoleBinding or ClusterRoleBinding.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -945,8 +954,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           rbacv1.SchemeGroupVersion.WithResource("clusterroles"),
 				),
 				{
-          Group:   "rbac", 
-          Version: "v1", 
+          Group:   "rbac",
+          Version: "v1",
           Kind:    "ClusterRoleBinding",
           Description: `ClusterRoleBinding references a ClusterRole, but not contain it.  It can reference a ClusterRole in the global namespace, and adds who information via Subject.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -954,8 +963,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           rbacv1.SchemeGroupVersion.WithResource("clusterrolebindings"),
 				),
 				{
-          Group:   "rbac", 
-          Version: "v1", 
+          Group:   "rbac",
+          Version: "v1",
           Kind:    "Role",
           Description: `Role is a namespaced, logical grouping of PolicyRules that can be referenced as a unit by a RoleBinding.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -963,8 +972,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           rbacv1.SchemeGroupVersion.WithResource("roles"),
 				),
 				{
-          Group:   "rbac", 
-          Version: "v1", 
+          Group:   "rbac",
+          Version: "v1",
           Kind:    "RoleBinding",
           Description: `RoleBinding references a role, but does not contain it.  It can reference a Role in the same namespace or a ClusterRole in the global namespace. It adds who information via Subjects and namespace information by which namespace it exists in.  RoleBindings in a given namespace only have effect in that namespace.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -972,8 +981,8 @@ Deprecated: This API is deprecated in v1.33+. Use discoveryv1.EndpointSlice.`,
           rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
 				),
 				{
-          Group:   "resource", 
-          Version: "v1beta2", 
+          Group:   "resource",
+          Version: "v1beta2",
           Kind:    "DeviceClass",
           Description: `DeviceClass is a vendor- or admin-provided resource that contains device configuration and selectors. It can be referenced in the device requests of a claim to apply these presets. Cluster scoped.
 
@@ -983,8 +992,8 @@ This is an alpha type and requires enabling the DynamicResourceAllocation featur
           resourcev1beta2.SchemeGroupVersion.WithResource("deviceclasses"),
 				),
 				{
-          Group:   "resource", 
-          Version: "v1beta2", 
+          Group:   "resource",
+          Version: "v1beta2",
           Kind:    "ResourceClaim",
           Description: `ResourceClaim describes a request for access to resources in the cluster, for use by workloads. For example, if a workload needs an accelerator device with specific properties, this is how that request is expressed. The status stanza tracks whether this claim has been satisfied and what specific resources have been allocated.
 
@@ -994,8 +1003,8 @@ This is an alpha type and requires enabling the DynamicResourceAllocation featur
           resourcev1beta2.SchemeGroupVersion.WithResource("resourceclaims"),
 				),
 				{
-          Group:   "resource", 
-          Version: "v1beta2", 
+          Group:   "resource",
+          Version: "v1beta2",
           Kind:    "ResourceClaimTemplate",
           Description: `ResourceClaimTemplate is used to produce ResourceClaim objects.
 
@@ -1005,8 +1014,8 @@ This is an alpha type and requires enabling the DynamicResourceAllocation featur
           resourcev1beta2.SchemeGroupVersion.WithResource("resourceclaimtemplates"),
 				),
 				{
-          Group:   "resource", 
-          Version: "v1beta2", 
+          Group:   "resource",
+          Version: "v1beta2",
           Kind:    "ResourceSlice",
           Description: `ResourceSlice represents one or more resources in a pool of similar resources, managed by a common driver. A pool may span more than one ResourceSlice, and exactly how many ResourceSlices comprise a pool is determined by the driver.
 
@@ -1024,8 +1033,8 @@ This is an alpha type and requires enabling the DynamicResourceAllocation featur
           resourcev1beta2.SchemeGroupVersion.WithResource("resourceslices"),
 				),
 				{
-          Group:   "resource", 
-          Version: "v1beta1", 
+          Group:   "resource",
+          Version: "v1beta1",
           Kind:    "DeviceClass",
           Description: `DeviceClass is a vendor- or admin-provided resource that contains device configuration and selectors. It can be referenced in the device requests of a claim to apply these presets. Cluster scoped.
 
@@ -1035,8 +1044,8 @@ This is an alpha type and requires enabling the DynamicResourceAllocation featur
           resourcev1beta1.SchemeGroupVersion.WithResource("deviceclasses"),
 				),
 				{
-          Group:   "resource", 
-          Version: "v1beta1", 
+          Group:   "resource",
+          Version: "v1beta1",
           Kind:    "ResourceClaim",
           Description: `ResourceClaim describes a request for access to resources in the cluster, for use by workloads. For example, if a workload needs an accelerator device with specific properties, this is how that request is expressed. The status stanza tracks whether this claim has been satisfied and what specific resources have been allocated.
 
@@ -1046,8 +1055,8 @@ This is an alpha type and requires enabling the DynamicResourceAllocation featur
           resourcev1beta1.SchemeGroupVersion.WithResource("resourceclaims"),
 				),
 				{
-          Group:   "resource", 
-          Version: "v1beta1", 
+          Group:   "resource",
+          Version: "v1beta1",
           Kind:    "ResourceClaimTemplate",
           Description: `ResourceClaimTemplate is used to produce ResourceClaim objects.
 
@@ -1057,8 +1066,8 @@ This is an alpha type and requires enabling the DynamicResourceAllocation featur
           resourcev1beta1.SchemeGroupVersion.WithResource("resourceclaimtemplates"),
 				),
 				{
-          Group:   "resource", 
-          Version: "v1beta1", 
+          Group:   "resource",
+          Version: "v1beta1",
           Kind:    "ResourceSlice",
           Description: `ResourceSlice represents one or more resources in a pool of similar resources, managed by a common driver. A pool may span more than one ResourceSlice, and exactly how many ResourceSlices comprise a pool is determined by the driver.
 
@@ -1076,8 +1085,8 @@ This is an alpha type and requires enabling the DynamicResourceAllocation featur
           resourcev1beta1.SchemeGroupVersion.WithResource("resourceslices"),
 				),
 				{
-          Group:   "scheduling", 
-          Version: "v1", 
+          Group:   "scheduling",
+          Version: "v1",
           Kind:    "PriorityClass",
           Description: `PriorityClass defines mapping from a priority class name to the priority integer value. The value can be any valid integer.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -1085,8 +1094,8 @@ This is an alpha type and requires enabling the DynamicResourceAllocation featur
           schedulingv1.SchemeGroupVersion.WithResource("priorityclasses"),
 				),
 				{
-          Group:   "storage", 
-          Version: "v1beta1", 
+          Group:   "storage",
+          Version: "v1beta1",
           Kind:    "CSIStorageCapacity",
           Description: `CSIStorageCapacity stores the result of one CSI GetCapacity call. For a given StorageClass, this describes the available capacity in a particular topology segment.  This can be used when considering where to instantiate new PersistentVolumes.
 
@@ -1102,8 +1111,8 @@ They are consumed by the kube-scheduler when a CSI driver opts into capacity-awa
           storagev1beta1.SchemeGroupVersion.WithResource("csistoragecapacities"),
 				),
 				{
-          Group:   "storage", 
-          Version: "v1beta1", 
+          Group:   "storage",
+          Version: "v1beta1",
           Kind:    "VolumeAttributesClass",
           Description: `VolumeAttributesClass represents a specification of mutable volume attributes defined by the CSI driver. The class can be specified during dynamic provisioning of PersistentVolumeClaims, and changed in the PersistentVolumeClaim spec after provisioning.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -1111,8 +1120,8 @@ They are consumed by the kube-scheduler when a CSI driver opts into capacity-awa
           storagev1beta1.SchemeGroupVersion.WithResource("volumeattributesclasses"),
 				),
 				{
-          Group:   "storage", 
-          Version: "v1", 
+          Group:   "storage",
+          Version: "v1",
           Kind:    "CSIDriver",
           Description: `CSIDriver captures information about a Container Storage Interface (CSI) volume driver deployed on the cluster. Kubernetes attach detach controller uses this object to determine whether attach is required. Kubelet uses this object to determine whether pod information needs to be passed on mount. CSIDriver objects are non-namespaced.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -1120,8 +1129,8 @@ They are consumed by the kube-scheduler when a CSI driver opts into capacity-awa
           storagev1.SchemeGroupVersion.WithResource("csidrivers"),
 				),
 				{
-          Group:   "storage", 
-          Version: "v1", 
+          Group:   "storage",
+          Version: "v1",
           Kind:    "CSINode",
           Description: `CSINode holds information about all CSI drivers installed on a node. CSI drivers do not need to create the CSINode object directly. As long as they use the node-driver-registrar sidecar container, the kubelet will automatically populate the CSINode object for the CSI driver as part of kubelet plugin registration. CSINode has the same name as a node. If the object is missing, it means either there are no CSI Drivers available on the node, or the Kubelet version is low enough that it doesn&#39;t create this object. CSINode has an OwnerReference that points to the corresponding node object.`,
         }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
@@ -1129,8 +1138,8 @@ They are consumed by the kube-scheduler when a CSI driver opts into capacity-awa
           storagev1.SchemeGroupVersion.WithResource("csinodes"),
 				),
 				{
-          Group:   "storage", 
-          Version: "v1", 
+          Group:   "storage",
+          Version: "v1",
           Kind:    "CSIStorageCapacity",
           Description: `CSIStorageCapacity stores the result of one CSI GetCapacity call. For a given StorageClass, this describes the available capacity in a particular topology segment.  This can be used when considering where to instantiate new PersistentVolumes.
 
@@ -1146,8 +1155,8 @@ They are consumed by the kube-scheduler when a CSI driver opts into capacity-awa
           storagev1.SchemeGroupVersion.WithResource("csistoragecapacities"),
 				),
 				{
-          Group:   "storage", 
-          Version: "v1", 
+          Group:   "storage",
+          Version: "v1",
           Kind:    "StorageClass",
           Description: `StorageClass describes the parameters for a class of storage for which PersistentVolumes can be dynamically provisioned.
 
@@ -1157,8 +1166,8 @@ StorageClasses are non-namespaced; the name of the storage class according to et
           storagev1.SchemeGroupVersion.WithResource("storageclasses"),
 				),
 				{
-          Group:   "storage", 
-          Version: "v1", 
+          Group:   "storage",
+          Version: "v1",
           Kind:    "VolumeAttachment",
           Description: `VolumeAttachment captures the intent to attach or detach the specified volume to/from the specified node.
 
@@ -1171,6 +1180,7 @@ VolumeAttachment objects are non-namespaced.`,
 				// Helm resourcers
 				helm.ReleaseMeta: helmResourcers[helm.ReleaseMeta],
 				helm.RepoMeta:    helmResourcers[helm.RepoMeta],
+				helm.ChartMeta:   helmResourcers[helm.ChartMeta],
 			},
 		},
 	)

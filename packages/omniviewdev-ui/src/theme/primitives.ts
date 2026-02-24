@@ -3,7 +3,7 @@
  * HSL-based color palettes with light/dark mode support.
  * Adapted from MUI Dashboard template.
  */
-import { createTheme, alpha, type PaletteMode, type Shadows } from '@mui/material/styles';
+import { createTheme, type PaletteMode, type Shadows } from '@mui/material/styles';
 
 declare module '@mui/material/Paper' {
   interface PaperPropsVariantOverrides {
@@ -51,17 +51,21 @@ export const brand = {
   900: 'hsl(210, 100%, 21%)',
 };
 
+/**
+ * Gray scale aligned with --ov-scale-gray-* tokens from tokens.css.
+ * These values are the single source of truth for neutral colors.
+ */
 export const gray = {
-  50: 'hsl(220, 35%, 97%)',
-  100: 'hsl(220, 30%, 94%)',
-  200: 'hsl(220, 20%, 88%)',
-  300: 'hsl(220, 20%, 80%)',
-  400: 'hsl(220, 20%, 65%)',
-  500: 'hsl(220, 20%, 42%)',
-  600: 'hsl(220, 20%, 35%)',
-  700: 'hsl(220, 20%, 25%)',
-  800: 'hsl(220, 30%, 6%)',
-  900: 'hsl(220, 35%, 3%)',
+  50:  '#ECF0F6', // --ov-scale-gray-13
+  100: '#CBD5E1', // --ov-scale-gray-12
+  200: '#ABB8CC', // --ov-scale-gray-11
+  300: '#8B9BB5', // --ov-scale-gray-10
+  400: '#6B7D96', // --ov-scale-gray-9
+  500: '#3E4F66', // --ov-scale-gray-8
+  600: '#2D3D52', // --ov-scale-gray-6
+  700: '#1F2937', // --ov-scale-gray-4
+  800: '#151B23', // --ov-scale-gray-2
+  900: '#0D1117', // --ov-scale-gray-0
 };
 
 export const green = {
@@ -120,6 +124,11 @@ export const purple = {
 // Design Tokens (mode-aware palette)
 // ---------------------------------------------------------------------------
 
+/**
+ * Design tokens aligned with tokens.css --ov-* semantic tokens.
+ * Dark/light values here MUST match the CSS custom properties so that
+ * MUI-themed components and custom components share identical colors.
+ */
 export const getDesignTokens = (mode: PaletteMode) => ({
   palette: {
     mode,
@@ -189,23 +198,29 @@ export const getDesignTokens = (mode: PaletteMode) => ({
       }),
     },
     grey: gray,
-    divider: mode === 'dark' ? alpha(gray[700], 0.6) : alpha(gray[300], 0.4),
+    // Matches --ov-border-default / --ov-border-muted
+    divider: mode === 'dark'
+      ? 'rgba(62, 79, 102, 0.6)' // alpha(--ov-scale-gray-8, 0.6)
+      : 'rgba(208, 215, 222, 0.6)', // alpha(--ov-border-default light, 0.6)
     background: {
-      default: mode === 'dark' ? gray[900] : 'hsl(0, 0%, 99%)',
-      paper: mode === 'dark' ? 'hsl(220, 30%, 7%)' : 'hsl(0, 0%, 100%)',
+      // Matches --ov-bg-base / --ov-bg-surface
+      default: mode === 'dark' ? '#0D1117' : '#FFFFFF',
+      paper: mode === 'dark' ? '#151B23' : '#F6F8FA',
     },
     text: {
-      primary: mode === 'dark' ? 'hsl(0, 0%, 100%)' : gray[800],
-      secondary: mode === 'dark' ? gray[400] : gray[600],
+      // Matches --ov-fg-default / --ov-fg-muted
+      primary: mode === 'dark' ? 'rgba(236, 240, 246, 0.92)' : 'rgba(31, 35, 40, 0.92)',
+      secondary: mode === 'dark' ? 'rgba(236, 240, 246, 0.64)' : 'rgba(31, 35, 40, 0.64)',
     },
     action: {
-      hover: mode === 'dark' ? alpha(gray[600], 0.2) : alpha(gray[200], 0.4),
-      selected: mode === 'dark' ? alpha(gray[600], 0.3) : alpha(gray[200], 0.6),
+      // Matches --ov-state-hover / --ov-state-selected
+      hover: mode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(31, 35, 40, 0.04)',
+      selected: mode === 'dark' ? 'rgba(88, 166, 255, 0.10)' : 'rgba(9, 105, 218, 0.10)',
     },
     baseShadow:
       mode === 'dark'
-        ? 'hsla(220, 30%, 5%, 0.7) 0px 4px 16px 0px, hsla(220, 25%, 10%, 0.8) 0px 8px 16px -5px'
-        : 'hsla(220, 30%, 5%, 0.07) 0px 4px 16px 0px, hsla(220, 25%, 10%, 0.07) 0px 8px 16px -5px',
+        ? '0 4px 12px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.25)'
+        : '0 4px 12px rgba(31, 35, 40, 0.12), 0 2px 4px rgba(31, 35, 40, 0.08)',
   },
 });
 
@@ -246,10 +261,11 @@ export const typography = {
 export const shape = { borderRadius: 8 };
 
 export const customShadows = (mode: PaletteMode): Shadows => {
+  // Matches --ov-shadow-md from tokens.css
   const baseShadow =
     mode === 'dark'
-      ? 'hsla(220, 30%, 5%, 0.7) 0px 4px 16px 0px, hsla(220, 25%, 10%, 0.8) 0px 8px 16px -5px'
-      : 'hsla(220, 30%, 5%, 0.07) 0px 4px 16px 0px, hsla(220, 25%, 10%, 0.07) 0px 8px 16px -5px';
+      ? '0 4px 12px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.25)'
+      : '0 4px 12px rgba(31, 35, 40, 0.12), 0 2px 4px rgba(31, 35, 40, 0.08)';
 
   const shadows = [...defaultTheme.shadows] as Shadows;
   shadows[1] = baseShadow;

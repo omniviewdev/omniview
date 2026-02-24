@@ -6,9 +6,9 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCalendarClock, LuCode, LuLogs, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuCalendarClock, LuLogs, LuTrash } from 'react-icons/lu'
 import CronJobSidebar from './Sidebar'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 
 const resourceKey = 'batch::v1::CronJob'
 
@@ -94,18 +94,7 @@ const CronJobTable: React.FC = () => {
   const drawer: DrawerComponent<CronJob> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuCalendarClock />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <CronJobSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: CronJobSidebar }),
     actions: [
       {
         title: 'Delete',

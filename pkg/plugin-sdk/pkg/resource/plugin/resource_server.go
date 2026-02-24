@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"log"
 
 	pkgsettings "github.com/omniviewdev/settings"
@@ -18,6 +19,7 @@ import (
 
 // Here is the gRPC server that GRPCClient talks to.
 type ResourcePluginServer struct {
+	proto.UnimplementedResourcePluginServer
 	// This is the real implementation
 	Impl             types.ResourceProvider
 	settingsProvider pkgsettings.Provider
@@ -220,6 +222,39 @@ func (s *ResourcePluginServer) GetResourceDefinition(
 	}, nil
 }
 
+// classifyError resolves a raw error into a *types.ResourceOperationError.
+// It checks (in order): errors.As for an already-classified error, the
+// optional ResourceErrorClassifier interface on Impl, and falls back to INTERNAL.
+func (s *ResourcePluginServer) classifyError(err error) *types.ResourceOperationError {
+	var opErr *types.ResourceOperationError
+	if errors.As(err, &opErr) {
+		return opErr
+	}
+	if classifier, ok := s.Impl.(types.ResourceErrorClassifier); ok {
+		if classified := classifier.ClassifyResourceError(err); classified != nil {
+			if errors.As(classified, &opErr) {
+				return opErr
+			}
+		}
+	}
+	return &types.ResourceOperationError{
+		Err:     err,
+		Code:    "INTERNAL",
+		Title:   "Operation failed",
+		Message: err.Error(),
+	}
+}
+
+// toProtoError converts a ResourceOperationError to a proto ResourceError.
+func toProtoError(opErr *types.ResourceOperationError) *proto.ResourceError {
+	return &proto.ResourceError{
+		Code:        opErr.Code,
+		Title:       opErr.Title,
+		Message:     opErr.Message,
+		Suggestions: opErr.Suggestions,
+	}
+}
+
 // ============================== Resource ============================== //
 
 func (s *ResourcePluginServer) Get(
@@ -236,7 +271,8 @@ func (s *ResourcePluginServer) Get(
 		Namespace: in.GetNamespace(),
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get resource: %s", err.Error())
+		opErr := s.classifyError(err)
+		return &proto.GetResponse{Success: false, Error: toProtoError(opErr)}, nil
 	}
 
 	data, err := structpb.NewStruct(resp.Result)
@@ -267,7 +303,8 @@ func (s *ResourcePluginServer) List(
 		Namespaces: in.GetNamespaces(),
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list resources: %s", err.Error())
+		opErr := s.classifyError(err)
+		return &proto.ListResponse{Success: false, Error: toProtoError(opErr)}, nil
 	}
 
 	data := make([]*structpb.Struct, 0, len(resp.Result))
@@ -302,7 +339,8 @@ func (s *ResourcePluginServer) Find(
 		Namespaces: in.GetNamespaces(),
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to find resources: %s", err.Error())
+		opErr := s.classifyError(err)
+		return &proto.FindResponse{Success: false, Error: toProtoError(opErr)}, nil
 	}
 
 	data := make([]*structpb.Struct, 0, len(resp.Result))
@@ -338,7 +376,8 @@ func (s *ResourcePluginServer) Create(
 		Input:     in.GetData().AsMap(),
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create resources: %s", err.Error())
+		opErr := s.classifyError(err)
+		return &proto.CreateResponse{Success: false, Error: toProtoError(opErr)}, nil
 	}
 
 	data, err := structpb.NewStruct(resp.Result)
@@ -371,7 +410,8 @@ func (s *ResourcePluginServer) Update(
 		Input:     in.GetData().AsMap(),
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to update resource: %s", err.Error())
+		opErr := s.classifyError(err)
+		return &proto.UpdateResponse{Success: false, Error: toProtoError(opErr)}, nil
 	}
 
 	data, err := structpb.NewStruct(resp.Result)
@@ -403,7 +443,8 @@ func (s *ResourcePluginServer) Delete(
 		Namespace: in.GetNamespace(),
 	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to delete resource: %s", err.Error())
+		opErr := s.classifyError(err)
+		return &proto.DeleteResponse{Success: false, Error: toProtoError(opErr)}, nil
 	}
 
 	data, err := structpb.NewStruct(resp.Result)
@@ -473,9 +514,10 @@ func (s *ResourcePluginServer) ListenForEvents(
 	addChan := make(chan types.InformerAddPayload)
 	updateChan := make(chan types.InformerUpdatePayload)
 	deleteChan := make(chan types.InformerDeletePayload)
+	stateChan := make(chan types.InformerStateEvent)
 
 	go func() {
-		if err := s.Impl.ListenForEvents(pluginCtx, addChan, updateChan, deleteChan); err != nil {
+		if err := s.Impl.ListenForEvents(pluginCtx, addChan, updateChan, deleteChan, stateChan); err != nil {
 			log.Printf("failed to listen for events: %s", err.Error())
 			return
 		}
@@ -503,7 +545,6 @@ func (s *ResourcePluginServer) ListenForEvents(
 					},
 				},
 			}); err != nil {
-				// do nothing for now
 				log.Printf("failed to send add event: %s", err.Error())
 			}
 		case event := <-updateChan:
@@ -530,8 +571,7 @@ func (s *ResourcePluginServer) ListenForEvents(
 					},
 				},
 			}); err != nil {
-				// do nothing for now
-				log.Printf("failed to send add event: %s", err.Error())
+				log.Printf("failed to send update event: %s", err.Error())
 			}
 		case event := <-deleteChan:
 			data, err := structpb.NewStruct(event.Data)
@@ -550,11 +590,73 @@ func (s *ResourcePluginServer) ListenForEvents(
 					},
 				},
 			}); err != nil {
-				// do nothing for now
-				log.Printf("failed to send add event: %s", err.Error())
+				log.Printf("failed to send delete event: %s", err.Error())
+			}
+		case event := <-stateChan:
+			stateProto := &proto.InformerStateEvent{
+				Connection:    event.Connection,
+				ResourceKey:   event.ResourceKey,
+				State:         proto.InformerResourceState(event.State),
+				ResourceCount: int32(event.ResourceCount),
+				TotalCount:    int32(event.TotalCount),
+			}
+			if event.Error != nil {
+				stateProto.Error = toProtoError(event.Error)
+			}
+			if err := stream.SendMsg(&proto.InformerEvent{
+				Key:        event.ResourceKey,
+				Connection: event.Connection,
+				Action:     &proto.InformerEvent_State{State: stateProto},
+			}); err != nil {
+				log.Printf("failed to send state event: %s", err.Error())
 			}
 		}
 	}
+}
+
+func (s *ResourcePluginServer) GetInformerState(
+	ctx context.Context,
+	in *proto.GetInformerStateRequest,
+) (*proto.InformerConnectionSummary, error) {
+	pluginCtx := s.newPluginContext(ctx)
+
+	summary, err := s.Impl.GetInformerState(pluginCtx, in.GetConnection())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get informer state: %s", err.Error())
+	}
+	if summary == nil {
+		return &proto.InformerConnectionSummary{Connection: in.GetConnection()}, nil
+	}
+
+	resources := make(map[string]proto.InformerResourceState, len(summary.Resources))
+	for k, v := range summary.Resources {
+		resources[k] = proto.InformerResourceState(v)
+	}
+	counts := make(map[string]int32, len(summary.ResourceCounts))
+	for k, v := range summary.ResourceCounts {
+		counts[k] = int32(v)
+	}
+
+	return &proto.InformerConnectionSummary{
+		Connection:     summary.Connection,
+		Resources:      resources,
+		ResourceCounts: counts,
+		TotalResources: int32(summary.TotalResources),
+		SyncedCount:    int32(summary.SyncedCount),
+		ErrorCount:     int32(summary.ErrorCount),
+	}, nil
+}
+
+func (s *ResourcePluginServer) EnsureInformerForResource(
+	ctx context.Context,
+	in *proto.EnsureInformerRequest,
+) (*emptypb.Empty, error) {
+	pluginCtx := s.newPluginContext(ctx)
+
+	if err := s.Impl.EnsureInformerForResource(pluginCtx, in.GetConnection(), in.GetResourceKey()); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to ensure informer for resource: %s", err.Error())
+	}
+	return &emptypb.Empty{}, nil
 }
 
 // ============================== Layout ============================== //
@@ -740,6 +842,34 @@ func (s *ResourcePluginServer) StreamAction(
 			}
 		}
 	}
+}
+
+// ============================== Schemas ============================== //
+
+func (s *ResourcePluginServer) GetEditorSchemas(
+	ctx context.Context,
+	in *proto.GetEditorSchemasRequest,
+) (*proto.EditorSchemaList, error) {
+	pluginCtx := s.newPluginContext(ctx)
+
+	schemas, err := s.Impl.GetEditorSchemas(pluginCtx, in.GetConnectionId())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get editor schemas: %s", err.Error())
+	}
+
+	protoSchemas := make([]*proto.EditorSchema, 0, len(schemas))
+	for _, s := range schemas {
+		protoSchemas = append(protoSchemas, &proto.EditorSchema{
+			ResourceKey: s.ResourceKey,
+			FileMatch:   s.FileMatch,
+			Uri:         s.URI,
+			Url:         s.URL,
+			Content:     s.Content,
+			Language:    s.Language,
+		})
+	}
+
+	return &proto.EditorSchemaList{Schemas: protoSchemas}, nil
 }
 
 // ============================== Connection ============================== //

@@ -11,76 +11,95 @@
   "main": "dist/index.cjs",
   "module": "dist/index.js",
   "exports": {
+    "./package.json": "./package.json",
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
     "./cells": {
+      "types": "./dist/cells/index.d.ts",
       "import": "./dist/cells.js",
       "require": "./dist/cells.cjs"
     },
     "./table": {
+      "types": "./dist/table/index.d.ts",
       "import": "./dist/table.js",
       "require": "./dist/table.cjs"
     },
     "./inputs": {
+      "types": "./dist/inputs/index.d.ts",
       "import": "./dist/inputs.js",
       "require": "./dist/inputs.cjs"
     },
     "./utils": {
+      "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils.js",
       "require": "./dist/utils.cjs"
     },
     "./theme": {
+      "types": "./dist/theme/index.d.ts",
       "import": "./dist/theme.js",
       "require": "./dist/theme.cjs"
     },
     "./theme/tokens.css": "./dist/tokens.css",
     "./types": {
+      "types": "./dist/types/index.d.ts",
       "import": "./dist/types.js",
       "require": "./dist/types.cjs"
     },
     "./buttons": {
+      "types": "./dist/buttons/index.d.ts",
       "import": "./dist/buttons.js",
       "require": "./dist/buttons.cjs"
     },
     "./feedback": {
+      "types": "./dist/feedback/index.d.ts",
       "import": "./dist/feedback.js",
       "require": "./dist/feedback.cjs"
     },
     "./typography": {
+      "types": "./dist/typography/index.d.ts",
       "import": "./dist/typography.js",
       "require": "./dist/typography.cjs"
     },
     "./overlays": {
+      "types": "./dist/overlays/index.d.ts",
       "import": "./dist/overlays.js",
       "require": "./dist/overlays.cjs"
     },
     "./navigation": {
+      "types": "./dist/navigation/index.d.ts",
       "import": "./dist/navigation.js",
       "require": "./dist/navigation.cjs"
     },
     "./editors": {
+      "types": "./dist/editors/index.d.ts",
       "import": "./dist/editors.js",
       "require": "./dist/editors.cjs"
     },
     "./domain": {
+      "types": "./dist/domain/index.d.ts",
       "import": "./dist/domain.js",
       "require": "./dist/domain.cjs"
     },
     "./layout": {
+      "types": "./dist/layout/index.d.ts",
       "import": "./dist/layout.js",
       "require": "./dist/layout.cjs"
     },
     "./menus": {
+      "types": "./dist/menus/index.d.ts",
       "import": "./dist/menus.js",
       "require": "./dist/menus.cjs"
     },
     "./sidebars": {
+      "types": "./dist/sidebars/index.d.ts",
       "import": "./dist/sidebars.js",
       "require": "./dist/sidebars.cjs"
     },
     "./charts": {
+      "types": "./dist/charts/index.d.ts",
       "import": "./dist/charts.js",
       "require": "./dist/charts.cjs"
     }
@@ -161,6 +180,9 @@
     "ui",
     "design-system"
   ],
+  "dependencies": {
+    "@uiw/react-markdown-preview": "^5.1.3"
+  },
   "devDependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
@@ -202,8 +224,8 @@
     "@xterm/xterm": ">=5.0.0",
     "date-fns": ">=4.0.0",
     "monaco-editor": ">=0.40.0",
-    "react": ">=19.0.0",
-    "react-dom": ">=19.0.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0",
     "react-icons": ">=5.0.0"
   },
   "peerDependenciesMeta": {

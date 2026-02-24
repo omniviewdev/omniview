@@ -1,19 +1,60 @@
 import React from 'react';
 
 // material ui
-import {
-  Chip,
-  Typography,
-  Tooltip,
-} from '@mui/joy';
+import { Chip } from '@omniviewdev/ui';
+import type { SemanticColor } from '@omniviewdev/ui/types';
+import { Text } from '@omniviewdev/ui/typography';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 
 // third party
 import get from 'lodash.get';
+
+// icons
+import {
+  LuCopy,
+  LuLayers,
+  LuDatabase,
+  LuPlay,
+  LuClock,
+  LuServer,
+  LuUser,
+  LuNetwork,
+  LuGlobe,
+  LuShield,
+  LuBox,
+} from 'react-icons/lu';
 
 // types
 import { type types } from '@omniviewdev/runtime/models';
 import { useRightDrawer } from '@omniviewdev/runtime';
 import { type ResourceMetadata } from '../../../hooks/useResourceDefinition';
+
+type KindConfig = { color: SemanticColor; icon: React.ReactElement };
+
+const kindConfigMap: Record<string, KindConfig> = {
+  ReplicaSet:            { color: 'primary',   icon: <LuCopy size={10} /> },
+  ReplicationController: { color: 'primary',   icon: <LuCopy size={10} /> },
+  Deployment:            { color: 'primary',   icon: <LuCopy size={10} /> },
+  StatefulSet:           { color: 'info',      icon: <LuDatabase size={10} /> },
+  DaemonSet:             { color: 'warning',   icon: <LuLayers size={10} /> },
+  Job:                   { color: 'secondary', icon: <LuPlay size={10} /> },
+  CronJob:               { color: 'secondary', icon: <LuClock size={10} /> },
+  Node:                  { color: 'success',   icon: <LuServer size={10} /> },
+  ServiceAccount:        { color: 'neutral',   icon: <LuUser size={10} /> },
+  Service:               { color: 'info',      icon: <LuNetwork size={10} /> },
+  Ingress:               { color: 'info',      icon: <LuGlobe size={10} /> },
+  NetworkPolicy:         { color: 'warning',   icon: <LuShield size={10} /> },
+  PersistentVolume:      { color: 'neutral',   icon: <LuDatabase size={10} /> },
+  PersistentVolumeClaim: { color: 'neutral',   icon: <LuDatabase size={10} /> },
+};
+
+const defaultConfig: KindConfig = { color: 'neutral', icon: <LuBox size={10} /> };
+
+/** Extract the kind (last segment) from a resourceKey like "apps::v1::ReplicaSet" */
+function kindFromKey(key: string): string {
+  const parts = key.split('::');
+  return parts[parts.length - 1];
+}
 
 type Props = types.ResourceLink & {
   value: any;
@@ -21,7 +62,7 @@ type Props = types.ResourceLink & {
 };
 
 /**
- * Display the cell as a link to another resource
+ * Display the cell as a link to another resource with kind-appropriate icon and color.
  */
 const ResourceLinkCell: React.FC<Props> = ({
   value,
@@ -47,62 +88,55 @@ const ResourceLinkCell: React.FC<Props> = ({
 
   const resourceID = typeof value === 'string' ? value : get(value, idAccessor, '');
 
-  /**
-   * Open the sidebar at the link to the linked resource
-   */
-  const handleClick: React.MouseEventHandler = (e) => {
-    if (!metadata) {
-      return;
-    }
+  if (typeof value !== 'string' && !resourceKey) {
+    return null;
+  }
 
-    e.stopPropagation();
-    e.preventDefault();
+  const resolvedKey = keyMap ? keyMap[resourceKey] ?? resourceKey : resourceKey;
+  const kind = kindFromKey(resolvedKey);
+  const config = kindConfigMap[kind] ?? defaultConfig;
 
+  const handleClick = () => {
+    if (!metadata) return;
     showResourceSidebar({
       pluginID: metadata.pluginID,
       connectionID: metadata.connectionID,
-      resourceKey: keyMap ? keyMap[resourceKey] ?? resourceKey : resourceKey,
+      resourceKey: resolvedKey,
       resourceID,
       namespace,
     });
   };
 
-  if (typeof value !== 'string' && !resourceKey) {
-    return null;
-  }
+  const label = displayId
+    ? resourceID
+    : typeof value === 'string' ? value : resourceKey;
 
-  if (displayId) {
+  if (!displayId) {
     return (
-      <Chip
-        size='sm'
-        variant='soft'
-        color={typeof value === 'string' ? 'neutral' : 'primary'}
-        sx={{
-          borderRadius: 'sm',
-        }}
-        onClick={handleClick}>
-        <Typography level='body-xs' noWrap>
-          {resourceID}
-        </Typography>
-      </Chip>
+      <Tooltip content={resourceID}>
+        <Chip
+          size='xs'
+          emphasis='outline'
+          color={config.color}
+          icon={config.icon}
+          onClick={handleClick}
+          label={<Text size='xs' noWrap>{label}</Text>}
+          sx={{ borderRadius: 1, maxWidth: '100%' }}
+        />
+      </Tooltip>
     );
   }
 
   return (
-    <Tooltip size='sm' variant='plain' title={resourceID}>
-      <Chip
-        size='sm'
-        variant='soft'
-        color={typeof value === 'string' ? 'neutral' : 'primary'}
-        sx={{
-          borderRadius: 'sm',
-        }}
-        onClick={handleClick}>
-        <Typography level='body-xs' noWrap>
-          {typeof value === 'string' ? value : resourceKey}
-        </Typography>
-      </Chip>
-    </Tooltip>
+    <Chip
+      size='xs'
+      emphasis='outline'
+      color={config.color}
+      icon={config.icon}
+      onClick={handleClick}
+      label={<Text size='xs' noWrap>{label}</Text>}
+      sx={{ borderRadius: 1, maxWidth: '100%' }}
+    />
   );
 };
 

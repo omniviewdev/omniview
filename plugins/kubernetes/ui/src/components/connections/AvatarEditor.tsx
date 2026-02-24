@@ -1,5 +1,10 @@
 import React from 'react';
-import { Avatar, Box, Button, Stack, Typography } from '@mui/joy';
+import { Avatar } from '@omniviewdev/ui';
+import MuiAvatar from '@mui/material/Avatar';
+import Box from '@mui/material/Box';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuUpload, LuPalette, LuRotateCcw } from 'react-icons/lu';
 import { PRESET_COLORS } from '../../utils/folderIcons';
 import { getInitials, processImageFile } from '../../utils/avatarUtils';
@@ -89,18 +94,17 @@ const AvatarEditor: React.FC<AvatarEditorProps> = ({
             sx={{ width: 96, height: 96, borderRadius: 'sm', '--Avatar-size': '96px' }}
           />
         ) : (
-          <Avatar
+          <MuiAvatar
             sx={{
               width: 96,
               height: 96,
               borderRadius: 'sm',
               bgcolor: bgColor,
               fontSize: '1.75rem',
-              '--Avatar-size': '96px',
             }}
           >
             {initials}
-          </Avatar>
+          </MuiAvatar>
         )}
         {/* Hover overlay */}
         <Box
@@ -127,18 +131,18 @@ const AvatarEditor: React.FC<AvatarEditorProps> = ({
       <Stack direction='row' gap={0.75}>
         <Button
           size='sm'
-          variant='outlined'
+          emphasis='outline'
           color='neutral'
-          startDecorator={<LuUpload size={14} />}
+          startAdornment={<LuUpload size={14} />}
           onClick={() => fileInputRef.current?.click()}
         >
           Upload
         </Button>
         <Button
           size='sm'
-          variant={showColors ? 'solid' : 'outlined'}
+          emphasis={showColors ? 'solid' : 'outline'}
           color={showColors ? 'primary' : 'neutral'}
-          startDecorator={<LuPalette size={14} />}
+          startAdornment={<LuPalette size={14} />}
           onClick={() => setShowColors(v => !v)}
         >
           Color
@@ -146,9 +150,9 @@ const AvatarEditor: React.FC<AvatarEditorProps> = ({
         {(avatarUrl || avatarColor) && (
           <Button
             size='sm'
-            variant='outlined'
+            emphasis='outline'
             color='neutral'
-            startDecorator={<LuRotateCcw size={14} />}
+            startAdornment={<LuRotateCcw size={14} />}
             onClick={handleReset}
           >
             Reset
@@ -189,9 +193,9 @@ const AvatarEditor: React.FC<AvatarEditorProps> = ({
 
       {/* Error */}
       {error && (
-        <Typography level='body-xs' color='danger'>
+        <Text size='xs' color='danger'>
           {error}
-        </Typography>
+        </Text>
       )}
     </Stack>
   );

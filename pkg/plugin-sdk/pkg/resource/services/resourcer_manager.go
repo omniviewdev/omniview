@@ -26,6 +26,8 @@ type ResourcerManager[ClientT any] interface {
 	// GetResourcer returns the resourcer for the given resource type.
 	// It first tries an exact match in the store, then falls back to pattern matching.
 	GetResourcer(resourceType string) (types.Resourcer[ClientT], error)
+	// GetResourcers returns all exact-match registered resourcers.
+	GetResourcers() map[string]types.Resourcer[ClientT]
 }
 
 // patternEntry holds a pattern string and its associated resourcer for fallback matching.
@@ -121,6 +123,18 @@ func (r *resourcerManager[ClientT]) RegisterPatternResourcersFromMap(
 		})
 	}
 	return nil
+}
+
+// GetResourcers returns all exact-match registered resourcers.
+func (r *resourcerManager[ClientT]) GetResourcers() map[string]types.Resourcer[ClientT] {
+	r.RLock()
+	defer r.RUnlock()
+
+	result := make(map[string]types.Resourcer[ClientT], len(r.store))
+	for k, v := range r.store {
+		result[k] = v
+	}
+	return result
 }
 
 // DeregisterResourcer deregisters the resourcer for the given resource type.

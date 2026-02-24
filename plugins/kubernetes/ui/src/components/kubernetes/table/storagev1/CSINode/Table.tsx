@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuHardDrive, LuCode, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuHardDrive, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import { ChipListCell } from '../../shared/cells/ChipList'
 import CSINodeSidebar from './Sidebar'
 
@@ -57,18 +57,7 @@ const CSINodeTable: React.FC = () => {
   const drawer: DrawerComponent<CSINode> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuHardDrive />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <CSINodeSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: CSINodeSidebar }),
     actions: [
       {
         title: 'Delete',

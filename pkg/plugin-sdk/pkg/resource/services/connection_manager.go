@@ -218,13 +218,18 @@ func (r *connectionManager[ClientT]) LoadConnections(
 		}
 	}
 
-	// create the clients
+	// create/refresh the clients
 	for _, conn := range connections {
+		connCopy := conn
+		ctx.Connection = &connCopy
 		if _, ok := r.clients[conn.ID]; !ok {
-			ctx.Connection = &conn
 			client, clienterr := r.createClient(ctx)
 			if clienterr == nil {
 				r.clients[conn.ID] = client
+			}
+		} else if r.refreshClient != nil {
+			if err := r.refreshClient(ctx, r.clients[conn.ID]); err != nil {
+				log.Printf("failed to refresh client for connection %s: %v", conn.ID, err)
 			}
 		}
 	}

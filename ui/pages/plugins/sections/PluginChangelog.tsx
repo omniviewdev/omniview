@@ -1,7 +1,7 @@
 import React from 'react';
 
 // Material-ui
-import Stack from '@mui/joy/Stack';
+import { Stack } from '@omniviewdev/ui/layout';
 
 // Mock data
 import mock from '../mock/kubernetes/changelog.json';

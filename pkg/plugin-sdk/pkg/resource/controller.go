@@ -22,6 +22,9 @@ func NewResourceController[ClientT any](
 	resourceTypeManager services.ResourceTypeManager,
 	layoutManager services.LayoutManager,
 	createInformerFunc types.CreateInformerHandleFunc[ClientT],
+	syncPolicies map[string]types.InformerSyncPolicy,
+	schemaFunc func(*pkgtypes.PluginContext, *ClientT) ([]types.EditorSchema, error),
+	errorClassifier func(error) error,
 ) types.ResourceProvider {
 	controller := &resourceController[ClientT]{
 		stopChan:            make(chan struct{}),
@@ -29,17 +32,23 @@ func NewResourceController[ClientT any](
 		connectionManager:   connectionManager,
 		resourceTypeManager: resourceTypeManager,
 		layoutManager:       layoutManager,
+		schemaFunc:          schemaFunc,
+		errorClassifier:     errorClassifier,
+		syncPolicies:        syncPolicies,
 	}
 	if createInformerFunc != nil {
 		controller.withInformer = true
 		controller.addChan = make(chan types.InformerAddPayload)
 		controller.updateChan = make(chan types.InformerUpdatePayload)
 		controller.deleteChan = make(chan types.InformerDeletePayload)
+		controller.stateChan = make(chan types.InformerStateEvent)
 		controller.informerManager = services.NewInformerManager(
 			createInformerFunc,
+			syncPolicies,
 			controller.addChan,
 			controller.updateChan,
 			controller.deleteChan,
+			controller.stateChan,
 		)
 	}
 	return controller
@@ -50,12 +59,26 @@ type resourceController[ClientT any] struct {
 	connectionManager   services.ConnectionManager[ClientT]
 	resourceTypeManager services.ResourceTypeManager
 	layoutManager       services.LayoutManager
+	schemaFunc          func(*pkgtypes.PluginContext, *ClientT) ([]types.EditorSchema, error)
+	errorClassifier     func(error) error
+	syncPolicies        map[string]types.InformerSyncPolicy
 	stopChan            chan struct{}
 	informerManager     *services.InformerManager[ClientT]
 	addChan             chan types.InformerAddPayload
 	updateChan          chan types.InformerUpdatePayload
 	deleteChan          chan types.InformerDeletePayload
+	stateChan           chan types.InformerStateEvent
 	withInformer        bool
+}
+
+// ClassifyResourceError delegates to the plugin's error classifier if one was provided.
+// This satisfies the types.ResourceErrorClassifier interface so the gRPC server can
+// type-assert and use it.
+func (c *resourceController[ClientT]) ClassifyResourceError(err error) error {
+	if c.errorClassifier != nil {
+		return c.errorClassifier(err)
+	}
+	return nil
 }
 
 // retrieveClientResourcer gets our client and resourcer outside to slim down the methods.
@@ -90,6 +113,13 @@ func (c *resourceController[ClientT]) retrieveClientResourcer(
 	return client, resourcer, nil
 }
 
+// ensureInformer triggers a lazy informer start for SyncOnFirstQuery resources.
+func (c *resourceController[ClientT]) ensureInformer(ctx *pkgtypes.PluginContext, resource string) {
+	if c.withInformer && ctx.Connection != nil {
+		_ = c.informerManager.EnsureResource(ctx.Connection.ID, resource)
+	}
+}
+
 // ================================= Operation Methods ================================= //
 
 // Get gets a resource within a resource namespace given an identifier and input options.
@@ -98,6 +128,7 @@ func (c *resourceController[ClientT]) Get(
 	resource string,
 	input types.GetInput,
 ) (*types.GetResult, error) {
+	c.ensureInformer(ctx, resource)
 	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
@@ -111,6 +142,7 @@ func (c *resourceController[ClientT]) List(
 	resource string,
 	input types.ListInput,
 ) (*types.ListResult, error) {
+	c.ensureInformer(ctx, resource)
 	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
@@ -124,6 +156,7 @@ func (c *resourceController[ClientT]) Find(
 	resource string,
 	input types.FindInput,
 ) (*types.FindResult, error) {
+	c.ensureInformer(ctx, resource)
 	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve client and resourcer: %w", err)
@@ -179,17 +212,12 @@ func (c *resourceController[ClientT]) HasInformer(
 	return c.informerManager.HasInformer(ctx, connectionID)
 }
 
-// StartContextInformer signals to the listen runner to start the informer for the given context.
-// If the informer is not enabled, this method will return a nil error.
-//
-// This typically should not be called by the client, but there may be situations where we need
-// to start the informer manually. This gets handled on the StartConnection method.
+// StartConnectionInformer signals to the listen runner to start the informer for the given context.
 func (c *resourceController[ClientT]) StartConnectionInformer(
 	ctx *pkgtypes.PluginContext,
 	connectionID string,
 ) error {
 	if !c.withInformer {
-		// safety guard just in case
 		return nil
 	}
 
@@ -201,32 +229,28 @@ func (c *resourceController[ClientT]) StartConnectionInformer(
 		return fmt.Errorf("unable to get connection client: %w", err)
 	}
 
-	// first create the connection informer
 	if err = c.informerManager.CreateConnectionInformer(ctx, ctx.Connection, client); err != nil {
 		return err
 	}
 
-	// get all the resource types
 	resourceTypes := c.GetResourceTypes(connectionID)
 	log.Println("got resource types in StartConnectionInformer: ", resourceTypes)
-	for _, resource := range resourceTypes {
-		if err = c.informerManager.RegisterResource(ctx, ctx.Connection, resource); err != nil {
-			// don't fail - just log
+	for key, resource := range resourceTypes {
+		policy := c.syncPolicies[key] // defaults to SyncOnConnect (zero value)
+		if err = c.informerManager.RegisterResource(ctx, ctx.Connection, resource, policy); err != nil {
 			log.Printf("unable to register resource: %s", err.Error())
 		}
 	}
 
-	// finally, start it
 	return c.informerManager.StartConnection(ctx, connectionID)
 }
 
-// StopContextInformer signals to the listen runner to stop the informer for the given context.
+// StopConnectionInformer signals to the listen runner to stop the informer for the given context.
 func (c *resourceController[ClientT]) StopConnectionInformer(
 	ctx *pkgtypes.PluginContext,
 	connectionID string,
 ) error {
 	if !c.withInformer {
-		// safety guard just in case
 		return nil
 	}
 	if err := c.connectionManager.InjectConnection(ctx, connectionID); err != nil {
@@ -237,28 +261,49 @@ func (c *resourceController[ClientT]) StopConnectionInformer(
 		return fmt.Errorf("unable to stop connection: %w", err)
 	}
 
-	// remake the client
 	return c.connectionManager.RefreshConnectionClient(ctx, connectionID)
 }
 
 // ListenForEvents listens for events from the informer and sends them to the given event channels.
-// This method will block until the context is cancelled, and given this will block, the parent
-// gRPC plugin host will spin this up in a goroutine.
 func (c *resourceController[ClientT]) ListenForEvents(
 	ctx *pkgtypes.PluginContext,
 	addChan chan types.InformerAddPayload,
 	updateChan chan types.InformerUpdatePayload,
 	deleteChan chan types.InformerDeletePayload,
+	stateChan chan types.InformerStateEvent,
 ) error {
 	if !c.withInformer {
 		log.Println("informer not enabled")
 		return nil
 	}
-	if err := c.informerManager.Run(c.stopChan, addChan, updateChan, deleteChan); err != nil {
+	if err := c.informerManager.Run(c.stopChan, addChan, updateChan, deleteChan, stateChan); err != nil {
 		log.Println("error running informer manager:", err)
 		return fmt.Errorf("error running informer manager: %w", err)
 	}
 	return nil
+}
+
+// GetInformerState returns a snapshot of all resource informer states for a connection.
+func (c *resourceController[ClientT]) GetInformerState(
+	_ *pkgtypes.PluginContext,
+	connectionID string,
+) (*types.InformerConnectionSummary, error) {
+	if !c.withInformer {
+		return nil, nil
+	}
+	return c.informerManager.GetConnectionState(connectionID)
+}
+
+// EnsureInformerForResource triggers lazy start for SyncOnFirstQuery resources.
+func (c *resourceController[ClientT]) EnsureInformerForResource(
+	_ *pkgtypes.PluginContext,
+	connectionID string,
+	resourceKey string,
+) error {
+	if !c.withInformer {
+		return nil
+	}
+	return c.informerManager.EnsureResource(connectionID, resourceKey)
 }
 
 // ================================= Connection Methods ================================= //
@@ -272,12 +317,10 @@ func (c *resourceController[ClientT]) StartConnection(
 	if err != nil {
 		return conn, fmt.Errorf("unable to start connection: %w", err)
 	}
-	// don't start the informer if the connection is not connected and valid
 	if conn.Status != pkgtypes.ConnectionStatusConnected {
 		return conn, nil
 	}
 
-	// sync the resource types
 	if err := c.resourceTypeManager.SyncConnection(ctx, conn.Connection); err != nil {
 		conn.Status = pkgtypes.ConnectionStatusError
 		conn.Error = err.Error()
@@ -285,7 +328,6 @@ func (c *resourceController[ClientT]) StartConnection(
 		return conn, nil
 	}
 
-	// check if has informer. if so, start it
 	return conn, c.StartConnectionInformer(ctx, connectionID)
 }
 
@@ -300,15 +342,14 @@ func (c *resourceController[ClientT]) StopConnection(
 	return c.connectionManager.StopConnection(ctx, connectionID)
 }
 
-// LoadConnections calls the custom connection loader func to provide the the IDE the possible connections
-// available.
+// LoadConnections calls the custom connection loader func.
 func (c *resourceController[ClientT]) LoadConnections(
 	ctx *pkgtypes.PluginContext,
 ) ([]pkgtypes.Connection, error) {
 	return c.connectionManager.LoadConnections(ctx)
 }
 
-// ListConnections calls the custom connection loader func to provide the the IDE the possible connections.
+// ListConnections calls the custom connection loader func.
 func (c *resourceController[ClientT]) ListConnections(
 	ctx *pkgtypes.PluginContext,
 ) ([]pkgtypes.Connection, error) {
@@ -357,25 +398,21 @@ func (c *resourceController[ClientT]) WatchConnections(
 
 // ================================= Resource Type Methods ================================= //
 
-// GetResourceGroups gets the resource groups available to the resource controller.
 func (c *resourceController[ClientT]) GetResourceGroups(
 	connID string,
 ) map[string]types.ResourceGroup {
 	return c.resourceTypeManager.GetGroups(connID)
 }
 
-// GetResourceGroup gets the resource group by its name.
 func (c *resourceController[ClientT]) GetResourceGroup(
 	name string,
 ) (types.ResourceGroup, error) {
 	return c.resourceTypeManager.GetGroup(name)
 }
 
-// GetResourceTypes gets the resource types available to the resource controller.
 func (c *resourceController[ClientT]) GetResourceTypes(
 	connID string,
 ) map[string]types.ResourceMeta {
-	// switch this to be the other
 	res, err := c.resourceTypeManager.GetConnectionResourceTypes(connID)
 	if err != nil {
 		return map[string]types.ResourceMeta{}
@@ -389,19 +426,16 @@ func (c *resourceController[ClientT]) GetResourceTypes(
 	return resources
 }
 
-// GetResourceType gets the resource type information by its string representation.
 func (c *resourceController[ClientT]) GetResourceType(
 	resource string,
 ) (*types.ResourceMeta, error) {
 	return c.resourceTypeManager.GetResourceType(resource)
 }
 
-// HasResourceType checks to see if the resource type exists.
 func (c *resourceController[ClientT]) HasResourceType(resource string) bool {
 	return c.resourceTypeManager.HasResourceType(resource)
 }
 
-// GetResourceDefinition gets the resource definition for the resource type.
 func (c *resourceController[ClientT]) GetResourceDefinition(
 	resource string,
 ) (types.ResourceDefinition, error) {
@@ -410,15 +444,13 @@ func (c *resourceController[ClientT]) GetResourceDefinition(
 
 // ================================= Action Methods ================================= //
 
-// GetActions returns available actions for a resource type by checking if
-// the resourcer implements the ActionResourcer interface.
 func (c *resourceController[ClientT]) GetActions(
 	ctx *pkgtypes.PluginContext,
 	resource string,
 ) ([]types.ActionDescriptor, error) {
 	client, resourcer, err := c.retrieveClientResourcer(ctx, resource)
 	if err != nil {
-		return nil, nil // no actions if resourcer not found
+		return nil, nil
 	}
 	ar, ok := resourcer.(types.ActionResourcer[ClientT])
 	if !ok {
@@ -427,7 +459,6 @@ func (c *resourceController[ClientT]) GetActions(
 	return ar.GetActions(ctx, client, types.ResourceMetaFromString(resource))
 }
 
-// ExecuteAction executes a named action on a resource.
 func (c *resourceController[ClientT]) ExecuteAction(
 	ctx *pkgtypes.PluginContext,
 	resource string,
@@ -445,7 +476,6 @@ func (c *resourceController[ClientT]) ExecuteAction(
 	return ar.ExecuteAction(ctx, client, types.ResourceMetaFromString(resource), actionID, input)
 }
 
-// StreamAction executes a streaming action on a resource.
 func (c *resourceController[ClientT]) StreamAction(
 	ctx *pkgtypes.PluginContext,
 	resource string,
@@ -462,6 +492,47 @@ func (c *resourceController[ClientT]) StreamAction(
 		return fmt.Errorf("resource type %s does not support streaming actions", resource)
 	}
 	return ar.StreamAction(ctx, client, types.ResourceMetaFromString(resource), actionID, input, stream)
+}
+
+// ================================= Schema Methods ================================= //
+
+func (c *resourceController[ClientT]) GetEditorSchemas(
+	ctx *pkgtypes.PluginContext,
+	connectionID string,
+) ([]types.EditorSchema, error) {
+	if err := c.connectionManager.InjectConnection(ctx, connectionID); err != nil {
+		return nil, fmt.Errorf("unable to inject connection: %w", err)
+	}
+
+	client, err := c.connectionManager.GetConnectionClient(ctx, connectionID)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get client for schema generation: %w", err)
+	}
+
+	var schemas []types.EditorSchema
+
+	if c.schemaFunc != nil {
+		s, err := c.schemaFunc(ctx, client)
+		if err != nil {
+			log.Printf("connection-level schema func error for %s: %s", connectionID, err)
+		} else {
+			schemas = append(schemas, s...)
+		}
+	}
+
+	for key, resourcer := range c.resourcerManager.GetResourcers() {
+		sr, ok := resourcer.(types.SchemaResourcer[ClientT])
+		if !ok {
+			continue
+		}
+		s, err := sr.GetEditorSchemas(ctx, client, types.ResourceMetaFromString(key))
+		if err != nil {
+			log.Printf("unable to get editor schemas for %s: %s", key, err)
+			continue
+		}
+		schemas = append(schemas, s...)
+	}
+	return schemas, nil
 }
 
 // ================================= Layout Methods ================================= //

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Tooltip, Typography } from '@mui/joy';
+import { Text } from '@omniviewdev/ui/typography';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 
 type Props = {
   value: string | undefined;
@@ -13,10 +14,10 @@ const ArnCell: React.FC<Props> = ({ value }) => {
   const short = parts.length > 5 ? parts.slice(5).join(':') : value;
 
   return (
-    <Tooltip title={value} size='sm'>
-      <Typography level='body-xs' noWrap sx={{ maxWidth: 200 }}>
+    <Tooltip title={value}>
+      <Text size="xs" sx={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {short}
-      </Typography>
+      </Text>
     </Tooltip>
   );
 };

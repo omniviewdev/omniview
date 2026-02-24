@@ -1,10 +1,12 @@
-import AspectRatio, { type AspectRatioProps } from '@mui/joy/AspectRatio';
+import { AspectRatio } from '@omniviewdev/ui';
+import type { ComponentProps } from 'react';
+
+type AspectRatioProps = ComponentProps<typeof AspectRatio>;
 
 export default function MuiLogo({ sx, ...props }: AspectRatioProps) {
   return (
     <AspectRatio
       ratio='1'
-      variant='plain'
       {...props}
       sx={[
         {

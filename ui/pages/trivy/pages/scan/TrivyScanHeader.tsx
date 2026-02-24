@@ -1,5 +1,10 @@
 import ClearIcon from '@mui/icons-material/Clear';
-import { Button, Input, Stack, Select, Option, ToggleButtonGroup, IconButton } from '@mui/joy';
+import { Button, IconButton } from '@omniviewdev/ui/buttons';
+import { TextField, Select } from '@omniviewdev/ui/inputs';
+import { Stack } from '@omniviewdev/ui/layout';
+import Box from '@mui/material/Box';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import ToggleButton from '@mui/material/ToggleButton';
 import React from 'react';
 
 import { trivy } from '@omniviewdev/runtime/models';
@@ -25,10 +30,10 @@ const TrivyScanHeader: React.FC<Props> = ({
 
   const handleChangeTarget = (
     _event: React.SyntheticEvent | null,
-    newValue: trivy.Command | null,
+    newValue: string | null,
   ) => {
     if (newValue) {
-      setTarget(newValue);
+      setTarget(newValue as trivy.Command);
     }
   };
 
@@ -54,45 +59,33 @@ const TrivyScanHeader: React.FC<Props> = ({
       gap={1.5}
       p={1}
       sx={{
-        backgroundColor: (theme) => theme.palette.background.surface,
+        backgroundColor: (theme) => theme.palette.background.paper,
       }}
     >
       <Select
         size='sm'
+        value={target}
+        onChange={(e) => handleChangeTarget(null, e.target.value)}
+        startAdornment={getDecorator()}
+        options={[
+          { value: trivy.Command.IMAGE, label: 'Image' },
+          { value: trivy.Command.FILESYSTEM, label: 'Filesystem' },
+          { value: trivy.Command.KUBERNETES, label: 'Kubernetes' },
+          { value: trivy.Command.SBOM, label: 'SBOM' },
+        ]}
         sx={{
           boxShadow: 'none',
           minWidth: 200,
         }}
-        value={target}
-        onChange={handleChangeTarget}
-        startDecorator={getDecorator()}
-      >
-        <Option value={trivy.Command.IMAGE}>
-          <LuContainer />
-          Image
-        </Option>
-        <Option value={trivy.Command.FILESYSTEM}>
-          <LuFileScan />
-          Filesystem
-        </Option>
-        <Option value={trivy.Command.KUBERNETES}>
-          <SiKubernetes />
-          Kubernetes
-        </Option>
-        <Option value={trivy.Command.SBOM}>
-          <LuFileText />
-          SBOM
-        </Option>
-      </Select>
+      />
 
-      <Input
+      <TextField
         size='sm'
         fullWidth
-        variant='outlined'
         autoComplete='off'
         type='text'
         placeholder={'Specify a target'}
-        endDecorator={value ? (
+        endAdornment={value ? (
           <IconButton
             sx={{ padding: 0 }}
             onClick={handleClear}
@@ -115,30 +108,22 @@ const TrivyScanHeader: React.FC<Props> = ({
           },
           '--wails-draggable': 'no-drag',
         }}
-        slotProps={{
-          input: {
-            // Keep the input from auto capitalizing and autocorrecting, doesn't work
-            // without both the input and the inputProps
-            autoCorrect: 'off',
-            autoComplete: 'off',
-          },
-        }}
       />
       <ToggleButtonGroup
-        size='sm'
+        size='small'
         value={scanners}
         onChange={(_, newValue) => {
           setScanners(newValue);
         }}
       >
-        <Button color={'primary'} value={trivy.Scanner.VULN}>Vulnerability</Button>
-        <Button color={'primary'} value={trivy.Scanner.SECRET}>Secret</Button>
-        <Button color={'primary'} value={trivy.Scanner.MISCONFIG}>Misconfiguration</Button>
-        <Button color={'primary'} value={trivy.Scanner.LICENSE}>License</Button>
+        <ToggleButton color='primary' value={trivy.Scanner.VULN}>Vulnerability</ToggleButton>
+        <ToggleButton color='primary' value={trivy.Scanner.SECRET}>Secret</ToggleButton>
+        <ToggleButton color='primary' value={trivy.Scanner.MISCONFIG}>Misconfiguration</ToggleButton>
+        <ToggleButton color='primary' value={trivy.Scanner.LICENSE}>License</ToggleButton>
       </ToggleButtonGroup>
       <Button
         size='sm'
-        variant='solid'
+        emphasis='solid'
         sx={{
           minWidth: 100,
         }}

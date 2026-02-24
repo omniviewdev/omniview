@@ -11,13 +11,16 @@ if (!mod) {
 }
 
 export const config = mod.config;
+export const devserver = mod.devserver;
 export const exec = mod.exec;
 export const logs = mod.logs;
 export const main = mod.main;
+export const metric = mod.metric;
 export const networker = mod.networker;
 export const plugin = mod.plugin;
 export const registry = mod.registry;
 export const settings = mod.settings;
+export const time = mod.time;
 export const trivy = mod.trivy;
 export const types = mod.types;
 export const ui = mod.ui;

@@ -223,12 +223,35 @@ export default function TimeSeriesChart({
 
   const isEmpty = series.length === 0 || series.every((s) => s.data.length === 0);
 
-  // Build the x-axis timestamps from the first series that has data (they should align)
-  const xData = useMemo(() => {
-    for (const s of series) {
-      if (s.data.length > 0) return s.data.map((p) => new Date(p.timestamp));
+  // Build aligned x-axis and series data. Different Prometheus queries can
+  // return slightly different numbers of data points, so we unify timestamps
+  // across all series and fill gaps with null.
+  const { xData, alignedValues } = useMemo(() => {
+    if (series.length === 0 || series.every((s) => s.data.length === 0)) {
+      return { xData: [] as Date[], alignedValues: series.map(() => [] as (number | null)[]) };
     }
-    return [];
+
+    // Collect all unique timestamps across all series
+    const tsSet = new Set<number>();
+    for (const s of series) {
+      for (const p of s.data) {
+        tsSet.add(p.timestamp);
+      }
+    }
+
+    const timestamps = Array.from(tsSet).sort((a, b) => a - b);
+    const xData = timestamps.map((t) => new Date(t));
+
+    // For each series, build a lookup and align to the unified timestamps
+    const alignedValues = series.map((s) => {
+      const lookup = new Map<number, number>();
+      for (const p of s.data) {
+        lookup.set(p.timestamp, p.value);
+      }
+      return timestamps.map((t) => lookup.get(t) ?? null);
+    });
+
+    return { xData, alignedValues };
   }, [series]);
 
   const muiSeries = useMemo(
@@ -236,7 +259,7 @@ export default function TimeSeriesChart({
       series.map((s, i) => ({
         id: s.id,
         label: s.label,
-        data: s.data.map((p) => p.value),
+        data: alignedValues[i] ?? [],
         color: s.color ? resolveChartColor(s.color) : palette[i % palette.length],
         area: s.area ?? area,
         showMark: showMarks,
@@ -244,7 +267,7 @@ export default function TimeSeriesChart({
         ...(s.lineStyle === 'dashed' ? { strokeDasharray: '6 3' } : {}),
         ...(s.lineStyle === 'dotted' ? { strokeDasharray: '2 2' } : {}),
       })),
-    [series, area, showMarks, fmt, palette],
+    [series, alignedValues, area, showMarks, fmt, palette],
   );
 
   // Margin = space between SVG edge and axis area. Axis width/height is separate.

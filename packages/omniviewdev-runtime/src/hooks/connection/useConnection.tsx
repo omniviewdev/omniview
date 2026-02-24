@@ -30,10 +30,17 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
     onSuccess(data) {
       // update the cache
       queryClient.setQueryData(queryKey, data);
+      // Invalidate editor schemas so they get fetched for the new connection
+      void queryClient.invalidateQueries({
+        queryKey: ['EDITOR_SCHEMAS', pluginID, connectionID],
+      });
     },
     onError(error) {
-      console.log(error)
-      showSnackbar(`Failed to start connection: ${error.message}`, 'error');
+      showSnackbar({
+        message: 'Failed to start connection',
+        status: 'error',
+        details: typeof error === 'string' ? error : error?.message ?? String(error),
+      });
     },
   });
 
@@ -44,15 +51,18 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
       queryClient.setQueryData(queryKey, data);
     },
     onError(error) {
-      console.log(error)
-      showSnackbar(`Failed to stop connection: ${error.message}`, 'error');
+      showSnackbar({
+        message: 'Failed to stop connection',
+        status: 'error',
+        details: typeof error === 'string' ? error : error?.message ?? String(error),
+      });
     },
   });
 
   const { mutateAsync: updateConnection } = useMutation({
     mutationFn: async (conn: types.Connection) => UpdateConnection(pluginID, conn),
     onSuccess(data, { name }) {
-      showSnackbar(`Connection ${name} sucessfully updated`, 'success');
+      showSnackbar({ message: `Connection ${name} successfully updated`, status: 'success' });
       // Update the list and detail
       queryClient.setQueryData(queryKey, connection);
       queryClient.setQueriesData(
@@ -61,15 +71,18 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
       );
     },
     onError(error) {
-      console.log(error)
-      showSnackbar(`Failed to update connection: ${error.message}`, 'error');
+      showSnackbar({
+        message: 'Failed to update connection',
+        status: 'error',
+        details: typeof error === 'string' ? error : error?.message ?? String(error),
+      });
     },
   });
 
   const { mutateAsync: deleteConnection } = useMutation({
     mutationFn: async () => RemoveConnection(pluginID, connectionID),
     onSuccess() {
-      showSnackbar('Connection successfully removed', 'success');
+      showSnackbar({ message: 'Connection successfully removed', status: 'success' });
 
       queryClient.setQueryData(queryKey, undefined);
       queryClient.setQueriesData(
@@ -78,8 +91,11 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
       );
     },
     onError(error) {
-      console.log(error)
-      showSnackbar(`Failed to remove connection: ${error.message}`, 'error');
+      showSnackbar({
+        message: 'Failed to remove connection',
+        status: 'error',
+        details: typeof error === 'string' ? error : error?.message ?? String(error),
+      });
     },
   });
 

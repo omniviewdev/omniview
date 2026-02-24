@@ -78,8 +78,11 @@ export const dataDisplayCustomizations: Components<Theme> = {
     defaultProps: { elevation: 0 },
     styleOverrides: {
       root: ({ theme }) => ({
+        display: 'flex',
+        flexDirection: 'column' as const,
         padding: 16,
         gap: 16,
+        overflow: 'visible',
         transition: 'all 150ms ease-in-out',
         backgroundColor: gray[50],
         borderRadius: theme.shape.borderRadius,
@@ -265,10 +268,10 @@ export const dataDisplayCustomizations: Components<Theme> = {
   },
   MuiAvatar: {
     styleOverrides: {
-      root: ({ theme }) => ({
-        backgroundColor: brand[500], color: '#ffffff', fontWeight: 600,
-        ...theme.applyStyles('dark', { backgroundColor: brand[400] }),
-      }),
+      root: {
+        color: '#ffffff',
+        fontWeight: 600,
+      },
     },
   },
   MuiDivider: {

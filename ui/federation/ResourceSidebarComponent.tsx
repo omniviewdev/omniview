@@ -1,13 +1,13 @@
 import React from 'react';
 
 // material-ui
-import Chip from '@mui/joy/Chip';
-import CircularProgress from '@mui/joy/CircularProgress';
-import Divider from '@mui/joy/Divider';
-import IconButton from '@mui/joy/IconButton';
-import Stack from '@mui/joy/Stack';
-import Sheet from '@mui/joy/Sheet';
-import Typography from '@mui/joy/Typography';
+import { Chip } from '@omniviewdev/ui';
+import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
+import Box from '@mui/material/Box';
+import { IconButton, Button } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 
 
 // project imports
@@ -30,7 +30,6 @@ import { LuFileCode, LuFileDiff, LuList, LuPencil, LuRotateCw, LuX } from 'react
 // third-party
 import { parse, stringify } from 'yaml';
 import MonacoEditor, { DiffEditor } from '@monaco-editor/react';
-import { Box, Button, ToggleButtonGroup } from '@mui/joy';
 
 type Props = {
   pluginID: string;
@@ -48,16 +47,15 @@ const ResourceDrawerDecorator: React.FC<{
   return (
     <Chip
       size="lg"
-      variant="soft"
+      emphasis="soft"
       sx={{ borderRadius: 'sm' }}
-      startDecorator={
+      icon={
         (icon !== undefined && icon !== '') ? (
           typeof icon === 'string' ? <Icon name={icon} size={16} /> : icon
-        ) : null
+        ) : undefined
       }
-    >
-      <Typography level="title-sm">{type}</Typography>
-    </Chip>
+      label={<Text weight="semibold" size="sm">{type}</Text>}
+    />
   );
 };
 
@@ -104,7 +102,7 @@ const ResourceDrawerContainer: React.FC<Props> = ({
 
   if (resource.isLoading || resourceType.isLoading) {
     return (
-      <Stack height='100%' width='100%' spacing={2} direction="column" justifyContent={'center'} alignItems="center">
+      <Stack sx={{ height: '100%', width: '100%' }} gap={2} direction="column" justify="center" align="center">
         <CircularProgress />
       </Stack>
     );
@@ -115,41 +113,38 @@ const ResourceDrawerContainer: React.FC<Props> = ({
   }
 
   return (
-    <Sheet
+    <Box
       sx={{
-        borderRadius: 'md',
-        p: 0.5,
+        borderRadius: 2,
         display: 'flex',
         flexDirection: 'column',
-        gap: 0.5,
         minHeight: '100%',
         maxHeight: '100%',
         overflow: 'auto',
+        bgcolor: 'background.paper',
       }}
     >
-      <Stack pr={0.5} direction="row" alignItems="center" justifyContent={'space-between'}>
-        <Typography level="title-md" sx={{ flexGrow: 0, pl: 1 }} noWrap>{resourceID}</Typography>
-        <Stack direction="row" gap={1}>
-        </Stack>
-        <Stack direction="row" gap={1}>
-          <ToggleButtonGroup
-            size='sm'
-            value={view}
-            onChange={(_event, newView) => {
-              if (newView) {
-                setView(newView);
-              }
-            }}
-          >
-            <IconButton value="view">
+      <Stack sx={{ px: 0.5, py: 0.25 }} direction="row" align="center" justify="between">
+        <Text weight="semibold" size="sm" noWrap sx={{ flexGrow: 0, pl: 0.5 }}>{resourceID}</Text>
+        <Stack direction="row" gap={0.5} align="center">
+          <Box sx={{ display: 'flex', gap: 0 }}>
+            <IconButton
+              emphasis={view === 'view' ? 'soft' : 'ghost'}
+              size="sm"
+              onClick={() => setView('view')}
+            >
               <LuList />
             </IconButton>
-            <IconButton value="edit">
+            <IconButton
+              emphasis={view === 'edit' ? 'soft' : 'ghost'}
+              size="sm"
+              onClick={() => setView('edit')}
+            >
               <LuPencil />
             </IconButton>
-          </ToggleButtonGroup>
+          </Box>
           <ResourceDrawerDecorator icon={resourceType.data?.icon} type={resourceKey} />
-          <IconButton variant="outlined" size="sm" onClick={onClose}>
+          <IconButton emphasis="outline" size="sm" onClick={onClose}>
             <LuX size={20} />
           </IconButton>
         </Stack>
@@ -182,7 +177,7 @@ const ResourceDrawerContainer: React.FC<Props> = ({
           onCancel={onResourceCancel}
         />
       </Box>
-    </Sheet>
+    </Box>
   );
 };
 
@@ -302,8 +297,7 @@ const ResourceEditor: React.FC<ResourceEditorProps> = ({ resourceKey, data, data
     <Stack
       direction="column"
       gap={1}
-      display='flex'
-      flex={1}
+      sx={{ display: 'flex', flex: 1 }}
     >
       {viewDiff ? (
         <DiffEditor
@@ -332,33 +326,33 @@ const ResourceEditor: React.FC<ResourceEditorProps> = ({ resourceKey, data, data
           onChange={handleChange}
         />
       )}
-      <Stack direction="row" justifyContent={'space-between'} gap={1}>
+      <Stack direction="row" justify="between" gap={1}>
         <Stack direction="row" gap={1}>
           <Button
-            variant='soft'
+            emphasis='soft'
             color='primary'
             disabled={!changed}
             onClick={handleSubmit}
           >Submit</Button>
           <Button
-            variant='outlined'
+            emphasis='outline'
             color='neutral'
             onClick={handleCancel}
           >Cancel</Button>
         </Stack>
         <Stack direction="row" gap={1}>
           <Button
-            variant='outlined'
+            emphasis='outline'
             color='warning'
-            startDecorator={<LuRotateCw size={16} />}
+            startAdornment={<LuRotateCw size={16} />}
             onClick={() => {
               setValue(originalData);
               setChanged(false);
             }}
           >Reset Changes</Button>
           <Button
-            variant='outlined'
-            startDecorator={viewDiff ? <LuFileCode size={18} /> : <LuFileDiff size={16} />}
+            emphasis='outline'
+            startAdornment={viewDiff ? <LuFileCode size={18} /> : <LuFileDiff size={16} />}
             onClick={() => {
               setViewDiff(!viewDiff);
             }}
@@ -431,7 +425,7 @@ const ResourceSidebarComponent: React.FC<ResourceSidebarComponentProps> = ({ plu
 
   if (component.isLoading) {
     return (
-      <Stack height='100%' width='100%' spacing={2} direction="column" justifyContent={'center'} alignItems="center">
+      <Stack sx={{ height: '100%', width: '100%' }} gap={2} direction="column" justify="center" align="center">
         <CircularProgress />
       </Stack>
     );

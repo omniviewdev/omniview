@@ -1,7 +1,7 @@
 import React from "react";
 
 // material-ui
-import Stack from "@mui/joy/Stack";
+import { Stack } from "@omniviewdev/ui/layout";
 
 // types
 import { ValidatingAdmissionPolicyBinding } from "kubernetes-types/admissionregistration/v1";

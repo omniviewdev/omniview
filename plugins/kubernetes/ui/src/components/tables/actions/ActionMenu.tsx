@@ -1,15 +1,11 @@
 import React from 'react';
 
-// material-ui
-import {
-  IconButton,
-  List,
-  styled,
-} from '@mui/joy';
-import {
-  Unstable_Popup as BasePopup,
-  ClickAwayListener,
-} from '@mui/base';
+// @omniviewdev/ui
+import Box from '@mui/material/Box';
+import { styled } from '@mui/material/styles';
+import ClickAwayListener from '@mui/material/ClickAwayListener';
+import Popper from '@mui/material/Popper';
+import { IconButton } from '@omniviewdev/ui/buttons';
 
 // project imports
 import ExecAction from './ExecAction';
@@ -39,7 +35,7 @@ const PopupBody = styled('div')(
   width: max-content;
   border-radius: 8px;
   border: 1px solid ${theme.palette.divider};
-  background-color: ${theme.palette.background.popup};
+  background-color: ${theme.palette.background.paper};
   box-shadow: ${theme.palette.mode === 'dark'
       ? '0px 4px 8px rgb(0 0 0 / 0.7)'
       : '0px 4px 8px rgb(0 0 0 / 0.1)'
@@ -51,8 +47,6 @@ const PopupBody = styled('div')(
 );
 
 const ActionMenu: React.FC<Props> = (props) => {
-  // run our tooltip from the parent so we only render one of them
-  // eslint-disable-next-line @typescript-eslint/ban-types
   const [selected, setSelected] = React.useState<HTMLElement | null>(null);
 
   const handleClick = React.useCallback((event: React.MouseEvent<HTMLElement>) => {
@@ -61,7 +55,6 @@ const ActionMenu: React.FC<Props> = (props) => {
 
   const open = Boolean(selected);
 
-  // dismiss the menu when the user scrolls
   React.useEffect(() => {
     const handleScroll = () => {
       setSelected(null);
@@ -77,7 +70,7 @@ const ActionMenu: React.FC<Props> = (props) => {
     <>
       <IconButton
         size="sm"
-        variant="plain"
+        emphasis="ghost"
         sx={{
           flex: 'none',
           minHeight: 28,
@@ -87,11 +80,11 @@ const ActionMenu: React.FC<Props> = (props) => {
       >
         <MoreHorizRounded />
       </IconButton>
-      <BasePopup
+      <Popper
         style={{ zIndex: 9999 }}
         id={'resource-context-menu'}
         open={open}
-        anchor={selected}
+        anchorEl={selected}
         placement={'bottom-end'}
       >
         <ClickAwayListener
@@ -105,7 +98,7 @@ const ActionMenu: React.FC<Props> = (props) => {
             }} />
           </PopupBody>
         </ClickAwayListener>
-      </BasePopup>
+      </Popper>
     </>
   );
 };
@@ -136,7 +129,6 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
             if (id === latestId) {
               return undefined;
             }
-
             return latestId;
           });
         }
@@ -144,21 +136,21 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
     };
 
   return (
-    <List
-      size='sm'
-      variant="outlined"
+    <Box
+      component='ul'
       sx={{
+        listStyle: 'none',
         maxWidth: 400,
         minWidth: 110,
         borderRadius: 'sm',
+        border: '1px solid',
+        borderColor: 'divider',
         backgroundColor: 'background.body',
         paddingBlock: 0,
         paddingX: '2px',
+        m: 0,
+        p: 0,
         '--IconButton-size': '28px',
-        '--ListItem-paddingRight': '0px',
-        '--ListItem-paddingLeft': '0px',
-        '--ListItem-paddingY': '0px',
-        '--ListItem-gap': '0px',
       }}
     >
       {actions.exec && <ExecAction
@@ -192,7 +184,7 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
         }}
         handleDismiss={dismissMenu}
       />
-    </List>
+    </Box>
   );
 };
 

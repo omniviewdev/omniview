@@ -1,8 +1,8 @@
 import React from 'react';
 
 // material ui
-import Box from '@mui/joy/Box';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import { Text } from '@omniviewdev/ui/typography';
 
 type Props = {
   /** The text value to render */
@@ -43,21 +43,21 @@ export const TextRow: React.FC<Props> = ({ align, value, color, colorMap, startD
   }
 
   return (
-    <Box 
-      display='flex' 
-      flex={1} 
+    <Box
+      display='flex'
+      flex={1}
       justifyContent={getAlignment()}
       alignItems='center'
     >
-      <Typography 
-        level='body-xs'
+      {startDecorator}
+      <Text
+        size='xs'
         color={getColor()}
-        startDecorator={startDecorator}
-        endDecorator={endDecorator}
         noWrap
       >
         {value}
-      </Typography>
+      </Text>
+      {endDecorator}
     </Box>
   );
 }

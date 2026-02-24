@@ -1,10 +1,11 @@
 import { type FC } from 'react';
 
 // material-ui
-import Box from '@mui/joy/Box';
-import CircularProgress from '@mui/joy/CircularProgress';
-import Typography from '@mui/joy/Typography';
-import Alert from '@mui/joy/Alert';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Text, Heading } from '@omniviewdev/ui/typography';
+import { Alert } from '@omniviewdev/ui/feedback';
+import { Stack } from '@omniviewdev/ui/layout';
 
 // icons
 import { LuCircleAlert } from 'react-icons/lu';
@@ -97,33 +98,41 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
           },
         },
       }}>
-        <CircularProgress size={'lg'} thickness={8} />
-        <Typography level='title-lg'>
+        <CircularProgress size={40} thickness={8} />
+        <Text weight="semibold" size="lg">
           Loading {resourceKey} resources...
-        </Typography>
+        </Text>
       </Box>
     );
   }
 
   if (isError || resources.isError) {
-    let errstring = resources.error?.toString();
+    const errstring = typeof resources.error === 'string'
+      ? resources.error
+      : resources.error?.toString() ?? '';
     console.error('Failed loading resources', errstring);
-    let error = <p>{'An error occurred while loading resources'}</p>;
-    if (errstring?.includes('could not find the requested resource')) {
-      error = <div>
-        <span>{'The resource group could not be found. This may be the result of'}</span>
-        <ol>
-          <li>{'The resource group does not exist (for this connection)'}</li>
-          <li>{'The resource group has been deleted (for this connection)'}</li>
-          <li>{'You do not have permission to access the resource group'}</li>
-        </ol>
-      </div>;
+
+    // Try to parse structured error JSON from the plugin (ResourceOperationError.Error()
+    // returns JSON that survives the Wails boundary).
+    let title = 'Failed to load resources';
+    let detail = errstring;
+    let suggestions: string[] = [];
+
+    try {
+      const parsed = JSON.parse(errstring);
+      if (parsed && typeof parsed.code === 'string' && typeof parsed.title === 'string') {
+        title = parsed.title;
+        detail = parsed.message ?? errstring;
+        suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
+      }
+    } catch {
+      // Not JSON — use raw string as detail (fallback for unstructured errors).
     }
 
     return (
       <Box sx={{
         display: 'flex',
-        gap: 4,
+        gap: 2,
         justifyContent: 'center',
         flexDirection: 'column',
         alignItems: 'center',
@@ -132,18 +141,45 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
         userSelect: 'none',
       }}>
         <Alert
-          variant='soft'
+          emphasis='soft'
           size='lg'
-          startDecorator={<LuCircleAlert size={20} />}
+          startAdornment={<LuCircleAlert size={20} />}
           color='danger'
         >
-          <Typography level='title-lg' color='danger'>
-            Failed loading {resourceKey} resources
-          </Typography>
+          <Heading level="h4" sx={{ color: 'danger.main' }}>
+            {title}
+          </Heading>
         </Alert>
-        <Typography level='body-sm' color='danger' textAlign={'center'} maxWidth={500} flexWrap='wrap'>
-          {error}
-        </Typography>
+        <Stack direction="column" spacing={1} sx={{ maxWidth: 560, textAlign: 'center' }}>
+          <Text size='sm' sx={{ color: 'text.secondary' }}>
+            {detail}
+          </Text>
+          {suggestions.length > 0 && (
+            <Box component="ul" sx={{ textAlign: 'left', pl: 2, m: 0 }}>
+              {suggestions.map((s) => (
+                <Box component="li" key={s} sx={{ py: 0.25 }}>
+                  <Text size='xs' sx={{ color: 'text.secondary' }}>{s}</Text>
+                </Box>
+              ))}
+            </Box>
+          )}
+          <Text
+            size='xs'
+            sx={{
+              color: 'text.disabled',
+              fontFamily: 'monospace',
+              mt: 1,
+              p: 1,
+              borderRadius: 1,
+              bgcolor: 'action.hover',
+              wordBreak: 'break-all',
+              maxHeight: 80,
+              overflow: 'auto',
+            }}
+          >
+            {resourceKey}: {errstring || 'Unknown error'}
+          </Text>
+        </Stack>
       </Box>
     );
   }

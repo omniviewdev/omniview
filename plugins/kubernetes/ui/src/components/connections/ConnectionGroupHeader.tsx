@@ -1,5 +1,7 @@
 import React from 'react';
-import { Chip, Stack, Typography } from '@mui/joy';
+import { Chip } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuChevronRight } from 'react-icons/lu';
 import ProviderIcon from './ProviderIcon';
 
@@ -25,10 +27,10 @@ const ConnectionGroupHeader: React.FC<Props> = ({
     onClick={onToggle}
     sx={{
       cursor: 'pointer',
-      py: 0.75,
-      px: 1,
-      borderRadius: 'sm',
-      '&:hover': { backgroundColor: 'background.level1' },
+      py: 0.5,
+      px: 0.75,
+      borderRadius: 'var(--ov-radius-sm, 4px)',
+      '&:hover': { bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))' },
       userSelect: 'none',
     }}
   >
@@ -40,8 +42,8 @@ const ConnectionGroupHeader: React.FC<Props> = ({
       }}
     />
     {provider && <ProviderIcon provider={provider} size={16} />}
-    <Typography level='title-sm'>{label}</Typography>
-    <Chip size='sm' variant='soft' color='neutral'>{count}</Chip>
+    <Text weight='semibold' size='sm'>{label}</Text>
+    <Chip size='sm' emphasis='soft' color='neutral' label={String(count)} />
   </Stack>
 );
 

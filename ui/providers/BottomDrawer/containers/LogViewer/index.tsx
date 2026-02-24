@@ -1,9 +1,9 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import Box from '@mui/joy/Box';
-import Button from '@mui/joy/Button';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import CircularProgress from '@mui/joy/CircularProgress';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuArrowDown, LuTriangleAlert } from 'react-icons/lu';
 
 import LogEntryComponent from './LogEntry';
@@ -235,10 +235,10 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
           }}
         >
           <LuTriangleAlert size={14} />
-          <Typography level="body-xs" sx={{ color: 'warning.plainColor' }}>
+          <Text variant="caption" size="xs" sx={{ color: 'warning.main' }}>
             {latestError?.message}
             {streamErrors.length > 1 && ` (+${streamErrors.length - 1} more)`}
-          </Typography>
+          </Text>
         </Box>
       )}
 
@@ -253,18 +253,18 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
             justifyContent: 'center',
             gap: 1.5,
             p: 4,
-            bgcolor: 'background.body',
+            bgcolor: 'black',
             minHeight: 0,
           }}
         >
-          <LuTriangleAlert size={32} color="var(--joy-palette-danger-400)" />
-          <Typography level="title-md" sx={{ color: 'danger.plainColor' }}>
+          <LuTriangleAlert size={32} color="var(--palette-error-main)" />
+          <Text weight="semibold" sx={{ color: 'error.main' }}>
             Failed to stream logs
-          </Typography>
+          </Text>
           {streamErrors.map((err, i) => (
-            <Typography
+            <Text
               key={i}
-              level="body-sm"
+              size="sm"
               sx={{
                 color: 'text.secondary',
                 fontFamily: 'monospace',
@@ -275,7 +275,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
             >
               {err.source_id && <><strong>{err.source_id}:</strong>{' '}</>}
               {err.message}
-            </Typography>
+            </Text>
           ))}
         </Box>
       ) : !hasErrors && filteredLineCount === 0 ? (
@@ -289,18 +289,18 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
             justifyContent: 'center',
             gap: 1.5,
             p: 4,
-            bgcolor: 'background.body',
+            bgcolor: 'black',
             minHeight: 0,
           }}
         >
-          <CircularProgress size="md" variant="soft" color="neutral" />
-          <Typography level="body-sm" sx={{ color: 'text.tertiary' }}>
+          <CircularProgress size={32} color="inherit" />
+          <Text size="sm" sx={{ color: 'text.disabled' }}>
             Connecting to log sources...
-          </Typography>
+          </Text>
           {sourceState.sources.length > 0 && (
-            <Typography level="body-xs" sx={{ color: 'text.tertiary' }}>
+            <Text variant="caption" size="xs" sx={{ color: 'text.disabled' }}>
               {sourceState.sources.length} source{sourceState.sources.length !== 1 ? 's' : ''} found, waiting for data
-            </Typography>
+            </Text>
           )}
         </Box>
       ) : (
@@ -312,7 +312,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
             flex: 1,
             minHeight: 0,
             overflow: 'auto',
-            bgcolor: 'background.body',
+            bgcolor: 'black',
             whiteSpace: wrap ? 'normal' : 'pre',
           }}
         >
@@ -351,9 +351,9 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
       {!follow && filteredLineCount > 0 && (
         <Button
           size="sm"
-          variant="soft"
+          emphasis="soft"
           color="neutral"
-          startDecorator={<LuArrowDown size={14} />}
+          startAdornment={<LuArrowDown size={14} />}
           onClick={jumpToBottom}
           sx={{
             position: 'absolute',

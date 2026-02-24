@@ -1,7 +1,6 @@
 package resourcers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -72,32 +71,48 @@ func parseSingleFromList(list *unstructured.UnstructuredList) (map[string]interf
 	return obj, nil
 }
 
+// resourceName returns the pluralized, lowercase resource name from a ResourceMeta Kind.
+func resourceName(meta pkgtypes.ResourceMeta) string {
+	return flect.Pluralize(strings.ToLower(meta.Kind))
+}
+
+// gvrFromMeta constructs a GroupVersionResource from ResourceMeta, using the
+// same pluralization that Get/List/Find use so that read and write paths
+// operate on the same Kubernetes API resource.
+func gvrFromMeta(meta pkgtypes.ResourceMeta) schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    meta.Group,
+		Version:  meta.Version,
+		Resource: resourceName(meta),
+	}
+}
+
+// apiBasePath returns the REST API base path for the given group and version.
+// Core API resources (group="") use /api/v1, while named groups use /apis/{group}/{version}.
+func apiBasePath(group, version string) string {
+	if group == "" {
+		return fmt.Sprintf("/api/%s", version)
+	}
+	return fmt.Sprintf("/apis/%s/%s", group, version)
+}
+
 // ============================ ACTION METHODS ============================ //.
 
 // Get returns a resource, given a resource meta.
 func (s *KubernetesPatternResourcer) Get(
-	_ *types.PluginContext,
+	ctx *types.PluginContext,
 	client *clients.ClientSet,
 	meta pkgtypes.ResourceMeta,
 	input pkgtypes.GetInput,
 ) (*pkgtypes.GetResult, error) {
-	group := meta.Group
-	version := meta.Version
-	resource := flect.Pluralize(strings.ToLower(meta.Kind))
+	base := apiBasePath(meta.Group, meta.Version)
+	resource := resourceName(meta)
 
 	var abspath string
-
 	if input.Namespace != "" {
-		abspath = fmt.Sprintf(
-			"/apis/%s/%s/namespaces/%s/%s/%s",
-			group,
-			version,
-			input.Namespace,
-			resource,
-			input.ID,
-		)
+		abspath = fmt.Sprintf("%s/namespaces/%s/%s/%s", base, input.Namespace, resource, input.ID)
 	} else {
-		abspath = fmt.Sprintf("/apis/%s/%s/%s/%s", group, version, resource, input.ID)
+		abspath = fmt.Sprintf("%s/%s/%s", base, resource, input.ID)
 	}
 
 	log.Println("abspath: ", abspath)
@@ -107,7 +122,7 @@ func (s *KubernetesPatternResourcer) Get(
 		RESTClient().
 		Get().
 		AbsPath(abspath).
-		Do(context.TODO())
+		Do(ctx.Context)
 
 	retBytes, err := result.Raw()
 	if err != nil {
@@ -132,21 +147,20 @@ func (s *KubernetesPatternResourcer) Get(
 
 // List returns a map of resources for the provided cluster contexts.
 func (s *KubernetesPatternResourcer) List(
-	_ *types.PluginContext,
+	ctx *types.PluginContext,
 	client *clients.ClientSet,
 	meta pkgtypes.ResourceMeta,
 	_ pkgtypes.ListInput,
 ) (*pkgtypes.ListResult, error) {
-	group := meta.Group
-	version := meta.Version
-	resource := flect.Pluralize(strings.ToLower(meta.Kind))
+	base := apiBasePath(meta.Group, meta.Version)
+	resource := resourceName(meta)
 
 	result := client.
 		Clientset.
 		RESTClient().
 		Get().
-		AbsPath(fmt.Sprintf("/apis/%s/%s/%s", group, version, resource)).
-		Do(context.TODO())
+		AbsPath(fmt.Sprintf("%s/%s", base, resource)).
+		Do(ctx.Context)
 
 	retBytes, err := result.Raw()
 	if err != nil {
@@ -186,21 +200,20 @@ func (s *KubernetesPatternResourcer) List(
 // Find returns a resource by name and namespace.
 // TODO - implement, for now this just does list
 func (s *KubernetesPatternResourcer) Find(
-	_ *types.PluginContext,
+	ctx *types.PluginContext,
 	client *clients.ClientSet,
 	meta pkgtypes.ResourceMeta,
 	_ pkgtypes.FindInput,
 ) (*pkgtypes.FindResult, error) {
-	group := meta.Group
-	version := meta.Version
-	resource := flect.Pluralize(strings.ToLower(meta.Kind))
+	base := apiBasePath(meta.Group, meta.Version)
+	resource := resourceName(meta)
 
 	result := client.
 		Clientset.
 		RESTClient().
 		Get().
-		AbsPath(fmt.Sprintf("/apis/%s/%s/%s", group, version, resource)).
-		Do(context.TODO())
+		AbsPath(fmt.Sprintf("%s/%s", base, resource)).
+		Do(ctx.Context)
 
 	retBytes, err := result.Raw()
 	if err != nil {
@@ -245,12 +258,7 @@ func (s *KubernetesPatternResourcer) Create(
 	input pkgtypes.CreateInput,
 ) (*pkgtypes.CreateResult, error) {
 	result := new(pkgtypes.CreateResult)
-	gvr := schema.GroupVersionResource{
-		Group:    meta.Group,
-		Version:  meta.Version,
-		Resource: meta.Kind,
-	}
-	lister := client.DynamicClient.Resource(gvr).Namespace(input.Namespace)
+	lister := client.DynamicClient.Resource(gvrFromMeta(meta)).Namespace(input.Namespace)
 	object := &unstructured.Unstructured{
 		Object: input.Input,
 	}
@@ -258,6 +266,7 @@ func (s *KubernetesPatternResourcer) Create(
 	if err != nil {
 		return nil, err
 	}
+	result.Success = true
 	result.Result = created.Object
 	return result, nil
 }
@@ -269,13 +278,8 @@ func (s *KubernetesPatternResourcer) Update(
 	input pkgtypes.UpdateInput,
 ) (*pkgtypes.UpdateResult, error) {
 	result := new(pkgtypes.UpdateResult)
-	gvr := schema.GroupVersionResource{
-		Group:    meta.Group,
-		Version:  meta.Version,
-		Resource: meta.Kind,
-	}
 	// first get the resource
-	lister := client.DynamicClient.Resource(gvr).Namespace(input.Namespace)
+	lister := client.DynamicClient.Resource(gvrFromMeta(meta)).Namespace(input.Namespace)
 	resource, err := lister.Get(ctx.Context, input.ID, v1.GetOptions{})
 	if err != nil {
 		return nil, err
@@ -287,6 +291,7 @@ func (s *KubernetesPatternResourcer) Update(
 	if err != nil {
 		return nil, err
 	}
+	result.Success = true
 	result.Result = updated.Object
 	return result, nil
 }
@@ -298,13 +303,7 @@ func (s *KubernetesPatternResourcer) Delete(
 	input pkgtypes.DeleteInput,
 ) (*pkgtypes.DeleteResult, error) {
 	result := new(pkgtypes.DeleteResult)
-
-	gvr := schema.GroupVersionResource{
-		Group:    meta.Group,
-		Version:  meta.Version,
-		Resource: meta.Kind,
-	}
-	lister := client.DynamicClient.Resource(gvr).Namespace(input.Namespace)
+	lister := client.DynamicClient.Resource(gvrFromMeta(meta)).Namespace(input.Namespace)
 
 	// first, get the resource for the delete so we can return back to the client
 	resource, err := lister.Get(ctx.Context, input.ID, v1.GetOptions{})
@@ -318,5 +317,6 @@ func (s *KubernetesPatternResourcer) Delete(
 		return nil, err
 	}
 
+	result.Success = true
 	return result, nil
 }

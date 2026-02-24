@@ -1,13 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Box from '@mui/joy/Box';
-import Button from '@mui/joy/Button';
-import Chip from '@mui/joy/Chip';
-import Divider from '@mui/joy/Divider';
-import IconButton from '@mui/joy/IconButton';
-import Option from '@mui/joy/Option';
-import Select from '@mui/joy/Select';
-import Tooltip from '@mui/joy/Tooltip';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Button, IconButton } from '@omniviewdev/ui/buttons';
+import { Chip } from '@omniviewdev/ui';
+import { Select } from '@omniviewdev/ui/inputs';
+import { Tooltip } from '@omniviewdev/ui/overlays';
+import { Text } from '@omniviewdev/ui/typography';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { LuArrowDown, LuArrowDownToLine, LuRefreshCw, LuTrash2, LuCircle } from 'react-icons/lu';
 
@@ -50,7 +48,7 @@ const BuildLine: React.FC<BuildLineProps> = React.memo(({ line, showSource }) =>
         '&:hover': { bgcolor: 'background.level1' },
       }}
     >
-      <Typography
+      <Text
         sx={{
           color: 'text.secondary',
           flexShrink: 0,
@@ -61,7 +59,7 @@ const BuildLine: React.FC<BuildLineProps> = React.memo(({ line, showSource }) =>
         }}
       >
         {formatTime(line.timestamp)}
-      </Typography>
+      </Text>
 
       {showSource && (
         <span
@@ -81,7 +79,7 @@ const BuildLine: React.FC<BuildLineProps> = React.memo(({ line, showSource }) =>
         </span>
       )}
 
-      <Typography
+      <Text
         component="span"
         sx={{
           flex: 1,
@@ -90,11 +88,11 @@ const BuildLine: React.FC<BuildLineProps> = React.memo(({ line, showSource }) =>
           lineHeight: 'inherit',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-all',
-          ...(isError && { color: 'danger.plainColor' }),
+          ...(isError && { color: 'error.main' }),
         }}
       >
         {line.message}
-      </Typography>
+      </Text>
     </Box>
   );
 });
@@ -131,7 +129,7 @@ const DevBuildOutput: React.FC<Props> = ({ pluginId }) => {
       ?.then((entries: DevBuildLine[]) => {
         if (entries?.length) setLines(entries);
       })
-      ?.catch(() => {/* swallow – logs just won't pre-populate */});
+      ?.catch(() => {/* swallow – logs just won't pre-populate */ });
   }, [pluginId]);
 
   useEffect(() => {
@@ -237,48 +235,47 @@ const DevBuildOutput: React.FC<Props> = ({ pluginId }) => {
         {aggStatus && (
           <Chip
             size="sm"
-            variant="soft"
+            emphasis="soft"
             color={STATUS_COLORS[aggStatus]}
-            startDecorator={<LuCircle size={8} />}
+            icon={<LuCircle size={8} />}
+            label={aggStatus}
             sx={{ '--Chip-minHeight': '20px', fontSize: '11px' }}
-          >
-            {aggStatus}
-          </Chip>
+          />
         )}
 
         <Divider orientation="vertical" sx={{ mx: 0.5 }} />
 
         <Select
           size="sm"
-          variant="plain"
           value={sourceFilter ?? 'all'}
-          onChange={(_, val) => setSourceFilter(val === 'all' ? null : val)}
+          onChange={(val) => setSourceFilter(val === 'all' ? null : val as string)}
+          options={[
+            { value: 'all', label: 'All' },
+            { value: 'vite', label: 'Vite' },
+            { value: 'go-build', label: 'Go Build' },
+            { value: 'go-watch', label: 'Go Watch' },
+          ]}
           sx={{ minWidth: 80, fontSize: '12px' }}
-        >
-          <Option value="all">All</Option>
-          <Option value="vite">Vite</Option>
-          <Option value="go-build">Go Build</Option>
-          <Option value="go-watch">Go Watch</Option>
-        </Select>
+        />
 
         <Divider orientation="vertical" sx={{ mx: 0.5 }} />
 
-        <Tooltip title="Restart dev server">
-          <IconButton size="sm" variant="plain" color="neutral" onClick={handleRestart}>
+        <Tooltip content="Restart dev server">
+          <IconButton size="sm" emphasis="ghost" color="neutral" onClick={handleRestart}>
             <LuRefreshCw size={14} />
           </IconButton>
         </Tooltip>
 
-        <Tooltip title="Clear output">
-          <IconButton size="sm" variant="plain" color="neutral" onClick={handleClear}>
+        <Tooltip content="Clear output">
+          <IconButton size="sm" emphasis="ghost" color="neutral" onClick={handleClear}>
             <LuTrash2 size={14} />
           </IconButton>
         </Tooltip>
 
-        <Tooltip title={follow ? 'Following' : 'Follow output'}>
+        <Tooltip content={follow ? 'Following' : 'Follow output'}>
           <IconButton
             size="sm"
-            variant={follow ? 'soft' : 'plain'}
+            emphasis={follow ? 'soft' : 'ghost'}
             color={follow ? 'primary' : 'neutral'}
             onClick={() => setFollow(!follow)}
           >
@@ -287,16 +284,16 @@ const DevBuildOutput: React.FC<Props> = ({ pluginId }) => {
         </Tooltip>
 
         <Box sx={{ flex: 1 }} />
-        <Typography level="body-xs" sx={{ color: 'text.tertiary', mr: 1 }}>
+        <Text variant="caption" size="xs" sx={{ color: 'text.disabled', mr: 1 }}>
           {filteredLines.length.toLocaleString()} lines
-        </Typography>
+        </Text>
       </Box>
 
       {/* Virtualized output */}
       <Box
         ref={parentRef}
         onScroll={handleScroll}
-        sx={{ flex: 1, minHeight: 0, overflow: 'auto', bgcolor: 'background.body' }}
+        sx={{ flex: 1, minHeight: 0, overflow: 'auto', bgcolor: 'black' }}
       >
         <Box sx={{ paddingTop: `${paddingTop}px`, paddingBottom: `${paddingBottom}px` }}>
           {virtualItems.map((virtualRow) => {
@@ -321,9 +318,9 @@ const DevBuildOutput: React.FC<Props> = ({ pluginId }) => {
       {!follow && filteredLines.length > 0 && (
         <Button
           size="sm"
-          variant="soft"
+          emphasis="soft"
           color="neutral"
-          startDecorator={<LuArrowDown size={14} />}
+          startAdornment={<LuArrowDown size={14} />}
           onClick={jumpToBottom}
           sx={{ position: 'absolute', bottom: 16, right: 16, zIndex: 10 }}
         >

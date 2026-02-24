@@ -6,11 +6,11 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuLink, LuCode, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuLink, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import RoleBindingSidebar from './Sidebar'
 import ResourceLinkCell from '../../corev1/Pod/cells/ResourceLinkCell'
-import { Stack } from '@mui/joy'
+import { Stack } from '@omniviewdev/ui/layout'
 
 const resourceKey = 'rbac::v1::RoleBinding'
 
@@ -96,10 +96,7 @@ const RoleBindingTable: React.FC = () => {
   const drawer: DrawerComponent<RoleBinding> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuLink />,
-    views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <RoleBindingSidebar ctx={ctx} /> },
-      { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
-    ],
+    views: createStandardViews({ SidebarComponent: RoleBindingSidebar }),
     actions: [
       {
         title: 'Delete',

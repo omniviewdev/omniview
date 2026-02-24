@@ -39,6 +39,7 @@ const (
 	StreamSignalSigusr1
 	StreamSignalSigusr2
 	StreamSignalSigwinch
+	StreamSignalError
 )
 
 func (s StreamSignal) String() string {
@@ -63,6 +64,8 @@ func (s StreamSignal) String() string {
 		return "SIGUSR2"
 	case StreamSignalSigwinch:
 		return "SIGWINCH"
+	case StreamSignalError:
+		return "ERROR"
 	}
 	return "NONE"
 }
@@ -90,6 +93,8 @@ func (s StreamSignal) ToProto() proto.StreamSignal {
 		return proto.StreamSignal_SIGUSR2
 	case StreamSignalSigwinch:
 		return proto.StreamSignal_SIGWINCH
+	case StreamSignalError:
+		return proto.StreamSignal_ERROR
 	}
 	return proto.StreamSignal_NONE
 }
@@ -116,35 +121,86 @@ func NewStreamSignalFromProto(p proto.StreamSignal) StreamSignal {
 		return StreamSignalSigusr2
 	case proto.StreamSignal_SIGWINCH:
 		return StreamSignalSigwinch
+	case proto.StreamSignal_ERROR:
+		return StreamSignalError
 	}
 	return StreamSignalNone
 }
+
+// StreamError contains structured error information from a failed exec session.
+type StreamError struct {
+	Title         string   `json:"title"`
+	Message       string   `json:"message"`
+	Suggestion    string   `json:"suggestion"`
+	Retryable     bool     `json:"retryable"`
+	RetryCommands []string `json:"retry_commands,omitempty"`
+}
+
+// ExecError is a structured error type that plugins use to provide
+// classified exec errors with user-facing information.
+type ExecError struct {
+	Err           error
+	Title         string
+	Message       string
+	Suggestion    string
+	Retryable     bool
+	RetryCommands []string
+}
+
+func (e *ExecError) Error() string { return e.Err.Error() }
+func (e *ExecError) Unwrap() error { return e.Err }
 
 type StreamOutput struct {
 	SessionID string       `json:"session_id"`
 	Data      []byte       `json:"data"`
 	Target    StreamTarget `json:"target"`
 	Signal    StreamSignal `json:"signal"`
+	Error     *StreamError `json:"error,omitempty"`
+}
+
+func (e *StreamError) ToProto() *proto.StreamError {
+	if e == nil {
+		return nil
+	}
+	return &proto.StreamError{
+		Title:         e.Title,
+		Message:       e.Message,
+		Suggestion:    e.Suggestion,
+		Retryable:     e.Retryable,
+		RetryCommands: e.RetryCommands,
+	}
+}
+
+func NewStreamErrorFromProto(p *proto.StreamError) *StreamError {
+	if p == nil {
+		return nil
+	}
+	return &StreamError{
+		Title:         p.GetTitle(),
+		Message:       p.GetMessage(),
+		Suggestion:    p.GetSuggestion(),
+		Retryable:     p.GetRetryable(),
+		RetryCommands: p.GetRetryCommands(),
+	}
 }
 
 func (o *StreamOutput) ToProto() *proto.StreamOutput {
+	var target proto.StreamOutput_Target
 	switch o.Target {
 	case StreamTargetStdOut:
-		return &proto.StreamOutput{
-			Id:     o.SessionID,
-			Target: proto.StreamOutput_STDOUT,
-			Data:   o.Data,
-			Signal: o.Signal.ToProto(),
-		}
+		target = proto.StreamOutput_STDOUT
 	case StreamTargetStdErr:
-		return &proto.StreamOutput{
-			Id:     o.SessionID,
-			Target: proto.StreamOutput_STDERR,
-			Data:   o.Data,
-			Signal: o.Signal.ToProto(),
-		}
+		target = proto.StreamOutput_STDERR
+	default:
+		return nil
 	}
-	return nil
+	return &proto.StreamOutput{
+		Id:     o.SessionID,
+		Target: target,
+		Data:   o.Data,
+		Signal: o.Signal.ToProto(),
+		Error:  o.Error.ToProto(),
+	}
 }
 
 func NewStreamOutputFromProto(p *proto.StreamOutput) StreamOutput {
@@ -160,6 +216,7 @@ func NewStreamOutputFromProto(p *proto.StreamOutput) StreamOutput {
 		Target:    target,
 		Data:      p.GetData(),
 		Signal:    NewStreamSignalFromProto(p.GetSignal()),
+		Error:     NewStreamErrorFromProto(p.GetError()),
 	}
 }
 
@@ -220,7 +277,7 @@ type SessionHandler func(ctx *types.PluginContext, opts SessionOptions) (
 // TTYHandler is the expected signature for a function that creates a new session with a TTY.
 // It is passed the TTY file descriptor for the session, and a resize channel that will receive
 // resize events for the TTY, of which.
-type TTYHandler func(ctx *types.PluginContext, opts SessionOptions, tty *os.File, stopCh chan struct{}, resize <-chan SessionResizeInput) error
+type TTYHandler func(ctx *types.PluginContext, opts SessionOptions, tty *os.File, stopCh chan error, resize <-chan SessionResizeInput) error
 
 // CommandHandler is the expected signature for the non-tty handler. It should immediately return it's
 // standard output and error.

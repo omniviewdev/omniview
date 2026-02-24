@@ -1,20 +1,13 @@
 import React from 'react';
 
 // Material-ui
-import Avatar from '@mui/joy/Avatar';
-import Badge from '@mui/joy/Badge';
-import Chip from '@mui/joy/Chip';
-import CircularProgress from '@mui/joy/CircularProgress';
-import Dropdown from '@mui/joy/Dropdown';
-import IconButton from '@mui/joy/IconButton';
-import ListItem from '@mui/joy/ListItem';
-import ListItemButton from '@mui/joy/ListItemButton';
-import ListItemDecorator from '@mui/joy/ListItemDecorator';
-import Menu from '@mui/joy/Menu';
-import MenuButton from '@mui/joy/MenuButton';
-import MenuItem from '@mui/joy/MenuItem';
-import Stack from '@mui/joy/Stack';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Avatar, Badge, Chip, ListItem } from '@omniviewdev/ui';
+import { DropdownMenu } from '@omniviewdev/ui/menus';
 
 // Project imports
 import { usePluginContext } from '@/contexts/PluginContext';
@@ -166,44 +159,27 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
     <ListItem
       id={`connection-${id}`}
       endAction={
-        <Dropdown>
-          <MenuButton
+        <Box sx={{ display: 'inline-flex' }}>
+          <IconButton
             aria-label='More'
             size='sm'
-            color='primary'
-            slots={{ root: IconButton }}
-            slotProps={{ root: { variant: 'plain', color: 'neutral' } }}
+            emphasis='ghost'
+            color='neutral'
           >
             <MoreVert />
-          </MenuButton>
-          <Menu size='sm' placement='bottom-end'>
-            <Link to={`/connection/${id}/edit`}>
-              <MenuItem>
-                <ListItemDecorator>
-                  <LuPencil />
-                </ListItemDecorator>{' '}
-                Edit '{name}'
-              </MenuItem>
-            </Link>
-            <MenuItem>
-              <ListItemDecorator>
-                <LuTrash />
-              </ListItemDecorator>{' '}
-              Delete '{name}'
-            </MenuItem>
-          </Menu>
-        </Dropdown>
+          </IconButton>
+        </Box>
       }
     >
-      <ListItemButton
-        sx={{ borderRadius: 'sm' }}
+      <Box
+        sx={{ borderRadius: 1, display: 'flex', alignItems: 'center', width: '100%', cursor: 'pointer', p: 1 }}
         onClick={handleClick}
       >
-        <ListItemDecorator >
+        <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
           <Badge
             color="success"
             invisible={!isConnected()}
-            size='sm'
+            variant='dot'
             anchorOrigin={{
               vertical: 'top',
               horizontal: 'right',
@@ -228,12 +204,12 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
               />
             }
           </Badge>
-        </ListItemDecorator>
+        </Box>
         <Stack direction='row' width={'100%'} alignItems={'center'}>
           <Stack direction='row' width={'100%'} height={'100%'} alignItems={'center'} gap={2} >
-            <Typography level='title-sm' noWrap>{name}</Typography>
-            {Boolean(description) && <Typography level='body-sm' noWrap>{description}</Typography>}
-            {connecting && <CircularProgress size='sm' />}
+            <Text weight='semibold' size='sm' noWrap>{name}</Text>
+            {Boolean(description) && <Text size='sm' noWrap>{description}</Text>}
+            {connecting && <CircularProgress size='small' />}
           </Stack>
           <Stack direction='row' spacing={1} alignItems={'center'}>
             {labels && Object.entries(labels).sort().map(([key, _]) => (
@@ -242,16 +218,14 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
                 variant='outlined'
                 color='primary'
                 size='sm'
-                sx={{ pointerEvents: 'none', borderRadius: 'sm' }}
-              >
-
-                {key}
-              </Chip>
+                sx={{ pointerEvents: 'none', borderRadius: 1 }}
+                label={key}
+              />
             ))}
           </Stack>
 
         </Stack>
-      </ListItemButton>
+      </Box>
     </ListItem>
   );
 };

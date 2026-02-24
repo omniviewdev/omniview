@@ -1,5 +1,5 @@
 import React from 'react';
-import { Stack } from '@mui/joy';
+import { Stack } from '@omniviewdev/ui/layout';
 import FormCard, { type FormField } from '../../../shared/forms/FormCard';
 import TagEditor, { type Tag } from '../../../shared/forms/TagEditor';
 import ArrayChipEditor from '../../../shared/forms/ArrayChipEditor';

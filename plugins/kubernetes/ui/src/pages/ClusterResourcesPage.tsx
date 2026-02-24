@@ -1,17 +1,14 @@
 import React from 'react';
 import { Outlet, useParams } from 'react-router-dom';
-import { Link } from '@omniviewdev/runtime';
+import { Link, useInformerState } from '@omniviewdev/runtime';
 
-// Material-ui
-import {
-  Avatar,
-  IconButton,
-  Sheet,
-  Stack,
-  Typography,
-  Box,
-  useTheme,
-} from '@mui/joy';
+// @omniviewdev/ui
+import Box from '@mui/material/Box';
+import { Avatar } from '@omniviewdev/ui';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { NavMenu } from '@omniviewdev/ui/sidebars';
 
 // Hooks
 import {
@@ -19,19 +16,11 @@ import {
   useResourceTypes,
   useResourceGroups,
   useSnackbar,
+  usePluginRouter,
 } from '@omniviewdev/runtime';
-
-// Types
-// import { type types } from '@omniviewdev/runtime/models';
 
 // Layout
 import Layout from '../layouts/resource';
-
-// Project import
-// import ResourceTable from '../components/tables/Resources';
-
-import NavMenu from '../components/shared/navmenu/NavMenu';
-// import { type SidebarSection, type SidebarItem } from '../components/shared/navmenu/types';
 
 import { stringAvatar } from '../utils/color';
 import { useClusterPreferences } from '../hooks/useClusterPreferences';
@@ -39,11 +28,11 @@ import { useClusterPreferences } from '../hooks/useClusterPreferences';
 // Icons
 import { LuCog } from 'react-icons/lu';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
+import ResourceCommandPalette from '../components/shared/ResourceCommandPalette';
+import SyncProgressDialog from '../components/shared/SyncProgressDialog';
 
 
 export default function ClusterResourcesPage(): React.ReactElement {
-  const theme = useTheme();
-
   const { id = '' } = useParams<{ id: string }>();
 
   const { types } = useResourceTypes({ pluginID: 'kubernetes', connectionID: id });
@@ -51,8 +40,69 @@ export default function ClusterResourcesPage(): React.ReactElement {
   const { connection } = useConnection({ pluginID: 'kubernetes', connectionID: id });
   const { connectionOverrides } = useClusterPreferences('kubernetes');
   const { layout } = useSidebarLayout({ connectionID: id })
+  const { location, navigate } = usePluginRouter();
+  const { isFullySynced, summary } = useInformerState({ pluginID: 'kubernetes', connectionID: id });
 
   const { showSnackbar } = useSnackbar();
+
+  // Sync modal — open only when we know the connection is actively syncing,
+  // not before data has loaded. `undefined` = "haven't decided yet".
+  const [syncModalOpen, setSyncModalOpen] = React.useState<boolean | undefined>(undefined);
+
+  // Track whether the modal was opened manually (e.g. footer Details click)
+  // so we don't auto-close it.
+  const manualOpenRef = React.useRef(false);
+
+  // Once summary data loads, decide whether to show the modal
+  React.useEffect(() => {
+    if (syncModalOpen !== undefined) return; // already decided
+    if (!summary.data) return; // data not loaded yet — don't decide
+    if (!isFullySynced) {
+      setSyncModalOpen(true);
+    } else {
+      setSyncModalOpen(false);
+    }
+  }, [summary.data, isFullySynced, syncModalOpen]);
+
+  // Auto-close after sync completes — only when auto-opened (not user-initiated)
+  React.useEffect(() => {
+    if (isFullySynced && syncModalOpen === true && !manualOpenRef.current) {
+      const timer = setTimeout(() => setSyncModalOpen(false), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isFullySynced, syncModalOpen]);
+
+  const handleCloseSyncModal = React.useCallback(() => {
+    manualOpenRef.current = false;
+    setSyncModalOpen(false);
+  }, []);
+
+  // Listen for footer click to re-open sync modal
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.connectionID === id) {
+        manualOpenRef.current = true;
+        setSyncModalOpen(true);
+      }
+    };
+    window.addEventListener('ov:show-sync-modal', handler);
+    return () => window.removeEventListener('ov:show-sync-modal', handler);
+  }, [id]);
+
+  // Derive selected sidebar item from current route.
+  // Dashboard routes end with 'resources', 'metrics', or 'benchmarks'.
+  const DASHBOARD_TABS = new Set(['resources', 'metrics', 'benchmarks']);
+  const lastSegment = location.pathname.split('/').pop() ?? '';
+  const selected = DASHBOARD_TABS.has(lastSegment) ? '__dashboard__' : lastSegment;
+
+  const handleSelect = React.useCallback((resourceID: string) => {
+    if (resourceID === '__dashboard__') {
+      navigate(`/cluster/${id}/resources`);
+    } else {
+      navigate(`/cluster/${id}/resources/${resourceID}`);
+    }
+  }, [navigate, id]);
 
   React.useEffect(() => {
     showSnackbar({
@@ -65,57 +115,22 @@ export default function ClusterResourcesPage(): React.ReactElement {
   }, [showSnackbar]);
 
   if (groups.isLoading || connection.isLoading || !groups.data || !connection.data) {
-    return (<></>);
+    return (
+      <SyncProgressDialog
+        open={syncModalOpen === true}
+        onClose={handleCloseSyncModal}
+        clusterName={id}
+        pluginID="kubernetes"
+        connectionID={id}
+      />
+    );
   }
 
   if (groups.isError) {
     return (<>{types.error}</>);
   }
 
-  // const getSections = () => {
-  //   const coreSection: SidebarItem[] = [];
-  //
-  //   const crdSection: SidebarItem[] = [];
-  //
-  //   const grouped: SidebarItem[] = Object.values(groups.data).map((group) => {
-  //     const item: SidebarItem = {
-  //       id: group.id,
-  //       label: group.name,
-  //       icon: group.icon,
-  //       children: [],
-  //     };
-  //
-  //     Object.entries(group.resources).forEach(([_, metas]) => {
-  //       metas.forEach((meta) => {
-  //         item.children?.push({
-  //           id: toID(meta),
-  //           label: meta.kind,
-  //           icon: meta.icon,
-  //         });
-  //       });
-  //     });
-  //
-  //     // Sort the children
-  //     item.children = item.children?.sort((a, b) => a.label.localeCompare(b.label));
-  //     return item;
-  //   }).sort((a, b) => a.label.localeCompare(b.label));
-  //
-  //   grouped.forEach((group) => {
-  //     // This is kubernetes specific, let's eventually allow plugins to define this somehow
-  //     if (group.label.includes('.') && !group.label.includes('.k8s.io')) {
-  //       // custom resource definition
-  //       crdSection.push(group);
-  //     } else {
-  //       coreSection.push(group);
-  //     }
-  //   });
-  //
-  //   const sections: SidebarSection[] = [
-  //     { id: 'core', title: '', items: coreSection },
-  //     { id: 'crd', title: 'Custom Resource Definitions', items: crdSection },
-  //   ];
-  //   return sections;
-  // };
+  const clusterName = connectionOverrides[id]?.displayName || connection.data?.name || id;
 
   return (
     <Layout.Root
@@ -124,22 +139,26 @@ export default function ClusterResourcesPage(): React.ReactElement {
         gap: 0,
       }}
     >
+      <ResourceCommandPalette connectionID={id} layout={layout} onNavigate={handleSelect} />
       <Layout.SideNav type='bordered' padding={0.5} >
         <Stack
           direction='column'
-          maxHeight='100%'
-          height={'100%'}
-          overflow={'hidden'}
+          sx={{
+            maxHeight: '100%',
+            height: '100%',
+            overflow: 'hidden',
+          }}
           gap={0.5}
         >
-          <Sheet
-            variant='outlined'
+          <Box
             sx={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               p: 1,
-              borderRadius: 'sm',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
             }}
           >
             <Stack direction='row' alignItems='center' gap={1}>
@@ -152,7 +171,6 @@ export default function ClusterResourcesPage(): React.ReactElement {
                       size='sm'
                       src={avatarSrc}
                       sx={{
-                        borderRadius: 6,
                         backgroundColor: 'transparent',
                         objectFit: 'contain',
                         border: 0,
@@ -168,21 +186,23 @@ export default function ClusterResourcesPage(): React.ReactElement {
                 }
                 return <Avatar size='sm' {...avatarProps} />;
               })()}
-              <Typography level='title-sm' textOverflow={'ellipsis'}>
+              <Text weight='semibold' size='sm' sx={{ textOverflow: 'ellipsis' }}>
                 {connectionOverrides[id]?.displayName || connection.data?.name}
-              </Typography>
+              </Text>
             </Stack>
             <Stack direction='row' alignItems='center' gap={1}>
               <Link to={`/cluster/${id}/edit`}>
-                <IconButton variant='soft' size='sm' color='neutral'>
-                  <LuCog size={20} color={theme.palette.neutral[400]} />
+                <IconButton emphasis='soft' size='sm' color='neutral'>
+                  <LuCog size={20} />
                 </IconButton>
               </Link>
             </Stack>
-          </Sheet>
+          </Box>
           <NavMenu
             size='sm'
             sections={layout}
+            selected={selected}
+            onSelect={handleSelect}
             scrollable
           />
         </Stack>
@@ -193,16 +213,17 @@ export default function ClusterResourcesPage(): React.ReactElement {
           flexDirection: 'column',
         }}
       >
-        {/** Purposely double nesting this inside a non-padded container as not doing so doesn't allow the bottom drawer to
-         fully epand up to the top of the container (since the padding get's accounted for in the sizing, which essentially
-         just end up creating a gutter at the top equal to the top and bottom padding combined) */}
         <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-          {/* {selected && */}
-          {/*   <ResourceTable resourceKey={selected} pluginID={'kubernetes'} connectionID={id} /> */}
-          {/* } */}
           <Outlet />
         </Box>
       </Layout.Main>
+      <SyncProgressDialog
+        open={syncModalOpen === true}
+        onClose={handleCloseSyncModal}
+        clusterName={clusterName}
+        pluginID="kubernetes"
+        connectionID={id}
+      />
     </Layout.Root>
   );
 }

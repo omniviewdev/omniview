@@ -10,10 +10,12 @@ if (!mod) {
   );
 }
 
+export const DevServerManager = mod.DevServerManager;
 export const DiagnosticsClient = mod.DiagnosticsClient;
 export const ExecClient = mod.ExecClient;
 export const GetOperatingSystem = mod.GetOperatingSystem;
 export const LogsClient = mod.LogsClient;
+export const MetricClient = mod.MetricClient;
 export const NetworkerClient = mod.NetworkerClient;
 export const OpenFileSelectionDialog = mod.OpenFileSelectionDialog;
 export const PluginManager = mod.PluginManager;

@@ -1,6 +1,6 @@
 import React from "react";
 import CodeEditor from "../../../../shared/CodeEditor";
-import { Stack } from "@mui/joy";
+import { Stack } from "@omniviewdev/ui/layout";
 import { stringify } from 'yaml'
 
 interface Props {

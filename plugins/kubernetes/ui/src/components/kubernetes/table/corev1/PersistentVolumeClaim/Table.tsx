@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuHardDrive, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuHardDrive, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import { ChipListCell } from '../../shared/cells/ChipList'
 import PersistentVolumeClaimSidebar from './Sidebar'
 
@@ -93,18 +93,7 @@ const PersistentVolumeClaimTable: React.FC = () => {
   const drawer: DrawerComponent<PersistentVolumeClaim> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuHardDrive />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <PersistentVolumeClaimSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: PersistentVolumeClaimSidebar }),
     actions: [
       {
         title: 'Delete',

@@ -1,16 +1,11 @@
 import React from "react";
 
-// material-ui
-import {
-  Avatar,
-  Card,
-  CardContent,
-  CardOverflow,
-  Divider,
-  Grid,
-  Stack,
-  Typography,
-} from '@mui/joy';
+// @omniviewdev/ui
+import Box from '@mui/material/Box';
+import Grid from '@mui/material/Grid';
+import { Avatar } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 
 // project imports
 import Icon from "./Icon";
@@ -36,44 +31,11 @@ export interface DetailsCardProps {
   showUndefined?: boolean;
 }
 
-const getTitleFontSize = (size: "sm" | "md" | "lg") => {
-  switch (size) {
-    case "sm":
-      return 12;
-    case "md":
-      return 14;
-    case "lg":
-      return 16;
-    default:
-      return 14;
-  }
-};
-
-const getTitleContainerSpacing = (size: "sm" | "md" | "lg") => {
-  switch (size) {
-    case "sm":
-      return 0.5;
-    case "md":
-      return 1;
-    case "lg":
-      return 2;
-    default:
-      return 1;
-  }
-};
-
-const getTitleIconSize = (size: "sm" | "md" | "lg") => {
-  switch (size) {
-    case "sm":
-      return 12;
-    case "md":
-      return 14;
-    case "lg":
-      return 16;
-    default:
-      return 14;
-  }
-};
+const sizeConfig = {
+  sm: { fontSize: 13, iconSize: 14, headerPy: 0.5, headerPx: 1, bodyP: 1, bodyFontSize: 13, gap: 0.5, gridSpacing: 0.5 },
+  md: { fontSize: 14, iconSize: 14, headerPy: 0.75, headerPx: 1.25, bodyP: 1.25, bodyFontSize: 13, gap: 0.75, gridSpacing: 0.5 },
+  lg: { fontSize: 16, iconSize: 16, headerPy: 1, headerPx: 1.25, bodyP: 1.25, bodyFontSize: 14, gap: 1, gridSpacing: 0.75 },
+} as const;
 
 /**
  * Renders a card for showing a key-value pairs of details
@@ -86,21 +48,36 @@ export const DetailsCard: React.FC<DetailsCardProps> = ({
   endAdornment,
   showUndefined = false,
 }) => {
+  const cfg = sizeConfig[titleSize];
+
   return (
-    <Card
-      variant="outlined"
+    <Box
       sx={{
-        p: 1,
-        gap: getTitleContainerSpacing(titleSize),
-        bgcolor: 'background.level1'
+        borderRadius: 1,
+        border: '1px solid',
+        borderColor: 'divider',
+        bgcolor: 'background.level1',
+        overflow: 'hidden',
       }}
     >
       {title && (
-        <CardOverflow sx={{ p: 1, display: 'flex', flexDirection: 'row', justifyContent: 'space-between', bgcolor: 'background.surface', borderBottom: '1px solid divider' }}>
+        <Box
+          sx={{
+            py: cfg.headerPy,
+            px: cfg.headerPx,
+            display: 'flex',
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            bgcolor: 'background.surface',
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
           <Stack
             direction="row"
-            spacing={getTitleContainerSpacing(titleSize)}
-            alignItems={"center"}
+            gap={cfg.gap}
+            alignItems="center"
           >
             {icon &&
               (typeof icon === "string" ? (
@@ -111,54 +88,52 @@ export const DetailsCard: React.FC<DetailsCardProps> = ({
                     sx={{ maxHeight: 16, maxWidth: 16, borderRadius: 4 }}
                   />
                 ) : (
-                  <Icon name={icon} size={getTitleIconSize(titleSize)} />
+                  <Icon name={icon} size={cfg.iconSize} />
                 )
               ) : (
                 icon
               ))}
-            <Typography fontSize={getTitleFontSize(titleSize)} level="title-sm">
+            <Text sx={{ fontSize: cfg.fontSize }} weight="semibold" size="sm">
               {title}
-            </Typography>
+            </Text>
           </Stack>
           {endAdornment}
-          <Divider />
-        </CardOverflow>
+        </Box>
       )}
-      <CardContent>
+      <Box sx={{ p: cfg.bodyP }}>
         <Grid
           container
-          spacing={1}
+          spacing={cfg.gridSpacing}
         >
           {data.map((entry) => {
             if (entry.value || showUndefined) {
               return (
                 <React.Fragment key={entry.key}>
-                  <Grid xs={entry.ratio?.[0] ?? 5}>
-                    <Stack direction="row" spacing={1} alignItems={"center"}>
+                  <Grid size={entry.ratio?.[0] ?? 5}>
+                    <Stack direction="row" gap={0.75} alignItems="center">
                       {entry.icon &&
                         (typeof entry.icon === "string" ? (
                           entry.icon.startsWith("http") ? (
                             <Avatar src={entry.icon} size="sm" />
                           ) : (
-                            <Icon name={entry.icon} size={14} />
+                            <Icon name={entry.icon} size={cfg.iconSize} />
                           )
                         ) : (
                           icon
                         ))}
-                      <Typography level="body-xs">{entry.key}</Typography>
+                      <Text sx={{ fontSize: cfg.bodyFontSize }}>{entry.key}</Text>
                     </Stack>
                   </Grid>
-                  <Grid xs={entry.ratio?.[1] ?? 7}>
-                    <Stack direction="row" spacing={1} alignItems={"center"} justifyContent={'space-between'}>
-                      <Typography
-                        textColor={"neutral.200"}
-                        level="body-xs"
+                  <Grid size={entry.ratio?.[1] ?? 7}>
+                    <Stack direction="row" gap={0.75} alignItems="center" justifyContent='space-between'>
+                      <Text
+                        sx={{ color: "neutral.200", fontSize: cfg.bodyFontSize }}
                         noWrap
                       >
                         {entry.used
                           ? `${entry.used} / ${entry.value}`
                           : entry.value}
-                      </Typography>
+                      </Text>
                       {entry.endAdornment}
                     </Stack>
                   </Grid>
@@ -167,8 +142,8 @@ export const DetailsCard: React.FC<DetailsCardProps> = ({
             }
           })}
         </Grid>
-      </CardContent>
-    </Card>
+      </Box>
+    </Box>
   );
 };
 

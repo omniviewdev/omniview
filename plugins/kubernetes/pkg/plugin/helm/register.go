@@ -22,6 +22,14 @@ var (
 		Kind:        "Repository",
 		Description: "Helm chart repositories",
 	}
+
+	// ChartMeta is the resource meta for helm::v1::Chart.
+	ChartMeta = types.ResourceMeta{
+		Group:       "helm",
+		Version:     "v1",
+		Kind:        "Chart",
+		Description: "Available Helm charts from configured repositories",
+	}
 )
 
 // HelmResourceGroup returns the resource group for Helm resources.
@@ -117,6 +125,41 @@ func HelmResourceDefinitions() map[string]types.ResourceDefinition {
 				},
 			},
 		},
+		ChartMeta.String(): {
+			IDAccessor:       "id",
+			MemoizerAccessor: "id",
+			SupportedOperations: []types.OperationType{
+				types.OperationTypeGet,
+				types.OperationTypeList,
+			},
+			ColumnDefs: []types.ColumnDef{
+				{
+					ID:        "name",
+					Header:    "Name",
+					Accessors: "name",
+				},
+				{
+					ID:        "description",
+					Header:    "Description",
+					Accessors: "description",
+				},
+				{
+					ID:        "version",
+					Header:    "Version",
+					Accessors: "version",
+				},
+				{
+					ID:        "appVersion",
+					Header:    "App Version",
+					Accessors: "appVersion",
+				},
+				{
+					ID:        "repository",
+					Header:    "Repository",
+					Accessors: "repository",
+				},
+			},
+		},
 	}
 }
 
@@ -125,5 +168,6 @@ func HelmResourcers(logger *zap.SugaredLogger, svc *HelmService) map[types.Resou
 	return map[types.ResourceMeta]types.Resourcer[clients.ClientSet]{
 		ReleaseMeta: NewReleaseResourcer(logger, svc),
 		RepoMeta:    NewRepoResourcerWithActions(logger),
+		ChartMeta:   NewChartResourcerWithActions(logger),
 	}
 }

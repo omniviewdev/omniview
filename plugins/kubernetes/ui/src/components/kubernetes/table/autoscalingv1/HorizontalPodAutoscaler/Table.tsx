@@ -8,8 +8,8 @@ import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuActivity, LuCode, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuActivity, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import { Condition } from 'kubernetes-types/meta/v1'
 import HorizontalPodAutoscalerSidebar from './Sidebar'
 
@@ -108,18 +108,7 @@ const HorizontalPodAutoscalerTable: React.FC = () => {
   const drawer: DrawerComponent<HorizontalPodAutoscaler> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuActivity />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <HorizontalPodAutoscalerSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: HorizontalPodAutoscalerSidebar }),
     actions: [
       {
         title: 'Delete',

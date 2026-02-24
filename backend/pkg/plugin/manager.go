@@ -7,18 +7,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-
-	// "sync"
+	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/go-plugin"
+	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
+	grpccodes "google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	pluginexec "github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
+	pluginmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
@@ -28,6 +32,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	ep "github.com/omniviewdev/plugin-sdk/pkg/exec"
 	lp "github.com/omniviewdev/plugin-sdk/pkg/logs"
+	mp "github.com/omniviewdev/plugin-sdk/pkg/metric"
 	np "github.com/omniviewdev/plugin-sdk/pkg/networker"
 	rp "github.com/omniviewdev/plugin-sdk/pkg/resource/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
@@ -121,6 +126,7 @@ func NewManager(
 	execController pluginexec.Controller,
 	networkerController networker.Controller,
 	logsController pluginlogs.Controller,
+	metricController pluginmetric.Controller,
 	managers map[string]plugintypes.PluginManager,
 	settingsProvider pkgsettings.Provider,
 	registryClient *registry.RegistryClient,
@@ -144,7 +150,7 @@ func NewManager(
 			types.ResourcePlugin:   nil, // not connless
 			types.FilesystemPlugin: nil, // not connless
 			types.LogPlugin:        logsController,
-			types.MetricPlugin:     nil, // not connless
+			types.MetricPlugin:     metricController,
 		},
 		connfullControllers: map[types.PluginType]plugintypes.ConnectedController{
 			types.ResourcePlugin:   resourceController,
@@ -154,13 +160,14 @@ func NewManager(
 			types.SettingsPlugin:   nil, // connless
 			types.FilesystemPlugin: nil, // TODO: implement
 			types.LogPlugin:        nil, // managed via connlessControllers
-			types.MetricPlugin:     nil, // TODO: implement
+			types.MetricPlugin:     nil, // managed via connlessControllers
 		},
 		watcher:          watcher,
 		watchTargets:     make(map[string][]string),
 		managers:         managers,
 		settingsProvider: settingsProvider,
 		registryClient:   registryClient,
+		pidTracker:       NewPluginPIDTracker(),
 	}
 }
 
@@ -185,6 +192,7 @@ type pluginManager struct {
 	managers       map[string]plugintypes.PluginManager
 	devServerCheck DevServerChecker
 	devServerMgr   *devserver.DevServerManager
+	pidTracker     *PluginPIDTracker
 }
 
 // Run starts until the the passed in context is cancelled.
@@ -204,6 +212,12 @@ func (pm *pluginManager) Shutdown() {
 	for _, plugin := range pm.plugins {
 		pm.shutdownPlugin(&plugin)
 	}
+
+	// Persist any remaining PIDs (safety net for plugins that failed to stop).
+	// On clean shutdown this will be empty/no-op.
+	if err := pm.pidTracker.Save(); err != nil {
+		pm.logger.Warnw("failed to save plugin PID file", "error", err)
+	}
 }
 
 // SetDevServerChecker sets the dev server checker. Call this after both the
@@ -221,6 +235,9 @@ func (pm *pluginManager) SetDevServerManager(mgr *devserver.DevServerManager) {
 func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// bind to Wails context
 	pm.ctx = ctx
+
+	// Kill any orphaned plugin processes from a previous unclean shutdown.
+	pm.pidTracker.CleanupStale(pm.logger)
 
 	// make sure our plugin dir is all set
 	if err := auditPluginDir(); err != nil {
@@ -242,39 +259,62 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 		return fmt.Errorf("error reading plugin directory: %w", err)
 	}
 
-	// load each plugin
+	// Phase 1: Start all dev servers in parallel.
+	// GoWatcher.Start() performs an initial `go build`, which can take 15-30s.
+	// Running them concurrently cuts total startup from sum(build_times) to max(build_times).
+	type devEntry struct {
+		pluginID string
+		devPath  string
+	}
+	var devPlugins []devEntry
+
 	for _, file := range files {
-		if file.IsDir() {
-			var opts *LoadPluginOptions
-			var isDevMode bool
-			var devPath string
+		if !file.IsDir() {
+			continue
+		}
+		for _, state := range states {
+			if state.ID == file.Name() && state.DevMode && state.DevPath != "" {
+				devPlugins = append(devPlugins, devEntry{
+					pluginID: file.Name(),
+					devPath:  state.DevPath,
+				})
+			}
+		}
+	}
 
-			for _, state := range states {
-				if state.ID == file.Name() {
-					opts = &LoadPluginOptions{
-						ExistingState: state,
-					}
-					isDevMode = state.DevMode
-					devPath = state.DevPath
+	if len(devPlugins) > 0 && pm.devServerMgr != nil {
+		var wg sync.WaitGroup
+		for _, dp := range devPlugins {
+			wg.Add(1)
+			go func(pluginID, devPath string) {
+				defer wg.Done()
+				pm.logger.Infow("starting dev server (parallel)", "pluginID", pluginID, "devPath", devPath)
+				if _, err := pm.devServerMgr.StartDevServerForPath(pluginID, devPath); err != nil {
+					pm.logger.Warnw("failed to start dev server", "pluginID", pluginID, "error", err)
+				}
+			}(dp.pluginID, dp.devPath)
+		}
+		wg.Wait()
+	}
+
+	// Phase 2: Load all plugins sequentially (binaries now exist from parallel builds).
+	for _, file := range files {
+		if !file.IsDir() {
+			continue
+		}
+
+		var opts *LoadPluginOptions
+		for _, state := range states {
+			if state.ID == file.Name() {
+				opts = &LoadPluginOptions{
+					ExistingState: state,
 				}
 			}
+		}
 
-			// For dev mode plugins: start the dev server BEFORE LoadPlugin.
-			// GoWatcher.Start() performs an initial build, placing the binary at
-			// ~/.omniview/plugins/<id>/bin/plugin so LoadPlugin validation passes.
-			if isDevMode && devPath != "" && pm.devServerMgr != nil {
-				pm.logger.Infow("auto-starting dev server before load",
-					"pluginID", file.Name(), "devPath", devPath)
-				if _, startErr := pm.devServerMgr.StartDevServerForPath(file.Name(), devPath); startErr != nil {
-					pm.logger.Warnw("failed to auto-start dev server",
-						"pluginID", file.Name(), "error", startErr)
-				}
-			}
-
-			if _, err = pm.LoadPlugin(file.Name(), opts); err != nil {
-				// don't fail on one plugin not loading
-				pm.logger.Errorf("error loading plugin: %w", err)
-			}
+		if _, err = pm.LoadPlugin(file.Name(), opts); err != nil {
+			// don't fail on one plugin not loading
+			pm.logger.Errorf("error loading plugin: %w", err)
 		}
 	}
 
@@ -289,6 +329,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 
 func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 	l := pm.logger.Named("InstallInDevMode")
+	l.Infow("InstallInDevMode called")
 
 	// have to pass wails context
 	path, err := runtime.OpenDirectoryDialog(pm.ctx, runtime.OpenDialogOptions{})
@@ -311,8 +352,15 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 
 	runtime.EventsEmit(pm.ctx, PluginDevInstallEventStart, metadata)
 
-	// 2. Copy only plugin.yaml to ~/.omniview/plugins/<id>/ so LoadPlugin can find metadata.
-	//    The binary will be built by the dev server's GoWatcher initial build.
+	// 2. Unload any existing plugin state so reinstall is idempotent.
+	if _, exists := pm.plugins[metadata.ID]; exists {
+		l.Infow("plugin already loaded, unloading first for reinstall", "pluginID", metadata.ID)
+		if unloadErr := pm.UnloadPlugin(metadata.ID); unloadErr != nil {
+			l.Warnw("failed to unload existing plugin (continuing anyway)", "pluginID", metadata.ID, "error", unloadErr)
+		}
+	}
+
+	// 3. Copy plugin.yaml to ~/.omniview/plugins/<id>/.
 	if err = transferPluginBuild(path, metadata, plugintypes.BuildOpts{
 		ExcludeBackend: true,
 		ExcludeUI:      true,
@@ -321,29 +369,30 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 		return nil, fmt.Errorf("failed to copy metadata: %w", err)
 	}
 
-	// 3. Ensure the bin directory exists for the GoWatcher to transfer into.
+	// 4. Ensure the bin directory exists for the GoWatcher to transfer into.
 	installLocation := getPluginLocation(metadata.ID)
 	if err = os.MkdirAll(filepath.Join(installLocation, "bin"), 0755); err != nil {
 		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
 		return nil, fmt.Errorf("failed to create plugin bin directory: %w", err)
 	}
 
-	// 4. Start the dev server (Vite + GoWatcher with initial build) BEFORE LoadPlugin.
+	// 5. Start the dev server (Vite + GoWatcher with initial build).
 	//    GoWatcher.Start() performs an initial `go build` + transferBinary, placing the
 	//    binary at ~/.omniview/plugins/<id>/bin/plugin so LoadPlugin validation passes.
 	if pm.devServerMgr != nil {
 		l.Infow("starting dev server (triggers initial build)", "pluginID", metadata.ID)
 		if _, startErr := pm.devServerMgr.StartDevServerForPath(metadata.ID, path); startErr != nil {
-			l.Warnw("failed to start dev server", "pluginID", metadata.ID, "error", startErr)
-			// Continue anyway — LoadPlugin will fail validation if binary doesn't exist,
-			// which is the correct behavior (build error should be visible in dev panel).
+			runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
+			return nil, fmt.Errorf("dev server failed to start: %w", startErr)
 		}
+		l.Infow("dev server started successfully", "pluginID", metadata.ID)
 	} else {
-		l.Warnw("no dev server manager set, skipping dev server start")
+		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
+		return nil, fmt.Errorf("no dev server manager configured")
 	}
 
-	// 5. Load the plugin — binary should now exist from GoWatcher initial build.
-	l.Infow("loading plugin", "pluginID", metadata.ID)
+	// 6. Load the plugin — binary should now exist from GoWatcher initial build.
+	l.Infow("loading plugin (starting binary + gRPC connect)", "pluginID", metadata.ID)
 	_, err = pm.LoadPlugin(metadata.ID, &LoadPluginOptions{DevMode: true, DevModePath: path})
 	if err != nil {
 		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
@@ -422,10 +471,12 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 		return nil, fmt.Errorf("error parsing plugin metadata: %w", err)
 	}
 
+	// signal to UI the install has started
+	runtime.EventsEmit(pm.ctx, PluginInstallStartedEvent, metadata)
+
 	// ensure the plugin directory exists
 	location := getPluginLocation(metadata.ID)
 	if err = os.MkdirAll(location, 0755); err != nil {
-		// signal to UI the install has started
 		runtime.EventsEmit(pm.ctx, PluginInstallErrorEvent, metadata)
 		return nil, fmt.Errorf("error creating plugin directory: %w", err)
 	}
@@ -572,19 +623,20 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 
 	// we have backend capabilities, so we need to start the plugin
 	if metadata.HasBackendCapabilities() {
-		pluginClient := plugin.NewClient(&plugin.ClientConfig{
+		pluginClient := goplugin.NewClient(&goplugin.ClientConfig{
 			HandshakeConfig: metadata.GenerateHandshakeConfig(),
-			Plugins: map[string]plugin.Plugin{
+			Plugins: map[string]goplugin.Plugin{
 				"resource":  &rp.ResourcePlugin{},
 				"exec":      &ep.Plugin{},
 				"networker": &np.Plugin{},
 				"log":       &lp.Plugin{},
+				"metric":    &mp.Plugin{},
 				"settings":  &sp.SettingsPlugin{},
 			},
 			GRPCDialOptions: sdk.GRPCDialOptions(),
 			//nolint:gosec // this is completely software controlled
 			Cmd:              exec.Command(filepath.Join(location, "bin", "plugin")),
-			AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+			AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 			Logger: hclog.New(&hclog.LoggerOptions{
 				Name:   id,
 				Output: os.Stdout,
@@ -602,6 +654,11 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 
 		newPlugin.RPCClient = rpcClient
 		newPlugin.PluginClient = pluginClient
+
+		// Track the plugin process PID for orphan cleanup on next startup.
+		if rc := pluginClient.ReattachConfig(); rc != nil {
+			pm.pidTracker.Record(id, rc.Pid)
+		}
 
 		// init the controllers
 		if err = pm.initPlugin(&newPlugin); err != nil {
@@ -760,24 +817,20 @@ func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
 	// manually register the required capabilities first
 	pm.connlessControllers[types.SettingsPlugin].OnPluginInit(plugin.Metadata)
 
-	// go through the controllers and init them based on the capabilities
-	for _, capability := range plugin.Metadata.Capabilities {
-		switch capability {
-		case types.ResourcePlugin.String():
-			pm.connfullControllers[types.ResourcePlugin].OnPluginInit(plugin.Metadata)
-		case types.ExecutorPlugin.String():
-			pm.connlessControllers[types.ExecutorPlugin].OnPluginInit(plugin.Metadata)
-		case types.NetworkerPlugin.String():
-			pm.connlessControllers[types.NetworkerPlugin].OnPluginInit(plugin.Metadata)
-		case types.FilesystemPlugin.String():
-			pm.connfullControllers[types.FilesystemPlugin].OnPluginInit(plugin.Metadata)
-		case types.LogPlugin.String():
-			pm.connlessControllers[types.LogPlugin].OnPluginInit(plugin.Metadata)
-		case types.MetricPlugin.String():
-			pm.connfullControllers[types.MetricPlugin].OnPluginInit(plugin.Metadata)
-		case types.ReporterPlugin.String():
-			pm.connlessControllers[types.ReporterPlugin].OnPluginInit(plugin.Metadata)
+	// Init all controllers — OnPluginInit is a lightweight notification
+	// with no gRPC calls, so it's safe to call for all capabilities.
+	// Actual capability detection happens later in startPlugin.
+	for pt, ctrl := range pm.connfullControllers {
+		if ctrl == nil || pt == types.SettingsPlugin {
+			continue
 		}
+		ctrl.OnPluginInit(plugin.Metadata)
+	}
+	for pt, ctrl := range pm.connlessControllers {
+		if ctrl == nil || pt == types.SettingsPlugin {
+			continue
+		}
+		ctrl.OnPluginInit(plugin.Metadata)
 	}
 
 	return nil
@@ -813,39 +866,77 @@ func (pm *pluginManager) startPlugin(plugin *types.Plugin) error {
 		return fmt.Errorf("error starting settings plugin: %w", err)
 	}
 
-	// go through the controllers and start them based on the capabilities
-	for _, capability := range plugin.Metadata.Capabilities {
-		switch capability {
-		case types.ResourcePlugin.String():
-			if err := pm.connfullControllers[types.ResourcePlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
-				return fmt.Errorf("error starting resource plugin: %w", err)
-			}
-		case types.ExecutorPlugin.String():
-			if err := pm.connlessControllers[types.ExecutorPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
-				return fmt.Errorf("error starting executor plugin: %w", err)
-			}
-		case types.NetworkerPlugin.String():
-			if err := pm.connlessControllers[types.NetworkerPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
-				return fmt.Errorf("error starting networker plugin: %w", err)
-			}
-		case types.FilesystemPlugin.String():
-			if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
-				return fmt.Errorf("error starting filesystem plugin: %w", err)
-			}
-		case types.LogPlugin.String():
-			if err := pm.connlessControllers[types.LogPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
-				return fmt.Errorf("error starting log plugin: %w", err)
-			}
-		case types.MetricPlugin.String():
-			if err := pm.connfullControllers[types.MetricPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
-				return fmt.Errorf("error starting metric plugin: %w", err)
-			}
-		case types.ReporterPlugin.String():
-			if err := pm.connlessControllers[types.ReporterPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
-				return fmt.Errorf("error starting reporter plugin: %w", err)
-			}
-		}
+	// Discover capabilities by probing the running plugin binary via gRPC.
+	// For each capability we make a lightweight unary RPC call to a known
+	// method on its gRPC service. If the call returns codes.Unimplemented
+	// the plugin binary does not serve that capability and we skip it.
+	// Only when the probe succeeds do we call OnPluginStart for that
+	// controller, which sets up streams and state.
+	type capEntry struct {
+		pluginType  types.PluginType
+		connfull    bool
+		probeMethod string // full gRPC method path for the probe
 	}
+	optionalCaps := []capEntry{
+		{types.ResourcePlugin, true, "/com.omniview.pluginsdk.ResourcePlugin/GetResourceGroups"},
+		{types.ExecutorPlugin, false, "/com.omniview.pluginsdk.ExecPlugin/GetSupportedResources"},
+		{types.NetworkerPlugin, false, "/com.omniview.pluginsdk.NetworkerPlugin/GetSupportedPortForwardTargets"},
+		{types.LogPlugin, false, "/com.omniview.pluginsdk.LogPlugin/GetSupportedResources"},
+		{types.MetricPlugin, false, "/com.omniview.pluginsdk.MetricPlugin/GetSupportedResources"},
+	}
+
+	// Get the underlying gRPC connection for probing.
+	grpcClient, ok := plugin.RPCClient.(*goplugin.GRPCClient)
+	if !ok {
+		return fmt.Errorf("expected *plugin.GRPCClient, got %T", plugin.RPCClient)
+	}
+	conn := grpcClient.Conn
+
+	plugin.Capabilities = make([]types.PluginType, 0)
+	for _, cap := range optionalCaps {
+		name := cap.pluginType.String()
+
+		var ctrl plugintypes.Controller
+		if cap.connfull {
+			ctrl = pm.connfullControllers[cap.pluginType]
+		} else {
+			ctrl = pm.connlessControllers[cap.pluginType]
+		}
+		if ctrl == nil {
+			continue
+		}
+
+		// Probe: make a lightweight gRPC call. We don't care about the
+		// response payload — we only check whether the service exists.
+		probeCtx, probeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		probeErr := conn.Invoke(probeCtx, cap.probeMethod, &emptypb.Empty{}, &emptypb.Empty{})
+		probeCancel()
+		if grpcstatus.Code(probeErr) == grpccodes.Unimplemented {
+			pm.logger.Debugw("capability not implemented in plugin binary",
+				"pluginID", plugin.Metadata.ID,
+				"capability", name,
+			)
+			continue
+		}
+
+		// Service exists (the call may fail for other reasons like nil
+		// request, which is expected — but the service IS registered).
+		if err := ctrl.OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
+			pm.logger.Warnw("failed to start capability controller",
+				"pluginID", plugin.Metadata.ID,
+				"capability", name,
+				"error", err,
+			)
+			continue
+		}
+
+		plugin.Capabilities = append(plugin.Capabilities, cap.pluginType)
+	}
+
+	pm.logger.Infow("detected plugin capabilities",
+		"pluginID", plugin.Metadata.ID,
+		"capabilities", plugin.Capabilities,
+	)
 
 	return nil
 }
@@ -880,37 +971,20 @@ func (pm *pluginManager) stopPlugin(plugin *types.Plugin) error {
 		return fmt.Errorf("error stopping settings plugin: %w", err)
 	}
 
-	// go through the controllers and stop them based on the capabilities
-	for _, capability := range plugin.Metadata.Capabilities {
-		switch capability {
-		case types.ResourcePlugin.String():
-			if err := pm.connfullControllers[types.ResourcePlugin].OnPluginStop(plugin.Metadata); err != nil {
-				return fmt.Errorf("error stopping resource plugin: %w", err)
-			}
-		case types.ExecutorPlugin.String():
-			if err := pm.connlessControllers[types.ExecutorPlugin].OnPluginStop(plugin.Metadata); err != nil {
-				return fmt.Errorf("error stopping executor plugin: %w", err)
-			}
-		case types.NetworkerPlugin.String():
-			if err := pm.connlessControllers[types.NetworkerPlugin].OnPluginStop(plugin.Metadata); err != nil {
-				return fmt.Errorf("error stopping networker plugin: %w", err)
-			}
-		case types.FilesystemPlugin.String():
-			if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginStop(plugin.Metadata); err != nil {
-				return fmt.Errorf("error stopping filesystem plugin: %w", err)
-			}
-		case types.LogPlugin.String():
-			if err := pm.connlessControllers[types.LogPlugin].OnPluginStop(plugin.Metadata); err != nil {
-				return fmt.Errorf("error stopping log plugin: %w", err)
-			}
-		case types.MetricPlugin.String():
-			if err := pm.connfullControllers[types.MetricPlugin].OnPluginStop(plugin.Metadata); err != nil {
-				return fmt.Errorf("error stopping metric plugin: %w", err)
-			}
-		case types.ReporterPlugin.String():
-			if err := pm.connlessControllers[types.ReporterPlugin].OnPluginStop(plugin.Metadata); err != nil {
-				return fmt.Errorf("error stopping reporter plugin: %w", err)
-			}
+	// Stop controllers for capabilities detected from the running binary.
+	for _, cap := range plugin.Capabilities {
+		var ctrl plugintypes.Controller
+		switch cap {
+		case types.ResourcePlugin, types.FilesystemPlugin:
+			ctrl = pm.connfullControllers[cap]
+		default:
+			ctrl = pm.connlessControllers[cap]
+		}
+		if ctrl == nil {
+			continue
+		}
+		if err := ctrl.OnPluginStop(plugin.Metadata); err != nil {
+			return fmt.Errorf("error stopping %s plugin: %w", cap, err)
 		}
 	}
 
@@ -947,6 +1021,7 @@ func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 			return fmt.Errorf("error stopping plugin client: %w", err)
 		}
 		plugin.PluginClient.Kill()
+		pm.pidTracker.Remove(plugin.Metadata.ID)
 
 		// manually shutdown the required capabilities first
 		if err := pm.connlessControllers[types.SettingsPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
@@ -954,37 +1029,20 @@ func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 		}
 	}
 
-	// go through the controllers and stop them based on the capabilities
-	for _, capability := range plugin.Metadata.Capabilities {
-		switch capability {
-		case types.ResourcePlugin.String():
-			if err := pm.connfullControllers[types.ResourcePlugin].OnPluginShutdown(plugin.Metadata); err != nil {
-				return fmt.Errorf("error shutting down resource plugin: %w", err)
-			}
-		case types.ExecutorPlugin.String():
-			if err := pm.connlessControllers[types.ExecutorPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
-				return fmt.Errorf("error shutting down executor plugin: %w", err)
-			}
-		case types.NetworkerPlugin.String():
-			if err := pm.connlessControllers[types.NetworkerPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
-				return fmt.Errorf("error shutting down networker plugin: %w", err)
-			}
-		case types.FilesystemPlugin.String():
-			if err := pm.connfullControllers[types.FilesystemPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
-				return fmt.Errorf("error shutting down filesystem plugin: %w", err)
-			}
-		case types.LogPlugin.String():
-			if err := pm.connlessControllers[types.LogPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
-				return fmt.Errorf("error shutting down log plugin: %w", err)
-			}
-		case types.MetricPlugin.String():
-			if err := pm.connfullControllers[types.MetricPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
-				return fmt.Errorf("error shutting down metric plugin: %w", err)
-			}
-		case types.ReporterPlugin.String():
-			if err := pm.connfullControllers[types.ReporterPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
-				return fmt.Errorf("error shutting down reporter plugin: %w", err)
-			}
+	// Shutdown controllers for capabilities detected from the running binary.
+	for _, cap := range plugin.Capabilities {
+		var ctrl plugintypes.Controller
+		switch cap {
+		case types.ResourcePlugin, types.FilesystemPlugin:
+			ctrl = pm.connfullControllers[cap]
+		default:
+			ctrl = pm.connlessControllers[cap]
+		}
+		if ctrl == nil {
+			continue
+		}
+		if err := ctrl.OnPluginShutdown(plugin.Metadata); err != nil {
+			return fmt.Errorf("error shutting down %s plugin: %w", cap, err)
 		}
 	}
 	return nil

@@ -1,8 +1,8 @@
 import React from 'react';
 import builtInPlugins from './builtins';
-import { PluginWindow, DrawerContext } from '@omniviewdev/runtime';
+import { PluginWindow, DrawerContext, DrawerFactory } from '@omniviewdev/runtime';
 import { EXTENSION_REGISTRY } from '../../extensions/store';
-import { registerPlugin, registerPluginSidebars } from '../PluginManager';
+import { registerPlugin, registerPluginSidebars, registerPluginDrawers } from '../PluginManager';
 import { SystemJS } from './systemjs';
 import { EventsEmit } from '@omniviewdev/runtime/runtime';
 import { devSharedReady } from './devSharedReady';
@@ -73,8 +73,13 @@ export async function importPlugin({ pluginId, moduleHash, dev, devPort }: Plugi
       const module = await import(/* @vite-ignore */ devUrl);
       return module;
     } catch (err) {
-      console.warn(`[loader] plugin "${pluginId}" — dev server import failed, falling back to SystemJS`, { plugin: pluginId, error: String(err) });
-      // Fall through to SystemJS path
+      // Dev plugins have no SystemJS bundle — falling back would always fail
+      // with a more confusing error. Throw immediately with actionable context.
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `[loader] Dev plugin "${pluginId}" failed to load from ${devUrl}: ${message}. ` +
+        `Ensure the plugin dev server is running on port ${devPort}.`
+      );
     }
   }
 
@@ -145,6 +150,12 @@ export async function loadAndRegisterPlugin(
   const { sidebars } = exports as { sidebars?: Record<string, React.FC<{ ctx: DrawerContext }>> };
   if (sidebars) {
     registerPluginSidebars(pluginID, sidebars);
+  }
+
+  // Register drawer factories if the plugin exports them
+  const { drawers } = exports as { drawers?: Record<string, DrawerFactory> };
+  if (drawers) {
+    registerPluginDrawers(pluginID, drawers);
   }
 
   console.debug(`[loader] loadAndRegisterPlugin "${pluginID}" complete — emitting recalc_routes`, { plugin: pluginID });

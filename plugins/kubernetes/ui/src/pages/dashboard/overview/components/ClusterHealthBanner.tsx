@@ -1,5 +1,7 @@
 import React from 'react';
-import { Alert, Stack, Typography } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import {
   LuCircleCheck,
   LuTriangleAlert,
@@ -37,34 +39,51 @@ const ClusterHealthBanner: React.FC<Props> = ({ nodes, pods, events }) => {
     return { issues, hasErrors };
   }, [nodes, pods, events]);
 
+  const color = health.issues.length === 0 ? 'success' : health.hasErrors ? 'danger' : 'warning';
+  const Icon = health.issues.length === 0 ? LuCircleCheck : health.hasErrors ? LuCircleX : LuTriangleAlert;
+
   if (health.issues.length === 0) {
     return (
-      <Alert
-        size='sm'
-        variant='soft'
-        color='success'
-        startDecorator={<LuCircleCheck size={14} />}
-        sx={{ py: 0.5 }}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          py: 0.5,
+          px: 1.5,
+          borderRadius: 1,
+          bgcolor: `${color}.50`,
+          border: '1px solid',
+          borderColor: `${color}.200`,
+        }}
       >
-        <Typography level='body-xs'>All systems operational</Typography>
-      </Alert>
+        <Icon size={14} />
+        <Text size='xs'>All systems operational</Text>
+      </Box>
     );
   }
 
   return (
-    <Alert
-      size='sm'
-      variant='soft'
-      color={health.hasErrors ? 'danger' : 'warning'}
-      startDecorator={health.hasErrors ? <LuCircleX size={14} /> : <LuTriangleAlert size={14} />}
-      sx={{ py: 0.5 }}
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1,
+        py: 0.5,
+        px: 1.5,
+        borderRadius: 1,
+        bgcolor: `${color}.50`,
+        border: '1px solid',
+        borderColor: `${color}.200`,
+      }}
     >
-      <Stack direction='row' gap={2} flexWrap='wrap'>
+      <Icon size={14} />
+      <Stack direction='row' gap={2} sx={{ flexWrap: 'wrap' }}>
         {health.issues.map((issue, i) => (
-          <Typography key={i} level='body-xs'>{issue}</Typography>
+          <Text key={i} size='xs'>{issue}</Text>
         ))}
       </Stack>
-    </Alert>
+    </Box>
   );
 };
 

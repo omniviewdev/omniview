@@ -2,11 +2,13 @@
 package resource
 
 import (
+	"github.com/omniview/kubernetes/pkg/plugin/helm"
 	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
 	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers"
 	"github.com/omniview/kubernetes/pkg/plugin/resource/resourcers/extras/benchmark"
 	"github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
+	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"go.uber.org/zap"
 
   "k8s.io/apimachinery/pkg/runtime/schema"
@@ -43,19 +45,43 @@ var gvrMap = map[schema.GroupVersionResource]string{
 func Register(plugin *sdk.Plugin) {
 	logger := zap.S()
 
+	// Merge Helm resource definitions into the K8s definitions.
+	resourceDefs := make(map[string]types.ResourceDefinition, len(resourcers.ResourceDefs))
+	for k, v := range resourcers.ResourceDefs {
+		resourceDefs[k] = v
+	}
+	for k, v := range helm.HelmResourceDefinitions() {
+		resourceDefs[k] = v
+	}
+
+	// Helm resourcers.
+	helmSvc := helm.NewHelmService()
+	helmResourcers := helm.HelmResourcers(logger, helmSvc)
+
+	// Collect all registered resource keys for OpenAPI schema fetching.
+	registeredKeys := make([]string, 0, len(resourceMap))
+	for key := range resourceMap {
+		registeredKeys = append(registeredKeys, key)
+	}
+
 	sdk.RegisterResourcePlugin(
 		plugin,
 		sdk.ResourcePluginOpts[clients.ClientSet]{
 			CreateClient:                 clients.CreateClient,
 			RefreshClient:               clients.RefreshClient,
+			ErrorClassifier:             classifyResourceError,
 			DiscoveryProvider:            sdk.NewClientDiscoveryProvider(clients.CreateDiscoveryClient, nil, DiscoveryFunc),
 			LoadConnectionFunc:           LoadConnectionsFunc,
+			WatchConnectionsFunc:         WatchConnectionsFunc,
 			LoadConnectionNamespacesFunc: LoadConnectionNamespacesFunc,
 			CheckConnectionFunc:          CheckConnectionFunc,
 			CreateInformerFunc:           NewKubeInformerHandle,
 			ResourceGroups:               ResourceGroups,
-			ResourceDefinitions:          resourcers.ResourceDefs,
+			ResourceDefinitions:          resourceDefs,
 			DefaultResourceDefinition:    resourcers.DefaultResourceDef,
+			SchemaFunc: func(ctx *pkgtypes.PluginContext, client *clients.ClientSet) ([]types.EditorSchema, error) {
+				return FetchOpenAPISchemas(ctx, client, registeredKeys)
+			},
 			PatternResourcers: map[string]types.Resourcer[clients.ClientSet]{
 				"*": resourcers.NewKubernetesPatternResourcer(logger),
 			},
@@ -72,11 +98,19 @@ func Register(plugin *sdk.Plugin) {
           Version: "{{.Version}}",
           Kind:    "{{.Kind}}",
           Description: `{{.Description}}`,
-        }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
+        }:
+        {{- if and (eq .Group "core") (eq .Version "v1") (eq .Kind "Node") }} resourcers.NewNodeResourcer(logger),
+        {{- else }} resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
 					logger,
           {{.ImportName}}.SchemeGroupVersion.WithResource("{{.SGVRName}}"),
 				),
         {{- end }}
+        {{- end }}
+
+				// Helm resourcers
+				helm.ReleaseMeta: helmResourcers[helm.ReleaseMeta],
+				helm.RepoMeta:    helmResourcers[helm.RepoMeta],
+				helm.ChartMeta:   helmResourcers[helm.ChartMeta],
 			},
 		},
 	)

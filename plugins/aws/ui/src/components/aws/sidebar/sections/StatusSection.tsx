@@ -1,11 +1,11 @@
 import React from "react";
-import { Chip } from "@mui/joy";
+import { Chip } from "@omniviewdev/ui";
 
 interface Props {
   value: string | undefined;
 }
 
-const STATUS_COLOR_MAP: Record<string, "success" | "warning" | "danger"> = {
+const STATUS_COLOR_MAP: Record<string, "success" | "warning" | "error"> = {
   running: "success",
   available: "success",
   active: "success",
@@ -19,19 +19,19 @@ const STATUS_COLOR_MAP: Record<string, "success" | "warning" | "danger"> = {
   modifying: "warning",
   "in-progress": "warning",
   updating: "warning",
-  deleting: "danger",
-  failed: "danger",
-  error: "danger",
-  stopped: "danger",
-  terminated: "danger",
-  "shutting-down": "danger",
+  deleting: "error",
+  failed: "error",
+  error: "error",
+  stopped: "error",
+  terminated: "error",
+  "shutting-down": "error",
 };
 
 function getStatusColor(
   value: string | undefined
-): "success" | "warning" | "danger" | "neutral" {
-  if (!value) return "neutral";
-  return STATUS_COLOR_MAP[value] ?? STATUS_COLOR_MAP[value.toLowerCase()] ?? "neutral";
+): "success" | "warning" | "error" | "default" {
+  if (!value) return "default";
+  return STATUS_COLOR_MAP[value] ?? STATUS_COLOR_MAP[value.toLowerCase()] ?? "default";
 }
 
 /**
@@ -43,12 +43,11 @@ const StatusSection: React.FC<Props> = ({ value }) => {
   return (
     <Chip
       size="sm"
-      variant="soft"
+      variant="filled"
       color={getStatusColor(value)}
-      sx={{ borderRadius: "sm" }}
-    >
-      {value}
-    </Chip>
+      label={value}
+      sx={{ borderRadius: 1 }}
+    />
   );
 };
 

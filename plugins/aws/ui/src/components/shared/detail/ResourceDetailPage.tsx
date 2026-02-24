@@ -1,15 +1,10 @@
-import React from 'react';
-import {
-  Box,
-  Chip,
-  IconButton,
-  Stack,
-  Tab,
-  TabList,
-  TabPanel,
-  Tabs,
-  Typography,
-} from '@mui/joy';
+import React, { useState } from 'react';
+import Box from '@mui/material/Box';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Chip } from '@omniviewdev/ui';
+import { Tabs, TabPanel } from '@omniviewdev/ui/navigation';
 import { LuArrowLeft } from 'react-icons/lu';
 import { usePluginRouter } from '@omniviewdev/runtime';
 
@@ -47,6 +42,20 @@ const ResourceDetailPage: React.FC<Props> = ({
 }) => {
   const { navigate } = usePluginRouter();
 
+  const [activeTab, setActiveTab] = useState("0");
+  const chipColor = statusColor === 'neutral' ? 'default' : statusColor === 'danger' ? 'error' : statusColor;
+  const headerChipColor = 'default';
+
+  const tabItems = tabs.map((tab, i) => ({
+    key: String(i),
+    label: tab.label,
+    icon: tab.icon ? (
+      <Box sx={{ display: 'flex', alignItems: 'center', mr: 0.5, fontSize: 14 }}>
+        {tab.icon}
+      </Box>
+    ) : undefined,
+  }));
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       {/* Header */}
@@ -59,13 +68,13 @@ const ResourceDetailPage: React.FC<Props> = ({
           py: 1,
           borderBottom: '1px solid',
           borderColor: 'divider',
-          bgcolor: 'background.surface',
+          bgcolor: 'background.paper',
           flexShrink: 0,
         }}
       >
         <IconButton
           size='sm'
-          variant='plain'
+          emphasis='ghost'
           color='neutral'
           onClick={() => navigate(backPath)}
         >
@@ -79,54 +88,40 @@ const ResourceDetailPage: React.FC<Props> = ({
         )}
 
         <Stack spacing={0} sx={{ minWidth: 0 }}>
-          <Typography level='title-md' noWrap>{title}</Typography>
-          {subtitle && <Typography level='body-xs' color='neutral' noWrap>{subtitle}</Typography>}
+          <Text weight="semibold" size="sm" sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</Text>
+          {subtitle && <Text size="xs" color="neutral" sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</Text>}
         </Stack>
 
         {status && (
-          <Chip size='sm' variant='soft' color={statusColor} sx={{ borderRadius: 'sm' }}>
-            {status}
-          </Chip>
+          <Chip size='sm' label={status} color={chipColor} variant='filled' sx={{ borderRadius: 1 }} />
         )}
 
         {headerDetails && headerDetails.length > 0 && (
           <Stack direction='row' spacing={1} sx={{ ml: 'auto' }}>
             {headerDetails.map((detail) => (
-              <Chip key={detail.label} size='sm' variant='outlined' color='neutral'>
-                {detail.label}: {detail.value}
-              </Chip>
+              <Chip key={detail.label} size='sm' label={`${detail.label}: ${detail.value}`} color={headerChipColor} variant='outlined' sx={{ borderRadius: 1 }} />
             ))}
           </Stack>
         )}
       </Stack>
 
       {/* Tabs */}
-      <Tabs defaultValue={0} sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <TabList
-          size='sm'
-          sx={{
-            px: 1.5,
-            flexShrink: 0,
-            '--ListItem-minHeight': '36px',
-          }}
-        >
-          {tabs.map((tab, i) => (
-            <Tab key={i} value={i}>
-              {tab.icon && (
-                <Box sx={{ display: 'flex', alignItems: 'center', mr: 0.5, fontSize: 14 }}>
-                  {tab.icon}
-                </Box>
-              )}
-              {tab.label}
-            </Tab>
-          ))}
-        </TabList>
+      <Tabs
+        value={activeTab}
+        onChange={setActiveTab}
+        tabs={tabItems}
+        size="sm"
+        sx={{ flexShrink: 0 }}
+      />
+      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {tabs.map((tab, i) => (
-          <TabPanel key={i} value={i} sx={{ flex: 1, minHeight: 0, p: 0, display: 'flex', flexDirection: 'column' }}>
-            {tab.content}
+          <TabPanel key={i} value={String(i)} activeValue={activeTab}>
+            <Box sx={{ flex: 1, minHeight: 0, p: 0, display: 'flex', flexDirection: 'column' }}>
+              {tab.content}
+            </Box>
           </TabPanel>
         ))}
-      </Tabs>
+      </Box>
     </Box>
   );
 };

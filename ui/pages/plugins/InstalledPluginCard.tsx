@@ -1,20 +1,13 @@
 import * as React from 'react';
 
 // Material-ui
-import {
-  Avatar,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  CardActions,
-  CircularProgress,
-  Chip,
-  IconButton,
-  Stack,
-  Tooltip,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button, IconButton } from '@omniviewdev/ui/buttons';
+import { Tooltip } from '@omniviewdev/ui/overlays';
+import { Avatar, Chip, Card } from '@omniviewdev/ui';
 
 // Icons
 import Icon from '@/components/icons/Icon';
@@ -28,8 +21,6 @@ import UninstallPluginModal from './UninstallPluginModal';
 import PluginUpdateButton from './PluginUpdateButton';
 import DevModeSection from './DevModeSection';
 
-// Bindings
-
 type Props = {
   /** The ID of the plugin */
   id: string;
@@ -37,140 +28,133 @@ type Props = {
 
 const IsImage = /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$|\.(gif|jpe?g|tiff?|png|webp|bmp)$/i;
 
-// Assuming you
-
 const InstalledPluginCard: React.FC<Props> = ({ id }) => {
   const [uninstallModalOpen, setUninstallModalOpen] = React.useState(false);
 
   const { plugin, reload, uninstall } = usePlugin({ id });
 
-  /**
-   * Handle opening the link inside the users default browser
-   */
   const handleOpenInBrowser = (url: string | undefined) => {
-    console.log('opening in browser', url);
-    // If the url is a url but doesn't include a protocol, add it
     if (url && !url.includes('://')) {
       url = `https://${url}`;
     }
-
     if (url !== undefined) {
       BrowserOpenURL(url);
     }
   };
 
-  if (plugin.isLoading) {
-    return <></>;
+  if (plugin.isLoading || plugin.isError) {
+    return null;
   }
 
-  if (plugin.isError) {
-    return <></>;
-  }
+  const isDevMode = !!plugin.data?.devMode;
 
   return (
     <Card
-      id={`plugin-card-${id}`}
-      variant='outlined'
       sx={{
-        overflow: 'auto',
+        overflow: 'hidden',
         position: 'relative',
+        border: '1px solid',
+        borderColor: 'divider',
       }}
     >
-      {plugin.data?.loading && <CircularProgress size={'lg'} thickness={8} sx={{
-        position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-      }} />}
-
-      <div style={{
-        height: '100%',
-        width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-        opacity: plugin.data?.loading ? 0.2 : 1,
-        transition: 'opacity 0.3s ease-in-out',
-      }}>
-        <Box
+      {plugin.data?.loading && (
+        <CircularProgress
+          size={48}
+          thickness={8}
           sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'start',
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 1,
           }}
-        >
-          <Stack direction='row' spacing={2} alignItems='center'>
-            <Typography level='title-lg'>{plugin.data?.metadata.name}</Typography>
-            <Chip size='sm' sx={{ borderRadius: 'sm', maxHeight: 20 }} color='neutral'>
-              {plugin.data?.metadata.version}
-            </Chip>
-            {plugin.data?.devMode &&
-              <Tooltip
-                sx={{ p: 1 }}
-                title={
-                  <Typography level='title-sm'>
-                    {plugin.data?.devPath}
-                  </Typography>
-                }
-                variant='soft'
-                color='warning'
-                arrow
-              >
+        />
+      )}
+
+      <Box
+        sx={{
+          height: '100%',
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1.5,
+          opacity: plugin.data?.loading ? 0.2 : 1,
+          transition: 'opacity 0.3s ease-in-out',
+        }}
+      >
+        {/* Header: name, version, dev badge, icon */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0, pr: 5 }}>
+            <Text weight="semibold" size="lg" sx={{ whiteSpace: 'nowrap' }}>
+              {plugin.data?.metadata.name}
+            </Text>
+            <Chip
+              size="xs"
+              color="neutral"
+              emphasis="outline"
+              shape="rounded"
+              label={plugin.data?.metadata.version ?? ''}
+            />
+            {isDevMode && (
+              <Tooltip content={<Text weight="semibold" size="sm">{plugin.data?.devPath}</Text>}>
                 <Chip
-                  size='sm'
-                  sx={{ borderRadius: 'sm', maxHeight: 20 }}
-                  color='warning'
-                  variant='outlined'
-                  startDecorator={
-                    <LuAtom />
-                  }
-                >
-                  Dev Mode
-                </Chip>
+                  size="xs"
+                  color="warning"
+                  emphasis="outline"
+                  shape="rounded"
+                  icon={<LuAtom size={12} />}
+                  label="Dev Mode"
+                />
               </Tooltip>
-            }
-          </Stack>
+            )}
+          </Box>
           {plugin.data?.metadata.icon && IsImage.test(plugin.data?.metadata.icon) ? (
             <Avatar
-              size='md'
+              size="md"
               src={plugin.data?.metadata.icon}
-              variant='plain'
-              sx={{
-                borderRadius: 4, position: 'absolute', top: 10, right: 10,
-              }} />
-          ) : <Icon name={plugin.data?.metadata.icon ?? ''} size={30} />}
+              sx={{ borderRadius: 4, position: 'absolute', top: 10, right: 10 }}
+            />
+          ) : (
+            <Icon name={plugin.data?.metadata.icon ?? ''} size={30} />
+          )}
         </Box>
-        <CardContent sx={{ minHeight: 42 }}>
-          <Typography
-            level='body-sm'
+
+        {/* Description */}
+        <Box sx={{ minHeight: 36 }}>
+          <Text
+            size="sm"
             sx={{
               display: '-webkit-box',
               overflow: 'hidden',
               WebkitBoxOrient: 'vertical',
               WebkitLineClamp: 2,
             }}
-          >{plugin.data?.metadata.description}</Typography>
-        </CardContent>
-        {plugin.data?.devMode && (
-          <DevModeSection
-            pluginId={id}
-            devPath={plugin.data?.devPath ?? ''}
-          />
+          >
+            {plugin.data?.metadata.description}
+          </Text>
+        </Box>
+
+        {/* Dev server section */}
+        {isDevMode && (
+          <DevModeSection pluginId={id} devPath={plugin.data?.devPath ?? ''} />
         )}
-        <CardActions buttonFlex='0 1 120px'>
-          <Tooltip title='View on GitHub' variant='soft' arrow>
+
+        {/* Actions row */}
+        <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end', alignItems: 'center' }}>
+          <Tooltip content="View on GitHub">
             <IconButton
-              variant='outlined'
-              color='neutral'
-              onClick={() => {
-                handleOpenInBrowser(plugin.data?.metadata.repository);
-              }}
+              emphasis="outline"
+              color="neutral"
+              onClick={() => handleOpenInBrowser(plugin.data?.metadata.repository)}
             >
               <FaGithub />
             </IconButton>
           </Tooltip>
 
-          <Tooltip title='Reload plugin' variant='soft' arrow>
+          <Tooltip content="Reload plugin">
             <IconButton
-              variant='outlined'
-              color='neutral'
+              emphasis="outline"
+              color="neutral"
               sx={{ mr: 'auto' }}
               onClick={async () => reload()}
             >
@@ -178,35 +162,41 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
             </IconButton>
           </Tooltip>
 
-          <Tooltip title='View plugin' variant='soft' arrow>
+          <Tooltip content="View plugin">
             <IconButton
-              variant='outlined'
-              color='neutral'
-              sx={{ mr: 'auto' }}
-              onClick={() => {
-                handleOpenInBrowser(plugin.data?.metadata.website);
-              }}
+              emphasis="outline"
+              color="neutral"
+              onClick={() => handleOpenInBrowser(plugin.data?.metadata.website)}
             >
               <LuView />
             </IconButton>
           </Tooltip>
 
           <Button
-            variant='outlined'
-            color='neutral'
-            onClick={() => {
-              setUninstallModalOpen(true);
-            }}
+            emphasis="outline"
+            color="neutral"
+            onClick={() => setUninstallModalOpen(true)}
           >
             Uninstall
           </Button>
 
-          <PluginUpdateButton installed={true} currentVersion={plugin.data?.metadata.version || ''} pluginID={id} />
-          <UninstallPluginModal open={uninstallModalOpen} onClose={() => {
-            setUninstallModalOpen(false);
-          }} name={plugin.data?.metadata.name ?? ''} uninstall={uninstall} />
-        </CardActions>
-      </div>
+          {/* Hide update button for dev mode plugins — they aren't installed via marketplace */}
+          {!isDevMode && (
+            <PluginUpdateButton
+              installed
+              currentVersion={plugin.data?.metadata.version || ''}
+              pluginID={id}
+            />
+          )}
+
+          <UninstallPluginModal
+            open={uninstallModalOpen}
+            onClose={() => setUninstallModalOpen(false)}
+            name={plugin.data?.metadata.name ?? ''}
+            uninstall={uninstall}
+          />
+        </Stack>
+      </Box>
     </Card>
   );
 };

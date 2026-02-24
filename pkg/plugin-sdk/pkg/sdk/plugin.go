@@ -323,6 +323,9 @@ func RegisterResourcePlugin[ClientT any](
 		typeManager,
 		layoutManager,
 		opts.CreateInformerFunc,
+		opts.SyncPolicies,
+		opts.SchemaFunc,
+		opts.ErrorClassifier,
 	)
 
 	// Register the resource plugin with the plugin system.

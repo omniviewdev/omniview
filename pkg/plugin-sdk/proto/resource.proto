@@ -7,6 +7,7 @@ import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
+import "proto/resource_common.proto";
 import "proto/resource_connection.proto";
 import "proto/resource_informer.proto";
 import "proto/resource_layout.proto";
@@ -26,6 +27,7 @@ message GetRequest {
 message GetResponse {
   bool success = 1;
   google.protobuf.Struct data = 2;
+  ResourceError error = 3;
 }
 
 // List
@@ -39,6 +41,7 @@ message ListRequest {
 message ListResponse {
   bool success = 1;
   repeated google.protobuf.Struct data = 2;
+  ResourceError error = 3;
 }
 
 // Find
@@ -52,6 +55,7 @@ message FindRequest {
 message FindResponse {
   bool success = 1;
   repeated google.protobuf.Struct data = 2;
+  ResourceError error = 3;
 }
 
 // Create
@@ -67,6 +71,7 @@ message CreateRequest {
 message CreateResponse {
   bool success = 1;
   google.protobuf.Struct data = 2;
+  ResourceError error = 3;
 }
 
 // Update
@@ -82,6 +87,7 @@ message UpdateRequest {
 message UpdateResponse {
   bool success = 1;
   google.protobuf.Struct data = 2;
+  ResourceError error = 3;
 }
 
 // Delete
@@ -96,6 +102,7 @@ message DeleteRequest {
 message DeleteResponse {
   bool success = 1;
   google.protobuf.Struct data = 2;
+  ResourceError error = 3;
 }
 
 message ResourceMeta {
@@ -283,6 +290,25 @@ message StreamActionEvent {
   google.protobuf.Struct data = 2;
 }
 
+// Editor Schemas
+
+message EditorSchema {
+  string resource_key = 1;   // e.g., "core::v1::Pod", "helm::release::myapp"
+  string file_match = 2;     // glob pattern for Monaco (e.g., "**/core::v1::Pod/*.yaml")
+  string uri = 3;            // schema identifier URI
+  string url = 4;            // optional: fetch schema from URL
+  bytes content = 5;         // optional: inline JSON schema content
+  string language = 6;       // "yaml" or "json"
+}
+
+message EditorSchemaList {
+  repeated EditorSchema schemas = 1;
+}
+
+message GetEditorSchemasRequest {
+  string connection_id = 1;
+}
+
 service ResourcePlugin {
   // Types
   rpc GetResourceGroups(ResourceGroupListRequest) returns (ResourceGroupListResponse) {}
@@ -313,6 +339,8 @@ service ResourcePlugin {
   rpc StartConnectionInformer(StartConnectionInformerRequest) returns (google.protobuf.Empty) {}
   rpc StopConnectionInformer(StopConnectionInformerRequest) returns (google.protobuf.Empty) {}
   rpc ListenForEvents(google.protobuf.Empty) returns (stream InformerEvent) {}
+  rpc GetInformerState(GetInformerStateRequest) returns (InformerConnectionSummary) {}
+  rpc EnsureInformerForResource(EnsureInformerRequest) returns (google.protobuf.Empty) {}
   // Layout
   rpc GetLayout(GetLayoutRequest) returns (Layout) {}
   rpc GetDefaultLayout(google.protobuf.Empty) returns (Layout) {}
@@ -321,4 +349,6 @@ service ResourcePlugin {
   rpc GetActions(GetActionsRequest) returns (GetActionsResponse) {}
   rpc ExecuteAction(ExecuteActionRequest) returns (ExecuteActionResponse) {}
   rpc StreamAction(ExecuteActionRequest) returns (stream StreamActionEvent) {}
+  // Schemas
+  rpc GetEditorSchemas(GetEditorSchemasRequest) returns (EditorSchemaList) {}
 }

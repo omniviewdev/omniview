@@ -1,23 +1,15 @@
 import * as React from 'react';
 
-// material ui
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Divider,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  IconButton,
-  ListItem,
-  ListItemButton,
-  Modal,
-  ModalDialog,
-  Stack,
-  Typography,
-} from '@mui/joy';
+// @omniviewdev/ui
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
+import { Alert } from '@omniviewdev/ui/feedback';
+import { Modal } from '@omniviewdev/ui/overlays';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+
 // icons
 import { WarningRounded } from '@mui/icons-material';
 import { LuCircleAlert, LuTrash } from 'react-icons/lu';
@@ -43,10 +35,12 @@ export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection
 
   return (
     <React.Fragment>
-      <ListItem>
-        <ListItemButton
-          slots={{ root: IconButton }}
-          slotProps={{ root: { variant: 'plain', color: 'neutral', width: '100%' } }}
+      <Box
+        component='li'
+        sx={{ listStyle: 'none' }}
+      >
+        <Box
+          component='button'
           onMouseEnter={handleSelect}
           onMouseLeave={handleDeselect}
           onClick={() => {
@@ -56,57 +50,59 @@ export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection
             display: 'flex',
             borderRadius: '2px',
             flex: 1,
-            bgcolor: open ? 'neutral.plainHoverBg' : undefined,
+            width: '100%',
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            bgcolor: open ? 'action.hover' : undefined,
             '&:focus-visible': {
-              bgcolor: 'neutral.plainHoverBg',
+              bgcolor: 'action.hover',
             },
+            p: 0,
           }}
         >
           <Stack
             direction='row'
-            spacing={1}
-            flex={1}
-            px={1}
-            alignItems={'center'}
-            justifyContent='flex-start'
+            gap={1}
+            sx={{ flex: 1, px: 1, alignItems: 'center', justifyContent: 'flex-start' }}
           >
             <LuTrash />
-            <Typography sx={{ pl: 0.5 }} level='body-sm'>Delete</Typography>
+            <Text sx={{ pl: 0.5 }} size='sm'>Delete</Text>
           </Stack>
-        </ListItemButton>
-      </ListItem>
+        </Box>
+      </Box>
       <Modal open={open} onClose={() => {
         setOpen(false);
       }}>
-        <ModalDialog variant="outlined" role="alertdialog">
-          <DialogTitle>
+        <Box sx={{ p: 2, minWidth: 360 }}>
+          <Stack direction='row' alignItems='center' gap={1} sx={{ mb: 1 }}>
             <WarningRounded />
-            Confirmation
-          </DialogTitle>
+            <Text weight='semibold'>Confirmation</Text>
+          </Stack>
           <Divider />
-          <DialogContent sx={{ gap: 2 }}>
-            <Typography level='body-sm'>
+          <Box sx={{ py: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Text size='sm'>
               Are you sure you want to delete {resource} '{id}'?
-            </Typography>
+            </Text>
             {alert && <Box sx={{ display: 'flex', gap: 2, width: '100%', flexDirection: 'column' }}>
               <Alert
                 sx={{ alignItems: 'flex-start' }}
-                startDecorator={<LuCircleAlert />}
-                variant="soft"
-                color={'danger'}
+                startAdornment={<LuCircleAlert />}
+                emphasis="soft"
+                color='danger'
               >
                 <div>
                   <div>Error</div>
-                  <Typography level="body-sm" color={'danger'}>
+                  <Text size='sm' sx={{ color: 'danger.main' }}>
                     {alert}
-                  </Typography>
+                  </Text>
                 </div>
               </Alert>
             </Box>
             }
-          </DialogContent>
-          <DialogActions>
-            <Button variant="solid" color="danger" onClick={() => {
+          </Box>
+          <Stack direction='row' justifyContent='flex-end' gap={1}>
+            <Button emphasis="solid" color="danger" onClick={() => {
               setPending(true);
               remove({}).then(() => {
                 setOpen(false);
@@ -119,16 +115,16 @@ export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection
                 setPending(false);
               });
             }}>
-              {pending ? <CircularProgress size='sm' /> : 'Delete'}
+              {pending ? <CircularProgress size={16} /> : 'Delete'}
             </Button>
-            <Button variant="plain" color="neutral" onClick={() => {
+            <Button emphasis="ghost" color="neutral" onClick={() => {
               setOpen(false);
               handleDismiss();
             }}>
               Cancel
             </Button>
-          </DialogActions>
-        </ModalDialog>
+          </Stack>
+        </Box>
       </Modal>
     </React.Fragment>
   );

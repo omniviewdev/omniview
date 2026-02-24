@@ -1,8 +1,8 @@
 import React from 'react';
 
 // material-ui
-import Stack from '@mui/joy/Stack';
-import Button from '@mui/joy/Button';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Button } from '@omniviewdev/ui/buttons';
 
 // types
 import type { DrawerComponent, DrawerContext } from '@omniviewdev/runtime';
@@ -14,7 +14,7 @@ import { LuCode, LuFileDiff, LuFileCode, LuLink, LuRotateCw, LuSquareChartGantt 
 import { parse, stringify } from 'yaml';
 import MonacoEditor, { DiffEditor } from '@monaco-editor/react';
 
-// ── Overview View ────────────────────────────────────────────────────
+// -- Overview View ────────────────────────────────────────────────────
 
 /**
  * Read-only YAML overview of a linked resource. Receives data through ctx.data,
@@ -39,7 +39,7 @@ const LinkedResourceOverview: React.FC<{ ctx: DrawerContext }> = ({ ctx }) => {
   );
 };
 
-// ── Editor View ─────────────────────────────────────────────────────
+// -- Editor View ─────────────────────────────────────────────────────
 
 /**
  * Editable YAML view with submit/cancel/reset/diff — same pattern as
@@ -73,7 +73,7 @@ const LinkedResourceEditor: React.FC<{
   };
 
   return (
-    <Stack direction="column" gap={1} display='flex' flex={1}>
+    <Stack direction="column" gap={1} sx={{ display: 'flex', flex: 1 }}>
       {viewDiff ? (
         <DiffEditor
           height='100%'
@@ -95,20 +95,20 @@ const LinkedResourceEditor: React.FC<{
           onChange={handleChange}
         />
       )}
-      <Stack direction="row" justifyContent="space-between" gap={1}>
+      <Stack direction="row" justify="between" gap={1}>
         <Stack direction="row" gap={1}>
-          <Button variant='soft' color='primary' disabled={!changed} onClick={handleSubmit}>
+          <Button emphasis='soft' color='primary' disabled={!changed} onClick={handleSubmit}>
             Submit
           </Button>
-          <Button variant='outlined' color='neutral' onClick={onClose}>
+          <Button emphasis='outline' color='neutral' onClick={onClose}>
             Cancel
           </Button>
         </Stack>
         <Stack direction="row" gap={1}>
           <Button
-            variant='outlined'
+            emphasis='outline'
             color='warning'
-            startDecorator={<LuRotateCw size={16} />}
+            startAdornment={<LuRotateCw size={16} />}
             onClick={() => {
               setValue(originalData);
               setChanged(false);
@@ -117,8 +117,8 @@ const LinkedResourceEditor: React.FC<{
             Reset Changes
           </Button>
           <Button
-            variant='outlined'
-            startDecorator={viewDiff ? <LuFileCode size={18} /> : <LuFileDiff size={16} />}
+            emphasis='outline'
+            startAdornment={viewDiff ? <LuFileCode size={18} /> : <LuFileDiff size={16} />}
             onClick={() => setViewDiff(!viewDiff)}
           >
             {viewDiff ? 'Return to Code Editor' : 'View in Diff Editor'}
@@ -129,7 +129,7 @@ const LinkedResourceEditor: React.FC<{
   );
 };
 
-// ── Factory ─────────────────────────────────────────────────────────
+// -- Factory ─────────────────────────────────────────────────────────
 
 /**
  * Build a DrawerComponent for a linked resource. Views receive data

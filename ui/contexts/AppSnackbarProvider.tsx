@@ -1,5 +1,5 @@
 import React, { type ReactNode } from 'react';
-import { SnackbarProvider as NotistackProvider } from 'notistack';
+import { NotificationStackProvider } from '@omniviewdev/ui/feedback';
 import { SnackbarProvider } from '@omniviewdev/runtime';
 
 type AppSnackbarProviderProps = {
@@ -7,7 +7,7 @@ type AppSnackbarProviderProps = {
 };
 
 export const AppSnackbarProvider: React.FC<AppSnackbarProviderProps> = ({ children }) => (
-  <NotistackProvider maxSnack={3}>
+  <NotificationStackProvider maxVisible={5} position="bottom-right">
     <SnackbarProvider>{children}</SnackbarProvider>
-  </NotistackProvider>
+  </NotificationStackProvider>
 );

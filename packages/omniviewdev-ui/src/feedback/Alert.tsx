@@ -15,6 +15,8 @@ export interface AlertProps {
   onDismiss?: () => void;
   actions?: React.ReactNode;
   icon?: React.ReactNode | false;
+  /** Alias for icon (Joy UI compat) */
+  startAdornment?: React.ReactNode;
   size?: ComponentSize;
   sx?: SxProps<Theme>;
 }
@@ -106,6 +108,7 @@ export default function Alert({
   onDismiss,
   actions,
   icon,
+  startAdornment,
   size = 'md',
   sx,
 }: AlertProps) {
@@ -123,7 +126,7 @@ export default function Alert({
     <MuiAlert
       severity={severity}
       variant={muiVariant as any}
-      icon={icon === false ? false : icon}
+      icon={icon === false ? false : (icon ?? startAdornment)}
       action={
         <>
           {actions}

@@ -5,9 +5,9 @@ import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { withClusterResourceColumns } from '../../shared/columns'
 import { DrawerComponent } from '@omniviewdev/runtime'
-import { LuBox, LuCode } from 'react-icons/lu'
-import BaseOverviewPage from '../../../../shared/sidebar/pages/overview/BaseOverviewPage'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuBox } from 'react-icons/lu'
+import ComponentStatusSidebar from './Sidebar'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 
 const resourceKey = 'core::v1::ComponentStatus'
 
@@ -22,18 +22,7 @@ const ComponentStatusTable: React.FC = () => {
   const drawer: DrawerComponent<ComponentStatus> = React.useMemo(() => ({
     title: resourceKey, // TODO: change runtime sdk to accept a function
     icon: <LuBox />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuBox />,
-        component: (ctx) => <BaseOverviewPage data={ctx.data || {}} />
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: ComponentStatusSidebar }),
     actions: []
   }), [])
 

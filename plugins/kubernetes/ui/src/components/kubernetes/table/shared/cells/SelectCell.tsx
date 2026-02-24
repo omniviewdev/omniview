@@ -1,9 +1,7 @@
 import { type Row } from '@tanstack/react-table';
 
-import {
-  Box,
-  Checkbox,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Checkbox from '@mui/material/Checkbox';
 
 /**
  * Render a selectbox for a row of the generic resource table.
@@ -14,12 +12,19 @@ export const SelectCell = ({ row }: { row: Row<any> }) => (
     display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', maxWidth: 24
   }}>
     <Checkbox
-      size='sm'
+      size='small'
       checked={row.getIsSelected()}
       onChange={event => {
         row.toggleSelected(event.target.checked);
       }}
       aria-label='Select node'
+      sx={{
+        p: 0,
+        color: 'var(--ov-fg-faint)',
+        '&.Mui-checked': {
+          color: 'var(--ov-accent-fg)',
+        },
+      }}
     />
   </Box>
 );

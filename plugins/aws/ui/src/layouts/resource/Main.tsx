@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, type BoxProps } from '@mui/joy';
+import Box, { type BoxProps } from '@mui/material/Box';
 
 const Main: React.FC<BoxProps> = props => (
   <Box

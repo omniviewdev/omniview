@@ -1,12 +1,10 @@
 import React from 'react';
 import { usePluginRouter } from '@omniviewdev/runtime';
 
-import {
-  Avatar,
-  Chip,
-  CircularProgress,
-  Typography,
-} from '@mui/joy';
+import { Avatar, Chip } from '@omniviewdev/ui';
+import { Text } from '@omniviewdev/ui/typography';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import {
   usePluginContext,
@@ -35,6 +33,12 @@ type Props = {
 };
 
 const truncate = (input: string) => input.length > 60 ? `${input.substring(0, 60)}...` : input;
+
+const tdSx: React.CSSProperties = {
+  padding: '3px 8px',
+  verticalAlign: 'middle',
+  borderBottom: '1px solid var(--ov-border-default, rgba(255,255,255,0.06))',
+};
 
 const ConnectionTableItem: React.FC<Props> = ({
   enriched,
@@ -132,54 +136,56 @@ const ConnectionTableItem: React.FC<Props> = ({
   };
 
   return (
-    <tr id={`connection-${id}`} style={{ cursor: 'pointer' }}>
+    <tr
+      id={`connection-${id}`}
+      style={{ cursor: 'pointer' }}
+      onMouseOver={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--ov-bg-surface-hover, rgba(255,255,255,0.04))'; }}
+      onMouseOut={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
+    >
       {/* Favorite */}
-      <td style={{ width: 40, textAlign: 'center' }}>
+      <td style={{ ...tdSx, width: 32, padding: '3px 4px', textAlign: 'center' }}>
         <FavoriteButton isFavorite={isFavorite} onToggle={onToggleFavorite} />
       </td>
 
       {/* Name */}
       <td
         onClick={handleClick}
-        style={{ display: 'flex', flex: 1, gap: 10, justifyContent: 'flex-start', alignItems: 'center' }}
+        style={{ ...tdSx }}
       >
-        <ConnectionStatusBadge isConnected={isConnected}>
-          {enriched.avatar
-            ? <Avatar
-              size='sm'
-              src={enriched.avatar}
-              sx={{ borderRadius: 6, backgroundColor: 'transparent', maxHeight: 28, maxWidth: 28 }}
-            />
-            : <NamedAvatar value={displayName} color={enriched.avatarColor} />
-          }
-        </ConnectionStatusBadge>
-        <ProviderIcon provider={provider} size={16} />
-        <Typography level='title-sm' noWrap>{displayName}</Typography>
-        {Boolean(displayDescription) && <Typography level='body-sm' noWrap sx={{ opacity: 0.7 }}>{displayDescription}</Typography>}
-        {enriched.tags.length > 0 && enriched.tags.map(tag => (
-          <Chip key={tag} size='sm' variant='soft' color='warning' sx={{ fontSize: '0.65rem' }}>
-            {tag}
-          </Chip>
-        ))}
-        {connecting && <CircularProgress size='sm' />}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+          <ConnectionStatusBadge isConnected={isConnected}>
+            {enriched.avatar
+              ? <Avatar size='sm' src={enriched.avatar} />
+              : <NamedAvatar value={displayName} color={enriched.avatarColor} />
+            }
+          </ConnectionStatusBadge>
+          <ProviderIcon provider={provider} size={14} />
+          <Text weight='semibold' size='sm' noWrap>{displayName}</Text>
+          {Boolean(displayDescription) && (
+            <Text size='xs' noWrap sx={{ color: 'var(--ov-fg-faint)', flexShrink: 1, minWidth: 0 }}>
+              {displayDescription}
+            </Text>
+          )}
+          {enriched.tags.length > 0 && enriched.tags.map(tag => (
+            <Chip key={tag} size='xs' emphasis='soft' color='warning' label={tag} />
+          ))}
+          {connecting && <CircularProgress size={14} />}
+        </Box>
       </td>
 
-      {/* Visible label columns only */}
+      {/* Visible label columns */}
       {visibleColumns.map(col => (
-        <td key={`${id}-${col}`} onClick={handleClick}>
-          <Chip
-            variant='outlined'
-            color='neutral'
-            size='sm'
-            sx={{ pointerEvents: 'none', borderRadius: 'sm' }}
-          >
-            {truncate(String(labels?.[col] ?? ''))}
-          </Chip>
+        <td key={`${id}-${col}`} onClick={handleClick} style={{ ...tdSx }}>
+          {labels?.[col] ? (
+            <Text size='xs' noWrap sx={{ color: 'var(--ov-fg-muted)' }}>
+              {truncate(String(labels[col]))}
+            </Text>
+          ) : null}
         </td>
       ))}
 
       {/* Actions */}
-      <td onClick={e => e.stopPropagation()}>
+      <td onClick={e => e.stopPropagation()} style={{ ...tdSx, width: 36, textAlign: 'center' }}>
         <ConnectionContextMenu
           connectionId={id}
           connectionName={displayName}

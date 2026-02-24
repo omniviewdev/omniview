@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 
 // Material-ui
-import Box from '@mui/joy/Box';
-import Link from '@mui/joy/Link';
-import Sheet from '@mui/joy/Sheet';
-import Table from '@mui/joy/Table';
+import Box from '@mui/material/Box';
+import Link from '@mui/material/Link';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
-import Stack from '@mui/joy/Stack';
+import { Stack } from '@omniviewdev/ui/layout';
 
 // Tanstack/react-table
 import {
@@ -279,9 +277,8 @@ const ResourceTableContainer: React.FC<Props> = ({
           />
         </Stack>
       </Stack>
-      <Sheet
+      <Box
         className={'table-container'}
-        variant='outlined'
         ref={parentRef}
         sx={{
           backgroundColor: 'inherit',
@@ -290,6 +287,8 @@ const ResourceTableContainer: React.FC<Props> = ({
           flex: 1,
           overflow: 'scroll',
           minHeight: 0,
+          border: 1,
+          borderColor: 'divider',
           // TODO: make this a prop
           // Hide the scrollbars
           '&::-webkit-scrollbar': {
@@ -299,21 +298,12 @@ const ResourceTableContainer: React.FC<Props> = ({
           WebkitUserSelect: 'none',
         }}
       >
-        <Table
+        <table
           aria-labelledby={'table-title'}
-          stickyHeader
-          hoverRow
-          size={'sm'}
-          sx={{
+          style={{
             display: 'grid',
-            '--TableCell-headBackground':
-              'var(--joy-palette-background-level1)',
-            '--Table-headerUnderlineThickness': '1px',
-            '--TableRow-hoverBackground':
-              'var(--joy-palette-background-level2)',
-            '--TableCell-paddingY': '0px',
-            '--TableCell-paddingX': '8px',
-            '--TableCell-height': '36px',
+            width: '100%',
+            borderCollapse: 'collapse',
             WebkitUserSelect: 'none',
           }}
         >
@@ -351,9 +341,10 @@ const ResourceTableContainer: React.FC<Props> = ({
                         color='primary'
                         component='button'
                         onClick={header.column.getToggleSortingHandler()}
-                        fontWeight='lg'
-                        endDecorator={header.column.getIsSorted() && <ArrowDropDownIcon />}
                         sx={{
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
                           '& svg': {
                             transition: '0.2s',
                             transform:
@@ -362,6 +353,7 @@ const ResourceTableContainer: React.FC<Props> = ({
                         }}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.column.getIsSorted() && <ArrowDropDownIcon />}
                       </Link>
                       : flexRender(header.column.columnDef.header, header.getContext())
                     }
@@ -397,8 +389,8 @@ const ResourceTableContainer: React.FC<Props> = ({
               );
             })}
           </tbody>
-        </Table>
-      </Sheet>
+        </table>
+      </Box>
     </Box>
   );
 };

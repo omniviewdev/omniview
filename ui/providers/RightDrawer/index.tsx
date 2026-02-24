@@ -4,8 +4,8 @@ import React, {
 } from 'react';
 
 // material-ui
-import Sheet from '@mui/joy/Sheet';
-import { useTheme } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { useTheme } from '@mui/material/styles';
 
 // context
 import RightDrawerContext, { type RightDrawerContextType } from '@/contexts/RightDrawerContext';
@@ -164,14 +164,14 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
   return (
     <RightDrawerContext.Provider value={contextValue}>
       {children}
-      <Sheet
+      <Box
         ref={sidebarRef}
-        variant='outlined'
         sx={{
+          border: '1px solid',
           borderColor: 'divider',
-          borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 12px 12px 2px' : 'md',
+          borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 12px 12px 2px' : 2,
           width: initialWidth,
-          bgcolor: 'background.surface',
+          bgcolor: 'background.paper',
           p: 0,
           position: 'absolute',
           top: 0,
@@ -194,7 +194,7 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
             bottom: 0,
             width: '10px', // This is the width of the draggable area
             cursor: 'col-resize',
-            borderLeft: `${isDragging ? 4 : 2}px solid ${theme.palette.primary[400]}`,
+            borderLeft: `${isDragging ? 4 : 2}px solid ${theme.palette.primary.main}`,
             borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 0px 0px 2px' : '6px 0px 0px 6px',
             opacity: isDragging ? 0.5 : isHovering ? 0.2 : 0,
             transition: 'opacity 0.2s, border 0.2s',
@@ -208,7 +208,7 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
           onMouseDown={handleMouseDown}
           onClick={handleClick}
         />
-      </Sheet>
+      </Box>
     </RightDrawerContext.Provider>
   );
 };

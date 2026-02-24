@@ -1,12 +1,14 @@
 import { type FC } from "react";
 
 // Material-ui
-import Chip from "@mui/joy/Chip";
-import DialogContent from "@mui/joy/DialogContent";
-import Sheet from "@mui/joy/Sheet";
-import Stack from "@mui/joy/Stack";
+import { Chip } from "@omniviewdev/ui";
+import DialogContent from "@mui/material/DialogContent";
+import Box from "@mui/material/Box";
+import { Stack } from "@omniviewdev/ui/layout";
 import DynamicIcon from "../components/DynamicIcon";
-import { Divider, IconButton, Typography } from "@mui/joy";
+import Divider from "@mui/material/Divider";
+import { IconButton } from "@omniviewdev/ui/buttons";
+import { Text } from "@omniviewdev/ui/typography";
 import { LuX } from "react-icons/lu";
 
 type Props = {
@@ -34,14 +36,13 @@ const ResourceDrawerDecorator: FC<{
   return (
     <Chip
       size="lg"
-      variant="soft"
+      emphasis="soft"
       sx={{ borderRadius: "sm" }}
-      startDecorator={
+      startAdornment={
         typeof icon === "string" ? <DynamicIcon name={icon} size={16} /> : icon
       }
-    >
-      <Typography level="title-sm">{type}</Typography>
-    </Chip>
+      label={<Text weight="semibold" size="sm">{type}</Text>}
+    />
   );
 };
 
@@ -51,7 +52,7 @@ const ResourceDrawerContainer: FC<Props> = ({
   title,
   children,
 }) => (
-  <Sheet
+  <Box
     sx={{
       borderRadius: "md",
       p: 1,
@@ -64,12 +65,12 @@ const ResourceDrawerContainer: FC<Props> = ({
     }}
   >
     <Stack direction="row" alignItems="center" justifyContent={"space-between"}>
-      <Chip size="lg" variant="plain" sx={{ borderRadius: "sm" }}>
-        <Typography sx={{ flexGrow: 1 }}>{title}</Typography>
-      </Chip>
+      <Chip size="lg" emphasis="ghost" sx={{ borderRadius: "sm" }} label={
+        <Text sx={{ flexGrow: 1 }}>{title}</Text>
+      } />
       <Stack direction="row" gap={1}>
         <ResourceDrawerDecorator icon={icon ?? "LuBox"} type={type} />
-        <IconButton variant="outlined" size="sm" onClick={() => {}}>
+        <IconButton emphasis="outline" size="sm" onClick={() => {}}>
           <LuX size={20} />
         </IconButton>
       </Stack>
@@ -92,7 +93,7 @@ const ResourceDrawerContainer: FC<Props> = ({
     >
       {children}
     </DialogContent>
-  </Sheet>
+  </Box>
 );
 
 export default ResourceDrawerContainer;

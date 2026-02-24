@@ -1,13 +1,13 @@
 import React from "react";
 
 // material-ui
-import Table from "@mui/joy/Table";
-import Chip from "@mui/joy/Chip";
-import Sheet from "@mui/joy/Sheet";
+import Table from "@mui/material/Table";
+import { Chip } from "@omniviewdev/ui";
+import Box from "@mui/material/Box";
 
 // types
 import { IngressBackend, IngressRule } from "kubernetes-types/networking/v1";
-import { Typography } from "@mui/joy";
+import { Text } from "@omniviewdev/ui/typography";
 import { BrowserOpenURL } from "../../../../utils/ide";
 
 interface Props {
@@ -76,19 +76,20 @@ const IngressBackendChip: React.FC<{ backend: IngressBackend }> = ({
     return (
       backend.service.port && (
         <Chip
-          endDecorator={
-            <Sheet variant="soft" sx={{ borderRadius: "sm", px: 1 }}>
-              <Typography level="body-xs">{backend.service.name}</Typography>
-            </Sheet>
+          endAdornment={
+            <Box sx={{ borderRadius: "sm", px: 1 }}>
+              <Text size="xs">{backend.service.name}</Text>
+            </Box>
           }
           sx={{ borderRadius: "sm", p: 0.25 }}
           size="sm"
-          variant="outlined"
-        >
-          <Typography level="body-xs" px={1}>
-            {backend.service.port.number ?? backend.service.port.name}
-          </Typography>
-        </Chip>
+          emphasis="outline"
+          label={
+            <Text size="xs" sx={{ px: 1 }}>
+              {backend.service.port.number ?? backend.service.port.name}
+            </Text>
+          }
+        />
       )
     );
   }

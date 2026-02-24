@@ -1,5 +1,8 @@
 import React from 'react';
-import { Card, CardContent, Stack, Typography, Avatar } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Card, Avatar } from '@omniviewdev/ui';
 import type { EnrichedConnection } from '../../types/accounts';
 import FavoriteButton from './FavoriteButton';
 import ConnectionStatusBadge from './ConnectionStatusBadge';
@@ -30,12 +33,12 @@ const ConnectionCard: React.FC<Props> = ({
       variant='outlined'
       sx={{
         cursor: 'pointer',
-        '&:hover': { borderColor: 'primary.outlinedHoverBorder', boxShadow: 'sm' },
+        '&:hover': { borderColor: 'primary.main', boxShadow: 1 },
         transition: 'border-color 0.15s, box-shadow 0.15s',
       }}
       onClick={onClick}
     >
-      <CardContent>
+      <Box sx={{ p: 1.5 }}>
         <Stack gap={1.5}>
           <Stack direction='row' alignItems='center' gap={1}>
             <ConnectionStatusBadge isConnected={isConnected}>
@@ -50,11 +53,11 @@ const ConnectionCard: React.FC<Props> = ({
               )}
             </ConnectionStatusBadge>
             <Stack sx={{ flex: 1, minWidth: 0 }}>
-              <Typography level='title-sm' noWrap>{displayName}</Typography>
+              <Text weight="semibold" size="sm" sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName}</Text>
               {displayDescription && (
-                <Typography level='body-xs' noWrap sx={{ opacity: 0.7 }}>
+                <Text size="xs" sx={{ opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {displayDescription}
-                </Typography>
+                </Text>
               )}
             </Stack>
             <FavoriteButton isFavorite={isFavorite} onToggle={onToggleFavorite} />
@@ -62,14 +65,14 @@ const ConnectionCard: React.FC<Props> = ({
 
           <Stack gap={0.5}>
             {connection.labels?.region && (
-              <Typography level='body-xs' sx={{ opacity: 0.6 }}>
+              <Text size="xs" sx={{ opacity: 0.6 }}>
                 Region: {String(connection.labels.region)}
-              </Typography>
+              </Text>
             )}
             {connection.labels?.profile && (
-              <Typography level='body-xs' noWrap sx={{ opacity: 0.6 }}>
+              <Text size="xs" sx={{ opacity: 0.6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 Profile: {String(connection.labels.profile)}
-              </Typography>
+              </Text>
             )}
           </Stack>
 
@@ -86,7 +89,7 @@ const ConnectionCard: React.FC<Props> = ({
             />
           </Stack>
         </Stack>
-      </CardContent>
+      </Box>
     </Card>
   );
 };

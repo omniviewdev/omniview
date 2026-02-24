@@ -1,5 +1,5 @@
 import { useResourceGroups } from "@omniviewdev/runtime";
-import { SidebarItem, SidebarSection } from "../components/shared/navmenu/types";
+import type { NavMenuItem, NavSection } from "@omniviewdev/ui/sidebars";
 import React from "react";
 import { types } from "@omniviewdev/runtime/models";
 import {
@@ -15,7 +15,7 @@ type Opts = {
 
 const toID = (meta: types.ResourceMeta) => `${meta.group}_${meta.version}_${meta.kind}`;
 
-const labelSort = (a: SidebarItem, b: SidebarItem) => a.label.localeCompare(b.label)
+const labelSort = (a: NavMenuItem, b: NavMenuItem) => a.label.localeCompare(b.label)
 
 // Human-readable display names for resource kinds (PascalCase → readable)
 const kindDisplayNames: Record<string, string> = {
@@ -284,26 +284,25 @@ const groupIconMap: Record<string, React.ReactNode> = {
   'apigateway': <LuPlug />,
 }
 
-const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<SidebarSection> => {
+const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<NavSection> => {
   if (!data) return []
 
-  const computeResources: SidebarItem[] = [];
-  const networkingResources: SidebarItem[] = [];
-  const storageResources: SidebarItem[] = [];
-  const databaseResources: SidebarItem[] = [];
-  const securityResources: SidebarItem[] = [];
-  const managementResources: SidebarItem[] = [];
+  const computeResources: NavMenuItem[] = [];
+  const networkingResources: NavMenuItem[] = [];
+  const storageResources: NavMenuItem[] = [];
+  const databaseResources: NavMenuItem[] = [];
+  const securityResources: NavMenuItem[] = [];
+  const managementResources: NavMenuItem[] = [];
 
   // Group resources by their AWS service group (ec2, vpc, rds, etc.)
-  const serviceGroups: Record<string, SidebarItem[]> = {};
+  const serviceGroups: Record<string, NavMenuItem[]> = {};
 
   Object.values(data).forEach((group) => {
     Object.entries(group.resources).forEach(([_, metas]) => {
       metas.forEach((meta) => {
-        const item: SidebarItem = {
+        const item: NavMenuItem = {
           id: toID(meta),
           label: kindDisplayNames[meta.kind] || meta.kind,
-          icon: '',
         };
 
         if (!serviceGroups[meta.group]) {
@@ -320,7 +319,7 @@ const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<Sideb
 
     // Check if this group has sub-section definitions
     const subSections = GroupSubSections[groupId];
-    let children: SidebarItem[];
+    let children: NavMenuItem[];
 
     if (subSections) {
       // Organize items into sub-sections (AWS Console-style)
@@ -337,19 +336,18 @@ const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<Sideb
               if (item) usedKinds.add(kind);
               return item;
             })
-            .filter((item): item is SidebarItem => !!item);
+            .filter((item): item is NavMenuItem => !!item);
 
           if (sectionItems.length === 0) return null;
 
           return {
             id: `${groupId}__${section.label.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
             label: section.label,
-            icon: '',
             children: sectionItems,
             defaultExpanded: true,
-          } as SidebarItem;
+          } as NavMenuItem;
         })
-        .filter((item): item is SidebarItem => !!item);
+        .filter((item): item is NavMenuItem => !!item);
 
       // Add any remaining items not covered by sub-sections
       const uncategorized = items.filter(item => !usedKinds.has(extractKind(item.id)));
@@ -357,7 +355,6 @@ const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<Sideb
         children.push({
           id: `${groupId}__other`,
           label: 'Other',
-          icon: '',
           children: uncategorized.sort(labelSort),
           defaultExpanded: true,
         });
@@ -366,10 +363,10 @@ const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<Sideb
       children = items.sort(labelSort);
     }
 
-    const groupItem: SidebarItem = {
+    const groupItem: NavMenuItem = {
       id: groupId,
       label: groupInfo?.name || groupId.toUpperCase(),
-      icon: groupIconMap[groupId] || '',
+      icon: groupIconMap[groupId] || undefined,
       children,
       defaultExpanded: false,
     };
@@ -388,17 +385,16 @@ const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<Sideb
     }
   });
 
-  const sections: SidebarSection[] = [
+  const sections: NavSection[] = [
     {
-      id: 'aws',
       title: '',
       items: [
-        ...(computeResources.length ? [{ id: 'compute', label: 'Compute', icon: <LuServer />, defaultExpanded: true, children: computeResources.flatMap(g => g.children || []).sort(labelSort).length > 0 ? computeResources.sort(labelSort) : [] } as SidebarItem] : []),
-        ...(networkingResources.length ? [{ id: 'networking', label: 'Networking', icon: <LuNetwork />, defaultExpanded: true, children: networkingResources.sort(labelSort) } as SidebarItem] : []),
-        ...(storageResources.length ? [{ id: 'storage', label: 'Storage', icon: <LuArchive />, defaultExpanded: true, children: storageResources.sort(labelSort) } as SidebarItem] : []),
-        ...(databaseResources.length ? [{ id: 'database', label: 'Database', icon: <LuDatabase />, defaultExpanded: true, children: databaseResources.sort(labelSort) } as SidebarItem] : []),
-        ...(securityResources.length ? [{ id: 'security', label: 'Security', icon: <LuShield />, defaultExpanded: true, children: securityResources.sort(labelSort) } as SidebarItem] : []),
-        ...(managementResources.length ? [{ id: 'management', label: 'Management', icon: <LuActivity />, defaultExpanded: true, children: managementResources.sort(labelSort) } as SidebarItem] : []),
+        ...(computeResources.length ? [{ id: 'compute', label: 'Compute', icon: <LuServer />, defaultExpanded: true, children: computeResources.flatMap(g => g.children || []).sort(labelSort).length > 0 ? computeResources.sort(labelSort) : [] } as NavMenuItem] : []),
+        ...(networkingResources.length ? [{ id: 'networking', label: 'Networking', icon: <LuNetwork />, defaultExpanded: true, children: networkingResources.sort(labelSort) } as NavMenuItem] : []),
+        ...(storageResources.length ? [{ id: 'storage', label: 'Storage', icon: <LuArchive />, defaultExpanded: true, children: storageResources.sort(labelSort) } as NavMenuItem] : []),
+        ...(databaseResources.length ? [{ id: 'database', label: 'Database', icon: <LuDatabase />, defaultExpanded: true, children: databaseResources.sort(labelSort) } as NavMenuItem] : []),
+        ...(securityResources.length ? [{ id: 'security', label: 'Security', icon: <LuShield />, defaultExpanded: true, children: securityResources.sort(labelSort) } as NavMenuItem] : []),
+        ...(managementResources.length ? [{ id: 'management', label: 'Management', icon: <LuActivity />, defaultExpanded: true, children: managementResources.sort(labelSort) } as NavMenuItem] : []),
       ]
     },
   ];
@@ -408,7 +404,7 @@ const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<Sideb
 
 export const useSidebarLayout = ({ connectionID }: Opts) => {
   const { groups } = useResourceGroups({ pluginID: 'aws', connectionID });
-  const [layout, setLayout] = React.useState<Array<SidebarSection>>([])
+  const [layout, setLayout] = React.useState<Array<NavSection>>([])
   const [isLoading, setIsLoading] = React.useState<boolean>(true)
 
   React.useEffect(() => {

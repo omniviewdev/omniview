@@ -1,23 +1,19 @@
 import * as React from 'react';
 
 // material ui
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Divider,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  IconButton,
-  ListItem,
-  ListItemButton,
-  Modal,
-  ModalDialog,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import Modal from '@mui/material/Modal';
+import { Button } from '@omniviewdev/ui/buttons';
+import MuiIconButton from '@mui/material/IconButton';
+import { ListItem } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 // icons
 import { WarningRounded } from '@mui/icons-material';
 import { LuCircleAlert, LuTrash } from 'react-icons/lu';
@@ -49,9 +45,8 @@ export const DeleteAction: React.FC<Props> = ({ resourceID, resourceKey, connect
   return (
     <React.Fragment>
       <ListItem>
-        <ListItemButton
-          slots={{ root: IconButton }}
-          slotProps={{ root: { variant: 'plain', color: 'neutral', width: '100%' } }}
+        <MuiIconButton
+          color='default'
           onMouseEnter={handleSelect}
           onMouseLeave={handleDeselect}
           onClick={() => {
@@ -76,42 +71,41 @@ export const DeleteAction: React.FC<Props> = ({ resourceID, resourceKey, connect
             justifyContent='flex-start'
           >
             <LuTrash />
-            <Typography sx={{ pl: 0.5 }} level='body-sm'>Delete</Typography>
+            <Text sx={{ pl: 0.5 }} size='sm'>Delete</Text>
           </Stack>
-        </ListItemButton>
+        </MuiIconButton>
       </ListItem>
       <Modal open={open} onClose={() => {
         setOpen(false);
       }}>
-        <ModalDialog variant="outlined" role="alertdialog">
+        <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', bgcolor: 'background.paper', borderRadius: 2, p: 3 }}>
           <DialogTitle>
             <WarningRounded />
             Confirmation
           </DialogTitle>
           <Divider />
           <DialogContent sx={{ gap: 2 }}>
-            <Typography level='body-sm'>
+            <Text size='sm'>
               Are you sure you want to delete '{resourceID}'?
-            </Typography>
+            </Text>
             {alert && <Box sx={{ display: 'flex', gap: 2, width: '100%', flexDirection: 'column' }}>
               <Alert
                 sx={{ alignItems: 'flex-start' }}
-                startDecorator={<LuCircleAlert />}
-                variant="soft"
-                color={'danger'}
+                icon={<LuCircleAlert />}
+                severity='error'
               >
                 <div>
                   <div>Error</div>
-                  <Typography level="body-sm" color={'danger'}>
+                  <Text size="sm" color={'danger'}>
                     {alert}
-                  </Typography>
+                  </Text>
                 </div>
               </Alert>
             </Box>
             }
           </DialogContent>
           <DialogActions>
-            <Button variant="solid" color="danger" onClick={() => {
+            <Button emphasis="solid" color="danger" onClick={() => {
               setPending(true);
               remove({}).then(() => {
                 setOpen(false);
@@ -124,16 +118,16 @@ export const DeleteAction: React.FC<Props> = ({ resourceID, resourceKey, connect
                 setPending(false);
               });
             }}>
-              {pending ? <CircularProgress size='sm' /> : 'Delete'}
+              {pending ? <CircularProgress size='small' /> : 'Delete'}
             </Button>
-            <Button variant="plain" color="neutral" onClick={() => {
+            <Button emphasis="ghost" color="neutral" onClick={() => {
               setOpen(false);
               handleDismiss?.();
             }}>
               Cancel
             </Button>
           </DialogActions>
-        </ModalDialog>
+        </Box>
       </Modal>
     </React.Fragment>
   );

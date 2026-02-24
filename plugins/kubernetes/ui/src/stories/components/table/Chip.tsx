@@ -1,9 +1,9 @@
 import React from 'react';
 
 // material ui
-import Box from '@mui/joy/Box';
-import Chip from '@mui/joy/Chip';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import { Chip } from '@omniviewdev/ui';
+import { Text } from '@omniviewdev/ui/typography';
 import DynamicIcon from '../DynamicIcon';
 
 type Props = {
@@ -29,7 +29,7 @@ export const ChipRow: React.FC<Props> = ({ align, value, color, colorMap, startD
 
   const getVariant = () => {
     if (variant) {
-      return variant;
+      return variant === 'outlined' ? 'outline' : 'soft';
     }
     return 'soft';
   }
@@ -49,28 +49,27 @@ export const ChipRow: React.FC<Props> = ({ align, value, color, colorMap, startD
   }
 
   return (
-    <Box 
-      display='flex' 
-      flex={1} 
+    <Box
+      display='flex'
+      flex={1}
       justifyContent={getAlignment()}
       alignItems='center'
     >
     <Chip
       size="sm"
       color={getColor()}
-      variant={getVariant()}
-      sx={{ 
+      emphasis={getVariant()}
+      sx={{
         borderRadius: "sm",
       }}
-      startDecorator={
+      startAdornment={
         typeof startDecorator === "string" ? <DynamicIcon name={startDecorator} size={16} /> : startDecorator
       }
-      endDecorator={
+      endAdornment={
         typeof endDecorator === "string" ? <DynamicIcon name={endDecorator} size={16} /> : endDecorator
       }
-    >
-      <Typography level="title-sm">{value}</Typography>
-    </Chip>
+      label={<Text weight="semibold" size="sm">{value}</Text>}
+    />
     </Box>
 );
 }

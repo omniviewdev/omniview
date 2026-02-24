@@ -1,12 +1,7 @@
 import React from 'react';
-import {
-  Box,
-  Card,
-  CardContent,
-  CircularProgress,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import { StatCard } from '@omniviewdev/ui';
+import Skeleton from '@mui/material/Skeleton';
 
 type StatusEntry = {
   label: string;
@@ -20,54 +15,58 @@ type Props = {
   total: number;
   statuses: StatusEntry[];
   loading?: boolean;
+  onClick?: () => void;
 };
 
-const WorkloadSummaryCard: React.FC<Props> = ({ title, icon, total, statuses, loading }) => {
+/** Map status breakdown to a single accent color for the card value. */
+function deriveColor(statuses: StatusEntry[]): 'primary' | 'warning' | 'danger' {
+  const hasDanger = statuses.some(s => s.color === 'danger' && s.count > 0);
+  const hasWarning = statuses.some(s => s.color === 'warning' && s.count > 0);
+  if (hasDanger) return 'danger';
+  if (hasWarning) return 'warning';
+  return 'primary';
+}
+
+/** Build a compact description from the visible statuses. */
+function deriveDescription(statuses: StatusEntry[]): string {
+  const visible = statuses.filter(s => s.count > 0);
+  if (visible.length === 0) return 'No active workloads';
+  return visible.map(s => `${s.count} ${s.label}`).join(', ');
+}
+
+const WorkloadSummaryCard: React.FC<Props> = ({ title, icon, total, statuses, loading, onClick }) => {
   if (loading) {
-    return (
-      <Card variant='outlined' size='sm' sx={{ height: '100%' }}>
-        <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 80, py: 1 }}>
-          <CircularProgress size='sm' />
-        </CardContent>
-      </Card>
-    );
+    return <Skeleton variant="rounded" sx={{ borderRadius: 1, height: '100%', minHeight: 88 }} />;
   }
 
-  const visible = statuses.filter(s => s.count > 0);
+  const card = (
+    <StatCard
+      value={total}
+      label={title}
+      description={deriveDescription(statuses)}
+      icon={icon}
+      color={deriveColor(statuses)}
+      sx={{ height: '100%' }}
+    />
+  );
+
+  if (!onClick) return card;
 
   return (
-    <Card variant='outlined' size='sm' sx={{ height: '100%' }}>
-      <CardContent sx={{ py: 1, '&:last-child': { pb: 1 } }}>
-        <Stack direction='row' alignItems='center' gap={0.75} sx={{ mb: 0.5 }}>
-          <Box sx={{ color: 'text.tertiary', display: 'flex' }}>{icon}</Box>
-          <Typography level='title-sm'>{title}</Typography>
-        </Stack>
-        <Typography level='h3' sx={{ mb: 0.5 }}>{total}</Typography>
-        <Stack gap={0.25}>
-          {visible.map(s => (
-            <Stack key={s.label} direction='row' alignItems='center' gap={0.75}>
-              <Box
-                sx={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  bgcolor: `${s.color}.500`,
-                  flexShrink: 0,
-                }}
-              />
-              <Typography level='body-xs' sx={{ color: 'text.secondary' }}>
-                {s.count} {s.label}
-              </Typography>
-            </Stack>
-          ))}
-          {visible.length === 0 && (
-            <Typography level='body-xs' sx={{ color: 'text.tertiary', fontStyle: 'italic' }}>
-              No active workloads
-            </Typography>
-          )}
-        </Stack>
-      </CardContent>
-    </Card>
+    <Box
+      onClick={onClick}
+      sx={{
+        cursor: 'pointer',
+        height: '100%',
+        borderRadius: 1,
+        transition: 'box-shadow 0.15s',
+        '&:hover > .MuiCard-root': {
+          borderColor: 'var(--ov-accent-default)',
+        },
+      }}
+    >
+      {card}
+    </Box>
   );
 };
 

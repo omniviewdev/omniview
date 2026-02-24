@@ -31,6 +31,7 @@ export const navigationCustomizations: Components<Theme> = {
     styleOverrides: {
       list: {
         gap: '0px',
+        padding: '4px',
         [`&.${dividerClasses.root}`]: { margin: '0 -8px' },
       },
       paper: ({ theme }) => ({
@@ -57,7 +58,7 @@ export const navigationCustomizations: Components<Theme> = {
       )),
     },
     styleOverrides: {
-      select: { display: 'flex', alignItems: 'center', padding: '10px 14px' },
+      select: { display: 'flex', alignItems: 'center' },
     },
   },
   MuiLink: {

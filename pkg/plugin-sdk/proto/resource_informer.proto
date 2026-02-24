@@ -2,10 +2,7 @@ syntax = "proto3";
 package com.omniview.pluginsdk;
 
 import "google/protobuf/struct.proto";
-import "google/protobuf/empty.proto";
-import "google/protobuf/duration.proto";
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/wrappers.proto";
+import "proto/resource_common.proto";
 
 option go_package = "./proto";
 
@@ -23,6 +20,51 @@ message StopConnectionInformerRequest {
   string connection = 2;
 }
 
+// Informer sync policy controls when an informer starts.
+enum InformerSyncPolicy {
+  SYNC_ON_CONNECT = 0;
+  SYNC_ON_FIRST_QUERY = 1;
+  SYNC_NEVER = 2;
+}
+
+// Informer resource state represents the sync state of a single resource type's informer.
+enum InformerResourceState {
+  INFORMER_PENDING = 0;
+  INFORMER_SYNCING = 1;
+  INFORMER_SYNCED = 2;
+  INFORMER_ERROR = 3;
+  INFORMER_CANCELLED = 4;
+}
+
+// InformerStateEvent is emitted when a resource's informer state changes.
+message InformerStateEvent {
+  string connection = 1;
+  string resource_key = 2;
+  InformerResourceState state = 3;
+  int32 resource_count = 4;
+  int32 total_count = 5;        // -1 if unknown
+  ResourceError error = 6;      // from resource_common.proto
+}
+
+// InformerConnectionSummary provides an aggregate view of all informer states for a connection.
+message InformerConnectionSummary {
+  string connection = 1;
+  map<string, InformerResourceState> resources = 2;
+  map<string, int32> resource_counts = 3;
+  int32 total_resources = 4;
+  int32 synced_count = 5;
+  int32 error_count = 6;
+}
+
+message GetInformerStateRequest {
+  string connection = 1;
+}
+
+message EnsureInformerRequest {
+  string connection = 1;
+  string resource_key = 2;
+}
+
 message InformerEvent {
   string key = 1;
   string connection = 2;
@@ -32,6 +74,7 @@ message InformerEvent {
     InformerAddEvent add = 5;
     InformerUpdateEvent update = 6;
     InformerDeleteEvent delete = 7;
+    InformerStateEvent state = 8;
   }
 }
 

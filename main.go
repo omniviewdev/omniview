@@ -23,6 +23,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
+	pluginmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
@@ -110,6 +111,9 @@ func main() {
 	logsController := pluginlogs.NewController(log, settingsProvider, resourceClient)
 	logsClient := pluginlogs.NewClient(logsController)
 
+	metricController := pluginmetric.NewController(log, settingsProvider, resourceClient)
+	metricClient := pluginmetric.NewClient(metricController)
+
 	dataController := data.NewController(log)
 	dataClient := data.NewClient(dataController)
 
@@ -121,6 +125,7 @@ func main() {
 		execController,
 		networkerController,
 		logsController,
+		metricController,
 		managers,
 		settingsProvider,
 		pluginRegistryClient,
@@ -159,6 +164,8 @@ func main() {
 		resourceController.Run(ctx)
 		execController.Run(ctx)
 		logsController.Run(ctx)
+		metricController.Run(ctx)
+		networkerController.Run(ctx)
 
 		// Initialize dev server manager first so it has a context before
 		// pluginManager.Initialize() auto-starts dev servers.
@@ -217,6 +224,7 @@ func main() {
 			execClient,
 			networkerClient,
 			logsClient,
+			metricClient,
 			dataClient,
 			uiClient,
 			utilsClient,

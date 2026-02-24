@@ -1,6 +1,10 @@
 import Icon from '@/components/icons/Icon';
-import { Box, Card, CardContent, Chip, List, ListItem, ListItemButton, ListItemContent, Sheet, Stack, Typography, useTheme } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { useTheme } from '@mui/material/styles';
 import { useMediaQuery } from '@mui/material';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Card, Chip, List, ListItem } from '@omniviewdev/ui';
 import { useExtensionRegistry, type ExtensionPointSettings, type ExtensionPointStore } from '@omniviewdev/runtime';
 import React from 'react';
 
@@ -32,17 +36,18 @@ const ExtensionSettingsPage: React.FC = () => {
         maxHeight: '100%',
       }}
     >
-      <Sheet
-        variant='outlined'
+      <Box
         sx={{
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
-          borderRadius: 8,
+          borderRadius: 2,
           width: '100%',
-          paddingY: 1,
-          paddingX: 2,
+          py: 1,
+          px: 2,
           gap: 1.5,
+          border: '1px solid',
+          borderColor: 'divider',
         }}
       >
         <Icon name={'LuBrainCircuit'} size={isNormalScreenSize ? 20 : 30} />
@@ -65,14 +70,14 @@ const ExtensionSettingsPage: React.FC = () => {
             width: '100%',
           }}
         >
-          <Typography level={isNormalScreenSize ? 'title-lg' : 'title-md'}>
+          <Text weight='semibold' size={isNormalScreenSize ? 'lg' : 'md'}>
             Extension
-          </Typography>
-          <Typography level={isNormalScreenSize ? 'body-xs' : 'body-xs'}>
+          </Text>
+          <Text size='xs'>
             View and manage the installed extensions in the IDE
-          </Typography>
+          </Text>
         </Stack>
-      </Sheet>
+      </Box>
 
       {/* Render the settings section here */}
       <Box
@@ -86,40 +91,42 @@ const ExtensionSettingsPage: React.FC = () => {
       >
 
         <Card
-          variant='outlined'
-          sx={{ p: 0.5 }}
+          sx={{ p: 0.5, border: '1px solid', borderColor: 'divider' }}
         >
-          <CardContent>
+          <Box sx={{ p: 2 }}>
             <Stack spacing={0} direction={'column'}>
-              <Typography p={1} level={'h4'}>Extension Points</Typography>
+              <Text sx={{ p: 1, fontWeight: 700, fontSize: '1.25rem' }}>Extension Points</Text>
               <List
-                variant={'soft'}
                 size={'sm'}
-                sx={{ width: 350, borderRadius: 8 }}
+                sx={{ width: 350, borderRadius: 2, bgcolor: 'action.hover' }}
               >
                 {extensions?.listExtensionPoints().map((extension) => (
                   <ListItem key={extension.id}>
-                    <ListItemButton
-                      selected={selected?.settings().id === extension.id}
+                    <Box
+                      sx={{
+                        cursor: 'pointer',
+                        p: 1,
+                        borderRadius: 1,
+                        width: '100%',
+                        bgcolor: selected?.settings().id === extension.id ? 'action.selected' : 'transparent',
+                      }}
                       onClick={() => {
                         selectExtensionPoint(extension.id);
                       }}
                     >
-                      <ListItemContent>
-                        {extension.id}
-                      </ListItemContent>
-                    </ListItemButton>
+                      {extension.id}
+                    </Box>
                   </ListItem>
                 ))}
               </List>
             </Stack>
-          </CardContent>
+          </Box>
         </Card>
 
         {selected && (
           <Box
             sx={{
-              backgroundColor: theme.palette.background.popup,
+              backgroundColor: theme.palette.background.paper,
               width: '100%',
               overflow: 'auto',
               display: 'flex',
@@ -128,29 +135,23 @@ const ExtensionSettingsPage: React.FC = () => {
             }}
           >
 
-            <Card variant="outlined">
-              <CardContent>
+            <Card sx={{ border: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ p: 2 }}>
                 <Stack direction="row" gap={2} justifyContent={'space-between'}>
-                  <Typography
-                    level="title-md"
-                    endDecorator={
-                      <Chip variant={'outlined'} sx={{ borderRadius: 'sm', ml: 1 }}>
-                        {selectedSettings?.mode} display
-                      </Chip>
-                    }
-                  >
-                    {selectedSettings?.name}
-                  </Typography>
+                  <Stack direction='row' alignItems='center' gap={1}>
+                    <Text weight='semibold'>
+                      {selectedSettings?.name}
+                    </Text>
+                    <Chip variant='outlined' sx={{ borderRadius: 1, ml: 1 }} label={`${selectedSettings?.mode} display`} />
+                  </Stack>
                   {selectedSettings?.mode &&
-                    <Chip color={'primary'} sx={{ borderRadius: 'sm' }}>
-                      {selectedSettings?.id}
-                    </Chip>
+                    <Chip color='primary' sx={{ borderRadius: 1 }} label={selectedSettings?.id ?? ''} />
                   }
                 </Stack>
                 <Stack direction="row" gap={2} justifyContent={'space-between'}>
-                  <Typography>{selectedSettings?.description}</Typography>
+                  <Text>{selectedSettings?.description}</Text>
                 </Stack>
-              </CardContent>
+              </Box>
             </Card>
             <ExtensionPointDisplay extensionPoint={selected} />
           </Box>
@@ -170,7 +171,7 @@ const ExtensionPointDisplay: React.FC<ExtensionPointDisplayProps> = ({ extension
   if (!registrations?.length) {
     return (
       <Box sx={{ height: '100%', width: '100%', textAlign: 'center', alignContent: 'center' }}>
-        <Typography>No extensions have been registered for this extension point</Typography>
+        <Text>No extensions have been registered for this extension point</Text>
       </Box>
     );
   }

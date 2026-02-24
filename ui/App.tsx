@@ -21,15 +21,10 @@ import { store } from './store/store';
 import './utils/globalutils';
 import './providers/monaco/bootstrap';
 
-import {
-  experimental_extendTheme as materialExtendTheme,
-  Experimental_CssVarsProvider as MaterialCssVarsProvider,
-  THEME_ID as MATERIAL_THEME_ID,
-} from '@mui/material/styles';
+import { StyledEngineProvider } from '@mui/material/styles';
+import { AppTheme } from '@omniviewdev/ui/theme';
 
 // Providers
-import { CssVarsProvider, StyledEngineProvider } from '@mui/joy/styles';
-import theme from './theme';
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
 import RightDrawerProvider from '@/providers/RightDrawerProvider';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -74,8 +69,6 @@ const queryClient = new QueryClient({
   },
 });
 
-const materialTheme = materialExtendTheme();
-
 log.debug("starting up the application")
 
 /**
@@ -87,37 +80,26 @@ const App: React.FC = () => (
       <SettingsProvider>
         <ExtensionProvider registry={EXTENSION_REGISTRY}>
           <AppSnackbarProvider>
-            <MaterialCssVarsProvider
-              defaultMode="dark"
-              theme={{ [MATERIAL_THEME_ID]: materialTheme }}
-            >
-              <StyledEngineProvider injectFirst>
-                <Provider store={store}>
-                  <CssVarsProvider
-                    defaultMode='dark'
-                    modeStorageKey='omniview_identify-system-mode'
-                    // Set as root provider
-                    disableNestedContext
-                    theme={theme}
+            <StyledEngineProvider injectFirst>
+              <Provider store={store}>
+                <AppTheme defaultMode="dark">
+                  <ErrorBoundary
+                    FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
+                    onError={onBoundaryError}
                   >
-                    <ErrorBoundary
-                      FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
-                      onError={onBoundaryError}
-                    >
-                      <ConfirmationModalProvider>
-                        <RightDrawerProvider>
-                          <BottomDrawerProvider>
-                            <PluginRegistryProvider>
-                              <RouteProvider />
-                            </PluginRegistryProvider>
-                          </BottomDrawerProvider>
-                        </RightDrawerProvider>
-                      </ConfirmationModalProvider>
-                    </ErrorBoundary>
-                  </CssVarsProvider>
-                </Provider>
-              </StyledEngineProvider>
-            </MaterialCssVarsProvider>
+                    <ConfirmationModalProvider>
+                      <RightDrawerProvider>
+                        <BottomDrawerProvider>
+                          <PluginRegistryProvider>
+                            <RouteProvider />
+                          </PluginRegistryProvider>
+                        </BottomDrawerProvider>
+                      </RightDrawerProvider>
+                    </ConfirmationModalProvider>
+                  </ErrorBoundary>
+                </AppTheme>
+              </Provider>
+            </StyledEngineProvider>
           </AppSnackbarProvider>
         </ExtensionProvider>
       </SettingsProvider>

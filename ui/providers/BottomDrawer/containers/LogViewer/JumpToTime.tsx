@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
-import Box from '@mui/joy/Box';
-import IconButton from '@mui/joy/IconButton';
-import Tooltip from '@mui/joy/Tooltip';
+import Box from '@mui/material/Box';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 import Popover from '@mui/material/Popover';
 import { LuCalendarClock } from 'react-icons/lu';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -120,7 +120,7 @@ const panelSx = {
 const JumpToTime: React.FC<Props> = ({ onJumpToTime }) => {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState<Date | null>(new Date());
-  const anchorRef = useRef<HTMLButtonElement>(null);
+  const anchorRef = useRef<HTMLSpanElement>(null);
 
   const handleJump = () => {
     if (value) onJumpToTime(value);
@@ -129,16 +129,17 @@ const JumpToTime: React.FC<Props> = ({ onJumpToTime }) => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Tooltip title="Jump to time">
-        <IconButton
-          ref={anchorRef}
-          size="sm"
-          variant="plain"
-          color="neutral"
-          onClick={() => setOpen(true)}
-        >
-          <LuCalendarClock size={14} />
-        </IconButton>
+      <Tooltip content="Jump to time">
+        <span ref={anchorRef} style={{ display: 'inline-flex' }}>
+          <IconButton
+            size="sm"
+            emphasis="ghost"
+            color="neutral"
+            onClick={() => setOpen(true)}
+          >
+            <LuCalendarClock size={14} />
+          </IconButton>
+        </span>
       </Tooltip>
       <Popover
         open={open}

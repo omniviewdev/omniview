@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuPlugZap, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuPlugZap, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import VolumeAttachmentSidebar from './Sidebar'
 
 const resourceKey = 'storage::v1::VolumeAttachment'
@@ -60,10 +60,7 @@ const VolumeAttachmentTable: React.FC = () => {
   const drawer: DrawerComponent<VolumeAttachment> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuPlugZap />,
-    views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <VolumeAttachmentSidebar ctx={ctx} /> },
-      { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
-    ],
+    views: createStandardViews({ SidebarComponent: VolumeAttachmentSidebar }),
     actions: [
       {
         title: 'Delete',

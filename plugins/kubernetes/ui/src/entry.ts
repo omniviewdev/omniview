@@ -4,8 +4,9 @@ import React from 'react'
 window.PluginReact = React
 
 /// <reference types="@welldone-software/why-did-you-render" />
-import { PluginWindow, type DrawerContext } from '@omniviewdev/runtime';
+import { PluginWindow, type DrawerContext, type DrawerComponent, type DrawerFactory } from '@omniviewdev/runtime';
 import { RouteObject } from 'react-router-dom';
+import { createStandardViews } from './components/shared/sidebar/createDrawerViews';
 
 import ClustersPage from './pages/ClustersPage';
 import ClusterEditPage from './pages/ClusterEditPage';
@@ -17,6 +18,7 @@ import DefaultTable from './components/kubernetes/table/default/Table';
 // helm tables
 import HelmReleaseTable from './components/helm/releases/Table';
 import HelmRepoTable from './components/helm/repos/Table';
+import HelmChartTable from './components/helm/charts/Table';
 
 // admissionregistration.v1
 import MutatingWebhookConfigurationTable from './components/kubernetes/table/admissionregistrationv1/MutatingWebhookConfiguration/Table'
@@ -88,6 +90,7 @@ import EndpointSliceTable from './components/kubernetes/table/discoveryv1/Endpoi
 import IngressClassTable from './components/kubernetes/table/networkingv1/IngressClass/Table';
 import ClusterDashboardOverviewPage from './pages/dashboard/overview';
 import ClusterDashboardBenchmarksPage from './pages/dashboard/benchmarks';
+import ClusterDashboardMetricsPage from './pages/dashboard/metrics';
 
 // ── Sidebar components ──────────────────────────────────────────────
 
@@ -150,6 +153,7 @@ import VolumeAttachmentSidebar from './components/kubernetes/table/storagev1/Vol
 // helm.v1
 import ReleaseSidebar from './components/helm/releases/ReleaseSidebar';
 import RepoSidebar from './components/helm/repos/RepoSidebar';
+import ChartSidebar from './components/helm/charts/ChartSidebar';
 
 // admissionregistration.v1
 import MutatingWebhookConfigurationSidebar from './components/kubernetes/table/admissionregistrationv1/MutatingWebhookConfiguration/Sidebar';
@@ -216,7 +220,37 @@ export const sidebars: Record<string, React.FC<{ ctx: DrawerContext }>> = {
   // helm.v1
   'helm::v1::Release': ReleaseSidebar,
   'helm::v1::Repository': RepoSidebar,
+  'helm::v1::Chart': ChartSidebar,
 };
+
+/**
+ * Creates a DrawerFactory for a resource that has a sidebar component.
+ * Produces a DrawerComponent with the standard view set (Overview, Metrics,
+ * Events, Editor). Used by the host's drawer registry so ref chip clicks
+ * render the same rich sidebar as table row clicks (minus table-local actions).
+ */
+function createResourceDrawerFactory(
+  resourceKey: string,
+  SidebarComponent: React.FC<{ ctx: DrawerContext }>,
+): DrawerFactory {
+  return (_closeDrawer: () => void): DrawerComponent => ({
+    title: resourceKey,
+    views: createStandardViews({ SidebarComponent }),
+    actions: [],
+  });
+}
+
+/**
+ * Drawer factories keyed by resource key. Registered with the host's
+ * drawer registry at plugin load time so that linked-resource chip clicks
+ * and showResourceSidebar() render the full sidebar experience.
+ */
+export const drawers: Record<string, DrawerFactory> = Object.fromEntries(
+  Object.entries(sidebars).map(([key, Component]) => [
+    key,
+    createResourceDrawerFactory(key, Component),
+  ]),
+);
 
 const routes: Array<RouteObject> = [
   {
@@ -243,6 +277,7 @@ const routes: Array<RouteObject> = [
             Component: ClusterDashboardPage,
             children: [
               { path: '', index: true, Component: ClusterDashboardOverviewPage },
+              { path: 'metrics', Component: ClusterDashboardMetricsPage },
               { path: 'benchmarks', Component: ClusterDashboardBenchmarksPage },
             ]
           },
@@ -325,6 +360,7 @@ const routes: Array<RouteObject> = [
           // helm.v1
           { path: 'helm_v1_Release', Component: HelmReleaseTable },
           { path: 'helm_v1_Repository', Component: HelmRepoTable },
+          { path: 'helm_v1_Chart', Component: HelmChartTable },
 
           // Custom Resource Definitions / breaking api versions
           { path: ':resourceKey', Component: DefaultTable }

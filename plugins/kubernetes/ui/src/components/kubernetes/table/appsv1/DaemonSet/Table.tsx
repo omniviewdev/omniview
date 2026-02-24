@@ -9,9 +9,9 @@ import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuLogs, LuServerCog, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuLogs, LuServerCog, LuTrash } from 'react-icons/lu'
 import DaemonSetSidebar from './Sidebar'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 
 const resourceKey = 'apps::v1::DaemonSet'
 
@@ -113,18 +113,7 @@ const DaemonSetTable: React.FC = () => {
   const drawer: DrawerComponent<DaemonSet> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuServerCog />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <DaemonSetSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: DaemonSetSidebar }),
     actions: [
       {
         title: 'Delete',

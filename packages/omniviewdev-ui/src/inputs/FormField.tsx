@@ -3,9 +3,9 @@ import Typography from '@mui/material/Typography';
 import type { SxProps, Theme } from '@mui/material/styles';
 
 export interface FormFieldProps {
-  label: string;
+  label?: string;
   required?: boolean;
-  error?: string;
+  error?: string | boolean;
   helperText?: string;
   children: React.ReactNode;
   layout?: 'vertical' | 'horizontal';
@@ -68,7 +68,7 @@ export default function FormField({
               color: error ? 'var(--ov-danger-default)' : 'var(--ov-fg-faint)',
             }}
           >
-            {error ?? helperText}
+            {typeof error === 'string' ? error : helperText}
           </Typography>
         )}
       </Box>

@@ -1,22 +1,13 @@
 import React from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Divider,
-  FormControl,
-  FormLabel,
-  Grid,
-  Input,
-  Option,
-  Select,
-  Stack,
-  Switch,
-  Textarea,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Grid from '@mui/material/Grid';
+import Divider from '@mui/material/Divider';
+import Switch from '@mui/material/Switch';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button } from '@omniviewdev/ui/buttons';
+import { TextField, TextArea, Select } from '@omniviewdev/ui/inputs';
+import { Card, Chip } from '@omniviewdev/ui';
 
 // ── Field Types ───────────────────────────────────────────────────────────────
 
@@ -28,7 +19,7 @@ type BaseField = {
   required?: boolean;
 };
 
-type TextField = BaseField & {
+type TextFieldType = BaseField & {
   type: 'text';
   value: string;
   placeholder?: string;
@@ -68,7 +59,7 @@ type ReadonlyField = BaseField & {
 };
 
 export type FormField =
-  | TextField
+  | TextFieldType
   | NumberField
   | SelectField
   | SwitchField
@@ -97,18 +88,19 @@ const FieldRenderer: React.FC<{
   compact?: boolean;
 }> = ({ field, onChange, compact }) => {
   if (field.type === 'readonly') {
+    const chipColor = field.color === 'danger' ? 'error' : field.color === 'neutral' ? 'default' : field.color;
     const rendered = typeof field.value === 'boolean'
-      ? <Chip size='sm' variant='soft' color={field.value ? 'success' : 'neutral'} sx={{ borderRadius: 'sm' }}>{field.value ? 'Yes' : 'No'}</Chip>
+      ? <Chip size='sm' label={field.value ? 'Yes' : 'No'} color={field.value ? 'success' : 'default'} variant='filled' sx={{ borderRadius: 1 }} />
       : field.color
-        ? <Chip size='sm' variant='soft' color={field.color} sx={{ borderRadius: 'sm' }}>{String(field.value ?? '')}</Chip>
-        : <Typography fontWeight={600} fontSize={12} level='body-xs' sx={{ wordBreak: 'break-all' }}>{String(field.value ?? '')}</Typography>;
+        ? <Chip size='sm' label={String(field.value ?? '')} color={chipColor} variant='filled' sx={{ borderRadius: 1 }} />
+        : <Text size="xs" sx={{ fontWeight: 600, fontSize: 12, wordBreak: 'break-all' }}>{String(field.value ?? '')}</Text>;
 
     return (
       <Grid container spacing={0}>
-        <Grid xs={4} alignItems='center'>
-          <Typography textColor='neutral.300' level='body-xs'>{field.label}</Typography>
+        <Grid size={4} sx={{ alignItems: 'center' }}>
+          <Text size="xs" sx={{ color: 'neutral.300' }}>{field.label}</Text>
         </Grid>
-        <Grid xs={8} alignItems='center'>{rendered}</Grid>
+        <Grid size={8} sx={{ alignItems: 'center' }}>{rendered}</Grid>
       </Grid>
     );
   }
@@ -116,10 +108,10 @@ const FieldRenderer: React.FC<{
   if (compact) {
     return (
       <Grid container spacing={0} alignItems='center'>
-        <Grid xs={4}>
-          <Typography textColor='neutral.300' level='body-xs'>{field.label}</Typography>
+        <Grid size={4}>
+          <Text size="xs" sx={{ color: 'neutral.300' }}>{field.label}</Text>
         </Grid>
-        <Grid xs={8}>
+        <Grid size={8}>
           <CompactFieldInput field={field} onChange={onChange} />
         </Grid>
       </Grid>
@@ -127,10 +119,10 @@ const FieldRenderer: React.FC<{
   }
 
   return (
-    <FormControl size='sm' required={field.required}>
-      <FormLabel>{field.label}</FormLabel>
+    <Box>
+      <Text size="sm" sx={{ mb: 0.5 }}>{field.label}</Text>
       <FullFieldInput field={field} onChange={onChange} />
-    </FormControl>
+    </Box>
   );
 };
 
@@ -141,24 +133,24 @@ const CompactFieldInput: React.FC<{
   switch (field.type) {
     case 'text':
       return (
-        <Input
+        <TextField
           size='sm'
           value={field.value}
           placeholder={field.placeholder}
           disabled={field.disabled}
-          onChange={(e) => onChange(field.key, e.target.value)}
+          onChange={(value) => onChange(field.key, value)}
           sx={{ fontSize: 12 }}
         />
       );
     case 'number':
       return (
-        <Input
+        <TextField
           size='sm'
           type='number'
-          value={field.value}
+          value={String(field.value)}
           disabled={field.disabled}
-          slotProps={{ input: { min: field.min, max: field.max, step: field.step } }}
-          onChange={(e) => onChange(field.key, e.target.value === '' ? '' : Number(e.target.value))}
+          inputProps={{ min: field.min, max: field.max, step: field.step }}
+          onChange={(value) => onChange(field.key, value === '' ? '' : Number(value))}
           sx={{ fontSize: 12, maxWidth: 120 }}
         />
       );
@@ -168,18 +160,15 @@ const CompactFieldInput: React.FC<{
           size='sm'
           value={field.value}
           disabled={field.disabled}
-          onChange={(_, val) => onChange(field.key, val)}
+          onChange={(value) => onChange(field.key, value as string)}
+          options={field.options}
           sx={{ fontSize: 12 }}
-        >
-          {field.options.map((opt) => (
-            <Option key={opt.value} value={opt.value}>{opt.label}</Option>
-          ))}
-        </Select>
+        />
       );
     case 'switch':
       return (
         <Switch
-          size='sm'
+          size='small'
           checked={field.value}
           disabled={field.disabled}
           onChange={(e) => onChange(field.key, e.target.checked)}
@@ -187,13 +176,13 @@ const CompactFieldInput: React.FC<{
       );
     case 'textarea':
       return (
-        <Textarea
+        <TextArea
           size='sm'
           value={field.value}
           placeholder={field.placeholder}
           disabled={field.disabled}
           minRows={field.minRows || 2}
-          onChange={(e) => onChange(field.key, e.target.value)}
+          onChange={(value) => onChange(field.key, value)}
           sx={{ fontSize: 12 }}
         />
       );
@@ -207,23 +196,23 @@ const FullFieldInput: React.FC<{
   switch (field.type) {
     case 'text':
       return (
-        <Input
+        <TextField
           size='sm'
           value={field.value}
           placeholder={field.placeholder}
           disabled={field.disabled}
-          onChange={(e) => onChange(field.key, e.target.value)}
+          onChange={(value) => onChange(field.key, value)}
         />
       );
     case 'number':
       return (
-        <Input
+        <TextField
           size='sm'
           type='number'
-          value={field.value}
+          value={String(field.value)}
           disabled={field.disabled}
-          slotProps={{ input: { min: field.min, max: field.max, step: field.step } }}
-          onChange={(e) => onChange(field.key, e.target.value === '' ? '' : Number(e.target.value))}
+          inputProps={{ min: field.min, max: field.max, step: field.step }}
+          onChange={(value) => onChange(field.key, value === '' ? '' : Number(value))}
         />
       );
     case 'select':
@@ -232,17 +221,14 @@ const FullFieldInput: React.FC<{
           size='sm'
           value={field.value}
           disabled={field.disabled}
-          onChange={(_, val) => onChange(field.key, val)}
-        >
-          {field.options.map((opt) => (
-            <Option key={opt.value} value={opt.value}>{opt.label}</Option>
-          ))}
-        </Select>
+          onChange={(value) => onChange(field.key, value as string)}
+          options={field.options}
+        />
       );
     case 'switch':
       return (
         <Switch
-          size='sm'
+          size='small'
           checked={field.value}
           disabled={field.disabled}
           onChange={(e) => onChange(field.key, e.target.checked)}
@@ -250,13 +236,13 @@ const FullFieldInput: React.FC<{
       );
     case 'textarea':
       return (
-        <Textarea
+        <TextArea
           size='sm'
           value={field.value}
           placeholder={field.placeholder}
           disabled={field.disabled}
           minRows={field.minRows || 3}
-          onChange={(e) => onChange(field.key, e.target.value)}
+          onChange={(value) => onChange(field.key, value)}
         />
       );
   }
@@ -280,7 +266,7 @@ const FormCard: React.FC<Props> = ({
       sx={{
         '--Card-padding': '0px',
         '--Card-gap': '0px',
-        borderRadius: 'sm',
+        borderRadius: 1,
         gap: '0px',
       }}
       variant='outlined'
@@ -289,18 +275,18 @@ const FormCard: React.FC<Props> = ({
         <Stack direction='row' spacing={1} alignItems='center' justifyContent='space-between'>
           <Stack direction='row' spacing={1} alignItems='center'>
             {icon}
-            <Typography level='title-sm'>{title}</Typography>
+            <Text weight="semibold" size="sm">{title}</Text>
           </Stack>
           {(onSave || onReset) && (
             <Stack direction='row' spacing={0.5}>
               {onReset && (
-                <Button size='sm' variant='plain' color='neutral' disabled={!dirty || saving} onClick={onReset}>
+                <Button size='sm' emphasis='ghost' color='neutral' disabled={!dirty || saving} onClick={onReset}>
                   Reset
                 </Button>
               )}
               {onSave && (
-                <Button size='sm' variant='soft' color='primary' disabled={!dirty || saving} loading={saving} onClick={onSave}>
-                  Save
+                <Button size='sm' emphasis='soft' color='primary' disabled={!dirty || saving} onClick={onSave}>
+                  {saving ? 'Saving...' : 'Save'}
                 </Button>
               )}
             </Stack>
@@ -308,11 +294,11 @@ const FormCard: React.FC<Props> = ({
         </Stack>
       </Box>
       <Divider />
-      <CardContent
+      <Box
         sx={{
           p: compact ? 1 : 1.5,
           px: 1.5,
-          backgroundColor: 'background.level1',
+          backgroundColor: 'background.paper',
           borderBottomRightRadius: 6,
           borderBottomLeftRadius: 6,
         }}
@@ -322,7 +308,7 @@ const FormCard: React.FC<Props> = ({
             <FieldRenderer key={field.key} field={field} onChange={onChange} compact={compact} />
           ))}
         </Stack>
-      </CardContent>
+      </Box>
     </Card>
   );
 };

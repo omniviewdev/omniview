@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuShield, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuShield, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import ChipList from '../../shared/cells/ChipList'
 import NetworkPolicySidebar from './Sidebar'
 
@@ -76,18 +76,7 @@ const NetworkPolicyTable: React.FC = () => {
   const drawer: DrawerComponent<NetworkPolicy> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuShield />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <NetworkPolicySidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: NetworkPolicySidebar }),
     actions: [
       {
         title: 'Delete',

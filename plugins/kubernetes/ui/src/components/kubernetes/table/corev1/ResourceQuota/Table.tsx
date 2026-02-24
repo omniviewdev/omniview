@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuChartBar, LuCode, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuChartBar, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import ResourceQuotaSidebar from './Sidebar'
 
 const resourceKey = 'core::v1::ResourceQuota'
@@ -104,18 +104,7 @@ const ResourceQuotaTable: React.FC = () => {
   const drawer: DrawerComponent<ResourceQuota> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuChartBar />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <ResourceQuotaSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: ResourceQuotaSidebar }),
     actions: [
       {
         title: 'Delete',

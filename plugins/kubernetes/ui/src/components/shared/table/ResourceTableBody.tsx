@@ -8,7 +8,7 @@ import ResourceTableRow from './ResourceTableRow'
 
 type Props = Omit<ResourceTableProps, 'columns' | 'idAccessor'> & {
   table: Table<any>
-  tableContainerRef: React.RefObject<HTMLDivElement>
+  tableContainerRef: React.RefObject<HTMLDivElement | null>
   columnVisibility: string
   rowSelection: RowSelectionState
 }
@@ -20,7 +20,7 @@ const ResourceTableBody: React.FC<Props> = ({ table, tableContainerRef, drawer, 
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLTableRowElement>({
     count: rows.length,
     getScrollElement: () => tableContainerRef.current,
-    estimateSize: () => 32, // Actual height of each row is about 36
+    estimateSize: () => 30,
     overscan: 50,
     measureElement:
       typeof window !== 'undefined' &&
@@ -47,7 +47,8 @@ const ResourceTableBody: React.FC<Props> = ({ table, tableContainerRef, drawer, 
       resource: {
         id,
         key: resourceKey,
-        connectionID
+        connectionID,
+        pluginID: 'kubernetes',
       }
     })
   }, [drawer])

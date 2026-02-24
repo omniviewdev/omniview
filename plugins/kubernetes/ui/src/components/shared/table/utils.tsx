@@ -8,7 +8,7 @@ export const getCommonPinningStyles = <T = any>(column: Column<T>, header: boole
   const isFirstRightPinnedColumn =
     isPinned === 'right' && column.getIsFirstColumn('right')
 
-  return {
+  const styles: CSSProperties = {
     boxShadow: isLastLeftPinnedColumn
       ? '-1px 0 1px -1px gray inset'
       : isFirstRightPinnedColumn
@@ -19,6 +19,14 @@ export const getCommonPinningStyles = <T = any>(column: Column<T>, header: boole
     position: isPinned ? 'sticky' : 'relative',
     width: column.getSize(),
     zIndex: isPinned ? 1 : 0,
-    backgroundColor: isPinned && !header ? 'var(--joy-palette-background-body)' : undefined
   }
+
+  // Only set backgroundColor when pinned — avoids clobbering inline styles with undefined
+  if (isPinned) {
+    // Header pinned cells: match header surface background
+    // Body pinned cells: inherit from the row so hover/selection colors show through
+    styles.backgroundColor = header ? 'var(--ov-bg-surface)' : 'inherit'
+  }
+
+  return styles
 }

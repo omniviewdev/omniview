@@ -1,21 +1,33 @@
 import React from 'react';
-import Box from '@mui/joy/Box';
-import Button from '@mui/joy/Button';
-import Chip from '@mui/joy/Chip';
-import Divider from '@mui/joy/Divider';
-import Stack from '@mui/joy/Stack';
-import Tooltip from '@mui/joy/Tooltip';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import { Chip } from '@omniviewdev/ui';
 import { LuCircle, LuExternalLink, LuHammer, LuPlay, LuRefreshCw, LuSquare } from 'react-icons/lu';
 
 import { devToolsChannel } from '@/features/devtools/events';
 import { getAggregateStatus, STATUS_COLORS } from '@/features/devtools/types';
+import type { DevServerAggregateStatus } from '@/features/devtools/types';
 import { useDevServer } from '@/hooks/plugin/useDevServer';
 
 interface Props {
   pluginId: string;
   devPath: string;
 }
+
+const STATUS_LABELS: Record<DevServerAggregateStatus, string> = {
+  ready: 'Ready',
+  building: 'Building',
+  error: 'Error',
+  stopped: 'Stopped',
+  connecting: 'Connecting',
+};
+
+const DOT_CSS: Record<DevServerAggregateStatus, string> = {
+  ready: '#3fb950',
+  building: '#d29922',
+  error: '#f85149',
+  stopped: '#8b949e',
+  connecting: '#58a6ff',
+};
 
 /**
  * Dev mode section displayed inside InstalledPluginCard when the plugin is in dev mode.
@@ -26,157 +38,170 @@ const DevModeSection: React.FC<Props> = ({ pluginId, devPath }) => {
 
   const aggStatus = state.data ? getAggregateStatus(state.data) : 'stopped';
   const isRunning = aggStatus === 'ready' || aggStatus === 'building' || aggStatus === 'connecting' || aggStatus === 'error';
+  const dotColor = DOT_CSS[aggStatus];
 
   return (
     <Box
       sx={{
-        mt: 1,
-        p: 1.5,
-        borderRadius: 'sm',
-        bgcolor: 'background.level1',
-        border: '1px solid',
-        borderColor: 'divider',
+        mt: 0.5,
+        borderRadius: '6px',
+        border: '1px solid var(--ov-border-default, rgba(255,255,255,0.08))',
+        bgcolor: 'var(--ov-bg-surface-inset, rgba(0,0,0,0.15))',
+        overflow: 'hidden',
       }}
     >
-      <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1}>
-        <Stack direction="row" alignItems="center" gap={1}>
-          <Typography level="title-sm">Dev Server</Typography>
-          <Chip
-            size="sm"
-            variant="soft"
-            color={STATUS_COLORS[aggStatus]}
-            startDecorator={<LuCircle size={6} />}
-            sx={{ '--Chip-minHeight': '18px', fontSize: '10px' }}
+      {/* Header row */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1,
+          px: 1.25,
+          py: 0.75,
+          borderBottom: '1px solid var(--ov-border-default, rgba(255,255,255,0.08))',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
+          <Box
+            component="span"
+            sx={{
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              color: 'var(--ov-fg-base)',
+              whiteSpace: 'nowrap',
+            }}
           >
-            {aggStatus.toUpperCase()}
-          </Chip>
+            Dev Server
+          </Box>
+          <Chip
+            size="xs"
+            color={STATUS_COLORS[aggStatus]}
+            emphasis="soft"
+            shape="rounded"
+            textTransform="uppercase"
+            icon={<LuCircle size={6} fill={dotColor} color={dotColor} />}
+            label={STATUS_LABELS[aggStatus]}
+          />
           {state.data?.mode === 'external' && (
             <Chip
-              size="sm"
-              variant="outlined"
+              size="xs"
               color="neutral"
-              startDecorator={<LuExternalLink size={10} />}
-              sx={{ '--Chip-minHeight': '18px', fontSize: '10px' }}
-            >
-              External
-            </Chip>
+              emphasis="outline"
+              shape="rounded"
+              icon={<LuExternalLink size={10} />}
+              label="External"
+            />
           )}
-        </Stack>
+        </Box>
 
-        <Stack direction="row" gap={0.5}>
-          <Tooltip title="View build output" size="sm">
-            <Button
-              size="sm"
-              variant="plain"
-              color="neutral"
-              startDecorator={<LuHammer size={14} />}
-              onClick={() => devToolsChannel.emit('onOpenBuildOutput', pluginId)}
-              sx={{ fontSize: '12px' }}
-            >
-              Logs
-            </Button>
-          </Tooltip>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+          <ActionBtn icon={<LuHammer size={12} />} label="Logs" onClick={() => devToolsChannel.emit('onOpenBuildOutput', pluginId)} />
           {isRunning ? (
-            <Tooltip title="Stop dev server" size="sm">
-              <Button
-                size="sm"
-                variant="plain"
-                color="danger"
-                startDecorator={<LuSquare size={14} />}
-                loading={stop.isPending}
-                onClick={() => stop.mutate(pluginId)}
-                sx={{ fontSize: '12px' }}
-              >
-                Stop
-              </Button>
-            </Tooltip>
+            <ActionBtn icon={<LuSquare size={12} />} label="Stop" onClick={() => stop.mutate(pluginId)} color="var(--ov-danger-default, #f85149)" />
           ) : (
-            <Tooltip title="Start dev server" size="sm">
-              <Button
-                size="sm"
-                variant="plain"
-                color="success"
-                startDecorator={<LuPlay size={14} />}
-                loading={start.isPending}
-                onClick={() => start.mutate(pluginId)}
-                sx={{ fontSize: '12px' }}
-              >
-                Start
-              </Button>
-            </Tooltip>
+            <ActionBtn icon={<LuPlay size={12} />} label="Start" onClick={() => start.mutate(pluginId)} color="var(--ov-success-default, #3fb950)" />
           )}
-          <Tooltip title="Restart dev server" size="sm">
-            <Button
-              size="sm"
-              variant="plain"
-              color="neutral"
-              startDecorator={<LuRefreshCw size={14} />}
-              loading={restart.isPending}
-              disabled={!isRunning}
-              onClick={() => restart.mutate(pluginId)}
-              sx={{ fontSize: '12px' }}
-            >
-              Restart
-            </Button>
-          </Tooltip>
-        </Stack>
-      </Stack>
+          <ActionBtn icon={<LuRefreshCw size={12} />} label="Restart" onClick={() => restart.mutate(pluginId)} disabled={!isRunning} />
+        </Box>
+      </Box>
 
-      <Divider sx={{ mb: 1 }} />
-
-      <Stack gap={0.5}>
-        <Stack direction="row" gap={1}>
-          <Typography level="body-xs" sx={{ color: 'text.tertiary', minWidth: 60 }}>
-            Source:
-          </Typography>
-          <Typography level="body-xs" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-            {devPath}
-          </Typography>
-        </Stack>
-
+      {/* Details */}
+      <Box sx={{ px: 1.25, py: 0.75, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+        <DetailRow label="Source" value={devPath} mono />
         {state.data?.vitePort != null && state.data.vitePort > 0 && (
-          <Stack direction="row" gap={1}>
-            <Typography level="body-xs" sx={{ color: 'text.tertiary', minWidth: 60 }}>
-              Vite:
-            </Typography>
-            <Typography level="body-xs" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-              http://127.0.0.1:{state.data.vitePort}
-            </Typography>
-          </Stack>
+          <DetailRow label="Vite" value={`http://127.0.0.1:${state.data.vitePort}`} mono />
         )}
-
         {state.data && (
-          <Stack direction="row" gap={1}>
-            <Typography level="body-xs" sx={{ color: 'text.tertiary', minWidth: 60 }}>
-              gRPC:
-            </Typography>
-            <Typography
-              level="body-xs"
-              sx={{ color: state.data.grpcConnected ? 'success.plainColor' : 'danger.plainColor' }}
-            >
-              {state.data.grpcConnected ? 'Connected' : 'Disconnected'}
-            </Typography>
-          </Stack>
+          <DetailRow
+            label="gRPC"
+            value={state.data.grpcConnected ? 'Connected' : 'Disconnected'}
+            valueColor={state.data.grpcConnected ? 'var(--ov-success-default, #3fb950)' : 'var(--ov-danger-default, #f85149)'}
+          />
         )}
-
         {state.data?.lastError && (
-          <Typography
-            level="body-xs"
+          <Box
             sx={{
-              color: 'danger.plainColor',
-              fontFamily: 'monospace',
-              mt: 0.5,
+              mt: '2px',
               p: 0.5,
-              bgcolor: 'danger.softBg',
-              borderRadius: 'xs',
+              borderRadius: '4px',
+              bgcolor: 'rgba(248,81,73,0.08)',
+              border: '1px solid rgba(248,81,73,0.15)',
+              fontSize: '0.6875rem',
+              fontFamily: 'var(--ov-font-mono, monospace)',
+              color: '#f85149',
+              wordBreak: 'break-word',
+              maxHeight: 48,
+              overflow: 'auto',
             }}
           >
             {state.data.lastError}
-          </Typography>
+          </Box>
         )}
-      </Stack>
+      </Box>
     </Box>
   );
 };
+
+function DetailRow({ label, value, mono, valueColor }: { label: string; value: string; mono?: boolean; valueColor?: string }) {
+  return (
+    <Box sx={{ display: 'flex', gap: 1, alignItems: 'baseline', minWidth: 0 }}>
+      <Box
+        component="span"
+        sx={{
+          fontSize: '0.6875rem',
+          color: 'var(--ov-fg-faint, #8b949e)',
+          minWidth: 44,
+          flexShrink: 0,
+        }}
+      >
+        {label}:
+      </Box>
+      <Box
+        component="span"
+        sx={{
+          fontSize: '0.6875rem',
+          fontFamily: mono ? 'var(--ov-font-mono, monospace)' : 'inherit',
+          color: valueColor ?? 'var(--ov-fg-muted, #8b949e)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          minWidth: 0,
+        }}
+      >
+        {value}
+      </Box>
+    </Box>
+  );
+}
+
+function ActionBtn({ icon, label, onClick, color, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; color?: string; disabled?: boolean }) {
+  return (
+    <Box
+      component="button"
+      onClick={disabled ? undefined : onClick}
+      sx={{
+        all: 'unset',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px',
+        px: '6px',
+        py: '3px',
+        fontSize: '0.6875rem',
+        fontWeight: 500,
+        fontFamily: 'var(--ov-font-ui)',
+        color: disabled ? 'var(--ov-fg-faint, #484f58)' : color ?? 'var(--ov-fg-default, #c9d1d9)',
+        cursor: disabled ? 'default' : 'pointer',
+        borderRadius: '4px',
+        whiteSpace: 'nowrap',
+        opacity: disabled ? 0.5 : 1,
+        '&:hover': disabled ? {} : { bgcolor: 'rgba(255,255,255,0.06)' },
+      }}
+    >
+      {icon}
+      {label}
+    </Box>
+  );
+}
 
 export default React.memo(DevModeSection);

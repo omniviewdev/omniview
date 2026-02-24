@@ -1,12 +1,9 @@
 import React from 'react';
-import {
-  Box,
-  Card,
-  CardContent,
-  Divider,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Card } from '@omniviewdev/ui';
 import FormCard, { type FormField } from '../../../shared/forms/FormCard';
 import KeyValueEditor from '../../../shared/forms/KeyValueEditor';
 import ArrayChipEditor from '../../../shared/forms/ArrayChipEditor';
@@ -41,7 +38,7 @@ const ContainerCard: React.FC<{ container: Record<string, any>; index: number }>
   );
 
   const mountPoints = (container.MountPoints || []).map(
-    (mp: any) => `${mp.SourceVolume} → ${mp.ContainerPath}${mp.ReadOnly ? ' (ro)' : ''}`
+    (mp: any) => `${mp.SourceVolume} \u2192 ${mp.ContainerPath}${mp.ReadOnly ? ' (ro)' : ''}`
   );
 
   const fields: FormField[] = [
@@ -60,19 +57,19 @@ const ContainerCard: React.FC<{ container: Record<string, any>; index: number }>
 
   return (
     <Card
-      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 'sm', gap: '0px' }}
+      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 1, gap: '0px' }}
       variant='outlined'
     >
       <Box sx={{ py: 1, px: 1.25 }}>
         <Stack direction='row' spacing={1} alignItems='center'>
-          <Typography level='title-sm'>Container #{index + 1}: {container.Name}</Typography>
+          <Text weight="semibold" size="sm">Container #{index + 1}: {container.Name}</Text>
           {container.Essential && (
-            <Typography level='body-xs' color='primary' fontWeight={700}>Essential</Typography>
+            <Text size="xs" color="primary" sx={{ fontWeight: 700 }}>Essential</Text>
           )}
         </Stack>
       </Box>
       <Divider />
-      <CardContent sx={{ p: 0, backgroundColor: 'background.level1', borderBottomRightRadius: 6, borderBottomLeftRadius: 6 }}>
+      <Box sx={{ p: 0, backgroundColor: 'background.paper', borderBottomRightRadius: 6, borderBottomLeftRadius: 6 }}>
         <Stack spacing={1} sx={{ p: 1.5 }}>
           <FormCard
             title='Configuration'
@@ -125,7 +122,7 @@ const ContainerCard: React.FC<{ container: Record<string, any>; index: number }>
             />
           )}
         </Stack>
-      </CardContent>
+      </Box>
     </Card>
   );
 };

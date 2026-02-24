@@ -1,4 +1,5 @@
-import { Chip, Stack } from "@mui/joy"
+import { Chip } from "@omniviewdev/ui"
+import { Stack } from "@omniviewdev/ui/layout"
 
 type Props = {
   values: string[]
@@ -26,7 +27,7 @@ const ChipList: React.FC<Props> = ({ values }) => {
           display: "none",
         },
       }}>
-      {values.map((value) => <Chip size={'sm'} sx={{ borderRadius: '2px' }} variant='outlined'>{value}</Chip>)}
+      {values.map((value) => <Chip size={'sm'} sx={{ borderRadius: '2px' }} emphasis='outline' label={value} />)}
     </Stack>
   )
 }

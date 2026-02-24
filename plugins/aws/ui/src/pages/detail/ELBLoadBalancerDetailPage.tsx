@@ -1,6 +1,9 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { Box, CircularProgress, Stack, Typography } from '@mui/joy';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuScale } from 'react-icons/lu';
 import { useResources } from '@omniviewdev/runtime';
 import get from 'lodash.get';
@@ -32,7 +35,7 @@ const ELBLoadBalancerDetailPage: React.FC = () => {
   if (resources.isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <CircularProgress size='md' />
+        <CircularProgress size={32} />
       </Box>
     );
   }
@@ -40,7 +43,7 @@ const ELBLoadBalancerDetailPage: React.FC = () => {
   if (!lb) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <Typography level='body-md' color='neutral'>Load Balancer not found</Typography>
+        <Text>Load Balancer not found</Text>
       </Box>
     );
   }

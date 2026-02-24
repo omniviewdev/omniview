@@ -2,16 +2,14 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 // Material-ui
-import Box from '@mui/joy/Box';
-import Sheet from '@mui/joy/Sheet';
-import List from '@mui/joy/List';
-import ListItem from '@mui/joy/ListItem';
-import ListItemContent from '@mui/joy/ListItemContent';
-import ListItemDecorator from '@mui/joy/ListItemDecorator';
-import ListItemButton from '@mui/joy/ListItemButton';
-import Typography from '@mui/joy/Typography';
-import GlobalStyles from '@mui/joy/GlobalStyles';
-import IconButton from '@mui/joy/IconButton';
+import Box from '@mui/material/Box';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemText from '@mui/material/ListItemText';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import ListItemButton from '@mui/material/ListItemButton';
+import GlobalStyles from '@mui/material/GlobalStyles';
+import IconButton from '@mui/material/IconButton';
 
 // Icons
 import {
@@ -193,7 +191,7 @@ const ResourceSidebar: React.FC = () => {
           width: '100vw',
           height: 'calc(100dvh - var(--CoreLayoutHeader-height))',
           opacity: 'var(--SideNavigation-slideIn)',
-          backgroundColor: 'var(--joy-palette-background-backdrop)',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
           transition: 'opacity 0.4s',
           transform: {
             xs: 'translateX(calc(100% * (var(--SideNavigation-slideIn, 0) - 1) + var(--SideNavigation-slideIn, 0) * var(--CoreLayoutSidebar-width, 0px)))',
@@ -204,9 +202,8 @@ const ResourceSidebar: React.FC = () => {
           closeSidebar();
         }}
       />
-      <Sheet
+      <Box
         className='ResourceSidebar'
-        color='neutral'
         sx={{
           position: {
             xs: 'fixed',
@@ -227,6 +224,7 @@ const ResourceSidebar: React.FC = () => {
           gap: 1,
           borderRight: '1px solid',
           borderColor: 'divider',
+          bgcolor: 'background.paper',
         }}
       >
         <GlobalStyles
@@ -237,7 +235,7 @@ const ResourceSidebar: React.FC = () => {
           }}
         />
         <List
-          size='sm'
+          dense
           sx={{
             overflowY: 'scroll',
             width: '100%',
@@ -249,8 +247,6 @@ const ResourceSidebar: React.FC = () => {
             },
             pt: 0,
             pb: 0,
-            '--ListItem-radius': '6px',
-            '--ListItemDecorator-size': '1.5rem',
           }}
         >
           {menuItems.map(item => {
@@ -260,36 +256,36 @@ const ResourceSidebar: React.FC = () => {
             return (
               <NavWrapper item={item} key={item.name} location={location.pathname}>
                 <ListItem
-                  nested={Boolean(item.children?.length)}
-                  endAction={
+                  secondaryAction={
                     Boolean(item.children?.length) && <IconButton
-                      variant='plain'
-                      size='sm'
-                      color='neutral'
+                      size='small'
+                      edge='end'
                     >
                       <KeyboardArrowDown
                         sx={{ transform: 'initial' }}
                       />
                     </IconButton>
                   }
+                  disablePadding
                 >
                   <ListItemButton selected={location.pathname === parentLink}>
-                    <ListItemDecorator>
+                    <ListItemIcon sx={{ minWidth: '1.5rem' }}>
                       {item.icon}
-                    </ListItemDecorator>
-                    <ListItemContent>
-                      <Typography level='title-sm' fontWeight={500}>{item.label}</Typography>
-                    </ListItemContent>
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item.label}
+                      primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+                    />
                   </ListItemButton>
                 </ListItem>
                 {item.children.map(child => (
                   <Link to={`${parentLink}/${child.name}`} key={child.name} style={{ textDecoration: 'none' }} >
-                    <ListItem nested>
-                      <ListItemButton selected={location.pathname === `${parentLink}/${child.name}`}>
-                        <ListItemDecorator sx={{ marginLeft: 1 }} />
-                        <ListItemContent>
-                          <Typography level='title-sm'>{child.label}</Typography>
-                        </ListItemContent>
+                    <ListItem disablePadding>
+                      <ListItemButton selected={location.pathname === `${parentLink}/${child.name}`} sx={{ pl: 4 }}>
+                        <ListItemText
+                          primary={child.label}
+                          primaryTypographyProps={{ variant: 'body2' }}
+                        />
                       </ListItemButton>
                     </ListItem>
                   </Link>
@@ -299,7 +295,7 @@ const ResourceSidebar: React.FC = () => {
           },
           )}
         </List>
-      </Sheet>
+      </Box>
     </>
   );
 };

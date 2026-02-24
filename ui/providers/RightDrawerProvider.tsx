@@ -4,10 +4,8 @@ import React, {
 } from 'react';
 
 // material-ui
-import {
-  useTheme,
-  Sheet,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import { useTheme } from '@mui/material/styles';
 
 // context
 import {
@@ -23,7 +21,7 @@ import { types } from '@omniviewdev/runtime/models';
 import RightDrawer from '@/components/displays/RightDrawer';
 import { bottomDrawerChannel } from './BottomDrawer/events';
 import { createLinkedResourceDrawer } from '@/federation/LinkedResourceDrawer';
-import { getSidebarComponent } from '@/features/plugins/PluginManager';
+import { getSidebarComponent, getDrawerFactory } from '@/features/plugins/PluginManager';
 import log from '@/features/logger';
 
 type Props = {
@@ -222,9 +220,17 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       ).then(() => closeDrawer());
     };
 
-    // Look up the plugin's registered sidebar component for this resource type
-    const SidebarComponent = getSidebarComponent(params.pluginID, params.resourceKey);
-    const drawer = createLinkedResourceDrawer(params.resourceKey, onSubmit, closeDrawer, SidebarComponent);
+    // Prefer a full drawer factory from the plugin (same views + actions as table row clicks).
+    // Fall back to the generic linked-resource drawer with sidebar component overlay.
+    const factory = getDrawerFactory(params.pluginID, params.resourceKey);
+    const drawer = factory
+      ? factory(closeDrawer)
+      : createLinkedResourceDrawer(
+          params.resourceKey,
+          onSubmit,
+          closeDrawer,
+          getSidebarComponent(params.pluginID, params.resourceKey),
+        );
 
     // Fetch the resource, then open the drawer with data in ctx — same as row clicks
     ResourceClient.Get(
@@ -243,6 +249,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
           id: params.resourceID,
           key: params.resourceKey,
           connectionID: params.connectionID,
+          pluginID: params.pluginID,
         },
       });
     }).catch((err) => {
@@ -261,12 +268,12 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   return (
     <RightDrawerContext.Provider value={contextValue}>
       {children}
-      <Sheet
+      <Box
         ref={sidebarRef}
         sx={{
           width: initialWidth,
           borderLeft: (theme) => `1px solid ${theme.palette.divider}`,
-          bgcolor: 'background.surface',
+          bgcolor: 'background.paper',
           p: 0,
           position: 'absolute',
           top: 'calc(var(--CoreLayoutHeader-height) - 1px)',
@@ -298,7 +305,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
             width: '10px', // This is the width of the draggable area
             cursor: 'col-resize',
             zIndex: 1201,
-            borderLeft: `${isDragging ? 4 : 2}px solid ${theme.palette.primary[400]}`,
+            borderLeft: `${isDragging ? 4 : 2}px solid ${theme.palette.primary.main}`,
             // borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 0px 0px 2px' : '6px 0px 0px 6px',
             opacity: isDragging ? 0.5 : isHovering ? 0.2 : 0,
             transition: 'opacity 0.2s, border 0.2s',
@@ -312,7 +319,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
           onMouseDown={handleMouseDown}
           onClick={handleClick}
         />
-      </Sheet>
+      </Box>
     </RightDrawerContext.Provider>
   );
 };

@@ -7,10 +7,10 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuLayoutTemplate, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuLayoutTemplate, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import AgeCell from '../../shared/cells/AgeCell'
-import { Chip } from '@mui/joy'
+import { Chip } from '@omniviewdev/ui'
 import ContainerPhaseCell from '../Pod/cells/ContainerPhaseCell'
 import NamespaceSidebar from './Sidebar'
 
@@ -30,7 +30,7 @@ const NamespaceTable: React.FC = () => {
           id: 'finalizers',
           header: 'Finalizers',
           accessorKey: 'spec.finalizers',
-          cell: ({ getValue }) => (getValue() as string[] | undefined)?.map(f => <Chip size='sm' sx={{ borderRadius: '2px' }} color={'primary'}>{f}</Chip>) ?? '',
+          cell: ({ getValue }) => (getValue() as string[] | undefined)?.map(f => <Chip size='sm' sx={{ borderRadius: '2px' }} color={'primary'} label={f} />) ?? '',
           size: 250,
           meta: {
             defaultHidden: true,
@@ -67,18 +67,7 @@ const NamespaceTable: React.FC = () => {
   const drawer: DrawerComponent<Namespace> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuLayoutTemplate />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <NamespaceSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: NamespaceSidebar }),
     actions: [
       {
         title: 'Delete',

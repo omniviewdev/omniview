@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import Box from '@mui/joy/Box';
-import Button from '@mui/joy/Button';
-import Card from '@mui/joy/Card';
-import Divider from '@mui/joy/Divider';
-import Stack from '@mui/joy/Stack';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Card } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuTriangleAlert, LuX, LuRefreshCw } from 'react-icons/lu';
 
 import { devToolsChannel } from '@/features/devtools/events';
@@ -62,30 +62,29 @@ const PluginDevOverlay: React.FC<Props> = ({ pluginId, dismissable = true }) => 
       }}
     >
       <Card
-        variant="outlined"
         sx={{
           maxWidth: 600,
           maxHeight: '80%',
           overflow: 'auto',
-          bgcolor: 'background.surface',
+          bgcolor: 'background.paper',
           border: '1px solid',
-          borderColor: 'danger.outlinedBorder',
+          borderColor: 'error.main',
         }}
       >
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Stack direction="row" alignItems="center" gap={1}>
+        <Stack direction="row" align="center" justify="between">
+          <Stack direction="row" align="center" gap={1}>
             <LuTriangleAlert size={18} color="var(--joy-palette-danger-400)" />
-            <Typography level="title-md" sx={{ color: 'danger.plainColor' }}>
+            <Text weight="semibold" sx={{ color: 'error.main' }}>
               Build Error
-            </Typography>
-            <Typography level="body-xs" sx={{ color: 'text.tertiary' }}>
+            </Text>
+            <Text size="xs" sx={{ color: 'text.secondary' }}>
               {pluginId}
-            </Typography>
+            </Text>
           </Stack>
           {dismissable && (
             <Button
               size="sm"
-              variant="plain"
+              emphasis="ghost"
               color="neutral"
               onClick={() => setDismissed(true)}
               sx={{ minWidth: 0, minHeight: 0, p: 0.5 }}
@@ -103,39 +102,39 @@ const PluginDevOverlay: React.FC<Props> = ({ pluginId, dismissable = true }) => 
               key={i}
               sx={{
                 p: 1,
-                borderRadius: 'xs',
-                bgcolor: 'background.level1',
+                borderRadius: 1,
+                bgcolor: 'action.hover',
                 fontFamily: 'monospace',
                 fontSize: '12px',
               }}
             >
-              <Typography
-                level="body-xs"
-                sx={{ color: 'text.tertiary', mb: 0.5, fontFamily: 'inherit' }}
+              <Text
+                size="xs"
+                sx={{ color: 'text.secondary', mb: 0.5, fontFamily: 'inherit' }}
               >
                 {err.file}:{err.line}:{err.column}
-              </Typography>
-              <Typography
-                level="body-sm"
+              </Text>
+              <Text
+                size="sm"
                 sx={{
-                  color: err.severity === 'error' ? 'danger.plainColor' : 'warning.plainColor',
+                  color: err.severity === 'error' ? 'error.main' : 'warning.main',
                   fontFamily: 'inherit',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                 }}
               >
                 {err.message}
-              </Typography>
+              </Text>
             </Box>
           ))}
         </Stack>
 
         <Divider sx={{ my: 1 }} />
 
-        <Stack direction="row" gap={1} justifyContent="flex-end">
+        <Stack direction="row" gap={1} justify="end">
           <Button
             size="sm"
-            variant="plain"
+            emphasis="ghost"
             color="neutral"
             onClick={() => devToolsChannel.emit('onOpenBuildOutput', pluginId)}
           >
@@ -143,9 +142,9 @@ const PluginDevOverlay: React.FC<Props> = ({ pluginId, dismissable = true }) => 
           </Button>
           <Button
             size="sm"
-            variant="soft"
+            emphasis="soft"
             color="primary"
-            startDecorator={<LuRefreshCw size={14} />}
+            startAdornment={<LuRefreshCw size={14} />}
             onClick={() => devToolsChannel.emit('onRestartDevServer', pluginId)}
           >
             Restart

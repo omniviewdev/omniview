@@ -2,11 +2,11 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 
 // material-ui
-import Avatar from '@mui/joy/Avatar';
-import Divider from '@mui/joy/Divider';
-import Sheet from '@mui/joy/Sheet';
-import Stack from '@mui/joy/Stack';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text, Heading } from '@omniviewdev/ui/typography';
+import { Avatar } from '@omniviewdev/ui';
 
 // Layout
 import Layout from '@/layouts/core/sidenav';
@@ -21,7 +21,7 @@ const sections = [
 
 /**
  * Integration Trivy in natively with Omniview as it's primary security scanner.
- * We ❤️  Aqua
+ * We love Aqua
  */
 export default function TrivyPluginHome(): React.ReactElement {
   return (
@@ -32,7 +32,7 @@ export default function TrivyPluginHome(): React.ReactElement {
       minHeight={300}
       flex={1}
     >
-      <Sheet
+      <Box
         sx={{
           py: 1,
           px: 2,
@@ -41,24 +41,23 @@ export default function TrivyPluginHome(): React.ReactElement {
           gap: 1.5,
           alignItems: 'center',
           justifyContent: 'space-between',
+          bgcolor: 'action.hover',
         }}
-        variant='soft'
       >
         <Stack direction='row' alignItems='center' gap={2}>
           <Avatar
             size='sm'
             src={'https://raw.githubusercontent.com/aquasecurity/trivy-docker-extension/main/trivy.svg'}
-            variant='plain'
             sx={{
               borderRadius: 4,
               height: 24,
               width: 24,
             }}
           />
-          <Typography level='h4' >{'Trivy'}</Typography>
+          <Heading level={4}>{'Trivy'}</Heading>
         </Stack>
-        <Typography level='title-sm' >{'Scan your resources, clusters and more with native support for Aqua Trivy'}</Typography>
-      </Sheet>
+        <Text weight='semibold' size='sm'>{'Scan your resources, clusters and more with native support for Aqua Trivy'}</Text>
+      </Box>
       <Divider />
       <Layout.Root
         sx={{

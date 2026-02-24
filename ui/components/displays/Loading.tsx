@@ -1,5 +1,5 @@
-import Box from '@mui/joy/Box';
-import CircularProgress from '@mui/joy/CircularProgress';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
 
 const Loading = () => (
   // Return full screen with centered loading spinner

@@ -3,7 +3,8 @@ import React from "react";
 // project-imports
 import { KubernetesResourceObject } from "../../../../../types/resource";
 import CodeEditor from "../../../CodeEditor";
-import { Button, ButtonGroup, Stack } from "@mui/joy";
+import { Button } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
 import { stringify, parse } from 'yaml'
 import { LuFileCode, LuSave, LuX } from "react-icons/lu";
 
@@ -59,7 +60,7 @@ export const BaseEditorPage: React.FC<Props> = ({ data, kind, onSubmit }) => {
 
   // compose your component here
   return (
-    <Stack flex={1} gap={1} direction={'column'}>
+    <Stack sx={{ flex: 1 }} gap={1} direction='column'>
       <CodeEditor
         diff={usingDiff}
         original={stringify(data)}
@@ -68,38 +69,38 @@ export const BaseEditorPage: React.FC<Props> = ({ data, kind, onSubmit }) => {
         language="yaml"
         filename={filename}
       />
-      <Stack direction={'row'} justifyContent={'space-between'}>
+      <Stack direction='row' justifyContent='space-between'>
         <Button
-          size={'sm'}
-          variant={'soft'}
-          color={'neutral'}
-          startDecorator={<LuFileCode />}
+          size='sm'
+          emphasis='soft'
+          color='neutral'
+          startAdornment={<LuFileCode />}
           onClick={toggleDiff}
         >
           {usingDiff ? "Show Editor" : "Show Diff"}
         </Button>
 
-        <Stack direction={'row'}>
-          <ButtonGroup variant={'soft'} size={'sm'}>
-            <Button
-              startDecorator={<LuX />}
-              color={"neutral"}
-              disabled={!changed}
-              size={'sm'}
-              onClick={resetValue}
-            >
-              Reset
-            </Button>
-            <Button
-              startDecorator={<LuSave />}
-              color={'primary'}
-              disabled={!changed}
-              size={'sm'}
-              onClick={handleSubmit}
-            >
-              Submit
-            </Button>
-          </ButtonGroup>
+        <Stack direction='row' gap={0.5}>
+          <Button
+            startAdornment={<LuX />}
+            color='neutral'
+            disabled={!changed}
+            size='sm'
+            emphasis='soft'
+            onClick={resetValue}
+          >
+            Reset
+          </Button>
+          <Button
+            startAdornment={<LuSave />}
+            color='primary'
+            disabled={!changed}
+            size='sm'
+            emphasis='soft'
+            onClick={handleSubmit}
+          >
+            Submit
+          </Button>
         </Stack>
       </Stack>
     </Stack>

@@ -47,6 +47,14 @@ export const RowContainer: React.FC<Props> = ({
         position: 'absolute',
         transform: `translateY(${virtualRow.start}px)`,
         width: '100%',
+        height: 30,
+        backgroundColor: isSelected ? 'var(--ov-accent-subtle)' : 'var(--ov-bg-base)',
+      }}
+      onMouseEnter={(e) => {
+        if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--ov-state-hover)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = isSelected ? 'var(--ov-accent-subtle)' : 'var(--ov-bg-base)';
       }}
     >
       {row.getVisibleCells().map(cell => (
@@ -62,10 +70,15 @@ export const RowContainer: React.FC<Props> = ({
             }),
             width: cell.column.getSize(),
             display: 'flex',
-            textOverflow: 'ellipsis',
             overflow: 'hidden',
             alignItems: 'center',
             whiteSpace: 'nowrap',
+            textOverflow: 'ellipsis',
+            padding: '0px 8px',
+            fontSize: '0.75rem',
+            color: 'var(--ov-fg-default)',
+            borderBottom: '1px solid var(--ov-border-muted)',
+            lineHeight: '30px',
             ...getCommonPinningStyles(cell.column, false)
           }}
         >

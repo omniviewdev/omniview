@@ -114,9 +114,14 @@ export const useExecuteAction = ({
         queryKey: ['RESOURCES', pluginID, connectionID, resourceKey],
       });
     },
-    onError: (error: Error, variables) => {
+    onError: (error: unknown, variables) => {
+      const msg = error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : String(error);
       showSnackbar(
-        `Failed to execute action "${variables.actionID}": ${error.message}`,
+        `Failed to execute action "${variables.actionID}": ${msg}`,
         'error',
       );
     },

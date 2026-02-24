@@ -3,7 +3,7 @@ import { Outlet } from 'react-router-dom';
 import Layout from '@/layouts/core/main';
 
 // Material-ui
-import Box from '@mui/joy/Box';
+import Box from '@mui/material/Box';
 
 /**
  * The main rendering container for a pane layout.
@@ -34,7 +34,7 @@ export default function Container() {
         <Layout.Sidebar />
         <Box
           sx={{
-            bgcolor: 'background.appBody',
+            bgcolor: 'background.default',
             height: 'calc(100vh - var(--CoreLayoutHeader-height))',
             overflow: 'hidden',
             display: 'flex',

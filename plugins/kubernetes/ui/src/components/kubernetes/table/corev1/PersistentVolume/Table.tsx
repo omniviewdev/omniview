@@ -7,8 +7,8 @@ import ResourceLinkCell from '../../corev1/Pod/cells/ResourceLinkCell'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuBox, LuCode, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuBox, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import PersistentVolumeSidebar from './Sidebar'
 
 const resourceKey = 'core::v1::PersistentVolume'
@@ -93,18 +93,7 @@ const PersistentVolumeTable: React.FC = () => {
   const drawer: DrawerComponent<PersistentVolume> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuBox />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <PersistentVolumeSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: PersistentVolumeSidebar }),
     actions: [
       {
         title: 'Delete',

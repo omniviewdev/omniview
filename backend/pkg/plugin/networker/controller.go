@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/go-plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/networker"
@@ -17,8 +18,17 @@ import (
 	pkgsettings "github.com/omniviewdev/settings"
 )
 
+// Wails event keys for port-forward session lifecycle.
+const (
+	PortForwardSessionCreated = "core/networker/portforward/created"
+	PortForwardSessionClosed  = "core/networker/portforward/closed"
+)
+
 type Controller interface {
 	internaltypes.Controller
+
+	// Run stores the Wails application context for event emission.
+	Run(ctx context.Context)
 
 	// GetSupportedPortForwardTargets returns the supported targets for port forwarding
 	GetSupportedPortForwardTargets(pluginID string) []string
@@ -28,6 +38,9 @@ type Controller interface {
 
 	// ListPortForwardSessions returns a list of port forward sessions for a plugin
 	ListPortForwardSessions(pluginID, connectionID string) ([]*networker.PortForwardSession, error)
+
+	// ListAllPortForwardSessions returns all port forward sessions across all plugins
+	ListAllPortForwardSessions() ([]*networker.PortForwardSession, error)
 
 	// FindPortForwardSessions returns a list of port forward sessions for a plugin
 	FindPortForwardSessions(
@@ -79,6 +92,11 @@ type controller struct {
 	stops map[string]chan struct{}
 
 	resourceClient resource.IClient
+}
+
+// Run stores the Wails application context for event emission.
+func (c *controller) Run(ctx context.Context) {
+	c.ctx = ctx
 }
 
 // ====================================== Controller Implementation ====================================== //
@@ -229,6 +247,33 @@ func (c *controller) ListPortForwardSessions(
 	)
 }
 
+func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSession, error) {
+	// Collect unique plugin+connection pairs from session index
+	type pair struct{ pluginID, connectionID string }
+	seen := make(map[pair]struct{})
+	for _, idx := range c.sessionIndex {
+		seen[pair{idx.pluginID, idx.connectionID}] = struct{}{}
+	}
+
+	var all []*networker.PortForwardSession
+	for p := range seen {
+		provider, ok := c.clients[p.pluginID]
+		if !ok {
+			continue
+		}
+		sessions, err := provider.ListPortForwardSessions(
+			c.getConnectedCtx(p.pluginID, p.connectionID),
+		)
+		if err != nil {
+			c.logger.Warnw("ListAllPortForwardSessions: error listing sessions",
+				"pluginID", p.pluginID, "connectionID", p.connectionID, "err", err)
+			continue
+		}
+		all = append(all, sessions...)
+	}
+	return all, nil
+}
+
 func (c *controller) FindPortForwardSessions(
 	pluginID string,
 	connectionID string,
@@ -267,6 +312,10 @@ func (c *controller) StartResourcePortForwardingSession(
 		connectionID: connectionID,
 	}
 
+	if c.ctx != nil {
+		runtime.EventsEmit(c.ctx, PortForwardSessionCreated, session)
+	}
+
 	return session, nil
 }
 
@@ -293,6 +342,10 @@ func (c *controller) ClosePortForwardSession(
 	}
 
 	delete(c.sessionIndex, sessionID)
+
+	if c.ctx != nil {
+		runtime.EventsEmit(c.ctx, PortForwardSessionClosed, session)
+	}
 
 	return session, nil
 }

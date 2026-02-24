@@ -1,4 +1,4 @@
-import { useTheme } from '@mui/joy';
+import { useTheme } from '@mui/material/styles';
 import React, { type SVGProps, memo } from 'react';
 
 type Props = Omit<SVGProps<SVGSVGElement>, 'color'> & {

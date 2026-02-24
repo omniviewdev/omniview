@@ -2,7 +2,6 @@ go 1.26.0
 
 use (
 	.
-	../wails/v2
 	./cmd/omniview-plugin-dev
 	./pkg/plugin-sdk
 	./pkg/settings

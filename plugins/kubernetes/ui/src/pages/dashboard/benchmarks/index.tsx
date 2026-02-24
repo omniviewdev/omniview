@@ -1,4 +1,7 @@
-import { Box, CircularProgress, Grid, Stack } from '@mui/joy';
+import Box from '@mui/material/Box';
+import Grid from '@mui/material/Grid';
+import { CircularProgress } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
 import { useResources } from '@omniviewdev/runtime'
 import React from 'react'
 import { useParams } from 'react-router-dom';
@@ -13,7 +16,7 @@ const ClusterDashboardBenchmarksPage: React.FC = () => {
 
   if (resources.isLoading) {
     return (
-      <Box display={'flex'} height={'100%'} width={'100%'} alignItems={'center'} justifyContent={'center'} flex={1}>
+      <Box display='flex' height='100%' width='100%' alignItems='center' justifyContent='center' flex={1}>
         <CircularProgress />
       </Box>
     )
@@ -21,7 +24,7 @@ const ClusterDashboardBenchmarksPage: React.FC = () => {
 
   return (
     <Grid container>
-      <Grid xs={12}>
+      <Grid size={12}>
         <ClusterOverviewCard
           cluster={id}
           icon={'SiKubernetes'}
@@ -33,8 +36,8 @@ const ClusterDashboardBenchmarksPage: React.FC = () => {
 
       </Grid>
       {/** A bit ugly and space innefficient, clean up later */}
-      <Grid xs={12}>
-        <Stack direction={'row'} spacing={1}>
+      <Grid size={12}>
+        <Stack direction='row' gap={1}>
           {Object.entries(resources.data?.result[0].summary_by_category || {}).map(([category, summary]: [string, any]) => (
             <ScorecardChart
               label={category}
@@ -45,7 +48,7 @@ const ClusterDashboardBenchmarksPage: React.FC = () => {
           ))}
         </Stack>
       </Grid>
-      <Grid xs={12}>
+      <Grid size={12}>
         <CodeEditor
           original={JSON.stringify(resources?.data?.result[0] || {}, null, '\t')}
           value={JSON.stringify(resources?.data?.result[0] || {}, null, '\t')}

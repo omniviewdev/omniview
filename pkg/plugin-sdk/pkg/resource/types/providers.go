@@ -46,19 +46,24 @@ type ResourceConnectionProvider interface {
 }
 
 type ResourceInformerProvider interface {
-	// StartContextInformer signals the resource provider to start an informer for the given resource backend context
+	// StartConnectionInformer signals the resource provider to start an informer for the given resource backend context
 	StartConnectionInformer(ctx *types.PluginContext, connectionID string) error
-	// StopContextInformer signals the resource provider to stop an informer for the given resource backend context
+	// StopConnectionInformer signals the resource provider to stop an informer for the given resource backend context
 	StopConnectionInformer(ctx *types.PluginContext, connectionID string) error
-	// ListenForEvents registers a listener for resource events
+	// ListenForEvents registers a listener for resource events including state changes
 	ListenForEvents(
 		ctx *types.PluginContext,
 		addStream chan InformerAddPayload,
 		updateStream chan InformerUpdatePayload,
 		deleteStream chan InformerDeletePayload,
+		stateStream chan InformerStateEvent,
 	) error
 	// HasInformer checks to see if the informer manager has an informer for the given connection.
 	HasInformer(ctx *types.PluginContext, connectionID string) bool
+	// GetInformerState returns a snapshot of all resource informer states for a connection.
+	GetInformerState(ctx *types.PluginContext, connectionID string) (*InformerConnectionSummary, error)
+	// EnsureInformerForResource triggers lazy start for SyncOnFirstQuery resources.
+	EnsureInformerForResource(ctx *types.PluginContext, connectionID string, resourceKey string) error
 }
 
 type ResourceOperationProvider interface {
@@ -104,6 +109,26 @@ type ResourceActionProvider interface {
 	StreamAction(ctx *types.PluginContext, key string, actionID string, input ActionInput, stream chan ActionEvent) error
 }
 
+type EditorSchema struct {
+	ResourceKey string `json:"resourceKey"`
+	FileMatch   string `json:"fileMatch"`
+	URI         string `json:"uri"`
+	URL         string `json:"url,omitempty"`
+	Content     []byte `json:"content,omitempty"`
+	Language    string `json:"language"`
+}
+
+type ResourceSchemaProvider interface {
+	GetEditorSchemas(ctx *types.PluginContext, connectionID string) ([]EditorSchema, error)
+}
+
+// SchemaResourcer is an optional interface that Resourcer implementations can
+// satisfy to provide JSON/YAML schemas for their resource types. The resourceController
+// will type-assert to this interface when fetching schemas for a connection.
+type SchemaResourcer[ClientT any] interface {
+	GetEditorSchemas(ctx *types.PluginContext, client *ClientT, meta ResourceMeta) ([]EditorSchema, error)
+}
+
 // ResourceProvider provides an interface for performing operations against a resource backend
 // given a resource namespace and a resource identifier.
 type ResourceProvider interface {
@@ -113,4 +138,5 @@ type ResourceProvider interface {
 	ResourceLayoutProvider
 	ResourceOperationProvider
 	ResourceActionProvider
+	ResourceSchemaProvider
 }

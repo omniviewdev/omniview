@@ -1,21 +1,12 @@
 import React from "react";
 
-// material-ui
-import Box from "@mui/joy/Box";
-import Card from "@mui/joy/Card";
-import CardContent from "@mui/joy/CardContent";
-import Divider from "@mui/joy/Divider";
-import Grid from "@mui/joy/Grid";
-import Stack from "@mui/joy/Stack";
-import Typography from "@mui/joy/Typography";
-import AccordionGroup from "@mui/joy/AccordionGroup";
-import Accordion from "@mui/joy/Accordion";
-import AccordionDetails, {
-  accordionDetailsClasses,
-} from "@mui/joy/AccordionDetails";
-import AccordionSummary, {
-  accordionSummaryClasses,
-} from "@mui/joy/AccordionSummary";
+// @omniviewdev/ui
+import Box from "@mui/material/Box";
+import Divider from "@mui/material/Divider";
+import Grid from "@mui/material/Grid";
+import { Card, ExpandableSections } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 
 // types
 import { ObjectMeta } from "kubernetes-types/meta/v1";
@@ -32,15 +23,15 @@ const ObjectMetaEntry: React.FC<{
   value: string | undefined;
 }> = ({ title, value }) => (
   <Grid container spacing={0}>
-    <Grid xs={3} alignItems={"center"}>
-      <Typography textColor={"neutral.400"} level="body-sm">
+    <Grid size={3} sx={{ alignItems: "center" }}>
+      <Text sx={{ color: "neutral.400" }} size="sm">
         {title}
-      </Typography>
+      </Text>
     </Grid>
-    <Grid xs={9} alignItems={"center"}>
-      <Typography fontWeight={400} textColor={"neutral.100"} level="title-sm">
+    <Grid size={9} sx={{ alignItems: "center" }}>
+      <Text weight="semibold" size="sm" sx={{ color: "neutral.100" }}>
         {value}
-      </Typography>
+      </Text>
     </Grid>
   </Grid>
 );
@@ -50,22 +41,68 @@ const ObjectMetaSection: React.FC<Props> = ({ data }) => {
     return null;
   }
 
+  const kvSections = [
+    {
+      title: 'Annotations',
+      defaultExpanded: false,
+      children: (
+        <Grid container spacing={0.25}>
+          {Object.entries(data.annotations || {}).map(([key, value]) => (
+            <React.Fragment key={key}>
+              <Grid size={6} sx={{ alignItems: "center" }}>
+                <Text sx={{ fontSize: 13, fontWeight: 400 }} size="sm">
+                  {key}
+                </Text>
+              </Grid>
+              <Grid size={6} sx={{ alignItems: "center" }}>
+                <Text sx={{ fontSize: 13, fontWeight: 600 }} size="sm">
+                  {value}
+                </Text>
+              </Grid>
+            </React.Fragment>
+          ))}
+        </Grid>
+      ),
+    },
+    {
+      title: 'Labels',
+      defaultExpanded: false,
+      children: (
+        <Grid container spacing={0.25}>
+          {Object.entries(data.labels || {}).map(([key, value]) => (
+            <React.Fragment key={key}>
+              <Grid size={6} sx={{ alignItems: "center" }}>
+                <Text sx={{ fontSize: 13, fontWeight: 400 }} size="sm">
+                  {key}
+                </Text>
+              </Grid>
+              <Grid size={6} sx={{ alignItems: "center" }}>
+                <Text sx={{ fontSize: 13, fontWeight: 600 }} size="sm">
+                  {value}
+                </Text>
+              </Grid>
+            </React.Fragment>
+          ))}
+        </Grid>
+      ),
+    },
+  ];
+
   return (
-    <Stack direction="column" spacing={1}>
+    <Stack direction="column" gap={1}>
       <Card
         sx={{
-          "--Card-padding": "0px",
-          "--Card-gap": "0px",
+          p: 0,
+          gap: 0,
           borderRadius: "sm",
-          gap: "0px",
         }}
         variant="outlined"
       >
         <Box sx={{ py: 1, px: 1.25 }}>
-          <Typography level="title-sm">Metadata</Typography>
+          <Text weight="semibold" size="sm">Metadata</Text>
         </Box>
         <Divider />
-        <CardContent
+        <Box
           sx={{
             p: 1,
             px: 1.5,
@@ -87,63 +124,11 @@ const ObjectMetaSection: React.FC<Props> = ({ data }) => {
             }
           />
           <ObjectMetaEntry title="Version" value={data.resourceVersion} />
-        </CardContent>
+        </Box>
       </Card>
-      <AccordionGroup
-        variant="outlined"
-        transition="0.2s"
-        size="sm"
-        sx={{
-          borderRadius: "sm",
-          [`& .${accordionSummaryClasses.button}:hover`]: {
-            bgcolor: "transparent",
-          },
-          [`& .${accordionDetailsClasses.content}`]: {
-            backgroundColor: "background.level1",
-            boxShadow: (theme) => `inset 0 1px ${theme.vars.palette.divider}`,
-            [`&.${accordionDetailsClasses.expanded}`]: {
-              paddingBlock: "0.75rem",
-            },
-          },
-        }}
-      >
-        <KVCard title="Annotations" kvs={data.annotations || {}} />
-        <KVCard title="Labels" kvs={data.labels || {}} />
-      </AccordionGroup>
+      <ExpandableSections sections={kvSections} />
     </Stack>
   );
 };
-
-interface KVCardProps {
-  title: string;
-  kvs: Record<string, string>;
-  defaultExpanded?: boolean;
-}
-
-const KVCard: React.FC<KVCardProps> = ({ title, kvs, defaultExpanded }) => (
-  <Accordion defaultExpanded={defaultExpanded}>
-    <AccordionSummary>
-      <Typography level="title-sm">{title}</Typography>
-    </AccordionSummary>
-    <AccordionDetails>
-      <Grid container spacing={0.25}>
-        {Object.entries(kvs).map(([key, value]) => (
-          <>
-            <Grid xs={6} alignItems={"center"}>
-              <Typography fontSize={13} fontWeight={400} level="body-sm">
-                {key}
-              </Typography>
-            </Grid>
-            <Grid xs={6} alignItems={"center"}>
-              <Typography fontSize={13} fontWeight={600} level="body-sm">
-                {value}
-              </Typography>
-            </Grid>
-          </>
-        ))}
-      </Grid>
-    </AccordionDetails>
-  </Accordion>
-);
 
 export default ObjectMetaSection;

@@ -1,4 +1,4 @@
-import { Stack } from "@mui/joy";
+import { Stack } from "@omniviewdev/ui/layout";
 import { Condition } from "kubernetes-types/meta/v1";
 import ConditionChip from "../../../../shared/ConditionChip";
 

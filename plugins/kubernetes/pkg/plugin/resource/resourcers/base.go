@@ -1,7 +1,6 @@
 package resourcers
 
 import (
-	"context"
 	"log"
 	"sync"
 
@@ -66,7 +65,7 @@ func (s *KubernetesResourcerBase[T]) GroupVersionResource() schema.GroupVersionR
 
 // Get returns a resource by name and namespace.
 func (s *KubernetesResourcerBase[T]) Get(
-	_ *types.PluginContext,
+	ctx *types.PluginContext,
 	client *clients.ClientSet,
 	_ pkgtypes.ResourceMeta,
 	input pkgtypes.GetInput,
@@ -79,9 +78,9 @@ func (s *KubernetesResourcerBase[T]) Get(
 		lister := client.DynamicClient.Resource(s.GroupVersionResource())
 		if input.Namespace != "" {
 			resource, err = lister.Namespace(input.Namespace).
-				Get(context.Background(), input.ID, v1.GetOptions{})
+				Get(ctx.Context, input.ID, v1.GetOptions{})
 		} else {
-			resource, err = lister.Get(context.Background(), input.ID, v1.GetOptions{})
+			resource, err = lister.Get(ctx.Context, input.ID, v1.GetOptions{})
 		}
 	} else {
 		lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
@@ -109,31 +108,31 @@ func (s *KubernetesResourcerBase[T]) Get(
 
 // List returns a map of resources for the provided cluster contexts.
 func (s *KubernetesResourcerBase[T]) List(
-	_ *types.PluginContext,
+	ctx *types.PluginContext,
 	client *clients.ClientSet,
 	_ pkgtypes.ResourceMeta,
 	_ pkgtypes.ListInput,
 ) (*pkgtypes.ListResult, error) {
-	// if the informer isn't synced yet, do a normal call while the informer catches up
-	// informer := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Informer()
-	// if !informer.HasSynced() {
-	// 	lister := client.DynamicClient.Resource(s.GroupVersionResource())
-	// 	resources, err := lister.List(context.Background(), v1.ListOptions{})
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	//
-	// 	for _, r := range resources.Items {
-	// 		var obj map[string]interface{}
-	// 		p := r
-	// 		obj, err = runtime.DefaultUnstructuredConverter.ToUnstructured(&p)
-	// 		if err != nil {
-	// 			return nil, err
-	// 		}
-	// 		res := unstructured.Unstructured{Object: obj}
-	// 		result[res.GetName()] = obj
-	// 	}
-	// } else {
+	informer := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Informer()
+	if !informer.HasSynced() {
+		resources, err := client.DynamicClient.Resource(s.GroupVersionResource()).
+			List(ctx.Context, v1.ListOptions{})
+		if err != nil {
+			return nil, err
+		}
+
+		result := make([]map[string]interface{}, 0, len(resources.Items))
+		for _, r := range resources.Items {
+			p := r
+			obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&p)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, obj)
+		}
+		return &pkgtypes.ListResult{Success: true, Result: result}, nil
+	}
+
 	lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
 	resources, err := lister.List(labels.Everything())
 	if err != nil {
@@ -155,13 +154,32 @@ func (s *KubernetesResourcerBase[T]) List(
 // Find returns a resource by name and namespace.
 // TODO - implement, for now this just does list
 func (s *KubernetesResourcerBase[T]) Find(
-	_ *types.PluginContext,
+	ctx *types.PluginContext,
 	client *clients.ClientSet,
 	_ pkgtypes.ResourceMeta,
 	_ pkgtypes.FindInput,
 ) (*pkgtypes.FindResult, error) {
-	lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
+	informer := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Informer()
+	if !informer.HasSynced() {
+		resources, err := client.DynamicClient.Resource(s.GroupVersionResource()).
+			List(ctx.Context, v1.ListOptions{})
+		if err != nil {
+			return nil, err
+		}
 
+		result := make([]map[string]interface{}, 0, len(resources.Items))
+		for _, r := range resources.Items {
+			p := r
+			obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&p)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, obj)
+		}
+		return &pkgtypes.FindResult{Success: true, Result: result}, nil
+	}
+
+	lister := client.DynamicInformerFactory.ForResource(s.GroupVersionResource()).Lister()
 	resources, err := lister.List(labels.Everything())
 	if err != nil {
 		return nil, err
@@ -195,6 +213,7 @@ func (s *KubernetesResourcerBase[T]) Create(
 	if err != nil {
 		return nil, err
 	}
+	result.Success = true
 	result.Result = created.Object
 	return result, nil
 }
@@ -220,6 +239,7 @@ func (s *KubernetesResourcerBase[T]) Update(
 	if err != nil {
 		return nil, err
 	}
+	result.Success = true
 	result.Result = updated.Object
 	return result, nil
 }
@@ -245,5 +265,6 @@ func (s *KubernetesResourcerBase[T]) Delete(
 		return nil, err
 	}
 
+	result.Success = true
 	return result, nil
 }

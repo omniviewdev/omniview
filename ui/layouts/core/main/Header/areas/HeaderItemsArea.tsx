@@ -1,9 +1,9 @@
 import React from 'react';
 
 // Material-ui
-import Box from '@mui/joy/Box';
+import Box from '@mui/material/Box';
 import log from '@/features/logger';
-// import IconButton from '@mui/joy/IconButton';
+// import { IconButton } from '@omniviewdev/ui/buttons';
 // import Icon from '@/components/icons/Icon';
 import HeaderIconMenu from './components/HeaderIconMenu';
 import HeaderIconButton from './components/HeaderIconButton';
@@ -12,7 +12,7 @@ import HeaderIconLink from './components/HeaderIconLink';
 // Project-imports
 import { type HeaderAreaItemList, type HeaderAreaItemListType, HeaderAreaItemType } from '@/store/header/types';
 // import usePanes from '@/hooks/usePanes';
-// import { Tooltip } from '@mui/joy';
+// import { Tooltip } from '@omniviewdev/ui/overlays';
 import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@omniviewdev/runtime/runtime';
 
 type Props = {

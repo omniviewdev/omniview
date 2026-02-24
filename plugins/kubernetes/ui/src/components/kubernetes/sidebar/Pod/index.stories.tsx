@@ -31,7 +31,7 @@ Primary.decorators = [
       type="core::v1::Pod"
       icon="LuBox"
       // @ts-expect-error - arbitrary json
-      title={c.args.data.metadata.name}
+      title={c.args.ctx.data?.metadata?.name}
       open
       onClose={() => { }}
     >

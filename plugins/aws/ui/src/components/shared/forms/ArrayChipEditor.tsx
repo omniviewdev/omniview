@@ -1,16 +1,12 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Divider,
-  Input,
-  Stack,
-  Typography,
-} from '@mui/joy';
-import { LuPlus, LuX } from 'react-icons/lu';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button } from '@omniviewdev/ui/buttons';
+import { TextField } from '@omniviewdev/ui/inputs';
+import { Card, Chip } from '@omniviewdev/ui';
+import { LuPlus } from 'react-icons/lu';
 
 type Props = {
   title: string;
@@ -73,27 +69,29 @@ const ArrayChipEditor: React.FC<Props> = ({
     }
   };
 
+  const muiChipColor = chipColor === 'neutral' ? 'default' : chipColor === 'danger' ? 'error' : chipColor;
+
   return (
     <Card
-      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 'sm', gap: '0px' }}
+      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 1, gap: '0px' }}
       variant='outlined'
     >
       <Box sx={{ py: 1, px: 1.25 }}>
         <Stack direction='row' spacing={1} alignItems='center' justifyContent='space-between'>
           <Stack direction='row' spacing={1} alignItems='center'>
-            <Typography level='title-sm'>{title}</Typography>
-            <Typography level='body-xs' color='neutral'>({items.length})</Typography>
+            <Text weight="semibold" size="sm">{title}</Text>
+            <Text size="xs" color="neutral">({items.length})</Text>
           </Stack>
           {(onSave || onReset) && (
             <Stack direction='row' spacing={0.5}>
               {onReset && (
-                <Button size='sm' variant='plain' color='neutral' disabled={!dirty || saving} onClick={onReset}>
+                <Button size='sm' emphasis='ghost' color='neutral' disabled={!dirty || saving} onClick={onReset}>
                   Reset
                 </Button>
               )}
               {onSave && (
-                <Button size='sm' variant='soft' color='primary' disabled={!dirty || saving} loading={saving} onClick={onSave}>
-                  Save
+                <Button size='sm' emphasis='soft' color='primary' disabled={!dirty || saving} onClick={onSave}>
+                  {saving ? 'Saving...' : 'Save'}
                 </Button>
               )}
             </Stack>
@@ -101,10 +99,10 @@ const ArrayChipEditor: React.FC<Props> = ({
         </Stack>
       </Box>
       <Divider />
-      <CardContent
+      <Box
         sx={{
           p: 1.5,
-          backgroundColor: 'background.level1',
+          backgroundColor: 'background.paper',
           borderBottomRightRadius: 6,
           borderBottomLeftRadius: 6,
         }}
@@ -116,24 +114,17 @@ const ArrayChipEditor: React.FC<Props> = ({
               <Chip
                 key={i}
                 size='sm'
-                variant='soft'
-                color={chipColor}
-                sx={{ borderRadius: 'sm', fontFamily: 'monospace', fontSize: 11 }}
-                endDecorator={
-                  !readOnly ? (
-                    <LuX
-                      size={12}
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => handleRemove(i)}
-                    />
-                  ) : undefined
+                label={item}
+                color={muiChipColor}
+                variant='filled'
+                sx={{ borderRadius: 1, fontFamily: 'monospace', fontSize: 11 }}
+                onDelete={
+                  !readOnly ? () => handleRemove(i) : undefined
                 }
-              >
-                {item}
-              </Chip>
+              />
             ))}
             {items.length === 0 && (
-              <Typography level='body-xs' color='neutral'>None</Typography>
+              <Text size="xs" color="neutral">None</Text>
             )}
           </Box>
 
@@ -141,13 +132,12 @@ const ArrayChipEditor: React.FC<Props> = ({
           {!readOnly && (
             <Stack spacing={0.5}>
               <Stack direction='row' spacing={0.5}>
-                <Input
+                <TextField
                   size='sm'
-                  variant='soft'
                   placeholder={placeholder}
                   value={input}
-                  onChange={(e) => {
-                    setInput(e.target.value);
+                  onChange={(value) => {
+                    setInput(value);
                     setError(undefined);
                   }}
                   onKeyDown={handleKeyDown}
@@ -156,22 +146,22 @@ const ArrayChipEditor: React.FC<Props> = ({
                 />
                 <Button
                   size='sm'
-                  variant='soft'
+                  emphasis='soft'
                   color='primary'
                   disabled={!input.trim()}
                   onClick={handleAdd}
-                  startDecorator={<LuPlus size={14} />}
+                  startAdornment={<LuPlus size={14} />}
                 >
                   Add
                 </Button>
               </Stack>
               {error && (
-                <Typography level='body-xs' color='danger'>{error}</Typography>
+                <Text size="xs" color="error">{error}</Text>
               )}
             </Stack>
           )}
         </Stack>
-      </CardContent>
+      </Box>
     </Card>
   );
 };

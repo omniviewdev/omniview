@@ -2,10 +2,11 @@
 /* eslint @typescript-eslint/naming-convention: 0 */
 import React from 'react';
 
-import AccordionGroup from '@mui/joy/AccordionGroup';
-import Accordion from '@mui/joy/Accordion';
-import AccordionDetails from '@mui/joy/AccordionDetails';
-import AccordionSummary from '@mui/joy/AccordionSummary';
+import Box from '@mui/material/Box';
+import Accordion from '@mui/material/Accordion';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 import { type Column } from '@tanstack/react-table';
 import Filter from './Filter';
@@ -20,28 +21,32 @@ const FilterDisplay: React.FC<Props> = ({ columns }) => {
   }
 
   return (
-    <AccordionGroup
-      size="sm"
-      variant="outlined"
-      transition="0.2s"
+    <Box
       sx={{
         maxWidth: 350,
-        borderRadius: 'sm',
+        borderRadius: 1,
+        border: '1px solid',
+        borderColor: 'divider',
       }}
     >
       {columns.filter((c) => c.columnDef.meta?.filterVariant).map((column, _, arr) => {
         return (
           <Accordion
+            key={column.id}
             defaultExpanded={arr.length < 8}
+            disableGutters
+            sx={{ '&:before': { display: 'none' } }}
           >
-            <AccordionSummary>{column.columnDef.meta?.filterLabel ?? column.columnDef.header as string}</AccordionSummary>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              {column.columnDef.meta?.filterLabel ?? column.columnDef.header as string}
+            </AccordionSummary>
             <AccordionDetails>
               <Filter column={column} />
             </AccordionDetails>
           </Accordion>
         );
       })}
-    </AccordionGroup>
+    </Box>
   );
 };
 

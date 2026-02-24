@@ -1,5 +1,7 @@
 import React from 'react';
-import { Chip, Stack, Typography } from '@mui/joy';
+import { Chip } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuX } from 'react-icons/lu';
 import type { FilterState, ConnectionAttribute } from '../../types/clusters';
 import { getProviderLabel } from '../../utils/providers';
@@ -53,51 +55,47 @@ const FilterChips: React.FC<Props> = ({
       {showProviders && availableProviders.map(provider => (
         <Chip
           key={provider}
-          size='sm'
-          variant={filters.providers?.includes(provider) ? 'soft' : 'outlined'}
+          size='xs'
+          emphasis={filters.providers?.includes(provider) ? 'soft' : 'outline'}
           color={filters.providers?.includes(provider) ? 'primary' : 'neutral'}
           onClick={() => onToggleProvider(provider)}
           sx={{ cursor: 'pointer' }}
-        >
-          {getProviderLabel(provider)}
-        </Chip>
+          label={getProviderLabel(provider)}
+        />
       ))}
 
       {/* Status chips */}
       <Chip
-        size='sm'
-        variant={filters.status?.includes('connected') ? 'soft' : 'outlined'}
+        size='xs'
+        emphasis={filters.status?.includes('connected') ? 'soft' : 'outline'}
         color={filters.status?.includes('connected') ? 'success' : 'neutral'}
         onClick={() => onToggleStatus('connected')}
         sx={{ cursor: 'pointer' }}
-      >
-        Connected
-      </Chip>
+        label='Connected'
+      />
       <Chip
-        size='sm'
-        variant={filters.status?.includes('disconnected') ? 'soft' : 'outlined'}
-        color={filters.status?.includes('disconnected') ? 'neutral' : 'neutral'}
+        size='xs'
+        emphasis={filters.status?.includes('disconnected') ? 'soft' : 'outline'}
+        color='neutral'
         onClick={() => onToggleStatus('disconnected')}
         sx={{ cursor: 'pointer' }}
-      >
-        Disconnected
-      </Chip>
+        label='Disconnected'
+      />
 
       {/* Tag chips */}
       {showTags && (
         <>
-          <Typography level='body-xs' sx={{ opacity: 0.5, px: 0.5 }}>|</Typography>
+          <Text size='xs' sx={{ opacity: 0.5, px: 0.5 }}>|</Text>
           {availableTags.map(tag => (
             <Chip
               key={`tag:${tag}`}
-              size='sm'
-              variant={filters.tags?.includes(tag) ? 'soft' : 'outlined'}
+              size='xs'
+              emphasis={filters.tags?.includes(tag) ? 'soft' : 'outline'}
               color={filters.tags?.includes(tag) ? 'warning' : 'neutral'}
               onClick={() => onToggleTag(tag)}
               sx={{ cursor: 'pointer' }}
-            >
-              {tag}
-            </Chip>
+              label={tag}
+            />
           ))}
         </>
       )}
@@ -105,20 +103,19 @@ const FilterChips: React.FC<Props> = ({
       {/* Dynamic attribute filter chips */}
       {filterableAttrs.map(attr => (
         <React.Fragment key={`attr:${attr.key}`}>
-          <Typography level='body-xs' sx={{ opacity: 0.5, px: 0.5 }}>|</Typography>
+          <Text size='xs' sx={{ opacity: 0.5, px: 0.5 }}>|</Text>
           {attr.distinctValues.map(val => {
             const isActive = filters.labels?.[attr.key]?.includes(val) ?? false;
             return (
               <Chip
                 key={`${attr.key}:${val}`}
-                size='sm'
-                variant={isActive ? 'soft' : 'outlined'}
+                size='xs'
+                emphasis={isActive ? 'soft' : 'outline'}
                 color={isActive ? 'primary' : 'neutral'}
                 onClick={() => onToggleLabelFilter(attr.key, val)}
                 sx={{ cursor: 'pointer' }}
-              >
-                {val}
-              </Chip>
+                label={val}
+              />
             );
           })}
         </React.Fragment>
@@ -127,15 +124,14 @@ const FilterChips: React.FC<Props> = ({
       {/* Clear all */}
       {hasActiveFilters && (
         <Chip
-          size='sm'
-          variant='outlined'
+          size='xs'
+          emphasis='outline'
           color='danger'
           onClick={onClearAll}
-          endDecorator={<LuX size={12} />}
+          endAdornment={<LuX size={12} />}
           sx={{ cursor: 'pointer' }}
-        >
-          Clear
-        </Chip>
+          label='Clear'
+        />
       )}
     </Stack>
   );

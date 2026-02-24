@@ -30,6 +30,10 @@ func (c *Client) ListPortForwardSessions(
 	return c.controller.ListPortForwardSessions(pluginID, connectionID)
 }
 
+func (c *Client) ListAllPortForwardSessions() ([]*sdknetworker.PortForwardSession, error) {
+	return c.controller.ListAllPortForwardSessions()
+}
+
 func (c *Client) FindPortForwardSessions(
 	pluginID, connectionID string,
 	request sdknetworker.FindPortForwardSessionRequest,

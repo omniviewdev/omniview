@@ -1,5 +1,5 @@
 import React from 'react';
-import Box from '@mui/joy/Box';
+import Box from '@mui/material/Box';
 import {
   usePluginContext,
   useConnection,

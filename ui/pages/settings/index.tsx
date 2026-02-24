@@ -1,9 +1,5 @@
 import React from 'react';
 
-// Material-ui
-import { CssVarsProvider } from '@mui/joy/styles';
-import CssBaseline from '@mui/joy/CssBaseline';
-
 // Layout
 import Layout from '@/layouts/core/sidenav';
 
@@ -33,21 +29,18 @@ export default function SettingsPage() {
   const [selected, setSelected] = React.useState<SectionSelection>({ section: Section.Core, id: '' });
 
   return (
-    <CssVarsProvider disableTransitionOnChange>
-      <CssBaseline />
-      <Layout.Root>
-        <Layout.SideNav type='bordered'>
-          <SettingsNav selected={selected} onChange={setSelected} />
-        </Layout.SideNav>
-        <Layout.Main
-          sx={{
-            p: 2
-          }}
-        >
-          {GetSettingsPage(selected.section, selected.id)}
-        </Layout.Main>
-      </Layout.Root>
-    </CssVarsProvider>
+    <Layout.Root>
+      <Layout.SideNav type='bordered'>
+        <SettingsNav selected={selected} onChange={setSelected} />
+      </Layout.SideNav>
+      <Layout.Main
+        sx={{
+          p: 2
+        }}
+      >
+        {GetSettingsPage(selected.section, selected.id)}
+      </Layout.Main>
+    </Layout.Root>
   );
 }
 

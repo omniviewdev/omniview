@@ -1,10 +1,10 @@
 import React from 'react';
 
 // Material-ui
-import Button from '@mui/joy/Button';
-import Grid from '@mui/joy/Grid';
-import Stack from '@mui/joy/Stack';
-import Typography from '@mui/joy/Typography';
+import Grid from '@mui/material/Grid';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Heading } from '@omniviewdev/ui/typography';
 
 // Components
 import InstalledPluginCard from './InstalledPluginCard';
@@ -21,7 +21,7 @@ type Props = Record<string, unknown>;
  * Show the currently installed plugins.
  */
 const InstalledPlugins: React.FC<Props> = () => {
-  const { plugins, promptInstallFromPath, promptInstallDev } = usePluginManager();
+  const { plugins, installFromPath, installDev } = usePluginManager();
 
   if (plugins.isLoading) {
     return <div>Loading...</div>;
@@ -32,31 +32,33 @@ const InstalledPlugins: React.FC<Props> = () => {
   }
 
   return (
-    <Grid container spacing={3} p={3}>
-      <Grid xs={12} pb={2}>
+    <Grid container spacing={3} sx={{ p: 3 }}>
+      <Grid size={12} sx={{ pb: 2 }}>
         <Stack direction='row' spacing={2} alignItems='center' justifyContent={'space-between'}>
-          <Typography level='h2'>Installed Plugins</Typography>
+          <Heading level={2}>Installed Plugins</Heading>
           <Stack direction='row' spacing={2}>
             <Button
-              variant='soft'
+              emphasis='soft'
               color='primary'
-              startDecorator={<LuGlobe />}
+              startAdornment={<LuGlobe />}
             >
               Go to Plugin Marketplace
             </Button>
             <Button
-              variant='soft'
+              emphasis='soft'
               color='neutral'
-              startDecorator={<LuBox />}
-              onClick={async () => promptInstallFromPath()}
+              startAdornment={<LuBox />}
+              loading={installFromPath.isPending}
+              onClick={async () => installFromPath.mutateAsync()}
             >
               Install From Location
             </Button>
             <Button
-              variant='soft'
+              emphasis='soft'
               color='neutral'
-              startDecorator={<LuAtom />}
-              onClick={async () => promptInstallDev()}
+              startAdornment={<LuAtom />}
+              loading={installDev.isPending}
+              onClick={async () => installDev.mutateAsync()}
             >
               Install From Location (Development Mode)
             </Button>
@@ -64,7 +66,7 @@ const InstalledPlugins: React.FC<Props> = () => {
         </Stack>
       </Grid>
       {plugins.data?.map(plugin => (
-        <Grid key={plugin.id} xs={12} md={6} xl={4} >
+        <Grid key={plugin.id} size={{ xs: 12, md: 6, xl: 4 }} >
           <InstalledPluginCard key={plugin.id} {...plugin} />
         </Grid>
       ))}

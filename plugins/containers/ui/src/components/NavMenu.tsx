@@ -1,24 +1,21 @@
 import React from 'react';
 
-// Material-ui
-import {
-  // Avatar,
-  IconButton,
-  List,
-  ListSubheader,
-  ListItem,
-  ListItemButton,
-  ListItemContent,
-  // ListItemDecorator,
-  Stack
-} from '@mui/joy';
+// UI
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Chip } from '@omniviewdev/ui';
+import { Text } from '@omniviewdev/ui/typography';
+import { Stack } from '@omniviewdev/ui/layout';
+import List from '@mui/material/List';
+import ListSubheader from '@mui/material/ListSubheader';
+import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemText from '@mui/material/ListItemText';
 
 // Icons import
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
 
 // Custom
 import { type SidebarListItemProps, type SidebarProps } from './types';
-import { Chip, Typography } from '@mui/joy';
 // import { IsImage } from '@/utils/url';
 // import Icon from '@/components/icons/Icon';
 
@@ -76,35 +73,29 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
     >
       {header}
       <List
-        size={size ?? 'md'}
+        dense={size === 'sm'}
         sx={{
           userSelect: 'none',
-          '--List-padding': '4px',
-          '--List-gap': '6px',
-          '--ListItem-radius': '8px',
-          '--List-nestedInsetStart': '0px',
+          p: '4px',
         }}
       >
         {/** Sections */}
         {sections?.map(section => (
-          <ListItem key={section.id} nested>
+          <li key={section.id}>
             {section.title && (
               <ListSubheader
-                variant='outlined'
-                sx={{ bgcolor: 'background.surface' }}
+                sx={{ bgcolor: 'background.paper' }}
               >
                 {section.title}
               </ListSubheader>
             )}
             <List
               aria-labelledby='nav-list-browse'
-              size={size ?? 'md'}
+              dense={size === 'sm'}
               sx={{
                 py: 1,
-                '--List-gap': '0px',
-                '--List-nestedInsetStart': '13px',
-                '--ListItem-paddingLeft': '8px',
-                '& .JoyListItemButton-root': { p: '8px' },
+                pl: '13px',
+                '& .MuiListItemButton-root': { p: '8px' },
               }}
             >
               {section.items.map(item => (
@@ -118,7 +109,7 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
                 />
               ))}
             </List>
-          </ListItem>
+          </li>
         ))}
 
         {/** Direct mapped items */}
@@ -168,13 +159,15 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         key={id}
         sx={{
           userSelect: 'none',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'stretch',
         }}
-        nested={Boolean(item.children?.length)}
-        endAction={Boolean(item.children?.length) ? (
+        disablePadding
+        secondaryAction={Boolean(item.children?.length) ? (
           <IconButton
-            variant='plain'
+            emphasis='ghost'
             size='sm'
-            color='neutral'
             onClick={handleClick}
           >
             {MemoizedIcon}
@@ -182,41 +175,31 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         ) : (
           typeof item.decorator === 'string'
             ? (
-              <Chip size='sm' variant='outlined' color='neutral' sx={{ borderRadius: 'sm' }}>
-                <Typography level='body-xs' fontSize={10}>{item.decorator}</Typography>
+              <Chip size='sm' emphasis='outline' sx={{ borderRadius: 1 }}>
+                <Text size="xs" style={{ fontSize: 10 }}>{item.decorator}</Text>
               </Chip>
             ) : item.decorator
         )}
       >
         <ListItemButton
-          // Should not be selectable if it has children
           selected={selected === id}
           onClick={handleClick}
+          sx={{ borderRadius: '8px' }}
         >
-          {/* {item.icon && ( */}
-          {/*   <ListItemDecorator> */}
-          {/*     {typeof item.icon === 'string' ? ( */}
-          {/*       IsImage(item.icon) */}
-          {/*         ? <Avatar size='sm' src={item.icon} sx={{ borderRadius: 'sm', maxHeight: 20, maxWidth: 20 }} /> */}
-          {/*         : <Icon name={item.icon} size={16} /> */}
-          {/*     ) : ( */}
-          {/*       item.icon */}
-          {/*     )} */}
-          {/*   </ListItemDecorator> */}
-          {/* )} */}
-          <ListItemContent>
-            <Typography level={'body-sm'}>
-              {item.label}
-            </Typography>
-          </ListItemContent>
+          <ListItemText
+            primary={
+              <Text size="sm">
+                {item.label}
+              </Text>
+            }
+          />
         </ListItemButton>
         {Boolean(item.children?.length) && Boolean(openState[id]) && (
           <List
             aria-labelledby={`nav-list-${id}`}
-            size='sm'
+            dense
             sx={{
-              '--ListItem-radius': '8px',
-              '--List-gap': '0px',
+              borderRadius: '8px',
             }}
           >
             {item.children?.map(child => (

@@ -44,12 +44,27 @@ export interface ConnectionGroup {
   connectionIds: string[];
 }
 
+export interface MetricConfig {
+  prometheusService?: string;
+  prometheusNamespace?: string;
+  prometheusPort?: number;
+}
+
+export interface NodeShellConfig {
+  /** Container image for the debug pod (default: busybox:latest) */
+  image?: string;
+  /** Command for nsenter (single string, split on spaces). Leave empty for default nsenter+bash. */
+  command?: string;
+}
+
 export interface ConnectionOverride {
   displayName?: string;
   description?: string;
   avatar?: string;
   avatarColor?: string;
   tags?: string[];
+  metricConfig?: MetricConfig;
+  nodeShellConfig?: NodeShellConfig;
 }
 
 export interface ClusterPreferences {

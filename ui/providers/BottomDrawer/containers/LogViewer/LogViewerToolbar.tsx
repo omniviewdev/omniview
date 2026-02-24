@@ -1,10 +1,10 @@
 import React, { useCallback, useRef } from 'react';
-import Box from '@mui/joy/Box';
-import IconButton from '@mui/joy/IconButton';
-import Input from '@mui/joy/Input';
-import Tooltip from '@mui/joy/Tooltip';
-import Typography from '@mui/joy/Typography';
-import Divider from '@mui/joy/Divider';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { TextField } from '@omniviewdev/ui/inputs';
+import { Tooltip } from '@omniviewdev/ui/overlays';
+import { Text } from '@omniviewdev/ui/typography';
 import {
   LuSearch,
   LuCaseSensitive,
@@ -132,43 +132,38 @@ const LogViewerToolbar: React.FC<Props> = ({
       }}
     >
       {/* Search */}
-      <Input
+      <TextField
         size="sm"
         placeholder="Search in logs"
+        autoFocus
         autoComplete="off"
         value={searchQuery}
-        onChange={(e) => onSearchChange(e.target.value)}
-        startDecorator={<LuSearch size={14} />}
-        endDecorator={
+        onChange={(value) => onSearchChange(value)}
+        startAdornment={<LuSearch size={14} />}
+        endAdornment={
           <>
             {matchCount > 0 ? (
-              <Typography level="body-xs" sx={{ color: 'text.tertiary' }}>
+              <Text variant="caption" size="xs" sx={{ color: 'text.disabled' }}>
                 {currentMatch + 1}/{matchCount.toLocaleString()}{matchCapped ? '+' : ''}
-              </Typography>
+              </Text>
             ) : searchQuery ? (
-              <Typography level="body-xs" sx={{ color: 'text.tertiary' }}>
+              <Text variant="caption" size="xs" sx={{ color: 'text.disabled' }}>
                 0/0
-              </Typography>
+              </Text>
             ) : null}
             {searchQuery && (
               <IconButton
                 size="sm"
-                variant="plain"
+                emphasis="ghost"
                 color="neutral"
                 onClick={() => onSearchChange('')}
-                sx={{ '--IconButton-size': '20px', minWidth: 0, minHeight: 0 }}
+                sx={{ minWidth: 0, minHeight: 0, width: 20, height: 20 }}
               >
                 <LuX size={12} />
               </IconButton>
             )}
           </>
         }
-        slotProps={{
-          input: {
-            autoCorrect: 'off',
-            autoComplete: 'off',
-          },
-        }}
         sx={{ minWidth: 200, maxWidth: 300, fontSize: '12px' }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
@@ -180,10 +175,10 @@ const LogViewerToolbar: React.FC<Props> = ({
         }}
       />
 
-      <Tooltip title="Case sensitive">
+      <Tooltip content="Case sensitive">
         <IconButton
           size="sm"
-          variant={caseSensitive ? 'soft' : 'plain'}
+          emphasis={caseSensitive ? 'soft' : 'ghost'}
           color={caseSensitive ? 'primary' : 'neutral'}
           onClick={onToggleCaseSensitive}
         >
@@ -191,10 +186,10 @@ const LogViewerToolbar: React.FC<Props> = ({
         </IconButton>
       </Tooltip>
 
-      <Tooltip title="Regex">
+      <Tooltip content="Regex">
         <IconButton
           size="sm"
-          variant={isRegex ? 'soft' : 'plain'}
+          emphasis={isRegex ? 'soft' : 'ghost'}
           color={isRegex ? 'primary' : 'neutral'}
           onClick={onToggleRegex}
         >
@@ -202,10 +197,10 @@ const LogViewerToolbar: React.FC<Props> = ({
         </IconButton>
       </Tooltip>
 
-      <IconButton size="sm" variant="plain" disabled={matchCount === 0} {...prevHold}>
+      <IconButton size="sm" emphasis="ghost" disabled={matchCount === 0} {...prevHold}>
         <LuChevronUp size={14} />
       </IconButton>
-      <IconButton size="sm" variant="plain" disabled={matchCount === 0} {...nextHold}>
+      <IconButton size="sm" emphasis="ghost" disabled={matchCount === 0} {...nextHold}>
         <LuChevronDown size={14} />
       </IconButton>
 
@@ -215,10 +210,10 @@ const LogViewerToolbar: React.FC<Props> = ({
       {filterSelectors}
 
       {/* Controls */}
-      <Tooltip title="Timestamps">
+      <Tooltip content="Timestamps">
         <IconButton
           size="sm"
-          variant={showTimestamps ? 'soft' : 'plain'}
+          emphasis={showTimestamps ? 'soft' : 'ghost'}
           color={showTimestamps ? 'primary' : 'neutral'}
           onClick={onToggleTimestamps}
         >
@@ -226,10 +221,10 @@ const LogViewerToolbar: React.FC<Props> = ({
         </IconButton>
       </Tooltip>
 
-      <Tooltip title="Source badges">
+      <Tooltip content="Source badges">
         <IconButton
           size="sm"
-          variant={showSources ? 'soft' : 'plain'}
+          emphasis={showSources ? 'soft' : 'ghost'}
           color={showSources ? 'primary' : 'neutral'}
           onClick={onToggleSources}
         >
@@ -237,10 +232,10 @@ const LogViewerToolbar: React.FC<Props> = ({
         </IconButton>
       </Tooltip>
 
-      <Tooltip title="Line numbers">
+      <Tooltip content="Line numbers">
         <IconButton
           size="sm"
-          variant={showLineNumbers ? 'soft' : 'plain'}
+          emphasis={showLineNumbers ? 'soft' : 'ghost'}
           color={showLineNumbers ? 'primary' : 'neutral'}
           onClick={onToggleLineNumbers}
         >
@@ -248,10 +243,10 @@ const LogViewerToolbar: React.FC<Props> = ({
         </IconButton>
       </Tooltip>
 
-      <Tooltip title="Word wrap">
+      <Tooltip content="Word wrap">
         <IconButton
           size="sm"
-          variant={wrap ? 'soft' : 'plain'}
+          emphasis={wrap ? 'soft' : 'ghost'}
           color={wrap ? 'primary' : 'neutral'}
           onClick={onToggleWrap}
         >
@@ -259,10 +254,10 @@ const LogViewerToolbar: React.FC<Props> = ({
         </IconButton>
       </Tooltip>
 
-      <Tooltip title={follow ? 'Following' : 'Follow output'}>
+      <Tooltip content={follow ? 'Following' : 'Follow output'}>
         <IconButton
           size="sm"
-          variant={follow ? 'soft' : 'plain'}
+          emphasis={follow ? 'soft' : 'ghost'}
           color={follow ? 'primary' : 'neutral'}
           onClick={onToggleFollow}
         >
@@ -272,10 +267,10 @@ const LogViewerToolbar: React.FC<Props> = ({
 
       {jumpToTime}
 
-      <Tooltip title={paused ? 'Resume' : 'Pause'}>
+      <Tooltip content={paused ? 'Resume' : 'Pause'}>
         <IconButton
           size="sm"
-          variant={paused ? 'soft' : 'plain'}
+          emphasis={paused ? 'soft' : 'ghost'}
           color={paused ? 'warning' : 'neutral'}
           onClick={onTogglePaused}
         >
@@ -285,23 +280,23 @@ const LogViewerToolbar: React.FC<Props> = ({
 
       <Divider orientation="vertical" sx={{ mx: 0.5 }} />
 
-      <Tooltip title="Download">
-        <IconButton size="sm" variant="plain" onClick={onDownload}>
+      <Tooltip content="Download">
+        <IconButton size="sm" emphasis="ghost" onClick={onDownload}>
           <LuDownload size={14} />
         </IconButton>
       </Tooltip>
 
-      <Tooltip title="Clear">
-        <IconButton size="sm" variant="plain" onClick={onClear}>
+      <Tooltip content="Clear">
+        <IconButton size="sm" emphasis="ghost" onClick={onClear}>
           <LuTrash2 size={14} />
         </IconButton>
       </Tooltip>
 
       {/* Status */}
       <Box sx={{ flex: 1 }} />
-      <Typography level="body-xs" sx={{ color: 'text.tertiary', mr: 1 }}>
+      <Text variant="caption" size="xs" sx={{ color: 'text.disabled', mr: 1 }}>
         {lineCount.toLocaleString()} lines
-      </Typography>
+      </Text>
     </Box>
   );
 };

@@ -12,10 +12,13 @@ import {
   type ReorderTab,
   type CreateTabs,
   type CloseTabs,
+  type UpdateTab,
+  type UpdateTabOpts,
   BottomDrawerContext,
 } from '@omniviewdev/runtime';
 import { ExecClient } from '@omniviewdev/runtime/api';
 import log from '@/features/logger';
+import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
 
 type BottomDrawerProviderProps = {
   children: ReactNode;
@@ -89,6 +92,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     };
     setTabs([...tabs, newTab]);
     setFocused(tabs.length);
+    bottomDrawerChannel.emit('onTabCreated');
   };
 
   const createTabs: CreateTabs = (newTabs: CreateTabOpts[]) => {
@@ -105,6 +109,28 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
       };
     }) as BottomDrawerTab[];
     setTabs([...tabs, ...toCreate]);
+    bottomDrawerChannel.emit('onTabCreated');
+  };
+
+  const updateTab: UpdateTab = (find: FindTabOpts, updates: UpdateTabOpts) => {
+    setTabs(prev => {
+      const idx = findTabIndex(prev, find);
+      if (idx === -1) return prev;
+      const tab = prev[idx];
+      const updated: BottomDrawerTab = {
+        ...tab,
+        ...(updates.id !== undefined && { id: updates.id }),
+        ...(updates.title !== undefined && { title: updates.title }),
+        ...(updates.icon !== undefined && { icon: updates.icon }),
+        properties: updates.properties !== undefined
+          ? { ...tab.properties, ...updates.properties }
+          : tab.properties,
+        updatedAt: new Date(),
+      };
+      const next = [...prev];
+      next[idx] = updated;
+      return next;
+    });
   };
 
   const focusTab: FocusTab = (opts: FindTabOpts) => {
@@ -140,8 +166,8 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
 
     const tab = tabs[foundIndex];
 
-    // if terminal, close the session
-    if (tab.variant === 'terminal') {
+    // if terminal with a real backend session, close it
+    if (tab.variant === 'terminal' && !tab.id.startsWith('pending-')) {
       ExecClient.CloseSession(tab.id).catch((err) => {
         if (err instanceof Error) {
           log.error(err, { event: 'terminate_session', sessionId: tab.id });
@@ -163,7 +189,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     let terminalTabs: BottomDrawerTab[] = [];
     foundIndexes.forEach((index) => {
       const tab = tabs[index];
-      if (tab.variant === 'terminal') {
+      if (tab.variant === 'terminal' && !tab.id.startsWith('pending-')) {
         terminalTabs.push(tab);
       }
     });
@@ -213,6 +239,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
     tabs,
     createTab,
     createTabs,
+    updateTab,
     focusTab,
     reorderTab,
     closeTab,

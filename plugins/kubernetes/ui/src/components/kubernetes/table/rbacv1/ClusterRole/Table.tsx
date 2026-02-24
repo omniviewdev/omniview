@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuShieldQuestion, LuCode, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuShieldQuestion, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import ClusterRoleSidebar from './Sidebar'
 
 const resourceKey = 'rbac::v1::ClusterRole'
@@ -44,10 +44,7 @@ const ClusterRoleTable: React.FC = () => {
   const drawer: DrawerComponent<ClusterRole> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuShieldQuestion />,
-    views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ClusterRoleSidebar ctx={ctx} /> },
-      { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
-    ],
+    views: createStandardViews({ SidebarComponent: ClusterRoleSidebar }),
     actions: [
       {
         title: 'Delete',

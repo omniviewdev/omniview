@@ -1,14 +1,10 @@
 import React from 'react';
-import {
-  Button,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  Modal,
-  ModalDialog,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Modal } from '@omniviewdev/ui/overlays';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuTriangleAlert } from 'react-icons/lu';
 
 type Props = {
@@ -20,26 +16,26 @@ type Props = {
 
 const DeleteConfirmationModal: React.FC<Props> = ({ open, connectionName, onConfirm, onCancel }) => (
   <Modal open={open} onClose={onCancel}>
-    <ModalDialog variant='outlined' role='alertdialog' size='sm'>
-      <DialogTitle>
+    <Box sx={{ p: 2, minWidth: 360 }}>
+      <Stack direction='row' alignItems='center' gap={1} sx={{ mb: 1 }}>
         <LuTriangleAlert size={20} />
-        Delete Connection
-      </DialogTitle>
+        <Text weight='semibold'>Delete Connection</Text>
+      </Stack>
       <Divider />
-      <DialogContent>
-        <Typography level='body-md'>
+      <Box sx={{ py: 2 }}>
+        <Text>
           Are you sure you want to delete <strong>{connectionName}</strong>? This action cannot be undone.
-        </Typography>
-      </DialogContent>
-      <DialogActions>
-        <Button variant='solid' color='danger' onClick={onConfirm}>
+        </Text>
+      </Box>
+      <Stack direction='row' justifyContent='flex-end' gap={1}>
+        <Button emphasis='solid' color='danger' onClick={onConfirm}>
           Delete
         </Button>
-        <Button variant='plain' color='neutral' onClick={onCancel}>
+        <Button emphasis='ghost' color='neutral' onClick={onCancel}>
           Cancel
         </Button>
-      </DialogActions>
-    </ModalDialog>
+      </Stack>
+    </Box>
   </Modal>
 );
 

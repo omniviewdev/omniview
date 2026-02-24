@@ -33,3 +33,22 @@ if (typeof globalThis.crypto === 'undefined' || typeof globalThis.crypto.getRand
     value: webcrypto,
   });
 }
+
+// Mock ResizeObserver (jsdom doesn't have it)
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    callback: ResizeObserverCallback;
+    constructor(cb: ResizeObserverCallback) { this.callback = cb; }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as any;
+}
+
+// Mock requestAnimationFrame / cancelAnimationFrame
+if (typeof globalThis.requestAnimationFrame === 'undefined') {
+  globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => setTimeout(cb, 0) as unknown as number;
+}
+if (typeof globalThis.cancelAnimationFrame === 'undefined') {
+  globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id);
+}

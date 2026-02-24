@@ -3,8 +3,9 @@ package exec
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/omniview/kubernetes/pkg/utils"
 	v1 "k8s.io/api/core/v1"
@@ -25,9 +26,10 @@ func Register(plugin *sdk.Plugin) {
 	if err := exec.RegisterPlugin(plugin, exec.PluginOpts{
 		Handlers: []exec.Handler{
 			{
-				Plugin:     "kubernetes",
-				Resource:   "core::v1::Pod",
-				TTYHandler: PodHandler,
+				Plugin:         "kubernetes",
+				Resource:       "core::v1::Pod",
+				TTYHandler:     PodHandler,
+				DefaultCommand: []string{"/bin/bash", "-c", "stty -echo && /bin/bash"},
 				TargetBuilder: sdkresource.ActionTargetBuilder{
 					Paths: []string{"$.spec.containers[*]"},
 					Selectors: map[string]string{
@@ -35,6 +37,12 @@ func Register(plugin *sdk.Plugin) {
 					},
 					LabelSelector: "container",
 				},
+			},
+			{
+				Plugin:         "kubernetes",
+				Resource:       "core::v1::Node",
+				TTYHandler:     NodeHandler,
+				DefaultCommand: []string{"/bin/bash"},
 			},
 		},
 	}); err != nil {
@@ -46,7 +54,7 @@ func PodHandler(
 	ctx *types.PluginContext,
 	opts exec.SessionOptions,
 	tty *os.File,
-	stopCh chan struct{},
+	stopCh chan error,
 	resize <-chan exec.SessionResizeInput,
 ) error {
 	clients, err := utils.KubeClientsFromContext(ctx)
@@ -106,7 +114,7 @@ func ExecCmd(
 	container string,
 	command []string,
 	tty *os.File,
-	stopChan chan struct{},
+	stopChan chan error,
 	resize <-chan exec.SessionResizeInput,
 ) error {
 	req := client.
@@ -145,7 +153,7 @@ func ExecCmd(
 		return err
 	}
 
-	go func(tty *os.File, stopCh chan struct{}) {
+	go func(tty *os.File, stopCh chan error) {
 		err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
 			Stdin:  tty,
 			Stdout: tty,
@@ -153,13 +161,97 @@ func ExecCmd(
 			Tty:    true,
 		})
 		if err != nil {
-			log.Println("error while streaming to executor", err)
+			stopCh <- classifyExecError(err, command)
 		} else {
-			log.Println("session ended successfully")
+			stopCh <- nil
 		}
-
-		stopCh <- struct{}{}
 	}(tty, stopChan)
 
 	return nil
+}
+
+// classifyExecError inspects a Kubernetes exec error and returns a structured
+// ExecError with user-facing title, suggestion, and retry information.
+func classifyExecError(err error, command []string) error {
+	msg := err.Error()
+	lower := strings.ToLower(msg)
+
+	type classification struct {
+		pattern       string
+		title         string
+		suggestion    string
+		retryable     bool
+		retryCommands []string
+	}
+
+	classifications := []classification{
+		{
+			pattern:       "no such file or directory",
+			title:         "Shell not found",
+			suggestion:    fmt.Sprintf("The shell %q was not found in this container. It may be a distroless or minimal image.", strings.Join(command, " ")),
+			retryable:     true,
+			retryCommands: []string{"sh", "/bin/sh", "ash"},
+		},
+		{
+			pattern:       "executable file not found",
+			title:         "Shell not found",
+			suggestion:    fmt.Sprintf("The executable %q is not available in this container's PATH.", strings.Join(command, " ")),
+			retryable:     true,
+			retryCommands: []string{"sh", "/bin/sh", "ash"},
+		},
+		{
+			pattern:       "oci runtime exec failed",
+			title:         "Container runtime error",
+			suggestion:    "The container runtime could not execute the command. The container may be a distroless image.",
+			retryable:     true,
+			retryCommands: []string{"sh", "/bin/sh"},
+		},
+		{
+			pattern:    "permission denied",
+			title:      "Permission denied",
+			suggestion: "You may not have permission to exec into this container. Check your RBAC rules.",
+			retryable:  false,
+		},
+		{
+			pattern:    "container not running",
+			title:      "Container not running",
+			suggestion: "The target container is not in a running state. It may have crashed or completed its task.",
+			retryable:  false,
+		},
+		{
+			pattern:    "cannot exec in a stopped",
+			title:      "Container stopped",
+			suggestion: "The container has stopped. It may have crashed or completed its task.",
+			retryable:  false,
+		},
+		{
+			pattern:    "container name must be specified",
+			title:      "Container not specified",
+			suggestion: "This pod has multiple containers and the container name was not provided in the exec request.",
+			retryable:  false,
+		},
+	}
+
+	for _, c := range classifications {
+		if strings.Contains(lower, c.pattern) {
+			return &exec.ExecError{
+				Err:           err,
+				Title:         c.title,
+				Message:       msg,
+				Suggestion:    c.suggestion,
+				Retryable:     c.retryable,
+				RetryCommands: c.retryCommands,
+			}
+		}
+	}
+
+	// Default: generic retryable error
+	return &exec.ExecError{
+		Err:           err,
+		Title:         "Exec failed",
+		Message:       msg,
+		Suggestion:    "The exec session failed unexpectedly.",
+		Retryable:     true,
+		RetryCommands: []string{"sh", "/bin/sh"},
+	}
 }

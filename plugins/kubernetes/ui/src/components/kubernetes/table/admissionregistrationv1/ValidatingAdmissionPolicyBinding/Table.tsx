@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuLink2, LuCode, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuLink2, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import ValidatingAdmissionPolicyBindingSidebar from './Sidebar'
 
 const resourceKey = 'admissionregistration::v1::ValidatingAdmissionPolicyBinding'
@@ -60,10 +60,7 @@ const ValidatingAdmissionPolicyBindingTable: React.FC = () => {
   const drawer: DrawerComponent<ValidatingAdmissionPolicyBinding> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuLink2 />,
-    views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ValidatingAdmissionPolicyBindingSidebar ctx={ctx} /> },
-      { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data || {}} /> },
-    ],
+    views: createStandardViews({ SidebarComponent: ValidatingAdmissionPolicyBindingSidebar }),
     actions: [
       {
         title: 'Delete',

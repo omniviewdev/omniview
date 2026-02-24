@@ -1,6 +1,9 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { Box, CircularProgress, Stack, Typography } from '@mui/joy';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuCode, LuContainer, LuPencil, LuSquareChartGantt } from 'react-icons/lu';
 import { useResources, DrawerComponent } from '@omniviewdev/runtime';
 import get from 'lodash.get';
@@ -37,7 +40,7 @@ const ECSClusterDetailPage: React.FC = () => {
   if (resources.isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <CircularProgress size='md' />
+        <CircularProgress size={32} />
       </Box>
     );
   }
@@ -45,7 +48,7 @@ const ECSClusterDetailPage: React.FC = () => {
   if (!cluster) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <Typography level='body-md' color='neutral'>Cluster not found: {resourceId}</Typography>
+        <Text>Cluster not found: {resourceId}</Text>
       </Box>
     );
   }

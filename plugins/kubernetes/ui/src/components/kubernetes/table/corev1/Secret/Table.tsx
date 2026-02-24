@@ -5,10 +5,11 @@ import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import { DrawerComponent } from '@omniviewdev/runtime'
-import { LuBox, LuCircleCheck, LuCode } from 'react-icons/lu'
+import { LuBox, LuCircleCheck } from 'react-icons/lu'
 import SecretSidebar from '../../../sidebar/SecretSidebar'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
-import { Chip, Stack } from '@mui/joy'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
+import { Chip } from '@omniviewdev/ui'
+import { Stack } from '@omniviewdev/ui/layout'
 
 const resourceKey = 'core::v1::Secret'
 
@@ -48,7 +49,7 @@ const SecretTable: React.FC = () => {
                   display: "none",
                 },
               }}>
-              {(getValue() as string[]).map((value) => <Chip size={'sm'} sx={{ borderRadius: '2px' }} variant='outlined'>{value}</Chip>)}
+              {(getValue() as string[]).map((value) => <Chip size={'sm'} sx={{ borderRadius: '2px' }} emphasis='outline' label={value} />)}
             </Stack>
           )
         },
@@ -64,18 +65,7 @@ const SecretTable: React.FC = () => {
   const drawer: DrawerComponent<Secret> = React.useMemo(() => ({
     title: resourceKey, // TODO: change runtime sdk to accept a function
     icon: <LuBox />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuBox />,
-        component: (ctx) => <SecretSidebar ctx={ctx} />
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
-      }
-    ],
+    views: createStandardViews({ SidebarComponent: SecretSidebar }),
     actions: []
   }), [])
 

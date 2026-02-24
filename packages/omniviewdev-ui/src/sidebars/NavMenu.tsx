@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Collapse from '@mui/material/Collapse';
@@ -13,6 +13,10 @@ export interface NavMenuProps {
   selected?: string;
   onSelect?: (id: string) => void;
   size?: ComponentSize;
+  /** Make the menu scrollable within its container. */
+  scrollable?: boolean;
+  /** Start all collapsible items expanded. Defaults to true. */
+  defaultExpanded?: boolean;
   sx?: SxProps<Theme>;
 }
 
@@ -24,20 +28,54 @@ const fontSizeMap: Record<ComponentSize, number> = {
   xl: 15,
 };
 
+const CHEVRON_SIZE = 12;
+const CHEVRON_SLOT = 14; // tight gutter for the expand/collapse arrow
+const INDENT = 10; // per-depth indent in px for child items
+
+/** Collect IDs of all items that have children. */
+function getAllExpandable(sections: NavSection[]): Record<string, boolean> {
+  const state: Record<string, boolean> = {};
+  function walk(items: NavMenuItemType[]) {
+    for (const item of items) {
+      if (item.children && item.children.length > 0) state[item.id] = true;
+      if (item.children) walk(item.children);
+    }
+  }
+  for (const section of sections) walk(section.items);
+  return state;
+}
+
+/** Collect only items that explicitly set defaultExpanded. */
+function getExplicitExpanded(sections: NavSection[]): Record<string, boolean> {
+  const state: Record<string, boolean> = {};
+  function walk(items: NavMenuItemType[]) {
+    for (const item of items) {
+      if (item.defaultExpanded) state[item.id] = true;
+      if (item.children) walk(item.children);
+    }
+  }
+  for (const section of sections) walk(section.items);
+  return state;
+}
+
 function NavMenuItemComponent({
   item,
   depth,
   selected,
   onSelect,
   fontSize,
+  expandedState,
+  onToggleExpanded,
 }: {
   item: NavMenuItemType;
   depth: number;
   selected?: string;
   onSelect?: (id: string) => void;
   fontSize: number;
+  expandedState: Record<string, boolean>;
+  onToggleExpanded: (id: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const isExpanded = expandedState[item.id] ?? false;
   const isSelected = selected === item.id;
   const hasChildren = item.children && item.children.length > 0;
 
@@ -47,35 +85,48 @@ function NavMenuItemComponent({
         onClick={() => {
           if (item.disabled) return;
           if (hasChildren) {
-            setExpanded(!expanded);
+            onToggleExpanded(item.id);
+          } else {
+            onSelect?.(item.id);
           }
-          onSelect?.(item.id);
         }}
         sx={{
           display: 'flex',
           alignItems: 'center',
-          gap: 0.75,
-          px: 1.5,
-          py: 0.5,
-          pl: depth * 1.5 + 1.5,
+          gap: '4px',
+          pl: `${depth * INDENT + 4}px`,
+          pr: '6px',
+          py: '3px',
           cursor: item.disabled ? 'default' : 'pointer',
           opacity: item.disabled ? 0.5 : 1,
           borderRadius: '4px',
-          mx: 0.5,
-          my: 0.25,
+          mx: '4px',
+          my: '1px',
           bgcolor: isSelected ? 'var(--ov-accent-subtle)' : 'transparent',
           color: isSelected ? 'var(--ov-accent-fg)' : 'var(--ov-fg-default)',
-          fontWeight: isSelected ? 500 : 400,
+          fontWeight: isSelected ? 600 : hasChildren ? 500 : 400,
           '&:hover': {
             bgcolor: isSelected ? 'var(--ov-accent-subtle)' : 'var(--ov-state-hover)',
           },
         }}
       >
-        {hasChildren && (
-          <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, color: 'var(--ov-fg-faint)' }}>
-            {expanded ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
-          </Box>
-        )}
+        {/* Fixed-width chevron slot — always takes space so icons/text align */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: CHEVRON_SLOT,
+            minWidth: CHEVRON_SLOT,
+            flexShrink: 0,
+            color: 'var(--ov-fg-faint)',
+          }}
+        >
+          {hasChildren && (isExpanded
+            ? <LuChevronDown size={CHEVRON_SIZE} />
+            : <LuChevronRight size={CHEVRON_SIZE} />
+          )}
+        </Box>
         {item.icon && (
           <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, fontSize: fontSize + 2 }}>
             {item.icon}
@@ -91,7 +142,7 @@ function NavMenuItemComponent({
         {item.badge}
       </Box>
       {hasChildren && item.children && (
-        <Collapse in={expanded} unmountOnExit>
+        <Collapse in={isExpanded} unmountOnExit>
           {item.children.map((child) => (
             <NavMenuItemComponent
               key={child.id}
@@ -100,6 +151,8 @@ function NavMenuItemComponent({
               selected={selected}
               onSelect={onSelect}
               fontSize={fontSize}
+              expandedState={expandedState}
+              onToggleExpanded={onToggleExpanded}
             />
           ))}
         </Collapse>
@@ -108,34 +161,69 @@ function NavMenuItemComponent({
   );
 }
 
+const scrollableSx = {
+  overflow: 'auto',
+  maxHeight: '100%',
+  flex: 1,
+  minHeight: 0,
+  scrollbarWidth: 'none' as const,
+  '&::-webkit-scrollbar': { display: 'none' },
+};
+
 export default function NavMenu({
   sections,
   selected,
   onSelect,
   size = 'md',
+  scrollable,
+  defaultExpanded = true,
   sx,
 }: NavMenuProps) {
   const fontSize = fontSizeMap[size];
 
+  const computeExpanded = useMemo(
+    () => (defaultExpanded ? getAllExpandable(sections) : getExplicitExpanded(sections)),
+    [sections, defaultExpanded],
+  );
+
+  const [expandedState, setExpandedState] = useState<Record<string, boolean>>(computeExpanded);
+
+  // When sections change (e.g. async data load), merge new expandable items into state
+  const prevSectionsRef = useRef(sections);
+  useEffect(() => {
+    if (prevSectionsRef.current !== sections) {
+      prevSectionsRef.current = sections;
+      setExpandedState((prev) => ({ ...prev, ...computeExpanded }));
+    }
+  }, [sections, computeExpanded]);
+
+  const handleToggle = (id: string) => {
+    setExpandedState((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const rootSx = scrollable ? { ...scrollableSx, ...sx as Record<string, unknown> } : sx;
+
   return (
-    <Box sx={sx}>
+    <Box sx={rootSx}>
       {sections.map((section, i) => (
-        <Box key={section.title} sx={{ mb: 1, mt: i === 0 ? 0 : 0.5 }}>
-          <Typography
-            variant="overline"
-            sx={{
-              display: 'block',
-              px: 2,
-              py: 0.5,
-              fontSize: 10,
-              fontWeight: 600,
-              letterSpacing: '0.08em',
-              color: 'var(--ov-fg-faint)',
-              textTransform: 'uppercase',
-            }}
-          >
-            {section.title}
-          </Typography>
+        <Box key={section.title || `section-${i}`} sx={{ mb: 0.5, mt: i === 0 ? 0 : 0.25 }}>
+          {section.title && (
+            <Typography
+              variant="overline"
+              sx={{
+                display: 'block',
+                px: '12px',
+                py: '4px',
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: '0.08em',
+                color: 'var(--ov-fg-faint)',
+                textTransform: 'uppercase',
+              }}
+            >
+              {section.title}
+            </Typography>
+          )}
           {section.items.map((item) => (
             <NavMenuItemComponent
               key={item.id}
@@ -144,6 +232,8 @@ export default function NavMenu({
               selected={selected}
               onSelect={onSelect}
               fontSize={fontSize}
+              expandedState={expandedState}
+              onToggleExpanded={handleToggle}
             />
           ))}
         </Box>

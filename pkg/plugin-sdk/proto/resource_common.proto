@@ -1,0 +1,14 @@
+syntax = "proto3";
+package com.omniview.pluginsdk;
+
+option go_package = "./proto";
+
+// ResourceError is a structured error shared across resource sub-protos.
+// Used by CRUD responses, informer state events, and anywhere a structured
+// error needs to cross the gRPC boundary.
+message ResourceError {
+  string code = 1;                    // e.g. "FORBIDDEN", "NOT_FOUND", "INTERNAL"
+  string title = 2;                   // human-readable title, e.g. "Access denied"
+  string message = 3;                 // detailed error message
+  repeated string suggestions = 4;    // user-facing suggestions
+}

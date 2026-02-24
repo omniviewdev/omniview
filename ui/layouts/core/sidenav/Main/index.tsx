@@ -1,5 +1,5 @@
 import React from 'react';
-import Box, { type BoxProps } from '@mui/joy/Box';
+import Box, { type BoxProps } from '@mui/material/Box';
 
 /**
  * The main component for the sidenav layout.

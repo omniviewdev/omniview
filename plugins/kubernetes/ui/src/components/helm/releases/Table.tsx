@@ -1,13 +1,12 @@
 import React from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { useParams } from 'react-router-dom';
-import Chip from '@mui/joy/Chip';
+import { Chip } from '@omniviewdev/ui';
 import ResourceTable from '../../shared/table/ResourceTable';
 import { DrawerComponent } from '@omniviewdev/runtime';
-import { LuBox, LuCode } from 'react-icons/lu';
 import { SiHelm } from 'react-icons/si';
 import ReleaseSidebar from './ReleaseSidebar';
-import BaseEditorPage from '../../shared/sidebar/pages/editor/BaseEditorPage';
+import { createStandardViews } from '../../shared/sidebar/createDrawerViews';
 
 const resourceKey = 'helm::v1::Release';
 
@@ -46,6 +45,7 @@ const HelmReleaseTable: React.FC = () => {
         header: 'Chart',
         accessorFn: (row) => row.chart?.metadata?.name ?? '',
         size: 150,
+        meta: { flex: 1 },
       },
       {
         id: 'app_version',
@@ -68,12 +68,11 @@ const HelmReleaseTable: React.FC = () => {
           return (
             <Chip
               size="sm"
-              variant="soft"
+              emphasis="soft"
               color={statusColorMap[status] ?? 'neutral'}
               sx={{ borderRadius: 'sm' }}
-            >
-              {status}
-            </Chip>
+              label={status}
+            />
           );
         },
         size: 120,
@@ -85,18 +84,7 @@ const HelmReleaseTable: React.FC = () => {
   const drawer: DrawerComponent<HelmRelease> = React.useMemo(() => ({
     title: 'Release',
     icon: <SiHelm />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuBox />,
-        component: (ctx) => <ReleaseSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: ReleaseSidebar }),
     actions: [],
   }), []);
 

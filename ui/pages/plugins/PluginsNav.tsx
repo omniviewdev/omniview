@@ -1,18 +1,11 @@
 import React from 'react';
 
 // Material-ui
-import {
-  Avatar,
-  Box,
-  Chip,
-  CircularProgress,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemDecorator,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Avatar, Chip, List, ListItem } from '@omniviewdev/ui';
 
 // Mock data
 import { LuCheck } from 'react-icons/lu';
@@ -56,16 +49,14 @@ const PluginsNav: React.FC<Props> = ({ installed }) => {
           to={`/plugins/${plugin.id}`}
           style={{ textDecoration: 'none', color: 'inherit' }}
         >
-          <ListItemButton
-            selected={id === plugin?.id}
-            sx={{ py: 1, px: 2 }}
+          <Box
+            sx={{ py: 1, px: 2, display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer', borderRadius: 1, bgcolor: id === plugin?.id ? 'action.selected' : 'transparent' }}
           >
-            <ListItemDecorator>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 42, height: 42 }}>
               {IsImage(plugin?.icon) ? (
                 <Avatar
                   size='sm'
                   src={plugin.icon}
-                  variant='plain'
                   sx={{
                     borderRadius: 4,
                     backgroundColor: 'transparent',
@@ -76,17 +67,16 @@ const PluginsNav: React.FC<Props> = ({ installed }) => {
                   }}
                 />
               ) : <Icon name={plugin?.icon || ''} size={42} />}
-            </ListItemDecorator>
+            </Box>
             <div>
               <Stack direction='row' spacing={2} justifyContent={'space-between'}>
-                <Typography fontSize='md' fontWeight={700}>{plugin.name}</Typography>
+                <Text sx={{ fontSize: 'md', fontWeight: 700 }}>{plugin.name}</Text>
                 {installed && installed.includes(plugin.id) && (
-                  <Chip size='sm' color='primary' sx={{ borderRadius: 'sm', maxHeight: 20 }} startDecorator={<LuCheck />}>Installed</Chip>
+                  <Chip size='sm' color='primary' label='Installed' icon={<LuCheck />} sx={{ borderRadius: 'sm', maxHeight: 20 }} />
                 )}
               </Stack>
-              <Typography
-                fontSize='xs'
-                textOverflow={'clip'}
+              <Text
+                size='xs'
                 sx={{
                   display: 'WebkitBox',
                   overflow: 'hidden',
@@ -95,9 +85,9 @@ const PluginsNav: React.FC<Props> = ({ installed }) => {
                 }}
               >
                 {plugin.description}
-              </Typography>
+              </Text>
             </div>
-          </ListItemButton>
+          </Box>
         </ListItem>
       ))}
     </List >

@@ -1,13 +1,5 @@
 import React from 'react';
-import {
-  Box,
-  Chip,
-  ChipDelete,
-  Option,
-  Select,
-  Typography,
-} from '@mui/joy';
-import { LuGroup } from 'react-icons/lu';
+import { Select } from '@omniviewdev/ui/inputs';
 import { useResources } from '@omniviewdev/runtime';
 
 type Props = {
@@ -42,72 +34,31 @@ const NamespaceSelect: React.FC<Props> = ({ connectionID, selected, setNamespace
   }, [resources.data]);
 
   const handleChange = (
-    _event: unknown,
-    newValue: string[] | undefined,
+    newValue: string | string[],
   ) => {
-    setNamespaces(newValue ?? []);
-  };
-
-  const handleDelete = (namespace: string) => {
-    setNamespaces(selected.filter(n => n !== namespace));
+    setNamespaces(Array.isArray(newValue) ? newValue : [newValue]);
   };
 
   return (
     <Select
-      size='sm'
+      size='xs'
       multiple
-      startDecorator={<LuGroup />}
+      searchable
       value={selected}
       onChange={handleChange}
-      placeholder={
-        <Chip variant='soft' color='neutral' sx={{ borderRadius: 2 }}>
-          All Namespaces
-        </Chip>
-      }
-      renderValue={selected => (
-        <Box sx={{ display: 'flex', gap: '0.25rem' }}>
-          {selected.map(selectedOption => (
-            <Chip
-              key={selectedOption.value}
-              variant='outlined'
-              color='neutral'
-              endDecorator={
-                <ChipDelete onDelete={(event) => {
-                  event.stopPropagation();
-                  handleDelete(selectedOption.value);
-                }} />}
-              sx={{
-                borderRadius: 2,
-              }}
-            >
-              {selectedOption.label}
-            </Chip>
-          ))}
-        </Box>
-      )}
+      placeholder='All Namespaces'
       sx={{
-        minWidth: '20rem',
-        pt: 0,
-        pb: 0,
-        maxHeight: 30,
-      }}
-      slotProps={{
-        listbox: {
-          placement: 'bottom-end',
-          sx: {
-            '--ListDivider-gap': 0,
-            width: '20rem',
-            maxWidth: '20rem',
-          },
+        minWidth: 160,
+        maxWidth: 280,
+        '& .MuiSelect-select': {
+          py: '2px !important',
         },
       }}
-    >
-      {namespaceNames.map(ns => (
-        <Option key={ns} value={ns}>
-          <Typography level='body-sm'>{ns}</Typography>
-        </Option>
-      ))}
-    </Select>
+      options={namespaceNames.map((ns: string) => ({
+        value: ns,
+        label: ns,
+      }))}
+    />
   );
 };
 

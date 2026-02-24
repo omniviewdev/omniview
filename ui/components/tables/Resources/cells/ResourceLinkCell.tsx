@@ -1,9 +1,9 @@
 import React from 'react';
 
 // material ui
-import Chip from '@mui/joy/Chip';
-import Typography from '@mui/joy/Typography';
-import Tooltip from '@mui/joy/Tooltip';
+import { Chip } from '@omniviewdev/ui';
+import { Text } from '@omniviewdev/ui/typography';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 
 // third party
 import get from 'lodash.get';
@@ -81,33 +81,29 @@ const ResourceLinkCell: React.FC<Props> = ({
     return (
       <Chip
         size='sm'
-        variant='soft'
+        emphasis='soft'
         color={typeof value === 'string' ? 'neutral' : 'primary'}
         sx={{
           borderRadius: 'sm',
         }}
-        onClick={handleClick}>
-        <Typography level='body-xs' noWrap>
-          {resourceID}
-        </Typography>
-      </Chip>
+        onClick={handleClick}
+        label={resourceID}
+      />
     );
   }
 
   return (
-    <Tooltip size='sm' variant='plain' title={resourceID}>
+    <Tooltip size='sm' emphasis='ghost' content={resourceID}>
       <Chip
         size='sm'
-        variant='soft'
+        emphasis='soft'
         color={typeof value === 'string' ? 'neutral' : 'primary'}
         sx={{
           borderRadius: 'sm',
         }}
-        onClick={handleClick}>
-        <Typography level='body-xs' noWrap>
-          {typeof value === 'string' ? value : resourceKey}
-        </Typography>
-      </Chip>
+        onClick={handleClick}
+        label={typeof value === 'string' ? value : resourceKey}
+      />
     </Tooltip>
   );
 };

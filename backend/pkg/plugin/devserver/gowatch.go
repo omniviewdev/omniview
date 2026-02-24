@@ -291,6 +291,12 @@ func (gw *goWatcherProcess) handleRebuild(changedFile string) {
 		Message: fmt.Sprintf("Build succeeded in %s", duration.Round(time.Millisecond)),
 	})
 
+	// Sync plugin.yaml so capability changes (e.g. adding "metric") are
+	// picked up on reload without requiring a full reinstall.
+	if err := gw.syncPluginYaml(); err != nil {
+		l.Warnw("failed to sync plugin.yaml", "error", err)
+	}
+
 	// Transfer the binary to ~/.omniview/plugins/<id>/bin/plugin.
 	if err := gw.transferBinary(); err != nil {
 		l.Errorw("failed to transfer binary", "error", err)
@@ -419,6 +425,35 @@ func (gw *goWatcherProcess) transferBinary() error {
 		return fmt.Errorf("failed to copy binary: %w", err)
 	}
 
+	return nil
+}
+
+// syncPluginYaml copies plugin.yaml from the dev source directory to the
+// installed plugin directory so that capability changes are picked up on
+// the next reload without requiring a full reinstall.
+func (gw *goWatcherProcess) syncPluginYaml() error {
+	srcPath := filepath.Join(gw.devPath, "plugin.yaml")
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	dstPath := filepath.Join(homeDir, ".omniview", "plugins", gw.pluginID, "plugin.yaml")
+
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to open source plugin.yaml: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return fmt.Errorf("failed to create destination plugin.yaml: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("failed to copy plugin.yaml: %w", err)
+	}
 	return nil
 }
 

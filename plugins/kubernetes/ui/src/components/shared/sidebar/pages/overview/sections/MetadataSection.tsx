@@ -1,19 +1,12 @@
 import React from "react";
 
-// material-ui
-import {
-  AccordionGroup,
-  Box,
-  Card,
-  CardContent,
-  Chip,
-  Divider,
-  Grid,
-  Stack,
-  Typography,
-  accordionDetailsClasses,
-  accordionSummaryClasses,
-} from '@mui/joy';
+// @omniviewdev/ui
+import Box from "@mui/material/Box";
+import Divider from "@mui/material/Divider";
+import Grid from "@mui/material/Grid";
+import { Card, Chip } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 
 // types
 import { ObjectMeta } from "kubernetes-types/meta/v1";
@@ -33,16 +26,16 @@ const ObjectMetaEntry: React.FC<{
   value: string | React.ReactNode | undefined;
 }> = ({ title, value }) => (
   <Grid container spacing={0}>
-    <Grid xs={3} alignItems={"center"}>
-      <Typography textColor={"neutral.300"} level="body-xs">
+    <Grid size={3} sx={{ alignItems: "center" }}>
+      <Text sx={{ color: "neutral.300" }} size="xs">
         {title}
-      </Typography>
+      </Text>
     </Grid>
-    <Grid xs={9} alignItems={"center"}>
+    <Grid size={9} sx={{ alignItems: "center" }}>
       {typeof value === 'string'
-        ? <Typography fontWeight={600} fontSize={12} level="body-xs">
+        ? <Text sx={{ fontWeight: 600, fontSize: 12 }} size="xs">
           {value}
-        </Typography>
+        </Text>
         : value
       }
     </Grid>
@@ -55,24 +48,23 @@ const MetadataSection: React.FC<Props> = ({ data }) => {
   }
 
   return (
-    <Stack direction="column" spacing={1}>
+    <Stack direction="column" gap={0.5}>
       <Card
         sx={{
-          "--Card-padding": "0px",
-          "--Card-gap": "0px",
-          borderRadius: "sm",
-          gap: "0px",
+          p: 0,
+          gap: 0,
+          borderRadius: 1,
         }}
         variant="outlined"
       >
-        <Box sx={{ py: 1, px: 1.25 }}>
-          <Typography level="title-sm">Metadata</Typography>
+        <Box sx={{ py: 0.5, px: 1 }}>
+          <Text weight="semibold" size="sm">Metadata</Text>
         </Box>
         <Divider />
-        <CardContent
+        <Box
           sx={{
-            p: 1,
-            px: 1.5,
+            py: 0.5,
+            px: 1,
             backgroundColor: "background.level1",
             borderBottomRightRadius: 6,
             borderBottomLeftRadius: 6,
@@ -95,19 +87,18 @@ const MetadataSection: React.FC<Props> = ({ data }) => {
           {!!data.ownerReferences?.length && <ObjectMetaEntry
             title={data.ownerReferences?.length > 1 ? "Owners" : "Owner"}
             value={
-              <Stack direction={'row'}>
+              <Stack direction='row'>
                 {data.ownerReferences.map((ref) => (
                   <Chip
                     key={ref.uid}
                     size='sm'
-                    variant='soft'
-                    color={'primary'}
+                    emphasis='soft'
+                    color='primary'
                     sx={{
                       borderRadius: 2,
                     }}
-                  >
-                    {ref.kind}
-                  </Chip>
+                    label={ref.kind}
+                  />
                 ))}
               </Stack>
             }
@@ -115,46 +106,26 @@ const MetadataSection: React.FC<Props> = ({ data }) => {
           {!!data.finalizers?.length && <ObjectMetaEntry
             title="Finalizers"
             value={
-              <Stack direction={'row'}>
+              <Stack direction='row'>
                 {data.finalizers.map((finalizer) => (
                   <Chip
                     key={finalizer}
                     size='sm'
-                    variant='soft'
-                    color={'primary'}
+                    emphasis='soft'
+                    color='primary'
                     sx={{
                       borderRadius: 2,
                     }}
-                  >
-                    {finalizer}
-                  </Chip>
+                    label={finalizer}
+                  />
                 ))}
               </Stack>
             }
           />}
-        </CardContent>
+        </Box>
       </Card>
-      <AccordionGroup
-        variant="outlined"
-        transition="0.2s"
-        size="sm"
-        sx={{
-          borderRadius: "sm",
-          [`& .${accordionSummaryClasses.button}:hover`]: {
-            bgcolor: "transparent",
-          },
-          [`& .${accordionDetailsClasses.content}`]: {
-            backgroundColor: "background.level1",
-            boxShadow: (theme) => `inset 0 1px ${theme.vars.palette.divider}`,
-            [`&.${accordionDetailsClasses.expanded}`]: {
-              paddingBlock: "0.75rem",
-            },
-          },
-        }}
-      >
-        {data.annotations && <KVCard title="Annotations" kvs={data.annotations} />}
-        {data.labels && <KVCard title="Labels" kvs={data.labels} />}
-      </AccordionGroup>
+      {data.annotations && <KVCard title="Annotations" kvs={data.annotations} />}
+      {data.labels && <KVCard title="Labels" kvs={data.labels} />}
     </Stack>
   );
 };

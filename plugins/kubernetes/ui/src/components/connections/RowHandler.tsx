@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box } from '@mui/joy';
+import Box from '@mui/material/Box';
 import { useDraggable } from '@dnd-kit/core';
 import type { EnrichedConnection } from '../../types/clusters';
 import { useClusterAction } from '../../hooks/useClusterAction';

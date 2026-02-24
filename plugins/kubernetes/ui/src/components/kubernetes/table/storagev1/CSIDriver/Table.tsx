@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuHardDriveDownload, LuCode, LuSquareChartGantt, LuTrash, LuCircleCheck } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuHardDriveDownload, LuTrash, LuCircleCheck } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import { ChipListCell } from '../../shared/cells/ChipList'
 import CSIDriverSidebar from './Sidebar'
 
@@ -109,18 +109,7 @@ Note: Audience in each TokenRequest should be different and at most one token is
   const drawer: DrawerComponent<CSIDriver> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuHardDriveDownload />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <CSIDriverSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: CSIDriverSidebar }),
     actions: [
       {
         title: 'Delete',

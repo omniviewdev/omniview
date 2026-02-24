@@ -16,11 +16,10 @@ import { CSS } from '@dnd-kit/utilities';
 import { type Tab as ITab } from '@/store/tabs/types';
 
 // Material-ui
-import Typography from '@mui/joy/Typography';
-import Sheet from '@mui/joy/Sheet';
-import Stack from '@mui/joy/Stack';
-import AspectRatio from '@mui/joy/AspectRatio';
-import IconButton from '@mui/joy/IconButton';
+import Box from '@mui/material/Box';
+import { Text } from '@omniviewdev/ui/typography';
+import { Stack } from '@omniviewdev/ui/layout';
+import { IconButton } from '@omniviewdev/ui/buttons';
 
 // Redux
 import type { RootState } from '@/store/store';
@@ -62,14 +61,13 @@ const Tab: FC<TabProps> = ({ tab, handleTabClick, handleCloseTab, clusterId, sel
   };
 
   return (
-    <Sheet
+    <Box
       key={tab.id}
       ref={setNodeRef}
       style={style}
       {...attributes}
       {...listeners}
       className='Tab'
-      variant='plain'
       onClick={() => {
         handleTabClick(tab.id);
       }}
@@ -80,7 +78,7 @@ const Tab: FC<TabProps> = ({ tab, handleTabClick, handleCloseTab, clusterId, sel
         justifyContent: 'flex-start',
         alignItems: 'center',
         textAlign: 'center',
-        borderRadius: 'sm',
+        borderRadius: 1,
         cursor: 'pointer',
         border: atob(clusterId || '') == tab.cluster || selectedTabs.includes(tab.id) ? '1px solid' : '1px solid transparent',
         backgroundColor: atob(clusterId || '') == tab.cluster || selectedTabs.includes(tab.id) ? undefined : '#1E1E1E',
@@ -91,19 +89,20 @@ const Tab: FC<TabProps> = ({ tab, handleTabClick, handleCloseTab, clusterId, sel
       }}
     >
       {Boolean(tab.icon) && typeof tab.icon === 'string'
-        ? <AspectRatio ratio='1' sx={{ width: 22, borderRadius: 4 }}>
+        ? <Box sx={{ width: 22, aspectRatio: '1', borderRadius: 1, overflow: 'hidden' }}>
           <img
             src={tab.icon}
             srcSet={`${tab.icon} 2x`}
             loading='lazy'
             alt=''
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
-        </AspectRatio>
+        </Box>
         : <LuBox />
       }
-      <Typography level='title-sm' minWidth={100} noWrap flexGrow={1} textAlign={'start'}>{tab.label}</Typography>
+      <Text weight='semibold' size='sm' sx={{ minWidth: 100, flexGrow: 1, textAlign: 'start', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tab.label}</Text>
       <IconButton
-        variant='plain'
+        emphasis='ghost'
         size='sm'
         onClick={e => {
           handleTabClose(e, tab.id);
@@ -114,7 +113,7 @@ const Tab: FC<TabProps> = ({ tab, handleTabClick, handleCloseTab, clusterId, sel
       >
         <LuX />
       </IconButton>
-    </Sheet>
+    </Box>
   );
 };
 
@@ -170,7 +169,7 @@ const TabBarProvider: FC<TabBarProviderProps> = ({ }) => {
   };
 
   return (
-    <Sheet
+    <Box
       className='TabBarProvider'
       sx={{
         height: '100%',
@@ -180,6 +179,7 @@ const TabBarProvider: FC<TabBarProviderProps> = ({ }) => {
         justifyContent: 'space-between',
         gap: 0.5,
         p: 0.5,
+        bgcolor: 'background.paper',
       }}
     >
       {/* Account for apple menu bar with padding */}
@@ -195,9 +195,8 @@ const TabBarProvider: FC<TabBarProviderProps> = ({ }) => {
             ))}
           </SortableContext>
         </DndContext>
-        <Sheet
+        <Box
           className='Tab'
-          variant='soft'
           onClick={handleCreateNewTab}
           sx={{
             gap: 1.5,
@@ -206,16 +205,17 @@ const TabBarProvider: FC<TabBarProviderProps> = ({ }) => {
             justifyContent: 'center',
             alignItems: 'center',
             textAlign: 'center',
-            borderRadius: 'sm',
+            borderRadius: 1,
             cursor: 'pointer',
             px: 1.5,
+            bgcolor: 'action.hover',
             '--wails-draggable': 'no-drag',
           }}
         >
           <FaPlus size={12} />
-        </Sheet>
+        </Box>
       </Stack>
-    </Sheet>
+    </Box>
   );
 };
 

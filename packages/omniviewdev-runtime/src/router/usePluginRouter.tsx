@@ -11,19 +11,29 @@ type PluginNavigateOptions = {
 };
 
 /**
- * Programatically route within a plugin
+ * Programatically route within a plugin.
+ *
+ * Navigation behavior:
+ * - Absolute paths (starting with `/`) are resolved relative to the plugin root.
+ *   e.g. `navigate('/cluster/abc')` → `/_plugin/{pluginId}/cluster/abc`
+ * - Relative paths (no leading `/`) use react-router's native relative resolution,
+ *   navigating relative to the current matched route.
+ *   e.g. `navigate('metrics')` → sibling route `metrics`
+ *   e.g. `navigate('.')` → current route (index)
+ *   e.g. `navigate('..')` → parent route
  *
  * @example
  * ```
- * import { usePluginRouter } from '@omniviewdev/runtime/router';
+ * import { usePluginRouter } from '@omniviewdev/runtime';
  *
  * export const MyComponent = () => {
- *    const { navigate } = usePluginRouter();
+ *    const { navigate, pluginPath } = usePluginRouter();
  *
- *    const handleClick = () => {
- *       void navigate('/my-path', { withinContext: true });
- *     }
+ *    // Absolute plugin-relative navigation
+ *    navigate('/cluster/abc/resources');
  *
+ *    // Relative navigation (to sibling route)
+ *    navigate('metrics');
  * }
  * ```
  */
@@ -33,31 +43,46 @@ function usePluginRouter() {
   const { meta } = usePluginContext()
 
   if (!meta.id) {
-    console.error('Link used outside of a plugin context');
+    console.error('usePluginRouter used outside of a plugin context');
   }
 
+  const pluginPrefix = `/_plugin/${meta.id}`;
+
   /**
-   * Programatically navigate to a path within the plugin, optionally
-   * navigating within the current active context or to a specific known context.
+   * The current pathname relative to the plugin root, with the
+   * `/_plugin/{pluginId}` prefix stripped.
    *
-   * @param path The path to navigate to
-   * @param opts Options for customizing navigation behavior
-   * @param opts.replace Replace the current entry in the history stack
-   * @param opts.withinContext Navigate within the current active context. If there is no active context, it will be ignored.
-   * @param opts.toContext Navigate to a specific known context. For example, switching between account authorization contexts within a cloud.
-   * @throws If both `withinContext` and `toContext` are provided together
+   * e.g. if the browser URL is `/_plugin/kubernetes/cluster/abc/resources`,
+   * pluginPath is `/cluster/abc/resources`.
+   */
+  const pluginPath = location.pathname.startsWith(pluginPrefix)
+    ? location.pathname.slice(pluginPrefix.length) || '/'
+    : location.pathname;
+
+  /**
+   * Navigate within the plugin.
+   *
+   * @param path - Absolute paths (starting with `/`) are resolved relative to
+   *   the plugin root. Relative paths use react-router's native relative
+   *   resolution (relative to the current matched route).
+   * @param opts - Navigation options
    */
   const navigate = (path: string, opts?: PluginNavigateOptions) => {
     const { ...rest } = opts ?? {};
-    const resolvedTo = `/_plugin/${meta.id}${path.startsWith('/') ? '' : '/'}${path}`;
 
-    // Account for possible leading slashes
-    originalNavigate(resolvedTo, rest);
+    if (path.startsWith('/')) {
+      // Absolute plugin-relative path
+      originalNavigate(`${pluginPrefix}${path}`, rest);
+    } else {
+      // Relative path — delegate to react-router's native relative navigation
+      originalNavigate(path, rest);
+    }
   };
 
   return useMemo(() => ({
     location,
     navigate,
+    pluginPath,
   }), [location.pathname]);
 }
 

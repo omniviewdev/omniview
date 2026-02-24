@@ -1,5 +1,8 @@
 import React from 'react';
-import { Checkbox, IconButton, List, ListItem, Sheet, Typography } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Checkbox } from '@omniviewdev/ui/inputs';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuColumns3 } from 'react-icons/lu';
 
 type Props = {
@@ -16,7 +19,6 @@ function formatColumnName(key: string): string {
 
 const ColumnPicker: React.FC<Props> = ({ allColumns, visibleColumns, onToggleColumn }) => {
   const [open, setOpen] = React.useState(false);
-  const anchorRef = React.useRef<HTMLButtonElement>(null);
 
   // Sort: visible first, then alphabetical
   const sorted = [...allColumns].sort((a, b) => {
@@ -29,14 +31,13 @@ const ColumnPicker: React.FC<Props> = ({ allColumns, visibleColumns, onToggleCol
   return (
     <>
       <IconButton
-        ref={anchorRef}
         size='sm'
-        variant='plain'
+        emphasis='ghost'
         color='neutral'
         onClick={() => setOpen(prev => !prev)}
         title='Select visible columns'
       >
-        <LuColumns3 size={16} />
+        <LuColumns3 size={14} />
       </IconButton>
       {open && (
         <>
@@ -45,38 +46,53 @@ const ColumnPicker: React.FC<Props> = ({ allColumns, visibleColumns, onToggleCol
             style={{ position: 'fixed', inset: 0, zIndex: 999 }}
             onClick={() => setOpen(false)}
           />
-          <Sheet
-            variant='outlined'
+          <Box
             sx={{
               position: 'absolute',
               right: 0,
               top: '100%',
               mt: 0.5,
               zIndex: 1000,
-              borderRadius: 'sm',
-              boxShadow: 'md',
-              minWidth: 180,
-              maxHeight: 300,
+              borderRadius: 'var(--ov-radius-md, 6px)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+              minWidth: 160,
+              maxHeight: 280,
               overflow: 'auto',
-              p: 1,
+              py: 0.5,
+              px: 0.5,
+              border: '1px solid var(--ov-border-default, rgba(255,255,255,0.08))',
+              bgcolor: 'var(--ov-bg-surface, #1e1e1e)',
             }}
           >
-            <Typography level='body-xs' fontWeight={600} sx={{ px: 1, pb: 0.5 }}>
+            <Text size='xs' weight='semibold' sx={{ px: 0.5, pb: 0.25, color: 'var(--ov-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.625rem' }}>
               Visible Columns
-            </Typography>
-            <List size='sm'>
-              {sorted.map(col => (
-                <ListItem key={col}>
-                  <Checkbox
-                    size='sm'
-                    label={formatColumnName(col)}
-                    checked={visibleColumns.includes(col)}
-                    onChange={() => onToggleColumn(col)}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          </Sheet>
+            </Text>
+            {sorted.map(col => (
+              <Box
+                key={col}
+                onClick={() => onToggleColumn(col)}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.75,
+                  py: 0.25,
+                  px: 0.5,
+                  cursor: 'pointer',
+                  borderRadius: 'var(--ov-radius-sm, 4px)',
+                  '&:hover': { bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))' },
+                }}
+              >
+                <Checkbox
+                  size='sm'
+                  checked={visibleColumns.includes(col)}
+                  onChange={() => onToggleColumn(col)}
+                />
+                <Text size='xs' sx={{ userSelect: 'none' }}>
+                  {formatColumnName(col)}
+                </Text>
+              </Box>
+            ))}
+          </Box>
         </>
       )}
     </>

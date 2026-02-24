@@ -1,14 +1,13 @@
 import React from 'react';
 
 // Material-ui
-import Avatar from '@mui/joy/Avatar';
-import Input from '@mui/joy/Input';
-import Grid from '@mui/joy/Grid';
-import Stack from '@mui/joy/Stack';
+import Grid from '@mui/material/Grid';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Avatar } from '@omniviewdev/ui';
+import { TextField, TextArea } from '@omniviewdev/ui/inputs';
 
 // Project imports
 import { useConnection } from '@omniviewdev/runtime';
-import { Textarea } from '@mui/joy';
 import { useParams } from 'react-router-dom';
 
 export default function ConnectionDetails(): React.ReactElement {
@@ -29,16 +28,16 @@ export default function ConnectionDetails(): React.ReactElement {
 
   return (
     <Grid container spacing={4}>
-      <Grid xs={12}>
+      <Grid size={12}>
         <Stack direction='row' spacing={2} alignItems='center' justifyContent={'stretch'}>
-          <Avatar size='lg' src={connection.data.avatar} variant='plain' />
-          <Input variant='outlined' defaultValue={connection.data.name} />
+          <Avatar size='lg' src={connection.data.avatar} />
+          <TextField defaultValue={connection.data.name} />
         </Stack>
       </Grid>
-      <Grid xs={12}>
-        <Textarea variant='outlined' minRows={3} defaultValue={connection.data.description} />
+      <Grid size={12}>
+        <TextArea minRows={3} defaultValue={connection.data.description} />
       </Grid>
-      <Grid xs={12}>
+      <Grid size={12}>
 
       </Grid>
     </Grid>

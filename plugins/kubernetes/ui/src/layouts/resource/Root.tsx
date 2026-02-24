@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, type BoxProps } from '@mui/joy';
+import Box, { type BoxProps } from '@mui/material/Box';
 
 /**
  * The root component for the generic sidemenu layout
@@ -9,7 +9,7 @@ const Root: React.FC<BoxProps> = (props: BoxProps) => (
     {...props}
     sx={[
       {
-        bgcolor: 'background.appBody',
+        bgcolor: 'background.default',
         display: 'flex',
         flexDirection: 'row',
         flexGrow: 1,

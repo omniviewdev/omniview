@@ -3,6 +3,7 @@ export * from './data';
 export * from './drawer';
 export * from './exec';
 export * from './logs';
+export * from './metric';
 export * from './networker';
 export * from './modal';
 export * from './resource';

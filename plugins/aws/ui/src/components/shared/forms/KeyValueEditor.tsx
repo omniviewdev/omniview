@@ -1,15 +1,11 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Divider,
-  IconButton,
-  Input,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button, IconButton } from '@omniviewdev/ui/buttons';
+import { TextField } from '@omniviewdev/ui/inputs';
+import { Card } from '@omniviewdev/ui';
 import { LuPlus, LuTrash2 } from 'react-icons/lu';
 
 type Props = {
@@ -85,25 +81,25 @@ const KeyValueEditor: React.FC<Props> = ({
 
   return (
     <Card
-      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 'sm', gap: '0px' }}
+      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 1, gap: '0px' }}
       variant='outlined'
     >
       <Box sx={{ py: 1, px: 1.25 }}>
         <Stack direction='row' spacing={1} alignItems='center' justifyContent='space-between'>
           <Stack direction='row' spacing={1} alignItems='center'>
-            <Typography level='title-sm'>{title}</Typography>
-            <Typography level='body-xs' color='neutral'>({pairs.length})</Typography>
+            <Text weight="semibold" size="sm">{title}</Text>
+            <Text size="xs" color="neutral">({pairs.length})</Text>
           </Stack>
           {(onSave || onReset) && (
             <Stack direction='row' spacing={0.5}>
               {onReset && (
-                <Button size='sm' variant='plain' color='neutral' disabled={!dirty || saving} onClick={onReset}>
+                <Button size='sm' emphasis='ghost' color='neutral' disabled={!dirty || saving} onClick={onReset}>
                   Reset
                 </Button>
               )}
               {onSave && (
-                <Button size='sm' variant='soft' color='primary' disabled={!dirty || saving} loading={saving} onClick={onSave}>
-                  Save
+                <Button size='sm' emphasis='soft' color='primary' disabled={!dirty || saving} onClick={onSave}>
+                  {saving ? 'Saving...' : 'Save'}
                 </Button>
               )}
             </Stack>
@@ -111,18 +107,18 @@ const KeyValueEditor: React.FC<Props> = ({
         </Stack>
       </Box>
       <Divider />
-      <CardContent
+      <Box
         sx={{
           p: 0,
-          backgroundColor: 'background.level1',
+          backgroundColor: 'background.paper',
           borderBottomRightRadius: 6,
           borderBottomLeftRadius: 6,
         }}
       >
         {/* Header */}
         <Stack direction='row' spacing={1} sx={{ px: 1.5, py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Typography level='body-xs' fontWeight={700} sx={{ flex: 1 }}>{keyLabel}</Typography>
-          <Typography level='body-xs' fontWeight={700} sx={{ flex: 1 }}>{valueLabel}</Typography>
+          <Text size="xs" sx={{ fontWeight: 700, flex: 1 }}>{keyLabel}</Text>
+          <Text size="xs" sx={{ fontWeight: 700, flex: 1 }}>{valueLabel}</Text>
           {!readOnly && <Box sx={{ width: 32 }} />}
         </Stack>
 
@@ -136,35 +132,35 @@ const KeyValueEditor: React.FC<Props> = ({
             sx={{
               px: 1.5,
               py: 0.25,
-              '&:hover': { bgcolor: 'background.level2' },
+              '&:hover': { bgcolor: 'action.hover' },
               borderBottom: i < pairs.length - 1 ? '1px solid' : undefined,
               borderColor: 'divider',
             }}
           >
             {readOnly || fixedKeys ? (
-              <Typography level='body-xs' sx={{ flex: 1, fontFamily: 'monospace' }}>{key}</Typography>
+              <Text size="xs" sx={{ flex: 1, fontFamily: 'monospace' }}>{key}</Text>
             ) : (
-              <Input
+              <TextField
                 size='sm'
-                variant='plain'
+                variant='standard'
                 value={key}
-                onChange={(e) => handleKeyRename(key, e.target.value)}
-                sx={{ flex: 1, fontSize: 12, fontFamily: 'monospace', '--Input-focusedHighlight': 'transparent' }}
+                onChange={(value) => handleKeyRename(key, value)}
+                sx={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}
               />
             )}
             {readOnly ? (
-              <Typography level='body-xs' fontWeight={600} sx={{ flex: 1, fontFamily: 'monospace' }}>{value}</Typography>
+              <Text size="xs" sx={{ fontWeight: 600, flex: 1, fontFamily: 'monospace' }}>{value}</Text>
             ) : (
-              <Input
+              <TextField
                 size='sm'
-                variant='plain'
+                variant='standard'
                 value={value}
-                onChange={(e) => handleValueChange(key, e.target.value)}
-                sx={{ flex: 1, fontSize: 12, fontFamily: 'monospace', '--Input-focusedHighlight': 'transparent' }}
+                onChange={(value) => handleValueChange(key, value)}
+                sx={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}
               />
             )}
             {!readOnly && (
-              <IconButton size='sm' variant='plain' color='danger' onClick={() => handleRemove(key)}>
+              <IconButton size='sm' emphasis='ghost' color='error' onClick={() => handleRemove(key)}>
                 <LuTrash2 size={14} />
               </IconButton>
             )}
@@ -173,7 +169,7 @@ const KeyValueEditor: React.FC<Props> = ({
 
         {pairs.length === 0 && (
           <Box sx={{ px: 1.5, py: 1.5 }}>
-            <Typography level='body-xs' color='neutral' textAlign='center'>No entries</Typography>
+            <Text size="xs" color="neutral" sx={{ textAlign: 'center' }}>No entries</Text>
           </Box>
         )}
 
@@ -182,27 +178,25 @@ const KeyValueEditor: React.FC<Props> = ({
           <>
             <Divider />
             <Stack direction='row' spacing={1} alignItems='center' sx={{ px: 1.5, py: 0.5 }}>
-              <Input
+              <TextField
                 size='sm'
-                variant='soft'
                 placeholder={keyPlaceholder}
                 value={newKey}
-                onChange={(e) => setNewKey(e.target.value)}
+                onChange={(value) => setNewKey(value)}
                 onKeyDown={handleKeyDown}
                 sx={{ flex: 1, fontSize: 12 }}
               />
-              <Input
+              <TextField
                 size='sm'
-                variant='soft'
                 placeholder={valuePlaceholder}
                 value={newValue}
-                onChange={(e) => setNewValue(e.target.value)}
+                onChange={(value) => setNewValue(value)}
                 onKeyDown={handleKeyDown}
                 sx={{ flex: 1, fontSize: 12 }}
               />
               <IconButton
                 size='sm'
-                variant='soft'
+                emphasis='soft'
                 color='primary'
                 disabled={!newKey.trim()}
                 onClick={handleAdd}
@@ -212,7 +206,7 @@ const KeyValueEditor: React.FC<Props> = ({
             </Stack>
           </>
         )}
-      </CardContent>
+      </Box>
     </Card>
   );
 };

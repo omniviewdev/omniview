@@ -48,13 +48,15 @@ export async function exportSharedDepsForDev(): Promise<void> {
   );
 
   // Write resolved modules to window, log failures
-  const failures: string[] = [];
-  for (const result of results) {
+  const failures: Array<{ name: string; error: string }> = [];
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    const [name] = entries[i];
     if (result.status === 'fulfilled') {
-      const [name, mod] = result.value;
+      const [, mod] = result.value;
       window.__OMNIVIEW_SHARED__[name] = mod;
     } else {
-      failures.push(String(result.reason));
+      failures.push({ name, error: String(result.reason) });
     }
   }
 
@@ -66,9 +68,8 @@ export async function exportSharedDepsForDev(): Promise<void> {
   );
 
   if (failures.length > 0) {
-    console.warn(
-      `[omniview:shared-deps] Failed to resolve ${failures.length} shared deps:`,
-      failures
-    );
+    for (const { name, error } of failures) {
+      console.error(`[omniview:shared-deps] Failed to resolve "${name}":`, error);
+    }
   }
 }

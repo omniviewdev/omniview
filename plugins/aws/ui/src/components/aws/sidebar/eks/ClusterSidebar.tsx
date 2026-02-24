@@ -1,5 +1,7 @@
 import React from "react";
-import { Chip, Stack, Typography } from "@mui/joy";
+import { Stack } from "@omniviewdev/ui/layout";
+import { Text } from "@omniviewdev/ui/typography";
+import { Chip } from "@omniviewdev/ui";
 import MetadataSection from "../../../shared/sidebar/pages/overview/sections/MetadataSection";
 import DetailsCard from "../../../shared/DetailsCard";
 import ExpandableSection from "../../../shared/ExpandableSection";
@@ -137,19 +139,18 @@ const ClusterSidebar: React.FC<Props> = ({ ctx }) => {
                       i: number
                     ) => (
                       <Stack key={i} direction="row" spacing={1} alignItems="center">
-                        <Typography level="body-xs" fontFamily="monospace">
+                        <Text size="xs" sx={{ fontFamily: "monospace" }}>
                           {Array.isArray(entry?.Types)
                             ? entry.Types.join(", ")
                             : "Unknown"}
-                        </Typography>
+                        </Text>
                         <Chip
                           size="sm"
-                          variant="soft"
-                          color={entry?.Enabled ? "success" : "neutral"}
-                          sx={{ borderRadius: "sm" }}
-                        >
-                          {entry?.Enabled ? "Enabled" : "Disabled"}
-                        </Chip>
+                          variant="filled"
+                          color={entry?.Enabled ? "success" : "default"}
+                          label={entry?.Enabled ? "Enabled" : "Disabled"}
+                          sx={{ borderRadius: 1 }}
+                        />
                       </Stack>
                     )
                   )}

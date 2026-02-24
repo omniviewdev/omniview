@@ -1,6 +1,6 @@
 import React from 'react';
-import Box from '@mui/joy/Box';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import { Text } from '@omniviewdev/ui/typography';
 import type { LogEntry as LogEntryType, SearchMatch } from './types';
 import { LEVEL_COLORS } from './types';
 
@@ -135,11 +135,11 @@ const LogEntryComponent: React.FC<Props> = ({
     >
       {/* Line number */}
       {showLineNumbers && (
-        <Typography
+        <Text
           sx={{
             minWidth: '4ch',
             textAlign: 'right',
-            color: 'text.tertiary',
+            color: 'text.disabled',
             userSelect: 'none',
             flexShrink: 0,
             fontSize: 'inherit',
@@ -148,12 +148,12 @@ const LogEntryComponent: React.FC<Props> = ({
           }}
         >
           {entry.lineNumber}
-        </Typography>
+        </Text>
       )}
 
       {/* Timestamp */}
       {showTimestamps && entry.timestamp && (
-        <Typography
+        <Text
           sx={{
             color: 'text.secondary',
             flexShrink: 0,
@@ -163,7 +163,7 @@ const LogEntryComponent: React.FC<Props> = ({
           }}
         >
           {formatTimestamp(entry.timestamp)}
-        </Typography>
+        </Text>
       )}
 
       {/* Source badge */}
@@ -186,7 +186,7 @@ const LogEntryComponent: React.FC<Props> = ({
       )}
 
       {/* Content */}
-      <Typography
+      <Text
         component="span"
         sx={{
           flex: 1,
@@ -199,7 +199,7 @@ const LogEntryComponent: React.FC<Props> = ({
         }}
       >
         {renderContent()}
-      </Typography>
+      </Text>
     </Box>
   );
 };

@@ -3,12 +3,10 @@
 /* eslint @typescript-eslint/naming-convention: 0 */
 import React from 'react';
 
-import Box from '@mui/joy/Box';
-import Chip from '@mui/joy/Chip';
-import Select from '@mui/joy/Select';
-import Option from '@mui/joy/Option';
-import Typography from '@mui/joy/Typography';
-import { type ColorPaletteProp } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Text } from '@omniviewdev/ui/typography';
+import { Select } from '@omniviewdev/ui/inputs';
+import { Chip } from '@omniviewdev/ui';
 
 import {
   type Column,
@@ -20,80 +18,35 @@ type Props = {
 
 export const MultiSelectFilter: React.FC<Props> = ({ column }) => {
   const columnFilterValue = column.getFilterValue() as string[];
-  const asChip = column.columnDef.meta?.selectOptions?.display === 'chip';
 
   const options = React.useMemo(() => {
     return column.columnDef.meta?.selectOptions?.options
       ?? Array.from(column.getFacetedUniqueValues().keys())
         .sort()
         .slice(0, 5000)
-        .map(o => ({ label: o, value: o, color: 'primary' as ColorPaletteProp }));
+        .map(o => ({ label: o, value: o, color: 'primary' }));
   }, [column.columnDef.meta, column.getFacetedUniqueValues()]);
 
-  const handleChange = (_: any, value: string[]) => {
+  const handleChange = (e: any) => {
+    const value = e.target.value as string[];
     column.setFilterValue(value.length === 0 ? undefined : value);
   };
 
   return (
     <Select
       multiple
-      value={columnFilterValue}
+      value={columnFilterValue ?? []}
       onChange={handleChange}
-      placeholder='All'
-      renderValue={selected => (
-        <Box sx={{ display: 'flex', gap: '0.25rem' }}>
-          {selected.map(selectedOption => (
-            <Chip
-              variant='outlined'
-              color='neutral'
-              sx={{
-                borderRadius: 2,
-              }}
-            >
-              {selectedOption.label}
-            </Chip>
-          ))}
-        </Box>
-      )}
+      options={options.map(o => ({
+        value: o.value,
+        label: o.label,
+      }))}
       sx={{
         minWidth: '20rem',
         pt: 0,
         pb: 0,
       }}
-      slotProps={{
-        listbox: {
-          placement: 'bottom-end',
-          sx: {
-            '--ListDivider-gap': 0,
-            width: '20rem',
-            maxWidth: '20rem',
-          },
-        },
-      }}
-    >
-      {options.map(o => (
-        <Option
-          key={o.value}
-          value={o.value}
-        >
-
-          {asChip ? (
-            <Chip
-              variant="soft"
-              size="sm"
-              sx={{
-                borderRadius: 'sm',
-              }}
-              color={o.color}
-            >
-              {o.label}
-            </Chip>
-          ) : (
-            <Typography level='body-sm'>{o.label}</Typography>
-          )}
-        </Option>
-      ))}
-    </Select>
+    />
   );
 };
 

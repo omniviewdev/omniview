@@ -6,11 +6,12 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuRoute, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuRoute, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
+import IngressSidebar from '../../../sidebar/Ingress'
 import ResourceLinkCell from '../../corev1/Pod/cells/ResourceLinkCell'
 import { ChipListCell } from '../../shared/cells/ChipList'
-import { Stack } from '@mui/joy'
+import { Stack } from '@omniviewdev/ui/layout'
 
 const resourceKey = 'networking::v1::Ingress'
 
@@ -117,18 +118,7 @@ const IngressTable: React.FC = () => {
   const drawer: DrawerComponent<Ingress> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuRoute />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: IngressSidebar }),
     actions: [
       {
         title: 'Delete',

@@ -12,6 +12,7 @@ import {
   LuClock,
   LuZap,
   LuWifi,
+  LuPlug,
 } from 'react-icons/lu';
 
 import Section from '../helpers/Section';
@@ -250,6 +251,66 @@ export default function IDEStatusFooterPage() {
                 }
               />
             </Box>
+          </Box>
+        </Example>
+        <Example title="Real-World: Omniview Dev Mode Footer">
+          <Typography sx={{ fontSize: 'var(--ov-text-xs)', color: 'var(--ov-fg-muted)', mb: 1 }}>
+            This is the exact composition used by the Omniview app footer. Plugins send status updates
+            to the footer via Wails events (EventsOn) which update React state and render as
+            IDEStatusFooter.Spinner / .Dot sub-components in real time.
+          </Typography>
+          <Box sx={{ border: '1px solid var(--ov-border-default)', borderRadius: '6px', overflow: 'hidden' }}>
+            <IDEStatusFooter
+              height={24}
+              left={
+                <>
+                  <IDEStatusFooter.Chip label="DEVELOPMENT MODE" bgColor="#b08800" color="#fff" tooltip="Running in development mode" />
+                  <IDEStatusFooter.Separator />
+                  <IDEStatusFooter.Chip label="DEV" bgColor="var(--ov-success-default)" icon={<LuPlug size={9} />} tooltip="3 dev servers active" />
+                  <IDEStatusFooter.Dot color="var(--ov-success-default)" tooltip={'kubernetes\nReady'} onClick={() => console.log('open kubernetes build output')} />
+                  <IDEStatusFooter.Dot color="var(--ov-warning-default)" pulse tooltip={'aws\nBuilding...'} onClick={() => console.log('open aws build output')} />
+                  <IDEStatusFooter.Dot color="var(--ov-success-default)" tooltip={'containers\nReady\nVite: :5174'} onClick={() => console.log('open containers build output')} />
+                </>
+              }
+              right={
+                <>
+                  <IDEStatusFooter.Spinner label="Reloading plugin 'aws'..." />
+                  <IDEStatusFooter.Separator />
+                  <IDEStatusFooter.Button icon={<LuBell size={10} />} tooltip="Notifications" />
+                </>
+              }
+            />
+          </Box>
+        </Example>
+
+        <Example title="Plugin Status Reporting">
+          <Typography sx={{ fontSize: 'var(--ov-text-xs)', color: 'var(--ov-fg-muted)', mb: 1 }}>
+            Pattern for plugins reporting indexing or long-running operations. The left side shows
+            a connected cluster, while the right side shows progress via Spinner and Progress
+            sub-components. This API is available for plugin developers even though the actual
+            wiring is deferred to a follow-up.
+          </Typography>
+          <Box sx={{ border: '1px solid var(--ov-border-default)', borderRadius: '6px', overflow: 'hidden' }}>
+            <IDEStatusFooter
+              height={24}
+              left={
+                <>
+                  <IDEStatusFooter.Chip label="Connected" bgColor="var(--ov-success-default)" icon={<LuWifi size={9} />} />
+                  <IDEStatusFooter.Separator />
+                  <IDEStatusFooter.Dot color="var(--ov-success-default)" />
+                  <IDEStatusFooter.Text>prod-east-1</IDEStatusFooter.Text>
+                </>
+              }
+              right={
+                <>
+                  <IDEStatusFooter.Spinner label="Indexing resources..." tooltip="Discovering all cluster resources" />
+                  <IDEStatusFooter.Separator />
+                  <IDEStatusFooter.Progress value={42} width={80} label="Progress" showValue />
+                  <IDEStatusFooter.Separator />
+                  <IDEStatusFooter.Timer time="00:47" icon={<LuClock size={10} />} running tooltip="Elapsed indexing time" />
+                </>
+              }
+            />
           </Box>
         </Example>
       </Section>

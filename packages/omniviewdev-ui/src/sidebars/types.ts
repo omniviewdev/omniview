@@ -28,4 +28,6 @@ export interface NavMenuItem {
   badge?: React.ReactNode;
   children?: NavMenuItem[];
   disabled?: boolean;
+  /** Start expanded when first rendered. Only relevant for items with children. */
+  defaultExpanded?: boolean;
 }

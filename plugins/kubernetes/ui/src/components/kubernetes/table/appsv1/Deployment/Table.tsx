@@ -9,9 +9,9 @@ import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, DrawerComponentActionListItem, DrawerContext, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuLogs, LuScaling, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuLogs, LuScaling, LuTrash } from 'react-icons/lu'
 import DeploymentSidebar from './Sidebar'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 
 const resourceKey = 'apps::v1::Deployment'
 
@@ -140,18 +140,7 @@ const DeploymentTable: React.FC = () => {
   const drawer: DrawerComponent<Deployment> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuScaling />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <DeploymentSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data} onSubmit={(val) => onEditorSubmit(ctx, val)} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: DeploymentSidebar, onEditorSubmit }),
     actions: [
       {
         title: 'Delete',

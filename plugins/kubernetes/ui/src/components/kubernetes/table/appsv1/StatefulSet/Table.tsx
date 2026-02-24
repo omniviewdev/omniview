@@ -9,9 +9,9 @@ import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuClipboardList, LuLogs, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuClipboardList, LuLogs, LuTrash } from 'react-icons/lu'
 import StatefulSetSidebar from './Sidebar'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 
 const resourceKey = 'apps::v1::StatefulSet'
 
@@ -126,18 +126,7 @@ const StatefulSetTable: React.FC = () => {
   const drawer: DrawerComponent<StatefulSet> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuClipboardList />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <StatefulSetSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: StatefulSetSidebar }),
     actions: [
       {
         title: 'Delete',

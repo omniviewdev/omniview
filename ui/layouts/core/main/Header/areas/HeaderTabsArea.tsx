@@ -1,7 +1,7 @@
 import React from 'react';
 
 // material-ui
-import Box from '@mui/joy/Box';
+import Box from '@mui/material/Box';
 import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@omniviewdev/runtime/runtime';
 
 // import TabBarProvider from '@/providers/header/TabBarProvider';

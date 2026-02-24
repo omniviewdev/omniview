@@ -1,10 +1,9 @@
 import React from 'react';
 
 // material-ui
-import Menu from '@mui/joy/Menu';
-import MenuItem from '@mui/joy/MenuItem';
-import ListItem from '@mui/joy/ListItem';
-import Typography from '@mui/joy/Typography';
+import { DropdownMenu } from '@omniviewdev/ui/menus';
+import { ListItem } from '@omniviewdev/ui';
+import { Text } from '@omniviewdev/ui/typography';
 
 // third party
 import jsonpath from 'jsonpath';
@@ -18,9 +17,6 @@ import { exec } from '@omniviewdev/runtime/models';
 // project imports
 import ActionMenuListItem from './ActionMenuListItem';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
-
-/** Command to detect the shell */
-const DefaultShellCmd = ['/bin/sh', '-c', 'stty -echo && /bin/sh'];
 
 type Props = {
   selected: boolean;
@@ -95,7 +91,7 @@ const ExecAction: React.FC<Props> = ({
       resource_plugin: plugin,
       resource_key: resource,
       resource_data: data,
-      command: DefaultShellCmd,
+      command: action.default_command?.length ? action.default_command : ['/bin/sh'],
       tty: true,
     });
 
@@ -111,31 +107,21 @@ const ExecAction: React.FC<Props> = ({
         onOpen={handleSelect}
         onLeaveMenu={handleLeaveMenu}
         menu={
-          <Menu
-            size='sm'
-            sx={{
-              padding: 0,
-            }}
-            onClose={handleDeselect}
-          >
-            {targets.map((target) => (
-              <MenuItem
-                key={target.label}
-                {...itemProps}
-                onClick={() => {
-                  handlePerformExec(target.label, target.params);
-                  handleDeselect();
-                  if (typeof itemProps.onClick == 'function') {
-                    itemProps.onClick();
-                  }
-
-                  handleDismiss();
-                }}
-              >
-                <Typography level='body-sm'>{target.label}</Typography>
-              </MenuItem>
-            ))}
-          </Menu>
+          <DropdownMenu
+            trigger={<span />}
+            items={targets.map((target) => ({
+              key: target.label,
+              label: target.label,
+              onSelect: () => {
+                handlePerformExec(target.label, target.params);
+                handleDeselect();
+                if (typeof itemProps.onClick == 'function') {
+                  (itemProps.onClick as () => void)();
+                }
+                handleDismiss();
+              },
+            }))}
+          />
         }
       >
         Exec

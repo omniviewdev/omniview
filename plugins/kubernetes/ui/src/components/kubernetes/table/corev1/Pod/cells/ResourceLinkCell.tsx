@@ -1,15 +1,46 @@
 import React from 'react';
 
-// material ui
-import {
-  Chip,
-} from '@mui/joy';
-
+import { Chip } from '@omniviewdev/ui';
+import type { SemanticColor } from '@omniviewdev/ui/types';
 import { useRightDrawer } from '@omniviewdev/runtime';
+import {
+  LuCopy,
+  LuLayers,
+  LuDatabase,
+  LuPlay,
+  LuClock,
+  LuServer,
+  LuUser,
+} from 'react-icons/lu';
+
+type KindConfig = {
+  color: SemanticColor;
+  icon: React.ReactElement;
+};
+
+/** Map Kubernetes resource kinds to chip color + icon */
+const kindConfigMap: Record<string, KindConfig> = {
+  ReplicaSet:            { color: 'primary',  icon: <LuCopy size={10} /> },
+  ReplicationController: { color: 'primary',  icon: <LuCopy size={10} /> },
+  StatefulSet:           { color: 'info',     icon: <LuDatabase size={10} /> },
+  DaemonSet:             { color: 'warning',  icon: <LuLayers size={10} /> },
+  Job:                   { color: 'secondary', icon: <LuPlay size={10} /> },
+  CronJob:               { color: 'secondary', icon: <LuClock size={10} /> },
+  Node:                  { color: 'success',  icon: <LuServer size={10} /> },
+  ServiceAccount:        { color: 'neutral',  icon: <LuUser size={10} /> },
+};
+
+const defaultConfig: KindConfig = { color: 'neutral', icon: <LuCopy size={10} /> };
+
+/** Extract the kind (last segment) from a resourceKey like "apps::v1::ReplicaSet" */
+function kindFromKey(resourceKey: string): string {
+  const parts = resourceKey.split('::');
+  return parts[parts.length - 1];
+}
 
 type Props = {
   /** ID of the plugin this resource belongs to */
-  pluginID: string;
+  pluginID?: string;
 
   /** ID of the connection this is connecting to */
   connectionId: string;
@@ -28,10 +59,10 @@ type Props = {
 }
 
 /**
- * Display the cell as a link to another resource
+ * Display the cell as a link to another resource with kind-appropriate icon and color.
  */
 const ResourceLinkCell: React.FC<Props> = ({
-  pluginID,
+  pluginID = 'kubernetes',
   connectionId,
   namespace,
   resourceId,
@@ -40,18 +71,11 @@ const ResourceLinkCell: React.FC<Props> = ({
 }) => {
   const { showResourceSidebar } = useRightDrawer();
 
-  if (!resourceName) {
-    // nothing to display - don't render
+  if (!resourceName || !resourceKey) {
     return <></>
   }
 
-  /**
-   * Open the sidebar at the link to the linked resource
-   */
-  const handleClick: React.MouseEventHandler = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-
+  const handleClick = () => {
     showResourceSidebar({
       pluginID,
       connectionID: connectionId,
@@ -61,17 +85,19 @@ const ResourceLinkCell: React.FC<Props> = ({
     });
   };
 
+  const kind = kindFromKey(resourceKey);
+  const config = kindConfigMap[kind] ?? defaultConfig;
+
   return (
     <Chip
-      size='sm'
-      variant='soft'
-      color={'primary'}
-      sx={{
-        borderRadius: 2,
-      }}
-      onClick={handleClick}>
-      {resourceName}
-    </Chip>
+      size='xs'
+      emphasis='outline'
+      color={config.color}
+      icon={config.icon}
+      onClick={handleClick}
+      label={resourceName}
+      sx={{ borderRadius: 1, maxWidth: '100%' }}
+    />
   );
 };
 

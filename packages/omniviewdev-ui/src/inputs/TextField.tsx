@@ -7,8 +7,8 @@ import type { SemanticColor, ComponentSize } from '../types';
 import { toMuiInputSize, toMuiColor, INPUT_HEIGHTS } from '../types';
 
 export interface TextFieldProps {
-  value: string;
-  onChange: (value: string) => void;
+  value?: string;
+  onChange?: (value: string) => void;
   size?: ComponentSize;
   color?: SemanticColor;
   readOnly?: boolean;
@@ -24,11 +24,23 @@ export interface TextFieldProps {
   endAdornment?: React.ReactNode;
   disabled?: boolean;
   type?: string;
+  variant?: 'outlined' | 'filled' | 'standard';
+  autoFocus?: boolean;
+  autoComplete?: string;
+  onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
+  onBlur?: React.FocusEventHandler<HTMLInputElement | HTMLTextAreaElement>;
+  onFocus?: React.FocusEventHandler<HTMLInputElement | HTMLTextAreaElement>;
+  name?: string;
+  id?: string;
+  /** Pass-through HTML input attributes (e.g. min, max, step) */
+  inputProps?: Record<string, unknown>;
+  /** Pass-through slotProps for MUI TextField */
+  slotProps?: Record<string, unknown>;
   sx?: SxProps<Theme>;
 }
 
 export default function TextField({
-  value,
+  value = '',
   onChange,
   size = 'md',
   color = 'neutral',
@@ -45,6 +57,15 @@ export default function TextField({
   endAdornment,
   disabled,
   type,
+  variant = 'outlined',
+  autoFocus,
+  autoComplete,
+  onKeyDown,
+  onBlur,
+  onFocus,
+  name,
+  id,
+  inputProps,
   sx,
 }: TextFieldProps) {
   const [internal, setInternal] = useState(value);
@@ -60,10 +81,10 @@ export default function TextField({
       if (debounced) {
         setInternal(next);
         if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => onChange(next), debounceMs);
+        timerRef.current = setTimeout(() => onChange?.(next), debounceMs);
       } else {
         setInternal(next);
-        onChange(next);
+        onChange?.(next);
       }
     },
     [debounced, debounceMs, onChange],
@@ -82,6 +103,7 @@ export default function TextField({
       onChange={handleChange}
       size={muiSize}
       color={muiColor === 'default' || muiColor === 'inherit' ? undefined : muiColor}
+      variant={variant}
       label={label}
       helperText={errorText ?? helperText}
       error={hasError}
@@ -89,6 +111,13 @@ export default function TextField({
       fullWidth={fullWidth}
       disabled={disabled}
       type={type}
+      autoFocus={autoFocus}
+      autoComplete={autoComplete}
+      onKeyDown={onKeyDown}
+      onBlur={onBlur}
+      onFocus={onFocus}
+      name={name}
+      id={id}
       slotProps={{
         input: {
           readOnly,
@@ -100,6 +129,7 @@ export default function TextField({
           ) : undefined,
           sx: monospace ? { fontFamily: 'var(--ov-font-mono)' } : undefined,
         },
+        htmlInput: inputProps,
       }}
       style={{ '--ov-input-height': INPUT_HEIGHTS[size] } as React.CSSProperties}
       sx={sx}

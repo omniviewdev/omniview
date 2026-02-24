@@ -1,15 +1,11 @@
 import React from "react";
 
-// material-ui
-import {
-  Stack,
-  Card as MuiCard,
-  CardContent,
-  Chip,
-  Avatar,
-  Divider,
-  Typography,
-} from '@mui/joy';
+// @omniviewdev/ui
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Card as UiCard, Avatar, Chip } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 
 // project imports
 import Icon from "./Icon";
@@ -31,15 +27,15 @@ export const Card: React.FC<Props> = ({
   children,
 }) => {
   return (
-    <MuiCard variant="outlined" sx={{ p: 0, gap: 0 }}>
+    <UiCard variant="outlined" sx={{ p: 0, gap: 0 }}>
       <Stack
         direction="row"
-        spacing={1}
-        p={1}
-        alignItems={"center"}
-        justifyContent={"space-between"}
+        gap={1}
+        sx={{ p: 1 }}
+        alignItems="center"
+        justifyContent="space-between"
       >
-        <Stack direction="row" alignItems={"center"} spacing={1}>
+        <Stack direction="row" alignItems="center" gap={1}>
           {icon &&
             (typeof icon === "string" ? (
               icon.startsWith("http") ? (
@@ -54,7 +50,7 @@ export const Card: React.FC<Props> = ({
             ) : (
               icon
             ))}
-          <Typography level="title-sm">{title}</Typography>
+          <Text weight="semibold" size="sm">{title}</Text>
         </Stack>
         {titleDecorator &&
           (typeof titleDecorator === "string" ||
@@ -63,17 +59,16 @@ export const Card: React.FC<Props> = ({
               sx={{ borderRadius: "4px" }}
               size="sm"
               color="primary"
-              variant="outlined"
-            >
-              {titleDecorator}
-            </Chip>
+              emphasis="outline"
+              label={String(titleDecorator)}
+            />
           ) : (
             titleDecorator
           ))}
       </Stack>
       <Divider />
-      <CardContent>{children}</CardContent>
-    </MuiCard>
+      <Box sx={{ p: 1 }}>{children}</Box>
+    </UiCard>
   );
 };
 

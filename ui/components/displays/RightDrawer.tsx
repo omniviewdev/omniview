@@ -1,10 +1,15 @@
-import { Box, Chip, DialogContent, DialogTitle, Divider, IconButton, ListItemDecorator, Sheet, Stack, Tab, TabList, Tabs } from '@mui/joy';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import DialogContent from '@mui/material/DialogContent';
+import { Chip } from '@omniviewdev/ui';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Tabs } from '@omniviewdev/ui/navigation';
 import { DrawerComponent, DrawerContext } from '@omniviewdev/runtime';
 import React from 'react';
 import { LuX } from 'react-icons/lu';
 import { ErrorBoundary } from 'react-error-boundary';
 import RightDrawerActions from './RightDrawerActions';
-import { InlineErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
+import { PanelErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
 
 type Props = DrawerComponent & {
   ctx?: DrawerContext;
@@ -31,7 +36,7 @@ const RightDrawer: React.FC<Props> = ({
   }
 
   return (
-    <Sheet
+    <Box
       sx={{
         borderRadius: 'md',
         display: 'flex',
@@ -39,70 +44,60 @@ const RightDrawer: React.FC<Props> = ({
         height: '100%',
         overflow: 'auto',
         p: 0,
+        bgcolor: 'background.surface',
+        border: 1,
+        borderColor: 'divider',
       }}
     >
-      <DialogTitle component={'div'}>
-        <Stack
-          direction='row'
-          justifyContent={'space-between'}
-          alignItems={'center'}
-          flex={1}
-          p={0.75}
-          sx={{
-            bgcolor: 'background.surface'
-          }}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          px: 1,
+          py: 0.5,
+          bgcolor: 'background.surface',
+        }}
+      >
+        {/** Left Side (title and information)*/}
+        {typeof title === 'string'
+          ? <Chip
+            icon={icon}
+            size={'sm'}
+            emphasis={'outline'}
+            color='neutral'
+            label={title}
+            sx={{
+              gap: 0.5,
+              px: 0.75,
+              py: 0.25,
+              borderRadius: 'sm',
+              fontWeight: 600,
+              fontSize: '0.75rem',
+            }}
+          />
+          : <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            {icon}
+            {title}
+          </Box>
+        }
+
+        {/** Right Side (actions)*/}
+        <Box
+          id={'pages-actions-menus'}
+          sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
         >
-
-          {/** Left Side (title and information)*/}
-          <Stack
-            direction='row'
-            justifyContent={'flex-start'}
-            gap={1}
+          {!!actions.length && <RightDrawerActions ctx={ctx || {}} actions={actions} />}
+          <IconButton
+            emphasis='outline'
+            color='neutral'
+            size={'sm'}
+            onClick={onClose}
           >
-            {typeof title === 'string'
-              ? <Chip
-                startDecorator={icon}
-                size={'md'}
-                variant={'outlined'}
-                color='neutral'
-                sx={{
-                  gap: 1,
-                  px: 1,
-                  py: 0.5,
-                  borderRadius: 'sm',
-                  fontWeight: 600,
-                }}
-              >
-                {title}
-              </Chip>
-              : <>
-                {icon}
-                {title}
-              </>
-            }
-
-          </Stack>
-
-          {/** Right Side (actions)*/}
-          <Stack
-            id={'pages-actions-menus'}
-            direction='row'
-            alignItems={'center'}
-            justifyContent={'flex-end'}
-            gap={1}
-          >
-            {!!actions.length && <RightDrawerActions ctx={ctx || {}} actions={actions} />}
-            <IconButton
-              variant='outlined'
-              color='neutral'
-              size={'sm'}
-              onClick={onClose}
-            >
-              <LuX />
-            </IconButton>
-          </Stack>
-        </Stack>
-      </DialogTitle>
+            <LuX />
+          </IconButton>
+        </Box>
+      </Box>
       <Divider />
       <DialogContent
         sx={{
@@ -113,47 +108,19 @@ const RightDrawer: React.FC<Props> = ({
         }}
       >
         <Tabs
-          value={currentView}
-          onChange={handleChangeView}
-        >
-          <TabList
-            disableUnderline
-            variant='outlined'
-            color='neutral'
-            size='sm'
-            sx={{
-              borderRadius: 'none',
-              overflow: 'auto',
-              scrollSnapType: 'x mandatory',
-              '&::-webkit-scrollbar': { display: 'none' },
-            }}
-          >
-            {views.map((view, idx) => (
-              <Tab
-                key={idx}
-                value={idx}
-                variant='plain'
-                sx={{
-                  alignItems: 'center',
-                  flex: 'none',
-                  scrollSnapAlign: 'start',
-                  borderRightColor: 'divider',
-                  borderLeftColor: 'transparent',
-                  fontSize: 14,
-                  fontWeight: 500,
-                }}
-              >
-                <ListItemDecorator>
-                  {view.icon}
-                </ListItemDecorator>
-                {view.title}
-              </Tab>
-            ))}
-          </TabList>
-        </Tabs>
-        <Box display={'flex'} flex={1} p={1} overflow={'auto'}>
+          size="sm"
+          value={String(currentView)}
+          onChange={(key) => handleChangeView(null, Number(key))}
+          tabs={views.map((view, idx) => ({
+            key: String(idx),
+            label: typeof view.title === 'string' ? view.title : 'View',
+            value: idx,
+            icon: view.icon,
+          }))}
+        />
+        <Box display={'flex'} flexDirection={'column'} flex={1} p={1} overflow={'auto'} minHeight={0}>
           <ErrorBoundary
-            FallbackComponent={(props) => <InlineErrorFallback {...props} label={typeof views[currentView]?.title === 'string' ? views[currentView].title : 'View'} />}
+            FallbackComponent={(props) => <PanelErrorFallback {...props} label={typeof views[currentView]?.title === 'string' ? views[currentView].title : 'View'} boundary="RightDrawer" />}
             onError={onBoundaryError}
             resetKeys={[currentView]}
           >
@@ -161,7 +128,7 @@ const RightDrawer: React.FC<Props> = ({
           </ErrorBoundary>
         </Box>
       </DialogContent>
-    </Sheet>
+    </Box>
   )
 }
 

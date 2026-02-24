@@ -1,7 +1,7 @@
 import React from 'react';
 
-// Material-ui
-import { Input } from '@mui/joy';
+// @omniviewdev/ui
+import { TextField } from '@omniviewdev/ui/inputs';
 
 // Icons
 import { SearchRounded, Clear } from '@mui/icons-material';
@@ -27,21 +27,20 @@ const SearchInput: React.FC<Props> = ({ placeholder, value, onChange, autoFocus 
 
   // Recompute only if the value changes
   const hasValue = React.useMemo(() => value !== '', [value]);
-  const endDecorator = React.useMemo(() => hasValue ? <Clear onClick={handleClear} /> : null, [hasValue]);
+  const endAdornment = React.useMemo(() => hasValue ? <Clear onClick={handleClear} sx={{ cursor: 'pointer' }} /> : null, [hasValue]);
 
   return (
-    <Input
+    <TextField
       size='sm'
-      variant='outlined'
       autoComplete='off'
       type='text'
       placeholder={placeholder ?? 'Search'}
       autoFocus={autoFocus}
-      startDecorator={<SearchRounded color='primary' />}
-      endDecorator={endDecorator}
+      startAdornment={<SearchRounded color='primary' />}
+      endAdornment={endAdornment}
       value={value}
       onChange={e => {
-        onChange(e.target.value);
+        onChange(e);
       }}
       sx={{
         flexBasis: '500px',
@@ -53,14 +52,6 @@ const SearchInput: React.FC<Props> = ({ placeholder, value, onChange, autoFocus 
           xl: 500,
         },
         '--wails-draggable': 'no-drag',
-      }}
-      slotProps={{
-        input: {
-          // Keep the input from auto capitalizing and autocorrecting, doesn't work
-          // without both the input and the inputProps
-          autoCorrect: 'off',
-          autoComplete: 'off',
-        },
       }}
     />
 

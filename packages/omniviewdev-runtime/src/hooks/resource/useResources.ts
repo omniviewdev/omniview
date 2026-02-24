@@ -4,6 +4,8 @@ import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 
 // Types
 import { types } from '../../wailsjs/go/models';
+import { InformerResourceState } from '../../types/informer';
+import type { InformerStateEvent } from '../../types/informer';
 
 // Underlying client
 import { List, Create } from '../../wailsjs/go/resource/Client';
@@ -264,6 +266,24 @@ export const useResources = ({
     };
   }, []);
 
+  // === Informer State === //
+
+  const [informerState, setInformerState] = React.useState<InformerResourceState>(
+    InformerResourceState.Pending
+  );
+
+  React.useEffect(() => {
+    const cancel = EventsOn(
+      `${pluginID}/${connectionID}/informer/STATE`,
+      (event: InformerStateEvent) => {
+        if (event.resourceKey === resourceKey) {
+          setInformerState(event.state);
+        }
+      },
+    );
+    return cancel;
+  }, [pluginID, connectionID, resourceKey]);
+
   return {
     /**
      * Fetch result for the resource. The client will automatically cache the result, and update the cache
@@ -279,5 +299,17 @@ export const useResources = ({
      * @params opts Optional parameters to pass to the resource create operation
      */
     create,
+
+    /** Current informer state for this resource type */
+    informerState,
+
+    /** Whether the informer is currently syncing */
+    isSyncing: informerState === InformerResourceState.Syncing,
+
+    /** Whether the informer has fully synced */
+    isSynced: informerState === InformerResourceState.Synced,
+
+    /** Whether the informer encountered an error */
+    informerError: informerState === InformerResourceState.Error,
   };
 };

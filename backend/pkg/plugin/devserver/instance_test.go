@@ -2,11 +2,13 @@ package devserver
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestNewDevServerInstance(t *testing.T) {
@@ -215,6 +217,81 @@ func TestInstance_Stop_WithSubProcesses(t *testing.T) {
 	assert.Equal(t, DevProcessStatusStopped, state.ViteStatus)
 	assert.Equal(t, DevProcessStatusStopped, state.GoStatus)
 	assert.GreaterOrEqual(t, sr.count(), 2)
+}
+
+// TestDevServerInstance_Stop_Order verifies that vite.Stop() and goWatcher.Stop()
+// are called BEFORE inst.cancel(). If cancel() fires first, the context is done
+// and process group cleanup in vite.Stop() would fail.
+//
+// Strategy: wrap inst.cancel to record when it fires. The goWatcher.Stop() calls
+// gw.cancel() internally, which we also wrap to record. For vite, we check that
+// the instance context is still alive when Stop runs by having cmd=nil (no-op Stop)
+// and verifying cancel ordering via the wrapped cancel func.
+func TestDevServerInstance_Stop_Order(t *testing.T) {
+	inst, _, _, _ := newTestInstance(t, "stop-order")
+
+	var mu sync.Mutex
+	var order []string
+
+	// Wrap inst.cancel to record when it's called.
+	origCancel := inst.cancel
+	inst.cancel = func() {
+		mu.Lock()
+		order = append(order, "cancel")
+		mu.Unlock()
+		origCancel()
+	}
+
+	// Attach a viteProcess with nil cmd — Stop() is a no-op (returns early).
+	// We verify ordering through the goWatcher and cancel tracking.
+	inst.vite = &viteProcess{
+		logger: zap.NewNop().Sugar(),
+		done:   make(chan struct{}),
+	}
+
+	// Attach a goWatcherProcess whose cancel records when it fires.
+	// goWatcherProcess.Stop() calls gw.cancel() then waits on gw.done.
+	gwCtx, gwCancel := context.WithCancel(context.Background())
+	gwDone := make(chan struct{})
+	close(gwDone) // pre-close so Stop doesn't block on wait
+	inst.goWatcher = &goWatcherProcess{
+		cancel: func() {
+			mu.Lock()
+			order = append(order, "goWatcher.Stop")
+			mu.Unlock()
+			gwCancel()
+		},
+		ctx:  gwCtx,
+		done: gwDone,
+	}
+
+	inst.Stop()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// goWatcher.Stop should appear before cancel in the order.
+	require.GreaterOrEqual(t, len(order), 2, "expected at least 2 recorded calls, got: %v", order)
+
+	cancelIdx := -1
+	gwIdx := -1
+	for i, v := range order {
+		switch v {
+		case "cancel":
+			cancelIdx = i
+		case "goWatcher.Stop":
+			gwIdx = i
+		}
+	}
+
+	assert.NotEqual(t, -1, cancelIdx, "cancel should have been called")
+	assert.NotEqual(t, -1, gwIdx, "goWatcher.Stop should have been called")
+
+	if gwIdx != -1 && cancelIdx != -1 {
+		assert.Less(t, gwIdx, cancelIdx,
+			"goWatcher.Stop (idx %d) should be called before cancel (idx %d); order: %v",
+			gwIdx, cancelIdx, order)
+	}
 }
 
 func TestInstance_StateTransitions(t *testing.T) {

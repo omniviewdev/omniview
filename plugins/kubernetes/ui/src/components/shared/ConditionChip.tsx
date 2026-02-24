@@ -1,5 +1,6 @@
 import { Condition } from "kubernetes-types/meta/v1";
-import { Chip, Tooltip, TooltipProps } from '@mui/joy';
+import { Chip } from '@omniviewdev/ui';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 import React from "react";
 
 type Props = {
@@ -17,7 +18,7 @@ type Props = {
 }
 
 
-function CustomTooltip({ children, ...rest }: TooltipProps) {
+function CustomTooltip({ children, content, ...rest }: { children: React.ReactElement; content?: string; size?: string }) {
   const [renderTooltip, setRenderTooltip] = React.useState(false);
 
   return (
@@ -28,7 +29,7 @@ function CustomTooltip({ children, ...rest }: TooltipProps) {
       {!renderTooltip && children}
       {
         renderTooltip && (
-          <Tooltip {...rest}>
+          <Tooltip content={content} {...rest}>
             {children}
           </Tooltip>
         )
@@ -39,6 +40,7 @@ function CustomTooltip({ children, ...rest }: TooltipProps) {
 
 /**
  * Renders a chip based on the incoming condition.
+ * Healthy = subtle green soft, unhealthy = faded grey.
  */
 export const ConditionChip: React.FC<Props> = ({
   condition,
@@ -48,29 +50,24 @@ export const ConditionChip: React.FC<Props> = ({
 }) => {
   const healthy = flipped ? condition.status === 'False' : condition.status === 'True'
 
-  const color = () => {
-    if (healthy) {
-      return healthyColor
-    }
-    if (unhealthyColor === 'faded') {
-      return 'neutral'
-    }
-    return unhealthyColor
-  }
+  const color = healthy
+    ? healthyColor
+    : unhealthyColor === 'faded'
+      ? 'neutral'
+      : unhealthyColor;
 
   return (
-    <CustomTooltip size={'sm'} title={condition.message} variant={'outlined'}>
+    <CustomTooltip size='sm' content={condition.message}>
       <Chip
-        size={'sm'}
-        color={color()}
-        variant={'solid'}
+        size='xs'
+        color={color}
+        emphasis='soft'
         sx={{
-          opacity: !healthy && unhealthyColor === 'faded' ? 50 : 100,
-          borderRadius: 2,
+          borderRadius: 1,
+          ...(!healthy && unhealthyColor === 'faded' ? { opacity: 0.45 } : {}),
         }}
-      >
-        {condition.type}
-      </Chip>
+        label={condition.type}
+      />
     </CustomTooltip>
   )
 }

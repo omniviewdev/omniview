@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Typography } from '@mui/joy';
+import { Text } from '@omniviewdev/ui/typography';
 import {
   differenceInSeconds,
   differenceInMinutes,
@@ -61,7 +61,7 @@ export const Age = ({ startTime }: { startTime: string }) => {
     }
 
     const updateAge = () => {
-      setTime(formatTimeDifference(date)); 
+      setTime(formatTimeDifference(date));
     };
 
     // Set the interval to update the age every 60 seconds
@@ -69,9 +69,9 @@ export const Age = ({ startTime }: { startTime: string }) => {
 
     // Cleanup the interval on component unmount
     return () => {
-      clearInterval(intervalId); 
+      clearInterval(intervalId);
     };
   }, [startTime, initialAge]);
 
-  return <Typography level='body-xs'>{time}</Typography>;
+  return <Text size='xs'>{time}</Text>;
 };

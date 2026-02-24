@@ -1,11 +1,11 @@
 import React from 'react';
 
 // material-ui
-import IconButton from '@mui/joy/IconButton';
-import List from '@mui/joy/List';
-import { Unstable_Popup as BasePopup } from '@mui/base/Unstable_Popup';
-import { ClickAwayListener } from '@mui/base';
-import { styled } from '@mui/joy';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { List } from '@omniviewdev/ui';
+import { Popover } from '@omniviewdev/ui/overlays';
+import ClickAwayListener from '@mui/material/ClickAwayListener';
+import { styled } from '@mui/material/styles';
 
 // project imports
 import ExecAction from './ExecAction';
@@ -73,10 +73,10 @@ const ActionMenu: React.FC<Props> = (props) => {
 
   return (
     <>
-      <IconButton 
+      <IconButton
         size="sm"
-        variant="plain"
-        sx={{ 
+        emphasis="ghost"
+        sx={{
           flex: 'none',
           minHeight: 28,
           minWidth: 28,
@@ -85,10 +85,10 @@ const ActionMenu: React.FC<Props> = (props) => {
       >
         <MoreHorizRoundedIcon />
       </IconButton>
-      <BasePopup 
-        style={{ zIndex: 9999 }} 
-        id={'resource-context-menu'} 
-        open={open} 
+      <Popover
+        style={{ zIndex: 9999 }}
+        id={'resource-context-menu'}
+        open={open}
         anchor={selected}
         placement={'bottom-end'}
       >
@@ -103,7 +103,7 @@ const ActionMenu: React.FC<Props> = (props) => {
             }}/>
           </PopupBody>
         </ClickAwayListener>
-      </BasePopup>
+      </Popover>
     </>
   );
 };
@@ -145,7 +145,7 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
   return (
     <List
       size='sm'
-      variant="outlined"
+      emphasis="outline"
       sx={{
         maxWidth: 400,
         minWidth: 110,

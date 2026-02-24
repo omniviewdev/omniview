@@ -2,12 +2,12 @@ import React from 'react';
 import { useParams } from 'react-router-dom';
 
 // Material-ui
-import Avatar from '@mui/joy/Avatar';
-import IconButton from '@mui/joy/IconButton';
-import Sheet from '@mui/joy/Sheet';
-import Stack from '@mui/joy/Stack';
-import Typography from '@mui/joy/Typography';
-import { Box, useTheme } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { useTheme } from '@mui/material/styles';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Avatar } from '@omniviewdev/ui';
 
 // Hooks
 import {
@@ -133,14 +133,15 @@ export default function ResourceTableView(): React.ReactElement {
       />
       <Layout.SideNav type='bordered' padding={0.5} width={300} >
         <Stack direction='column' maxHeight='100%' gap={0.5}>
-          <Sheet
-            variant='outlined'
+          <Box
             sx={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               p: 1,
-              borderRadius: 'sm',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
             }}
           >
             <Stack direction='row' alignItems='center' gap={1}>
@@ -162,16 +163,16 @@ export default function ResourceTableView(): React.ReactElement {
                   {...stringAvatar(connection.data?.name || '')}
                 />
               }
-              <Typography level='title-sm' textOverflow={'ellipsis'}>{connection.data?.name}</Typography>
+              <Text weight='semibold' size='sm' sx={{ textOverflow: 'ellipsis' }}>{connection.data?.name}</Text>
             </Stack>
             <Stack direction='row' alignItems='center' gap={1}>
               <Link to={`/connection/${connectionID}/edit`}>
-                <IconButton variant='soft' size='sm' color='neutral'>
-                  <LuCog size={20} color={theme.palette.neutral[400]} />
+                <IconButton emphasis='soft' size='sm' color='neutral'>
+                  <LuCog size={20} color={theme.palette.grey[400]} />
                 </IconButton>
               </Link>
             </Stack>
-          </Sheet>
+          </Box>
           <NavMenu selected={selected} onSelect={setSelected} size='sm' sections={getSections()} scrollable />
         </Stack>
       </Layout.SideNav>
@@ -193,4 +194,3 @@ export default function ResourceTableView(): React.ReactElement {
     </Layout.Root>
   );
 }
-

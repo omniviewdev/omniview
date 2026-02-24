@@ -8,6 +8,7 @@ export * as UtilsClient from './wailsjs/go/utils/Client';
 export * as UIClient from './wailsjs/go/ui/Client';
 export * as DiagnosticsClient from './wailsjs/go/diagnostics/DiagnosticsClient';
 export * as LogsClient from './wailsjs/go/logs/Client';
+export * as MetricClient from './wailsjs/go/metric/Client';
 
 export * as DevServerManager from './wailsjs/go/devserver/DevServerManager';
 

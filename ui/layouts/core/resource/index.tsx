@@ -2,8 +2,8 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 
 // Mui
-import Box from '@mui/joy/Box';
-import Divider from '@mui/joy/Divider';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
 
 // Layout components
 import ResourceSidebar from './Sidebar';

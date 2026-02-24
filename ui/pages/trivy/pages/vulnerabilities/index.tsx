@@ -1,11 +1,10 @@
 import React from 'react';
 
-import Button from '@mui/joy/Button';
-import Link from '@mui/joy/Link';
-import Typography from '@mui/joy/Typography';
-import Table from '@mui/joy/Table';
-import Sheet from '@mui/joy/Sheet';
-import Stack from '@mui/joy/Stack';
+import Box from '@mui/material/Box';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Link } from '@omniviewdev/ui/typography';
+import { Text, Heading } from '@omniviewdev/ui/typography';
+import { Stack } from '@omniviewdev/ui/layout';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 
 import {
@@ -80,9 +79,12 @@ const TrivyVulnerabilitiesPage = () => {
       p={1}
     >
       <Stack direction='row' gap={1.5} alignItems='center' justifyContent={'space-between'}>
-        <Typography level='h4' p={0.5} startDecorator={<LuChartArea />} >{'Vulnerability Report'}</Typography>
+        <Stack direction='row' gap={1} alignItems='center'>
+          <LuChartArea />
+          <Heading level={4}>{'Vulnerability Report'}</Heading>
+        </Stack>
         <Stack direction='row' gap={1.5} alignItems='center'>
-          <Button variant='soft' startDecorator={<LuFileText />} color='primary'>{'Generate Report'}</Button>
+          <Button emphasis='soft' startAdornment={<LuFileText />} color='primary'>{'Generate Report'}</Button>
           <DebouncedInput
             value={search ?? ''}
             onChange={value => {
@@ -102,9 +104,7 @@ const TrivyVulnerabilitiesPage = () => {
         <Stack direction='column'>
           <FilterDisplay columns={table.getAllColumns()} />
         </Stack>
-        <Sheet
-          className={'table-container'}
-          variant='outlined'
+        <Box
           ref={parentRef}
           sx={{
             width: '100%',
@@ -113,6 +113,8 @@ const TrivyVulnerabilitiesPage = () => {
             flex: 1,
             overflow: 'scroll',
             minHeight: 0,
+            border: '1px solid',
+            borderColor: 'divider',
             '&::-webkit-scrollbar': {
               display: 'none',
             },
@@ -120,11 +122,9 @@ const TrivyVulnerabilitiesPage = () => {
             WebkitUserSelect: 'none',
           }}
         >
-          <Table
+          <table
             aria-label="collapsible table"
-            stickyHeader
-            hoverRow
-            borderAxis="xBetween"
+            style={{ width: '100%', borderCollapse: 'collapse' }}
           >
             <thead
               style={{
@@ -146,29 +146,28 @@ const TrivyVulnerabilitiesPage = () => {
                         display: 'flex',
                         alignItems: 'center',
                         width: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
-                        // minWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
                         maxWidth: header.getSize() === Number.MAX_SAFE_INTEGER ? 'auto' : header.getSize(),
                         flex: 1,
                       }}
                     >
                       {header.column.getCanSort()
                         ? <Link
-                          underline='none'
-                          color='primary'
-                          component='button'
-                          onClick={header.column.getToggleSortingHandler()}
-                          fontWeight='lg'
-                          endDecorator={header.column.getIsSorted() && <ArrowDropDownIcon />}
-                          sx={{
-                            '& svg': {
-                              transition: '0.2s',
-                              transform:
-                                header.column.getIsSorted() as string === 'desc' ? 'rotate(180deg)' : 'rotate(0deg)',
-                            },
-                          }}
-                        >
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                        </Link>
+                            component='button'
+                            onClick={header.column.getToggleSortingHandler()}
+                            sx={{
+                              fontWeight: 'bold',
+                              display: 'flex',
+                              alignItems: 'center',
+                              '& svg': {
+                                transition: '0.2s',
+                                transform:
+                                  header.column.getIsSorted() as string === 'desc' ? 'rotate(180deg)' : 'rotate(0deg)',
+                              },
+                            }}
+                          >
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            {header.column.getIsSorted() && <ArrowDropDownIcon />}
+                          </Link>
                         : flexRender(header.column.columnDef.header, header.getContext())
                       }
                     </th>
@@ -179,8 +178,8 @@ const TrivyVulnerabilitiesPage = () => {
             <tbody>
               {table.getRowModel().rows.map(row => <Row key={row.id} row={row} />)}
             </tbody>
-          </Table>
-        </Sheet>
+          </table>
+        </Box>
       </Stack>
     </Stack>
   );

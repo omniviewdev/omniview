@@ -1,9 +1,9 @@
 import React from 'react';
 
 // Material-ui
-import Stack from '@mui/joy/Stack';
-import Typography from '@mui/joy/Typography';
-import Chip from '@mui/joy/Chip';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Chip } from '@omniviewdev/ui';
 
 // Types
 import { type SectionSelection } from '.';
@@ -66,11 +66,11 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
             <Stack key={id} direction={'column'} gap={0.5}>
               <Stack direction={'column'}>
                 <Stack direction={'row'} justifyContent={'space-between'}>
-                  <Typography level='title-sm'>{setting.label}</Typography>
-                  {showSettingID && sectionID !== 'plugin' && <Chip size='sm' variant='outlined' sx={{ borderRadius: 4 }}>{`${sectionID}.${id}`}</Chip>}
-                  {showSettingID && sectionID === 'plugin' && <Chip size='sm' variant='outlined' sx={{ borderRadius: 4 }}>{`${id}`}</Chip>}
+                  <Text weight='semibold' size='sm'>{setting.label}</Text>
+                  {showSettingID && sectionID !== 'plugin' && <Chip size='sm' variant='outlined' sx={{ borderRadius: 4 }} label={`${sectionID}.${id}`} />}
+                  {showSettingID && sectionID === 'plugin' && <Chip size='sm' variant='outlined' sx={{ borderRadius: 4 }} label={`${id}`} />}
                 </Stack>
-                <Typography level='body-xs' color='neutral'>{setting.description}</Typography>
+                <Text size='xs' sx={{ color: 'text.secondary' }}>{setting.description}</Text>
               </Stack>
               <SettingsEntry
                 setting={setting}

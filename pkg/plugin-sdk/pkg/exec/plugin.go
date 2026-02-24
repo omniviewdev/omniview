@@ -42,7 +42,10 @@ type Plugin struct {
 }
 
 func (p *Plugin) GRPCServer(_ *plugin.GRPCBroker, s *grpc.Server) error {
-	proto.RegisterExecPluginServer(s, &PluginServer{log: hclog.Default(), Impl: p.Impl})
+	proto.RegisterExecPluginServer(s, &PluginServer{
+		log:  hclog.Default(),
+		Impl: p.Impl,
+	})
 	return nil
 }
 

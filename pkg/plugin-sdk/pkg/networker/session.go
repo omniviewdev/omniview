@@ -125,7 +125,7 @@ func NewPortForwardSessionFromProto(s *proto.PortForwardSession) *PortForwardSes
 		CreatedAt:      s.GetCreatedAt().AsTime(),
 		UpdatedAt:      s.GetUpdatedAt().AsTime(),
 		Labels:         s.GetLabels(),
-		State:          SessionState(s.GetState()),
+		State:          SessionState(s.GetState().String()),
 		Encryption:     PortForwardSessionEncryptionFromProto(s.GetEncryption()),
 		ConnectionType: connectionType,
 		Connection:     connection,

@@ -2,9 +2,9 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 
 // Material-ui
-import Box from '@mui/joy/Box';
-import IconButton from '@mui/joy/IconButton';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Text } from '@omniviewdev/ui/typography';
 
 // Project imports
 import { Icon } from '@/components/icons/Icon';
@@ -43,17 +43,16 @@ const HeaderContextArea: React.FC<Props> = ({ icon, title, iconLink, onIconClick
     {iconLink || onIconClick ? (
       <IconButton
         size='sm'
-        variant='soft'
+        emphasis='soft'
         // Sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-        href={iconLink}
       >
         {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       </IconButton>
     ) : (
-      <Typography component='h1' fontWeight='xl'>
+      <Text weight='semibold'>
         {icon}
         {title}
-      </Typography>
+      </Text>
     )}
   </Box>
 );

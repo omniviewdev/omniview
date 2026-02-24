@@ -1,10 +1,10 @@
 import React from 'react';
 
 // Material-ui
-import Box from '@mui/joy/Box';
-import Input from '@mui/joy/Input';
-import IconButton from '@mui/joy/IconButton';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import { TextField } from '@omniviewdev/ui/inputs';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Text } from '@omniviewdev/ui/typography';
 
 // Icons
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
@@ -25,16 +25,15 @@ const HeaderSearchArea: React.FC = () => (
       WebkitUserSelect: 'none',
     }}
   >
-    <Input
-      size='sm'
-      variant='outlined'
+    <TextField
+      size='xs'
       placeholder='Search anything…'
-      startDecorator={<SearchRoundedIcon color='primary' fontSize='small' />}
-      endDecorator={
-        <IconButton variant='outlined' color='neutral'>
-          <Typography fontWeight='lg' fontSize='sm' textColor='text.icon'>
+      startAdornment={<SearchRoundedIcon color='primary' fontSize='small' />}
+      endAdornment={
+        <IconButton emphasis='outline' color='neutral' size='sm'>
+          <Text size='sm'>
             ⌘ + k
-          </Typography>
+          </Text>
         </IconButton>
       }
       sx={{

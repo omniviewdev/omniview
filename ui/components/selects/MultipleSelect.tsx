@@ -1,12 +1,10 @@
 import React from 'react';
 
 // Material-ui
-import Box from '@mui/joy/Box';
-import Select from '@mui/joy/Select';
-import Option from '@mui/joy/Option';
-import Chip from '@mui/joy/Chip';
-import ChipDelete from '@mui/joy/ChipDelete';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import { Select } from '@omniviewdev/ui/inputs';
+import { Chip } from '@omniviewdev/ui';
+import { Text } from '@omniviewdev/ui/typography';
 
 // Icons
 import { LuGroup } from 'react-icons/lu';
@@ -41,31 +39,28 @@ const MultipleSelect: React.FC<Props> = ({ values, options, onChange, placeholde
   return (
     <Select
       multiple
-      startDecorator={<LuGroup />}
+      startAdornment={<LuGroup />}
       value={values}
       onChange={handleChange}
       placeholder={
         placeholder && (
-          <Chip variant='soft' color='neutral' sx={{ borderRadius: 2 }}>
-            {placeholder}
-          </Chip>
+          <Chip emphasis='soft' color='neutral' label={placeholder} sx={{ borderRadius: 2 }} />
         )
       }
       renderValue={selected => (
         <Box sx={{ display: 'flex', gap: '0.25rem' }}>
           {selected.map(selectedOption => (
             <Chip
-              variant='outlined'
+              emphasis='outline'
               color='neutral'
-              endDecorator={<ChipDelete onDelete={() => {
+              label={selectedOption.label}
+              onDelete={() => {
                 handleDelete(selectedOption.value);
-              }} />}
+              }}
               sx={{
                 borderRadius: 2,
               }}
-            >
-              {selectedOption.label}
-            </Chip>
+            />
           ))}
         </Box>
       )}
@@ -84,13 +79,11 @@ const MultipleSelect: React.FC<Props> = ({ values, options, onChange, placeholde
           },
         },
       }}
-    >
-      {options.map(o => (
-        <Option key={o} value={o}>
-          <Typography level='body-sm'>{o}</Typography>
-        </Option>
-      ))}
-    </Select>
+      options={options.map(o => ({
+        value: o,
+        label: o,
+      }))}
+    />
   );
 };
 

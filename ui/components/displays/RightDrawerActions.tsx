@@ -1,15 +1,9 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 
-import {
-  ButtonGroup,
-  Dropdown,
-  Tooltip,
-  IconButton,
-  MenuItem,
-  MenuButton,
-  Menu,
-  ListItemDecorator,
-} from '@mui/joy';
+import { Tooltip } from '@omniviewdev/ui/overlays';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { DropdownMenu } from '@omniviewdev/ui/menus';
+import Box from '@mui/material/Box';
 
 import { DrawerComponentAction, DrawerContext, type DrawerComponentActionListItem } from '@omniviewdev/runtime';
 
@@ -27,15 +21,16 @@ const RightDrawerActions: React.FC<Props> = ({ ctx, actions }) => {
   }
 
   return (
-    <ButtonGroup
+    <Box
       id={'actions-menu'}
-      size='sm'
       sx={{
-        '--ButtonGroup-separatorSize': '0px',
+        display: 'flex',
+        flexDirection: 'row',
+        gap: 0,
       }}
     >
       {actions.map((action, i) => <RightDrawerAction key={i} ctx={ctx} action={action} />)}
-    </ButtonGroup>
+    </Box>
   )
 }
 
@@ -80,7 +75,7 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
   // Simple action button (no list)
   if (!!action.action && !action.list) {
     return (
-      <Tooltip arrow title={action.title} variant='soft'>
+      <Tooltip arrow content={action.title} emphasis='soft'>
         <span>
           <IconButton
             disabled={checkIsDisabled()}
@@ -96,7 +91,7 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
   // List action with single item: click directly triggers the action
   if (!!action.list && listItems.length === 1) {
     return (
-      <Tooltip arrow title={action.title} variant='soft'>
+      <Tooltip arrow content={action.title} emphasis='soft'>
         <span>
           <IconButton
             disabled={checkIsDisabled()}
@@ -116,37 +111,28 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        <Dropdown open={open} onOpenChange={(_e, isOpen) => setOpen(isOpen)}>
-          <MenuButton
-            slots={{ root: IconButton }}
-            disabled={checkIsDisabled()}
-          >
-            {action.icon}
-          </MenuButton>
-          <Menu
-            size='sm'
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            sx={{ zIndex: 9999 }}
-          >
-            {listItems.map((item, i) => (
-              <MenuItem
-                key={i}
-                sx={{ px: 1, minWidth: '100px' }}
-                onClick={() => {
-                  item.action(ctx);
-                  setOpen(false);
-                }}
-              >
-                {item.icon && <ListItemDecorator>
-                  {item.icon}
-                </ListItemDecorator>
-                }
-                {item.title}
-              </MenuItem>
-            ))}
-          </Menu>
-        </Dropdown>
+        <DropdownMenu
+          trigger={
+            <Tooltip arrow content={action.title} emphasis='soft'>
+              <span>
+                <IconButton
+                  disabled={checkIsDisabled()}
+                >
+                  {action.icon}
+                </IconButton>
+              </span>
+            </Tooltip>
+          }
+          items={listItems.map((item, i) => ({
+            key: String(i),
+            label: item.title,
+            icon: item.icon,
+            onClick: () => {
+              item.action(ctx);
+              setOpen(false);
+            },
+          }))}
+        />
       </span>
     )
   }

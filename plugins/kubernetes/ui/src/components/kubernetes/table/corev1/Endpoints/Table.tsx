@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuListEnd, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuListEnd, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import EndpointsSidebar from './Sidebar'
 import ChipList from '../../shared/cells/ChipList'
 
@@ -72,18 +72,7 @@ const EndpointsTable: React.FC = () => {
   const drawer: DrawerComponent<Endpoints> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuListEnd />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <EndpointsSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: EndpointsSidebar }),
     actions: [
       {
         title: 'Delete',

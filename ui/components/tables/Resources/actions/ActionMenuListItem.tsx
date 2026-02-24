@@ -1,11 +1,10 @@
 import React from 'react';
 
 // material ui
-import Dropdown from '@mui/joy/Dropdown';
-import MenuButton from '@mui/joy/MenuButton';
-import IconButton from '@mui/joy/IconButton';
-import Typography from '@mui/joy/Typography';
-import { Stack } from '@mui/joy';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { DropdownMenu } from '@omniviewdev/ui/menus';
+import { Text } from '@omniviewdev/ui/typography';
+import { Stack } from '@omniviewdev/ui/layout';
 
 type ActionMenuListItemProps = {
   icon: React.ReactElement;
@@ -56,34 +55,29 @@ function ActionMenuListItem({
   };
 
   return (
-    <Dropdown
-      open={open}
-      onOpenChange={(_, isOpen) => {
-        if (isOpen) {
-          onOpen?.();
+    <div
+      style={{ display: 'flex', flex: 1 }}
+      onMouseDown={() => {
+        internalOpen.current = open;
+      }}
+      onClick={() => {
+        if (!internalOpen.current) {
+          onOpen();
         }
       }}
+      onMouseEnter={() => {
+        onOpen();
+        isOnButton.current = true;
+      }}
+      onMouseLeave={() => {
+        isOnButton.current = false;
+      }}
+      onKeyDown={handleButtonKeyDown}
     >
-      <MenuButton
+      <IconButton
         size="sm"
-        slots={{ root: IconButton }}
-        slotProps={{ root: { variant: 'plain', color: 'neutral', width: '100%', borderRadius: '2px' } }}
-        onMouseDown={() => {
-          internalOpen.current = open;
-        }}
-        onClick={() => {
-          if (!internalOpen.current) {
-            onOpen();
-          }
-        }}
-        onMouseEnter={() => {
-          onOpen();
-          isOnButton.current = true;
-        }}
-        onMouseLeave={() => {
-          isOnButton.current = false;
-        }}
-        onKeyDown={handleButtonKeyDown}
+        emphasis="ghost"
+        color="neutral"
         sx={{
           display: 'flex',
           flex: 1,
@@ -94,18 +88,18 @@ function ActionMenuListItem({
           },
         }}
       >
-        <Stack 
-          direction='row' 
-          spacing={1} 
+        <Stack
+          direction='row'
+          spacing={1}
           flex={1}
           px={1}
-          alignItems={'center'} 
+          alignItems={'center'}
           justifyContent='flex-start'>
           {icon}
-          <Typography sx={{ pl: 0.5 }} level='body-sm'>{children}</Typography>
+          <Text sx={{ pl: 0.5 }} size='sm'>{children}</Text>
         </Stack>
-      </MenuButton>
-      {React.cloneElement(menu, {
+      </IconButton>
+      {open && React.cloneElement(menu, {
         onMouseLeave: () => {
           onLeaveMenu(() => isOnButton.current);
         },
@@ -119,7 +113,7 @@ function ActionMenuListItem({
         },
         placement: 'left-start',
       })}
-    </Dropdown>
+    </div>
   );
 }
 

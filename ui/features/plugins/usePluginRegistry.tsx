@@ -1,8 +1,8 @@
 import React from 'react';
-import PluginRegistryContext from './PluginRegistryContext';
+import { PluginRegistryContext } from './PluginRegistryProvider';
 
 /**
- * UsePluginContext provides the current plugin that is within scope.
+ * Hook to access the plugin registry context (ready state, failed plugins, retry).
  */
 export const usePluginRegistry = () => {
   const context = React.useContext(PluginRegistryContext);

@@ -1,13 +1,10 @@
 import React from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Divider,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Card } from '@omniviewdev/ui';
 
 type Props = {
   title: string;
@@ -39,7 +36,7 @@ const FormSection: React.FC<Props> = ({
 }) => {
   return (
     <Card
-      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 'sm', gap: '0px' }}
+      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 1, gap: '0px' }}
       variant='outlined'
     >
       <Box sx={{ py: 1, px: 1.25 }}>
@@ -47,48 +44,47 @@ const FormSection: React.FC<Props> = ({
           <Stack spacing={0.25}>
             <Stack direction='row' spacing={1} alignItems='center'>
               {icon}
-              <Typography level='title-sm'>{title}</Typography>
+              <Text weight="semibold" size="sm">{title}</Text>
             </Stack>
             {description && (
-              <Typography level='body-xs' color='neutral'>{description}</Typography>
+              <Text size="xs" color="neutral">{description}</Text>
             )}
           </Stack>
           <Stack direction='row' spacing={0.5}>
             {dangerAction && (
               <Button
                 size='sm'
-                variant='soft'
-                color='danger'
-                loading={dangerAction.loading}
+                emphasis='soft'
+                color='error'
                 onClick={dangerAction.onClick}
               >
-                {dangerAction.label}
+                {dangerAction.loading ? 'Loading...' : dangerAction.label}
               </Button>
             )}
             {onReset && (
-              <Button size='sm' variant='plain' color='neutral' disabled={!dirty || saving} onClick={onReset}>
+              <Button size='sm' emphasis='ghost' color='neutral' disabled={!dirty || saving} onClick={onReset}>
                 Reset
               </Button>
             )}
             {onSave && (
-              <Button size='sm' variant='soft' color='primary' disabled={!dirty || saving} loading={saving} onClick={onSave}>
-                Save
+              <Button size='sm' emphasis='soft' color='primary' disabled={!dirty || saving} onClick={onSave}>
+                {saving ? 'Saving...' : 'Save'}
               </Button>
             )}
           </Stack>
         </Stack>
       </Box>
       <Divider />
-      <CardContent
+      <Box
         sx={{
           p: 1.5,
-          backgroundColor: 'background.level1',
+          backgroundColor: 'background.paper',
           borderBottomRightRadius: 6,
           borderBottomLeftRadius: 6,
         }}
       >
         {children}
-      </CardContent>
+      </Box>
     </Card>
   );
 };

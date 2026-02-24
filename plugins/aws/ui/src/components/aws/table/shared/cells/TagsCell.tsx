@@ -1,5 +1,7 @@
 import React from 'react';
-import { Chip, Stack, Tooltip, Typography } from '@mui/joy';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Chip } from '@omniviewdev/ui';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 
 type Tag = { Key?: string; Value?: string };
 
@@ -17,16 +19,12 @@ const TagsCell: React.FC<Props> = ({ tags, max = 3 }) => {
   return (
     <Stack direction='row' gap={0.5} flexWrap='nowrap' overflow='hidden'>
       {visible.map((tag, i) => (
-        <Tooltip key={i} title={`${tag.Key}=${tag.Value}`} size='sm'>
-          <Chip size='sm' variant='soft' color='neutral' sx={{ borderRadius: 'sm', maxWidth: 120 }}>
-            <Typography level='body-xs' noWrap>{tag.Key}</Typography>
-          </Chip>
+        <Tooltip key={i} title={`${tag.Key}=${tag.Value}`}>
+          <Chip size='sm' variant='filled' color='default' label={tag.Key} sx={{ borderRadius: 1, maxWidth: 120 }} />
         </Tooltip>
       ))}
       {remaining > 0 && (
-        <Chip size='sm' variant='outlined' color='neutral' sx={{ borderRadius: 'sm' }}>
-          +{remaining}
-        </Chip>
+        <Chip size='sm' variant='outlined' color='default' label={`+${remaining}`} sx={{ borderRadius: 1 }} />
       )}
     </Stack>
   );

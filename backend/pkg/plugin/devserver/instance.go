@@ -131,18 +131,22 @@ func (inst *DevServerInstance) Start() error {
 }
 
 // Stop gracefully stops both the Vite process and Go watcher.
+// Sub-processes are stopped BEFORE the context is cancelled so that their
+// Stop methods can still look up and signal the process group.
 func (inst *DevServerInstance) Stop() {
 	inst.logger.Info("stopping dev server instance")
 
-	inst.cancel()
-
+	// Stop sub-processes FIRST while the context is still alive,
+	// so they can do graceful SIGTERM → SIGKILL on the process group.
 	if inst.vite != nil {
 		inst.vite.Stop()
 	}
-
 	if inst.goWatcher != nil {
 		inst.goWatcher.Stop()
 	}
+
+	// NOW cancel the context (no-op for already-stopped processes).
+	inst.cancel()
 
 	inst.setViteStatus(DevProcessStatusStopped)
 	inst.setGoStatus(DevProcessStatusStopped)
@@ -184,6 +188,14 @@ func (inst *DevServerInstance) GetLogs(count int) []LogEntry {
 		return inst.logBuffer.Entries()
 	}
 	return inst.logBuffer.Last(count)
+}
+
+// VitePGID returns the process group ID of the Vite child process, or 0.
+func (inst *DevServerInstance) VitePGID() int {
+	if inst.vite == nil {
+		return 0
+	}
+	return inst.vite.PGID()
 }
 
 // ============================================================================

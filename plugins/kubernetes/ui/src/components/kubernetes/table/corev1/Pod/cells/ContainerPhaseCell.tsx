@@ -1,7 +1,7 @@
-import React, { ComponentProps } from "react"
-import { Typography } from "@mui/joy"
+import React from "react"
+import { Text } from "@omniviewdev/ui/typography"
 
-const colorMap: Record<string, ComponentProps<typeof Typography>['color']> = {
+const colorMap: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = {
   "Active": "success",
   "Pending": "warning",
   "Running": "success",
@@ -22,7 +22,7 @@ const ContainerPhaseCell: React.FC<Props> = ({ value }) => {
     return <></>
   }
   return (
-    <Typography color={colorMap[value]}>{value}</Typography>
+    <Text color={colorMap[value]}>{value}</Text>
   )
 }
 

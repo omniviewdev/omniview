@@ -1,6 +1,10 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { Box, Chip, CircularProgress, Stack, Typography } from '@mui/joy';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Chip } from '@omniviewdev/ui';
 import { LuCode, LuContainer, LuPencil, LuSquareChartGantt } from 'react-icons/lu';
 import { useResources, DrawerComponent } from '@omniviewdev/runtime';
 import get from 'lodash.get';
@@ -37,7 +41,7 @@ const EKSClusterDetailPage: React.FC = () => {
   if (resources.isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <CircularProgress size='md' />
+        <CircularProgress size={32} />
       </Box>
     );
   }
@@ -45,7 +49,7 @@ const EKSClusterDetailPage: React.FC = () => {
   if (!cluster) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <Typography level='body-md' color='neutral'>Cluster not found: {resourceId}</Typography>
+        <Text>Cluster not found: {resourceId}</Text>
       </Box>
     );
   }
@@ -156,12 +160,10 @@ const EKSClusterDetailPage: React.FC = () => {
                         <Stack spacing={0.5}>
                           {clusterLogging.map((entry: { Types?: string[]; Enabled?: boolean }, i: number) => (
                             <Stack key={i} direction='row' spacing={1} alignItems='center'>
-                              <Typography level='body-xs' fontFamily='monospace'>
+                              <Text size="xs" sx={{ fontFamily: 'monospace' }}>
                                 {Array.isArray(entry.Types) ? entry.Types.join(', ') : 'Unknown'}
-                              </Typography>
-                              <Chip size='sm' variant='soft' color={entry.Enabled ? 'success' : 'neutral'} sx={{ borderRadius: 'sm' }}>
-                                {entry.Enabled ? 'Enabled' : 'Disabled'}
-                              </Chip>
+                              </Text>
+                              <Chip size='sm' label={entry.Enabled ? 'Enabled' : 'Disabled'} color={entry.Enabled ? 'success' : 'default'} variant='filled' sx={{ borderRadius: 'sm' }} />
                             </Stack>
                           ))}
                         </Stack>

@@ -7,6 +7,8 @@ export default {
     '^@/(.*)$': '<rootDir>/ui/$1',
     '^@omniviewdev/runtime$': '<rootDir>/packages/omniviewdev-runtime/src/index',
     '^@omniviewdev/runtime/(.*)$': '<rootDir>/packages/omniviewdev-runtime/src/$1',
+    '^@omniviewdev/ui$': '<rootDir>/packages/omniviewdev-ui/src/index',
+    '^@omniviewdev/ui/(.*)$': '<rootDir>/packages/omniviewdev-ui/src/$1',
   },
   testPathIgnorePatterns: [
     '<rootDir>/node_modules/',

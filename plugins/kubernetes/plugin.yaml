@@ -19,6 +19,7 @@ capabilities:
     - exec
     - networker
     - log
+    - metric
 theme:
     colors:
         primary: '#326CE5'

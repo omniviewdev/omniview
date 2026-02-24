@@ -1,11 +1,10 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Box,
-  Grid,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Grid from '@mui/material/Grid';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import type { ChartTimeRange } from '@omniviewdev/ui/charts';
 import {
   LuBox,
   LuCalendarClock,
@@ -17,11 +16,15 @@ import {
 import {
   useConnection,
   useExtensionPoint,
+  usePluginRouter,
   useResources,
 } from '@omniviewdev/runtime';
 
+import { useClusterPreferences } from '../../../hooks/useClusterPreferences';
 import NamespaceSelect from '../../../components/tables/NamespaceSelect';
 import ClusterInfoCard from './components/ClusterInfoCard';
+import ClusterMetricsSection from './components/ClusterMetricsSection';
+import ClusterResourceGauges from './components/ClusterResourceGauges';
 import WorkloadSummaryCard from './components/WorkloadSummaryCard';
 import EventsTable from './EventsTable';
 
@@ -34,9 +37,20 @@ function filterByNamespace(resources: KubeResource[], namespaces: string[]): Kub
 
 const ClusterDashboardOverviewPage: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>();
+  const { navigate } = usePluginRouter();
   const [namespaces, setNamespaces] = React.useState<string[]>([]);
+  const [timeRange, setTimeRange] = React.useState<ChartTimeRange>({
+    from: new Date(Date.now() - 3600000),
+    to: new Date(),
+  });
+
+  const goToResource = React.useCallback((resourceKey: string) => {
+    navigate(`/cluster/${id}/resources/${resourceKey}`);
+  }, [navigate, id]);
 
   const { connection } = useConnection({ pluginID: 'kubernetes', connectionID: id });
+  const { connectionOverrides } = useClusterPreferences('kubernetes');
+  const metricConfig = connectionOverrides[id]?.metricConfig;
 
   // --- Resource hooks ---
   const { resources: pods } = useResources({
@@ -248,7 +262,7 @@ const ClusterDashboardOverviewPage: React.FC = () => {
 
   return (
     <Box sx={{ p: 1.5, overflow: 'auto', height: '100%', width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}>
-      <Stack gap={1.5} sx={{ flex: 1, minHeight: 0 }}>
+      <Stack gap={1.5}>
         {/* Cluster info + health status */}
         <ClusterInfoCard
           data={connection.data?.data}
@@ -260,67 +274,88 @@ const ClusterDashboardOverviewPage: React.FC = () => {
 
         {/* Namespace filter */}
         <Stack direction='row' alignItems='center' gap={1}>
-          <Typography level='body-sm' sx={{ color: 'text.secondary' }}>Namespace:</Typography>
+          <Text size='sm' sx={{ color: 'text.secondary' }}>Namespace:</Text>
           <NamespaceSelect connectionID={id} selected={namespaces} setNamespaces={setNamespaces} />
         </Stack>
 
         {/* Workload summary cards — 6 columns */}
         <Grid container spacing={1.5}>
-          <Grid xs={12} sm={6} md={2}>
+          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
             <WorkloadSummaryCard
               title='Pods'
               icon={<LuContainer size={14} />}
               total={podStats.total}
               statuses={podStats.statuses}
               loading={pods.isLoading}
+              onClick={() => goToResource('core_v1_Pod')}
             />
           </Grid>
-          <Grid xs={12} sm={6} md={2}>
+          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
             <WorkloadSummaryCard
               title='Deployments'
               icon={<LuBox size={14} />}
               total={deployStats.total}
               statuses={deployStats.statuses}
               loading={deployments.isLoading}
+              onClick={() => goToResource('apps_v1_Deployment')}
             />
           </Grid>
-          <Grid xs={12} sm={6} md={2}>
+          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
             <WorkloadSummaryCard
               title='StatefulSets'
               icon={<LuDatabase size={14} />}
               total={stsStats.total}
               statuses={stsStats.statuses}
               loading={statefulSets.isLoading}
+              onClick={() => goToResource('apps_v1_StatefulSet')}
             />
           </Grid>
-          <Grid xs={12} sm={6} md={2}>
+          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
             <WorkloadSummaryCard
               title='DaemonSets'
               icon={<LuNetwork size={14} />}
               total={dsStats.total}
               statuses={dsStats.statuses}
               loading={daemonSets.isLoading}
+              onClick={() => goToResource('apps_v1_DaemonSet')}
             />
           </Grid>
-          <Grid xs={12} sm={6} md={2}>
+          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
             <WorkloadSummaryCard
               title='Jobs'
               icon={<LuListChecks size={14} />}
               total={jobStats.total}
               statuses={jobStats.statuses}
               loading={jobs.isLoading}
+              onClick={() => goToResource('batch_v1_Job')}
             />
           </Grid>
-          <Grid xs={12} sm={6} md={2}>
+          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
             <WorkloadSummaryCard
               title='CronJobs'
               icon={<LuCalendarClock size={14} />}
               total={cronJobStats.total}
               statuses={cronJobStats.statuses}
               loading={cronJobs.isLoading}
+              onClick={() => goToResource('batch_v1_CronJob')}
             />
           </Grid>
         </Grid>
+
+        {/* Resource capacity gauges */}
+        <ClusterResourceGauges
+          connectionID={id}
+          metricConfig={metricConfig}
+        />
+
+        {/* Cluster metrics */}
+        <ClusterMetricsSection
+          connectionID={id}
+          namespace={namespaces[0] || ''}
+          timeRange={timeRange}
+          onTimeRangeChange={setTimeRange}
+          metricConfig={metricConfig}
+        />
 
         {/* Extension widget slot */}
         {widgets.length > 0 && (
@@ -328,7 +363,7 @@ const ClusterDashboardOverviewPage: React.FC = () => {
             {widgets.map((w) => {
               const Component = w.component as unknown as React.FC<{ pluginID: string; connectionID: string }>;
               return (
-                <Grid key={w.id} xs={12} sm={6} md={4}>
+                <Grid key={w.id} size={{ xs: 12, sm: 6, md: 4 }}>
                   <Component pluginID='kubernetes' connectionID={id} />
                 </Grid>
               );
@@ -336,13 +371,13 @@ const ClusterDashboardOverviewPage: React.FC = () => {
           </Grid>
         )}
 
-        {/* Recent events — fills remaining space */}
-        <Stack gap={0.75} sx={{ flex: 1, minHeight: 0 }}>
-          <Typography level='title-sm'>
+        {/* Recent events — responsive height, scrolls independently */}
+        <Stack gap={0.75}>
+          <Text weight='semibold' size='sm'>
             Recent Events ({allEvents.length})
-          </Typography>
-          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-            <EventsTable events={allEvents} loading={events.isLoading} />
+          </Text>
+          <Box sx={{ height: 'clamp(300px, 40vh, 600px)', overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+            <EventsTable events={allEvents} loading={events.isLoading} connectionID={id} />
           </Box>
         </Stack>
       </Stack>

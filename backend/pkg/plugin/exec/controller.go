@@ -129,6 +129,19 @@ func (c *controller) runLocalMux() {
 			switch output.Signal {
 			case exec.StreamSignalNone:
 				eventkey = "core/exec/stream/" + output.Target.String() + "/" + output.SessionID
+			case exec.StreamSignalError:
+				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
+				if output.Error != nil {
+					runtime.EventsEmit(c.ctx, eventkey, output.Error)
+				} else {
+					runtime.EventsEmit(c.ctx, eventkey, map[string]interface{}{
+						"title":      "Session error",
+						"message":    string(output.Data),
+						"suggestion": "The session encountered an error.",
+						"retryable":  false,
+					})
+				}
+				continue
 			case exec.StreamSignalClose:
 				c.logger.Debug("closing session")
 				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
@@ -169,6 +182,19 @@ func (c *controller) runMux() {
 			switch output.Signal {
 			case exec.StreamSignalNone:
 				eventkey = "core/exec/stream/" + output.Target.String() + "/" + output.SessionID
+			case exec.StreamSignalError:
+				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
+				if output.Error != nil {
+					runtime.EventsEmit(c.ctx, eventkey, output.Error)
+				} else {
+					runtime.EventsEmit(c.ctx, eventkey, map[string]interface{}{
+						"title":      "Session error",
+						"message":    string(output.Data),
+						"suggestion": "The session encountered an error.",
+						"retryable":  false,
+					})
+				}
+				continue
 			case exec.StreamSignalClose:
 				c.logger.Debug("closing session")
 				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID

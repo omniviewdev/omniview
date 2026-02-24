@@ -1,20 +1,15 @@
 import React from 'react';
 
 // Material-ui
-import List from '@mui/joy/List';
-import ListSubheader from '@mui/joy/ListSubheader';
-import ListItem from '@mui/joy/ListItem';
-import ListItemButton from '@mui/joy/ListItemButton';
-import ListItemDecorator from '@mui/joy/ListItemDecorator';
-import ListItemContent from '@mui/joy/ListItemContent';
+import { List, ListItem, ListSubheader, Avatar } from '@omniviewdev/ui';
 
 // Custom
 import Icon from '@/components/icons/Icon';
 import { type SectionSelection, Section } from '.';
 import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
-import { Avatar } from '@mui/joy';
 import { IsImage } from '@/utils/url';
+import Box from '@mui/material/Box';
 
 type Props = {
   selected: SectionSelection;
@@ -47,7 +42,7 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
       }}>
       {/** Core section */}
       <ListItem key={Section.Core} nested>
-        <ListSubheader variant='outlined'>
+        <ListSubheader>
           {Section.Core}
         </ListSubheader>
         <List
@@ -59,32 +54,46 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
         >
           {Object.values(settings.data).map(category => (
             <ListItem key={category.id}>
-              <ListItemButton
-                selected={selected.id === category.id && selected.section === Section.Core}
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  p: '8px',
+                  borderRadius: 1,
+                  cursor: 'pointer',
+                  width: '100%',
+                  bgcolor: selected.id === category.id && selected.section === Section.Core ? 'action.selected' : 'transparent',
+                }}
                 onClick={() => {
                   onChange({ section: Section.Core, id: category.id });
                 }}
               >
-                <ListItemDecorator>
-                  <Icon name={category.icon} />
-                </ListItemDecorator>
-                <ListItemContent>{category.label}</ListItemContent>
-              </ListItemButton>
+                <Icon name={category.icon} />
+                <span>{category.label}</span>
+              </Box>
             </ListItem>
           ))}
 
           <ListItem key={'extensions'}>
-            <ListItemButton
-              selected={selected.id === 'extensions' && selected.section === Section.Core}
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                p: '8px',
+                borderRadius: 1,
+                cursor: 'pointer',
+                width: '100%',
+                bgcolor: selected.id === 'extensions' && selected.section === Section.Core ? 'action.selected' : 'transparent',
+              }}
               onClick={() => {
                 onChange({ section: Section.Core, id: 'extensions' });
               }}
             >
-              <ListItemDecorator>
-                <Icon name={'LuBrainCircuit'} />
-              </ListItemDecorator>
-              <ListItemContent>{'Extensions'}</ListItemContent>
-            </ListItemButton>
+              <Icon name={'LuBrainCircuit'} />
+              <span>{'Extensions'}</span>
+            </Box>
           </ListItem>
 
         </List>
@@ -92,7 +101,7 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
 
       {/** Plugins section */}
       <ListItem key={Section.Plugins} nested>
-        <ListSubheader variant='outlined'>
+        <ListSubheader>
           {Section.Plugins}
         </ListSubheader>
         <List
@@ -104,31 +113,37 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
         >
           {plugins.data?.map(plugin => (
             <ListItem key={plugin.id}>
-              <ListItemButton
-                selected={selected.id === plugin.id && selected.section === Section.Plugins}
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  p: '8px',
+                  borderRadius: 1,
+                  cursor: 'pointer',
+                  width: '100%',
+                  bgcolor: selected.id === plugin.id && selected.section === Section.Plugins ? 'action.selected' : 'transparent',
+                }}
                 onClick={() => {
                   onChange({ section: Section.Plugins, id: plugin.id });
                 }}
               >
-                <ListItemDecorator>
-                  {IsImage(plugin.metadata?.icon) ? (
-                    <Avatar
-                      size='sm'
-                      src={plugin.metadata.icon}
-                      variant='plain'
-                      sx={{
-                        borderRadius: 4,
-                        backgroundColor: 'transparent',
-                        objectFit: 'contain',
-                        border: 0,
-                        width: 20,
-                        height: 20,
-                      }}
-                    />
-                  ) : <Icon name={plugin.metadata.icon} />}
-                </ListItemDecorator>
-                <ListItemContent>{plugin.metadata.name}</ListItemContent>
-              </ListItemButton>
+                {IsImage(plugin.metadata?.icon) ? (
+                  <Avatar
+                    size='sm'
+                    src={plugin.metadata.icon}
+                    sx={{
+                      borderRadius: 4,
+                      backgroundColor: 'transparent',
+                      objectFit: 'contain',
+                      border: 0,
+                      width: 20,
+                      height: 20,
+                    }}
+                  />
+                ) : <Icon name={plugin.metadata.icon} />}
+                <span>{plugin.metadata.name}</span>
+              </Box>
             </ListItem>
           ))}
         </List>

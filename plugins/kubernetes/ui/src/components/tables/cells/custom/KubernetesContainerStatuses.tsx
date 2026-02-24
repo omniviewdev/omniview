@@ -1,13 +1,11 @@
 import React from 'react';
 
-// material ui
-import {
-  Chip,
-  Grid,
-  Sheet,
-  Tooltip,
-  Typography,
-} from '@mui/joy';
+// @omniviewdev/ui
+import Box from '@mui/material/Box';
+import Grid from '@mui/material/Grid';
+import { Chip } from '@omniviewdev/ui';
+import { Text } from '@omniviewdev/ui/typography';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 
 // project imports
 import Icon from '../../../shared/Icon';
@@ -25,39 +23,34 @@ import ContainerStatusCard from './KubernetesContainerStatusCard';
 import { formatRelative } from 'date-fns';
 
 const KeyValuePairs = ({ message }: { message: string }) => {
-  // Regex to find key=value pairs
   const regex = /(\w+)=(?:"([^"]*)"|(\S*))/g;
   const pairs = [];
 
-  // Extract all matches from the message
   let match;
   while ((match = regex.exec(message)) !== null) {
     const key = match[1];
-    const value = match[2] || match[3]; // Since the value can be in either capture group based on the presence of quotes
+    const value = match[2] || match[3];
     pairs.push({ key, value });
   }
 
   return (
-    <Sheet sx={{ p: 1, borderRadius: 'sm' }} variant='soft'>
+    <Box sx={{ p: 1, borderRadius: 'sm', bgcolor: 'background.level1' }}>
       <Grid container>
         {pairs.map((pair, index) => (
           <React.Fragment key={index}>
-            <Grid xs={2}>
-              <Typography level="body-xs">{pair.key}</Typography>
+            <Grid size={2}>
+              <Text size="xs">{pair.key}</Text>
             </Grid>
-            <Grid xs={10}>
-              <Typography level="body-xs">{pair.value}</Typography>
+            <Grid size={10}>
+              <Text size="xs">{pair.value}</Text>
             </Grid>
           </React.Fragment>
         ))}
       </Grid>
-    </Sheet>
+    </Box>
   );
 };
 
-/**
- * Details on a why a container was terminated
- */
 export const ContainerTerminatedStatusInfo: React.FC<{
   state: ContainerStateTerminated;
 }> = ({ state }) => {
@@ -78,18 +71,18 @@ export const ContainerTerminatedStatusInfo: React.FC<{
       {Object.entries(info).map(([key, value]) =>
         value ? (
           <React.Fragment key={key}>
-            <Grid xs={6}>
-              <Typography level="body-xs">{key}</Typography>
+            <Grid size={6}>
+              <Text size="xs">{key}</Text>
             </Grid>
-            <Grid xs={6}>
-              <Typography level="body-xs">{value}</Typography>
+            <Grid size={6}>
+              <Text size="xs">{value}</Text>
             </Grid>
           </React.Fragment>
         ) : null,
       )}
       {state.message &&
-        <Grid xs={12}>
-          <Chip size='sm' variant='outlined' sx={{ my: 1, borderRadius: 'sm' }}>Message</Chip>
+        <Grid size={12}>
+          <Chip size='sm' emphasis='outline' sx={{ my: 1, borderRadius: 'sm' }} label='Message' />
           <KeyValuePairs message={state.message} />
         </Grid>
       }
@@ -97,9 +90,6 @@ export const ContainerTerminatedStatusInfo: React.FC<{
   );
 };
 
-/**
- * Details on why a container is waiting
- */
 export const ContainerWaitingStatusInfo: React.FC<{
   state: ContainerStateWaiting;
 }> = ({ state }) => {
@@ -114,11 +104,11 @@ export const ContainerWaitingStatusInfo: React.FC<{
         ([key, value]) =>
           value && (
             <React.Fragment key={key}>
-              <Grid xs={6}>
-                <Typography level="body-xs">{key}</Typography>
+              <Grid size={6}>
+                <Text size="xs">{key}</Text>
               </Grid>
-              <Grid xs={6}>
-                <Typography level="body-xs">{value}</Typography>
+              <Grid size={6}>
+                <Text size="xs">{value}</Text>
               </Grid>
             </React.Fragment>
           ),
@@ -132,10 +122,10 @@ export const ContainerStatusDecorator: React.FC<{
 }> = ({ status }) => {
   const statusInfo = getStatus(status);
 
-  const getVariant = () => {
+  const getEmphasis = () => {
     switch (statusInfo.text) {
       case 'Completed':
-        return 'outlined';
+        return 'outline';
       case 'Waiting':
         return 'soft';
       default:
@@ -147,11 +137,7 @@ export const ContainerStatusDecorator: React.FC<{
     <Tooltip
       key={statusInfo.text}
       placement="top-end"
-      variant="soft"
-      sx={{
-        border: (theme) => `1px solid ${theme.palette.divider}`,
-      }}
-      title={<ContainerStatusCard status={status} />}
+      content={<ContainerStatusCard status={status} />}
     >
       <Chip
         size="sm"
@@ -160,13 +146,12 @@ export const ContainerStatusDecorator: React.FC<{
           px: 1,
         }}
         color={statusInfo.color}
-        variant={getVariant()}
-        startDecorator={
+        emphasis={getEmphasis()}
+        startAdornment={
           statusInfo.icon && <Icon name={statusInfo.icon} size={16} />
         }
-      >
-        {statusInfo.text}
-      </Chip>
+        label={statusInfo.text}
+      />
     </Tooltip>
   );
 };

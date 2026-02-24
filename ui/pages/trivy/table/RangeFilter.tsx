@@ -2,10 +2,10 @@
 /* eslint @typescript-eslint/naming-convention: 0 */
 import React, { type SyntheticEvent } from 'react';
 
-import Box from '@mui/joy/Box';
-import Slider from '@mui/joy/Slider';
+import Box from '@mui/material/Box';
+import Slider from '@mui/material/Slider';
 
-import { 
+import {
   type Column,
 } from '@tanstack/react-table';
 
@@ -34,7 +34,7 @@ export const RangeFilter: React.FC<Props> = ({ column }) => {
       <Slider
         onChangeCommitted={handleChange}
         onChange={(_, newValue) => {
-          setValue(newValue as [number, number]); 
+          setValue(newValue as [number, number]);
         }}
         value={value as [number, number]}
         valueLabelDisplay="auto"

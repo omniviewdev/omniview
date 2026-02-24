@@ -1,15 +1,11 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Divider,
-  IconButton,
-  Input,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button, IconButton } from '@omniviewdev/ui/buttons';
+import { TextField } from '@omniviewdev/ui/inputs';
+import { Card } from '@omniviewdev/ui';
 import { LuPlus, LuTrash2 } from 'react-icons/lu';
 
 export type Tag = {
@@ -75,25 +71,25 @@ const TagEditor: React.FC<Props> = ({
 
   return (
     <Card
-      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 'sm', gap: '0px' }}
+      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 1, gap: '0px' }}
       variant='outlined'
     >
       <Box sx={{ py: 1, px: 1.25 }}>
         <Stack direction='row' spacing={1} alignItems='center' justifyContent='space-between'>
           <Stack direction='row' spacing={1} alignItems='center'>
-            <Typography level='title-sm'>Tags</Typography>
-            <Typography level='body-xs' color='neutral'>({tags.length})</Typography>
+            <Text weight="semibold" size="sm">Tags</Text>
+            <Text size="xs" color="neutral">({tags.length})</Text>
           </Stack>
           {(onSave || onReset) && (
             <Stack direction='row' spacing={0.5}>
               {onReset && (
-                <Button size='sm' variant='plain' color='neutral' disabled={!dirty || saving} onClick={onReset}>
+                <Button size='sm' emphasis='ghost' color='neutral' disabled={!dirty || saving} onClick={onReset}>
                   Reset
                 </Button>
               )}
               {onSave && (
-                <Button size='sm' variant='soft' color='primary' disabled={!dirty || saving} loading={saving} onClick={onSave}>
-                  Save
+                <Button size='sm' emphasis='soft' color='primary' disabled={!dirty || saving} onClick={onSave}>
+                  {saving ? 'Saving...' : 'Save'}
                 </Button>
               )}
             </Stack>
@@ -101,10 +97,10 @@ const TagEditor: React.FC<Props> = ({
         </Stack>
       </Box>
       <Divider />
-      <CardContent
+      <Box
         sx={{
           p: 0,
-          backgroundColor: 'background.level1',
+          backgroundColor: 'background.paper',
           borderBottomRightRadius: 6,
           borderBottomLeftRadius: 6,
         }}
@@ -115,8 +111,8 @@ const TagEditor: React.FC<Props> = ({
           spacing={1}
           sx={{ px: 1.5, py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}
         >
-          <Typography level='body-xs' fontWeight={700} sx={{ flex: 1 }}>Key</Typography>
-          <Typography level='body-xs' fontWeight={700} sx={{ flex: 1 }}>Value</Typography>
+          <Text size="xs" sx={{ fontWeight: 700, flex: 1 }}>Key</Text>
+          <Text size="xs" sx={{ fontWeight: 700, flex: 1 }}>Value</Text>
           {!readOnly && <Box sx={{ width: 32 }} />}
         </Stack>
 
@@ -130,33 +126,33 @@ const TagEditor: React.FC<Props> = ({
             sx={{
               px: 1.5,
               py: 0.25,
-              '&:hover': { bgcolor: 'background.level2' },
+              '&:hover': { bgcolor: 'action.hover' },
               borderBottom: i < tags.length - 1 ? '1px solid' : undefined,
               borderColor: 'divider',
             }}
           >
             {readOnly ? (
               <>
-                <Typography level='body-xs' sx={{ flex: 1, fontFamily: 'monospace' }}>{tag.Key}</Typography>
-                <Typography level='body-xs' fontWeight={600} sx={{ flex: 1, fontFamily: 'monospace' }}>{tag.Value}</Typography>
+                <Text size="xs" sx={{ flex: 1, fontFamily: 'monospace' }}>{tag.Key}</Text>
+                <Text size="xs" sx={{ fontWeight: 600, flex: 1, fontFamily: 'monospace' }}>{tag.Value}</Text>
               </>
             ) : (
               <>
-                <Input
+                <TextField
                   size='sm'
-                  variant='plain'
+                  variant='standard'
                   value={tag.Key}
-                  onChange={(e) => handleKeyChange(i, e.target.value)}
-                  sx={{ flex: 1, fontSize: 12, fontFamily: 'monospace', '--Input-focusedHighlight': 'transparent' }}
+                  onChange={(value) => handleKeyChange(i, value)}
+                  sx={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}
                 />
-                <Input
+                <TextField
                   size='sm'
-                  variant='plain'
+                  variant='standard'
                   value={tag.Value}
-                  onChange={(e) => handleValueChange(i, e.target.value)}
-                  sx={{ flex: 1, fontSize: 12, fontFamily: 'monospace', '--Input-focusedHighlight': 'transparent' }}
+                  onChange={(value) => handleValueChange(i, value)}
+                  sx={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}
                 />
-                <IconButton size='sm' variant='plain' color='danger' onClick={() => handleRemove(i)}>
+                <IconButton size='sm' emphasis='ghost' color='error' onClick={() => handleRemove(i)}>
                   <LuTrash2 size={14} />
                 </IconButton>
               </>
@@ -166,7 +162,7 @@ const TagEditor: React.FC<Props> = ({
 
         {tags.length === 0 && (
           <Box sx={{ px: 1.5, py: 1.5 }}>
-            <Typography level='body-xs' color='neutral' textAlign='center'>No tags</Typography>
+            <Text size="xs" color="neutral" sx={{ textAlign: 'center' }}>No tags</Text>
           </Box>
         )}
 
@@ -175,27 +171,25 @@ const TagEditor: React.FC<Props> = ({
           <>
             <Divider />
             <Stack direction='row' spacing={1} alignItems='center' sx={{ px: 1.5, py: 0.5 }}>
-              <Input
+              <TextField
                 size='sm'
-                variant='soft'
                 placeholder='Key'
                 value={newKey}
-                onChange={(e) => setNewKey(e.target.value)}
+                onChange={(value) => setNewKey(value)}
                 onKeyDown={handleKeyDown}
                 sx={{ flex: 1, fontSize: 12 }}
               />
-              <Input
+              <TextField
                 size='sm'
-                variant='soft'
                 placeholder='Value'
                 value={newValue}
-                onChange={(e) => setNewValue(e.target.value)}
+                onChange={(value) => setNewValue(value)}
                 onKeyDown={handleKeyDown}
                 sx={{ flex: 1, fontSize: 12 }}
               />
               <IconButton
                 size='sm'
-                variant='soft'
+                emphasis='soft'
                 color='primary'
                 disabled={!newKey.trim()}
                 onClick={handleAdd}
@@ -205,7 +199,7 @@ const TagEditor: React.FC<Props> = ({
             </Stack>
           </>
         )}
-      </CardContent>
+      </Box>
     </Card>
   );
 };

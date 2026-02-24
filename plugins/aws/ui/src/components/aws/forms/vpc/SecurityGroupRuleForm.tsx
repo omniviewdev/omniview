@@ -1,18 +1,11 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  Chip,
-  Divider,
-  FormControl,
-  FormLabel,
-  IconButton,
-  Input,
-  Option,
-  Select,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button, IconButton } from '@omniviewdev/ui/buttons';
+import { TextField, Select } from '@omniviewdev/ui/inputs';
+import { Chip } from '@omniviewdev/ui';
 import { LuPlus, LuShield, LuTrash2 } from 'react-icons/lu';
 import FormSection from '../../../shared/forms/FormSection';
 
@@ -127,22 +120,20 @@ const RuleRowDisplay: React.FC<{
     direction='row'
     spacing={1}
     alignItems='center'
-    sx={{ px: 1.5, py: 0.5, '&:hover': { bgcolor: 'background.level2' } }}
+    sx={{ px: 1.5, py: 0.5, '&:hover': { bgcolor: 'action.hover' } }}
   >
-    <Chip size='sm' variant='outlined' sx={{ borderRadius: 'sm', minWidth: 70, justifyContent: 'center' }}>
-      {protocolLabel(rule.protocol)}
-    </Chip>
-    <Typography level='body-xs' fontFamily='monospace' sx={{ minWidth: 80, textAlign: 'center' }}>
+    <Chip size='sm' variant='outlined' label={protocolLabel(rule.protocol)} sx={{ borderRadius: 1, minWidth: 70, justifyContent: 'center' }} />
+    <Text size="xs" sx={{ fontFamily: 'monospace', minWidth: 80, textAlign: 'center' }}>
       {portDisplay(rule)}
-    </Typography>
-    <Typography level='body-xs' fontFamily='monospace' sx={{ flex: 1, minWidth: 0 }}>
+    </Text>
+    <Text size="xs" sx={{ fontFamily: 'monospace', flex: 1, minWidth: 0 }}>
       {rule.source || 'Any'}
-    </Typography>
-    <Typography level='body-xs' color='neutral' sx={{ flex: 0.7, minWidth: 0 }} noWrap>
+    </Text>
+    <Text size="xs" color="neutral" sx={{ flex: 0.7, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
       {rule.description}
-    </Typography>
+    </Text>
     {!readOnly && (
-      <IconButton size='sm' variant='plain' color='danger' onClick={onRemove}>
+      <IconButton size='sm' emphasis='ghost' color='error' onClick={onRemove}>
         <LuTrash2 size={14} />
       </IconButton>
     )}
@@ -172,59 +163,60 @@ const AddRuleForm: React.FC<{
   return (
     <Stack spacing={1} sx={{ p: 1.5 }}>
       <Stack direction='row' spacing={1} flexWrap='wrap'>
-        <FormControl size='sm' sx={{ minWidth: 130 }}>
-          <FormLabel>Protocol</FormLabel>
-          <Select size='sm' value={protocol} onChange={(_, v) => setProtocol(v || '-1')}>
-            {PROTOCOL_OPTIONS.map((opt) => (
-              <Option key={opt.value} value={opt.value}>{opt.label}</Option>
-            ))}
-          </Select>
-        </FormControl>
+        <Box sx={{ minWidth: 130 }}>
+          <Text size="xs" sx={{ mb: 0.5 }}>Protocol</Text>
+          <Select
+            size='sm'
+            value={protocol}
+            onChange={(value) => setProtocol((value as string) || '-1')}
+            options={PROTOCOL_OPTIONS}
+          />
+        </Box>
         {needsPorts && (
           <>
-            <FormControl size='sm' sx={{ width: 80 }}>
-              <FormLabel>From Port</FormLabel>
-              <Input
+            <Box sx={{ width: 80 }}>
+              <Text size="xs" sx={{ mb: 0.5 }}>From Port</Text>
+              <TextField
                 size='sm'
                 type='number'
-                value={fromPort}
-                slotProps={{ input: { min: 0, max: 65535 } }}
-                onChange={(e) => setFromPort(e.target.value === '' ? '' : Number(e.target.value))}
+                value={String(fromPort)}
+                inputProps={{ min: 0, max: 65535 }}
+                onChange={(value) => setFromPort(value === '' ? '' : Number(value))}
               />
-            </FormControl>
-            <FormControl size='sm' sx={{ width: 80 }}>
-              <FormLabel>To Port</FormLabel>
-              <Input
+            </Box>
+            <Box sx={{ width: 80 }}>
+              <Text size="xs" sx={{ mb: 0.5 }}>To Port</Text>
+              <TextField
                 size='sm'
                 type='number'
-                value={toPort}
-                slotProps={{ input: { min: 0, max: 65535 } }}
-                onChange={(e) => setToPort(e.target.value === '' ? '' : Number(e.target.value))}
+                value={String(toPort)}
+                inputProps={{ min: 0, max: 65535 }}
+                onChange={(value) => setToPort(value === '' ? '' : Number(value))}
               />
-            </FormControl>
+            </Box>
           </>
         )}
-        <FormControl size='sm' sx={{ flex: 1, minWidth: 150 }}>
-          <FormLabel>Source / CIDR</FormLabel>
-          <Input
+        <Box sx={{ flex: 1, minWidth: 150 }}>
+          <Text size="xs" sx={{ mb: 0.5 }}>Source / CIDR</Text>
+          <TextField
             size='sm'
             value={source}
             placeholder='0.0.0.0/0 or sg-xxx'
-            onChange={(e) => setSource(e.target.value)}
+            onChange={(value) => setSource(value)}
           />
-        </FormControl>
-        <FormControl size='sm' sx={{ flex: 0.7, minWidth: 120 }}>
-          <FormLabel>Description</FormLabel>
-          <Input
+        </Box>
+        <Box sx={{ flex: 0.7, minWidth: 120 }}>
+          <Text size="xs" sx={{ mb: 0.5 }}>Description</Text>
+          <TextField
             size='sm'
             value={description}
             placeholder='Optional'
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(value) => setDescription(value)}
           />
-        </FormControl>
+        </Box>
       </Stack>
       <Box>
-        <Button size='sm' variant='soft' color='primary' startDecorator={<LuPlus size={14} />} onClick={handleAdd}>
+        <Button size='sm' emphasis='soft' color='primary' startAdornment={<LuPlus size={14} />} onClick={handleAdd}>
           Add Rule
         </Button>
       </Box>
@@ -319,10 +311,10 @@ const SecurityGroupRuleForm: React.FC<Props> = ({
           spacing={1}
           sx={{ px: 1.5, py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}
         >
-          <Typography level='body-xs' fontWeight={700} sx={{ minWidth: 70 }}>Protocol</Typography>
-          <Typography level='body-xs' fontWeight={700} sx={{ minWidth: 80, textAlign: 'center' }}>Port Range</Typography>
-          <Typography level='body-xs' fontWeight={700} sx={{ flex: 1 }}>Source</Typography>
-          <Typography level='body-xs' fontWeight={700} sx={{ flex: 0.7 }}>Description</Typography>
+          <Text size="xs" sx={{ fontWeight: 700, minWidth: 70 }}>Protocol</Text>
+          <Text size="xs" sx={{ fontWeight: 700, minWidth: 80, textAlign: 'center' }}>Port Range</Text>
+          <Text size="xs" sx={{ fontWeight: 700, flex: 1 }}>Source</Text>
+          <Text size="xs" sx={{ fontWeight: 700, flex: 0.7 }}>Description</Text>
           {!readOnly && <Box sx={{ width: 32 }} />}
         </Stack>
 
@@ -333,7 +325,7 @@ const SecurityGroupRuleForm: React.FC<Props> = ({
 
         {rows.length === 0 && (
           <Box sx={{ px: 1.5, py: 1.5 }}>
-            <Typography level='body-xs' color='neutral' textAlign='center'>No rules</Typography>
+            <Text size="xs" color="neutral" sx={{ textAlign: 'center' }}>No rules</Text>
           </Box>
         )}
 
@@ -347,9 +339,9 @@ const SecurityGroupRuleForm: React.FC<Props> = ({
               <Box sx={{ px: 1.5, py: 0.75 }}>
                 <Button
                   size='sm'
-                  variant='plain'
+                  emphasis='ghost'
                   color='primary'
-                  startDecorator={<LuPlus size={14} />}
+                  startAdornment={<LuPlus size={14} />}
                   onClick={() => setShowAddForm(true)}
                 >
                   Add rule

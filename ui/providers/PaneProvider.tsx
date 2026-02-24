@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import {
   createHashRouter, createMemoryRouter, Outlet, RouterProvider, UNSAFE_LocationContext, useLocation,
 } from 'react-router-dom';
-import Box from '@mui/joy/Box';
+import Box from '@mui/material/Box';
 import PaneProviderContext, { PaneContext, type PaneProviderContextType, type Pane } from '@/contexts/PaneContext';
 import usePanes from '@/hooks/usePanes';
 import BottomDrawerProvider from './BottomDrawer/provider';

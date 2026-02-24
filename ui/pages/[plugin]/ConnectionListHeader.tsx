@@ -1,15 +1,15 @@
 import React from 'react';
 
 // Material-ui
-import Typography from '@mui/joy/Typography';
-import Sheet from '@mui/joy/Sheet';
+import Box from '@mui/material/Box';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 
 // Project imports
 import { SearchInput } from '@/components/inputs';
 
 // Icons
 import { TbCloudDataConnection } from 'react-icons/tb';
-import { Stack } from '@mui/joy';
 
 type Props = {
   search: string;
@@ -21,19 +21,20 @@ type Props = {
  * Header component for the connections list on the landing page for the resource plugin.
  */
 const ConnectionListHeader: React.FC<Props> = ({ search, onSearchChange }) => (
-  <Sheet
+  <Box
     sx={{
       px: 0.5,
       py: 0.5,
-      backgroundColor: 'background.surface',
+      backgroundColor: 'background.paper',
       display: 'flex',
       width: '100%',
-      borderRadius: 'sm',
+      borderRadius: 1,
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 1,
+      border: '1px solid',
+      borderColor: 'divider',
     }}
-    variant='outlined'
   >
     {/* Left side of the header */}
     <Stack
@@ -43,7 +44,7 @@ const ConnectionListHeader: React.FC<Props> = ({ search, onSearchChange }) => (
       pl={1}
     >
       <TbCloudDataConnection size={20} />
-      <Typography fontSize={16} fontWeight={600}>Connections</Typography>
+      <Text sx={{ fontSize: 16, fontWeight: 600 }}>Connections</Text>
     </Stack>
 
     {/* Right side of the header */}
@@ -54,7 +55,7 @@ const ConnectionListHeader: React.FC<Props> = ({ search, onSearchChange }) => (
         onChange={onSearchChange}
       />
     </Stack>
-  </Sheet>
+  </Box>
 );
 
 export default ConnectionListHeader;

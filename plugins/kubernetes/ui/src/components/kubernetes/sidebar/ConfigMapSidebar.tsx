@@ -1,8 +1,8 @@
 import React from "react";
 
 // material-ui
-import Chip from "@mui/joy/Chip";
-import Stack from "@mui/joy/Stack";
+import { Chip } from "@omniviewdev/ui";
+import { Stack } from "@omniviewdev/ui/layout";
 
 // types
 import { ConfigMap } from "kubernetes-types/core/v1";
@@ -37,11 +37,10 @@ export const ConfigMapSidebar: React.FC<Props> = ({ ctx }) => {
         <Chip
           sx={{ borderRadius: "sm", mb: 1 }}
           size="md"
-          variant="soft"
-          startDecorator={<LuCode />}
-        >
-          Configs
-        </Chip>
+          emphasis="soft"
+          startAdornment={<LuCode />}
+          label="Configs"
+        />
         {configMap.data !== undefined && (
           <ExpandableSections
             sections={Object.entries(configMap.data).map(

@@ -1,4 +1,5 @@
 import { PortForwardResourceOpts } from './types';
+import { ALL_SESSIONS_KEY } from './usePortForwardSessions';
 import { networker } from '../../wailsjs/go/models';
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import {
@@ -23,9 +24,16 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
     queryFn: async () => FindPortForwardSessions(pluginID, connectionID, networker.FindPortForwardSessionRequest.createFrom({
       resource_id: resourceID,
       connection_id: connectionID,
-    })).catch((e: Error) => {
-      showSnackbar(`Failed to fetch port forward sessions for ${resourceID}: ${e.message}`, 'error');
-    })
+    })).catch((e: unknown) => {
+      const msg = e instanceof Error ? e.message : typeof e === 'string' ? e : String(e);
+      // "not found" means the plugin doesn't have the networker capability — not an error.
+      if (msg.includes('not found')) {
+        return [];
+      }
+      showSnackbar({ message: 'Failed to fetch port forward sessions', status: 'error', details: msg });
+      return [];
+    }),
+    retry: false,
   });
 
   const forwardMutation = useMutation({
@@ -52,11 +60,15 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
       }
       return result
     },
-    onError(error: Error) {
-      showSnackbar(`Failed to start port forwarding session: ${error.message}`, 'error');
+    onError(error: unknown) {
+      const msg = error instanceof Error ? error.message : typeof error === 'string' ? error : String(error);
+      showSnackbar({ message: 'Failed to start port forwarding session', status: 'error', details: msg });
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: [...ALL_SESSIONS_KEY] }),
+      ]);
     }
   });
 
@@ -96,11 +108,15 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
 
   const closeMutation = useMutation({
     mutationFn: async ({ opts }: { opts: { sessionID: string } }) => ClosePortForwardSession(opts.sessionID),
-    onError(error: Error) {
-      showSnackbar(`Failed to close port forwarding session: ${error.message}`, 'error');
+    onError(error: unknown) {
+      const msg = error instanceof Error ? error.message : typeof error === 'string' ? error : String(error);
+      showSnackbar({ message: 'Failed to close port forwarding session', status: 'error', details: msg });
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: [...ALL_SESSIONS_KEY] }),
+      ]);
     }
   });
 

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import MuiAvatar from '@mui/material/Avatar';
 import type { SxProps, Theme } from '@mui/material/styles';
 import type { ComponentSize, SemanticColor } from '../types';
@@ -7,6 +8,10 @@ export interface AvatarProps {
   name?: string;
   size?: ComponentSize;
   color?: SemanticColor;
+  /** Shape of the avatar. Defaults to 'rounded' (rounded square). */
+  variant?: 'circular' | 'rounded';
+  /** Custom content to render inside the avatar (overrides name-based initials). */
+  children?: ReactNode;
   sx?: SxProps<Theme>;
 }
 
@@ -54,29 +59,45 @@ function getColor(name: string): string {
   return colorPalette[hashString(name) % colorPalette.length];
 }
 
+const radiusMap: Record<ComponentSize, number> = {
+  xs: 4,
+  sm: 6,
+  md: 8,
+  lg: 10,
+  xl: 12,
+};
+
 export default function Avatar({
   src,
   name,
   size = 'md',
+  variant = 'rounded',
+  children,
   sx,
 }: AvatarProps) {
   const dim = sizeMap[size];
   const bgColor = name ? getColor(name) : undefined;
   const initials = name ? getInitials(name) : undefined;
 
+  // children takes priority over auto-generated initials from name
+  const content = children ?? (!src ? initials : undefined);
+
   return (
     <MuiAvatar
       src={src}
       alt={name}
+      variant={variant === 'circular' ? 'circular' : 'rounded'}
       sx={{
         width: dim,
         height: dim,
         fontSize: fontSizeMap[size],
+        fontWeight: 600,
         bgcolor: src ? undefined : bgColor,
+        ...(variant === 'rounded' ? { borderRadius: `${radiusMap[size]}px` } : {}),
         ...sx as Record<string, unknown>,
       }}
     >
-      {!src && initials}
+      {content}
     </MuiAvatar>
   );
 }

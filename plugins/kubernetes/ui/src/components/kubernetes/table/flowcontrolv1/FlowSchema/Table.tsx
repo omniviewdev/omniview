@@ -6,8 +6,8 @@ import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuAlignVerticalJustifyStart, LuCode, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuAlignVerticalJustifyStart, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import { FlowSchema } from 'kubernetes-types/flowcontrol/v1'
 import { Condition } from 'kubernetes-types/meta/v1'
 import FlowSchemaSidebar from './Sidebar'
@@ -77,18 +77,7 @@ const FlowSchemaTable: React.FC = () => {
   const drawer: DrawerComponent<FlowSchema> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuAlignVerticalJustifyStart />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <FlowSchemaSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: FlowSchemaSidebar }),
     actions: [
       {
         title: 'Delete',

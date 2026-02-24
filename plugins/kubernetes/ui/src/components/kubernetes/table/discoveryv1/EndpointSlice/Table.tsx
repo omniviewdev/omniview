@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuListTree, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuListTree, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import ResourceLinkCell from '../../corev1/Pod/cells/ResourceLinkCell'
 import EndpointSliceSidebar from './Sidebar'
 import ChipList from '../../shared/cells/ChipList'
@@ -91,18 +91,7 @@ const EndpointSliceTable: React.FC = () => {
   const drawer: DrawerComponent<EndpointSlice> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuListTree />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <EndpointSliceSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: EndpointSliceSidebar }),
     actions: [
       {
         title: 'Delete',

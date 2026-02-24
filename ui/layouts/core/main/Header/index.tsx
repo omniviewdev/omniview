@@ -1,5 +1,6 @@
 import React, { useContext } from 'react';
-import { Box, type BoxProps, GlobalStyles } from '@mui/joy';
+import Box, { type BoxProps } from '@mui/material/Box';
+import GlobalStyles from '@mui/material/GlobalStyles';
 
 // Components
 import HeaderContextArea from './areas/HeaderContextArea';
@@ -65,7 +66,7 @@ const CoreLayoutHeader: React.FC<BoxProps> = props => {
             gap: 2,
             // Include the divider border
             height: 'calc(var(--CoreLayoutHeader-height) - 1px)',
-            bgcolor: 'background.surface',
+            bgcolor: 'background.paper',
             display: 'flex',
             flexDirection: 'row',
             justifyContent: 'space-between',

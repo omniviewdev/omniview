@@ -1,56 +1,59 @@
 import React from "react";
 
-// material-ui
-import Grid from "@mui/joy/Grid";
-import Typography from "@mui/joy/Typography";
-import Accordion from "@mui/joy/Accordion";
-import AccordionDetails from "@mui/joy/AccordionDetails";
-import AccordionSummary from "@mui/joy/AccordionSummary";
-import { Chip, Stack } from "@mui/joy";
+// @omniviewdev/ui
+import Grid from "@mui/material/Grid";
+import { Chip } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import ExpandableSections from './ExpandableSections';
 
 interface Props {
   title: string;
   kvs: Record<string, string>;
   defaultExpanded?: boolean;
+  size?: "sm" | "md" | "lg";
 }
 
-const KVCard: React.FC<Props> = ({ title, kvs, defaultExpanded }) => (
-  <Accordion
-    disabled={!Object.keys(kvs).length}
-    defaultExpanded={defaultExpanded}
-  >
-    <AccordionSummary>
-      <Stack direction={'row'} gap={1}>
-        <Typography level="title-sm">{title}</Typography>
-        <Chip
-          size="sm"
-          variant="outlined"
-          color={'primary'}
-          sx={{
-            borderRadius: 'sm',
-          }}
-        >{Object.keys(kvs).length}</Chip>
-      </Stack>
-    </AccordionSummary>
-    <AccordionDetails>
-      <Grid container spacing={0.25}>
-        {Object.entries(kvs).map(([key, value]) => (
-          <>
-            <Grid xs={6} alignItems={"center"}>
-              <Typography fontSize={12} fontWeight={400} level="body-xs">
-                {key}
-              </Typography>
-            </Grid>
-            <Grid xs={6} alignItems={"center"}>
-              <Typography fontSize={12} fontWeight={600} level="body-xs">
-                {value}
-              </Typography>
-            </Grid>
-          </>
-        ))}
-      </Grid>
-    </AccordionDetails>
-  </Accordion>
-);
+const KVCard: React.FC<Props> = ({ title, kvs, defaultExpanded, size = "sm" }) => {
+  const sections = [
+    {
+      title: (
+        <Stack direction='row' gap={0.75} alignItems="center">
+          <Text weight='semibold' size='xs' sx={{ fontSize: 12 }}>{title}</Text>
+          <Chip
+            size="xs"
+            emphasis="outline"
+            color='primary'
+            sx={{ borderRadius: 1 }}
+            label={String(Object.keys(kvs).length)}
+          />
+        </Stack>
+      ),
+      defaultExpanded: defaultExpanded && Object.keys(kvs).length > 0,
+      children: (
+        <Grid container spacing={0.25} sx={{ px: 1, py: 0.5 }}>
+          {Object.entries(kvs).map(([key, value]) => (
+            <React.Fragment key={key}>
+              <Grid size={6} sx={{ alignItems: "center" }}>
+                <Text sx={{ fontSize: 11, fontWeight: 400 }} size='xs'>
+                  {key}
+                </Text>
+              </Grid>
+              <Grid size={6} sx={{ alignItems: "center" }}>
+                <Text sx={{ fontSize: 11, fontWeight: 600 }} size='xs'>
+                  {value}
+                </Text>
+              </Grid>
+            </React.Fragment>
+          ))}
+        </Grid>
+      ),
+    },
+  ];
+
+  return (
+    <ExpandableSections sections={sections} size={size} />
+  );
+};
 
 export default KVCard;

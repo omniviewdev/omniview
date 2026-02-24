@@ -7,13 +7,15 @@ import { ColumnDef } from '@tanstack/react-table'
 import ResourceLinkCell from './cells/ResourceLinkCell';
 import ContainerPhaseCell from './cells/ContainerPhaseCell';
 import ContainerStatusCell from './cells/ContainerStatusCell';
+import MetricUsageCell, { PodMetricsContext } from './cells/MetricUsageCell';
 import { withNamespacedResourceColumns } from '../../shared/columns';
 import ResourceTable from '../../../../shared/table/ResourceTable';
 import { DrawerComponent, DrawerComponentActionListItem, DrawerContext, useConfirmationModal, useExec, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime';
-import { LuBugPlay, LuCode, LuContainer, LuLogs, LuScaling, LuSquareChartGantt, LuTerminal, LuTrash } from 'react-icons/lu';
+import { LuBugPlay, LuContainer, LuLogs, LuScaling, LuTerminal, LuTrash } from 'react-icons/lu';
 import PodSidebar from '../../../sidebar/Pod';
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage';
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews';
 import ConditionsCell from '../../shared/cells/ConditionsCell';
+import { usePodMetricsBatch } from '../../../../../hooks/usePodMetricsBatch';
 
 const resourceKey = 'core::v1::Pod'
 
@@ -35,6 +37,7 @@ const PodTable: React.FC = () => {
   const { createLogSession } = useLogs({ pluginID: 'kubernetes' })
   const { show } = useConfirmationModal()
   const { closeDrawer } = useRightDrawer()
+  const { metricsMap } = usePodMetricsBatch({ connectionID: id })
 
   /**
    * Handler to go ahead and submit a resource change
@@ -65,6 +68,20 @@ const PodTable: React.FC = () => {
         cell: ({ getValue }) => <ContainerStatusCell data={getValue() as Array<ContainerStatus>} />,
       },
       {
+        id: 'cpuUsage',
+        header: 'CPU',
+        accessorFn: (row) => `${row.metadata?.namespace}/${row.metadata?.name}`,
+        cell: ({ getValue }) => <MetricUsageCell podKey={getValue() as string} format="cpu" />,
+        size: 80,
+      },
+      {
+        id: 'memUsage',
+        header: 'Memory',
+        accessorFn: (row) => `${row.metadata?.namespace}/${row.metadata?.name}`,
+        cell: ({ getValue }) => <MetricUsageCell podKey={getValue() as string} format="memory" />,
+        size: 80,
+      },
+      {
         id: 'controlledBy',
         header: 'Controlled By',
         accessorKey: 'metadata.ownerReferences',
@@ -73,12 +90,24 @@ const PodTable: React.FC = () => {
           if (refs == undefined || refs.length === 0) {
             return <></>;
           }
+          const ownerKind = refs[0].kind;
+          const ownerKey = ownerRefKeyMap[ownerKind];
+          if (!ownerKey) {
+            return <ResourceLinkCell
+              pluginID='kubernetes'
+              connectionId={id}
+              resourceId={refs[0].name}
+              resourceKey={`${refs[0].apiVersion?.replace('/', '::')}::${ownerKind}`}
+              resourceName={ownerKind}
+              namespace={row.original.metadata?.namespace}
+            />;
+          }
           return (<ResourceLinkCell
             pluginID='kubernetes'
             connectionId={id}
             resourceId={refs[0].name}
-            resourceKey={ownerRefKeyMap[refs[0].kind]}
-            resourceName={refs[0].kind}
+            resourceKey={ownerKey}
+            resourceName={ownerKind}
             namespace={row.original.metadata?.namespace}
           />
           )
@@ -225,18 +254,7 @@ const PodTable: React.FC = () => {
   const drawer: DrawerComponent<Pod> = React.useMemo(() => ({
     title: resourceKey, // TODO: change runtime sdk to accept a function
     icon: <LuContainer />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <PodSidebar ctx={ctx} />
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data} onSubmit={(val) => onEditorSubmit(ctx, val)} />
-      }
-    ],
+    views: createStandardViews({ SidebarComponent: PodSidebar, onEditorSubmit }),
     actions: [
       {
         title: 'Delete',
@@ -278,6 +296,7 @@ const PodTable: React.FC = () => {
                   resource_plugin: 'kubernetes',
                   resource_data: ctx.data,
                   resource_key: ctx.resource?.key,
+                  params: { container: container.name },
                 }
               }).then(() => closeDrawer())
             })
@@ -293,6 +312,7 @@ const PodTable: React.FC = () => {
                   resource_plugin: 'kubernetes',
                   resource_data: ctx.data,
                   resource_key: ctx.resource?.key,
+                  params: { container: container.name },
                 }
               }).then(() => closeDrawer())
             })
@@ -394,14 +414,16 @@ const PodTable: React.FC = () => {
   }), [])
 
   return (
-    <ResourceTable
-      columns={columns}
-      connectionID={id}
-      resourceKey={resourceKey}
-      idAccessor='metadata.uid'
-      memoizer={'metadata.uid,metadata.resourceVersion,status.phase'}
-      drawer={drawer}
-    />
+    <PodMetricsContext.Provider value={metricsMap}>
+      <ResourceTable
+        columns={columns}
+        connectionID={id}
+        resourceKey={resourceKey}
+        idAccessor='metadata.uid'
+        memoizer={'metadata.uid,metadata.resourceVersion,status.phase'}
+        drawer={drawer}
+      />
+    </PodMetricsContext.Provider>
   )
 }
 

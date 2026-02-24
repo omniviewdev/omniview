@@ -1,22 +1,16 @@
 import React from 'react';
 
 // Material-ui
-import Avatar from '@mui/joy/Avatar';
-import IconButton from '@mui/joy/IconButton';
-import List from '@mui/joy/List';
-import ListSubheader from '@mui/joy/ListSubheader';
-import ListItem from '@mui/joy/ListItem';
-import ListItemButton from '@mui/joy/ListItemButton';
-import ListItemDecorator from '@mui/joy/ListItemDecorator';
-import ListItemContent from '@mui/joy/ListItemContent';
-import Stack from '@mui/joy/Stack';
+import { Avatar, Chip, List, ListItem, ListItemButton, ListItemDecorator, ListItemContent, ListSubheader } from '@omniviewdev/ui';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 
 // Icons import
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
 
 // Custom
 import { type SidebarListItemProps, type SidebarProps } from './types';
-import { Chip, Typography } from '@mui/joy';
 import { IsImage } from '@/utils/url';
 import Icon from '@/components/icons/Icon';
 
@@ -170,7 +164,7 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         nested={Boolean(item.children?.length)}
         endAction={Boolean(item.children?.length) ? (
           <IconButton
-            variant='plain'
+            emphasis='ghost'
             size='sm'
             color='neutral'
             onClick={handleClick}
@@ -180,9 +174,9 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
         ) : (
           typeof item.decorator === 'string'
             ? (
-              <Chip size='sm' variant='outlined' color='neutral' sx={{ borderRadius: 'sm' }}>
-                <Typography level='body-xs' fontSize={10}>{item.decorator}</Typography>
-              </Chip>
+              <Chip size='sm' emphasis='outline' color='neutral' sx={{ borderRadius: 'sm' }} label={
+                <Text size="xs" sx={{ fontSize: 10 }}>{item.decorator}</Text>
+              } />
             ) : item.decorator
         )}
       >
@@ -203,11 +197,12 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
             </ListItemDecorator>
           )}
           <ListItemContent>
-            <Typography
-              level={item.children?.length ? 'title-sm' : 'body-xs'}
+            <Text
+              weight={item.children?.length ? 'semibold' : undefined}
+              size={item.children?.length ? 'sm' : 'xs'}
             >
               {item.label}
-            </Typography>
+            </Text>
           </ListItemContent>
         </ListItemButton>
         {Boolean(item.children?.length) && Boolean(openState[id]) && (

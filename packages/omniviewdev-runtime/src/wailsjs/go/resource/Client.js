@@ -10,16 +10,16 @@ export function Create(arg1, arg2, arg3, arg4) {
   return window['go']['resource']['Client']['Create'](arg1, arg2, arg3, arg4);
 }
 
-export function ExecuteAction(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['resource']['Client']['ExecuteAction'](arg1, arg2, arg3, arg4, arg5);
-}
-
-export function GetActions(arg1, arg2, arg3) {
-  return window['go']['resource']['Client']['GetActions'](arg1, arg2, arg3);
-}
-
 export function Delete(arg1, arg2, arg3, arg4) {
   return window['go']['resource']['Client']['Delete'](arg1, arg2, arg3, arg4);
+}
+
+export function EnsureInformerForResource(arg1, arg2, arg3) {
+  return window['go']['resource']['Client']['EnsureInformerForResource'](arg1, arg2, arg3);
+}
+
+export function ExecuteAction(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['resource']['Client']['ExecuteAction'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function Find(arg1, arg2, arg3, arg4) {
@@ -28,6 +28,10 @@ export function Find(arg1, arg2, arg3, arg4) {
 
 export function Get(arg1, arg2, arg3, arg4) {
   return window['go']['resource']['Client']['Get'](arg1, arg2, arg3, arg4);
+}
+
+export function GetActions(arg1, arg2, arg3) {
+  return window['go']['resource']['Client']['GetActions'](arg1, arg2, arg3);
 }
 
 export function GetConnection(arg1, arg2) {
@@ -40,6 +44,14 @@ export function GetConnectionNamespaces(arg1, arg2) {
 
 export function GetDefaultLayout(arg1) {
   return window['go']['resource']['Client']['GetDefaultLayout'](arg1);
+}
+
+export function GetEditorSchemas(arg1, arg2) {
+  return window['go']['resource']['Client']['GetEditorSchemas'](arg1, arg2);
+}
+
+export function GetInformerState(arg1, arg2) {
+  return window['go']['resource']['Client']['GetInformerState'](arg1, arg2);
 }
 
 export function GetLayout(arg1, arg2) {
@@ -72,6 +84,10 @@ export function HasResourceType(arg1, arg2) {
 
 export function List(arg1, arg2, arg3, arg4) {
   return window['go']['resource']['Client']['List'](arg1, arg2, arg3, arg4);
+}
+
+export function ListAllConnections() {
+  return window['go']['resource']['Client']['ListAllConnections']();
 }
 
 export function ListConnections(arg1) {

@@ -1,18 +1,17 @@
 import React from "react";
 
 // material-ui
-import Button from "@mui/joy/Button";
-import FormControl from "@mui/joy/FormControl";
-import FormHelperText from "@mui/joy/FormHelperText";
-import Grid from "@mui/joy/Grid";
-import IconButton from "@mui/joy/IconButton";
-import Input from "@mui/joy/Input";
-// import List from "@mui/joy/List";
-// import ListItem from "@mui/joy/ListItem";
-// import ListItemButton from "@mui/joy/ListItemButton";
-import Textarea from "@mui/joy/Textarea";
-import Typography from "@mui/joy/Typography";
-import Stack from "@mui/joy/Stack";
+import { Button, IconButton } from "@omniviewdev/ui/buttons";
+import FormControl from "@mui/material/FormControl";
+import FormHelperText from "@mui/material/FormHelperText";
+import Grid from "@mui/material/Grid";
+import TextField from "@mui/material/TextField";
+// import List from "@mui/material/List";
+// import ListItem from "@mui/material/ListItem";
+// import ListItemButton from "@mui/material/ListItemButton";
+import Textarea from "@mui/material/TextField";
+import { Text } from "@omniviewdev/ui/typography";
+import { Stack } from "@omniviewdev/ui/layout";
 
 // types
 import { Secret } from "kubernetes-types/core/v1";
@@ -87,30 +86,6 @@ export const SecretSidebar: React.FC<Props> = ({
   >([]);
   const [edited, setEdited] = React.useState<boolean>(false);
   const [newErrors, setNewErrors] = React.useState<Record<number, string>>({});
-
-  // look for other resources using this secret
-  // const [deployments, statefulsets, daemonsets] = useSearch({
-  //   searches: [
-  //     {
-  //       key: "apps::v1::Deployment",
-  //       namespaces: [],
-  //       postFilter: (deployment: Deployment) =>
-  //         deplomentUsesSecret(deployment, data as Secret),
-  //     },
-  //     {
-  //       key: "apps::v1::StatefulSet",
-  //       namespaces: [],
-  //       postFilter: (statefulset: StatefulSet) =>
-  //         statefulSetUsesSecret(statefulset, data as Secret),
-  //     },
-  //     {
-  //       key: "apps::v1::DaemonSet",
-  //       namespaces: [],
-  //       postFilter: (daemonset: DaemonSet) =>
-  //         daemonSetUsesSecret(daemonset, data as Secret),
-  //     },
-  //   ],
-  // });
 
   // assert this is in fact a secret
   if (secret?.kind !== "Secret") {
@@ -242,12 +217,13 @@ export const SecretSidebar: React.FC<Props> = ({
         justifyContent={"space-between"}
         alignItems={"center"}
       >
-        <Typography startDecorator={<LuKey />} level="title-md">
-          Secrets
-        </Typography>
+        <Stack direction="row" alignItems="center" gap={0.5}>
+          <LuKey />
+          <Text weight="semibold">Secrets</Text>
+        </Stack>
         <Button
-          variant="outlined"
-          startDecorator={<LuPlus />}
+          emphasis="outline"
+          startAdornment={<LuPlus />}
           size="sm"
           onClick={handleAddKey}
         >
@@ -260,72 +236,77 @@ export const SecretSidebar: React.FC<Props> = ({
             {Object.entries(values).map(([key, value]) => (
               <React.Fragment key={key}>
                 <Grid
-                  xs={4}
+                  size={4}
                   key={key}
                   sx={{ alignItems: "center", alignContent: "center" }}
                 >
-                  <Typography level="body-sm">{key}</Typography>
+                  <Text size="sm">{key}</Text>
                 </Grid>
-                <Grid xs={8}>
+                <Grid size={8}>
                   {shown[key] && isMultiLine(value) ? (
                     <Textarea
-                      startDecorator={
-                        <Stack
-                          direction="row"
-                          spacing={0}
-                          justifyContent={"space-between"}
-                        >
-                          <IconButton
-                            disabled={value === ""}
-                            onClick={() => handleCopyToClipboard(key, value)}
-                            size="sm"
+                      multiline
+                      InputProps={{
+                        startAdornment: (
+                          <Stack
+                            direction="row"
+                            spacing={0}
+                            justifyContent={"space-between"}
                           >
-                            {copied === key ? (
-                              <LuClipboardCheck />
-                            ) : (
-                              <LuClipboardCopy />
-                            )}
-                          </IconButton>
-                          <IconButton
-                            onClick={() => toggleShowSecret(key)}
-                            size="sm"
-                          >
-                            {shown[key] ? <LuEyeOff /> : <LuEye />}
-                          </IconButton>
-                        </Stack>
-                      }
-                      size="sm"
+                            <IconButton
+                              disabled={value === ""}
+                              onClick={() => handleCopyToClipboard(key, value)}
+                              size="sm"
+                            >
+                              {copied === key ? (
+                                <LuClipboardCheck />
+                              ) : (
+                                <LuClipboardCopy />
+                              )}
+                            </IconButton>
+                            <IconButton
+                              onClick={() => toggleShowSecret(key)}
+                              size="sm"
+                            >
+                              {shown[key] ? <LuEyeOff /> : <LuEye />}
+                            </IconButton>
+                          </Stack>
+                        ),
+                      }}
+                      size="small"
                       value={shown[key] ? values[key] : "********"}
                     />
                   ) : (
-                    <Input
-                      endDecorator={
-                        <Stack direction="row" spacing={0}>
-                          <IconButton
-                            disabled={value === ""}
-                            onClick={() => handleCopyToClipboard(key, value)}
-                            size="sm"
-                          >
-                            {copied === key ? (
-                              <LuClipboardCheck />
-                            ) : (
-                              <LuClipboardCopy />
-                            )}
-                          </IconButton>
-                          <IconButton
-                            onClick={() => toggleShowSecret(key)}
-                            size="sm"
-                          >
-                            {shown[key] ? <LuEyeOff /> : <LuEye />}
-                          </IconButton>
-                        </Stack>
-                      }
+                    <TextField
+                      InputProps={{
+                        endAdornment: (
+                          <Stack direction="row" spacing={0}>
+                            <IconButton
+                              disabled={value === ""}
+                              onClick={() => handleCopyToClipboard(key, value)}
+                              size="sm"
+                            >
+                              {copied === key ? (
+                                <LuClipboardCheck />
+                              ) : (
+                                <LuClipboardCopy />
+                              )}
+                            </IconButton>
+                            <IconButton
+                              onClick={() => toggleShowSecret(key)}
+                              size="sm"
+                            >
+                              {shown[key] ? <LuEyeOff /> : <LuEye />}
+                            </IconButton>
+                          </Stack>
+                        ),
+                      }}
                       sx={{
                         "--Input-focused": +!(
                           values[key] === originalValues[key]
                         ),
                       }}
-                      size="sm"
+                      size="small"
                       onChange={(e) => handleChange(key, e.target.value)}
                       value={shown[key] ? values[key] : "********"}
                     />
@@ -337,25 +318,27 @@ export const SecretSidebar: React.FC<Props> = ({
         )}
         {newValues.map((entry, index) => (
           <Grid container spacing={0.5} key={index}>
-            <Grid xs={4}>
+            <Grid size={4}>
               <FormControl error={!!newErrors[index]}>
-                <Input
-                  size="sm"
+                <TextField
+                  size="small"
                   onChange={(e) =>
                     handleEditNewKey(index, e.target.value, entry.value)
                   }
-                  endDecorator={
-                    <IconButton
-                      sx={{
-                        "--IconButton-size": "24px",
-                      }}
-                      onClick={() => handleRemoveKey(index)}
-                      size="sm"
-                      variant="soft"
-                    >
-                      <LuX size={16} />
-                    </IconButton>
-                  }
+                  InputProps={{
+                    endAdornment: (
+                      <IconButton
+                        sx={{
+                          "--IconButton-size": "24px",
+                        }}
+                        onClick={() => handleRemoveKey(index)}
+                        size="sm"
+                        emphasis="soft"
+                      >
+                        <LuX size={16} />
+                      </IconButton>
+                    ),
+                  }}
                   value={newValues[index].key}
                 />
                 {!!newErrors[index] && (
@@ -363,9 +346,9 @@ export const SecretSidebar: React.FC<Props> = ({
                 )}
               </FormControl>
             </Grid>
-            <Grid xs={8}>
-              <Input
-                size="sm"
+            <Grid size={8}>
+              <TextField
+                size="small"
                 onChange={(e) =>
                   handleEditNewKey(index, entry.key, e.target.value)
                 }
@@ -379,8 +362,8 @@ export const SecretSidebar: React.FC<Props> = ({
         <Stack direction="row" justifyContent={"space-between"} spacing={1}>
           <Stack direction="row" spacing={1}>
             <Button
-              variant="soft"
-              startDecorator={<LuSave />}
+              emphasis="soft"
+              startAdornment={<LuSave />}
               size="sm"
               onClick={handleSubmit}
               disabled={Object.keys(newErrors).length > 0}
@@ -388,8 +371,8 @@ export const SecretSidebar: React.FC<Props> = ({
               Save
             </Button>
             <Button
-              variant="soft"
-              startDecorator={<LuRotate3D />}
+              emphasis="soft"
+              startAdornment={<LuRotate3D />}
               size="sm"
               onClick={() => console.log("trigerred reload save")}
               disabled={Object.keys(newErrors).length > 0}
@@ -398,9 +381,9 @@ export const SecretSidebar: React.FC<Props> = ({
             </Button>
           </Stack>
           <Button
-            variant="outlined"
+            emphasis="outline"
             color="neutral"
-            startDecorator={<LuCircleX />}
+            startAdornment={<LuCircleX />}
             size="sm"
             onClick={handleClear}
           >
@@ -408,107 +391,9 @@ export const SecretSidebar: React.FC<Props> = ({
           </Button>
         </Stack>
       )}
-      {/* {(!!deployments?.data?.length || */}
-      {/*   !!statefulsets?.data?.length || */}
-      {/*   !!daemonsets?.data?.length) && ( */}
-      {/*     <Typography level="title-md" pl={1}> */}
-      {/*       Used By */}
-      {/*     </Typography> */}
-      {/*   )} */}
-      {/* <UsedDeploymentsCard deployments={deployments} /> */}
-      {/* <UsedStatefulSetsCard statefulsets={statefulsets} /> */}
-      {/* <UsedDaemonSetsCard daemonsets={daemonsets} /> */}
     </Stack>
   );
 };
-//
-// const UsedDeploymentsCard: React.FC<{ deployments: ResourceSearchResult }> = ({
-//   deployments,
-// }) => {
-//   if (deployments?.isLoading || !deployments?.data || deployments?.isError) {
-//     return <React.Fragment />;
-//   }
-//
-//   const result = deployments.data as Array<Deployment>;
-//   if (result.length === 0) {
-//     return <React.Fragment />;
-//   }
-//
-//   return (
-//     <Card title="Deployments" icon={<LuBox />} titleDecorator={result.length}>
-//       <List
-//         size="sm"
-//         sx={{
-//           borderRadius: "sm",
-//         }}
-//       >
-//         {result.map((deployment) => (
-//           <ListItem>
-//             <ListItemButton>{deployment.metadata?.name}</ListItemButton>
-//           </ListItem>
-//         ))}
-//       </List>
-//     </Card>
-//   );
-// };
-//
-// const UsedStatefulSetsCard: React.FC<{
-//   statefulsets: ResourceSearchResult;
-// }> = ({ statefulsets }) => {
-//   if (statefulsets?.isLoading || !statefulsets?.data || statefulsets?.isError) {
-//     return <React.Fragment />;
-//   }
-//   const result = statefulsets.data as Array<StatefulSet>;
-//   if (result.length === 0) {
-//     return <React.Fragment />;
-//   }
-//   return (
-//     <Card title="StatefulSets" icon={<LuBox />} titleDecorator={result.length}>
-//       <List
-//         size="sm"
-//         sx={{
-//           borderRadius: "sm",
-//         }}
-//       >
-//         {result.map((statefulset) => (
-//           <ListItem>
-//             <ListItemButton>{statefulset.metadata?.name}</ListItemButton>
-//           </ListItem>
-//         ))}
-//       </List>
-//     </Card>
-//   );
-// };
-//
-// const UsedDaemonSetsCard: React.FC<{ daemonsets: ResourceSearchResult }> = ({
-//   daemonsets,
-// }) => {
-//   if (daemonsets?.isLoading || !daemonsets?.data || daemonsets?.isError) {
-//     return <React.Fragment />;
-//   }
-//   const result = daemonsets.data as Array<DaemonSet>;
-//   if (result.length === 0) {
-//     return <React.Fragment />;
-//   }
-//   return (
-//     <Card title="DaemonSets" icon={<LuBox />} titleDecorator={result.length}>
-//       <List
-//         size="sm"
-//         sx={{
-//           borderRadius: "sm",
-//         }}
-//       >
-//         {result.map((daemonset) => (
-//           <ListItem sx={{ borderRadius: "sm" }}>
-//             <ListItemButton sx={{ borderRadius: "sm" }}>
-//               {daemonset.metadata?.name}
-//             </ListItemButton>
-//           </ListItem>
-//         ))}
-//       </List>
-//     </Card>
-//   );
-// };
 
 SecretSidebar.displayName = "SecretSidebar";
 export default SecretSidebar;

@@ -1,6 +1,5 @@
 import React from 'react';
-import Box, { type BoxProps } from '@mui/joy/Box';
-import Sheet from '@mui/joy/Sheet';
+import Box, { type BoxProps } from '@mui/material/Box';
 
 type Props = BoxProps & {
   onClose: React.MouseEventHandler<HTMLDivElement>;
@@ -25,22 +24,21 @@ const SideDrawer: React.FC<Props> = ({ onClose, ...props }) => (
       sx={{
         position: 'absolute',
         inset: 0,
-        bgcolor: theme =>
-          `rgba(${theme.vars.palette.neutral.darkChannel} / 0.8)`,
+        bgcolor: 'rgba(0, 0, 0, 0.8)',
       }}
     />
-    <Sheet
+    <Box
       sx={{
         minWidth: 256,
         width: 'max-content',
         height: '100%',
         p: 2,
-        boxShadow: 'lg',
-        bgcolor: 'background.surface',
+        boxShadow: 6,
+        bgcolor: 'background.paper',
       }}
     >
       {props.children}
-    </Sheet>
+    </Box>
   </Box>
 );
 

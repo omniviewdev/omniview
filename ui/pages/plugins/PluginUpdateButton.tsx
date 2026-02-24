@@ -1,91 +1,110 @@
 import * as React from 'react';
-import Button from '@mui/joy/Button';
-import IconButton from '@mui/joy/IconButton';
-import ButtonGroup from '@mui/joy/ButtonGroup';
-import Menu from '@mui/joy/Menu';
-import MenuItem from '@mui/joy/MenuItem';
+import Box from '@mui/material/Box';
+import Menu from '@mui/material/Menu';
+import MenuItem from '@mui/material/MenuItem';
+import Typography from '@mui/material/Typography';
+import { Button, IconButton } from '@omniviewdev/ui/buttons';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
-import { ClickAwayListener } from '@mui/base';
 
 type Props = {
-  pluginID: string
-  currentVersion?: string
-  installed?: boolean
-}
+  pluginID: string;
+  currentVersion?: string;
+  installed?: boolean;
+};
 
 export default function PluginUpdateButton({ pluginID, currentVersion, installed }: Props) {
-  const [open, setOpen] = React.useState(false);
-  const actionRef = React.useRef<() => void>(null);
+  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const anchorRef = React.useRef<HTMLDivElement>(null);
 
   const { versions, update } = usePlugin({ id: pluginID });
 
-  const handleMenuItemClick = (
-    _: React.MouseEvent<HTMLElement, MouseEvent>,
-    version: string,
-  ) => {
-    console.log('updating to ', version)
-    setOpen(false);
-    update(version)
+  const handleMenuItemClick = (version: string) => {
+    setAnchorEl(null);
+    update(version);
   };
 
   if (!versions.data?.Versions) {
-    return <></>
+    return null;
   }
 
+  const isLatest = installed && currentVersion === versions.data.Latest;
+
+  // Show versions newest-first without mutating the original array
+  const sortedVersions = [...versions.data.Versions].reverse();
+
   return (
-    <React.Fragment>
-      <ButtonGroup
-        ref={anchorRef}
-        variant="soft"
-        color='primary'
+    <Box ref={anchorRef} sx={{ display: 'flex', gap: '1px' }}>
+      <Button
+        emphasis="soft"
+        color="primary"
+        disabled={isLatest}
+        onClick={() => update(versions.data!.Latest)}
+        sx={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
       >
-        <Button
-          disabled={installed && currentVersion === versions.data.Latest}
-          onClick={() => update(versions.data.Latest)}>
-          {!installed ? 'Install' : currentVersion === versions.data.Latest ? 'Updated' : 'Update'}
-        </Button>
-        <IconButton
-          aria-controls={open ? 'split-button-menu' : undefined}
-          aria-expanded={open ? 'true' : undefined}
-          aria-label="select merge strategy"
-          aria-haspopup="menu"
-          onMouseDown={() => {
-            // @ts-ignore
-            actionRef.current = () => setOpen(!open);
-          }}
-          onKeyDown={() => {
-            // @ts-ignore
-            actionRef.current = () => setOpen(!open);
-          }}
-          onClick={() => {
-            actionRef.current?.();
-          }}
-        >
-          <ArrowDropDownIcon />
-        </IconButton>
-      </ButtonGroup>
+        {!installed ? 'Install' : isLatest ? 'Updated' : 'Update'}
+      </Button>
+      <IconButton
+        emphasis="soft"
+        color="primary"
+        aria-label="Select version"
+        aria-haspopup="menu"
+        onClick={() => setAnchorEl(anchorRef.current)}
+        sx={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+      >
+        <ArrowDropDownIcon sx={{ fontSize: 18 }} />
+      </IconButton>
       <Menu
-        sx={{
-          maxHeight: '300px',
-          overflow: 'auto',
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={() => setAnchorEl(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        slotProps={{
+          paper: {
+            sx: {
+              maxHeight: 280,
+              minWidth: 180,
+              bgcolor: 'var(--ov-bg-elevated, #1c2128)',
+              border: '1px solid var(--ov-border-default, #30363d)',
+              color: 'var(--ov-fg-default, #c9d1d9)',
+            },
+          },
         }}
-        size='sm'
-        open={open}
-        onClose={() => setOpen(false)}
-        anchorEl={anchorRef.current}
       >
-        {versions.data.Versions.reverse().map((option) => (
+        {sortedVersions.map((version) => (
           <MenuItem
-            sx={{ minWidth: '200px' }}
-            key={option}
-            onClick={(event) => handleMenuItemClick(event, option)}
+            key={version}
+            selected={version === currentVersion}
+            onClick={() => handleMenuItemClick(version)}
+            sx={{
+              fontSize: '0.8125rem',
+              fontFamily: 'var(--ov-font-mono, monospace)',
+              py: 0.75,
+              '&.Mui-selected': {
+                bgcolor: 'var(--ov-accent-subtle, rgba(56,139,253,0.15))',
+                '&:hover': { bgcolor: 'var(--ov-accent-subtle, rgba(56,139,253,0.2))' },
+              },
+            }}
           >
-            {option}
+            <Typography component="span" sx={{ fontSize: '0.8125rem', fontFamily: 'inherit' }}>
+              {version}
+            </Typography>
+            {version === currentVersion && (
+              <Typography
+                component="span"
+                sx={{
+                  ml: 1,
+                  fontSize: '0.6875rem',
+                  color: 'var(--ov-fg-faint)',
+                }}
+              >
+                (current)
+              </Typography>
+            )}
           </MenuItem>
         ))}
       </Menu>
-    </React.Fragment>
+    </Box>
   );
 }

@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuShieldQuestion, LuCode, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuShieldQuestion, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import RoleSidebar from './Sidebar'
 
 const resourceKey = 'rbac::v1::Role'
@@ -36,10 +36,7 @@ const RoleTable: React.FC = () => {
   const drawer: DrawerComponent<Role> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuShieldQuestion />,
-    views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <RoleSidebar ctx={ctx} /> },
-      { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
-    ],
+    views: createStandardViews({ SidebarComponent: RoleSidebar }),
     actions: [
       {
         title: 'Delete',

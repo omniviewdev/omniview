@@ -1,6 +1,5 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { CssVarsProvider } from '@mui/joy/styles';
 
 import {
   createErrorMeta,
@@ -33,7 +32,7 @@ Object.defineProperty(window, 'location', {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function renderWithJoy(ui: React.ReactElement) {
-  return render(<CssVarsProvider>{ui}</CssVarsProvider>);
+  return render(ui);
 }
 
 function makeError(message = 'boom', name = 'TypeError') {

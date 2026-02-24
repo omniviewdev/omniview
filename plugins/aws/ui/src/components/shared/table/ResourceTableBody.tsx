@@ -19,7 +19,7 @@ const ResourceTableBody: React.FC<Props> = ({ table, tableContainerRef, drawer, 
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLTableRowElement>({
     count: rows.length,
     getScrollElement: () => tableContainerRef.current,
-    estimateSize: () => 32,
+    estimateSize: () => 30,
     overscan: 50,
     measureElement:
       typeof window !== 'undefined' &&

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Badge } from '@mui/joy';
+import { Badge } from '@omniviewdev/ui';
 
 type Props = {
   isConnected: boolean;

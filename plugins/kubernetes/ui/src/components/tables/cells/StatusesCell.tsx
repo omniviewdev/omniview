@@ -1,61 +1,48 @@
 import React from 'react';
 
-// material-ui
-import {
-  Stack,
-  Tooltip,
-  useTheme,
-} from '@mui/joy';
+// @omniviewdev/ui
+import { useTheme } from '@mui/material/styles';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 
 import jsonpath from 'jsonpath';
 
 type Status = 'success' | 'warning' | 'danger' | 'neutral';
 
 type Props = {
-  /** Plugin id */
   plugin: string;
-  /** The values to use for calculating the badge colors */
   values: string[];
-  /** Determines how to get the status value out of the object */
   statusAccessor: string;
-  /** Status map */
   statusMap: Record<string, Status>;
-  /** The horizontal alignment of the text. Default is 'left' */
   align?: 'left' | 'right' | 'center' | 'justify';
-  /** Custom hover menu component, if specified **/
   hoverMenuComponent?: string;
 };
 
 export const ContainerStatusCell: React.FC<Props> = ({ values, statusAccessor, statusMap, hoverMenuComponent }) => {
   const theme = useTheme();
 
-  /** Get the color for the chip based on the status */
   const getColor = (data: any) => {
     const value = jsonpath.query(data, statusAccessor)[0];
     const status = statusMap[value] ?? 'neutral';
 
     switch (status) {
       case 'success':
-        return theme.palette.success[400];
+        return theme.palette.success.main;
       case 'warning':
-        return theme.palette.warning[400];
+        return theme.palette.warning.main;
       case 'danger':
-        return theme.palette.danger[400];
+        return theme.palette.error.main;
       case 'neutral':
-        return theme.palette.neutral[400];
+        return theme.palette.grey[400];
     }
   };
 
   return (
-    <Stack direction="row" width={'100%'} alignItems={'center'} justifyContent={'flex-start'} spacing={1}>
+    <Stack direction="row" sx={{ width: '100%' }} alignItems='center' justifyContent='flex-start' gap={1}>
       {values.map((status) => (
         <Tooltip
           placement="top-end"
-          variant="soft"
-          sx={{
-            border: (theme) => `1px solid ${theme.palette.divider}`,
-          }}
-          title={hoverMenuComponent}
+          content={hoverMenuComponent}
         >
           <div
             color={getColor(status)}

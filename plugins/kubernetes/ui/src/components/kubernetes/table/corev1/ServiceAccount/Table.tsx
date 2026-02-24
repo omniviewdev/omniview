@@ -6,9 +6,9 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuUserCheck, LuCode, LuSquareChartGantt, LuTrash, LuCircleCheck } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
-import { Stack } from '@mui/joy'
+import { LuUserCheck, LuTrash, LuCircleCheck } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
+import { Stack } from '@omniviewdev/ui/layout'
 import ResourceLinkCell from '../Pod/cells/ResourceLinkCell'
 import ServiceAccountSidebar from './Sidebar'
 
@@ -112,10 +112,7 @@ const ServiceAccountTable: React.FC = () => {
   const drawer: DrawerComponent<ServiceAccount> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuUserCheck />,
-    views: [
-      { title: 'Overview', icon: <LuSquareChartGantt />, component: (ctx) => <ServiceAccountSidebar ctx={ctx} /> },
-      { title: 'Editor', icon: <LuCode />, component: (ctx) => <BaseEditorPage data={ctx.data} /> },
-    ],
+    views: createStandardViews({ SidebarComponent: ServiceAccountSidebar }),
     actions: [
       {
         title: 'Delete',

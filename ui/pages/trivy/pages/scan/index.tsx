@@ -1,5 +1,9 @@
-import Grid from '@mui/joy/Grid';
-import { Stack, Divider, LinearProgress, Typography, Box } from '@mui/joy';
+import Grid from '@mui/material/Grid';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import LinearProgress from '@mui/material/LinearProgress';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Heading } from '@omniviewdev/ui/typography';
 import React from 'react';
 // import { Scan } from '@api/trivy/Manager';
 // import { trivy } from '@omniviewdev/runtime/models';
@@ -39,13 +43,13 @@ const TrivyDashboard = () => {
 
   return (
     <Grid container>
-      <Grid xs={12}>
+      <Grid size={12}>
         {/* <TrivyScanHeader scan={scanImage} isScanning={loading} /> */}
       </Grid>
-      <Grid xs={12}>
+      <Grid size={12}>
         <Divider />
       </Grid>
-      <Grid xs={12}>
+      <Grid size={12}>
         {loading && (
           <Stack
             direction='column'
@@ -58,11 +62,9 @@ const TrivyDashboard = () => {
             }}
           >
 
-            <Typography
-              level='h4'
-            >
+            <Heading level={4}>
               Scanning...
-            </Typography>
+            </Heading>
             <Box
               sx={{
                 width: '600px',

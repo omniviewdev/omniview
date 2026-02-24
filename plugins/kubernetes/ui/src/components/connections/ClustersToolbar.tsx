@@ -1,5 +1,8 @@
 import React from 'react';
-import { Sheet, Stack, Typography, Chip } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Chip } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { SiKubernetes } from 'react-icons/si';
 import SearchInput from '../shared/SearchInput';
 import GroupBySelector from './GroupBySelector';
@@ -42,18 +45,18 @@ const ClustersToolbar: React.FC<Props> = ({
   availableAttributes,
   availableTags,
 }) => (
-  <Sheet
+  <Box
     sx={{
       px: 1,
-      py: 0.75,
-      backgroundColor: 'background.surface',
+      py: 0.5,
       display: 'flex',
       flexDirection: 'column',
       width: '100%',
-      borderRadius: 'sm',
-      gap: 0.75,
+      borderRadius: 'var(--ov-radius-md, 6px)',
+      gap: 0.5,
+      border: '1px solid var(--ov-border-default, rgba(255,255,255,0.08))',
+      bgcolor: 'var(--ov-bg-surface, rgba(255,255,255,0.03))',
     }}
-    variant='outlined'
   >
     <Stack
       direction='row'
@@ -62,16 +65,14 @@ const ClustersToolbar: React.FC<Props> = ({
       gap={1}
     >
       {/* Left: title + count */}
-      <Stack direction='row' alignItems='center' gap={1} pl={0.5}>
-        <SiKubernetes size={20} />
-        <Typography fontSize={16} fontWeight={600}>Clusters</Typography>
-        <Chip size='sm' variant='soft' color='neutral'>
-          {filteredCount < totalCount ? `${filteredCount}/${totalCount}` : totalCount}
-        </Chip>
+      <Stack direction='row' alignItems='center' gap={0.75} pl={0.25}>
+        <SiKubernetes size={16} />
+        <Text size='sm' weight='semibold'>Clusters</Text>
+        <Chip size='xs' emphasis='soft' color='neutral' label={filteredCount < totalCount ? `${filteredCount}/${totalCount}` : String(totalCount)} />
       </Stack>
 
       {/* Right: controls */}
-      <Stack direction='row' alignItems='center' gap={1}>
+      <Stack direction='row' alignItems='center' gap={0.75}>
         <SearchInput
           placeholder='Search clusters...'
           value={search}
@@ -95,7 +96,7 @@ const ClustersToolbar: React.FC<Props> = ({
         <ViewModeToggle value={viewMode} onChange={onViewModeChange} />
       </Stack>
     </Stack>
-  </Sheet>
+  </Box>
 );
 
 export default ClustersToolbar;

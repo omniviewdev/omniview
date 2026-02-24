@@ -2,8 +2,8 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 
 // Material-ui
-import IconButton from '@mui/joy/IconButton';
-import Tooltip from '@mui/joy/Tooltip';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 
 // Project imports
 import { type HeaderIconLink as HeaderIconLinkProps } from '@/store/header/types';
@@ -18,7 +18,6 @@ const HeaderIconLink: React.FC<Props> = ({ id, helpText, icon, href }) => (
   <WithConditionalTooltip helpText={helpText}>
     <Link to={href}>
       <IconButton
-        name={id}
         size='sm'
         color='neutral'
         sx={{
@@ -31,6 +30,6 @@ const HeaderIconLink: React.FC<Props> = ({ id, helpText, icon, href }) => (
   </WithConditionalTooltip>
 );
 
-export const WithConditionalTooltip = ({ helpText, children }: { helpText?: string; children: React.ReactElement }) => helpText ? <Tooltip title={helpText} arrow placement='bottom' variant='outlined'>{children}</Tooltip> : <>{children}</>;
+export const WithConditionalTooltip = ({ helpText, children }: { helpText?: string; children: React.ReactElement }) => helpText ? <Tooltip content={helpText} placement='bottom'>{children}</Tooltip> : <>{children}</>;
 
 export default HeaderIconLink;

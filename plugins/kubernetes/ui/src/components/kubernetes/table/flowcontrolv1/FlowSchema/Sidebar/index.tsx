@@ -2,7 +2,7 @@
 import React from "react";
 
 // material-ui
-import Stack from "@mui/joy/Stack";
+import { Stack } from "@omniviewdev/ui/layout";
 
 // types
 import { FlowSchema } from "kubernetes-types/flowcontrol/v1";

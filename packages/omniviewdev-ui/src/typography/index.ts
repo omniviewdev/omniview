@@ -9,3 +9,6 @@ export type { CodeInlineProps } from './CodeInline';
 
 export { default as CodeBlock } from './CodeBlock';
 export type { CodeBlockProps } from './CodeBlock';
+
+export { default as Link } from './Link';
+export type { LinkProps } from './Link';

@@ -1,5 +1,14 @@
 import { ReactNode } from "react";
 
+/**
+ * A factory function that produces a DrawerComponent for a given resource.
+ * Plugins export these keyed by resource key so the host can build the full
+ * sidebar (views + actions) for linked-resource navigation, ref-chip clicks, etc.
+ *
+ * The factory receives a close callback so actions can dismiss the drawer.
+ */
+export type DrawerFactory<T = any> = (closeDrawer: () => void) => DrawerComponent<T>;
+
 export type DrawerComponent<T = any> = {
   /**
    * The title to display in the drawer header
@@ -142,6 +151,12 @@ export type DrawerContext<T = any> = {
     * of a connection.
     */
     connectionID: string;
+
+    /**
+     * The plugin that owns this resource. When provided, host-level features
+     * like the Events tab can be injected automatically.
+     */
+    pluginID?: string;
   }
 }
 
@@ -153,7 +168,7 @@ export type BottomDrawerTab = {
   createdAt: Date;
   updatedAt: Date;
   icon?: string | React.ReactNode;
-  variant: 'terminal' | 'logs' | 'editor' | 'browser' | 'file' | 'other';
+  variant: 'terminal' | 'logs' | 'editor' | 'browser' | 'file' | 'devbuild' | 'other';
   properties?: Record<string, unknown>;
 };
 
@@ -225,3 +240,23 @@ export type FullscreenDrawer = () => void;
  * Collapse the bottom drawer to its default height.
  */
 export type CloseDrawer = () => void;
+
+/**
+ * Options for updating an existing tab in the bottom drawer.
+ * The tab is located using FindTabOpts, then the remaining fields are applied.
+ */
+export type UpdateTabOpts = {
+  /** New ID to replace the existing tab ID */
+  id?: string;
+  /** New title */
+  title?: string;
+  /** New icon */
+  icon?: string | React.ReactNode;
+  /** Properties to merge into the tab's existing properties */
+  properties?: Record<string, unknown>;
+};
+
+/**
+ * Update an existing tab in the bottom drawer, located by FindTabOpts.
+ */
+export type UpdateTab = (find: FindTabOpts, updates: UpdateTabOpts) => void;

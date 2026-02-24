@@ -21,37 +21,40 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	ResourcePlugin_GetResourceGroups_FullMethodName       = "/com.omniview.pluginsdk.ResourcePlugin/GetResourceGroups"
-	ResourcePlugin_GetResourceGroup_FullMethodName        = "/com.omniview.pluginsdk.ResourcePlugin/GetResourceGroup"
-	ResourcePlugin_GetResourceTypes_FullMethodName        = "/com.omniview.pluginsdk.ResourcePlugin/GetResourceTypes"
-	ResourcePlugin_GetResourceType_FullMethodName         = "/com.omniview.pluginsdk.ResourcePlugin/GetResourceType"
-	ResourcePlugin_HasResourceType_FullMethodName         = "/com.omniview.pluginsdk.ResourcePlugin/HasResourceType"
-	ResourcePlugin_GetResourceDefinition_FullMethodName   = "/com.omniview.pluginsdk.ResourcePlugin/GetResourceDefinition"
-	ResourcePlugin_StartConnection_FullMethodName         = "/com.omniview.pluginsdk.ResourcePlugin/StartConnection"
-	ResourcePlugin_StopConnection_FullMethodName          = "/com.omniview.pluginsdk.ResourcePlugin/StopConnection"
-	ResourcePlugin_LoadConnections_FullMethodName         = "/com.omniview.pluginsdk.ResourcePlugin/LoadConnections"
-	ResourcePlugin_ListConnections_FullMethodName         = "/com.omniview.pluginsdk.ResourcePlugin/ListConnections"
-	ResourcePlugin_GetConnection_FullMethodName           = "/com.omniview.pluginsdk.ResourcePlugin/GetConnection"
-	ResourcePlugin_GetConnectionNamespaces_FullMethodName = "/com.omniview.pluginsdk.ResourcePlugin/GetConnectionNamespaces"
-	ResourcePlugin_UpdateConnection_FullMethodName        = "/com.omniview.pluginsdk.ResourcePlugin/UpdateConnection"
-	ResourcePlugin_DeleteConnection_FullMethodName        = "/com.omniview.pluginsdk.ResourcePlugin/DeleteConnection"
-	ResourcePlugin_WatchConnections_FullMethodName        = "/com.omniview.pluginsdk.ResourcePlugin/WatchConnections"
-	ResourcePlugin_Get_FullMethodName                     = "/com.omniview.pluginsdk.ResourcePlugin/Get"
-	ResourcePlugin_List_FullMethodName                    = "/com.omniview.pluginsdk.ResourcePlugin/List"
-	ResourcePlugin_Find_FullMethodName                    = "/com.omniview.pluginsdk.ResourcePlugin/Find"
-	ResourcePlugin_Create_FullMethodName                  = "/com.omniview.pluginsdk.ResourcePlugin/Create"
-	ResourcePlugin_Update_FullMethodName                  = "/com.omniview.pluginsdk.ResourcePlugin/Update"
-	ResourcePlugin_Delete_FullMethodName                  = "/com.omniview.pluginsdk.ResourcePlugin/Delete"
-	ResourcePlugin_HasInformer_FullMethodName             = "/com.omniview.pluginsdk.ResourcePlugin/HasInformer"
-	ResourcePlugin_StartConnectionInformer_FullMethodName = "/com.omniview.pluginsdk.ResourcePlugin/StartConnectionInformer"
-	ResourcePlugin_StopConnectionInformer_FullMethodName  = "/com.omniview.pluginsdk.ResourcePlugin/StopConnectionInformer"
-	ResourcePlugin_ListenForEvents_FullMethodName         = "/com.omniview.pluginsdk.ResourcePlugin/ListenForEvents"
-	ResourcePlugin_GetLayout_FullMethodName               = "/com.omniview.pluginsdk.ResourcePlugin/GetLayout"
-	ResourcePlugin_GetDefaultLayout_FullMethodName        = "/com.omniview.pluginsdk.ResourcePlugin/GetDefaultLayout"
-	ResourcePlugin_SetLayout_FullMethodName               = "/com.omniview.pluginsdk.ResourcePlugin/SetLayout"
-	ResourcePlugin_GetActions_FullMethodName              = "/com.omniview.pluginsdk.ResourcePlugin/GetActions"
-	ResourcePlugin_ExecuteAction_FullMethodName           = "/com.omniview.pluginsdk.ResourcePlugin/ExecuteAction"
-	ResourcePlugin_StreamAction_FullMethodName            = "/com.omniview.pluginsdk.ResourcePlugin/StreamAction"
+	ResourcePlugin_GetResourceGroups_FullMethodName         = "/com.omniview.pluginsdk.ResourcePlugin/GetResourceGroups"
+	ResourcePlugin_GetResourceGroup_FullMethodName          = "/com.omniview.pluginsdk.ResourcePlugin/GetResourceGroup"
+	ResourcePlugin_GetResourceTypes_FullMethodName          = "/com.omniview.pluginsdk.ResourcePlugin/GetResourceTypes"
+	ResourcePlugin_GetResourceType_FullMethodName           = "/com.omniview.pluginsdk.ResourcePlugin/GetResourceType"
+	ResourcePlugin_HasResourceType_FullMethodName           = "/com.omniview.pluginsdk.ResourcePlugin/HasResourceType"
+	ResourcePlugin_GetResourceDefinition_FullMethodName     = "/com.omniview.pluginsdk.ResourcePlugin/GetResourceDefinition"
+	ResourcePlugin_StartConnection_FullMethodName           = "/com.omniview.pluginsdk.ResourcePlugin/StartConnection"
+	ResourcePlugin_StopConnection_FullMethodName            = "/com.omniview.pluginsdk.ResourcePlugin/StopConnection"
+	ResourcePlugin_LoadConnections_FullMethodName           = "/com.omniview.pluginsdk.ResourcePlugin/LoadConnections"
+	ResourcePlugin_ListConnections_FullMethodName           = "/com.omniview.pluginsdk.ResourcePlugin/ListConnections"
+	ResourcePlugin_GetConnection_FullMethodName             = "/com.omniview.pluginsdk.ResourcePlugin/GetConnection"
+	ResourcePlugin_GetConnectionNamespaces_FullMethodName   = "/com.omniview.pluginsdk.ResourcePlugin/GetConnectionNamespaces"
+	ResourcePlugin_UpdateConnection_FullMethodName          = "/com.omniview.pluginsdk.ResourcePlugin/UpdateConnection"
+	ResourcePlugin_DeleteConnection_FullMethodName          = "/com.omniview.pluginsdk.ResourcePlugin/DeleteConnection"
+	ResourcePlugin_WatchConnections_FullMethodName          = "/com.omniview.pluginsdk.ResourcePlugin/WatchConnections"
+	ResourcePlugin_Get_FullMethodName                       = "/com.omniview.pluginsdk.ResourcePlugin/Get"
+	ResourcePlugin_List_FullMethodName                      = "/com.omniview.pluginsdk.ResourcePlugin/List"
+	ResourcePlugin_Find_FullMethodName                      = "/com.omniview.pluginsdk.ResourcePlugin/Find"
+	ResourcePlugin_Create_FullMethodName                    = "/com.omniview.pluginsdk.ResourcePlugin/Create"
+	ResourcePlugin_Update_FullMethodName                    = "/com.omniview.pluginsdk.ResourcePlugin/Update"
+	ResourcePlugin_Delete_FullMethodName                    = "/com.omniview.pluginsdk.ResourcePlugin/Delete"
+	ResourcePlugin_HasInformer_FullMethodName               = "/com.omniview.pluginsdk.ResourcePlugin/HasInformer"
+	ResourcePlugin_StartConnectionInformer_FullMethodName   = "/com.omniview.pluginsdk.ResourcePlugin/StartConnectionInformer"
+	ResourcePlugin_StopConnectionInformer_FullMethodName    = "/com.omniview.pluginsdk.ResourcePlugin/StopConnectionInformer"
+	ResourcePlugin_ListenForEvents_FullMethodName           = "/com.omniview.pluginsdk.ResourcePlugin/ListenForEvents"
+	ResourcePlugin_GetInformerState_FullMethodName          = "/com.omniview.pluginsdk.ResourcePlugin/GetInformerState"
+	ResourcePlugin_EnsureInformerForResource_FullMethodName = "/com.omniview.pluginsdk.ResourcePlugin/EnsureInformerForResource"
+	ResourcePlugin_GetLayout_FullMethodName                 = "/com.omniview.pluginsdk.ResourcePlugin/GetLayout"
+	ResourcePlugin_GetDefaultLayout_FullMethodName          = "/com.omniview.pluginsdk.ResourcePlugin/GetDefaultLayout"
+	ResourcePlugin_SetLayout_FullMethodName                 = "/com.omniview.pluginsdk.ResourcePlugin/SetLayout"
+	ResourcePlugin_GetActions_FullMethodName                = "/com.omniview.pluginsdk.ResourcePlugin/GetActions"
+	ResourcePlugin_ExecuteAction_FullMethodName             = "/com.omniview.pluginsdk.ResourcePlugin/ExecuteAction"
+	ResourcePlugin_StreamAction_FullMethodName              = "/com.omniview.pluginsdk.ResourcePlugin/StreamAction"
+	ResourcePlugin_GetEditorSchemas_FullMethodName          = "/com.omniview.pluginsdk.ResourcePlugin/GetEditorSchemas"
 )
 
 // ResourcePluginClient is the client API for ResourcePlugin service.
@@ -87,6 +90,8 @@ type ResourcePluginClient interface {
 	StartConnectionInformer(ctx context.Context, in *StartConnectionInformerRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	StopConnectionInformer(ctx context.Context, in *StopConnectionInformerRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ListenForEvents(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (ResourcePlugin_ListenForEventsClient, error)
+	GetInformerState(ctx context.Context, in *GetInformerStateRequest, opts ...grpc.CallOption) (*InformerConnectionSummary, error)
+	EnsureInformerForResource(ctx context.Context, in *EnsureInformerRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Layout
 	GetLayout(ctx context.Context, in *GetLayoutRequest, opts ...grpc.CallOption) (*Layout, error)
 	GetDefaultLayout(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Layout, error)
@@ -95,6 +100,8 @@ type ResourcePluginClient interface {
 	GetActions(ctx context.Context, in *GetActionsRequest, opts ...grpc.CallOption) (*GetActionsResponse, error)
 	ExecuteAction(ctx context.Context, in *ExecuteActionRequest, opts ...grpc.CallOption) (*ExecuteActionResponse, error)
 	StreamAction(ctx context.Context, in *ExecuteActionRequest, opts ...grpc.CallOption) (ResourcePlugin_StreamActionClient, error)
+	// Schemas
+	GetEditorSchemas(ctx context.Context, in *GetEditorSchemasRequest, opts ...grpc.CallOption) (*EditorSchemaList, error)
 }
 
 type resourcePluginClient struct {
@@ -376,6 +383,24 @@ func (x *resourcePluginListenForEventsClient) Recv() (*InformerEvent, error) {
 	return m, nil
 }
 
+func (c *resourcePluginClient) GetInformerState(ctx context.Context, in *GetInformerStateRequest, opts ...grpc.CallOption) (*InformerConnectionSummary, error) {
+	out := new(InformerConnectionSummary)
+	err := c.cc.Invoke(ctx, ResourcePlugin_GetInformerState_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *resourcePluginClient) EnsureInformerForResource(ctx context.Context, in *EnsureInformerRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ResourcePlugin_EnsureInformerForResource_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *resourcePluginClient) GetLayout(ctx context.Context, in *GetLayoutRequest, opts ...grpc.CallOption) (*Layout, error) {
 	out := new(Layout)
 	err := c.cc.Invoke(ctx, ResourcePlugin_GetLayout_FullMethodName, in, out, opts...)
@@ -453,6 +478,15 @@ func (x *resourcePluginStreamActionClient) Recv() (*StreamActionEvent, error) {
 	return m, nil
 }
 
+func (c *resourcePluginClient) GetEditorSchemas(ctx context.Context, in *GetEditorSchemasRequest, opts ...grpc.CallOption) (*EditorSchemaList, error) {
+	out := new(EditorSchemaList)
+	err := c.cc.Invoke(ctx, ResourcePlugin_GetEditorSchemas_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ResourcePluginServer is the server API for ResourcePlugin service.
 // All implementations should embed UnimplementedResourcePluginServer
 // for forward compatibility
@@ -486,6 +520,8 @@ type ResourcePluginServer interface {
 	StartConnectionInformer(context.Context, *StartConnectionInformerRequest) (*emptypb.Empty, error)
 	StopConnectionInformer(context.Context, *StopConnectionInformerRequest) (*emptypb.Empty, error)
 	ListenForEvents(*emptypb.Empty, ResourcePlugin_ListenForEventsServer) error
+	GetInformerState(context.Context, *GetInformerStateRequest) (*InformerConnectionSummary, error)
+	EnsureInformerForResource(context.Context, *EnsureInformerRequest) (*emptypb.Empty, error)
 	// Layout
 	GetLayout(context.Context, *GetLayoutRequest) (*Layout, error)
 	GetDefaultLayout(context.Context, *emptypb.Empty) (*Layout, error)
@@ -494,6 +530,8 @@ type ResourcePluginServer interface {
 	GetActions(context.Context, *GetActionsRequest) (*GetActionsResponse, error)
 	ExecuteAction(context.Context, *ExecuteActionRequest) (*ExecuteActionResponse, error)
 	StreamAction(*ExecuteActionRequest, ResourcePlugin_StreamActionServer) error
+	// Schemas
+	GetEditorSchemas(context.Context, *GetEditorSchemasRequest) (*EditorSchemaList, error)
 }
 
 // UnimplementedResourcePluginServer should be embedded to have forward compatible implementations.
@@ -575,6 +613,12 @@ func (UnimplementedResourcePluginServer) StopConnectionInformer(context.Context,
 func (UnimplementedResourcePluginServer) ListenForEvents(*emptypb.Empty, ResourcePlugin_ListenForEventsServer) error {
 	return status.Errorf(codes.Unimplemented, "method ListenForEvents not implemented")
 }
+func (UnimplementedResourcePluginServer) GetInformerState(context.Context, *GetInformerStateRequest) (*InformerConnectionSummary, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetInformerState not implemented")
+}
+func (UnimplementedResourcePluginServer) EnsureInformerForResource(context.Context, *EnsureInformerRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EnsureInformerForResource not implemented")
+}
 func (UnimplementedResourcePluginServer) GetLayout(context.Context, *GetLayoutRequest) (*Layout, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLayout not implemented")
 }
@@ -592,6 +636,9 @@ func (UnimplementedResourcePluginServer) ExecuteAction(context.Context, *Execute
 }
 func (UnimplementedResourcePluginServer) StreamAction(*ExecuteActionRequest, ResourcePlugin_StreamActionServer) error {
 	return status.Errorf(codes.Unimplemented, "method StreamAction not implemented")
+}
+func (UnimplementedResourcePluginServer) GetEditorSchemas(context.Context, *GetEditorSchemasRequest) (*EditorSchemaList, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetEditorSchemas not implemented")
 }
 
 // UnsafeResourcePluginServer may be embedded to opt out of forward compatibility for this service.
@@ -1061,6 +1108,42 @@ func (x *resourcePluginListenForEventsServer) Send(m *InformerEvent) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _ResourcePlugin_GetInformerState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetInformerStateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ResourcePluginServer).GetInformerState(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ResourcePlugin_GetInformerState_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ResourcePluginServer).GetInformerState(ctx, req.(*GetInformerStateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ResourcePlugin_EnsureInformerForResource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnsureInformerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ResourcePluginServer).EnsureInformerForResource(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ResourcePlugin_EnsureInformerForResource_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ResourcePluginServer).EnsureInformerForResource(ctx, req.(*EnsureInformerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ResourcePlugin_GetLayout_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetLayoutRequest)
 	if err := dec(in); err != nil {
@@ -1172,6 +1255,24 @@ func (x *resourcePluginStreamActionServer) Send(m *StreamActionEvent) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _ResourcePlugin_GetEditorSchemas_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEditorSchemasRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ResourcePluginServer).GetEditorSchemas(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ResourcePlugin_GetEditorSchemas_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ResourcePluginServer).GetEditorSchemas(ctx, req.(*GetEditorSchemasRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ResourcePlugin_ServiceDesc is the grpc.ServiceDesc for ResourcePlugin service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1272,6 +1373,14 @@ var ResourcePlugin_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ResourcePlugin_StopConnectionInformer_Handler,
 		},
 		{
+			MethodName: "GetInformerState",
+			Handler:    _ResourcePlugin_GetInformerState_Handler,
+		},
+		{
+			MethodName: "EnsureInformerForResource",
+			Handler:    _ResourcePlugin_EnsureInformerForResource_Handler,
+		},
+		{
 			MethodName: "GetLayout",
 			Handler:    _ResourcePlugin_GetLayout_Handler,
 		},
@@ -1290,6 +1399,10 @@ var ResourcePlugin_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExecuteAction",
 			Handler:    _ResourcePlugin_ExecuteAction_Handler,
+		},
+		{
+			MethodName: "GetEditorSchemas",
+			Handler:    _ResourcePlugin_GetEditorSchemas_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

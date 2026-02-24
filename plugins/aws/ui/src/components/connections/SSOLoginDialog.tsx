@@ -1,13 +1,12 @@
 import React from 'react';
-import Modal from '@mui/joy/Modal';
-import ModalDialog from '@mui/joy/ModalDialog';
-import Typography from '@mui/joy/Typography';
-import Button from '@mui/joy/Button';
-import Stack from '@mui/joy/Stack';
-import Input from '@mui/joy/Input';
-import Divider from '@mui/joy/Divider';
-import Box from '@mui/joy/Box';
-import CircularProgress from '@mui/joy/CircularProgress';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button } from '@omniviewdev/ui/buttons';
+import { TextField } from '@omniviewdev/ui/inputs';
+import { Modal } from '@omniviewdev/ui/overlays';
 
 type Props = {
   open: boolean;
@@ -72,47 +71,47 @@ const SSOLoginDialog: React.FC<Props> = ({
 
   return (
     <Modal open={open} onClose={onClose}>
-      <ModalDialog
-        variant="outlined"
-        sx={{ maxWidth: 420, p: 3 }}
-      >
-        <Typography level="h4" sx={{ mb: 0.5 }}>
+      <Box sx={{ maxWidth: 420, p: 3 }}>
+        <Text weight="semibold" size="lg" sx={{ mb: 0.5 }}>
           AWS SSO Login
-        </Typography>
-        <Typography level="body-sm" sx={{ mb: 2, color: 'text.secondary' }}>
+        </Text>
+        <Text size="sm" sx={{ mb: 2, color: 'text.secondary' }}>
           Complete the sign-in in your browser, then click the button below.
-        </Typography>
+        </Text>
 
         <Stack spacing={2}>
           <Box>
-            <Typography level="body-xs" sx={{ mb: 0.5, fontWeight: 600 }}>
+            <Text size="xs" sx={{ mb: 0.5, fontWeight: 600 }}>
               Verification Code
-            </Typography>
-            <Input
-              value={userCode}
-              readOnly
-              endDecorator={
-                <Button
-                  variant="soft"
-                  size="sm"
-                  onClick={handleCopyCode}
-                >
-                  Copy
-                </Button>
-              }
-              sx={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 2 }}
-            />
+            </Text>
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <TextField
+                value={userCode}
+                onChange={() => {}}
+                size="sm"
+                readOnly
+                monospace
+                sx={{ fontWeight: 700, letterSpacing: 2, flex: 1 }}
+              />
+              <Button
+                emphasis="soft"
+                size="sm"
+                onClick={handleCopyCode}
+              >
+                Copy
+              </Button>
+            </Stack>
           </Box>
 
-          <Typography level="body-xs" sx={{ color: 'text.tertiary', textAlign: 'center' }}>
-            {timeLeft === 'Expired' ? 'Code expired — close and try again' : `Expires in ${timeLeft}`}
-          </Typography>
+          <Text size="xs" sx={{ color: 'text.secondary', textAlign: 'center' }}>
+            {timeLeft === 'Expired' ? 'Code expired -- close and try again' : `Expires in ${timeLeft}`}
+          </Text>
 
           <Divider />
 
           <Stack direction="row" spacing={1}>
             <Button
-              variant="outlined"
+              emphasis="outline"
               color="neutral"
               size="sm"
               onClick={handleReopenBrowser}
@@ -122,12 +121,12 @@ const SSOLoginDialog: React.FC<Props> = ({
               Reopen Browser
             </Button>
             <Button
-              variant="solid"
+              emphasis="solid"
               color="primary"
               size="sm"
               onClick={onRetry}
               disabled={isRetrying || timeLeft === 'Expired'}
-              startDecorator={isRetrying ? <CircularProgress size="sm" /> : undefined}
+              startAdornment={isRetrying ? <CircularProgress size={16} /> : undefined}
               sx={{ flex: 1 }}
             >
               {isRetrying ? 'Checking...' : "I've Logged In"}
@@ -135,7 +134,7 @@ const SSOLoginDialog: React.FC<Props> = ({
           </Stack>
 
           <Button
-            variant="plain"
+            emphasis="ghost"
             color="neutral"
             size="sm"
             onClick={onClose}
@@ -143,7 +142,7 @@ const SSOLoginDialog: React.FC<Props> = ({
             Cancel
           </Button>
         </Stack>
-      </ModalDialog>
+      </Box>
     </Modal>
   );
 };

@@ -1,9 +1,8 @@
 import * as React from 'react';
 
 // material ui
-import Table from '@mui/joy/Table';
-import Typography from '@mui/joy/Typography';
-import Sheet from '@mui/joy/Sheet';
+import Box from '@mui/material/Box';
+import { Text } from '@omniviewdev/ui/typography';
 
 // types
 import { type types } from '@omniviewdev/runtime/models';
@@ -42,39 +41,33 @@ const getConnectionOrderedLabelCols = (connections: types.Connection[]) => {
  */
 const ConnectionTable: React.FC<Props> = ({ connections }) => {
   return (
-    <Sheet
-      variant="outlined"
+    <Box
       sx={{
         width: '100%',
-        borderRadius: 'sm',
+        borderRadius: 1,
+        border: '1px solid',
+        borderColor: 'divider',
       }}
     >
-      <Table
+      <table
         aria-label='connections table'
-        stickyHeader
-        hoverRow
-        sx={{
-          '--TableCell-headBackground':
-            'var(--joy-palette-background-level1)',
-          '--Table-headerUnderlineThickness': '1px',
-          '--TableRow-hoverBackground':
-            'var(--joy-palette-background-level1)',
-          '--TableCell-paddingY': '2px',
-          '--TableCell-paddingX': '8px',
+        style={{
+          width: '100%',
+          borderCollapse: 'collapse',
           WebkitUserSelect: 'none',
         }}
       >
         <thead>
           <tr>
             <th style={{ width: '40%', verticalAlign: 'middle' }}>
-              <Typography sx={{ pl: 0.5 }}>Name</Typography>
+              <Text sx={{ pl: 0.5 }}>Name</Text>
             </th>
             {Object.entries(getConnectionOrderedLabelCols(connections)).sort().map(([label, width]) => (
               <th key={label} style={{ width: width + 8, verticalAlign: 'middle', paddingLeft: 4 }}>
-                <Typography sx={{ pl: 1 }}>{label.replace(/(\w)(\w*)/g,
+                <Text sx={{ pl: 1 }}>{label.replace(/(\w)(\w*)/g,
                   function (_, g1?: string, g2?: string) {
                     return (g1?.toUpperCase() ?? '') + (g2?.toLowerCase() ?? '');
-                  })}</Typography>
+                  })}</Text>
               </th>
             ))}
             <th style={{ width: 48 }}></th>
@@ -85,8 +78,8 @@ const ConnectionTable: React.FC<Props> = ({ connections }) => {
             <ConnectionTableItem key={connection.id} {...connection} />
           ))}
         </tbody>
-      </Table>
-    </Sheet>
+      </table>
+    </Box>
   );
 };
 

@@ -1,10 +1,10 @@
 import React from "react";
 
 // material-ui
-import Chip from "@mui/joy/Chip";
-import Grid from "@mui/joy/Grid";
-import Stack from "@mui/joy/Stack";
-import Typography from "@mui/joy/Typography";
+import { Chip } from "@omniviewdev/ui";
+import Grid from "@mui/material/Grid";
+import { Stack } from "@omniviewdev/ui/layout";
+import { Text } from "@omniviewdev/ui/typography";
 
 // types
 import { Ingress } from "kubernetes-types/networking/v1";
@@ -36,11 +36,11 @@ export const IngressSidebar: React.FC<Props> = ({ ctx }) => {
       <div>
         <Grid container spacing={0.5}>
           {!!obj.status?.loadBalancer?.ingress?.length && (
-            <Grid xs={12}>
+            <Grid size={12}>
               <LoadBalancerInfo obj={obj} />
             </Grid>
           )}
-          <Grid xs={12}>
+          <Grid size={12}>
             <RuleInfo obj={obj} />
           </Grid>
           {/* AWS Load Balancer Controller */}
@@ -48,7 +48,7 @@ export const IngressSidebar: React.FC<Props> = ({ ctx }) => {
             obj?.metadata?.annotations,
             "alb.ingress.kubernetes.io",
           ) && (
-            <Grid xs={12}>
+            <Grid size={12}>
               <AWSLoadBalancerControllerInfo obj={obj} />
             </Grid>
           )}
@@ -89,7 +89,7 @@ const RuleInfo: React.FC<InfoSectionProps> = ({ obj }) => {
         <Stack direction="column" spacing={1} p={1}>
           <Chip
             sx={{ px: 1, borderRadius: "sm" }}
-            variant="outlined"
+            emphasis="outline"
             onClick={() =>
               rule.host &&
               BrowserOpenURL(
@@ -98,13 +98,12 @@ const RuleInfo: React.FC<InfoSectionProps> = ({ obj }) => {
                   : "https://" + rule.host,
               )
             }
-          >
-            {rule.host}
-          </Chip>
+            label={rule.host}
+          />
           {rule.http?.paths ? (
             <RuleTable rule={rule} />
           ) : (
-            <Typography level="body-sm">No paths defined</Typography>
+            <Text size="sm">No paths defined</Text>
           )}
         </Stack>
       ))}

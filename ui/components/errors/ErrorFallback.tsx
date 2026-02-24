@@ -1,13 +1,13 @@
 import React from 'react';
 import type { FallbackProps } from 'react-error-boundary';
-import Box from '@mui/joy/Box';
-import Card from '@mui/joy/Card';
-import Typography from '@mui/joy/Typography';
-import Button from '@mui/joy/Button';
-import Divider from '@mui/joy/Divider';
-import Stack from '@mui/joy/Stack';
-import Chip from '@mui/joy/Chip';
-import Tooltip from '@mui/joy/Tooltip';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Card } from '@omniviewdev/ui';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Chip } from '@omniviewdev/ui';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 import { LuCircleAlert, LuCopy, LuRefreshCw, LuRotateCcw, LuChevronDown, LuChevronRight } from 'react-icons/lu';
 import log from '@/features/logger';
 import { isDev } from '@/utils/env';
@@ -71,7 +71,7 @@ export function FullPageErrorFallback({ error, resetErrorBoundary, boundary }: F
       }}
     >
       <Card
-        variant="outlined"
+        emphasis="outline"
         sx={{
           maxWidth: 600,
           width: '100%',
@@ -81,19 +81,19 @@ export function FullPageErrorFallback({ error, resetErrorBoundary, boundary }: F
       >
         <Stack direction="row" spacing={1.5} alignItems="center">
           <LuCircleAlert size={22} color="var(--joy-palette-danger-500)" />
-          <Typography level="title-lg">Something went wrong</Typography>
-          <Chip variant="soft" color="danger" size="sm">{error.name}</Chip>
+          <Text weight="semibold" size="lg">Something went wrong</Text>
+          <Chip emphasis="soft" color="danger" size="sm" label={error.name} />
         </Stack>
 
-        <Typography level="body-sm" sx={{ color: 'danger.plainColor', mt: 1 }}>
+        <Text size="sm" sx={{ color: 'danger.plainColor', mt: 1 }}>
           {dev ? error.message : `An unexpected error occurred: ${error.message}`}
-        </Typography>
+        </Text>
 
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-          <Chip variant="outlined" color="neutral" size="sm">{meta.errorId}</Chip>
-          <Typography level="body-xs" sx={{ color: 'text.tertiary' }}>{meta.timestamp}</Typography>
+          <Chip emphasis="outline" color="neutral" size="sm" label={meta.errorId} />
+          <Text size="xs" sx={{ color: 'text.tertiary' }}>{meta.timestamp}</Text>
           {dev && meta.boundary && (
-            <Chip variant="soft" color="neutral" size="sm">Caught by: {meta.boundary}</Chip>
+            <Chip emphasis="soft" color="neutral" size="sm" label={`Caught by: ${meta.boundary}`} />
           )}
         </Stack>
 
@@ -102,10 +102,10 @@ export function FullPageErrorFallback({ error, resetErrorBoundary, boundary }: F
         {dev && (
           <>
             <Button
-              variant="plain"
+              emphasis="ghost"
               color="neutral"
               size="sm"
-              startDecorator={showStack ? <LuChevronDown size={14} /> : <LuChevronRight size={14} />}
+              icon={showStack ? <LuChevronDown size={14} /> : <LuChevronRight size={14} />}
               onClick={() => setShowStack(!showStack)}
               sx={{ alignSelf: 'flex-start', px: 0.5 }}
             >
@@ -137,28 +137,28 @@ export function FullPageErrorFallback({ error, resetErrorBoundary, boundary }: F
 
         <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
           <Button
-            variant="solid"
+            emphasis="solid"
             color="danger"
             size="sm"
-            startDecorator={<LuRotateCcw size={14} />}
+            icon={<LuRotateCcw size={14} />}
             onClick={resetErrorBoundary}
           >
             Try Again
           </Button>
           <Button
-            variant="outlined"
+            emphasis="outline"
             color="neutral"
             size="sm"
-            startDecorator={<LuRefreshCw size={14} />}
+            icon={<LuRefreshCw size={14} />}
             onClick={() => window.location.reload()}
           >
             Reload Application
           </Button>
           <Button
-            variant="plain"
+            emphasis="ghost"
             color="neutral"
             size="sm"
-            startDecorator={<LuCopy size={14} />}
+            icon={<LuCopy size={14} />}
             onClick={copyError}
           >
             {copied ? 'Copied!' : 'Copy Error'}
@@ -205,7 +205,7 @@ export function PanelErrorFallback({ error, resetErrorBoundary, label, boundary 
       }}
     >
       <Card
-        variant="outlined"
+        emphasis="outline"
         sx={{
           maxWidth: 480,
           width: '100%',
@@ -215,27 +215,27 @@ export function PanelErrorFallback({ error, resetErrorBoundary, label, boundary 
       >
         <Stack direction="row" spacing={1} alignItems="center">
           <LuCircleAlert size={18} color="var(--joy-palette-danger-500)" />
-          <Typography level="title-sm">{title}</Typography>
-          <Chip variant="soft" color="danger" size="sm">{error.name}</Chip>
+          <Text weight="semibold" size="sm">{title}</Text>
+          <Chip emphasis="soft" color="danger" size="sm" label={error.name} />
         </Stack>
 
-        <Typography level="body-xs" sx={{ color: 'danger.plainColor', mt: 0.5 }}>
+        <Text size="xs" sx={{ color: 'danger.plainColor', mt: 0.5 }}>
           {error.message}
-        </Typography>
+        </Text>
 
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
-          <Chip variant="outlined" color="neutral" size="sm">{meta.errorId}</Chip>
-          <Typography level="body-xs" sx={{ color: 'text.tertiary' }}>{meta.timestamp}</Typography>
+          <Chip emphasis="outline" color="neutral" size="sm" label={meta.errorId} />
+          <Text size="xs" sx={{ color: 'text.tertiary' }}>{meta.timestamp}</Text>
         </Stack>
 
         {dev && (
           <>
             <Divider sx={{ my: 1 }} />
             <Button
-              variant="plain"
+              emphasis="ghost"
               color="neutral"
               size="sm"
-              startDecorator={showStack ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
+              icon={showStack ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
               onClick={() => setShowStack(!showStack)}
               sx={{ alignSelf: 'flex-start', px: 0.5 }}
             >
@@ -266,19 +266,19 @@ export function PanelErrorFallback({ error, resetErrorBoundary, label, boundary 
 
         <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
           <Button
-            variant="solid"
+            emphasis="solid"
             color="danger"
             size="sm"
-            startDecorator={<LuRotateCcw size={14} />}
+            icon={<LuRotateCcw size={14} />}
             onClick={resetErrorBoundary}
           >
             Retry
           </Button>
           <Button
-            variant="plain"
+            emphasis="ghost"
             color="neutral"
             size="sm"
-            startDecorator={<LuCopy size={14} />}
+            icon={<LuCopy size={14} />}
             onClick={copyError}
           >
             {copied ? 'Copied!' : 'Copy Error'}
@@ -300,23 +300,22 @@ export function InlineErrorFallback({ error, resetErrorBoundary, label }: Inline
 
   return (
     <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1 }}>
-      <Tooltip title={meta.errorId} placement="top" arrow>
+      <Tooltip content={meta.errorId} placement="top">
         <span style={{ display: 'inline-flex' }}>
           <LuCircleAlert size={14} color="var(--joy-palette-danger-500)" />
         </span>
       </Tooltip>
-      <Typography level="body-sm" color="danger">
+      <Text size="sm" color="danger">
         Failed to render {label ?? 'component'}
-      </Typography>
+      </Text>
       <Chip
-        variant="soft"
+        emphasis="soft"
         color="danger"
         size="sm"
         onClick={resetErrorBoundary}
         sx={{ cursor: 'pointer' }}
-      >
-        Retry
-      </Chip>
+        label="Retry"
+      />
     </Stack>
   );
 }
@@ -335,8 +334,8 @@ export function RootErrorFallback({ error }: { error: Error }) {
         alignItems: 'center',
         justifyContent: 'center',
         minHeight: '100vh',
-        backgroundColor: '#0E0E10',
-        color: '#E4E4E7',
+        backgroundColor: '#0D1117',
+        color: '#ECF0F6',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace',
         padding: 32,
       }}
@@ -354,19 +353,19 @@ export function RootErrorFallback({ error }: { error: Error }) {
           {error.message}
         </p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
-          <code style={{ fontSize: 12, color: '#A1A1AA', background: '#18181B', padding: '2px 8px', borderRadius: 4 }}>
+          <code style={{ fontSize: 12, color: '#8B9BB5', background: '#151B23', padding: '2px 8px', borderRadius: 4 }}>
             {meta.errorId}
           </code>
-          <span style={{ fontSize: 11, color: '#71717A' }}>{meta.timestamp}</span>
+          <span style={{ fontSize: 11, color: '#6B7D96' }}>{meta.timestamp}</span>
         </div>
         {dev && error.stack && (
           <pre
             style={{
               fontSize: 11,
-              color: '#A1A1AA',
-              backgroundColor: '#18181B',
+              color: '#8B9BB5',
+              backgroundColor: '#151B23',
               borderRadius: 6,
-              border: '1px solid #27272A',
+              border: '1px solid #3E4F66',
               padding: 12,
               maxHeight: 300,
               overflow: 'auto',

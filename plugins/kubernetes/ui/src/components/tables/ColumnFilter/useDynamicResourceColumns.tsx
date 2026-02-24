@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { Chip } from '@mui/joy';
+import { Chip } from '@omniviewdev/ui';
 import { useResources } from '@omniviewdev/runtime';
 import { ColumnDef } from '@tanstack/react-table';
 import { KubernetesResourceObject } from '../../../types/resource';
@@ -102,10 +102,11 @@ export const useDynamicResourceColumns = <T extends KubernetesResourceObject>({
       header: () => <Chip
         size='sm'
         color={'neutral'}
-        variant='soft'
+        emphasis='soft'
         sx={{ borderRadius: 'sm' }}
-        startDecorator={<LuTag />}
-      >{key}</Chip>,
+        startAdornment={<LuTag />}
+        label={key}
+      />,
       accessorFn: (row) => row.metadata?.labels?.[key] ?? '',
       size: Math.max(100, (key.length * 7) + 50),
       enableHiding: false,
@@ -119,10 +120,11 @@ export const useDynamicResourceColumns = <T extends KubernetesResourceObject>({
       header: () => <Chip
         size='sm'
         color={'neutral'}
-        variant='soft'
+        emphasis='soft'
         sx={{ borderRadius: 'sm' }}
-        startDecorator={<LuStickyNote />}
-      >{key}</Chip>,
+        startAdornment={<LuStickyNote />}
+        label={key}
+      />,
       accessorFn: (row) => row.metadata?.annotations?.[key] ?? '',
       size: Math.max(100, (key.length * 7) + 50),
       enableHiding: false,

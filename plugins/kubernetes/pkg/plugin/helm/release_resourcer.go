@@ -25,6 +25,7 @@ type ReleaseResourcer struct {
 var (
 	_ types.Resourcer[clients.ClientSet]      = (*ReleaseResourcer)(nil)
 	_ types.ActionResourcer[clients.ClientSet] = (*ReleaseResourcer)(nil)
+	_ types.SchemaResourcer[clients.ClientSet] = (*ReleaseResourcer)(nil)
 )
 
 // NewReleaseResourcer creates a new ReleaseResourcer.
@@ -286,6 +287,41 @@ func (r *ReleaseResourcer) GetActions(
 			Icon:        "LuHistory",
 			Scope:       types.ActionScopeInstance,
 		},
+		{
+			ID:          "install",
+			Label:       "Install Chart",
+			Description: "Install a chart as a new release",
+			Icon:        "LuDownload",
+			Scope:       types.ActionScopeType,
+		},
+		{
+			ID:          "dry-run-install",
+			Label:       "Dry Run Install",
+			Description: "Preview what an install would render without applying",
+			Icon:        "LuEye",
+			Scope:       types.ActionScopeType,
+		},
+		{
+			ID:          "dry-run-upgrade",
+			Label:       "Dry Run Upgrade",
+			Description: "Preview what an upgrade would render without applying",
+			Icon:        "LuEye",
+			Scope:       types.ActionScopeInstance,
+		},
+		{
+			ID:          "diff-revisions",
+			Label:       "Diff Revisions",
+			Description: "Compare manifests between two revisions",
+			Icon:        "LuGitCompare",
+			Scope:       types.ActionScopeInstance,
+		},
+		{
+			ID:          "test",
+			Label:       "Test Release",
+			Description: "Run test hooks for a release",
+			Icon:        "LuFlaskConical",
+			Scope:       types.ActionScopeInstance,
+		},
 	}, nil
 }
 
@@ -316,6 +352,16 @@ func (r *ReleaseResourcer) ExecuteAction(
 		return r.executeGetHooks(cfg, input)
 	case "get-history":
 		return r.executeGetHistory(cfg, input)
+	case "install":
+		return r.executeInstall(cfg, input)
+	case "dry-run-install":
+		return r.executeDryRunInstall(cfg, input)
+	case "dry-run-upgrade":
+		return r.executeDryRunUpgrade(cfg, input)
+	case "diff-revisions":
+		return r.executeDiffRevisions(cfg, input)
+	case "test":
+		return r.executeTest(cfg, input)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", actionID)
 	}
@@ -330,6 +376,54 @@ func (r *ReleaseResourcer) StreamAction(
 	_ chan types.ActionEvent,
 ) error {
 	return fmt.Errorf("streaming actions not yet implemented for releases")
+}
+
+// ================================= SCHEMA ================================= //
+
+// GetEditorSchemas extracts values.schema.json from installed Helm chart releases.
+func (r *ReleaseResourcer) GetEditorSchemas(
+	ctx *pkgtypes.PluginContext,
+	client *clients.ClientSet,
+	_ types.ResourceMeta,
+) ([]types.EditorSchema, error) {
+	cfg, err := r.getConfig(ctx, client, "")
+	if err != nil {
+		return nil, err
+	}
+
+	list := action.NewList(cfg)
+	list.AllNamespaces = true
+	list.StateMask = action.ListDeployed | action.ListFailed | action.ListPendingInstall | action.ListPendingUpgrade
+
+	releases, err := list.Run()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list releases for schema extraction: %w", err)
+	}
+
+	var schemas []types.EditorSchema
+	for _, rel := range releases {
+		if rel.Chart == nil {
+			continue
+		}
+		for _, f := range rel.Chart.Raw {
+			if f.Name == "values.schema.json" {
+				schemas = append(schemas, types.EditorSchema{
+					ResourceKey: "helm::v1::Release",
+					FileMatch:   fmt.Sprintf("**/helm::v1::Release/%s.yaml", rel.Name),
+					Content:     f.Data,
+					Language:    "yaml",
+					URI: fmt.Sprintf("helm://%s/%s/%s/values-schema",
+						ctx.Connection.ID,
+						rel.Chart.Metadata.Name,
+						rel.Chart.Metadata.Version,
+					),
+				})
+				break
+			}
+		}
+	}
+
+	return schemas, nil
 }
 
 // ================================= ACTION IMPLEMENTATIONS ================================= //
@@ -419,6 +513,12 @@ func (r *ReleaseResourcer) executeGetManifest(
 	input types.ActionInput,
 ) (*types.ActionResult, error) {
 	get := action.NewGet(cfg)
+
+	// Support fetching a specific revision's manifest.
+	if revF, ok := input.Params["revision"].(float64); ok && revF > 0 {
+		get.Version = int(revF)
+	}
+
 	rel, err := get.Run(input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get release: %w", err)
@@ -465,7 +565,7 @@ func (r *ReleaseResourcer) executeGetHooks(
 		return nil, fmt.Errorf("failed to get release: %w", err)
 	}
 
-	hooks := make([]map[string]interface{}, 0, len(rel.Hooks))
+	hooks := make([]interface{}, 0, len(rel.Hooks))
 	for _, hook := range rel.Hooks {
 		h := map[string]interface{}{
 			"name":   hook.Name,
@@ -473,7 +573,7 @@ func (r *ReleaseResourcer) executeGetHooks(
 			"path":   hook.Path,
 			"weight": hook.Weight,
 		}
-		events := make([]string, 0, len(hook.Events))
+		events := make([]interface{}, 0, len(hook.Events))
 		for _, e := range hook.Events {
 			events = append(events, string(e))
 		}
@@ -504,7 +604,7 @@ func (r *ReleaseResourcer) executeGetHistory(
 		return nil, fmt.Errorf("failed to get history: %w", err)
 	}
 
-	revisions := make([]map[string]interface{}, 0, len(releases))
+	revisions := make([]interface{}, 0, len(releases))
 	for _, rel := range releases {
 		revisions = append(revisions, releaseToMap(rel))
 	}
@@ -514,5 +614,230 @@ func (r *ReleaseResourcer) executeGetHistory(
 		Data: map[string]interface{}{
 			"revisions": revisions,
 		},
+	}, nil
+}
+
+func (r *ReleaseResourcer) executeInstall(
+	cfg *action.Configuration,
+	input types.ActionInput,
+) (*types.ActionResult, error) {
+	chartRef, _ := input.Params["chart"].(string)
+	releaseName, _ := input.Params["name"].(string)
+	namespace, _ := input.Params["namespace"].(string)
+	values, _ := input.Params["values"].(map[string]interface{})
+	version, _ := input.Params["version"].(string)
+
+	if chartRef == "" {
+		return nil, fmt.Errorf("chart reference is required")
+	}
+	if releaseName == "" {
+		return nil, fmt.Errorf("release name is required")
+	}
+
+	settings := cli.New()
+	if namespace != "" {
+		settings.SetNamespace(namespace)
+	}
+
+	chartPathOpts := &action.ChartPathOptions{Version: version}
+	chartPath, err := chartPathOpts.LocateChart(chartRef, settings)
+	if err != nil {
+		return nil, fmt.Errorf("failed to locate chart %s: %w", chartRef, err)
+	}
+
+	chart, err := loader.Load(chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load chart %s: %w", chartPath, err)
+	}
+
+	install := action.NewInstall(cfg)
+	install.ReleaseName = releaseName
+	install.Namespace = namespace
+	install.CreateNamespace = true
+	if version != "" {
+		install.Version = version
+	}
+
+	rel, err := install.Run(chart, values)
+	if err != nil {
+		return nil, fmt.Errorf("failed to install release: %w", err)
+	}
+
+	return &types.ActionResult{
+		Success: true,
+		Data:    releaseToMap(rel),
+		Message: fmt.Sprintf("Release %s installed in namespace %s", rel.Name, rel.Namespace),
+	}, nil
+}
+
+func (r *ReleaseResourcer) executeDryRunInstall(
+	cfg *action.Configuration,
+	input types.ActionInput,
+) (*types.ActionResult, error) {
+	chartRef, _ := input.Params["chart"].(string)
+	releaseName, _ := input.Params["name"].(string)
+	namespace, _ := input.Params["namespace"].(string)
+	values, _ := input.Params["values"].(map[string]interface{})
+	version, _ := input.Params["version"].(string)
+
+	if chartRef == "" {
+		return nil, fmt.Errorf("chart reference is required")
+	}
+
+	settings := cli.New()
+	if namespace != "" {
+		settings.SetNamespace(namespace)
+	}
+
+	chartPathOpts := &action.ChartPathOptions{Version: version}
+	chartPath, err := chartPathOpts.LocateChart(chartRef, settings)
+	if err != nil {
+		return nil, fmt.Errorf("failed to locate chart %s: %w", chartRef, err)
+	}
+
+	chart, err := loader.Load(chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load chart %s: %w", chartPath, err)
+	}
+
+	install := action.NewInstall(cfg)
+	install.ReleaseName = releaseName
+	install.Namespace = namespace
+	install.DryRun = true
+	install.ClientOnly = true
+	if version != "" {
+		install.Version = version
+	}
+
+	rel, err := install.Run(chart, values)
+	if err != nil {
+		return nil, fmt.Errorf("dry-run install failed: %w", err)
+	}
+
+	return &types.ActionResult{
+		Success: true,
+		Data: map[string]interface{}{
+			"manifest": rel.Manifest,
+			"notes":    rel.Info.Notes,
+		},
+		Message: "Dry-run install completed",
+	}, nil
+}
+
+func (r *ReleaseResourcer) executeDryRunUpgrade(
+	cfg *action.Configuration,
+	input types.ActionInput,
+) (*types.ActionResult, error) {
+	chartRef, _ := input.Params["chart"].(string)
+	values, _ := input.Params["values"].(map[string]interface{})
+	reuseValues, _ := input.Params["reuse_values"].(bool)
+	version, _ := input.Params["version"].(string)
+
+	if chartRef == "" {
+		return nil, fmt.Errorf("chart reference is required for upgrade")
+	}
+
+	settings := cli.New()
+	settings.SetNamespace(input.Namespace)
+
+	chartPathOpts := &action.ChartPathOptions{Version: version}
+	chartPath, err := chartPathOpts.LocateChart(chartRef, settings)
+	if err != nil {
+		return nil, fmt.Errorf("failed to locate chart %s: %w", chartRef, err)
+	}
+
+	chart, err := loader.Load(chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load chart %s: %w", chartPath, err)
+	}
+
+	upgrade := action.NewUpgrade(cfg)
+	upgrade.Namespace = input.Namespace
+	upgrade.DryRun = true
+	upgrade.ReuseValues = reuseValues
+
+	rel, err := upgrade.Run(input.ID, chart, values)
+	if err != nil {
+		return nil, fmt.Errorf("dry-run upgrade failed: %w", err)
+	}
+
+	return &types.ActionResult{
+		Success: true,
+		Data: map[string]interface{}{
+			"manifest": rel.Manifest,
+		},
+		Message: "Dry-run upgrade completed",
+	}, nil
+}
+
+func (r *ReleaseResourcer) executeDiffRevisions(
+	cfg *action.Configuration,
+	input types.ActionInput,
+) (*types.ActionResult, error) {
+	rev1F, _ := input.Params["revision1"].(float64)
+	rev2F, _ := input.Params["revision2"].(float64)
+	rev1 := int(rev1F)
+	rev2 := int(rev2F)
+
+	get := action.NewGet(cfg)
+
+	get.Version = rev1
+	rel1, err := get.Run(input.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get revision %d: %w", rev1, err)
+	}
+
+	get.Version = rev2
+	rel2, err := get.Run(input.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get revision %d: %w", rev2, err)
+	}
+
+	return &types.ActionResult{
+		Success: true,
+		Data: map[string]interface{}{
+			"revision1": map[string]interface{}{
+				"revision": rev1,
+				"manifest": rel1.Manifest,
+			},
+			"revision2": map[string]interface{}{
+				"revision": rev2,
+				"manifest": rel2.Manifest,
+			},
+		},
+	}, nil
+}
+
+func (r *ReleaseResourcer) executeTest(
+	cfg *action.Configuration,
+	input types.ActionInput,
+) (*types.ActionResult, error) {
+	test := action.NewReleaseTesting(cfg)
+
+	rel, err := test.Run(input.ID)
+	if err != nil {
+		return nil, fmt.Errorf("release test failed: %w", err)
+	}
+
+	hooks := make([]interface{}, 0)
+	for _, hook := range rel.Hooks {
+		events := make([]interface{}, 0, len(hook.Events))
+		for _, e := range hook.Events {
+			events = append(events, string(e))
+		}
+		hooks = append(hooks, map[string]interface{}{
+			"name":     hook.Name,
+			"kind":     hook.Kind,
+			"events":   events,
+			"lastRun":  hook.LastRun,
+		})
+	}
+
+	return &types.ActionResult{
+		Success: true,
+		Data: map[string]interface{}{
+			"hooks": hooks,
+		},
+		Message: fmt.Sprintf("Release %s tests completed", input.ID),
 	}, nil
 }

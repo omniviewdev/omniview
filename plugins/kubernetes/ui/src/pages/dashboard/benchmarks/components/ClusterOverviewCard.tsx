@@ -1,5 +1,7 @@
 import * as React from 'react';
-import { Typography, Sheet, Stack } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text, Heading } from '@omniviewdev/ui/typography';
 
 type Props = {
   cluster: string
@@ -12,56 +14,58 @@ type Props = {
 
 export const ClusterOverviewCard: React.FC<Props> = ({ passing, warning, failing, score }) => {
   return (
-    <Sheet sx={{ padding: 0.5 }}>
-      <Stack direction={'row'} gap={1}>
-        <Sheet
-          variant='outlined'
+    <Box sx={{ p: 0.5 }}>
+      <Stack direction='row' gap={1}>
+        <Box
           sx={{
             alignItems: 'center',
             justifyContent: 'center',
             px: 3,
             display: 'flex',
             gap: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
           }}
         >
-          <Stack direction={'column'} flex={1}>
-            <Typography color='primary' level="body-xs" sx={{ fontWeight: 'lg' }}>
+          <Stack direction='column' sx={{ flex: 1 }}>
+            <Text size='xs' sx={{ fontWeight: 'bold', color: 'primary.main' }}>
               Score
-            </Typography>
-            <Typography level='h4' sx={{ fontWeight: 'lg' }}>{score}</Typography>
+            </Text>
+            <Heading level={4} sx={{ fontWeight: 'bold' }}>{score}</Heading>
           </Stack>
-        </Sheet>
-        <Sheet
+        </Box>
+        <Box
           sx={{
             bgcolor: 'background.level1',
-            borderRadius: 'sm',
+            borderRadius: 1,
             p: 1,
             display: 'flex',
             flex: 1,
             gap: 2,
           }}
         >
-          <Stack direction={'column'} flex={1}>
-            <Typography color='success' level="body-xs" sx={{ fontWeight: 'lg' }}>
+          <Stack direction='column' sx={{ flex: 1 }}>
+            <Text size='xs' sx={{ fontWeight: 'bold', color: 'success.main' }}>
               Passing
-            </Typography>
-            <Typography sx={{ fontWeight: 'lg' }}>{passing}</Typography>
+            </Text>
+            <Text sx={{ fontWeight: 'bold' }}>{passing}</Text>
           </Stack>
-          <Stack direction={'column'} flex={1}>
-            <Typography color='warning' level="body-xs" sx={{ fontWeight: 'lg' }}>
+          <Stack direction='column' sx={{ flex: 1 }}>
+            <Text size='xs' sx={{ fontWeight: 'bold', color: 'warning.main' }}>
               Warning
-            </Typography>
-            <Typography sx={{ fontWeight: 'lg' }}>{warning}</Typography>
+            </Text>
+            <Text sx={{ fontWeight: 'bold' }}>{warning}</Text>
           </Stack>
-          <Stack direction={'column'} flex={1}>
-            <Typography color='danger' level="body-xs" sx={{ fontWeight: 'lg' }}>
+          <Stack direction='column' sx={{ flex: 1 }}>
+            <Text size='xs' sx={{ fontWeight: 'bold', color: 'error.main' }}>
               Failing
-            </Typography>
-            <Typography sx={{ fontWeight: 'lg' }}>{failing}</Typography>
+            </Text>
+            <Text sx={{ fontWeight: 'bold' }}>{failing}</Text>
           </Stack>
-        </Sheet>
+        </Box>
       </Stack>
-    </Sheet>
+    </Box>
   )
 }
 

@@ -1,23 +1,7 @@
 import React, { createContext, useContext, type ReactNode } from 'react';
-import { type VariantType, useSnackbar as useNotistackSnackbar } from 'notistack';
+import { useNotificationStack, type NotificationSeverity } from '@omniviewdev/ui/feedback';
 
-// Material-ui
-import {
-  Alert,
-  Typography,
-  IconButton,
-  Stack,
-  type ColorPaletteProp,
-} from '@mui/joy';
-
-// Icons
-import {
-  LuCircleCheck,
-  LuTriangleAlert,
-  LuCircleAlert,
-  LuInfo,
-  LuX,
-} from 'react-icons/lu';
+type VariantType = 'default' | 'success' | 'error' | 'warning' | 'info';
 
 type SnackbarContextType = {
   showSnackbar(message: string, status: VariantType, icon?: string, details?: string): void;
@@ -30,11 +14,6 @@ type SnackbarProviderProps = {
   children: ReactNode;
 };
 
-type SnackbarContent = {
-  color: ColorPaletteProp;
-  icon: ReactNode;
-};
-
 type ShowSnackbarOptions = {
   message: string;
   status: VariantType;
@@ -44,44 +23,26 @@ type ShowSnackbarOptions = {
   autoHideDuration?: number;
 };
 
-const snackbarContent: Record<VariantType, SnackbarContent> = {
-  default: {
-    color: 'primary',
-    icon: <LuInfo />,
-  },
-  success: {
-    color: 'success',
-    icon: <LuCircleCheck />,
-  },
-  error: {
-    color: 'danger',
-    icon: <LuCircleAlert />,
-  },
-  warning: {
-    color: 'warning',
-    icon: <LuTriangleAlert />,
-  },
-  info: {
-    color: 'primary',
-    icon: <LuInfo />,
-  },
+const variantToSeverity: Record<VariantType, NotificationSeverity> = {
+  default: 'info',
+  info: 'info',
+  success: 'success',
+  warning: 'warning',
+  error: 'error',
 };
 
 export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) => {
-  const { enqueueSnackbar, closeSnackbar } = useNotistackSnackbar();
+  const { push } = useNotificationStack();
 
   const [singleShowNotices, setSingleShowNotices] = React.useState<string[]>([]);
 
   const setNoticeShown = (message: string) => {
-    setSingleShowNotices([...singleShowNotices, message]);
+    setSingleShowNotices(prev => [...prev, message]);
   };
 
-  // Updated showSnackbar function to handle both overloads
   const showSnackbar: SnackbarContextType['showSnackbar'] = (messageOrOptions: string | ShowSnackbarOptions, status?: VariantType, details?: string) => {
-    // Determine if the function was called with ShowSnackbarOptions or individual arguments
     const isOptions = typeof messageOrOptions === 'object';
 
-    // Extract options if provided
     let _message = '';
     let _status: VariantType = 'info';
     let _details: string | undefined;
@@ -89,13 +50,10 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
 
     if (isOptions) {
       _message = messageOrOptions.message;
-      // before doing anything else, check to see if this is a single show
       if (messageOrOptions.showOnce) {
         if (singleShowNotices.includes(_message)) {
-          // don't show again
           return;
         }
-
         setNoticeShown(_message);
       }
 
@@ -108,36 +66,11 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
       _details = details;
     }
 
-    enqueueSnackbar(_message, {
-      variant: _status,
-      anchorOrigin: {
-        vertical: 'bottom',
-        horizontal: 'right',
-      },
-      preventDuplicate: true,
-      autoHideDuration: _autoHideDuration,
-      content: (key, message) => (
-        <Alert
-          size='sm'
-          variant='soft'
-          sx={{
-            maxWidth: 800,
-          }}
-          color={snackbarContent[_status].color}
-          endDecorator={
-            <IconButton size='sm' variant='soft' color={snackbarContent[_status].color} onClick={() => {
-              closeSnackbar(key);
-            }}>
-              <LuX />
-            </IconButton>
-          }
-        >
-          <Stack direction='column' spacing={0} alignItems='flex-start'>
-            <Typography level='title-sm'>{message}</Typography>
-            {Boolean(_details) && <Typography level='body-xs' color={snackbarContent[_status].color} >{_details}</Typography>}
-          </Stack>
-        </Alert>
-      ),
+    push({
+      severity: variantToSeverity[_status] ?? 'info',
+      title: _message,
+      message: _details,
+      timeout: _autoHideDuration,
     });
   };
 
@@ -158,4 +91,3 @@ export const useSnackbar = (): SnackbarContextType => {
 };
 
 export default useSnackbar;
-

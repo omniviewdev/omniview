@@ -5,11 +5,16 @@ import { omniviewExternals } from "@omniviewdev/vite-plugin";
 const externals = [
   // MUI
   "@emotion/react",
-  "@mui/joy",
-  "@mui/base",
-  "@mui/x-charts",
   "@mui/material",
-  "@mui/material-icons",
+  "@mui/material/styles",
+  "@mui/material/Box",
+  "@mui/material/Grid",
+  "@mui/material/GlobalStyles",
+  "@mui/material/CssBaseline",
+  "@mui/material/CircularProgress",
+  "@mui/material/LinearProgress",
+  "@mui/material/Divider",
+  "@mui/icons-material",
 
   // REACT
   "react",
@@ -21,6 +26,23 @@ const externals = [
 
   // OMNIVIEW
   "@omniviewdev/runtime",
+  "@omniviewdev/ui",
+  "@omniviewdev/ui/buttons",
+  "@omniviewdev/ui/inputs",
+  "@omniviewdev/ui/feedback",
+  "@omniviewdev/ui/typography",
+  "@omniviewdev/ui/overlays",
+  "@omniviewdev/ui/navigation",
+  "@omniviewdev/ui/table",
+  "@omniviewdev/ui/layout",
+  "@omniviewdev/ui/domain",
+  "@omniviewdev/ui/charts",
+  "@omniviewdev/ui/editors",
+  "@omniviewdev/ui/types",
+  "@omniviewdev/ui/theme",
+  "@omniviewdev/ui/menus",
+  "@omniviewdev/ui/sidebars",
+  "@omniviewdev/ui/cells",
 ];
 
 // https://vitejs.dev/config/

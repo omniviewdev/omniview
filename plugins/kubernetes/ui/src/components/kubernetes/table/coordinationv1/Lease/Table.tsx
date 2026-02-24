@@ -4,14 +4,18 @@ import { Lease } from 'kubernetes-types/coordination/v1'
 import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { withClusterResourceColumns } from '../../shared/columns'
-import { DrawerComponent } from '@omniviewdev/runtime'
-import { LuBox, LuCode } from 'react-icons/lu'
+import { DrawerComponent, DrawerContext } from '@omniviewdev/runtime'
+import { LuBox } from 'react-icons/lu'
 import BaseOverviewPage from '../../../../shared/sidebar/pages/overview/BaseOverviewPage'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
-import { Chip } from '@mui/joy'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
+import { Chip } from '@omniviewdev/ui'
 import AgeCell from '../../shared/cells/AgeCell'
 
 const resourceKey = 'coordination::v1::Lease'
+
+const LeaseOverview: React.FC<{ ctx: DrawerContext<Lease> }> = ({ ctx }) => (
+  <BaseOverviewPage data={ctx.data || {}} />
+)
 
 const LeaseTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()
@@ -23,7 +27,7 @@ const LeaseTable: React.FC = () => {
         header: 'Holder',
         accessorKey: 'spec.holderIdentity',
         size: 200,
-        cell: ({ getValue }) => <Chip size={'sm'} color={'primary'} sx={{ borderRadius: '2px' }}>{getValue() as string}</Chip>,
+        cell: ({ getValue }) => <Chip size={'sm'} color={'primary'} sx={{ borderRadius: '2px' }} label={getValue() as string} />,
         meta: {
           defaultHidden: false,
         }
@@ -74,18 +78,7 @@ const LeaseTable: React.FC = () => {
   const drawer: DrawerComponent<Lease> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuBox />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuBox />,
-        component: (ctx) => <BaseOverviewPage data={ctx.data || {}} />
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: LeaseOverview }),
     actions: []
   }), [])
 

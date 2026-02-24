@@ -1,9 +1,9 @@
 import React from 'react';
 
 // material ui
-import Box from '@mui/joy/Box';
-import Chip from '@mui/joy/Chip';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import { Chip } from '@omniviewdev/ui';
+import { Text } from '@omniviewdev/ui/typography';
 
 // project imports
 import Icon from '@/components/icons/Icon';
@@ -30,9 +30,12 @@ export const ChipCell: React.FC<Props> = ({ align, value, color, colorMap, start
     return color ?? 'neutral';
   };
 
-  const getVariant = () => {
-    if (variant) {
-      return variant;
+  const getEmphasis = () => {
+    if (variant === 'outlined') {
+      return 'outline';
+    }
+    if (variant === 'soft') {
+      return 'soft';
     }
 
     return 'soft';
@@ -63,19 +66,18 @@ export const ChipCell: React.FC<Props> = ({ align, value, color, colorMap, start
       <Chip
         size="sm"
         color={getColor()}
-        variant={getVariant()}
-        sx={{ 
+        emphasis={getEmphasis()}
+        sx={{
           borderRadius: 'sm',
         }}
-        startDecorator={
+        icon={
           typeof startDecorator === 'string' ? <Icon name={startDecorator} size={16} /> : startDecorator
         }
-        endDecorator={
+        action={
           typeof endDecorator === 'string' ? <Icon name={endDecorator} size={16} /> : endDecorator
         }
-      >
-        <Typography level="title-sm">{value}</Typography>
-      </Chip>
+        label={value}
+      />
     </Box>
   );
 };

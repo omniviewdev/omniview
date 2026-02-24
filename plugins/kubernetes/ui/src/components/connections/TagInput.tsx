@@ -1,5 +1,7 @@
 import React from 'react';
-import { Autocomplete, Chip, AutocompleteOption, Typography } from '@mui/joy';
+import Autocomplete from '@mui/material/Autocomplete';
+import MuiTextField from '@mui/material/TextField';
+import { Chip } from '@omniviewdev/ui';
 
 type Props = {
   tags: string[];
@@ -15,30 +17,30 @@ const TagInput: React.FC<Props> = ({ tags, availableTags, onChange }) => {
     <Autocomplete
       multiple
       freeSolo
-      size='sm'
-      placeholder='Add tags...'
+      size='small'
       value={tags}
       options={options}
       onChange={(_e, newValue) => {
         onChange(newValue.map(v => (typeof v === 'string' ? v.trim() : v)).filter(Boolean));
       }}
       renderTags={(value, getTagProps) =>
-        value.map((tag, index) => (
-          <Chip
-            size='sm'
-            variant='soft'
-            color='warning'
-            {...getTagProps({ index })}
-            key={tag}
-          >
-            {tag}
-          </Chip>
-        ))
+        value.map((tag, index) => {
+          const { onDelete, ...tagProps } = getTagProps({ index });
+          return (
+            <Chip
+              size='sm'
+              emphasis='soft'
+              color='warning'
+              label={tag}
+              {...tagProps}
+              onDelete={() => onDelete({} as any)}
+              key={tag}
+            />
+          );
+        })
       }
-      renderOption={(props, option) => (
-        <AutocompleteOption {...props} key={option}>
-          <Typography level='body-sm'>{option}</Typography>
-        </AutocompleteOption>
+      renderInput={(params) => (
+        <MuiTextField {...params} placeholder='Add tags...' size='small' />
       )}
     />
   );

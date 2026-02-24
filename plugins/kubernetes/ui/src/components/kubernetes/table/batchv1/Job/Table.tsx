@@ -9,10 +9,10 @@ import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuClock, LuCode, LuLogs, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuClock, LuLogs, LuTrash } from 'react-icons/lu'
 import AgeCell from '../../shared/cells/AgeCell'
 import JobSidebar from './Sidebar'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 
 const resourceKey = 'batch::v1::Job'
 
@@ -198,18 +198,7 @@ This field is beta-level. It can be used when the \`JobPodFailurePolicy\` featur
   const drawer: DrawerComponent<Job> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuClock />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <JobSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: JobSidebar }),
     actions: [
       {
         title: 'Delete',

@@ -1,10 +1,8 @@
 import React from 'react';
 
-// material ui
-import {
-  Box,
-  Typography,
-} from '@mui/joy';
+// @omniviewdev/ui
+import Box from '@mui/material/Box';
+import { Text } from '@omniviewdev/ui/typography';
 import { type types } from '@omniviewdev/runtime/models';
 
 import { formatTimeDifference } from '../../../utils/time';
@@ -14,34 +12,20 @@ import { type ResourceMetadata } from '../../../hooks/useResourceDefinition';
 import ResourceLinkCell from './ResourceLinkCell';
 
 type Props = {
-  /** The text value to render */
   value: any;
-  /** The color of the text. Default is 'neutral' */
   color?: 'success' | 'warning' | 'danger' | 'primary' | 'neutral';
-  /** Specify mapping of values to colors that will change with the input */
   colorMap?: Record<string, string>;
-  /** A decorator to render before the text */
   startDecorator?: React.ReactNode;
-  /** A decorator to render after the text */
   endDecorator?: React.ReactNode;
-  /** The horizontal alignment of the text. Default is 'left' */
   align?: 'left' | 'right' | 'center';
-  /** Formatter for the text */
   formatter?: string;
-  /** Resource links to parse */
   resourceLink?: types.ResourceLink;
-  /** Metadata for the resource */
   metadata?: ResourceMetadata;
-  /** children */
   children?: React.ReactNode;
 };
 
 type FormattingFunction = (value: any) => string;
 
-/**
- * Various formatters that we can apply to the contents of the cell. These need to return a string,
- * but can take in any type.
- */
 const formatters: Record<string, FormattingFunction> = {
   bytes: (value: string) => convertByteUnits({ from: value }),
   sum: (value: string[] | number[] | string | number) => {
@@ -51,32 +35,26 @@ const formatters: Record<string, FormattingFunction> = {
         summed += Number(v);
       }
     }
-
     if (typeof value === 'string') {
       value.split(',').forEach((v) => {
         summed += Number(v);
       });
     }
-
     if (typeof value === 'number') {
       summed += value;
     }
-
     return summed.toString();
   },
   count: (value: string[] | number[] | string | number) => {
     if (Array.isArray(value)) {
       return value.length.toString();
     }
-
     if (typeof value === 'string') {
       return value.split(',').length.toString();
     }
-
     if (typeof value === 'number') {
       return value.toString();
     }
-
     return '';
   },
   avg: (value: string[] | number[] | string | number) => {
@@ -88,7 +66,6 @@ const formatters: Record<string, FormattingFunction> = {
         count++;
       }
     }
-
     return (summed / count).toString();
   },
   max: (value: string[] | number[] | string | number) => {
@@ -98,7 +75,6 @@ const formatters: Record<string, FormattingFunction> = {
         max = Math.max(max, Number(v));
       }
     }
-
     return max.toString();
   },
   min: (value: string[] | number[] | string | number) => {
@@ -108,29 +84,24 @@ const formatters: Record<string, FormattingFunction> = {
         min = Math.min(min, Number(v));
       }
     }
-
     if (typeof value === 'string') {
       value.split(',').forEach((v) => {
         min = Math.min(min, Number(v));
       });
     }
-
     if (typeof value === 'number') {
       min = Math.min(min, value);
     }
-
     return min.toString();
   },
 };
 
 const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
-  // Memoize the initial age calculation
   const initialAge = React.useMemo(() => {
     const date = new Date(value);
     if (!value || isNaN(date.getTime())) {
       return '0s';
     }
-
     return formatTimeDifference(date);
   }, [value]);
 
@@ -139,18 +110,12 @@ const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
   React.useEffect(() => {
     const date = new Date(value);
     if (isNaN(date.getTime())) {
-      // Early return if value is not a valid date
       return;
     }
-
     const updateAge = () => {
       setTime(formatTimeDifference(date));
     };
-
-    // Set the interval to update the age every 60 seconds
-    const intervalId = setInterval(updateAge, 1000); // Adjusted to 60 seconds
-
-    // Cleanup the interval on component unmount
+    const intervalId = setInterval(updateAge, 1000);
     return () => {
       clearInterval(intervalId);
     };
@@ -159,12 +124,10 @@ const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
   return <CellBase value={time} {...rest} />;
 };
 
-/** Render a standard text row for the generic resource table. */
 const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorator, endDecorator, formatter, children }) => {
   const getColor = () => {
     if (colorMap) {
       let val = colorMap[value] ?? colorMap['*'] ?? undefined;
-
       switch (val) {
         case 'healthy':
         case 'good':
@@ -181,7 +144,6 @@ const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorat
           return undefined;
       }
     }
-
     return color ?? undefined;
   };
 
@@ -196,7 +158,6 @@ const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorat
           return 'center';
       }
     }
-
     return 'flex-start';
   };
 
@@ -207,7 +168,6 @@ const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorat
       justifyContent={getAlignment()}
       alignItems='center'
       sx={{
-        // allow vertical scrolling, but hide scrollbar
         overflowY: 'hidden',
         overflowX: 'scroll',
         scrollbarWidth: 'none',
@@ -215,24 +175,23 @@ const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorat
       }}
     >
       {children ??
-        <Typography
-          level='body-xs'
-          color={getColor()}
-          startDecorator={startDecorator}
-          endDecorator={endDecorator}
-          noWrap
-        >
-          {formatter && formatters[formatter] ? formatters[formatter](value) : `${value}`}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {startDecorator}
+          <Text
+            size='xs'
+            sx={{ color: getColor() ? `${getColor()}.main` : undefined }}
+            noWrap
+          >
+            {formatter && formatters[formatter] ? formatters[formatter](value) : `${value}`}
+          </Text>
+          {endDecorator}
+        </Box>
       }
     </Box>
   );
 };
 
 const TextCell: React.FC<Props> = ({ formatter, ...props }) => {
-  /**
-   * Resource links have their own component type
-   */
   if (props.resourceLink) {
     return (
       <CellBase {...props}>
@@ -250,4 +209,3 @@ const TextCell: React.FC<Props> = ({ formatter, ...props }) => {
 };
 
 export default TextCell;
-

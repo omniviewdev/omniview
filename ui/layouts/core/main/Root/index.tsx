@@ -1,7 +1,7 @@
 import React from 'react';
 
 // Material-ui
-import Box, { type BoxProps } from '@mui/joy/Box';
+import Box, { type BoxProps } from '@mui/material/Box';
 
 /**
  * The root component for the main layout. All components within the layout should be children of this component.
@@ -11,7 +11,7 @@ const Root: React.FC<BoxProps> = props => (
     {...props}
     sx={[
       {
-        bgcolor: 'background.appBody',
+        bgcolor: 'background.default',
         display: 'grid',
         gridTemplateColumns: {
           xs: '1fr',

@@ -2,12 +2,8 @@ import React from 'react';
 import { useLocation, Link } from 'react-router-dom';
 
 // Material-ui
-import List from '@mui/joy/List';
-import ListItem from '@mui/joy/ListItem';
-import ListItemButton from '@mui/joy/ListItemButton';
-import ListItemDecorator from '@mui/joy/ListItemDecorator';
-import ListItemContent from '@mui/joy/ListItemContent';
-import ListSubheader from '@mui/joy/ListSubheader';
+import { List, ListItem, ListSubheader } from '@omniviewdev/ui';
+import Box from '@mui/material/Box';
 
 // Custom
 import Icon from '@/components/icons/Icon';
@@ -26,27 +22,41 @@ const TrivyNav: React.FC<Props> = ({ sections }) => {
     <List size='sm' sx={{ '--ListItem-radius': '8px', '--List-gap': '4px', p: 1 }}>
       <Link to='/trivy' style={{ textDecoration: 'none' }}>
         <ListItem key={'home'}>
-          <ListItemButton
-            selected={location.pathname === '/trivy'}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              p: 1,
+              borderRadius: 1,
+              cursor: 'pointer',
+              width: '100%',
+              bgcolor: location.pathname === '/trivy' ? 'action.selected' : 'transparent',
+            }}
           >
-            <ListItemDecorator>
-              <Icon name={'LuGauge'} size={18} />
-            </ListItemDecorator>
-            <ListItemContent>{'Dashboard'}</ListItemContent>
-          </ListItemButton>
+            <Icon name={'LuGauge'} size={18} />
+            <span>{'Dashboard'}</span>
+          </Box>
         </ListItem>
       </Link>
 
       <Link to='/trivy/scan' style={{ textDecoration: 'none' }}>
         <ListItem key={'scan'}>
-          <ListItemButton
-            selected={location.pathname === '/trivy/scan'}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              p: 1,
+              borderRadius: 1,
+              cursor: 'pointer',
+              width: '100%',
+              bgcolor: location.pathname === '/trivy/scan' ? 'action.selected' : 'transparent',
+            }}
           >
-            <ListItemDecorator>
-              <Icon name={'LuRadar'} size={18} />
-            </ListItemDecorator>
-            <ListItemContent>{'Scan'}</ListItemContent>
-          </ListItemButton>
+            <Icon name={'LuRadar'} size={18} />
+            <span>{'Scan'}</span>
+          </Box>
         </ListItem>
       </Link>
 
@@ -59,14 +69,21 @@ const TrivyNav: React.FC<Props> = ({ sections }) => {
           {sections.map(section => (
             <Link to={`/trivy/${section.id}`} style={{ textDecoration: 'none' }}>
               <ListItem key={section.id}>
-                <ListItemButton
-                  selected={location.pathname.endsWith(section.id)}
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    p: 1,
+                    borderRadius: 1,
+                    cursor: 'pointer',
+                    width: '100%',
+                    bgcolor: location.pathname.endsWith(section.id) ? 'action.selected' : 'transparent',
+                  }}
                 >
-                  <ListItemDecorator>
-                    <Icon name={section.icon} size={18} />
-                  </ListItemDecorator>
-                  <ListItemContent>{section.label}</ListItemContent>
-                </ListItemButton>
+                  <Icon name={section.icon} size={18} />
+                  <span>{section.label}</span>
+                </Box>
               </ListItem>
             </Link>
           ))}

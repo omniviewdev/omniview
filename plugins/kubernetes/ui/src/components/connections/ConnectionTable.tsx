@@ -1,9 +1,6 @@
 import React from 'react';
-import Table from '@mui/joy/Table';
-import Typography from '@mui/joy/Typography';
-import Sheet from '@mui/joy/Sheet';
-import Box from '@mui/joy/Box';
-import Stack from '@mui/joy/Stack';
+import Box from '@mui/material/Box';
+import { Text } from '@omniviewdev/ui/typography';
 
 import { usePluginContext, useConnection, useSnackbar } from '@omniviewdev/runtime';
 import { usePluginRouter } from '@omniviewdev/runtime';
@@ -138,6 +135,15 @@ const GridCardWrapper: React.FC<{
   );
 };
 
+/* ---- shared table styles ---- */
+const thSx: React.CSSProperties = {
+  padding: '4px 8px',
+  textAlign: 'left',
+  verticalAlign: 'middle',
+  borderBottom: '1px solid var(--ov-border-default, rgba(255,255,255,0.08))',
+  whiteSpace: 'nowrap',
+};
+
 const ConnectionTable: React.FC<Props> = ({
   grouped,
   groupBy,
@@ -218,51 +224,48 @@ const ConnectionTable: React.FC<Props> = ({
           onToggleCollapse={() => onToggleCollapse(group.key)}
           hideHeader={isFlat}
         >
-          <Sheet
-            variant='outlined'
-            sx={{ width: '100%', borderRadius: 'sm', overflow: 'auto' }}
+          <Box
+            sx={{
+              width: '100%',
+              borderRadius: 'var(--ov-radius-md, 6px)',
+              overflow: 'auto',
+              border: '1px solid var(--ov-border-default, rgba(255,255,255,0.08))',
+              bgcolor: 'var(--ov-bg-surface, rgba(255,255,255,0.03))',
+            }}
           >
-            <Table
+            <table
               aria-label='connections table'
-              stickyHeader
-              hoverRow
-              sx={{
-                '--TableCell-headBackground': 'var(--joy-palette-background-level1)',
-                '--Table-headerUnderlineThickness': '1px',
-                '--TableRow-hoverBackground': 'var(--joy-palette-background-level1)',
-                '--TableCell-paddingY': '2px',
-                '--TableCell-paddingX': '8px',
-                WebkitUserSelect: 'none',
-              }}
+              style={{ width: '100%', borderCollapse: 'collapse' }}
             >
               <thead>
-                <tr>
-                  <th style={{ width: 40 }} />
-                  <th style={{ width: '40%', verticalAlign: 'middle' }}>
-                    <Typography sx={{ pl: 0.5 }}>Name</Typography>
+                <tr style={{ backgroundColor: 'var(--ov-bg-surface-inset, rgba(255,255,255,0.02))' }}>
+                  <th style={{ ...thSx, width: 32, padding: '4px' }} />
+                  <th style={{ ...thSx, width: '40%' }}>
+                    <Text size='xs' weight='semibold' sx={{ color: 'var(--ov-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Name
+                    </Text>
                   </th>
                   {sortedVisibleCols.map(col => (
                     <th
                       key={col}
                       style={{
+                        ...thSx,
                         width: getColumnWidth(allConnections, col) + 8,
-                        verticalAlign: 'middle',
-                        paddingLeft: 4,
                       }}
                     >
-                      <Typography sx={{ pl: 1 }}>
+                      <Text size='xs' weight='semibold' sx={{ color: 'var(--ov-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         {col.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                      </Typography>
+                      </Text>
                     </th>
                   ))}
-                  <th style={{ width: 48, position: 'relative' }}>
-                    <Stack direction='row' justifyContent='flex-end' sx={{ position: 'relative' }}>
+                  <th style={{ ...thSx, width: 36, position: 'relative', textAlign: 'right' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
                       <ColumnPicker
                         allColumns={allLabelKeys}
                         visibleColumns={visibleColumns}
                         onToggleColumn={onToggleColumn}
                       />
-                    </Stack>
+                    </Box>
                   </th>
                 </tr>
               </thead>
@@ -282,8 +285,8 @@ const ConnectionTable: React.FC<Props> = ({
                   />
                 ))}
               </tbody>
-            </Table>
-          </Sheet>
+            </table>
+          </Box>
         </ConnectionGroupComp>
       ))}
     </Box>

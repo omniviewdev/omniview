@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuRocket, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuRocket, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import RuntimeClassSidebar from './Sidebar'
 
 const resourceKey = 'node.k8s.io/v1::RuntimeClass'
@@ -86,18 +86,7 @@ const RuntimeClassTable: React.FC = () => {
   const drawer: DrawerComponent<RuntimeClass> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuRocket />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <RuntimeClassSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: RuntimeClassSidebar }),
     actions: [
       {
         title: 'Delete',

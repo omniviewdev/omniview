@@ -1,8 +1,8 @@
 import React from 'react';
 
 // material ui
-import Box from '@mui/joy/Box';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import { Text } from '@omniviewdev/ui/typography';
 import { formatTimeDifference } from '@/utils/time';
 import { convertByteUnits } from '@/utils/units';
 import { type types } from '@omniviewdev/runtime/models';
@@ -211,15 +211,15 @@ const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorat
       }}
     >
       {children ??
-        <Typography
-          level='body-xs'
+        <Text
+          size='xs'
           color={getColor()}
-          startDecorator={startDecorator}
-          endDecorator={endDecorator}
           noWrap
         >
+          {startDecorator}
           {formatter && formatters[formatter] ? formatters[formatter](value) : `${value}`}
-        </Typography>
+          {endDecorator}
+        </Text>
       }
     </Box>
   );

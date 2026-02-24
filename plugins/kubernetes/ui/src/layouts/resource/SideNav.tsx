@@ -1,7 +1,7 @@
 import React from 'react';
 
-// Material-ui
-import { Box } from '@mui/joy';
+// @mui/material
+import Box from '@mui/material/Box';
 
 type Props = {
   padding?: number;
@@ -16,7 +16,7 @@ type Props = {
  */
 const SideNav: React.FC<Props> = ({ type = 'inset', scrollable = false, children, width, padding }) => {
   const BorderedSx = {
-    bgcolor: '#131315',
+    bgcolor: 'background.paper',
     borderRight: '1px solid',
     borderColor: 'divider',
   };
@@ -31,7 +31,7 @@ const SideNav: React.FC<Props> = ({ type = 'inset', scrollable = false, children
   const BorderedInsetSx = {
     bgcolor: 'transparent',
     border: '1px solid',
-    borderRadius: 'md',
+    borderRadius: 2,
     borderColor: 'divider',
   };
 

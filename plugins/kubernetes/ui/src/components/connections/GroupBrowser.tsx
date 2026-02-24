@@ -1,5 +1,10 @@
 import React from 'react';
-import { Box, Button, Card, Chip, Select, Option, Stack, Typography } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Card, Chip } from '@omniviewdev/ui';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Select } from '@omniviewdev/ui/inputs';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuArrowLeft } from 'react-icons/lu';
 import type { ConnectionAttribute, EnrichedConnection } from '../../types/clusters';
 import CompactClusterCard from './CompactClusterCard';
@@ -42,7 +47,7 @@ const GroupBrowser: React.FC<Props> = ({ connections, availableAttributes, onCon
 
   const selectedAttr = filteredAttributes.find(a => a.key === browseBy);
 
-  // Build groups — skip connections without a value for the attribute
+  // Build groups -- skip connections without a value for the attribute
   const groups = React.useMemo(() => {
     if (!browseBy) return [];
     const map = new Map<string, EnrichedConnection[]>();
@@ -70,17 +75,17 @@ const GroupBrowser: React.FC<Props> = ({ connections, availableAttributes, onCon
         <Stack direction='row' alignItems='center' gap={1} sx={{ mb: 1 }}>
           <Button
             size='sm'
-            variant='plain'
+            emphasis='ghost'
             color='neutral'
-            startDecorator={<LuArrowLeft size={14} />}
+            startAdornment={<LuArrowLeft size={14} />}
             onClick={() => setDrillDown(null)}
           >
             Back
           </Button>
-          <Typography level='title-sm'>
+          <Text weight='semibold' size='sm'>
             {selectedAttr?.displayName}: {drillDown}
-          </Typography>
-          <Chip size='sm' variant='soft' color='neutral'>{groupConns.length}</Chip>
+          </Text>
+          <Chip size='sm' emphasis='soft' color='neutral' label={String(groupConns.length)} />
         </Stack>
         <Box
           sx={{
@@ -105,18 +110,17 @@ const GroupBrowser: React.FC<Props> = ({ connections, availableAttributes, onCon
   return (
     <Box>
       <Stack direction='row' alignItems='center' gap={1} sx={{ mb: 1 }}>
-        <Typography level='title-sm'>Browse by</Typography>
+        <Text weight='semibold' size='sm'>Browse by</Text>
         <Select
           size='sm'
-          variant='outlined'
           value={browseBy}
-          onChange={(_e, val) => { if (val) setBrowseBy(val); }}
+          onChange={(val) => { if (val) setBrowseBy(val as string); }}
           sx={{ minWidth: 120 }}
-        >
-          {filteredAttributes.map(attr => (
-            <Option key={attr.key} value={attr.key}>{attr.displayName}</Option>
-          ))}
-        </Select>
+          options={filteredAttributes.map(attr => ({
+            value: attr.key,
+            label: attr.displayName,
+          }))}
+        />
       </Stack>
       <Box
         sx={{
@@ -133,14 +137,20 @@ const GroupBrowser: React.FC<Props> = ({ connections, availableAttributes, onCon
             sx={{
               cursor: 'pointer',
               p: 1.5,
-              '&:hover': { borderColor: 'primary.outlinedHoverBorder', boxShadow: 'sm' },
-              transition: 'border-color 0.15s, box-shadow 0.15s',
+              border: '1px solid var(--ov-border-default, rgba(255,255,255,0.08))',
+              bgcolor: 'var(--ov-bg-surface, rgba(255,255,255,0.03))',
+              '&:hover': {
+                borderColor: 'var(--ov-border-emphasis, rgba(255,255,255,0.15))',
+                bgcolor: 'var(--ov-bg-surface-hover, rgba(255,255,255,0.05))',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+              },
+              transition: 'border-color 0.15s, background-color 0.15s, box-shadow 0.15s',
             }}
           >
-            <Typography level='title-sm' noWrap>{value}</Typography>
-            <Typography level='body-xs' sx={{ opacity: 0.6 }}>
+            <Text weight='semibold' size='sm' noWrap>{value}</Text>
+            <Text size='xs' sx={{ opacity: 0.6 }}>
               {conns.length} cluster{conns.length !== 1 ? 's' : ''}
-            </Typography>
+            </Text>
           </Card>
         ))}
       </Box>

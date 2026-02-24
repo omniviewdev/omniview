@@ -1,5 +1,5 @@
 import React from "react";
-import Stack from "@mui/joy/Stack";
+import { Stack } from "@omniviewdev/ui/layout";
 import MetadataSection from "./sections/MetadataSection";
 
 interface Props {

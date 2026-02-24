@@ -238,6 +238,29 @@ func (r *ResourcePluginClient) GetResourceDefinition(id string) (types.ResourceD
 	}, nil
 }
 
+// checkResponseError checks for a structured error in a CRUD response and
+// reconstructs a ResourceOperationError if present.
+func checkResponseError(success bool, re *proto.ResourceError) error {
+	if success {
+		return nil
+	}
+	if re == nil {
+		// Server indicated failure but sent no structured error — shouldn't
+		// happen, but handle defensively.
+		return &types.ResourceOperationError{
+			Code:    "INTERNAL",
+			Title:   "Operation failed",
+			Message: "server returned unsuccessful response with no error details",
+		}
+	}
+	return &types.ResourceOperationError{
+		Code:        re.GetCode(),
+		Title:       re.GetTitle(),
+		Message:     re.GetMessage(),
+		Suggestions: re.GetSuggestions(),
+	}
+}
+
 // ============================== Operations ============================== //
 
 func (r *ResourcePluginClient) Get(
@@ -257,6 +280,9 @@ func (r *ResourcePluginClient) Get(
 	})
 	if err != nil {
 		return nil, err
+	}
+	if respErr := checkResponseError(resp.GetSuccess(), resp.GetError()); respErr != nil {
+		return nil, respErr
 	}
 
 	return &types.GetResult{
@@ -281,6 +307,9 @@ func (r *ResourcePluginClient) List(
 	})
 	if err != nil {
 		return nil, err
+	}
+	if respErr := checkResponseError(resp.GetSuccess(), resp.GetError()); respErr != nil {
+		return nil, respErr
 	}
 
 	data := resp.GetData()
@@ -313,6 +342,9 @@ func (r *ResourcePluginClient) Find(
 	})
 	if err != nil {
 		return nil, err
+	}
+	if respErr := checkResponseError(resp.GetSuccess(), resp.GetError()); respErr != nil {
+		return nil, respErr
 	}
 
 	data := resp.GetData()
@@ -352,6 +384,9 @@ func (r *ResourcePluginClient) Create(
 	if err != nil {
 		return nil, err
 	}
+	if respErr := checkResponseError(resp.GetSuccess(), resp.GetError()); respErr != nil {
+		return nil, respErr
+	}
 
 	return &types.CreateResult{
 		Result:  resp.GetData().AsMap(),
@@ -383,6 +418,9 @@ func (r *ResourcePluginClient) Update(
 	if err != nil {
 		return nil, err
 	}
+	if respErr := checkResponseError(resp.GetSuccess(), resp.GetError()); respErr != nil {
+		return nil, respErr
+	}
 
 	return &types.UpdateResult{
 		Result:  resp.GetData().AsMap(),
@@ -407,6 +445,9 @@ func (r *ResourcePluginClient) Delete(
 	})
 	if err != nil {
 		return nil, err
+	}
+	if respErr := checkResponseError(resp.GetSuccess(), resp.GetError()); respErr != nil {
+		return nil, respErr
 	}
 
 	return &types.DeleteResult{
@@ -465,6 +506,7 @@ func (r *ResourcePluginClient) ListenForEvents(
 	addStream chan types.InformerAddPayload,
 	updateStream chan types.InformerUpdatePayload,
 	deleteStream chan types.InformerDeletePayload,
+	stateStream chan types.InformerStateEvent,
 ) error {
 	stream, err := r.client.ListenForEvents(ctx.Context, &emptypb.Empty{})
 	if err != nil {
@@ -509,9 +551,71 @@ func (r *ResourcePluginClient) ListenForEvents(
 					Namespace:  msg.GetNamespace(),
 					Data:       del.GetData().AsMap(),
 				}
+			case *proto.InformerEvent_State:
+				st := msg.GetState()
+				event := types.InformerStateEvent{
+					Connection:    st.GetConnection(),
+					ResourceKey:   st.GetResourceKey(),
+					State:         types.InformerResourceState(st.GetState()),
+					ResourceCount: int(st.GetResourceCount()),
+					TotalCount:    int(st.GetTotalCount()),
+				}
+				if st.GetError() != nil {
+					event.Error = &types.ResourceOperationError{
+						Code:        st.GetError().GetCode(),
+						Title:       st.GetError().GetTitle(),
+						Message:     st.GetError().GetMessage(),
+						Suggestions: st.GetError().GetSuggestions(),
+					}
+				}
+				stateStream <- event
 			}
 		}
 	}
+}
+
+// GetInformerState returns a snapshot of all resource informer states for a connection.
+func (r *ResourcePluginClient) GetInformerState(
+	_ *pkgtypes.PluginContext,
+	connectionID string,
+) (*types.InformerConnectionSummary, error) {
+	resp, err := r.client.GetInformerState(context.Background(), &proto.GetInformerStateRequest{
+		Connection: connectionID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	resources := make(map[string]types.InformerResourceState, len(resp.GetResources()))
+	for k, v := range resp.GetResources() {
+		resources[k] = types.InformerResourceState(v)
+	}
+	counts := make(map[string]int, len(resp.GetResourceCounts()))
+	for k, v := range resp.GetResourceCounts() {
+		counts[k] = int(v)
+	}
+
+	return &types.InformerConnectionSummary{
+		Connection:     resp.GetConnection(),
+		Resources:      resources,
+		ResourceCounts: counts,
+		TotalResources: int(resp.GetTotalResources()),
+		SyncedCount:    int(resp.GetSyncedCount()),
+		ErrorCount:     int(resp.GetErrorCount()),
+	}, nil
+}
+
+// EnsureInformerForResource triggers lazy start for SyncOnFirstQuery resources.
+func (r *ResourcePluginClient) EnsureInformerForResource(
+	_ *pkgtypes.PluginContext,
+	connectionID string,
+	resourceKey string,
+) error {
+	_, err := r.client.EnsureInformerForResource(context.Background(), &proto.EnsureInformerRequest{
+		Connection:  connectionID,
+		ResourceKey: resourceKey,
+	})
+	return err
 }
 
 // ============================== Layout ============================== //
@@ -662,6 +766,34 @@ func (r *ResourcePluginClient) StreamAction(
 			}
 		}
 	}
+}
+
+// ============================== Schemas ============================== //
+
+func (r *ResourcePluginClient) GetEditorSchemas(
+	_ *pkgtypes.PluginContext,
+	connectionID string,
+) ([]types.EditorSchema, error) {
+	resp, err := r.client.GetEditorSchemas(context.Background(), &proto.GetEditorSchemasRequest{
+		ConnectionId: connectionID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	schemas := make([]types.EditorSchema, 0, len(resp.GetSchemas()))
+	for _, s := range resp.GetSchemas() {
+		schemas = append(schemas, types.EditorSchema{
+			ResourceKey: s.GetResourceKey(),
+			FileMatch:   s.GetFileMatch(),
+			URI:         s.GetUri(),
+			URL:         s.GetUrl(),
+			Content:     s.GetContent(),
+			Language:    s.GetLanguage(),
+		})
+	}
+
+	return schemas, nil
 }
 
 // ============================== Connection ============================== //

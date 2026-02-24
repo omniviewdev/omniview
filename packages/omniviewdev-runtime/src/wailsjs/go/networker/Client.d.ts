@@ -10,6 +10,8 @@ export function GetPortForwardSession(arg1:string):Promise<networker.PortForward
 
 export function GetSupportedPortForwardTargets(arg1:string):Promise<Array<string>>;
 
+export function ListAllPortForwardSessions():Promise<Array<networker.PortForwardSession>>;
+
 export function ListPortForwardSessions(arg1:string,arg2:string):Promise<Array<networker.PortForwardSession>>;
 
 export function StartResourcePortForwardingSession(arg1:string,arg2:string,arg3:networker.PortForwardSessionOptions):Promise<networker.PortForwardSession>;

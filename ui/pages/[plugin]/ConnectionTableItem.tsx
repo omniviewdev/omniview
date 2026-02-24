@@ -1,17 +1,12 @@
 import React from 'react';
 
 // Material-ui
-import Avatar from '@mui/joy/Avatar';
-import Badge from '@mui/joy/Badge';
-import Chip from '@mui/joy/Chip';
-import CircularProgress from '@mui/joy/CircularProgress';
-import Dropdown from '@mui/joy/Dropdown';
-import IconButton from '@mui/joy/IconButton';
-import ListItemDecorator from '@mui/joy/ListItemDecorator';
-import Menu from '@mui/joy/Menu';
-import MenuButton from '@mui/joy/MenuButton';
-import MenuItem from '@mui/joy/MenuItem';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Text } from '@omniviewdev/ui/typography';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Avatar, Badge, Chip } from '@omniviewdev/ui';
+import { DropdownMenu } from '@omniviewdev/ui/menus';
 
 // Project imports
 import { usePluginContext } from '@/contexts/PluginContext';
@@ -176,7 +171,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
         <Badge
           color="success"
           invisible={!isConnected()}
-          size='sm'
+          variant='dot'
           anchorOrigin={{
             vertical: 'top',
             horizontal: 'right',
@@ -201,56 +196,37 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
             />
           }
         </Badge>
-        <Typography level='title-sm' noWrap>{name}</Typography>
-        {Boolean(description) && <Typography level='body-sm' noWrap>{description}</Typography>}
-        {connecting && <CircularProgress size='sm' />}
+        <Text weight='semibold' size='sm' noWrap>{name}</Text>
+        {Boolean(description) && <Text size='sm' noWrap>{description}</Text>}
+        {connecting && <CircularProgress size='small' />}
       </td>
 
       {/* Labels */}
       {labels && Object.entries(labels).sort().map(([key, value]) => (
         <td key={`${id}-${key}`}>
           <Chip
-            id={`${id}-${key}`}
             variant='outlined'
-            color='neutral'
+            color='default'
             size='sm'
-            sx={{ pointerEvents: 'none', borderRadius: 'sm' }}
-          >
-            {truncate(value)}
-          </Chip>
+            sx={{ pointerEvents: 'none', borderRadius: 1 }}
+            label={truncate(value)}
+          />
         </td>
       ))}
 
 
       {/* Actions */}
       <td>
-        <Dropdown>
-          <MenuButton
+        <Box sx={{ display: 'inline-flex' }}>
+          <IconButton
             aria-label='More'
             size='sm'
-            color='primary'
-            slots={{ root: IconButton }}
-            slotProps={{ root: { variant: 'plain', color: 'neutral' } }}
+            emphasis='ghost'
+            color='neutral'
           >
             <MoreVert />
-          </MenuButton>
-          <Menu size='sm' placement='bottom-end'>
-            <Link to={`/connection/${id}/edit`}>
-              <MenuItem>
-                <ListItemDecorator>
-                  <LuPencil />
-                </ListItemDecorator>{' '}
-                Edit '{name}'
-              </MenuItem>
-            </Link>
-            <MenuItem>
-              <ListItemDecorator>
-                <LuTrash />
-              </ListItemDecorator>{' '}
-              Delete '{name}'
-            </MenuItem>
-          </Menu>
-        </Dropdown>
+          </IconButton>
+        </Box>
       </td>
     </tr>
   );

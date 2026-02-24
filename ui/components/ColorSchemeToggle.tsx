@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useColorScheme } from '@mui/joy/styles';
-import IconButton, { type IconButtonProps } from '@mui/joy/IconButton';
+import { useColorScheme } from '@mui/material/styles';
+import { IconButton } from '@omniviewdev/ui/buttons';
 
 import DarkModeRoundedIcon from '@mui/icons-material/DarkModeRounded';
 import LightModeIcon from '@mui/icons-material/LightMode';
@@ -9,7 +9,7 @@ export default function ColorSchemeToggle({
   onClick,
   sx,
   ...props
-}: IconButtonProps) {
+}: any) {
   const { mode, setMode } = useColorScheme();
   const [mounted, setMounted] = useState(false);
 
@@ -21,7 +21,7 @@ export default function ColorSchemeToggle({
     return (
       <IconButton
         size='md'
-        variant='outlined'
+        emphasis='outline'
         color='neutral'
         {...props}
         sx={sx}
@@ -34,7 +34,7 @@ export default function ColorSchemeToggle({
     <IconButton
       id='toggle-mode'
       size='md'
-      variant='outlined'
+      emphasis='outline'
       color='neutral'
       {...props}
       onClick={event => {

@@ -1,23 +1,13 @@
 import React from 'react';
 import { Link, usePluginRouter } from '@omniviewdev/runtime';
 
-// Material-ui
-import {
-  Avatar,
-  Badge,
-  Chip,
-  CircularProgress,
-  Dropdown,
-  IconButton,
-  ListItem,
-  ListItemButton,
-  ListItemDecorator,
-  Menu,
-  MenuButton,
-  MenuItem,
-  Stack,
-  Typography,
-} from '@mui/joy';
+// @omniviewdev/ui
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Avatar, Badge, Chip } from '@omniviewdev/ui';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 
 import {
   usePluginContext,
@@ -40,6 +30,7 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
 
   const { startConnection } = useConnection({ pluginID: meta.id, connectionID: id });
   const [connecting, setConnecting] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
 
   const handleConnectionStatus = (status: types.ConnectionStatus) => {
     switch (status.status) {
@@ -111,43 +102,30 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
   };
 
   return (
-    <ListItem
+    <Box
       id={`connection-${id}`}
-      endAction={
-        <Dropdown>
-          <MenuButton
-            aria-label='More'
-            size='sm'
-            color='primary'
-            slots={{ root: IconButton }}
-            slotProps={{ root: { variant: 'plain', color: 'neutral' } }}
-          >
-            <MoreVert />
-          </MenuButton>
-          <Menu size='sm' placement='bottom-end'>
-            <Link to={`/connection/${id}/edit`}>
-              <MenuItem>
-                <ListItemDecorator>
-                  <LuPencil />
-                </ListItemDecorator>{' '}
-                Edit '{name}'
-              </MenuItem>
-            </Link>
-            <MenuItem>
-              <ListItemDecorator>
-                <LuTrash />
-              </ListItemDecorator>{' '}
-              Delete '{name}'
-            </MenuItem>
-          </Menu>
-        </Dropdown>
-      }
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        py: 0.5,
+        px: 1,
+      }}
     >
-      <ListItemButton
-        sx={{ borderRadius: 'sm' }}
+      <Box
+        sx={{
+          display: 'flex',
+          flex: 1,
+          alignItems: 'center',
+          borderRadius: 'sm',
+          cursor: 'pointer',
+          '&:hover': { bgcolor: 'background.level1' },
+          py: 0.5,
+          px: 1,
+        }}
         onClick={handleClick}
       >
-        <ListItemDecorator >
+        <Box sx={{ mr: 1.5, display: 'flex' }}>
           <Badge
             color="success"
             invisible={!isConnected()}
@@ -173,31 +151,94 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
               : <NamedAvatar value={name} />
             }
           </Badge>
-        </ListItemDecorator>
-        <Stack direction='row' width={'100%'} alignItems={'center'}>
-          <Stack direction='row' width={'100%'} height={'100%'} alignItems={'center'} gap={2} >
-            <Typography level='title-sm' noWrap>{name}</Typography>
-            {Boolean(description) && <Typography level='body-sm' noWrap>{description}</Typography>}
-            {connecting && <CircularProgress size='sm' />}
+        </Box>
+        <Stack direction='row' sx={{ width: '100%' }} alignItems='center'>
+          <Stack direction='row' sx={{ width: '100%', height: '100%' }} alignItems='center' gap={2}>
+            <Text weight='semibold' size='sm' noWrap>{name}</Text>
+            {Boolean(description) && <Text size='sm' noWrap>{description}</Text>}
+            {connecting && <CircularProgress size={16} />}
           </Stack>
-          <Stack direction='row' spacing={1} alignItems={'center'}>
+          <Stack direction='row' gap={1} alignItems='center'>
             {labels && Object.entries(labels).sort().map(([key, _]) => (
               <Chip
                 key={key}
-                variant='outlined'
+                emphasis='outline'
                 color='primary'
                 size='sm'
                 sx={{ pointerEvents: 'none', borderRadius: 'sm' }}
-              >
-
-                {key}
-              </Chip>
+                label={key}
+              />
             ))}
           </Stack>
-
         </Stack>
-      </ListItemButton>
-    </ListItem>
+      </Box>
+      <Box sx={{ position: 'relative' }}>
+        <IconButton
+          size='sm'
+          emphasis='ghost'
+          color='neutral'
+          onClick={() => setMenuOpen(prev => !prev)}
+        >
+          <MoreVert />
+        </IconButton>
+        {menuOpen && (
+          <>
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 999 }}
+              onClick={() => setMenuOpen(false)}
+            />
+            <Box
+              sx={{
+                position: 'absolute',
+                right: 0,
+                top: '100%',
+                zIndex: 1000,
+                bgcolor: 'background.surface',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 'sm',
+                boxShadow: 'md',
+                py: 0.5,
+                minWidth: 140,
+              }}
+            >
+              <Link to={`/connection/${id}/edit`}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    px: 1.5,
+                    py: 0.75,
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'background.level1' },
+                  }}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <LuPencil size={14} />
+                  <Text size='sm'>Edit '{name}'</Text>
+                </Box>
+              </Link>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  px: 1.5,
+                  py: 0.75,
+                  cursor: 'pointer',
+                  '&:hover': { bgcolor: 'background.level1' },
+                }}
+                onClick={() => setMenuOpen(false)}
+              >
+                <LuTrash size={14} />
+                <Text size='sm'>Delete '{name}'</Text>
+              </Box>
+            </Box>
+          </>
+        )}
+      </Box>
+    </Box>
   );
 };
 

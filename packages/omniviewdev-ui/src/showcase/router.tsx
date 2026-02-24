@@ -80,7 +80,9 @@ import NavMenuPage from './pages/NavMenuPage';
 import IDETablePage from './pages/IDETablePage';
 import NotificationStackPage from './pages/NotificationStackPage';
 import IDEStatusFooterPage from './pages/IDEStatusFooterPage';
+import ChipPage from './pages/ChipPage';
 import ProgressPage from './pages/ProgressPage';
+import ErrorStatePage from './pages/ErrorStatePage';
 
 // Phase 13: Charts
 import ChartsPage from './pages/ChartsPage';
@@ -145,6 +147,7 @@ const navSections: NavSection[] = [
     title: 'Feedback',
     items: [
       { label: 'Alert & Status', path: '/feedback' },
+      { label: 'ErrorState', path: '/error-state' },
       { label: 'StatusBar & Progress', path: '/status-bar' },
       { label: 'Progress Indicators', path: '/progress' },
       { label: 'IDE Status Footer', path: '/ide-status-footer' },
@@ -167,6 +170,7 @@ const navSections: NavSection[] = [
     title: 'Components',
     items: [
       { label: 'Cards', path: '/cards' },
+      { label: 'Chip', path: '/chip' },
       { label: 'Expandable Sections', path: '/expandable-sections' },
     ],
   },
@@ -444,6 +448,12 @@ const cardsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/cards',
   component: CardPage,
+});
+
+const chipRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/chip',
+  component: ChipPage,
 });
 
 const expandableSectionsRoute = createRoute({
@@ -781,6 +791,12 @@ const progressRoute = createRoute({
   component: ProgressPage,
 });
 
+const errorStateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/error-state',
+  component: ErrorStatePage,
+});
+
 // Phase 13: Charts
 const chartsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -799,6 +815,7 @@ const routeTree = rootRoute.addChildren([
   themeRoute,
   iconsRoute,
   cardsRoute,
+  chipRoute,
   expandableSectionsRoute,
   inputsRoute,
   cellsRoute,
@@ -859,6 +876,7 @@ const routeTree = rootRoute.addChildren([
   notificationStackRoute,
   ideStatusFooterRoute,
   progressRoute,
+  errorStateRoute,
   // Phase 13
   chartsRoute,
   metricsPanelRoute,

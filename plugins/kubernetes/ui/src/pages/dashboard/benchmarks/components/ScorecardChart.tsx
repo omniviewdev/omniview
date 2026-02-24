@@ -1,8 +1,7 @@
 import * as React from 'react';
 import { PieChart } from '@mui/x-charts/PieChart';
 import { useDrawingArea } from '@mui/x-charts/hooks';
-import { styled } from '@mui/material/styles';
-import { useTheme } from '@mui/joy';
+import { styled, useTheme } from '@mui/material/styles';
 
 const StyledText = styled('text')(({ theme }) => ({
   fill: theme.palette.text.primary,
@@ -36,9 +35,9 @@ export const ScorecardChart: React.FC<Props> = ({ label, success, warning, failu
       series={[
         {
           data: [
-            { value: success, color: theme.palette.success[400] },
-            { value: warning, color: theme.palette.warning[400] },
-            { value: failure, color: theme.palette.danger[400] },
+            { value: success, color: theme.palette.success.main },
+            { value: warning, color: theme.palette.warning.main },
+            { value: failure, color: theme.palette.error.main },
           ],
           innerRadius: 36,
           outerRadius: 50,

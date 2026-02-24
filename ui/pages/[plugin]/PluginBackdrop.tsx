@@ -1,8 +1,8 @@
 import * as React from 'react';
-import Modal from '@mui/joy/Modal';
-import ModalDialog from '@mui/joy/ModalDialog';
-import DialogContent from '@mui/joy/DialogContent';
-import { CircularProgress, Typography } from '@mui/joy';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import { Modal } from '@omniviewdev/ui/overlays';
+import { Text } from '@omniviewdev/ui/typography';
 
 type Props = {
   ref?: React.RefObject<HTMLDivElement>;
@@ -15,40 +15,22 @@ export default function PluginBackdrop({ ref, open, message }: Props): React.Rea
 
   return (
     <Modal
-      container={ref?.current}
-      keepMounted
       open={open}
-      slotProps={{
-        backdrop: {
-          sx: {
-            // opacity: 0,
-            backdropFilter: 'none',
-            transition: 'opacity 400ms, backdrop-filter 400ms',
-          },
-        },
-      }}
+      onClose={() => {}}
     >
-      <ModalDialog
+      <Box
         sx={{
-          // opacity: 0,
-          transition: 'opacity 300ms',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <DialogContent sx={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           gap: 2,
-        }}>
-          <CircularProgress size={'md'} thickness={6} />
-          <Typography level='body-sm'>{message}</Typography>
-        </DialogContent>
-      </ModalDialog>
+          p: 3,
+        }}
+      >
+        <CircularProgress size={40} thickness={6} />
+        <Text size='sm'>{message}</Text>
+      </Box>
     </Modal>
   );
 }

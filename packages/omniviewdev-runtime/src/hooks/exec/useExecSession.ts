@@ -25,24 +25,54 @@ type CreateSessionOptions = {
  */
 export const useExec = ({ pluginID }: UseResourceMutationsOptions) => {
   const { showSnackbar } = useSnackbar();
-  const { createTab } = useBottomDrawer();
+  const { createTab, updateTab } = useBottomDrawer();
 
   const createSessionMutation = useMutation({
-    mutationFn: async ({ connectionID, icon, label, opts }: CreateSessionOptions) =>
-      CreateSession(pluginID, connectionID, exec.SessionOptions.createFrom({
-        command: ['/bin/sh', '-c', 'stty -echo && /bin/sh'],
+    mutationFn: async ({ connectionID, icon, label, opts }: CreateSessionOptions) => {
+      const tempId = `pending-${crypto.randomUUID()}`;
+
+      // Create tab immediately with connecting status
+      createTab({
+        id: tempId,
+        title: label ?? 'Connecting...',
+        variant: 'terminal',
+        icon: icon ?? 'LuSquareTerminal',
+        properties: {
+          status: 'connecting',
+          pluginID,
+          connectionID,
+          opts: { ...opts },
+        },
+      });
+
+      const sessionOpts = exec.SessionOptions.createFrom({
+        command: ['/bin/bash'],
         tty: true,
-        ...opts
-      }))
-        .then(session => createTab({
-          id: session.id,
-          title: label ?? `Session ${session.id.substring(0, 8)}`,
-          variant: 'terminal',
-          icon: icon ?? 'LuSquareTerminal',
-        })
-        ),
-    onError(error: Error) {
-      showSnackbar(`Failed to start session: ${error.message}`, 'error');
+        ...opts,
+      });
+
+      try {
+        const session = await CreateSession(pluginID, connectionID, sessionOpts);
+        // Replace temp ID with real session ID and mark connected
+        updateTab(
+          { id: tempId },
+          {
+            id: session.id,
+            title: label ?? `Session ${session.id.substring(0, 8)}`,
+            properties: { status: 'connected', pluginID, connectionID, opts: { ...opts } },
+          },
+        );
+      } catch (error) {
+        const msg = typeof error === 'string' ? error : (error as Error)?.message ?? String(error);
+        // Mark tab as errored
+        updateTab(
+          { id: tempId },
+          {
+            properties: { status: 'error', error: msg, pluginID, connectionID, opts: { ...opts } },
+          },
+        );
+        showSnackbar(`Failed to start session: ${msg}`, 'error');
+      }
     },
   })
 

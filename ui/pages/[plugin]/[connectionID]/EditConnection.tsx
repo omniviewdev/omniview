@@ -1,10 +1,11 @@
 import React from 'react';
 
 // Material-ui
-import Avatar from '@mui/joy/Avatar';
-import Breadcrumbs from '@mui/joy/Breadcrumbs';
-import Stack from '@mui/joy/Stack';
-import Typography from '@mui/joy/Typography';
+import Breadcrumbs from '@mui/material/Breadcrumbs';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Avatar } from '@omniviewdev/ui';
 
 // Project imports
 import { usePluginContext } from '@/contexts/PluginContext';
@@ -12,7 +13,6 @@ import { useConnection } from '@omniviewdev/runtime';
 
 // Third-party
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { IconButton } from '@mui/joy';
 import { Close } from '@mui/icons-material';
 import PluginBackdrop from '../PluginBackdrop';
 
@@ -51,22 +51,22 @@ export default function EditConnection(): React.ReactElement {
         message={`${plugin.metadata.name} plugin is reloading`}
       />
       <Stack direction='row' alignItems='center' justifyContent={'space-between'} width={'100%'} gap={1.5}>
-        <Breadcrumbs separator='›' aria-label='breadcrumbs'>
+        <Breadcrumbs separator='>' aria-label='breadcrumbs'>
           <Link to={`/plugin/${plugin.id}`} style={{
             textDecoration: 'none', color: 'inherit', display: 'flex', gap: 8, alignItems: 'center',
           }}>
-            <Avatar size='sm' src={plugin.metadata.icon} variant='plain' sx={{ borderRadius: 4, height: 18, width: 18 }} />
-            <Typography level='title-md'>{plugin.metadata.name}</Typography>
+            <Avatar size='sm' src={plugin.metadata.icon} sx={{ borderRadius: 4, height: 18, width: 18 }} />
+            <Text weight='semibold'>{plugin.metadata.name}</Text>
           </Link>
           <Link to={`/plugin/${plugin.id}`} style={{
             textDecoration: 'none', color: 'inherit', display: 'flex', gap: 8, alignItems: 'center',
           }}>
-            <Typography level='title-md'>Connections</Typography>
+            <Text weight='semibold'>Connections</Text>
           </Link>
-          <Typography level='body-md'>{connection.data?.name}</Typography>
+          <Text>{connection.data?.name}</Text>
         </Breadcrumbs>
         <IconButton
-          variant='soft'
+          emphasis='soft'
           color='neutral'
           size='sm'
           onClick={() => {

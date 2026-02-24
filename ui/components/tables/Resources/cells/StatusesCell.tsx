@@ -1,9 +1,9 @@
 import React from 'react';
 
 // material-ui
-import Stack from '@mui/joy/Stack';
-import Tooltip from '@mui/joy/Tooltip';
-import { useTheme } from '@mui/joy';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Tooltip } from '@omniviewdev/ui/overlays';
+import { useTheme } from '@mui/material/styles';
 
 import jsonpath from 'jsonpath';
 import PluginComponent from '@/federation';
@@ -50,11 +50,11 @@ export const ContainerStatusCell: React.FC<Props> = ({ plugin, values, statusAcc
       {values.map((status) => (
         <Tooltip
           placement="top-end"
-          variant="soft"
+          emphasis="soft"
           sx={{
             border: (theme) => `1px solid ${theme.palette.divider}`,
           }}
-          title={hoverMenuComponent 
+          content={hoverMenuComponent
             ? <PluginComponent
               plugin={plugin}
               component={hoverMenuComponent}

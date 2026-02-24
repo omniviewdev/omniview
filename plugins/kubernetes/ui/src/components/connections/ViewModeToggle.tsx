@@ -1,5 +1,6 @@
 import React from 'react';
-import { IconButton, Stack } from '@mui/joy';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
 import { LuList, LuLayoutGrid } from 'react-icons/lu';
 import type { ViewMode } from '../../types/clusters';
 
@@ -12,7 +13,7 @@ const ViewModeToggle: React.FC<Props> = ({ value, onChange }) => (
   <Stack direction='row' alignItems='center' gap={0.25}>
     <IconButton
       size='sm'
-      variant={value === 'list' ? 'soft' : 'plain'}
+      emphasis={value === 'list' ? 'soft' : 'ghost'}
       color={value === 'list' ? 'primary' : 'neutral'}
       onClick={() => onChange('list')}
     >
@@ -20,7 +21,7 @@ const ViewModeToggle: React.FC<Props> = ({ value, onChange }) => (
     </IconButton>
     <IconButton
       size='sm'
-      variant={value === 'grid' ? 'soft' : 'plain'}
+      emphasis={value === 'grid' ? 'soft' : 'ghost'}
       color={value === 'grid' ? 'primary' : 'neutral'}
       onClick={() => onChange('grid')}
     >

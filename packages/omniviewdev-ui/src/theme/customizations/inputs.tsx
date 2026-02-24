@@ -407,12 +407,20 @@ export const inputsCustomizations: Components<Theme> = {
     },
   },
   MuiInputBase: {
+    defaultProps: {
+      autoCapitalize: 'off',
+      autoCorrect: 'off',
+      spellCheck: false,
+    },
     styleOverrides: {
       root: ({ theme }) => ({
         border: 'none',
         ...theme.applyStyles('dark', { '&.Mui-disabled': { color: gray[600] } }),
       }),
       input: ({ theme }) => ({
+        // Disable WebKit auto-capitalize / auto-correct text transformations
+        textTransform: 'none',
+        WebkitTextSecurity: 'none',
         '&::placeholder': { opacity: 0.7, color: gray[500] },
         ...theme.applyStyles('dark', { '&::placeholder': { color: gray[500] } }),
       }),

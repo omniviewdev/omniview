@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
@@ -11,6 +12,7 @@ import (
 	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"go.uber.org/zap"
 	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/repo"
 )
 
@@ -46,15 +48,20 @@ func loadRepoFile() (*repo.File, error) {
 }
 
 func repoEntryToMap(entry *repo.Entry) map[string]interface{} {
+	repoType := "default"
+	if registry.IsOCI(entry.URL) {
+		repoType = "oci"
+	}
 	return map[string]interface{}{
-		"name":                  entry.Name,
-		"url":                   entry.URL,
-		"username":              entry.Username,
-		"certFile":              entry.CertFile,
-		"keyFile":               entry.KeyFile,
-		"caFile":                entry.CAFile,
+		"name":                     entry.Name,
+		"url":                      entry.URL,
+		"type":                     repoType,
+		"username":                 entry.Username,
+		"certFile":                 entry.CertFile,
+		"keyFile":                  entry.KeyFile,
+		"caFile":                   entry.CAFile,
 		"insecure_skip_tls_verify": entry.InsecureSkipTLSverify,
-		"pass_credentials_all":  entry.PassCredentialsAll,
+		"pass_credentials_all":     entry.PassCredentialsAll,
 	}
 }
 
@@ -141,21 +148,37 @@ func (r *RepoResourcer) Create(
 		return nil, fmt.Errorf("repository %s already exists", name)
 	}
 
+	// Read optional auth fields.
+	username, _ := input.Input["username"].(string)
+	password, _ := input.Input["password"].(string)
+	certFile, _ := input.Input["certFile"].(string)
+	keyFile, _ := input.Input["keyFile"].(string)
+	caFile, _ := input.Input["caFile"].(string)
+	insecureSkipTLS, _ := input.Input["insecureSkipTLS"].(bool)
+
 	entry := &repo.Entry{
-		Name: name,
-		URL:  url,
+		Name:                  name,
+		URL:                   url,
+		Username:              username,
+		Password:              password,
+		CertFile:              certFile,
+		KeyFile:               keyFile,
+		CAFile:                caFile,
+		InsecureSkipTLSverify: insecureSkipTLS,
 	}
 
-	// Download the index to validate the repo.
-	settings := cli.New()
-	chartRepo, err := repo.NewChartRepository(entry, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create chart repository: %w", err)
-	}
-	chartRepo.CachePath = settings.RepositoryCache
+	if !registry.IsOCI(url) {
+		// Download the index to validate the repo.
+		settings := cli.New()
+		chartRepo, err := repo.NewChartRepository(entry, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create chart repository: %w", err)
+		}
+		chartRepo.CachePath = settings.RepositoryCache
 
-	if _, err := chartRepo.DownloadIndexFile(); err != nil {
-		return nil, fmt.Errorf("failed to download index for %s: %w", url, err)
+		if _, err := chartRepo.DownloadIndexFile(); err != nil {
+			return nil, fmt.Errorf("failed to download index for %s: %w", url, err)
+		}
 	}
 
 	f.Update(entry)
@@ -239,6 +262,20 @@ func (r *RepoResourcerWithActions) GetActions(
 			Icon:        "LuRefreshCw",
 			Scope:       types.ActionScopeInstance,
 		},
+		{
+			ID:          "list-charts",
+			Label:       "List Charts",
+			Description: "List all charts in this repository",
+			Icon:        "LuList",
+			Scope:       types.ActionScopeInstance,
+		},
+		{
+			ID:          "add",
+			Label:       "Add Repository",
+			Description: "Add a new Helm chart repository",
+			Icon:        "LuPlus",
+			Scope:       types.ActionScopeType,
+		},
 	}, nil
 }
 
@@ -249,10 +286,19 @@ func (r *RepoResourcerWithActions) ExecuteAction(
 	actionID string,
 	input types.ActionInput,
 ) (*types.ActionResult, error) {
-	if actionID != "refresh" {
+	switch actionID {
+	case "refresh":
+		return r.executeRefresh(input)
+	case "list-charts":
+		return r.executeListCharts(input)
+	case "add":
+		return r.executeAdd(input)
+	default:
 		return nil, fmt.Errorf("unknown action: %s", actionID)
 	}
+}
 
+func (r *RepoResourcerWithActions) executeRefresh(input types.ActionInput) (*types.ActionResult, error) {
 	f, err := loadRepoFile()
 	if err != nil {
 		return nil, err
@@ -267,6 +313,18 @@ func (r *RepoResourcerWithActions) ExecuteAction(
 	}
 	if entry == nil {
 		return nil, fmt.Errorf("repository %s not found", input.ID)
+	}
+
+	// OCI registries don't have a downloadable index file.
+	if registry.IsOCI(entry.URL) {
+		return &types.ActionResult{
+			Success: true,
+			Data: map[string]interface{}{
+				"refreshedAt": time.Now().Format(time.RFC3339),
+				"type":        "oci",
+			},
+			Message: fmt.Sprintf("OCI repository %s validated", entry.Name),
+		}, nil
 	}
 
 	settings := cli.New()
@@ -289,6 +347,154 @@ func (r *RepoResourcerWithActions) ExecuteAction(
 		},
 		Message: fmt.Sprintf("Repository %s refreshed", entry.Name),
 	}, nil
+}
+
+func (r *RepoResourcerWithActions) executeListCharts(input types.ActionInput) (*types.ActionResult, error) {
+	repoName := input.ID
+
+	indexes, err := loadAllIndexes()
+	if err != nil {
+		return nil, err
+	}
+
+	idx, ok := indexes[repoName]
+	if !ok {
+		return nil, fmt.Errorf("repository %s index not found in local cache", repoName)
+	}
+
+	charts := make([]interface{}, 0, len(idx.Entries))
+	for _, versions := range idx.Entries {
+		if len(versions) == 0 {
+			continue
+		}
+		charts = append(charts, chartVersionToMap(repoName, versions[0]))
+	}
+
+	return &types.ActionResult{
+		Success: true,
+		Data: map[string]interface{}{
+			"charts": charts,
+		},
+		Message: fmt.Sprintf("Found %d charts in %s", len(charts), repoName),
+	}, nil
+}
+
+func (r *RepoResourcerWithActions) executeAdd(input types.ActionInput) (*types.ActionResult, error) {
+	name, _ := input.Params["name"].(string)
+	url, _ := input.Params["url"].(string)
+
+	if name == "" || url == "" {
+		return nil, fmt.Errorf("name and url are required")
+	}
+
+	f, err := loadRepoFile()
+	if err != nil {
+		return nil, err
+	}
+
+	if f.Has(name) {
+		return nil, fmt.Errorf("repository %s already exists", name)
+	}
+
+	// Read optional auth fields.
+	username, _ := input.Params["username"].(string)
+	password, _ := input.Params["password"].(string)
+	certFile, _ := input.Params["certFile"].(string)
+	keyFile, _ := input.Params["keyFile"].(string)
+	caFile, _ := input.Params["caFile"].(string)
+	insecureSkipTLS, _ := input.Params["insecureSkipTLS"].(bool)
+	plainHTTP, _ := input.Params["plainHTTP"].(bool)
+
+	entry := &repo.Entry{
+		Name:                  name,
+		URL:                   url,
+		Username:              username,
+		Password:              password,
+		CertFile:              certFile,
+		KeyFile:               keyFile,
+		CAFile:                caFile,
+		InsecureSkipTLSverify: insecureSkipTLS,
+	}
+
+	if registry.IsOCI(url) {
+		// OCI registries don't have index.yaml — validate by connecting.
+		if err := r.validateOCIRegistry(url, username, password, certFile, keyFile, caFile, insecureSkipTLS, plainHTTP); err != nil {
+			return nil, err
+		}
+	} else {
+		// Traditional HTTP(S) repository — validate by downloading the index.
+		settings := cli.New()
+		chartRepo, err := repo.NewChartRepository(entry, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create chart repository: %w", err)
+		}
+		chartRepo.CachePath = settings.RepositoryCache
+
+		if _, err := chartRepo.DownloadIndexFile(); err != nil {
+			return nil, fmt.Errorf("failed to download index for %s: %w", url, err)
+		}
+	}
+
+	f.Update(entry)
+	if err := f.WriteFile(repoFile(), 0644); err != nil {
+		return nil, fmt.Errorf("failed to write repo file: %w", err)
+	}
+
+	return &types.ActionResult{
+		Success: true,
+		Data:    repoEntryToMap(entry),
+		Message: fmt.Sprintf("Repository %s added successfully", name),
+	}, nil
+}
+
+// validateOCIRegistry validates an OCI registry by attempting to log in (if
+// credentials are provided) or by creating a registry client and verifying
+// the connection. OCI registries (oci://) don't use index.yaml files so we
+// can't use the standard DownloadIndexFile validation path.
+func (r *RepoResourcerWithActions) validateOCIRegistry(
+	url, username, password, certFile, keyFile, caFile string,
+	insecureSkipTLS, plainHTTP bool,
+) error {
+	// Strip oci:// prefix to get the registry host.
+	host := strings.TrimPrefix(url, "oci://")
+	// Remove any trailing path components to get just the registry host for login.
+	// e.g. "ghcr.io/my-org/charts" → "ghcr.io"
+	parts := strings.SplitN(host, "/", 2)
+	registryHost := parts[0]
+
+	// Build client options.
+	clientOpts := []registry.ClientOption{}
+	if plainHTTP {
+		clientOpts = append(clientOpts, registry.ClientOptPlainHTTP())
+	}
+	if username != "" && password != "" {
+		clientOpts = append(clientOpts, registry.ClientOptBasicAuth(username, password))
+	}
+
+	client, err := registry.NewClient(clientOpts...)
+	if err != nil {
+		return fmt.Errorf("failed to create OCI registry client: %w", err)
+	}
+
+	// Attempt login if credentials are provided.
+	if username != "" && password != "" {
+		loginOpts := []registry.LoginOption{
+			registry.LoginOptBasicAuth(username, password),
+			registry.LoginOptInsecure(insecureSkipTLS),
+		}
+		if certFile != "" || keyFile != "" || caFile != "" {
+			loginOpts = append(loginOpts, registry.LoginOptTLSClientConfig(certFile, keyFile, caFile))
+		}
+
+		if err := client.Login(registryHost, loginOpts...); err != nil {
+			return fmt.Errorf("failed to authenticate with OCI registry %s: %w", registryHost, err)
+		}
+	}
+
+	// For OCI, we don't require listing tags — the login/client creation is
+	// sufficient validation. Some registries restrict tag listing without a
+	// specific repository reference, and users may be adding a registry root.
+	return nil
 }
 
 func (r *RepoResourcerWithActions) StreamAction(

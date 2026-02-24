@@ -15,6 +15,7 @@ export interface TextAreaProps {
   maxLength?: number;
   showCount?: boolean;
   rows?: number;
+  minRows?: number;
   maxRows?: number;
   label?: string;
   helperText?: string;
@@ -34,6 +35,7 @@ export default function TextArea({
   maxLength,
   showCount = false,
   rows = 3,
+  minRows,
   maxRows = 8,
   label,
   helperText,
@@ -72,7 +74,7 @@ export default function TextArea({
         fullWidth={fullWidth}
         disabled={disabled}
         multiline
-        minRows={autosize ? rows : rows}
+        minRows={minRows ?? (autosize ? rows : rows)}
         maxRows={autosize ? maxRows : rows}
         style={{ '--ov-input-height': INPUT_HEIGHTS[size] } as React.CSSProperties}
         slotProps={{

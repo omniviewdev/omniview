@@ -1,9 +1,9 @@
 import React from 'react';
 
 // material ui
-import Chip from '@mui/joy/Chip';
-import Box from '@mui/joy/Box';
-import Tooltip from '@mui/joy/Tooltip';
+import { Chip } from '@omniviewdev/ui';
+import Box from '@mui/material/Box';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 
 type Props = {
   /** The values to use for calculating the badge colors */
@@ -41,34 +41,30 @@ export const BadgesRow: React.FC<Props> = ({ align, values, colorMap, hoverMenu,
   const hoverMenuDelayValue = hoverMenuDelay || 200;
 
   return (
-    <Box 
-      display='flex' 
-      flex={1} 
+    <Box
+      display='flex'
+      flex={1}
       justifyContent={getAlignment()}
       alignItems='center'
     >
       {values.map((value, idx) => (
         hoverMenu ? (
-          <Tooltip 
+          <Tooltip
             key={`badge-${idx}`}
-            title={hoverMenu} 
-            size='sm' 
-            variant='outlined' 
-            color='neutral' 
-            enterDelay={hoverMenuDelayValue} 
-            sx={{ p: 1 }} 
+            content={hoverMenu}
+            delay={hoverMenuDelayValue}
           >
             <Chip
               size='sm'
-              variant='solid'
+              emphasis='solid'
               color={getColor(value)}
               sx={{
-                borderRadius: 2, 
-                width: 12, 
-                height: 12, 
-                maxWidth: 12, 
-                maxHeight: 12, 
-                minWidth: 12, 
+                borderRadius: 2,
+                width: 12,
+                height: 12,
+                maxWidth: 12,
+                maxHeight: 12,
+                minWidth: 12,
                 minHeight: 12,
               }}
             />
@@ -77,15 +73,15 @@ export const BadgesRow: React.FC<Props> = ({ align, values, colorMap, hoverMenu,
           <Chip
             key={`badge-${idx}`}
             size='sm'
-            variant='solid'
+            emphasis='solid'
             color={getColor(value)}
             sx={{
-              borderRadius: 2, 
-              width: 12, 
-              height: 12, 
-              wmaxWidth: 12, 
-              maxHeight: 12, 
-              minWidth: 12, 
+              borderRadius: 2,
+              width: 12,
+              height: 12,
+              wmaxWidth: 12,
+              maxHeight: 12,
+              minWidth: 12,
               minHeight: 12,
             }}
           />

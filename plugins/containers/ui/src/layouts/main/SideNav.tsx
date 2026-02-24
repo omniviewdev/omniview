@@ -1,7 +1,7 @@
 import React from 'react';
 
 // Material-ui
-import { Box } from '@mui/joy';
+import Box from '@mui/material/Box';
 
 type Props = {
   padding?: number;

@@ -16,6 +16,7 @@ import (
 )
 
 type PluginServer struct {
+	proto.UnimplementedExecPluginServer
 	log  hclog.Logger
 	Impl Provider
 }

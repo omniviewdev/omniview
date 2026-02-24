@@ -4,10 +4,10 @@ import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { withClusterResourceColumns } from '../../shared/columns'
 import { DrawerComponent } from '@omniviewdev/runtime'
-import { LuBox, LuCode, LuShieldBan } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuShieldBan } from 'react-icons/lu'
 import { ValidatingAdmissionPolicy } from 'kubernetes-types/admissionregistration/v1'
 import ValidatingAdmissionPolicySidebar from './Sidebar'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 
 const resourceKey = 'admissionregistration::v1::ValidatingAdmissionPolicy'
 
@@ -44,18 +44,7 @@ const ValidatingAdmissionPolicyTable: React.FC = () => {
   const drawer: DrawerComponent<ValidatingAdmissionPolicy> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuShieldBan />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuBox />,
-        component: (ctx) => <ValidatingAdmissionPolicySidebar ctx={ctx} />
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: ValidatingAdmissionPolicySidebar }),
     actions: []
   }), [])
 

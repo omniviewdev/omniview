@@ -1,5 +1,6 @@
 import { type Table } from '@tanstack/react-table';
-import { Box, Checkbox } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Checkbox } from '@omniviewdev/ui/inputs';
 
 export const SelectBoxHeader = ({ table }: { table: Table<any> }) => (
   <Box sx={{
@@ -8,8 +9,8 @@ export const SelectBoxHeader = ({ table }: { table: Table<any> }) => (
     <Checkbox
       size='sm'
       checked={table.getIsAllPageRowsSelected()}
-      onChange={event => {
-        table.toggleAllPageRowsSelected(event.target.checked);
+      onChange={(checked) => {
+        table.toggleAllPageRowsSelected(checked);
       }}
       aria-label='Select all'
     />

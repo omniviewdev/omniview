@@ -12,6 +12,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
+	"github.com/omniview/kubernetes/pkg/plugin/helm"
 	"github.com/omniview/kubernetes/pkg/plugin/resource/clients"
 	"github.com/omniview/kubernetes/pkg/utils/kubeauth"
 	corev1 "k8s.io/api/core/v1"
@@ -558,6 +559,14 @@ func processGroupVersion(gv string) (string, string) {
 	return group, version
 }
 
+// staticResourceMetas are resource types that are not discoverable via the
+// K8s API server but should be available for every connection.
+var staticResourceMetas = []resourcetypes.ResourceMeta{
+	helm.ReleaseMeta,
+	helm.RepoMeta,
+	helm.ChartMeta,
+}
+
 func DiscoveryFunc(
 	ctx *types.PluginContext,
 	client *clients.DiscoveryClient,
@@ -581,6 +590,13 @@ func DiscoveryFunc(
 				Kind:    resource.Kind,
 			})
 		}
+	}
+
+	// Append non-K8s resource types that are statically registered (e.g. Helm).
+	// These aren't discoverable via the K8s API server but are available for
+	// every connection.
+	for _, meta := range staticResourceMetas {
+		response = append(response, meta)
 	}
 
 	return response, nil

@@ -1,7 +1,7 @@
 import React from 'react';
 
 // Material-ui
-import Input from '@mui/joy/Input';
+import { TextField } from '@omniviewdev/ui/inputs';
 
 // Icons
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
@@ -29,14 +29,14 @@ const SearchInput: React.FC<Props> = ({ placeholder, value, onChange }) => {
   const endDecorator = React.useMemo(() => hasValue ? <ClearIcon onClick={handleClear} /> : null, [hasValue]);
 
   return (
-    <Input
+    <TextField
       size='sm'
-      variant='outlined'
+      emphasis='outline'
       autoComplete='off'
       type='text'
       placeholder={placeholder ?? 'Search'}
-      startDecorator={<SearchRoundedIcon color='primary' />}
-      endDecorator={endDecorator}
+      startAdornment={<SearchRoundedIcon color='primary' />}
+      endAdornment={endDecorator}
       value={value}
       onChange={e => {
         onChange(e.target.value);

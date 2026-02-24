@@ -1,6 +1,7 @@
 package clients
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/omniview/kubernetes/pkg/utils"
@@ -20,6 +21,7 @@ const (
 // Use a custom type here since we want multiple clients to use for each namespace context.
 type ClientSet struct {
 	Clientset              *kubernetes.Clientset
+	KubeClient             kubernetes.Interface
 	DiscoveryClient        discovery.DiscoveryInterface
 	DynamicClient          dynamic.Interface
 	DynamicInformerFactory dynamicinformer.DynamicSharedInformerFactory
@@ -36,6 +38,7 @@ func CreateClient(ctx *pkgtypes.PluginContext) (*ClientSet, error) {
 
 	return &ClientSet{
 		Clientset:              clients.Clientset,
+		KubeClient:             clients.Clientset,
 		DiscoveryClient:        clients.Discovery,
 		DynamicClient:          clients.Dynamic,
 		DynamicInformerFactory: clients.InformerFactory,
@@ -43,10 +46,20 @@ func CreateClient(ctx *pkgtypes.PluginContext) (*ClientSet, error) {
 	}, nil
 }
 
-// RefreshClient refreshes the dynamic informer factory on an existing client.
-func RefreshClient(_ *pkgtypes.PluginContext, client *ClientSet) error {
+// RefreshClient re-reads the kubeconfig and replaces all client components
+// in-place so that cached pointers pick up fresh credentials.
+func RefreshClient(ctx *pkgtypes.PluginContext, client *ClientSet) error {
+	fresh, err := utils.KubeClientsFromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to refresh client: %w", err)
+	}
+	client.Clientset = fresh.Clientset
+	client.KubeClient = fresh.Clientset
+	client.DiscoveryClient = fresh.Discovery
+	client.DynamicClient = fresh.Dynamic
+	client.RESTConfig = fresh.RestConfig
 	client.DynamicInformerFactory = dynamicinformer.NewDynamicSharedInformerFactory(
-		client.DynamicClient,
+		fresh.Dynamic,
 		DefaultResyncPeriod,
 	)
 	return nil

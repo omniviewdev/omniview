@@ -8,10 +8,10 @@ import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuLogs, LuScaling, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuLogs, LuScaling, LuTrash } from 'react-icons/lu'
 import ResourceLinkCell from '../../corev1/Pod/cells/ResourceLinkCell'
 import ReplicaSetSidebar from './Sidebar'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 
 const ownerRefKeyMap: Record<string, string> = {
   "ReplicaSet": "apps::v1::ReplicaSet",
@@ -108,18 +108,7 @@ const ReplicaSetTable: React.FC = () => {
   const drawer: DrawerComponent<ReplicaSet> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuScaling />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <ReplicaSetSidebar ctx={ctx} />
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
-      }
-    ],
+    views: createStandardViews({ SidebarComponent: ReplicaSetSidebar }),
     actions: [
       {
         title: 'Delete',

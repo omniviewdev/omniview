@@ -1,11 +1,9 @@
 import React, { useRef, useMemo, useCallback } from 'react';
-import Box from '@mui/joy/Box';
-import Button from '@mui/joy/Button';
-import Checkbox from '@mui/joy/Checkbox';
-import Input from '@mui/joy/Input';
-import Typography from '@mui/joy/Typography';
-import { Unstable_Popup as BasePopup } from '@mui/base/Unstable_Popup';
-import { ClickAwayListener } from '@mui/base';
+import Box from '@mui/material/Box';
+import Popover from '@mui/material/Popover';
+import { Button } from '@omniviewdev/ui/buttons';
+import { Checkbox, TextField } from '@omniviewdev/ui/inputs';
+import { Text } from '@omniviewdev/ui/typography';
 import { LuChevronDown, LuSearch } from 'react-icons/lu';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -38,7 +36,7 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   onOpenChange,
 }) => {
   const [search, setSearch] = React.useState('');
-  const anchorRef = useRef<HTMLButtonElement>(null);
+  const anchorRef = useRef<HTMLSpanElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const showSearch = items.length >= searchThreshold;
@@ -88,7 +86,7 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
           height: ROW_HEIGHT,
           px: 1,
           cursor: 'pointer',
-          '&:hover': { bgcolor: 'neutral.800' },
+          '&:hover': { bgcolor: 'action.hover' },
           ...style,
         }}
         onClick={() => onToggleItem(item)}
@@ -96,11 +94,12 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
         <Checkbox
           size="sm"
           checked={selectedItems.has(item)}
-          tabIndex={-1}
+          onChange={() => {}}
           sx={{ pointerEvents: 'none' }}
         />
-        <Typography
-          level="body-xs"
+        <Text
+          variant="caption"
+          size="xs"
           sx={{
             ml: 1,
             fontFamily: 'monospace',
@@ -111,7 +110,7 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
           }}
         >
           {item}
-        </Typography>
+        </Text>
       </Box>
     ),
     [selectedItems, onToggleItem],
@@ -119,109 +118,115 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
 
   return (
     <>
-      <Button
-        ref={anchorRef}
-        size="sm"
-        variant={allSelected ? 'plain' : 'soft'}
-        color={allSelected ? 'neutral' : 'primary'}
-        endDecorator={<LuChevronDown size={12} />}
-        onClick={handleToggle}
-        sx={{
-          fontSize: '11px',
-          fontWeight: 500,
-          minHeight: 24,
-          px: 1,
-          py: 0,
-          gap: 0.5,
-          '--Button-gap': '4px',
+      <span ref={anchorRef} style={{ display: 'inline-flex' }}>
+        <Button
+          size="sm"
+          emphasis={allSelected ? 'ghost' : 'soft'}
+          color={allSelected ? 'neutral' : 'primary'}
+          endAdornment={<LuChevronDown size={12} />}
+          onClick={handleToggle}
+          sx={{
+            fontSize: '11px',
+            fontWeight: 500,
+            minHeight: 24,
+            px: 1,
+            py: 0,
+            gap: 0.5,
+          }}
+        >
+          {triggerLabel}
+        </Button>
+      </span>
+      <Popover
+        open={isOpen}
+        anchorEl={anchorRef.current}
+        onClose={handleClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        disableAutoFocus
+        disableEnforceFocus
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 1,
+              bgcolor: 'background.paper',
+              border: '1px solid',
+              borderColor: 'divider',
+              boxShadow: 3,
+              minWidth: 180,
+              maxWidth: 300,
+              overflow: 'hidden',
+              mt: 0.5,
+            },
+          },
         }}
       >
-        {triggerLabel}
-      </Button>
-      {isOpen && (
-        <BasePopup open={isOpen} anchor={anchorRef.current} placement="bottom-start" style={{ zIndex: 9999 }}>
-          <ClickAwayListener onClickAway={handleClose}>
-            <Box
-              sx={{
-                borderRadius: 'sm',
-                bgcolor: 'background.surface',
-                border: '1px solid',
-                borderColor: 'divider',
-                boxShadow: 'md',
-                minWidth: 180,
-                maxWidth: 300,
-                overflow: 'hidden',
-              }}
-            >
-              {showSearch && (
-                <Box sx={{ p: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-                  <Input
-                    size="sm"
-                    placeholder={`Search ${label.toLowerCase()}...`}
-                    autoFocus
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    startDecorator={<LuSearch size={12} />}
-                    sx={{ fontSize: '11px' }}
-                  />
-                </Box>
-              )}
+        {showSearch && (
+          <Box sx={{ p: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <TextField
+              size="sm"
+              placeholder={`Search ${label.toLowerCase()}...`}
+              autoFocus
+              value={search}
+              onChange={(value) => setSearch(value)}
+              startAdornment={<LuSearch size={12} />}
+              sx={{ fontSize: '11px' }}
+            />
+          </Box>
+        )}
 
-              {/* All toggle */}
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  height: ROW_HEIGHT,
-                  px: 1,
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  cursor: 'pointer',
-                  '&:hover': { bgcolor: 'neutral.800' },
-                }}
-                onClick={onToggleAll}
-              >
-                <Checkbox
-                  size="sm"
-                  checked={allSelected}
-                  indeterminate={indeterminate}
-                  tabIndex={-1}
-                  sx={{ pointerEvents: 'none' }}
-                />
-                <Typography level="body-xs" sx={{ ml: 1, fontWeight: 600, fontSize: '11px' }}>
-                  All {label}
-                </Typography>
-              </Box>
+        {/* All toggle */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            height: ROW_HEIGHT,
+            px: 1,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            cursor: 'pointer',
+            '&:hover': { bgcolor: 'action.hover' },
+          }}
+          onClick={onToggleAll}
+        >
+          <Checkbox
+            size="sm"
+            checked={allSelected}
+            indeterminate={indeterminate}
+            onChange={() => {}}
+            sx={{ pointerEvents: 'none' }}
+          />
+          <Text variant="caption" size="xs" sx={{ ml: 1, fontWeight: 600, fontSize: '11px' }}>
+            All {label}
+          </Text>
+        </Box>
 
-              {/* Item list */}
-              <Box
-                ref={listRef}
-                sx={{
-                  maxHeight: MAX_HEIGHT,
-                  overflow: 'auto',
-                }}
-              >
-                {useVirtual ? (
-                  <Box sx={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-                    {virtualizer.getVirtualItems().map((virtualRow) => {
-                      const item = filteredItems[virtualRow.index];
-                      return renderRow(item, {
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        transform: `translateY(${virtualRow.start}px)`,
-                      });
-                    })}
-                  </Box>
-                ) : (
-                  filteredItems.map((item) => renderRow(item))
-                )}
-              </Box>
+        {/* Item list */}
+        <Box
+          ref={listRef}
+          sx={{
+            maxHeight: MAX_HEIGHT,
+            overflow: 'auto',
+          }}
+        >
+          {useVirtual ? (
+            <Box sx={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const item = filteredItems[virtualRow.index];
+                return renderRow(item, {
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualRow.start}px)`,
+                });
+              })}
             </Box>
-          </ClickAwayListener>
-        </BasePopup>
-      )}
+          ) : (
+            filteredItems.map((item) => renderRow(item))
+          )}
+        </Box>
+      </Popover>
     </>
   );
 };

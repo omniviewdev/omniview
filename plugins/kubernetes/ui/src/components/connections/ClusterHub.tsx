@@ -1,5 +1,8 @@
 import React from 'react';
-import { Box, Card, Stack, Typography } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Card } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import {
   DndContext,
   closestCenter,
@@ -174,7 +177,7 @@ const ClusterHub: React.FC<Props> = ({
       onDragEnd={handleDragEnd}
     >
       <Stack gap={1} sx={{ p: 0.5, pb: 2 }}>
-        {/* Zone 1: Quick-connect grid — always visible, cards are draggable */}
+        {/* Zone 1: Quick-connect grid -- always visible, cards are draggable */}
         <QuickConnectGrid
           connections={enrichedConnections}
           onRecordAccess={onRecordAccess}
@@ -182,7 +185,7 @@ const ClusterHub: React.FC<Props> = ({
           onCreateFolder={onCreateFolder}
         />
 
-        {/* Zone 2: DnD sections — only when any section has items */}
+        {/* Zone 2: DnD sections -- only when any section has items */}
         {visibleSections.length > 0 && (
           <SortableContext items={visibleSectionIds} strategy={verticalListSortingStrategy}>
             <Stack gap={0.5}>
@@ -220,9 +223,9 @@ const ClusterHub: React.FC<Props> = ({
               pointerEvents: 'none',
             }}
           >
-            <Typography level='body-sm' fontWeight={600} noWrap>
+            <Text size='sm' weight='semibold' noWrap>
               {draggedConnection.displayName}
-            </Typography>
+            </Text>
           </Card>
         )}
       </DragOverlay>

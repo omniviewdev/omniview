@@ -1,5 +1,11 @@
 import React from "react";
-import { Stack, Table, Typography } from "@mui/joy";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import { Stack } from "@omniviewdev/ui/layout";
+import { Text } from "@omniviewdev/ui/typography";
 import MetadataSection from "../../../shared/sidebar/pages/overview/sections/MetadataSection";
 import DetailsCard from "../../../shared/DetailsCard";
 import ExpandableSection from "../../../shared/ExpandableSection";
@@ -66,36 +72,32 @@ function collectDescription(rule: Record<string, any>): string {
 function RulesTable({ rules }: { rules: Array<Record<string, any>> }) {
   if (rules.length === 0) {
     return (
-      <Typography level="body-sm" sx={{ color: "text.tertiary" }}>
+      <Text size="sm" sx={{ color: "text.secondary" }}>
         No rules configured
-      </Typography>
+      </Text>
     );
   }
 
   return (
-    <Table
-      size="sm"
-      borderAxis="bothBetween"
-      sx={{ "& th": { py: 0.5 }, "& td": { py: 0.5 } }}
-    >
-      <thead>
-        <tr>
-          <th style={{ width: "15%" }}>Protocol</th>
-          <th style={{ width: "20%" }}>Port Range</th>
-          <th style={{ width: "35%" }}>Source</th>
-          <th style={{ width: "30%" }}>Description</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table size="small">
+      <TableHead>
+        <TableRow>
+          <TableCell sx={{ width: "15%", py: 0.5 }}>Protocol</TableCell>
+          <TableCell sx={{ width: "20%", py: 0.5 }}>Port Range</TableCell>
+          <TableCell sx={{ width: "35%", py: 0.5 }}>Source</TableCell>
+          <TableCell sx={{ width: "30%", py: 0.5 }}>Description</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
         {rules.map((rule, i) => (
-          <tr key={i}>
-            <td>{formatProtocol(rule.IpProtocol)}</td>
-            <td>{formatPortRange(rule)}</td>
-            <td style={{ wordBreak: "break-all" }}>{collectSources(rule)}</td>
-            <td>{collectDescription(rule)}</td>
-          </tr>
+          <TableRow key={i}>
+            <TableCell sx={{ py: 0.5 }}>{formatProtocol(rule.IpProtocol)}</TableCell>
+            <TableCell sx={{ py: 0.5 }}>{formatPortRange(rule)}</TableCell>
+            <TableCell sx={{ py: 0.5, wordBreak: "break-all" }}>{collectSources(rule)}</TableCell>
+            <TableCell sx={{ py: 0.5 }}>{collectDescription(rule)}</TableCell>
+          </TableRow>
         ))}
-      </tbody>
+      </TableBody>
     </Table>
   );
 }

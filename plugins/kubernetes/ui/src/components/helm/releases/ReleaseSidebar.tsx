@@ -1,33 +1,28 @@
 import React from 'react';
 
 // material-ui
-import Box from '@mui/joy/Box';
-import Card from '@mui/joy/Card';
-import CardContent from '@mui/joy/CardContent';
-import Chip from '@mui/joy/Chip';
-import Divider from '@mui/joy/Divider';
-import Grid from '@mui/joy/Grid';
-import IconButton from '@mui/joy/IconButton';
-import Stack from '@mui/joy/Stack';
-import Tab from '@mui/joy/Tab';
-import TabList from '@mui/joy/TabList';
-import TabPanel from '@mui/joy/TabPanel';
-import Tabs from '@mui/joy/Tabs';
-import Typography from '@mui/joy/Typography';
+import Box from '@mui/material/Box';
+import { Card } from '@omniviewdev/ui';
+import { Chip } from '@omniviewdev/ui';
+import Divider from '@mui/material/Divider';
+import Grid from '@mui/material/Grid';
+import { Button, IconButton } from '@omniviewdev/ui/buttons';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Tabs, TabPanel } from '@omniviewdev/ui/navigation';
+import { Text } from '@omniviewdev/ui/typography';
+import { stringify, parse } from 'yaml';
 
 // icons
 import {
   LuCircleArrowUp,
   LuUndo2,
-  LuFileText,
-  LuFileCode,
-  LuStickyNote,
-  LuAnchor,
-  LuHistory,
+  LuGitCompare,
 } from 'react-icons/lu';
 
 // project-imports
-import { DrawerContext, useExecuteAction } from '@omniviewdev/runtime';
+import { DrawerContext, useExecuteAction, useRightDrawer } from '@omniviewdev/runtime';
+import CodeEditor from '../../shared/CodeEditor';
+import UpgradeDialog from './UpgradeDialog';
 
 // ── types ──
 type HelmRelease = Record<string, any>;
@@ -49,23 +44,51 @@ const statusColorMap: Record<string, 'success' | 'danger' | 'warning' | 'neutral
 
 const MetaEntry: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
   <Grid container spacing={0}>
-    <Grid xs={4}>
-      <Typography textColor="neutral.400" level="body-sm">{label}</Typography>
+    <Grid size={4}>
+      <Text sx={{ color: "neutral.400" }} size="sm">{label}</Text>
     </Grid>
-    <Grid xs={8}>
-      <Typography fontWeight={400} textColor="neutral.100" level="title-sm">
+    <Grid size={8}>
+      <Text sx={{ fontWeight: 400, color: "neutral.100" }} weight="semibold" size="sm">
         {value}
-      </Typography>
+      </Text>
     </Grid>
   </Grid>
 );
 
 /**
+ * Parse a YAML manifest string into individual resource documents.
+ */
+function parseManifestResources(manifest: string): Array<{ kind: string; name: string; namespace?: string }> {
+  if (!manifest) return [];
+  const docs = manifest.split(/^---$/m).filter((d) => d.trim());
+  const resources: Array<{ kind: string; name: string; namespace?: string }> = [];
+  for (const doc of docs) {
+    try {
+      const parsed = parse(doc);
+      if (parsed?.kind && parsed?.metadata?.name) {
+        resources.push({
+          kind: parsed.kind,
+          name: parsed.metadata.name,
+          namespace: parsed.metadata.namespace,
+        });
+      }
+    } catch {
+      // skip unparseable documents
+    }
+  }
+  return resources;
+}
+
+/**
  * Renders a sidebar for a Helm Release resource.
  */
 export const ReleaseSidebar: React.FC<Props> = ({ ctx }) => {
-  const [actionData, setActionData] = React.useState<Record<string, any> | null>(null);
-  const [activeTab, setActiveTab] = React.useState(0);
+  // Per-action cached tab data
+  const [tabData, setTabData] = React.useState<Record<string, any>>({});
+  const [activeTab, setActiveTab] = React.useState('0');
+  const [showManifestDiff, setShowManifestDiff] = React.useState(false);
+  const [prevManifest, setPrevManifest] = React.useState<string | null>(null);
+  const [showUpgrade, setShowUpgrade] = React.useState(false);
 
   const connectionID = ctx.resource?.connectionID ?? '';
   const releaseName = ctx.data?.name ?? ctx.resource?.id ?? '';
@@ -77,27 +100,54 @@ export const ReleaseSidebar: React.FC<Props> = ({ ctx }) => {
     resourceKey: 'helm::v1::Release',
   });
 
-  // Fetch tab data on tab change
+  const { showResourceSidebar } = useRightDrawer();
+
+  // Fetch tab data on tab change, caching results per action
   const fetchTabData = React.useCallback(async (actionID: string) => {
+    if (tabData[actionID]) return; // Already cached
     try {
       const result = await executeAction({
         actionID,
         id: releaseName,
         namespace,
       });
-      setActionData(result.data);
+      setTabData((prev) => ({ ...prev, [actionID]: result.data }));
     } catch {
-      setActionData(null);
+      setTabData((prev) => ({ ...prev, [actionID]: null }));
     }
-  }, [executeAction, releaseName, namespace]);
+  }, [executeAction, releaseName, namespace, tabData]);
 
   React.useEffect(() => {
-    const tabActions = ['get-values', 'get-manifest', 'get-notes', 'get-hooks', 'get-history'];
-    const actionID = tabActions[activeTab];
+    const tabActions = ['get-values', 'get-manifest', 'get-notes', 'get-hooks', 'get-history', 'get-manifest'];
+    const actionID = tabActions[Number(activeTab)];
     if (actionID && connectionID) {
       void fetchTabData(actionID);
     }
   }, [activeTab, connectionID, fetchTabData]);
+
+  // Load previous revision manifest for diff
+  const loadPrevManifest = React.useCallback(async () => {
+    const revision = ctx.data?.version ?? 0;
+    if (revision <= 1) return;
+    try {
+      const result = await executeAction({
+        actionID: 'get-manifest',
+        id: releaseName,
+        namespace,
+        params: { revision: revision - 1 },
+      });
+      setPrevManifest(result.data?.manifest ?? '');
+    } catch {
+      setPrevManifest('# Failed to load previous revision manifest');
+    }
+  }, [executeAction, releaseName, namespace, ctx.data?.version]);
+
+  const handleToggleDiff = React.useCallback(() => {
+    if (!showManifestDiff && prevManifest === null) {
+      void loadPrevManifest();
+    }
+    setShowManifestDiff((prev) => !prev);
+  }, [showManifestDiff, prevManifest, loadPrevManifest]);
 
   if (!ctx.data) {
     return null;
@@ -111,21 +161,22 @@ export const ReleaseSidebar: React.FC<Props> = ({ ctx }) => {
   const revision = data.version ?? 0;
   const lastDeployed = data.info?.last_deployed ?? '';
 
+  const currentManifest = tabData['get-manifest']?.manifest ?? '';
+  const manifestResources = parseManifestResources(currentManifest);
+
   return (
     <Stack direction="column" width="100%" spacing={2}>
       {/* Header card */}
-      <Card sx={{ '--Card-padding': '12px', borderRadius: 'sm' }} variant="outlined">
-        <CardContent>
+      <Card sx={{ p: 1.5, borderRadius: 'sm' }} emphasis="outline">
           <Stack direction="column" spacing={1}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography level="title-lg">{releaseName}</Typography>
+              <Text weight="semibold" size="lg">{releaseName}</Text>
               <Chip
                 size="sm"
-                variant="soft"
+                emphasis="soft"
                 color={statusColorMap[status] ?? 'neutral'}
-              >
-                {status}
-              </Chip>
+                label={status}
+              />
             </Stack>
             <Divider />
             <MetaEntry label="Namespace" value={namespace} />
@@ -134,16 +185,16 @@ export const ReleaseSidebar: React.FC<Props> = ({ ctx }) => {
             <MetaEntry label="Revision" value={String(revision)} />
             {lastDeployed && <MetaEntry label="Updated" value={lastDeployed} />}
           </Stack>
-        </CardContent>
       </Card>
 
       {/* Action buttons */}
       <Stack direction="row" spacing={1}>
         <IconButton
           size="sm"
-          variant="outlined"
+          emphasis="outline"
           color="primary"
           disabled={isExecuting}
+          onClick={() => setShowUpgrade(true)}
           title="Upgrade Release"
         >
           <LuCircleArrowUp />
@@ -151,7 +202,7 @@ export const ReleaseSidebar: React.FC<Props> = ({ ctx }) => {
         {revision > 1 && (
           <IconButton
             size="sm"
-            variant="outlined"
+            emphasis="outline"
             color="warning"
             disabled={isExecuting}
             onClick={() => void executeAction({
@@ -169,152 +220,226 @@ export const ReleaseSidebar: React.FC<Props> = ({ ctx }) => {
 
       {/* Tabs */}
       <Tabs
+        tabs={[
+          { key: '0', label: 'Values' },
+          { key: '1', label: 'Manifest' },
+          { key: '2', label: 'Notes' },
+          { key: '3', label: 'Hooks' },
+          { key: '4', label: 'History' },
+          { key: '5', label: 'Resources' },
+        ]}
         value={activeTab}
-        onChange={(_, v) => setActiveTab(v as number)}
+        onChange={(v) => setActiveTab(v)}
         sx={{ borderRadius: 'sm', bgcolor: 'transparent' }}
-      >
-        <TabList size="sm" variant="plain">
-          <Tab><LuFileText size={14} />&nbsp;Values</Tab>
-          <Tab><LuFileCode size={14} />&nbsp;Manifest</Tab>
-          <Tab><LuStickyNote size={14} />&nbsp;Notes</Tab>
-          <Tab><LuAnchor size={14} />&nbsp;Hooks</Tab>
-          <Tab><LuHistory size={14} />&nbsp;History</Tab>
-        </TabList>
+      />
 
-        {/* Values */}
-        <TabPanel value={0} sx={{ p: 1 }}>
-          <Box
-            component="pre"
-            sx={{
-              fontSize: 12,
-              fontFamily: 'monospace',
-              bgcolor: 'background.level1',
-              p: 1.5,
-              borderRadius: 'sm',
-              overflow: 'auto',
-              maxHeight: 400,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {actionData ? JSON.stringify(actionData, null, 2) : 'Loading...'}
-          </Box>
-        </TabPanel>
+      {/* Values - Monaco editor */}
+      <TabPanel value='0' activeValue={activeTab}>
+        <Box sx={{ height: 400, border: '1px solid', borderColor: 'neutral.700', borderRadius: 'sm', overflow: 'hidden' }}>
+          <CodeEditor
+            filename="values.yaml"
+            language="yaml"
+            value={tabData['get-values'] ? stringify(tabData['get-values']) : '# Loading...'}
+            readOnly
+            height={400}
+          />
+        </Box>
+      </TabPanel>
 
-        {/* Manifest */}
-        <TabPanel value={1} sx={{ p: 1 }}>
-          <Box
-            component="pre"
-            sx={{
-              fontSize: 12,
-              fontFamily: 'monospace',
-              bgcolor: 'background.level1',
-              p: 1.5,
-              borderRadius: 'sm',
-              overflow: 'auto',
-              maxHeight: 400,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {actionData?.manifest ?? 'Loading...'}
-          </Box>
-        </TabPanel>
+      {/* Manifest - Monaco with diff toggle */}
+      <TabPanel value='1' activeValue={activeTab}>
+        {revision > 1 && (
+          <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+            <Button
+              size="sm"
+              emphasis={showManifestDiff ? 'solid' : 'outline'}
+              color="neutral"
+              disabled={isExecuting}
+              onClick={handleToggleDiff}
+              startIcon={<LuGitCompare size={14} />}
+            >
+              {showManifestDiff ? 'Hide Diff' : 'Diff with Previous'}
+            </Button>
+          </Stack>
+        )}
+        <Box sx={{ height: 400, border: '1px solid', borderColor: 'neutral.700', borderRadius: 'sm', overflow: 'hidden' }}>
+          <CodeEditor
+            filename="manifest.yaml"
+            language="yaml"
+            value={currentManifest || '# Loading...'}
+            readOnly
+            diff={showManifestDiff && prevManifest !== null}
+            original={prevManifest ?? ''}
+            height={400}
+          />
+        </Box>
+      </TabPanel>
 
-        {/* Notes */}
-        <TabPanel value={2} sx={{ p: 1 }}>
-          <Box
-            component="pre"
-            sx={{
-              fontSize: 12,
-              fontFamily: 'monospace',
-              bgcolor: 'background.level1',
-              p: 1.5,
-              borderRadius: 'sm',
-              overflow: 'auto',
-              maxHeight: 400,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {actionData?.notes ?? 'No release notes'}
-          </Box>
-        </TabPanel>
+      {/* Notes */}
+      <TabPanel value='2' activeValue={activeTab}>
+        <Box
+          component="pre"
+          sx={{
+            fontSize: 12,
+            fontFamily: 'monospace',
+            bgcolor: 'background.level1',
+            p: 1.5,
+            borderRadius: 'sm',
+            overflow: 'auto',
+            maxHeight: 400,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        >
+          {tabData['get-notes']?.notes ?? 'No release notes'}
+        </Box>
+      </TabPanel>
 
-        {/* Hooks */}
-        <TabPanel value={3} sx={{ p: 1 }}>
-          {actionData?.hooks?.length ? (
-            <Stack spacing={1}>
-              {(actionData.hooks as any[]).map((hook: any, i: number) => (
-                <Card key={i} variant="outlined" size="sm">
-                  <CardContent>
-                    <Typography level="title-sm">{hook.name}</Typography>
-                    <Typography level="body-xs" textColor="neutral.400">
-                      Kind: {hook.kind} | Weight: {hook.weight}
-                    </Typography>
-                    {hook.events && (
-                      <Stack direction="row" spacing={0.5} mt={0.5} flexWrap="wrap">
-                        {(hook.events as string[]).map((e: string) => (
-                          <Chip key={e} size="sm" variant="soft">{e}</Chip>
-                        ))}
-                      </Stack>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </Stack>
-          ) : (
-            <Typography level="body-sm" textColor="neutral.400">No hooks</Typography>
-          )}
-        </TabPanel>
-
-        {/* History */}
-        <TabPanel value={4} sx={{ p: 1 }}>
-          {actionData?.revisions?.length ? (
-            <Stack spacing={1}>
-              {(actionData.revisions as any[]).map((rev: any, i: number) => (
-                <Card key={i} variant="outlined" size="sm">
-                  <CardContent>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography level="title-sm">Revision {rev.version}</Typography>
-                      <Chip
-                        size="sm"
-                        variant="soft"
-                        color={statusColorMap[rev.info?.status] ?? 'neutral'}
-                      >
-                        {rev.info?.status}
-                      </Chip>
+      {/* Hooks */}
+      <TabPanel value='3' activeValue={activeTab}>
+        {tabData['get-hooks']?.hooks?.length ? (
+          <Stack spacing={1}>
+            {(tabData['get-hooks'].hooks as any[]).map((hook: any, i: number) => (
+              <Card key={i} emphasis="outline">
+                  <Text weight="semibold" size="sm">{hook.name}</Text>
+                  <Text size="xs" sx={{ color: "neutral.400" }}>
+                    Kind: {hook.kind} | Weight: {hook.weight}
+                  </Text>
+                  {hook.events && (
+                    <Stack direction="row" spacing={0.5} mt={0.5} flexWrap="wrap">
+                      {(hook.events as string[]).map((e: string) => (
+                        <Chip key={e} size="sm" emphasis="soft" label={e} />
+                      ))}
                     </Stack>
-                    <Typography level="body-xs" textColor="neutral.400">
-                      {rev.info?.description ?? ''}
-                    </Typography>
-                    {rev.version !== revision && (
-                      <IconButton
-                        size="sm"
-                        variant="plain"
-                        color="warning"
-                        disabled={isExecuting}
-                        onClick={() => void executeAction({
-                          actionID: 'rollback',
-                          id: releaseName,
-                          namespace,
-                          params: { revision: rev.version },
-                        })}
-                        title={`Rollback to revision ${rev.version}`}
-                        sx={{ mt: 0.5 }}
-                      >
-                        <LuUndo2 size={14} />
-                      </IconButton>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </Stack>
-          ) : (
-            <Typography level="body-sm" textColor="neutral.400">No history</Typography>
-          )}
-        </TabPanel>
-      </Tabs>
+                  )}
+              </Card>
+            ))}
+          </Stack>
+        ) : (
+          <Text size="sm" sx={{ color: "neutral.400" }}>No hooks</Text>
+        )}
+      </TabPanel>
+
+      {/* History */}
+      <TabPanel value='4' activeValue={activeTab}>
+        {tabData['get-history']?.revisions?.length ? (
+          <Stack spacing={1}>
+            {(tabData['get-history'].revisions as any[]).map((rev: any, i: number) => (
+              <Card key={i} emphasis="outline">
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Text weight="semibold" size="sm">Revision {rev.version}</Text>
+                    <Chip
+                      size="sm"
+                      emphasis="soft"
+                      color={statusColorMap[rev.info?.status] ?? 'neutral'}
+                      label={rev.info?.status}
+                    />
+                  </Stack>
+                  <Text size="xs" sx={{ color: "neutral.400" }}>
+                    {rev.info?.description ?? ''}
+                  </Text>
+                  {rev.version !== revision && (
+                    <IconButton
+                      size="sm"
+                      emphasis="ghost"
+                      color="warning"
+                      disabled={isExecuting}
+                      onClick={() => void executeAction({
+                        actionID: 'rollback',
+                        id: releaseName,
+                        namespace,
+                        params: { revision: rev.version },
+                      })}
+                      title={`Rollback to revision ${rev.version}`}
+                      sx={{ mt: 0.5 }}
+                    >
+                      <LuUndo2 size={14} />
+                    </IconButton>
+                  )}
+              </Card>
+            ))}
+          </Stack>
+        ) : (
+          <Text size="sm" sx={{ color: "neutral.400" }}>No history</Text>
+        )}
+      </TabPanel>
+
+      {/* Resources - parsed from manifest */}
+      <TabPanel value='5' activeValue={activeTab}>
+        {manifestResources.length > 0 ? (
+          <Stack spacing={0.5}>
+            {manifestResources.map((res, i) => (
+              <Card
+                key={i}
+                sx={{
+                  p: 1,
+                  borderRadius: 'sm',
+                  cursor: 'pointer',
+                  '&:hover': { bgcolor: 'background.level2' },
+                }}
+                emphasis="outline"
+                onClick={() => {
+                  // Attempt to navigate to the K8s resource sidebar
+                  // This maps common kinds to their resource keys
+                  const kindToGroup: Record<string, string> = {
+                    Deployment: 'apps::v1',
+                    Service: 'core::v1',
+                    ConfigMap: 'core::v1',
+                    Secret: 'core::v1',
+                    ServiceAccount: 'core::v1',
+                    Ingress: 'networking::v1',
+                    PersistentVolumeClaim: 'core::v1',
+                    StatefulSet: 'apps::v1',
+                    DaemonSet: 'apps::v1',
+                    Job: 'batch::v1',
+                    CronJob: 'batch::v1',
+                    Role: 'rbac::v1',
+                    RoleBinding: 'rbac::v1',
+                    ClusterRole: 'rbac::v1',
+                    ClusterRoleBinding: 'rbac::v1',
+                    NetworkPolicy: 'networking::v1',
+                    HorizontalPodAutoscaler: 'autoscaling::v1',
+                    PodDisruptionBudget: 'policy::v1',
+                    Namespace: 'core::v1',
+                  };
+                  const group = kindToGroup[res.kind];
+                  if (group) {
+                    showResourceSidebar({
+                      pluginID: 'kubernetes',
+                      connectionID,
+                      resourceKey: `${group}::${res.kind}`,
+                      resourceID: res.name,
+                      namespace: res.namespace ?? namespace,
+                    });
+                  }
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Chip size="sm" emphasis="soft" color="neutral" label={res.kind} />
+                  <Text size="sm" weight="semibold">{res.name}</Text>
+                  {res.namespace && (
+                    <Text size="xs" sx={{ color: 'neutral.500' }}>{res.namespace}</Text>
+                  )}
+                </Stack>
+              </Card>
+            ))}
+          </Stack>
+        ) : (
+          <Text size="sm" sx={{ color: "neutral.400" }}>
+            {tabData['get-manifest'] ? 'No resources found in manifest' : 'Loading manifest...'}
+          </Text>
+        )}
+      </TabPanel>
+
+      {/* Upgrade Dialog */}
+      <UpgradeDialog
+        open={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        releaseName={releaseName}
+        namespace={namespace}
+        chartRef={`${chartName}`}
+        connectionID={connectionID}
+      />
     </Stack>
   );
 };

@@ -5,9 +5,32 @@ export { DetailsCard } from './components/DetailsCard';
 export type { DetailsCardProps, DetailsCardEntry } from './components/DetailsCard';
 export { default as KVCard } from './components/KVCard';
 export type { KVCardProps } from './components/KVCard';
-export { default as ExpandableSections } from './components/ExpandableSections';
-export type { ExpandableSection } from './components/ExpandableSections';
+export { default as ExpandableSections, ExpandableSectionComponent as ExpandableSection } from './components/ExpandableSections';
+export type { ExpandableSection as ExpandableSectionItem, ExpandableSectionsProps, ExpandableSectionStandaloneProps } from './components/ExpandableSections';
 export { Icon } from './components/Icon';
+
+// Metrics
+export { MetricsSection } from './components/MetricsSection';
+export type { MetricsSectionProps, MetricValue, MetricProviderGroup } from './components/MetricsSection';
+
+// List
+export { default as List, ListSubheader, ListDivider } from './components/List';
+export type { ListProps } from './components/List';
+export { default as ListItem } from './components/ListItem';
+export type { ListItemProps } from './components/ListItem';
+
+// Chip
+export { default as Chip } from './components/Chip';
+export type { ChipProps } from './components/Chip';
+
+// AspectRatio
+export { default as AspectRatio } from './components/AspectRatio';
+export type { AspectRatioProps } from './components/AspectRatio';
+
+// Re-exports from MUI Material
+export { default as Divider } from '@mui/material/Divider';
+export { default as CircularProgress } from '@mui/material/CircularProgress';
+export { default as LinearProgress } from '@mui/material/LinearProgress';
 
 export { default as ClipboardText } from './components/ClipboardText';
 export type { ClipboardTextProps } from './components/ClipboardText';

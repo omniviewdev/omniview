@@ -54,6 +54,7 @@ type controller struct {
 	addChan           chan resourcetypes.InformerAddPayload
 	updateChan        chan resourcetypes.InformerUpdatePayload
 	deleteChan        chan resourcetypes.InformerDeletePayload
+	stateChan         chan resourcetypes.InformerStateEvent
 	connChan          chan resourcetypes.ConnectionControllerEvent
 }
 
@@ -70,6 +71,7 @@ func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controlle
 		addChan:    make(chan resourcetypes.InformerAddPayload),
 		updateChan: make(chan resourcetypes.InformerUpdatePayload),
 		deleteChan: make(chan resourcetypes.InformerDeletePayload),
+		stateChan:  make(chan resourcetypes.InformerStateEvent),
 
 		// connection update channels
 		connChan: make(chan resourcetypes.ConnectionControllerEvent),
@@ -104,7 +106,6 @@ func (c *controller) informerListener() {
 	for {
 		select {
 		case <-c.ctx.Done():
-			// shutting down
 			log.Debugw("shutting down informer listeners")
 			for _, stopChan := range c.informerStopChans {
 				stopChan <- struct{}{}
@@ -117,7 +118,6 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
-			// log.Debugw("received add event", "event", eventKey)
 			runtime.EventsEmit(c.ctx, eventKey, event)
 		case event := <-c.updateChan:
 			eventKey := fmt.Sprintf(
@@ -126,13 +126,7 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
-			// log.Debugw("received update event", "event", eventKey)
-
-			runtime.EventsEmit(
-				c.ctx,
-				eventKey,
-				event,
-			)
+			runtime.EventsEmit(c.ctx, eventKey, event)
 		case event := <-c.deleteChan:
 			eventKey := fmt.Sprintf(
 				"%s/%s/%s/DELETE",
@@ -140,8 +134,16 @@ func (c *controller) informerListener() {
 				event.Connection,
 				event.Key,
 			)
-			// log.Debugw("received delete event", "event", eventKey)
 			runtime.EventsEmit(c.ctx, eventKey, event)
+		case event := <-c.stateChan:
+			eventKey := fmt.Sprintf(
+				"%s/%s/informer/STATE",
+				event.PluginID,
+				event.Connection,
+			)
+			runtime.EventsEmit(c.ctx, eventKey, event)
+			// Global event for footer/status bar aggregation
+			runtime.EventsEmit(c.ctx, "informer/STATE", event)
 		}
 	}
 }
@@ -283,6 +285,7 @@ func (c *controller) OnPluginStart(
 		c.addChan,
 		c.updateChan,
 		c.deleteChan,
+		c.stateChan,
 	)
 	return nil
 }
@@ -388,6 +391,19 @@ func (c *controller) StartConnection(
 			[]types.Connection{*conn.Connection},
 		)
 	}
+
+	// Emit connection status event for the frontend footer indicator
+	connName := connectionID
+	if conn.Connection != nil && conn.Connection.Name != "" {
+		connName = conn.Connection.Name
+	}
+	runtime.EventsEmit(c.ctx, "connection/status", map[string]interface{}{
+		"pluginID":     pluginID,
+		"connectionID": connectionID,
+		"status":       string(conn.Status),
+		"name":         connName,
+	})
+
 	return conn, nil
 }
 
@@ -405,6 +421,15 @@ func (c *controller) StopConnection(pluginID, connectionID string) (types.Connec
 	}
 
 	c.connections[pluginID] = mergeConnections(c.connections[pluginID], []types.Connection{conn})
+
+	// Emit connection status event for the frontend footer indicator
+	runtime.EventsEmit(c.ctx, "connection/status", map[string]interface{}{
+		"pluginID":     pluginID,
+		"connectionID": connectionID,
+		"status":       "DISCONNECTED",
+		"name":         conn.Name,
+	})
+
 	return conn, nil
 }
 
@@ -835,6 +860,25 @@ func (c *controller) SetLayout(
 	return client.SetLayout(layoutID, layout)
 }
 
+// ================================== SCHEMA METHODS ================================== //
+
+func (c *controller) GetEditorSchemas(
+	pluginID, connectionID string,
+) ([]resourcetypes.EditorSchema, error) {
+	logger := c.logger.With("pluginID", pluginID, "connectionID", connectionID)
+	logger.Debug("GetEditorSchemas")
+
+	client, conn, err := c.getClientConnection(pluginID, connectionID)
+	if err != nil {
+		err = fmt.Errorf("failed to call GetEditorSchemas for connection: %w", err)
+		logger.Error(err)
+		return nil, err
+	}
+
+	ctx := c.connectedCtx(&conn)
+	return client.GetEditorSchemas(ctx, connectionID)
+}
+
 // ================================== ACTION METHODS ================================== //
 
 func (c *controller) GetActions(
@@ -872,9 +916,41 @@ func (c *controller) ExecuteAction(
 	return client.ExecuteAction(ctx, key, actionID, input)
 }
 
+// ================================== INFORMER STATE METHODS ================================== //
+
+func (c *controller) GetInformerState(
+	pluginID, connectionID string,
+) (*resourcetypes.InformerConnectionSummary, error) {
+	logger := c.logger.With("pluginID", pluginID, "connectionID", connectionID)
+	logger.Debug("GetInformerState")
+
+	client, conn, err := c.getClientConnection(pluginID, connectionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get informer state: %w", err)
+	}
+
+	ctx := c.connectedCtx(&conn)
+	return client.GetInformerState(ctx, connectionID)
+}
+
+func (c *controller) EnsureInformerForResource(
+	pluginID, connectionID, resourceKey string,
+) error {
+	logger := c.logger.With("pluginID", pluginID, "connectionID", connectionID, "resourceKey", resourceKey)
+	logger.Debug("EnsureInformerForResource")
+
+	client, conn, err := c.getClientConnection(pluginID, connectionID)
+	if err != nil {
+		return fmt.Errorf("failed to ensure informer for resource: %w", err)
+	}
+
+	ctx := c.connectedCtx(&conn)
+	return client.EnsureInformerForResource(ctx, connectionID, resourceKey)
+}
+
 // ================================== INFORMER METHODS ================================== //
 
-// listenForPluginEvents listens for events from the plugin in a blocking event
+// listenForPluginInformerEvents listens for events from the plugin in a blocking event
 // loop, and emits them to the controller. this should be run in a goroutine.
 func (c *controller) listenForPluginInformerEvents(
 	pluginID string,
@@ -883,6 +959,7 @@ func (c *controller) listenForPluginInformerEvents(
 	addChan chan resourcetypes.InformerAddPayload,
 	updateChan chan resourcetypes.InformerUpdatePayload,
 	deleteChan chan resourcetypes.InformerDeletePayload,
+	stateChan chan resourcetypes.InformerStateEvent,
 ) {
 	l := c.logger.With("pluginID", pluginID)
 	l.Debug("listenForPluginInformerEvents")
@@ -892,11 +969,12 @@ func (c *controller) listenForPluginInformerEvents(
 	addStream := make(chan resourcetypes.InformerAddPayload)
 	updateStream := make(chan resourcetypes.InformerUpdatePayload)
 	deleteStream := make(chan resourcetypes.InformerDeletePayload)
+	stateStream := make(chan resourcetypes.InformerStateEvent)
 
 	errChan := make(chan error)
 
 	go func(errChan chan error) {
-		if err := client.ListenForEvents(ctx, addStream, updateStream, deleteStream); err != nil {
+		if err := client.ListenForEvents(ctx, addStream, updateStream, deleteStream, stateStream); err != nil {
 			l.Errorw("failed to listen for events", "error", err)
 			errChan <- err
 			return
@@ -918,6 +996,9 @@ func (c *controller) listenForPluginInformerEvents(
 		case event := <-deleteStream:
 			event.PluginID = pluginID
 			deleteChan <- event
+		case event := <-stateStream:
+			event.PluginID = pluginID
+			stateChan <- event
 		}
 	}
 }

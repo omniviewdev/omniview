@@ -1,8 +1,8 @@
 import React from 'react';
 
 // Material-ui
-import Stack from '@mui/joy/Stack';
-import Typography from '@mui/joy/Typography';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import GradientBackground from '@/components/backgrounds/GradientBackground';
 
 import { motion } from 'framer-motion';
@@ -13,7 +13,7 @@ import Kubernetes from '@/assets/logos/kubernetes/horizontal/KubernetesHorizonta
 import AWS from '@/assets/logos/aws/horizontal/AWSHorizontalColorWhite';
 import GCP from '@/assets/logos/gcp/horizontal/GCPHorizontal';
 import Docker from '@/assets/logos/docker/horizontal/DockerHorizontal';
-// import { Box } from '@mui/joy';
+// import Box from '@mui/material/Box';
 
 const logos = [
   <Kubernetes height={50} />,
@@ -45,7 +45,7 @@ const Welcome = () => {
   //
   //
   //   return () => {
-  //     clearInterval(interval); 
+  //     clearInterval(interval);
   //   };
   // }, []);
   //
@@ -55,7 +55,7 @@ const Welcome = () => {
   //     setImageIndex((prevIndex) => (prevIndex + 1) % images.length);
   //   }, 9000);
   //   return () => {
-  //     clearInterval(interval); 
+  //     clearInterval(interval);
   //   };
   // }, []);
 
@@ -70,19 +70,19 @@ const Welcome = () => {
     <GradientBackground>
       <Stack direction='column' gap={8} alignItems='center' justifyContent={'center'} height={'100%'}>
         <Stack direction='column' alignItems='center' width={'100%'}>
-          <Typography
-            fontSize={72}
-            fontWeight={800}
+          <Text
             sx={{
-              textShadow: theme => `10px 10px 25px ${theme.palette.neutral[900]}, -10px 10px 25px ${theme.palette.neutral[900]}, -10px -10px 25px ${theme.palette.neutral[900]}, 10px -10px 25px ${theme.palette.neutral[900]};`,
+              fontSize: 72,
+              fontWeight: 800,
+              textShadow: theme => `10px 10px 25px ${theme.palette.grey[900]}, -10px 10px 25px ${theme.palette.grey[900]}, -10px -10px 25px ${theme.palette.grey[900]}, 10px -10px 25px ${theme.palette.grey[900]};`,
             }}
           >
             Omniview
-          </Typography>
+          </Text>
           <Stack direction='row' spacing={2} minHeight={70} alignItems='center'>
-            <Typography fontSize={30} fontWeight={700} color='neutral' sx={{ letterSpacing: '0.05rem' }}>
+            <Text sx={{ fontSize: 30, fontWeight: 700, letterSpacing: '0.05rem', color: 'text.secondary' }}>
               The IDE for
-            </Typography>
+            </Text>
             <motion.span
               key={toolIndex}
               variants={variants}

@@ -1,16 +1,9 @@
 import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  FormControl,
-  FormLabel,
-  IconButton,
-  Input,
-  Option,
-  Select,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
+import { Button, IconButton } from '@omniviewdev/ui/buttons';
+import { TextField, Select } from '@omniviewdev/ui/inputs';
 import { LuPlus, LuTrash2 } from 'react-icons/lu';
 import FormSection from '../../../shared/forms/FormSection';
 import useFormState from '../../../shared/forms/useFormState';
@@ -111,110 +104,104 @@ const RecordSetForm: React.FC<Props> = ({ data, onSave, saving, isNew }) => {
       <Stack spacing={1.5}>
         {/* Record Name & Type */}
         <Stack direction='row' spacing={1}>
-          <FormControl size='sm' sx={{ flex: 2 }} required>
-            <FormLabel>Record Name</FormLabel>
-            <Input
+          <Box sx={{ flex: 2 }}>
+            <Text size="xs" sx={{ mb: 0.5 }}>Record Name</Text>
+            <TextField
               size='sm'
               value={values.Name}
               disabled={!isNew}
               placeholder='subdomain.example.com.'
-              onChange={(e) => setField('Name', e.target.value)}
+              onChange={(value) => setField('Name', value)}
             />
-          </FormControl>
-          <FormControl size='sm' sx={{ flex: 1 }} required>
-            <FormLabel>Type</FormLabel>
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Text size="xs" sx={{ mb: 0.5 }}>Type</Text>
             <Select
               size='sm'
               value={values.Type}
               disabled={!isNew}
-              onChange={(_, v) => setField('Type', v || 'A')}
-            >
-              {RECORD_TYPES.map((opt) => (
-                <Option key={opt.value} value={opt.value}>{opt.label}</Option>
-              ))}
-            </Select>
-          </FormControl>
+              onChange={(value) => setField('Type', (value as string) || 'A')}
+              options={RECORD_TYPES}
+            />
+          </Box>
         </Stack>
 
         {/* Alias toggle */}
-        <FormControl size='sm'>
-          <Stack direction='row' spacing={1} alignItems='center'>
-            <FormLabel sx={{ mb: 0 }}>Alias Record</FormLabel>
-            <Button
-              size='sm'
-              variant={values.UseAlias ? 'soft' : 'outlined'}
-              color={values.UseAlias ? 'primary' : 'neutral'}
-              onClick={() => setField('UseAlias', !values.UseAlias)}
-            >
-              {values.UseAlias ? 'Yes' : 'No'}
-            </Button>
-          </Stack>
-        </FormControl>
+        <Stack direction='row' spacing={1} alignItems='center'>
+          <Text size="xs">Alias Record</Text>
+          <Button
+            size='sm'
+            emphasis={values.UseAlias ? 'soft' : 'outline'}
+            color={values.UseAlias ? 'primary' : 'neutral'}
+            onClick={() => setField('UseAlias', !values.UseAlias)}
+          >
+            {values.UseAlias ? 'Yes' : 'No'}
+          </Button>
+        </Stack>
 
         {values.UseAlias ? (
           /* Alias configuration */
           <Stack spacing={1}>
-            <FormControl size='sm' required>
-              <FormLabel>Alias Target DNS Name</FormLabel>
-              <Input
+            <Box>
+              <Text size="xs" sx={{ mb: 0.5 }}>Alias Target DNS Name</Text>
+              <TextField
                 size='sm'
                 value={values.AliasTargetDNS}
                 placeholder='d111111abcdef8.cloudfront.net.'
-                onChange={(e) => setField('AliasTargetDNS', e.target.value)}
+                onChange={(value) => setField('AliasTargetDNS', value)}
               />
-            </FormControl>
-            <FormControl size='sm'>
-              <FormLabel>Hosted Zone ID</FormLabel>
-              <Input
+            </Box>
+            <Box>
+              <Text size="xs" sx={{ mb: 0.5 }}>Hosted Zone ID</Text>
+              <TextField
                 size='sm'
                 value={values.AliasTargetZoneId}
                 placeholder='Z2FDTNDATAQYW2'
-                onChange={(e) => setField('AliasTargetZoneId', e.target.value)}
+                onChange={(value) => setField('AliasTargetZoneId', value)}
               />
-            </FormControl>
+            </Box>
           </Stack>
         ) : (
           /* Standard record values */
           <Stack spacing={1}>
-            <FormControl size='sm'>
-              <FormLabel>TTL (seconds)</FormLabel>
-              <Input
+            <Box>
+              <Text size="xs" sx={{ mb: 0.5 }}>TTL (seconds)</Text>
+              <TextField
                 size='sm'
                 type='number'
-                value={values.TTL}
-                slotProps={{ input: { min: 0, max: 2147483647 } }}
-                onChange={(e) => setField('TTL', Number(e.target.value))}
+                value={String(values.TTL)}
+                inputProps={{ min: 0, max: 2147483647 }}
+                onChange={(value) => setField('TTL', Number(value))}
                 sx={{ maxWidth: 150 }}
               />
-            </FormControl>
+            </Box>
 
             {/* Values list */}
             <Box>
-              <Typography level='body-sm' fontWeight={600} sx={{ mb: 0.5 }}>Values</Typography>
+              <Text size="sm" sx={{ fontWeight: 600, mb: 0.5 }}>Values</Text>
               <Stack spacing={0.25}>
                 {records.map((val, i) => (
                   <Stack key={i} direction='row' spacing={0.5} alignItems='center'>
-                    <Typography level='body-xs' fontFamily='monospace' sx={{ flex: 1 }}>{val}</Typography>
-                    <IconButton size='sm' variant='plain' color='danger' onClick={() => handleRemoveValue(i)}>
+                    <Text size="xs" sx={{ fontFamily: 'monospace', flex: 1 }}>{val}</Text>
+                    <IconButton size='sm' emphasis='ghost' color='error' onClick={() => handleRemoveValue(i)}>
                       <LuTrash2 size={14} />
                     </IconButton>
                   </Stack>
                 ))}
                 {records.length === 0 && (
-                  <Typography level='body-xs' color='neutral'>No values</Typography>
+                  <Text size="xs" color="neutral">No values</Text>
                 )}
               </Stack>
               <Stack direction='row' spacing={0.5} sx={{ mt: 0.5 }}>
-                <Input
+                <TextField
                   size='sm'
-                  variant='soft'
                   placeholder={values.Type === 'A' ? '192.0.2.1' : values.Type === 'CNAME' ? 'target.example.com.' : 'value'}
                   value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
+                  onChange={(value) => setNewValue(value)}
                   onKeyDown={handleKeyDown}
                   sx={{ flex: 1, fontSize: 12 }}
                 />
-                <IconButton size='sm' variant='soft' color='primary' disabled={!newValue.trim()} onClick={handleAddValue}>
+                <IconButton size='sm' emphasis='soft' color='primary' disabled={!newValue.trim()} onClick={handleAddValue}>
                   <LuPlus size={14} />
                 </IconButton>
               </Stack>

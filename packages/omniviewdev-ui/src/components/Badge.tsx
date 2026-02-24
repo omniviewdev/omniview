@@ -9,6 +9,12 @@ export interface BadgeProps {
   dot?: boolean;
   color?: SemanticColor;
   max?: number;
+  invisible?: boolean;
+  size?: 'sm' | 'md' | 'lg';
+  anchorOrigin?: {
+    vertical: 'top' | 'bottom';
+    horizontal: 'left' | 'right';
+  };
   children: ReactNode;
   sx?: SxProps<Theme>;
 }
@@ -18,6 +24,8 @@ export default function Badge({
   dot = false,
   color = 'primary',
   max = 99,
+  invisible,
+  anchorOrigin,
   children,
   sx,
 }: BadgeProps) {
@@ -27,6 +35,8 @@ export default function Badge({
       variant={dot ? 'dot' : 'standard'}
       color={toMuiColor(color) as 'primary' | 'secondary' | 'error' | 'warning' | 'info' | 'success' | 'default'}
       max={max}
+      invisible={invisible}
+      anchorOrigin={anchorOrigin}
       sx={sx}
     >
       {children}

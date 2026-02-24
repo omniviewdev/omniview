@@ -1,12 +1,9 @@
 import React from 'react';
-import {
-  Box,
-  Chip,
-  CircularProgress,
-  Divider,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Chip, CircularProgress } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import {
   LuCircleCheck,
   LuCircleX,
@@ -57,11 +54,11 @@ function StatItem({ icon, label, value }: { icon: React.ReactNode; label: string
   return (
     <Stack direction='row' alignItems='center' gap={0.5}>
       <Box sx={{ display: 'flex', color: 'text.tertiary' }}>{icon}</Box>
-      <Typography level='body-xs' fontWeight={600} noWrap>
+      <Text size='xs' sx={{ fontWeight: 600 }} noWrap>
         {label}
-      </Typography>
-      <Typography
-        level='body-xs'
+      </Text>
+      <Text
+        size='xs'
         noWrap
         sx={{
           color: empty ? 'text.tertiary' : 'text.secondary',
@@ -69,7 +66,7 @@ function StatItem({ icon, label, value }: { icon: React.ReactNode; label: string
         }}
       >
         {empty ? 'N/A' : value}
-      </Typography>
+      </Text>
     </Stack>
   );
 }
@@ -125,7 +122,7 @@ const ClusterInfoCard: React.FC<Props> = ({ data, loading, nodes, pods, events }
       <Stack
         direction='row'
         alignItems='center'
-        divider={<Divider orientation='vertical' />}
+        divider={<Divider orientation='vertical' flexItem />}
         gap={1.5}
         sx={{ minWidth: 0 }}
       >
@@ -140,15 +137,14 @@ const ClusterInfoCard: React.FC<Props> = ({ data, loading, nodes, pods, events }
       {/* Right: health chip */}
       <Chip
         size='sm'
-        variant='soft'
+        emphasis='soft'
         color={healthColor}
-        startDecorator={<HealthIcon size={12} />}
+        startAdornment={<HealthIcon size={12} />}
         sx={{ flexShrink: 0, ml: 1.5 }}
-      >
-        {health.issues.length === 0
+        label={health.issues.length === 0
           ? 'Healthy'
-          : health.issues.join(' · ')}
-      </Chip>
+          : health.issues.join(' \u00b7 ')}
+      />
     </Stack>
   );
 };

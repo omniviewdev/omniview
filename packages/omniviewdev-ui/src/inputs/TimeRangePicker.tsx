@@ -26,11 +26,11 @@ export interface TimeRangePickerProps {
 }
 
 const defaultPresets: TimeRangePreset[] = [
-  { label: 'Last 15m', duration: 15 * 60 * 1000 },
-  { label: 'Last 1h', duration: 60 * 60 * 1000 },
-  { label: 'Last 6h', duration: 6 * 60 * 60 * 1000 },
-  { label: 'Last 24h', duration: 24 * 60 * 60 * 1000 },
-  { label: 'Last 7d', duration: 7 * 24 * 60 * 60 * 1000 },
+  { label: '15m', duration: 15 * 60 * 1000 },
+  { label: '1h', duration: 60 * 60 * 1000 },
+  { label: '6h', duration: 6 * 60 * 60 * 1000 },
+  { label: '24h', duration: 24 * 60 * 60 * 1000 },
+  { label: '7d', duration: 7 * 24 * 60 * 60 * 1000 },
 ];
 
 export default function TimeRangePicker({
@@ -65,7 +65,7 @@ export default function TimeRangePicker({
           size="small"
           variant="outlined"
           onClick={() => handlePreset(preset)}
-          sx={{ fontSize: '0.75rem', textTransform: 'none', minWidth: 0, px: 1 }}
+          sx={{ fontSize: '0.675rem', textTransform: 'none', minWidth: 0, px: 0.75, py: 0.25, lineHeight: 1.2 }}
         >
           {preset.label}
         </Button>
@@ -80,7 +80,7 @@ export default function TimeRangePicker({
               setCustomTo(value.to);
               setAnchorEl(e.currentTarget);
             }}
-            sx={{ fontSize: '0.75rem', textTransform: 'none', minWidth: 0, px: 1 }}
+            sx={{ fontSize: '0.675rem', textTransform: 'none', minWidth: 0, px: 0.75, py: 0.25, lineHeight: 1.2 }}
           >
             Custom
           </Button>

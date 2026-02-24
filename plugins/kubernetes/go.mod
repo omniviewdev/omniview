@@ -14,6 +14,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/omniviewdev/plugin-sdk v0.0.0-20240314004425-c2572eb4a1c1
 	github.com/omniviewdev/settings v0.0.0-00010101000000-000000000000
+	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0
 	helm.sh/helm/v3 v3.20.0
 	k8s.io/api v0.35.0
@@ -22,6 +23,7 @@ require (
 	k8s.io/client-go v0.35.0
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kube-aggregator v0.33.0
+	k8s.io/metrics v0.35.0
 )
 
 require (

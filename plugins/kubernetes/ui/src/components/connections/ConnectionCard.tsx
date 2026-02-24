@@ -1,5 +1,7 @@
 import React from 'react';
-import { Card, CardContent, Stack, Typography, Avatar } from '@mui/joy';
+import { Avatar, Card } from '@omniviewdev/ui';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import type { EnrichedConnection } from '../../types/clusters';
 import type { ConnectionGroup } from '../../types/clusters';
 import FavoriteButton from './FavoriteButton';
@@ -47,70 +49,68 @@ const ConnectionCard: React.FC<Props> = ({
       }}
       onClick={onClick}
     >
-      <CardContent>
-        <Stack gap={1.5}>
-          {/* Header row */}
-          <Stack direction='row' alignItems='center' gap={1}>
-            <ConnectionStatusBadge isConnected={isConnected}>
-              {enriched.avatar ? (
-                <Avatar
-                  size='sm'
-                  src={enriched.avatar}
-                  sx={{ borderRadius: 6, backgroundColor: 'transparent', maxHeight: 28, maxWidth: 28 }}
-                />
-              ) : (
-                <NamedAvatar value={displayName} color={enriched.avatarColor} />
-              )}
-            </ConnectionStatusBadge>
-            <Stack sx={{ flex: 1, minWidth: 0 }}>
-              <Typography level='title-sm' noWrap>{displayName}</Typography>
-              {displayDescription && (
-                <Typography level='body-xs' noWrap sx={{ opacity: 0.7 }}>
-                  {displayDescription}
-                </Typography>
-              )}
-            </Stack>
-            <FavoriteButton isFavorite={isFavorite} onToggle={onToggleFavorite} />
-          </Stack>
-
-          {/* Details */}
-          <Stack gap={0.5}>
-            <Stack direction='row' alignItems='center' gap={0.75}>
-              <ProviderIcon provider={provider} size={14} />
-              <Typography level='body-xs'>{String(connection.labels?.cluster ?? '')}</Typography>
-            </Stack>
-            {connection.labels?.kubeconfig && (
-              <Typography level='body-xs' noWrap sx={{ opacity: 0.6 }}>
-                {String(connection.labels.kubeconfig)}
-              </Typography>
+      <Stack gap={1.5}>
+        {/* Header row */}
+        <Stack direction='row' alignItems='center' gap={1}>
+          <ConnectionStatusBadge isConnected={isConnected}>
+            {enriched.avatar ? (
+              <Avatar
+                size='sm'
+                src={enriched.avatar}
+                sx={{ borderRadius: 6, backgroundColor: 'transparent', maxHeight: 28, maxWidth: 28 }}
+              />
+            ) : (
+              <NamedAvatar value={displayName} color={enriched.avatarColor} />
             )}
-            {connection.labels?.user && (
-              <Typography level='body-xs' sx={{ opacity: 0.6 }}>
-                {String(connection.labels.user)}
-              </Typography>
+          </ConnectionStatusBadge>
+          <Stack sx={{ flex: 1, minWidth: 0 }}>
+            <Text weight='semibold' size='sm' noWrap>{displayName}</Text>
+            {displayDescription && (
+              <Text size='xs' noWrap sx={{ opacity: 0.7 }}>
+                {displayDescription}
+              </Text>
             )}
           </Stack>
-
-          {/* Footer */}
-          <Stack direction='row' justifyContent='flex-end' onClick={e => e.stopPropagation()}>
-            <ConnectionContextMenu
-              connectionId={connection.id}
-              connectionName={displayName}
-              isConnected={isConnected}
-              isFavorite={isFavorite}
-              customGroups={customGroups}
-              onConnect={onConnect}
-              onDisconnect={onDisconnect}
-              onToggleFavorite={onToggleFavorite}
-              onAssignToGroup={onAssignToGroup}
-              onRemoveFromGroup={onRemoveFromGroup}
-              onCreateFolder={onCreateFolder}
-              onCopyId={onCopyId}
-              onDelete={onDelete}
-            />
-          </Stack>
+          <FavoriteButton isFavorite={isFavorite} onToggle={onToggleFavorite} />
         </Stack>
-      </CardContent>
+
+        {/* Details */}
+        <Stack gap={0.5}>
+          <Stack direction='row' alignItems='center' gap={0.75}>
+            <ProviderIcon provider={provider} size={14} />
+            <Text size='xs'>{String(connection.labels?.cluster ?? '')}</Text>
+          </Stack>
+          {connection.labels?.kubeconfig && (
+            <Text size='xs' noWrap sx={{ opacity: 0.6 }}>
+              {String(connection.labels.kubeconfig)}
+            </Text>
+          )}
+          {connection.labels?.user && (
+            <Text size='xs' sx={{ opacity: 0.6 }}>
+              {String(connection.labels.user)}
+            </Text>
+          )}
+        </Stack>
+
+        {/* Footer */}
+        <Stack direction='row' justifyContent='flex-end' onClick={e => e.stopPropagation()}>
+          <ConnectionContextMenu
+            connectionId={connection.id}
+            connectionName={displayName}
+            isConnected={isConnected}
+            isFavorite={isFavorite}
+            customGroups={customGroups}
+            onConnect={onConnect}
+            onDisconnect={onDisconnect}
+            onToggleFavorite={onToggleFavorite}
+            onAssignToGroup={onAssignToGroup}
+            onRemoveFromGroup={onRemoveFromGroup}
+            onCreateFolder={onCreateFolder}
+            onCopyId={onCopyId}
+            onDelete={onDelete}
+          />
+        </Stack>
+      </Stack>
     </Card>
   );
 };

@@ -190,7 +190,7 @@ func (m *Manager) CreateSession(
 	pluginctx.SetSettingsProvider(m.settingsProvider)
 
 	resizeChan := make(chan SessionResizeInput)
-	stopChan := make(chan struct{})
+	stopChan := make(chan error, 1)
 
 	ptyFile, ttyFile, err := pty.Open()
 	if err != nil {
@@ -249,8 +249,8 @@ func (m *Manager) handleSignals(session *Session) {
 
 	for {
 		select {
-		case <-session.stopChan:
-			logger.Debug("stop channel closed, stopping read stream handling")
+		case err := <-session.stopChan:
+			logger.Debug("stop channel received, stopping read stream handling")
 
 			m.mux.Lock()
 			defer m.mux.Unlock()
@@ -259,6 +259,35 @@ func (m *Manager) handleSignals(session *Session) {
 			session.pty.Close()
 			session.tty.Close()
 			delete(m.sessions, session.ID)
+
+			// if the handler sent an error, emit a structured ERROR signal first
+			if err != nil {
+				var streamErr *StreamError
+				var execErr *ExecError
+				if errors.As(err, &execErr) {
+					streamErr = &StreamError{
+						Title:         execErr.Title,
+						Message:       execErr.Message,
+						Suggestion:    execErr.Suggestion,
+						Retryable:     execErr.Retryable,
+						RetryCommands: execErr.RetryCommands,
+					}
+				} else {
+					streamErr = &StreamError{
+						Title:      "Session failed",
+						Message:    err.Error(),
+						Suggestion: "The exec session terminated unexpectedly.",
+						Retryable:  true,
+					}
+				}
+				m.out <- StreamOutput{
+					SessionID: session.ID,
+					Target:    StreamTargetStdErr,
+					Data:      []byte(err.Error()),
+					Signal:    StreamSignalError,
+					Error:     streamErr,
+				}
+			}
 
 			// signal to ide we're done
 			m.out <- StreamOutput{

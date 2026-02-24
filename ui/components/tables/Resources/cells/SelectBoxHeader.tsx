@@ -1,9 +1,7 @@
 import { type Table } from '@tanstack/react-table';
 
-import {
-  Box, 
-  Checkbox,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Checkbox } from '@omniviewdev/ui/inputs';
 
 /**
  * Render a selectbox for the header of the generic resource table.

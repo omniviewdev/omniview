@@ -1,17 +1,19 @@
 import React from "react";
-import { CssVarsProvider, StyledEngineProvider } from "@mui/joy/styles";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { StyledEngineProvider } from "@mui/material/styles";
+
+const darkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+  },
+});
 
 export const withThemeProvider = (Story, context) => {
   return (
     <StyledEngineProvider injectFirst>
-      <CssVarsProvider
-        defaultMode="dark"
-        modeStorageKey="omniview_identify-system-mode"
-        // Set as root provider
-        disableNestedContext
-      >
+      <ThemeProvider theme={darkTheme}>
         <Story />
-      </CssVarsProvider>
+      </ThemeProvider>
     </StyledEngineProvider>
   );
 };

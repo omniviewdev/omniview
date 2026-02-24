@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCode, LuShieldCheck, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuShieldCheck, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import PodDisruptionBudgetSidebar from './Sidebar'
 
 const resourceKey = 'policy/v1::PodDisruptionBudget'
@@ -79,18 +79,7 @@ const PodDisruptionBudgetTable: React.FC = () => {
   const drawer: DrawerComponent<PodDisruptionBudget> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuShieldCheck />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <PodDisruptionBudgetSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: PodDisruptionBudgetSidebar }),
     actions: [
       {
         title: 'Delete',

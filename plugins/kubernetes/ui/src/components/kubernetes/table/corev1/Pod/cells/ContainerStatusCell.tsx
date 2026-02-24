@@ -1,14 +1,10 @@
 import React from 'react'
 
 // material-ui
-import {
-  Stack,
-  // Tooltip
-} from '@mui/joy'
+import { Stack } from '@omniviewdev/ui/layout';
 
 import { ContainerStatus } from "kubernetes-types/core/v1";
-// import ContainerStatusCard from '../../../sidebar/Pod/ContainerStatusCard';
-import { useTheme } from '@mui/joy';
+import { useTheme } from '@mui/material/styles';
 
 type Props = {
   data?: Array<object>
@@ -27,28 +23,28 @@ export const ContainerStatusCell: React.FC<Props> = ({ data }) => {
   /** Get the color for the chip based on the status */
   const getColor = (status: ContainerStatus) => {
     if (status.ready) {
-      return theme.palette.success[400]
+      return theme.palette.success.main
     }
 
     if (status.state?.waiting) {
-      return theme.palette.warning[400]
+      return theme.palette.warning.main
     }
 
     if (status.state?.terminated) {
       if (status.state.terminated.exitCode === 0) {
-        return theme.palette.neutral[800];
+        return theme.palette.grey[800];
       }
 
-      return theme.palette.danger[400]
+      return theme.palette.error.main
     }
 
     if (status.state?.running) {
       // If the container is running, but not ready, it's still a warning
       // because it's not ready to serve traffic
-      return theme.palette.warning[400]
+      return theme.palette.warning.main
     }
 
-    return theme.palette.neutral[600];
+    return theme.palette.grey[600];
   };
 
 

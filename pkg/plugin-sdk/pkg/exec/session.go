@@ -22,7 +22,7 @@ type Session struct {
 	resize    chan SessionResizeInput `json:"-"`
 	ttyResize bool                    `json:"-"`
 	cancel    context.CancelFunc      `json:"-"`
-	stopChan  chan struct{}           `json:"-"`
+	stopChan  chan error              `json:"-"`
 	buffer    *OutputBuffer           `json:"-"`
 	Labels    map[string]string       `json:"labels"`
 	Params    map[string]string       `json:"params"`

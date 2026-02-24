@@ -1,5 +1,6 @@
 import { type Row } from '@tanstack/react-table';
-import { Box, Checkbox } from '@mui/joy';
+import Box from '@mui/material/Box';
+import { Checkbox } from '@omniviewdev/ui/inputs';
 
 export const SelectCell = ({ row }: { row: Row<any> }) => (
   <Box sx={{
@@ -8,8 +9,8 @@ export const SelectCell = ({ row }: { row: Row<any> }) => (
     <Checkbox
       size='sm'
       checked={row.getIsSelected()}
-      onChange={event => {
-        row.toggleSelected(event.target.checked);
+      onChange={(checked) => {
+        row.toggleSelected(checked);
       }}
       aria-label='Select row'
     />

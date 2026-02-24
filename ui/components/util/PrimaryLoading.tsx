@@ -1,4 +1,5 @@
-import { Box, CircularProgress } from "@mui/joy"
+import Box from "@mui/material/Box"
+import CircularProgress from "@mui/material/CircularProgress"
 
 /**
  * Primary loading page for the app

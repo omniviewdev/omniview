@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,6 +73,7 @@ type PluginTheme struct {
 
 type PluginArtifact struct {
 	Checksum    string `json:"checksum"`
+	Signature   string `json:"signature"`
 	DownloadURL string `json:"download_url"`
 	Size        int64  `json:"size"`
 }
@@ -141,7 +143,7 @@ func (rc *RegistryClient) getPluginArtifact(
 }
 
 func (rc *RegistryClient) ListPlugins() ([]Plugin, error) {
-	if rc.index != nil && rc.indexExpires.Before(time.Now()) {
+	if rc.index != nil && rc.indexExpires.After(time.Now()) {
 		return rc.index.Plugins, nil
 	}
 
@@ -250,6 +252,13 @@ func (rc *RegistryClient) DownloadAndPrepare(
 	actual := hex.EncodeToString(hasher.Sum(nil))
 	if actual != artifact.Checksum {
 		return "", fmt.Errorf("checksum mismatch: got %s, expected %s", actual, artifact.Checksum)
+	}
+
+	if err := VerifyArtifactSignature(artifact.Checksum, artifact.Signature); err != nil {
+		if errors.Is(err, ErrUnsignedArtifact) {
+			return "", fmt.Errorf("plugin %s@%s is not signed", pluginID, version)
+		}
+		return "", fmt.Errorf("signature verification failed for %s@%s: %w", pluginID, version, err)
 	}
 
 	if _, err := tmpFile.Seek(0, io.SeekStart); err != nil {

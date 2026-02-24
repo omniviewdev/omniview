@@ -12,28 +12,53 @@ import type { SxProps, Theme } from "@mui/material/styles";
 import Icon from "./Icon";
 
 export interface CardProps {
-  title: string;
+  title?: string;
   icon?: string | React.ReactNode;
   titleDecorator?: string | number | React.ReactNode;
   children?: React.ReactNode;
+  /** MUI Card variant */
+  variant?: 'outlined' | 'elevation';
+  /** Alias for variant using emphasis naming convention */
+  emphasis?: 'outline' | 'solid' | 'soft' | 'ghost';
+  /** Ignored - accepted for compat but Card doesn't size */
+  size?: string;
   /** Remove body padding (useful when children provide their own) */
   noPadding?: boolean;
+  onClick?: React.MouseEventHandler;
   sx?: SxProps<Theme>;
 }
 
 /**
- * A card with a title bar (icon + badge) and content area.
+ * A card with an optional title bar (icon + badge) and content area.
+ * When no title is provided, renders as a simple card container.
  */
 export const Card: React.FC<CardProps> = ({
   title,
   titleDecorator,
   icon,
   children,
+  variant,
+  emphasis,
   noPadding = false,
+  onClick,
   sx,
 }) => {
+  const emphasisToVariant: Record<string, 'outlined' | 'elevation'> = {
+    outline: 'outlined', solid: 'elevation', soft: 'elevation', ghost: 'outlined',
+  };
+  const resolvedVariant = variant ?? (emphasis ? emphasisToVariant[emphasis] ?? 'outlined' : 'outlined');
+
+  // Simple card container when no title is provided
+  if (!title) {
+    return (
+      <MuiCard variant={resolvedVariant} onClick={onClick} sx={{ p: noPadding ? 0 : 1.5, gap: 0, ...sx as Record<string, unknown> }}>
+        {children}
+      </MuiCard>
+    );
+  }
+
   return (
-    <MuiCard variant="outlined" sx={{ p: 0, gap: 0, ...sx as Record<string, unknown> }}>
+    <MuiCard variant={resolvedVariant} onClick={onClick} sx={{ p: 0, gap: 0, ...sx as Record<string, unknown> }}>
       <Stack
         direction="row"
         spacing={1}

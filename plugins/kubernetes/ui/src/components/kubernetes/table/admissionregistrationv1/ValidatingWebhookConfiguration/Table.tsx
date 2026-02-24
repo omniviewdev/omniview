@@ -4,10 +4,10 @@ import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { withClusterResourceColumns } from '../../shared/columns'
 import { DrawerComponent } from '@omniviewdev/runtime'
-import { LuBox, LuCode, LuShieldCheck } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuShieldCheck } from 'react-icons/lu'
 import { ValidatingWebhookConfiguration } from 'kubernetes-types/admissionregistration/v1'
 import ValidatingWebhookConfigurationSidebar from './Sidebar'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 
 const resourceKey = 'admissionregistration::v1::ValidatingWebhookConfiguration'
 
@@ -51,18 +51,7 @@ const LeaseTable: React.FC = () => {
   const drawer: DrawerComponent<ValidatingWebhookConfiguration> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuShieldCheck />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuBox />,
-        component: (ctx) => <ValidatingWebhookConfigurationSidebar ctx={ctx} />
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data || {}} />
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: ValidatingWebhookConfigurationSidebar }),
     actions: []
   }), [])
 

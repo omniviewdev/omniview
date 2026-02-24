@@ -5,7 +5,7 @@ import type { SxProps, Theme } from '@mui/material/styles';
 
 export interface HeadingProps {
   children: React.ReactNode;
-  level?: 1 | 2 | 3 | 4 | 5 | 6;
+  level?: 1 | 2 | 3 | 4 | 5 | 6 | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
   id?: string;
   copyLink?: boolean;
   sx?: SxProps<Theme>;
@@ -27,7 +27,10 @@ export default function Heading({
   copyLink = false,
   sx,
 }: HeadingProps) {
-  const variant = levelToVariant[level];
+  const resolvedLevel = typeof level === 'string'
+    ? parseInt(level.replace('h', ''), 10) as 1 | 2 | 3 | 4 | 5 | 6
+    : level;
+  const variant = levelToVariant[resolvedLevel];
 
   const handleCopyLink = () => {
     if (id) {

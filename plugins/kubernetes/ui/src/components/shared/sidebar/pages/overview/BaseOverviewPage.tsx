@@ -1,7 +1,7 @@
 import React from "react";
 
-// material-ui
-import Stack from "@mui/joy/Stack";
+// @omniviewdev/ui
+import { Stack } from '@omniviewdev/ui/layout';
 
 // project-imports
 import MetadataSection from "./sections/MetadataSection";

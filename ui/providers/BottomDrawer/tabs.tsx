@@ -1,24 +1,21 @@
 import React from 'react';
 
 // material-ui
-import IconButton from '@mui/joy/IconButton';
-import List from '@mui/joy/List';
-import ListItemButton from '@mui/joy/ListItemButton';
-import Tabs from '@mui/joy/Tabs';
-import TabList from '@mui/joy/TabList';
-import Tab from '@mui/joy/Tab';
-import Typography from '@mui/joy/Typography';
-import Stack from '@mui/joy/Stack';
-import { Divider, styled } from '@mui/joy';
-import { Unstable_Popup as BasePopup } from '@mui/base/Unstable_Popup';
-import { ClickAwayListener } from '@mui/base';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { ContextMenu } from '@omniviewdev/ui/menus';
+import type { ContextMenuItem } from '@omniviewdev/ui/menus';
+import { Text } from '@omniviewdev/ui/typography';
+import { Stack } from '@omniviewdev/ui/layout';
 
 // third-party
 import {
-  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent,
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
 } from '@dnd-kit/core';
 import {
-  SortableContext, sortableKeyboardCoordinates, horizontalListSortingStrategy, useSortable,
+  SortableContext, horizontalListSortingStrategy, useSortable,
 } from '@dnd-kit/sortable';
 import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
@@ -31,7 +28,7 @@ import {
 
 // project imports
 import Icon from '@/components/icons/Icon';
-import { LuMaximize, LuMinimize, LuPlus, LuX } from 'react-icons/lu';
+import { LuChevronDown, LuChevronUp, LuMaximize, LuMinimize, LuPlus, LuX } from 'react-icons/lu';
 import { useSettings } from '@omniviewdev/runtime';
 import { exec, logs } from '@omniviewdev/runtime/models';
 import { ExecClient, LogsClient } from '@omniviewdev/runtime/api';
@@ -40,104 +37,42 @@ import { bottomDrawerChannel } from './events';
 import { devToolsChannel } from '@/features/devtools/events';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
 
-type TabContextMenuProps = {
-  selected: number;
-  onClose: () => void;
-};
-
-const TabContextMenu: React.FC<TabContextMenuProps> = ({ selected, onClose }) => {
-  const { tabs, closeTab, closeTabs } = useBottomDrawer();
-
-  const handleCloseTab = () => {
-    closeTab({ index: selected });
-    onClose();
-  };
-
-  const handleCloseTabsToRight = () => {
-    // get all indexes to the right of the selected tab 
-    let indices = [];
-    for (let i = selected + 1; i < tabs.length; i++) {
-      indices.push(i);
-    }
-
-    console.log('closing tabs to right', indices);
-    closeTabs(indices.map(index => ({ index })));
-    onClose();
-  };
-
-  const handleCloseTabsToLeft = () => {
-    // get all indexes to the left of the selected tab 
-    let indices = [];
-    for (let i = 0; i < selected; i++) {
-      indices.push(i);
-    }
-
-    closeTabs(indices.map(index => ({ index })));
-    onClose();
-  };
-
-  const handlecloseOtherTabs = () => {
-    // get all indexes to the left of the selected tab 
-    let indices = [];
-    for (let i = 0; i < tabs.length; i++) {
-      if (i !== selected) {
-        indices.push(i);
-      }
-    }
-
-    closeTabs(indices.map(index => ({ index })));
-    onClose();
-  };
-
-
-  return (
-    <List
-      size='sm'
-      sx={{
-        maxWidth: 400,
-        borderRadius: 'sm',
-        zIndex: 9999,
-        backgroundColor: 'background.body',
-        '--ListItem-paddingLeft': '0.5rem',
-        '--ListItem-paddingRight': '1.5rem',
-        '--ListItem-paddingY': '0rem',
-      }}
-    >
-      <ListItemButton onClick={handleCloseTab}>Close Tab</ListItemButton>
-      <ListItemButton onClick={handleCloseTabsToRight}>Close Tabs to Right</ListItemButton>
-      <ListItemButton onClick={handleCloseTabsToLeft}>Close Tabs to Left</ListItemButton>
-      <ListItemButton onClick={handlecloseOtherTabs}>Close other Tabs</ListItemButton>
-    </List>
-  );
-};
-
 type Props = {
   isMinimized: boolean;
+  isFullscreen: boolean;
   onMinimize: () => void;
   onExpand: () => void;
+  onFullscreen: () => void;
 }
 
 
 /**
  * Renders the tabs for the bottom drawer.
  */
-const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }) => {
-  const { tabs, focused, focusTab, closeTab, createTab, createTabs, reorderTab } = useBottomDrawer();
+const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, isFullscreen, onMinimize, onExpand, onFullscreen }) => {
+  const { tabs, focused, focusTab, closeTab, closeTabs, createTab, createTabs, updateTab, reorderTab } = useBottomDrawer();
   const { settings } = useSettings();
 
-  // run our tooltip from the parent so we only render one of them
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  const [contextSelected, setContextSelected] = React.useState<{ index: number; el: HTMLElement } | null>(null);
-
-  const handleContextMenuClick = React.useCallback((tabIndex: number, event: React.MouseEvent<HTMLElement>) => {
-    event.preventDefault();
-    setContextSelected(contextSelected && contextSelected.index === tabIndex ? null : {
-      index: tabIndex,
-      el: event.currentTarget,
-    });
-  }, [contextSelected, setContextSelected]);
-
-  const contextMenuOpen = Boolean(contextSelected);
+  const getContextMenuItems = React.useCallback((index: number): ContextMenuItem[] => [
+    { key: 'close', label: 'Close Tab', onClick: () => closeTab({ index }) },
+    { key: 'close-right', label: 'Close Tabs to Right', onClick: () => {
+      const indices = [];
+      for (let i = index + 1; i < tabs.length; i++) indices.push(i);
+      closeTabs(indices.map(i => ({ index: i })));
+    }},
+    { key: 'close-left', label: 'Close Tabs to Left', onClick: () => {
+      const indices = [];
+      for (let i = 0; i < index; i++) indices.push(i);
+      closeTabs(indices.map(i => ({ index: i })));
+    }},
+    { key: 'close-others', label: 'Close Other Tabs', onClick: () => {
+      const indices = [];
+      for (let i = 0; i < tabs.length; i++) {
+        if (i !== index) indices.push(i);
+      }
+      closeTabs(indices.map(i => ({ index: i })));
+    }},
+  ], [tabs, closeTab, closeTabs]);
 
   // eslint-disable-next-line @typescript-eslint/ban-types -- null is required by onChange
   const handleChange = React.useCallback((_event: React.SyntheticEvent | null, newValue: string | number | null) => {
@@ -147,23 +82,37 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
   }, [focusTab]);
 
   const handleCreate = (variant: 'terminal' | 'browser') => {
-    console.log(variant)
-
     switch (variant) {
-      case 'terminal':
-        ExecClient.CreateTerminal(exec.CreateTerminalOptions.createFrom({ command: [settings['terminal.defaultShell'] || '/bin/sh'] }))
-          .then(session => {
-            createTab({
-              id: session.id,
-              title: `Session ${session.id.substring(0, 8)}`,
-              variant: 'terminal',
-              icon: 'LuSquareTerminal',
-            });
+      case 'terminal': {
+        const tempId = `pending-${crypto.randomUUID()}`;
+        createTab({
+          id: tempId,
+          title: 'Connecting...',
+          variant: 'terminal',
+          icon: 'LuSquareTerminal',
+          properties: { status: 'connecting' },
+        });
+        ExecClient.CreateTerminal(exec.CreateTerminalOptions.createFrom({ command: [settings['terminal.defaultShell'] || '/bin/bash'] }))
+          .then((session: any) => {
+            updateTab(
+              { id: tempId },
+              {
+                id: session.id,
+                title: `Session ${session.id.substring(0, 8)}`,
+                properties: { status: 'connected' },
+              },
+            );
           })
-          .catch(err => {
+          .catch((err: unknown) => {
+            const msg = typeof err === 'string' ? err : (err as Error)?.message ?? String(err);
+            updateTab(
+              { id: tempId },
+              { properties: { status: 'error', error: msg } },
+            );
             console.error(err);
           });
         break;
+      }
       case 'browser':
         break;
     }
@@ -172,19 +121,50 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
   // handle signals from across the app through the event bus
   React.useEffect(() => {
     const unsubscribeCreateSession = bottomDrawerChannel.on('onCreateSession', ({ plugin, connection, opts, icon, label }) => {
-      console.log('onCreateSession', { plugin, connection, opts, icon, label });
+      const tempId = `pending-${crypto.randomUUID()}`;
+      createTab({
+        id: tempId,
+        title: label ?? 'Connecting...',
+        variant: 'terminal',
+        icon: icon ?? 'LuSquareTerminal',
+        properties: {
+          status: 'connecting',
+          pluginID: plugin,
+          connectionID: connection,
+          opts: { ...opts },
+        },
+      });
       ExecClient.CreateSession(plugin, connection, opts)
-        .then(session => {
-          console.log('created session', session);
-          createTab({
-            id: session.id,
-            title: label ?? `Session ${session.id.substring(0, 8)}`,
-            variant: 'terminal',
-            icon: icon ?? 'LuSquareTerminal',
-          });
+        .then((session: any) => {
+          updateTab(
+            { id: tempId },
+            {
+              id: session.id,
+              title: label ?? `Session ${session.id.substring(0, 8)}`,
+              properties: {
+                status: 'connected',
+                pluginID: plugin,
+                connectionID: connection,
+                opts: { ...opts },
+              },
+            },
+          );
         })
-        .catch(err => {
-          console.error(err);
+        .catch((err: unknown) => {
+          const msg = typeof err === 'string' ? err : (err as Error)?.message ?? String(err);
+          updateTab(
+            { id: tempId },
+            {
+              properties: {
+                status: 'error',
+                error: msg,
+                pluginID: plugin,
+                connectionID: connection,
+                opts: { ...opts },
+              },
+            },
+          );
+          console.error('Failed to create session:', err);
         });
     });
 
@@ -208,7 +188,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
         }),
       });
       LogsClient.CreateSession(plugin, connection, opts)
-        .then(session => {
+        .then((session: any) => {
           createTab({
             id: session.id,
             title: label ?? `Logs ${session.id.substring(0, 8)}`,
@@ -216,7 +196,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
             icon: icon ?? 'LuLogs',
           });
         })
-        .catch(err => {
+        .catch((err: unknown) => {
           console.error('Failed to create log session:', err);
         });
     });
@@ -256,15 +236,13 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
     closeTab({ index });
   }, [closeTab]);
 
-  // Sensors for DND Kit
+  // Sensors for DND Kit — pointer only, no keyboard sensor to avoid
+  // Space/Enter key conflicts when tabs have focus.
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
       },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
 
@@ -281,11 +259,11 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
 
   React.useEffect(() => {
     ExecClient.ListSessions()
-      .then(sessions => {
+      .then((sessions: any) => {
         const newTabs: BottomDrawerTab[] = [];
 
         // find and upsert any missing sessions where the id doesn't exist
-        sessions.forEach(session => {
+        sessions.forEach((session: any) => {
           const existing = tabs.find(tab => tab.id === session.id);
           if (existing) {
             return;
@@ -304,7 +282,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
 
         console.log('newTabs', newTabs);
         createTabs(newTabs);
-      }).catch(err => {
+      }).catch((err: unknown) => {
         console.error(err);
       });
 
@@ -337,7 +315,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
       >
         <IconButton
           size="sm"
-          variant='soft'
+          emphasis='soft'
           color='neutral'
           sx={{
             flex: 'none',
@@ -353,7 +331,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
         <Divider
           orientation='vertical'
           sx={{
-            '--_Divider-inset': '4px'
+            my: 0.5,
           }}
         />
         <DndContext
@@ -364,58 +342,39 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
         >
           <SortableContext items={tabs.map((_, index) => index)} strategy={horizontalListSortingStrategy}>
             {tabs.length !== 0 &&
-              <Tabs
-                size='sm'
-                aria-label="bottom drawer tabs"
-                value={focused}
-                onChange={handleChange}
+              <Box
                 sx={{
                   flex: 1,
                   overflow: 'hidden',
+                  display: 'flex',
                 }}
               >
-                <TabList
-                  disableUnderline
-                  variant='plain'
-                  color='neutral'
+                <Box
                   sx={{
+                    display: 'flex',
                     overflow: 'auto',
                     scrollSnapType: 'x mandatory',
                     '&::-webkit-scrollbar': { display: 'none' },
                   }}
                 >
                   {tabs.map((tab, index) => (
-                    <MemoizedBottomDrawerTabComponent
-                      key={`bottom-drawer-tab-${index}`}
-                      {...tab}
-                      index={index}
-                      selected={focused === index}
-                      onRemove={handleRemove}
-                      onChange={handleChange}
-                      handleContextMenuClick={handleContextMenuClick}
-                    />
+                    <ContextMenu key={`bottom-drawer-tab-ctx-${index}`} items={getContextMenuItems(index)}>
+                      <MemoizedBottomDrawerTabComponent
+                        key={`bottom-drawer-tab-${index}`}
+                        {...tab}
+                        index={index}
+                        selected={focused === index}
+                        onRemove={handleRemove}
+                        onChange={handleChange}
+                      />
+                    </ContextMenu>
                   ))}
-                </TabList>
-              </Tabs>
+                </Box>
+              </Box>
             }
 
           </SortableContext>
         </DndContext>
-        <BasePopup style={{ zIndex: 9999 }} id={'tab-context-menu'} open={contextMenuOpen} anchor={contextSelected?.el}>
-          <ClickAwayListener
-            onClickAway={() => {
-              setContextSelected(null);
-            }}
-          >
-            <PopupBody>
-              <TabContextMenu
-                selected={contextSelected === null ? -1 : contextSelected.index}
-                onClose={() => {
-                  setContextSelected(null);
-                }} />
-            </PopupBody>
-          </ClickAwayListener>
-        </BasePopup>
       </Stack>
 
       <Stack
@@ -430,7 +389,20 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
       >
         <IconButton
           size="sm"
-          variant='soft'
+          emphasis='soft'
+          color='neutral'
+          sx={{
+            flex: 'none',
+            minHeight: 28,
+            minWidth: 28,
+          }}
+          onClick={onFullscreen}
+        >
+          {isFullscreen ? <LuMinimize size={14} /> : <LuMaximize size={14} />}
+        </IconButton>
+        <IconButton
+          size="sm"
+          emphasis='soft'
           color='neutral'
           sx={{
             flex: 'none',
@@ -445,7 +417,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, onMinimize, onExpand }
             }
           }}
         >
-          {isMinimized ? <LuMaximize /> : <LuMinimize />}
+          {isMinimized ? <LuChevronUp size={14} /> : <LuChevronDown size={14} />}
         </IconButton>
       </Stack>
     </Stack>
@@ -457,30 +429,9 @@ type BottomDrawerTabProps = BottomDrawerTab & {
   selected: boolean;
   onRemove: (index: number) => void;
   onChange: (event: React.SyntheticEvent, newValue: string | number) => void;
-  handleContextMenuClick: (tabIndex: number, event: React.MouseEvent<HTMLElement>) => void;
 };
 
-const PopupBody = styled('div')(
-  ({ theme }) => `
-  width: max-content;
-  border-radius: 8px;
-  border: 1px solid ${theme.palette.divider};
-  background-color: ${theme.palette.background.popup};
-  box-shadow: ${theme.palette.mode === 'dark'
-      ? '0px 4px 8px rgb(0 0 0 / 0.7)'
-      : '0px 4px 8px rgb(0 0 0 / 0.1)'
-    };
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-size: 0.875rem;
-  z-index: 1;
-`,
-);
-
-const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, title, icon, selected, onRemove, onChange, handleContextMenuClick }) => {
-  const handleClick = (event: React.MouseEvent<HTMLElement>) => {
-    handleContextMenuClick(index, event);
-  };
-
+const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, title, icon, properties, selected, onRemove, onChange }) => {
   const {
     attributes,
     listeners,
@@ -490,63 +441,86 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, t
   } = useSortable({ id: index });
 
   return (
-    <Tab
+    <Box
       key={`bottom-drawer-tab-${id}`}
       ref={setNodeRef}
-      variant='plain'
       {...attributes}
       {...listeners}
       sx={{
-        pt: 0,
-        pb: selected ? 0.25 : 0,
+        height: 33,
         px: 1,
+        display: 'flex',
         alignItems: 'center',
         minWidth: 150,
         flex: 'none',
         scrollSnapAlign: 'start',
+        borderRight: '1px solid',
         borderRightColor: 'divider',
+        borderLeft: index === 0 ? '1px solid' : '1px solid transparent',
         borderLeftColor: index === 0 ? 'divider' : 'transparent',
+        cursor: 'pointer',
+        bgcolor: selected ? 'action.selected' : 'transparent',
+        borderBottom: '2px solid',
+        borderBottomColor: selected ? 'primary.main' : 'transparent',
         transform: CSS.Translate.toString(transform),
         transition,
       }}
-      onChange={onChange}
-      onContextMenu={event => {
-        event.preventDefault();
-        handleClick(event);
-      }}
+      onClick={(e) => onChange(e, index)}
     >
       <Stack
         direction="row"
         justifyContent={'space-between'}
         alignItems={'center'}
         gap={2}
-        width={'100%'}
+        sx={{ width: '100%' }}
       >
-        <Typography
-          fontSize={13}
-          textColor={selected ? 'neutral.50' : 'text'}
-          fontWeight={selected ? 500 : 400}
-          level="body-sm"
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {properties?.status === 'connecting' ? (
+            <CircularProgress size={14} sx={{ color: 'text.secondary' }} />
+          ) : icon !== undefined ? (
+            typeof icon === 'string' ? <Icon name={icon} size={14} /> : icon
+          ) : null}
+          <Text
+            size="sm"
+            sx={{
+              fontSize: 13,
+              color: selected ? 'neutral.50' : 'text.primary',
+              fontWeight: selected ? 500 : 400,
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+            }}
+          >
+            {title}
+          </Text>
+        </Box>
+        <Box
+          component="span"
           sx={{
-            'user-select': 'none',
-            'WebkitUserSelect': 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            borderRadius: '4px',
+            '&:hover': { bgcolor: 'action.hover' },
           }}
-          startDecorator={
-            icon !== undefined ? (
-              typeof icon === 'string' ? <Icon name={icon} size={14} /> : icon
-            ) : null
-          }
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(index);
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
         >
-          {title}
-        </Typography>
-        <LuX size={16} onClick={() => {
-          onRemove(index);
-        }} />
+          <LuX size={16} />
+        </Box>
       </Stack>
-    </Tab>
+    </Box>
   );
 };
 
-const MemoizedBottomDrawerTabComponent = React.memo(BottomDrawerTabComponent);
+const MemoizedBottomDrawerTabComponent = React.memo(BottomDrawerTabComponent, (prev, next) => {
+  return prev.id === next.id
+    && prev.index === next.index
+    && prev.title === next.title
+    && prev.icon === next.icon
+    && prev.selected === next.selected
+    && prev.properties?.status === next.properties?.status;
+});
 
 export default BottomDrawerTabs;

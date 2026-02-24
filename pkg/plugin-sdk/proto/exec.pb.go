@@ -37,21 +37,23 @@ const (
 	StreamSignal_SIGUSR1  StreamSignal = 7
 	StreamSignal_SIGUSR2  StreamSignal = 8
 	StreamSignal_SIGWINCH StreamSignal = 9
+	StreamSignal_ERROR    StreamSignal = 10
 )
 
 // Enum value maps for StreamSignal.
 var (
 	StreamSignal_name = map[int32]string{
-		0: "NONE",
-		1: "CLOSE",
-		2: "SIGINT",
-		3: "SIGQUIT",
-		4: "SIGTERM",
-		5: "SIGKILL",
-		6: "SIGHUP",
-		7: "SIGUSR1",
-		8: "SIGUSR2",
-		9: "SIGWINCH",
+		0:  "NONE",
+		1:  "CLOSE",
+		2:  "SIGINT",
+		3:  "SIGQUIT",
+		4:  "SIGTERM",
+		5:  "SIGKILL",
+		6:  "SIGHUP",
+		7:  "SIGUSR1",
+		8:  "SIGUSR2",
+		9:  "SIGWINCH",
+		10: "ERROR",
 	}
 	StreamSignal_value = map[string]int32{
 		"NONE":     0,
@@ -64,6 +66,7 @@ var (
 		"SIGUSR1":  7,
 		"SIGUSR2":  8,
 		"SIGWINCH": 9,
+		"ERROR":    10,
 	}
 )
 
@@ -325,12 +328,13 @@ func (x *SessionOptions) GetResourceData() *structpb.Struct {
 }
 
 type ExecHandler struct {
-	state         protoimpl.MessageState       `protogen:"open.v1"`
-	Plugin        string                       `protobuf:"bytes,1,opt,name=plugin,proto3" json:"plugin,omitempty"`
-	Resource      string                       `protobuf:"bytes,2,opt,name=resource,proto3" json:"resource,omitempty"`
-	TargetBuilder *ResourceActionTargetBuilder `protobuf:"bytes,3,opt,name=target_builder,json=targetBuilder,proto3" json:"target_builder,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState       `protogen:"open.v1"`
+	Plugin         string                       `protobuf:"bytes,1,opt,name=plugin,proto3" json:"plugin,omitempty"`
+	Resource       string                       `protobuf:"bytes,2,opt,name=resource,proto3" json:"resource,omitempty"`
+	TargetBuilder  *ResourceActionTargetBuilder `protobuf:"bytes,3,opt,name=target_builder,json=targetBuilder,proto3" json:"target_builder,omitempty"`
+	DefaultCommand []string                     `protobuf:"bytes,4,rep,name=default_command,json=defaultCommand,proto3" json:"default_command,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ExecHandler) Reset() {
@@ -380,6 +384,13 @@ func (x *ExecHandler) GetResource() string {
 func (x *ExecHandler) GetTargetBuilder() *ResourceActionTargetBuilder {
 	if x != nil {
 		return x.TargetBuilder
+	}
+	return nil
+}
+
+func (x *ExecHandler) GetDefaultCommand() []string {
+	if x != nil {
+		return x.DefaultCommand
 	}
 	return nil
 }
@@ -1090,6 +1101,7 @@ type StreamOutput struct {
 	Target        StreamOutput_Target    `protobuf:"varint,2,opt,name=target,proto3,enum=com.omniview.pluginsdk.StreamOutput_Target" json:"target,omitempty"`
 	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
 	Signal        StreamSignal           `protobuf:"varint,4,opt,name=signal,proto3,enum=com.omniview.pluginsdk.StreamSignal" json:"signal,omitempty"`
+	Error         *StreamError           `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1152,6 +1164,89 @@ func (x *StreamOutput) GetSignal() StreamSignal {
 	return StreamSignal_NONE
 }
 
+func (x *StreamOutput) GetError() *StreamError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type StreamError struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Title         string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	Suggestion    string                 `protobuf:"bytes,3,opt,name=suggestion,proto3" json:"suggestion,omitempty"`
+	Retryable     bool                   `protobuf:"varint,4,opt,name=retryable,proto3" json:"retryable,omitempty"`
+	RetryCommands []string               `protobuf:"bytes,5,rep,name=retry_commands,json=retryCommands,proto3" json:"retry_commands,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamError) Reset() {
+	*x = StreamError{}
+	mi := &file_proto_exec_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamError) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamError) ProtoMessage() {}
+
+func (x *StreamError) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_exec_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamError.ProtoReflect.Descriptor instead.
+func (*StreamError) Descriptor() ([]byte, []int) {
+	return file_proto_exec_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *StreamError) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *StreamError) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *StreamError) GetSuggestion() string {
+	if x != nil {
+		return x.Suggestion
+	}
+	return ""
+}
+
+func (x *StreamError) GetRetryable() bool {
+	if x != nil {
+		return x.Retryable
+	}
+	return false
+}
+
+func (x *StreamError) GetRetryCommands() []string {
+	if x != nil {
+		return x.RetryCommands
+	}
+	return nil
+}
+
 var File_proto_exec_proto protoreflect.FileDescriptor
 
 const file_proto_exec_proto_rawDesc = "" +
@@ -1185,11 +1280,12 @@ const file_proto_exec_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9d\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc6\x01\n" +
 	"\vExecHandler\x12\x16\n" +
 	"\x06plugin\x18\x01 \x01(\tR\x06plugin\x12\x1a\n" +
 	"\bresource\x18\x02 \x01(\tR\bresource\x12Z\n" +
-	"\x0etarget_builder\x18\x03 \x01(\v23.com.omniview.pluginsdk.ResourceActionTargetBuilderR\rtargetBuilder\"`\n" +
+	"\x0etarget_builder\x18\x03 \x01(\v23.com.omniview.pluginsdk.ResourceActionTargetBuilderR\rtargetBuilder\x12'\n" +
+	"\x0fdefault_command\x18\x04 \x03(\tR\x0edefaultCommand\"`\n" +
 	"\x1dGetSupportedResourcesResponse\x12?\n" +
 	"\bhandlers\x18\x01 \x03(\v2#.com.omniview.pluginsdk.ExecHandlerR\bhandlers\"\xec\x02\n" +
 	"\x14CreateSessionRequest\x12\x0e\n" +
@@ -1237,17 +1333,26 @@ const file_proto_exec_proto_rawDesc = "" +
 	"\x05error\x18\x02 \x01(\tR\x05error\"1\n" +
 	"\vStreamInput\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\"\xd7\x01\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\"\x92\x02\n" +
 	"\fStreamOutput\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12C\n" +
 	"\x06target\x18\x02 \x01(\x0e2+.com.omniview.pluginsdk.StreamOutput.TargetR\x06target\x12\x12\n" +
 	"\x04data\x18\x03 \x01(\fR\x04data\x12<\n" +
-	"\x06signal\x18\x04 \x01(\x0e2$.com.omniview.pluginsdk.StreamSignalR\x06signal\" \n" +
+	"\x06signal\x18\x04 \x01(\x0e2$.com.omniview.pluginsdk.StreamSignalR\x06signal\x129\n" +
+	"\x05error\x18\x05 \x01(\v2#.com.omniview.pluginsdk.StreamErrorR\x05error\" \n" +
 	"\x06Target\x12\n" +
 	"\n" +
 	"\x06STDOUT\x10\x00\x12\n" +
 	"\n" +
-	"\x06STDERR\x10\x01*\x8a\x01\n" +
+	"\x06STDERR\x10\x01\"\xa2\x01\n" +
+	"\vStreamError\x12\x14\n" +
+	"\x05title\x18\x01 \x01(\tR\x05title\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x1e\n" +
+	"\n" +
+	"suggestion\x18\x03 \x01(\tR\n" +
+	"suggestion\x12\x1c\n" +
+	"\tretryable\x18\x04 \x01(\bR\tretryable\x12%\n" +
+	"\x0eretry_commands\x18\x05 \x03(\tR\rretryCommands*\x95\x01\n" +
 	"\fStreamSignal\x12\b\n" +
 	"\x04NONE\x10\x00\x12\t\n" +
 	"\x05CLOSE\x10\x01\x12\n" +
@@ -1260,7 +1365,9 @@ const file_proto_exec_proto_rawDesc = "" +
 	"\x06SIGHUP\x10\x06\x12\v\n" +
 	"\aSIGUSR1\x10\a\x12\v\n" +
 	"\aSIGUSR2\x10\b\x12\f\n" +
-	"\bSIGWINCH\x10\t2\xa5\a\n" +
+	"\bSIGWINCH\x10\t\x12\t\n" +
+	"\x05ERROR\x10\n" +
+	"2\xa5\a\n" +
 	"\n" +
 	"ExecPlugin\x12f\n" +
 	"\x15GetSupportedResources\x12\x16.google.protobuf.Empty\x1a5.com.omniview.pluginsdk.GetSupportedResourcesResponse\x12c\n" +
@@ -1287,7 +1394,7 @@ func file_proto_exec_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_exec_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_proto_exec_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_proto_exec_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_proto_exec_proto_goTypes = []any{
 	(StreamSignal)(0),                     // 0: com.omniview.pluginsdk.StreamSignal
 	(StreamOutput_Target)(0),              // 1: com.omniview.pluginsdk.StreamOutput.Target
@@ -1308,57 +1415,59 @@ var file_proto_exec_proto_goTypes = []any{
 	(*ResizeSessionResponse)(nil),         // 16: com.omniview.pluginsdk.ResizeSessionResponse
 	(*StreamInput)(nil),                   // 17: com.omniview.pluginsdk.StreamInput
 	(*StreamOutput)(nil),                  // 18: com.omniview.pluginsdk.StreamOutput
-	nil,                                   // 19: com.omniview.pluginsdk.Session.ParamsEntry
-	nil,                                   // 20: com.omniview.pluginsdk.Session.LabelsEntry
-	nil,                                   // 21: com.omniview.pluginsdk.SessionOptions.ParamsEntry
-	nil,                                   // 22: com.omniview.pluginsdk.SessionOptions.LabelsEntry
-	nil,                                   // 23: com.omniview.pluginsdk.CreateSessionRequest.ParamsEntry
-	nil,                                   // 24: com.omniview.pluginsdk.CreateSessionRequest.LabelsEntry
-	(*timestamppb.Timestamp)(nil),         // 25: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),               // 26: google.protobuf.Struct
-	(*ResourceActionTargetBuilder)(nil),   // 27: com.omniview.pluginsdk.ResourceActionTargetBuilder
-	(*emptypb.Empty)(nil),                 // 28: google.protobuf.Empty
+	(*StreamError)(nil),                   // 19: com.omniview.pluginsdk.StreamError
+	nil,                                   // 20: com.omniview.pluginsdk.Session.ParamsEntry
+	nil,                                   // 21: com.omniview.pluginsdk.Session.LabelsEntry
+	nil,                                   // 22: com.omniview.pluginsdk.SessionOptions.ParamsEntry
+	nil,                                   // 23: com.omniview.pluginsdk.SessionOptions.LabelsEntry
+	nil,                                   // 24: com.omniview.pluginsdk.CreateSessionRequest.ParamsEntry
+	nil,                                   // 25: com.omniview.pluginsdk.CreateSessionRequest.LabelsEntry
+	(*timestamppb.Timestamp)(nil),         // 26: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),               // 27: google.protobuf.Struct
+	(*ResourceActionTargetBuilder)(nil),   // 28: com.omniview.pluginsdk.ResourceActionTargetBuilder
+	(*emptypb.Empty)(nil),                 // 29: google.protobuf.Empty
 }
 var file_proto_exec_proto_depIdxs = []int32{
-	19, // 0: com.omniview.pluginsdk.Session.params:type_name -> com.omniview.pluginsdk.Session.ParamsEntry
-	20, // 1: com.omniview.pluginsdk.Session.labels:type_name -> com.omniview.pluginsdk.Session.LabelsEntry
-	25, // 2: com.omniview.pluginsdk.Session.created_at:type_name -> google.protobuf.Timestamp
-	21, // 3: com.omniview.pluginsdk.SessionOptions.params:type_name -> com.omniview.pluginsdk.SessionOptions.ParamsEntry
-	22, // 4: com.omniview.pluginsdk.SessionOptions.labels:type_name -> com.omniview.pluginsdk.SessionOptions.LabelsEntry
-	26, // 5: com.omniview.pluginsdk.SessionOptions.resource_data:type_name -> google.protobuf.Struct
-	27, // 6: com.omniview.pluginsdk.ExecHandler.target_builder:type_name -> com.omniview.pluginsdk.ResourceActionTargetBuilder
+	20, // 0: com.omniview.pluginsdk.Session.params:type_name -> com.omniview.pluginsdk.Session.ParamsEntry
+	21, // 1: com.omniview.pluginsdk.Session.labels:type_name -> com.omniview.pluginsdk.Session.LabelsEntry
+	26, // 2: com.omniview.pluginsdk.Session.created_at:type_name -> google.protobuf.Timestamp
+	22, // 3: com.omniview.pluginsdk.SessionOptions.params:type_name -> com.omniview.pluginsdk.SessionOptions.ParamsEntry
+	23, // 4: com.omniview.pluginsdk.SessionOptions.labels:type_name -> com.omniview.pluginsdk.SessionOptions.LabelsEntry
+	27, // 5: com.omniview.pluginsdk.SessionOptions.resource_data:type_name -> google.protobuf.Struct
+	28, // 6: com.omniview.pluginsdk.ExecHandler.target_builder:type_name -> com.omniview.pluginsdk.ResourceActionTargetBuilder
 	4,  // 7: com.omniview.pluginsdk.GetSupportedResourcesResponse.handlers:type_name -> com.omniview.pluginsdk.ExecHandler
-	23, // 8: com.omniview.pluginsdk.CreateSessionRequest.params:type_name -> com.omniview.pluginsdk.CreateSessionRequest.ParamsEntry
-	24, // 9: com.omniview.pluginsdk.CreateSessionRequest.labels:type_name -> com.omniview.pluginsdk.CreateSessionRequest.LabelsEntry
+	24, // 8: com.omniview.pluginsdk.CreateSessionRequest.params:type_name -> com.omniview.pluginsdk.CreateSessionRequest.ParamsEntry
+	25, // 9: com.omniview.pluginsdk.CreateSessionRequest.labels:type_name -> com.omniview.pluginsdk.CreateSessionRequest.LabelsEntry
 	2,  // 10: com.omniview.pluginsdk.CreateSessionResponse.session:type_name -> com.omniview.pluginsdk.Session
 	2,  // 11: com.omniview.pluginsdk.GetSessionResponse.session:type_name -> com.omniview.pluginsdk.Session
 	2,  // 12: com.omniview.pluginsdk.ListSessionsResponse.sessions:type_name -> com.omniview.pluginsdk.Session
 	2,  // 13: com.omniview.pluginsdk.AttachSessionResponse.session:type_name -> com.omniview.pluginsdk.Session
 	1,  // 14: com.omniview.pluginsdk.StreamOutput.target:type_name -> com.omniview.pluginsdk.StreamOutput.Target
 	0,  // 15: com.omniview.pluginsdk.StreamOutput.signal:type_name -> com.omniview.pluginsdk.StreamSignal
-	28, // 16: com.omniview.pluginsdk.ExecPlugin.GetSupportedResources:input_type -> google.protobuf.Empty
-	8,  // 17: com.omniview.pluginsdk.ExecPlugin.GetSession:input_type -> com.omniview.pluginsdk.GetSessionRequest
-	28, // 18: com.omniview.pluginsdk.ExecPlugin.ListSessions:input_type -> google.protobuf.Empty
-	3,  // 19: com.omniview.pluginsdk.ExecPlugin.CreateSession:input_type -> com.omniview.pluginsdk.SessionOptions
-	11, // 20: com.omniview.pluginsdk.ExecPlugin.AttachSession:input_type -> com.omniview.pluginsdk.AttachSessionRequest
-	11, // 21: com.omniview.pluginsdk.ExecPlugin.DetachSession:input_type -> com.omniview.pluginsdk.AttachSessionRequest
-	13, // 22: com.omniview.pluginsdk.ExecPlugin.CloseSession:input_type -> com.omniview.pluginsdk.CloseSessionRequest
-	15, // 23: com.omniview.pluginsdk.ExecPlugin.ResizeSession:input_type -> com.omniview.pluginsdk.ResizeSessionRequest
-	17, // 24: com.omniview.pluginsdk.ExecPlugin.Stream:input_type -> com.omniview.pluginsdk.StreamInput
-	5,  // 25: com.omniview.pluginsdk.ExecPlugin.GetSupportedResources:output_type -> com.omniview.pluginsdk.GetSupportedResourcesResponse
-	9,  // 26: com.omniview.pluginsdk.ExecPlugin.GetSession:output_type -> com.omniview.pluginsdk.GetSessionResponse
-	10, // 27: com.omniview.pluginsdk.ExecPlugin.ListSessions:output_type -> com.omniview.pluginsdk.ListSessionsResponse
-	7,  // 28: com.omniview.pluginsdk.ExecPlugin.CreateSession:output_type -> com.omniview.pluginsdk.CreateSessionResponse
-	12, // 29: com.omniview.pluginsdk.ExecPlugin.AttachSession:output_type -> com.omniview.pluginsdk.AttachSessionResponse
-	12, // 30: com.omniview.pluginsdk.ExecPlugin.DetachSession:output_type -> com.omniview.pluginsdk.AttachSessionResponse
-	14, // 31: com.omniview.pluginsdk.ExecPlugin.CloseSession:output_type -> com.omniview.pluginsdk.CloseSessionResponse
-	16, // 32: com.omniview.pluginsdk.ExecPlugin.ResizeSession:output_type -> com.omniview.pluginsdk.ResizeSessionResponse
-	18, // 33: com.omniview.pluginsdk.ExecPlugin.Stream:output_type -> com.omniview.pluginsdk.StreamOutput
-	25, // [25:34] is the sub-list for method output_type
-	16, // [16:25] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	19, // 16: com.omniview.pluginsdk.StreamOutput.error:type_name -> com.omniview.pluginsdk.StreamError
+	29, // 17: com.omniview.pluginsdk.ExecPlugin.GetSupportedResources:input_type -> google.protobuf.Empty
+	8,  // 18: com.omniview.pluginsdk.ExecPlugin.GetSession:input_type -> com.omniview.pluginsdk.GetSessionRequest
+	29, // 19: com.omniview.pluginsdk.ExecPlugin.ListSessions:input_type -> google.protobuf.Empty
+	3,  // 20: com.omniview.pluginsdk.ExecPlugin.CreateSession:input_type -> com.omniview.pluginsdk.SessionOptions
+	11, // 21: com.omniview.pluginsdk.ExecPlugin.AttachSession:input_type -> com.omniview.pluginsdk.AttachSessionRequest
+	11, // 22: com.omniview.pluginsdk.ExecPlugin.DetachSession:input_type -> com.omniview.pluginsdk.AttachSessionRequest
+	13, // 23: com.omniview.pluginsdk.ExecPlugin.CloseSession:input_type -> com.omniview.pluginsdk.CloseSessionRequest
+	15, // 24: com.omniview.pluginsdk.ExecPlugin.ResizeSession:input_type -> com.omniview.pluginsdk.ResizeSessionRequest
+	17, // 25: com.omniview.pluginsdk.ExecPlugin.Stream:input_type -> com.omniview.pluginsdk.StreamInput
+	5,  // 26: com.omniview.pluginsdk.ExecPlugin.GetSupportedResources:output_type -> com.omniview.pluginsdk.GetSupportedResourcesResponse
+	9,  // 27: com.omniview.pluginsdk.ExecPlugin.GetSession:output_type -> com.omniview.pluginsdk.GetSessionResponse
+	10, // 28: com.omniview.pluginsdk.ExecPlugin.ListSessions:output_type -> com.omniview.pluginsdk.ListSessionsResponse
+	7,  // 29: com.omniview.pluginsdk.ExecPlugin.CreateSession:output_type -> com.omniview.pluginsdk.CreateSessionResponse
+	12, // 30: com.omniview.pluginsdk.ExecPlugin.AttachSession:output_type -> com.omniview.pluginsdk.AttachSessionResponse
+	12, // 31: com.omniview.pluginsdk.ExecPlugin.DetachSession:output_type -> com.omniview.pluginsdk.AttachSessionResponse
+	14, // 32: com.omniview.pluginsdk.ExecPlugin.CloseSession:output_type -> com.omniview.pluginsdk.CloseSessionResponse
+	16, // 33: com.omniview.pluginsdk.ExecPlugin.ResizeSession:output_type -> com.omniview.pluginsdk.ResizeSessionResponse
+	18, // 34: com.omniview.pluginsdk.ExecPlugin.Stream:output_type -> com.omniview.pluginsdk.StreamOutput
+	26, // [26:35] is the sub-list for method output_type
+	17, // [17:26] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_proto_exec_proto_init() }
@@ -1373,7 +1482,7 @@ func file_proto_exec_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_exec_proto_rawDesc), len(file_proto_exec_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   23,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

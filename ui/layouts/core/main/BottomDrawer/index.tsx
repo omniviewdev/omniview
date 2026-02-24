@@ -1,11 +1,10 @@
 import React from 'react';
 
 // material-ui
-import Box from '@mui/joy/Box';
-import Divider from '@mui/joy/Divider';
-import Sheet from '@mui/joy/Sheet';
-import GlobalStyles from '@mui/joy/GlobalStyles';
-import { useTheme } from '@mui/joy';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import GlobalStyles from '@mui/material/GlobalStyles';
+import { useTheme } from '@mui/material/styles';
 
 // project imports
 import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
@@ -17,7 +16,8 @@ import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
 
 const TerminalContainerMemo = React.memo(TerminalContainer, (prev, next) => {
-  return prev.sessionId === next.sessionId;
+  return prev.sessionId === next.sessionId
+    && prev.tab?.properties?.status === next.tab?.properties?.status;
 });
 
 const LogViewerContainerMemo = React.memo(LogViewerContainer, (prev, next) => {
@@ -35,6 +35,7 @@ const BottomDrawerContainer: React.FC = () => {
   const { tabs, focused } = useBottomDrawer();
 
   const [height, setDrawerHeight] = React.useState<number>(minHeight);
+  const lastExpandedHeightRef = React.useRef<number>(defaultHeight);
   const theme = useTheme();
 
   // State for drag operation
@@ -55,22 +56,46 @@ const BottomDrawerContainer: React.FC = () => {
       height = minHeight;
     }
 
+    // Track the last non-minimized, non-fullscreen height for restore
+    if (height > minHeight && height < window.innerHeight) {
+      lastExpandedHeightRef.current = height;
+    }
+
     drawerRef.current.style.minHeight = `${height}px`;
     drawerRef.current.style.maxHeight = `${height}px`;
     setDrawerHeight(height);
   }, []);
 
-  // minimize
+  // minimize (collapse to toolbar-only)
   const minimize = React.useCallback(() => {
+    // Save the current height before collapsing so we can restore it
+    if (height > minHeight && height < window.innerHeight) {
+      lastExpandedHeightRef.current = height;
+    }
     expandDrawerToHeight(minHeight)
     bottomDrawerChannel.emit('onResizeReset')
-  }, []);
+  }, [height]);
 
-  // expand to default
+  // expand to last known expanded height (or default)
   const expand = React.useCallback(() => {
-    expandDrawerToHeight(defaultHeight)
+    expandDrawerToHeight(lastExpandedHeightRef.current)
     bottomDrawerChannel.emit('onResizeReset')
   }, [])
+
+  // fullscreen toggle
+  const fullscreen = React.useCallback(() => {
+    if (height >= window.innerHeight) {
+      // Already fullscreen — restore to last expanded height
+      expandDrawerToHeight(lastExpandedHeightRef.current)
+    } else {
+      // Save current height before going fullscreen
+      if (height > minHeight) {
+        lastExpandedHeightRef.current = height;
+      }
+      expandDrawerToHeight(window.innerHeight)
+    }
+    bottomDrawerChannel.emit('onResizeReset')
+  }, [height])
 
 
   // ========================== EVENT BUS HANDLING ========================== //
@@ -94,10 +119,19 @@ const BottomDrawerContainer: React.FC = () => {
       expandDrawerToHeight(minHeight);
     });
 
+    const unsubscribeOnTabCreated = bottomDrawerChannel.on('onTabCreated', () => {
+      if (!drawerRef.current) return;
+      const cur = parseInt(drawerRef.current.style.minHeight, 10);
+      if (isNaN(cur) || cur < defaultHeight) {
+        expandDrawerToHeight(defaultHeight);
+      }
+    });
+
     return () => {
       unsubscribeOnResizeDrawer();
       unsubscribeOnFullScreen();
       unsubscribeOnMinimize();
+      unsubscribeOnTabCreated();
 
       closerFullScreen();
       closerMinimize();
@@ -109,12 +143,12 @@ const BottomDrawerContainer: React.FC = () => {
       return;
     }
 
-    const currentHeight = parseInt(drawerRef.current.style.minHeight.replace('px', ''));
+    const currentHeight = parseInt(drawerRef.current.style.minHeight, 10);
 
     // if the tabs change, expand the window, or if there is a new tab
-    if (tabs.length > 0 && currentHeight < defaultHeight) {
+    if (tabs.length > 0 && (isNaN(currentHeight) || currentHeight < defaultHeight)) {
       expandDrawerToHeight(defaultHeight);
-    } else if (tabs.length == 0) {
+    } else if (tabs.length === 0) {
       expandDrawerToHeight(minHeight);
     }
   }, [tabs]);
@@ -224,7 +258,7 @@ const BottomDrawerContainer: React.FC = () => {
           maxHeight: minHeight,
           overflow: 'hidden',
           position: 'relative',
-          backgroundColor: 'background.body',
+          backgroundColor: 'background.default',
           maxWidth: 'calc(100vw - var(--CoreLayoutSidebar-width))',
           minWidth: 'calc(100vw - var(--CoreLayoutSidebar-width))',
           right: 0,
@@ -241,7 +275,7 @@ const BottomDrawerContainer: React.FC = () => {
             width: '100%',
             cursor: 'row-resize',
             zIndex: 1291,
-            borderTop: `${isDragging ? 4 : 2}px solid ${theme.palette.primary[400]}`,
+            borderTop: `${isDragging ? 4 : 2}px solid ${theme.palette.primary.main}`,
             borderRadius: '0px 0px 0px 0px',
             opacity: isDragging ? 0.5 : isHovering ? 0.2 : 0,
             transition: 'opacity 0.2s, border 0.2s',
@@ -256,13 +290,12 @@ const BottomDrawerContainer: React.FC = () => {
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
         />
-        <Sheet
+        <Box
           className='BottomDrawerContainer'
-          variant='plain'
           sx={{
             display: { xs: 'none', sm: 'flex' },
             flexDirection: 'column',
-            backgroundColor: 'background.surface',
+            bgcolor: 'background.paper',
             flex: 1,
             overflow: 'hidden',
             minHeight: 0,
@@ -271,8 +304,10 @@ const BottomDrawerContainer: React.FC = () => {
           <Divider />
           <BottomDrawerTabs
             isMinimized={height === minHeight}
+            isFullscreen={height >= window.innerHeight}
             onMinimize={minimize}
             onExpand={expand}
+            onFullscreen={fullscreen}
           />
           <Box
             sx={{
@@ -288,11 +323,16 @@ const BottomDrawerContainer: React.FC = () => {
               <Box
                 key={tab.id}
                 sx={{
-                  display: tabs[focused]?.id === tab.id ? 'flex' : 'none',
+                  display: 'flex',
                   flexDirection: 'column',
                   position: 'absolute',
                   inset: 0,
                   overflow: 'hidden',
+                  // Use visibility instead of display:none so xterm always has
+                  // real dimensions and stays fitted. This prevents the brief
+                  // flash of doubled lines when switching tabs.
+                  visibility: tabs[focused]?.id === tab.id ? 'visible' : 'hidden',
+                  pointerEvents: tabs[focused]?.id === tab.id ? 'auto' : 'none',
                 }}
               >
                 {tab.variant === 'devbuild' ? (
@@ -300,18 +340,17 @@ const BottomDrawerContainer: React.FC = () => {
                 ) : tab.variant === 'logs' ? (
                   <LogViewerContainerMemo sessionId={tab.id} />
                 ) : (
-                  <TerminalContainerMemo sessionId={tab.id} />
+                  <TerminalContainerMemo sessionId={tab.id} tab={tab} />
                 )}
               </Box>
             ))}
           </Box>
-        </Sheet>
+        </Box>
       </Box>
     </>
   );
 };
 
 BottomDrawerContainer.displayName = 'BottomDrawerContainer';
-BottomDrawerContainer.whyDidYouRender = true;
 export default BottomDrawerContainer;
 

@@ -1,13 +1,9 @@
 import React from 'react';
 
-// material ui
-import {
-  Dropdown,
-  MenuButton,
-  IconButton,
-  Typography,
-  Stack,
-} from '@mui/joy';
+// @omniviewdev/ui
+import Box from '@mui/material/Box';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 
 type ActionMenuListItemProps = {
   icon: React.ReactElement;
@@ -22,21 +18,6 @@ type ActionMenuListItemProps = {
   label: string;
 } & React.HTMLAttributes<HTMLButtonElement>;
 
-const modifiers = [
-  {
-    name: 'offset',
-    options: {
-      offset: ({ placement }: any) => {
-        if (placement.includes('end')) {
-          return [4, 8];
-        }
-
-        return [-4, 8];
-      },
-    },
-  },
-];
-
 function ActionMenuListItem({
   icon,
   children,
@@ -44,7 +25,6 @@ function ActionMenuListItem({
   open,
   onOpen,
   onLeaveMenu,
-  label,
 }: Omit<ActionMenuListItemProps, 'color'>) {
   const isOnButton = React.useRef(false);
   const internalOpen = React.useRef(open);
@@ -58,18 +38,9 @@ function ActionMenuListItem({
   };
 
   return (
-    <Dropdown
-      open={open}
-      onOpenChange={(_, isOpen) => {
-        if (isOpen) {
-          onOpen?.();
-        }
-      }}
-    >
-      <MenuButton
-        size="sm"
-        slots={{ root: IconButton }}
-        slotProps={{ root: { variant: 'plain', color: 'neutral', width: '100%', borderRadius: '2px' } }}
+    <Box sx={{ position: 'relative' }}>
+      <Box
+        component='button'
         onMouseDown={() => {
           internalOpen.current = open;
         }}
@@ -89,39 +60,43 @@ function ActionMenuListItem({
         sx={{
           display: 'flex',
           flex: 1,
+          width: '100%',
           borderRadius: '2px',
-          bgcolor: open ? 'neutral.plainHoverBg' : undefined,
+          bgcolor: open ? 'action.hover' : undefined,
+          border: 'none',
+          background: 'none',
+          cursor: 'pointer',
+          p: 0,
           '&:focus-visible': {
-            bgcolor: 'neutral.plainHoverBg',
+            bgcolor: 'action.hover',
           },
         }}
       >
         <Stack
           direction='row'
-          spacing={1}
-          flex={1}
-          px={1}
-          alignItems={'center'}
-          justifyContent='flex-start'>
+          gap={1}
+          sx={{ flex: 1, px: 1, alignItems: 'center', justifyContent: 'flex-start' }}
+        >
           {icon}
-          <Typography sx={{ pl: 0.5 }} level='body-sm'>{children}</Typography>
+          <Text sx={{ pl: 0.5 }} size='sm'>{children}</Text>
         </Stack>
-      </MenuButton>
-      {React.cloneElement(menu, {
-        onMouseLeave: () => {
-          onLeaveMenu(() => isOnButton.current);
-        },
-        modifiers,
-        size: 'sm',
-        slotProps: {
-          listbox: {
-            id: `resource-action-submenu-${label}`,
-            'aria-label': label,
-          },
-        },
-        placement: 'left-start',
-      })}
-    </Dropdown>
+      </Box>
+      {open && (
+        <Box
+          onMouseLeave={() => {
+            onLeaveMenu(() => isOnButton.current);
+          }}
+          sx={{
+            position: 'absolute',
+            right: '100%',
+            top: 0,
+            zIndex: 10,
+          }}
+        >
+          {menu}
+        </Box>
+      )}
+    </Box>
   );
 }
 

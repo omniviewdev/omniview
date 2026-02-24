@@ -1,17 +1,10 @@
 import React from "react";
-import {
-  AccordionGroup,
-  Box,
-  Card,
-  CardContent,
-  Chip,
-  Divider,
-  Grid,
-  Stack,
-  Typography,
-  accordionDetailsClasses,
-  accordionSummaryClasses,
-} from '@mui/joy';
+import Box from "@mui/material/Box";
+import Grid from "@mui/material/Grid";
+import Divider from "@mui/material/Divider";
+import { Stack } from "@omniviewdev/ui/layout";
+import { Text } from "@omniviewdev/ui/typography";
+import { Card, Chip } from "@omniviewdev/ui";
 import KVCard from "../../../../../shared/KVCard";
 
 interface Props {
@@ -25,16 +18,16 @@ const MetaEntry: React.FC<{
   if (!value) return null;
   return (
     <Grid container spacing={0}>
-      <Grid xs={3} alignItems={"center"}>
-        <Typography textColor={"neutral.300"} level="body-xs">
+      <Grid size={3} sx={{ alignItems: "center" }}>
+        <Text size="xs" sx={{ color: "neutral.300" }}>
           {title}
-        </Typography>
+        </Text>
       </Grid>
-      <Grid xs={9} alignItems={"center"}>
+      <Grid size={9} sx={{ alignItems: "center" }}>
         {typeof value === 'string'
-          ? <Typography fontWeight={600} fontSize={12} level="body-xs">
+          ? <Text size="xs" sx={{ fontWeight: 600, fontSize: 12 }}>
             {value}
-          </Typography>
+          </Text>
           : value
         }
       </Grid>
@@ -74,20 +67,20 @@ const MetadataSection: React.FC<Props> = ({ data }) => {
         sx={{
           "--Card-padding": "0px",
           "--Card-gap": "0px",
-          borderRadius: "sm",
+          borderRadius: 1,
           gap: "0px",
         }}
         variant="outlined"
       >
         <Box sx={{ py: 1, px: 1.25 }}>
-          <Typography level="title-sm">Resource Info</Typography>
+          <Text weight="semibold" size="sm">Resource Info</Text>
         </Box>
         <Divider />
-        <CardContent
+        <Box
           sx={{
             p: 1,
             px: 1.5,
-            backgroundColor: "background.level1",
+            backgroundColor: "background.paper",
             borderBottomRightRadius: 6,
             borderBottomLeftRadius: 6,
           }}
@@ -95,45 +88,26 @@ const MetadataSection: React.FC<Props> = ({ data }) => {
           <MetaEntry title="Name" value={name} />
           {region && <MetaEntry title="Region" value={region} />}
           {arn && <MetaEntry title="ARN" value={
-            <Typography fontWeight={600} fontSize={11} level="body-xs" sx={{ wordBreak: 'break-all' }}>
+            <Text size="xs" sx={{ fontWeight: 600, fontSize: 11, wordBreak: 'break-all' }}>
               {arn}
-            </Typography>
+            </Text>
           } />}
           {data.State?.Name && <MetaEntry title="State" value={
-            <Chip size='sm' variant='soft' color={
+            <Chip size='sm' label={data.State.Name} color={
               data.State.Name === 'running' ? 'success' :
-              data.State.Name === 'stopped' ? 'danger' : 'warning'
-            } sx={{ borderRadius: 2 }}>
-              {data.State.Name}
-            </Chip>
+              data.State.Name === 'stopped' ? 'error' : 'warning'
+            } variant='filled' sx={{ borderRadius: 2 }} />
           } />}
           {data.Status && typeof data.Status === 'string' && <MetaEntry title="Status" value={
-            <Chip size='sm' variant='soft' color={
+            <Chip size='sm' label={data.Status} color={
               data.Status === 'available' || data.Status === 'ACTIVE' || data.Status === 'Active' ? 'success' :
-              data.Status === 'deleting' || data.Status === 'failed' ? 'danger' : 'warning'
-            } sx={{ borderRadius: 2 }}>
-              {data.Status}
-            </Chip>
+              data.Status === 'deleting' || data.Status === 'failed' ? 'error' : 'warning'
+            } variant='filled' sx={{ borderRadius: 2 }} />
           } />}
-        </CardContent>
+        </Box>
       </Card>
       {Object.keys(tags).length > 0 && (
-        <AccordionGroup
-          variant="outlined"
-          transition="0.2s"
-          size="sm"
-          sx={{
-            borderRadius: "sm",
-            [`& .${accordionSummaryClasses.button}:hover`]: { bgcolor: "transparent" },
-            [`& .${accordionDetailsClasses.content}`]: {
-              backgroundColor: "background.level1",
-              boxShadow: (theme) => `inset 0 1px ${theme.vars.palette.divider}`,
-              [`&.${accordionDetailsClasses.expanded}`]: { paddingBlock: "0.75rem" },
-            },
-          }}
-        >
-          <KVCard title="Tags" kvs={tags} defaultExpanded />
-        </AccordionGroup>
+        <KVCard title="Tags" kvs={tags} defaultExpanded />
       )}
     </Stack>
   );

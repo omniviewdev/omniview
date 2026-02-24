@@ -50,6 +50,8 @@ function matchPresetDuration(range: ChartTimeRange, presets: TimeRangePreset[]):
 
 export interface MetricsPanelProps {
   title: string;
+  /** Small icon rendered before the title for quick scanning */
+  icon?: React.ReactNode;
   /** Muted subtitle below title (e.g. "From Kubernetes Metrics Server") */
   subtitle?: string;
   series: TimeSeriesDef[];
@@ -96,6 +98,7 @@ export interface MetricsPanelProps {
 
 export default function MetricsPanel({
   title,
+  icon,
   subtitle,
   series,
   timeRange,
@@ -193,7 +196,12 @@ export default function MetricsPanel({
           minHeight: 32,
         }}
       >
-        {/* Left: title + subtitle */}
+        {/* Left: icon + title + subtitle */}
+        {icon && (
+          <Box sx={{ display: 'flex', alignItems: 'center', color: 'var(--ov-fg-muted)', flexShrink: 0 }}>
+            {icon}
+          </Box>
+        )}
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography
             variant="subtitle2"

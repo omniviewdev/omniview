@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, type BoxProps } from '@mui/joy';
+import Box, { type BoxProps } from '@mui/material/Box';
 
 /**
  * An optional side pane component for the sidenav layout.
@@ -10,7 +10,7 @@ const SidePane: React.FC<BoxProps> = props => (
     {...props}
     sx={[
       {
-        bgcolor: 'background.surface',
+        bgcolor: 'background.paper',
         borderRight: '1px solid',
         borderColor: 'divider',
         display: {

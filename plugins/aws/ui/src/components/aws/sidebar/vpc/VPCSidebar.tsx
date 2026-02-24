@@ -1,5 +1,6 @@
 import React from "react";
-import { Stack, Typography } from "@mui/joy";
+import { Stack } from "@omniviewdev/ui/layout";
+import { Text } from "@omniviewdev/ui/typography";
 import MetadataSection from "../../../shared/sidebar/pages/overview/sections/MetadataSection";
 import DetailsCard from "../../../shared/DetailsCard";
 import ExpandableSection from "../../../shared/ExpandableSection";
@@ -63,10 +64,10 @@ const VPCSidebar: React.FC<Props> = ({ ctx }) => {
               content: (
                 <Stack spacing={0.5}>
                   {cidrAssociations.map((assoc, i) => (
-                    <Typography key={i} level="body-sm">
-                      {assoc.CidrBlock || "—"}{" "}
+                    <Text key={i} size="sm">
+                      {assoc.CidrBlock || "\u2014"}{" "}
                       ({assoc.CidrBlockState?.State || "unknown"})
-                    </Typography>
+                    </Text>
                   ))}
                 </Stack>
               ),

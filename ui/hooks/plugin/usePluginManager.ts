@@ -5,7 +5,7 @@ import React from 'react';
 import { EventsEmit, EventsOn } from '@omniviewdev/runtime/runtime';
 import { type config } from '@omniviewdev/runtime/models';
 
-import { clearPlugin, importPlugin, loadAndRegisterPlugin } from '@/features/plugins/api/loader';
+import { clearPlugin, loadAndRegisterPlugin } from '@/features/plugins/api/loader';
 
 enum Entity {
   PLUGINS = 'plugins',
@@ -47,7 +47,7 @@ export const usePluginManager = () => {
       //   status: 'info',
       // });
     });
-    const closer2 = EventsOn('plugin/dev_reload_rror', (meta: config.PluginMeta, error: string) => {
+    const closer2 = EventsOn('plugin/dev_reload_error', (meta: config.PluginMeta, error: string) => {
       // Find the plugin in the list of plugins and update the status
       // to show that it's reloading
       queryClient.setQueryData([Entity.PLUGINS], (oldData: config.PluginMeta[]) => oldData.map(plugin => {
@@ -125,30 +125,34 @@ export const usePluginManager = () => {
   /**
    * Prompt the user to install a plugin from a path
    */
-  const { mutateAsync: promptInstallFromPath } = useMutation({
+  const installFromPath = useMutation({
     mutationFn: PluginManager.InstallFromPathPrompt,
     onSuccess(data) {
-      showSnackbar(`${data.name} plugin successfully installed`, 'success');
-      // Invalidate the plugins query to refetch the list of plugins
+      showSnackbar({
+        message: `${data.name} plugin successfully installed`,
+        status: 'success',
+      });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
       loadAndRegisterPlugin(data.id);
       EventsEmit('plugin/install_complete', data)
     },
     onError(error) {
-      if (`${error.message}` === 'cancelled' || `${error.message}` === 'undefined') {
-        // User cancelled the prompt, nothing actually wrong
-        return;
-      }
+      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
+      if (msg === 'cancelled') return;
 
-      showSnackbar(`Plugin installation failed: ${error.name}`, 'error');
+      showSnackbar({
+        message: 'Plugin installation failed',
+        status: 'error',
+        details: msg,
+      });
     },
   });
 
   /**
    * Prompt for installing a plugin in development mode
    */
-  const { mutateAsync: promptInstallDev } = useMutation({
+  const installDev = useMutation({
     mutationFn: PluginManager.InstallInDevMode,
     onSuccess(data) {
       showSnackbar({
@@ -156,20 +160,25 @@ export const usePluginManager = () => {
         status: 'success',
         details: 'This plugin will be reloaded automatically when the source files change.',
       });
-      loadAndRegisterPlugin(data.id);
+
+      // Don't call loadAndRegisterPlugin here — dev plugins need the Vite
+      // dev server to be ready first. The PluginRegistryProvider will
+      // automatically load the plugin when the dev server reaches "ready"
+      // status via the stableKey mechanism.
 
       EventsEmit('plugin/install_complete', data)
-      // Invalidate the plugins query to refetch the list of plugins
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
     },
     onError(error) {
-      if (`${error.message}` === 'cancelled' || `${error.message}` === 'undefined') {
-        // User cancelled the prompt, nothing actually wrong
-        return;
-      }
+      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
+      if (msg === 'cancelled') return;
 
-      showSnackbar(`Plugin installation failed: ${error.message}`, 'error');
+      showSnackbar({
+        message: 'Dev mode installation failed',
+        status: 'error',
+        details: msg,
+      });
     },
   });
 
@@ -179,12 +188,19 @@ export const usePluginManager = () => {
   const { mutateAsync: reloadPlugin } = useMutation({
     mutationFn: PluginManager.ReloadPlugin,
     onSuccess({ metadata }) {
-      showSnackbar(`${metadata.name} plugin reloaded`, 'success');
-      // Invalidate the plugins query to refetch the list of plugins
+      showSnackbar({
+        message: `${metadata.name} plugin reloaded`,
+        status: 'success',
+      });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
     },
     onError(error) {
-      showSnackbar(`Failed to reload plugin: ${error.message}`, 'error');
+      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
+      showSnackbar({
+        message: 'Failed to reload plugin',
+        status: 'error',
+        details: msg,
+      });
     },
   });
 
@@ -201,6 +217,11 @@ export const usePluginManager = () => {
       }
 
       return plugins;
+    },
+    // In dev mode the frontend may load before the backend finishes
+    // initializing plugins. Poll every 2s until we get a non-empty list.
+    refetchInterval: (query) => {
+      return query.state.data?.length === 0 ? 2000 : false;
     },
   });
 
@@ -219,8 +240,8 @@ export const usePluginManager = () => {
   return {
     plugins,
     available,
-    promptInstallFromPath,
-    promptInstallDev,
+    installFromPath,
+    installDev,
     reloadPlugin,
   };
 };
@@ -252,14 +273,21 @@ export const usePlugin = ({ id }: { id: string }) => {
   const { mutateAsync: reload } = useMutation({
     mutationFn: async () => PluginManager.ReloadPlugin(id),
     onSuccess({ id, metadata }) {
-      showSnackbar(`Plugin '${metadata.name}' sucessfully reloaded`, 'success');
-      // Invalidate the plugins query to refetch the list of plugins
+      showSnackbar({
+        message: `Plugin '${metadata.name}' successfully reloaded`,
+        status: 'success',
+      });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
       clearPlugin({ pluginId: metadata.id })
       loadAndRegisterPlugin(metadata.id)
     },
     onError(error) {
-      showSnackbar(`Failed to reload plugin: ${error.message}`, 'error');
+      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
+      showSnackbar({
+        message: 'Failed to reload plugin',
+        status: 'error',
+        details: msg,
+      });
     },
   });
 
@@ -270,14 +298,21 @@ export const usePlugin = ({ id }: { id: string }) => {
   const { mutateAsync: uninstall } = useMutation({
     mutationFn: async () => PluginManager.UninstallPlugin(id),
     onSuccess({ id, metadata }) {
-      showSnackbar(`Plugin '${metadata.name}' sucessfully uninstalled`, 'success');
-      // Invalidate the plugins query to refetch the list of plugins
+      showSnackbar({
+        message: `Plugin '${metadata.name}' successfully uninstalled`,
+        status: 'success',
+      });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
       clearPlugin({ pluginId: metadata.id })
     },
     onError(error) {
-      showSnackbar(`Failed to uninstall plugin: ${error.message}`, 'error');
+      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
+      showSnackbar({
+        message: 'Failed to uninstall plugin',
+        status: 'error',
+        details: msg,
+      });
     },
   });
 
@@ -286,27 +321,28 @@ export const usePlugin = ({ id }: { id: string }) => {
    */
   const { mutateAsync: update } = useMutation({
     mutationFn: async (version: string) => {
-      console.debug(`[usePluginManager] updating plugin "${id}" to version "${version}"`, { plugin: id, version })
       const resp = await PluginManager.InstallPluginVersion(id, version)
       return resp
     },
     onSuccess(meta) {
-      showSnackbar(`Plugin '${meta.name}' sucessfully updated to version '${meta.version}`, 'success');
-      // Invalidate the plugins query to refetch the list of plugins
+      showSnackbar({
+        message: `Plugin '${meta.name}' updated to v${meta.version}`,
+        status: 'success',
+      });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
       EventsEmit('plugin/install_complete', meta)
-
       loadAndRegisterPlugin(meta.id)
     },
-
     onError(error) {
-      if (`${error.message}` === 'cancelled' || `${error.message}` === 'undefined') {
-        // User cancelled the prompt, nothing actually wrong
-        return;
-      }
+      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
+      if (msg === 'cancelled') return;
 
-      showSnackbar(`Plugin update failed: ${error.name}`, 'error');
+      showSnackbar({
+        message: 'Plugin update failed',
+        status: 'error',
+        details: msg,
+      });
     },
   });
 

@@ -18,7 +18,7 @@ type Story = StoryObj<typeof meta>;
 // More on writing stories with args: https://storybook.js.org/docs/writing-stories/args
 export const Primary: Story = {
   args: {
-    data,
+    ctx: { data: data as any },
   },
 };
 
@@ -28,7 +28,7 @@ Primary.decorators = [
       icon="LuNetworking"
       type="networking::v1::Ingress"
       // @ts-expect-error - arbitrary json
-      title={c.args.data.metadata.name}
+      title={c.args.ctx.data.metadata.name}
       open
       onClose={() => {}}
     >

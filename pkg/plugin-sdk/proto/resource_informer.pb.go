@@ -9,11 +9,7 @@ package proto
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	_ "google.golang.org/protobuf/types/known/durationpb"
-	_ "google.golang.org/protobuf/types/known/emptypb"
 	structpb "google.golang.org/protobuf/types/known/structpb"
-	_ "google.golang.org/protobuf/types/known/timestamppb"
-	_ "google.golang.org/protobuf/types/known/wrapperspb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -25,6 +21,112 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// Informer sync policy controls when an informer starts.
+type InformerSyncPolicy int32
+
+const (
+	InformerSyncPolicy_SYNC_ON_CONNECT     InformerSyncPolicy = 0
+	InformerSyncPolicy_SYNC_ON_FIRST_QUERY InformerSyncPolicy = 1
+	InformerSyncPolicy_SYNC_NEVER          InformerSyncPolicy = 2
+)
+
+// Enum value maps for InformerSyncPolicy.
+var (
+	InformerSyncPolicy_name = map[int32]string{
+		0: "SYNC_ON_CONNECT",
+		1: "SYNC_ON_FIRST_QUERY",
+		2: "SYNC_NEVER",
+	}
+	InformerSyncPolicy_value = map[string]int32{
+		"SYNC_ON_CONNECT":     0,
+		"SYNC_ON_FIRST_QUERY": 1,
+		"SYNC_NEVER":          2,
+	}
+)
+
+func (x InformerSyncPolicy) Enum() *InformerSyncPolicy {
+	p := new(InformerSyncPolicy)
+	*p = x
+	return p
+}
+
+func (x InformerSyncPolicy) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (InformerSyncPolicy) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_resource_informer_proto_enumTypes[0].Descriptor()
+}
+
+func (InformerSyncPolicy) Type() protoreflect.EnumType {
+	return &file_proto_resource_informer_proto_enumTypes[0]
+}
+
+func (x InformerSyncPolicy) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use InformerSyncPolicy.Descriptor instead.
+func (InformerSyncPolicy) EnumDescriptor() ([]byte, []int) {
+	return file_proto_resource_informer_proto_rawDescGZIP(), []int{0}
+}
+
+// Informer resource state represents the sync state of a single resource type's informer.
+type InformerResourceState int32
+
+const (
+	InformerResourceState_INFORMER_PENDING   InformerResourceState = 0
+	InformerResourceState_INFORMER_SYNCING   InformerResourceState = 1
+	InformerResourceState_INFORMER_SYNCED    InformerResourceState = 2
+	InformerResourceState_INFORMER_ERROR     InformerResourceState = 3
+	InformerResourceState_INFORMER_CANCELLED InformerResourceState = 4
+)
+
+// Enum value maps for InformerResourceState.
+var (
+	InformerResourceState_name = map[int32]string{
+		0: "INFORMER_PENDING",
+		1: "INFORMER_SYNCING",
+		2: "INFORMER_SYNCED",
+		3: "INFORMER_ERROR",
+		4: "INFORMER_CANCELLED",
+	}
+	InformerResourceState_value = map[string]int32{
+		"INFORMER_PENDING":   0,
+		"INFORMER_SYNCING":   1,
+		"INFORMER_SYNCED":    2,
+		"INFORMER_ERROR":     3,
+		"INFORMER_CANCELLED": 4,
+	}
+)
+
+func (x InformerResourceState) Enum() *InformerResourceState {
+	p := new(InformerResourceState)
+	*p = x
+	return p
+}
+
+func (x InformerResourceState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (InformerResourceState) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_resource_informer_proto_enumTypes[1].Descriptor()
+}
+
+func (InformerResourceState) Type() protoreflect.EnumType {
+	return &file_proto_resource_informer_proto_enumTypes[1]
+}
+
+func (x InformerResourceState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use InformerResourceState.Descriptor instead.
+func (InformerResourceState) EnumDescriptor() ([]byte, []int) {
+	return file_proto_resource_informer_proto_rawDescGZIP(), []int{1}
+}
 
 type HasInformerRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -174,6 +276,272 @@ func (x *StopConnectionInformerRequest) GetConnection() string {
 	return ""
 }
 
+// InformerStateEvent is emitted when a resource's informer state changes.
+type InformerStateEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Connection    string                 `protobuf:"bytes,1,opt,name=connection,proto3" json:"connection,omitempty"`
+	ResourceKey   string                 `protobuf:"bytes,2,opt,name=resource_key,json=resourceKey,proto3" json:"resource_key,omitempty"`
+	State         InformerResourceState  `protobuf:"varint,3,opt,name=state,proto3,enum=com.omniview.pluginsdk.InformerResourceState" json:"state,omitempty"`
+	ResourceCount int32                  `protobuf:"varint,4,opt,name=resource_count,json=resourceCount,proto3" json:"resource_count,omitempty"`
+	TotalCount    int32                  `protobuf:"varint,5,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"` // -1 if unknown
+	Error         *ResourceError         `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`                              // from resource_common.proto
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InformerStateEvent) Reset() {
+	*x = InformerStateEvent{}
+	mi := &file_proto_resource_informer_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InformerStateEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InformerStateEvent) ProtoMessage() {}
+
+func (x *InformerStateEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_resource_informer_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InformerStateEvent.ProtoReflect.Descriptor instead.
+func (*InformerStateEvent) Descriptor() ([]byte, []int) {
+	return file_proto_resource_informer_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *InformerStateEvent) GetConnection() string {
+	if x != nil {
+		return x.Connection
+	}
+	return ""
+}
+
+func (x *InformerStateEvent) GetResourceKey() string {
+	if x != nil {
+		return x.ResourceKey
+	}
+	return ""
+}
+
+func (x *InformerStateEvent) GetState() InformerResourceState {
+	if x != nil {
+		return x.State
+	}
+	return InformerResourceState_INFORMER_PENDING
+}
+
+func (x *InformerStateEvent) GetResourceCount() int32 {
+	if x != nil {
+		return x.ResourceCount
+	}
+	return 0
+}
+
+func (x *InformerStateEvent) GetTotalCount() int32 {
+	if x != nil {
+		return x.TotalCount
+	}
+	return 0
+}
+
+func (x *InformerStateEvent) GetError() *ResourceError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+// InformerConnectionSummary provides an aggregate view of all informer states for a connection.
+type InformerConnectionSummary struct {
+	state          protoimpl.MessageState           `protogen:"open.v1"`
+	Connection     string                           `protobuf:"bytes,1,opt,name=connection,proto3" json:"connection,omitempty"`
+	Resources      map[string]InformerResourceState `protobuf:"bytes,2,rep,name=resources,proto3" json:"resources,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value,enum=com.omniview.pluginsdk.InformerResourceState"`
+	ResourceCounts map[string]int32                 `protobuf:"bytes,3,rep,name=resource_counts,json=resourceCounts,proto3" json:"resource_counts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	TotalResources int32                            `protobuf:"varint,4,opt,name=total_resources,json=totalResources,proto3" json:"total_resources,omitempty"`
+	SyncedCount    int32                            `protobuf:"varint,5,opt,name=synced_count,json=syncedCount,proto3" json:"synced_count,omitempty"`
+	ErrorCount     int32                            `protobuf:"varint,6,opt,name=error_count,json=errorCount,proto3" json:"error_count,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *InformerConnectionSummary) Reset() {
+	*x = InformerConnectionSummary{}
+	mi := &file_proto_resource_informer_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InformerConnectionSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InformerConnectionSummary) ProtoMessage() {}
+
+func (x *InformerConnectionSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_resource_informer_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InformerConnectionSummary.ProtoReflect.Descriptor instead.
+func (*InformerConnectionSummary) Descriptor() ([]byte, []int) {
+	return file_proto_resource_informer_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *InformerConnectionSummary) GetConnection() string {
+	if x != nil {
+		return x.Connection
+	}
+	return ""
+}
+
+func (x *InformerConnectionSummary) GetResources() map[string]InformerResourceState {
+	if x != nil {
+		return x.Resources
+	}
+	return nil
+}
+
+func (x *InformerConnectionSummary) GetResourceCounts() map[string]int32 {
+	if x != nil {
+		return x.ResourceCounts
+	}
+	return nil
+}
+
+func (x *InformerConnectionSummary) GetTotalResources() int32 {
+	if x != nil {
+		return x.TotalResources
+	}
+	return 0
+}
+
+func (x *InformerConnectionSummary) GetSyncedCount() int32 {
+	if x != nil {
+		return x.SyncedCount
+	}
+	return 0
+}
+
+func (x *InformerConnectionSummary) GetErrorCount() int32 {
+	if x != nil {
+		return x.ErrorCount
+	}
+	return 0
+}
+
+type GetInformerStateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Connection    string                 `protobuf:"bytes,1,opt,name=connection,proto3" json:"connection,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInformerStateRequest) Reset() {
+	*x = GetInformerStateRequest{}
+	mi := &file_proto_resource_informer_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInformerStateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInformerStateRequest) ProtoMessage() {}
+
+func (x *GetInformerStateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_resource_informer_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInformerStateRequest.ProtoReflect.Descriptor instead.
+func (*GetInformerStateRequest) Descriptor() ([]byte, []int) {
+	return file_proto_resource_informer_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetInformerStateRequest) GetConnection() string {
+	if x != nil {
+		return x.Connection
+	}
+	return ""
+}
+
+type EnsureInformerRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Connection    string                 `protobuf:"bytes,1,opt,name=connection,proto3" json:"connection,omitempty"`
+	ResourceKey   string                 `protobuf:"bytes,2,opt,name=resource_key,json=resourceKey,proto3" json:"resource_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnsureInformerRequest) Reset() {
+	*x = EnsureInformerRequest{}
+	mi := &file_proto_resource_informer_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnsureInformerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnsureInformerRequest) ProtoMessage() {}
+
+func (x *EnsureInformerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_resource_informer_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnsureInformerRequest.ProtoReflect.Descriptor instead.
+func (*EnsureInformerRequest) Descriptor() ([]byte, []int) {
+	return file_proto_resource_informer_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *EnsureInformerRequest) GetConnection() string {
+	if x != nil {
+		return x.Connection
+	}
+	return ""
+}
+
+func (x *EnsureInformerRequest) GetResourceKey() string {
+	if x != nil {
+		return x.ResourceKey
+	}
+	return ""
+}
+
 type InformerEvent struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Key        string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
@@ -185,6 +553,7 @@ type InformerEvent struct {
 	//	*InformerEvent_Add
 	//	*InformerEvent_Update
 	//	*InformerEvent_Delete
+	//	*InformerEvent_State
 	Action        isInformerEvent_Action `protobuf_oneof:"action"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -192,7 +561,7 @@ type InformerEvent struct {
 
 func (x *InformerEvent) Reset() {
 	*x = InformerEvent{}
-	mi := &file_proto_resource_informer_proto_msgTypes[3]
+	mi := &file_proto_resource_informer_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -204,7 +573,7 @@ func (x *InformerEvent) String() string {
 func (*InformerEvent) ProtoMessage() {}
 
 func (x *InformerEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_resource_informer_proto_msgTypes[3]
+	mi := &file_proto_resource_informer_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -217,7 +586,7 @@ func (x *InformerEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InformerEvent.ProtoReflect.Descriptor instead.
 func (*InformerEvent) Descriptor() ([]byte, []int) {
-	return file_proto_resource_informer_proto_rawDescGZIP(), []int{3}
+	return file_proto_resource_informer_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *InformerEvent) GetKey() string {
@@ -282,6 +651,15 @@ func (x *InformerEvent) GetDelete() *InformerDeleteEvent {
 	return nil
 }
 
+func (x *InformerEvent) GetState() *InformerStateEvent {
+	if x != nil {
+		if x, ok := x.Action.(*InformerEvent_State); ok {
+			return x.State
+		}
+	}
+	return nil
+}
+
 type isInformerEvent_Action interface {
 	isInformerEvent_Action()
 }
@@ -298,11 +676,17 @@ type InformerEvent_Delete struct {
 	Delete *InformerDeleteEvent `protobuf:"bytes,7,opt,name=delete,proto3,oneof"`
 }
 
+type InformerEvent_State struct {
+	State *InformerStateEvent `protobuf:"bytes,8,opt,name=state,proto3,oneof"`
+}
+
 func (*InformerEvent_Add) isInformerEvent_Action() {}
 
 func (*InformerEvent_Update) isInformerEvent_Action() {}
 
 func (*InformerEvent_Delete) isInformerEvent_Action() {}
+
+func (*InformerEvent_State) isInformerEvent_Action() {}
 
 type InformerAddEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -313,7 +697,7 @@ type InformerAddEvent struct {
 
 func (x *InformerAddEvent) Reset() {
 	*x = InformerAddEvent{}
-	mi := &file_proto_resource_informer_proto_msgTypes[4]
+	mi := &file_proto_resource_informer_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -325,7 +709,7 @@ func (x *InformerAddEvent) String() string {
 func (*InformerAddEvent) ProtoMessage() {}
 
 func (x *InformerAddEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_resource_informer_proto_msgTypes[4]
+	mi := &file_proto_resource_informer_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -338,7 +722,7 @@ func (x *InformerAddEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InformerAddEvent.ProtoReflect.Descriptor instead.
 func (*InformerAddEvent) Descriptor() ([]byte, []int) {
-	return file_proto_resource_informer_proto_rawDescGZIP(), []int{4}
+	return file_proto_resource_informer_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *InformerAddEvent) GetData() *structpb.Struct {
@@ -358,7 +742,7 @@ type InformerUpdateEvent struct {
 
 func (x *InformerUpdateEvent) Reset() {
 	*x = InformerUpdateEvent{}
-	mi := &file_proto_resource_informer_proto_msgTypes[5]
+	mi := &file_proto_resource_informer_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -370,7 +754,7 @@ func (x *InformerUpdateEvent) String() string {
 func (*InformerUpdateEvent) ProtoMessage() {}
 
 func (x *InformerUpdateEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_resource_informer_proto_msgTypes[5]
+	mi := &file_proto_resource_informer_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -383,7 +767,7 @@ func (x *InformerUpdateEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InformerUpdateEvent.ProtoReflect.Descriptor instead.
 func (*InformerUpdateEvent) Descriptor() ([]byte, []int) {
-	return file_proto_resource_informer_proto_rawDescGZIP(), []int{5}
+	return file_proto_resource_informer_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *InformerUpdateEvent) GetOldData() *structpb.Struct {
@@ -409,7 +793,7 @@ type InformerDeleteEvent struct {
 
 func (x *InformerDeleteEvent) Reset() {
 	*x = InformerDeleteEvent{}
-	mi := &file_proto_resource_informer_proto_msgTypes[6]
+	mi := &file_proto_resource_informer_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -421,7 +805,7 @@ func (x *InformerDeleteEvent) String() string {
 func (*InformerDeleteEvent) ProtoMessage() {}
 
 func (x *InformerDeleteEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_resource_informer_proto_msgTypes[6]
+	mi := &file_proto_resource_informer_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -434,7 +818,7 @@ func (x *InformerDeleteEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InformerDeleteEvent.ProtoReflect.Descriptor instead.
 func (*InformerDeleteEvent) Descriptor() ([]byte, []int) {
-	return file_proto_resource_informer_proto_rawDescGZIP(), []int{6}
+	return file_proto_resource_informer_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *InformerDeleteEvent) GetData() *structpb.Struct {
@@ -448,7 +832,7 @@ var File_proto_resource_informer_proto protoreflect.FileDescriptor
 
 const file_proto_resource_informer_proto_rawDesc = "" +
 	"\n" +
-	"\x1dproto/resource_informer.proto\x12\x16com.omniview.pluginsdk\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/wrappers.proto\"4\n" +
+	"\x1dproto/resource_informer.proto\x12\x16com.omniview.pluginsdk\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1bproto/resource_common.proto\"4\n" +
 	"\x12HasInformerRequest\x12\x1e\n" +
 	"\n" +
 	"connection\x18\x01 \x01(\tR\n" +
@@ -462,7 +846,42 @@ const file_proto_resource_informer_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1e\n" +
 	"\n" +
 	"connection\x18\x02 \x01(\tR\n" +
-	"connection\"\xc5\x02\n" +
+	"connection\"\xa1\x02\n" +
+	"\x12InformerStateEvent\x12\x1e\n" +
+	"\n" +
+	"connection\x18\x01 \x01(\tR\n" +
+	"connection\x12!\n" +
+	"\fresource_key\x18\x02 \x01(\tR\vresourceKey\x12C\n" +
+	"\x05state\x18\x03 \x01(\x0e2-.com.omniview.pluginsdk.InformerResourceStateR\x05state\x12%\n" +
+	"\x0eresource_count\x18\x04 \x01(\x05R\rresourceCount\x12\x1f\n" +
+	"\vtotal_count\x18\x05 \x01(\x05R\n" +
+	"totalCount\x12;\n" +
+	"\x05error\x18\x06 \x01(\v2%.com.omniview.pluginsdk.ResourceErrorR\x05error\"\xa8\x04\n" +
+	"\x19InformerConnectionSummary\x12\x1e\n" +
+	"\n" +
+	"connection\x18\x01 \x01(\tR\n" +
+	"connection\x12^\n" +
+	"\tresources\x18\x02 \x03(\v2@.com.omniview.pluginsdk.InformerConnectionSummary.ResourcesEntryR\tresources\x12n\n" +
+	"\x0fresource_counts\x18\x03 \x03(\v2E.com.omniview.pluginsdk.InformerConnectionSummary.ResourceCountsEntryR\x0eresourceCounts\x12'\n" +
+	"\x0ftotal_resources\x18\x04 \x01(\x05R\x0etotalResources\x12!\n" +
+	"\fsynced_count\x18\x05 \x01(\x05R\vsyncedCount\x12\x1f\n" +
+	"\verror_count\x18\x06 \x01(\x05R\n" +
+	"errorCount\x1ak\n" +
+	"\x0eResourcesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12C\n" +
+	"\x05value\x18\x02 \x01(\x0e2-.com.omniview.pluginsdk.InformerResourceStateR\x05value:\x028\x01\x1aA\n" +
+	"\x13ResourceCountsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"9\n" +
+	"\x17GetInformerStateRequest\x12\x1e\n" +
+	"\n" +
+	"connection\x18\x01 \x01(\tR\n" +
+	"connection\"Z\n" +
+	"\x15EnsureInformerRequest\x12\x1e\n" +
+	"\n" +
+	"connection\x18\x01 \x01(\tR\n" +
+	"connection\x12!\n" +
+	"\fresource_key\x18\x02 \x01(\tR\vresourceKey\"\x89\x03\n" +
 	"\rInformerEvent\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1e\n" +
 	"\n" +
@@ -472,7 +891,8 @@ const file_proto_resource_informer_proto_rawDesc = "" +
 	"\tnamespace\x18\x04 \x01(\tR\tnamespace\x12<\n" +
 	"\x03add\x18\x05 \x01(\v2(.com.omniview.pluginsdk.InformerAddEventH\x00R\x03add\x12E\n" +
 	"\x06update\x18\x06 \x01(\v2+.com.omniview.pluginsdk.InformerUpdateEventH\x00R\x06update\x12E\n" +
-	"\x06delete\x18\a \x01(\v2+.com.omniview.pluginsdk.InformerDeleteEventH\x00R\x06deleteB\b\n" +
+	"\x06delete\x18\a \x01(\v2+.com.omniview.pluginsdk.InformerDeleteEventH\x00R\x06delete\x12B\n" +
+	"\x05state\x18\b \x01(\v2*.com.omniview.pluginsdk.InformerStateEventH\x00R\x05stateB\b\n" +
 	"\x06action\"?\n" +
 	"\x10InformerAddEvent\x12+\n" +
 	"\x04data\x18\x01 \x01(\v2\x17.google.protobuf.StructR\x04data\"}\n" +
@@ -480,7 +900,18 @@ const file_proto_resource_informer_proto_rawDesc = "" +
 	"\bold_data\x18\x01 \x01(\v2\x17.google.protobuf.StructR\aoldData\x122\n" +
 	"\bnew_data\x18\x02 \x01(\v2\x17.google.protobuf.StructR\anewData\"B\n" +
 	"\x13InformerDeleteEvent\x12+\n" +
-	"\x04data\x18\x01 \x01(\v2\x17.google.protobuf.StructR\x04dataB\tZ\a./protob\x06proto3"
+	"\x04data\x18\x01 \x01(\v2\x17.google.protobuf.StructR\x04data*R\n" +
+	"\x12InformerSyncPolicy\x12\x13\n" +
+	"\x0fSYNC_ON_CONNECT\x10\x00\x12\x17\n" +
+	"\x13SYNC_ON_FIRST_QUERY\x10\x01\x12\x0e\n" +
+	"\n" +
+	"SYNC_NEVER\x10\x02*\x84\x01\n" +
+	"\x15InformerResourceState\x12\x14\n" +
+	"\x10INFORMER_PENDING\x10\x00\x12\x14\n" +
+	"\x10INFORMER_SYNCING\x10\x01\x12\x13\n" +
+	"\x0fINFORMER_SYNCED\x10\x02\x12\x12\n" +
+	"\x0eINFORMER_ERROR\x10\x03\x12\x16\n" +
+	"\x12INFORMER_CANCELLED\x10\x04B\tZ\a./protob\x06proto3"
 
 var (
 	file_proto_resource_informer_proto_rawDescOnce sync.Once
@@ -494,30 +925,46 @@ func file_proto_resource_informer_proto_rawDescGZIP() []byte {
 	return file_proto_resource_informer_proto_rawDescData
 }
 
-var file_proto_resource_informer_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_proto_resource_informer_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_proto_resource_informer_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_proto_resource_informer_proto_goTypes = []any{
-	(*HasInformerRequest)(nil),             // 0: com.omniview.pluginsdk.HasInformerRequest
-	(*StartConnectionInformerRequest)(nil), // 1: com.omniview.pluginsdk.StartConnectionInformerRequest
-	(*StopConnectionInformerRequest)(nil),  // 2: com.omniview.pluginsdk.StopConnectionInformerRequest
-	(*InformerEvent)(nil),                  // 3: com.omniview.pluginsdk.InformerEvent
-	(*InformerAddEvent)(nil),               // 4: com.omniview.pluginsdk.InformerAddEvent
-	(*InformerUpdateEvent)(nil),            // 5: com.omniview.pluginsdk.InformerUpdateEvent
-	(*InformerDeleteEvent)(nil),            // 6: com.omniview.pluginsdk.InformerDeleteEvent
-	(*structpb.Struct)(nil),                // 7: google.protobuf.Struct
+	(InformerSyncPolicy)(0),                // 0: com.omniview.pluginsdk.InformerSyncPolicy
+	(InformerResourceState)(0),             // 1: com.omniview.pluginsdk.InformerResourceState
+	(*HasInformerRequest)(nil),             // 2: com.omniview.pluginsdk.HasInformerRequest
+	(*StartConnectionInformerRequest)(nil), // 3: com.omniview.pluginsdk.StartConnectionInformerRequest
+	(*StopConnectionInformerRequest)(nil),  // 4: com.omniview.pluginsdk.StopConnectionInformerRequest
+	(*InformerStateEvent)(nil),             // 5: com.omniview.pluginsdk.InformerStateEvent
+	(*InformerConnectionSummary)(nil),      // 6: com.omniview.pluginsdk.InformerConnectionSummary
+	(*GetInformerStateRequest)(nil),        // 7: com.omniview.pluginsdk.GetInformerStateRequest
+	(*EnsureInformerRequest)(nil),          // 8: com.omniview.pluginsdk.EnsureInformerRequest
+	(*InformerEvent)(nil),                  // 9: com.omniview.pluginsdk.InformerEvent
+	(*InformerAddEvent)(nil),               // 10: com.omniview.pluginsdk.InformerAddEvent
+	(*InformerUpdateEvent)(nil),            // 11: com.omniview.pluginsdk.InformerUpdateEvent
+	(*InformerDeleteEvent)(nil),            // 12: com.omniview.pluginsdk.InformerDeleteEvent
+	nil,                                    // 13: com.omniview.pluginsdk.InformerConnectionSummary.ResourcesEntry
+	nil,                                    // 14: com.omniview.pluginsdk.InformerConnectionSummary.ResourceCountsEntry
+	(*ResourceError)(nil),                  // 15: com.omniview.pluginsdk.ResourceError
+	(*structpb.Struct)(nil),                // 16: google.protobuf.Struct
 }
 var file_proto_resource_informer_proto_depIdxs = []int32{
-	4, // 0: com.omniview.pluginsdk.InformerEvent.add:type_name -> com.omniview.pluginsdk.InformerAddEvent
-	5, // 1: com.omniview.pluginsdk.InformerEvent.update:type_name -> com.omniview.pluginsdk.InformerUpdateEvent
-	6, // 2: com.omniview.pluginsdk.InformerEvent.delete:type_name -> com.omniview.pluginsdk.InformerDeleteEvent
-	7, // 3: com.omniview.pluginsdk.InformerAddEvent.data:type_name -> google.protobuf.Struct
-	7, // 4: com.omniview.pluginsdk.InformerUpdateEvent.old_data:type_name -> google.protobuf.Struct
-	7, // 5: com.omniview.pluginsdk.InformerUpdateEvent.new_data:type_name -> google.protobuf.Struct
-	7, // 6: com.omniview.pluginsdk.InformerDeleteEvent.data:type_name -> google.protobuf.Struct
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	1,  // 0: com.omniview.pluginsdk.InformerStateEvent.state:type_name -> com.omniview.pluginsdk.InformerResourceState
+	15, // 1: com.omniview.pluginsdk.InformerStateEvent.error:type_name -> com.omniview.pluginsdk.ResourceError
+	13, // 2: com.omniview.pluginsdk.InformerConnectionSummary.resources:type_name -> com.omniview.pluginsdk.InformerConnectionSummary.ResourcesEntry
+	14, // 3: com.omniview.pluginsdk.InformerConnectionSummary.resource_counts:type_name -> com.omniview.pluginsdk.InformerConnectionSummary.ResourceCountsEntry
+	10, // 4: com.omniview.pluginsdk.InformerEvent.add:type_name -> com.omniview.pluginsdk.InformerAddEvent
+	11, // 5: com.omniview.pluginsdk.InformerEvent.update:type_name -> com.omniview.pluginsdk.InformerUpdateEvent
+	12, // 6: com.omniview.pluginsdk.InformerEvent.delete:type_name -> com.omniview.pluginsdk.InformerDeleteEvent
+	5,  // 7: com.omniview.pluginsdk.InformerEvent.state:type_name -> com.omniview.pluginsdk.InformerStateEvent
+	16, // 8: com.omniview.pluginsdk.InformerAddEvent.data:type_name -> google.protobuf.Struct
+	16, // 9: com.omniview.pluginsdk.InformerUpdateEvent.old_data:type_name -> google.protobuf.Struct
+	16, // 10: com.omniview.pluginsdk.InformerUpdateEvent.new_data:type_name -> google.protobuf.Struct
+	16, // 11: com.omniview.pluginsdk.InformerDeleteEvent.data:type_name -> google.protobuf.Struct
+	1,  // 12: com.omniview.pluginsdk.InformerConnectionSummary.ResourcesEntry.value:type_name -> com.omniview.pluginsdk.InformerResourceState
+	13, // [13:13] is the sub-list for method output_type
+	13, // [13:13] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_proto_resource_informer_proto_init() }
@@ -525,23 +972,26 @@ func file_proto_resource_informer_proto_init() {
 	if File_proto_resource_informer_proto != nil {
 		return
 	}
-	file_proto_resource_informer_proto_msgTypes[3].OneofWrappers = []any{
+	file_proto_resource_common_proto_init()
+	file_proto_resource_informer_proto_msgTypes[7].OneofWrappers = []any{
 		(*InformerEvent_Add)(nil),
 		(*InformerEvent_Update)(nil),
 		(*InformerEvent_Delete)(nil),
+		(*InformerEvent_State)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_resource_informer_proto_rawDesc), len(file_proto_resource_informer_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   7,
+			NumEnums:      2,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_proto_resource_informer_proto_goTypes,
 		DependencyIndexes: file_proto_resource_informer_proto_depIdxs,
+		EnumInfos:         file_proto_resource_informer_proto_enumTypes,
 		MessageInfos:      file_proto_resource_informer_proto_msgTypes,
 	}.Build()
 	File_proto_resource_informer_proto = out.File

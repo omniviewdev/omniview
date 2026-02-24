@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 
 // Material-ui
-import Input, { type InputProps } from '@mui/joy/Input';
-import IconButton from '@mui/joy/IconButton';
+import { TextField } from '@omniviewdev/ui/inputs';
+import { IconButton } from '@omniviewdev/ui/buttons';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 
@@ -10,6 +10,7 @@ export type DebounceProps = {
   value: string;
   onChange: (value: string) => void;
   debounce?: number;
+  autoFocus?: boolean;
 };
 
 // A debounced input react component
@@ -18,8 +19,9 @@ export function DebouncedInput({
   onChange,
   debounce = 500,
   placeholder = 'Search',
+  autoFocus = true,
   ...rest
-}: InputProps & DebounceProps) {
+}: DebounceProps & Record<string, any>) {
   const [value, setValue] = useState(initialValue);
 
   const handleClear = () => {
@@ -41,20 +43,21 @@ export function DebouncedInput({
   }, [value]);
 
   return (
-    <Input
+    <TextField
       {...rest}
       value={value}
       size='sm'
       placeholder={placeholder}
       name='pod-search'
       type='text'
+      autoFocus={autoFocus}
       autoComplete='off'
       onChange={e => {
         setValue(e.target.value);
       }}
-      startDecorator={<SearchIcon fontSize='small' />}
+      startAdornment={<SearchIcon fontSize='small' />}
       // Clearing should not be debounced
-      endDecorator={value ? (
+      endAdornment={value ? (
         <IconButton
           sx={{ padding: 0 }}
           onClick={handleClear}

@@ -1,20 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Button,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  FormControl,
-  FormHelperText,
-  IconButton,
-  Input,
-  Modal,
-  ModalDialog,
-  Stack,
-  Typography,
-} from '@mui/joy';
+import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
+import { Button, IconButton } from '@omniviewdev/ui/buttons';
+import { TextField, FormField } from '@omniviewdev/ui/inputs';
+import { Modal } from '@omniviewdev/ui/overlays';
+import { Stack } from '@omniviewdev/ui/layout';
+import { Text } from '@omniviewdev/ui/typography';
 import { FOLDER_ICON_MAP, PRESET_COLORS, getFolderIcon } from '../../utils/folderIcons';
 
 export interface FolderDialogValues {
@@ -70,30 +61,26 @@ const FolderDialog: React.FC<Props> = ({
 
   return (
     <Modal open={open} onClose={onClose}>
-      <ModalDialog variant='outlined' size='sm' sx={{ minWidth: 380, maxWidth: 420 }}>
+      <Box sx={{ minWidth: 360, p: 1.5 }}>
         <form onSubmit={handleSubmit}>
-          <DialogTitle sx={{ fontSize: 'lg', pb: 1.5 }}>
+          <Text weight='semibold' size='lg' sx={{ mb: 1 }}>
             {mode === 'create' ? 'New Folder' : 'Edit Folder'}
-          </DialogTitle>
+          </Text>
           <Divider />
-          <DialogContent sx={{ gap: 2.5, pt: 1.5 }}>
-            <FormControl error={isDuplicate}>
-              <Typography level='body-sm' fontWeight={600} sx={{ mb: 0.5 }}>Name</Typography>
-              <Input
+          <Stack gap={1.5} sx={{ pt: 1.5 }}>
+            <FormField label='Name' error={isDuplicate ? 'A folder with this name already exists' : undefined}>
+              <TextField
                 autoFocus
                 size='sm'
                 placeholder='e.g. Production Suite'
                 value={name}
-                onChange={e => setName(e.target.value)}
+                onChange={e => setName(e)}
               />
-              {isDuplicate && (
-                <FormHelperText>A folder with this name already exists</FormHelperText>
-              )}
-            </FormControl>
+            </FormField>
 
-            <Stack gap={1}>
-              <Typography level='body-sm' fontWeight={600}>Color</Typography>
-              <Stack direction='row' gap={1} flexWrap='wrap' sx={{ p: 0.5 }}>
+            <Stack gap={0.75}>
+              <Text weight='semibold' size='sm'>Color</Text>
+              <Stack direction='row' gap={0.75} flexWrap='wrap'>
                 {PRESET_COLORS.map(c => (
                   <Box
                     key={c}
@@ -114,8 +101,8 @@ const FolderDialog: React.FC<Props> = ({
               </Stack>
             </Stack>
 
-            <Stack gap={1}>
-              <Typography level='body-sm' fontWeight={600}>Icon</Typography>
+            <Stack gap={0.75}>
+              <Text weight='semibold' size='sm'>Icon</Text>
               <Box
                 sx={{
                   display: 'grid',
@@ -129,7 +116,7 @@ const FolderDialog: React.FC<Props> = ({
                     <IconButton
                       key={key}
                       size='sm'
-                      variant={icon === key ? 'soft' : 'plain'}
+                      emphasis={icon === key ? 'soft' : 'ghost'}
                       color={icon === key ? 'primary' : 'neutral'}
                       onClick={() => setIcon(key)}
                       sx={{ aspectRatio: 1 }}
@@ -140,11 +127,11 @@ const FolderDialog: React.FC<Props> = ({
                 })}
               </Box>
             </Stack>
-          </DialogContent>
-          <DialogActions>
+          </Stack>
+          <Stack direction='row' justifyContent='flex-end' gap={1} sx={{ mt: 1.5 }}>
             {mode === 'edit' && onDelete && (
               <Button
-                variant='plain'
+                emphasis='ghost'
                 color='danger'
                 onClick={onDelete}
                 sx={{ mr: 'auto' }}
@@ -152,15 +139,15 @@ const FolderDialog: React.FC<Props> = ({
                 Delete
               </Button>
             )}
-            <Button type='submit' variant='solid' color='primary' disabled={!canSubmit}>
-              {mode === 'create' ? 'Create' : 'Save'}
-            </Button>
-            <Button variant='plain' color='neutral' onClick={onClose}>
+            <Button emphasis='ghost' color='neutral' onClick={onClose}>
               Cancel
             </Button>
-          </DialogActions>
+            <Button type='submit' emphasis='solid' color='primary' disabled={!canSubmit}>
+              {mode === 'create' ? 'Create' : 'Save'}
+            </Button>
+          </Stack>
         </form>
-      </ModalDialog>
+      </Box>
     </Modal>
   );
 };

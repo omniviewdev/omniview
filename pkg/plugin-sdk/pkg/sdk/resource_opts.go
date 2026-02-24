@@ -42,8 +42,22 @@ type ResourcePluginOpts[ClientT any] struct {
 	// a specific definition.
 	DefaultResourceDefinition types.ResourceDefinition
 
+	// SyncPolicies maps resource keys to their sync policy.
+	// Resources not in this map default to SyncOnConnect.
+	SyncPolicies map[string]types.InformerSyncPolicy
+
 	// CreateInformerFunc creates an InformerHandle for a given connection client. If nil, informers are disabled.
 	CreateInformerFunc types.CreateInformerHandleFunc[ClientT]
+
+	// SchemaFunc is an optional connection-level schema provider. When set, it is called
+	// with the connection client to return editor schemas (e.g., OpenAPI specs from a K8s cluster).
+	// These are merged with any per-resourcer schemas from SchemaResourcer implementations.
+	SchemaFunc func(*pkgtypes.PluginContext, *ClientT) ([]types.EditorSchema, error)
+
+	// ErrorClassifier is an optional function that classifies raw errors from
+	// resource operations into structured ResourceOperationError values.
+	// When set, the gRPC server calls it before falling back to a generic INTERNAL error.
+	ErrorClassifier func(error) error
 
 	// LayoutOpts allows for customizing the layout within the UI
 	LayoutOpts *types.LayoutOpts

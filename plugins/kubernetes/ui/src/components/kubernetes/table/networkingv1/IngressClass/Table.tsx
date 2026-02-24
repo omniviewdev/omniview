@@ -6,8 +6,8 @@ import { ColumnDef } from '@tanstack/react-table'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuCircleCheck, LuCloudCog, LuCode, LuSquareChartGantt, LuTrash } from 'react-icons/lu'
-import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
+import { LuCircleCheck, LuCloudCog, LuTrash } from 'react-icons/lu'
+import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import IngressClassSidebar from './Sidebar'
 
 const resourceKey = 'networking.k8s.io/v1::IngressClass'
@@ -59,18 +59,7 @@ const IngressClassTable: React.FC = () => {
   const drawer: DrawerComponent<IngressClass> = React.useMemo(() => ({
     title: resourceKey,
     icon: <LuCloudCog />,
-    views: [
-      {
-        title: 'Overview',
-        icon: <LuSquareChartGantt />,
-        component: (ctx) => <IngressClassSidebar ctx={ctx} />,
-      },
-      {
-        title: 'Editor',
-        icon: <LuCode />,
-        component: (ctx) => <BaseEditorPage data={ctx.data} />,
-      },
-    ],
+    views: createStandardViews({ SidebarComponent: IngressClassSidebar }),
     actions: [
       {
         title: 'Delete',

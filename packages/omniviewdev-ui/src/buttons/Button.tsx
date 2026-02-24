@@ -16,7 +16,13 @@ export interface ButtonProps {
   loadingPosition?: 'start' | 'center' | 'end';
   disabled?: boolean;
   startIcon?: React.ReactNode;
+  /** Alias for startIcon */
+  startAdornment?: React.ReactNode;
+  /** Alias for startIcon (single icon shorthand) */
+  icon?: React.ReactNode;
   endIcon?: React.ReactNode;
+  /** Alias for endIcon */
+  endAdornment?: React.ReactNode;
   fullWidth?: boolean;
   onClick?: React.MouseEventHandler<HTMLButtonElement>;
   type?: 'button' | 'submit' | 'reset';
@@ -34,13 +40,18 @@ export default function Button({
   loadingPosition = 'center',
   disabled,
   startIcon,
+  startAdornment,
+  icon,
   endIcon,
+  endAdornment,
   fullWidth,
   onClick,
   type = 'button',
   href,
   sx,
 }: ButtonProps) {
+  const baseStartIcon = startIcon ?? startAdornment ?? icon;
+  const baseEndIcon = endIcon ?? endAdornment;
   const muiColor = toMuiColor(color) as any;
   const muiVariant = toMuiVariant(emphasis) as any;
   const muiSize = toMuiSize(size) as any;
@@ -48,8 +59,8 @@ export default function Button({
 
   const spinner = <CircularProgress size={size === 'xs' ? 12 : 16} color="inherit" />;
 
-  const resolvedStartIcon = loading && loadingPosition === 'start' ? spinner : startIcon;
-  const resolvedEndIcon = loading && loadingPosition === 'end' ? spinner : endIcon;
+  const resolvedStartIcon = loading && loadingPosition === 'start' ? spinner : baseStartIcon;
+  const resolvedEndIcon = loading && loadingPosition === 'end' ? spinner : baseEndIcon;
 
   return (
     <MuiButton

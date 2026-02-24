@@ -5,6 +5,7 @@ import (
 
 	"github.com/omniview/kubernetes/pkg/plugin/exec"
 	pluginlogs "github.com/omniview/kubernetes/pkg/plugin/logs"
+	pluginmetric "github.com/omniview/kubernetes/pkg/plugin/metric"
 	"github.com/omniview/kubernetes/pkg/plugin/networker"
 	"github.com/omniview/kubernetes/pkg/plugin/resource"
 	"github.com/omniviewdev/settings"
@@ -78,6 +79,27 @@ func main() {
 					},
 				},
 			},
+			{
+				ID:          "prometheus_service_name",
+				Label:       "Prometheus Service Name",
+				Description: "Override the Kubernetes service name for Prometheus (auto-detected by default)",
+				Type:        settings.Text,
+				Default:     "prometheus-server",
+			},
+			{
+				ID:          "prometheus_service_namespace",
+				Label:       "Prometheus Service Namespace",
+				Description: "Override the namespace where Prometheus is deployed (auto-detected by default)",
+				Type:        settings.Text,
+				Default:     "monitoring",
+			},
+			{
+				ID:          "prometheus_service_port",
+				Label:       "Prometheus Service Port",
+				Description: "The port on the Prometheus service for the HTTP API",
+				Type:        settings.Integer,
+				Default:     9090,
+			},
 		},
 	})
 
@@ -86,6 +108,7 @@ func main() {
 	exec.Register(plugin)
 	networker.Register(plugin)
 	pluginlogs.Register(plugin)
+	pluginmetric.Register(plugin)
 
 	// Serve the plugin
 	plugin.Serve()

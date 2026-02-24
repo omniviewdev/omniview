@@ -2,7 +2,10 @@ import MuiTooltip from '@mui/material/Tooltip';
 import Box from '@mui/material/Box';
 
 export interface TooltipProps {
-  title: React.ReactNode;
+  /** Tooltip content — `content` is an alias for `title` */
+  title?: React.ReactNode;
+  /** Alias for title */
+  content?: React.ReactNode;
   variant?: 'default' | 'rich' | 'code';
   placement?: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end';
   delay?: number;
@@ -11,11 +14,13 @@ export interface TooltipProps {
 
 export default function Tooltip({
   title,
+  content,
   variant = 'default',
   placement = 'top',
   delay,
   children,
 }: TooltipProps) {
+  const resolvedTitle = title ?? content ?? '';
   const tooltipContent =
     variant === 'code' ? (
       <Box
@@ -28,10 +33,10 @@ export default function Tooltip({
           borderRadius: '3px',
         }}
       >
-        {title}
+        {resolvedTitle}
       </Box>
     ) : variant === 'rich' ? (
-      <Box sx={{ p: 1, maxWidth: 320 }}>{title}</Box>
+      <Box sx={{ p: 1, maxWidth: 320 }}>{resolvedTitle}</Box>
     ) : (
       title
     );

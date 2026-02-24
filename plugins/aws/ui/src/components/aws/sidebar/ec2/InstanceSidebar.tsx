@@ -1,5 +1,5 @@
 import React from "react";
-import { Stack } from "@mui/joy";
+import { Stack } from "@omniviewdev/ui/layout";
 import MetadataSection from "../../../shared/sidebar/pages/overview/sections/MetadataSection";
 import DetailsCard from "../../../shared/DetailsCard";
 import NetworkingSection from "../sections/NetworkingSection";
