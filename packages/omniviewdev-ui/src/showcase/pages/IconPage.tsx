@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Box, Typography } from '@mui/material';
 
 import Section from '../helpers/Section';

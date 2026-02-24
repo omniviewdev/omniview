@@ -49,7 +49,7 @@ export function toMuiVariant(emphasis: Emphasis): string {
 // Size mapping
 // ---------------------------------------------------------------------------
 
-const muiSizeMap: Record<ComponentSize, string> = {
+const muiSizeMap: Record<ComponentSize, 'small' | 'medium' | 'large'> = {
   xs: 'small',
   sm: 'small',
   md: 'medium',
@@ -58,7 +58,7 @@ const muiSizeMap: Record<ComponentSize, string> = {
 };
 
 /** Maps our ComponentSize to a MUI size prop value */
-export function toMuiSize(size: ComponentSize): string {
+export function toMuiSize(size: ComponentSize): 'small' | 'medium' | 'large' {
   return muiSizeMap[size];
 }
 

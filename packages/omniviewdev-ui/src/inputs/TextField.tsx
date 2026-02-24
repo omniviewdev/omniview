@@ -69,7 +69,7 @@ export default function TextField({
   sx,
 }: TextFieldProps) {
   const [internal, setInternal] = useState(value);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   useEffect(() => {
     setInternal(value);

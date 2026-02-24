@@ -3,7 +3,7 @@ import { Box, Typography, Button, ButtonGroup } from '@mui/material';
 
 import Section from '../helpers/Section';
 import Example from '../helpers/Example';
-import { applyTheme, resetTheme, type OmniviewTheme } from '../../theme';
+import { resetTheme } from '../../theme';
 
 // ---------------------------------------------------------------------------
 // Data

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import MuiStack from '@mui/material/Stack';
 import type { StackProps as MuiStackProps } from '@mui/material/Stack';
 import Divider from '@mui/material/Divider';
-import type { SxProps, Theme } from '@mui/material/styles';
+
 
 export interface StackProps extends Omit<MuiStackProps, 'divider'> {
   /** Alias for spacing */

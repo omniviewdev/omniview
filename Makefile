@@ -15,6 +15,7 @@ packages:
 
 dev:
 	pnpm install
+	$(MAKE) packages
 	wails dev -loglevel Error
 
 dev-plugin:
