@@ -16,6 +16,7 @@ import Layout from '../layouts/resource';
 import { stringAvatar } from '../utils/color';
 import { LuCog } from 'react-icons/lu';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
+import { useStoredState } from '../components/shared/hooks/useStoredState';
 
 export default function AccountResourcesPage(): React.ReactElement {
   const { id = '' } = useParams<{ id: string }>();
@@ -23,6 +24,14 @@ export default function AccountResourcesPage(): React.ReactElement {
   const { connection } = useConnection({ pluginID: 'aws', connectionID: id });
   const { layout } = useSidebarLayout({ connectionID: id })
   const { location, navigate } = usePluginRouter();
+  const [savedExpandedState, setSavedExpandedState] = useStoredState<Record<string, boolean>>(
+    `aws-${id}-sidebar-expanded`,
+    {},
+  );
+
+  const handleExpandedChange = React.useCallback((state: Record<string, boolean>) => {
+    setSavedExpandedState(state);
+  }, [setSavedExpandedState]);
 
   const selected = location.pathname.split('/').pop();
 
@@ -78,6 +87,9 @@ export default function AccountResourcesPage(): React.ReactElement {
             selected={selected}
             onSelect={handleSelect}
             scrollable
+            animate={false}
+            initialExpandedState={savedExpandedState}
+            onExpandedChange={handleExpandedChange}
           />
         </Stack>
       </Layout.SideNav>

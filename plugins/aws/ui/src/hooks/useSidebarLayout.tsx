@@ -344,7 +344,6 @@ const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<NavSe
             id: `${groupId}__${section.label.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
             label: section.label,
             children: sectionItems,
-            defaultExpanded: true,
           } as NavMenuItem;
         })
         .filter((item): item is NavMenuItem => !!item);
@@ -356,7 +355,6 @@ const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<NavSe
           id: `${groupId}__other`,
           label: 'Other',
           children: uncategorized.sort(labelSort),
-          defaultExpanded: true,
         });
       }
     } else {
@@ -368,7 +366,6 @@ const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<NavSe
       label: groupInfo?.name || groupId.toUpperCase(),
       icon: groupIconMap[groupId] || undefined,
       children,
-      defaultExpanded: false,
     };
 
     // Determine category: prefer group-level mapping (unambiguous), fall back to kind-level
@@ -389,12 +386,12 @@ const calculateLayout = (data: Record<string, types.ResourceGroup>): Array<NavSe
     {
       title: '',
       items: [
-        ...(computeResources.length ? [{ id: 'compute', label: 'Compute', icon: <LuServer />, defaultExpanded: true, children: computeResources.flatMap(g => g.children || []).sort(labelSort).length > 0 ? computeResources.sort(labelSort) : [] } as NavMenuItem] : []),
-        ...(networkingResources.length ? [{ id: 'networking', label: 'Networking', icon: <LuNetwork />, defaultExpanded: true, children: networkingResources.sort(labelSort) } as NavMenuItem] : []),
-        ...(storageResources.length ? [{ id: 'storage', label: 'Storage', icon: <LuArchive />, defaultExpanded: true, children: storageResources.sort(labelSort) } as NavMenuItem] : []),
-        ...(databaseResources.length ? [{ id: 'database', label: 'Database', icon: <LuDatabase />, defaultExpanded: true, children: databaseResources.sort(labelSort) } as NavMenuItem] : []),
-        ...(securityResources.length ? [{ id: 'security', label: 'Security', icon: <LuShield />, defaultExpanded: true, children: securityResources.sort(labelSort) } as NavMenuItem] : []),
-        ...(managementResources.length ? [{ id: 'management', label: 'Management', icon: <LuActivity />, defaultExpanded: true, children: managementResources.sort(labelSort) } as NavMenuItem] : []),
+        ...(computeResources.length ? [{ id: 'compute', label: 'Compute', icon: <LuServer />, children: computeResources.flatMap(g => g.children || []).sort(labelSort).length > 0 ? computeResources.sort(labelSort) : [] } as NavMenuItem] : []),
+        ...(networkingResources.length ? [{ id: 'networking', label: 'Networking', icon: <LuNetwork />, children: networkingResources.sort(labelSort) } as NavMenuItem] : []),
+        ...(storageResources.length ? [{ id: 'storage', label: 'Storage', icon: <LuArchive />, children: storageResources.sort(labelSort) } as NavMenuItem] : []),
+        ...(databaseResources.length ? [{ id: 'database', label: 'Database', icon: <LuDatabase />, children: databaseResources.sort(labelSort) } as NavMenuItem] : []),
+        ...(securityResources.length ? [{ id: 'security', label: 'Security', icon: <LuShield />, children: securityResources.sort(labelSort) } as NavMenuItem] : []),
+        ...(managementResources.length ? [{ id: 'management', label: 'Management', icon: <LuActivity />, children: managementResources.sort(labelSort) } as NavMenuItem] : []),
       ]
     },
   ];

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Collapse from '@mui/material/Collapse';
@@ -15,8 +15,14 @@ export interface NavMenuProps {
   size?: ComponentSize;
   /** Make the menu scrollable within its container. */
   scrollable?: boolean;
-  /** Start all collapsible items expanded. Defaults to true. */
+  /** Start all collapsible items expanded. Defaults to false. */
   defaultExpanded?: boolean;
+  /** Animate expand/collapse transitions. Defaults to true. */
+  animate?: boolean;
+  /** Initial expanded state to merge over computed defaults (e.g. from persistence). */
+  initialExpandedState?: Record<string, boolean>;
+  /** Called whenever expanded state changes (for external persistence). */
+  onExpandedChange?: (state: Record<string, boolean>) => void;
   sx?: SxProps<Theme>;
 }
 
@@ -58,6 +64,29 @@ function getExplicitExpanded(sections: NavSection[]): Record<string, boolean> {
   return state;
 }
 
+/** Walk the section tree and return IDs of all ancestor items containing the target. */
+export function findAncestors(sections: NavSection[], targetId: string): string[] {
+  const path: string[] = [];
+
+  function walk(items: NavMenuItemType[]): boolean {
+    for (const item of items) {
+      if (item.id === targetId) return true;
+      if (item.children && item.children.length > 0) {
+        path.push(item.id);
+        if (walk(item.children)) return true;
+        path.pop();
+      }
+    }
+    return false;
+  }
+
+  for (const section of sections) {
+    if (walk(section.items)) return [...path];
+    path.length = 0;
+  }
+  return [];
+}
+
 function NavMenuItemComponent({
   item,
   depth,
@@ -66,6 +95,7 @@ function NavMenuItemComponent({
   fontSize,
   expandedState,
   onToggleExpanded,
+  animate,
 }: {
   item: NavMenuItemType;
   depth: number;
@@ -74,10 +104,29 @@ function NavMenuItemComponent({
   fontSize: number;
   expandedState: Record<string, boolean>;
   onToggleExpanded: (id: string) => void;
+  animate: boolean;
 }) {
   const isExpanded = expandedState[item.id] ?? false;
   const isSelected = selected === item.id;
   const hasChildren = item.children && item.children.length > 0;
+
+  const childContent = hasChildren && item.children && (
+    <>
+      {item.children.map((child) => (
+        <NavMenuItemComponent
+          key={child.id}
+          item={child}
+          depth={depth + 1}
+          selected={selected}
+          onSelect={onSelect}
+          fontSize={fontSize}
+          expandedState={expandedState}
+          onToggleExpanded={onToggleExpanded}
+          animate={animate}
+        />
+      ))}
+    </>
+  );
 
   return (
     <Box>
@@ -141,21 +190,10 @@ function NavMenuItemComponent({
         </Typography>
         {item.badge}
       </Box>
-      {hasChildren && item.children && (
-        <Collapse in={isExpanded} unmountOnExit>
-          {item.children.map((child) => (
-            <NavMenuItemComponent
-              key={child.id}
-              item={child}
-              depth={depth + 1}
-              selected={selected}
-              onSelect={onSelect}
-              fontSize={fontSize}
-              expandedState={expandedState}
-              onToggleExpanded={onToggleExpanded}
-            />
-          ))}
-        </Collapse>
+      {hasChildren && (
+        animate
+          ? <Collapse in={isExpanded} unmountOnExit>{childContent}</Collapse>
+          : isExpanded ? childContent : null
       )}
     </Box>
   );
@@ -176,7 +214,10 @@ export default function NavMenu({
   onSelect,
   size = 'md',
   scrollable,
-  defaultExpanded = true,
+  defaultExpanded = false,
+  animate = true,
+  initialExpandedState,
+  onExpandedChange,
   sx,
 }: NavMenuProps) {
   const fontSize = fontSizeMap[size];
@@ -186,20 +227,68 @@ export default function NavMenu({
     [sections, defaultExpanded],
   );
 
-  const [expandedState, setExpandedState] = useState<Record<string, boolean>>(computeExpanded);
+  const [expandedState, setExpandedState] = useState<Record<string, boolean>>(() => ({
+    ...computeExpanded,
+    ...(initialExpandedState ?? {}),
+  }));
 
-  // When sections change (e.g. async data load), merge new expandable items into state
+  // Notify parent of state changes
+  const onExpandedChangeRef = useRef(onExpandedChange);
+  onExpandedChangeRef.current = onExpandedChange;
+
+  const updateExpanded = useCallback((updater: (prev: Record<string, boolean>) => Record<string, boolean>) => {
+    setExpandedState((prev) => {
+      const next = updater(prev);
+      if (next !== prev) {
+        onExpandedChangeRef.current?.(next);
+      }
+      return next;
+    });
+  }, []);
+
+  // When sections change (e.g. async data load), merge new expandable items into state.
+  // Preserve existing state for known keys; only apply defaults for new keys.
   const prevSectionsRef = useRef(sections);
   useEffect(() => {
     if (prevSectionsRef.current !== sections) {
       prevSectionsRef.current = sections;
-      setExpandedState((prev) => ({ ...prev, ...computeExpanded }));
+      updateExpanded((prev) => {
+        const newDefaults = computeExpanded;
+        const merged = { ...prev };
+        let changed = false;
+        for (const key of Object.keys(newDefaults)) {
+          if (!(key in merged)) {
+            merged[key] = newDefaults[key];
+            changed = true;
+          }
+        }
+        return changed ? merged : prev;
+      });
     }
-  }, [sections, computeExpanded]);
+  }, [sections, computeExpanded, updateExpanded]);
 
-  const handleToggle = (id: string) => {
-    setExpandedState((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  // Auto-expand ancestors when selected item changes
+  useEffect(() => {
+    if (!selected) return;
+    const ancestors = findAncestors(sections, selected);
+    if (ancestors.length > 0) {
+      updateExpanded((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const id of ancestors) {
+          if (!next[id]) {
+            next[id] = true;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }
+  }, [selected, sections, updateExpanded]);
+
+  const handleToggle = useCallback((id: string) => {
+    updateExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, [updateExpanded]);
 
   const rootSx = scrollable ? { ...scrollableSx, ...sx as Record<string, unknown> } : sx;
 
@@ -234,6 +323,7 @@ export default function NavMenu({
               fontSize={fontSize}
               expandedState={expandedState}
               onToggleExpanded={handleToggle}
+              animate={animate}
             />
           ))}
         </Box>

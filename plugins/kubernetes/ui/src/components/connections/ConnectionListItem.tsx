@@ -90,7 +90,7 @@ const ConnectionListItem: React.FC<Props> = ({ id, name, description, avatar, la
    */
   const isConnected = () => {
     // compute from last refresh (timestamp) and expiry time (duration)
-    const refreshTime = new Date(last_refresh);
+    const refreshTime = new Date(last_refresh as unknown as string);
     // if we have no valid refresh time, we can't determine if the connection is connected, so assume we are
     if (refreshTime.toString() === 'Invalid Date') {
       console.log('Invalid Date for refresh time', last_refresh);

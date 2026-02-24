@@ -28,6 +28,7 @@ import { useClusterPreferences } from '../hooks/useClusterPreferences';
 // Icons
 import { LuCog } from 'react-icons/lu';
 import { useSidebarLayout } from '../hooks/useSidebarLayout';
+import { useStoredState } from '../components/shared/hooks/useStoredState';
 import ResourceCommandPalette from '../components/shared/ResourceCommandPalette';
 import SyncProgressDialog from '../components/shared/SyncProgressDialog';
 
@@ -41,6 +42,14 @@ export default function ClusterResourcesPage(): React.ReactElement {
   const { connectionOverrides } = useClusterPreferences('kubernetes');
   const { layout } = useSidebarLayout({ connectionID: id })
   const { location, navigate } = usePluginRouter();
+  const [savedExpandedState, setSavedExpandedState] = useStoredState<Record<string, boolean>>(
+    `kubernetes-${id}-sidebar-expanded`,
+    {},
+  );
+
+  const handleExpandedChange = React.useCallback((state: Record<string, boolean>) => {
+    setSavedExpandedState(state);
+  }, [setSavedExpandedState]);
   const { isFullySynced, summary } = useInformerState({ pluginID: 'kubernetes', connectionID: id });
 
   const { showSnackbar } = useSnackbar();
@@ -204,6 +213,9 @@ export default function ClusterResourcesPage(): React.ReactElement {
             selected={selected}
             onSelect={handleSelect}
             scrollable
+            animate={false}
+            initialExpandedState={savedExpandedState}
+            onExpandedChange={handleExpandedChange}
           />
         </Stack>
       </Layout.SideNav>

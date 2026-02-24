@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { ExpandableSections as UiExpandableSections } from '@omniviewdev/ui';
-import type { ExpandableSection as UiExpandableSection } from '@omniviewdev/ui';
+import type { ExpandableSectionItem as UiExpandableSection } from '@omniviewdev/ui';
 
 interface Props {
   sections: Array<ExpandableSection>;
