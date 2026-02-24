@@ -193,8 +193,8 @@ func main() {
 		Frameless:         false,
 		StartHidden:       false,
 		HideWindowOnClose: false,
-		//nolint:gomnd // signifies all black
-		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 255},
+		//nolint:gomnd // #0D1117 dark theme background
+		BackgroundColour: &options.RGBA{R: 13, G: 17, B: 23, A: 255},
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
 			Handler: NewFileLoader(log),

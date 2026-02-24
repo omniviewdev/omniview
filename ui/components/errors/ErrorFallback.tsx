@@ -64,7 +64,7 @@ export function FullPageErrorFallback({ error, resetErrorBoundary, boundary }: F
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        minHeight: '100%',
+        minHeight: '100vh',
         flex: 1,
         p: 4,
         bgcolor: 'background.body',

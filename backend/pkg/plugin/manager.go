@@ -48,6 +48,7 @@ const (
 	PluginInstallStartedEvent  = "plugin/install_started"
 	PluginInstallFinishedEvent = "plugin/install_finished"
 	PluginInstallErrorEvent    = "plugin/install_error"
+	PluginInitCompleteEvent    = "plugin/init_complete"
 )
 
 // Manager manages the lifecycle and registration of plugins. It is responsible
@@ -324,6 +325,8 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 		// just log for now
 		pm.logger.Error(err)
 	}
+
+	runtime.EventsEmit(pm.ctx, PluginInitCompleteEvent)
 
 	return nil
 }

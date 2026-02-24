@@ -1,3 +1,7 @@
+html, #root {
+  height: 100%;
+}
+
 .xterm {
   padding-left: 6px;
   padding-right: 6px;

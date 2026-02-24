@@ -18,6 +18,16 @@ export const usePluginManager = () => {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
+  // Listen for backend init_complete to immediately refresh the plugin list
+  // instead of waiting for the 2s poll interval.
+  React.useEffect(() => {
+    const cleanup = EventsOn('plugin/init_complete', () => {
+      console.debug('[usePluginManager] plugin/init_complete received');
+      void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
+    });
+    return () => cleanup();
+  }, [queryClient]);
+
   // === Watchers === //
   React.useEffect(() => {
     // Set up watchers for plugin reload and install events

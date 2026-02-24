@@ -73,7 +73,7 @@ export const RouteProvider = () => {
 
   if (!ready || !router) {
     console.debug('[RouteProvider] rendering PrimaryLoading', { ready, hasRouter: !!router });
-    return <PrimaryLoading />;
+    return <PrimaryLoading message="Preparing workspace..." />;
   }
 
   return <RouterProvider router={router} />;

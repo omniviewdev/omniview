@@ -160,12 +160,12 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
       });
 
       // Only transition to ready on the FIRST load — never set ready back to false.
-      // Don't transition if all plugins are deferred (waiting for dev servers).
+      // Dev plugins waiting for their Vite dev server should NOT block the
+      // initial ready transition — they'll load incrementally once ready.
       if (!ready) {
-        if (deferred.length === 0 || toLoad.length > 0) {
-          setReady(true);
-        } else {
-          console.debug('[PluginRegistry] all plugins deferred — staying on loading screen');
+        setReady(true);
+        if (deferred.length > 0 && toLoad.length === 0) {
+          console.debug('[PluginRegistry] all plugins deferred — will load incrementally');
         }
       } else if (toLoad.length - failures.length > 0) {
         // Incremental load added new plugins — invalidate the plugin list query
@@ -225,7 +225,7 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
   }, [plugins.data, allStates.data, showSnackbar]);
 
   if (!ready) {
-    return <PrimaryLoading />;
+    return <PrimaryLoading message="Loading plugins..." />;
   }
 
   return (
