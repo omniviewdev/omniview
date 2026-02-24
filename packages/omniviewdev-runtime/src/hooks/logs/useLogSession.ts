@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { useSnackbar } from '../snackbar/useSnackbar';
+import { createErrorHandler } from '../../errors/parseAppError';
 import { CreateSession, CloseSession } from '../../wailsjs/go/logs/Client';
 import { logs } from '../../wailsjs/go/models';
 import { useBottomDrawer } from '../drawer';
@@ -64,18 +65,14 @@ export const useLogs = ({ pluginID }: UseLogSessionOptions) => {
       });
       return session;
     },
-    onError(error: Error) {
-      showSnackbar(`Failed to start log session: ${error.message}`, 'error');
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to start log session'),
   });
 
   const closeSessionMutation = useMutation({
     mutationFn: async (sessionID: string) => {
       await CloseSession(sessionID);
     },
-    onError(error: Error) {
-      showSnackbar(`Failed to close log session: ${error.message}`, 'error');
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to close log session'),
   });
 
   return {

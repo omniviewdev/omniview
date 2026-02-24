@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
+import { parseAppError } from '../../errors/parseAppError';
 import { exec } from '../../wailsjs/go/models';
 import { CreateSession } from '../../wailsjs/go/exec/Client';
 import { useBottomDrawer } from '../drawer';
@@ -63,15 +64,15 @@ export const useExec = ({ pluginID }: UseResourceMutationsOptions) => {
           },
         );
       } catch (error) {
-        const msg = typeof error === 'string' ? error : (error as Error)?.message ?? String(error);
+        const appErr = parseAppError(error);
         // Mark tab as errored
         updateTab(
           { id: tempId },
           {
-            properties: { status: 'error', error: msg, pluginID, connectionID, opts: { ...opts } },
+            properties: { status: 'error', error: appErr.detail, pluginID, connectionID, opts: { ...opts } },
           },
         );
-        showSnackbar(`Failed to start session: ${msg}`, 'error');
+        showSnackbar(`Failed to start session: ${appErr.detail}`, 'error');
       }
     },
   })

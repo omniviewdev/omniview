@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar } from '@omniviewdev/runtime';
+import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
 
 // Underlying client
 import { SettingsClient } from '@omniviewdev/runtime/api';
@@ -29,9 +29,7 @@ export const usePluginSettings = ({ plugin }: PluginSettingsOptions) => {
       // TODO - invalidate each one individually
       await queryClient.invalidateQueries({ queryKey });
     },
-    onError(error) {
-      showSnackbar(`Failed to save ${plugin} plugin settings: ${error.toString()}`, 'error');
-    },
+    onError: createErrorHandler(showSnackbar, `Failed to save ${plugin} plugin settings`),
   });
 
   const settings = useQuery({

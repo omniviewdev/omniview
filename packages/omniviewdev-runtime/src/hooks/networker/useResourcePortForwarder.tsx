@@ -8,6 +8,7 @@ import {
   StartResourcePortForwardingSession,
 } from '../../wailsjs/go/networker/Client';
 import { useSnackbar } from '../snackbar';
+import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 /**
@@ -25,12 +26,12 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
       resource_id: resourceID,
       connection_id: connectionID,
     })).catch((e: unknown) => {
-      const msg = e instanceof Error ? e.message : typeof e === 'string' ? e : String(e);
+      const appErr = parseAppError(e);
       // "not found" means the plugin doesn't have the networker capability — not an error.
-      if (msg.includes('not found')) {
+      if (appErr.detail.includes('not found')) {
         return [];
       }
-      showSnackbar({ message: 'Failed to fetch port forward sessions', status: 'error', details: msg });
+      showSnackbar({ message: 'Failed to fetch port forward sessions', status: 'error', details: appErr.detail });
       return [];
     }),
     retry: false,
@@ -60,10 +61,7 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
       }
       return result
     },
-    onError(error: unknown) {
-      const msg = error instanceof Error ? error.message : typeof error === 'string' ? error : String(error);
-      showSnackbar({ message: 'Failed to start port forwarding session', status: 'error', details: msg });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to start port forwarding session'),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey }),
@@ -108,10 +106,7 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
 
   const closeMutation = useMutation({
     mutationFn: async ({ opts }: { opts: { sessionID: string } }) => ClosePortForwardSession(opts.sessionID),
-    onError(error: unknown) {
-      const msg = error instanceof Error ? error.message : typeof error === 'string' ? error : String(error);
-      showSnackbar({ message: 'Failed to close port forwarding session', status: 'error', details: msg });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to close port forwarding session'),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey }),

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
+import { createErrorHandler } from '../../errors/parseAppError';
 
 // Types
 import { types } from '../../wailsjs/go/models';
@@ -138,9 +139,7 @@ export const useResources = ({
 
       await queryClient.invalidateQueries({ queryKey });
     },
-    onError(error) {
-      showSnackbar(`Failed to create resource: ${error.message}`, 'error');
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to create resource'),
   });
 
   const resourceQuery = useQuery({

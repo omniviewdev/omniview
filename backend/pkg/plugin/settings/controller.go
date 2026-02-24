@@ -9,6 +9,7 @@ import (
 	pkgsettings "github.com/omniviewdev/settings"
 	"go.uber.org/zap"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -72,9 +73,11 @@ func (c *controller) OnPluginStart(
 	if !ok {
 		// get the type for for debugging/error
 		typeOfClient := reflect.TypeOf(raw).String()
-		err = fmt.Errorf(
-			"could not start plugin: expected SettingsProvider but got '%s'",
-			typeOfClient,
+		err = apperror.New(
+			apperror.TypePluginLoadFailed,
+			500,
+			"Plugin type mismatch",
+			fmt.Sprintf("Expected SettingsProvider but got '%s'.", typeOfClient),
 		)
 		logger.Error(err)
 		return err
@@ -194,7 +197,7 @@ func (c *controller) GetSetting(plugin, id string) (pkgsettings.Setting, error) 
 
 	client, ok := c.clients[plugin]
 	if !ok {
-		err := errors.New("plugin not found")
+		err := apperror.PluginNotFound(plugin)
 		logger.Error(err)
 		return pkgsettings.Setting{}, err
 	}
@@ -208,7 +211,7 @@ func (c *controller) SetSetting(plugin, id string, value any) error {
 
 	client, ok := c.clients[plugin]
 	if !ok {
-		err := errors.New("plugin not found")
+		err := apperror.PluginNotFound(plugin)
 		logger.Error(err)
 		return err
 	}
@@ -222,7 +225,7 @@ func (c *controller) SetSettings(plugin string, settings map[string]any) error {
 
 	client, ok := c.clients[plugin]
 	if !ok {
-		err := errors.New("plugin not found")
+		err := apperror.PluginNotFound(plugin)
 		logger.Error(err)
 		return err
 	}

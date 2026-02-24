@@ -13,6 +13,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
@@ -126,7 +127,7 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 	provider, ok := raw.(metric.Provider)
 	if !ok {
 		typeof := reflect.TypeOf(raw).String()
-		err = fmt.Errorf("could not start metric plugin: expected metric.Provider, got %s", typeof)
+		err = apperror.New(apperror.TypePluginLoadFailed, 500, "Plugin type mismatch", fmt.Sprintf("Expected metric.Provider but got '%s'.", typeof))
 		logger.Error(err)
 		return err
 	}
@@ -330,7 +331,7 @@ func (c *controller) Query(
 ) (*metric.QueryResponse, error) {
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return nil, fmt.Errorf("metric plugin %s not found", pluginID)
+		return nil, apperror.PluginNotFound(pluginID)
 	}
 
 	return client.Query(
@@ -398,7 +399,7 @@ func (c *controller) Subscribe(
 ) (string, error) {
 	inchan, ok := c.inChans[pluginID]
 	if !ok {
-		return "", fmt.Errorf("metric plugin %s not found", pluginID)
+		return "", apperror.PluginNotFound(pluginID)
 	}
 
 	subscriptionID := uuid.NewString()
@@ -430,14 +431,14 @@ func (c *controller) Unsubscribe(subscriptionID string) error {
 	sub, ok := c.subscriptions[subscriptionID]
 	if !ok {
 		c.mux.Unlock()
-		return fmt.Errorf("subscription %s not found", subscriptionID)
+		return apperror.New(apperror.TypeSessionNotFound, 404, "Subscription not found", fmt.Sprintf("Subscription '%s' was not found.", subscriptionID))
 	}
 	delete(c.subscriptions, subscriptionID)
 	c.mux.Unlock()
 
 	inchan, ok := c.inChans[sub.pluginID]
 	if !ok {
-		return fmt.Errorf("metric plugin %s not found", sub.pluginID)
+		return apperror.PluginNotFound(sub.pluginID)
 	}
 
 	inchan <- metric.StreamInput{

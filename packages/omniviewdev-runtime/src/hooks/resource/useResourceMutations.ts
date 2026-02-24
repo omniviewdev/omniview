@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
+import { parseAppError } from '../../errors/parseAppError';
 import { types } from '../../wailsjs/go/models';
 import { Create, Update, Delete } from '../../wailsjs/go/resource/Client';
 
@@ -72,8 +73,8 @@ export const useResourceMutations = ({ pluginID }: UseResourceMutationsOptions) 
     onSuccess: (_, { opts }) => {
       showSnackbar(`Resource ${opts.resourceID} created`, 'success');
     },
-    onError(error: Error, { opts }) {
-      showSnackbar(`Failed to create resource ${opts.resourceID}: ${error.message}`, 'error');
+    onError(error: unknown, { opts }) {
+      showSnackbar(`Failed to create resource ${opts.resourceID}: ${parseAppError(error).detail}`, 'error');
     },
   });
 
@@ -93,8 +94,8 @@ export const useResourceMutations = ({ pluginID }: UseResourceMutationsOptions) 
     onSuccess: (_, { opts }) => {
       showSnackbar(`Resource ${opts.resourceID} updated`, 'success');
     },
-    onError(error, { opts }) {
-      showSnackbar(`Failed to update resource ${opts.resourceID}: ${error.message}`, 'error');
+    onError(error: unknown, { opts }) {
+      showSnackbar(`Failed to update resource ${opts.resourceID}: ${parseAppError(error).detail}`, 'error');
     },
   });
 
@@ -115,8 +116,8 @@ export const useResourceMutations = ({ pluginID }: UseResourceMutationsOptions) 
     onSuccess: (_, { opts }) => {
       showSnackbar(`Resource ${opts.resourceID} deleted`, 'success');
     },
-    onError(error, { opts }) {
-      showSnackbar(`Failed to delete resource ${opts.resourceID}: ${error.message}`, 'error');
+    onError(error: unknown, { opts }) {
+      showSnackbar(`Failed to delete resource ${opts.resourceID}: ${parseAppError(error).detail}`, 'error');
     },
   });
 

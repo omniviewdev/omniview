@@ -124,6 +124,14 @@ func TestConfigMissing(t *testing.T) {
 	assert.Contains(t, appErr.Actions[0].Target, "developer")
 }
 
+func TestNotImplemented(t *testing.T) {
+	appErr := NotImplemented("Feature X", "Feature X is not yet supported.")
+	assert.Equal(t, TypeNotImplemented, appErr.Type)
+	assert.Equal(t, 501, appErr.Status)
+	assert.Equal(t, "Feature X", appErr.Title)
+	assert.Equal(t, "Feature X is not yet supported.", appErr.Detail)
+}
+
 func TestFromResourceOperationError(t *testing.T) {
 	tests := []struct {
 		name       string

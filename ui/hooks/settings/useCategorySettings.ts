@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar } from '@omniviewdev/runtime';
+import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
 
 // Underlying client
 import { SettingsProvider } from '@omniviewdev/runtime/api';
@@ -36,9 +36,7 @@ export const useCategorySettings = ({ category }: UseCategorySettingsOptions) =>
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       queryClient.refetchQueries({ queryKey: ['settings'] });
     },
-    onError(error) {
-      showSnackbar(`Failed to save settings: ${error}`, 'error');
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to save settings'),
   });
 
   return {

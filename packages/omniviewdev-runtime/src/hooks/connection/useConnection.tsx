@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { GetConnection, UpdateConnection, RemoveConnection, StartConnection, StopConnection } from '../../wailsjs/go/resource/Client';
 import { type types } from '../../wailsjs/go/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
+import { createErrorHandler } from '../../errors/parseAppError';
 
 type UseConnectionOptions = {
   /**
@@ -35,13 +36,7 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
         queryKey: ['EDITOR_SCHEMAS', pluginID, connectionID],
       });
     },
-    onError(error) {
-      showSnackbar({
-        message: 'Failed to start connection',
-        status: 'error',
-        details: typeof error === 'string' ? error : error?.message ?? String(error),
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to start connection'),
   });
 
   const { mutateAsync: stopConnection } = useMutation({
@@ -50,13 +45,7 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
       // update the cache
       queryClient.setQueryData(queryKey, data);
     },
-    onError(error) {
-      showSnackbar({
-        message: 'Failed to stop connection',
-        status: 'error',
-        details: typeof error === 'string' ? error : error?.message ?? String(error),
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to stop connection'),
   });
 
   const { mutateAsync: updateConnection } = useMutation({
@@ -70,13 +59,7 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
         (previous: types.Connection[] | undefined) => previous?.map(conn => conn.id === connectionID ? data : conn),
       );
     },
-    onError(error) {
-      showSnackbar({
-        message: 'Failed to update connection',
-        status: 'error',
-        details: typeof error === 'string' ? error : error?.message ?? String(error),
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to update connection'),
   });
 
   const { mutateAsync: deleteConnection } = useMutation({
@@ -90,13 +73,7 @@ export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) 
         (previous: types.Connection[] | undefined) => previous?.filter(conn => conn.id !== connectionID),
       );
     },
-    onError(error) {
-      showSnackbar({
-        message: 'Failed to remove connection',
-        status: 'error',
-        details: typeof error === 'string' ? error : error?.message ?? String(error),
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to remove connection'),
   });
 
   // === Queries === //

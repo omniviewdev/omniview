@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/terminal"
@@ -234,9 +235,9 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 	provider, ok := raw.(exec.Provider)
 	if !ok {
 		typeof := reflect.TypeOf(raw).String()
-		err = fmt.Errorf("could not start plugin: expected exec.Provider, got %s", typeof)
-		logger.Error(err)
-		return err
+		appErr := apperror.New(apperror.TypePluginLoadFailed, 500, "Plugin type mismatch", fmt.Sprintf("Expected exec.Provider but got '%s'.", typeof))
+		logger.Error(appErr)
+		return appErr
 	}
 
 	c.clients[meta.ID] = provider
@@ -395,7 +396,7 @@ func (c *controller) CreateSession(
 
 	client, ok := c.clients[plugin]
 	if !ok {
-		return nil, fmt.Errorf("plugin %s not found", plugin)
+		return nil, apperror.PluginNotFound(plugin)
 	}
 
 	session, err := client.CreateSession(
@@ -441,7 +442,7 @@ func (c *controller) GetSession(
 	c.logger.Debug("GetSession")
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return nil, fmt.Errorf("session %s not found", sessionID)
+		return nil, apperror.SessionNotFound(sessionID)
 	}
 
 	if index.local {
@@ -450,7 +451,7 @@ func (c *controller) GetSession(
 
 	client, ok := c.clients[index.pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin %s not found", index.pluginID)
+		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.GetSession(
 		c.getConnectedCtx(context.TODO(), index.pluginID, index.connectionID),
@@ -462,7 +463,7 @@ func (c *controller) AttachSession(sessionID string) (*exec.Session, []byte, err
 	c.logger.Debug("AttachSession")
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return nil, nil, fmt.Errorf("session %s not found", sessionID)
+		return nil, nil, apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.AttachSession(sessionID)
@@ -470,7 +471,7 @@ func (c *controller) AttachSession(sessionID string) (*exec.Session, []byte, err
 
 	client, ok := c.clients[index.pluginID]
 	if !ok {
-		return nil, nil, fmt.Errorf("plugin %s not found", index.pluginID)
+		return nil, nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.AttachSession(
 		c.getConnectedCtx(context.TODO(), index.pluginID, index.connectionID),
@@ -482,7 +483,7 @@ func (c *controller) DetachSession(sessionID string) (*exec.Session, error) {
 	c.logger.Debug("DetachSession")
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return nil, fmt.Errorf("session %s not found", sessionID)
+		return nil, apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.DetachSession(sessionID)
@@ -490,7 +491,7 @@ func (c *controller) DetachSession(sessionID string) (*exec.Session, error) {
 
 	client, ok := c.clients[index.pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin %s not found", index.pluginID)
+		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.DetachSession(
 		c.getConnectedCtx(context.TODO(), index.pluginID, index.connectionID),
@@ -504,7 +505,7 @@ func (c *controller) WriteSession(
 ) error {
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return fmt.Errorf("session %s not found", sessionID)
+		return apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.WriteSession(sessionID, data)
@@ -512,7 +513,7 @@ func (c *controller) WriteSession(
 
 	inchan, ok := c.inChans[index.pluginID]
 	if !ok {
-		return fmt.Errorf("session %s not found", sessionID)
+		return apperror.SessionNotFound(sessionID)
 	}
 	c.logger.Debug("Writing to session")
 	inchan <- exec.StreamInput{
@@ -527,7 +528,7 @@ func (c *controller) CloseSession(
 ) error {
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return fmt.Errorf("session %s not found", sessionID)
+		return apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.CloseSession(sessionID)
@@ -535,7 +536,7 @@ func (c *controller) CloseSession(
 
 	client, ok := c.clients[index.pluginID]
 	if !ok {
-		return fmt.Errorf("plugin %s not found", index.pluginID)
+		return apperror.PluginNotFound(index.pluginID)
 	}
 
 	return client.CloseSession(
@@ -550,14 +551,14 @@ func (c *controller) ResizeSession(
 ) error {
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return fmt.Errorf("session %s not found", sessionID)
+		return apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.ResizeSession(sessionID, rows, cols)
 	}
 	client, ok := c.clients[index.pluginID]
 	if !ok {
-		return fmt.Errorf("plugin %s not found", index.pluginID)
+		return apperror.PluginNotFound(index.pluginID)
 	}
 	return client.ResizeSession(
 		c.getConnectedCtx(context.TODO(), index.pluginID, index.connectionID),

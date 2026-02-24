@@ -112,6 +112,11 @@ func Cancelled() *AppError {
 	}
 }
 
+// NotImplemented creates a 501 error for features not yet implemented.
+func NotImplemented(title, detail string) *AppError {
+	return New(TypeNotImplemented, 501, title, detail)
+}
+
 // --- Domain-specific constructors ---
 
 // PluginNotFound creates a structured error for a missing plugin.

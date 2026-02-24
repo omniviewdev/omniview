@@ -6,6 +6,7 @@ import {
 } from '../../wailsjs/go/networker/Client';
 import { BrowserOpenURL, EventsOn } from '../../wailsjs/runtime/runtime';
 import { useSnackbar } from '../snackbar';
+import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
 
 const ALL_SESSIONS_KEY = ['networker', 'portforward', 'all-sessions'] as const;
 
@@ -21,9 +22,9 @@ export function usePortForwardSessions() {
     queryKey: [...ALL_SESSIONS_KEY],
     queryFn: async () =>
       ListAllPortForwardSessions().catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : typeof e === 'string' ? e : String(e);
+        const appErr = parseAppError(e);
         // Suppress "not found" — means no networker plugins are loaded
-        if (msg.includes('not found')) return [];
+        if (appErr.detail.includes('not found')) return [];
         throw e;
       }),
     retry: false,
@@ -52,10 +53,7 @@ export function usePortForwardSessions() {
 
   const closeMutation = useMutation({
     mutationFn: async (sessionID: string) => ClosePortForwardSession(sessionID),
-    onError(error: unknown) {
-      const msg = error instanceof Error ? error.message : typeof error === 'string' ? error : String(error);
-      showSnackbar({ message: 'Failed to close port forwarding session', status: 'error', details: msg });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to close port forwarding session'),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [...ALL_SESSIONS_KEY] });
     },

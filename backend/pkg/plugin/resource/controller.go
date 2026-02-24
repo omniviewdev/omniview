@@ -13,6 +13,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
 
@@ -253,12 +254,11 @@ func (c *controller) OnPluginStart(
 	if !ok {
 		// get the type for for debugging/error
 		typeOfClient := reflect.TypeOf(raw).String()
-		err = fmt.Errorf(
-			"could not start plugin: expected ResourceProvider but got '%s'",
-			typeOfClient,
+		return apperror.New(
+			apperror.TypePluginLoadFailed, 500,
+			"Plugin type mismatch",
+			fmt.Sprintf("Expected ResourceProvider but got '%s'.", typeOfClient),
 		)
-		logger.Error(err)
-		return err
 	}
 
 	c.clients[meta.ID] = resourceClient
@@ -372,7 +372,7 @@ func (c *controller) StartConnection(
 	c.logger.Debug("StartConnection")
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return types.ConnectionStatus{}, fmt.Errorf("plugin '%s' not found", pluginID)
+		return types.ConnectionStatus{}, apperror.PluginNotFound(pluginID)
 	}
 	ctx := c.unconnectedCtx()
 	conn, err := client.StartConnection(ctx, connectionID)
@@ -412,7 +412,7 @@ func (c *controller) StopConnection(pluginID, connectionID string) (types.Connec
 	client, ok := c.clients[pluginID]
 	if !ok {
 		log.Error("plugin not found")
-		return types.Connection{}, fmt.Errorf("plugin '%s' not found", pluginID)
+		return types.Connection{}, apperror.PluginNotFound(pluginID)
 	}
 	ctx := c.unconnectedCtx()
 	conn, err := client.StopConnection(ctx, connectionID)
@@ -440,7 +440,7 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 	client, ok := c.clients[pluginID]
 	if !ok {
 		log.Error("plugin not found")
-		return nil, fmt.Errorf("plugin '%s' not found", pluginID)
+		return nil, apperror.PluginNotFound(pluginID)
 	}
 
 	ctx := c.unconnectedCtx()
@@ -466,7 +466,7 @@ func (c *controller) ListConnections(pluginID string) ([]types.Connection, error
 
 	connections, ok := c.connections[pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin '%s' has no connections", pluginID)
+		return nil, apperror.New(apperror.TypeConnectionNotFound, 404, "No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	slices.SortFunc(connections,
 		func(a, b types.Connection) int {
@@ -486,18 +486,14 @@ func (c *controller) GetConnection(
 ) (types.Connection, error) {
 	connections, ok := c.connections[pluginID]
 	if !ok {
-		return types.Connection{}, fmt.Errorf("plugin '%s' has no connections", pluginID)
+		return types.Connection{}, apperror.New(apperror.TypeConnectionNotFound, 404, "No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	for _, conn := range connections {
 		if conn.ID == connectionID {
 			return conn, nil
 		}
 	}
-	return types.Connection{}, fmt.Errorf(
-		"connection '%s' not found for plugin '%s'",
-		connectionID,
-		pluginID,
-	)
+	return types.Connection{}, apperror.ConnectionNotFound(pluginID, connectionID)
 }
 
 func (c *controller) GetConnectionNamespaces(
@@ -506,12 +502,12 @@ func (c *controller) GetConnectionNamespaces(
 	c.logger.Debug("GetConnectionNamespaces")
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin '%s' not found", pluginID)
+		return nil, apperror.PluginNotFound(pluginID)
 	}
 
 	connections, ok := c.connections[pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin '%s' has no connections", pluginID)
+		return nil, apperror.New(apperror.TypeConnectionNotFound, 404, "No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	// find the connection
 	found := false
@@ -525,7 +521,7 @@ func (c *controller) GetConnectionNamespaces(
 	}
 
 	if !found {
-		return nil, fmt.Errorf("connection '%s' not found for plugin '%s'", connectionID, pluginID)
+		return nil, apperror.ConnectionNotFound(pluginID, connectionID)
 	}
 
 	ctx := c.connectedCtx(&connection)
@@ -549,7 +545,7 @@ func (c *controller) UpdateConnection(
 	c.logger.Debug("UpdateConnection")
 	connections, ok := c.connections[pluginID]
 	if !ok {
-		return types.Connection{}, fmt.Errorf("plugin '%s' has no connections", pluginID)
+		return types.Connection{}, apperror.New(apperror.TypeConnectionNotFound, 404, "No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	for i, conn := range connections {
 		if conn.ID == connection.ID {
@@ -557,18 +553,14 @@ func (c *controller) UpdateConnection(
 			return connection, nil
 		}
 	}
-	return types.Connection{}, fmt.Errorf(
-		"connection '%s' not found for plugin '%s'",
-		connection.ID,
-		pluginID,
-	)
+	return types.Connection{}, apperror.ConnectionNotFound(pluginID, connection.ID)
 }
 
 func (c *controller) RemoveConnection(pluginID, connectionID string) error {
 	c.logger.Debug("RemoveConnection")
 	connections, ok := c.connections[pluginID]
 	if !ok {
-		return fmt.Errorf("plugin '%s' has no connections", pluginID)
+		return apperror.New(apperror.TypeConnectionNotFound, 404, "No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	for i, conn := range connections {
 		if conn.ID == connectionID {
@@ -576,7 +568,7 @@ func (c *controller) RemoveConnection(pluginID, connectionID string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("connection '%s' not found for plugin '%s'", connectionID, pluginID)
+	return apperror.ConnectionNotFound(pluginID, connectionID)
 }
 
 // ================================== CONTEXT HELPERS ================================== //
@@ -596,15 +588,11 @@ func (c *controller) getClientConnection(
 ) (resourcetypes.ResourceProvider, types.Connection, error) {
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return nil, types.Connection{}, fmt.Errorf("plugin '%s' not found", pluginID)
+		return nil, types.Connection{}, apperror.PluginNotFound(pluginID)
 	}
 	conn, err := c.GetConnection(pluginID, connectionID)
 	if err != nil {
-		return nil, types.Connection{}, fmt.Errorf(
-			"connection '%s' not found for plugin '%s'",
-			connectionID,
-			pluginID,
-		)
+		return nil, types.Connection{}, err
 	}
 
 	return client, conn, nil
@@ -619,8 +607,6 @@ func (c *controller) Get(
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		err = fmt.Errorf("failed to call GET for connection: %w", err)
-		logger.Error(err)
 		return nil, err
 	}
 
@@ -637,8 +623,6 @@ func (c *controller) List(
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		err = fmt.Errorf("failed to call LIST for connection: %w", err)
-		logger.Error(err)
 		return nil, err
 	}
 
@@ -655,8 +639,6 @@ func (c *controller) Find(
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		err = fmt.Errorf("failed to call FIND for connection: %w", err)
-		logger.Error(err)
 		return nil, err
 	}
 
@@ -673,8 +655,6 @@ func (c *controller) Create(
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		err = fmt.Errorf("failed to call CREATE for connection: %w", err)
-		logger.Error(err)
 		return nil, err
 	}
 
@@ -691,8 +671,6 @@ func (c *controller) Update(
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		err = fmt.Errorf("failed to call UPDATE for connection: %w", err)
-		logger.Error(err)
 		return nil, err
 	}
 	ctx := c.connectedCtx(&conn)
@@ -708,8 +686,6 @@ func (c *controller) Delete(
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		err = fmt.Errorf("failed to call DELETE for connection: %w", err)
-		logger.Error(err)
 		return nil, err
 	}
 	ctx := c.connectedCtx(&conn)
@@ -722,8 +698,6 @@ func (c *controller) StartConnectionInformer(pluginID, connectionID string) erro
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		err = fmt.Errorf("failed to start informer for connection: %w", err)
-		logger.Error(err)
 		return err
 	}
 
@@ -737,8 +711,6 @@ func (c *controller) StopConnectionInformer(pluginID, connectionID string) error
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		err = fmt.Errorf("failed to stop informer for connection: %w", err)
-		logger.Error(err)
 		return err
 	}
 
@@ -768,7 +740,7 @@ func (c *controller) GetResourceGroup(
 	logger.Debug("GetResourceGroup")
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return resourcetypes.ResourceGroup{}, fmt.Errorf("plugin not found")
+		return resourcetypes.ResourceGroup{}, apperror.PluginNotFound(pluginID)
 	}
 	return client.GetResourceGroup(groupID)
 }
@@ -795,7 +767,7 @@ func (c *controller) GetResourceType(
 
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin not found")
+		return nil, apperror.PluginNotFound(pluginID)
 	}
 	return client.GetResourceType(resourceType)
 }
@@ -819,7 +791,7 @@ func (c *controller) GetResourceDefinition(
 
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return resourcetypes.ResourceDefinition{}, fmt.Errorf("plugin not found")
+		return resourcetypes.ResourceDefinition{}, apperror.PluginNotFound(pluginID)
 	}
 	return client.GetResourceDefinition(resourceType)
 }
@@ -831,7 +803,7 @@ func (c *controller) GetLayout(pluginID, layoutID string) ([]resourcetypes.Layou
 	logger.Debug("GetLayout")
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin not found")
+		return nil, apperror.PluginNotFound(pluginID)
 	}
 	return client.GetLayout(layoutID)
 }
@@ -841,7 +813,7 @@ func (c *controller) GetDefaultLayout(pluginID string) ([]resourcetypes.LayoutIt
 	logger.Debug("GetDefaultLayout")
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin not found")
+		return nil, apperror.PluginNotFound(pluginID)
 	}
 	return client.GetDefaultLayout()
 }
@@ -855,7 +827,7 @@ func (c *controller) SetLayout(
 	logger.Debug("SetLayout")
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return fmt.Errorf("plugin not found")
+		return apperror.PluginNotFound(pluginID)
 	}
 	return client.SetLayout(layoutID, layout)
 }
@@ -870,8 +842,6 @@ func (c *controller) GetEditorSchemas(
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		err = fmt.Errorf("failed to call GetEditorSchemas for connection: %w", err)
-		logger.Error(err)
 		return nil, err
 	}
 
@@ -889,8 +859,6 @@ func (c *controller) GetActions(
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		err = fmt.Errorf("failed to call GetActions for connection: %w", err)
-		logger.Error(err)
 		return nil, err
 	}
 
@@ -907,8 +875,6 @@ func (c *controller) ExecuteAction(
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		err = fmt.Errorf("failed to call ExecuteAction for connection: %w", err)
-		logger.Error(err)
 		return nil, err
 	}
 
@@ -926,7 +892,7 @@ func (c *controller) GetInformerState(
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get informer state: %w", err)
+		return nil, err
 	}
 
 	ctx := c.connectedCtx(&conn)
@@ -941,7 +907,7 @@ func (c *controller) EnsureInformerForResource(
 
 	client, conn, err := c.getClientConnection(pluginID, connectionID)
 	if err != nil {
-		return fmt.Errorf("failed to ensure informer for resource: %w", err)
+		return err
 	}
 
 	ctx := c.connectedCtx(&conn)

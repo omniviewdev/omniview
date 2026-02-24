@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/hashicorp/go-plugin"
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -125,7 +126,7 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 	provider, ok := raw.(networker.Provider)
 	if !ok {
 		typeof := reflect.TypeOf(raw).String()
-		err = fmt.Errorf("could not start plugin: expected networker.Provider, got %s", typeof)
+		err = apperror.New(apperror.TypePluginLoadFailed, 500, "Plugin type mismatch", fmt.Sprintf("Expected networker.Provider but got '%s'.", typeof))
 		logger.Error(err)
 		return err
 	}
@@ -220,12 +221,12 @@ func (c *controller) GetPortForwardSession(
 ) (*networker.PortForwardSession, error) {
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return nil, fmt.Errorf("session %s not found", sessionID)
+		return nil, apperror.SessionNotFound(sessionID)
 	}
 
 	provider, ok := c.clients[index.pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin %s not found", index.pluginID)
+		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 
 	return provider.GetPortForwardSession(
@@ -239,7 +240,7 @@ func (c *controller) ListPortForwardSessions(
 ) ([]*networker.PortForwardSession, error) {
 	provider, ok := c.clients[pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin %s not found", pluginID)
+		return nil, apperror.PluginNotFound(pluginID)
 	}
 
 	return provider.ListPortForwardSessions(
@@ -281,7 +282,7 @@ func (c *controller) FindPortForwardSessions(
 ) ([]*networker.PortForwardSession, error) {
 	provider, ok := c.clients[pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin %s not found", pluginID)
+		return nil, apperror.PluginNotFound(pluginID)
 	}
 
 	return provider.FindPortForwardSessions(
@@ -297,7 +298,7 @@ func (c *controller) StartResourcePortForwardingSession(
 ) (*networker.PortForwardSession, error) {
 	provider, ok := c.clients[pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin %s not found", pluginID)
+		return nil, apperror.PluginNotFound(pluginID)
 	}
 
 	session, err := provider.StartPortForwardSession(
@@ -325,12 +326,12 @@ func (c *controller) ClosePortForwardSession(
 ) (*networker.PortForwardSession, error) {
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return nil, fmt.Errorf("session %s does not exist", sessionID)
+		return nil, apperror.SessionNotFound(sessionID)
 	}
 
 	provider, ok := c.clients[index.pluginID]
 	if !ok {
-		return nil, fmt.Errorf("plugin %s not found", index.pluginID)
+		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 
 	session, err := provider.ClosePortForwardSession(

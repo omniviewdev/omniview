@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
@@ -187,9 +188,9 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 	provider, ok := raw.(logs.Provider)
 	if !ok {
 		typeof := reflect.TypeOf(raw).String()
-		err = fmt.Errorf("could not start log plugin: expected logs.Provider, got %s", typeof)
-		logger.Error(err)
-		return err
+		appErr := apperror.New(apperror.TypePluginLoadFailed, 500, "Plugin type mismatch", fmt.Sprintf("Expected logs.Provider but got '%s'.", typeof))
+		logger.Error(appErr)
+		return appErr
 	}
 
 	c.clients[meta.ID] = provider
@@ -309,7 +310,7 @@ func (c *controller) CreateSession(
 ) (*logs.LogSession, error) {
 	client, ok := c.clients[pluginID]
 	if !ok {
-		return nil, fmt.Errorf("log plugin %s not found", pluginID)
+		return nil, apperror.PluginNotFound(pluginID)
 	}
 
 	session, err := client.CreateSession(
@@ -334,12 +335,12 @@ func (c *controller) CreateSession(
 func (c *controller) GetSession(sessionID string) (*logs.LogSession, error) {
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return nil, fmt.Errorf("log session %s not found", sessionID)
+		return nil, apperror.SessionNotFound(sessionID)
 	}
 
 	client, ok := c.clients[index.pluginID]
 	if !ok {
-		return nil, fmt.Errorf("log plugin %s not found", index.pluginID)
+		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 
 	return client.GetSession(
@@ -366,12 +367,12 @@ func (c *controller) ListSessions() ([]*logs.LogSession, error) {
 func (c *controller) CloseSession(sessionID string) error {
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return fmt.Errorf("log session %s not found", sessionID)
+		return apperror.SessionNotFound(sessionID)
 	}
 
 	client, ok := c.clients[index.pluginID]
 	if !ok {
-		return fmt.Errorf("log plugin %s not found", index.pluginID)
+		return apperror.PluginNotFound(index.pluginID)
 	}
 
 	err := client.CloseSession(
@@ -399,12 +400,12 @@ func (c *controller) CloseSession(sessionID string) error {
 func (c *controller) SendCommand(sessionID string, cmd logs.LogStreamCommand) error {
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return fmt.Errorf("log session %s not found", sessionID)
+		return apperror.SessionNotFound(sessionID)
 	}
 
 	inchan, ok := c.inChans[index.pluginID]
 	if !ok {
-		return fmt.Errorf("log plugin %s not found", index.pluginID)
+		return apperror.PluginNotFound(index.pluginID)
 	}
 
 	inchan <- logs.StreamInput{
@@ -420,12 +421,12 @@ func (c *controller) UpdateSessionOptions(
 ) (*logs.LogSession, error) {
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return nil, fmt.Errorf("log session %s not found", sessionID)
+		return nil, apperror.SessionNotFound(sessionID)
 	}
 
 	client, ok := c.clients[index.pluginID]
 	if !ok {
-		return nil, fmt.Errorf("log plugin %s not found", index.pluginID)
+		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 
 	return client.UpdateSessionOptions(

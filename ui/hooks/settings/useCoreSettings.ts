@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar } from '@omniviewdev/runtime';
+import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
 
 // Underlying client
 import { SettingsProvider } from '@omniviewdev/runtime/api';
@@ -22,9 +22,7 @@ export const useSettingsProvider = () => {
       queryClient.invalidateQueries({ queryKey });
       queryClient.refetchQueries({ queryKey });
     },
-    onError(error) {
-      showSnackbar(`Failed to reload settings: ${error}`, 'error');
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to reload settings'),
   });
 
   const { mutateAsync: setSettings } = useMutation({
@@ -35,9 +33,7 @@ export const useSettingsProvider = () => {
       queryClient.invalidateQueries({ queryKey });
       queryClient.refetchQueries({ queryKey });
     },
-    onError(error) {
-      showSnackbar(`Failed to save settings: ${error}`, 'error');
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to save settings'),
   });
 
   const settings = useQuery({

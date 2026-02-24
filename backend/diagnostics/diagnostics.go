@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 // DiagnosticsClient provides a client to the UI to be able to record ui side logs,
@@ -58,11 +60,11 @@ func (c *DiagnosticsClient) ReadLog(logType string) (string, error) {
 	ctx := context.TODO()
 	switch logType {
 	case "app":
-		return "", fmt.Errorf("app log reading not yet supported")
+		return "", apperror.NotImplemented("App log reading", "App log reading is not yet supported.")
 	case "ui":
 		return c.UI.ReadLog(ctx, "ui")
 	}
-	return "", fmt.Errorf("unknown log type: %s", logType)
+	return "", apperror.New(apperror.TypeValidation, 422, "Unknown log type", fmt.Sprintf("Log type '%s' is not recognized. Valid types are: app, ui.", logType))
 }
 
 // StartTail starts tailing the log to the event stream
@@ -70,11 +72,11 @@ func (c *DiagnosticsClient) StartTail(logType string) error {
 	ctx := context.TODO()
 	switch logType {
 	case "app":
-		return fmt.Errorf("app log reading not yet supported")
+		return apperror.NotImplemented("App log reading", "App log reading is not yet supported.")
 	case "ui":
 		return c.UI.StartTail(ctx, "ui")
 	}
-	return fmt.Errorf("unknown log type: %s", logType)
+	return apperror.New(apperror.TypeValidation, 422, "Unknown log type", fmt.Sprintf("Log type '%s' is not recognized. Valid types are: app, ui.", logType))
 }
 
 // StopTail stops tailing the log to the event stream
@@ -82,9 +84,9 @@ func (c *DiagnosticsClient) StopTail(logType string) error {
 	ctx := context.TODO()
 	switch logType {
 	case "app":
-		return fmt.Errorf("app log reading not yet supported")
+		return apperror.NotImplemented("App log reading", "App log reading is not yet supported.")
 	case "ui":
 		return c.UI.StopTail(ctx, "ui")
 	}
-	return fmt.Errorf("unknown log type: %s", logType)
+	return apperror.New(apperror.TypeValidation, 422, "Unknown log type", fmt.Sprintf("Log type '%s' is not recognized. Valid types are: app, ui.", logType))
 }
