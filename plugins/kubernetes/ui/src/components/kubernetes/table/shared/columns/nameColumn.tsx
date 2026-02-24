@@ -8,6 +8,8 @@ export const nameColumn = <T extends { metadata?: { name?: string } }>(): Column
   enableSorting: true,
   enableHiding: false,
   size: 300,
+  minSize: 120,
+  maxSize: 800,
   meta: {
     flex: 1
   },

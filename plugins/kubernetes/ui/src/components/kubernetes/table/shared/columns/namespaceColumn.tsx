@@ -10,6 +10,8 @@ export const namespaceColumn = <T extends { metadata?: { namespace?: string } }>
   enableHiding: true,
   filterFn: namespaceFilter,
   size: 150,
+  minSize: 80,
+  maxSize: 400,
   cell: NamespaceCell,
 })
 

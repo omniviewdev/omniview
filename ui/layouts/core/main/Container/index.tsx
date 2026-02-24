@@ -1,4 +1,3 @@
-// import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Layout from '@/layouts/core/main';
 
@@ -9,61 +8,54 @@ import Box from '@mui/material/Box';
  * The main rendering container for a pane layout.
  */
 export default function Container() {
-  // const { numPanes, removePane } = usePanes();
-  // const { id } = usePane();
-  // const [showCloseButton, setShowCloseButton] = React.useState(false);
-
-
   return (
     <Box
       component='main'
       className='Container'
       sx={{
+        display: 'flex',
+        flexDirection: 'column',
         flex: 1,
         minWidth: 0,
-        position: 'relative',
-        height: 'calc(100dvh - var(--CoreLayoutHeader-height))',
-        maxHeight: 'calc(100dvh - var(--CoreLayoutHeader-height))',
-        overflow: 'auto',
-        gap: 1,
+        minHeight: 0,
+        overflow: 'hidden',
       }}
     >
-      <Box sx={{
-        display: 'flex', flexDirection: 'column', width: '100%', height: '100%',
-      }}>
-        <Layout.Sidebar />
+      {/* Fixed-position sidebar — does not affect flex layout */}
+      <Layout.Sidebar />
+
+      {/* Content area: fills remaining space next to the sidebar */}
+      <Box
+        sx={{
+          bgcolor: 'background.default',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: 0,
+          width: {
+            xs: '100%',
+            md: 'calc(100% - var(--CoreLayoutSidebar-width))',
+          },
+          ml: {
+            xs: 0,
+            md: 'var(--CoreLayoutSidebar-width)',
+          },
+        }}
+      >
         <Box
           sx={{
-            bgcolor: 'background.default',
-            height: 'calc(100vh - var(--CoreLayoutHeader-height))',
-            overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
+            overflow: 'hidden',
             flex: 1,
-            width: {
-              xs: '100%',
-              md: 'calc(100% - var(--CoreLayoutSidebar-width))',
-            },
-            ml: {
-              xs: 0,
-              md: 'var(--CoreLayoutSidebar-width)',
-            },
+            minHeight: 0,
           }}
         >
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              flex: 1,
-            }}
-          >
-            <Outlet />
-          </Box>
-          <Layout.BottomDrawer />
+          <Outlet />
         </Box>
+        <Layout.BottomDrawer />
       </Box>
     </Box>
   );
 }
-

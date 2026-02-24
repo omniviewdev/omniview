@@ -15,6 +15,7 @@ import { Heading } from '@omniviewdev/ui/typography';
 import {
   type ColumnDef,
   type ColumnFiltersState,
+  type ColumnSizingState,
   type SortingState,
   type VisibilityState,
   flexRender,
@@ -29,12 +30,15 @@ import get from 'lodash.get';
 // Project imports
 import ResourceTableBody from './ResourceTableBody'
 import { useResources, DrawerComponent } from '@omniviewdev/runtime';
-import { LuCircleAlert } from 'react-icons/lu';
+import { LuCircleAlert, LuColumns3 } from 'react-icons/lu';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import Tooltip from '@mui/material/Tooltip';
 import { plural } from '../../../utils/language';
 import { DebouncedInput } from '../../tables/DebouncedInput';
 import NamespaceSelect from '../../tables/NamespaceSelect';
 import ColumnFilter from '../../tables/ColumnFilter';
 import { getCommonPinningStyles } from './utils';
+import { useColumnSizeVars } from './useColumnSizeVars';
 import { ColumnMeta } from './types';
 import { useDynamicResourceColumns } from '../../tables/ColumnFilter/useDynamicResourceColumns';
 import { useStoredState } from '../hooks/useStoredState';
@@ -85,6 +89,30 @@ const StyledTable = styled('table')`
   width: 100%;
   border-collapse: collapse;
   -webkit-user-select: none;
+
+  .resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: 4px;
+    cursor: col-resize;
+    touch-action: none;
+    user-select: none;
+    opacity: 0;
+    background: var(--ov-border-default);
+    transition: opacity 0.15s ease;
+  }
+
+  th:hover .resize-handle,
+  .resize-handle.isResizing {
+    opacity: 1;
+  }
+
+  .resize-handle.isResizing {
+    background: var(--ov-accent-fg, #58a6ff);
+    opacity: 1;
+  }
 `
 
 export type Props<T = any> = {
@@ -114,6 +142,7 @@ const ResourceTableContainer: React.FC<Props> = ({
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
   const [columnVisibility, setColumnVisibility] = useStoredState<VisibilityState>(`kubernetes-${connectionID}-${resourceKey}-column-visibility`, visibilityFromColumnDefs(columns));
   const [columnFilters, setColumnFilters] = useStoredState<ColumnFiltersState>(`kubernetes-${connectionID}-${resourceKey}-column-filters`, []);
+  const [columnSizing, setColumnSizing] = useStoredState<ColumnSizingState>(`kubernetes-${connectionID}-${resourceKey}-column-sizing`, {});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [search, setSearch] = useState<string>('');
 
@@ -183,23 +212,45 @@ const ResourceTableContainer: React.FC<Props> = ({
   const table = useReactTable({
     data: resources.data?.result || defaultData,
     columns: allColumns,
+    columnResizeMode: 'onChange',
     onSortingChange: setSorting,
     onColumnFiltersChange: handleColumnFiltersChange,
+    onColumnSizingChange: setColumnSizing,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onRowSelectionChange: setRowSelection,
     onColumnVisibilityChange: setColumnVisibility,
     getRowId: (row) => get(row, 'metadata.uid'),
+    defaultColumn: {
+      minSize: 40,
+      maxSize: 800,
+    },
     state: {
       sorting,
       columnFilters: effectiveColumnFilters,
       columnVisibility,
+      columnSizing,
       rowSelection,
       globalFilter: search,
       columnPinning: { left: ['select'], right: ['menu'] }
     },
   });
+
+  const columnSizeVars = useColumnSizeVars(table);
+
+  // Track which columns have been user-resized (changes infrequently)
+  const resizedColumnIds = useMemo(
+    () => JSON.stringify(Object.keys(columnSizing)),
+    [columnSizing]
+  );
+
+  const hasResizedColumns = Object.keys(columnSizing).length > 0;
+
+  const columnVisibilityKey = useMemo(
+    () => JSON.stringify({ columnVisibility, customCols: columnDefs.length }),
+    [columnVisibility, columnDefs.length]
+  );
 
   const parentRef = React.useRef<HTMLDivElement>(null);
 
@@ -369,6 +420,18 @@ const ResourceTableContainer: React.FC<Props> = ({
                 setNamespaces={setSharedNamespaces}
               />
             )}
+            {hasResizedColumns && (
+              <Tooltip title="Reset column widths" placement="bottom">
+                <IconButton
+                  emphasis='outline'
+                  color='neutral'
+                  onClick={() => setColumnSizing({})}
+                  sx={{ width: 28, height: 28 }}
+                >
+                  <LuColumns3 size={14} />
+                </IconButton>
+              </Tooltip>
+            )}
             <ColumnFilter
               labels={labels}
               setLabels={handleLabels}
@@ -388,6 +451,7 @@ const ResourceTableContainer: React.FC<Props> = ({
         >
         <StyledTable
           aria-labelledby={'table-title'}
+          style={{ ...columnSizeVars }}
         >
           <thead
             style={{
@@ -402,49 +466,63 @@ const ResourceTableContainer: React.FC<Props> = ({
                 key={headerGroup.id}
                 style={{ display: 'flex', width: '100%' }}
               >
-                {headerGroup.headers.map(header => (
-                  <th
-                    key={header.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      overflow: 'hidden',
-                      width: header.getSize(),
-                      padding: '0px 8px',
-                      height: 32,
-                      fontSize: '0.6875rem',
-                      fontWeight: 600,
-                      color: 'var(--ov-fg-muted)',
-                      backgroundColor: 'var(--ov-bg-surface)',
-                      borderBottom: '1px solid var(--ov-border-default)',
-                      whiteSpace: 'nowrap',
-                      userSelect: 'none',
-                      letterSpacing: '0.01em',
-                      ...((header.column.columnDef.meta as { flex?: number | undefined })?.flex && {
-                        minWidth: header.column.getSize(),
-                        flex: (header.column.columnDef.meta as { flex?: number | undefined })?.flex
-                      }),
-                      ...getCommonPinningStyles(header.column, true)
-                    }}
-                  >
-                    {header.isPlaceholder ? null : header.column.getCanSort()
-                      ? <TableSortLabel
-                          active={!!header.column.getIsSorted()}
-                          direction={header.column.getIsSorted() === 'desc' ? 'desc' : 'asc'}
-                          onClick={header.column.getToggleSortingHandler()}
-                          sx={{
-                            fontSize: 'inherit',
-                            fontWeight: 'inherit',
-                            color: 'inherit !important',
-                            '& .MuiTableSortLabel-icon': { fontSize: 12, opacity: 0.5 },
-                          }}
-                        >
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                        </TableSortLabel>
-                      : flexRender(header.column.columnDef.header, header.getContext())
-                    }
-                  </th>
-                ))}
+                {headerGroup.headers.map(header => {
+                  const flexMeta = (header.column.columnDef.meta as { flex?: number | undefined })?.flex;
+                  const isUserResized = header.column.id in (columnSizing ?? {});
+                  const applyFlex = flexMeta && !isUserResized;
+                  return (
+                    <th
+                      key={header.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        overflow: 'hidden',
+                        width: `calc(var(--header-${header.id}-size) * 1px)`,
+                        padding: '0px 8px',
+                        height: 32,
+                        fontSize: '0.6875rem',
+                        fontWeight: 600,
+                        color: 'var(--ov-fg-muted)',
+                        backgroundColor: 'var(--ov-bg-surface)',
+                        borderBottom: '1px solid var(--ov-border-default)',
+                        whiteSpace: 'nowrap',
+                        userSelect: 'none',
+                        letterSpacing: '0.01em',
+                        position: 'relative',
+                        ...(applyFlex && {
+                          minWidth: `calc(var(--header-${header.id}-size) * 1px)`,
+                          flex: flexMeta,
+                        }),
+                        ...getCommonPinningStyles(header.column, true)
+                      }}
+                    >
+                      {header.isPlaceholder ? null : header.column.getCanSort()
+                        ? <TableSortLabel
+                            active={!!header.column.getIsSorted()}
+                            direction={header.column.getIsSorted() === 'desc' ? 'desc' : 'asc'}
+                            onClick={header.column.getToggleSortingHandler()}
+                            sx={{
+                              fontSize: 'inherit',
+                              fontWeight: 'inherit',
+                              color: 'inherit !important',
+                              '& .MuiTableSortLabel-icon': { fontSize: 12, opacity: 0.5 },
+                            }}
+                          >
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </TableSortLabel>
+                        : flexRender(header.column.columnDef.header, header.getContext())
+                      }
+                      {header.column.getCanResize() && (
+                        <div
+                          onMouseDown={header.getResizeHandler()}
+                          onTouchStart={header.getResizeHandler()}
+                          onDoubleClick={() => header.column.resetSize()}
+                          className={`resize-handle ${table.getState().columnSizingInfo.isResizingColumn === header.column.id ? 'isResizing' : ''}`}
+                        />
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             ))}
           </thead>
@@ -452,24 +530,29 @@ const ResourceTableContainer: React.FC<Props> = ({
             <tbody style={{ display: 'grid' }}>
               {Array.from({ length: 8 }).map((_, i) => (
                 <tr key={`skel-${i}`} style={{ display: 'flex', width: '100%', height: 30 }}>
-                  {table.getVisibleLeafColumns().map((col) => (
-                    <td
-                      key={col.id}
-                      style={{
-                        width: col.getSize(),
-                        padding: '0px 8px',
-                        borderBottom: '1px solid var(--ov-border-muted)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        ...((col.columnDef.meta as { flex?: number | undefined })?.flex && {
-                          minWidth: col.getSize(),
-                          flex: (col.columnDef.meta as { flex?: number | undefined })?.flex,
-                        }),
-                      }}
-                    >
-                      <Skeleton variant="text" width="70%" sx={{ fontSize: '0.75rem' }} />
-                    </td>
-                  ))}
+                  {table.getVisibleLeafColumns().map((col) => {
+                    const flexMeta = (col.columnDef.meta as { flex?: number | undefined })?.flex;
+                    const isUserResized = col.id in (columnSizing ?? {});
+                    const applyFlex = flexMeta && !isUserResized;
+                    return (
+                      <td
+                        key={col.id}
+                        style={{
+                          width: `calc(var(--col-${col.id}-size) * 1px)`,
+                          padding: '0px 8px',
+                          borderBottom: '1px solid var(--ov-border-muted)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          ...(applyFlex && {
+                            minWidth: `calc(var(--col-${col.id}-size) * 1px)`,
+                            flex: flexMeta,
+                          }),
+                        }}
+                      >
+                        <Skeleton variant="text" width="70%" sx={{ fontSize: '0.75rem' }} />
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -479,7 +562,8 @@ const ResourceTableContainer: React.FC<Props> = ({
               tableContainerRef={parentRef}
               connectionID={connectionID}
               resourceKey={resourceKey}
-              columnVisibility={JSON.stringify({ columnVisibility, customCols: columnDefs.length })}
+              columnVisibility={columnVisibilityKey}
+              resizedColumnIds={resizedColumnIds}
               rowSelection={rowSelection}
               drawer={drawer}
               memoizer={memoizer}

@@ -3,7 +3,6 @@ import Divider from '@mui/material/Divider';
 import DialogContent from '@mui/material/DialogContent';
 import { Chip } from '@omniviewdev/ui';
 import { IconButton } from '@omniviewdev/ui/buttons';
-import { Tabs } from '@omniviewdev/ui/navigation';
 import { DrawerComponent, DrawerContext } from '@omniviewdev/runtime';
 import React from 'react';
 import { LuX } from 'react-icons/lu';
@@ -25,15 +24,6 @@ const RightDrawer: React.FC<Props> = ({
   onClose,
 }) => {
   const [currentView, setCurrentView] = React.useState<number>(0)
-
-  const handleChangeView = (_: React.SyntheticEvent | null, value: string | number | null) => {
-    if (!value) {
-      setCurrentView(0)
-    }
-    if (typeof value === 'number') {
-      setCurrentView(value)
-    }
-  }
 
   return (
     <Box
@@ -62,7 +52,7 @@ const RightDrawer: React.FC<Props> = ({
         {/** Left Side (title and information)*/}
         {typeof title === 'string'
           ? <Chip
-            icon={icon}
+            icon={React.isValidElement(icon) ? icon : undefined}
             size={'sm'}
             emphasis={'outline'}
             color='neutral'
@@ -107,17 +97,46 @@ const RightDrawer: React.FC<Props> = ({
           overflow: 'auto',
         }}
       >
-        <Tabs
-          size="sm"
-          value={String(currentView)}
-          onChange={(key) => handleChangeView(null, Number(key))}
-          tabs={views.map((view, idx) => ({
-            key: String(idx),
-            label: typeof view.title === 'string' ? view.title : 'View',
-            value: idx,
-            icon: view.icon,
-          }))}
-        />
+        {/* Lightweight tab bar — no MUI Tabs, no forced reflows */}
+        <div
+          role="tablist"
+          style={{
+            display: 'flex',
+            borderBottom: '1px solid var(--ov-border-default, rgba(255,255,255,0.12))',
+            flexShrink: 0,
+          }}
+        >
+          {views.map((view, idx) => (
+            <button
+              key={idx}
+              role="tab"
+              aria-selected={currentView === idx}
+              onClick={() => setCurrentView(idx)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '6px 12px',
+                fontSize: '0.75rem',
+                fontWeight: currentView === idx ? 600 : 400,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                border: 'none',
+                borderBottom: currentView === idx
+                  ? '2px solid var(--ov-accent-fg, #58a6ff)'
+                  : '2px solid transparent',
+                color: currentView === idx
+                  ? 'var(--ov-fg-default, rgba(255,255,255,0.87))'
+                  : 'var(--ov-fg-muted, rgba(255,255,255,0.5))',
+                background: 'transparent',
+                transition: 'color 0.15s, border-color 0.15s',
+              }}
+            >
+              {view.icon}
+              <span>{typeof view.title === 'string' ? view.title : 'View'}</span>
+            </button>
+          ))}
+        </div>
         <Box display={'flex'} flexDirection={'column'} flex={1} p={1} overflow={'auto'} minHeight={0}>
           <ErrorBoundary
             FallbackComponent={(props) => <PanelErrorFallback {...props} label={typeof views[currentView]?.title === 'string' ? views[currentView].title : 'View'} boundary="RightDrawer" />}

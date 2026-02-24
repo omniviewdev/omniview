@@ -7,6 +7,8 @@ export const ageColumn = <T extends { metadata?: { creationTimestamp?: string } 
   accessorKey: 'metadata.creationTimestamp',
   cell: ({ getValue }) => <AgeCell value={getValue() as string} />,
   size: 100,
+  minSize: 60,
+  maxSize: 200,
 })
 
 export default ageColumn

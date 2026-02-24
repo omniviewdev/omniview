@@ -323,7 +323,7 @@ export default function MetricsPanel({
         loading={loading}
         error={error}
         onRetry={onRetry}
-        skipAnimation={isAutoRefreshing}
+        skipAnimation
         yAxisPosition={yAxisPosition}
         xAxisPosition={xAxisPosition}
         margin={margin}

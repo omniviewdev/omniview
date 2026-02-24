@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-table';
 
 import { type Memoizer } from './types';
-import { type Virtualizer, type VirtualItem } from '@tanstack/react-virtual';
+import { type VirtualItem } from '@tanstack/react-virtual';
 import { getCommonPinningStyles } from './utils';
 
 export type Props<T = any> = {
@@ -16,8 +16,8 @@ export type Props<T = any> = {
   resourceID: string;
   connectionID: string;
   columnVisibility: string;
+  resizedColumnIds: string;
   virtualRow: VirtualItem;
-  rowVirtualizer: Virtualizer<HTMLDivElement, HTMLTableRowElement>;
   isSelected: boolean;
   onRowClick: (id: string, data: any) => void;
   /** The row data */
@@ -31,17 +31,15 @@ export type Props<T = any> = {
 export const RowContainer: React.FC<Props> = ({
   resourceID,
   virtualRow,
-  rowVirtualizer,
   isSelected,
+  resizedColumnIds,
   row,
   onRowClick,
 }) => {
-  // const { showResourceSidebar } = useRightDrawer();
-
-  // Use the provided ref callback to measure items
-  // const ref = React.useCallback((node: HTMLTableRowElement) => {
-  //   virtualizer.measureElement(node);
-  // }, [virtualizer, virtualRow.index]);
+  const resizedSet: Set<string> = React.useMemo(
+    () => new Set(JSON.parse(resizedColumnIds) as string[]),
+    [resizedColumnIds]
+  );
 
   const handleRowClick = (column: string) => {
     if (column !== 'select' && column !== 'menu') {
@@ -53,7 +51,6 @@ export const RowContainer: React.FC<Props> = ({
   return (
     <tr
       data-index={virtualRow.index}
-      ref={node => rowVirtualizer.measureElement(node)}
       key={row.id}
       data-state={isSelected ? 'selected' : undefined}
       style={{
@@ -73,34 +70,39 @@ export const RowContainer: React.FC<Props> = ({
         e.currentTarget.style.backgroundColor = isSelected ? 'var(--ov-accent-subtle)' : 'var(--ov-bg-base)';
       }}
     >
-      {row.getVisibleCells().map(cell => (
-        <td
-          key={cell.id}
-          onClick={() => {
-            handleRowClick(cell.column.id);
-          }}
-          style={{
-            ...((cell.column.columnDef.meta as { flex?: number } | undefined)?.flex && {
-              minWidth: cell.column.getSize(),
-              flex: (cell.column.columnDef.meta as { flex?: number | undefined })?.flex
-            }),
-            width: cell.column.getSize(),
-            display: 'flex',
-            overflow: 'hidden',
-            alignItems: 'center',
-            whiteSpace: 'nowrap',
-            textOverflow: 'ellipsis',
-            padding: '0px 8px',
-            fontSize: '0.75rem',
-            color: 'var(--ov-fg-default)',
-            borderBottom: '1px solid var(--ov-border-muted)',
-            lineHeight: '30px',
-            ...getCommonPinningStyles(cell.column, false)
-          }}
-        >
-          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-        </td>
-      ))}
+      {row.getVisibleCells().map(cell => {
+        const flexMeta = (cell.column.columnDef.meta as { flex?: number } | undefined)?.flex;
+        const isUserResized = resizedSet.has(cell.column.id);
+        const applyFlex = flexMeta && !isUserResized;
+        return (
+          <td
+            key={cell.id}
+            onClick={() => {
+              handleRowClick(cell.column.id);
+            }}
+            style={{
+              ...(applyFlex && {
+                minWidth: `calc(var(--col-${cell.column.id}-size) * 1px)`,
+                flex: flexMeta,
+              }),
+              width: `calc(var(--col-${cell.column.id}-size) * 1px)`,
+              display: 'flex',
+              overflow: 'hidden',
+              alignItems: 'center',
+              whiteSpace: 'nowrap',
+              textOverflow: 'ellipsis',
+              padding: '0px 8px',
+              fontSize: '0.75rem',
+              color: 'var(--ov-fg-default)',
+              borderBottom: '1px solid var(--ov-border-muted)',
+              lineHeight: '30px',
+              ...getCommonPinningStyles(cell.column, false)
+            }}
+          >
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </td>
+        );
+      })}
     </tr>
   );
 };

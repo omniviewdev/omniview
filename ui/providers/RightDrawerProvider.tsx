@@ -194,12 +194,14 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   }, [escFunction]);
 
   /**
-   * Show the resource sidebar with a specific component
+   * Show the resource sidebar with a specific component.
+   * The slide-in animation starts immediately; the heavy component tree
+   * mounts as a low-priority transition so the browser can paint first.
    */
   const openDrawer: RightDrawerContextType['openDrawer'] = useCallback((DrawerComponent, ctx) => {
+    setIsOpen(true);
     setContent(DrawerComponent);
     setContext(ctx);
-    setIsOpen(true);
   }, []);
 
   /**

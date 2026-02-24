@@ -27,17 +27,12 @@ const calcMemoKey = (data: any, memoizer?: Memoizer) => {
 const ResourceTableRow = React.memo(RowContainer, (prev, next) => {
   const prevMemoKey = calcMemoKey(prev.row.original, prev.memoizer);
   const nextMemoKey = calcMemoKey(next.row.original, next.memoizer);
-  if (prevMemoKey !== nextMemoKey) {
-    console.log(`recalculated ${prev.row.id}`, {
-      prevMemoKey,
-      nextMemoKey,
-    });
-  }
 
   return prevMemoKey === nextMemoKey
     && prev.virtualRow.start === next.virtualRow.start
     && prev.isSelected === next.isSelected
-    && prev.columnVisibility === next.columnVisibility;
+    && prev.columnVisibility === next.columnVisibility
+    && prev.resizedColumnIds === next.resizedColumnIds;
 });
 
 ResourceTableRow.displayName = 'ResourceTableRow';

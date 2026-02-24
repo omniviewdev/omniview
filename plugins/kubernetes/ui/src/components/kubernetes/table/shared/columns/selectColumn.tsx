@@ -7,6 +7,7 @@ export const selectColumn = <T extends { metadata?: { name?: string } }>(): Colu
   header: SelectHeader,
   cell: SelectCell,
   size: 34,
+  enableResizing: false,
   enableSorting: false,
   enableHiding: false,
 })

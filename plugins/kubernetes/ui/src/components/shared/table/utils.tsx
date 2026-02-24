@@ -17,7 +17,7 @@ export const getCommonPinningStyles = <T = any>(column: Column<T>, header: boole
     left: isPinned === 'left' ? `${column.getStart('left')}px` : undefined,
     right: isPinned === 'right' ? `${column.getAfter('right')}px` : undefined,
     position: isPinned ? 'sticky' : 'relative',
-    width: column.getSize(),
+    width: `calc(var(--col-${column.id}-size) * 1px)`,
     zIndex: isPinned ? 1 : 0,
   }
 

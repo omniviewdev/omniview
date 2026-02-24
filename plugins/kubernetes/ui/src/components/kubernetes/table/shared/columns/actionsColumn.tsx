@@ -13,6 +13,7 @@ export const actionsColumn = <T extends { metadata?: ObjectMeta }>({ connectionI
     namespace={row.original.metadata?.namespace ?? ''}
   />,
   size: 50,
+  enableResizing: false,
   enableSorting: false,
   enableHiding: false,
 })

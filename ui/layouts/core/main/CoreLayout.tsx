@@ -24,8 +24,7 @@ export default function CoreLayout() {
             minWidth: 0,
             height: 'calc(100dvh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height))',
             maxHeight: 'calc(100dvh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height))',
-            overflow: 'auto',
-            gap: 1,
+            overflow: 'hidden',
           }}
         >
           <Layout.Sidebar />

@@ -18,18 +18,32 @@ const tokenMap: Record<SemanticColor, string> = {
 };
 
 const semanticColors = new Set<string>(Object.keys(tokenMap));
+const colorCache = new Map<string, string>();
 
 /** Resolves a SemanticColor or raw CSS color string to a concrete color value. */
 export function resolveChartColor(color: SemanticColor | string): string {
+  const cached = colorCache.get(color);
+  if (cached !== undefined) return cached;
+
+  let result: string;
   if (semanticColors.has(color)) {
     const prop = tokenMap[color as SemanticColor];
     if (typeof document !== 'undefined') {
       const resolved = getComputedStyle(document.documentElement).getPropertyValue(prop).trim();
-      if (resolved) return resolved;
+      result = resolved || `var(${prop})`;
+    } else {
+      result = `var(${prop})`;
     }
-    return `var(${prop})`;
+  } else {
+    result = color;
   }
-  return color;
+  colorCache.set(color, result);
+  return result;
+}
+
+/** Flush cached color values (call on theme change). */
+export function clearColorCache(): void {
+  colorCache.clear();
 }
 
 /** Default ordered palette for chart series. */

@@ -25,7 +25,7 @@
     "@omniviewdev/ui": "workspace:*",
     "@tanstack/react-query": "^5.76.1",
     "@tanstack/react-table": "^8.21.3",
-    "@tanstack/react-virtual": "^3.13.8",
+    "@tanstack/react-virtual": "^3.13.19",
     "date-fns": "^3.6.0",
     "language-detect": "^1.1.0",
     "language-map": "^1.5.0",

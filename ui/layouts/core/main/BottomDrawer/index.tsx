@@ -250,8 +250,8 @@ const BottomDrawerContainer: React.FC = () => {
         ref={drawerRef}
         sx={{
           zIndex: 1290,
-          flex: 1,
           flexGrow: 0,
+          flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
           minHeight: minHeight,
