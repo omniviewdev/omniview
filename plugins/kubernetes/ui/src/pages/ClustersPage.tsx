@@ -2,6 +2,7 @@ import React from 'react';
 import Box from '@mui/material/Box';
 import MuiTabs from '@mui/material/Tabs';
 import MuiTab from '@mui/material/Tab';
+import Skeleton from '@mui/material/Skeleton';
 import { Stack } from '@omniviewdev/ui/layout';
 import { usePluginContext, useConnections, useConnection, useSnackbar } from '@omniviewdev/runtime';
 
@@ -224,7 +225,8 @@ export default function ClustersPage(): React.ReactElement {
     setDeleteTarget({ id, name });
   }, []);
 
-  const noConnections = (connections.data?.length ?? 0) === 0;
+  const isInitialLoading = connections.isLoading && !connections.data;
+  const noConnections = !isInitialLoading && (connections.data?.length ?? 0) === 0;
   const noResults = !noConnections && grouped.filteredCount === 0;
 
   return (
@@ -259,7 +261,9 @@ export default function ClustersPage(): React.ReactElement {
           hidden={activeTab !== 'hub'}
           sx={{ px: 1, py: 0.5, flex: 1, minHeight: 0, overflow: 'auto', display: activeTab === 'hub' ? 'block' : 'none' }}
         >
-          {noConnections ? (
+          {isInitialLoading ? (
+            <ConnectionsLoadingSkeleton />
+          ) : noConnections ? (
             <EmptyState variant='no-connections' />
           ) : (
             <ClusterHub
@@ -314,10 +318,11 @@ export default function ClustersPage(): React.ReactElement {
             onClearAll={handleClearFilters}
           />
 
-          {noConnections && <EmptyState variant='no-connections' />}
-          {noResults && <EmptyState variant='no-results' onClearFilters={handleClearFilters} />}
+          {isInitialLoading && <ConnectionsLoadingSkeleton />}
+          {!isInitialLoading && noConnections && <EmptyState variant='no-connections' />}
+          {!isInitialLoading && noResults && <EmptyState variant='no-results' onClearFilters={handleClearFilters} />}
 
-          {!noConnections && !noResults && (
+          {!isInitialLoading && !noConnections && !noResults && (
             <ConnectionTable
               grouped={grouped}
               groupBy={groupBy}
@@ -360,6 +365,16 @@ export default function ClustersPage(): React.ReactElement {
         />
       )}
     </Stack>
+  );
+}
+
+function ConnectionsLoadingSkeleton() {
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, p: 1 }}>
+      {[...Array(4)].map((_, i) => (
+        <Skeleton key={i} variant='rounded' height={48} sx={{ borderRadius: 1 }} />
+      ))}
+    </Box>
   );
 }
 

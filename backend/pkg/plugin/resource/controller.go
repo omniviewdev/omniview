@@ -267,8 +267,11 @@ func (c *controller) OnPluginStart(
 	stopChan := make(chan struct{})
 
 	// try to load the connections from the plugin, start connection watcher
-	if _, err := c.LoadConnections(meta.ID); err != nil {
+	if conns, err := c.LoadConnections(meta.ID); err != nil {
 		logger.Errorw("failed to load connections from plugin", "error", err)
+	} else if len(conns) > 0 {
+		eventKey := fmt.Sprintf("%s/connection/sync", meta.ID)
+		runtime.EventsEmit(c.ctx, eventKey, c.connections[meta.ID])
 	}
 	go c.listenForPluginConnectionEvents(
 		meta.ID,

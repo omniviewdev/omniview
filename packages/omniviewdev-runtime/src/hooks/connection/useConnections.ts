@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { LoadConnections, StartConnectionInformer, StopConnectionInformer } from '../../wailsjs/go/resource/Client';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { ListConnections, StartConnectionInformer, StopConnectionInformer } from '../../wailsjs/go/resource/Client';
 import { type types } from '../../wailsjs/go/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
@@ -13,6 +13,9 @@ type UseConnectionsOptions = {
   plugin: string;
 };
 
+/** Stable query key factory for connection list queries. */
+export const connectionListQueryKey = (plugin: string) => [plugin, 'connection', 'list'];
+
 /**
 * Get and retreive connections from a plugin's connection manager..
  */
@@ -20,7 +23,7 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
-  const queryKey = [plugin, 'connection', 'list'];
+  const queryKey = connectionListQueryKey(plugin);
 
   // === Mutations === //
   const { mutateAsync: startInformer } = useMutation({
@@ -56,7 +59,7 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
     queryKey,
     queryFn: async () => {
       try {
-        const result = await LoadConnections(plugin)
+        const result = await ListConnections(plugin)
         return result
       } catch (error) {
         console.log(error)
@@ -64,7 +67,9 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
       }
 
       return []
-    }
+    },
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   return {
