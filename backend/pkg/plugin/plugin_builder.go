@@ -1,13 +1,13 @@
 package plugin
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 )
 
@@ -56,7 +56,7 @@ func FindGoBinary() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("go binary not found in PATH or common locations")
+	return "", apperror.ConfigMissing("developer.gopath", "Go binary not found in PATH or common locations. Please configure the Go binary path in settings.")
 }
 
 // FindPnpmBinary looks for the Pnpm binary in a number of well-known paths in case it's not available
@@ -106,7 +106,7 @@ func FindPnpmBinary() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("pnpm binary not found in PATH or common locations")
+	return "", apperror.ConfigMissing("developer.pnpmpath", "pnpm binary not found in PATH or common locations. Please configure the pnpm binary path in settings.")
 }
 
 // FindNodeBinary tries to locate the Node.js binary across common install paths.
@@ -146,7 +146,7 @@ func FindNodeBinary() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("node.js binary not found in PATH or common locations")
+	return "", apperror.ConfigMissing("developer.nodepath", "Node.js binary not found in PATH or common locations. Please configure the Node.js binary path in settings.")
 }
 
 // PrepareCommandWithBinaries returns an exec.Cmd with extended PATH to include the directories of provided binary paths.

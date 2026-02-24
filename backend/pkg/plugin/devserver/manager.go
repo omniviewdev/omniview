@@ -8,6 +8,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	pkgsettings "github.com/omniviewdev/settings"
 )
 
@@ -141,13 +142,13 @@ func (m *DevServerManager) StartDevServer(pluginID string) (DevServerState, erro
 	// Look up the plugin to get DevPath.
 	devMode, devPath, err := m.pluginRef.GetDevPluginInfo(pluginID)
 	if err != nil {
-		return DevServerState{}, fmt.Errorf("plugin not found: %w", err)
+		return DevServerState{}, apperror.PluginNotFound(pluginID)
 	}
 	if !devMode {
-		return DevServerState{}, fmt.Errorf("plugin %q is not in dev mode", pluginID)
+		return DevServerState{}, apperror.New(apperror.TypeValidation, 422, "Not in dev mode", fmt.Sprintf("Plugin '%s' is not in dev mode.", pluginID))
 	}
 	if devPath == "" {
-		return DevServerState{}, fmt.Errorf("plugin %q has no DevPath set", pluginID)
+		return DevServerState{}, apperror.New(apperror.TypeValidation, 422, "Missing dev path", fmt.Sprintf("Plugin '%s' has no development path configured.", pluginID))
 	}
 
 	return m.startDevServer(pluginID, devPath)
@@ -163,7 +164,7 @@ func (m *DevServerManager) StartDevServerForPath(pluginID, devPath string) (DevS
 	l.Info("starting dev server for path")
 
 	if devPath == "" {
-		return DevServerState{}, fmt.Errorf("plugin %q has no devPath", pluginID)
+		return DevServerState{}, apperror.New(apperror.TypeValidation, 422, "Missing dev path", fmt.Sprintf("Plugin '%s' has no development path configured.", pluginID))
 	}
 
 	return m.startDevServer(pluginID, devPath)
@@ -186,7 +187,7 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 	port, err := m.ports.Allocate(pluginID)
 	if err != nil {
 		m.mu.Unlock()
-		return DevServerState{}, fmt.Errorf("port allocation failed: %w", err)
+		return DevServerState{}, apperror.Internal(err, "Port allocation failed")
 	}
 
 	// Resolve build tool paths from settings.
@@ -215,7 +216,7 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 		delete(m.instances, pluginID)
 		m.mu.Unlock()
 		m.ports.Release(port)
-		return DevServerState{}, fmt.Errorf("failed to start dev server: %w", err)
+		return DevServerState{}, apperror.Wrap(err, apperror.TypePluginBuildFailed, 500, "Failed to start dev server")
 	}
 
 	// Record the Vite process group ID so we can kill zombies on next startup
@@ -241,7 +242,7 @@ func (m *DevServerManager) StopDevServer(pluginID string) error {
 	inst, exists := m.instances[pluginID]
 	if !exists {
 		m.mu.Unlock()
-		return fmt.Errorf("no dev server running for plugin %q", pluginID)
+		return apperror.New(apperror.TypeValidation, 422, "No dev server running", fmt.Sprintf("No dev server is running for plugin '%s'.", pluginID))
 	}
 	delete(m.instances, pluginID)
 	m.mu.Unlock()

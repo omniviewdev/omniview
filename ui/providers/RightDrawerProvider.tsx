@@ -15,6 +15,7 @@ import {
   type RightDrawerContextType,
   type ShowResourceSidebarParams,
   useSnackbar,
+  showAppError,
 } from '@omniviewdev/runtime';
 import { ResourceClient } from '@omniviewdev/runtime/api';
 import { types } from '@omniviewdev/runtime/models';
@@ -252,9 +253,9 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
           pluginID: params.pluginID,
         },
       });
-    }).catch((err) => {
+    }).catch((err: unknown) => {
       log.error(err instanceof Error ? err : new Error(String(err)), { event: 'fetch_linked_resource', resourceID: params.resourceID });
-      showSnackbar(`Failed to load resource: ${params.resourceID}`, 'error');
+      showAppError(showSnackbar, err, `Failed to load resource: ${params.resourceID}`);
     });
   }, [closeDrawer, openDrawer]);
 

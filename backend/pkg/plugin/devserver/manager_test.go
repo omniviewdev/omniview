@@ -2,6 +2,7 @@ package devserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	pkgsettings "github.com/omniviewdev/settings"
 )
 
@@ -286,7 +288,11 @@ func TestManager_StopDevServer_NotRunning(t *testing.T) {
 
 	err := mgr.StopDevServer("nonexistent-plugin")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no dev server running")
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypeValidation, appErr.Type)
+	assert.Equal(t, 422, appErr.Status)
+	assert.Contains(t, appErr.Title, "No dev server running")
 }
 
 func TestManager_StartDevServer_AlreadyRunning(t *testing.T) {
@@ -320,7 +326,11 @@ func TestManager_StartDevServer_PluginNotFound(t *testing.T) {
 
 	_, err := mgr.StartDevServer("missing")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "plugin not found")
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
+	assert.Equal(t, 404, appErr.Status)
+	assert.Contains(t, appErr.Detail, "missing")
 }
 
 func TestManager_StartDevServer_NotDevMode(t *testing.T) {
@@ -329,7 +339,10 @@ func TestManager_StartDevServer_NotDevMode(t *testing.T) {
 
 	_, err := mgr.StartDevServer("non-dev")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not in dev mode")
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypeValidation, appErr.Type)
+	assert.Equal(t, 422, appErr.Status)
 }
 
 func TestManager_StartDevServer_EmptyDevPath(t *testing.T) {
@@ -338,7 +351,11 @@ func TestManager_StartDevServer_EmptyDevPath(t *testing.T) {
 
 	_, err := mgr.StartDevServer("empty-path")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no DevPath set")
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypeValidation, appErr.Type)
+	assert.Equal(t, 422, appErr.Status)
+	assert.Contains(t, appErr.Title, "Missing dev path")
 }
 
 func TestManager_Shutdown_WithInstances(t *testing.T) {
@@ -485,7 +502,11 @@ func TestManager_StartDevServer_PortExhaustion(t *testing.T) {
 
 	_, err := mgr.StartDevServer("new-plugin")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "port allocation failed")
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypeInternal, appErr.Type)
+	assert.Equal(t, 500, appErr.Status)
+	assert.Contains(t, appErr.Title, "Port allocation failed")
 }
 
 func TestManager_RestartDevServer_NotRunning(t *testing.T) {
@@ -495,7 +516,10 @@ func TestManager_RestartDevServer_NotRunning(t *testing.T) {
 	// Restart when not running: Stop returns error (ignored), Start returns error.
 	_, err := mgr.RestartDevServer("missing")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "plugin not found")
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
+	assert.Equal(t, 404, appErr.Status)
 }
 
 // ============================================================================
@@ -507,7 +531,11 @@ func TestManager_StartDevServerForPath_EmptyPath(t *testing.T) {
 
 	_, err := mgr.StartDevServerForPath("test-plugin", "")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no devPath")
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypeValidation, appErr.Type)
+	assert.Equal(t, 422, appErr.Status)
+	assert.Contains(t, appErr.Title, "Missing dev path")
 }
 
 func TestManager_StartDevServerForPath_AlreadyRunning(t *testing.T) {
@@ -545,5 +573,9 @@ func TestManager_StartDevServerForPath_PortExhaustion(t *testing.T) {
 
 	_, err := mgr.StartDevServerForPath("new-plugin", "/some/path")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "port allocation failed")
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypeInternal, appErr.Type)
+	assert.Equal(t, 500, appErr.Status)
+	assert.Contains(t, appErr.Title, "Port allocation failed")
 }

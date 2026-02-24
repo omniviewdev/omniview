@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 // ansiRegex matches ANSI escape sequences (colors, cursor movement, etc.).
@@ -81,13 +83,13 @@ func (vp *viteProcess) Start() error {
 
 	uiDir := filepath.Join(vp.devPath, "ui")
 	if _, err := os.Stat(uiDir); os.IsNotExist(err) {
-		return fmt.Errorf("plugin ui directory does not exist: %s", uiDir)
+		return apperror.New(apperror.TypeValidation, 422, "UI directory not found", fmt.Sprintf("Plugin UI directory does not exist: %s", uiDir))
 	}
 
 	// Resolve pnpm path.
 	pnpmPath := vp.buildOpts.PnpmPath
 	if pnpmPath == "" {
-		return fmt.Errorf("pnpm path not configured; set developer.pnpmpath in settings")
+		return apperror.ConfigMissing("developer.pnpmpath", "pnpm path is not configured. Please set developer.pnpmpath in settings.")
 	}
 
 	// Build the command: pnpm run dev --port <port> --strictPort --host 127.0.0.1
@@ -123,15 +125,15 @@ func (vp *viteProcess) Start() error {
 	// Capture stdout and stderr.
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("failed to create stdout pipe: %w", err)
+		return apperror.Internal(err, "Failed to create stdout pipe")
 	}
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
-		return fmt.Errorf("failed to create stderr pipe: %w", err)
+		return apperror.Internal(err, "Failed to create stderr pipe")
 	}
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start vite process: %w", err)
+		return apperror.Wrap(err, apperror.TypePluginBuildFailed, 500, "Failed to start Vite dev server")
 	}
 
 	vp.cmd = cmd

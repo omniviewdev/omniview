@@ -2,6 +2,7 @@ package devserver
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 func TestParseBuildErrors(t *testing.T) {
@@ -163,8 +166,12 @@ func TestTransferBinary_SourceMissing(t *testing.T) {
 	}
 
 	err := gw.transferBinary()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to open built binary")
+	require.Error(t, err)
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypeInternal, appErr.Type)
+	assert.Equal(t, 500, appErr.Status)
+	assert.Equal(t, "Failed to open built binary", appErr.Title)
 }
 
 func TestTransferBinary_DestDirCreated(t *testing.T) {
@@ -315,7 +322,15 @@ func TestRunGoBuild_EmptyGoPath(t *testing.T) {
 
 	err := gw.runGoBuild()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "go binary path not configured")
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypeSettingsMissingConfig, appErr.Type)
+	assert.Equal(t, 422, appErr.Status)
+	assert.Contains(t, appErr.Title, "developer.gopath")
+	// ConfigMissing should attach an "Open Settings" action
+	require.NotEmpty(t, appErr.Actions)
+	assert.Equal(t, "navigate", appErr.Actions[0].Type)
+	assert.Contains(t, appErr.Actions[0].Target, "developer")
 }
 
 func TestGoWatcherStart_WatchesNestedSubdirs(t *testing.T) {
@@ -477,6 +492,11 @@ func TestTransferBinary_ReadOnlyDestDir(t *testing.T) {
 	}
 
 	err := gw.transferBinary()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to create destination binary")
+	require.Error(t, err)
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypeInternal, appErr.Type)
+	assert.Equal(t, 500, appErr.Status)
+	assert.Equal(t, "Failed to create destination binary", appErr.Title)
+	assert.Contains(t, appErr.Detail, "permission denied")
 }

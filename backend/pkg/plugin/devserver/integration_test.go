@@ -5,6 +5,7 @@ package devserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -17,6 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 // ============================================================================
@@ -341,7 +344,11 @@ func TestIntegration_GoWatcher_Start_MissingPkgDir(t *testing.T) {
 
 	err := gw.Start()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "pkg/ directory does not exist")
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypeValidation, appErr.Type)
+	assert.Equal(t, 422, appErr.Status)
+	assert.Contains(t, appErr.Detail, "pkg/")
 }
 
 // ============================================================================

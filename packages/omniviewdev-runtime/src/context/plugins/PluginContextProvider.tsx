@@ -4,6 +4,7 @@ import { PluginContext } from './PluginContext';
 import { PluginValues } from '../../wailsjs/go/settings/Client';
 import { config } from '../../wailsjs/go/models';
 import { GetPluginMeta } from '../../wailsjs/go/plugin/pluginManager';
+import { parseAppError } from '../../errors/parseAppError';
 
 export type PluginContextProviderProps = {
   pluginId: string;
@@ -32,8 +33,9 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
         console.debug(`[PluginContextProvider] settings loaded for "${pluginId}"`, Object.keys(values));
         setSettings(values)
       })
-      .catch((error) => {
-        console.error(`[PluginContextProvider] error fetching settings for "${pluginId}":`, error);
+      .catch((error: unknown) => {
+        const appErr = parseAppError(error);
+        console.error(`[PluginContextProvider] error fetching settings for "${pluginId}":`, appErr.detail);
       })
   }
 
@@ -55,10 +57,10 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
         setMeta(values)
         setMetaLoaded(true)
       })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`[PluginContextProvider] error fetching meta for "${pluginId}":`, message);
-        setMetaError(message);
+      .catch((error: unknown) => {
+        const appErr = parseAppError(error);
+        console.error(`[PluginContextProvider] error fetching meta for "${pluginId}":`, appErr.detail);
+        setMetaError(appErr.detail);
         setMetaLoaded(false)
       })
   }

@@ -2,7 +2,7 @@ import React from 'react';
 import Box from '@mui/material/Box';
 import { ErrorBoundary } from 'react-error-boundary';
 
-import { PluginContextProvider } from '@omniviewdev/runtime';
+import { PluginContextProvider, parseAppError } from '@omniviewdev/runtime';
 import { Outlet, useLoaderData } from 'react-router-dom';
 import { clearPlugin, loadAndRegisterPlugin } from '../api/loader';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
@@ -52,8 +52,9 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
             setReloadKey(k => k + 1);
             console.debug(`[PluginRenderer] Go reload complete for "${data.pluginID}" — re-mounting`, { plugin: data.pluginID });
           })
-          .catch((error) => {
-            console.error(error instanceof Error ? error : new Error(String(error)), { plugin: data.pluginID, event: 'go_reload' });
+          .catch((error: unknown) => {
+            const appErr = parseAppError(error);
+            console.error(`[PluginRenderer] error reloading plugin ${data.pluginID}:`, appErr.detail);
           });
       }
     });

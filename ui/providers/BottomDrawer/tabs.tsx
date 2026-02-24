@@ -24,6 +24,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   type BottomDrawerTab,
   useBottomDrawer,
+  parseAppError,
 } from '@omniviewdev/runtime';
 
 // project imports
@@ -104,10 +105,9 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, isFullscreen, onMinimi
             );
           })
           .catch((err: unknown) => {
-            const msg = typeof err === 'string' ? err : (err as Error)?.message ?? String(err);
             updateTab(
               { id: tempId },
-              { properties: { status: 'error', error: msg } },
+              { properties: { status: 'error', error: parseAppError(err).detail } },
             );
             console.error(err);
           });
@@ -151,13 +151,12 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, isFullscreen, onMinimi
           );
         })
         .catch((err: unknown) => {
-          const msg = typeof err === 'string' ? err : (err as Error)?.message ?? String(err);
           updateTab(
             { id: tempId },
             {
               properties: {
                 status: 'error',
-                error: msg,
+                error: parseAppError(err).detail,
                 pluginID: plugin,
                 connectionID: connection,
                 opts: { ...opts },

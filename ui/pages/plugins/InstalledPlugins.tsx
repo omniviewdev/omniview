@@ -14,6 +14,7 @@ import { LuAtom, LuBox, LuGlobe } from 'react-icons/lu';
 
 // Hooks
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
+import { parseAppError } from '@omniviewdev/runtime';
 
 type Props = Record<string, unknown>;
 
@@ -28,7 +29,7 @@ const InstalledPlugins: React.FC<Props> = () => {
   }
 
   if (plugins.isError) {
-    return <div>Error: {plugins.error.message}</div>;
+    return <div>Error: {parseAppError(plugins.error).detail}</div>;
   }
 
   return (

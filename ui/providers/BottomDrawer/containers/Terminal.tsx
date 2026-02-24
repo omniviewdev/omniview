@@ -19,7 +19,7 @@ import log from '@/features/logger';
 import { bottomDrawerChannel } from '../events';
 import * as runtime from '@omniviewdev/runtime/runtime';
 import { Base64 } from 'js-base64';
-import { useSettings } from '@omniviewdev/runtime';
+import { useSettings, parseAppError } from '@omniviewdev/runtime';
 import type { BottomDrawerTab } from '@omniviewdev/runtime';
 import TerminalError, { type TerminalErrorInfo } from './TerminalError';
 import { getTerminalTheme } from './terminalThemes';
@@ -235,7 +235,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       const rows = event.rows;
       const cols = event.cols;
       ExecClient.ResizeSession(sessionId, rows, cols).catch((err: unknown) => {
-        log.error(err instanceof Error ? err : new Error(String(err)), { event: 'resize_session', sessionId });
+        log.error(new Error(parseAppError(err).detail), { event: 'resize_session', sessionId });
       });
     });
 
@@ -308,7 +308,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       try {
         await ExecClient.AttachSession(sessionId);
       } catch (e) {
-        log.error(e instanceof Error ? e : new Error(String(e)), { event: 'attach_session', sessionId });
+        log.error(new Error(parseAppError(e).detail), { event: 'attach_session', sessionId });
       }
     };
 
@@ -318,15 +318,12 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       terminal.onData(data => {
         ExecClient.WriteSession(sessionId, data)
           .catch((err: unknown) => {
-            if (err instanceof Error) {
-              log.error(err, { event: 'write_session', sessionId });
-              return;
-            }
+            log.error(new Error(parseAppError(err).detail), { event: 'write_session', sessionId });
           });
       });
 
-    }).catch((err) => {
-      log.error(err instanceof Error ? err : new Error(String(err)), { event: 'attach_session', sessionId });
+    }).catch((err: unknown) => {
+      log.error(new Error(parseAppError(err).detail), { event: 'attach_session', sessionId });
     });
 
 
@@ -360,10 +357,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       });
       ExecClient.DetachSession(sessionId).then(() => {
       }).catch((err: unknown) => {
-        if (err instanceof Error) {
-          log.error(err, { event: 'detach_session', sessionId });
-          return;
-        }
+        log.error(new Error(parseAppError(err).detail), { event: 'detach_session', sessionId });
       });
     };
   }, [sessionId]);

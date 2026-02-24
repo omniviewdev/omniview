@@ -12,6 +12,8 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 // ExternalConnection tracks a connection to an externally-managed plugin.
@@ -49,14 +51,14 @@ func NewExternalWatcher(
 ) (*ExternalWatcher, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %w", err)
+		return nil, apperror.Internal(err, "Failed to get home directory")
 	}
 
 	pluginDir := filepath.Join(homeDir, ".omniview", "plugins")
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create fsnotify watcher: %w", err)
+		return nil, apperror.Internal(err, "Failed to create file watcher")
 	}
 
 	return &ExternalWatcher{
@@ -77,13 +79,13 @@ func (ew *ExternalWatcher) Start(ctx context.Context) error {
 
 	// Ensure the plugin directory exists.
 	if err := os.MkdirAll(ew.pluginDir, 0755); err != nil {
-		return fmt.Errorf("failed to create plugin directory: %w", err)
+		return apperror.Internal(err, "Failed to create plugin directory")
 	}
 
 	// Watch each plugin subdirectory for .devinfo files.
 	entries, err := os.ReadDir(ew.pluginDir)
 	if err != nil {
-		return fmt.Errorf("failed to read plugin directory: %w", err)
+		return apperror.Internal(err, "Failed to read plugin directory")
 	}
 
 	for _, entry := range entries {
@@ -100,7 +102,7 @@ func (ew *ExternalWatcher) Start(ctx context.Context) error {
 
 	// Also watch the parent directory for new plugin directories.
 	if err := ew.watcher.Add(ew.pluginDir); err != nil {
-		return fmt.Errorf("failed to watch plugin base directory: %w", err)
+		return apperror.Internal(err, "Failed to watch plugin directory")
 	}
 
 	// Scan for existing .devinfo files (reconnect after IDE restart).
@@ -373,15 +375,15 @@ func readDevInfoFile(path string) (*DevInfoFile, error) {
 
 	var info DevInfoFile
 	if err := json.Unmarshal(data, &info); err != nil {
-		return nil, fmt.Errorf("invalid JSON in .devinfo: %w", err)
+		return nil, apperror.Wrap(err, apperror.TypeValidation, 422, "Invalid dev info")
 	}
 
 	// Basic validation.
 	if info.PID <= 0 {
-		return nil, fmt.Errorf("invalid PID: %d", info.PID)
+		return nil, apperror.New(apperror.TypeValidation, 422, "Invalid PID", fmt.Sprintf("Invalid PID: %d", info.PID))
 	}
 	if info.Addr == "" {
-		return nil, fmt.Errorf("missing addr field")
+		return nil, apperror.New(apperror.TypeValidation, 422, "Invalid dev info", "Missing addr field in dev info.")
 	}
 	if info.Protocol == "" {
 		info.Protocol = "grpc" // default

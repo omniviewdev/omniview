@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"go.uber.org/zap"
 )
 
@@ -80,7 +81,7 @@ func newGoWatcherProcess(
 func (gw *goWatcherProcess) Start() error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return fmt.Errorf("failed to create fsnotify watcher: %w", err)
+		return apperror.Internal(err, "Failed to create file watcher")
 	}
 	gw.watcher = watcher
 
@@ -88,7 +89,7 @@ func (gw *goWatcherProcess) Start() error {
 	pkgDir := filepath.Join(gw.devPath, "pkg")
 	if _, err := os.Stat(pkgDir); os.IsNotExist(err) {
 		watcher.Close()
-		return fmt.Errorf("plugin pkg/ directory does not exist: %s", pkgDir)
+		return apperror.New(apperror.TypeValidation, 422, "Plugin directory not found", fmt.Sprintf("Plugin pkg/ directory does not exist: %s", pkgDir))
 	}
 
 	watchCount := 0
@@ -112,7 +113,7 @@ func (gw *goWatcherProcess) Start() error {
 	})
 	if err != nil {
 		watcher.Close()
-		return fmt.Errorf("failed to walk pkg/ directory: %w", err)
+		return apperror.Internal(err, "Failed to scan plugin directory")
 	}
 
 	gw.logger.Infow("go file watcher started", "directories", watchCount)
@@ -343,13 +344,13 @@ func (gw *goWatcherProcess) handleRebuild(changedFile string) {
 func (gw *goWatcherProcess) runGoBuild() error {
 	goPath := gw.buildOpts.GoPath
 	if goPath == "" {
-		return fmt.Errorf("go binary path not configured; set developer.gopath in settings")
+		return apperror.ConfigMissing("developer.gopath", "Go binary path is not configured. Please set developer.gopath in settings.")
 	}
 
 	// Ensure the output directory exists.
 	outDir := filepath.Join(gw.devPath, "build", "bin")
 	if err := os.MkdirAll(outDir, 0755); err != nil {
-		return fmt.Errorf("failed to create build output directory: %w", err)
+		return apperror.Internal(err, "Failed to create build output directory")
 	}
 
 	var stdout bytes.Buffer
@@ -379,7 +380,7 @@ func (gw *goWatcherProcess) runGoBuild() error {
 			}
 		}
 
-		return fmt.Errorf("build failed: %s", errOutput)
+		return apperror.New(apperror.TypePluginBuildFailed, 500, "Plugin build failed", errOutput)
 	}
 
 	return nil
@@ -391,25 +392,25 @@ func (gw *goWatcherProcess) transferBinary() error {
 	srcPath := filepath.Join(gw.devPath, "build", "bin", "plugin")
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return apperror.Internal(err, "Failed to get home directory")
 	}
 	dstDir := filepath.Join(homeDir, ".omniview", "plugins", gw.pluginID, "bin")
 	dstPath := filepath.Join(dstDir, "plugin")
 
 	if err := os.MkdirAll(dstDir, 0755); err != nil {
-		return fmt.Errorf("failed to create plugin bin directory: %w", err)
+		return apperror.Internal(err, "Failed to create plugin bin directory")
 	}
 
 	// Read source binary.
 	srcFile, err := os.Open(srcPath)
 	if err != nil {
-		return fmt.Errorf("failed to open built binary: %w", err)
+		return apperror.Internal(err, "Failed to open built binary")
 	}
 	defer srcFile.Close()
 
 	srcInfo, err := srcFile.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to stat built binary: %w", err)
+		return apperror.Internal(err, "Failed to stat built binary")
 	}
 
 	// Remove existing binary first (in case it's being held open).
@@ -417,12 +418,12 @@ func (gw *goWatcherProcess) transferBinary() error {
 
 	dstFile, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
 	if err != nil {
-		return fmt.Errorf("failed to create destination binary: %w", err)
+		return apperror.Internal(err, "Failed to create destination binary")
 	}
 	defer dstFile.Close()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("failed to copy binary: %w", err)
+		return apperror.Internal(err, "Failed to copy binary")
 	}
 
 	return nil
@@ -435,24 +436,24 @@ func (gw *goWatcherProcess) syncPluginYaml() error {
 	srcPath := filepath.Join(gw.devPath, "plugin.yaml")
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return apperror.Internal(err, "Failed to get home directory")
 	}
 	dstPath := filepath.Join(homeDir, ".omniview", "plugins", gw.pluginID, "plugin.yaml")
 
 	src, err := os.Open(srcPath)
 	if err != nil {
-		return fmt.Errorf("failed to open source plugin.yaml: %w", err)
+		return apperror.Internal(err, "Failed to open plugin.yaml")
 	}
 	defer src.Close()
 
 	dst, err := os.Create(dstPath)
 	if err != nil {
-		return fmt.Errorf("failed to create destination plugin.yaml: %w", err)
+		return apperror.Internal(err, "Failed to create destination plugin.yaml")
 	}
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, src); err != nil {
-		return fmt.Errorf("failed to copy plugin.yaml: %w", err)
+		return apperror.Internal(err, "Failed to copy plugin.yaml")
 	}
 	return nil
 }

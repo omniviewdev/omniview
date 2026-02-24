@@ -11,6 +11,7 @@ import { Stack } from '@omniviewdev/ui/layout';
 
 // Hooks
 import { main, settings } from '@omniviewdev/runtime/models';
+import { parseAppError } from '@omniviewdev/runtime';
 import { LuFile } from 'react-icons/lu';
 import { OpenFileSelectionDialog } from '@omniviewdev/runtime/api';
 
@@ -62,8 +63,8 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
         newValue.push(...result);
         handleChange(id, newValue);
       }
-    }).catch((err) => {
-      console.error('Error opening file selection dialog:', err);
+    }).catch((err: unknown) => {
+      console.error('Error opening file selection dialog:', parseAppError(err).detail);
     });
   };
 

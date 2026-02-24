@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
-import { parseAppError } from '../../errors/parseAppError';
+import { showAppError } from '../../errors/parseAppError';
 import { types } from '../../wailsjs/go/models';
 import { GetActions, ExecuteAction } from '../../wailsjs/go/resource/Client';
 
@@ -116,11 +116,7 @@ export const useExecuteAction = ({
       });
     },
     onError: (error: unknown, variables) => {
-      const appErr = parseAppError(error);
-      showSnackbar(
-        `Failed to execute action "${variables.actionID}": ${appErr.detail}`,
-        'error',
-      );
+      showAppError(showSnackbar, error, `Failed to execute action "${variables.actionID}"`);
     },
   });
 

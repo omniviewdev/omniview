@@ -3,6 +3,7 @@ package devserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 func TestReadDevInfoFile_Valid(t *testing.T) {
@@ -47,24 +50,28 @@ func TestReadDevInfoFile_Invalid(t *testing.T) {
 	dir := t.TempDir()
 
 	tests := []struct {
-		name    string
-		content string
-		wantErr string
+		name      string
+		content   string
+		wantTitle string
+		wantType  string
 	}{
 		{
-			name:    "invalid json",
-			content: "not json",
-			wantErr: "invalid JSON",
+			name:      "invalid json",
+			content:   "not json",
+			wantTitle: "Invalid dev info",
+			wantType:  apperror.TypeValidation,
 		},
 		{
-			name:    "missing pid",
-			content: `{"pid":0,"addr":"127.0.0.1:42367"}`,
-			wantErr: "invalid PID",
+			name:      "missing pid",
+			content:   `{"pid":0,"addr":"127.0.0.1:42367"}`,
+			wantTitle: "Invalid PID",
+			wantType:  apperror.TypeValidation,
 		},
 		{
-			name:    "missing addr",
-			content: `{"pid":12345,"addr":""}`,
-			wantErr: "missing addr",
+			name:      "missing addr",
+			content:   `{"pid":12345,"addr":""}`,
+			wantTitle: "Invalid dev info",
+			wantType:  apperror.TypeValidation,
 		},
 	}
 
@@ -74,8 +81,12 @@ func TestReadDevInfoFile_Invalid(t *testing.T) {
 			require.NoError(t, os.WriteFile(path, []byte(tt.content), 0644))
 
 			_, err := readDevInfoFile(path)
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), tt.wantErr)
+			require.Error(t, err)
+			var appErr *apperror.AppError
+			require.True(t, errors.As(err, &appErr))
+			assert.Equal(t, tt.wantType, appErr.Type)
+			assert.Equal(t, 422, appErr.Status)
+			assert.Equal(t, tt.wantTitle, appErr.Title)
 		})
 	}
 }

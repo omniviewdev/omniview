@@ -117,6 +117,51 @@ type ShowSnackbarFn = (options: {
 }) => void;
 
 /**
+ * Build the structured snackbar fields from a parsed AppError.
+ * Use this when you need access to mutation variables in the message
+ * but still want the full detail/suggestions/actions in the snackbar.
+ *
+ * @param appErr - The parsed AppError
+ * @param contextMessage - Optional context to prepend to the title (e.g. "Failed to create pod-1")
+ */
+function buildSnackbarFields(appErr: AppError, contextMessage?: string) {
+  const detail = [
+    appErr.detail,
+    ...(appErr.suggestions?.map(s => `• ${s}`) ?? []),
+  ].join('\n');
+
+  const message = contextMessage
+    ? contextMessage
+    : appErr.title !== 'Error' ? appErr.title : 'Operation failed';
+
+  return {
+    message,
+    status: 'error' as const,
+    details: detail,
+    actions: appErr.actions?.map(actionToSnackbar),
+  };
+}
+
+/**
+ * Show a structured error snackbar from any Wails error.
+ * Parses the error, suppresses cancellations, and displays
+ * the full title/detail/suggestions/actions in the snackbar.
+ *
+ * @param showSnackbar - The snackbar function
+ * @param error - The raw error from Wails
+ * @param contextMessage - Optional context (e.g. "Failed to delete pod-1")
+ */
+export function showAppError(
+  showSnackbar: ShowSnackbarFn,
+  error: unknown,
+  contextMessage?: string,
+): void {
+  if (isCancelledError(error)) return;
+  const appErr = parseAppError(error);
+  showSnackbar(buildSnackbarFields(appErr, contextMessage));
+}
+
+/**
  * Creates a drop-in onError handler that:
  * - Suppresses cancelled errors
  * - Parses structured AppError fields
@@ -130,16 +175,6 @@ export function createErrorHandler(
     if (isCancelledError(error)) return;
 
     const appErr = parseAppError(error);
-    const detail = [
-      appErr.detail,
-      ...(appErr.suggestions?.map(s => `• ${s}`) ?? []),
-    ].join('\n');
-
-    showSnackbar({
-      message: appErr.title !== 'Error' ? appErr.title : fallbackTitle,
-      status: 'error',
-      details: detail,
-      actions: appErr.actions?.map(actionToSnackbar),
-    });
+    showSnackbar(buildSnackbarFields(appErr, appErr.title !== 'Error' ? appErr.title : fallbackTitle));
   };
 }

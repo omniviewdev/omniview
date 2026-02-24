@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 // OmniviewPublicKeyHex is the hex-encoded Ed25519 public key used to verify plugin signatures.
@@ -35,7 +37,7 @@ func VerifyArtifactSignature(checksum, signatureB64 string) error {
 
 	sig, err := base64.StdEncoding.DecodeString(signatureB64)
 	if err != nil {
-		return fmt.Errorf("%w: malformed base64: %v", ErrInvalidSignature, err)
+		return apperror.WrapWithDetail(err, apperror.TypeValidation, 422, "Invalid signature", fmt.Sprintf("Malformed base64 signature: %s", err.Error()))
 	}
 
 	if !ed25519.Verify(omniviewPublicKey, []byte(checksum), sig) {

@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
@@ -123,10 +124,7 @@ func (rc *RegistryClient) getPluginArtifact(
 			// check architectures to make sure compatible
 			artifact, ok := v.Architectures[platform]
 			if !ok {
-				return PluginArtifact{}, fmt.Errorf(
-					"plugin version does not have platform %s",
-					platform,
-				)
+				return PluginArtifact{}, apperror.New(apperror.TypePluginInstallFailed, 404, "Platform not supported", fmt.Sprintf("Plugin version does not have a build for platform '%s'.", platform))
 			}
 
 			// we have a successful artifact
@@ -135,11 +133,7 @@ func (rc *RegistryClient) getPluginArtifact(
 	}
 
 	// if we've gotten here, no version found
-	return PluginArtifact{}, fmt.Errorf(
-		"no plugin artifact found for plugin %s with version %s",
-		pluginID,
-		version,
-	)
+	return PluginArtifact{}, apperror.New(apperror.TypePluginInstallFailed, 404, "Plugin artifact not found", fmt.Sprintf("No artifact found for plugin '%s' version '%s'.", pluginID, version))
 }
 
 func (rc *RegistryClient) ListPlugins() ([]Plugin, error) {
@@ -251,14 +245,14 @@ func (rc *RegistryClient) DownloadAndPrepare(
 
 	actual := hex.EncodeToString(hasher.Sum(nil))
 	if actual != artifact.Checksum {
-		return "", fmt.Errorf("checksum mismatch: got %s, expected %s", actual, artifact.Checksum)
+		return "", apperror.New(apperror.TypeValidation, 422, "Checksum mismatch", fmt.Sprintf("Downloaded file checksum '%s' does not match expected '%s'. The file may be corrupted.", actual, artifact.Checksum))
 	}
 
 	if err := VerifyArtifactSignature(artifact.Checksum, artifact.Signature); err != nil {
 		if errors.Is(err, ErrUnsignedArtifact) {
-			return "", fmt.Errorf("plugin %s@%s is not signed", pluginID, version)
+			return "", apperror.New(apperror.TypeValidation, 422, "Plugin not signed", fmt.Sprintf("Plugin '%s@%s' is not signed.", pluginID, version))
 		}
-		return "", fmt.Errorf("signature verification failed for %s@%s: %w", pluginID, version, err)
+		return "", apperror.WrapWithDetail(err, apperror.TypeValidation, 422, "Signature verification failed", fmt.Sprintf("Signature verification failed for plugin '%s@%s'.", pluginID, version))
 	}
 
 	if _, err := tmpFile.Seek(0, io.SeekStart); err != nil {

@@ -10,6 +10,8 @@ import (
 	"syscall"
 
 	"go.uber.org/zap"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 const (
@@ -53,7 +55,7 @@ func (pa *PortAllocator) Allocate(pluginID string) (int, error) {
 		return port, nil
 	}
 
-	return 0, fmt.Errorf("no free port available in range %d-%d", PortRangeStart, PortRangeEnd)
+	return 0, apperror.New(apperror.TypeInternal, 500, "No free port available", fmt.Sprintf("No free port available in range %d-%d.", PortRangeStart, PortRangeEnd))
 }
 
 // RecordPID associates a process group ID with an allocated port so it can be

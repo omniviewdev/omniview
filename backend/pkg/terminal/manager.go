@@ -17,6 +17,7 @@ import (
 	// Wails runtime for backend-frontend communication.
 	"go.uber.org/zap"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/exec"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -66,7 +67,7 @@ func (m *Manager) GetSession(sessionID string) (*sdkexec.Session, error) {
 	defer m.mux.RUnlock()
 	session, exists := m.sessions[sessionID]
 	if !exists {
-		return nil, fmt.Errorf("session %s not found", sessionID)
+		return nil, apperror.SessionNotFound(sessionID)
 	}
 	return session, nil
 }
@@ -140,14 +141,14 @@ func (m *Manager) StartSession(
 
 	ptyFile, err := pty.Start(cmd)
 	if err != nil {
-		err = fmt.Errorf("failed to start pty in terminal manager: %w", err)
+		err = apperror.Wrap(err, apperror.TypeSessionFailed, 500, "Failed to start terminal")
 		logger.Error(err)
 		cancel()
 		return nil, err
 	}
 	// set an initial size for the pty, otherwise we get really weird behavior
 	if err = pty.Setsize(ptyFile, &pty.Winsize{Rows: InitialRows, Cols: InitialCols}); err != nil {
-		err = fmt.Errorf("failed to set initial pty size: %w", err)
+		err = apperror.Wrap(err, apperror.TypeSessionFailed, 500, "Failed to configure terminal size")
 		cancel()
 		return nil, err
 	}
@@ -185,7 +186,7 @@ func (m *Manager) ResizeSession(sessionID string, rows, cols uint16) error {
 	defer m.mux.RUnlock()
 	ptyFile, exists := m.ptys[sessionID]
 	if !exists {
-		err := fmt.Errorf("session %s not found", sessionID)
+		err := apperror.SessionNotFound(sessionID)
 		m.log.Error(err)
 		return err
 	}
@@ -298,7 +299,7 @@ func (m *Manager) writeToSession(sessionID string, bytes []byte) error {
 
 	session, exists := m.sessions[sessionID]
 	if !exists {
-		err := fmt.Errorf("session %s not found", sessionID)
+		err := apperror.SessionNotFound(sessionID)
 		m.log.Error(err)
 		return err
 	}
@@ -331,7 +332,7 @@ func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, err
 
 	session, exists := m.sessions[sessionID]
 	if !exists {
-		err := fmt.Errorf("session %s not found", sessionID)
+		err := apperror.SessionNotFound(sessionID)
 		m.log.Error(err)
 		return nil, nil, err
 	}
@@ -359,7 +360,7 @@ func (m *Manager) DetachSession(sessionID string) (*sdkexec.Session, error) {
 
 	session, exists := m.sessions[sessionID]
 	if !exists {
-		err := fmt.Errorf("session %s not found", sessionID)
+		err := apperror.SessionNotFound(sessionID)
 		m.log.Error(err)
 		return nil, err
 	}
@@ -378,7 +379,7 @@ func (m *Manager) CloseSession(sessionID string) error {
 
 	session, exists := m.sessions[sessionID]
 	if !exists {
-		err := fmt.Errorf("session %s not found", sessionID)
+		err := apperror.SessionNotFound(sessionID)
 		m.log.Error(err)
 		return err
 	}

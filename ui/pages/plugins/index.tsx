@@ -16,6 +16,7 @@ import Layout from '@/layouts/core/sidenav';
 import PluginsNav from './PluginsNav';
 import { LuSlidersHorizontal } from 'react-icons/lu';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
+import { parseAppError } from '@omniviewdev/runtime';
 import { Outlet } from 'react-router-dom';
 
 /**
@@ -29,7 +30,7 @@ const SettingsPage = () => {
   }
 
   if (plugins.isError) {
-    return <div>Error: {plugins.error.message}</div>;
+    return <div>Error: {parseAppError(plugins.error).detail}</div>;
   }
 
   return (

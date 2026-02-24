@@ -18,7 +18,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 // icons
 import WarningRoundedIcon from '@mui/icons-material/WarningRounded';
 import { LuCircleAlert, LuTrash } from 'react-icons/lu';
-import { useResource } from '@omniviewdev/runtime';
+import { useResource, parseAppError } from '@omniviewdev/runtime';
 
 type Props = {
   plugin: string;
@@ -109,10 +109,8 @@ export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection
               remove({}).then(() => {
                 setOpen(false);
                 handleDismiss();
-              }).catch((e) => {
-                if (e instanceof Error) {
-                  setAlert(e.message);
-                }
+              }).catch((e: unknown) => {
+                setAlert(parseAppError(e).detail);
               }).finally(() => {
                 setPending(false);
               });

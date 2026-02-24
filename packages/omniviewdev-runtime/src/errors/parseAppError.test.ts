@@ -193,3 +193,53 @@ describe('createErrorHandler', () => {
     expect(call.details).toBe('something broke');
   });
 });
+
+describe('showAppError', () => {
+  it('shows structured error with context message', () => {
+    const { showAppError } = require('./parseAppError');
+    const showSnackbar = jest.fn();
+
+    const json = JSON.stringify({
+      type: 'omniview:plugin/not-found',
+      title: 'Plugin not found',
+      status: 404,
+      detail: "No plugin 'foo' was found.",
+      suggestions: ['Check the ID'],
+      actions: [{ type: 'navigate', label: 'Settings', target: '#/settings' }],
+    });
+    showAppError(showSnackbar, json, 'Failed to delete pod-1');
+
+    expect(showSnackbar).toHaveBeenCalledTimes(1);
+    const call = showSnackbar.mock.calls[0]![0];
+    expect(call.message).toBe('Failed to delete pod-1');
+    expect(call.status).toBe('error');
+    expect(call.details).toContain("No plugin 'foo' was found.");
+    expect(call.details).toContain('• Check the ID');
+    expect(call.actions).toHaveLength(1);
+  });
+
+  it('uses appErr.title when no context message', () => {
+    const { showAppError } = require('./parseAppError');
+    const showSnackbar = jest.fn();
+
+    const json = JSON.stringify({
+      type: 'omniview:session/not-found',
+      title: 'Session not found',
+      status: 404,
+      detail: "Session 'abc' was not found.",
+    });
+    showAppError(showSnackbar, json);
+
+    const call = showSnackbar.mock.calls[0]![0];
+    expect(call.message).toBe('Session not found');
+    expect(call.details).toBe("Session 'abc' was not found.");
+  });
+
+  it('suppresses cancelled errors', () => {
+    const { showAppError } = require('./parseAppError');
+    const showSnackbar = jest.fn();
+
+    showAppError(showSnackbar, 'cancelled');
+    expect(showSnackbar).not.toHaveBeenCalled();
+  });
+});
