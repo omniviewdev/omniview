@@ -182,7 +182,7 @@ const MetricsTabContent: React.FC<Props> = ({ pluginID, connectionID, connected 
   return (
     <Stack direction='column' gap={1.5}>
       {/* Provider status */}
-      <Card variant='outlined'>
+      <Card variant='outlined' sx={{ borderColor: 'divider' }}>
         <Box sx={{ p: 1.5 }}>
           <Stack direction='row' alignItems='center' justifyContent='space-between' sx={{ mb: 1 }}>
             <Stack direction='row' alignItems='center' gap={0.75}>
@@ -225,7 +225,7 @@ const MetricsTabContent: React.FC<Props> = ({ pluginID, connectionID, connected 
               {providers!.map(p => (
                 <Box
                   key={p.provider_id}
-                  sx={{ px: 1.25, py: 0.5, borderRadius: 1, bgcolor: 'background.level1' }}
+                  sx={{ px: 1.25, py: 0.5, borderRadius: 1, bgcolor: 'background.level1', display: 'flex', flexDirection: 'column' }}
                 >
                   <Text size='xs' weight='medium'>{p.name || p.provider_id}</Text>
                   {p.description && (
@@ -239,7 +239,7 @@ const MetricsTabContent: React.FC<Props> = ({ pluginID, connectionID, connected 
       </Card>
 
       {/* Prometheus configuration */}
-      <Card variant='outlined'>
+      <Card variant='outlined' sx={{ borderColor: 'divider' }}>
         <Box sx={{ p: 1.5 }}>
           <Stack direction='row' alignItems='center' justifyContent='space-between' sx={{ mb: 0.5 }}>
             <Text size='sm' weight='semibold'>Prometheus Configuration</Text>
@@ -341,8 +341,8 @@ const MetricsTabContent: React.FC<Props> = ({ pluginID, connectionID, connected 
       </Card>
 
       {/* Auto-detection reference */}
-      <Card variant='outlined'>
-        <Box sx={{ p: 1.5 }}>
+      <Card variant='outlined' sx={{ borderColor: 'divider' }}>
+        <Box sx={{ p: 1.5, display: 'flex', flexDirection: 'column' }}>
           <Text size='sm' weight='semibold' sx={{ mb: 0.25 }}>Auto-Detection Reference</Text>
           <Text size='xs' sx={{ mb: 1.25, opacity: 0.5 }}>
             Well-known service names and namespaces scanned during auto-detection.

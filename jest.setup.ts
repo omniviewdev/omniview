@@ -34,6 +34,11 @@ if (typeof globalThis.crypto === 'undefined' || typeof globalThis.crypto.getRand
   });
 }
 
+// Ensure crypto.randomUUID is available (jsdom may have crypto but not randomUUID)
+if (typeof globalThis.crypto?.randomUUID !== 'function') {
+  (globalThis.crypto as any).randomUUID = () => webcrypto.randomUUID();
+}
+
 // Mock ResizeObserver (jsdom doesn't have it)
 if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = class {

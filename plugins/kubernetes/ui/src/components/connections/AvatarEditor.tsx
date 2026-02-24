@@ -82,23 +82,24 @@ const AvatarEditor: React.FC<AvatarEditorProps> = ({
           position: 'relative',
           width: 96,
           height: 96,
-          borderRadius: 'sm',
-          border: dragOver ? '2px dashed' : '2px solid transparent',
-          borderColor: dragOver ? 'primary.500' : 'transparent',
-          transition: 'border-color 0.15s',
+          borderRadius: 2,
+          outline: dragOver ? '2px dashed' : '2px solid transparent',
+          outlineColor: dragOver ? 'primary.500' : 'transparent',
+          outlineOffset: 2,
+          transition: 'outline-color 0.15s',
         }}
       >
         {avatarUrl ? (
           <Avatar
             src={avatarUrl}
-            sx={{ width: 96, height: 96, borderRadius: 'sm', '--Avatar-size': '96px' }}
+            sx={{ width: 96, height: 96, borderRadius: 2, '--Avatar-size': '96px' }}
           />
         ) : (
           <MuiAvatar
             sx={{
               width: 96,
               height: 96,
-              borderRadius: 'sm',
+              borderRadius: 2,
               bgcolor: bgColor,
               fontSize: '1.75rem',
             }}
@@ -112,7 +113,7 @@ const AvatarEditor: React.FC<AvatarEditorProps> = ({
           sx={{
             position: 'absolute',
             inset: 0,
-            borderRadius: 'sm',
+            borderRadius: 2,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

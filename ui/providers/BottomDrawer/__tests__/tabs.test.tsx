@@ -8,6 +8,7 @@ const mockFocusTab = jest.fn();
 const mockCloseTab = jest.fn();
 const mockCloseTabs = jest.fn();
 const mockReorderTab = jest.fn();
+const mockUpdateTab = jest.fn();
 
 let mockTabs: any[] = [];
 let mockFocused = 0;
@@ -21,6 +22,7 @@ jest.mock('@omniviewdev/runtime', () => ({
     closeTabs: mockCloseTabs,
     createTab: mockCreateTab,
     createTabs: mockCreateTabs,
+    updateTab: mockUpdateTab,
     reorderTab: mockReorderTab,
   }),
   useSettings: () => ({
@@ -28,6 +30,7 @@ jest.mock('@omniviewdev/runtime', () => ({
       'terminal.defaultShell': '/bin/zsh',
     },
   }),
+  parseAppError: (err: any) => ({ detail: typeof err === 'string' ? err : err?.message ?? String(err) }),
 }));
 
 const mockCreateTerminal = jest.fn().mockResolvedValue({ id: 'new-session-id' });

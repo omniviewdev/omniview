@@ -47,8 +47,8 @@ const NodeShellTabContent: React.FC<Props> = ({ pluginID, connectionID }) => {
 
   return (
     <Stack direction='column' gap={1.5}>
-      <Card variant='outlined'>
-        <Box sx={{ p: 1.5 }}>
+      <Card variant='outlined' sx={{ borderColor: 'divider' }}>
+        <Box sx={{ p: 1.5, display: 'flex', flexDirection: 'column' }}>
           <Text size='sm' weight='semibold' sx={{ mb: 0.5 }}>Node Shell Configuration</Text>
           <Text size='xs' sx={{ mb: 1.5, opacity: 0.6 }}>
             Customize the debug pod image and shell command used when opening a node shell.
