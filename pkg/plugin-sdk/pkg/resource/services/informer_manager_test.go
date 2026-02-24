@@ -584,6 +584,92 @@ func TestRun_StopChTerminates(t *testing.T) {
 	}
 }
 
+func TestStartConnectionInformer_IdempotentViaHasInformer(t *testing.T) {
+	// Verifies that calling CreateConnectionInformer twice errors (strict),
+	// but the higher-level HasInformer guard makes the flow safe.
+	handle := &mockInformerHandle{}
+	mgr, _, _, _, _ := newTestManager(handle)
+
+	conn := &pkgtypes.Connection{ID: "conn-1"}
+	client := "dummy"
+
+	// First create succeeds
+	require.NoError(t, mgr.CreateConnectionInformer(testPluginContext(), conn, &client))
+	assert.True(t, mgr.HasInformer(testPluginContext(), "conn-1"))
+
+	// HasInformer returns true, so the controller would short-circuit
+	assert.True(t, mgr.HasInformer(testPluginContext(), "conn-1"))
+
+	// Direct duplicate create still errors (strict low-level behavior preserved)
+	err := mgr.CreateConnectionInformer(testPluginContext(), conn, &client)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+}
+
+func TestStopConnection_IdempotentViaHasInformer(t *testing.T) {
+	// HasInformer returns false for a non-existent connection, so the
+	// controller-level guard would short-circuit before calling StopConnection.
+	handle := &mockInformerHandle{}
+	mgr, _, _, _, _ := newTestManager(handle)
+
+	// No informer created — HasInformer should return false
+	assert.False(t, mgr.HasInformer(testPluginContext(), "conn-1"))
+
+	// Low-level StopConnection still errors (strict behavior preserved)
+	err := mgr.StopConnection(testPluginContext(), "conn-1")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "informer not found")
+}
+
+func TestStopAndRestartConnection(t *testing.T) {
+	handle := &mockInformerHandle{}
+	mgr, _, _, _, _ := newTestManager(handle)
+
+	stopCh := make(chan struct{})
+	controllerAdd := make(chan types.InformerAddPayload)
+	controllerUpdate := make(chan types.InformerUpdatePayload)
+	controllerDelete := make(chan types.InformerDeletePayload)
+	controllerState := make(chan types.InformerStateEvent, 10)
+
+	go mgr.Run(stopCh, controllerAdd, controllerUpdate, controllerDelete, controllerState)
+
+	conn := &pkgtypes.Connection{ID: "conn-1"}
+	client := "dummy"
+
+	// Create and start
+	require.NoError(t, mgr.CreateConnectionInformer(testPluginContext(), conn, &client))
+	require.NoError(t, mgr.StartConnection(testPluginContext(), "conn-1"))
+
+	assert.Eventually(t, func() bool {
+		handle.mu.Lock()
+		defer handle.mu.Unlock()
+		return handle.startCalled
+	}, time.Second, 10*time.Millisecond)
+
+	// Stop — removes the informer entry
+	require.NoError(t, mgr.StopConnection(testPluginContext(), "conn-1"))
+	assert.Eventually(t, func() bool {
+		return !mgr.HasInformer(testPluginContext(), "conn-1")
+	}, time.Second, 10*time.Millisecond)
+
+	// Re-create with a fresh handle (simulates what the controller does)
+	handle2 := &mockInformerHandle{}
+	mgr.createHandler = func(_ *pkgtypes.PluginContext, _ *string) (types.InformerHandle, error) {
+		return handle2, nil
+	}
+
+	require.NoError(t, mgr.CreateConnectionInformer(testPluginContext(), conn, &client))
+	require.NoError(t, mgr.StartConnection(testPluginContext(), "conn-1"))
+
+	assert.Eventually(t, func() bool {
+		handle2.mu.Lock()
+		defer handle2.mu.Unlock()
+		return handle2.startCalled
+	}, time.Second, 10*time.Millisecond)
+
+	close(stopCh)
+}
+
 func TestNewInformerManager_NilSyncPolicies(t *testing.T) {
 	createFunc := func(_ *pkgtypes.PluginContext, _ *string) (types.InformerHandle, error) {
 		return &mockInformerHandle{}, nil

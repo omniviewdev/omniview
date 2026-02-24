@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LoadConnections, StartConnectionInformer, StopConnectionInformer } from '../../wailsjs/go/resource/Client';
 import { type types } from '../../wailsjs/go/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
+import { createErrorHandler } from '../../errors/parseAppError';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import React from 'react';
 
@@ -24,26 +25,12 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
   // === Mutations === //
   const { mutateAsync: startInformer } = useMutation({
     mutationFn: async (conn: types.Connection) => StartConnectionInformer(plugin, conn.id),
-    onError(error) {
-      console.log(error)
-      showSnackbar({
-        message: 'Failed to start connection informer',
-        status: 'error',
-        details: `${error.message}`,
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to start connection informer'),
   });
 
   const { mutateAsync: stopInformer } = useMutation({
     mutationFn: async (conn: types.Connection) => StopConnectionInformer(plugin, conn.id),
-    onError(error) {
-      console.log(error)
-      showSnackbar({
-        message: 'Failed to stop connection informer',
-        status: 'error',
-        details: `${error.message}`,
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to stop connection informer'),
   });
 
   /**
@@ -73,14 +60,7 @@ export const useConnections = ({ plugin }: UseConnectionsOptions) => {
         return result
       } catch (error) {
         console.log(error)
-        // log the error
-        if (error instanceof Error) {
-          showSnackbar({
-            message: 'Failed to stop connection informer',
-            status: 'error',
-            details: `${error.message}`,
-          });
-        }
+        createErrorHandler(showSnackbar, 'Failed to load connections')(error);
       }
 
       return []

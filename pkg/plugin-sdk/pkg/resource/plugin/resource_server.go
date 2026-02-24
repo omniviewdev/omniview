@@ -496,7 +496,7 @@ func (s *ResourcePluginServer) StopConnectionInformer(
 	if err := s.Impl.StopConnectionInformer(pluginCtx, in.GetConnection()); err != nil {
 		return nil, status.Errorf(
 			codes.Internal,
-			"failed to start connection informer: %s",
+			"failed to stop connection informer: %s",
 			err.Error(),
 		)
 	}

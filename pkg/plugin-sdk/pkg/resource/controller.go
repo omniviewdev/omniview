@@ -221,6 +221,11 @@ func (c *resourceController[ClientT]) StartConnectionInformer(
 		return nil
 	}
 
+	// Already running — no-op to make StartConnection idempotent
+	if c.informerManager.HasInformer(ctx, connectionID) {
+		return nil
+	}
+
 	if err := c.connectionManager.InjectConnection(ctx, connectionID); err != nil {
 		return fmt.Errorf("unable to inject connection: %w", err)
 	}
@@ -253,6 +258,12 @@ func (c *resourceController[ClientT]) StopConnectionInformer(
 	if !c.withInformer {
 		return nil
 	}
+
+	// Not running — no-op to make StopConnection idempotent
+	if !c.informerManager.HasInformer(ctx, connectionID) {
+		return nil
+	}
+
 	if err := c.connectionManager.InjectConnection(ctx, connectionID); err != nil {
 		return fmt.Errorf("unable to inject connection: %w", err)
 	}
