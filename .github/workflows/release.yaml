@@ -162,7 +162,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -194,6 +194,7 @@ jobs:
       - name: Build Omniview
         run: |
           wails build -platform linux/amd64 \
+            -tags webkit2_41 \
             -webview2 download \
             -ldflags "\
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
