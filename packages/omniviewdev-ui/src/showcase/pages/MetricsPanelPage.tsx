@@ -4,14 +4,14 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import { LuCpu, LuLayers } from 'react-icons/lu';
 
-import { MetricCard } from '@omniviewdev/ui/domain';
+import { MetricCard } from '../../domain';
 import {
   Sparkline,
   GaugeCard,
   MetricsPanel,
   StackedAreaChart,
-} from '@omniviewdev/ui/charts';
-import type { TimeSeriesDef, ChartTimeRange, ChartEventMarker } from '@omniviewdev/ui/charts';
+} from '../../charts';
+import type { TimeSeriesDef, ChartTimeRange, ChartEventMarker } from '../../charts';
 
 // --- Helpers ---
 

@@ -1,10 +1,7 @@
 import React from 'react';
 
 // Material-ui
-import { useTheme } from '@mui/material/styles';
 import Box from '@mui/material/Box';
-import Grid from '@mui/material/Grid';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import { Button } from '@omniviewdev/ui/buttons';
 import { Stack } from '@omniviewdev/ui/layout';
 import { Text } from '@omniviewdev/ui/typography';
@@ -15,117 +12,79 @@ import SettingsEntries from './SettingsEntries';
 import { Section } from '.';
 import { usePluginSettings } from '@/hooks/settings/usePluginSettings';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
+import { useSnackbar } from '@omniviewdev/runtime';
 
 type Props = {
   id: string;
 };
 
 /**
- * View and modify settings for a given plugin
+ * View and modify settings for a given plugin.
  */
 const PluginSettingsPage: React.FC<Props> = ({ id }) => {
-  const theme = useTheme();
   const [draftValues, setDraftValues] = React.useState<Record<string, any>>({});
-  const isNormalScreenSize = useMediaQuery(theme.breakpoints.up('lg'));
 
   const { plugin } = usePlugin({ id });
   const { settings, setSettings } = usePluginSettings({ plugin: id });
+  const { showSnackbar } = useSnackbar();
 
-  /**
-   * Commit the drafted settings into the settings store.
-   */
+  const hasDrafts = Object.values(draftValues).some(v => v !== undefined);
+
   const commitDraftValues = () => {
     const values = Object.entries(draftValues).reduce<Record<string, any>>((acc, [id, value]) => {
       if (value !== undefined) {
         id = id.split('.')[1];
         acc[id] = value;
       }
-
       return acc;
     }, {});
 
-    console.log('committing', values);
     setSettings(values).then(() => {
       clearDraftValues();
+      showSnackbar({ message: 'Settings saved', status: 'success', autoHideDuration: 2000 });
     }).catch((err) => {
-      console.error('Failed to save settings', err);
+      const msg = typeof err === 'string' ? err : err?.message ?? String(err);
+      showSnackbar({ message: 'Failed to save settings', status: 'error', details: msg });
     });
   };
 
-  /**
-  * Clear the drafted settings.
-  */
   const clearDraftValues = () => {
     setDraftValues({});
   };
 
-  if (settings.isLoading) {
-    return null;
-  }
-
-  if (settings.isError || !settings.data || !plugin.data) {
+  if (settings.isLoading || settings.isError || !settings.data || !plugin.data) {
     return null;
   }
 
   return (
     <Stack
-      direction={'column'}
-      gap={2}
+      direction='column'
+      gap={0}
       sx={{
         width: '100%',
-        maxWidth: '100%',
         height: '100%',
-        maxHeight: '100%',
       }}
     >
+      {/* Header */}
       <Box
         sx={{
           display: 'flex',
-          flexDirection: 'row',
           alignItems: 'center',
-          borderRadius: 2,
-          width: '100%',
-          py: 1,
-          px: 2,
           gap: 1.5,
-          border: '1px solid',
+          pb: 2,
+          borderBottom: '1px solid',
           borderColor: 'divider',
         }}
       >
-        <Avatar size='sm' src={plugin.data.metadata.icon} sx={{ borderRadius: 4, height: 20, width: 20 }} />
-        <Stack
-          sx={{
-            display: 'flex',
-            flexDirection: {
-              xs: 'column',
-              lg: 'row',
-            },
-            justifyContent: {
-              xs: 'flex-start',
-              lg: 'space-between',
-            },
-            alignItems: {
-              xs: 'flex-start',
-              lg: 'center',
-            },
-            borderRadius: 6,
-            width: '100%',
-          }}
-        >
-          <Text weight='semibold' size={isNormalScreenSize ? 'lg' : 'md'}>{plugin.data.metadata.name}</Text>
-          <Text size='xs'>{plugin.data.metadata.description}</Text>
+        <Avatar size='sm' src={plugin.data.metadata.icon} sx={{ borderRadius: '4px', height: 22, width: 22 }} />
+        <Stack direction='column' gap={0.25}>
+          <Text weight='semibold' size='lg'>{plugin.data.metadata.name}</Text>
+          <Text size='xs' sx={{ color: 'text.secondary' }}>{plugin.data.metadata.description}</Text>
         </Stack>
       </Box>
 
-      {/* Render the settings section here */}
-      <Box
-        sx={{
-          width: '100%',
-          overflow: 'auto',
-          display: 'flex',
-          flexGrow: 1,
-        }}
-      >
+      {/* Settings form */}
+      <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         <SettingsEntries
           section={Section.Plugins}
           id={id}
@@ -135,29 +94,34 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
         />
       </Box>
 
-      <Grid container spacing={2}>
-        <Grid size={{ xs: 12, md: 6, lg: 8 }}>
+      {/* Action bar */}
+      {hasDrafts && (
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 1,
+            pt: 2,
+            mt: 1,
+            borderTop: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
           <Button
-            fullWidth
+            color='primary'
             emphasis='soft'
             onClick={commitDraftValues}
-            disabled={Object.values(draftValues).filter(v => v !== undefined).length === 0}
           >
-            Save
+            Save Changes
           </Button>
-        </Grid>
-        <Grid size={{ xs: 12, md: 6, lg: 4 }}>
           <Button
-            fullWidth
             color='neutral'
-            emphasis='soft'
+            emphasis='ghost'
             onClick={clearDraftValues}
-            disabled={Object.values(draftValues).filter(v => v !== undefined).length === 0}
           >
-            Cancel
+            Discard
           </Button>
-        </Grid>
-      </Grid>
+        </Box>
+      )}
     </Stack>
   );
 };

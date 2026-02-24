@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 // Layout
 import Layout from '@/layouts/core/sidenav';
@@ -26,7 +27,9 @@ export type SectionSelection = {
  * The main settings page for the application.
  */
 export default function SettingsPage() {
-  const [selected, setSelected] = React.useState<SectionSelection>({ section: Section.Core, id: '' });
+  const [searchParams] = useSearchParams();
+  const initialCategory = searchParams.get('category') ?? '';
+  const [selected, setSelected] = React.useState<SectionSelection>({ section: Section.Core, id: initialCategory });
 
   return (
     <Layout.Root>
@@ -35,7 +38,8 @@ export default function SettingsPage() {
       </Layout.SideNav>
       <Layout.Main
         sx={{
-          p: 2
+          p: 3,
+          pl: 4,
         }}
       >
         {GetSettingsPage(selected.section, selected.id)}

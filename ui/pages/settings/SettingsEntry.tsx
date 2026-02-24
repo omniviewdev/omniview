@@ -105,10 +105,10 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
       // Options selection
       <Select
         size='sm'
-        name={id}
+        fullWidth
         value={isChanged ? draftValue as string : setting.value as string}
-        onChange={(e) => {
-          handleChange(id, e.target.value);
+        onChange={(value) => {
+          handleChange(id, value);
         }}
         options={setting.options.map(option => ({
           value: option.value as string,
@@ -135,10 +135,10 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
   return (
     <TextField
       size='sm'
-      name={id}
+      fullWidth
       value={isChanged ? draftValue as string : setting.value as string}
-      onChange={e => {
-        handleChange(id, e.target.value);
+      onChange={value => {
+        handleChange(id, value);
       }}
       sx={{
         '&::before': {
@@ -159,27 +159,25 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
 
 const ToggleSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => (
   <Checkbox
-    name={id}
     checked={draftValue !== undefined ? !!draftValue : !!setting.value}
-    onChange={e => {
-      handleChange(id, e.target.checked);
+    onChange={checked => {
+      handleChange(id, checked);
     }}
   />
 );
 
 const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
-  const inputRef = React.useRef<HTMLInputElement | undefined>(null);
   const isChanged = draftValue !== undefined;
 
   if (!setting.options?.length) {
     return (
       <TextField
         size='sm'
+        fullWidth
         type='number'
-        name={id}
-        value={isChanged ? +draftValue : +setting.value}
-        onChange={e => {
-          handleChange(id, +e.target.value);
+        value={isChanged ? String(+draftValue) : String(+setting.value)}
+        onChange={value => {
+          handleChange(id, +value);
         }}
         sx={{
           '&::before': {
@@ -194,10 +192,6 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
             outlineOffset: '2px',
           }),
         }}
-        inputRef={inputRef}
-        inputProps={{
-          step: setting.type === settings.SettingType.INTEGER ? 1 : 0.1,
-        }}
       />
     );
   }
@@ -205,10 +199,10 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
   return (
     <Select
       size='sm'
-      name={id}
+      fullWidth
       value={isChanged ? String(!!draftValue) : String(!!setting.value)}
-      onChange={(e) => {
-        handleChange(id, e.target.value);
+      onChange={(value) => {
+        handleChange(id, value);
       }}
       options={setting.options.map(option => ({
         value: option.value as string,

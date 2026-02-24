@@ -1,26 +1,32 @@
 import React from 'react';
 
-// Material-ui
-import { List, ListItem, ListSubheader, Avatar } from '@omniviewdev/ui';
+import { NavMenu, type NavSection } from '@omniviewdev/ui/sidebars';
+import { Avatar } from '@omniviewdev/ui';
 
-// Custom
 import Icon from '@/components/icons/Icon';
 import { type SectionSelection, Section } from '.';
 import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { IsImage } from '@/utils/url';
-import Box from '@mui/material/Box';
 
 type Props = {
   selected: SectionSelection;
   onChange: (selection: { section: Section; id: string }) => void;
 };
 
-/**
- * The navigation content for the settings page.
- */
+/** Encode section + id into a single NavMenu selection key */
+const encodeKey = (section: Section, id: string) => `${section}:${id}`;
+
+/** Decode a NavMenu selection key back into section + id */
+const decodeKey = (key: string): { section: Section; id: string } => {
+  const idx = key.indexOf(':');
+  return {
+    section: key.slice(0, idx) as Section,
+    id: key.slice(idx + 1),
+  };
+};
+
 const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
-  // Get the core settings sections
   const { settings } = useSettingsProvider();
   const { plugins } = usePluginManager();
 
@@ -32,123 +38,56 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
     return null;
   }
 
+  const sections: NavSection[] = [
+    {
+      title: 'Core',
+      items: [
+        ...Object.values(settings.data).map(category => ({
+          id: encodeKey(Section.Core, category.id),
+          label: category.label,
+          icon: <Icon name={category.icon} size={16} />,
+        })),
+        {
+          id: encodeKey(Section.Core, 'extensions'),
+          label: 'Extensions',
+          icon: <Icon name='LuBrainCircuit' size={16} />,
+        },
+      ],
+    },
+  ];
+
+  if (plugins.data?.length) {
+    sections.push({
+      title: 'Plugins',
+      items: plugins.data.map(plugin => ({
+        id: encodeKey(Section.Plugins, plugin.id),
+        label: plugin.metadata.name,
+        icon: IsImage(plugin.metadata?.icon) ? (
+          <Avatar
+            size='sm'
+            src={plugin.metadata.icon}
+            sx={{
+              borderRadius: '4px',
+              backgroundColor: 'transparent',
+              objectFit: 'contain',
+              border: 0,
+              width: 16,
+              height: 16,
+            }}
+          />
+        ) : <Icon name={plugin.metadata.icon} size={16} />,
+      })),
+    });
+  }
+
   return (
-    <List
+    <NavMenu
       size='sm'
-      sx={{
-        '--ListItem-radius': '8px',
-        '--List-padding': '8px',
-        '--List-gap': '6px',
-      }}>
-      {/** Core section */}
-      <ListItem key={Section.Core} nested>
-        <ListSubheader>
-          {Section.Core}
-        </ListSubheader>
-        <List
-          aria-labelledby='nav-list-browse'
-          sx={{
-            '& .JoyListItemButton-root': { p: '8px' },
-            '--List-gap': '0px',
-          }}
-        >
-          {Object.values(settings.data).map(category => (
-            <ListItem key={category.id}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1,
-                  p: '8px',
-                  borderRadius: 1,
-                  cursor: 'pointer',
-                  width: '100%',
-                  bgcolor: selected.id === category.id && selected.section === Section.Core ? 'action.selected' : 'transparent',
-                }}
-                onClick={() => {
-                  onChange({ section: Section.Core, id: category.id });
-                }}
-              >
-                <Icon name={category.icon} />
-                <span>{category.label}</span>
-              </Box>
-            </ListItem>
-          ))}
-
-          <ListItem key={'extensions'}>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                p: '8px',
-                borderRadius: 1,
-                cursor: 'pointer',
-                width: '100%',
-                bgcolor: selected.id === 'extensions' && selected.section === Section.Core ? 'action.selected' : 'transparent',
-              }}
-              onClick={() => {
-                onChange({ section: Section.Core, id: 'extensions' });
-              }}
-            >
-              <Icon name={'LuBrainCircuit'} />
-              <span>{'Extensions'}</span>
-            </Box>
-          </ListItem>
-
-        </List>
-      </ListItem>
-
-      {/** Plugins section */}
-      <ListItem key={Section.Plugins} nested>
-        <ListSubheader>
-          {Section.Plugins}
-        </ListSubheader>
-        <List
-          aria-labelledby='nav-list-browse'
-          sx={{
-            '& .JoyListItemButton-root': { p: '8px' },
-            '--List-gap': '0px',
-          }}
-        >
-          {plugins.data?.map(plugin => (
-            <ListItem key={plugin.id}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1,
-                  p: '8px',
-                  borderRadius: 1,
-                  cursor: 'pointer',
-                  width: '100%',
-                  bgcolor: selected.id === plugin.id && selected.section === Section.Plugins ? 'action.selected' : 'transparent',
-                }}
-                onClick={() => {
-                  onChange({ section: Section.Plugins, id: plugin.id });
-                }}
-              >
-                {IsImage(plugin.metadata?.icon) ? (
-                  <Avatar
-                    size='sm'
-                    src={plugin.metadata.icon}
-                    sx={{
-                      borderRadius: 4,
-                      backgroundColor: 'transparent',
-                      objectFit: 'contain',
-                      border: 0,
-                      width: 20,
-                      height: 20,
-                    }}
-                  />
-                ) : <Icon name={plugin.metadata.icon} />}
-                <span>{plugin.metadata.name}</span>
-              </Box>
-            </ListItem>
-          ))}
-        </List>
-      </ListItem>
-    </List>
+      sections={sections}
+      selected={encodeKey(selected.section, selected.id)}
+      onSelect={(key) => onChange(decodeKey(key))}
+      sx={{ py: 1 }}
+    />
   );
 };
 

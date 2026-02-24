@@ -21,6 +21,7 @@ type ShowSnackbarOptions = {
   details?: string;
   showOnce?: boolean;
   autoHideDuration?: number;
+  actions?: Array<{ label: string; onClick: () => void }>;
 };
 
 const variantToSeverity: Record<VariantType, NotificationSeverity> = {
@@ -47,6 +48,7 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
     let _status: VariantType = 'info';
     let _details: string | undefined;
     let _autoHideDuration: number | undefined = 5000;
+    let _actions: Array<{ label: string; onClick: () => void }> | undefined;
 
     if (isOptions) {
       _message = messageOrOptions.message;
@@ -60,6 +62,7 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
       _status = messageOrOptions.status;
       _details = messageOrOptions.details;
       _autoHideDuration = messageOrOptions.autoHideDuration ?? 5000;
+      _actions = messageOrOptions.actions;
     } else {
       _message = messageOrOptions;
       _status = status!;
@@ -71,6 +74,7 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
       title: _message,
       message: _details,
       timeout: _autoHideDuration,
+      actions: _actions,
     });
   };
 

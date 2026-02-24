@@ -7,8 +7,8 @@ import {
   BarChart,
   PieChart,
   ScatterChart,
-} from '@omniviewdev/ui/charts';
-import type { TimeSeriesDef, CategoricalDatum, ChartAnnotation } from '@omniviewdev/ui/charts';
+} from '../../charts';
+import type { TimeSeriesDef, CategoricalDatum, ChartAnnotation } from '../../charts';
 
 // --- Demo data generators ---
 

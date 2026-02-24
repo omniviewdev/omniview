@@ -7,6 +7,19 @@ import { type config } from '@omniviewdev/runtime/models';
 
 import { clearPlugin, loadAndRegisterPlugin } from '@/features/plugins/api/loader';
 
+/** Strip nested Go error wrapping to show the actionable message */
+function formatDevError(raw: string): string {
+  const segments = raw.split(': ');
+  if (segments.length <= 1) return raw;
+  const root = segments[segments.length - 1];
+  return root.charAt(0).toUpperCase() + root.slice(1);
+}
+
+/** Check if the error message references a settings path */
+function hasSettingsHint(msg: string): boolean {
+  return msg.includes('in settings') || msg.includes('not configured');
+}
+
 enum Entity {
   PLUGINS = 'plugins',
 }
@@ -71,7 +84,8 @@ export const usePluginManager = () => {
       showSnackbar({
         message: `Failed to reload plugin '${meta.name}'`,
         status: 'error',
-        details: error,
+        details: formatDevError(error),
+        actions: hasSettingsHint(error) ? [{ label: 'Open Settings', onClick: () => { window.location.hash = '#/settings?category=developer'; } }] : undefined,
       });
     });
     const closer3 = EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
@@ -177,7 +191,8 @@ export const usePluginManager = () => {
       showSnackbar({
         message: 'Dev mode installation failed',
         status: 'error',
-        details: msg,
+        details: formatDevError(msg),
+        actions: hasSettingsHint(msg) ? [{ label: 'Open Settings', onClick: () => { window.location.hash = '#/settings?category=developer'; } }] : undefined,
       });
     },
   });
