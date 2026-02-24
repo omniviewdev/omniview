@@ -13,7 +13,7 @@ import { createStandardViews } from '../../../../shared/sidebar/createDrawerView
 import { Condition } from 'kubernetes-types/meta/v1'
 import HorizontalPodAutoscalerSidebar from './Sidebar'
 
-const resourceKey = 'autoscaling/v2::HorizontalPodAutoscaler'
+const resourceKey = 'autoscaling::v2::HorizontalPodAutoscaler'
 
 const HorizontalPodAutoscalerTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()

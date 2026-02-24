@@ -10,7 +10,7 @@ import { LuRocket, LuTrash } from 'react-icons/lu'
 import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import RuntimeClassSidebar from './Sidebar'
 
-const resourceKey = 'node.k8s.io/v1::RuntimeClass'
+const resourceKey = 'node::v1::RuntimeClass'
 
 const RuntimeClassTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()

@@ -1,22 +1,18 @@
 import React from "react";
 
-// material-ui
 import { Stack } from "@omniviewdev/ui/layout";
 
-// types
 import { RuntimeClass } from "kubernetes-types/node/v1";
 import { DrawerContext } from "@omniviewdev/runtime";
 
-// project-imports
-import ObjectMetaSection from "../../../../../shared/ObjectMetaSection";
+import MetadataSection from "../../../../../shared/sidebar/pages/overview/sections/MetadataSection";
+import RuntimeClassHandlerSection from "./RuntimeClassHandlerSection";
+import RuntimeClassSchedulingSection from "./RuntimeClassSchedulingSection";
 
 interface Props {
   ctx: DrawerContext<RuntimeClass>;
 }
 
-/**
- * Renders a sidebar for a RuntimeClass resource
- */
 export const RuntimeClassSidebar: React.FC<Props> = ({ ctx }) => {
   if (!ctx.data) {
     return null;
@@ -24,11 +20,15 @@ export const RuntimeClassSidebar: React.FC<Props> = ({ ctx }) => {
 
   const data = ctx.data;
 
-  // compose your component here
   return (
-    <Stack direction="column" width={"100%"} spacing={2}>
-      <ObjectMetaSection data={data.metadata} />
-      {/** TODO: fill this in with more data */}
+    <Stack direction="column" width="100%" spacing={2}>
+      <Stack direction="column" spacing={0.5}>
+        <MetadataSection data={data.metadata} />
+        <RuntimeClassHandlerSection data={data} />
+      </Stack>
+      {data.scheduling && (
+        <RuntimeClassSchedulingSection scheduling={data.scheduling} />
+      )}
     </Stack>
   );
 };

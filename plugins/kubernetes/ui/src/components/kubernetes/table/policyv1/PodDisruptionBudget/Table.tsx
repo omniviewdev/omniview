@@ -10,7 +10,7 @@ import { LuShieldCheck, LuTrash } from 'react-icons/lu'
 import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import PodDisruptionBudgetSidebar from './Sidebar'
 
-const resourceKey = 'policy/v1::PodDisruptionBudget'
+const resourceKey = 'policy::v1::PodDisruptionBudget'
 
 const PodDisruptionBudgetTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()

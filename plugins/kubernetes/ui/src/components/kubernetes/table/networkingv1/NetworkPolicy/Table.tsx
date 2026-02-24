@@ -11,7 +11,7 @@ import { createStandardViews } from '../../../../shared/sidebar/createDrawerView
 import ChipList from '../../shared/cells/ChipList'
 import NetworkPolicySidebar from './Sidebar'
 
-const resourceKey = 'networking.k8s.io/v1::NetworkPolicy'
+const resourceKey = 'networking::v1::NetworkPolicy'
 
 const NetworkPolicyTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()

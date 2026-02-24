@@ -1,24 +1,24 @@
-import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import ClusterEditPage from './ClusterEditPage';
 
 // ---------------------------------------------------------------------------
 // Module-level mock state (reset in beforeEach)
 // ---------------------------------------------------------------------------
 
-const mockNavigate = jest.fn();
+const mockNavigate = vi.fn();
 let mockConnectionData: any = null;
 let mockConnectionOverrides: Record<string, any> = {};
 let mockAvailableTags: string[] = [];
-const mockUpdateOverride = jest.fn().mockResolvedValue(undefined);
+const mockUpdateOverride = vi.fn().mockResolvedValue(undefined);
 
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-jest.mock('react-router-dom', () => {
-  const actual = jest.requireActual('react-router-dom');
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
   return {
     ...actual,
     useParams: () => ({ id: 'test-cluster' }),
@@ -26,12 +26,12 @@ jest.mock('react-router-dom', () => {
   };
 });
 
-jest.mock('@omniviewdev/runtime', () => ({
+vi.mock('@omniviewdev/runtime', () => ({
   usePluginContext: () => ({ meta: { id: 'kubernetes' } }),
   useConnection: () => ({ connection: { data: mockConnectionData } }),
 }));
 
-jest.mock('../hooks/useClusterPreferences', () => ({
+vi.mock('../hooks/useClusterPreferences', () => ({
   useClusterPreferences: () => ({
     connectionOverrides: mockConnectionOverrides,
     availableTags: mockAvailableTags,
@@ -40,8 +40,7 @@ jest.mock('../hooks/useClusterPreferences', () => ({
 }));
 
 // Stub child components as lightweight divs with interactive buttons
-jest.mock('../components/connections/AvatarEditor', () => ({
-  __esModule: true,
+vi.mock('../components/connections/AvatarEditor', () => ({
   default: ({ name, onAvatarUrlChange, onAvatarColorChange }: any) => (
     <div data-testid="avatar-editor" data-name={name}>
       <button data-testid="avatar-change-url" onClick={() => onAvatarUrlChange('http://new-avatar.png')}>
@@ -54,8 +53,7 @@ jest.mock('../components/connections/AvatarEditor', () => ({
   ),
 }));
 
-jest.mock('../components/connections/TagInput', () => ({
-  __esModule: true,
+vi.mock('../components/connections/TagInput', () => ({
   default: ({ tags, availableTags, onChange }: any) => (
     <div data-testid="tag-input" data-tags={JSON.stringify(tags)} data-available={JSON.stringify(availableTags)}>
       <button data-testid="tag-add" onClick={() => onChange([...tags, 'new-tag'])}>
@@ -65,23 +63,20 @@ jest.mock('../components/connections/TagInput', () => ({
   ),
 }));
 
-jest.mock('../components/settings/MetricsTabContent', () => ({
-  __esModule: true,
+vi.mock('../components/settings/MetricsTabContent', () => ({
   default: ({ pluginID, connectionID, connected }: any) => (
     <div data-testid="metrics-content" data-plugin-id={pluginID} data-connection-id={connectionID} data-connected={String(connected)} />
   ),
 }));
 
-jest.mock('../components/settings/NodeShellTabContent', () => ({
-  __esModule: true,
+vi.mock('../components/settings/NodeShellTabContent', () => ({
   default: ({ pluginID, connectionID }: any) => (
     <div data-testid="node-shell-content" data-plugin-id={pluginID} data-connection-id={connectionID} />
   ),
 }));
 
 // Stub the layout components as pass-through containers
-jest.mock('../layouts/resource', () => ({
-  __esModule: true,
+vi.mock('../layouts/resource', () => ({
   default: {
     Root: ({ children }: any) => <div data-testid="layout-root">{children}</div>,
     SideNav: ({ children }: any) => <div data-testid="layout-sidenav">{children}</div>,
@@ -89,11 +84,11 @@ jest.mock('../layouts/resource', () => ({
   },
 }));
 
-jest.mock('@omniviewdev/ui/overlays', () => ({
+vi.mock('@omniviewdev/ui/overlays', () => ({
   Tooltip: ({ title, children }: any) => <span data-tooltip={title}>{children}</span>,
 }));
 
-jest.mock('../utils/color', () => ({
+vi.mock('../utils/color', () => ({
   stringToColor: (s: string) => `#mock-color-${s}`,
 }));
 
@@ -144,7 +139,7 @@ function makeConnection(overrides: Record<string, any> = {}) {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  vi.clearAllMocks();
   mockConnectionData = makeConnection();
   mockConnectionOverrides = {};
   mockAvailableTags = [];
