@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 // @omniviewdev/ui
 import Box from '@mui/material/Box';
@@ -38,6 +38,7 @@ import { getCommonPinningStyles } from './utils';
 import { ColumnMeta } from './types';
 import { useDynamicResourceColumns } from '../../tables/ColumnFilter/useDynamicResourceColumns';
 import { useStoredState } from '../hooks/useStoredState';
+import { useConnectionNamespaces } from '../hooks/useConnectionNamespaces';
 import { TableDrawerContext } from './TableDrawerContext';
 
 export type Memoizer = string | string[] | ((data: any) => string);
@@ -112,9 +113,12 @@ const ResourceTableContainer: React.FC<Props> = ({
 }) => {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'name', desc: false }]);
   const [columnVisibility, setColumnVisibility] = useStoredState<VisibilityState>(`kubernetes-${connectionID}-${resourceKey}-column-visibility`, visibilityFromColumnDefs(columns));
-  const [columnFilters, setColumnFilters] = useStoredState<ColumnFiltersState>(`kubernetes-${connectionID}-${resourceKey}-column-filters`, [{ id: 'namespace', value: [] }]);
+  const [columnFilters, setColumnFilters] = useStoredState<ColumnFiltersState>(`kubernetes-${connectionID}-${resourceKey}-column-filters`, []);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [search, setSearch] = useState<string>('');
+
+  // Shared per-connection namespace selection
+  const { namespaces: sharedNamespaces, setNamespaces: setSharedNamespaces } = useConnectionNamespaces(connectionID);
 
   /** Filtering behavior */
   const [filterAnchor, setFilterAnchor] = React.useState<undefined | HTMLElement>(undefined);
@@ -123,17 +127,6 @@ const ResourceTableContainer: React.FC<Props> = ({
   };
   const handleFilterClose = () => {
     setFilterAnchor(undefined);
-  };
-
-  const setNamespaces = (value: string[]) => {
-    setColumnFilters((prev) => {
-      const namespaceFilter = prev.find(f => f.id === 'namespace');
-      if (namespaceFilter) {
-        return prev.map(f => f.id === 'namespace' ? { ...f, value } : f);
-      }
-
-      return [...prev, { id: 'namespace', value }];
-    });
   };
 
   const { resources, isSyncing } = useResources({ pluginID: 'kubernetes', connectionID, resourceKey, idAccessor: 'metadata.uid' });
@@ -156,11 +149,42 @@ const ResourceTableContainer: React.FC<Props> = ({
 
   const allColumns = [...columns, ...columnDefs];
 
+  // Auto-detect whether this resource has a namespace column
+  const hasNamespaceColumn = allColumns.some(col => col.id === 'namespace');
+
+  // Merge shared namespace selection into column filters for TanStack
+  const effectiveColumnFilters = useMemo<ColumnFiltersState>(() => {
+    if (!hasNamespaceColumn || sharedNamespaces.length === 0) {
+      // Strip any stale namespace entries from per-resource filters
+      return columnFilters.filter(f => f.id !== 'namespace');
+    }
+    // Replace/inject namespace filter with shared selection
+    const withoutNs = columnFilters.filter(f => f.id !== 'namespace');
+    return [...withoutNs, { id: 'namespace', value: sharedNamespaces }];
+  }, [columnFilters, sharedNamespaces, hasNamespaceColumn]);
+
+  // Intercept onColumnFiltersChange to redirect namespace changes to the shared hook
+  const handleColumnFiltersChange = React.useCallback(
+    (updaterOrValue: ColumnFiltersState | ((prev: ColumnFiltersState) => ColumnFiltersState)) => {
+      setColumnFilters((prev) => {
+        const next = typeof updaterOrValue === 'function' ? updaterOrValue(prev) : updaterOrValue;
+        // Extract namespace filter changes and route to shared state
+        const nsFilter = next.find(f => f.id === 'namespace');
+        if (nsFilter) {
+          setSharedNamespaces(nsFilter.value as string[]);
+        }
+        // Store only non-namespace filters per-resource
+        return next.filter(f => f.id !== 'namespace');
+      });
+    },
+    [setColumnFilters, setSharedNamespaces],
+  );
+
   const table = useReactTable({
     data: resources.data?.result || defaultData,
     columns: allColumns,
     onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    onColumnFiltersChange: handleColumnFiltersChange,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -169,7 +193,7 @@ const ResourceTableContainer: React.FC<Props> = ({
     getRowId: (row) => get(row, 'metadata.uid'),
     state: {
       sorting,
-      columnFilters,
+      columnFilters: effectiveColumnFilters,
       columnVisibility,
       rowSelection,
       globalFilter: search,
@@ -338,11 +362,11 @@ const ResourceTableContainer: React.FC<Props> = ({
           <Box sx={{ flex: 1 }} />
           <Stack direction='row' gap={1} alignItems='center'>
             {toolbarActions}
-            {!hideNamespaceSelector && (
+            {hasNamespaceColumn && !hideNamespaceSelector && (
               <NamespaceSelect
                 connectionID={connectionID}
-                selected={columnFilters.find(f => f.id === 'namespace')?.value as string[] || []}
-                setNamespaces={setNamespaces}
+                selected={sharedNamespaces}
+                setNamespaces={setSharedNamespaces}
               />
             )}
             <ColumnFilter

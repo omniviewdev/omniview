@@ -12,6 +12,7 @@ import InputBase from '@mui/material/InputBase';
 import Chip from '@mui/material/Chip';
 import Box from '@mui/material/Box';
 import SearchIcon from '@mui/icons-material/Search';
+import ClearIcon from '@mui/icons-material/Clear';
 import type { SxProps, Theme } from '@mui/material/styles';
 import type { SelectChangeEvent } from '@mui/material/Select';
 
@@ -40,6 +41,8 @@ export interface SelectProps {
   error?: boolean | string;
   fullWidth?: boolean;
   disabled?: boolean;
+  /** Show delete buttons on chips and a clear-all icon (multiple mode only) */
+  clearable?: boolean;
   sx?: SxProps<Theme>;
 }
 
@@ -58,6 +61,7 @@ export default function Select({
   error,
   fullWidth,
   disabled,
+  clearable = false,
   sx,
 }: SelectProps) {
   const [search, setSearch] = useState('');
@@ -110,11 +114,48 @@ export default function Select({
                   return <Box sx={{ color: 'var(--ov-fg-faint)' }}>{placeholder}</Box>;
                 }
                 return (
-                  <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 0.5, overflow: 'hidden' }}>
+                  <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: 0.5, overflow: 'hidden', alignItems: 'center' }}>
                     {arr.map((val) => {
                       const opt = options.find((o) => o.value === val);
-                      return <Chip key={val} label={opt?.label ?? val} size="small" />;
+                      return (
+                        <Chip
+                          key={val}
+                          label={opt?.label ?? val}
+                          size="small"
+                          {...(clearable ? {
+                            onDelete: (e: React.SyntheticEvent) => {
+                              e.stopPropagation();
+                              onChange(arr.filter(v => v !== val));
+                            },
+                            onMouseDown: (e: React.MouseEvent) => {
+                              e.stopPropagation();
+                            },
+                          } : {})}
+                        />
+                      );
                     })}
+                    {clearable && arr.length > 1 && (
+                      <span
+                        role="button"
+                        aria-label="Clear all"
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          onChange([]);
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          flexShrink: 0,
+                          marginLeft: 2,
+                          cursor: 'pointer',
+                          color: 'var(--ov-fg-faint)',
+                          lineHeight: 0,
+                        }}
+                      >
+                        <ClearIcon sx={{ fontSize: 16 }} />
+                      </span>
+                    )}
                   </Box>
                 );
               }

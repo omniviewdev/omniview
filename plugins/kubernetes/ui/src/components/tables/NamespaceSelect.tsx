@@ -44,6 +44,7 @@ const NamespaceSelect: React.FC<Props> = ({ connectionID, selected, setNamespace
       size='xs'
       multiple
       searchable
+      clearable
       value={selected}
       onChange={handleChange}
       placeholder='All Namespaces'
