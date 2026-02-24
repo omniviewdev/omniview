@@ -9,7 +9,6 @@ sync:
 
 # Build all workspace packages (runtime, ui, providers, vite-plugin)
 packages:
-	pnpm --filter @omniviewdev/providers run build
 	pnpm --filter @omniviewdev/vite-plugin run build
 	pnpm --filter @omniviewdev/runtime run build
 	pnpm --filter @omniviewdev/ui run build
