@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Ingress } from 'kubernetes-types/networking/v1'
 import { ColumnDef } from '@tanstack/react-table'
 
+import { CopyableCell } from '../../shared/cells/CopyableCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
@@ -30,6 +31,7 @@ const IngressTable: React.FC = () => {
           header: 'Ingress Class',
           accessorFn: (row) => row.spec?.ingressClassName ?? '—',
           size: 150,
+          cell: CopyableCell,
         },
         {
           id: 'rules',

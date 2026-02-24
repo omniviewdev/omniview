@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { CronJob } from 'kubernetes-types/batch/v1'
 import { ColumnDef } from '@tanstack/react-table'
 
+import { CopyableCell } from '../../shared/cells/CopyableCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
@@ -28,12 +29,14 @@ const CronJobTable: React.FC = () => {
           header: 'Schedule',
           accessorFn: (row) => row.spec?.schedule,
           size: 140,
+          cell: CopyableCell,
         },
         {
           id: 'concurrencyPolicy',
           header: 'Concurrency Policy',
           accessorFn: (row) => row.spec?.concurrencyPolicy ?? 'Allow',
           size: 160,
+          cell: CopyableCell,
           meta: {
             defaultHidden: true,
           },

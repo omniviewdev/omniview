@@ -3,7 +3,7 @@ import React from "react";
 // @omniviewdev/ui
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
-import { Avatar } from '@omniviewdev/ui';
+import { Avatar, ClipboardText } from '@omniviewdev/ui';
 import { Stack } from '@omniviewdev/ui/layout';
 import { Text } from '@omniviewdev/ui/typography';
 
@@ -126,14 +126,11 @@ export const DetailsCard: React.FC<DetailsCardProps> = ({
                   </Grid>
                   <Grid size={entry.ratio?.[1] ?? 7}>
                     <Stack direction="row" gap={0.75} alignItems="center" justifyContent='space-between'>
-                      <Text
+                      <ClipboardText
+                        value={entry.used ? `${entry.used} / ${entry.value}` : entry.value}
+                        variant="inherit"
                         sx={{ color: "neutral.200", fontSize: cfg.bodyFontSize }}
-                        noWrap
-                      >
-                        {entry.used
-                          ? `${entry.used} / ${entry.value}`
-                          : entry.value}
-                      </Text>
+                      />
                       {entry.endAdornment}
                     </Stack>
                   </Grid>

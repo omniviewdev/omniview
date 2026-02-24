@@ -4,7 +4,7 @@ import React from "react";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
-import { Card, Chip } from '@omniviewdev/ui';
+import { Card, Chip, ClipboardText } from '@omniviewdev/ui';
 import { Stack } from '@omniviewdev/ui/layout';
 import { Text } from '@omniviewdev/ui/typography';
 
@@ -33,9 +33,7 @@ const ObjectMetaEntry: React.FC<{
     </Grid>
     <Grid size={9} sx={{ alignItems: "center" }}>
       {typeof value === 'string'
-        ? <Text sx={{ fontWeight: 600, fontSize: 12 }} size="xs">
-          {value}
-        </Text>
+        ? <ClipboardText value={value} variant="inherit" sx={{ fontSize: 12, fontWeight: 600 }} />
         : value
       }
     </Grid>

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { EndpointSlice } from 'kubernetes-types/discovery/v1'
 import { ColumnDef } from '@tanstack/react-table'
 
+import { CopyableCell } from '../../shared/cells/CopyableCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
@@ -29,6 +30,7 @@ const EndpointSliceTable: React.FC = () => {
           header: 'Address Type',
           accessorFn: (row) => row.addressType,
           size: 100,
+          cell: CopyableCell,
         },
         {
           id: 'endpointsReady',

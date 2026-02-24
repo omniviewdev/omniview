@@ -4,6 +4,7 @@ import { PersistentVolume } from 'kubernetes-types/core/v1'
 import { ColumnDef } from '@tanstack/react-table'
 
 import ResourceLinkCell from '../../corev1/Pod/cells/ResourceLinkCell'
+import { CopyableCell } from '../../shared/cells/CopyableCell'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
@@ -28,24 +29,28 @@ const PersistentVolumeTable: React.FC = () => {
           header: 'Capacity',
           accessorFn: (row) => row.spec?.capacity?.storage ?? '—',
           size: 100,
+          cell: CopyableCell,
         },
         {
           id: 'accessModes',
           header: 'Access Modes',
           accessorFn: (row) => (row.spec?.accessModes ?? []).join(', '),
           size: 150,
+          cell: CopyableCell,
         },
         {
           id: 'reclaimPolicy',
           header: 'Reclaim Policy',
           accessorFn: (row) => row.spec?.persistentVolumeReclaimPolicy ?? '—',
           size: 150,
+          cell: CopyableCell,
         },
         {
           id: 'storageClass',
           header: 'Storage Class',
           accessorFn: (row) => row.spec?.storageClassName ?? '—',
           size: 150,
+          cell: CopyableCell,
         },
         {
           id: 'claim',
@@ -82,6 +87,7 @@ const PersistentVolumeTable: React.FC = () => {
           header: 'Provisioned By',
           accessorFn: (row) => row.metadata?.annotations?.['pv.kubernetes.io/provisioned-by'] ?? '',
           size: 200,
+          cell: CopyableCell,
           meta: {
             defaultHidden: true,
           },

@@ -2,7 +2,7 @@ import React from "react";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
 import Grid from "@mui/material/Grid";
-import { Chip } from "@omniviewdev/ui";
+import { Chip, ClipboardText } from "@omniviewdev/ui";
 import { Stack } from "@omniviewdev/ui/layout";
 import { Text } from "@omniviewdev/ui/typography";
 import {
@@ -281,18 +281,17 @@ const InfoRow: React.FC<{ icon: string; label: string; value: string }> = ({
       size={9}
       sx={{ display: "flex", alignItems: "center", minHeight: 28 }}
     >
-      <Text
+      <ClipboardText
+        value={value}
+        truncate={false}
         sx={{
           color: "neutral.200",
           wordBreak: "break-all",
           lineHeight: 1.6,
-          fontFamily: "var(--ov-font-mono, monospace)",
           fontSize: 13,
           py: 0.25,
         }}
-      >
-        {value}
-      </Text>
+      />
     </Grid>
   </Grid>
 );

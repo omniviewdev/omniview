@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Service } from 'kubernetes-types/core/v1'
 import { ColumnDef } from '@tanstack/react-table'
 
+import { CopyableCell } from '../../shared/cells/CopyableCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
@@ -28,12 +29,14 @@ const ServiceTable: React.FC = () => {
           header: 'Type',
           accessorFn: (row) => row.spec?.type ?? 'ClusterIP',
           size: 120,
+          cell: CopyableCell,
         },
         {
           id: 'clusterIP',
           header: 'Cluster IP',
           accessorFn: (row) => row.spec?.clusterIP ?? '—',
           size: 140,
+          cell: CopyableCell,
         },
         {
           id: 'externalIPs',
@@ -62,6 +65,7 @@ const ServiceTable: React.FC = () => {
           header: 'External Name',
           accessorFn: (row) => row.spec?.externalName ?? '—',
           size: 180,
+          cell: CopyableCell,
           meta: {
             defaultHidden: true,
             description: `The external reference that discovery mechanisms will return as an alias for this service (e.g. a DNS CNAME record). No proxying will be involved.  Must be a lowercase RFC-1123 hostname (https://tools.ietf.org/html/rfc1123) and requires \`type\` to be "ExternalName".`
@@ -72,6 +76,7 @@ const ServiceTable: React.FC = () => {
           header: 'Session Affinity',
           accessorFn: (row) => row.spec?.sessionAffinity ?? 'None',
           size: 140,
+          cell: CopyableCell,
           meta: {
             defaultHidden: true,
             description: `Supports "ClientIP" and "None". Used to maintain session affinity. Enable client IP based session affinity. Must be ClientIP or None. Defaults to None. More info: https://kubernetes.io/docs/concepts/services-networking/service/#virtual-ips-and-service-proxies`
@@ -82,6 +87,7 @@ const ServiceTable: React.FC = () => {
           header: 'IP Family Policy',
           accessorFn: (row) => row.spec?.ipFamilyPolicy,
           size: 140,
+          cell: CopyableCell,
           meta: {
             defaultHidden: true,
             description: `IPFamilyPolicy represents the dual-stack-ness requested or required by this Service. If there is no value provided, then this field will be set to SingleStack. Services can be "SingleStack" (a single IP family), "PreferDualStack" (two IP families on dual-stack configured clusters or a single IP family on single-stack clusters), or "RequireDualStack" (two IP families on dual-stack configured clusters, otherwise fail). The ipFamilies and clusterIPs fields depend on the value of this field. This field will be wiped when updating a service to type ExternalName.`
@@ -92,6 +98,7 @@ const ServiceTable: React.FC = () => {
           header: 'Traffic Distribution',
           accessorFn: (row) => row.spec?.trafficDistribution,
           size: 120,
+          cell: CopyableCell,
           meta: {
             defaultHidden: true,
             description: `TrafficDistribution offers a way to express preferences for how traffic is distributed to Service endpoints. Implementations can use this field as a hint, but are not required to guarantee strict adherence. If the field is not set, the implementation will apply its default routing strategy. If set to "PreferClose", implementations should prioritize endpoints that are topologically close (e.g., same zone).`

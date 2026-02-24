@@ -8,6 +8,7 @@ import ResourceLinkCell from './cells/ResourceLinkCell';
 import ContainerPhaseCell from './cells/ContainerPhaseCell';
 import ContainerStatusCell from './cells/ContainerStatusCell';
 import MetricUsageCell, { PodMetricsContext } from './cells/MetricUsageCell';
+import { CopyableCell } from '../../shared/cells/CopyableCell';
 import { withNamespacedResourceColumns } from '../../shared/columns';
 import ResourceTable from '../../../../shared/table/ResourceTable';
 import { DrawerComponent, DrawerComponentActionListItem, DrawerContext, useConfirmationModal, useExec, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime';
@@ -132,6 +133,7 @@ const PodTable: React.FC = () => {
         header: 'Host IP',
         accessorKey: 'status.hostIP',
         size: 120,
+        cell: CopyableCell,
         meta: {
           defaultHidden: true,
         }
@@ -141,6 +143,7 @@ const PodTable: React.FC = () => {
         header: 'Pod IP',
         accessorKey: 'status.podIP',
         size: 120,
+        cell: CopyableCell,
       },
       {
         id: 'qos',
@@ -179,6 +182,7 @@ const PodTable: React.FC = () => {
         header: 'Preemption Policy',
         accessorKey: 'spec.preemptionPolicy',
         size: 200,
+        cell: CopyableCell,
         meta: {
           defaultHidden: true,
         }
@@ -196,6 +200,7 @@ const PodTable: React.FC = () => {
         id: 'schedulerName',
         header: 'Scheduler Name',
         accessorKey: 'spec.schedulerName',
+        cell: CopyableCell,
         meta: {
           defaultHidden: true,
         }
@@ -204,6 +209,7 @@ const PodTable: React.FC = () => {
         id: 'hostname',
         header: 'Hostname',
         accessorKey: 'spec.hostname',
+        cell: CopyableCell,
         meta: {
           defaultHidden: true,
         }

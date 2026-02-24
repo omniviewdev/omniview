@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { ColumnDef } from '@tanstack/react-table'
 
 import ConditionsCell from '../../shared/cells/ConditionsCell'
+import { CopyableCell } from '../../shared/cells/CopyableCell'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
@@ -12,7 +13,7 @@ import { FlowSchema } from 'kubernetes-types/flowcontrol/v1'
 import { Condition } from 'kubernetes-types/meta/v1'
 import FlowSchemaSidebar from './Sidebar'
 
-const resourceKey = 'flowcontrol.apiserver.k8s.io/v1beta3::FlowSchema'
+const resourceKey = 'flowcontrol::v1beta3::FlowSchema'
 
 const FlowSchemaTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()
@@ -29,6 +30,7 @@ const FlowSchemaTable: React.FC = () => {
           header: 'Priority Level',
           accessorFn: (row) => row.spec?.priorityLevelConfiguration?.name ?? '—',
           size: 200,
+          cell: CopyableCell,
         },
         {
           id: 'matchingPrecedence',

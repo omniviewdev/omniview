@@ -3,6 +3,7 @@ import { ColumnDef } from '@tanstack/react-table'
 import { PriorityClass } from 'kubernetes-types/scheduling/v1'
 import { useParams } from 'react-router-dom'
 import ResourceTable from '../../../../shared/table/ResourceTable'
+import { CopyableCell } from '../../shared/cells/CopyableCell'
 import { withClusterResourceColumns } from '../../shared/columns'
 import { LuBox, LuCode } from 'react-icons/lu'
 import BaseEditorPage from '../../../../shared/sidebar/pages/editor/BaseEditorPage'
@@ -20,6 +21,7 @@ const PriorityClassTable: React.FC = () => {
         header: 'Preemption Policy',
         accessorKey: 'preemptionPolicy',
         size: 200,
+        cell: CopyableCell,
         meta: {
           defaultHidden: false,
         }

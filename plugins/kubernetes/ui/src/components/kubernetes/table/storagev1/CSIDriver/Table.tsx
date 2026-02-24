@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { CSIDriver } from 'kubernetes-types/storage/v1'
 import { ColumnDef } from '@tanstack/react-table'
 
+import { CopyableCell } from '../../shared/cells/CopyableCell'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
@@ -59,6 +60,7 @@ This field was immutable in Kubernetes < 1.29 and now is mutable.`
           header: 'FSGroup Policy',
           accessorFn: (row) => row.spec?.fsGroupPolicy,
           size: 160,
+          cell: CopyableCell,
           meta: {
             description: `Defines if the underlying volume supports changing ownership and permission of the volume before being mounted. Refer to the specific FSGroupPolicy values for additional details.
 

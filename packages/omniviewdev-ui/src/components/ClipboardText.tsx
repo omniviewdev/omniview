@@ -9,6 +9,8 @@ export interface ClipboardTextProps {
   truncate?: boolean;
   maxWidth?: number | string;
   sx?: SxProps<Theme>;
+  /** "mono" renders with monospace font (default); "inherit" inherits parent styling */
+  variant?: 'mono' | 'inherit';
 }
 
 export default function ClipboardText({
@@ -16,6 +18,7 @@ export default function ClipboardText({
   truncate = true,
   maxWidth,
   sx,
+  variant = 'mono',
 }: ClipboardTextProps) {
   const [hovered, setHovered] = useState(false);
 
@@ -28,25 +31,44 @@ export default function ClipboardText({
         alignItems: 'center',
         gap: 0.5,
         maxWidth,
+        minWidth: 0,
         ...sx as Record<string, unknown>,
       }}
     >
-      <Typography
-        variant="body2"
-        sx={{
-          fontSize: '0.8125rem',
-          color: 'var(--ov-fg-default)',
-          fontFamily: 'var(--ov-font-mono)',
-          ...(truncate && {
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }),
+      {variant === 'mono' ? (
+        <Typography
+          variant="body2"
+          sx={{
+            fontSize: '0.8125rem',
+            color: 'var(--ov-fg-default)',
+            fontFamily: 'var(--ov-font-mono)',
+            ...(truncate && {
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }),
+          }}
+        >
+          {value}
+        </Typography>
+      ) : (
+        <span style={{
+          ...(truncate ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const } : {}),
+        }}>
+          {value}
+        </span>
+      )}
+      <span
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          visibility: hovered ? 'visible' : 'hidden',
+          flexShrink: 0,
         }}
       >
-        {value}
-      </Typography>
-      {hovered && <CopyButton value={value} size="xs" />}
+        <CopyButton value={value} size="xs" />
+      </span>
     </Box>
   );
 }

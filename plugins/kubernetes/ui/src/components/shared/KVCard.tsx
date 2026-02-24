@@ -2,7 +2,7 @@ import React from "react";
 
 // @omniviewdev/ui
 import Grid from "@mui/material/Grid";
-import { Chip } from '@omniviewdev/ui';
+import { Chip, ClipboardText } from '@omniviewdev/ui';
 import { Stack } from '@omniviewdev/ui/layout';
 import { Text } from '@omniviewdev/ui/typography';
 import ExpandableSections from './ExpandableSections';
@@ -35,14 +35,10 @@ const KVCard: React.FC<Props> = ({ title, kvs, defaultExpanded, size = "sm" }) =
           {Object.entries(kvs).map(([key, value]) => (
             <React.Fragment key={key}>
               <Grid size={6} sx={{ alignItems: "center" }}>
-                <Text sx={{ fontSize: 11, fontWeight: 400 }} size='xs'>
-                  {key}
-                </Text>
+                <ClipboardText value={key} variant="inherit" sx={{ fontSize: 11, fontWeight: 400 }} />
               </Grid>
               <Grid size={6} sx={{ alignItems: "center" }}>
-                <Text sx={{ fontSize: 11, fontWeight: 600 }} size='xs'>
-                  {value}
-                </Text>
+                <ClipboardText value={value} variant="inherit" sx={{ fontSize: 11, fontWeight: 600 }} />
               </Grid>
             </React.Fragment>
           ))}

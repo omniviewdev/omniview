@@ -6,6 +6,7 @@ import { Node } from 'kubernetes-types/core/v1'
 import { useParams } from 'react-router-dom';
 import ResourceTable from '../../../../shared/table/ResourceTable';
 import { convertByteUnits } from '../../../../../utils/units';
+import { CopyableCell } from '../../shared/cells/CopyableCell';
 import { withClusterResourceColumns } from '../../shared/columns';
 import { LuBox, LuShieldBan, LuShieldCheck, LuArrowDownToLine, LuTerminal, LuTrash } from 'react-icons/lu';
 import NodeSidebar from '../../../sidebar/NodeSidebar';
@@ -38,6 +39,7 @@ const NodeTable: React.FC = () => {
         size: 120,
         enableSorting: true,
         enableHiding: false,
+        cell: CopyableCell,
         meta: {
           defaultHidden: true,
         }
@@ -47,12 +49,14 @@ const NodeTable: React.FC = () => {
         header: 'OS Image',
         accessorKey: 'status.nodeInfo.osImage',
         size: 200,
+        cell: CopyableCell,
       },
       {
         id: 'kernelVersion',
         header: 'Kernel Version',
         accessorKey: 'status.nodeInfo.kernelVersion',
         size: 150,
+        cell: CopyableCell,
         meta: {
           defaultHidden: true,
         }
@@ -62,6 +66,7 @@ const NodeTable: React.FC = () => {
         header: 'Container Runtime',
         accessorKey: 'status.nodeInfo.containerRuntimeVersion',
         size: 200,
+        cell: CopyableCell,
         meta: {
           defaultHidden: true,
         }
@@ -71,6 +76,7 @@ const NodeTable: React.FC = () => {
         header: 'Kubelet Version',
         accessorKey: 'status.nodeInfo.kubeletVersion',
         size: 150,
+        cell: CopyableCell,
       },
       {
         id: 'cpuCapacity',

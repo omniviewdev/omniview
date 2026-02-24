@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { StorageClass } from 'kubernetes-types/storage/v1'
 import { ColumnDef } from '@tanstack/react-table'
 
+import { CopyableCell } from '../../shared/cells/CopyableCell'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
@@ -28,18 +29,21 @@ const StorageClassTable: React.FC = () => {
           header: 'Provisioner',
           accessorFn: (row) => row.provisioner,
           size: 250,
+          cell: CopyableCell,
         },
         {
           id: 'reclaimPolicy',
           header: 'Reclaim Policy',
           accessorFn: (row) => row.reclaimPolicy ?? 'Delete',
           size: 120,
+          cell: CopyableCell,
         },
         {
           id: 'volumeBindingMode',
           header: 'Binding Mode',
           accessorFn: (row) => row.volumeBindingMode ?? 'Immediate',
           size: 140,
+          cell: CopyableCell,
         },
         {
           id: 'allowVolumeExpansion',

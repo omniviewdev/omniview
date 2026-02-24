@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { PersistentVolumeClaim } from 'kubernetes-types/core/v1'
 import { ColumnDef } from '@tanstack/react-table'
 
+import { CopyableCell } from '../../shared/cells/CopyableCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
@@ -28,6 +29,7 @@ const PersistentVolumeClaimTable: React.FC = () => {
           header: 'Name',
           accessorFn: (row) => row.metadata?.name ?? '—',
           size: 150,
+          cell: CopyableCell,
         },
         {
           id: 'status',
@@ -40,6 +42,7 @@ const PersistentVolumeClaimTable: React.FC = () => {
           header: 'Storage',
           accessorFn: (row) => row.spec?.resources?.requests?.storage ?? '—',
           size: 120,
+          cell: CopyableCell,
         },
         {
           id: 'accessModes',
@@ -47,6 +50,7 @@ const PersistentVolumeClaimTable: React.FC = () => {
           accessorFn: (row) =>
             row.spec?.accessModes?.join(', ') ?? '—',
           size: 160,
+          cell: CopyableCell,
         },
         {
           id: 'volumeMode',
@@ -62,6 +66,7 @@ const PersistentVolumeClaimTable: React.FC = () => {
           header: 'Volume Name',
           accessorFn: (row) => row.spec?.volumeName ?? '—',
           size: 150,
+          cell: CopyableCell,
           meta: {
             defaultHidden: true,
           },
@@ -71,6 +76,7 @@ const PersistentVolumeClaimTable: React.FC = () => {
           header: 'Storage Class',
           accessorFn: (row) => row.spec?.storageClassName ?? '—',
           size: 160,
+          cell: CopyableCell,
           meta: {
             defaultHidden: true,
           },

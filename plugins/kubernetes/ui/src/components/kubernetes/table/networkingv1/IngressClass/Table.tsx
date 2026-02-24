@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { IngressClass } from 'kubernetes-types/networking/v1'
 import { ColumnDef } from '@tanstack/react-table'
 
+import { CopyableCell } from '../../shared/cells/CopyableCell'
 import { withClusterResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
 import { DrawerComponent, useConfirmationModal, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
@@ -10,7 +11,7 @@ import { LuCircleCheck, LuCloudCog, LuTrash } from 'react-icons/lu'
 import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 import IngressClassSidebar from './Sidebar'
 
-const resourceKey = 'networking.k8s.io/v1::IngressClass'
+const resourceKey = 'networking::v1::IngressClass'
 
 const IngressClassTable: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>()
@@ -28,6 +29,7 @@ const IngressClassTable: React.FC = () => {
           // TODO: Resource link to the resource that is acting as the controller  (deployment, statefulset, etc)
           accessorFn: (row) => row.spec?.controller ?? '—',
           size: 220,
+          cell: CopyableCell,
         },
         {
           id: 'isDefault',
