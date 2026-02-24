@@ -74,6 +74,7 @@ jest.mock('@omniviewdev/runtime', () => ({
       'terminal.cursorBlink': true,
       'terminal.cursorStyle': 'block',
       'terminal.fontSize': 14,
+      'terminal.theme': 'default',
     },
   }),
 }));
@@ -154,6 +155,10 @@ describe('TerminalContainer', () => {
         macOptionClickForcesSelection: true,
         fontSize: 14,
         fontFamily: expect.stringContaining('Consolas'),
+        theme: expect.objectContaining({
+          background: '#1e1e1e',
+          foreground: '#d4d4d4',
+        }),
       }),
     );
     expect(mockOpen).toHaveBeenCalled();
@@ -227,9 +232,11 @@ describe('TerminalContainer', () => {
   it('container div has correct styles', () => {
     const { container } = render(<TerminalContainer sessionId="test-session-123" />);
 
-    const terminalDiv = container.querySelector('div');
+    // The outer div is position:relative wrapper, the inner div has the terminal bg
+    const divs = container.querySelectorAll('div');
+    const terminalDiv = divs[1]; // inner div with ref + background
     expect(terminalDiv).toBeTruthy();
-    expect(terminalDiv!.style.backgroundColor).toBe('black');
+    expect(terminalDiv!.style.backgroundColor).toBe('rgb(30, 30, 30)');
     expect(terminalDiv!.style.height).toBe('100%');
     expect(terminalDiv!.style.width).toBe('100%');
   });

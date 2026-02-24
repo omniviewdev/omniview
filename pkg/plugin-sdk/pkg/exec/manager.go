@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-hclog"
 	"github.com/omniviewdev/settings"
+	"golang.org/x/term"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -195,6 +196,16 @@ func (m *Manager) CreateSession(
 	ptyFile, ttyFile, err := pty.Open()
 	if err != nil {
 		msg := fmt.Sprintf("failed to open pty: %v", err)
+		logger.Error(msg)
+		cancel()
+		return nil, errors.New(msg)
+	}
+
+	// Set slave TTY to raw mode to disable local echo. This makes the PTY a
+	// transparent byte pipe — only the remote side (e.g. bash in a K8s pod)
+	// will echo input, preventing the double-echo bug.
+	if _, err = term.MakeRaw(int(ttyFile.Fd())); err != nil {
+		msg := fmt.Sprintf("failed to set tty to raw mode: %v", err)
 		logger.Error(msg)
 		cancel()
 		return nil, errors.New(msg)

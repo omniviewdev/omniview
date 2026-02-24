@@ -1,4 +1,5 @@
 import { type SettingsSection } from '@/store/settings/types';
+import { terminalThemeOptions } from '@/providers/BottomDrawer/containers/terminalThemes';
 
 export type TerminalSettings = SettingsSection;
 
@@ -23,11 +24,7 @@ export const initialState: TerminalSettings = {
       type: 'select',
       default: 'default',
       value: 'default',
-      options: [
-        { value: 'default', label: 'Default' },
-        { value: 'dark', label: 'Dark' },
-        { value: 'light', label: 'Light' },
-      ],
+      options: terminalThemeOptions,
     },
     fontSize: {
       label: 'Font Size',

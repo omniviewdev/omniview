@@ -29,7 +29,7 @@ func Register(plugin *sdk.Plugin) {
 				Plugin:         "kubernetes",
 				Resource:       "core::v1::Pod",
 				TTYHandler:     PodHandler,
-				DefaultCommand: []string{"/bin/bash", "-c", "stty -echo && /bin/bash"},
+				DefaultCommand: []string{"/bin/bash"},
 				TargetBuilder: sdkresource.ActionTargetBuilder{
 					Paths: []string{"$.spec.containers[*]"},
 					Selectors: map[string]string{

@@ -19,6 +19,7 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	pluginexec "github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
@@ -338,7 +339,7 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 		return nil, err
 	}
 	if path == "" {
-		return nil, errors.New("cancelled")
+		return nil, apperror.Cancelled()
 	}
 
 	l.Infow("installing plugin in dev mode", "path", path)
@@ -346,7 +347,7 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 	// 1. Parse metadata from the plugin source directory.
 	metadata, err := parseMetadataFromPluginPath(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse metadata from plugin path: %w", err)
+		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to parse plugin metadata")
 	}
 	l.Infow("parsed plugin metadata", "pluginID", metadata.ID)
 
@@ -366,14 +367,14 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 		ExcludeUI:      true,
 	}); err != nil {
 		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
-		return nil, fmt.Errorf("failed to copy metadata: %w", err)
+		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to copy plugin metadata")
 	}
 
 	// 4. Ensure the bin directory exists for the GoWatcher to transfer into.
 	installLocation := getPluginLocation(metadata.ID)
 	if err = os.MkdirAll(filepath.Join(installLocation, "bin"), 0755); err != nil {
 		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
-		return nil, fmt.Errorf("failed to create plugin bin directory: %w", err)
+		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to create plugin bin directory")
 	}
 
 	// 5. Start the dev server (Vite + GoWatcher with initial build).
@@ -383,12 +384,15 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 		l.Infow("starting dev server (triggers initial build)", "pluginID", metadata.ID)
 		if _, startErr := pm.devServerMgr.StartDevServerForPath(metadata.ID, path); startErr != nil {
 			runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
-			return nil, fmt.Errorf("dev server failed to start: %w", startErr)
+			return nil, apperror.Wrap(startErr, apperror.TypePluginBuildFailed, 500, "Dev server failed to start").
+				WithActions(apperror.OpenSettingsAction("developer"))
 		}
 		l.Infow("dev server started successfully", "pluginID", metadata.ID)
 	} else {
 		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
-		return nil, fmt.Errorf("no dev server manager configured")
+		return nil, apperror.New(apperror.TypeSettingsMissingConfig, 422, "No dev server manager configured",
+			"The dev server manager is not available. Ensure developer settings are configured.").
+			WithActions(apperror.OpenSettingsAction("developer"))
 	}
 
 	// 6. Load the plugin — binary should now exist from GoWatcher initial build.
@@ -396,7 +400,7 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 	_, err = pm.LoadPlugin(metadata.ID, &LoadPluginOptions{DevMode: true, DevModePath: path})
 	if err != nil {
 		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, metadata)
-		return nil, fmt.Errorf("error loading plugin: %w", err)
+		return nil, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500, "Failed to load plugin")
 	}
 
 	runtime.EventsEmit(pm.ctx, PluginDevInstallEventComplete, metadata)
@@ -417,7 +421,7 @@ func (pm *pluginManager) InstallFromPathPrompt() (*config.PluginMeta, error) {
 		return nil, err
 	}
 	if path == "" {
-		return nil, errors.New("cancelled")
+		return nil, apperror.Cancelled()
 	}
 
 	return pm.InstallPluginFromPath(path)
@@ -458,17 +462,20 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 
 	// plugins should be a valid tar.gz file
 	if !isGzippedTarball(path) {
-		return nil, fmt.Errorf("plugin is not a tar.gz file: %s", path)
+		return nil, apperror.New(apperror.TypeValidation, 422, "Invalid plugin package",
+			fmt.Sprintf("The file at '%s' is not a valid tar.gz archive.", path)).
+			WithSuggestions("Ensure the file is a .tar.gz plugin package")
 	}
 
 	if err := checkTarball(path); err != nil {
-		return nil, fmt.Errorf("plugin package is corrupt: %w", err)
+		return nil, apperror.Wrap(err, apperror.TypeValidation, 422, "Corrupt plugin package").
+			WithSuggestions("Re-download the plugin package and try again")
 	}
 
 	// all good - unpack to the plugin directory
 	metadata, err := parseMetadataFromArchive(path)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing plugin metadata: %w", err)
+		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to parse plugin metadata")
 	}
 
 	// signal to UI the install has started
@@ -478,12 +485,12 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 	location := getPluginLocation(metadata.ID)
 	if err = os.MkdirAll(location, 0755); err != nil {
 		runtime.EventsEmit(pm.ctx, PluginInstallErrorEvent, metadata)
-		return nil, fmt.Errorf("error creating plugin directory: %w", err)
+		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to create plugin directory")
 	}
 
 	if err = unpackPluginArchive(path, location); err != nil {
 		runtime.EventsEmit(pm.ctx, PluginInstallErrorEvent, metadata)
-		return nil, fmt.Errorf("error unpacking plugin download: %w", err)
+		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to unpack plugin package")
 	}
 
 	// all set, load it in, uninstalling a current one if necessary
@@ -492,7 +499,7 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 	_, err = pm.LoadPlugin(metadata.ID, nil)
 	if err != nil {
 		runtime.EventsEmit(pm.ctx, PluginInstallErrorEvent, metadata)
-		return nil, fmt.Errorf("error loading plugin: %w", err)
+		return nil, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500, "Failed to load plugin after install")
 	}
 
 	if err = pm.writePluginState(); err != nil {
@@ -507,7 +514,9 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 func (pm *pluginManager) ReloadPlugin(id string) (types.Plugin, error) {
 	_, ok := pm.plugins[id]
 	if !ok {
-		return types.Plugin{}, fmt.Errorf("plugin with id '%s' is not currently loaded", id)
+		return types.Plugin{}, apperror.New(apperror.TypePluginNotLoaded, 404,
+			"Plugin not loaded",
+			fmt.Sprintf("Plugin '%s' is not currently loaded.", id)).WithInstance(id)
 	}
 
 	var opts *LoadPluginOptions
@@ -526,7 +535,8 @@ func (pm *pluginManager) ReloadPlugin(id string) (types.Plugin, error) {
 	}
 
 	if err = pm.UnloadPlugin(id); err != nil {
-		return types.Plugin{}, fmt.Errorf("error unloading plugin during reload: %w", err)
+		return types.Plugin{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
+			"Failed to unload plugin during reload").WithInstance(id)
 	}
 	return pm.LoadPlugin(id, opts)
 }
@@ -541,7 +551,7 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 	log := pm.logger.Named("LoadPlugin").With("id", id, "ops", opts)
 
 	if _, ok := pm.plugins[id]; ok {
-		return types.Plugin{}, fmt.Errorf("plugin with id '%s' already loaded", id)
+		return types.Plugin{}, apperror.PluginAlreadyLoaded(id)
 	}
 
 	location := getPluginLocation(id)
@@ -549,43 +559,40 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 
 	// make sure it exists, and load the metadata file
 	if _, err := os.Stat(location); os.IsNotExist(err) {
-		return types.Plugin{}, fmt.Errorf("plugin with id '%s' not found", id)
+		return types.Plugin{}, apperror.PluginNotFound(id)
 	}
 
 	// load the metadata in so we can start validating
 	metadata, err := types.LoadPluginMetadata(location)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return types.Plugin{}, fmt.Errorf(
-				"plugin with id '%s' is missing it's metadata file",
-				id,
-			)
+			return types.Plugin{}, apperror.New(apperror.TypePluginLoadFailed, 404,
+				"Plugin metadata missing",
+				fmt.Sprintf("Plugin '%s' is missing its metadata file (plugin.yaml).", id)).
+				WithInstance(id)
 		}
 
-		return types.Plugin{}, fmt.Errorf(
-			"error loading plugin metadata for plugin '%s': %w",
-			id,
-			err,
-		)
+		return types.Plugin{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
+			fmt.Sprintf("Failed to load metadata for plugin '%s'", id)).
+			WithInstance(id)
 	}
 
 	// Dev mode: only validate binary exists (UI assets are served live by Vite dev server).
 	// Production: full validation including UI assets.
 	if opts != nil && opts.DevMode {
 		if err = validateHasBinary(location); err != nil {
-			return types.Plugin{}, fmt.Errorf("plugin %q failed dev validation: %w", id, err)
+			return types.Plugin{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
+				fmt.Sprintf("Plugin '%s' failed dev validation", id)).WithInstance(id)
 		}
 	} else if opts != nil && opts.ExistingState != nil && opts.ExistingState.DevMode {
 		if err = validateHasBinary(location); err != nil {
-			return types.Plugin{}, fmt.Errorf("plugin %q failed dev validation: %w", id, err)
+			return types.Plugin{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
+				fmt.Sprintf("Plugin '%s' failed dev validation", id)).WithInstance(id)
 		}
 	} else {
 		if err = validateInstalledPlugin(metadata); err != nil {
-			return types.Plugin{}, fmt.Errorf(
-				"plugin with id '%s' failed validation during loading: %w",
-				id,
-				err,
-			)
+			return types.Plugin{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
+				fmt.Sprintf("Plugin '%s' failed validation during loading", id)).WithInstance(id)
 		}
 	}
 
@@ -647,9 +654,9 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 		// Connect via RPC
 		rpcClient, err := pluginClient.Client()
 		if err != nil {
-			err = fmt.Errorf("error initializing plugin: %w", err)
-			pm.logger.Error(err)
-			return types.Plugin{}, err
+			appErr := apperror.Wrap(err, apperror.TypePluginLoadFailed, 500, "Failed to initialize plugin RPC").WithInstance(id)
+			pm.logger.Error(appErr)
+			return types.Plugin{}, appErr
 		}
 
 		newPlugin.RPCClient = rpcClient
@@ -665,7 +672,7 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 			newPlugin.LoadError = err.Error()
 			pm.plugins[id] = newPlugin
 
-			return types.Plugin{}, fmt.Errorf("error initializing plugin: %w", err)
+			return types.Plugin{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500, "Failed to initialize plugin").WithInstance(id)
 		}
 
 		// start the controllers
@@ -673,7 +680,7 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 			newPlugin.LoadError = err.Error()
 			pm.plugins[id] = newPlugin
 
-			return types.Plugin{}, fmt.Errorf("error starting plugin: %w", err)
+			return types.Plugin{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500, "Failed to start plugin").WithInstance(id)
 		}
 	}
 
@@ -690,24 +697,27 @@ func (pm *pluginManager) UninstallPlugin(id string) (types.Plugin, error) {
 	l.Debugw("uninstalling plugin", "pluginID", id)
 	plugin, ok := pm.plugins[id]
 	if !ok {
-		err := fmt.Errorf("plugin with id '%s' is not currently loaded", id)
-		l.Error(err)
-		return types.Plugin{}, err
+		appErr := apperror.New(apperror.TypePluginNotLoaded, 404,
+			"Plugin not loaded",
+			fmt.Sprintf("Plugin '%s' is not currently loaded.", id)).WithInstance(id)
+		l.Error(appErr)
+		return types.Plugin{}, appErr
 	}
 
 	if err := pm.UnloadPlugin(id); err != nil {
-		err = fmt.Errorf("error unloading plugin during uninstall: %w", err)
-		l.Error(err)
-		return types.Plugin{}, err
+		appErr := apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
+			"Failed to unload plugin during uninstall").WithInstance(id)
+		l.Error(appErr)
+		return types.Plugin{}, appErr
 	}
 	l.Debugw("unloaded plugin", "pluginID", id)
 
 	// remove from the filesystem
 	location := getPluginLocation(id)
 	if err := os.RemoveAll(location); err != nil {
-		err = fmt.Errorf("error removing plugin from filesystem: %w", err)
-		l.Error(err)
-		return types.Plugin{}, err
+		appErr := apperror.Internal(err, "Failed to remove plugin from filesystem").WithInstance(id)
+		l.Error(appErr)
+		return types.Plugin{}, appErr
 	}
 	l.Debugw("removed plugin", "pluginID", id)
 
@@ -745,9 +755,9 @@ func (pm *pluginManager) GetPlugin(id string) (types.Plugin, error) {
 
 	plugin, ok := pm.plugins[id]
 	if !ok {
-		err := fmt.Errorf("plugin not found: %s", id)
-		l.Error(err)
-		return types.Plugin{}, err
+		appErr := apperror.PluginNotFound(id)
+		l.Error(appErr)
+		return types.Plugin{}, appErr
 	}
 	return plugin, nil
 }
@@ -770,9 +780,9 @@ func (pm *pluginManager) GetPluginMeta(id string) (config.PluginMeta, error) {
 
 	plugin, ok := pm.plugins[id]
 	if !ok {
-		err := fmt.Errorf("plugin not found: %s", id)
-		l.Error(err)
-		return config.PluginMeta{}, err
+		appErr := apperror.PluginNotFound(id)
+		l.Error(appErr)
+		return config.PluginMeta{}, appErr
 	}
 	return plugin.Metadata, nil
 }

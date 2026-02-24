@@ -12,7 +12,6 @@ import SettingsEntries from './SettingsEntries';
 import { Section } from '.';
 import { usePluginSettings } from '@/hooks/settings/usePluginSettings';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
-import { useSnackbar } from '@omniviewdev/runtime';
 
 type Props = {
   id: string;
@@ -26,7 +25,6 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
 
   const { plugin } = usePlugin({ id });
   const { settings, setSettings } = usePluginSettings({ plugin: id });
-  const { showSnackbar } = useSnackbar();
 
   const hasDrafts = Object.values(draftValues).some(v => v !== undefined);
 
@@ -41,10 +39,8 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
 
     setSettings(values).then(() => {
       clearDraftValues();
-      showSnackbar({ message: 'Settings saved', status: 'success', autoHideDuration: 2000 });
-    }).catch((err) => {
-      const msg = typeof err === 'string' ? err : err?.message ?? String(err);
-      showSnackbar({ message: 'Failed to save settings', status: 'error', details: msg });
+    }).catch(() => {
+      // error notification is handled by usePluginSettings hook
     });
   };
 

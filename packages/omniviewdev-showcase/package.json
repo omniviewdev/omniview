@@ -1,0 +1,39 @@
+{
+  "name": "@omniviewdev/showcase",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Dev-only showcase for @omniviewdev/ui components",
+  "type": "module",
+  "scripts": {
+    "dev": "vite serve src --config src/vite.config.showcase.ts"
+  },
+  "dependencies": {
+    "@omniviewdev/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@monaco-editor/react": "^4.7.0",
+    "@mui/icons-material": "^7.3.0",
+    "@mui/material": "^7.3.0",
+    "@mui/x-charts": "^8.27.0",
+    "@mui/x-date-pickers": "^8.27.0",
+    "@tanstack/react-router": "^1.160.0",
+    "@tanstack/react-table": "^8.21.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "@xterm/addon-fit": "^0.9.0",
+    "@xterm/addon-webgl": "^0.17.0",
+    "@xterm/xterm": "^5.5.0",
+    "date-fns": "^4.1.0",
+    "monaco-editor": "^0.47.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-icons": "^5.5.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.3.0",
+    "@vitejs/plugin-react-swc": "^4.0.0"
+  }
+}

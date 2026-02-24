@@ -16,9 +16,10 @@ export type TerminalErrorInfo = {
 type Props = {
   error: TerminalErrorInfo;
   onRetry: (command: string[]) => void;
+  backgroundColor?: string;
 };
 
-export default function TerminalError({ error, onRetry }: Props) {
+export default function TerminalError({ error, onRetry, backgroundColor }: Props) {
   const [showRaw, setShowRaw] = React.useState(false);
 
   return (
@@ -32,7 +33,7 @@ export default function TerminalError({ error, onRetry }: Props) {
         justifyContent: 'center',
         gap: 1.5,
         p: 4,
-        bgcolor: 'black',
+        bgcolor: backgroundColor ?? 'black',
         zIndex: 10,
       }}
     >

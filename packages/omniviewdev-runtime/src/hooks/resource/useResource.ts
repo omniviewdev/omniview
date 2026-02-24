@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
+import { createErrorHandler } from '../../errors/parseAppError';
 import { types } from '../../wailsjs/go/models';
 import { Get, Update, Delete } from '../../wailsjs/go/resource/Client';
 
@@ -90,9 +91,7 @@ export const useResource = ({
       showSnackbar(`Resource ${resourceID} updated`, 'success');
       await queryClient.invalidateQueries({ queryKey });
     },
-    onError(error) {
-      showSnackbar(`Failed to update resource ${resourceID}: ${error.message}`, 'error');
-    },
+    onError: createErrorHandler(showSnackbar, `Failed to update resource ${resourceID}`),
   });
 
   const { mutateAsync: remove } = useMutation({
@@ -107,9 +106,7 @@ export const useResource = ({
       showSnackbar(`Resource ${resourceID} deleted`, 'success');
       await queryClient.invalidateQueries({ queryKey });
     },
-    onError(error) {
-      showSnackbar(`Failed to delete resource ${resourceID}: ${error.message}`, 'error');
-    },
+    onError: createErrorHandler(showSnackbar, `Failed to delete resource ${resourceID}`),
   });
 
   const resourceQuery = useQuery({

@@ -22,6 +22,7 @@ import { Base64 } from 'js-base64';
 import { useSettings } from '@omniviewdev/runtime';
 import type { BottomDrawerTab } from '@omniviewdev/runtime';
 import TerminalError, { type TerminalErrorInfo } from './TerminalError';
+import { getTerminalTheme } from './terminalThemes';
 
 type Props = {
   /** The session ID */
@@ -43,6 +44,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
   const { settings } = useSettings();
 
   const tabStatus = tab?.properties?.status as string | undefined;
+  const settingsThemeBg = getTerminalTheme((settings['terminal.theme'] as string) || 'default').background ?? '#1e1e1e';
 
   // Show loading state while session is being created
   if (tabStatus === 'connecting') {
@@ -54,7 +56,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         justifyContent: 'center',
         height: '100%',
         width: '100%',
-        bgcolor: 'black',
+        bgcolor: settingsThemeBg,
         gap: 1.5,
       }}>
         <CircularProgress size={24} sx={{ color: 'grey.500' }} />
@@ -76,7 +78,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         justifyContent: 'center',
         height: '100%',
         width: '100%',
-        bgcolor: 'black',
+        bgcolor: settingsThemeBg,
         gap: 1,
       }}>
         <Box sx={{ color: 'error.main', fontSize: 14, fontFamily: 'monospace', fontWeight: 600 }}>
@@ -136,6 +138,23 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     bottomDrawerChannel.emit('onSessionClosed', { id: sessionId });
   }, [tab, sessionId]);
 
+  // Keep a ref to the latest settings so the session-lifecycle effect can
+  // read current values without re-running when settings change.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  // Apply settings changes to a live terminal without recreating it.
+  useEffect(() => {
+    const term = xtermRef.current;
+    if (!term) return;
+
+    const themeName = (settings['terminal.theme'] as string) || 'default';
+    term.options.theme = getTerminalTheme(themeName);
+    term.options.cursorBlink = settings['terminal.cursorBlink'] as boolean;
+    term.options.cursorStyle = settings['terminal.cursorStyle'] as 'block' | 'underline' | 'bar';
+    term.options.fontSize = (settings['terminal.fontSize'] as number) || 12;
+  }, [settings]);
+
   useEffect(() => {
     // Don't attempt if the ref is not set
     if (terminalRef.current === null) {
@@ -150,17 +169,24 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     setError(null);
     errorRef.current = null;
 
+    // Resolve the terminal theme from the ref so we get current values
+    // without adding settings as a dependency.
+    const s = settingsRef.current;
+    const themeName = (s['terminal.theme'] as string) || 'default';
+    const theme = getTerminalTheme(themeName);
+
     // Initialize Terminal
     const terminal = new Terminal({
-      cursorBlink: settings['terminal.cursorBlink'],
-      cursorStyle: settings['terminal.cursorStyle'],
+      cursorBlink: s['terminal.cursorBlink'],
+      cursorStyle: s['terminal.cursorStyle'],
       allowProposedApi: true,
       allowTransparency: true,
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
-      fontSize: settings['terminal.fontSize'] || 12,
+      fontSize: s['terminal.fontSize'] || 12,
       fontFamily: "Consolas,Liberation Mono,Menlo,Courier,monospace",
       fontWeight: 'normal',
+      theme,
     });
 
     xtermRef.current = terminal;
@@ -340,19 +366,22 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         }
       });
     };
-  }, [sessionId, settings]);
+  }, [sessionId]);
+
+  const themeName = (settings['terminal.theme'] as string) || 'default';
+  const bgColor = getTerminalTheme(themeName).background ?? '#1e1e1e';
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       <div
         ref={terminalRef}
         style={{
-          backgroundColor: 'black',
+          backgroundColor: bgColor,
           height: '100%',
           width: '100%',
         }}
       />
-      {error && <TerminalError error={error} onRetry={handleRetry} />}
+      {error && <TerminalError error={error} onRetry={handleRetry} backgroundColor={bgColor} />}
     </div>
   );
 }

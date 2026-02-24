@@ -13,7 +13,7 @@ import Icon from '@/components/icons/Icon';
 import { useCategorySettings } from '@/hooks/settings/useCategorySettings';
 import SettingsEntries from './SettingsEntries';
 import { Section } from '.';
-import { useSettings, useSnackbar } from '@omniviewdev/runtime';
+import { useSettings } from '@omniviewdev/runtime';
 
 type Props = {
   id: string;
@@ -27,7 +27,6 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
 
   const { settings, setSettings } = useCategorySettings({ category: categoryID });
   const { reload } = useSettings();
-  const { showSnackbar } = useSnackbar();
 
   const hasDrafts = Object.values(draftValues).some(v => v !== undefined);
 
@@ -42,10 +41,8 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
     setSettings(values).then(() => {
       clearDraftValues();
       reload();
-      showSnackbar({ message: 'Settings saved', status: 'success', autoHideDuration: 2000 });
-    }).catch((err) => {
-      const msg = typeof err === 'string' ? err : err?.message ?? String(err);
-      showSnackbar({ message: 'Failed to save settings', status: 'error', details: msg });
+    }).catch(() => {
+      // error notification is handled by useCategorySettings hook
     });
   };
 

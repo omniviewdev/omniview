@@ -1,24 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSnackbar } from '@omniviewdev/runtime';
+import { useSnackbar, createErrorHandler, parseAppError, actionToSnackbar } from '@omniviewdev/runtime';
 import { PluginManager } from '@omniviewdev/runtime/api';
 import React from 'react';
 import { EventsEmit, EventsOn } from '@omniviewdev/runtime/runtime';
 import { type config } from '@omniviewdev/runtime/models';
 
 import { clearPlugin, loadAndRegisterPlugin } from '@/features/plugins/api/loader';
-
-/** Strip nested Go error wrapping to show the actionable message */
-function formatDevError(raw: string): string {
-  const segments = raw.split(': ');
-  if (segments.length <= 1) return raw;
-  const root = segments[segments.length - 1];
-  return root.charAt(0).toUpperCase() + root.slice(1);
-}
-
-/** Check if the error message references a settings path */
-function hasSettingsHint(msg: string): boolean {
-  return msg.includes('in settings') || msg.includes('not configured');
-}
 
 enum Entity {
   PLUGINS = 'plugins',
@@ -81,11 +68,12 @@ export const usePluginManager = () => {
         loadError: error,
       }));
 
+      const appErr = parseAppError(error);
       showSnackbar({
         message: `Failed to reload plugin '${meta.name}'`,
         status: 'error',
-        details: formatDevError(error),
-        actions: hasSettingsHint(error) ? [{ label: 'Open Settings', onClick: () => { window.location.hash = '#/settings?category=developer'; } }] : undefined,
+        details: appErr.detail,
+        actions: appErr.actions?.map(actionToSnackbar),
       });
     });
     const closer3 = EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
@@ -151,16 +139,7 @@ export const usePluginManager = () => {
       loadAndRegisterPlugin(data.id);
       EventsEmit('plugin/install_complete', data)
     },
-    onError(error) {
-      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
-      if (msg === 'cancelled') return;
-
-      showSnackbar({
-        message: 'Plugin installation failed',
-        status: 'error',
-        details: msg,
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Plugin installation failed'),
   });
 
   /**
@@ -184,17 +163,7 @@ export const usePluginManager = () => {
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
     },
-    onError(error) {
-      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
-      if (msg === 'cancelled') return;
-
-      showSnackbar({
-        message: 'Dev mode installation failed',
-        status: 'error',
-        details: formatDevError(msg),
-        actions: hasSettingsHint(msg) ? [{ label: 'Open Settings', onClick: () => { window.location.hash = '#/settings?category=developer'; } }] : undefined,
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Dev mode installation failed'),
   });
 
   /**
@@ -209,14 +178,7 @@ export const usePluginManager = () => {
       });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
     },
-    onError(error) {
-      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
-      showSnackbar({
-        message: 'Failed to reload plugin',
-        status: 'error',
-        details: msg,
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to reload plugin'),
   });
 
   // === Queries === //
@@ -296,14 +258,7 @@ export const usePlugin = ({ id }: { id: string }) => {
       clearPlugin({ pluginId: metadata.id })
       loadAndRegisterPlugin(metadata.id)
     },
-    onError(error) {
-      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
-      showSnackbar({
-        message: 'Failed to reload plugin',
-        status: 'error',
-        details: msg,
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to reload plugin'),
   });
 
   /**
@@ -321,14 +276,7 @@ export const usePlugin = ({ id }: { id: string }) => {
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
       clearPlugin({ pluginId: metadata.id })
     },
-    onError(error) {
-      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
-      showSnackbar({
-        message: 'Failed to uninstall plugin',
-        status: 'error',
-        details: msg,
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Failed to uninstall plugin'),
   });
 
   /**
@@ -349,16 +297,7 @@ export const usePlugin = ({ id }: { id: string }) => {
       EventsEmit('plugin/install_complete', meta)
       loadAndRegisterPlugin(meta.id)
     },
-    onError(error) {
-      const msg = typeof error === 'string' ? error : error?.message ?? String(error);
-      if (msg === 'cancelled') return;
-
-      showSnackbar({
-        message: 'Plugin update failed',
-        status: 'error',
-        details: msg,
-      });
-    },
+    onError: createErrorHandler(showSnackbar, 'Plugin update failed'),
   });
 
   return {
