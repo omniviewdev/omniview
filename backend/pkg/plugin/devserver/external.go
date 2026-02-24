@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -395,15 +394,3 @@ func readDevInfoFile(path string) (*DevInfoFile, error) {
 	return &info, nil
 }
 
-// isPIDAlive checks if a process with the given PID is still running.
-func isPIDAlive(pid int) bool {
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-
-	// On Unix, sending signal 0 checks if the process exists without
-	// actually sending a signal.
-	err = process.Signal(syscall.Signal(0))
-	return err == nil
-}

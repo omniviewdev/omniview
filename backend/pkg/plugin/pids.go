@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 
 	"go.uber.org/zap"
 )
@@ -94,9 +93,9 @@ func (t *PluginPIDTracker) CleanupStale(logger *zap.SugaredLogger) {
 			continue
 		}
 
-		if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
-			// ESRCH = no such process — already dead, that's fine.
-			if err != syscall.ESRCH {
+		if err := killProcess(pid); err != nil {
+			// Process already dead — that's fine.
+			if !isProcessNotFound(err) {
 				logger.Warnw("failed to kill stale plugin process",
 					"pluginID", pluginID,
 					"pid", pid,

@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -120,7 +119,7 @@ func (vp *viteProcess) Start() error {
 	cmd.Env = env
 
 	// Use a process group so we can kill all child processes.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = newProcessGroupAttr()
 
 	// Capture stdout and stderr.
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -139,7 +138,7 @@ func (vp *viteProcess) Start() error {
 	vp.cmd = cmd
 
 	// Cache the process group ID immediately so it survives process death.
-	vp.pgid, _ = syscall.Getpgid(cmd.Process.Pid)
+	vp.pgid = getProcessGroupID(cmd.Process.Pid)
 	if vp.pgid == 0 {
 		vp.pgid = cmd.Process.Pid // fallback
 	}
@@ -148,7 +147,7 @@ func (vp *viteProcess) Start() error {
 	// to kill the entire process group. Go 1.20+ calls cmd.Cancel instead of
 	// cmd.Process.Kill() when the context is cancelled.
 	cmd.Cancel = func() error {
-		return syscall.Kill(-vp.pgid, syscall.SIGKILL)
+		return killProcessGroup(vp.pgid)
 	}
 
 	vp.logger.Infow("vite process spawned", "pid", cmd.Process.Pid, "pgid", vp.pgid, "port", vp.port)
@@ -275,11 +274,11 @@ func (vp *viteProcess) Stop() {
 
 	vp.logger.Info("stopping vite process")
 
-	// Send SIGTERM to the process group (negative PID = process group).
+	// Send SIGTERM (or equivalent) to the process group.
 	if pgid > 0 {
-		_ = syscall.Kill(-pgid, syscall.SIGTERM)
+		_ = termProcessGroup(pgid)
 	} else {
-		_ = cmd.Process.Signal(syscall.SIGTERM)
+		_ = termProcess(cmd.Process)
 	}
 
 	// Wait for exit or timeout.
@@ -290,7 +289,7 @@ func (vp *viteProcess) Stop() {
 	case <-time.After(viteStopGracePeriod):
 		vp.logger.Warn("vite process did not stop after SIGTERM; sending SIGKILL")
 		if pgid > 0 {
-			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			_ = killProcessGroup(pgid)
 		} else {
 			_ = cmd.Process.Kill()
 		}

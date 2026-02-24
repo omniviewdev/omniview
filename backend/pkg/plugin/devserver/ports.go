@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 
 	"go.uber.org/zap"
 
@@ -148,10 +147,10 @@ func (pa *PortAllocator) CleanupStaleProcesses(logger *zap.SugaredLogger) {
 			continue
 		}
 
-		// Kill the entire process group (negative PID = process group).
-		if err := syscall.Kill(-pgid, syscall.SIGKILL); err != nil {
-			// ESRCH = no such process — already dead, that's fine.
-			if err != syscall.ESRCH {
+		// Kill the entire process group.
+		if err := killProcessGroup(pgid); err != nil {
+			// Process already dead — that's fine.
+			if !isProcessNotFound(err) {
 				logger.Warnw("failed to kill stale dev server process group",
 					"port", portStr,
 					"pgid", pgid,
