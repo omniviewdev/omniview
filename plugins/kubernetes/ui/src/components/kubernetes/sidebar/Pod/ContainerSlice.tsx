@@ -385,7 +385,7 @@ const RestartInfoCard: React.FC<{ status: ContainerStatus }> = ({ status }) => {
   const lastTerminated = status.lastState?.terminated;
   const waiting = status.state?.waiting;
 
-  if (restarts === 0 && !lastTerminated && !waiting) return null;
+  if (!lastTerminated && !waiting) return null;
 
   // Determine severity based on *why* it restarted, not just how many times
   const isHealthyExit = lastTerminated?.reason === "Completed" && lastTerminated?.exitCode === 0;
