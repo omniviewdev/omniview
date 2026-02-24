@@ -6,6 +6,7 @@ import { registerFailedPlugin } from './PluginManager';
 import PrimaryLoading from '@/components/util/PrimaryLoading';
 import { useDevServer, type DevServerState } from '@/hooks/plugin/useDevServer';
 import { useSnackbar } from '@omniviewdev/runtime';
+import { ResourceClient } from '@omniviewdev/runtime/api';
 import type { PluginLoadError } from './PluginRegistryContext';
 
 interface PluginRegistryContextValue {
@@ -66,6 +67,13 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
       return;
     }
 
+    // Wait for dev server states to resolve before loading plugins.
+    // Without this, dev plugins would be loaded with dev=false (no devState
+    // found) and fall through to the SystemJS production path, which fails.
+    if (allStates.isLoading) {
+      return;
+    }
+
     const gen = ++loadGenRef.current;
     const devStates: DevServerState[] = allStates.data ?? [];
     const pluginList = plugins.data;
@@ -122,6 +130,13 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
             console.debug(`[PluginRegistry] loading "${id}"`, { dev, devPort });
             await loadAndRegisterPlugin(id, { dev, devPort });
             loadedRef.current.add(id);
+            // Warm the connection cache so clusters page never flashes empty.
+            // prefetchQuery never throws — errors are silently swallowed.
+            await queryClient.prefetchQuery({
+              queryKey: [id, 'connection', 'list'],
+              queryFn: () => ResourceClient.ListConnections(id),
+              staleTime: 30_000,
+            });
             console.debug(`[PluginRegistry] registered "${id}"`);
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);

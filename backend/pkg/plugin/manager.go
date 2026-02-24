@@ -261,45 +261,15 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 		return fmt.Errorf("error reading plugin directory: %w", err)
 	}
 
-	// Phase 1: Start all dev servers in parallel.
-	// GoWatcher.Start() performs an initial `go build`, which can take 15-30s.
-	// Running them concurrently cuts total startup from sum(build_times) to max(build_times).
+	// Phase 1: Load all plugins using existing binaries on disk.
+	// Dev plugins retain their binary from the previous session, so they can
+	// be loaded immediately without waiting for a rebuild.
 	type devEntry struct {
 		pluginID string
 		devPath  string
 	}
 	var devPlugins []devEntry
 
-	for _, file := range files {
-		if !file.IsDir() {
-			continue
-		}
-		for _, state := range states {
-			if state.ID == file.Name() && state.DevMode && state.DevPath != "" {
-				devPlugins = append(devPlugins, devEntry{
-					pluginID: file.Name(),
-					devPath:  state.DevPath,
-				})
-			}
-		}
-	}
-
-	if len(devPlugins) > 0 && pm.devServerMgr != nil {
-		var wg sync.WaitGroup
-		for _, dp := range devPlugins {
-			wg.Add(1)
-			go func(pluginID, devPath string) {
-				defer wg.Done()
-				pm.logger.Infow("starting dev server (parallel)", "pluginID", pluginID, "devPath", devPath)
-				if _, err := pm.devServerMgr.StartDevServerForPath(pluginID, devPath); err != nil {
-					pm.logger.Warnw("failed to start dev server", "pluginID", pluginID, "error", err)
-				}
-			}(dp.pluginID, dp.devPath)
-		}
-		wg.Wait()
-	}
-
-	// Phase 2: Load all plugins sequentially (binaries now exist from parallel builds).
 	for _, file := range files {
 		if !file.IsDir() {
 			continue
@@ -311,6 +281,12 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 				opts = &LoadPluginOptions{
 					ExistingState: state,
 				}
+				if state.DevMode && state.DevPath != "" {
+					devPlugins = append(devPlugins, devEntry{
+						pluginID: file.Name(),
+						devPath:  state.DevPath,
+					})
+				}
 			}
 		}
 
@@ -318,6 +294,27 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 			// don't fail on one plugin not loading
 			pm.logger.Errorf("error loading plugin: %w", err)
 		}
+	}
+
+	// Phase 2: Start dev servers in the background. GoWatcher performs an
+	// initial `go build` (15-30s) and triggers a plugin reload when done.
+	// This runs after plugin loading so the UI isn't blocked on rebuilds.
+	if len(devPlugins) > 0 && pm.devServerMgr != nil {
+		go func() {
+			var wg sync.WaitGroup
+			for _, dp := range devPlugins {
+				wg.Add(1)
+				go func(pluginID, devPath string) {
+					defer wg.Done()
+					pm.logger.Infow("starting dev server (background)", "pluginID", pluginID, "devPath", devPath)
+					if _, startErr := pm.devServerMgr.StartDevServerForPath(pluginID, devPath); startErr != nil {
+						pm.logger.Warnw("failed to start dev server", "pluginID", pluginID, "error", startErr)
+					}
+				}(dp.pluginID, dp.devPath)
+			}
+			wg.Wait()
+			pm.logger.Infow("all dev servers started")
+		}()
 	}
 
 	// write the plugin state to disk
