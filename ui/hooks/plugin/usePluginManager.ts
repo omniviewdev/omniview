@@ -221,7 +221,9 @@ export const usePluginManager = () => {
       }
 
       return available
-    }
+    },
+    retry: 1,
+    retryDelay: 3000,
   })
 
   return {
@@ -252,6 +254,30 @@ export const usePlugin = ({ id }: { id: string }) => {
       const versions = await PluginManager.GetPluginVersions(id);
       return versions
     },
+  });
+
+  const readme = useQuery({
+    queryKey: [Entity.PLUGINS, id, 'readme'],
+    queryFn: () => PluginManager.GetPluginReadme(id),
+    enabled: !!id,
+  });
+
+  const reviews = useQuery({
+    queryKey: [Entity.PLUGINS, id, 'reviews'],
+    queryFn: () => PluginManager.GetPluginReviews(id, 1),
+    enabled: !!id,
+  });
+
+  const downloadStats = useQuery({
+    queryKey: [Entity.PLUGINS, id, 'download-stats'],
+    queryFn: () => PluginManager.GetPluginDownloadStats(id),
+    enabled: !!id,
+  });
+
+  const releaseHistory = useQuery({
+    queryKey: [Entity.PLUGINS, id, 'release-history'],
+    queryFn: () => PluginManager.GetPluginReleaseHistory(id),
+    enabled: !!id,
   });
 
   /**
@@ -313,6 +339,10 @@ export const usePlugin = ({ id }: { id: string }) => {
   return {
     plugin,
     versions,
+    readme,
+    reviews,
+    downloadStats,
+    releaseHistory,
     reload,
     uninstall,
     update,

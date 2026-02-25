@@ -5,12 +5,13 @@ import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import React from 'react';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseConnectionsOptions = {
   /**
   * The name of the plugin we're interacting with
   */
-  plugin: string;
+  plugin?: string;
 };
 
 /** Stable query key factory for connection list queries. */
@@ -19,7 +20,8 @@ export const connectionListQueryKey = (plugin: string) => [plugin, 'connection',
 /**
 * Get and retreive connections from a plugin's connection manager..
  */
-export const useConnections = ({ plugin }: UseConnectionsOptions) => {
+export const useConnections = ({ plugin: explicitPlugin }: UseConnectionsOptions) => {
+  const plugin = useResolvedPluginId(explicitPlugin);
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 

@@ -17,7 +17,7 @@ import { IsImage } from '@/utils/url';
 export default function CoreLayoutSidebar() {
   const { pathname } = useLocation();
   const { plugins } = usePluginManager();
-  var matched = pathname.match(/^\/_plugin\/([A-Za-z0-9]+).*/)?.[1] || '';
+  var matched = pathname.match(/^\/_plugin\/([A-Za-z0-9-]+).*/)?.[1] || '';
 
   return (
     <Box

@@ -1,0 +1,97 @@
+name: Publish NPM Packages
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Semver version to publish (e.g. 0.2.0 or 0.0.0-nightly.20260224)"
+        required: true
+        type: string
+      dist-tag:
+        description: "npm dist-tag (latest, nightly, etc.)"
+        required: false
+        type: string
+        default: "latest"
+    secrets:
+      NPM_TOKEN:
+        required: true
+
+jobs:
+  publish:
+    name: Publish @omniviewdev/* packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Normalize version
+        id: version
+        shell: bash
+        run: |
+          version=$(echo "${{ inputs.version }}" | sed 's/^v//')
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp package versions
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          for pkg in \
+            packages/omniviewdev-providers/package.json \
+            packages/omniviewdev-runtime/package.json \
+            packages/omniviewdev-ui/package.json \
+            packages/omniviewdev-vite-plugin/package.json; do
+            jq --arg v "$VERSION" '.version = $v' "$pkg" > tmp.$$.json && mv tmp.$$.json "$pkg"
+            echo "Stamped $pkg → $VERSION"
+          done
+
+      # Build in dependency order: providers → vite-plugin → ui → runtime
+      - name: Build providers
+        run: pnpm --filter @omniviewdev/providers run build
+
+      - name: Build vite-plugin
+        run: pnpm --filter @omniviewdev/vite-plugin run build
+
+      - name: Build ui
+        run: pnpm --filter @omniviewdev/ui run build
+
+      - name: Build runtime
+        run: pnpm --filter @omniviewdev/runtime run build
+
+      - name: Publish packages
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ inputs.dist-tag }}"
+
+          for pkg in providers vite-plugin ui runtime; do
+            PKG_NAME="@omniviewdev/${pkg}"
+
+            # Check if this exact version already exists on the registry
+            if npm view "${PKG_NAME}@${VERSION}" version 2>/dev/null; then
+              echo "⏭ ${PKG_NAME}@${VERSION} already published — skipping"
+              continue
+            fi
+
+            echo "📦 Publishing ${PKG_NAME}@${VERSION} (tag: ${TAG})"
+            pnpm --filter "${PKG_NAME}" publish \
+              --access public \
+              --tag "${TAG}" \
+              --no-git-checks
+          done

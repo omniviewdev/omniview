@@ -4,9 +4,10 @@ import { createErrorHandler } from '../../errors/parseAppError';
 import { CreateSession, CloseSession } from '../../wailsjs/go/logs/Client';
 import { logs } from '../../wailsjs/go/models';
 import { useBottomDrawer } from '../drawer';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseLogSessionOptions = {
-  pluginID: string;
+  pluginID?: string;
 };
 
 type CreateLogSessionArgs = {
@@ -22,7 +23,8 @@ type CreateLogSessionArgs = {
   params?: Record<string, string>;
 };
 
-export const useLogs = ({ pluginID }: UseLogSessionOptions) => {
+export const useLogs = ({ pluginID: explicitPluginID }: UseLogSessionOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const { showSnackbar } = useSnackbar();
   const { createTab } = useBottomDrawer();
 

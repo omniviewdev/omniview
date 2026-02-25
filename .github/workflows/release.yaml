@@ -285,6 +285,17 @@ jobs:
           retention-days: 1
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # NPM — publish @omniviewdev/* packages (runs in parallel with desktop builds)
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-npm:
+    uses: ./.github/workflows/npm-publish.yml
+    with:
+      version: ${{ github.ref_name }}
+      dist-tag: latest
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # Publish — download all artifacts, checksums, GitHub Release, Homebrew
   # ─────────────────────────────────────────────────────────────────────────────
   publish:

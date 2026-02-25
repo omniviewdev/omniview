@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { Subscribe, Unsubscribe } from '../../wailsjs/go/metric/Client';
 import type { metric } from '../../wailsjs/go/models';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 export type UseMetricStreamOptions = {
   /** The plugin providing metrics */
-  pluginID: string;
+  pluginID?: string;
   /** The connection to stream metrics for */
   connectionID: string;
   /** The resource type key */
@@ -47,7 +48,7 @@ export const useMetricStream = (
   opts: UseMetricStreamOptions,
 ): UseMetricStreamResult => {
   const {
-    pluginID,
+    pluginID: explicitPluginID,
     connectionID,
     resourceKey,
     resourceID,
@@ -57,6 +58,7 @@ export const useMetricStream = (
     interval = 10000,
     enabled = true,
   } = opts;
+  const pluginID = useResolvedPluginId(explicitPluginID);
 
   const [data, setData] = useState<metric.MetricResult[] | null>(null);
   const [subscriptionID, setSubscriptionID] = useState<string | null>(null);

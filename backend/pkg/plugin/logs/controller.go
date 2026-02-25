@@ -167,8 +167,8 @@ func (c *controller) flushBatchLocked(sessionID string, batch *logBatch) {
 
 // ================================ Controller Lifecycle ================================ //
 
-func (c *controller) OnPluginInit(meta config.PluginMeta) {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginInit")
 
 	if c.clients == nil {
@@ -176,8 +176,8 @@ func (c *controller) OnPluginInit(meta config.PluginMeta) {
 	}
 }
 
-func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientProtocol) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, client plugin.ClientProtocol) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
 	raw, err := client.Dispense("log")
@@ -193,7 +193,7 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 		return appErr
 	}
 
-	c.clients[meta.ID] = provider
+	c.clients[pluginID] = provider
 
 	// Get the handlers
 	handlers := provider.GetSupportedResources(c.getUnconnectedCtx(context.Background()))
@@ -205,7 +205,7 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 	}
 
 	inchan := make(chan logs.StreamInput)
-	c.inChans[meta.ID] = inchan
+	c.inChans[pluginID] = inchan
 
 	// Start the stream
 	go func() {
@@ -228,20 +228,20 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 	return nil
 }
 
-func (c *controller) OnPluginStop(meta config.PluginMeta) error {
-	c.logger.With("pluginID", meta.ID).Debug("OnPluginStop")
-	delete(c.clients, meta.ID)
+func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+	c.logger.With("pluginID", pluginID).Debug("OnPluginStop")
+	delete(c.clients, pluginID)
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(meta config.PluginMeta) error {
-	c.logger.With("pluginID", meta.ID).Debug("OnPluginShutdown")
-	delete(c.clients, meta.ID)
+func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+	c.logger.With("pluginID", pluginID).Debug("OnPluginShutdown")
+	delete(c.clients, pluginID)
 	return nil
 }
 
-func (c *controller) OnPluginDestroy(meta config.PluginMeta) error {
-	c.logger.With("pluginID", meta.ID).Debug("OnPluginDestroy")
+func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+	c.logger.With("pluginID", pluginID).Debug("OnPluginDestroy")
 	return nil
 }
 

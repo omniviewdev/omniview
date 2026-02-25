@@ -230,7 +230,7 @@ func (pm *pluginManager) installAndWatchDevPlugin(
 	runtime.EventsEmit(pm.ctx, PluginDevInstallEventStart, meta)
 
 	// start the package
-	if err = buildAndTransferPlugin(dir, meta, opts); err != nil {
+	if err = buildAndTransferPlugin(dir, meta, meta.ID, opts); err != nil {
 		// signal to UI the install has ended
 		runtime.EventsEmit(pm.ctx, PluginDevInstallEventError, meta)
 		return nil, err
@@ -288,8 +288,7 @@ func (pm *pluginManager) handleWatchEvent(event fsnotify.Event) error {
 	// load the meta and signal to ui
 	runtime.EventsEmit(pm.ctx, PluginReloadEventStart, meta)
 
-	// start the package
-	if err = buildAndTransferPlugin(target, meta, opts); err != nil {
+	if err = buildAndTransferPlugin(target, meta, meta.ID, opts); err != nil {
 		runtime.EventsEmit(pm.ctx, PluginReloadEventError, meta, err.Error())
 		return err
 	}
@@ -413,8 +412,8 @@ func buildPluginUi(path string, opts types.BuildOpts) error {
 	return nil
 }
 
-func transferPluginBuild(path string, meta *config.PluginMeta, opts types.BuildOpts) error {
-	installLocation := getPluginLocation(meta.ID)
+func transferPluginBuild(path string, meta *config.PluginMeta, pluginID string, opts types.BuildOpts) error {
+	installLocation := getPluginLocation(pluginID)
 
 	// ensure the install location exists
 	if err := os.MkdirAll(installLocation, 0755); err != nil {
@@ -488,7 +487,7 @@ func transferPluginBuild(path string, meta *config.PluginMeta, opts types.BuildO
 	return g.Wait()
 }
 
-func buildAndTransferPlugin(path string, meta *config.PluginMeta, opts types.BuildOpts) error {
+func buildAndTransferPlugin(path string, meta *config.PluginMeta, pluginID string, opts types.BuildOpts) error {
 	// load the plugin meta and check capabilities so we know what we need to build
 	if meta == nil {
 		return apperror.New(apperror.TypeValidation, 422, "Invalid plugin", "Plugin metadata is missing.")
@@ -530,7 +529,7 @@ func buildAndTransferPlugin(path string, meta *config.PluginMeta, opts types.Bui
 		return feError
 	}
 
-	if err := transferPluginBuild(path, meta, opts); err != nil {
+	if err := transferPluginBuild(path, meta, pluginID, opts); err != nil {
 		return err
 	}
 	return nil

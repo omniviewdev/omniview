@@ -27,7 +27,8 @@ import type { DevServerAggregateStatus, DevServerState } from '@/features/devtoo
 import { getAggregateStatus } from '@/features/devtools/types';
 import { useDevServer } from '@/hooks/plugin/useDevServer';
 import { usePluginRegistry } from '@/features/plugins/usePluginRegistry';
-import { usePortForwardSessions } from '@omniviewdev/runtime';
+import { usePortForwardSessions, useOperations } from '@omniviewdev/runtime';
+import type { Operation } from '@omniviewdev/runtime';
 
 import ConnectionStatusIndicator from './ConnectionStatusIndicator';
 
@@ -886,6 +887,225 @@ function PortForwardIndicator() {
 
 
 // ---------------------------------------------------------------------------
+// OperationsPopover — shows active/recent operations
+// ---------------------------------------------------------------------------
+
+function OperationsPopover({
+  operations,
+  anchorEl,
+  onClose,
+  onRemove,
+}: {
+  operations: Operation[];
+  anchorEl: HTMLElement | null;
+  onClose: () => void;
+  onRemove: (id: string) => void;
+}) {
+  const running = operations.filter((o) => o.status === 'running');
+
+  return (
+    <Popover
+      open={Boolean(anchorEl)}
+      anchorEl={anchorEl}
+      onClose={onClose}
+      anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      slotProps={{
+        paper: {
+          sx: {
+            bgcolor: 'var(--ov-bg-elevated, #1c2128)',
+            border: '1px solid var(--ov-border-default, #30363d)',
+            borderRadius: '8px',
+            p: 0,
+            minWidth: 300,
+            maxWidth: 400,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            color: 'var(--ov-fg-default, #c9d1d9)',
+          },
+        },
+      }}
+    >
+      {/* Header */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          px: 1.5,
+          py: 1,
+          borderBottom: '1px solid var(--ov-border-default, #30363d)',
+        }}
+      >
+        <LuRefreshCw size={12} color="#58a6ff" />
+        <Box
+          sx={{
+            fontSize: '0.8125rem',
+            fontWeight: 600,
+            fontFamily: 'var(--ov-font-ui)',
+            color: 'var(--ov-fg-base, #e6edf3)',
+          }}
+        >
+          Operations ({running.length} active)
+        </Box>
+      </Box>
+
+      {/* Operation list */}
+      <Box sx={{ maxHeight: 280, overflow: 'auto' }}>
+        {operations.length === 0 && (
+          <Box sx={{ px: 1.5, py: 1.5, fontSize: '0.75rem', color: 'var(--ov-fg-faint, #8b949e)' }}>
+            No recent operations
+          </Box>
+        )}
+        {operations.map((op) => {
+          const elapsed = Math.round(((op.completedAt ?? Date.now()) - op.startedAt) / 1000);
+          const dotColor = op.status === 'completed' ? '#3fb950' : op.status === 'error' ? '#f85149' : '#d29922';
+          return (
+            <Box
+              key={op.id}
+              sx={{
+                px: 1.5,
+                py: 0.75,
+                borderBottom: '1px solid var(--ov-border-default, #30363d)',
+                '&:last-child': { borderBottom: 'none' },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.25 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                  <Box
+                    sx={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: '50%',
+                      bgcolor: dotColor,
+                      flexShrink: 0,
+                      ...(op.status === 'running' && {
+                        animation: 'ov-footer-pulse 1.5s ease-in-out infinite',
+                        '@keyframes ov-footer-pulse': {
+                          '0%, 100%': { opacity: 1 },
+                          '50%': { opacity: 0.3 },
+                        },
+                      }),
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      fontFamily: 'var(--ov-font-ui)',
+                      color: 'var(--ov-fg-base, #e6edf3)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {op.label}
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+                  <Box
+                    sx={{
+                      fontSize: '0.625rem',
+                      color: 'var(--ov-fg-faint, #8b949e)',
+                      fontFamily: 'var(--ov-font-mono, monospace)',
+                    }}
+                  >
+                    {elapsed}s
+                  </Box>
+                  {op.status !== 'running' && (
+                    <PopoverAction
+                      icon={<LuX size={10} />}
+                      label=""
+                      onClick={() => onRemove(op.id)}
+                    />
+                  )}
+                </Box>
+              </Box>
+              {op.namespace && (
+                <Box
+                  sx={{
+                    fontSize: '0.625rem',
+                    color: 'var(--ov-fg-faint, #8b949e)',
+                    ml: 1.75,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {op.namespace}
+                </Box>
+              )}
+              {op.progress && (
+                <Box
+                  sx={{
+                    fontSize: '0.6875rem',
+                    color: 'var(--ov-fg-muted, #8b949e)',
+                    ml: 1.75,
+                    mt: 0.25,
+                  }}
+                >
+                  {op.progress.ready}/{op.progress.desired} replicas ready
+                </Box>
+              )}
+              {op.message && !op.progress && (
+                <Box
+                  sx={{
+                    fontSize: '0.6875rem',
+                    color: 'var(--ov-fg-muted, #8b949e)',
+                    ml: 1.75,
+                    mt: 0.25,
+                  }}
+                >
+                  {op.message}
+                </Box>
+              )}
+            </Box>
+          );
+        })}
+      </Box>
+    </Popover>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OperationsIndicator — shows when operations are active
+// ---------------------------------------------------------------------------
+
+function OperationsIndicator() {
+  const { operations, removeOperation } = useOperations();
+  const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
+  const chipRef = React.useRef<HTMLDivElement>(null);
+
+  const running = operations.filter((o) => o.status === 'running');
+
+  if (operations.length === 0) return null;
+
+  const label = running.length > 0
+    ? `${running.length} operation${running.length !== 1 ? 's' : ''}`
+    : `${operations.length} recent`;
+
+  return (
+    <>
+      <MuiTooltip title={anchorEl ? '' : label} enterDelay={400} placement="top">
+        <Box ref={chipRef} onClick={() => setAnchorEl(chipRef.current)}>
+          <IDEStatusFooter.Chip
+            label={label}
+            icon={<LuRefreshCw size={9} />}
+            bgColor={running.length > 0 ? '#58a6ff' : '#8b949e'}
+            color="#fff"
+          />
+        </Box>
+      </MuiTooltip>
+      <OperationsPopover
+        operations={operations}
+        anchorEl={anchorEl}
+        onClose={() => setAnchorEl(null)}
+        onRemove={removeOperation}
+      />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AppStatusFooter — main exported component
 // ---------------------------------------------------------------------------
 
@@ -908,6 +1128,7 @@ export default function AppStatusFooter() {
             <DevServerIndicators />
             <FailedPluginIndicator />
             <PortForwardIndicator />
+            <OperationsIndicator />
           </>
         }
         right={

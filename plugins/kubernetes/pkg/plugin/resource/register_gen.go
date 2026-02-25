@@ -382,19 +382,13 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
           Version: "v1",
           Kind:    "DaemonSet",
           Description: `DaemonSet represents the configuration of a daemon set.`,
-        }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
-					logger,
-          appsv1.SchemeGroupVersion.WithResource("daemonsets"),
-				),
+        }: resourcers.NewDaemonSetResourcer(logger),
 				{
           Group:   "apps",
           Version: "v1",
           Kind:    "Deployment",
           Description: `Deployment enables declarative updates for Pods and ReplicaSets.`,
-        }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
-					logger,
-          appsv1.SchemeGroupVersion.WithResource("deployments"),
-				),
+        }: resourcers.NewDeploymentResourcer(logger),
 				{
           Group:   "apps",
           Version: "v1",
@@ -413,10 +407,7 @@ The CEL expressions of a policy must have a computed CEL cost below the maximum 
   - Storage: As many VolumeClaims as requested.
 
 The StatefulSet guarantees that a given network identity will always map to the same storage identity.`,
-        }: resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
-					logger,
-          appsv1.SchemeGroupVersion.WithResource("statefulsets"),
-				),
+        }: resourcers.NewStatefulSetResourcer(logger),
 				{
           Group:   "authentication",
           Version: "v1beta1",

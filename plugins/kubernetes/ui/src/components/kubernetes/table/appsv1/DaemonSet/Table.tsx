@@ -8,8 +8,8 @@ import { Condition } from 'kubernetes-types/meta/v1'
 import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
-import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuLogs, LuServerCog, LuTrash } from 'react-icons/lu'
+import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer, useStreamAction } from '@omniviewdev/runtime'
+import { LuLogs, LuRefreshCw, LuServerCog, LuTrash } from 'react-icons/lu'
 import DaemonSetSidebar from './Sidebar'
 import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
 
@@ -20,6 +20,7 @@ const DaemonSetTable: React.FC = () => {
 
   const { remove } = useResourceMutations({ pluginID: 'kubernetes' })
   const { createLogSession } = useLogs({ pluginID: 'kubernetes' })
+  const { startStreamAction } = useStreamAction({ pluginID: 'kubernetes', connectionID: id, resourceKey })
   const { show } = useConfirmationModal()
   const { closeDrawer } = useRightDrawer()
 
@@ -115,6 +116,32 @@ const DaemonSetTable: React.FC = () => {
     icon: <LuServerCog />,
     views: createStandardViews({ SidebarComponent: DaemonSetSidebar }),
     actions: [
+      {
+        title: 'Restart',
+        icon: <LuRefreshCw />,
+        action: (ctx) =>
+          show({
+            title: <span>Restart <strong>{ctx.data?.metadata?.name}</strong>?</span>,
+            body: (
+              <span>
+                This will perform a rolling restart of the DaemonSet{' '}
+                <code>{ctx.data?.metadata?.name}</code> in{' '}
+                <strong>{ctx.data?.metadata?.namespace}</strong>.
+              </span>
+            ),
+            confirmLabel: 'Restart',
+            cancelLabel: 'Cancel',
+            onConfirm: async () => {
+              await startStreamAction({
+                actionID: 'restart',
+                id: ctx.data?.metadata?.name as string,
+                namespace: ctx.data?.metadata?.namespace as string,
+                label: `Restart ${ctx.data?.metadata?.name}`,
+              })
+              closeDrawer()
+            },
+          }),
+      },
       {
         title: 'Delete',
         icon: <LuTrash />,

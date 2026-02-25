@@ -1,6 +1,6 @@
 {
   "name": "@omniviewdev/vite-plugin",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Vite plugin for Omniview plugin development. Redirects shared dependency imports to the host app's singleton instances via window.__OMNIVIEW_SHARED__.",
   "license": "AGPL-3.0-only",
   "author": "Omniview",

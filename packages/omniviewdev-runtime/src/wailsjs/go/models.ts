@@ -1,5 +1,21 @@
 export namespace config {
 	
+	export class PluginAuthor {
+	    name: string;
+	    email: string;
+	    url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginAuthor(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.email = source["email"];
+	        this.url = source["url"];
+	    }
+	}
 	export class PluginResourceComponent {
 	    name: string;
 	    plugin: string;
@@ -115,9 +131,13 @@ export namespace config {
 	    version: string;
 	    name: string;
 	    icon: string;
+	    icon_url: string;
 	    description: string;
 	    repository: string;
 	    website: string;
+	    category: string;
+	    license: string;
+	    author?: PluginAuthor;
 	    maintainers: PluginMaintainer[];
 	    tags: string[];
 	    dependencies: string[];
@@ -135,9 +155,13 @@ export namespace config {
 	        this.version = source["version"];
 	        this.name = source["name"];
 	        this.icon = source["icon"];
+	        this.icon_url = source["icon_url"];
 	        this.description = source["description"];
 	        this.repository = source["repository"];
 	        this.website = source["website"];
+	        this.category = source["category"];
+	        this.license = source["license"];
+	        this.author = this.convertValues(source["author"], PluginAuthor);
 	        this.maintainers = this.convertValues(source["maintainers"], PluginMaintainer);
 	        this.tags = source["tags"];
 	        this.dependencies = source["dependencies"];
@@ -1284,82 +1308,82 @@ export namespace plugin {
 
 export namespace registry {
 	
-	export class PluginArtifact {
-	    checksum: string;
-	    signature: string;
-	    download_url: string;
-	    size: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new PluginArtifact(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.checksum = source["checksum"];
-	        this.signature = source["signature"];
-	        this.download_url = source["download_url"];
-	        this.size = source["size"];
-	    }
-	}
-	export class PluginVersion {
-	    metadata: config.PluginMeta;
-	    version: string;
-	    architectures: Record<string, PluginArtifact>;
-	    created: time.Time;
-	    updated: time.Time;
-	
-	    static createFrom(source: any = {}) {
-	        return new PluginVersion(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.metadata = this.convertValues(source["metadata"], config.PluginMeta);
-	        this.version = source["version"];
-	        this.architectures = this.convertValues(source["architectures"], PluginArtifact, true);
-	        this.created = this.convertValues(source["created"], time.Time);
-	        this.updated = this.convertValues(source["updated"], time.Time);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class Plugin {
+	export class AvailablePlugin {
 	    id: string;
 	    name: string;
-	    icon: string;
 	    description: string;
+	    icon_url: string;
+	    category: string;
+	    tags: string[];
+	    license: string;
 	    official: boolean;
-	    latest_version: PluginVersion;
+	    featured: boolean;
+	    download_count: number;
+	    average_rating: number;
+	    review_count: number;
+	    repository: string;
+	    url: string;
+	    installed: boolean;
+	    installed_version: string;
+	    latest_version: string;
+	    update_available: boolean;
 	
 	    static createFrom(source: any = {}) {
-	        return new Plugin(source);
+	        return new AvailablePlugin(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
-	        this.icon = source["icon"];
 	        this.description = source["description"];
+	        this.icon_url = source["icon_url"];
+	        this.category = source["category"];
+	        this.tags = source["tags"];
+	        this.license = source["license"];
 	        this.official = source["official"];
-	        this.latest_version = this.convertValues(source["latest_version"], PluginVersion);
+	        this.featured = source["featured"];
+	        this.download_count = source["download_count"];
+	        this.average_rating = source["average_rating"];
+	        this.review_count = source["review_count"];
+	        this.repository = source["repository"];
+	        this.url = source["url"];
+	        this.installed = source["installed"];
+	        this.installed_version = source["installed_version"];
+	        this.latest_version = source["latest_version"];
+	        this.update_available = source["update_available"];
+	    }
+	}
+	export class DailyStat {
+	    date: string;
+	    count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DailyStat(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.count = source["count"];
+	    }
+	}
+	export class DownloadStats {
+	    total: number;
+	    last_month: number;
+	    last_week: number;
+	    daily_stats: DailyStat[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DownloadStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.last_month = source["last_month"];
+	        this.last_week = source["last_week"];
+	        this.daily_stats = this.convertValues(source["daily_stats"], DailyStat);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1380,20 +1404,50 @@ export namespace registry {
 		    return a;
 		}
 	}
-	
-	
-	export class PluginVersions {
-	    Latest: string;
-	    Versions: string[];
+	export class Review {
+	    id: string;
+	    user_id: number;
+	    rating: number;
+	    title: string;
+	    body: string;
+	    created_at: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new PluginVersions(source);
+	        return new Review(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Latest = source["Latest"];
-	        this.Versions = source["Versions"];
+	        this.id = source["id"];
+	        this.user_id = source["user_id"];
+	        this.rating = source["rating"];
+	        this.title = source["title"];
+	        this.body = source["body"];
+	        this.created_at = source["created_at"];
+	    }
+	}
+	export class VersionInfo {
+	    version: string;
+	    description: string;
+	    changelog: string;
+	    min_ide_version: string;
+	    max_ide_version: string;
+	    capabilities: string[];
+	    created_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new VersionInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.description = source["description"];
+	        this.changelog = source["changelog"];
+	        this.min_ide_version = source["min_ide_version"];
+	        this.max_ide_version = source["max_ide_version"];
+	        this.capabilities = source["capabilities"];
+	        this.created_at = source["created_at"];
 	    }
 	}
 

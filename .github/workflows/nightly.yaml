@@ -307,6 +307,19 @@ jobs:
           retention-days: 1
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # NPM — publish @omniviewdev/* nightly packages
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-npm:
+    needs: check-changes
+    if: needs.check-changes.outputs.should_build == 'true'
+    uses: ./.github/workflows/npm-publish.yml
+    with:
+      version: ${{ needs.check-changes.outputs.nightly_version }}
+      dist-tag: nightly
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # Publish nightly — rolling tag
   # ─────────────────────────────────────────────────────────────────────────────
   publish-nightly:

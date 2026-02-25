@@ -1,6 +1,6 @@
 {
   "name": "@omniviewdev/providers",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Package to interact with the various providers in Omniview via the UI.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -9,6 +9,9 @@
     "directory": "pkg/providers",
     "url": "https://github.com/omniviewdev/omniview"
   },
+  "files": [
+    "dist"
+  ],
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
@@ -27,7 +30,6 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.27.1",
     "@types/node": "^20.12.7",
     "@types/react": "^19.0.0",
     "@vitejs/plugin-react": "^4.2.1",

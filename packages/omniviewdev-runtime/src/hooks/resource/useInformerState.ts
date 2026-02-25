@@ -4,6 +4,7 @@ import { produce } from 'immer';
 
 import { GetInformerState } from '../../wailsjs/go/resource/Client';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 import type {
   InformerConnectionSummary,
   InformerStateEvent,
@@ -11,7 +12,7 @@ import type {
 import { InformerResourceState } from '../../types/informer';
 
 type UseInformerStateOptions = {
-  pluginID: string;
+  pluginID?: string;
   connectionID: string;
   enabled?: boolean;
 };
@@ -22,10 +23,11 @@ type UseInformerStateOptions = {
  * state change events for live updates.
  */
 export const useInformerState = ({
-  pluginID,
+  pluginID: explicitPluginID,
   connectionID,
   enabled = true,
 }: UseInformerStateOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
   const queryKey = [pluginID, connectionID, 'informer-state'];
 

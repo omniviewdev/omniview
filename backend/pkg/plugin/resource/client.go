@@ -99,6 +99,9 @@ type IClient interface {
 	// ExecuteAction executes a named action on a resource
 	ExecuteAction(pluginID, connectionID, key, actionID string, input rt.ActionInput) (*rt.ActionResult, error)
 
+	// StreamAction executes a streaming action, returning an operation ID for event subscription
+	StreamAction(pluginID, connectionID, key, actionID string, input rt.ActionInput) (string, error)
+
 	// GetLayout returns the layout for the plugin
 	GetLayout(pluginID string, layoutID string) ([]rt.LayoutItem, error)
 
@@ -258,6 +261,13 @@ func (c *Client) ExecuteAction(
 	input rt.ActionInput,
 ) (*rt.ActionResult, error) {
 	return c.controller.ExecuteAction(pluginID, connectionID, key, actionID, input)
+}
+
+func (c *Client) StreamAction(
+	pluginID, connectionID, key, actionID string,
+	input rt.ActionInput,
+) (string, error) {
+	return c.controller.StreamAction(pluginID, connectionID, key, actionID, input)
 }
 
 func (c *Client) GetLayout(pluginID string, layoutID string) ([]rt.LayoutItem, error) {

@@ -98,12 +98,27 @@ type Manager interface {
 	// ListPlugins returns a list of all plugins that are currently registered with the manager.
 	ListPlugins() []types.Plugin
 
-	// ListAvailablePlugins returns a list of all plugins that are available and suppported for the
-	// users IDE environment.
-	ListAvailablePlugins() ([]registry.Plugin, error)
+	// ListAvailablePlugins returns a list of all plugins that are available and supported for the
+	// user's IDE environment.
+	ListAvailablePlugins() ([]registry.AvailablePlugin, error)
 
-	// // ListAvailablePluginVersions returns a list of the versions available for a specified plugin
-	// GetAvailablePluginIndex() []registry.PluginIndex
+	// SearchPlugins searches the marketplace with filters.
+	SearchPlugins(query, category, sort string) ([]registry.AvailablePlugin, error)
+
+	// GetPluginReadme fetches the README for a marketplace plugin.
+	GetPluginReadme(pluginID string) (string, error)
+
+	// GetPluginVersions fetches version info for a marketplace plugin.
+	GetPluginVersions(pluginID string) ([]registry.VersionInfo, error)
+
+	// GetPluginReviews fetches reviews for a marketplace plugin.
+	GetPluginReviews(pluginID string, page int) ([]registry.Review, error)
+
+	// GetPluginDownloadStats fetches download statistics for a marketplace plugin.
+	GetPluginDownloadStats(pluginID string) (*registry.DownloadStats, error)
+
+	// GetPluginReleaseHistory fetches version history for a marketplace plugin.
+	GetPluginReleaseHistory(pluginID string) ([]registry.VersionInfo, error)
 
 	// GetPluginMeta returns the plugin metadata for the given plugin ID.
 	GetPluginMeta(id string) (config.PluginMeta, error)
@@ -131,7 +146,7 @@ func NewManager(
 	metricController pluginmetric.Controller,
 	managers map[string]plugintypes.PluginManager,
 	settingsProvider pkgsettings.Provider,
-	registryClient *registry.RegistryClient,
+	registryClient *registry.Client,
 ) Manager {
 	l := logger.Named("PluginManager")
 
@@ -189,7 +204,7 @@ type pluginManager struct {
 	watcher             *fsnotify.Watcher
 	watchTargets        map[string][]string
 	settingsProvider    pkgsettings.Provider
-	registryClient      *registry.RegistryClient
+	registryClient      *registry.Client
 	// extendable amount of plugin managers
 	managers       map[string]plugintypes.PluginManager
 	devServerCheck DevServerChecker
@@ -261,6 +276,32 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 		return fmt.Errorf("error reading plugin directory: %w", err)
 	}
 
+	// Reverse migration: if a directory named <id>-dev exists but <id> does not,
+	// rename <id>-dev → <id> so plugins use the canonical ID directory.
+	pluginDir := getPluginDir()
+	for _, state := range states {
+		devDir := filepath.Join(pluginDir, state.ID+"-dev")
+		canonDir := filepath.Join(pluginDir, state.ID)
+
+		devExists := false
+		if info, statErr := os.Stat(devDir); statErr == nil && info.IsDir() {
+			devExists = true
+		}
+		canonExists := false
+		if info, statErr := os.Stat(canonDir); statErr == nil && info.IsDir() {
+			canonExists = true
+		}
+
+		if devExists && !canonExists {
+			pm.logger.Infow("migrating dev plugin directory to canonical ID",
+				"from", devDir, "to", canonDir)
+			if renameErr := os.Rename(devDir, canonDir); renameErr != nil {
+				pm.logger.Errorw("failed to rename dev plugin directory",
+					"from", devDir, "to", canonDir, "error", renameErr)
+			}
+		}
+	}
+
 	// Phase 1: Load all plugins using existing binaries on disk.
 	// Dev plugins retain their binary from the previous session, so they can
 	// be loaded immediately without waiting for a rebuild.
@@ -283,7 +324,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 				}
 				if state.DevMode && state.DevPath != "" {
 					devPlugins = append(devPlugins, devEntry{
-						pluginID: file.Name(),
+						pluginID: state.ID,
 						devPath:  state.DevPath,
 					})
 				}
@@ -353,7 +394,7 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 
 	runtime.EventsEmit(pm.ctx, PluginDevInstallEventStart, metadata)
 
-	// 2. Unload any existing plugin state so reinstall is idempotent.
+	// 2. Unload existing instance if it exists.
 	if _, exists := pm.plugins[metadata.ID]; exists {
 		l.Infow("plugin already loaded, unloading first for reinstall", "pluginID", metadata.ID)
 		if unloadErr := pm.UnloadPlugin(metadata.ID); unloadErr != nil {
@@ -361,8 +402,8 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 		}
 	}
 
-	// 3. Copy plugin.yaml to ~/.omniview/plugins/<id>/.
-	if err = transferPluginBuild(path, metadata, plugintypes.BuildOpts{
+	// 3. Copy plugin.yaml to ~/.omniview/plugins/<pluginID>/.
+	if err = transferPluginBuild(path, metadata, metadata.ID, plugintypes.BuildOpts{
 		ExcludeBackend: true,
 		ExcludeUI:      true,
 	}); err != nil {
@@ -379,7 +420,7 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 
 	// 5. Start the dev server (Vite + GoWatcher with initial build).
 	//    GoWatcher.Start() performs an initial `go build` + transferBinary, placing the
-	//    binary at ~/.omniview/plugins/<id>/bin/plugin so LoadPlugin validation passes.
+	//    binary at ~/.omniview/plugins/<pluginID>/bin/plugin so LoadPlugin validation passes.
 	if pm.devServerMgr != nil {
 		l.Infow("starting dev server (triggers initial build)", "pluginID", metadata.ID)
 		if _, startErr := pm.devServerMgr.StartDevServerForPath(metadata.ID, path); startErr != nil {
@@ -427,8 +468,8 @@ func (pm *pluginManager) InstallFromPathPrompt() (*config.PluginMeta, error) {
 	return pm.InstallPluginFromPath(path)
 }
 
-func (pm *pluginManager) GetPluginVersions(pluginID string) registry.PluginVersions {
-	return pm.registryClient.GetPluginVersions(pluginID)
+func (pm *pluginManager) GetPluginVersions(pluginID string) ([]registry.VersionInfo, error) {
+	return pm.registryClient.GetPluginVersions(context.Background(), pluginID)
 }
 
 // InstallPluginVersion installs a plugin from the registry
@@ -440,7 +481,8 @@ func (pm *pluginManager) InstallPluginVersion(
 	runtime.EventsEmit(pm.ctx, PluginUpdateStartedEvent, pluginID, version)
 
 	// Fetch from the registry
-	tmpPath, err := pm.registryClient.DownloadAndPrepare(pluginID, version)
+	pm.syncRegistryURL()
+	tmpPath, err := pm.registryClient.DownloadPlugin(context.Background(), pluginID, version)
 	if err != nil {
 		pm.logger.Errorw("failed to download and prepare", "error", err)
 		return nil, err
@@ -450,8 +492,50 @@ func (pm *pluginManager) InstallPluginVersion(
 	return pm.InstallPluginFromPath(tmpPath)
 }
 
-func (pm *pluginManager) ListAvailablePlugins() ([]registry.Plugin, error) {
-	return pm.registryClient.ListPlugins()
+// syncRegistryURL checks if the marketplace URL setting has changed and
+// reconfigures the registry client if needed. Called before each marketplace
+// operation so settings changes take effect without restart.
+func (pm *pluginManager) syncRegistryURL() {
+	url, err := pm.settingsProvider.GetString("developer.marketplace_url")
+	if err != nil {
+		return
+	}
+	pm.registryClient.SetBaseURL(url) // no-op if URL unchanged
+}
+
+func (pm *pluginManager) ListAvailablePlugins() ([]registry.AvailablePlugin, error) {
+	pm.syncRegistryURL()
+	return pm.registryClient.ListPlugins(context.Background())
+}
+
+// SearchPlugins searches the marketplace with filters.
+func (pm *pluginManager) SearchPlugins(query, category, sort string) ([]registry.AvailablePlugin, error) {
+	pm.syncRegistryURL()
+	return pm.registryClient.SearchPlugins(context.Background(), query, category, sort)
+}
+
+// GetPluginReadme fetches the README for a marketplace plugin.
+func (pm *pluginManager) GetPluginReadme(pluginID string) (string, error) {
+	pm.syncRegistryURL()
+	return pm.registryClient.GetPluginReadme(context.Background(), pluginID)
+}
+
+// GetPluginReviews fetches reviews for a marketplace plugin.
+func (pm *pluginManager) GetPluginReviews(pluginID string, page int) ([]registry.Review, error) {
+	pm.syncRegistryURL()
+	return pm.registryClient.GetPluginReviews(context.Background(), pluginID, page)
+}
+
+// GetPluginDownloadStats fetches download statistics for a marketplace plugin.
+func (pm *pluginManager) GetPluginDownloadStats(pluginID string) (*registry.DownloadStats, error) {
+	pm.syncRegistryURL()
+	return pm.registryClient.GetPluginDownloadStats(context.Background(), pluginID)
+}
+
+// GetPluginReleaseHistory fetches version history for a marketplace plugin.
+func (pm *pluginManager) GetPluginReleaseHistory(pluginID string) ([]registry.VersionInfo, error) {
+	pm.syncRegistryURL()
+	return pm.registryClient.GetPluginVersions(context.Background(), pluginID)
 }
 
 func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta, error) {
@@ -524,7 +608,6 @@ func (pm *pluginManager) ReloadPlugin(id string) (types.Plugin, error) {
 	// get the existing state first
 	state, err := pm.readPluginState()
 	if err == nil {
-		// find and load it
 		for _, s := range state {
 			if s.ID == id {
 				opts = &LoadPluginOptions{
@@ -548,14 +631,14 @@ type LoadPluginOptions struct {
 }
 
 func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.Plugin, error) {
-	log := pm.logger.Named("LoadPlugin").With("id", id, "ops", opts)
+	log := pm.logger.Named("LoadPlugin").With("id", id, "opts", opts)
 
 	if _, ok := pm.plugins[id]; ok {
 		return types.Plugin{}, apperror.PluginAlreadyLoaded(id)
 	}
 
 	location := getPluginLocation(id)
-	log.Debugw("loading plugin from location", "location", location)
+	log.Debugw("loading plugin from location", "location", location, "pluginID", id)
 
 	// make sure it exists, and load the metadata file
 	if _, err := os.Stat(location); os.IsNotExist(err) {
@@ -600,9 +683,9 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (types.P
 	newPlugin := types.Plugin{
 		ID:       id,
 		Metadata: metadata,
-		Running:  false,
-		Enabled:  true,
-		Config:   *config.NewEmptyPluginConfig(),
+		Running:    false,
+		Enabled:    true,
+		Config:     *config.NewEmptyPluginConfig(),
 	}
 
 	if opts != nil && opts.ExistingState != nil {
@@ -807,10 +890,11 @@ func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
 	}
 
 	ctx := context.Background()
+	pluginID := plugin.ID
 
 	// run the extended managers
 	for name, manager := range pm.managers {
-		if err := manager.OnPluginInit(ctx, plugin.Metadata); err != nil {
+		if err := manager.OnPluginInit(ctx, pluginID, plugin.Metadata); err != nil {
 			// log the error
 			pm.logger.Errorw(
 				"error invoking init for plugin manager",
@@ -825,7 +909,7 @@ func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
 	}
 
 	// manually register the required capabilities first
-	pm.connlessControllers[types.SettingsPlugin].OnPluginInit(plugin.Metadata)
+	pm.connlessControllers[types.SettingsPlugin].OnPluginInit(pluginID, plugin.Metadata)
 
 	// Init all controllers — OnPluginInit is a lightweight notification
 	// with no gRPC calls, so it's safe to call for all capabilities.
@@ -834,13 +918,13 @@ func (pm *pluginManager) initPlugin(plugin *types.Plugin) error {
 		if ctrl == nil || pt == types.SettingsPlugin {
 			continue
 		}
-		ctrl.OnPluginInit(plugin.Metadata)
+		ctrl.OnPluginInit(pluginID, plugin.Metadata)
 	}
 	for pt, ctrl := range pm.connlessControllers {
 		if ctrl == nil || pt == types.SettingsPlugin {
 			continue
 		}
-		ctrl.OnPluginInit(plugin.Metadata)
+		ctrl.OnPluginInit(pluginID, plugin.Metadata)
 	}
 
 	return nil
@@ -853,10 +937,11 @@ func (pm *pluginManager) startPlugin(plugin *types.Plugin) error {
 	}
 
 	ctx := context.Background()
+	pluginID := plugin.ID
 
 	// run the extended managers
 	for name, manager := range pm.managers {
-		if err := manager.OnPluginStart(ctx, plugin.Metadata); err != nil {
+		if err := manager.OnPluginStart(ctx, pluginID, plugin.Metadata); err != nil {
 			// log the error
 			pm.logger.Errorw(
 				"error invoking start for plugin manager",
@@ -872,7 +957,7 @@ func (pm *pluginManager) startPlugin(plugin *types.Plugin) error {
 
 	// manually start the required capabilities first
 
-	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
+	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginStart(pluginID, plugin.Metadata, plugin.RPCClient); err != nil {
 		return fmt.Errorf("error starting settings plugin: %w", err)
 	}
 
@@ -931,7 +1016,7 @@ func (pm *pluginManager) startPlugin(plugin *types.Plugin) error {
 
 		// Service exists (the call may fail for other reasons like nil
 		// request, which is expected — but the service IS registered).
-		if err := ctrl.OnPluginStart(plugin.Metadata, plugin.RPCClient); err != nil {
+		if err := ctrl.OnPluginStart(pluginID, plugin.Metadata, plugin.RPCClient); err != nil {
 			pm.logger.Warnw("failed to start capability controller",
 				"pluginID", plugin.Metadata.ID,
 				"capability", name,
@@ -958,10 +1043,11 @@ func (pm *pluginManager) stopPlugin(plugin *types.Plugin) error {
 	}
 
 	ctx := context.Background()
+	pluginID := plugin.ID
 
 	// run the extended managers
 	for name, manager := range pm.managers {
-		if err := manager.OnPluginStop(ctx, plugin.Metadata); err != nil {
+		if err := manager.OnPluginStop(ctx, pluginID, plugin.Metadata); err != nil {
 			// log the error
 			pm.logger.Errorw(
 				"error invoking stop for plugin manager",
@@ -977,7 +1063,7 @@ func (pm *pluginManager) stopPlugin(plugin *types.Plugin) error {
 
 	// manually stop the required capabilities first
 
-	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginStop(plugin.Metadata); err != nil {
+	if err := pm.connlessControllers[types.SettingsPlugin].OnPluginStop(pluginID, plugin.Metadata); err != nil {
 		return fmt.Errorf("error stopping settings plugin: %w", err)
 	}
 
@@ -993,7 +1079,7 @@ func (pm *pluginManager) stopPlugin(plugin *types.Plugin) error {
 		if ctrl == nil {
 			continue
 		}
-		if err := ctrl.OnPluginStop(plugin.Metadata); err != nil {
+		if err := ctrl.OnPluginStop(pluginID, plugin.Metadata); err != nil {
 			return fmt.Errorf("error stopping %s plugin: %w", cap, err)
 		}
 	}
@@ -1008,10 +1094,11 @@ func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 	}
 
 	ctx := context.Background()
+	pluginID := plugin.ID
 
 	// run the extended managers
 	for name, manager := range pm.managers {
-		if err := manager.OnPluginShutdown(ctx, plugin.Metadata); err != nil {
+		if err := manager.OnPluginShutdown(ctx, pluginID, plugin.Metadata); err != nil {
 			// log the error
 			pm.logger.Errorw(
 				"error invoking shutdown for plugin manager",
@@ -1031,10 +1118,10 @@ func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 			return fmt.Errorf("error stopping plugin client: %w", err)
 		}
 		plugin.PluginClient.Kill()
-		pm.pidTracker.Remove(plugin.Metadata.ID)
+		pm.pidTracker.Remove(pluginID)
 
 		// manually shutdown the required capabilities first
-		if err := pm.connlessControllers[types.SettingsPlugin].OnPluginShutdown(plugin.Metadata); err != nil {
+		if err := pm.connlessControllers[types.SettingsPlugin].OnPluginShutdown(pluginID, plugin.Metadata); err != nil {
 			return fmt.Errorf("error shutting down settings plugin: %w", err)
 		}
 	}
@@ -1051,7 +1138,7 @@ func (pm *pluginManager) shutdownPlugin(plugin *types.Plugin) error {
 		if ctrl == nil {
 			continue
 		}
-		if err := ctrl.OnPluginShutdown(plugin.Metadata); err != nil {
+		if err := ctrl.OnPluginShutdown(pluginID, plugin.Metadata); err != nil {
 			return fmt.Errorf("error shutting down %s plugin: %w", cap, err)
 		}
 	}

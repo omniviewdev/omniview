@@ -17,6 +17,7 @@ export const ClipboardSetText = mod.ClipboardSetText;
 export const Environment = mod.Environment;
 export const EventsEmit = mod.EventsEmit;
 export const EventsOff = mod.EventsOff;
+export const EventsOffAll = mod.EventsOffAll;
 export const EventsOn = mod.EventsOn;
 export const EventsOnMultiple = mod.EventsOnMultiple;
 export const EventsOnce = mod.EventsOnce;

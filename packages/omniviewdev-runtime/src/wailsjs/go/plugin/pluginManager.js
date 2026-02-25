@@ -10,8 +10,24 @@ export function GetPlugin(arg1) {
   return window['go']['plugin']['pluginManager']['GetPlugin'](arg1);
 }
 
+export function GetPluginDownloadStats(arg1) {
+  return window['go']['plugin']['pluginManager']['GetPluginDownloadStats'](arg1);
+}
+
 export function GetPluginMeta(arg1) {
   return window['go']['plugin']['pluginManager']['GetPluginMeta'](arg1);
+}
+
+export function GetPluginReadme(arg1) {
+  return window['go']['plugin']['pluginManager']['GetPluginReadme'](arg1);
+}
+
+export function GetPluginReleaseHistory(arg1) {
+  return window['go']['plugin']['pluginManager']['GetPluginReleaseHistory'](arg1);
+}
+
+export function GetPluginReviews(arg1, arg2) {
+  return window['go']['plugin']['pluginManager']['GetPluginReviews'](arg1, arg2);
 }
 
 export function GetPluginVersions(arg1) {
@@ -64,6 +80,10 @@ export function RemoveTarget(arg1) {
 
 export function Run(arg1) {
   return window['go']['plugin']['pluginManager']['Run'](arg1);
+}
+
+export function SearchPlugins(arg1, arg2, arg3) {
+  return window['go']['plugin']['pluginManager']['SearchPlugins'](arg1, arg2, arg3);
 }
 
 export function SetDevServerChecker(arg1) {

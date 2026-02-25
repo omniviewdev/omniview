@@ -38,6 +38,7 @@ import BottomDrawerProvider from './providers/BottomDrawer/provider';
 import { SettingsProvider } from '@omniviewdev/runtime';
 import { EXTENSION_REGISTRY } from './features/extensions/store'
 import { ConfirmationModalProvider } from './contexts/ConfirmationModalContext';
+import { OperationsProvider } from '@omniviewdev/runtime';
 import { PluginRegistryProvider } from './features/plugins/PluginRegistryProvider';
 import { RouteProvider } from './features/router/RouteProvider';
 import log from '@/features/logger'
@@ -87,15 +88,17 @@ const App: React.FC = () => (
                     FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
                     onError={onBoundaryError}
                   >
-                    <ConfirmationModalProvider>
-                      <RightDrawerProvider>
-                        <BottomDrawerProvider>
-                          <PluginRegistryProvider>
-                            <RouteProvider />
-                          </PluginRegistryProvider>
-                        </BottomDrawerProvider>
-                      </RightDrawerProvider>
-                    </ConfirmationModalProvider>
+                    <OperationsProvider>
+                      <ConfirmationModalProvider>
+                        <RightDrawerProvider>
+                          <BottomDrawerProvider>
+                            <PluginRegistryProvider>
+                              <RouteProvider />
+                            </PluginRegistryProvider>
+                          </BottomDrawerProvider>
+                        </RightDrawerProvider>
+                      </ConfirmationModalProvider>
+                    </OperationsProvider>
                   </ErrorBoundary>
                 </AppTheme>
               </Provider>

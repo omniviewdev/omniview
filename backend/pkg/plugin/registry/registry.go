@@ -1,274 +1,249 @@
 package registry
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"runtime"
-	"time"
 
-	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	regclient "github.com/omniviewdev/registry"
 )
 
-// Constants for the CDN
-const (
-	BaseURL    = "https://cdn.plugins.omniview.dev"
-	UserAgent  = "Omniview-Plugin-Client/1.0"
-	TimeoutSec = 15
-)
-
-var client = &http.Client{Timeout: TimeoutSec * time.Second}
-
-type PluginRegistry struct {
-	Plugins []Plugin `json:"plugins"`
+// AvailablePlugin represents a plugin from the marketplace, enriched with
+// local install status for the desktop app frontend.
+type AvailablePlugin struct {
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Description   string   `json:"description"`
+	IconURL       string   `json:"icon_url"`
+	Category      string   `json:"category"`
+	Tags          []string `json:"tags"`
+	License       string   `json:"license"`
+	Official      bool     `json:"official"`
+	Featured      bool     `json:"featured"`
+	DownloadCount int64    `json:"download_count"`
+	AverageRating float64  `json:"average_rating"`
+	ReviewCount   int64    `json:"review_count"`
+	Repository    string   `json:"repository"`
+	URL           string   `json:"url"`
+	Installed     bool     `json:"installed"`
+	InstalledVer  string   `json:"installed_version"`
+	LatestVer     string   `json:"latest_version"`
+	UpdateAvail   bool     `json:"update_available"`
 }
 
-type Plugin struct {
-	ID            string        `json:"id"`
-	Name          string        `json:"name"`
-	Icon          string        `json:"icon"`
-	Description   string        `json:"description"`
-	Official      bool          `json:"official"`
-	LatestVersion PluginVersion `json:"latest_version"`
+// VersionInfo represents a plugin version for the frontend.
+type VersionInfo struct {
+	Version       string   `json:"version"`
+	Description   string   `json:"description"`
+	Changelog     string   `json:"changelog"`
+	MinIDEVersion string   `json:"min_ide_version"`
+	MaxIDEVersion string   `json:"max_ide_version"`
+	Capabilities  []string `json:"capabilities"`
+	CreatedAt     string   `json:"created_at"`
 }
 
-type PluginVersions struct {
-	Latest   string
-	Versions []string
+// Review represents a plugin review for the frontend.
+type Review struct {
+	ID        string `json:"id"`
+	UserID    uint   `json:"user_id"`
+	Rating    int    `json:"rating"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
 }
 
-type PluginIndex struct {
-	ID            string          `json:"id"`
-	Name          string          `json:"name"`
-	Icon          string          `json:"icon"`
-	Description   string          `json:"description"`
-	Official      bool            `json:"official"`
-	LatestVersion PluginVersion   `json:"latest_version"`
-	Versions      []PluginVersion `json:"versions"`
-
-	expires time.Time
+// DownloadStats holds plugin download statistics.
+type DownloadStats struct {
+	Total      int64       `json:"total"`
+	LastMonth  int64       `json:"last_month"`
+	LastWeek   int64       `json:"last_week"`
+	DailyStats []DailyStat `json:"daily_stats"`
 }
 
-type PluginVersion struct {
-	Metadata      config.PluginMeta         `json:"metadata"`
-	Version       string                    `json:"version"`
-	Architectures map[string]PluginArtifact `json:"architectures"`
-	Created       time.Time                 `json:"created"`
-	Updated       time.Time                 `json:"updated"`
+// DailyStat is a single day's download count.
+type DailyStat struct {
+	Date  string `json:"date"`
+	Count int64  `json:"count"`
 }
 
-type Maintainer struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
+// Client wraps the registry client with convenience methods for the desktop app.
+type Client struct {
+	inner   *regclient.Client
+	baseURL string // tracks the current API URL so we can detect changes
 }
 
-type PluginTheme struct {
-	Colors map[string]string `json:"colors"`
-}
-
-type PluginArtifact struct {
-	Checksum    string `json:"checksum"`
-	Signature   string `json:"signature"`
-	DownloadURL string `json:"download_url"`
-	Size        int64  `json:"size"`
-}
-
-// --- Public API ---
-
-type RegistryClient struct {
-	baseURL   string
-	indexURL  string
-	userAgent string
-	timeout   time.Duration
-
-	index         *PluginRegistry
-	pluginIndexes map[string]*PluginIndex
-	indexExpires  time.Time
-}
-
-func NewRegistryClient() *RegistryClient {
-	return &RegistryClient{
-		baseURL:       BaseURL,
-		indexURL:      BaseURL + "/index.json",
-		userAgent:     UserAgent,
-		timeout:       time.Second * 15,
-		pluginIndexes: make(map[string]*PluginIndex),
+// NewClient creates a new registry client.
+func NewClient(baseURL string) *Client {
+	opts := []regclient.Option{}
+	if baseURL != "" {
+		opts = append(opts, regclient.WithBaseURL(baseURL))
+	}
+	return &Client{
+		inner:   regclient.NewClient(opts...),
+		baseURL: baseURL,
 	}
 }
 
-func (rc *RegistryClient) getPluginArtifact(
-	pluginID string,
-	version string,
-) (PluginArtifact, error) {
-	// check the index to see if we have it
-	plugin, ok := rc.pluginIndexes[pluginID]
-	if !ok {
-		index, err := rc.GetPluginIndex(pluginID)
+// SetBaseURL replaces the underlying client with one pointing at a new API URL.
+// No-op if the URL hasn't changed.
+func (c *Client) SetBaseURL(baseURL string) {
+	if baseURL == c.baseURL {
+		return
+	}
+	c.baseURL = baseURL
+	opts := []regclient.Option{}
+	if baseURL != "" {
+		opts = append(opts, regclient.WithBaseURL(baseURL))
+	}
+	c.inner = regclient.NewClient(opts...)
+}
+
+// BaseURL returns the current marketplace API URL.
+func (c *Client) BaseURL() string {
+	return c.baseURL
+}
+
+// toAvailablePlugin converts a registry Plugin to the frontend-facing AvailablePlugin.
+func toAvailablePlugin(p regclient.Plugin) AvailablePlugin {
+	return AvailablePlugin{
+		ID:            p.ID,
+		Name:          p.Name,
+		Description:   p.Description,
+		IconURL:       p.IconURL,
+		Category:      p.Category,
+		Tags:          p.Tags,
+		License:       p.License,
+		Official:      p.Official,
+		Featured:      p.Featured,
+		DownloadCount: p.DownloadCount,
+		AverageRating: p.AverageRating,
+		ReviewCount:   p.ReviewCount,
+		Repository:    p.Repository,
+		URL:           p.URL,
+	}
+}
+
+// ListPlugins fetches all available plugins from the marketplace, paginating
+// through results automatically.
+func (c *Client) ListPlugins(ctx context.Context) ([]AvailablePlugin, error) {
+	return c.fetchAllPlugins(ctx, &regclient.ListOptions{PerPage: 50})
+}
+
+// fetchAllPlugins walks through all pages and collects every plugin.
+func (c *Client) fetchAllPlugins(ctx context.Context, opts *regclient.ListOptions) ([]AvailablePlugin, error) {
+	if opts.Page == 0 {
+		opts.Page = 1
+	}
+
+	var all []AvailablePlugin
+	for {
+		result, err := c.inner.ListPlugins(ctx, opts)
 		if err != nil {
-			return PluginArtifact{}, err
+			return nil, fmt.Errorf("listing plugins (page %d): %w", opts.Page, err)
 		}
-		plugin = index
-		rc.pluginIndexes[pluginID] = index
+
+		for _, p := range result.Items {
+			all = append(all, toAvailablePlugin(p))
+		}
+
+		if result.Pagination == nil || opts.Page >= int(result.Pagination.TotalPages) {
+			break
+		}
+		opts.Page++
+	}
+	return all, nil
+}
+
+// SearchPlugins searches plugins with filters, paginating through all results.
+func (c *Client) SearchPlugins(ctx context.Context, query, category, sort string) ([]AvailablePlugin, error) {
+	opts := &regclient.ListOptions{
+		PerPage:  50,
+		Search:   query,
+		Category: category,
+	}
+	if sort != "" {
+		opts.OrderField = sort
+		opts.OrderDirection = "desc"
+	}
+	return c.fetchAllPlugins(ctx, opts)
+}
+
+// GetPluginReadme fetches the readme for a plugin.
+func (c *Client) GetPluginReadme(ctx context.Context, pluginID string) (string, error) {
+	p, err := c.inner.GetPlugin(ctx, pluginID)
+	if err != nil {
+		return "", fmt.Errorf("getting plugin readme: %w", err)
+	}
+	return p.Readme, nil
+}
+
+// GetPluginVersions fetches version history for a plugin.
+func (c *Client) GetPluginVersions(ctx context.Context, pluginID string) ([]VersionInfo, error) {
+	result, err := c.inner.ListVersions(ctx, pluginID, &regclient.ListOptions{PerPage: 50})
+	if err != nil {
+		return nil, fmt.Errorf("listing plugin versions: %w", err)
 	}
 
-	platform := rc.getCurrentPlatform()
-	// check the index
-	for _, v := range plugin.Versions {
-		if v.Version == version {
-			// check architectures to make sure compatible
-			artifact, ok := v.Architectures[platform]
-			if !ok {
-				return PluginArtifact{}, apperror.New(apperror.TypePluginInstallFailed, 404, "Platform not supported", fmt.Sprintf("Plugin version does not have a build for platform '%s'.", platform))
-			}
-
-			// we have a successful artifact
-			return artifact, nil
+	versions := make([]VersionInfo, len(result.Items))
+	for i, v := range result.Items {
+		versions[i] = VersionInfo{
+			Version:       v.Version,
+			Description:   v.Description,
+			Changelog:     v.Changelog,
+			MinIDEVersion: v.MinIDEVersion,
+			MaxIDEVersion: v.MaxIDEVersion,
+			Capabilities:  v.Capabilities,
+			CreatedAt:     v.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		}
 	}
-
-	// if we've gotten here, no version found
-	return PluginArtifact{}, apperror.New(apperror.TypePluginInstallFailed, 404, "Plugin artifact not found", fmt.Sprintf("No artifact found for plugin '%s' version '%s'.", pluginID, version))
+	return versions, nil
 }
 
-func (rc *RegistryClient) ListPlugins() ([]Plugin, error) {
-	if rc.index != nil && rc.indexExpires.After(time.Now()) {
-		return rc.index.Plugins, nil
-	}
-
-	resp, err := rc.get(rc.indexURL)
+// GetPluginReviews fetches reviews for a plugin.
+func (c *Client) GetPluginReviews(ctx context.Context, pluginID string, page int) ([]Review, error) {
+	result, err := c.inner.ListReviews(ctx, pluginID, &regclient.ListOptions{
+		Page:    page,
+		PerPage: 20,
+	})
 	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var registry PluginRegistry
-	if err := json.NewDecoder(resp.Body).Decode(&registry); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("listing plugin reviews: %w", err)
 	}
 
-	rc.index = &registry
-	rc.indexExpires = time.Now().Add(time.Minute * 1)
-	return registry.Plugins, nil
-}
-
-func (rc *RegistryClient) GetPluginVersions(pluginID string) PluginVersions {
-	var versions PluginVersions
-
-	index, err := rc.GetPluginIndex(pluginID)
-	if err != nil {
-		return versions
-	}
-
-	// go through index and get latest
-	versions.Latest = index.LatestVersion.Version
-	versions.Versions = make([]string, 0, len(index.Versions))
-	for _, version := range index.Versions {
-		versions.Versions = append(versions.Versions, version.Version)
-	}
-
-	return versions
-}
-
-func (rc *RegistryClient) GetPluginIndex(pluginID string) (*PluginIndex, error) {
-	i, ok := rc.pluginIndexes[pluginID]
-	if ok && i != nil && i.expires.After(time.Now()) {
-		return i, nil
-	}
-
-	resp, err := rc.get(fmt.Sprintf("%s/%s/index.json", rc.baseURL, pluginID))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var index PluginIndex
-	if err := json.NewDecoder(resp.Body).Decode(&index); err != nil {
-		return nil, err
-	}
-
-	index.expires = time.Now().Add(time.Minute * 2)
-	return &index, nil
-}
-
-// GetCurrentPlatform returns a normalized platform_arch string used in plugin metadata keys
-func (rc *RegistryClient) getCurrentPlatform() string {
-	platform := runtime.GOOS
-	arch := runtime.GOARCH
-
-	// normalize (e.g. amd64 vs x86_64 or arm64 vs aarch64)
-	switch arch {
-	case "amd64":
-		arch = "amd64"
-	case "arm64":
-		arch = "arm64"
-	default:
-		// fallback, but these are the only supported ones in the plugin registry so far
-		arch = runtime.GOARCH
-	}
-
-	return fmt.Sprintf("%s_%s", platform, arch)
-}
-
-func (rc *RegistryClient) DownloadAndPrepare(
-	pluginID, version string,
-) (string, error) {
-	artifact, err := rc.getPluginArtifact(pluginID, version)
-	if err != nil {
-		return "", err
-	}
-
-	url := fmt.Sprintf("%s/%s", rc.baseURL, artifact.DownloadURL)
-	resp, err := rc.get(url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	tmpFile, err := os.CreateTemp("", "plugin-*.tar.gz")
-	if err != nil {
-		return "", err
-	}
-	defer tmpFile.Close()
-
-	hasher := sha256.New()
-	multi := io.MultiWriter(tmpFile, hasher)
-
-	if _, err := io.Copy(multi, resp.Body); err != nil {
-		return "", err
-	}
-
-	actual := hex.EncodeToString(hasher.Sum(nil))
-	if actual != artifact.Checksum {
-		return "", apperror.New(apperror.TypeValidation, 422, "Checksum mismatch", fmt.Sprintf("Downloaded file checksum '%s' does not match expected '%s'. The file may be corrupted.", actual, artifact.Checksum))
-	}
-
-	if err := VerifyArtifactSignature(artifact.Checksum, artifact.Signature); err != nil {
-		if errors.Is(err, ErrUnsignedArtifact) {
-			return "", apperror.New(apperror.TypeValidation, 422, "Plugin not signed", fmt.Sprintf("Plugin '%s@%s' is not signed.", pluginID, version))
+	reviews := make([]Review, len(result.Items))
+	for i, r := range result.Items {
+		reviews[i] = Review{
+			ID:        r.ID,
+			UserID:    r.UserID,
+			Rating:    r.Rating,
+			Title:     r.Title,
+			Body:      r.Body,
+			CreatedAt: r.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		}
-		return "", apperror.WrapWithDetail(err, apperror.TypeValidation, 422, "Signature verification failed", fmt.Sprintf("Signature verification failed for plugin '%s@%s'.", pluginID, version))
 	}
-
-	if _, err := tmpFile.Seek(0, io.SeekStart); err != nil {
-		return "", err
-	}
-
-	return tmpFile.Name(), nil
+	return reviews, nil
 }
 
-// --- Internal helpers ---
-
-func (rc *RegistryClient) get(url string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
+// GetPluginDownloadStats fetches download statistics.
+func (c *Client) GetPluginDownloadStats(ctx context.Context, pluginID string) (*DownloadStats, error) {
+	daily, err := c.inner.GetDailyDownloads(ctx, pluginID, 30)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting download stats: %w", err)
 	}
-	req.Header.Set("User-Agent", UserAgent)
-	return client.Do(req)
+
+	stats := &DownloadStats{
+		DailyStats: make([]DailyStat, len(daily)),
+	}
+	for i, d := range daily {
+		stats.DailyStats[i] = DailyStat{
+			Date:  d.Date,
+			Count: d.Count,
+		}
+		stats.Total += d.Count
+	}
+	return stats, nil
+}
+
+// DownloadPlugin downloads and verifies a plugin artifact.
+// Returns the path to the downloaded temp file.
+func (c *Client) DownloadPlugin(ctx context.Context, pluginID, version string) (string, error) {
+	return c.inner.DownloadPlugin(ctx, pluginID, version)
 }

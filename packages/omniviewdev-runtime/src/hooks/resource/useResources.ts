@@ -13,6 +13,7 @@ import { List, Create } from '../../wailsjs/go/resource/Client';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { produce } from 'immer';
 import get from 'lodash.get';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type AddPayload = {
   data: any;
@@ -44,7 +45,7 @@ type UseResourcesOptions = {
    * The ID of the plugin responsible for this resource
    * @example "kubernetes"
    */
-  pluginID: string;
+  pluginID?: string;
 
   /**
    * The connection ID to scope the resource to
@@ -94,7 +95,7 @@ type UseResourcesOptions = {
  * @throws If the resourceID is invalid
  */
 export const useResources = ({
-  pluginID,
+  pluginID: explicitPluginID,
   connectionID,
   resourceKey,
   idAccessor,
@@ -102,6 +103,7 @@ export const useResources = ({
   listParams = {},
   createParams = {},
 }: UseResourcesOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 

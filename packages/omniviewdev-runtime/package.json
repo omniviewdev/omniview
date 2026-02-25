@@ -2,7 +2,7 @@
   "author": "Omniview",
   "license": "AGPL-3.0-only",
   "name": "@omniviewdev/runtime",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Runtime shared library for Omniview",
   "sideEffects": false,
   "type": "module",
@@ -32,6 +32,9 @@
     "directory": "packages/omniview-runtime",
     "url": "https://github.com/omniviewdev/omniview.git"
   },
+  "files": [
+    "dist"
+  ],
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"
@@ -45,7 +48,6 @@
     "omniview"
   ],
   "devDependencies": {
-    "@changesets/cli": "^2.27.1",
     "@tanstack/react-query": "^5.76.1",
     "@types/node": "^20.12.7",
     "@types/react": "^19.0.0",

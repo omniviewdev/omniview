@@ -111,12 +111,12 @@ func (c *controller) Run(ctx context.Context) {
 
 // ================================ Controller Lifecycle ================================ //
 
-func (c *controller) OnPluginInit(meta config.PluginMeta) {
-	c.logger.With("pluginID", meta.ID).Debug("OnPluginInit")
+func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+	c.logger.With("pluginID", pluginID).Debug("OnPluginInit")
 }
 
-func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientProtocol) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, client plugin.ClientProtocol) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
 	raw, err := client.Dispense("metric")
@@ -132,22 +132,22 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 		return err
 	}
 
-	c.clients[meta.ID] = provider
+	c.clients[pluginID] = provider
 
 	// Get supported resources
 	info, handlers := provider.GetSupportedResources(c.getUnconnectedCtx(context.Background()))
 
 	c.mux.Lock()
-	c.providerInfos[meta.ID] = info
-	c.handlerMap[meta.ID] = handlers
+	c.providerInfos[pluginID] = info
+	c.handlerMap[pluginID] = handlers
 	for _, h := range handlers {
-		c.resourceIndex[h.Resource] = append(c.resourceIndex[h.Resource], meta.ID)
+		c.resourceIndex[h.Resource] = append(c.resourceIndex[h.Resource], pluginID)
 	}
 	c.mux.Unlock()
 
 	// Start the stream for this plugin
 	inchan := make(chan metric.StreamInput)
-	c.inChans[meta.ID] = inchan
+	c.inChans[pluginID] = inchan
 
 	go func() {
 		stream, err := provider.StreamMetrics(c.ctx, inchan)
@@ -169,20 +169,20 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 	return nil
 }
 
-func (c *controller) OnPluginStop(meta config.PluginMeta) error {
-	c.logger.With("pluginID", meta.ID).Debug("OnPluginStop")
-	c.removePlugin(meta.ID)
+func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+	c.logger.With("pluginID", pluginID).Debug("OnPluginStop")
+	c.removePlugin(pluginID)
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(meta config.PluginMeta) error {
-	c.logger.With("pluginID", meta.ID).Debug("OnPluginShutdown")
-	c.removePlugin(meta.ID)
+func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+	c.logger.With("pluginID", pluginID).Debug("OnPluginShutdown")
+	c.removePlugin(pluginID)
 	return nil
 }
 
-func (c *controller) OnPluginDestroy(meta config.PluginMeta) error {
-	c.logger.With("pluginID", meta.ID).Debug("OnPluginDestroy")
+func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+	c.logger.With("pluginID", pluginID).Debug("OnPluginDestroy")
 	return nil
 }
 

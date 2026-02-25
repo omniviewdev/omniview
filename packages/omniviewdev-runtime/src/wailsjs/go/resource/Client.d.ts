@@ -64,6 +64,8 @@ export function StopConnection(arg1:string,arg2:string):Promise<types.Connection
 
 export function StopConnectionInformer(arg1:string,arg2:string):Promise<void>;
 
+export function StreamAction(arg1:string,arg2:string,arg3:string,arg4:string,arg5:types.ActionInput):Promise<string>;
+
 export function Update(arg1:string,arg2:string,arg3:string,arg4:types.UpdateInput):Promise<types.UpdateResult>;
 
 export function UpdateConnection(arg1:string,arg2:types.Connection):Promise<types.Connection>;

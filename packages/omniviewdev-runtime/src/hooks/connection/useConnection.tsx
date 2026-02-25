@@ -3,12 +3,13 @@ import { GetConnection, UpdateConnection, RemoveConnection, StartConnection, Sto
 import { type types } from '../../wailsjs/go/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseConnectionOptions = {
   /**
    * The name of the plugin we're interacting with
    */
-  pluginID: string;
+  pluginID?: string;
 
   /**
    * The ID of the connection
@@ -19,7 +20,8 @@ type UseConnectionOptions = {
 /**
  * Get and retreive connections from a plugin's connection manager..
  */
-export const useConnection = ({ pluginID, connectionID }: UseConnectionOptions) => {
+export const useConnection = ({ pluginID: explicitPluginID, connectionID }: UseConnectionOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 

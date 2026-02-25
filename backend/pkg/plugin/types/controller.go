@@ -13,21 +13,21 @@ import (
 // tasks, but at the base must implement the Controller interface.
 type Controller interface {
 	// OnPluginInit is called after the plugin is loaded in to do any pre-startup initialization.
-	OnPluginInit(meta config.PluginMeta)
+	OnPluginInit(pluginID string, meta config.PluginMeta)
 
 	// OnPluginStart is called when the plugin is started.
-	OnPluginStart(meta config.PluginMeta, client plugin.ClientProtocol) error
+	OnPluginStart(pluginID string, meta config.PluginMeta, client plugin.ClientProtocol) error
 
 	// OnPluginStop is called when the plugin is stopped. Modules should perform any persisting of state here
-	OnPluginStop(meta config.PluginMeta) error
+	OnPluginStop(pluginID string, meta config.PluginMeta) error
 
 	// OnPluginShutdown is called when the plugin is shutdown. This is the last chance to clean up any resources
 	// before the IDE is closed.
-	OnPluginShutdown(meta config.PluginMeta) error
+	OnPluginShutdown(pluginID string, meta config.PluginMeta) error
 
 	// OnPluginDestroy is called when the plugin is being removed from the system. This is the last chance to
 	// clean up any resources associated with the plugin before it is uninstalled.
-	OnPluginDestroy(meta config.PluginMeta) error
+	OnPluginDestroy(pluginID string, meta config.PluginMeta) error
 
 	// ListPlugins returns a list of names of the plugins that are installed.
 	ListPlugins() ([]string, error)

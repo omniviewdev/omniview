@@ -14,10 +14,18 @@ export function ListSettings(arg1) {
   return window['go']['settings']['Client']['ListSettings'](arg1);
 }
 
+export function PluginValues(arg1) {
+  return window['go']['settings']['Client']['PluginValues'](arg1);
+}
+
 export function SetSetting(arg1, arg2, arg3) {
   return window['go']['settings']['Client']['SetSetting'](arg1, arg2, arg3);
 }
 
 export function SetSettings(arg1, arg2) {
   return window['go']['settings']['Client']['SetSettings'](arg1, arg2);
+}
+
+export function Values() {
+  return window['go']['settings']['Client']['Values']();
 }

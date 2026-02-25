@@ -213,8 +213,8 @@ func (c *controller) loadFromLocalStore(pluginID string) error {
 	return nil
 }
 
-func (c *controller) OnPluginInit(meta config.PluginMeta) {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginInit")
 
 	// make sure we have our maps initialized
@@ -226,22 +226,23 @@ func (c *controller) OnPluginInit(meta config.PluginMeta) {
 	}
 
 	// load up the connections from the local store
-	if err := c.loadFromLocalStore(meta.ID); err != nil {
+	if err := c.loadFromLocalStore(pluginID); err != nil {
 		logger.Errorw("failed to load connections from local store", "error", err)
 	}
 
 	// if we have no connections, make sure we initialize the map
 	// with empty slices, and attempt to load connections from the plugin
-	if _, ok := c.connections[meta.ID]; !ok {
-		c.connections[meta.ID] = make([]types.Connection, 0)
+	if _, ok := c.connections[pluginID]; !ok {
+		c.connections[pluginID] = make([]types.Connection, 0)
 	}
 }
 
 func (c *controller) OnPluginStart(
+	pluginID string,
 	meta config.PluginMeta,
 	client plugin.ClientProtocol,
 ) error {
-	logger := c.logger.With("pluginID", meta.ID)
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
 	// make sure we have a client we can call for this plugin
@@ -261,28 +262,28 @@ func (c *controller) OnPluginStart(
 		)
 	}
 
-	c.clients[meta.ID] = resourceClient
+	c.clients[pluginID] = resourceClient
 
 	// start running informer receivers
 	stopChan := make(chan struct{})
 
 	// try to load the connections from the plugin, start connection watcher
-	if conns, err := c.LoadConnections(meta.ID); err != nil {
+	if conns, err := c.LoadConnections(pluginID); err != nil {
 		logger.Errorw("failed to load connections from plugin", "error", err)
 	} else if len(conns) > 0 {
-		eventKey := fmt.Sprintf("%s/connection/sync", meta.ID)
-		runtime.EventsEmit(c.ctx, eventKey, c.connections[meta.ID])
+		eventKey := fmt.Sprintf("%s/connection/sync", pluginID)
+		runtime.EventsEmit(c.ctx, eventKey, c.connections[pluginID])
 	}
 	go c.listenForPluginConnectionEvents(
-		meta.ID,
+		pluginID,
 		resourceClient,
 		stopChan,
 		c.connChan,
 	)
 
-	c.informerStopChans[meta.ID] = stopChan
+	c.informerStopChans[pluginID] = stopChan
 	go c.listenForPluginInformerEvents(
-		meta.ID,
+		pluginID,
 		resourceClient,
 		stopChan,
 		c.addChan,
@@ -293,35 +294,35 @@ func (c *controller) OnPluginStart(
 	return nil
 }
 
-func (c *controller) OnPluginStop(meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStop")
 
 	// make sure we backup the connections to the local store
-	if err := c.saveToLocalStore(meta.ID); err != nil {
+	if err := c.saveToLocalStore(pluginID); err != nil {
 		// log but don't fail
 		logger.Errorw("failed to save connections to local store", "error", err)
 	}
 
-	delete(c.clients, meta.ID)
-	delete(c.connections, meta.ID)
+	delete(c.clients, pluginID)
+	delete(c.connections, pluginID)
 
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginShutdown")
 
-	return c.OnPluginStop(meta)
+	return c.OnPluginStop(pluginID, meta)
 }
 
-func (c *controller) OnPluginDestroy(meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginDestroy")
 
 	// remove the local store file
-	if err := utils.RemoveStore(StoreName, meta.ID); err != nil {
+	if err := utils.RemoveStore(StoreName, pluginID); err != nil {
 		// log but don't fail
 		logger.Errorw("failed to remove local store", "error", err)
 	}
@@ -883,6 +884,51 @@ func (c *controller) ExecuteAction(
 
 	ctx := c.connectedCtx(&conn)
 	return client.ExecuteAction(ctx, key, actionID, input)
+}
+
+// StreamAction executes a streaming action, emitting events via Wails runtime events.
+// Returns an operation ID that the frontend can subscribe to for progress updates.
+func (c *controller) StreamAction(
+	pluginID, connectionID, key, actionID string,
+	input resourcetypes.ActionInput,
+) (string, error) {
+	logger := c.logger.With("pluginID", pluginID, "connectionID", connectionID)
+	logger.Debug("StreamAction", "key", key, "actionID", actionID)
+
+	client, conn, err := c.getClientConnection(pluginID, connectionID)
+	if err != nil {
+		return "", err
+	}
+
+	ctx := c.connectedCtx(&conn)
+
+	// Generate a unique operation ID.
+	operationID := fmt.Sprintf("op_%s_%s_%d", actionID, input.ID, time.Now().UnixNano())
+	eventStream := make(chan resourcetypes.ActionEvent, 16)
+
+	// Run the streaming action in a goroutine; forward events as Wails events.
+	go func() {
+		streamErr := client.StreamAction(ctx, key, actionID, input, eventStream)
+		// eventStream is closed by the plugin side; if StreamAction returned an error
+		// and the stream wasn't closed with an error event, emit one.
+		if streamErr != nil {
+			eventKey := fmt.Sprintf("action/stream/%s", operationID)
+			runtime.EventsEmit(c.ctx, eventKey, resourcetypes.ActionEvent{
+				Type: "error",
+				Data: map[string]interface{}{"message": streamErr.Error()},
+			})
+		}
+	}()
+
+	// Forward events from the channel to Wails runtime events.
+	go func() {
+		eventKey := fmt.Sprintf("action/stream/%s", operationID)
+		for event := range eventStream {
+			runtime.EventsEmit(c.ctx, eventKey, event)
+		}
+	}()
+
+	return operationID, nil
 }
 
 // ================================== INFORMER STATE METHODS ================================== //

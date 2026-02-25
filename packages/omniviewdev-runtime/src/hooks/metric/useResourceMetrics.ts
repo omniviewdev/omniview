@@ -2,10 +2,11 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { QueryAll } from '../../wailsjs/go/metric/Client';
 import type { metric } from '../../wailsjs/go/models';
 import { useMetricProvidersForResource } from './useMetricProviders';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 export type UseResourceMetricsOptions = {
   /** The plugin that owns the resource (e.g., "kubernetes") */
-  pluginID: string;
+  pluginID?: string;
   /** The connection to query metrics for */
   connectionID: string;
   /** The resource type key (e.g., "core::v1::Pod") */

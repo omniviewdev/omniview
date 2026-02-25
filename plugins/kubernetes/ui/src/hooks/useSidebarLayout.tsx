@@ -321,6 +321,9 @@ export const useSidebarLayout = ({ connectionID }: Opts) => {
       case "full":
         setLayout(calculateFullLayout(groups.data, informerStates))
         break
+      default:
+        setLayout(calculateModernLayout(groups.data, informerStates))
+        break
     }
     setIsLoading(false)
   }, [groups.data, settings['kubernetes.layout'], informerStates])

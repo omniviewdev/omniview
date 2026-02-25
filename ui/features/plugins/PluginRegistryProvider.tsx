@@ -83,20 +83,21 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
     const deferred: string[] = [];
 
     for (const plugin of pluginList) {
-      if (loadedRef.current.has(plugin.id)) continue;
+      const pluginId = plugin.id;
+      if (loadedRef.current.has(pluginId)) continue;
 
-      const devState = devStates.find((s) => s.pluginID === plugin.id);
+      const devState = devStates.find((s) => s.pluginID === pluginId);
       const isDevReady =
         devState &&
         devState.viteStatus === 'ready' &&
         devState.vitePort > 0;
 
       if (devState && !isDevReady) {
-        deferred.push(plugin.id);
+        deferred.push(pluginId);
         continue;
       }
 
-      toLoad.push({ id: plugin.id, dev: !!isDevReady, devPort: devState?.vitePort });
+      toLoad.push({ id: pluginId, dev: !!isDevReady, devPort: devState?.vitePort });
     }
 
     // If dev servers exist but the plugin list is empty, the backend likely

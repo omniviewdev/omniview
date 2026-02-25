@@ -18,6 +18,10 @@ export function GetSupportedPortForwardTargets(arg1) {
   return window['go']['networker']['Client']['GetSupportedPortForwardTargets'](arg1);
 }
 
+export function ListAllPortForwardSessions() {
+  return window['go']['networker']['Client']['ListAllPortForwardSessions']();
+}
+
 export function ListPortForwardSessions(arg1, arg2) {
   return window['go']['networker']['Client']['ListPortForwardSessions'](arg1, arg2);
 }

@@ -46,8 +46,8 @@ func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controlle
 	}
 }
 
-func (c *controller) OnPluginInit(meta config.PluginMeta) {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginInit")
 
 	// make sure we have our maps initialized
@@ -57,10 +57,11 @@ func (c *controller) OnPluginInit(meta config.PluginMeta) {
 }
 
 func (c *controller) OnPluginStart(
+	pluginID string,
 	meta config.PluginMeta,
 	client plugin.ClientProtocol,
 ) error {
-	logger := c.logger.With("pluginID", meta.ID)
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
 	// make sure we have a client we can call for this plugin
@@ -83,28 +84,28 @@ func (c *controller) OnPluginStart(
 		return err
 	}
 
-	c.clients[meta.ID] = resourceClient
+	c.clients[pluginID] = resourceClient
 	return nil
 }
 
-func (c *controller) OnPluginStop(meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStop")
 
-	delete(c.clients, meta.ID)
+	delete(c.clients, pluginID)
 
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginShutdown")
 
-	return c.OnPluginStop(meta)
+	return c.OnPluginStop(pluginID, meta)
 }
 
-func (c *controller) OnPluginDestroy(meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginDestroy")
 
 	// nothing to do here
@@ -142,9 +143,7 @@ func (c *controller) Values() map[string]any {
 	for pluginID, client := range c.clients {
 		clientValues := client.ListSettings()
 		for settingID, setting := range clientValues {
-			// create the key for the setting
 			key := fmt.Sprintf("%s.%s", pluginID, settingID)
-			// add the setting to the map
 			values[key] = setting.Value
 		}
 	}
@@ -168,9 +167,7 @@ func (c *controller) PluginValues(plugin string) map[string]any {
 	values := make(map[string]any)
 	clientValues := client.ListSettings()
 	for settingID, setting := range clientValues {
-		// create the key for the setting
 		key := fmt.Sprintf("%s.%s", plugin, settingID)
-		// add the setting to the map
 		values[key] = setting.Value
 	}
 

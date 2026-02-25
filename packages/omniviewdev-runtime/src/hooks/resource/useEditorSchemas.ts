@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { GetEditorSchemas } from '../../wailsjs/go/resource/Client';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseEditorSchemasOptions = {
   /** The plugin ID to fetch schemas for */
-  pluginID: string;
+  pluginID?: string;
   /** The connection ID to fetch schemas for */
   connectionID: string;
   /** Whether to enable the query */
@@ -18,10 +19,11 @@ type UseEditorSchemasOptions = {
  * the SchemaRegistry (which lives in the host app's monaco provider).
  */
 export const useEditorSchemas = ({
-  pluginID,
+  pluginID: explicitPluginID,
   connectionID,
   enabled = true,
 }: UseEditorSchemasOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const query = useQuery({
     queryKey: ['EDITOR_SCHEMAS', pluginID, connectionID],
     queryFn: () => GetEditorSchemas(pluginID, connectionID),

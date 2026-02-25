@@ -3,6 +3,7 @@ import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { showAppError } from '../../errors/parseAppError';
 import { types } from '../../wailsjs/go/models';
 import { Create, Update, Delete } from '../../wailsjs/go/resource/Client';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type ResourceMutationOptions = {
   /**
@@ -43,7 +44,7 @@ type UseResourceMutationsOptions = {
    * The ID of the plugin responsible for this resource
    * @example "kubernetes"
    */
-  pluginID: string;
+  pluginID?: string;
 
 };
 
@@ -54,7 +55,8 @@ type UseResourceMutationsOptions = {
  * It should be noted that this hook does not perform any logic to ensure that either the resource exists,
  * @throws If the resourceID is invalid
  */
-export const useResourceMutations = ({ pluginID }: UseResourceMutationsOptions) => {
+export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResourceMutationsOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const { showSnackbar } = useSnackbar();
 
   const createMutation = useMutation({

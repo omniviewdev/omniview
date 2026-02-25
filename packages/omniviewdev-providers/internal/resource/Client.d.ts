@@ -8,9 +8,15 @@ export function Create(arg1:string,arg2:string,arg3:string,arg4:types.CreateInpu
 
 export function Delete(arg1:string,arg2:string,arg3:string,arg4:types.DeleteInput):Promise<types.DeleteResult>;
 
+export function EnsureInformerForResource(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function ExecuteAction(arg1:string,arg2:string,arg3:string,arg4:string,arg5:types.ActionInput):Promise<types.ActionResult>;
+
 export function Find(arg1:string,arg2:string,arg3:string,arg4:types.FindInput):Promise<types.FindResult>;
 
 export function Get(arg1:string,arg2:string,arg3:string,arg4:types.GetInput):Promise<types.GetResult>;
+
+export function GetActions(arg1:string,arg2:string,arg3:string):Promise<Array<types.ActionDescriptor>>;
 
 export function GetConnection(arg1:string,arg2:string):Promise<types.Connection>;
 
@@ -18,21 +24,27 @@ export function GetConnectionNamespaces(arg1:string,arg2:string):Promise<Array<s
 
 export function GetDefaultLayout(arg1:string):Promise<Array<types.LayoutItem>>;
 
+export function GetEditorSchemas(arg1:string,arg2:string):Promise<Array<types.EditorSchema>>;
+
+export function GetInformerState(arg1:string,arg2:string):Promise<types.InformerConnectionSummary>;
+
 export function GetLayout(arg1:string,arg2:string):Promise<Array<types.LayoutItem>>;
 
 export function GetResourceDefinition(arg1:string,arg2:string):Promise<types.ResourceDefinition>;
 
 export function GetResourceGroup(arg1:string,arg2:string):Promise<types.ResourceGroup>;
 
-export function GetResourceGroups(arg1:string,arg2:string):Promise<{[key: string]: types.ResourceGroup}>;
+export function GetResourceGroups(arg1:string,arg2:string):Promise<Record<string, types.ResourceGroup>>;
 
 export function GetResourceType(arg1:string,arg2:string):Promise<types.ResourceMeta>;
 
-export function GetResourceTypes(arg1:string,arg2:string):Promise<{[key: string]: types.ResourceMeta}>;
+export function GetResourceTypes(arg1:string,arg2:string):Promise<Record<string, types.ResourceMeta>>;
 
 export function HasResourceType(arg1:string,arg2:string):Promise<boolean>;
 
 export function List(arg1:string,arg2:string,arg3:string,arg4:types.ListInput):Promise<types.ListResult>;
+
+export function ListAllConnections():Promise<Record<string, Array<types.Connection>>>;
 
 export function ListConnections(arg1:string):Promise<Array<types.Connection>>;
 
@@ -51,6 +63,8 @@ export function StartConnectionInformer(arg1:string,arg2:string):Promise<void>;
 export function StopConnection(arg1:string,arg2:string):Promise<types.Connection>;
 
 export function StopConnectionInformer(arg1:string,arg2:string):Promise<void>;
+
+export function StreamAction(arg1:string,arg2:string,arg3:string,arg4:string,arg5:types.ActionInput):Promise<string>;
 
 export function Update(arg1:string,arg2:string,arg3:string,arg4:types.UpdateInput):Promise<types.UpdateResult>;
 

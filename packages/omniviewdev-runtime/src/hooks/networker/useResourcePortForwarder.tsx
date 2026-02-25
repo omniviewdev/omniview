@@ -10,11 +10,13 @@ import {
 import { useSnackbar } from '../snackbar';
 import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 /**
 * Programatically forward a port from a resource object to the host.
 */
-export function useResourcePortForwarder({ pluginID, connectionID, resourceID }: { pluginID: string; connectionID: string; resourceID: string }) {
+export function useResourcePortForwarder({ pluginID: explicitPluginID, connectionID, resourceID }: { pluginID?: string; connectionID: string; resourceID: string }) {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const queryKey = ['networker', 'portforward', 'sessions', pluginID, connectionID, resourceID];
 
   const { showSnackbar } = useSnackbar();

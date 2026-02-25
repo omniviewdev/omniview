@@ -89,3 +89,7 @@ export function SetSetting(arg1, arg2) {
 export function SetSettings(arg1) {
   return window['go']['settings']['provider']['SetSettings'](arg1);
 }
+
+export function Values() {
+  return window['go']['settings']['provider']['Values']();
+}

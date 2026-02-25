@@ -100,6 +100,9 @@ func Register(plugin *sdk.Plugin) {
           Description: `{{.Description}}`,
         }:
         {{- if and (eq .Group "core") (eq .Version "v1") (eq .Kind "Node") }} resourcers.NewNodeResourcer(logger),
+        {{- else if and (eq .Group "apps") (eq .Version "v1") (eq .Kind "Deployment") }} resourcers.NewDeploymentResourcer(logger),
+        {{- else if and (eq .Group "apps") (eq .Version "v1") (eq .Kind "StatefulSet") }} resourcers.NewStatefulSetResourcer(logger),
+        {{- else if and (eq .Group "apps") (eq .Version "v1") (eq .Kind "DaemonSet") }} resourcers.NewDaemonSetResourcer(logger),
         {{- else }} resourcers.NewKubernetesResourcerBase[resourcers.MetaAccessor](
 					logger,
           {{.ImportName}}.SchemeGroupVersion.WithResource("{{.SGVRName}}"),

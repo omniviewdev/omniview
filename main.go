@@ -113,7 +113,7 @@ func main() {
 	dataController := data.NewController(log)
 	dataClient := data.NewClient(dataController)
 
-	pluginRegistryClient := registry.NewRegistryClient()
+	pluginRegistryClient := registry.NewClient("")
 	pluginManager := plugin.NewManager(
 		log,
 		resourceController,
@@ -155,6 +155,12 @@ func main() {
 			coresettings.Developer,
 		); err != nil {
 			log.Errorw("error while initializing settings system", "error", err)
+		}
+
+		// Apply user-configured marketplace URL to the registry client.
+		if marketplaceURL, err := settingsProvider.GetString("developer.marketplace_url"); err == nil && marketplaceURL != "" {
+			pluginRegistryClient.SetBaseURL(marketplaceURL)
+			log.Infow("using custom marketplace URL", "url", marketplaceURL)
 		}
 
 		resourceController.Run(ctx)

@@ -4,13 +4,14 @@ import { parseAppError, showAppError } from '../../errors/parseAppError';
 import { exec } from '../../wailsjs/go/models';
 import { CreateSession } from '../../wailsjs/go/exec/Client';
 import { useBottomDrawer } from '../drawer';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceMutationsOptions = {
   /**
    * The ID of the plugin responsible for this resource
    * @example "kubernetes"
    */
-  pluginID: string;
+  pluginID?: string;
 
 };
 
@@ -24,7 +25,8 @@ type CreateSessionOptions = {
 /**
  * Create or manage sessions from throughout the app
  */
-export const useExec = ({ pluginID }: UseResourceMutationsOptions) => {
+export const useExec = ({ pluginID: explicitPluginID }: UseResourceMutationsOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const { showSnackbar } = useSnackbar();
   const { createTab, updateTab } = useBottomDrawer();
 

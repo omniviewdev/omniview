@@ -8,10 +8,11 @@ import ResourceLinkCell from '../../corev1/Pod/cells/ResourceLinkCell'
 import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
-import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuClipboardList, LuLogs, LuTrash } from 'react-icons/lu'
+import { DrawerComponent, DrawerComponentActionListItem, useConfirmationModal, useExecuteAction, useLogs, useResourceMutations, useRightDrawer, useStreamAction } from '@omniviewdev/runtime'
+import { LuClipboardList, LuLogs, LuRefreshCw, LuScaling, LuTrash } from 'react-icons/lu'
 import StatefulSetSidebar from './Sidebar'
 import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
+import ScaleModal from '../../../actions/ScaleModal'
 
 const resourceKey = 'apps::v1::StatefulSet'
 
@@ -20,8 +21,12 @@ const StatefulSetTable: React.FC = () => {
 
   const { remove } = useResourceMutations({ pluginID: 'kubernetes' })
   const { createLogSession } = useLogs({ pluginID: 'kubernetes' })
+  const { executeAction, isExecuting } = useExecuteAction({ pluginID: 'kubernetes', connectionID: id, resourceKey })
+  const { startStreamAction } = useStreamAction({ pluginID: 'kubernetes', connectionID: id, resourceKey })
   const { show } = useConfirmationModal()
   const { closeDrawer } = useRightDrawer()
+
+  const [scaleTarget, setScaleTarget] = React.useState<{ name: string; namespace: string; replicas: number } | null>(null)
 
   const columns = React.useMemo<Array<ColumnDef<StatefulSet>>>(
     () =>
@@ -129,6 +134,43 @@ const StatefulSetTable: React.FC = () => {
     views: createStandardViews({ SidebarComponent: StatefulSetSidebar }),
     actions: [
       {
+        title: 'Restart',
+        icon: <LuRefreshCw />,
+        action: (ctx) =>
+          show({
+            title: <span>Restart <strong>{ctx.data?.metadata?.name}</strong>?</span>,
+            body: (
+              <span>
+                This will perform a rolling restart of the StatefulSet{' '}
+                <code>{ctx.data?.metadata?.name}</code> in{' '}
+                <strong>{ctx.data?.metadata?.namespace}</strong>.
+              </span>
+            ),
+            confirmLabel: 'Restart',
+            cancelLabel: 'Cancel',
+            onConfirm: async () => {
+              await startStreamAction({
+                actionID: 'restart',
+                id: ctx.data?.metadata?.name as string,
+                namespace: ctx.data?.metadata?.namespace as string,
+                label: `Restart ${ctx.data?.metadata?.name}`,
+              })
+              closeDrawer()
+            },
+          }),
+      },
+      {
+        title: 'Scale',
+        icon: <LuScaling />,
+        action: (ctx) => {
+          setScaleTarget({
+            name: ctx.data?.metadata?.name as string,
+            namespace: ctx.data?.metadata?.namespace as string,
+            replicas: ctx.data?.spec?.replicas ?? 1,
+          })
+        },
+      },
+      {
         title: 'Delete',
         icon: <LuTrash />,
         action: (ctx) =>
@@ -203,14 +245,36 @@ const StatefulSetTable: React.FC = () => {
   }), [])
 
   return (
-    <ResourceTable
-      columns={columns}
-      connectionID={id}
-      resourceKey={resourceKey}
-      idAccessor="metadata.uid"
-      memoizer="metadata.uid,metadata.resourceVersion,status.updatedReplicas"
-      drawer={drawer}
-    />
+    <>
+      <ResourceTable
+        columns={columns}
+        connectionID={id}
+        resourceKey={resourceKey}
+        idAccessor="metadata.uid"
+        memoizer="metadata.uid,metadata.resourceVersion,status.updatedReplicas"
+        drawer={drawer}
+      />
+      {scaleTarget && (
+        <ScaleModal
+          open={!!scaleTarget}
+          onClose={() => setScaleTarget(null)}
+          onConfirm={async (replicas) => {
+            await executeAction({
+              actionID: 'scale',
+              id: scaleTarget.name,
+              namespace: scaleTarget.namespace,
+              params: { replicas },
+            })
+            setScaleTarget(null)
+            closeDrawer()
+          }}
+          resourceType="StatefulSet"
+          resourceName={scaleTarget.name}
+          currentReplicas={scaleTarget.replicas}
+          isExecuting={isExecuting}
+        />
+      )}
+    </>
   )
 }
 

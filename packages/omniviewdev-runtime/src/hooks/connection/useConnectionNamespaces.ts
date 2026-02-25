@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { GetConnectionNamespaces } from '../../wailsjs/go/resource/Client';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseConnectionOptions = {
   /**
    * The name of the plugin we're interacting with
    */
-  pluginID: string;
+  pluginID?: string;
 
   /**
    * The ID of the connection
@@ -16,7 +17,8 @@ type UseConnectionOptions = {
 /**
  * Get and retreive connections from a plugin's connection manager..
  */
-export const useConnectionNamespaces = ({ pluginID, connectionID }: UseConnectionOptions) => {
+export const useConnectionNamespaces = ({ pluginID: explicitPluginID, connectionID }: UseConnectionOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const queryKey = [pluginID, 'connection', 'namespaces', connectionID];
 
   // === Queries === //

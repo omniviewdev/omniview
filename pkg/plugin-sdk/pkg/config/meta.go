@@ -25,10 +25,14 @@ type PluginMeta struct {
 	Version      string             `json:"version"      yaml:"version"`
 	Name         string             `json:"name"         yaml:"name"`
 	Icon         string             `json:"icon"         yaml:"icon"`
+	IconURL      string             `json:"icon_url"     yaml:"icon_url,omitempty"`
 	Description  string             `json:"description"  yaml:"description"`
 	Repository   string             `json:"repository"   yaml:"repository"`
 	Website      string             `json:"website"      yaml:"website"`
+	Category     string             `json:"category"     yaml:"category,omitempty"`
+	License      string             `json:"license"      yaml:"license,omitempty"`
 	Markdown     string             `json:"-"            yaml:"-"`
+	Author       *PluginAuthor      `json:"author,omitempty"      yaml:"author,omitempty"`
 	Maintainers  []PluginMaintainer `json:"maintainers"  yaml:"maintainers"`
 	Tags         []string           `json:"tags"         yaml:"tags"`
 	Dependencies []string           `json:"dependencies" yaml:"dependencies"`
@@ -64,6 +68,12 @@ func (m *PluginMeta) HasBackendCapabilities() bool {
 type PluginMaintainer struct {
 	Name  string `json:"name"  yaml:"name"`
 	Email string `json:"email" yaml:"email"`
+}
+
+type PluginAuthor struct {
+	Name  string `json:"name"  yaml:"name"`
+	Email string `json:"email" yaml:"email,omitempty"`
+	URL   string `json:"url"   yaml:"url,omitempty"`
 }
 
 type PluginThemeColors struct {

@@ -38,7 +38,6 @@ func upsertPluginState(p *pkgtypes.Plugin, s types.PluginState) error {
 	p.Enabled = s.Enabled
 	p.DevMode = s.DevMode
 	p.DevPath = s.DevPath
-	// p.Metadata = s.Metadata
 
 	return nil
 }

@@ -5,6 +5,12 @@ icon: SiKubernetes
 description: Kubernetes is an open-source system for automating deployment, scaling, and management of containerized applications.
 repository: github.com/omniviewdev/omniview/plugins/kubernetes
 website: kubernetes.io
+category: cloud
+license: Apache-2.0
+author:
+    name: Omniview
+    email: info@omniview.dev
+    url: https://omniview.dev
 maintainers:
     - name: Omniview Maintainers
       email: info@omniview.dev

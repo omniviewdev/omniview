@@ -3,13 +3,14 @@ import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { types } from '../../wailsjs/go/models';
 import { Get, Update, Delete } from '../../wailsjs/go/resource/Client';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceOptions = {
   /**
    * The ID of the plugin responsible for this resource
    * @example "kubernetes"
    */
-  pluginID: string;
+  pluginID?: string;
 
   /**
    * The connection ID to scope the resource to
@@ -64,7 +65,7 @@ type UseResourceOptions = {
  * @throws If the resourceID is invalid
  */
 export const useResource = ({
-  pluginID,
+  pluginID: explicitPluginID,
   connectionID,
   resourceKey,
   resourceID,
@@ -73,6 +74,7 @@ export const useResource = ({
   updateParams = {},
   deleteParams = {},
 }: UseResourceOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 

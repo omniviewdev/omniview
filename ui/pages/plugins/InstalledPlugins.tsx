@@ -1,16 +1,15 @@
 import React from 'react';
 
-// Material-ui
+import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
-import { Button } from '@omniviewdev/ui/buttons';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Heading } from '@omniviewdev/ui/typography';
+import { IconButton } from '@omniviewdev/ui/buttons';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 
 // Components
 import InstalledPluginCard from './InstalledPluginCard';
 
 // Icons
-import { LuAtom, LuBox, LuGlobe } from 'react-icons/lu';
+import { LuAtom, LuFolderOpen } from 'react-icons/lu';
 
 // Hooks
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
@@ -18,9 +17,6 @@ import { parseAppError } from '@omniviewdev/runtime';
 
 type Props = Record<string, unknown>;
 
-/**
- * Show the currently installed plugins.
- */
 const InstalledPlugins: React.FC<Props> = () => {
   const { plugins, installFromPath, installDev } = usePluginManager();
 
@@ -33,45 +29,69 @@ const InstalledPlugins: React.FC<Props> = () => {
   }
 
   return (
-    <Grid container spacing={3} sx={{ p: 3 }}>
-      <Grid size={12} sx={{ pb: 2 }}>
-        <Stack direction='row' spacing={2} alignItems='center' justifyContent={'space-between'}>
-          <Heading level={2}>Installed Plugins</Heading>
-          <Stack direction='row' spacing={2}>
-            <Button
-              emphasis='soft'
-              color='primary'
-              startAdornment={<LuGlobe />}
-            >
-              Go to Plugin Marketplace
-            </Button>
-            <Button
-              emphasis='soft'
-              color='neutral'
-              startAdornment={<LuBox />}
+    <Box sx={{ p: 2.5, height: '100%', overflow: 'auto' }}>
+      {/* Header toolbar */}
+      <Box sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        mb: 2,
+      }}>
+        <Box sx={{
+          fontSize: '0.8125rem',
+          fontWeight: 600,
+          color: 'var(--ov-fg-default, #c9d1d9)',
+        }}>
+          Installed Plugins
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Tooltip content="Install from location">
+            <IconButton
+              emphasis="ghost"
+              color="neutral"
+              size="sm"
               loading={installFromPath.isPending}
               onClick={async () => installFromPath.mutateAsync()}
             >
-              Install From Location
-            </Button>
-            <Button
-              emphasis='soft'
-              color='neutral'
-              startAdornment={<LuAtom />}
+              <LuFolderOpen size={15} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip content="Install in development mode">
+            <IconButton
+              emphasis="ghost"
+              color="neutral"
+              size="sm"
               loading={installDev.isPending}
               onClick={async () => installDev.mutateAsync()}
             >
-              Install From Location (Development Mode)
-            </Button>
-          </Stack>
-        </Stack>
-      </Grid>
-      {plugins.data?.map(plugin => (
-        <Grid key={plugin.id} size={{ xs: 12, md: 6, xl: 4 }} >
-          <InstalledPluginCard key={plugin.id} {...plugin} />
+              <LuAtom size={15} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
+
+      {/* Plugin cards */}
+      {plugins.data?.length === 0 ? (
+        <Box sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: 200,
+          fontSize: '0.8125rem',
+          color: 'var(--ov-fg-faint, #8b949e)',
+        }}>
+          No plugins installed. Browse the marketplace to get started.
+        </Box>
+      ) : (
+        <Grid container spacing={2}>
+          {plugins.data?.map(plugin => (
+            <Grid key={plugin.id} size={{ xs: 12, lg: 6, xl: 4 }}>
+              <InstalledPluginCard key={plugin.id} {...plugin} />
+            </Grid>
+          ))}
         </Grid>
-      ))}
-    </Grid>
+      )}
+    </Box>
   );
 };
 

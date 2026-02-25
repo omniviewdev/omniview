@@ -3,13 +3,14 @@ import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { showAppError } from '../../errors/parseAppError';
 import { types } from '../../wailsjs/go/models';
 import { GetActions, ExecuteAction } from '../../wailsjs/go/resource/Client';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceActionsOptions = {
   /**
    * The ID of the plugin responsible for this resource
    * @example "kubernetes"
    */
-  pluginID: string;
+  pluginID?: string;
 
   /**
    * The connection ID to scope the resource to
@@ -35,11 +36,12 @@ type UseResourceActionsOptions = {
  * Returns the list of ActionDescriptors that the backend reports for the given resource key.
  */
 export const useResourceActions = ({
-  pluginID,
+  pluginID: explicitPluginID,
   connectionID,
   resourceKey,
   enabled = true,
 }: UseResourceActionsOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const query = useQuery({
     queryKey: ['RESOURCE_ACTIONS', pluginID, connectionID, resourceKey],
     queryFn: () => GetActions(pluginID, connectionID, resourceKey),
@@ -59,7 +61,7 @@ type UseExecuteActionOptions = {
    * The ID of the plugin responsible for this resource
    * @example "kubernetes"
    */
-  pluginID: string;
+  pluginID?: string;
 
   /**
    * The connection ID to scope the resource to
@@ -90,10 +92,11 @@ type ExecuteActionParams = {
  * Returns a mutate function that can be called with action details.
  */
 export const useExecuteAction = ({
-  pluginID,
+  pluginID: explicitPluginID,
   connectionID,
   resourceKey,
 }: UseExecuteActionOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 

@@ -8,10 +8,11 @@ import { Condition } from 'kubernetes-types/meta/v1'
 import ConditionsCell from '../../shared/cells/ConditionsCell'
 import { withNamespacedResourceColumns } from '../../shared/columns'
 import ResourceTable from '../../../../shared/table/ResourceTable'
-import { DrawerComponent, DrawerComponentActionListItem, DrawerContext, useConfirmationModal, useLogs, useResourceMutations, useRightDrawer } from '@omniviewdev/runtime'
-import { LuLogs, LuScaling, LuTrash } from 'react-icons/lu'
+import { DrawerComponent, DrawerComponentActionListItem, DrawerContext, useConfirmationModal, useExecuteAction, useLogs, useResourceMutations, useRightDrawer, useStreamAction } from '@omniviewdev/runtime'
+import { LuLogs, LuPause, LuPlay, LuRefreshCw, LuScaling, LuTrash } from 'react-icons/lu'
 import DeploymentSidebar from './Sidebar'
 import { createStandardViews } from '../../../../shared/sidebar/createDrawerViews'
+import ScaleModal from '../../../actions/ScaleModal'
 
 const resourceKey = 'apps::v1::Deployment'
 
@@ -20,8 +21,13 @@ const DeploymentTable: React.FC = () => {
 
   const { remove, update } = useResourceMutations({ pluginID: 'kubernetes' })
   const { createLogSession } = useLogs({ pluginID: 'kubernetes' })
+  const { executeAction, isExecuting } = useExecuteAction({ pluginID: 'kubernetes', connectionID: id, resourceKey })
+  const { startStreamAction } = useStreamAction({ pluginID: 'kubernetes', connectionID: id, resourceKey })
   const { show } = useConfirmationModal()
   const { closeDrawer } = useRightDrawer()
+
+  // Scale modal state
+  const [scaleTarget, setScaleTarget] = React.useState<{ name: string; namespace: string; replicas: number } | null>(null)
 
   /**
    * Handler to go ahead and submit a resource change
@@ -143,6 +149,83 @@ const DeploymentTable: React.FC = () => {
     views: createStandardViews({ SidebarComponent: DeploymentSidebar, onEditorSubmit }),
     actions: [
       {
+        title: 'Restart',
+        icon: <LuRefreshCw />,
+        action: (ctx) =>
+          show({
+            title: <span>Restart <strong>{ctx.data?.metadata?.name}</strong>?</span>,
+            body: (
+              <span>
+                This will perform a rolling restart of the Deployment{' '}
+                <code>{ctx.data?.metadata?.name}</code> in{' '}
+                <strong>{ctx.data?.metadata?.namespace}</strong>.
+              </span>
+            ),
+            confirmLabel: 'Restart',
+            cancelLabel: 'Cancel',
+            onConfirm: async () => {
+              await startStreamAction({
+                actionID: 'restart',
+                id: ctx.data?.metadata?.name as string,
+                namespace: ctx.data?.metadata?.namespace as string,
+                label: `Restart ${ctx.data?.metadata?.name}`,
+              })
+              closeDrawer()
+            },
+          }),
+      },
+      {
+        title: 'Scale',
+        icon: <LuScaling />,
+        action: (ctx) => {
+          setScaleTarget({
+            name: ctx.data?.metadata?.name as string,
+            namespace: ctx.data?.metadata?.namespace as string,
+            replicas: ctx.data?.spec?.replicas ?? 1,
+          })
+        },
+      },
+      {
+        title: 'Pause Rollout',
+        icon: <LuPause />,
+        enabled: (ctx) => !ctx.data?.spec?.paused,
+        action: (ctx) =>
+          show({
+            title: <span>Pause rollout for <strong>{ctx.data?.metadata?.name}</strong>?</span>,
+            body: 'This will pause the current rollout. New changes will not be rolled out until resumed.',
+            confirmLabel: 'Pause',
+            cancelLabel: 'Cancel',
+            onConfirm: async () => {
+              await executeAction({
+                actionID: 'pause',
+                id: ctx.data?.metadata?.name as string,
+                namespace: ctx.data?.metadata?.namespace as string,
+              })
+              closeDrawer()
+            },
+          }),
+      },
+      {
+        title: 'Resume Rollout',
+        icon: <LuPlay />,
+        enabled: (ctx) => ctx.data?.spec?.paused === true,
+        action: (ctx) =>
+          show({
+            title: <span>Resume rollout for <strong>{ctx.data?.metadata?.name}</strong>?</span>,
+            body: 'This will resume the paused rollout.',
+            confirmLabel: 'Resume',
+            cancelLabel: 'Cancel',
+            onConfirm: async () => {
+              await executeAction({
+                actionID: 'resume',
+                id: ctx.data?.metadata?.name as string,
+                namespace: ctx.data?.metadata?.namespace as string,
+              })
+              closeDrawer()
+            },
+          }),
+      },
+      {
         title: 'Delete',
         icon: <LuTrash />,
         action: (ctx) =>
@@ -216,14 +299,36 @@ const DeploymentTable: React.FC = () => {
   }), [])
 
   return (
-    <ResourceTable
-      columns={columns}
-      connectionID={id}
-      resourceKey={resourceKey}
-      idAccessor="metadata.uid"
-      memoizer="metadata.uid,metadata.resourceVersion,status.observedGeneration"
-      drawer={drawer}
-    />
+    <>
+      <ResourceTable
+        columns={columns}
+        connectionID={id}
+        resourceKey={resourceKey}
+        idAccessor="metadata.uid"
+        memoizer="metadata.uid,metadata.resourceVersion,status.observedGeneration"
+        drawer={drawer}
+      />
+      {scaleTarget && (
+        <ScaleModal
+          open={!!scaleTarget}
+          onClose={() => setScaleTarget(null)}
+          onConfirm={async (replicas) => {
+            await executeAction({
+              actionID: 'scale',
+              id: scaleTarget.name,
+              namespace: scaleTarget.namespace,
+              params: { replicas },
+            })
+            setScaleTarget(null)
+            closeDrawer()
+          }}
+          resourceType="Deployment"
+          resourceName={scaleTarget.name}
+          currentReplicas={scaleTarget.replicas}
+          isExecuting={isExecuting}
+        />
+      )}
+    </>
   )
 }
 

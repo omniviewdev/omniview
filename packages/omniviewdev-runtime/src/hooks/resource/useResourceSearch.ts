@@ -3,13 +3,14 @@ import { useQueries } from '@tanstack/react-query';
 // Types
 import { types } from '../../wailsjs/go/models';
 import { List } from '../../wailsjs/go/resource/Client';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceSearchOptions = {
   /**
    * The ID of the plugin responsible for this resource
    * @example "kubernetes"
    */
-  pluginID: string;
+  pluginID?: string;
 
   /**
    * The connection ID to scope the resource to
@@ -45,10 +46,11 @@ type ResourceSearchEntry = {
  * limited searching within a single plugin, and a single connection.
  */
 export const useResourceSearch = ({
-  pluginID,
+  pluginID: explicitPluginID,
   connectionID,
   searches,
 }: UseResourceSearchOptions) => {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   /**
    * Use the list query key for now since we're kinda only using that for the time being
    */

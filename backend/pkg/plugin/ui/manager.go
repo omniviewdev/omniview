@@ -25,16 +25,16 @@ func NewComponentManager(logger *zap.SugaredLogger) *componentManager {
 
 var _ types.PluginManager = (*componentManager)(nil)
 
-func (cm *componentManager) OnPluginInit(_ context.Context, meta config.PluginMeta) error {
-	logger := cm.logger.With("plugin", meta.ID, "action", "OnPluginInit")
+func (cm *componentManager) OnPluginInit(_ context.Context, pluginID string, meta config.PluginMeta) error {
+	logger := cm.logger.With("pluginID", pluginID, "action", "OnPluginInit")
 	logger.Debug("initializing plugin")
 
-	cm.resourceComponentStore.AddPlugin(meta.ID)
+	cm.resourceComponentStore.AddPlugin(pluginID)
 	return nil
 }
 
-func (cm *componentManager) OnPluginStart(_ context.Context, meta config.PluginMeta) error {
-	logger := cm.logger.With("plugin", meta.ID, "action", "OnPluginStart")
+func (cm *componentManager) OnPluginStart(_ context.Context, pluginID string, meta config.PluginMeta) error {
+	logger := cm.logger.With("pluginID", pluginID, "action", "OnPluginStart")
 	logger.Debug("starting plugin")
 
 	rc := loadResourceComponents(meta)
@@ -49,28 +49,28 @@ func (cm *componentManager) OnPluginStart(_ context.Context, meta config.PluginM
 	return nil
 }
 
-func (cm *componentManager) OnPluginStop(_ context.Context, meta config.PluginMeta) error {
-	logger := cm.logger.With("plugin", meta.ID, "action", "OnPluginStop")
+func (cm *componentManager) OnPluginStop(_ context.Context, pluginID string, meta config.PluginMeta) error {
+	logger := cm.logger.With("pluginID", pluginID, "action", "OnPluginStop")
 	logger.Debug("stopping plugin")
 
 	// nothing to do here
-	cm.resourceComponentStore.RemovePlugin(meta.ID)
+	cm.resourceComponentStore.RemovePlugin(pluginID)
 	return nil
 }
 
-func (cm *componentManager) OnPluginShutdown(_ context.Context, meta config.PluginMeta) error {
-	logger := cm.logger.With("plugin", meta.ID, "action", "OnPluginShutdown")
+func (cm *componentManager) OnPluginShutdown(_ context.Context, pluginID string, meta config.PluginMeta) error {
+	logger := cm.logger.With("pluginID", pluginID, "action", "OnPluginShutdown")
 	logger.Debug("shutting down plugin")
-	cm.resourceComponentStore.RemovePlugin(meta.ID)
+	cm.resourceComponentStore.RemovePlugin(pluginID)
 	logger.Debug("plugin shutdown complete")
 	return nil
 }
 
-func (cm *componentManager) OnPluginDestroy(_ context.Context, meta config.PluginMeta) error {
-	logger := cm.logger.With("plugin", meta.ID, "action", "OnPluginDestroy")
+func (cm *componentManager) OnPluginDestroy(_ context.Context, pluginID string, meta config.PluginMeta) error {
+	logger := cm.logger.With("pluginID", pluginID, "action", "OnPluginDestroy")
 	logger.Debug("destroying plugin")
 	// not super necessary, but just in case
-	cm.resourceComponentStore.RemovePlugin(meta.ID)
+	cm.resourceComponentStore.RemovePlugin(pluginID)
 	return nil
 }
 

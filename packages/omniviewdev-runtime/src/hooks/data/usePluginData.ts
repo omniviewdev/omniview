@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Get, Set } from '../../wailsjs/go/data/Client';
+import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UsePluginDataResult<T> = {
   data: T;
@@ -12,10 +13,11 @@ type UsePluginDataResult<T> = {
  * Uses React Query for caching and optimistic updates.
  */
 export function usePluginData<T>(
-  pluginID: string,
+  explicitPluginID: string | undefined,
   key: string,
   defaultValue: T,
 ): UsePluginDataResult<T> {
+  const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
   const queryKey = [pluginID, 'data', key];
 

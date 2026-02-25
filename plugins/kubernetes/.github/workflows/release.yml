@@ -1,0 +1,22 @@
+name: Release Plugin
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 0.1.0)'
+        required: true
+
+jobs:
+  publish:
+    uses: omniviewdev/publish-plugin-action/.github/workflows/build-and-publish.yml@v1
+    with:
+      plugin-id: kubernetes
+      publisher-slug: omniview
+      version: ${{ github.event_name == 'push' && github.ref_name || format('v{0}', inputs.version) }}
+      go-entry: ./pkg
+      ui-path: ./ui
+    secrets:
+      api-key: ${{ secrets.OMNIVIEW_API_KEY }}

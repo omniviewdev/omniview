@@ -134,6 +134,19 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
           </Text>
         </Box>
 
+        {/* Category & tags */}
+        {(plugin.data?.metadata as any)?.category && (
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            <Chip
+              size="xs"
+              color="neutral"
+              emphasis="outline"
+              shape="rounded"
+              label={(plugin.data?.metadata as any).category}
+            />
+          </Stack>
+        )}
+
         {/* Dev server section */}
         {isDevMode && (
           <DevModeSection pluginId={id} devPath={plugin.data?.devPath ?? ''} />

@@ -7,8 +7,9 @@ prepare:
 sync:
 	go work sync
 
-# Build all workspace packages (runtime, ui, providers, vite-plugin)
+# Build all workspace packages in dependency order
 packages:
+	pnpm --filter @omniviewdev/providers run build
 	pnpm --filter @omniviewdev/vite-plugin run build
 	pnpm --filter @omniviewdev/ui run build
 	pnpm --filter @omniviewdev/runtime run build

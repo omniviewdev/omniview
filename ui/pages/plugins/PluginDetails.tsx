@@ -1,104 +1,274 @@
-import React, { type FC } from 'react';
+import { useState, type FC } from 'react';
 
 // Material-ui
 import Box from '@mui/material/Box';
+import Divider from '@mui/material/Divider';
 import { Stack } from '@omniviewdev/ui/layout';
 import { Text, Heading } from '@omniviewdev/ui/typography';
-import { Button } from '@omniviewdev/ui/buttons';
 import { Avatar, Chip } from '@omniviewdev/ui';
 import { Tabs, TabPanel } from '@omniviewdev/ui/navigation';
 
-// mock
-import mock from './mock/plugins.json';
-
 // Third party
 import MarkdownPreview from '@uiw/react-markdown-preview';
-import PluginChangelog from './sections/PluginChangelog';
-import { useNavigate, useParams } from 'react-router-dom';
-import { LuChevronLeft } from 'react-icons/lu';
-import { usePluginManager } from '@/hooks/plugin/usePluginManager';
+import { useParams } from 'react-router-dom';
+import { LuDownload, LuExternalLink, LuStar } from 'react-icons/lu';
+import { usePluginManager, usePlugin } from '@/hooks/plugin/usePluginManager';
+import { BrowserOpenURL } from '@omniviewdev/runtime/runtime';
 import PluginUpdateButton from './PluginUpdateButton';
+import PluginChangelog from './sections/PluginChangelog';
+import { IsImage } from '@/utils/url';
+import Icon from '@/components/icons/Icon';
+
+const TABS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'versions', label: 'Versions' },
+  { key: 'reviews', label: 'Reviews' },
+  { key: 'changelog', label: 'Changelog' },
+] as const;
 
 const PluginDetails: FC = () => {
-  const { id = '' } = useParams<{ id: string }>()
-  const plugin = mock.find((plugin) => plugin.id === id)
-  const [_readme, setReadme] = React.useState('');
-  const navigate = useNavigate()
-  const { plugins } = usePluginManager();
+  const { id = '' } = useParams<{ id: string }>();
+  const { plugins, available } = usePluginManager();
+  const { readme, reviews, releaseHistory } = usePlugin({ id });
+  const [activeTab, setActiveTab] = useState('overview');
 
-  const installed = plugins.data?.find((p => p.id == id))
+  const installed = plugins.data?.find(p => p.id === id);
+  // marketplace data typed as any until Wails bindings regenerate with new AvailablePlugin fields
+  const marketplace: any = available.data?.find((p: any) => p.id === id);
 
-  React.useEffect(() => {
-    setReadme('');
-    if (plugin?.readme) {
-      fetch(plugin.readme)
-        .then(async response => response.text())
-        .then(text => {
-          setReadme(text);
-        });
-    }
-  }, [plugin]);
+  // Derive display values from marketplace data or installed metadata
+  const displayName = marketplace?.name || installed?.metadata?.name || id;
+  const displayDescription = marketplace?.description || installed?.metadata?.description || '';
+  const displayIcon = marketplace?.icon_url || installed?.metadata?.icon || '';
+  const displayVersion = installed?.metadata?.version || marketplace?.latest_version || '';
+  const displayCategory = marketplace?.category || (installed?.metadata as any)?.category || '';
+  const displayLicense = marketplace?.license || (installed?.metadata as any)?.license || '';
+  const displayRepository = marketplace?.repository || installed?.metadata?.repository || '';
 
-  if (!plugin) {
+  if (!marketplace && !installed) {
     return (
-      <></>
-    )
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <Text size='sm' sx={{ color: 'text.secondary' }}>Plugin not found</Text>
+      </Box>
+    );
   }
 
   return (
-    <Stack direction='column' px={3} pb={3} pt={2} gap={3} sx={{ maxHeight: 'calc(100vh - 60px)' }}>
-      <Stack direction={'row'} spacing={1} width={'100%'} alignItems={'center'}>
-        <Button
-          color="neutral"
-          startAdornment={<LuChevronLeft />}
-          onClick={() => navigate('/plugins')}
-          emphasis="soft"
-        >
-          {'Back to Installed Plugins'}
-        </Button>
-      </Stack>
-
-      <Stack direction='row' spacing={3} width={'100%'} alignItems={'center'} >
-        <Avatar sx={{ height: 72, width: 72, borderRadius: 2 }} src={plugin.icon} />
-        <Stack direction='column' spacing={0.5} justifyContent={'center'} width={'100%'} >
-          <Stack direction='row' spacing={2} alignItems='center' >
-            <Heading level={3}>{plugin.name}</Heading>
-            <Chip size='sm' sx={{ borderRadius: 1, maxHeight: 20 }} color='primary' label={plugin.version} />
-          </Stack>
-          <Text size='xs'>{plugin.description}</Text>
-        </Stack>
-        <Box height={'100%'} >
-          <PluginUpdateButton pluginID={id} installed={!!installed} currentVersion={installed?.metadata.version || ''} />
+    <Box sx={{ maxHeight: 'calc(100vh - 60px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', p: 2.5 }}>
+      {/* Plugin header */}
+      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', mb: 2 }}>
+        {/* Icon */}
+        <Box sx={{ width: 48, height: 48, flexShrink: 0 }}>
+          {displayIcon && IsImage(displayIcon) ? (
+            <Avatar
+              src={displayIcon}
+              sx={{ height: 48, width: 48, borderRadius: 1.5, backgroundColor: 'transparent', border: 0 }}
+            />
+          ) : displayIcon ? (
+            <Icon name={displayIcon} size={48} />
+          ) : (
+            <Avatar sx={{ height: 48, width: 48, borderRadius: 1.5 }}>{displayName[0]}</Avatar>
+          )}
         </Box>
-      </Stack>
 
-      <Tabs aria-label='tabs' defaultValue={0}>
-        <TabPanel value={0} label='Details' sx={{ display: 'flex', p: 0 }}>
-          <Box overflow={'auto'} p={0}>
-            {plugin.readme
-              ? _readme && <MarkdownPreview source={_readme} style={{ backgroundColor: 'transparent', overflow: 'auto', maxHeight: 'calc(100vh - 350px)' }} />
-              : <Text size='xs'>No details available</Text>
-            }
-          </Box>
-        </TabPanel>
-        <TabPanel value={1} label='Content'>
-          <Box overflow={'auto'} p={1}>
-            <Text size='xs'>No content available</Text>
-          </Box>
-        </TabPanel>
-        <TabPanel value={2} label='Reviews'>
-          <Box overflow={'auto'} p={1}>
-            <Text size='xs'>No reviews available</Text>
-          </Box>
-        </TabPanel>
-        <TabPanel value={3} label='Changelog'>
-          <Box overflow={'scroll'} p={1} maxHeight={'100%'}>
-            <PluginChangelog id={plugin.id} />
-          </Box>
-        </TabPanel>
-      </Tabs>
-    </Stack >
+        {/* Info */}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction='row' spacing={1.5} alignItems='center'>
+            <Heading level={3}>{displayName}</Heading>
+            {displayVersion && (
+              <Chip size='sm' color='primary' label={displayVersion} sx={{ borderRadius: 1, maxHeight: 22 }} />
+            )}
+            {marketplace?.official && (
+              <Chip size='sm' color='success' emphasis='soft' label='Official' sx={{ maxHeight: 22 }} />
+            )}
+          </Stack>
+
+          <Text size='sm' sx={{ color: 'text.secondary', mt: 0.5 }}>
+            {displayDescription}
+          </Text>
+
+          {/* Metadata row */}
+          <Stack direction='row' spacing={2} alignItems='center' sx={{ mt: 1 }} flexWrap='wrap'>
+            {displayCategory && (
+              <Chip size='xs' color='neutral' emphasis='outline' label={displayCategory} />
+            )}
+            {displayLicense && (
+              <Text size='xs' sx={{ color: 'text.secondary' }}>{displayLicense}</Text>
+            )}
+            {marketplace?.average_rating > 0 && (
+              <Stack direction='row' spacing={0.5} alignItems='center'>
+                <LuStar size={13} fill='#f5c518' color='#f5c518' />
+                <Text size='xs' weight='semibold'>{marketplace.average_rating.toFixed(1)}</Text>
+                {marketplace.review_count > 0 && (
+                  <Text size='xs' sx={{ color: 'text.secondary' }}>({marketplace.review_count} reviews)</Text>
+                )}
+              </Stack>
+            )}
+            {marketplace?.download_count > 0 && (
+              <Stack direction='row' spacing={0.5} alignItems='center'>
+                <LuDownload size={12} />
+                <Text size='xs' sx={{ color: 'text.secondary' }}>
+                  {formatDownloads(marketplace.download_count)}
+                </Text>
+              </Stack>
+            )}
+            {displayRepository && (
+              <Box
+                component='span'
+                onClick={() => BrowserOpenURL(displayRepository)}
+                sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:hover': { opacity: 0.8 } }}
+              >
+                <LuExternalLink size={12} />
+                <Text size='xs' sx={{ color: 'text.secondary' }}>Repository</Text>
+              </Box>
+            )}
+          </Stack>
+        </Box>
+
+        {/* Install/Update button */}
+        <Box sx={{ flexShrink: 0, pt: 0.5 }}>
+          <PluginUpdateButton
+            pluginID={id}
+            installed={!!installed}
+            currentVersion={installed?.metadata?.version || ''}
+          />
+        </Box>
+      </Box>
+
+      <Divider />
+
+      {/* Tabs */}
+      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <Tabs
+          tabs={[...TABS]}
+          value={activeTab}
+          onChange={setActiveTab}
+          size='sm'
+        />
+        <Box sx={{ flex: 1, overflow: 'auto', mt: 1 }}>
+          <TabPanel value='overview' activeValue={activeTab}>
+            {readme.isLoading ? (
+              <Text size='sm' sx={{ color: 'text.secondary', p: 2 }}>Loading readme...</Text>
+            ) : readme.data ? (
+              <MarkdownPreview
+                source={readme.data}
+                style={{ backgroundColor: 'transparent', overflow: 'auto' }}
+              />
+            ) : (
+              <Text size='sm' sx={{ color: 'text.secondary', p: 2 }}>No details available</Text>
+            )}
+          </TabPanel>
+
+          <TabPanel value='versions' activeValue={activeTab}>
+            {releaseHistory.isLoading ? (
+              <Text size='sm' sx={{ color: 'text.secondary' }}>Loading versions...</Text>
+            ) : releaseHistory.data?.length ? (
+              <Stack direction='column' gap={2}>
+                {releaseHistory.data.map((v: any) => (
+                  <Box
+                    key={v.version}
+                    sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
+                  >
+                    <Stack direction='row' spacing={1.5} alignItems='center'>
+                      <Text weight='semibold'>{v.version}</Text>
+                      {v.created_at && (
+                        <Text size='xs' sx={{ color: 'text.secondary' }}>
+                          {new Date(v.created_at).toLocaleDateString()}
+                        </Text>
+                      )}
+                    </Stack>
+                    {v.changelog && (
+                      <Text size='sm' sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>{v.changelog}</Text>
+                    )}
+                    {v.capabilities?.length > 0 && (
+                      <Stack direction='row' spacing={0.5} sx={{ mt: 1 }}>
+                        {v.capabilities.map((cap: string) => (
+                          <Chip key={cap} size='xs' color='neutral' emphasis='outline' label={cap} />
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+                ))}
+              </Stack>
+            ) : (
+              <Text size='sm' sx={{ color: 'text.secondary' }}>No version history available</Text>
+            )}
+          </TabPanel>
+
+          <TabPanel value='reviews' activeValue={activeTab}>
+            {/* Rating summary */}
+            {marketplace?.average_rating > 0 && (
+              <Box sx={{ mb: 2, p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                <Stack direction='row' spacing={2} alignItems='center'>
+                  <Text size='xl' weight='bold'>{marketplace.average_rating.toFixed(1)}</Text>
+                  <Stack direction='row' spacing={0.25}>
+                    {Array.from({ length: 5 }, (_, i) => (
+                      <LuStar
+                        key={i}
+                        size={18}
+                        fill={i < Math.round(marketplace.average_rating) ? '#f5c518' : 'none'}
+                        color={i < Math.round(marketplace.average_rating) ? '#f5c518' : 'var(--ov-fg-faint)'}
+                      />
+                    ))}
+                  </Stack>
+                  <Text size='sm' sx={{ color: 'text.secondary' }}>
+                    {marketplace.review_count} {marketplace.review_count === 1 ? 'review' : 'reviews'}
+                  </Text>
+                </Stack>
+              </Box>
+            )}
+
+            {reviews.isLoading ? (
+              <Text size='sm' sx={{ color: 'text.secondary' }}>Loading reviews...</Text>
+            ) : reviews.data?.length ? (
+              <Stack direction='column' gap={2}>
+                {reviews.data.map((review: any) => (
+                  <Box
+                    key={review.id}
+                    sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
+                  >
+                    <Stack direction='row' spacing={1} alignItems='center'>
+                      <Stack direction='row' spacing={0.25}>
+                        {Array.from({ length: 5 }, (_, i) => (
+                          <LuStar
+                            key={i}
+                            size={13}
+                            fill={i < review.rating ? '#f5c518' : 'none'}
+                            color={i < review.rating ? '#f5c518' : 'var(--ov-fg-faint)'}
+                          />
+                        ))}
+                      </Stack>
+                      {review.title && <Text size='sm' weight='semibold'>{review.title}</Text>}
+                      {review.created_at && (
+                        <Text size='xs' sx={{ color: 'text.secondary' }}>
+                          {new Date(review.created_at).toLocaleDateString()}
+                        </Text>
+                      )}
+                    </Stack>
+                    {review.body && (
+                      <Text size='sm' sx={{ mt: 1 }}>{review.body}</Text>
+                    )}
+                  </Box>
+                ))}
+              </Stack>
+            ) : (
+              <Text size='sm' sx={{ color: 'text.secondary' }}>No reviews yet</Text>
+            )}
+          </TabPanel>
+
+          <TabPanel value='changelog' activeValue={activeTab}>
+            <PluginChangelog id={id} />
+          </TabPanel>
+        </Box>
+      </Box>
+    </Box>
   );
 };
+
+function formatDownloads(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+  return count.toString();
+}
 
 export default PluginDetails;

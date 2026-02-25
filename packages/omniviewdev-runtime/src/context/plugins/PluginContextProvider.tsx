@@ -143,5 +143,5 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
     );
   }
 
-  return <PluginContext.Provider value={{ settings, meta }}>{children}</PluginContext.Provider>;
+  return <PluginContext.Provider value={{ pluginId, settings, meta }}>{children}</PluginContext.Provider>;
 }

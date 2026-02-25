@@ -102,8 +102,8 @@ func (c *controller) Run(ctx context.Context) {
 
 // ====================================== Controller Implementation ====================================== //
 
-func (c *controller) OnPluginInit(meta config.PluginMeta) {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginInit")
 
 	if c.clients == nil {
@@ -114,8 +114,8 @@ func (c *controller) OnPluginInit(meta config.PluginMeta) {
 	}
 }
 
-func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientProtocol) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, client plugin.ClientProtocol) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
 	raw, err := client.Dispense("networker")
@@ -131,28 +131,28 @@ func (c *controller) OnPluginStart(meta config.PluginMeta, client plugin.ClientP
 		return err
 	}
 
-	c.clients[meta.ID] = provider
+	c.clients[pluginID] = provider
 	return nil
 }
 
-func (c *controller) OnPluginStop(meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStop")
 
-	delete(c.clients, meta.ID)
+	delete(c.clients, pluginID)
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginShutdown")
 
-	delete(c.clients, meta.ID)
+	delete(c.clients, pluginID)
 	return nil
 }
 
-func (c *controller) OnPluginDestroy(meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", meta.ID)
+func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginDestroy")
 
 	// nil action

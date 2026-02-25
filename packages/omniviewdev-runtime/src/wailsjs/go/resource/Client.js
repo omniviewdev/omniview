@@ -126,6 +126,10 @@ export function StopConnectionInformer(arg1, arg2) {
   return window['go']['resource']['Client']['StopConnectionInformer'](arg1, arg2);
 }
 
+export function StreamAction(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['resource']['Client']['StreamAction'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function Update(arg1, arg2, arg3, arg4) {
   return window['go']['resource']['Client']['Update'](arg1, arg2, arg3, arg4);
 }

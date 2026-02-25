@@ -85,8 +85,8 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
 
   const forward: PortForwardResourceFunction = React.useCallback(async (opts) => {
     const sessionOpts = networker.PortForwardSessionOptions.createFrom({
-      source_port: opts.toPort || 0,
-      destination_port: opts.fromPort,
+      local_port: opts.toPort || 0,
+      remote_port: opts.fromPort,
       protocol: opts.protocol || 'TCP',
       connection_type: 'RESOURCE',
       connection: {
@@ -104,7 +104,7 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
       const session = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts);
       setSessions([...sessions, session]);
       if (opts.openInBrowser) {
-        BrowserOpenURL(`http://localhost:${session.destination_port}`);
+        BrowserOpenURL(`http://localhost:${session.remote_port}`);
       }
 
       return session;
