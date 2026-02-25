@@ -1,5 +1,7 @@
 id: aws
 version: 0.1.0
+schema_version: 1
+sdk_protocol_version: 1
 name: AWS
 icon: SiAmazonwebservices
 description: Amazon Web Services (AWS) is the world’s most comprehensive and broadly adopted cloud, offering over 200 fully featured services from data centers globally

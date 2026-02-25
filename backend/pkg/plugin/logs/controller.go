@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/go-plugin"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 
@@ -19,7 +18,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/logs"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	pkgsettings "github.com/omniviewdev/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 const (
@@ -176,11 +175,11 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	}
 }
 
-func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, client plugin.ClientProtocol) error {
+func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
-	raw, err := client.Dispense("log")
+	raw, err := backend.Dispense("log")
 	if err != nil {
 		return err
 	}

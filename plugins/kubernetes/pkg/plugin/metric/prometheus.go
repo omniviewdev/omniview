@@ -14,7 +14,7 @@ import (
 
 	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/metric"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	pkgsettings "github.com/omniviewdev/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 
 	"k8s.io/client-go/kubernetes"
 )

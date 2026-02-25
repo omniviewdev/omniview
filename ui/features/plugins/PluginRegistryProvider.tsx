@@ -7,16 +7,19 @@ import PrimaryLoading from '@/components/util/PrimaryLoading';
 import { useDevServer, type DevServerState } from '@/hooks/plugin/useDevServer';
 import { useSnackbar } from '@omniviewdev/runtime';
 import { ResourceClient } from '@omniviewdev/runtime/api';
+import { EventsOn } from '@omniviewdev/runtime/runtime';
 import type { PluginLoadError } from './PluginRegistryContext';
 
 interface PluginRegistryContextValue {
   ready: boolean;
+  routeVersion: number;
   failedPlugins: PluginLoadError[];
   retryPlugin: (pluginId: string) => void;
 }
 
 export const PluginRegistryContext = createContext<PluginRegistryContextValue>({
   ready: false,
+  routeVersion: 0,
   failedPlugins: [],
   retryPlugin: () => {},
 });
@@ -42,6 +45,7 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
   const { plugins } = usePluginManager();
   const { allStates } = useDevServer();
   const [ready, setReady] = useState(false);
+  const [routeVersion, setRouteVersion] = useState(0);
   const [failedPlugins, setFailedPlugins] = useState<PluginLoadError[]>([]);
   const { showSnackbar } = useSnackbar();
   const queryClient = useQueryClient();
@@ -175,6 +179,15 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
         return [...prev.filter(f => !retried.has(f.pluginId)), ...failures];
       });
 
+      // Bump the route version so RouteProvider rebuilds the router with the
+      // newly-registered plugin routes. This is more reliable than the
+      // Wails event-based recalc_routes signal since it's a direct React
+      // state update — no IPC round-trip required.
+      const loaded = toLoad.length - failures.length;
+      if (loaded > 0) {
+        setRouteVersion(v => v + 1);
+      }
+
       // Only transition to ready on the FIRST load — never set ready back to false.
       // Dev plugins waiting for their Vite dev server should NOT block the
       // initial ready transition — they'll load incrementally once ready.
@@ -183,7 +196,7 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
         if (deferred.length > 0 && toLoad.length === 0) {
           console.debug('[PluginRegistry] all plugins deferred — will load incrementally');
         }
-      } else if (toLoad.length - failures.length > 0) {
+      } else if (loaded > 0) {
         // Incremental load added new plugins — invalidate the plugin list query
         // so the sidebar and other consumers refetch and show the new icons.
         void queryClient.invalidateQueries({ queryKey: ['plugins'] });
@@ -205,6 +218,68 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
       });
     });
   }, [ready, failedPlugins]);
+
+  // Listen for plugin lifecycle events from the backend
+  useEffect(() => {
+    const offCrash = EventsOn('plugin/crash', (data: { pluginID: string; error: string }) => {
+      showSnackbar({
+        message: `Plugin "${data.pluginID}" crashed. Attempting to recover...`,
+        status: 'warning',
+      });
+    });
+    const offRecovered = EventsOn('plugin/recovered', (data: { pluginID: string }) => {
+      showSnackbar({
+        message: `Plugin "${data.pluginID}" recovered successfully`,
+        status: 'success',
+      });
+      void queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    });
+    const offFailed = EventsOn('plugin/crash_recovery_failed', (data: { pluginID: string; error: string }) => {
+      showSnackbar({
+        message: `Plugin "${data.pluginID}" crashed and could not recover`,
+        status: 'error',
+        details: data.error,
+        autoHideDuration: 0,
+      });
+    });
+    const offStateChange = EventsOn('plugin/state_change', (data: {
+      pluginID: string;
+      from: string;
+      to: string;
+      reason: string;
+    }) => {
+      console.debug('[PluginRegistry] state change', data);
+      // Invalidate plugin queries so the UI reflects the new state.
+      void queryClient.invalidateQueries({ queryKey: ['plugins'] });
+
+      // Show user-facing notifications for important transitions.
+      if (data.to === 'Failed') {
+        showSnackbar({
+          message: `Plugin "${data.pluginID}" failed`,
+          status: 'error',
+          details: data.reason,
+        });
+      } else if (data.to === 'BuildFailed') {
+        showSnackbar({
+          message: `Plugin "${data.pluginID}" build failed`,
+          status: 'error',
+          details: data.reason,
+        });
+      } else if (data.from === 'Recovering' && data.to === 'Running') {
+        showSnackbar({
+          message: `Plugin "${data.pluginID}" recovered`,
+          status: 'success',
+        });
+      }
+    });
+
+    return () => {
+      offCrash();
+      offRecovered();
+      offFailed();
+      offStateChange();
+    };
+  }, [showSnackbar, queryClient]);
 
   const retryPlugin = React.useCallback(async (pluginId: string) => {
     if (!plugins.data) return;
@@ -245,7 +320,7 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
   }
 
   return (
-    <PluginRegistryContext.Provider value={{ ready, failedPlugins, retryPlugin }}>
+    <PluginRegistryContext.Provider value={{ ready, routeVersion, failedPlugins, retryPlugin }}>
       {children}
     </PluginRegistryContext.Provider>
   );

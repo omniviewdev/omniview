@@ -13,7 +13,6 @@ require (
 	github.com/gobuffalo/flect v1.0.2
 	github.com/google/uuid v1.6.0
 	github.com/omniviewdev/plugin-sdk v0.0.0-20240314004425-c2572eb4a1c1
-	github.com/omniviewdev/settings v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0
 	helm.sh/helm/v3 v3.20.0
@@ -162,6 +161,4 @@ require (
 
 replace github.com/omniviewdev/omniview => ../../
 
-replace github.com/omniviewdev/plugin-sdk => ../../pkg/plugin-sdk
-
-replace github.com/omniviewdev/settings => ../../pkg/settings
+replace github.com/omniviewdev/plugin-sdk => ../../../omniviewdev/plugin-sdk

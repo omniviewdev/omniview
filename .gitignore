@@ -5,6 +5,7 @@ bin/
 
 go.work
 go.work.sum
+trace-*.json.gz
 
 ### Frontend
 

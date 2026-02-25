@@ -5,7 +5,7 @@ import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
 import { Button } from '@omniviewdev/ui/buttons';
 import { Modal } from '@omniviewdev/ui/overlays';
-import { Text, Heading } from '@omniviewdev/ui/typography';
+import { Text } from '@omniviewdev/ui/typography';
 
 type Props = {
   open: boolean;
@@ -24,52 +24,39 @@ const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose 
   };
 
   return (
-    <Modal open={open} onClose={onClose}>
+    <Modal open={open} onClose={onClose} size="sm" sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+      <Text weight="semibold" size="lg">
+        Uninstall {name}?
+      </Text>
+      <Text size="sm" sx={{ color: 'text.tertiary' }}>
+        This will remove all data associated with the plugin.
+      </Text>
       <Box
-        sx={theme => ({
-          p: 3,
-          [theme.breakpoints.only('xs')]: {
-            top: 'unset',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            borderRadius: 0,
-            transform: 'none',
-            maxWidth: 'unset',
-          },
-        })}
+        sx={{
+          mt: 2,
+          display: 'flex',
+          gap: 1,
+          justifyContent: 'flex-end',
+        }}
       >
-        <Heading level={2}>
-          Are you sure you want to uninstall the {name} plugin?
-        </Heading>
-        <Text sx={{ color: 'text.tertiary' }}>
-          This will remove all data associated with the plugin.
-        </Text>
-        <Box
-          sx={{
-            mt: 1,
-            display: 'flex',
-            gap: 1,
-            flexDirection: { xs: 'column', sm: 'row-reverse' },
-          }}
+        <Button
+          emphasis='outline'
+          color='neutral'
+          size='sm'
+          onClick={onClose}
+          disabled={uninstalling}
         >
-          <Button
-            emphasis='solid'
-            color='primary'
-            onClick={handleUninstall}
-            disabled={uninstalling}
-          >
-            {uninstalling ? <CircularProgress size={20} /> : 'Uninstall'}
-          </Button>
-          <Button
-            emphasis='outline'
-            color='neutral'
-            onClick={onClose}
-            disabled={uninstalling}
-          >
-            Cancel
-          </Button>
-        </Box>
+          Cancel
+        </Button>
+        <Button
+          emphasis='solid'
+          color='danger'
+          size='sm'
+          onClick={handleUninstall}
+          disabled={uninstalling}
+        >
+          {uninstalling ? <CircularProgress size={16} /> : 'Uninstall'}
+        </Button>
       </Box>
     </Modal>
   );

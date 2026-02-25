@@ -86,7 +86,7 @@ const InstalledPlugins: React.FC<Props> = () => {
         <Grid container spacing={2}>
           {plugins.data?.map(plugin => (
             <Grid key={plugin.id} size={{ xs: 12, lg: 6, xl: 4 }}>
-              <InstalledPluginCard key={plugin.id} {...plugin} />
+              <InstalledPluginCard key={plugin.id} id={plugin.id} />
             </Grid>
           ))}
         </Grid>

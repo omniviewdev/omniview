@@ -1,43 +1,141 @@
 package plugin
 
 import (
-	"errors"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-	"github.com/omniviewdev/omniview/backend/pkg/store"
-
-	pkgtypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
-func (pm *pluginManager) writePluginState() error {
-	// write the plugin state to disk, converting them to the plugin state
-	var states []types.PluginState
-	for _, p := range pm.plugins {
-		states = append(states, types.NewPluginState(p))
+var stateMu sync.RWMutex
+
+// stateFilePathOverride allows tests to redirect state persistence.
+var stateFilePathOverride string
+
+// stateFilePath returns the path to the JSON state file.
+func stateFilePath() string {
+	if stateFilePathOverride != "" {
+		return stateFilePathOverride
 	}
-
-	return store.WriteToGlobalStore("plugin", states)
-}
-
-func (pm *pluginManager) readPluginState() ([]*types.PluginState, error) {
-	// read the plugin state from disk, converting them to plugins
-	var states []*types.PluginState
-	err := store.ReadFromGlobalStore("plugin", &states)
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-	return states, nil
+	return filepath.Join(homeDir, ".omniview", "plugin_state.json")
 }
 
-func upsertPluginState(p *pkgtypes.Plugin, s types.PluginState) error {
-	if p.ID != s.ID {
-		return errors.New("plugin ID mismatch")
+// writePluginStateJSON atomically persists plugin records as JSON.
+// Write to .tmp file then rename for POSIX atomicity.
+func (pm *pluginManager) writePluginStateJSON() error {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+
+	records := make([]types.PluginStateRecord, 0, len(pm.records))
+	for _, r := range pm.records {
+		records = append(records, r.ToStateRecord())
 	}
 
-	// merge the plugin state with the plugin
-	p.Enabled = s.Enabled
-	p.DevMode = s.DevMode
-	p.DevPath = s.DevPath
+	data, err := json.MarshalIndent(records, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error marshaling plugin state: %w", err)
+	}
+
+	path := stateFilePath()
+	tmpPath := path + ".tmp"
+
+	if err = os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("error creating state directory: %w", err)
+	}
+
+	if err = os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("error writing temp state file: %w", err)
+	}
+
+	if err = os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("error renaming state file: %w", err)
+	}
 
 	return nil
+}
+
+// mergeAndWritePluginState writes the current in-memory records but also
+// preserves any persisted state entries for plugins that failed to load.
+// This prevents Initialize() from destructively overwriting state for
+// plugins that couldn't start (e.g. missing binary after crash).
+func (pm *pluginManager) mergeAndWritePluginState(persisted []types.PluginStateRecord) error {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+
+	// Start with current in-memory records.
+	merged := make(map[string]types.PluginStateRecord, len(pm.records)+len(persisted))
+	for _, r := range pm.records {
+		merged[r.ID] = r.ToStateRecord()
+	}
+
+	// Keep persisted entries that are NOT in the loaded records,
+	// but only if their plugin directory still exists on disk.
+	pluginDir := getPluginDir()
+	for _, s := range persisted {
+		if _, loaded := merged[s.ID]; !loaded {
+			dir := filepath.Join(pluginDir, s.ID)
+			if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
+				// Ghost entry — plugin directory was removed; drop it.
+				continue
+			}
+			merged[s.ID] = s
+		}
+	}
+
+	records := make([]types.PluginStateRecord, 0, len(merged))
+	for _, r := range merged {
+		records = append(records, r)
+	}
+
+	data, err := json.MarshalIndent(records, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error marshaling plugin state: %w", err)
+	}
+
+	path := stateFilePath()
+	tmpPath := path + ".tmp"
+
+	if err = os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("error creating state directory: %w", err)
+	}
+
+	if err = os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("error writing temp state file: %w", err)
+	}
+
+	if err = os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("error renaming state file: %w", err)
+	}
+
+	return nil
+}
+
+// readPluginStateJSON reads persisted plugin state from JSON.
+func readPluginStateJSON() ([]types.PluginStateRecord, error) {
+	stateMu.RLock()
+	defer stateMu.RUnlock()
+
+	data, err := os.ReadFile(stateFilePath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error reading state file: %w", err)
+	}
+
+	var records []types.PluginStateRecord
+	if err = json.Unmarshal(data, &records); err != nil {
+		return nil, fmt.Errorf("error parsing state file: %w", err)
+	}
+
+	return records, nil
 }

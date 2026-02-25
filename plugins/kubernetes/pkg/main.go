@@ -8,7 +8,7 @@ import (
 	pluginmetric "github.com/omniview/kubernetes/pkg/plugin/metric"
 	"github.com/omniview/kubernetes/pkg/plugin/networker"
 	"github.com/omniview/kubernetes/pkg/plugin/resource"
-	"github.com/omniviewdev/settings"
+	"github.com/omniviewdev/plugin-sdk/settings"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 

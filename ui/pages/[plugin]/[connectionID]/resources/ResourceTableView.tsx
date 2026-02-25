@@ -128,7 +128,7 @@ export default function ResourceTableView(): React.ReactElement {
     >
 
       <PluginBackdrop
-        open={plugin.loading}
+        open={plugin.phase === 'Starting' || plugin.phase === 'Validating'}
         message={`${plugin.metadata.name} plugin is reloading`}
       />
       <Layout.SideNav type='bordered' padding={0.5} width={300} >

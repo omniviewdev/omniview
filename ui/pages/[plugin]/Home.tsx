@@ -31,7 +31,7 @@ export default function PluginHome(): React.ReactElement {
       flex={1}
     >
       <PluginBackdrop
-        open={plugin.loading}
+        open={plugin.phase === 'Starting' || plugin.phase === 'Validating'}
         message={`${plugin.metadata.name} plugin is reloading`}
       />
 

@@ -4,7 +4,7 @@ import { type types } from '@omniviewdev/runtime/models';
 /**
  * PluginContext provides data about the current plugin that is within scope.
  */
-export const PluginContext = React.createContext<types.Plugin | undefined>(undefined);
+export const PluginContext = React.createContext<types.PluginInfo | undefined>(undefined);
 
 /**
  * UsePluginContext provides the current plugin that is within scope.

@@ -144,6 +144,8 @@ export namespace config {
 	    capabilities: string[];
 	    theme: PluginTheme;
 	    components: PluginComponents;
+	    schema_version: number;
+	    sdk_protocol_version: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new PluginMeta(source);
@@ -168,6 +170,8 @@ export namespace config {
 	        this.capabilities = source["capabilities"];
 	        this.theme = this.convertValues(source["theme"], PluginTheme);
 	        this.components = this.convertValues(source["components"], PluginComponents);
+	        this.schema_version = source["schema_version"];
+	        this.sdk_protocol_version = source["sdk_protocol_version"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1272,7 +1276,7 @@ export namespace plugin {
 	export class LoadPluginOptions {
 	    DevMode: boolean;
 	    DevModePath: string;
-	    ExistingState?: types.PluginState;
+	    ExistingState?: types.PluginStateRecord;
 	
 	    static createFrom(source: any = {}) {
 	        return new LoadPluginOptions(source);
@@ -1282,7 +1286,7 @@ export namespace plugin {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.DevMode = source["DevMode"];
 	        this.DevModePath = source["DevModePath"];
-	        this.ExistingState = this.convertValues(source["ExistingState"], types.PluginState);
+	        this.ExistingState = this.convertValues(source["ExistingState"], types.PluginStateRecord);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2302,32 +2306,30 @@ export namespace types {
 	
 	
 	
-	export class Plugin {
+	export class PluginInfo {
 	    id: string;
 	    metadata: config.PluginMeta;
+	    phase: string;
 	    enabled: boolean;
-	    running: boolean;
 	    devMode: boolean;
-	    devPath: string;
-	    loading: boolean;
-	    loadError: string;
-	    capabilities: number[];
+	    devPath?: string;
+	    capabilities: string[];
+	    lastError?: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new Plugin(source);
+	        return new PluginInfo(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.metadata = this.convertValues(source["metadata"], config.PluginMeta);
+	        this.phase = source["phase"];
 	        this.enabled = source["enabled"];
-	        this.running = source["running"];
 	        this.devMode = source["devMode"];
 	        this.devPath = source["devPath"];
-	        this.loading = source["loading"];
-	        this.loadError = source["loadError"];
 	        this.capabilities = source["capabilities"];
+	        this.lastError = source["lastError"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2348,24 +2350,32 @@ export namespace types {
 		    return a;
 		}
 	}
-	export class PluginState {
-	    Metadata: config.PluginMeta;
-	    ID: string;
-	    DevPath: string;
-	    Enabled: boolean;
-	    DevMode: boolean;
+	export class PluginStateRecord {
+	    id: string;
+	    phase: string;
+	    metadata: config.PluginMeta;
+	    enabled: boolean;
+	    devMode: boolean;
+	    devPath?: string;
+	    lastError?: string;
+	    errorCount: number;
+	    installedAt: time.Time;
 	
 	    static createFrom(source: any = {}) {
-	        return new PluginState(source);
+	        return new PluginStateRecord(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Metadata = this.convertValues(source["Metadata"], config.PluginMeta);
-	        this.ID = source["ID"];
-	        this.DevPath = source["DevPath"];
-	        this.Enabled = source["Enabled"];
-	        this.DevMode = source["DevMode"];
+	        this.id = source["id"];
+	        this.phase = source["phase"];
+	        this.metadata = this.convertValues(source["metadata"], config.PluginMeta);
+	        this.enabled = source["enabled"];
+	        this.devMode = source["devMode"];
+	        this.devPath = source["devPath"];
+	        this.lastError = source["lastError"];
+	        this.errorCount = source["errorCount"];
+	        this.installedAt = this.convertValues(source["installedAt"], time.Time);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

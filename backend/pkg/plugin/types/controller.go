@@ -3,8 +3,6 @@ package types
 import (
 	"context"
 
-	"github.com/hashicorp/go-plugin"
-
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -16,7 +14,7 @@ type Controller interface {
 	OnPluginInit(pluginID string, meta config.PluginMeta)
 
 	// OnPluginStart is called when the plugin is started.
-	OnPluginStart(pluginID string, meta config.PluginMeta, client plugin.ClientProtocol) error
+	OnPluginStart(pluginID string, meta config.PluginMeta, backend PluginBackend) error
 
 	// OnPluginStop is called when the plugin is stopped. Modules should perform any persisting of state here
 	OnPluginStop(pluginID string, meta config.PluginMeta) error

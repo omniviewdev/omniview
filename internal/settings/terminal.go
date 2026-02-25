@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/omniviewdev/settings"
+	"github.com/omniviewdev/plugin-sdk/settings"
 )
 
 //nolint:gochecknoglobals // we're providing this as a package level variable

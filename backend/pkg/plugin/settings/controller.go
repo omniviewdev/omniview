@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/hashicorp/go-plugin"
-	pkgsettings "github.com/omniviewdev/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
@@ -59,13 +58,13 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 func (c *controller) OnPluginStart(
 	pluginID string,
 	meta config.PluginMeta,
-	client plugin.ClientProtocol,
+	backend internaltypes.PluginBackend,
 ) error {
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
 	// make sure we have a client we can call for this plugin
-	raw, err := client.Dispense(PluginName)
+	raw, err := backend.Dispense(PluginName)
 	if err != nil {
 		return err
 	}

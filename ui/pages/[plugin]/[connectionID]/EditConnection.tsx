@@ -47,7 +47,7 @@ export default function EditConnection(): React.ReactElement {
     >
 
       <PluginBackdrop
-        open={plugin.loading}
+        open={plugin.phase === 'Starting' || plugin.phase === 'Validating'}
         message={`${plugin.metadata.name} plugin is reloading`}
       />
       <Stack direction='row' alignItems='center' justifyContent={'space-between'} width={'100%'} gap={1.5}>

@@ -3,7 +3,7 @@ import { useSnackbar, createErrorHandler, parseAppError, actionToSnackbar } from
 import { PluginManager } from '@omniviewdev/runtime/api';
 import React from 'react';
 import { EventsEmit, EventsOn } from '@omniviewdev/runtime/runtime';
-import { type config } from '@omniviewdev/runtime/models';
+import { type config, type types } from '@omniviewdev/runtime/models';
 
 import { clearPlugin, loadAndRegisterPlugin } from '@/features/plugins/api/loader';
 
@@ -32,51 +32,26 @@ export const usePluginManager = () => {
   React.useEffect(() => {
     // Set up watchers for plugin reload and install events
     const closer1 = EventsOn('plugin/dev_reload_start', (meta: config.PluginMeta) => {
-      // Find the plugin in the list of plugins and update the status
-      // to show that it's reloading
-      queryClient.setQueryData([Entity.PLUGINS], (oldData: config.PluginMeta[]) => oldData.map(plugin => {
-        if (plugin.id === meta.id) {
-          return {
-            ...plugin,
-            loading: true,
-            loadError: '',
-          };
-        }
+      queryClient.setQueryData([Entity.PLUGINS], (oldData: types.PluginInfo[] | undefined) =>
+        oldData?.map(plugin =>
+          plugin.id === meta.id ? { ...plugin, phase: 'Starting', lastError: '' } : plugin,
+        ),
+      );
 
-        return plugin;
-      }));
-
-      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: config.PluginMeta) => ({
-        ...oldData,
-        loading: true,
-        loadError: '',
-      }));
-
-      // showSnackbar({
-      //   message: `Reloading plugin '${meta.name}'`,
-      //   status: 'info',
-      // });
+      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: types.PluginInfo | undefined) =>
+        oldData ? { ...oldData, phase: 'Starting', lastError: '' } : oldData,
+      );
     });
     const closer2 = EventsOn('plugin/dev_reload_error', (meta: config.PluginMeta, error: string) => {
-      // Find the plugin in the list of plugins and update the status
-      // to show that it's reloading
-      queryClient.setQueryData([Entity.PLUGINS], (oldData: config.PluginMeta[]) => oldData.map(plugin => {
-        if (plugin.id === meta.id) {
-          return {
-            ...plugin,
-            loading: false,
-            loadError: error,
-          };
-        }
+      queryClient.setQueryData([Entity.PLUGINS], (oldData: types.PluginInfo[] | undefined) =>
+        oldData?.map(plugin =>
+          plugin.id === meta.id ? { ...plugin, phase: 'Failed', lastError: error } : plugin,
+        ),
+      );
 
-        return plugin;
-      }));
-
-      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: config.PluginMeta) => ({
-        ...oldData,
-        loading: false,
-        loadError: error,
-      }));
+      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: types.PluginInfo | undefined) =>
+        oldData ? { ...oldData, phase: 'Failed', lastError: error } : oldData,
+      );
 
       const appErr = parseAppError(error);
       showSnackbar({
@@ -87,33 +62,18 @@ export const usePluginManager = () => {
       });
     });
     const closer3 = EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
-      // Find the plugin in the list of plugins and update the status
-      // to show that it's reloading
-      queryClient.setQueryData([Entity.PLUGINS], (oldData: config.PluginMeta[]) => oldData.map(plugin => {
-        if (plugin.id === meta.id) {
-          return {
-            ...plugin,
-            loading: false,
-            loadError: '',
-          };
-        }
+      queryClient.setQueryData([Entity.PLUGINS], (oldData: types.PluginInfo[] | undefined) =>
+        oldData?.map(plugin =>
+          plugin.id === meta.id ? { ...plugin, phase: 'Running', lastError: '' } : plugin,
+        ),
+      );
 
-        return plugin;
-      }));
-
-      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: config.PluginMeta) => ({
-        ...oldData,
-        loading: false,
-        loadError: '',
-      }));
+      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: types.PluginInfo | undefined) =>
+        oldData ? { ...oldData, phase: 'Running', lastError: '' } : oldData,
+      );
 
       // Trigger a reload of the plugin ui
       clearPlugin({ pluginId: meta.id })
-
-      // showSnackbar({
-      //   message: `Plugin '${meta.name}' reloaded`,
-      //   status: 'success',
-      // });
     });
 
     // const closer4 = EventsOn('plugin/dev_install_start', (meta: config.PluginMeta) => {

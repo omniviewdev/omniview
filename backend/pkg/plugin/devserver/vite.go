@@ -91,6 +91,46 @@ func (vp *viteProcess) Start() error {
 		return apperror.ConfigMissing("developer.pnpmpath", "pnpm path is not configured. Please set developer.pnpmpath in settings.")
 	}
 
+	// Install dependencies if node_modules is missing.
+	nodeModules := filepath.Join(uiDir, "node_modules")
+	if _, err := os.Stat(nodeModules); os.IsNotExist(err) {
+		vp.appendLog(LogEntry{
+			Source:  "vite",
+			Level:   "info",
+			Message: "node_modules not found — running pnpm install",
+		})
+
+		installCmd := exec.CommandContext(vp.ctx, pnpmPath, "install")
+		installCmd.Dir = uiDir
+
+		// Set up environment with proper PATH.
+		installEnv := os.Environ()
+		installDirs := []string{}
+		if vp.buildOpts.PnpmPath != "" {
+			installDirs = append(installDirs, filepath.Dir(vp.buildOpts.PnpmPath))
+		}
+		if vp.buildOpts.NodePath != "" {
+			installDirs = append(installDirs, filepath.Dir(vp.buildOpts.NodePath))
+		}
+		installCmd.Env = prependToPath(installEnv, installDirs)
+
+		output, err := installCmd.CombinedOutput()
+		if err != nil {
+			vp.appendLog(LogEntry{
+				Source:  "vite",
+				Level:   "error",
+				Message: fmt.Sprintf("pnpm install failed: %v\n%s", err, string(output)),
+			})
+			return apperror.Wrap(err, apperror.TypePluginBuildFailed, 500, "Failed to install UI dependencies")
+		}
+
+		vp.appendLog(LogEntry{
+			Source:  "vite",
+			Level:   "info",
+			Message: "pnpm install completed successfully",
+		})
+	}
+
 	// Build the command: pnpm run dev --port <port> --strictPort --host 127.0.0.1
 	// NOTE: Do NOT use "--" separator. pnpm passes it through literally to the
 	// script, and Vite's CLI parser (cac) interprets "--" as end-of-options,

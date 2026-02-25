@@ -7,9 +7,7 @@ import {context} from '../models';
 import {plugin} from '../models';
 import {devserver} from '../models';
 
-export function AddTarget(arg1:string):Promise<void>;
-
-export function GetPlugin(arg1:string):Promise<types.Plugin>;
+export function GetPlugin(arg1:string):Promise<types.PluginInfo>;
 
 export function GetPluginDownloadStats(arg1:string):Promise<registry.DownloadStats>;
 
@@ -22,6 +20,8 @@ export function GetPluginReleaseHistory(arg1:string):Promise<Array<registry.Vers
 export function GetPluginReviews(arg1:string,arg2:number):Promise<Array<registry.Review>>;
 
 export function GetPluginVersions(arg1:string):Promise<Array<registry.VersionInfo>>;
+
+export function HandlePluginCrash(arg1:string):Promise<void>;
 
 export function Initialize(arg1:context.Context):Promise<void>;
 
@@ -37,13 +37,11 @@ export function ListAvailablePlugins():Promise<Array<registry.AvailablePlugin>>;
 
 export function ListPluginMetas():Promise<Array<config.PluginMeta>>;
 
-export function ListPlugins():Promise<Array<types.Plugin>>;
+export function ListPlugins():Promise<Array<types.PluginInfo>>;
 
-export function LoadPlugin(arg1:string,arg2:plugin.LoadPluginOptions):Promise<types.Plugin>;
+export function LoadPlugin(arg1:string,arg2:plugin.LoadPluginOptions):Promise<types.PluginInfo>;
 
-export function ReloadPlugin(arg1:string):Promise<types.Plugin>;
-
-export function RemoveTarget(arg1:string):Promise<void>;
+export function ReloadPlugin(arg1:string):Promise<types.PluginInfo>;
 
 export function Run(arg1:context.Context):Promise<void>;
 
@@ -55,6 +53,6 @@ export function SetDevServerManager(arg1:devserver.DevServerManager):Promise<voi
 
 export function Shutdown():Promise<void>;
 
-export function UninstallPlugin(arg1:string):Promise<types.Plugin>;
+export function UninstallPlugin(arg1:string):Promise<types.PluginInfo>;
 
 export function UnloadPlugin(arg1:string):Promise<void>;

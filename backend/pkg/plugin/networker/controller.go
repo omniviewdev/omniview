@@ -7,7 +7,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/hashicorp/go-plugin"
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
@@ -16,7 +15,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/networker"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	pkgsettings "github.com/omniviewdev/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 // Wails event keys for port-forward session lifecycle.
@@ -114,11 +113,11 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	}
 }
 
-func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, client plugin.ClientProtocol) error {
+func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
-	raw, err := client.Dispense("networker")
+	raw, err := backend.Dispense("networker")
 	if err != nil {
 		return err
 	}

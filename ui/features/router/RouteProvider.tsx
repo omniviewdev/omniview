@@ -33,12 +33,13 @@ const buildPluginRouteWrapper = () => {
 };
 
 export const RouteProvider = () => {
-  const { ready } = useContext(PluginRegistryContext);
+  const { ready, routeVersion } = useContext(PluginRegistryContext);
   const [router, setRouter] = useState<ReturnType<typeof createHashRouter>>();
 
   /**
    * When we have all of the plugins loaded, patch them and load them into
-   * the route list. Make sure we do this before we paint to the screen
+   * the route list. Make sure we do this before we paint to the screen.
+   * Also rebuild when routeVersion changes (incremental plugin loads).
    */
   useLayoutEffect(() => {
     if (!ready) {
@@ -50,8 +51,8 @@ export const RouteProvider = () => {
 
     const newRouter = createHashRouter(buildPluginRouteWrapper());
     setRouter(newRouter);
-    console.debug('[RouteProvider] router created');
-  }, [ready]);
+    console.debug('[RouteProvider] router created', { routeVersion });
+  }, [ready, routeVersion]);
 
 
   /**

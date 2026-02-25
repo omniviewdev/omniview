@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,62 +14,10 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
-func validateInstalledPlugin(metadata config.PluginMeta) error {
-	path := getPluginLocation(metadata.ID)
-
-	// check capabilities are met
-	for _, p := range metadata.Capabilities {
-		switch p {
-		case types.ResourcePlugin.String():
-			return validateHasBinary(path)
-		case types.ReporterPlugin.String():
-			return validateHasBinary(path)
-		case types.ExecutorPlugin.String():
-			return validateHasBinary(path)
-		case types.FilesystemPlugin.String():
-			return validateHasBinary(path)
-		case types.LogPlugin.String():
-			return validateHasBinary(path)
-		case types.MetricPlugin.String():
-			return validateHasBinary(path)
-		case types.UIPlugin.String():
-			return validateHasUiPackage(path)
-		default:
-			return fmt.Errorf("error validating plugin: unknown plugin capability type '%s'", p)
-		}
-	}
-
-	return nil
-}
-
-func validateHasBinary(path string) error {
-	// first, ensure the required files are present. there should, at minimum be a binary
-	// at <path>/bin/resource
-	plugin, err := os.Stat(filepath.Join(path, "bin", "plugin"))
-	if os.IsNotExist(err) {
-		return fmt.Errorf("resource plugin binary not found: %s", path)
-	}
-
-	// check that it's actually a compiled binary
-	if plugin.Mode()&0111 == 0 {
-		return fmt.Errorf("resource plugin binary is not executable: %s", path)
-	}
-
-	return nil
-}
-
-// validateHasUiPackage checks if the plugin has a UI package, which is signified by the
-// existence of a `/assets` folder in the ui plugin directory.
-func validateHasUiPackage(path string) error {
-	_, err := os.Stat(filepath.Join(path, "assets"))
-	if os.IsNotExist(err) {
-		return fmt.Errorf("expected compiled ui at path but none found: %s", path)
-	}
-	return nil
-}
+// pluginDirOverride allows tests to redirect the plugin directory.
+var pluginDirOverride string
 
 // make sure our plugin dir is all set.
 func auditPluginDir() error {
@@ -82,16 +29,17 @@ func auditPluginDir() error {
 }
 
 func getPluginDir() string {
+	if pluginDirOverride != "" {
+		return pluginDirOverride
+	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		panic(err)
 	}
-	// TODO - do we want to make this dynamic?
 	return filepath.Join(homeDir, ".omniview", "plugins")
 }
 
 func getPluginLocation(id string) string {
-	// TODO - do we want to make this dynamic?
 	return filepath.Join(getPluginDir(), id)
 }
 
@@ -125,8 +73,6 @@ func checkTarball(filePath string) error {
 
 			return err
 		}
-		log.Println("has inside tarball", header.Name)
-
 		// check for required files and executable
 		switch header.Name {
 		case "./bin/plugin":

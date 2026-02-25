@@ -1,6 +1,6 @@
 package categories
 
-import "github.com/omniviewdev/settings"
+import "github.com/omniviewdev/plugin-sdk/settings"
 
 //nolint:gochecknoglobals // we're providing this as a package level variable
 var Developer = settings.Category{

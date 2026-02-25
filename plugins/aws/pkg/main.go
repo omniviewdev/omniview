@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
-	"github.com/omniviewdev/settings"
+	"github.com/omniviewdev/plugin-sdk/settings"
 
 	"github.com/omniviewdev/aws-plugin/pkg/plugin/resource"
 )

@@ -1,6 +1,7 @@
 import React from 'react';
 import Box from '@mui/material/Box';
 import { Chip } from '@omniviewdev/ui';
+import { Tooltip } from '@omniviewdev/ui/overlays';
 import { LuCircle, LuExternalLink, LuHammer, LuPlay, LuRefreshCw, LuSquare } from 'react-icons/lu';
 
 import { devToolsChannel } from '@/features/devtools/events';
@@ -96,13 +97,21 @@ const DevModeSection: React.FC<Props> = ({ pluginId, devPath }) => {
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
-          <ActionBtn icon={<LuHammer size={12} />} label="Logs" onClick={() => devToolsChannel.emit('onOpenBuildOutput', pluginId)} />
+          <Tooltip content="View build output and compiler logs" placement="bottom">
+            <ActionBtn icon={<LuHammer size={12} />} label="Build Output" onClick={() => devToolsChannel.emit('onOpenBuildOutput', pluginId)} />
+          </Tooltip>
           {isRunning ? (
-            <ActionBtn icon={<LuSquare size={12} />} label="Stop" onClick={() => stop.mutate(pluginId)} color="var(--ov-danger-default, #f85149)" />
+            <Tooltip content="Stop the dev server" placement="bottom">
+              <ActionBtn icon={<LuSquare size={12} />} label="Stop" onClick={() => stop.mutate(pluginId)} color="var(--ov-danger-default, #f85149)" />
+            </Tooltip>
           ) : (
-            <ActionBtn icon={<LuPlay size={12} />} label="Start" onClick={() => start.mutate(pluginId)} color="var(--ov-success-default, #3fb950)" />
+            <Tooltip content="Start the dev server" placement="bottom">
+              <ActionBtn icon={<LuPlay size={12} />} label="Start" onClick={() => start.mutate(pluginId)} color="var(--ov-success-default, #3fb950)" />
+            </Tooltip>
           )}
-          <ActionBtn icon={<LuRefreshCw size={12} />} label="Restart" onClick={() => restart.mutate(pluginId)} disabled={!isRunning} />
+          <Tooltip content="Restart the dev server" placement="bottom">
+            <ActionBtn icon={<LuRefreshCw size={12} />} label="Restart" onClick={() => restart.mutate(pluginId)} disabled={!isRunning} />
+          </Tooltip>
         </Box>
       </Box>
 
@@ -175,9 +184,11 @@ function DetailRow({ label, value, mono, valueColor }: { label: string; value: s
   );
 }
 
-function ActionBtn({ icon, label, onClick, color, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; color?: string; disabled?: boolean }) {
-  return (
+const ActionBtn = React.forwardRef<HTMLButtonElement, { icon: React.ReactNode; label: string; onClick: () => void; color?: string; disabled?: boolean } & React.HTMLAttributes<HTMLButtonElement>>(
+  ({ icon, label, onClick, color, disabled, ...rest }, ref) => (
     <Box
+      {...rest}
+      ref={ref}
       component="button"
       onClick={disabled ? undefined : onClick}
       sx={{
@@ -201,7 +212,7 @@ function ActionBtn({ icon, label, onClick, color, disabled }: { icon: React.Reac
       {icon}
       {label}
     </Box>
-  );
-}
+  ),
+);
 
 export default React.memo(DevModeSection);

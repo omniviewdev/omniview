@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	pkgsettings "github.com/omniviewdev/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 // mockSettingsProvider satisfies pkgsettings.Provider for testing.

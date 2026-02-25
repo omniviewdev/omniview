@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"log"
+	"runtime/debug"
 
-	pkgsettings "github.com/omniviewdev/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -517,6 +518,11 @@ func (s *ResourcePluginServer) ListenForEvents(
 	stateChan := make(chan types.InformerStateEvent)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[PANIC] ListenForEvents goroutine: %v\n%s", r, debug.Stack())
+			}
+		}()
 		if err := s.Impl.ListenForEvents(pluginCtx, addChan, updateChan, deleteChan, stateChan); err != nil {
 			log.Printf("failed to listen for events: %s", err.Error())
 			return
@@ -811,10 +817,15 @@ func (s *ResourcePluginServer) StreamAction(
 	eventChan := make(chan types.ActionEvent)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[PANIC] StreamAction goroutine: %v\n%s", r, debug.Stack())
+			}
+			close(eventChan)
+		}()
 		if err := s.Impl.StreamAction(pluginCtx, in.GetKey(), in.GetActionId(), input, eventChan); err != nil {
 			log.Printf("failed to stream action: %s", err.Error())
 		}
-		close(eventChan)
 	}()
 
 	for {
@@ -1086,6 +1097,11 @@ func (s *ResourcePluginServer) WatchConnections(
 	eventChan := make(chan []pkgtypes.Connection)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[PANIC] WatchConnections goroutine: %v\n%s", r, debug.Stack())
+			}
+		}()
 		if err := s.Impl.WatchConnections(pluginCtx, eventChan); err != nil {
 			log.Printf("failed to listen for connection change events: %s", err.Error())
 			return

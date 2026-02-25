@@ -28,6 +28,7 @@ export default defineConfig({
       '@omniviewdev/ui/sidebars': path.resolve(uiSrc, 'sidebars'),
       '@omniviewdev/ui/charts': path.resolve(uiSrc, 'charts'),
       '@omniviewdev/ui/components': path.resolve(uiSrc, 'components'),
+      '@omniviewdev/ui/ai': path.resolve(uiSrc, 'ai'),
     },
     dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled'],
   },

@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
+	"sync"
 	"time"
 
-	"github.com/hashicorp/go-plugin"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
@@ -20,7 +23,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	resourcetypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	pkgsettings "github.com/omniviewdev/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 const (
@@ -35,6 +38,8 @@ const (
 type Controller interface {
 	internaltypes.ConnectedController
 	IClient
+	// SetCrashCallback sets the function called when a plugin crash is detected.
+	SetCrashCallback(cb func(pluginID string))
 }
 
 // runtime assertion to make sure we satisfy both internal and external interfaces.
@@ -57,6 +62,16 @@ type controller struct {
 	deleteChan        chan resourcetypes.InformerDeletePayload
 	stateChan         chan resourcetypes.InformerStateEvent
 	connChan          chan resourcetypes.ConnectionControllerEvent
+
+	// crash recovery
+	onCrashCallback func(pluginID string)
+	crashOnces      map[string]*sync.Once
+}
+
+// SetCrashCallback sets the function called when a plugin crash is detected.
+// This allows wiring the callback after both the controller and plugin manager are created.
+func (c *controller) SetCrashCallback(cb func(pluginID string)) {
+	c.onCrashCallback = cb
 }
 
 // NewController returns a new Controller instance.
@@ -76,6 +91,9 @@ func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controlle
 
 		// connection update channels
 		connChan: make(chan resourcetypes.ConnectionControllerEvent),
+
+		// crash recovery
+		crashOnces: make(map[string]*sync.Once),
 	}
 }
 
@@ -240,13 +258,13 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 func (c *controller) OnPluginStart(
 	pluginID string,
 	meta config.PluginMeta,
-	client plugin.ClientProtocol,
+	backend internaltypes.PluginBackend,
 ) error {
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
 	// make sure we have a client we can call for this plugin
-	raw, err := client.Dispense(PluginName)
+	raw, err := backend.Dispense(PluginName)
 	if err != nil {
 		return err
 	}
@@ -263,6 +281,7 @@ func (c *controller) OnPluginStart(
 	}
 
 	c.clients[pluginID] = resourceClient
+	c.crashOnces[pluginID] = &sync.Once{}
 
 	// start running informer receivers
 	stopChan := make(chan struct{})
@@ -306,6 +325,7 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 
 	delete(c.clients, pluginID)
 	delete(c.connections, pluginID)
+	delete(c.crashOnces, pluginID)
 
 	return nil
 }
@@ -615,7 +635,12 @@ func (c *controller) Get(
 	}
 
 	ctx := c.connectedCtx(&conn)
-	return client.Get(ctx, key, input)
+	result, err := client.Get(ctx, key, input)
+	if err != nil {
+		logger.Errorw("RPC failed", "operation", "Get", "key", key, "error", err,
+			"connectionError", isConnectionError(err))
+	}
+	return result, err
 }
 
 func (c *controller) List(
@@ -631,7 +656,12 @@ func (c *controller) List(
 	}
 
 	ctx := c.connectedCtx(&conn)
-	return client.List(ctx, key, input)
+	result, err := client.List(ctx, key, input)
+	if err != nil {
+		logger.Errorw("RPC failed", "operation", "List", "key", key, "error", err,
+			"connectionError", isConnectionError(err))
+	}
+	return result, err
 }
 
 func (c *controller) Find(
@@ -647,7 +677,12 @@ func (c *controller) Find(
 	}
 
 	ctx := c.connectedCtx(&conn)
-	return client.Find(ctx, key, input)
+	result, err := client.Find(ctx, key, input)
+	if err != nil {
+		logger.Errorw("RPC failed", "operation", "Find", "key", key, "error", err,
+			"connectionError", isConnectionError(err))
+	}
+	return result, err
 }
 
 func (c *controller) Create(
@@ -663,7 +698,12 @@ func (c *controller) Create(
 	}
 
 	ctx := c.connectedCtx(&conn)
-	return client.Create(ctx, key, input)
+	result, err := client.Create(ctx, key, input)
+	if err != nil {
+		logger.Errorw("RPC failed", "operation", "Create", "key", key, "error", err,
+			"connectionError", isConnectionError(err))
+	}
+	return result, err
 }
 
 func (c *controller) Update(
@@ -678,7 +718,12 @@ func (c *controller) Update(
 		return nil, err
 	}
 	ctx := c.connectedCtx(&conn)
-	return client.Update(ctx, key, input)
+	result, err := client.Update(ctx, key, input)
+	if err != nil {
+		logger.Errorw("RPC failed", "operation", "Update", "key", key, "error", err,
+			"connectionError", isConnectionError(err))
+	}
+	return result, err
 }
 
 func (c *controller) Delete(
@@ -693,7 +738,12 @@ func (c *controller) Delete(
 		return nil, err
 	}
 	ctx := c.connectedCtx(&conn)
-	return client.Delete(ctx, key, input)
+	result, err := client.Delete(ctx, key, input)
+	if err != nil {
+		logger.Errorw("RPC failed", "operation", "Delete", "key", key, "error", err,
+			"connectionError", isConnectionError(err))
+	}
+	return result, err
 }
 
 func (c *controller) StartConnectionInformer(pluginID, connectionID string) error {
@@ -883,7 +933,12 @@ func (c *controller) ExecuteAction(
 	}
 
 	ctx := c.connectedCtx(&conn)
-	return client.ExecuteAction(ctx, key, actionID, input)
+	result, err := client.ExecuteAction(ctx, key, actionID, input)
+	if err != nil {
+		logger.Errorw("RPC failed", "operation", "ExecuteAction", "key", key, "actionID", actionID,
+			"error", err, "connectionError", isConnectionError(err))
+	}
+	return result, err
 }
 
 // StreamAction executes a streaming action, emitting events via Wails runtime events.
@@ -912,6 +967,10 @@ func (c *controller) StreamAction(
 		// eventStream is closed by the plugin side; if StreamAction returned an error
 		// and the stream wasn't closed with an error event, emit one.
 		if streamErr != nil {
+			logger.Errorw("RPC failed", "operation", "StreamAction",
+				"key", key, "actionID", actionID, "inputID", input.ID,
+				"namespace", input.Namespace, "error", streamErr,
+				"connectionError", isConnectionError(streamErr))
 			eventKey := fmt.Sprintf("action/stream/%s", operationID)
 			runtime.EventsEmit(c.ctx, eventKey, resourcetypes.ActionEvent{
 				Type: "error",
@@ -963,6 +1022,36 @@ func (c *controller) EnsureInformerForResource(
 	return client.EnsureInformerForResource(ctx, connectionID, resourceKey)
 }
 
+// ================================== ERROR HELPERS ================================== //
+
+// isConnectionError returns true if the error indicates the plugin process is unreachable.
+func isConnectionError(err error) bool {
+	s, ok := status.FromError(err)
+	if !ok {
+		msg := err.Error()
+		return strings.Contains(msg, "connection refused") || strings.Contains(msg, "EOF")
+	}
+	return s.Code() == codes.Unavailable || s.Code() == codes.Internal
+}
+
+// triggerCrashRecovery emits a crash event to the frontend and invokes the crash callback once per plugin.
+func (c *controller) triggerCrashRecovery(pluginID string, err error, listener string) {
+	c.logger.Errorw("plugin event stream died — plugin process may have crashed",
+		"pluginID", pluginID, "error", err, "listener", listener)
+
+	if c.ctx != nil {
+		runtime.EventsEmit(c.ctx, "plugin/crash", map[string]interface{}{
+			"pluginID": pluginID,
+			"error":    err.Error(),
+		})
+	}
+	if c.onCrashCallback != nil {
+		if once, ok := c.crashOnces[pluginID]; ok {
+			once.Do(func() { go c.onCrashCallback(pluginID) })
+		}
+	}
+}
+
 // ================================== INFORMER METHODS ================================== //
 
 // listenForPluginInformerEvents listens for events from the plugin in a blocking event
@@ -977,7 +1066,7 @@ func (c *controller) listenForPluginInformerEvents(
 	stateChan chan resourcetypes.InformerStateEvent,
 ) {
 	l := c.logger.With("pluginID", pluginID)
-	l.Debug("listenForPluginInformerEvents")
+	l.Infow("informer event listener started")
 
 	ctx := c.unconnectedCtx()
 
@@ -998,9 +1087,12 @@ func (c *controller) listenForPluginInformerEvents(
 
 	for {
 		select {
-		case <-errChan:
+		case err := <-errChan:
+			l.Infow("informer event listener stopped", "reason", "error")
+			c.triggerCrashRecovery(pluginID, err, "informer")
 			return
 		case <-stopChan:
+			l.Infow("informer event listener stopped", "reason", "shutdown")
 			return
 		case event := <-addStream:
 			event.PluginID = pluginID
@@ -1027,7 +1119,7 @@ func (c *controller) listenForPluginConnectionEvents(
 	eventChan chan resourcetypes.ConnectionControllerEvent,
 ) {
 	l := c.logger.With("pluginID", pluginID)
-	l.Debug("listenForPluginConnectionEvents")
+	l.Infow("connection event listener started")
 
 	ctx := c.unconnectedCtx()
 	connStream := make(chan []types.Connection)
@@ -1043,9 +1135,12 @@ func (c *controller) listenForPluginConnectionEvents(
 
 	for {
 		select {
-		case <-errChan:
+		case err := <-errChan:
+			l.Infow("connection event listener stopped", "reason", "error")
+			c.triggerCrashRecovery(pluginID, err, "connection")
 			return
 		case <-stopChan:
+			l.Infow("connection event listener stopped", "reason", "shutdown")
 			return
 		case event := <-connStream:
 			eventChan <- resourcetypes.ConnectionControllerEvent{

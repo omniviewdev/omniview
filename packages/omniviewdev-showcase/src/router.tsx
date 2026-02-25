@@ -88,6 +88,16 @@ import ErrorStatePage from './pages/ErrorStatePage';
 import ChartsPage from './pages/ChartsPage';
 import MetricsPanelPage from './pages/MetricsPanelPage';
 
+// AI
+import AIChatPrimitivesPage from './pages/AIChatPrimitivesPage';
+import AIChatConversationPage from './pages/AIChatConversationPage';
+import AIToolsPage from './pages/AIToolsPage';
+import AIChatManagementPage from './pages/AIChatManagementPage';
+import AIAgentStatusPage from './pages/AIAgentStatusPage';
+import AISecurityPage from './pages/AISecurityPage';
+import AISettingsPage from './pages/AISettingsPage';
+import AIDomainIntegrationPage from './pages/AIDomainIntegrationPage';
+
 // --- Navigation structure ---
 
 interface NavItem {
@@ -241,6 +251,19 @@ const navSections: NavSection[] = [
     items: [
       { label: 'Core Charts', path: '/charts' },
       { label: 'Metrics & Gauges', path: '/metrics-panel' },
+    ],
+  },
+  {
+    title: 'AI',
+    items: [
+      { label: 'Chat Primitives', path: '/ai-chat-primitives' },
+      { label: 'Chat Conversation', path: '/ai-chat-conversation' },
+      { label: 'Tools & Reasoning', path: '/ai-tools' },
+      { label: 'Chat Management', path: '/ai-chat-management' },
+      { label: 'Agent Status', path: '/ai-agent-status' },
+      { label: 'Security & Permissions', path: '/ai-security' },
+      { label: 'AI Settings', path: '/ai-settings' },
+      { label: 'AI Domain Integration', path: '/ai-domain' },
     ],
   },
 ];
@@ -810,6 +833,55 @@ const metricsPanelRoute = createRoute({
   component: MetricsPanelPage,
 });
 
+// AI routes
+const aiChatPrimitivesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ai-chat-primitives',
+  component: AIChatPrimitivesPage,
+});
+
+const aiChatConversationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ai-chat-conversation',
+  component: AIChatConversationPage,
+});
+
+const aiToolsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ai-tools',
+  component: AIToolsPage,
+});
+
+const aiChatManagementRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ai-chat-management',
+  component: AIChatManagementPage,
+});
+
+const aiAgentStatusRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ai-agent-status',
+  component: AIAgentStatusPage,
+});
+
+const aiSecurityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ai-security',
+  component: AISecurityPage,
+});
+
+const aiSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ai-settings',
+  component: AISettingsPage,
+});
+
+const aiDomainRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ai-domain',
+  component: AIDomainIntegrationPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   themeRoute,
@@ -880,6 +952,15 @@ const routeTree = rootRoute.addChildren([
   // Phase 13
   chartsRoute,
   metricsPanelRoute,
+  // AI
+  aiChatPrimitivesRoute,
+  aiChatConversationRoute,
+  aiToolsRoute,
+  aiChatManagementRoute,
+  aiAgentStatusRoute,
+  aiSecurityRoute,
+  aiSettingsRoute,
+  aiDomainRoute,
 ]);
 
 export const router = createRouter({ routeTree });

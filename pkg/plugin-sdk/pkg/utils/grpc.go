@@ -8,6 +8,7 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/metadata"
 	"google.golang.org/grpc"
 
+	"github.com/omniviewdev/plugin-sdk/pkg/interceptors"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -53,10 +54,12 @@ func UseServerPluginContext(ctx context.Context) (context.Context, error) {
 
 // ServerPluginContextInterceptor is a gRPC server interceptor that extracts the plugin context
 // from the metadata and attaches it to the context.
+//
+// Deprecated: Use interceptors.UnaryPluginContext() instead.
 func ServerPluginContextInterceptor(
 	ctx context.Context,
 	req interface{},
-	_ *grpc.UnaryServerInfo,
+	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
 	ctx, err := UseServerPluginContext(ctx)
@@ -67,12 +70,8 @@ func ServerPluginContextInterceptor(
 	return handler(ctx, req)
 }
 
+// NewServerInterceptors returns the default unary and stream interceptor chains
+// for the plugin SDK gRPC server.
 func NewServerInterceptors() ([]grpc.UnaryServerInterceptor, []grpc.StreamServerInterceptor) {
-	var unaryinterceptors []grpc.UnaryServerInterceptor
-	var streaminterceptors []grpc.StreamServerInterceptor
-
-	// context injection
-	unaryinterceptors = append(unaryinterceptors, ServerPluginContextInterceptor)
-
-	return unaryinterceptors, streaminterceptors
+	return interceptors.DefaultUnaryInterceptors(), interceptors.DefaultStreamInterceptors()
 }

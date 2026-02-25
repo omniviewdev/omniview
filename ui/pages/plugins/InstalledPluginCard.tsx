@@ -57,7 +57,7 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
         borderColor: 'divider',
       }}
     >
-      {plugin.data?.loading && (
+      {(plugin.data?.phase === 'Starting' || plugin.data?.phase === 'Validating' || plugin.data?.phase === 'Building') && (
         <CircularProgress
           size={48}
           thickness={8}
@@ -78,7 +78,7 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
           display: 'flex',
           flexDirection: 'column',
           gap: 1.5,
-          opacity: plugin.data?.loading ? 0.2 : 1,
+          opacity: (plugin.data?.phase === 'Starting' || plugin.data?.phase === 'Validating' || plugin.data?.phase === 'Building') ? 0.2 : 1,
           transition: 'opacity 0.3s ease-in-out',
         }}
       >
@@ -108,15 +108,17 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
               </Tooltip>
             )}
           </Box>
-          {plugin.data?.metadata.icon && IsImage.test(plugin.data?.metadata.icon) ? (
-            <Avatar
-              size="md"
-              src={plugin.data?.metadata.icon}
-              sx={{ borderRadius: 4, position: 'absolute', top: 10, right: 10 }}
-            />
-          ) : (
-            <Icon name={plugin.data?.metadata.icon ?? ''} size={30} />
-          )}
+          {plugin.data?.metadata.icon ? (
+            IsImage.test(plugin.data.metadata.icon) ? (
+              <Avatar
+                size="md"
+                src={plugin.data.metadata.icon}
+                sx={{ borderRadius: 4, position: 'absolute', top: 10, right: 10 }}
+              />
+            ) : (
+              <Icon name={plugin.data.metadata.icon} size={30} />
+            )
+          ) : null}
         </Box>
 
         {/* Description */}

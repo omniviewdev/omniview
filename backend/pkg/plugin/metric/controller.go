@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hashicorp/go-plugin"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
 
@@ -20,7 +19,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/metric"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	pkgsettings "github.com/omniviewdev/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 // MetricProviderSummary is a lightweight summary of a metric provider,
@@ -115,11 +114,11 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	c.logger.With("pluginID", pluginID).Debug("OnPluginInit")
 }
 
-func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, client plugin.ClientProtocol) error {
+func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
-	raw, err := client.Dispense("metric")
+	raw, err := backend.Dispense("metric")
 	if err != nil {
 		return err
 	}

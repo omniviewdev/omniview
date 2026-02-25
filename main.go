@@ -5,7 +5,7 @@ import (
 	"embed"
 	"fmt"
 
-	pkgsettings "github.com/omniviewdev/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -55,11 +55,11 @@ var icon []byte
 type pluginRefAdapter struct{ mgr plugin.Manager }
 
 func (a *pluginRefAdapter) GetDevPluginInfo(pluginID string) (bool, string, error) {
-	p, err := a.mgr.GetPlugin(pluginID)
+	info, err := a.mgr.GetPlugin(pluginID)
 	if err != nil {
 		return false, "", err
 	}
-	return p.DevMode, p.DevPath, nil
+	return info.DevMode, info.DevPath, nil
 }
 
 // pluginReloaderAdapter adapts plugin.Manager to devserver.PluginReloader.
@@ -126,6 +126,10 @@ func main() {
 		settingsProvider,
 		pluginRegistryClient,
 	)
+
+	// Wire crash recovery: when a plugin crash is detected by the resource
+	// controller's event listeners, the manager will attempt to reload it.
+	resourceController.SetCrashCallback(pluginManager.HandlePluginCrash)
 
 	devServerManager := devserver.NewDevServerManager(
 		log,

@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	pkgsettings "github.com/omniviewdev/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 // PluginRef is the minimal interface for reading plugin info.

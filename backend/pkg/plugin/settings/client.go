@@ -1,7 +1,7 @@
 package settings
 
 import (
-	pkgsettings "github.com/omniviewdev/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 // IClient is the system/UI facing client for making settings requests to the settings controller.

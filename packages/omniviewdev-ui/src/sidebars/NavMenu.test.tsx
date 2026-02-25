@@ -146,7 +146,7 @@ describe('NavMenu', () => {
 
   describe('onExpandedChange callback', () => {
     it('fires when a group is toggled', () => {
-      const onChange = jest.fn();
+      const onChange = vi.fn();
       render(
         <NavMenu sections={simpleSections} animate={false} onExpandedChange={onChange} />,
       );
@@ -157,7 +157,7 @@ describe('NavMenu', () => {
     });
 
     it('fires with updated state on collapse', () => {
-      const onChange = jest.fn();
+      const onChange = vi.fn();
       render(
         <NavMenu
           sections={simpleSections}
@@ -219,7 +219,7 @@ describe('NavMenu', () => {
     });
 
     it('fires onExpandedChange when auto-expanding', () => {
-      const onChange = jest.fn();
+      const onChange = vi.fn();
       render(
         <NavMenu
           sections={simpleSections}
@@ -264,7 +264,7 @@ describe('NavMenu', () => {
 
   describe('leaf item selection', () => {
     it('calls onSelect when a leaf item is clicked', () => {
-      const onSelect = jest.fn();
+      const onSelect = vi.fn();
       render(
         <NavMenu
           sections={simpleSections}
@@ -278,7 +278,7 @@ describe('NavMenu', () => {
     });
 
     it('does not call onSelect when a group item is clicked', () => {
-      const onSelect = jest.fn();
+      const onSelect = vi.fn();
       render(
         <NavMenu sections={simpleSections} animate={false} onSelect={onSelect} />,
       );
@@ -289,7 +289,7 @@ describe('NavMenu', () => {
 
   describe('section merge on async data load', () => {
     it('preserves user-expanded state when sections update with new items', () => {
-      const onChange = jest.fn();
+      const onChange = vi.fn();
       const initialSections: NavSection[] = [
         {
           title: '',
