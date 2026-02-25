@@ -12,7 +12,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gobuffalo/flect v1.0.2
 	github.com/google/uuid v1.6.0
-	github.com/omniviewdev/plugin-sdk v0.0.0-20240314004425-c2572eb4a1c1
+	github.com/omniviewdev/plugin-sdk v0.1.1
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0
 	helm.sh/helm/v3 v3.20.0
@@ -159,6 +159,3 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/omniviewdev/omniview => ../../
-
-replace github.com/omniviewdev/plugin-sdk => ../../../omniviewdev/plugin-sdk

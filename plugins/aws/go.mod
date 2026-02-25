@@ -2,16 +2,12 @@ module github.com/omniviewdev/aws-plugin
 
 go 1.23.8
 
-replace github.com/omniviewdev/omniview => ../../
-
-replace github.com/omniviewdev/plugin-sdk => ../../../omniviewdev/plugin-sdk
-
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.7
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.13
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.6
-	github.com/omniviewdev/plugin-sdk v0.0.0-20240318235919-60d1ec21c49c
+	github.com/omniviewdev/plugin-sdk v0.1.1
 	gopkg.in/ini.v1 v1.67.0
 )
 
