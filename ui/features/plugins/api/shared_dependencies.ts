@@ -43,7 +43,19 @@ export const shared = {
   // React
   'react': () => import('react'),
   'react/jsx-runtime': () => import('react/jsx-runtime'),
-  'react/jsx-dev-runtime': () => import('react/jsx-dev-runtime'),
+  'react/jsx-dev-runtime': async () => {
+    // In production builds, import('react/jsx-dev-runtime') may be replaced
+    // with the production jsx-runtime (no jsxDEV). Since dev-mode plugins
+    // need jsxDEV, we construct it from the production jsx/jsxs + Fragment.
+    const mod = await import('react/jsx-dev-runtime');
+    if (typeof mod.jsxDEV === 'function') return mod;
+    const prodRuntime = await import('react/jsx-runtime');
+    return {
+      ...prodRuntime,
+      jsxDEV: (type: any, props: any, key: any, _isStatic: any, _source: any, _self: any) =>
+        key !== undefined ? prodRuntime.jsx(type, { ...props, key }) : prodRuntime.jsx(type, props),
+    };
+  },
   'react-router-dom': () => import('react-router-dom'),
   'react-dom': () => import('react-dom'),
   'react-icons': () => import('react-icons'),
