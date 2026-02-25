@@ -8,7 +8,9 @@ preloadSharedDeps();
 // so that dev-mode plugins (loaded via native ESM from Vite) get the host's
 // singleton instances of React, MUI, etc.
 import { initDevSharedDeps } from './features/plugins/api/devSharedReady';
-initDevSharedDeps(import.meta.env.DEV);
+// Always export shared deps — dev-mode plugins need window.__OMNIVIEW_SHARED__
+// even when the host app itself is built in production mode (e.g. wails dev).
+initDevSharedDeps(true);
 
 // Bridge Go-side Wails events (plugin/devserver/*) to the frontend devToolsChannel
 // event bus so DevModeSection and other consumers receive real-time status updates.
