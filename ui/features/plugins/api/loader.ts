@@ -55,14 +55,17 @@ export async function importPlugin({ pluginId, moduleHash, dev, devPort }: Plugi
 
     const devBase = `http://127.0.0.1:${devPort}`;
 
-    // Initialize React Fast Refresh for the plugin's Vite dev server.
-    // @vitejs/plugin-react normally does this via an index.html preamble,
-    // but plugins are loaded via import(), not HTML. Without this, the
-    // plugin's RefreshRuntime has no renderer reference and HMR updates
-    // are detected but never applied (performReactRefresh is a no-op).
+    // Initialize React Fast Refresh preamble for the plugin's Vite dev server.
+    // @vitejs/plugin-react normally injects this via index.html, but plugins
+    // are loaded via import(), not HTML. We must set the globals before any
+    // plugin module is imported, otherwise @vitejs/plugin-react throws
+    // "can't detect preamble".
     try {
-      const { injectIntoGlobalHook } = await import(/* @vite-ignore */ `${devBase}/@react-refresh`);
-      injectIntoGlobalHook(window);
+      const RefreshRuntime = await import(/* @vite-ignore */ `${devBase}/@react-refresh`);
+      RefreshRuntime.default.injectIntoGlobalHook(window);
+      (window as any).$RefreshReg$ = () => {};
+      (window as any).$RefreshSig$ = () => (type: any) => type;
+      (window as any).__vite_plugin_react_preamble_installed__ = true;
     } catch (e) {
       console.warn(`[loader] plugin "${pluginId}" — failed to init React Fast Refresh, HMR may not work`, { plugin: pluginId, error: String(e) });
     }
