@@ -16,6 +16,9 @@ type DevToolsEvents = {
 
   /** Fired when user requests to restart a dev server. */
   onRestartDevServer: (pluginId: string) => void;
+
+  /** Fired when user requests to open the editor debug panel. */
+  onOpenEditorDebug: () => void;
 };
 
 export const devToolsChannel = eventbus<DevToolsEvents>();

@@ -1,6 +1,7 @@
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
 import DialogContent from '@mui/material/DialogContent';
+import Typography from '@mui/material/Typography';
 import { Chip } from '@omniviewdev/ui';
 import { IconButton } from '@omniviewdev/ui/buttons';
 import { DrawerComponent, DrawerContext } from '@omniviewdev/runtime';
@@ -50,27 +51,43 @@ const RightDrawer: React.FC<Props> = ({
         }}
       >
         {/** Left Side (title and information)*/}
-        {typeof title === 'string'
-          ? <Chip
-            icon={React.isValidElement(icon) ? icon : undefined}
-            size={'sm'}
-            emphasis={'outline'}
-            color='neutral'
-            label={title}
-            sx={{
-              gap: 0.5,
-              px: 0.75,
-              py: 0.25,
-              borderRadius: 'sm',
-              fontWeight: 600,
-              fontSize: '0.75rem',
-            }}
-          />
-          : <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            {icon}
-            {title}
-          </Box>
-        }
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+          {ctx?.resource?.name && (
+            <Typography
+              noWrap
+              sx={{
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                color: 'text.primary',
+                minWidth: 0,
+              }}
+            >
+              {ctx.resource.name}
+            </Typography>
+          )}
+          {typeof title === 'string'
+            ? <Chip
+              icon={React.isValidElement(icon) ? icon : undefined}
+              size={'sm'}
+              emphasis={'outline'}
+              color='neutral'
+              label={title}
+              sx={{
+                gap: 0.5,
+                px: 0.75,
+                py: 0.25,
+                borderRadius: 'sm',
+                fontWeight: 600,
+                fontSize: '0.75rem',
+                flexShrink: 0,
+              }}
+            />
+            : <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+              {icon}
+              {title}
+            </Box>
+          }
+        </Box>
 
         {/** Right Side (actions)*/}
         <Box

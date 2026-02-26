@@ -223,11 +223,40 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, isFullscreen, onMinimi
       }
     });
 
+    const unsubscribeOpenEditorDebug = devToolsChannel.on('onOpenEditorDebug', () => {
+      const tabId = 'editor-debug';
+      const existing = tabs.find(
+        (tab) => tab.variant === 'editor-debug' && tab.id === tabId,
+      );
+
+      if (existing) {
+        focusTab({ id: existing.id });
+      } else {
+        createTab({
+          id: tabId,
+          title: 'Editor Debug',
+          variant: 'editor-debug',
+          icon: 'LuFileCode',
+        });
+      }
+    });
+
+    // DEV-only keyboard shortcut: Ctrl+Shift+E opens editor debug panel
+    const handleEditorDebugShortcut = (e: KeyboardEvent) => {
+      if (import.meta.env.DEV && e.ctrlKey && e.shiftKey && e.key === 'E') {
+        e.preventDefault();
+        devToolsChannel.emit('onOpenEditorDebug');
+      }
+    };
+    document.addEventListener('keydown', handleEditorDebugShortcut);
+
     return () => {
       unsubscribeCreateSession();
       unsubscribeCreateLogSession();
       unsubscribeSessionClosed();
       unsubscribeOpenBuildOutput();
+      unsubscribeOpenEditorDebug();
+      document.removeEventListener('keydown', handleEditorDebugShortcut);
     };
   }, [tabs]);
 

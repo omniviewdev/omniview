@@ -65,7 +65,7 @@ function emphasisSx(emphasis: Emphasis, color: SemanticColor): Record<string, un
 /** Size overrides for xs and xl which MUI doesn't support natively. */
 function chipSizeSx(size: ComponentSize): Record<string, unknown> | undefined {
   if (size === 'xs') {
-    return { height: 20, fontSize: '0.6875rem', '& .MuiChip-label': { px: '6px' }, '& .MuiChip-icon': { fontSize: '0.75rem' } };
+    return { height: 20, fontSize: '0.6875rem', '& .MuiChip-label': { px: '6px' }, '& .MuiChip-icon': { fontSize: '0.75rem', flexShrink: 0 } };
   }
   if (size === 'xl') {
     return { height: 40, fontSize: '1rem', '& .MuiChip-label': { px: '16px' } };

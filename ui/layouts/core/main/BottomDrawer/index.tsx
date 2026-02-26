@@ -11,6 +11,7 @@ import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
 import TerminalContainer from '@/providers/BottomDrawer/containers/Terminal';
 import LogViewerContainer from '@/providers/BottomDrawer/containers/LogViewer';
 import DevBuildOutput from '@/providers/BottomDrawer/containers/DevBuildOutput';
+import EditorDebugPanel from '@/providers/BottomDrawer/containers/EditorDebugPanel';
 import { useBottomDrawer } from '@omniviewdev/runtime';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
@@ -335,7 +336,9 @@ const BottomDrawerContainer: React.FC = () => {
                   pointerEvents: tabs[focused]?.id === tab.id ? 'auto' : 'none',
                 }}
               >
-                {tab.variant === 'devbuild' ? (
+                {tab.variant === 'editor-debug' ? (
+                  <EditorDebugPanel />
+                ) : tab.variant === 'devbuild' ? (
                   <DevBuildOutput pluginId={tab.id.replace(/^devbuild-/, '')} />
                 ) : tab.variant === 'logs' ? (
                   <LogViewerContainerMemo sessionId={tab.id} />

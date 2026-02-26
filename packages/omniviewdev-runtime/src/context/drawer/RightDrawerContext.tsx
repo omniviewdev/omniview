@@ -6,6 +6,7 @@ export type ShowResourceSidebarParams = {
   connectionID: string;
   resourceKey: string;
   resourceID: string;
+  resourceName?: string;
   namespace?: string;
 };
 

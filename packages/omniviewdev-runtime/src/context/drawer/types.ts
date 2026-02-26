@@ -142,6 +142,11 @@ export type DrawerContext<T = any> = {
     id: string;
 
     /**
+     * A human-readable display name for the resource, shown in the drawer header.
+     */
+    name?: string;
+
+    /**
      * The resource key that defines the globally-recognizable key
      */
     key: string;
@@ -168,7 +173,7 @@ export type BottomDrawerTab = {
   createdAt: Date;
   updatedAt: Date;
   icon?: string | React.ReactNode;
-  variant: 'terminal' | 'logs' | 'editor' | 'browser' | 'file' | 'devbuild' | 'other';
+  variant: 'terminal' | 'logs' | 'editor' | 'browser' | 'file' | 'devbuild' | 'editor-debug' | 'other';
   properties?: Record<string, unknown>;
 };
 

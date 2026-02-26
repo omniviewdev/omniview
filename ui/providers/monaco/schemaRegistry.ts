@@ -3,7 +3,7 @@ import { monaco, monacoYaml } from './bootstrap';
 /**
  * EditorSchemaEntry represents a schema registered with the registry.
  */
-interface EditorSchemaEntry {
+export interface EditorSchemaEntry {
   resourceKey: string;
   fileMatch: string;
   uri: string;
@@ -24,6 +24,7 @@ interface EditorSchemaEntry {
 class SchemaRegistry {
   private schemas = new Map<string, EditorSchemaEntry[]>();
   private flushScheduled = false;
+  private lastFlushedYamlSchemas: Array<{ uri: string; fileMatch: string[]; schema?: object }> = [];
 
   /**
    * Register schemas for a plugin + connection pair.
@@ -37,7 +38,7 @@ class SchemaRegistry {
       fileMatch: string;
       uri: string;
       url?: string;
-      content?: number[];
+      content?: number[] | string;
       language: string;
     }>,
   ): void {
@@ -54,9 +55,17 @@ class SchemaRegistry {
       if (s.url) {
         entry.url = s.url;
       } else if (s.content && s.content.length > 0) {
-        // content comes from Go as []byte → Wails serializes as number[]
+        // Go's json.Marshal encodes []byte as base64 string; Wails may
+        // pass it through as-is (string) or as number[].
         try {
-          const text = new TextDecoder().decode(new Uint8Array(s.content));
+          let text: string;
+          if (typeof s.content === 'string') {
+            // base64-encoded JSON from Go
+            text = atob(s.content);
+          } else {
+            // number[] (raw bytes)
+            text = new TextDecoder().decode(new Uint8Array(s.content));
+          }
           entry.schema = JSON.parse(text);
         } catch {
           // skip invalid schema content
@@ -98,6 +107,42 @@ class SchemaRegistry {
     }
   }
 
+  /**
+   * Returns a snapshot of all registered schemas keyed by `pluginID:connectionID`.
+   */
+  getSnapshot(): Record<string, EditorSchemaEntry[]> {
+    const result: Record<string, EditorSchemaEntry[]> = {};
+    for (const [key, entries] of this.schemas) {
+      result[key] = [...entries];
+    }
+    return result;
+  }
+
+  /**
+   * Returns all registered plugin:connection keys.
+   */
+  getRegisteredKeys(): string[] {
+    return Array.from(this.schemas.keys());
+  }
+
+  /**
+   * Returns total schema count across all registrations.
+   */
+  getSchemaCount(): number {
+    let count = 0;
+    for (const entries of this.schemas.values()) {
+      count += entries.length;
+    }
+    return count;
+  }
+
+  /**
+   * Returns the schemas last sent to monacoYaml.update().
+   */
+  getLastFlushedYamlSchemas(): Array<{ uri: string; fileMatch: string[]; schema?: object }> {
+    return this.lastFlushedYamlSchemas;
+  }
+
   private scheduleFlush(): void {
     if (this.flushScheduled) return;
     this.flushScheduled = true;
@@ -137,6 +182,9 @@ class SchemaRegistry {
       }
     }
 
+    // Capture for debug panel inspection
+    this.lastFlushedYamlSchemas = yamlSchemas;
+
     // Update YAML schemas via monaco-yaml
     monacoYaml.update({
       enableSchemaRequest: true,
@@ -157,3 +205,7 @@ class SchemaRegistry {
 }
 
 export const schemaRegistry = new SchemaRegistry();
+
+// Expose on window so plugins (which run in the same process but are
+// separate build artifacts) can register schemas without importing host modules.
+(window as any).__monacoSchemaRegistry = schemaRegistry;

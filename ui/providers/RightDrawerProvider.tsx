@@ -250,6 +250,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         data: result.result,
         resource: {
           id: params.resourceID,
+          name: params.resourceName ?? params.resourceID,
           key: params.resourceKey,
           connectionID: params.connectionID,
           pluginID: params.pluginID,
