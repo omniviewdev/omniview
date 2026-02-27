@@ -17,6 +17,8 @@ import (
 	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
 	pluginmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
+	regclient "github.com/omniviewdev/registry"
+
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
@@ -108,6 +110,7 @@ type DevServerChecker interface {
 type pluginManager struct {
 	ctx                 context.Context
 	logger              *zap.SugaredLogger
+	recordsMu           sync.RWMutex
 	records             map[string]*plugintypes.PluginRecord
 	connlessControllers map[sdktypes.Capability]plugintypes.Controller
 	connfullControllers map[sdktypes.Capability]plugintypes.ConnectedController
@@ -144,12 +147,14 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 
 	// Transition state machine to Recovering and set Phase so the health
 	// checker skips this plugin (it only checks Phase == PhaseRunning).
+	pm.recordsMu.Lock()
 	if record, ok := pm.records[pluginID]; ok {
 		record.Phase = lifecycle.PhaseRecovering
 		if record.StateMachine != nil {
 			_ = record.StateMachine.TransitionTo(lifecycle.PhaseRecovering, "crash detected")
 		}
 	}
+	pm.recordsMu.Unlock()
 
 	// Delegate to the health checker's backoff-based recovery if available.
 	if pm.healthChecker != nil {
@@ -187,7 +192,14 @@ func (pm *pluginManager) registerStateObserver(sm *lifecycle.PluginStateMachine)
 
 // Shutdown stops all plugins and persists state.
 func (pm *pluginManager) Shutdown() {
+	pm.recordsMu.RLock()
+	snapshot := make(map[string]*plugintypes.PluginRecord, len(pm.records))
 	for id, record := range pm.records {
+		snapshot[id] = record
+	}
+	pm.recordsMu.RUnlock()
+
+	for id, record := range snapshot {
 		pm.shutdownPlugin(id, record)
 	}
 
@@ -333,6 +345,8 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 
 // GetPlugin returns the plugin with the given ID.
 func (pm *pluginManager) GetPlugin(id string) (sdktypes.PluginInfo, error) {
+	pm.recordsMu.RLock()
+	defer pm.recordsMu.RUnlock()
 	record, ok := pm.records[id]
 	if !ok {
 		return sdktypes.PluginInfo{}, fmt.Errorf("plugin '%s' not found", id)
@@ -342,6 +356,8 @@ func (pm *pluginManager) GetPlugin(id string) (sdktypes.PluginInfo, error) {
 
 // ListPlugins returns all loaded plugins.
 func (pm *pluginManager) ListPlugins() []sdktypes.PluginInfo {
+	pm.recordsMu.RLock()
+	defer pm.recordsMu.RUnlock()
 	plugins := make([]sdktypes.PluginInfo, 0, len(pm.records))
 	for _, record := range pm.records {
 		plugins = append(plugins, record.ToInfo())
@@ -351,6 +367,8 @@ func (pm *pluginManager) ListPlugins() []sdktypes.PluginInfo {
 
 // GetPluginMeta returns the metadata for a plugin.
 func (pm *pluginManager) GetPluginMeta(id string) (config.PluginMeta, error) {
+	pm.recordsMu.RLock()
+	defer pm.recordsMu.RUnlock()
 	record, ok := pm.records[id]
 	if !ok {
 		return config.PluginMeta{}, fmt.Errorf("plugin '%s' not found", id)
@@ -360,6 +378,8 @@ func (pm *pluginManager) GetPluginMeta(id string) (config.PluginMeta, error) {
 
 // ListPluginMetas returns metadata for all loaded plugins.
 func (pm *pluginManager) ListPluginMetas() []config.PluginMeta {
+	pm.recordsMu.RLock()
+	defer pm.recordsMu.RUnlock()
 	var metas []config.PluginMeta
 	for _, record := range pm.records {
 		metas = append(metas, record.Metadata)
@@ -372,13 +392,20 @@ func (pm *pluginManager) GetPluginVersions(pluginID string) ([]registry.VersionI
 	return pm.registryClient.GetPluginVersions(context.Background(), pluginID)
 }
 
-// syncRegistryURL checks if the marketplace URL setting has changed.
+// syncRegistryURL checks if marketplace URL or public key settings have changed.
 func (pm *pluginManager) syncRegistryURL() {
 	url, err := pm.settingsProvider.GetString("developer.marketplace_url")
-	if err != nil {
-		return
+	if err == nil {
+		pm.registryClient.SetBaseURL(url)
 	}
-	pm.registryClient.SetBaseURL(url)
+
+	// Allow overriding the default registry public key via settings.
+	// If the setting is empty, the compiled-in default is used.
+	if key, err := pm.settingsProvider.GetString("developer.registry_public_key"); err == nil && key != "" {
+		if err := regclient.SetPublicKey(key); err != nil {
+			pm.logger.Warnw("invalid registry public key in settings, using default", "error", err)
+		}
+	}
 }
 
 // ListAvailablePlugins returns all available marketplace plugins.

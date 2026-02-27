@@ -1,30 +1,43 @@
 import React from 'react';
 
 import Box from '@mui/material/Box';
+import Badge from '@mui/material/Badge';
 import Collapse from '@mui/material/Collapse';
 import CircularProgress from '@mui/material/CircularProgress';
+import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
-import Select from '@mui/material/Select';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import ListItemText from '@mui/material/ListItemText';
 import InputBase from '@mui/material/InputBase';
 import { styled } from '@mui/material/styles';
-import { Avatar } from '@omniviewdev/ui';
 
-import { LuCheck, LuChevronDown, LuChevronRight, LuAtom, LuSearch, LuStar, LuRefreshCw, LuTriangleAlert } from 'react-icons/lu';
-import { Link, useParams } from 'react-router-dom';
+import {
+  LuChevronDown,
+  LuChevronRight,
+  LuSearch,
+  LuRefreshCw,
+  LuSlidersHorizontal,
+  LuEllipsis,
+  LuFolderOpen,
+  LuAtom,
+  LuTriangleAlert,
+} from 'react-icons/lu';
+import { useParams } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
+import { PluginManager } from '@omniviewdev/runtime/api';
+import { EventsEmit } from '@omniviewdev/runtime/runtime';
+
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
-import { IsImage } from '@/utils/url';
-import Icon from '@/components/icons/Icon';
+import { loadAndRegisterPlugin } from '@/features/plugins/api/loader';
+import PluginListItem from './PluginListItem';
+import PluginFilterPopover, {
+  getActiveFilterCount,
+  type FilterState,
+  type SortOption,
+} from './PluginFilterPopover';
 
-const CATEGORIES = [
-  { label: 'All', value: '' },
-  { label: 'Cloud', value: 'cloud' },
-  { label: 'Database', value: 'database' },
-  { label: 'Monitoring', value: 'monitoring' },
-  { label: 'Networking', value: 'networking' },
-  { label: 'Security', value: 'security' },
-  { label: 'DevOps', value: 'devops' },
-  { label: 'Development', value: 'development' },
-] as const;
+// ─── Styled Components ─────────────────────────────────────────
 
 const SearchInput = styled(InputBase)({
   fontSize: '0.8125rem',
@@ -57,48 +70,146 @@ const SectionLabel = styled('span')({
   color: 'var(--ov-fg-faint, #8b949e)',
 });
 
-const NavItem = styled(Box, {
-  shouldForwardProp: (prop) => prop !== 'active',
-})<{ active?: boolean }>(({ active }) => ({
+const CountBadge = styled('span')({
+  fontSize: '0.625rem',
+  fontWeight: 600,
+  backgroundColor: 'rgba(56,139,253,0.2)',
+  color: 'rgba(56,139,253,0.9)',
+  borderRadius: 10,
+  padding: '0 6px',
+  marginLeft: 6,
+  lineHeight: '16px',
+});
+
+const ToolbarButton = styled('button')({
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
-  padding: '5px 12px',
-  cursor: 'pointer',
+  justifyContent: 'center',
+  width: 24,
+  height: 24,
   borderRadius: 4,
-  textDecoration: 'none',
-  color: 'inherit',
-  backgroundColor: active ? 'rgba(56,139,253,0.15)' : 'transparent',
-  borderLeft: active ? '2px solid rgba(56,139,253,0.8)' : '2px solid transparent',
+  border: 'none',
+  background: 'none',
+  color: 'var(--ov-fg-faint, #8b949e)',
+  cursor: 'pointer',
+  padding: 0,
   '&:hover': {
-    backgroundColor: active ? 'rgba(56,139,253,0.15)' : 'rgba(255,255,255,0.04)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    color: 'var(--ov-fg-default, #c9d1d9)',
   },
-}));
+});
+
+// ─── Component ──────────────────────────────────────────────────
 
 const PluginsNav: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>();
-  const { plugins, available } = usePluginManager();
-  const [category, setCategory] = React.useState('');
+  const { plugins, available, installFromPath, installDev } = usePluginManager();
+  const queryClient = useQueryClient();
+  const { showSnackbar } = useSnackbar();
+
   const [search, setSearch] = React.useState('');
   const [installedOpen, setInstalledOpen] = React.useState(true);
   const [marketplaceOpen, setMarketplaceOpen] = React.useState(true);
 
+  // Filter popover
+  const [filterAnchor, setFilterAnchor] = React.useState<HTMLElement | null>(null);
+  const [filters, setFilters] = React.useState<FilterState>({
+    categories: new Set<string>(),
+    sort: 'name' as SortOption,
+  });
+  const activeFilterCount = getActiveFilterCount(filters);
+
+  // Overflow menu
+  const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
+
+  // Track installing plugin ids
+  const [installingIds, setInstallingIds] = React.useState<Set<string>>(new Set());
+
   const installedIds = new Set(plugins.data?.map(p => p.id) ?? []);
+
+  // Install mutation for marketplace inline install
+  const installMutation = useMutation({
+    mutationFn: async ({ pluginId, version }: { pluginId: string; version: string }) => {
+      return PluginManager.InstallPluginVersion(pluginId, version);
+    },
+    onSuccess(meta) {
+      showSnackbar({
+        message: `${meta.name} installed successfully`,
+        status: 'success',
+      });
+      void queryClient.invalidateQueries({ queryKey: ['plugins'] });
+      void queryClient.refetchQueries({ queryKey: ['plugins'] });
+      EventsEmit('plugin/install_complete', meta);
+      loadAndRegisterPlugin(meta.id);
+      setInstallingIds(prev => {
+        const next = new Set(prev);
+        next.delete(meta.id);
+        return next;
+      });
+    },
+    onError: (err, variables) => {
+      setInstallingIds(prev => {
+        const next = new Set(prev);
+        next.delete(variables.pluginId);
+        return next;
+      });
+      createErrorHandler(showSnackbar, 'Plugin installation failed')(err);
+    },
+  });
+
+  const handleInstall = (pluginId: string, version: string) => {
+    setInstallingIds(prev => new Set(prev).add(pluginId));
+    installMutation.mutate({ pluginId, version });
+  };
+
+  // Search filter — applies to both sections
+  const searchLower = search.toLowerCase();
+
+  const filteredInstalled = React.useMemo(() => {
+    if (!plugins.data) return [];
+    if (!searchLower) return plugins.data;
+    return plugins.data.filter(p =>
+      p.metadata?.name?.toLowerCase().includes(searchLower) ||
+      p.metadata?.description?.toLowerCase().includes(searchLower) ||
+      p.id?.toLowerCase().includes(searchLower)
+    );
+  }, [plugins.data, searchLower]);
 
   const filteredMarketplace = React.useMemo(() => {
     if (!available.data) return [];
     let items = available.data as any[];
-    if (category) items = items.filter(p => p.category === category);
-    if (search) {
-      const q = search.toLowerCase();
+
+    // Category filter
+    if (filters.categories.size > 0) {
+      items = items.filter(p => filters.categories.has(p.category));
+    }
+
+    // Search filter
+    if (searchLower) {
       items = items.filter(p =>
-        p.name?.toLowerCase().includes(q) ||
-        p.description?.toLowerCase().includes(q) ||
-        p.id?.toLowerCase().includes(q)
+        p.name?.toLowerCase().includes(searchLower) ||
+        p.description?.toLowerCase().includes(searchLower) ||
+        p.id?.toLowerCase().includes(searchLower)
       );
     }
+
+    // Sort
+    items = [...items].sort((a, b) => {
+      switch (filters.sort) {
+        case 'downloads':
+          return (b.download_count ?? 0) - (a.download_count ?? 0);
+        case 'rating':
+          return (b.average_rating ?? 0) - (a.average_rating ?? 0);
+        case 'updated':
+          return (b.updated_at ?? '').localeCompare(a.updated_at ?? '');
+        case 'name':
+        default:
+          return (a.name ?? '').localeCompare(b.name ?? '');
+      }
+    });
+
     return items;
-  }, [available.data, category, search]);
+  }, [available.data, filters, searchLower]);
 
   if (available.isLoading && plugins.isLoading) {
     return (
@@ -110,145 +221,179 @@ const PluginsNav: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Header toolbar */}
+      <Box sx={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        px: 1.5,
+        py: 0.5,
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        flexShrink: 0,
+      }}>
+        <Box sx={{
+          fontSize: '0.6875rem',
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          color: 'var(--ov-fg-faint, #8b949e)',
+        }}>
+          Plugins
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+          <ToolbarButton
+            title='Refresh marketplace'
+            onClick={() => available.refetch()}
+          >
+            <Box
+              component='span'
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                ...(available.isFetching && {
+                  '@keyframes spin': {
+                    from: { transform: 'rotate(0deg)' },
+                    to: { transform: 'rotate(360deg)' },
+                  },
+                  animation: 'spin 1s linear infinite',
+                }),
+              }}
+            >
+              <LuRefreshCw size={14} />
+            </Box>
+          </ToolbarButton>
+          <ToolbarButton
+            title='Filter'
+            onClick={(e) => setFilterAnchor(e.currentTarget)}
+          >
+            <Badge
+              badgeContent={activeFilterCount}
+              color='primary'
+              sx={{
+                '& .MuiBadge-badge': {
+                  fontSize: '0.5625rem',
+                  height: 14,
+                  minWidth: 14,
+                  padding: '0 3px',
+                  right: -2,
+                  top: -2,
+                },
+              }}
+            >
+              <LuSlidersHorizontal size={14} />
+            </Badge>
+          </ToolbarButton>
+          <ToolbarButton
+            title='More actions'
+            onClick={(e) => setMenuAnchor(e.currentTarget)}
+          >
+            <LuEllipsis size={14} />
+          </ToolbarButton>
+        </Box>
+      </Box>
+
       {/* Search */}
       <Box sx={{
         display: 'flex',
         alignItems: 'center',
         gap: 0.75,
         px: 1.5,
-        py: 0.75,
+        py: 0.5,
         borderBottom: '1px solid rgba(255,255,255,0.06)',
+        flexShrink: 0,
       }}>
         <LuSearch size={14} color='var(--ov-fg-faint, #8b949e)' style={{ flexShrink: 0 }} />
         <SearchInput
-          placeholder='Search plugins...'
+          placeholder='Search Extensions in Marketplace'
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </Box>
 
-      {/* Installed */}
-      <SectionHeader onClick={() => setInstalledOpen(!installedOpen)}>
-        <SectionLabel>
-          Installed{plugins.data?.length ? ` (${plugins.data.length})` : ''}
-        </SectionLabel>
-        {installedOpen ? <LuChevronDown size={12} color='var(--ov-fg-faint)' /> : <LuChevronRight size={12} color='var(--ov-fg-faint)' />}
-      </SectionHeader>
-      <Collapse in={installedOpen}>
-        <Box sx={{ px: 0.5, pb: 0.5 }}>
-          {plugins.data?.map(p => (
-            <Link key={p.id} to={`/plugins/${p.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-              <NavItem active={id === p.id}>
-                <Box sx={{ width: 22, height: 22, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {IsImage(p.metadata?.icon) ? (
-                    <Avatar
-                      size='xs'
-                      src={p.metadata.icon}
-                      sx={{ borderRadius: '4px', backgroundColor: 'transparent', border: 0, width: 22, height: 22 }}
-                    />
-                  ) : <Icon name={p.metadata?.icon || ''} size={22} />}
-                </Box>
-                <Box sx={{ flex: 1, minWidth: 0, fontSize: '0.8125rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {p.metadata?.name}
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-                  <Box component='span' sx={{ fontSize: '0.6875rem', fontFamily: 'monospace', color: 'var(--ov-fg-faint, #8b949e)' }}>
-                    {p.metadata?.version}
-                  </Box>
-                  {p.devMode && <LuAtom size={11} color="var(--ov-warning-default, #d29922)" />}
-                </Box>
-              </NavItem>
-            </Link>
-          ))}
-        </Box>
-      </Collapse>
-
-      {/* Marketplace */}
-      <SectionHeader onClick={() => setMarketplaceOpen(!marketplaceOpen)}>
-        <SectionLabel>Marketplace</SectionLabel>
-        {marketplaceOpen ? <LuChevronDown size={12} color='var(--ov-fg-faint)' /> : <LuChevronRight size={12} color='var(--ov-fg-faint)' />}
-      </SectionHeader>
-      {marketplaceOpen && (
-        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Category dropdown */}
-          <Box sx={{ px: 1.5, pb: 0.75, flexShrink: 0 }}>
-            <Select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              displayEmpty
-              size='small'
-              fullWidth
-              sx={{
-                fontSize: '0.75rem',
-                height: 28,
-                '& .MuiSelect-select': { py: 0.25 },
-                '& .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(255,255,255,0.1)',
-                },
-                '&:hover .MuiOutlinedInput-notchedOutline': {
-                  borderColor: 'rgba(255,255,255,0.2)',
-                },
-              }}
-            >
-              {CATEGORIES.map(cat => (
-                <MenuItem key={cat.value} value={cat.value} sx={{ fontSize: '0.75rem' }}>
-                  {cat.label}
-                </MenuItem>
-              ))}
-            </Select>
+      {/* Scrollable content */}
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {/* Installed section */}
+        <SectionHeader onClick={() => setInstalledOpen(!installedOpen)}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            {installedOpen
+              ? <LuChevronDown size={12} color='var(--ov-fg-faint)' />
+              : <LuChevronRight size={12} color='var(--ov-fg-faint)' />
+            }
+            <SectionLabel sx={{ ml: 0.5 }}>
+              Installed
+            </SectionLabel>
+            {(filteredInstalled.length > 0) && (
+              <CountBadge>{filteredInstalled.length}</CountBadge>
+            )}
           </Box>
+        </SectionHeader>
+        <Collapse in={installedOpen}>
+          <Box sx={{ pb: 0.5 }}>
+            {filteredInstalled.map(p => (
+              <PluginListItem
+                key={p.id}
+                id={p.id}
+                name={p.metadata?.name || p.id}
+                description={p.metadata?.description}
+                icon={p.metadata?.icon}
+                active={id === p.id}
+                installed
+                version={p.metadata?.version}
+                phase={p.phase}
+                devMode={p.devMode}
+                author={p.metadata?.author?.name}
+              />
+            ))}
+            {filteredInstalled.length === 0 && plugins.data && plugins.data.length > 0 && (
+              <Box sx={{ px: 1.5, py: 1.5, textAlign: 'center', fontSize: '0.75rem', color: 'var(--ov-fg-faint, #8b949e)' }}>
+                No matching installed plugins
+              </Box>
+            )}
+            {(!plugins.data || plugins.data.length === 0) && (
+              <Box sx={{ px: 1.5, py: 1.5, textAlign: 'center', fontSize: '0.75rem', color: 'var(--ov-fg-faint, #8b949e)' }}>
+                No plugins installed
+              </Box>
+            )}
+          </Box>
+        </Collapse>
 
-          {/* Plugin list */}
-          <Box sx={{ flex: 1, overflow: 'auto', px: 0.5 }}>
+        {/* Marketplace section */}
+        <SectionHeader onClick={() => setMarketplaceOpen(!marketplaceOpen)}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            {marketplaceOpen
+              ? <LuChevronDown size={12} color='var(--ov-fg-faint)' />
+              : <LuChevronRight size={12} color='var(--ov-fg-faint)' />
+            }
+            <SectionLabel sx={{ ml: 0.5 }}>
+              Marketplace
+            </SectionLabel>
+            {search && filteredMarketplace.length > 0 && (
+              <CountBadge>{filteredMarketplace.length}</CountBadge>
+            )}
+          </Box>
+        </SectionHeader>
+        <Collapse in={marketplaceOpen}>
+          <Box sx={{ pb: 0.5 }}>
             {filteredMarketplace.map((plugin: any) => (
-              <Link key={plugin.id} to={`/plugins/${plugin.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                <NavItem active={id === plugin.id} sx={{ alignItems: 'flex-start', py: '6px' }}>
-                  <Box sx={{ width: 28, height: 28, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', mt: '1px' }}>
-                    {plugin.icon_url ? (
-                      <Avatar size='xs' src={plugin.icon_url} sx={{ borderRadius: '4px', backgroundColor: 'transparent', border: 0, width: 28, height: 28 }} />
-                    ) : IsImage(plugin.icon) ? (
-                      <Avatar size='xs' src={plugin.icon} sx={{ borderRadius: '4px', backgroundColor: 'transparent', border: 0, width: 28, height: 28 }} />
-                    ) : <Icon name={plugin.icon || ''} size={28} />}
-                  </Box>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Box component='span' sx={{ fontSize: '0.8125rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {plugin.name}
-                      </Box>
-                      {installedIds.has(plugin.id) && (
-                        <LuCheck size={12} color='var(--ov-success-default, #3fb950)' style={{ flexShrink: 0 }} />
-                      )}
-                    </Box>
-                    <Box sx={{
-                      fontSize: '0.6875rem',
-                      color: 'var(--ov-fg-faint, #8b949e)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      mt: '1px',
-                    }}>
-                      {plugin.description}
-                    </Box>
-                    {(plugin.average_rating > 0 || plugin.download_count > 0) && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: '2px' }}>
-                        {plugin.average_rating > 0 && (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            <LuStar size={10} fill='#f5c518' color='#f5c518' />
-                            <Box component='span' sx={{ fontSize: '0.625rem', color: 'var(--ov-fg-faint)' }}>
-                              {plugin.average_rating.toFixed(1)}
-                            </Box>
-                          </Box>
-                        )}
-                        {plugin.download_count > 0 && (
-                          <Box component='span' sx={{ fontSize: '0.625rem', color: 'var(--ov-fg-faint)' }}>
-                            {formatDownloads(plugin.download_count)}
-                          </Box>
-                        )}
-                      </Box>
-                    )}
-                  </Box>
-                </NavItem>
-              </Link>
+              <PluginListItem
+                key={plugin.id}
+                id={plugin.id}
+                name={plugin.name}
+                description={plugin.description}
+                icon={plugin.icon}
+                iconUrl={plugin.icon_url}
+                active={id === plugin.id}
+                installed={installedIds.has(plugin.id)}
+                publisherName={plugin.publisher_name}
+                downloadCount={plugin.download_count}
+                averageRating={plugin.average_rating}
+                onInstall={
+                  installedIds.has(plugin.id)
+                    ? undefined
+                    : () => handleInstall(plugin.id, plugin.latest_version)
+                }
+                installing={installingIds.has(plugin.id)}
+              />
             ))}
             {filteredMarketplace.length === 0 && !available.isLoading && !available.isError && (
               <Box sx={{ px: 1.5, py: 2, textAlign: 'center', fontSize: '0.75rem', color: 'var(--ov-fg-faint, #8b949e)' }}>
@@ -282,16 +427,66 @@ const PluginsNav: React.FC = () => {
               </Box>
             )}
           </Box>
-        </Box>
-      )}
+        </Collapse>
+      </Box>
+
+      {/* Filter popover */}
+      <PluginFilterPopover
+        anchorEl={filterAnchor}
+        open={Boolean(filterAnchor)}
+        onClose={() => setFilterAnchor(null)}
+        filters={filters}
+        onFiltersChange={setFilters}
+      />
+
+      {/* Overflow menu */}
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={() => setMenuAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{
+          paper: {
+            sx: {
+              minWidth: 200,
+              backgroundColor: 'var(--ov-bg-surface, #161b22)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '8px',
+              mt: 0.5,
+            },
+          },
+        }}
+      >
+        <MenuItem
+          onClick={() => {
+            setMenuAnchor(null);
+            installFromPath.mutateAsync();
+          }}
+          disabled={installFromPath.isPending}
+          sx={{ fontSize: '0.8125rem' }}
+        >
+          <ListItemIcon sx={{ minWidth: '28px !important' }}>
+            <LuFolderOpen size={15} />
+          </ListItemIcon>
+          <ListItemText>Install from File...</ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setMenuAnchor(null);
+            installDev.mutateAsync();
+          }}
+          disabled={installDev.isPending}
+          sx={{ fontSize: '0.8125rem' }}
+        >
+          <ListItemIcon sx={{ minWidth: '28px !important' }}>
+            <LuAtom size={15} />
+          </ListItemIcon>
+          <ListItemText>Install in Dev Mode...</ListItemText>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 };
-
-function formatDownloads(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
-  return count.toString();
-}
 
 export default PluginsNav;

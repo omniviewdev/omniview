@@ -75,7 +75,8 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=false"
+              -X github.com/omniviewdev/omniview/internal/version.Development=false \
+              -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }}"
 
       - name: Import Code-Signing Certificates
         uses: Apple-Actions/import-codesign-certs@v3
@@ -200,7 +201,8 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=false"
+              -X github.com/omniviewdev/omniview/internal/version.Development=false \
+              -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }}"
 
       - name: Rename executable
         working-directory: ./build/bin
@@ -270,7 +272,8 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=false"
+              -X github.com/omniviewdev/omniview/internal/version.Development=false \
+              -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }}"
 
       - name: Rename executable
         working-directory: ./build/bin

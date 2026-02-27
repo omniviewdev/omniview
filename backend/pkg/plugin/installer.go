@@ -45,7 +45,10 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 	emitEvent(pm.ctx, EventDevInstallStart, metadata)
 
 	// Unload existing instance if it exists.
-	if _, exists := pm.records[metadata.ID]; exists {
+	pm.recordsMu.RLock()
+	_, exists := pm.records[metadata.ID]
+	pm.recordsMu.RUnlock()
+	if exists {
 		l.Infow("plugin already loaded, unloading first for reinstall", "pluginID", metadata.ID)
 		if unloadErr := pm.UnloadPlugin(metadata.ID); unloadErr != nil {
 			l.Warnw("failed to unload existing plugin (continuing anyway)", "pluginID", metadata.ID, "error", unloadErr)
@@ -129,15 +132,25 @@ func (pm *pluginManager) InstallPluginVersion(
 	tmpPath, err := pm.registryClient.DownloadPlugin(context.Background(), pluginID, version)
 	if err != nil {
 		pm.logger.Errorw("failed to download and prepare", "error", err)
+		emitEvent(pm.ctx, EventUpdateError, pluginID, err.Error())
 		return nil, err
 	}
 
 	pm.logger.Debug("installing plugin from downloaded tmp path", "path", tmpPath)
-	return pm.InstallPluginFromPath(tmpPath)
+	meta, err := pm.InstallPluginFromPath(tmpPath)
+	if err != nil {
+		emitEvent(pm.ctx, EventUpdateError, pluginID, err.Error())
+		return nil, err
+	}
+
+	emitEvent(pm.ctx, EventUpdateComplete, pluginID, version)
+	return meta, nil
 }
 
 // InstallPluginFromPath installs a plugin from a tarball path.
 func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta, error) {
+	defer os.Remove(path)
+
 	if err := auditPluginDir(); err != nil {
 		return nil, err
 	}
@@ -166,13 +179,14 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to create plugin directory")
 	}
 
+	// Unload existing version before overwriting files on disk.
+	pm.UnloadPlugin(metadata.ID)
+
 	if err = unpackPluginArchive(path, location); err != nil {
+		os.RemoveAll(location)
 		emitEvent(pm.ctx, EventInstallError, metadata)
 		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to unpack plugin package")
 	}
-
-	// Unload existing version if present.
-	pm.UnloadPlugin(metadata.ID)
 
 	_, err = pm.LoadPlugin(metadata.ID, nil)
 	if err != nil {
@@ -198,7 +212,9 @@ func (pm *pluginManager) UninstallPlugin(id string) (sdktypes.PluginInfo, error)
 	defer pm.writePluginStateJSON()
 
 	l.Debugw("uninstalling plugin", "pluginID", id)
+	pm.recordsMu.RLock()
 	record, ok := pm.records[id]
+	pm.recordsMu.RUnlock()
 	if !ok {
 		appErr := apperror.New(apperror.TypePluginNotLoaded, 404,
 			"Plugin not loaded",

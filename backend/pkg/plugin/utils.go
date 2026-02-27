@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v2"
 
@@ -28,15 +29,31 @@ func auditPluginDir() error {
 	return nil
 }
 
+// resolveHomeDir returns the user's home directory with safe fallbacks.
+var (
+	homeDirOnce sync.Once
+	homeDirPath string
+)
+
+func resolveHomeDir() string {
+	homeDirOnce.Do(func() {
+		var err error
+		homeDirPath, err = os.UserHomeDir()
+		if err != nil {
+			homeDirPath = os.Getenv("HOME")
+			if homeDirPath == "" {
+				homeDirPath = os.TempDir()
+			}
+		}
+	})
+	return homeDirPath
+}
+
 func getPluginDir() string {
 	if pluginDirOverride != "" {
 		return pluginDirOverride
 	}
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		panic(err)
-	}
-	return filepath.Join(homeDir, ".omniview", "plugins")
+	return filepath.Join(resolveHomeDir(), ".omniview", "plugins")
 }
 
 func getPluginLocation(id string) string {
@@ -108,7 +125,7 @@ func checkTarball(filePath string) error {
 // sanitize archive file pathing from G305.
 func sanitizeArchivePath(destination, target string) (string, error) {
 	v := filepath.Join(destination, target)
-	if strings.HasPrefix(v, filepath.Clean(destination)) {
+	if strings.HasPrefix(v, filepath.Clean(destination)+string(os.PathSeparator)) {
 		return v, nil
 	}
 
@@ -131,6 +148,8 @@ func unpackPluginArchive(source string, destination string) error {
 
 	tarReader := tar.NewReader(gzipReader)
 
+	var totalBytes int64
+
 	// iterate through the files in the tarball
 	for {
 		var header *tar.Header
@@ -149,6 +168,11 @@ func unpackPluginArchive(source string, destination string) error {
 			return errors.New("file size exceeds maximum allowed size")
 		}
 
+		totalBytes += header.Size
+		if totalBytes > MaxPluginSize {
+			return errors.New("cumulative extraction size exceeds maximum allowed size")
+		}
+
 		// sanitize the file path
 		path, sanitizeErr := sanitizeArchivePath(destination, header.Name)
 		if sanitizeErr != nil {
@@ -157,9 +181,7 @@ func unpackPluginArchive(source string, destination string) error {
 
 		switch header.Typeflag {
 		case tar.TypeDir: // If it's a directory, create it
-			basePath := filepath.Dir(destination)
-
-			if err = os.MkdirAll(filepath.Join(basePath, path), 0755); err != nil {
+			if err = os.MkdirAll(path, 0755); err != nil {
 				return err
 			}
 		case tar.TypeReg: // If it's a file, create it
@@ -189,13 +211,10 @@ func unpackPluginArchive(source string, destination string) error {
 					return err
 				}
 			}
-			outFile.Close()
+			if closeErr := outFile.Close(); closeErr != nil {
+				return fmt.Errorf("error closing extracted file: %w", closeErr)
+			}
 		}
-	}
-
-	// cleanup the original tarball
-	if err = os.Remove(source); err != nil {
-		return err
 	}
 
 	return nil
@@ -313,6 +332,16 @@ func CopyDir(dst, src string) error {
 				link, err := os.Readlink(path)
 				if err != nil {
 					return err
+				}
+				// Resolve symlink target and verify it stays within the source tree.
+				resolvedTarget := link
+				if !filepath.IsAbs(link) {
+					resolvedTarget = filepath.Join(filepath.Dir(path), link)
+				}
+				resolvedTarget = filepath.Clean(resolvedTarget)
+				cleanSrc := filepath.Clean(src)
+				if !strings.HasPrefix(resolvedTarget, cleanSrc+string(os.PathSeparator)) && resolvedTarget != cleanSrc {
+					return fmt.Errorf("symlink %s points outside source tree: %s", path, link)
 				}
 				return os.Symlink(link, outpath)
 			}

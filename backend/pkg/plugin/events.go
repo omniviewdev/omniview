@@ -30,7 +30,9 @@ const (
 	EventReloadComplete = "plugin/dev_reload_complete"
 
 	// Update.
-	EventUpdateStarted = "plugin/update_started"
+	EventUpdateStarted  = "plugin/update_started"
+	EventUpdateError    = "plugin/update_error"
+	EventUpdateComplete = "plugin/update_complete"
 
 	// Initialization.
 	EventInitComplete = "plugin/init_complete"

@@ -3,6 +3,7 @@ import { useState, type FC } from 'react';
 // Material-ui
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
+import Rating from '@mui/material/Rating';
 import { Stack } from '@omniviewdev/ui/layout';
 import { Text, Heading } from '@omniviewdev/ui/typography';
 import { Avatar, Chip } from '@omniviewdev/ui';
@@ -11,7 +12,7 @@ import { Tabs, TabPanel } from '@omniviewdev/ui/navigation';
 // Third party
 import MarkdownPreview from '@uiw/react-markdown-preview';
 import { useParams } from 'react-router-dom';
-import { LuDownload, LuExternalLink, LuStar } from 'react-icons/lu';
+import { LuDownload, LuExternalLink } from 'react-icons/lu';
 import { usePluginManager, usePlugin } from '@/hooks/plugin/usePluginManager';
 import { BrowserOpenURL } from '@omniviewdev/runtime/runtime';
 import PluginUpdateButton from './PluginUpdateButton';
@@ -95,15 +96,18 @@ const PluginDetails: FC = () => {
             {displayLicense && (
               <Text size='xs' sx={{ color: 'text.secondary' }}>{displayLicense}</Text>
             )}
-            {marketplace?.average_rating > 0 && (
-              <Stack direction='row' spacing={0.5} alignItems='center'>
-                <LuStar size={13} fill='#f5c518' color='#f5c518' />
-                <Text size='xs' weight='semibold'>{marketplace.average_rating.toFixed(1)}</Text>
-                {marketplace.review_count > 0 && (
-                  <Text size='xs' sx={{ color: 'text.secondary' }}>({marketplace.review_count} reviews)</Text>
-                )}
-              </Stack>
-            )}
+            <Stack direction='row' spacing={0.5} alignItems='center'>
+              <Rating
+                value={marketplace?.average_rating ?? 0}
+                precision={0.5}
+                readOnly
+                size='small'
+                sx={{ fontSize: '0.85rem' }}
+              />
+              <Text size='xs' sx={{ color: 'text.secondary' }}>
+                ({marketplace?.review_count ?? 0})
+              </Text>
+            </Stack>
             {marketplace?.download_count > 0 && (
               <Stack direction='row' spacing={0.5} alignItems='center'>
                 <LuDownload size={12} />
@@ -150,10 +154,29 @@ const PluginDetails: FC = () => {
             {readme.isLoading ? (
               <Text size='sm' sx={{ color: 'text.secondary', p: 2 }}>Loading readme...</Text>
             ) : readme.data ? (
-              <MarkdownPreview
-                source={readme.data}
-                style={{ backgroundColor: 'transparent', overflow: 'auto' }}
-              />
+              <Box
+                data-color-mode="dark"
+                sx={{
+                  '& .wmde-markdown': {
+                    backgroundColor: 'transparent !important',
+                    fontSize: '0.8125rem',
+                    lineHeight: 1.65,
+                  },
+                  '& .wmde-markdown h1': { fontSize: '1.35rem', mt: 2, mb: 1 },
+                  '& .wmde-markdown h2': { fontSize: '1.1rem', mt: 2, mb: 0.75 },
+                  '& .wmde-markdown h3': { fontSize: '0.95rem', mt: 1.5, mb: 0.5 },
+                  '& .wmde-markdown h4': { fontSize: '0.875rem', mt: 1.5, mb: 0.5 },
+                  '& .wmde-markdown p': { fontSize: '0.8125rem', my: 0.75 },
+                  '& .wmde-markdown li': { fontSize: '0.8125rem' },
+                  '& .wmde-markdown code': { fontSize: '0.75rem' },
+                  '& .wmde-markdown table': { fontSize: '0.8125rem' },
+                }}
+              >
+                <MarkdownPreview
+                  source={readme.data}
+                  style={{ backgroundColor: 'transparent', overflow: 'auto' }}
+                />
+              </Box>
             ) : (
               <Text size='sm' sx={{ color: 'text.secondary', p: 2 }}>No details available</Text>
             )}
@@ -177,9 +200,6 @@ const PluginDetails: FC = () => {
                         </Text>
                       )}
                     </Stack>
-                    {v.changelog && (
-                      <Text size='sm' sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>{v.changelog}</Text>
-                    )}
                     {v.capabilities?.length > 0 && (
                       <Stack direction='row' spacing={0.5} sx={{ mt: 1 }}>
                         {v.capabilities.map((cap: string) => (
@@ -197,26 +217,20 @@ const PluginDetails: FC = () => {
 
           <TabPanel value='reviews' activeValue={activeTab}>
             {/* Rating summary */}
-            {marketplace?.average_rating > 0 && (
-              <Box sx={{ mb: 2, p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                <Stack direction='row' spacing={2} alignItems='center'>
-                  <Text size='xl' weight='bold'>{marketplace.average_rating.toFixed(1)}</Text>
-                  <Stack direction='row' spacing={0.25}>
-                    {Array.from({ length: 5 }, (_, i) => (
-                      <LuStar
-                        key={i}
-                        size={18}
-                        fill={i < Math.round(marketplace.average_rating) ? '#f5c518' : 'none'}
-                        color={i < Math.round(marketplace.average_rating) ? '#f5c518' : 'var(--ov-fg-faint)'}
-                      />
-                    ))}
-                  </Stack>
-                  <Text size='sm' sx={{ color: 'text.secondary' }}>
-                    {marketplace.review_count} {marketplace.review_count === 1 ? 'review' : 'reviews'}
-                  </Text>
-                </Stack>
-              </Box>
-            )}
+            <Box sx={{ mb: 2, p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+              <Stack direction='row' spacing={2} alignItems='center'>
+                <Text size='xl' weight='bold'>{(marketplace?.average_rating ?? 0).toFixed(1)}</Text>
+                <Rating
+                  value={marketplace?.average_rating ?? 0}
+                  precision={0.5}
+                  readOnly
+                  sx={{ fontSize: '1.25rem' }}
+                />
+                <Text size='sm' sx={{ color: 'text.secondary' }}>
+                  {marketplace?.review_count ?? 0} {(marketplace?.review_count ?? 0) === 1 ? 'review' : 'reviews'}
+                </Text>
+              </Stack>
+            </Box>
 
             {reviews.isLoading ? (
               <Text size='sm' sx={{ color: 'text.secondary' }}>Loading reviews...</Text>
@@ -228,16 +242,7 @@ const PluginDetails: FC = () => {
                     sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
                   >
                     <Stack direction='row' spacing={1} alignItems='center'>
-                      <Stack direction='row' spacing={0.25}>
-                        {Array.from({ length: 5 }, (_, i) => (
-                          <LuStar
-                            key={i}
-                            size={13}
-                            fill={i < review.rating ? '#f5c518' : 'none'}
-                            color={i < review.rating ? '#f5c518' : 'var(--ov-fg-faint)'}
-                          />
-                        ))}
-                      </Stack>
+                      <Rating value={review.rating} readOnly size='small' sx={{ fontSize: '0.9rem' }} />
                       {review.title && <Text size='sm' weight='semibold'>{review.title}</Text>}
                       {review.created_at && (
                         <Text size='xs' sx={{ color: 'text.secondary' }}>

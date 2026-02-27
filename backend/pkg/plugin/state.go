@@ -20,11 +20,7 @@ func stateFilePath() string {
 	if stateFilePathOverride != "" {
 		return stateFilePathOverride
 	}
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		panic(err)
-	}
-	return filepath.Join(homeDir, ".omniview", "plugin_state.json")
+	return filepath.Join(resolveHomeDir(), ".omniview", "plugin_state.json")
 }
 
 // writePluginStateJSON atomically persists plugin records as JSON.
@@ -33,10 +29,12 @@ func (pm *pluginManager) writePluginStateJSON() error {
 	stateMu.Lock()
 	defer stateMu.Unlock()
 
+	pm.recordsMu.RLock()
 	records := make([]types.PluginStateRecord, 0, len(pm.records))
 	for _, r := range pm.records {
 		records = append(records, r.ToStateRecord())
 	}
+	pm.recordsMu.RUnlock()
 
 	data, err := json.MarshalIndent(records, "", "  ")
 	if err != nil {
@@ -71,10 +69,12 @@ func (pm *pluginManager) mergeAndWritePluginState(persisted []types.PluginStateR
 	defer stateMu.Unlock()
 
 	// Start with current in-memory records.
+	pm.recordsMu.RLock()
 	merged := make(map[string]types.PluginStateRecord, len(pm.records)+len(persisted))
 	for _, r := range pm.records {
 		merged[r.ID] = r.ToStateRecord()
 	}
+	pm.recordsMu.RUnlock()
 
 	// Keep persisted entries that are NOT in the loaded records,
 	// but only if their plugin directory still exists on disk.

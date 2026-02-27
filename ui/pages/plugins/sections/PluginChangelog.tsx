@@ -16,7 +16,7 @@ const PluginChangelog: React.FC<Props> = ({ id }) => {
 
   if (releaseHistory.isLoading) {
     return (
-      <Stack direction='column' p={6} gap={3}>
+      <Stack direction='column' p={2} gap={2}>
         <Text size='sm' sx={{ color: 'text.secondary' }}>Loading changelog...</Text>
       </Stack>
     );
@@ -24,14 +24,14 @@ const PluginChangelog: React.FC<Props> = ({ id }) => {
 
   if (!releaseHistory.data?.length) {
     return (
-      <Stack direction='column' p={6} gap={3}>
+      <Stack direction='column' p={2} gap={2}>
         <Text size='sm' sx={{ color: 'text.secondary' }}>No changelog available</Text>
       </Stack>
     );
   }
 
   return (
-    <Stack direction='column' p={6} gap={3} maxHeight={'100%'} overflow={'scroll'}>
+    <Stack direction='column' p={2} gap={2}>
       {releaseHistory.data.map((version: any) => (
         <PluginChangelogCard
           key={version.version}

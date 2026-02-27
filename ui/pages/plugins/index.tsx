@@ -32,8 +32,14 @@ const PluginsPage = () => {
         gap: 0,
       }}
     >
-      <Layout.SideNav type='bordered-inset' width={280}>
-        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <Layout.SideNav type='transparent' width={340}>
+        <Box sx={{
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          backgroundColor: 'rgba(255,255,255,0.015)',
+        }}>
           <PluginsNav />
         </Box>
       </Layout.SideNav>

@@ -538,6 +538,12 @@ function PluginLoadingSpinner() {
       clearLoading(meta);
       clearLoadingById(meta.id);
     });
+    const cancelUpdateError = EventsOn('plugin/update_error', (id: string) => {
+      clearLoadingById(id);
+    });
+    const cancelUpdateComplete = EventsOn('plugin/update_complete', (id: string) => {
+      clearLoadingById(id);
+    });
 
     return () => {
       cancelDevInstallStart();
@@ -551,6 +557,8 @@ function PluginLoadingSpinner() {
       cancelInstallComplete();
       cancelInstallFinished();
       cancelInstallError();
+      cancelUpdateError();
+      cancelUpdateComplete();
     };
   }, []);
 

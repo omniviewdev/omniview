@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/go-plugin v1.6.0
 	github.com/nxadm/tail v1.4.11
 	github.com/omniviewdev/plugin-sdk v0.1.2
-	github.com/omniviewdev/registry v0.1.0
+	github.com/omniviewdev/registry v0.2.0
 	github.com/stretchr/testify v1.10.0
 	github.com/vrischmann/userdir v0.0.0-20151206171402-20f291cebd68
 	github.com/wailsapp/mimetype v1.4.1

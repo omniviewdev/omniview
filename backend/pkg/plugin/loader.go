@@ -40,19 +40,26 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (sdktype
 	log := pm.logger.Named("LoadPlugin").With("id", id, "opts", opts)
 
 	// Idempotent: if already loaded and running, return existing.
+	pm.recordsMu.RLock()
 	if existing, ok := pm.records[id]; ok {
 		if existing.Phase == lifecycle.PhaseRunning {
 			log.Debugw("plugin already loaded and running, skipping", "pluginID", id)
-			return existing.ToInfo(), nil
+			info := existing.ToInfo()
+			pm.recordsMu.RUnlock()
+			return info, nil
 		}
-		// If in a transient state (Starting), return error.
 		if existing.Phase == lifecycle.PhaseStarting {
+			pm.recordsMu.RUnlock()
 			return sdktypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, 409,
 				"Plugin is starting", fmt.Sprintf("Plugin '%s' is currently starting.", id)).WithInstance(id)
 		}
-		// Otherwise remove and re-load.
-		delete(pm.records, id)
 	}
+	pm.recordsMu.RUnlock()
+
+	// Remove stale entry under write lock.
+	pm.recordsMu.Lock()
+	delete(pm.records, id)
+	pm.recordsMu.Unlock()
 
 	location := getPluginLocation(id)
 	log.Debugw("loading plugin from location", "location", location, "pluginID", id)
@@ -123,7 +130,9 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (sdktype
 			if record.StateMachine != nil {
 				record.StateMachine.ForcePhase(lifecycle.PhaseFailed, createErr.Error())
 			}
+			pm.recordsMu.Lock()
 			pm.records[id] = record
+			pm.recordsMu.Unlock()
 			return sdktypes.PluginInfo{}, apperror.Wrap(createErr, apperror.TypePluginLoadFailed, 500,
 				"Failed to initialize plugin RPC").WithInstance(id)
 		}
@@ -141,7 +150,9 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (sdktype
 			if record.StateMachine != nil {
 				record.StateMachine.ForcePhase(lifecycle.PhaseFailed, err.Error())
 			}
+			pm.recordsMu.Lock()
 			pm.records[id] = record
+			pm.recordsMu.Unlock()
 			return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500, "Failed to initialize plugin").WithInstance(id)
 		}
 
@@ -151,14 +162,18 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (sdktype
 			if record.StateMachine != nil {
 				record.StateMachine.ForcePhase(lifecycle.PhaseFailed, err.Error())
 			}
+			pm.recordsMu.Lock()
 			pm.records[id] = record
+			pm.recordsMu.Unlock()
 			return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500, "Failed to start plugin").WithInstance(id)
 		}
 	}
 
 	record.Phase = lifecycle.PhaseRunning
 	record.Backend = backend
+	pm.recordsMu.Lock()
 	pm.records[id] = record
+	pm.recordsMu.Unlock()
 
 	// Sync the state machine to Running.
 	if record.StateMachine != nil {
@@ -208,7 +223,9 @@ func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, lo
 
 // ReloadPlugin stops and re-loads a plugin.
 func (pm *pluginManager) ReloadPlugin(id string) (sdktypes.PluginInfo, error) {
+	pm.recordsMu.RLock()
 	record, ok := pm.records[id]
+	pm.recordsMu.RUnlock()
 	if !ok {
 		return sdktypes.PluginInfo{}, apperror.New(apperror.TypePluginNotLoaded, 404,
 			"Plugin not loaded",
@@ -235,7 +252,9 @@ func (pm *pluginManager) ReloadPlugin(id string) (sdktypes.PluginInfo, error) {
 // UnloadPlugin unloads a plugin, stopping it if running.
 // If the plugin is already unloaded, this is a no-op.
 func (pm *pluginManager) UnloadPlugin(id string) error {
+	pm.recordsMu.RLock()
 	record, ok := pm.records[id]
+	pm.recordsMu.RUnlock()
 	if !ok {
 		return nil // idempotent: not loaded = success
 	}
@@ -250,7 +269,9 @@ func (pm *pluginManager) UnloadPlugin(id string) error {
 		return fmt.Errorf("error shutting down plugin: %w", err)
 	}
 
+	pm.recordsMu.Lock()
 	delete(pm.records, id)
+	pm.recordsMu.Unlock()
 	return nil
 }
 
