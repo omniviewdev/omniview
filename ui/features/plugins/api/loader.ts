@@ -142,6 +142,10 @@ export async function loadAndRegisterPlugin(
 ): Promise<void> {
   console.debug(`[loader] loadAndRegisterPlugin "${pluginID}"`, { plugin: pluginID, dev: opts?.dev, devPort: opts?.devPort });
 
+  // Always clear stale cached module before importing fresh assets.
+  // This ensures install, update, retry, and reload all pick up new code.
+  await clearPlugin({ pluginId: pluginID, dev: opts?.dev });
+
   const importOpts = { pluginId: pluginID, dev: opts?.dev, devPort: opts?.devPort };
 
   // Import the raw module so we can extract both PluginWindow and sidebars

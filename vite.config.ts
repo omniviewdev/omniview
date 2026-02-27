@@ -11,6 +11,10 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const reactCompilerConfig = {
+  target: '19',
+};
+
 // https://vitejs.dev/config/
 export default defineConfig({
   build: {
@@ -31,7 +35,11 @@ export default defineConfig({
     },
   },
   plugins: [
-    react(),
+    react({
+      babel: {
+        plugins: [['babel-plugin-react-compiler', reactCompilerConfig]],
+      },
+    }),
   ],
   resolve: {
     dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled', '@mui/material', '@mui/x-charts'],

@@ -251,7 +251,6 @@ export const usePlugin = ({ id }: { id: string }) => {
         status: 'success',
       });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
-      clearPlugin({ pluginId: metadata.id })
       loadAndRegisterPlugin(metadata.id)
     },
     onError: createErrorHandler(showSnackbar, 'Failed to reload plugin'),

@@ -51,6 +51,7 @@ export const SHARED_PACKAGES: readonly string[] = [
   'react',
   'react/jsx-runtime',
   'react/jsx-dev-runtime',
+  'react/compiler-runtime',
   'react-router-dom',
   'react-dom',
   'react-icons',

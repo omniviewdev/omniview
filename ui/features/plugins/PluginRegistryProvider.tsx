@@ -273,11 +273,37 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
       }
     });
 
+    const offInstallComplete = EventsOn('plugin/install_complete', async (meta: any) => {
+      const pluginId = meta?.id;
+      if (!pluginId) return;
+
+      // Remove from loaded set so the plugin is eligible for reload
+      loadedRef.current.delete(pluginId);
+
+      // Clear failed state if it was previously broken
+      setFailedPlugins(prev => prev.filter(f => f.pluginId !== pluginId));
+
+      try {
+        await loadAndRegisterPlugin(pluginId);
+        loadedRef.current.add(pluginId);
+        setRouteVersion(v => v + 1);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        registerFailedPlugin(pluginId, message);
+        setFailedPlugins(prev => [
+          ...prev.filter(f => f.pluginId !== pluginId),
+          { pluginId, error: message, timestamp: Date.now() },
+        ]);
+        setRouteVersion(v => v + 1);
+      }
+    });
+
     return () => {
       offCrash();
       offRecovered();
       offFailed();
       offStateChange();
+      offInstallComplete();
     };
   }, [showSnackbar, queryClient]);
 
@@ -299,6 +325,7 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
 
       loadedRef.current.add(pluginId);
       setFailedPlugins(prev => prev.filter(f => f.pluginId !== pluginId));
+      setRouteVersion(v => v + 1);
 
       showSnackbar({
         message: `Plugin "${pluginId}" loaded successfully`,

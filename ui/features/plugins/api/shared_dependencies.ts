@@ -43,6 +43,7 @@ export const shared = {
   // React
   'react': () => import('react'),
   'react/jsx-runtime': () => import('react/jsx-runtime'),
+  'react/compiler-runtime': () => import('react/compiler-runtime'),
   'react/jsx-dev-runtime': async () => {
     // In production builds, import('react/jsx-dev-runtime') may be replaced
     // with the production jsx-runtime (no jsxDEV). Since dev-mode plugins
