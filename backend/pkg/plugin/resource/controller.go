@@ -126,8 +126,9 @@ func (c *controller) informerListener() {
 		select {
 		case <-c.ctx.Done():
 			log.Debugw("shutting down informer listeners")
-			for _, stopChan := range c.informerStopChans {
-				stopChan <- struct{}{}
+			for id, stopChan := range c.informerStopChans {
+				close(stopChan)
+				delete(c.informerStopChans, id)
 			}
 			return
 		case event := <-c.addChan:
@@ -321,6 +322,12 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	if err := c.saveToLocalStore(pluginID); err != nil {
 		// log but don't fail
 		logger.Errorw("failed to save connections to local store", "error", err)
+	}
+
+	// Signal listener goroutines to stop before removing state.
+	if stopChan, ok := c.informerStopChans[pluginID]; ok {
+		close(stopChan)
+		delete(c.informerStopChans, pluginID)
 	}
 
 	delete(c.clients, pluginID)
@@ -1094,16 +1101,28 @@ func (c *controller) listenForPluginInformerEvents(
 		case <-stopChan:
 			l.Infow("informer event listener stopped", "reason", "shutdown")
 			return
-		case event := <-addStream:
+		case event, ok := <-addStream:
+			if !ok {
+				return
+			}
 			event.PluginID = pluginID
 			addChan <- event
-		case event := <-updateStream:
+		case event, ok := <-updateStream:
+			if !ok {
+				return
+			}
 			event.PluginID = pluginID
 			updateChan <- event
-		case event := <-deleteStream:
+		case event, ok := <-deleteStream:
+			if !ok {
+				return
+			}
 			event.PluginID = pluginID
 			deleteChan <- event
-		case event := <-stateStream:
+		case event, ok := <-stateStream:
+			if !ok {
+				return
+			}
 			event.PluginID = pluginID
 			stateChan <- event
 		}
@@ -1142,7 +1161,10 @@ func (c *controller) listenForPluginConnectionEvents(
 		case <-stopChan:
 			l.Infow("connection event listener stopped", "reason", "shutdown")
 			return
-		case event := <-connStream:
+		case event, ok := <-connStream:
+			if !ok {
+				return
+			}
 			eventChan <- resourcetypes.ConnectionControllerEvent{
 				PluginID:    pluginID,
 				Connections: event,

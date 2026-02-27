@@ -125,7 +125,9 @@ func checkTarball(filePath string) error {
 // sanitize archive file pathing from G305.
 func sanitizeArchivePath(destination, target string) (string, error) {
 	v := filepath.Join(destination, target)
-	if strings.HasPrefix(v, filepath.Clean(destination)+string(os.PathSeparator)) {
+	cleanDest := filepath.Clean(destination)
+	// Allow the destination itself (e.g. "./") and any path inside it.
+	if v == cleanDest || strings.HasPrefix(v, cleanDest+string(os.PathSeparator)) {
 		return v, nil
 	}
 

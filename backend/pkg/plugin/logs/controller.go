@@ -218,7 +218,10 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 			select {
 			case <-c.ctx.Done():
 				return
-			case output := <-stream:
+			case output, ok := <-stream:
+				if !ok {
+					return // stream closed, plugin exited
+				}
 				c.outputMux <- output
 			}
 		}
@@ -229,6 +232,10 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 
 func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
 	c.logger.With("pluginID", pluginID).Debug("OnPluginStop")
+	if ch, ok := c.inChans[pluginID]; ok {
+		close(ch)
+		delete(c.inChans, pluginID)
+	}
 	delete(c.clients, pluginID)
 	return nil
 }

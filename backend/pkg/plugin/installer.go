@@ -143,6 +143,19 @@ func (pm *pluginManager) InstallPluginVersion(
 		return nil, err
 	}
 
+	// The marketplace version is authoritative — override whatever the
+	// plugin.yaml inside the tarball says.
+	meta.Version = version
+	pm.recordsMu.Lock()
+	if record, ok := pm.records[pluginID]; ok {
+		record.Metadata.Version = version
+	}
+	pm.recordsMu.Unlock()
+
+	if writeErr := pm.writePluginStateJSON(); writeErr != nil {
+		pm.logger.Errorw("failed to persist state after version override", "error", writeErr)
+	}
+
 	emitEvent(pm.ctx, EventUpdateComplete, pluginID, version)
 	return meta, nil
 }
@@ -174,18 +187,28 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 	emitEvent(pm.ctx, EventInstallStarted, metadata)
 
 	location := getPluginLocation(metadata.ID)
-	if err = os.MkdirAll(location, 0755); err != nil {
+
+	// Unpack to a temporary directory first so we don't destroy a working
+	// installation if the archive is corrupt or extraction fails.
+	tmpDir, mkErr := os.MkdirTemp(getPluginDir(), metadata.ID+"-install-")
+	if mkErr != nil {
 		emitEvent(pm.ctx, EventInstallError, metadata)
-		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to create plugin directory")
+		return nil, apperror.Wrap(mkErr, apperror.TypePluginInstallFailed, 500, "Failed to create temp directory")
 	}
+	defer os.RemoveAll(tmpDir) // clean up temp dir in all cases
 
-	// Unload existing version before overwriting files on disk.
-	pm.UnloadPlugin(metadata.ID)
-
-	if err = unpackPluginArchive(path, location); err != nil {
-		os.RemoveAll(location)
+	if err = unpackPluginArchive(path, tmpDir); err != nil {
 		emitEvent(pm.ctx, EventInstallError, metadata)
 		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to unpack plugin package")
+	}
+
+	// Extraction succeeded — now unload the running plugin and swap directories.
+	pm.UnloadPlugin(metadata.ID)
+	os.RemoveAll(location)
+
+	if err = os.Rename(tmpDir, location); err != nil {
+		emitEvent(pm.ctx, EventInstallError, metadata)
+		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to install plugin files")
 	}
 
 	_, err = pm.LoadPlugin(metadata.ID, nil)

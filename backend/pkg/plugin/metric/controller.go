@@ -159,7 +159,10 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 			select {
 			case <-c.ctx.Done():
 				return
-			case output := <-stream:
+			case output, ok := <-stream:
+				if !ok {
+					return // stream closed, plugin exited
+				}
 				c.handleStreamOutput(output)
 			}
 		}

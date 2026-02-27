@@ -16,7 +16,20 @@ const (
 	maxCrashRetries     = 5
 	initialCrashBackoff = 1 * time.Second
 	maxCrashBackoff     = 60 * time.Second
+
+	// maxTotalCrashes is the hard limit on total crash-recovery cycles per
+	// plugin within crashBudgetWindow. This prevents infinite recovery loops
+	// when a plugin keeps crashing immediately after being reloaded.
+	maxTotalCrashes    = 8
+	crashBudgetWindow  = 5 * time.Minute
 )
+
+// crashBudget tracks the total number of crash-recovery cycles for a plugin
+// within a sliding time window to prevent infinite recovery loops.
+type crashBudget struct {
+	count      int
+	windowStart time.Time
+}
 
 // HealthChecker periodically checks the health of running plugins
 // and triggers crash recovery when issues are detected.
@@ -26,6 +39,7 @@ type HealthChecker struct {
 	mu              sync.Mutex
 	recoveryStates  map[string]*CrashRecoveryState
 	recoveryCancels map[string]context.CancelFunc
+	crashBudgets    map[string]*crashBudget
 }
 
 // NewHealthChecker creates a new HealthChecker.
@@ -35,6 +49,7 @@ func NewHealthChecker(logger *zap.SugaredLogger, pm *pluginManager) *HealthCheck
 		pm:              pm,
 		recoveryStates:  make(map[string]*CrashRecoveryState),
 		recoveryCancels: make(map[string]context.CancelFunc),
+		crashBudgets:    make(map[string]*crashBudget),
 	}
 }
 
@@ -105,12 +120,47 @@ func (hc *HealthChecker) CancelRecovery(pluginID string) {
 		delete(hc.recoveryCancels, pluginID)
 	}
 	delete(hc.recoveryStates, pluginID)
+	delete(hc.crashBudgets, pluginID)
 }
 
 // HandleCrashWithBackoff handles a plugin crash with exponential backoff.
 // Uses an iterative loop instead of recursion to avoid stack growth.
 func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	hc.mu.Lock()
+
+	// Enforce a global crash budget to prevent infinite recovery cycles.
+	// If a plugin keeps crashing immediately after recovery, the per-cycle
+	// maxCrashRetries would reset each time. The budget tracks total crashes
+	// across all cycles within a time window.
+	cb := hc.crashBudgets[pluginID]
+	if cb == nil {
+		cb = &crashBudget{windowStart: time.Now()}
+		hc.crashBudgets[pluginID] = cb
+	}
+	// Reset the window if enough time has passed since first crash.
+	if time.Since(cb.windowStart) > crashBudgetWindow {
+		cb.count = 0
+		cb.windowStart = time.Now()
+	}
+	cb.count++
+	if cb.count > maxTotalCrashes {
+		hc.logger.Errorw("crash budget exhausted — plugin keeps crashing, giving up",
+			"pluginID", pluginID, "totalCrashes", cb.count, "window", crashBudgetWindow)
+		if record, ok := hc.pm.records[pluginID]; ok {
+			record.Phase = lifecycle.PhaseFailed
+			record.LastError = "plugin keeps crashing (crash budget exhausted)"
+			if record.StateMachine != nil {
+				record.StateMachine.ForcePhase(lifecycle.PhaseFailed, "crash budget exhausted")
+			}
+		}
+		hc.mu.Unlock()
+		emitEvent(hc.pm.ctx, EventCrashRecoveryFailed, map[string]interface{}{
+			"pluginID": pluginID,
+			"error":    "crash budget exhausted — too many crashes in a short time",
+		})
+		return
+	}
+
 	state, ok := hc.recoveryStates[pluginID]
 	if !ok {
 		state = &CrashRecoveryState{
