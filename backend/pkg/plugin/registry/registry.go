@@ -24,6 +24,7 @@ type AvailablePlugin struct {
 	ReviewCount   int64    `json:"review_count"`
 	Repository    string   `json:"repository"`
 	URL           string   `json:"url"`
+	PublisherName string   `json:"publisher_name"`
 	Installed     bool     `json:"installed"`
 	InstalledVer  string   `json:"installed_version"`
 	LatestVer     string   `json:"latest_version"`
@@ -119,6 +120,8 @@ func toAvailablePlugin(p regclient.Plugin) AvailablePlugin {
 		ReviewCount:   p.ReviewCount,
 		Repository:    p.Repository,
 		URL:           p.URL,
+		PublisherName: p.PublisherName,
+		LatestVer:     p.LatestVersion,
 	}
 }
 

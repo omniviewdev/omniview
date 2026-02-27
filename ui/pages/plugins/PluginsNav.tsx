@@ -127,10 +127,22 @@ const PluginsNav: React.FC = () => {
 
   const installedIds = new Set(plugins.data?.map(p => p.id) ?? []);
 
-  // Install mutation for marketplace inline install
+  // Install mutation for marketplace inline install.
+  // The marketplace listing may not include a latest_version, so resolve it
+  // from the versions endpoint when missing — same path PluginUpdateButton uses.
   const installMutation = useMutation({
     mutationFn: async ({ pluginId, version }: { pluginId: string; version: string }) => {
-      return PluginManager.InstallPluginVersion(pluginId, version);
+      let installVersion = version;
+      if (!installVersion) {
+        const versions = await PluginManager.GetPluginVersions(pluginId);
+        if (versions?.length) {
+          installVersion = versions[0].version;
+        }
+      }
+      if (!installVersion) {
+        throw new Error('No versions available for this plugin');
+      }
+      return PluginManager.InstallPluginVersion(pluginId, installVersion);
     },
     onSuccess(meta) {
       showSnackbar({

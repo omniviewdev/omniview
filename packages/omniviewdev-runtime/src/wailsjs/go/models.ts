@@ -1327,6 +1327,7 @@ export namespace registry {
 	    review_count: number;
 	    repository: string;
 	    url: string;
+	    publisher_name: string;
 	    installed: boolean;
 	    installed_version: string;
 	    latest_version: string;
@@ -1352,6 +1353,7 @@ export namespace registry {
 	        this.review_count = source["review_count"];
 	        this.repository = source["repository"];
 	        this.url = source["url"];
+	        this.publisher_name = source["publisher_name"];
 	        this.installed = source["installed"];
 	        this.installed_version = source["installed_version"];
 	        this.latest_version = source["latest_version"];
