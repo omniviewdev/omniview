@@ -5,7 +5,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { styled, keyframes } from '@mui/material/styles';
 import { Avatar } from '@omniviewdev/ui';
 
-import { LuAtom, LuCheck, LuDownload, LuStar, LuSettings } from 'react-icons/lu';
+import { LuAtom, LuBadgeCheck, LuCheck, LuDownload, LuStar, LuSettings } from 'react-icons/lu';
 import { Link } from 'react-router-dom';
 import { IsImage } from '@/utils/url';
 import Icon from '@/components/icons/Icon';
@@ -78,6 +78,7 @@ export type PluginListItemProps = {
 
   // Marketplace fields
   publisherName?: string;
+  official?: boolean;
   downloadCount?: number;
   averageRating?: number;
 
@@ -99,6 +100,7 @@ const PluginListItem: React.FC<PluginListItemProps> = ({
   devMode,
   author,
   publisherName,
+  official,
   downloadCount,
   averageRating,
   onInstall,
@@ -156,16 +158,26 @@ const PluginListItem: React.FC<PluginListItemProps> = ({
         <Box sx={{ flex: 1, minWidth: 0, py: '1px' }}>
           {/* Row 1: Name + Action */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 18 }}>
-            <Box component='span' sx={{
-              fontSize: '0.8125rem',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
+            <Box sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
               flex: 1,
               minWidth: 0,
+              overflow: 'hidden',
             }}>
-              {name}
+              <Box component='span' sx={{
+                fontSize: '0.8125rem',
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>
+                {name}
+              </Box>
+              {official && (
+                <LuBadgeCheck size={13} color='rgba(56,139,253,0.9)' style={{ flexShrink: 0 }} />
+              )}
             </Box>
 
             {/* Action area */}

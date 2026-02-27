@@ -397,6 +397,7 @@ const PluginsNav: React.FC = () => {
                 active={id === plugin.id}
                 installed={installedIds.has(plugin.id)}
                 publisherName={plugin.publisher_name}
+                official={plugin.official}
                 downloadCount={plugin.download_count}
                 averageRating={plugin.average_rating}
                 onInstall={
