@@ -7,15 +7,17 @@ import Rating from '@mui/material/Rating';
 import { Stack } from '@omniviewdev/ui/layout';
 import { Text, Heading } from '@omniviewdev/ui/typography';
 import { Avatar, Chip } from '@omniviewdev/ui';
+import { Button } from '@omniviewdev/ui/buttons';
 import { Tabs, TabPanel } from '@omniviewdev/ui/navigation';
 
 // Third party
 import MarkdownPreview from '@uiw/react-markdown-preview';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { LuDownload, LuExternalLink } from 'react-icons/lu';
 import { usePluginManager, usePlugin } from '@/hooks/plugin/usePluginManager';
 import { BrowserOpenURL } from '@omniviewdev/runtime/runtime';
 import PluginUpdateButton from './PluginUpdateButton';
+import UninstallPluginModal from './UninstallPluginModal';
 import PluginChangelog from './sections/PluginChangelog';
 import { IsImage } from '@/utils/url';
 import Icon from '@/components/icons/Icon';
@@ -29,9 +31,11 @@ const TABS = [
 
 const PluginDetails: FC = () => {
   const { id = '' } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { plugins, available } = usePluginManager();
-  const { readme, reviews, releaseHistory } = usePlugin({ id });
+  const { readme, reviews, releaseHistory, uninstall } = usePlugin({ id });
   const [activeTab, setActiveTab] = useState('overview');
+  const [uninstallModalOpen, setUninstallModalOpen] = useState(false);
 
   const installed = plugins.data?.find(p => p.id === id);
   // marketplace data typed as any until Wails bindings regenerate with new AvailablePlugin fields
@@ -129,15 +133,37 @@ const PluginDetails: FC = () => {
           </Stack>
         </Box>
 
-        {/* Install/Update button */}
-        <Box sx={{ flexShrink: 0, pt: 0.5 }}>
+        {/* Install/Update/Uninstall buttons */}
+        <Stack direction='row' spacing={1} sx={{ flexShrink: 0, pt: 0.5 }}>
           <PluginUpdateButton
             pluginID={id}
             installed={!!installed}
             currentVersion={installed?.metadata?.version || ''}
           />
-        </Box>
+          {!!installed && (
+            <Button
+              emphasis='outline'
+              color='danger'
+              size='sm'
+              onClick={() => setUninstallModalOpen(true)}
+            >
+              Uninstall
+            </Button>
+          )}
+        </Stack>
       </Box>
+
+      <UninstallPluginModal
+        open={uninstallModalOpen}
+        onClose={() => setUninstallModalOpen(false)}
+        name={displayName}
+        devMode={!!installed?.devMode}
+        uninstall={() => {
+          uninstall().then(() => {
+            navigate('/plugins');
+          });
+        }}
+      />
 
       <Divider />
 

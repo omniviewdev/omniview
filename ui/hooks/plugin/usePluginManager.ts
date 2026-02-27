@@ -270,6 +270,7 @@ export const usePlugin = ({ id }: { id: string }) => {
       });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
+      void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, 'registry'] });
       clearPlugin({ pluginId: metadata.id })
     },
     onError: createErrorHandler(showSnackbar, 'Failed to uninstall plugin'),

@@ -12,9 +12,10 @@ type Props = {
   onClose: () => void;
   name: string;
   uninstall: () => void;
+  devMode?: boolean;
 };
 
-const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose }) => {
+const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose, devMode }) => {
   const [uninstalling, setUninstalling] = React.useState(false);
 
   const handleUninstall = () => {
@@ -29,7 +30,9 @@ const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose 
         Uninstall {name}?
       </Text>
       <Text size="sm" sx={{ color: 'text.tertiary' }}>
-        This will remove all data associated with the plugin.
+        {devMode
+          ? 'This will stop the dev server and remove the plugin metadata.'
+          : 'This will remove the plugin and all associated data.'}
       </Text>
       <Box
         sx={{
