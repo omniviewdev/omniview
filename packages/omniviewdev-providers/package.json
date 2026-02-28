@@ -1,6 +1,6 @@
 {
   "name": "@omniviewdev/providers",
-  "version": "0.1.0",
+  "version": "0.1.9",
   "description": "Package to interact with the various providers in Omniview via the UI.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

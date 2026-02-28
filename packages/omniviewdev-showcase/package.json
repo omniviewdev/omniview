@@ -1,6 +1,6 @@
 {
   "name": "@omniviewdev/showcase",
-  "version": "0.0.1",
+  "version": "0.1.9",
   "private": true,
   "description": "Dev-only showcase for @omniviewdev/ui components",
   "type": "module",

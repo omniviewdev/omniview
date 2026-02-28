@@ -2,7 +2,7 @@
   "author": "Omniview",
   "license": "AGPL-3.0-only",
   "name": "@omniviewdev/ui",
-  "version": "0.1.0",
+  "version": "0.1.9",
   "description": "Shared UI components, tokens, and theming for Omniview",
   "sideEffects": [
     "*.css"

@@ -2,7 +2,7 @@
   "author": "Omniview",
   "license": "AGPL-3.0-only",
   "name": "@omniviewdev/runtime",
-  "version": "0.1.0",
+  "version": "0.1.9",
   "description": "Runtime shared library for Omniview",
   "sideEffects": false,
   "type": "module",
