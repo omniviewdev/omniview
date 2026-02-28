@@ -40,6 +40,16 @@ export default defineConfig({
         plugins: [['babel-plugin-react-compiler', reactCompilerConfig]],
       },
     }),
+    {
+      name: 'strip-dev-scripts',
+      transformIndexHtml(html, ctx) {
+        if (ctx.server) return html; // keep in dev
+        return html.replace(
+          /^\s*<script src="http:\/\/localhost:8097"><\/script>\n?/m,
+          '',
+        );
+      },
+    },
   ],
   resolve: {
     dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled', '@mui/material', '@mui/x-charts'],

@@ -1,6 +1,10 @@
 <!doctype html>
 <html lang="en" data-ov-theme="dark">
   <head>
+    <!-- React DevTools standalone — must load BEFORE the mock hook below so that
+         when DevTools is running, its full-featured hook (with profiling support)
+         is already installed and the mock's guard clause skips creation. -->
+    <script src="http://localhost:8097"></script>
     <!--
       Pre-create React DevTools hook with an inject() that stores renderers.
       Without this, @vitejs/plugin-react's injectIntoGlobalHook creates a mock
@@ -11,26 +15,51 @@
 
       This MUST be a classic (non-module) script so it runs synchronously before
       the React Fast Refresh preamble (a module script injected by Vite).
+      The guard (if hook already exists) ensures this is a no-op when DevTools
+      or another tool has already installed a full hook.
     -->
     <script>
       (function () {
         if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__) return;
         var nextID = 0;
+        var listeners = {};
         window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
           renderers: new Map(),
           supportsFiber: true,
+          supportsFlight: true,
+          // Event emitter — required by DevTools initBackend (hook.on / hook.sub)
+          _listeners: listeners,
+          on: function (evt, fn) {
+            if (!listeners[evt]) listeners[evt] = [];
+            listeners[evt].push(fn);
+          },
+          off: function (evt, fn) {
+            if (!listeners[evt]) return;
+            var i = listeners[evt].indexOf(fn);
+            if (i !== -1) listeners[evt].splice(i, 1);
+          },
+          emit: function (evt, data) {
+            if (listeners[evt]) listeners[evt].forEach(function (fn) { fn(data); });
+          },
+          sub: function (evt, fn) {
+            this.on(evt, fn);
+            return function () { this.off(evt, fn); }.bind(this);
+          },
+          // Renderer registration — populates renderers Map (fixes plugin HMR)
+          // and emits 'renderer' event (fixes DevTools component tree)
           inject: function (injected) {
             var id = nextID++;
             this.renderers.set(id, injected);
+            this.emit('renderer', { id: id, renderer: injected });
             return id;
           },
           onScheduleFiberRoot: function () {},
           onCommitFiberRoot: function () {},
           onCommitFiberUnmount: function () {},
+          checkDCE: function () {},
         };
       })();
     </script>
-
     <!-- <script -->
     <!--   crossOrigin="anonymous" -->
     <!--   src="https://unpkg.com/react-scan/dist/auto.global.js" -->
