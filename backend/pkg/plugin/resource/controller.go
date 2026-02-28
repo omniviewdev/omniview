@@ -63,6 +63,14 @@ type controller struct {
 	stateChan         chan resourcetypes.InformerStateEvent
 	connChan          chan resourcetypes.ConnectionControllerEvent
 
+	// Frontend-driven event subscriptions.
+	// Only resources with an active subscription have ADD/UPDATE/DELETE
+	// events forwarded over the Wails bridge. STATE events are always
+	// forwarded regardless of subscription status.
+	// Key format: "pluginID/connectionID/resourceKey"
+	subsMu        sync.RWMutex
+	subscriptions map[string]int // ref-counted subscriptions
+
 	// crash recovery
 	onCrashCallback func(pluginID string)
 	crashOnces      map[string]*sync.Once
@@ -92,6 +100,9 @@ func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controlle
 		// connection update channels
 		connChan: make(chan resourcetypes.ConnectionControllerEvent),
 
+		// frontend subscriptions
+		subscriptions: make(map[string]int),
+
 		// crash recovery
 		crashOnces: make(map[string]*sync.Once),
 	}
@@ -119,6 +130,46 @@ func (c *controller) connectionListener() {
 	}
 }
 
+// subscriptionKey builds the map key for a resource subscription.
+func subscriptionKey(pluginID, connectionID, resourceKey string) string {
+	return pluginID + "/" + connectionID + "/" + resourceKey
+}
+
+// SubscribeResource registers frontend interest in live events for a resource.
+// Multiple callers may subscribe to the same resource; events flow as long as
+// at least one subscription is active (ref-counted).
+func (c *controller) SubscribeResource(pluginID, connectionID, resourceKey string) error {
+	key := subscriptionKey(pluginID, connectionID, resourceKey)
+	c.subsMu.Lock()
+	c.subscriptions[key]++
+	refcount := c.subscriptions[key]
+	c.subsMu.Unlock()
+	c.logger.Debugw("resource subscribed", "key", key, "refcount", refcount)
+	return nil
+}
+
+// UnsubscribeResource removes frontend interest in live events for a resource.
+func (c *controller) UnsubscribeResource(pluginID, connectionID, resourceKey string) error {
+	key := subscriptionKey(pluginID, connectionID, resourceKey)
+	c.subsMu.Lock()
+	if c.subscriptions[key] > 1 {
+		c.subscriptions[key]--
+	} else {
+		delete(c.subscriptions, key)
+	}
+	c.subsMu.Unlock()
+	c.logger.Debugw("resource unsubscribed", "key", key)
+	return nil
+}
+
+// isSubscribed returns true if at least one frontend consumer is subscribed.
+func (c *controller) isSubscribed(pluginID, connectionID, resourceKey string) bool {
+	key := subscriptionKey(pluginID, connectionID, resourceKey)
+	c.subsMu.RLock()
+	defer c.subsMu.RUnlock()
+	return c.subscriptions[key] > 0
+}
+
 // Listens for informer events and emits them over the frontend IPC.
 func (c *controller) informerListener() {
 	log := c.logger.Named("informerListener")
@@ -132,6 +183,9 @@ func (c *controller) informerListener() {
 			}
 			return
 		case event := <-c.addChan:
+			if !c.isSubscribed(event.PluginID, event.Connection, event.Key) {
+				continue
+			}
 			eventKey := fmt.Sprintf(
 				"%s/%s/%s/ADD",
 				event.PluginID,
@@ -140,6 +194,9 @@ func (c *controller) informerListener() {
 			)
 			runtime.EventsEmit(c.ctx, eventKey, event)
 		case event := <-c.updateChan:
+			if !c.isSubscribed(event.PluginID, event.Connection, event.Key) {
+				continue
+			}
 			eventKey := fmt.Sprintf(
 				"%s/%s/%s/UPDATE",
 				event.PluginID,
@@ -148,6 +205,9 @@ func (c *controller) informerListener() {
 			)
 			runtime.EventsEmit(c.ctx, eventKey, event)
 		case event := <-c.deleteChan:
+			if !c.isSubscribed(event.PluginID, event.Connection, event.Key) {
+				continue
+			}
 			eventKey := fmt.Sprintf(
 				"%s/%s/%s/DELETE",
 				event.PluginID,

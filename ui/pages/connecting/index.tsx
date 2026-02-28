@@ -50,7 +50,6 @@ type AppAction =
 function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'MARK_RESOURCE_READY': {
-      console.log('MARK_RESOURCE_READY', action.payload);
       const { group, resource } = parseResourceString(action.payload);
       let resourcesReadyIncrement = 0;
 
@@ -85,7 +84,6 @@ function reducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'MARK_RESOURCE_ERROR': {
-      console.log('MARK_RESOURCE_ERROR', action.payload);
       const { group, resource } = parseResourceString(action.payload);
 
       const newState = produce(state.resourceStates, draft => {
@@ -114,8 +112,6 @@ function reducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'SET_RESOURCES': {
-      console.log('SET_RESOURCES', action.payload);
-
       const newState = produce(state.resourceStates, draft => {
         for (const resourceString in action.payload.resources) {
           const { group, resource } = parseResourceString(resourceString);

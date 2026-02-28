@@ -120,6 +120,12 @@ type IClient interface {
 	// EnsureInformerForResource ensures an informer is running for a specific resource type
 	EnsureInformerForResource(pluginID, connectionID, resourceKey string) error
 
+	// SubscribeResource registers frontend interest in live ADD/UPDATE/DELETE events for a resource.
+	SubscribeResource(pluginID, connectionID, resourceKey string) error
+
+	// UnsubscribeResource removes frontend interest in live events for a resource.
+	UnsubscribeResource(pluginID, connectionID, resourceKey string) error
+
 	// ListAllConnections returns all connections across all plugins
 	ListAllConnections() (map[string][]types.Connection, error)
 }
@@ -292,6 +298,14 @@ func (c *Client) GetInformerState(pluginID, connectionID string) (*rt.InformerCo
 
 func (c *Client) EnsureInformerForResource(pluginID, connectionID, resourceKey string) error {
 	return c.controller.EnsureInformerForResource(pluginID, connectionID, resourceKey)
+}
+
+func (c *Client) SubscribeResource(pluginID, connectionID, resourceKey string) error {
+	return c.controller.SubscribeResource(pluginID, connectionID, resourceKey)
+}
+
+func (c *Client) UnsubscribeResource(pluginID, connectionID, resourceKey string) error {
+	return c.controller.UnsubscribeResource(pluginID, connectionID, resourceKey)
 }
 
 func (c *Client) ListAllConnections() (map[string][]types.Connection, error) {

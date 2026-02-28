@@ -130,6 +130,14 @@ export function StreamAction(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['resource']['Client']['StreamAction'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function SubscribeResource(arg1, arg2, arg3) {
+  return window['go']['resource']['Client']['SubscribeResource'](arg1, arg2, arg3);
+}
+
+export function UnsubscribeResource(arg1, arg2, arg3) {
+  return window['go']['resource']['Client']['UnsubscribeResource'](arg1, arg2, arg3);
+}
+
 export function Update(arg1, arg2, arg3, arg4) {
   return window['go']['resource']['Client']['Update'](arg1, arg2, arg3, arg4);
 }

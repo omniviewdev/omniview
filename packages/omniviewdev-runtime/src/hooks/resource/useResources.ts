@@ -9,7 +9,7 @@ import { InformerResourceState } from '../../types/informer';
 import type { InformerStateEvent } from '../../types/informer';
 
 // Underlying client
-import { List, Create } from '../../wailsjs/go/resource/Client';
+import { List, Create, SubscribeResource, UnsubscribeResource } from '../../wailsjs/go/resource/Client';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { produce } from 'immer';
 import get from 'lodash.get';
@@ -110,8 +110,6 @@ export const useResources = ({
   const queryKey = [pluginID, connectionID, resourceKey, namespaces, 'list'];
   const getResourceKey = (id: string, namespace: string) => [pluginID, connectionID, resourceKey, namespace, id];
 
-  console.log("getting from key: ", `${pluginID}/${connectionID}/${resourceKey}`)
-
   // === Mutations === //
 
   const { mutateAsync: create } = useMutation({
@@ -169,7 +167,6 @@ export const useResources = ({
    * Handle adding new resources to the resource list
    */
   const onResourceAdd = React.useCallback((newResource: AddPayload) => {
-    console.log("got a new resource", newResource)
     if (!idAccessor) {
       return;
     }
@@ -199,7 +196,6 @@ export const useResources = ({
    * Handle updating resources in the resource list
    */
   const onResourceUpdate = React.useCallback((updateEvent: UpdatePayload) => {
-    console.log("got an updated resource", updateEvent)
     if (!idAccessor) {
       return;
     }
@@ -228,7 +224,6 @@ export const useResources = ({
    * Handle deleting pods from the resource list
    */
   const onResourceDelete = React.useCallback((deletedResource: DeletePayload) => {
-    console.log("got a deleted resource", deletedResource)
     if (!idAccessor) {
       return;
     }
@@ -250,22 +245,37 @@ export const useResources = ({
     // queryClient.setQueryData(getResourceKey(deletedResource.id, deletedResource.namespace), undefined);
   }, []);
 
-  // *Only on mount*, we want subscribe to new resources, updates and deletes
+  // Subscribe to live resource events when this view mounts. The Go side only
+  // forwards ADD/UPDATE/DELETE events over the Wails bridge for resources with
+  // an active subscription, keeping the bridge silent during initial sync.
   React.useEffect(() => {
     if (!idAccessor) {
-      return
+      return;
     }
+
+    let cancelled = false;
+
+    // Tell Go we want live events for this resource, then refetch to
+    // catch any events that arrived before the subscription was active.
+    SubscribeResource(pluginID, connectionID, resourceKey).then(() => {
+      if (!cancelled) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
+    });
 
     const addCloser = EventsOn(`${pluginID}/${connectionID}/${resourceKey}/ADD`, onResourceAdd);
     const updateCloser = EventsOn(`${pluginID}/${connectionID}/${resourceKey}/UPDATE`, onResourceUpdate);
     const deleteCloser = EventsOn(`${pluginID}/${connectionID}/${resourceKey}/DELETE`, onResourceDelete);
 
     return () => {
-      addCloser()
-      updateCloser()
-      deleteCloser()
+      cancelled = true;
+      addCloser();
+      updateCloser();
+      deleteCloser();
+      // Tell Go we no longer need live events
+      void UnsubscribeResource(pluginID, connectionID, resourceKey);
     };
-  }, []);
+  }, [pluginID, connectionID, resourceKey]);
 
   // === Informer State === //
 
