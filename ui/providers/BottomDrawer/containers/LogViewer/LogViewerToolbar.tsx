@@ -152,6 +152,7 @@ const LogViewerToolbar: React.FC<Props> = ({
         placeholder="Search in logs"
         autoFocus
         autoComplete="off"
+        inputProps={{ 'data-search-input': true }}
         value={searchQuery}
         onChange={(value) => onSearchChange(value)}
         startAdornment={<LuSearch size={14} />}

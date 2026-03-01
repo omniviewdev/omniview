@@ -78,7 +78,7 @@ vi.mock('../LogViewerToolbar', () => {
     __esModule: true,
     default: (props: any) => (
       <div data-testid="log-toolbar">
-        <input placeholder="Search in logs" data-testid="search-input" />
+        <input data-search-input data-testid="search-input" />
         <button data-testid="toggle-timestamps" onClick={props.onToggleTimestamps}>timestamps</button>
         <button data-testid="toggle-wrap" onClick={props.onToggleWrap}>wrap</button>
         <button data-testid="toggle-follow" onClick={props.onToggleFollow}>follow</button>

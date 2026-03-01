@@ -184,7 +184,10 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
   // Copy the log line at the current search match
   const handleCopyMatchLine = useCallback(async () => {
     if (search.matches.length === 0) return;
-    const match = search.matches[search.currentMatchIndex];
+    const idx = search.currentMatchIndex;
+    if (idx < 0 || idx >= search.matches.length) return;
+    const match = search.matches[idx];
+    if (!match) return;
     const entry = filteredEntries[match.lineIndex];
     if (!entry) return;
     const ok = await copyLogsToClipboard([entry]);
@@ -207,7 +210,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
       if (!e.shiftKey && (e.key === 'f' || e.key === 'F')) {
         e.preventDefault();
         const el = (e.currentTarget as HTMLElement).querySelector<HTMLInputElement>(
-          'input[placeholder="Search in logs"]',
+          'input[data-search-input]',
         );
         if (el) {
           el.focus();
