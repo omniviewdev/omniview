@@ -314,6 +314,7 @@ const LogEntryComponent: React.FC<Props> = ({
             flexShrink: 0,
             whiteSpace: 'nowrap',
             userSelect: 'none',
+            WebkitUserSelect: 'none',
           }}
         >
           {entry.sourceId}
