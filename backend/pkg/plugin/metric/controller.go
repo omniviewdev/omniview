@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
@@ -76,25 +75,25 @@ type controller struct {
 	ctx              context.Context
 	logger           *zap.SugaredLogger
 	settingsProvider pkgsettings.Provider
-	clients          map[string]metric.Provider
+	clients          map[string]MetricProvider
 	providerInfos    map[string]*metric.ProviderInfo // pluginID -> provider info
 	handlerMap       map[string][]metric.Handler     // pluginID -> handlers
 	resourceIndex    map[string][]string             // resource key -> []pluginID
 	subscriptions    map[string]subscriptionIndex    // subscriptionID -> index
 	inChans          map[string]chan metric.StreamInput
-	resourceClient   resource.IClient
+	resourceClient   resource.Service
 	mux              sync.RWMutex
 }
 
 func NewController(
 	logger *zap.SugaredLogger,
 	sp pkgsettings.Provider,
-	resourceClient resource.IClient,
+	resourceClient resource.Service,
 ) Controller {
 	return &controller{
 		logger:           logger.Named("MetricController"),
 		settingsProvider: sp,
-		clients:          make(map[string]metric.Provider),
+		clients:          make(map[string]MetricProvider),
 		providerInfos:    make(map[string]*metric.ProviderInfo),
 		handlerMap:       make(map[string][]metric.Handler),
 		resourceIndex:    make(map[string][]string),
@@ -114,19 +113,41 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	c.logger.With("pluginID", pluginID).Debug("OnPluginInit")
 }
 
+// dispenseProvider extracts the metric provider from the backend,
+// wrapping it in the version-appropriate adapter.
+func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (MetricProvider, error) {
+	raw, err := backend.Dispense("metric")
+	if err != nil {
+		return nil, err
+	}
+
+	version := backend.NegotiatedVersion()
+	switch version {
+	case 1:
+		v1, ok := raw.(metric.Provider)
+		if !ok {
+			return nil, apperror.New(
+				apperror.TypePluginLoadFailed, 500,
+				"Plugin type mismatch",
+				fmt.Sprintf("Expected metric.Provider for v1, got %T", raw),
+			)
+		}
+		return NewAdapterV1(v1), nil
+	default:
+		return nil, apperror.New(
+			apperror.TypePluginLoadFailed, 500,
+			"Unsupported SDK protocol version",
+			fmt.Sprintf("Plugin '%s' negotiated v%d for metric, engine supports v1", pluginID, version),
+		)
+	}
+}
+
 func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
-	raw, err := backend.Dispense("metric")
+	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
-		return err
-	}
-
-	provider, ok := raw.(metric.Provider)
-	if !ok {
-		typeof := reflect.TypeOf(raw).String()
-		err = apperror.New(apperror.TypePluginLoadFailed, 500, "Plugin type mismatch", fmt.Sprintf("Expected metric.Provider but got '%s'.", typeof))
 		logger.Error(err)
 		return err
 	}

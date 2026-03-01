@@ -3,7 +3,6 @@ package exec
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
@@ -46,7 +45,7 @@ type sessionIndex struct {
 func NewController(
 	logger *zap.SugaredLogger,
 	sp pkgsettings.Provider,
-	resourceClient resource.IClient,
+	resourceClient resource.Service,
 ) Controller {
 	return &controller{
 		logger:           logger.Named("ExecController"),
@@ -69,7 +68,7 @@ type controller struct {
 	ctx              context.Context
 	logger           *zap.SugaredLogger
 	settingsProvider pkgsettings.Provider
-	clients          map[string]exec.Provider
+	clients          map[string]ExecProvider
 	sessionIndex     map[string]sessionIndex
 
 	// session channels
@@ -81,7 +80,7 @@ type controller struct {
 	outputMux chan exec.StreamOutput
 	resizeMux chan exec.StreamResize
 
-	resourceClient  resource.IClient
+	resourceClient  resource.Service
 	handlerMap      map[string]map[string]exec.Handler
 	terminalManager *terminal.Manager
 }
@@ -215,10 +214,39 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	logger.Debug("OnPluginInit")
 
 	if c.clients == nil {
-		c.clients = make(map[string]exec.Provider)
+		c.clients = make(map[string]ExecProvider)
 	}
 	if c.stops == nil {
 		c.stops = make(map[string]chan struct{})
+	}
+}
+
+// dispenseProvider extracts the exec provider from the backend,
+// wrapping it in the version-appropriate adapter.
+func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (ExecProvider, error) {
+	raw, err := backend.Dispense("exec")
+	if err != nil {
+		return nil, err
+	}
+
+	version := backend.NegotiatedVersion()
+	switch version {
+	case 1:
+		v1, ok := raw.(exec.Provider)
+		if !ok {
+			return nil, apperror.New(
+				apperror.TypePluginLoadFailed, 500,
+				"Plugin type mismatch",
+				fmt.Sprintf("Expected exec.Provider for v1, got %T", raw),
+			)
+		}
+		return NewAdapterV1(v1), nil
+	default:
+		return nil, apperror.New(
+			apperror.TypePluginLoadFailed, 500,
+			"Unsupported SDK protocol version",
+			fmt.Sprintf("Plugin '%s' negotiated v%d for exec, engine supports v1", pluginID, version),
+		)
 	}
 }
 
@@ -226,17 +254,10 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
-	raw, err := backend.Dispense("exec")
+	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
+		logger.Error(err)
 		return err
-	}
-
-	provider, ok := raw.(exec.Provider)
-	if !ok {
-		typeof := reflect.TypeOf(raw).String()
-		appErr := apperror.New(apperror.TypePluginLoadFailed, 500, "Plugin type mismatch", fmt.Sprintf("Expected exec.Provider but got '%s'.", typeof))
-		logger.Error(appErr)
-		return appErr
 	}
 
 	c.clients[pluginID] = provider

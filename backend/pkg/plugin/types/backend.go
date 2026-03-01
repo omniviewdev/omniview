@@ -1,5 +1,9 @@
 package types
 
+// CurrentProtocolVersion is the latest SDK protocol version supported by the engine.
+// Bump this when adding a new protocol version.
+const CurrentProtocolVersion = 1
+
 // PluginBackend abstracts the communication channel to a plugin process.
 // The primary implementation wraps go-plugin (ExternalBackend), but this
 // interface also enables in-process backends for tests and future bundled
@@ -19,6 +23,11 @@ type PluginBackend interface {
 
 	// Exited returns true if the plugin process has exited.
 	Exited() bool
+
+	// NegotiatedVersion returns the SDK protocol version negotiated with this plugin.
+	// For InProcessBackend, returns CurrentProtocolVersion.
+	// For ExternalBackend, returns the go-plugin negotiated version.
+	NegotiatedVersion() int
 }
 
 // CapabilityDetector is an optional interface that backends can implement

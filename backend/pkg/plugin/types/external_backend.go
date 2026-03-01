@@ -135,6 +135,11 @@ func (b *ExternalBackend) detectViaProbing() ([]string, error) {
 	return caps, nil
 }
 
+// NegotiatedVersion returns the SDK protocol version negotiated via go-plugin.
+func (b *ExternalBackend) NegotiatedVersion() int {
+	return b.pluginClient.NegotiatedVersion()
+}
+
 // ReattachConfig exposes the plugin process PID for the PID tracker.
 func (b *ExternalBackend) ReattachConfig() *goplugin.ReattachConfig {
 	return b.pluginClient.ReattachConfig()

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
@@ -50,11 +49,11 @@ type controller struct {
 	ctx              context.Context
 	logger           *zap.SugaredLogger
 	settingsProvider pkgsettings.Provider
-	clients          map[string]logs.Provider
+	clients          map[string]LogsProvider
 	sessionIndex     map[string]sessionIndex
 	inChans          map[string]chan logs.StreamInput
 	outputMux        chan logs.StreamOutput
-	resourceClient   resource.IClient
+	resourceClient   resource.Service
 	handlerMap       map[string]map[string]logs.Handler
 
 	// batch flush state
@@ -70,12 +69,12 @@ type logBatch struct {
 func NewController(
 	logger *zap.SugaredLogger,
 	sp pkgsettings.Provider,
-	resourceClient resource.IClient,
+	resourceClient resource.Service,
 ) Controller {
 	return &controller{
 		logger:           logger.Named("LogController"),
 		settingsProvider: sp,
-		clients:          make(map[string]logs.Provider),
+		clients:          make(map[string]LogsProvider),
 		sessionIndex:     make(map[string]sessionIndex),
 		inChans:          make(map[string]chan logs.StreamInput),
 		outputMux:        make(chan logs.StreamOutput, 256),
@@ -171,7 +170,36 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	logger.Debug("OnPluginInit")
 
 	if c.clients == nil {
-		c.clients = make(map[string]logs.Provider)
+		c.clients = make(map[string]LogsProvider)
+	}
+}
+
+// dispenseProvider extracts the logs provider from the backend,
+// wrapping it in the version-appropriate adapter.
+func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (LogsProvider, error) {
+	raw, err := backend.Dispense("log")
+	if err != nil {
+		return nil, err
+	}
+
+	version := backend.NegotiatedVersion()
+	switch version {
+	case 1:
+		v1, ok := raw.(logs.Provider)
+		if !ok {
+			return nil, apperror.New(
+				apperror.TypePluginLoadFailed, 500,
+				"Plugin type mismatch",
+				fmt.Sprintf("Expected logs.Provider for v1, got %T", raw),
+			)
+		}
+		return NewAdapterV1(v1), nil
+	default:
+		return nil, apperror.New(
+			apperror.TypePluginLoadFailed, 500,
+			"Unsupported SDK protocol version",
+			fmt.Sprintf("Plugin '%s' negotiated v%d for log, engine supports v1", pluginID, version),
+		)
 	}
 }
 
@@ -179,17 +207,10 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
-	raw, err := backend.Dispense("log")
+	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
+		logger.Error(err)
 		return err
-	}
-
-	provider, ok := raw.(logs.Provider)
-	if !ok {
-		typeof := reflect.TypeOf(raw).String()
-		appErr := apperror.New(apperror.TypePluginLoadFailed, 500, "Plugin type mismatch", fmt.Sprintf("Expected logs.Provider but got '%s'.", typeof))
-		logger.Error(appErr)
-		return appErr
 	}
 
 	c.clients[pluginID] = provider

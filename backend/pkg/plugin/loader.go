@@ -21,7 +21,7 @@ import (
 	lp "github.com/omniviewdev/plugin-sdk/pkg/logs"
 	mp "github.com/omniviewdev/plugin-sdk/pkg/metric"
 	np "github.com/omniviewdev/plugin-sdk/pkg/networker"
-	rp "github.com/omniviewdev/plugin-sdk/pkg/resource/plugin"
+	rpv1 "github.com/omniviewdev/plugin-sdk/pkg/v1/resource/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sp "github.com/omniviewdev/plugin-sdk/pkg/settings"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -193,14 +193,16 @@ func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, lo
 
 	pluginClient := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig: metadata.GenerateHandshakeConfig(),
-		Plugins: map[string]goplugin.Plugin{
-			"resource":  &rp.ResourcePlugin{},
-			"exec":      &ep.Plugin{},
-			"networker": &np.Plugin{},
-			"log":       &lp.Plugin{},
-			"metric":    &mp.Plugin{},
-			"settings":  &sp.SettingsPlugin{},
-			"lifecycle": &lc.Plugin{},
+		VersionedPlugins: map[int]goplugin.PluginSet{
+			1: {
+				"resource":  &rpv1.GRPCPlugin{},
+				"exec":      &ep.Plugin{},
+				"networker": &np.Plugin{},
+				"log":       &lp.Plugin{},
+				"metric":    &mp.Plugin{},
+				"settings":  &sp.SettingsPlugin{},
+				"lifecycle": &lc.Plugin{},
+			},
 		},
 		GRPCDialOptions: sdk.GRPCDialOptions(),
 		//nolint:gosec // this is completely software controlled
@@ -319,6 +321,15 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 
 	ctx := context.Background()
 	pluginID := record.ID
+
+	// Record the negotiated SDK protocol version.
+	version := backend.NegotiatedVersion()
+	record.ProtocolVersion = version
+	if version < plugintypes.CurrentProtocolVersion {
+		pm.logger.Warnw("plugin uses deprecated SDK protocol version",
+			"pluginID", pluginID, "version", version,
+			"current", plugintypes.CurrentProtocolVersion)
+	}
 
 	for name, manager := range pm.managers {
 		if err := manager.OnPluginStart(ctx, pluginID, record.Metadata); err != nil {

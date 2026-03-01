@@ -77,6 +77,11 @@ func (b *InProcessBackend) Exited() bool {
 	return b.stopped
 }
 
+// NegotiatedVersion returns the current protocol version for in-process backends.
+func (b *InProcessBackend) NegotiatedVersion() int {
+	return CurrentProtocolVersion
+}
+
 // DetectCapabilities returns the names of all registered providers.
 func (b *InProcessBackend) DetectCapabilities() ([]string, error) {
 	b.mu.Lock()

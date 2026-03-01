@@ -23,9 +23,10 @@ type PluginRecord struct {
 	InstalledAt time.Time             `json:"installedAt"`
 
 	// Runtime-only fields (not persisted).
-	StateMachine *lifecycle.PluginStateMachine `json:"-"`
-	Backend      PluginBackend                 `json:"-"`
-	Capabilities []sdktypes.Capability         `json:"-"`
+	StateMachine    *lifecycle.PluginStateMachine `json:"-"`
+	Backend         PluginBackend                 `json:"-"`
+	Capabilities    []sdktypes.Capability         `json:"-"`
+	ProtocolVersion int                           `json:"-"`
 }
 
 // ToInfo converts the host-side record to a frontend-safe PluginInfo.
