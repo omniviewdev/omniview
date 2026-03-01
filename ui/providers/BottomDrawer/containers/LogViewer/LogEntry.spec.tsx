@@ -81,6 +81,17 @@ describe('LogEntryComponent', () => {
     expect(screen.getByText('pod-a')).toBeInTheDocument();
   });
 
+  // ---- Selection (user-select) ----
+
+  it('source badge is not user-selectable', () => {
+    render(
+      <LogEntryComponent entry={makeEntry()} {...defaultProps} showSources />,
+    );
+    const badge = screen.getByText('pod-a');
+    expect(badge.style.userSelect).toBe('none');
+    expect(badge.style.webkitUserSelect).toBe('none');
+  });
+
   // ---- Search highlighting ----
 
   it('renders highlighted spans for search matches', () => {
