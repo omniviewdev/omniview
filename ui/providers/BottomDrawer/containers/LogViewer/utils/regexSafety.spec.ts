@@ -1,6 +1,7 @@
 import {
   compileSearchPattern,
   execSafeSearch,
+  execSafeSearchRange,
   MAX_MATCH_COUNT,
   SEARCH_TIME_BUDGET_MS,
 } from './regexSafety';
@@ -122,6 +123,14 @@ describe('execSafeSearch', () => {
     expect(results).toEqual([]);
   });
 
+  it('breaks inner loop on zero-length match (range variant)', () => {
+    const pattern = /a?/g;
+    const lines = ['bbb'];
+
+    const { results } = execSafeSearchRange(pattern, 0, 1, (i) => lines[i], buildMatch);
+    expect(results).toEqual([]);
+  });
+
   it('respects time budget', () => {
     // Mock performance.now to exceed the budget after a few lines
     let callCount = 0;
@@ -142,5 +151,79 @@ describe('execSafeSearch', () => {
     } finally {
       (performance.now as jest.Mock).mockRestore?.();
     }
+  });
+});
+
+describe('execSafeSearchRange', () => {
+  const defaultOpts = { isRegex: false, caseSensitive: false };
+
+  function buildMatch(lineIndex: number, start: number, end: number) {
+    return { lineIndex, start, end };
+  }
+
+  it('searches only within [startIndex, endIndex)', () => {
+    const lines = ['hello world', 'no match', 'hello again', 'hello end'];
+    const pattern = compileSearchPattern('hello', defaultOpts)!;
+
+    // Search only lines [2, 4)
+    const { results, capped } = execSafeSearchRange(
+      pattern, 2, 4, (i) => lines[i], buildMatch,
+    );
+
+    expect(capped).toBe(false);
+    expect(results).toEqual([
+      { lineIndex: 2, start: 0, end: 5 },
+      { lineIndex: 3, start: 0, end: 5 },
+    ]);
+  });
+
+  it('lineIndex in results matches actual array indices, not offset from 0', () => {
+    const lines = ['aaa', 'bbb', 'aaa', 'bbb', 'aaa'];
+    const pattern = compileSearchPattern('aaa', defaultOpts)!;
+
+    // Search [3, 5) — only line 4 matches
+    const { results } = execSafeSearchRange(
+      pattern, 3, 5, (i) => lines[i], buildMatch,
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].lineIndex).toBe(4);
+  });
+
+  it('respects custom matchBudget', () => {
+    const lines = ['ab ab', 'ab ab', 'ab ab'];
+    const pattern = compileSearchPattern('ab', defaultOpts)!;
+
+    const { results, capped } = execSafeSearchRange(
+      pattern, 0, 3, (i) => lines[i], buildMatch, 3,
+    );
+
+    expect(results).toHaveLength(3);
+    expect(capped).toBe(true);
+  });
+
+  it('falls back to MAX_MATCH_COUNT when no budget given', () => {
+    // Single line with many matches
+    const line = 'a '.repeat(MAX_MATCH_COUNT + 100);
+    const pattern = compileSearchPattern('a', defaultOpts)!;
+
+    const { results, capped } = execSafeSearchRange(
+      pattern, 0, 1, () => line, buildMatch,
+    );
+
+    expect(results).toHaveLength(MAX_MATCH_COUNT);
+    expect(capped).toBe(true);
+  });
+
+  it('returns empty when startIndex equals endIndex', () => {
+    const lines = ['hello'];
+    const pattern = compileSearchPattern('hello', defaultOpts)!;
+
+    const { results, capped } = execSafeSearchRange(
+      pattern, 0, 0, (i) => lines[i], buildMatch,
+    );
+
+    expect(results).toEqual([]);
+    expect(capped).toBe(false);
   });
 });
