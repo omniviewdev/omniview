@@ -62,7 +62,8 @@ const BottomDrawerContainer: React.FC = () => {
       lastExpandedHeightRef.current = height;
     }
 
-    drawerRef.current.style.minHeight = `${height}px`;
+    drawerRef.current.style.height = `${height}px`;
+    drawerRef.current.style.minHeight = `${minHeight}px`;
     drawerRef.current.style.maxHeight = `${height}px`;
     setDrawerHeight(height);
   }, []);
@@ -75,13 +76,13 @@ const BottomDrawerContainer: React.FC = () => {
     }
     expandDrawerToHeight(minHeight)
     bottomDrawerChannel.emit('onResizeReset')
-  }, [height]);
+  }, [height, expandDrawerToHeight]);
 
   // expand to last known expanded height (or default)
   const expand = React.useCallback(() => {
     expandDrawerToHeight(lastExpandedHeightRef.current)
     bottomDrawerChannel.emit('onResizeReset')
-  }, [])
+  }, [expandDrawerToHeight])
 
   // fullscreen toggle
   const fullscreen = React.useCallback(() => {
@@ -96,7 +97,7 @@ const BottomDrawerContainer: React.FC = () => {
       expandDrawerToHeight(window.innerHeight)
     }
     bottomDrawerChannel.emit('onResizeReset')
-  }, [height])
+  }, [height, expandDrawerToHeight])
 
 
   // ========================== EVENT BUS HANDLING ========================== //
@@ -122,7 +123,7 @@ const BottomDrawerContainer: React.FC = () => {
 
     const unsubscribeOnTabCreated = bottomDrawerChannel.on('onTabCreated', () => {
       if (!drawerRef.current) return;
-      const cur = parseInt(drawerRef.current.style.minHeight, 10);
+      const cur = parseInt(drawerRef.current.style.height, 10);
       if (isNaN(cur) || cur < defaultHeight) {
         expandDrawerToHeight(defaultHeight);
       }
@@ -137,14 +138,14 @@ const BottomDrawerContainer: React.FC = () => {
       closerFullScreen();
       closerMinimize();
     };
-  }, []);
+  }, [expandDrawerToHeight]);
 
   React.useEffect(() => {
     if (!drawerRef.current) {
       return;
     }
 
-    const currentHeight = parseInt(drawerRef.current.style.minHeight, 10);
+    const currentHeight = parseInt(drawerRef.current.style.height, 10);
 
     // if the tabs change, expand the window, or if there is a new tab
     if (tabs.length > 0 && (isNaN(currentHeight) || currentHeight < defaultHeight)) {
@@ -152,7 +153,7 @@ const BottomDrawerContainer: React.FC = () => {
     } else if (tabs.length === 0) {
       expandDrawerToHeight(minHeight);
     }
-  }, [tabs]);
+  }, [tabs, expandDrawerToHeight]);
 
   const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!drawerRef.current) {
@@ -161,14 +162,16 @@ const BottomDrawerContainer: React.FC = () => {
 
     // if double click, reset height
     if (e.detail === 2) {
-      if (drawerRef.current.style.minHeight === `${minHeight}px`) {
-        drawerRef.current.style.minHeight = `${defaultHeight}px`;
+      if (drawerRef.current.style.height === `${minHeight}px`) {
+        drawerRef.current.style.height = `${defaultHeight}px`;
+        drawerRef.current.style.minHeight = `${minHeight}px`;
         drawerRef.current.style.maxHeight = `${defaultHeight}px`;
         setDrawerHeight(defaultHeight);
         bottomDrawerChannel.emit('onResizeReset')
         return;
       }
 
+      drawerRef.current.style.height = `${minHeight}px`;
       drawerRef.current.style.minHeight = `${minHeight}px`;
       drawerRef.current.style.maxHeight = `${minHeight}px`;
 
@@ -192,7 +195,8 @@ const BottomDrawerContainer: React.FC = () => {
     const newHeight = Math.max(remainingHeightPx, minHeight);
 
     // Directly update the drawer's height bypassing React's state
-    drawerRef.current.style.minHeight = `${newHeight}px`;
+    drawerRef.current.style.height = `${newHeight}px`;
+    drawerRef.current.style.minHeight = `${minHeight}px`;
     drawerRef.current.style.maxHeight = `${newHeight}px`;
     bottomDrawerChannel.emit('onResizeHandler', newHeight);
   }, [isDragging, minHeight]);
@@ -201,7 +205,7 @@ const BottomDrawerContainer: React.FC = () => {
     setIsDragging(false);
     // Optionally sync your React state here if needed for other purposes
     if (drawerRef.current) {
-      const currentHeight = drawerRef.current.style.minHeight;
+      const currentHeight = drawerRef.current.style.height;
       const newHeight = Math.max(parseInt(currentHeight, 10), minHeight);
 
       // if we're pretty close to the bottom where it doesn't make sense
@@ -209,6 +213,7 @@ const BottomDrawerContainer: React.FC = () => {
       if (newHeight < 100) {
         setDrawerHeight(minHeight);
         bottomDrawerChannel.emit('onResizeReset')
+        drawerRef.current.style.height = `${minHeight}px`;
         drawerRef.current.style.minHeight = `${minHeight}px`;
         drawerRef.current.style.maxHeight = `${minHeight}px`;
         return;
@@ -235,7 +240,7 @@ const BottomDrawerContainer: React.FC = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, handleMouseMove]);
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   return (
     <>
@@ -252,7 +257,7 @@ const BottomDrawerContainer: React.FC = () => {
         sx={{
           zIndex: 1290,
           flexGrow: 0,
-          flexShrink: 0,
+          flexShrink: 1,
           display: 'flex',
           flexDirection: 'column',
           minHeight: minHeight,
