@@ -25,6 +25,7 @@ const defaultProps = {
   showSources: false,
   showLineNumbers: false,
   wrap: false,
+  colorize: true,
 };
 
 /** jsdom normalises hex colors to rgb() — match either form. */

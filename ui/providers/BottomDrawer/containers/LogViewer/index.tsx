@@ -29,6 +29,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
   const [showSources, setShowSources] = useState(true);
   const [showLineNumbers, setShowLineNumbers] = useState(false);
   const [wrap, setWrap] = useState(false);
+  const [colorize, setColorize] = useState(true);
   const [follow, setFollow] = useState(true);
   const [paused, setPaused] = useState(false);
   const [events, setEvents] = useState<LogStreamEvent[]>([]);
@@ -192,6 +193,8 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
         onToggleLineNumbers={() => setShowLineNumbers(!showLineNumbers)}
         wrap={wrap}
         onToggleWrap={() => setWrap(!wrap)}
+        colorize={colorize}
+        onToggleColorize={() => setColorize(!colorize)}
         follow={follow}
         onToggleFollow={() => setFollow(!follow)}
         paused={paused}
@@ -337,6 +340,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
                     showSources={showSources}
                     showLineNumbers={showLineNumbers}
                     wrap={wrap}
+                    colorize={colorize}
                     searchMatches={matchesByLine.get(virtualRow.index)}
                     currentMatchOffset={virtualRow.index === currentMatchLine ? currentMatchOffset : -1}
                   />

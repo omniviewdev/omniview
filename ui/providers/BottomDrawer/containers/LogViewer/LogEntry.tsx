@@ -10,6 +10,7 @@ interface Props {
   showSources: boolean;
   showLineNumbers: boolean;
   wrap: boolean;
+  colorize: boolean;
   searchMatches?: SearchMatch[];
   /** startOffset of the current match on this line, or -1 if current match is on another line */
   currentMatchOffset?: number;
@@ -208,6 +209,7 @@ const LogEntryComponent: React.FC<Props> = ({
   showSources,
   showLineNumbers,
   wrap,
+  colorize,
   searchMatches,
   currentMatchOffset = -1,
 }) => {
@@ -222,7 +224,7 @@ const LogEntryComponent: React.FC<Props> = ({
   }, []);
 
   const renderContent = () => {
-    const segments = entry.ansiSegments;
+    const segments = colorize ? entry.ansiSegments : undefined;
     const hasSearch = searchMatches && searchMatches.length > 0;
 
     // Fast path: no ANSI, no search → plain text.
@@ -342,6 +344,7 @@ export default React.memo(LogEntryComponent, (prev, next) => {
     prev.showSources === next.showSources &&
     prev.showLineNumbers === next.showLineNumbers &&
     prev.wrap === next.wrap &&
+    prev.colorize === next.colorize &&
     prev.searchMatches === next.searchMatches &&
     prev.currentMatchOffset === next.currentMatchOffset
   );

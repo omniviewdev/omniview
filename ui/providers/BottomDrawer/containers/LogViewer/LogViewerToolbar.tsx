@@ -20,6 +20,7 @@ import {
   LuTrash2,
   LuPause,
   LuPlay,
+  LuPalette,
   LuX,
 } from 'react-icons/lu';
 
@@ -67,6 +68,8 @@ interface Props {
   onToggleLineNumbers: () => void;
   wrap: boolean;
   onToggleWrap: () => void;
+  colorize: boolean;
+  onToggleColorize: () => void;
   follow: boolean;
   onToggleFollow: () => void;
   paused: boolean;
@@ -103,6 +106,8 @@ const LogViewerToolbar: React.FC<Props> = ({
   onToggleLineNumbers,
   wrap,
   onToggleWrap,
+  colorize,
+  onToggleColorize,
   follow,
   onToggleFollow,
   paused,
@@ -251,6 +256,17 @@ const LogViewerToolbar: React.FC<Props> = ({
           onClick={onToggleWrap}
         >
           <LuWrapText size={14} />
+        </IconButton>
+      </Tooltip>
+
+      <Tooltip content={colorize ? 'ANSI colors on' : 'ANSI colors off'}>
+        <IconButton
+          size="sm"
+          emphasis={colorize ? 'soft' : 'ghost'}
+          color={colorize ? 'primary' : 'neutral'}
+          onClick={onToggleColorize}
+        >
+          <LuPalette size={14} />
         </IconButton>
       </Tooltip>
 
