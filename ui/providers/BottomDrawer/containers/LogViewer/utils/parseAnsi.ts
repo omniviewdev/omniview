@@ -27,16 +27,8 @@
  *   100-107  bright background
  */
 
-export interface AnsiSegment {
-  text: string;
-  fg?: string;
-  bg?: string;
-  bold?: boolean;
-  dim?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  strikethrough?: boolean;
-}
+import type { AnsiSegment } from '../types';
+export type { AnsiSegment };
 
 export interface ParsedAnsi {
   /** Plain text with all escape sequences removed (for search, level detection). */
@@ -319,7 +311,7 @@ export function parseAnsi(input: string): ParsedAnsi {
 
   const plain = plainParts.join('');
 
-  if (allDefault) {
+  if (allDefault || segments.length === 0) {
     return { plain, segments: [], hasAnsi: true };
   }
 

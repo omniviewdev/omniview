@@ -156,6 +156,14 @@ describe('parseRawLogLine', () => {
     expect(entry.ansiSegments).toBeUndefined();
   });
 
+  it('handles escape-only content (no visible text)', () => {
+    const entry = parseRawLogLine(makeRaw({ content: '\x1b[31m\x1b[0m' }), 1);
+    expect(entry.content).toBe('');
+    expect(entry.ansiSegments).toBeUndefined();
+    expect(entry.level).toBeUndefined();
+    expect(entry.isJson).toBe(false);
+  });
+
   // ---- Edge cases ----
 
   it('handles empty content', () => {
