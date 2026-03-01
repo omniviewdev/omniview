@@ -76,13 +76,13 @@ const BottomDrawerContainer: React.FC = () => {
     }
     expandDrawerToHeight(minHeight)
     bottomDrawerChannel.emit('onResizeReset')
-  }, [height]);
+  }, [height, expandDrawerToHeight]);
 
   // expand to last known expanded height (or default)
   const expand = React.useCallback(() => {
     expandDrawerToHeight(lastExpandedHeightRef.current)
     bottomDrawerChannel.emit('onResizeReset')
-  }, [])
+  }, [expandDrawerToHeight])
 
   // fullscreen toggle
   const fullscreen = React.useCallback(() => {
@@ -97,7 +97,7 @@ const BottomDrawerContainer: React.FC = () => {
       expandDrawerToHeight(window.innerHeight)
     }
     bottomDrawerChannel.emit('onResizeReset')
-  }, [height])
+  }, [height, expandDrawerToHeight])
 
 
   // ========================== EVENT BUS HANDLING ========================== //
@@ -138,7 +138,7 @@ const BottomDrawerContainer: React.FC = () => {
       closerFullScreen();
       closerMinimize();
     };
-  }, []);
+  }, [expandDrawerToHeight]);
 
   React.useEffect(() => {
     if (!drawerRef.current) {
@@ -153,7 +153,7 @@ const BottomDrawerContainer: React.FC = () => {
     } else if (tabs.length === 0) {
       expandDrawerToHeight(minHeight);
     }
-  }, [tabs]);
+  }, [tabs, expandDrawerToHeight]);
 
   const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!drawerRef.current) {
