@@ -54,6 +54,16 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
     copyFeedbackTimer.current = setTimeout(() => setCopyFeedback(null), 1500);
   }, []);
 
+  // Clean up feedback timer on unmount
+  React.useEffect(() => {
+    return () => {
+      if (copyFeedbackTimer.current) {
+        clearTimeout(copyFeedbackTimer.current);
+        copyFeedbackTimer.current = null;
+      }
+    };
+  }, []);
+
   // Source selection (multi-select filtering)
   const sourceState = useLogSources({ sessionId, events, entries, version });
 
@@ -156,6 +166,17 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
     (e: React.KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || !e.shiftKey) return;
+
+      // Don't intercept when typing in an input or editable area
+      const target = e.target as HTMLElement;
+      if (
+        target.isContentEditable ||
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT'
+      ) {
+        return;
+      }
 
       if (e.key === 'C' || e.key === 'c') {
         e.preventDefault();

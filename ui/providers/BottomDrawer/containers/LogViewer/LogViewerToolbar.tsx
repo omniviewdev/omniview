@@ -314,6 +314,7 @@ const LogViewerToolbar: React.FC<Props> = ({
           emphasis={copyFeedback === 'visible' ? 'soft' : 'ghost'}
           color={copyFeedback === 'visible' ? 'success' : 'neutral'}
           onClick={onCopyVisible}
+          aria-label="Copy visible lines"
         >
           {copyFeedback === 'visible' ? <LuClipboardCheck size={14} /> : <LuCopy size={14} />}
         </IconButton>
@@ -325,6 +326,7 @@ const LogViewerToolbar: React.FC<Props> = ({
           emphasis={copyFeedback === 'all' ? 'soft' : 'ghost'}
           color={copyFeedback === 'all' ? 'success' : 'neutral'}
           onClick={onCopyAll}
+          aria-label="Copy all lines"
         >
           {copyFeedback === 'all' ? <LuClipboardCheck size={14} /> : <LuClipboard size={14} />}
         </IconButton>

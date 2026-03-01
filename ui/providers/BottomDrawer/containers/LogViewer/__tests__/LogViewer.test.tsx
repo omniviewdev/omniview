@@ -79,8 +79,8 @@ jest.mock('../LogViewerToolbar', () => {
         <button data-testid="toggle-wrap" onClick={props.onToggleWrap}>wrap</button>
         <button data-testid="toggle-follow" onClick={props.onToggleFollow}>follow</button>
         <button data-testid="toggle-paused" onClick={props.onTogglePaused}>pause</button>
-        <button data-testid="copy-visible" onClick={props.onCopyVisible}>copy visible</button>
-        <button data-testid="copy-all" onClick={props.onCopyAll}>copy all</button>
+        <button type="button" data-testid="copy-visible" onClick={props.onCopyVisible}>copy visible</button>
+        <button type="button" data-testid="copy-all" onClick={props.onCopyAll}>copy all</button>
       </div>
     ),
   };
@@ -121,7 +121,7 @@ jest.mock('@tanstack/react-virtual', () => ({
       getTotalSize: () => opts.count * 18,
       scrollToIndex: jest.fn(),
       measureElement: jest.fn(),
-      range: opts.count > 0 ? { startIndex: 0, endIndex: opts.count - 1 } : null,
+      range: opts.count > 2 ? { startIndex: 1, endIndex: 2 } : opts.count > 0 ? { startIndex: 0, endIndex: opts.count - 1 } : null,
     };
   },
 }));
@@ -237,9 +237,9 @@ describe('LogViewerContainer', () => {
   });
 
   it('copy visible copies only viewport entries to clipboard', async () => {
-    mockEntries = [makeEntry(0), makeEntry(1), makeEntry(2)];
+    mockEntries = [makeEntry(0), makeEntry(1), makeEntry(2), makeEntry(3)];
     mockVersion = 1;
-    mockLineCount = 3;
+    mockLineCount = 4;
 
     const { getByTestId } = render(<LogViewerContainer sessionId="sess-1" />);
 
@@ -247,8 +247,8 @@ describe('LogViewerContainer', () => {
       fireEvent.click(getByTestId('copy-visible'));
     });
 
-    // The virtualizer mock range is { startIndex: 0, endIndex: 2 } for 3 items
-    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
+    // The virtualizer mock range is { startIndex: 1, endIndex: 2 } for count > 2
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith([mockEntries[1], mockEntries[2]]);
   });
 
   it('Cmd+Shift+C triggers copy all', async () => {
@@ -262,7 +262,14 @@ describe('LogViewerContainer', () => {
     await act(async () => {
       fireEvent.keyDown(wrapper, { key: 'C', metaKey: true, shiftKey: true });
     });
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
 
+    mockCopyLogsToClipboard.mockClear();
+
+    // Also works with Ctrl (Windows/Linux)
+    await act(async () => {
+      fireEvent.keyDown(wrapper, { key: 'C', ctrlKey: true, shiftKey: true });
+    });
     expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
   });
 
@@ -277,7 +284,14 @@ describe('LogViewerContainer', () => {
     await act(async () => {
       fireEvent.keyDown(wrapper, { key: 'V', metaKey: true, shiftKey: true });
     });
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
 
+    mockCopyLogsToClipboard.mockClear();
+
+    // Also works with Ctrl (Windows/Linux)
+    await act(async () => {
+      fireEvent.keyDown(wrapper, { key: 'V', ctrlKey: true, shiftKey: true });
+    });
     expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
   });
 });
