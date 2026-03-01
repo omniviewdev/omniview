@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	resourcetypes "github.com/omniviewdev/plugin-sdk/pkg/resource/types"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -68,7 +68,7 @@ func TestGetConnectionNamespaces_PluginNotFound(t *testing.T) {
 
 func TestGet_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.Get("nonexistent", "conn", "key", resourcetypes.GetInput{})
+	_, err := ctrl.Get("nonexistent", "conn", "key", resource.GetInput{})
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
@@ -90,25 +90,9 @@ func TestGetResourceType_PluginNotFound(t *testing.T) {
 	assert.Equal(t, 404, appErr.Status)
 }
 
-func TestGetLayout_PluginNotFound(t *testing.T) {
-	ctrl := newTestController()
-	_, err := ctrl.GetLayout("nonexistent", "layout")
-	appErr := requireAppError(t, err)
-	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
-	assert.Equal(t, 404, appErr.Status)
-}
-
-func TestGetDefaultLayout_PluginNotFound(t *testing.T) {
-	ctrl := newTestController()
-	_, err := ctrl.GetDefaultLayout("nonexistent")
-	appErr := requireAppError(t, err)
-	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
-	assert.Equal(t, 404, appErr.Status)
-}
-
 // TestCRUDMethods_PluginNotFound verifies that all CRUD methods (List, Find,
 // Create, Update, Delete) return a PluginNotFound AppError when invoked with a
-// non-existent plugin ID. These all go through getClientConnection.
+// non-existent plugin ID.
 func TestCRUDMethods_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
 
@@ -119,35 +103,35 @@ func TestCRUDMethods_PluginNotFound(t *testing.T) {
 		{
 			name: "List",
 			fn: func() error {
-				_, err := ctrl.List("nonexistent", "conn", "key", resourcetypes.ListInput{})
+				_, err := ctrl.List("nonexistent", "conn", "key", resource.ListInput{})
 				return err
 			},
 		},
 		{
 			name: "Find",
 			fn: func() error {
-				_, err := ctrl.Find("nonexistent", "conn", "key", resourcetypes.FindInput{})
+				_, err := ctrl.Find("nonexistent", "conn", "key", resource.FindInput{})
 				return err
 			},
 		},
 		{
 			name: "Create",
 			fn: func() error {
-				_, err := ctrl.Create("nonexistent", "conn", "key", resourcetypes.CreateInput{})
+				_, err := ctrl.Create("nonexistent", "conn", "key", resource.CreateInput{})
 				return err
 			},
 		},
 		{
 			name: "Update",
 			fn: func() error {
-				_, err := ctrl.Update("nonexistent", "conn", "key", resourcetypes.UpdateInput{})
+				_, err := ctrl.Update("nonexistent", "conn", "key", resource.UpdateInput{})
 				return err
 			},
 		},
 		{
 			name: "Delete",
 			fn: func() error {
-				_, err := ctrl.Delete("nonexistent", "conn", "key", resourcetypes.DeleteInput{})
+				_, err := ctrl.Delete("nonexistent", "conn", "key", resource.DeleteInput{})
 				return err
 			},
 		},
@@ -163,7 +147,7 @@ func TestCRUDMethods_PluginNotFound(t *testing.T) {
 }
 
 // TestAdditionalMethods_PluginNotFound verifies remaining methods that check
-// for a plugin client via c.clients or getClientConnection.
+// for a plugin provider.
 func TestAdditionalMethods_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
 
@@ -172,15 +156,15 @@ func TestAdditionalMethods_PluginNotFound(t *testing.T) {
 		fn   func() error
 	}{
 		{
-			name: "StartConnectionInformer",
+			name: "StartConnectionWatch",
 			fn: func() error {
-				return ctrl.StartConnectionInformer("nonexistent", "conn")
+				return ctrl.StartConnectionWatch("nonexistent", "conn")
 			},
 		},
 		{
-			name: "StopConnectionInformer",
+			name: "StopConnectionWatch",
 			fn: func() error {
-				return ctrl.StopConnectionInformer("nonexistent", "conn")
+				return ctrl.StopConnectionWatch("nonexistent", "conn")
 			},
 		},
 		{
@@ -200,21 +184,21 @@ func TestAdditionalMethods_PluginNotFound(t *testing.T) {
 		{
 			name: "ExecuteAction",
 			fn: func() error {
-				_, err := ctrl.ExecuteAction("nonexistent", "conn", "key", "action", resourcetypes.ActionInput{})
+				_, err := ctrl.ExecuteAction("nonexistent", "conn", "key", "action", resource.ActionInput{})
 				return err
 			},
 		},
 		{
-			name: "GetInformerState",
+			name: "GetWatchState",
 			fn: func() error {
-				_, err := ctrl.GetInformerState("nonexistent", "conn")
+				_, err := ctrl.GetWatchState("nonexistent", "conn")
 				return err
 			},
 		},
 		{
-			name: "EnsureInformerForResource",
+			name: "EnsureResourceWatch",
 			fn: func() error {
-				return ctrl.EnsureInformerForResource("nonexistent", "conn", "key")
+				return ctrl.EnsureResourceWatch("nonexistent", "conn", "key")
 			},
 		},
 		{
@@ -222,12 +206,6 @@ func TestAdditionalMethods_PluginNotFound(t *testing.T) {
 			fn: func() error {
 				_, err := ctrl.GetResourceDefinition("nonexistent", "type")
 				return err
-			},
-		},
-		{
-			name: "SetLayout",
-			fn: func() error {
-				return ctrl.SetLayout("nonexistent", "layout", nil)
 			},
 		},
 	}
@@ -264,8 +242,8 @@ func TestGetConnection_NoConnectionsConfigured(t *testing.T) {
 }
 
 // TestConnectionMethods_NoConnectionsConfigured verifies that methods which
-// check c.connections (rather than c.clients) return TypeConnectionNotFound
-// when the plugin has no connection entries.
+// check c.connections return TypeConnectionNotFound when the plugin has no
+// connection entries.
 func TestConnectionMethods_NoConnectionsConfigured(t *testing.T) {
 	ctrl := newTestController()
 

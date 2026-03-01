@@ -1,8 +1,8 @@
 package resource
 
 import (
+	"context"
 	"errors"
-	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -76,18 +76,33 @@ func TestIsConnectionError_GRPCStatusErrors(t *testing.T) {
 // ======================== triggerCrashRecovery tests ======================== //
 
 // newCrashTestController builds a minimal controller suitable for
-// triggerCrashRecovery tests. The Wails context (ctx) is left nil so
-// runtime.EventsEmit is skipped (the production code guards on c.ctx != nil).
+// triggerCrashRecovery tests. It uses a recording emitter so we don't need Wails.
 func newCrashTestController() *controller {
-	return &controller{
-		logger:     zap.NewNop().Sugar(),
-		crashOnces: make(map[string]*sync.Once),
+	ctrl := &controller{
+		logger:  zap.NewNop().Sugar(),
+		plugins: make(map[string]*pluginState),
+		emitter: &noopEmitter{},
+		subs:    newSubscriptionManager(),
+	}
+	return ctrl
+}
+
+// noopEmitter is a no-op EventEmitter for crash tests.
+type noopEmitter struct{}
+
+func (e *noopEmitter) Emit(string, interface{}) {}
+
+// addPluginState is a test helper that sets up a pluginState entry for crash tests.
+func addPluginState(ctrl *controller, pluginID string) {
+	_, cancel := context.WithCancel(context.Background())
+	ctrl.plugins[pluginID] = &pluginState{
+		watchCancel: cancel,
 	}
 }
 
 func TestTriggerCrashRecovery_CallbackInvoked(t *testing.T) {
 	ctrl := newCrashTestController()
-	ctrl.crashOnces["plugin-a"] = &sync.Once{}
+	addPluginState(ctrl, "plugin-a")
 
 	var called atomic.Int32
 	ctrl.onCrashCallback = func(pluginID string) {
@@ -106,7 +121,7 @@ func TestTriggerCrashRecovery_CallbackInvoked(t *testing.T) {
 
 func TestTriggerCrashRecovery_OnceSemantics(t *testing.T) {
 	ctrl := newCrashTestController()
-	ctrl.crashOnces["plugin-a"] = &sync.Once{}
+	addPluginState(ctrl, "plugin-a")
 
 	var callCount atomic.Int32
 	ctrl.onCrashCallback = func(pluginID string) {
@@ -130,7 +145,7 @@ func TestTriggerCrashRecovery_OnceSemantics(t *testing.T) {
 
 func TestTriggerCrashRecovery_NilCallback_NoPanic(t *testing.T) {
 	ctrl := newCrashTestController()
-	ctrl.crashOnces["plugin-a"] = &sync.Once{}
+	addPluginState(ctrl, "plugin-a")
 	ctrl.onCrashCallback = nil
 
 	// Must not panic.
@@ -139,11 +154,11 @@ func TestTriggerCrashRecovery_NilCallback_NoPanic(t *testing.T) {
 	})
 }
 
-func TestTriggerCrashRecovery_MissingOnceEntry_NoPanic(t *testing.T) {
+func TestTriggerCrashRecovery_MissingPluginState_NoPanic(t *testing.T) {
 	ctrl := newCrashTestController()
-	// crashOnces has no entry for "unknown-plugin".
+	// No plugin state for "unknown-plugin".
 	ctrl.onCrashCallback = func(pluginID string) {
-		t.Fatal("callback should not be invoked when there is no Once entry")
+		t.Fatal("callback should not be invoked when there is no plugin state")
 	}
 
 	assert.NotPanics(t, func() {
@@ -153,8 +168,8 @@ func TestTriggerCrashRecovery_MissingOnceEntry_NoPanic(t *testing.T) {
 
 func TestTriggerCrashRecovery_IndependentPlugins(t *testing.T) {
 	ctrl := newCrashTestController()
-	ctrl.crashOnces["plugin-a"] = &sync.Once{}
-	ctrl.crashOnces["plugin-b"] = &sync.Once{}
+	addPluginState(ctrl, "plugin-a")
+	addPluginState(ctrl, "plugin-b")
 
 	var countA, countB atomic.Int32
 	ctrl.onCrashCallback = func(pluginID string) {

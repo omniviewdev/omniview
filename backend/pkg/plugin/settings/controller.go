@@ -3,7 +3,6 @@ package settings
 import (
 	"errors"
 	"fmt"
-	"reflect"
 
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"go.uber.org/zap"
@@ -24,7 +23,7 @@ const (
 // This controller is embedded in the client IDE facing client.
 type Controller interface {
 	internaltypes.Controller
-	IClient
+	Service
 }
 
 // runtime assertion to make sure we satisfy both internal and external interfaces.
@@ -33,7 +32,7 @@ var _ Controller = (*controller)(nil)
 type controller struct {
 	logger           *zap.SugaredLogger
 	settingsProvider pkgsettings.Provider
-	clients          map[string]sdksettings.Provider
+	clients          map[string]SettingsProvider
 }
 
 // NewController returns a new Controller instance.
@@ -41,7 +40,7 @@ func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controlle
 	return &controller{
 		logger:           logger.Named("SettingsController"),
 		settingsProvider: sp,
-		clients:          make(map[string]sdksettings.Provider),
+		clients:          make(map[string]SettingsProvider),
 	}
 }
 
@@ -49,9 +48,37 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginInit")
 
-	// make sure we have our maps initialized
 	if c.clients == nil {
-		c.clients = make(map[string]sdksettings.Provider)
+		c.clients = make(map[string]SettingsProvider)
+	}
+}
+
+// dispenseProvider extracts the settings provider from the backend,
+// wrapping it in the version-appropriate adapter.
+func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (SettingsProvider, error) {
+	raw, err := backend.Dispense(PluginName)
+	if err != nil {
+		return nil, err
+	}
+
+	version := backend.NegotiatedVersion()
+	switch version {
+	case 1:
+		v1, ok := raw.(sdksettings.Provider)
+		if !ok {
+			return nil, apperror.New(
+				apperror.TypePluginLoadFailed, 500,
+				"Plugin type mismatch",
+				fmt.Sprintf("Expected settings.Provider for v1, got %T", raw),
+			)
+		}
+		return NewAdapterV1(v1), nil
+	default:
+		return nil, apperror.New(
+			apperror.TypePluginLoadFailed, 500,
+			"Unsupported SDK protocol version",
+			fmt.Sprintf("Plugin '%s' negotiated v%d for settings, engine supports v1", pluginID, version),
+		)
 	}
 }
 
@@ -63,27 +90,13 @@ func (c *controller) OnPluginStart(
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
-	// make sure we have a client we can call for this plugin
-	raw, err := backend.Dispense(PluginName)
+	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
-		return err
-	}
-
-	resourceClient, ok := raw.(sdksettings.Provider)
-	if !ok {
-		// get the type for for debugging/error
-		typeOfClient := reflect.TypeOf(raw).String()
-		err = apperror.New(
-			apperror.TypePluginLoadFailed,
-			500,
-			"Plugin type mismatch",
-			fmt.Sprintf("Expected SettingsProvider but got '%s'.", typeOfClient),
-		)
 		logger.Error(err)
 		return err
 	}
 
-	c.clients[pluginID] = resourceClient
+	c.clients[pluginID] = provider
 	return nil
 }
 
