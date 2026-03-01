@@ -171,6 +171,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
       const target = e.target as HTMLElement;
       if (
         target.isContentEditable ||
+        target.contentEditable === 'true' ||
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'SELECT'
@@ -269,7 +270,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
 
   return (
     <Box
-      tabIndex={-1}
+      tabIndex={0}
       onKeyDown={handleKeyDown}
       sx={{
         display: 'flex',
@@ -280,6 +281,11 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
         position: 'relative',
         outline: 'none',
         userSelect: 'none',
+        '&:focus-visible': {
+          outline: '2px solid',
+          outlineColor: 'primary.outlinedBorder',
+          outlineOffset: -2,
+        },
       }}
     >
       <LogViewerToolbar

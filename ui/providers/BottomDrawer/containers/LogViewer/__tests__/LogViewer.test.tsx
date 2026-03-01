@@ -296,6 +296,37 @@ describe('LogViewerContainer', () => {
     expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
   });
 
+  it('does not trigger copy shortcuts from editable elements', async () => {
+    mockEntries = [makeEntry(0), makeEntry(1)];
+    mockVersion = 1;
+    mockLineCount = 2;
+
+    const { container } = render(<LogViewerContainer sessionId="sess-1" />);
+    const wrapper = container.firstElementChild as HTMLElement;
+
+    // contentEditable div
+    const editable = document.createElement('div');
+    editable.contentEditable = 'true';
+    wrapper.appendChild(editable);
+    editable.focus();
+
+    mockCopyLogsToClipboard.mockClear();
+    await act(async () => {
+      fireEvent.keyDown(editable, { key: 'C', metaKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).not.toHaveBeenCalled();
+
+    // input element
+    const input = document.createElement('input');
+    wrapper.appendChild(input);
+    input.focus();
+
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'C', ctrlKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).not.toHaveBeenCalled();
+  });
+
   // ---- Selection containment ----
 
   it('Cmd+A selects only within the log scroll area', () => {

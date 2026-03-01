@@ -127,7 +127,7 @@ const LogViewerToolbar: React.FC<Props> = ({
   jumpToTime,
   lineCount,
 }) => {
-  const isMac = /mac/i.test(navigator.userAgent);
+  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.userAgent);
   const prevHold = useHoldRepeat(onPrevMatch);
   const nextHold = useHoldRepeat(onNextMatch);
 
