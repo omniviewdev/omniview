@@ -1,4 +1,5 @@
 import type { LogEntry, LogLevel, RawLogLine } from '../types';
+import { parseAnsi } from './parseAnsi';
 
 const LEVEL_PATTERNS: Array<{ level: LogLevel; pattern: RegExp }> = [
   { level: 'error', pattern: /\b(ERROR|ERR|FATAL|PANIC|CRITICAL)\b/i },
@@ -34,9 +35,13 @@ const ORIGIN_MAP: Record<number, LogEntry['origin']> = {
 };
 
 export function parseRawLogLine(raw: RawLogLine, lineNumber: number): LogEntry {
-  const content = typeof raw.content === 'string'
+  const rawContent = typeof raw.content === 'string'
     ? raw.content
     : new TextDecoder().decode(new Uint8Array(Object.values(raw.content)));
+
+  // Parse ANSI in one pass: produces stripped plain text + styled segments.
+  const parsed = parseAnsi(rawContent);
+  const content = parsed.plain;
 
   return {
     lineNumber,
@@ -48,5 +53,6 @@ export function parseRawLogLine(raw: RawLogLine, lineNumber: number): LogEntry {
     origin: ORIGIN_MAP[raw.origin] || 'CURRENT',
     level: detectLevel(content),
     isJson: isJsonString(content.trim()),
+    ansiSegments: parsed.segments.length > 0 ? parsed.segments : undefined,
   };
 }

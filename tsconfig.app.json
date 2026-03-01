@@ -58,7 +58,8 @@
     "dist",
     "build",
     "**/*.spec.ts",
-    "**/*.spec.tsx"
+    "**/*.spec.tsx",
+    "**/*.bench.ts"
   ],
   "include": [
     "ui",

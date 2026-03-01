@@ -10,7 +10,8 @@
     "postinstall": "pnpm run bundle:yaml-worker",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "nx preview",
-    "test": "jest"
+    "test": "jest",
+    "bench": "vitest bench --config vitest.bench.config.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

@@ -118,6 +118,52 @@ describe('parseRawLogLine', () => {
     expect(entry.content).toBe('Hi');
   });
 
+  // ---- ANSI escape sequence handling ----
+
+  it('strips ANSI codes from content', () => {
+    const entry = parseRawLogLine(makeRaw({ content: '\x1b[31mERROR\x1b[0m something broke' }), 1);
+    expect(entry.content).toBe('ERROR something broke');
+  });
+
+  it('detects level through ANSI codes', () => {
+    const entry = parseRawLogLine(makeRaw({ content: '\x1b[1;31mERROR\x1b[0m database down' }), 1);
+    expect(entry.level).toBe('error');
+  });
+
+  it('populates ansiSegments for colored content', () => {
+    const entry = parseRawLogLine(makeRaw({ content: '\x1b[31mERROR\x1b[0m normal' }), 1);
+    expect(entry.ansiSegments).toBeDefined();
+    expect(entry.ansiSegments).toHaveLength(2);
+    expect(entry.ansiSegments![0].fg).toBe('#cc0000');
+    expect(entry.ansiSegments![0].text).toBe('ERROR');
+    expect(entry.ansiSegments![1].text).toBe(' normal');
+  });
+
+  it('omits ansiSegments for plain content', () => {
+    const entry = parseRawLogLine(makeRaw({ content: 'plain text' }), 1);
+    expect(entry.ansiSegments).toBeUndefined();
+  });
+
+  it('detects JSON in ANSI-wrapped content', () => {
+    const entry = parseRawLogLine(makeRaw({ content: '\x1b[32m{"key":"value"}\x1b[0m' }), 1);
+    expect(entry.content).toBe('{"key":"value"}');
+    expect(entry.isJson).toBe(true);
+  });
+
+  it('omits ansiSegments when ANSI codes are present but only resets', () => {
+    const entry = parseRawLogLine(makeRaw({ content: '\x1b[0mplain text' }), 1);
+    expect(entry.content).toBe('plain text');
+    expect(entry.ansiSegments).toBeUndefined();
+  });
+
+  it('handles escape-only content (no visible text)', () => {
+    const entry = parseRawLogLine(makeRaw({ content: '\x1b[31m\x1b[0m' }), 1);
+    expect(entry.content).toBe('');
+    expect(entry.ansiSegments).toBeUndefined();
+    expect(entry.level).toBeUndefined();
+    expect(entry.isJson).toBe(false);
+  });
+
   // ---- Edge cases ----
 
   it('handles empty content', () => {
