@@ -249,6 +249,65 @@ describe('LogEntryComponent', () => {
     expect(orangeSpans[0]).toHaveTextContent('ERROR');
   });
 
+  // ---- colorize={false} ----
+
+  it('renders plain text when colorize is false even with ansiSegments', () => {
+    const { container } = render(
+      <LogEntryComponent
+        entry={makeEntry({
+          content: 'ERROR something broke',
+          ansiSegments: [
+            { text: 'ERROR', fg: '#cc0000', bold: true },
+            { text: ' something broke' },
+          ],
+        })}
+        {...defaultProps}
+        colorize={false}
+      />,
+    );
+
+    // Full text should render
+    expect(container.textContent).toContain('ERROR something broke');
+
+    // No color-styled spans should exist
+    const colorSpans = Array.from(container.querySelectorAll('span')).filter(
+      (el) => el.style.color === 'rgb(204, 0, 0)',
+    );
+    expect(colorSpans).toHaveLength(0);
+  });
+
+  it('renders search highlights with colorize={false}', () => {
+    const matches: SearchMatch[] = [
+      { lineIndex: 0, startOffset: 0, endOffset: 5 }, // "ERROR"
+    ];
+    const { container } = render(
+      <LogEntryComponent
+        entry={makeEntry({
+          content: 'ERROR something broke',
+          ansiSegments: [
+            { text: 'ERROR', fg: '#cc0000' },
+            { text: ' something broke' },
+          ],
+        })}
+        {...defaultProps}
+        colorize={false}
+        searchMatches={matches}
+        currentMatchOffset={0}
+      />,
+    );
+
+    // Search highlight should still work (orange for current match)
+    const orangeSpans = spansByBg(container, ORANGE);
+    expect(orangeSpans).toHaveLength(1);
+    expect(orangeSpans[0]).toHaveTextContent('ERROR');
+
+    // But no ANSI color spans
+    const colorSpans = Array.from(container.querySelectorAll('span')).filter(
+      (el) => el.style.color === 'rgb(204, 0, 0)',
+    );
+    expect(colorSpans).toHaveLength(0);
+  });
+
   it('renders search highlight that spans across ANSI segment boundaries', () => {
     // content = "helloworld" (stripped), search matches "llowor" (offsets 2-8)
     const matches: SearchMatch[] = [

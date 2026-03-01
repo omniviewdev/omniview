@@ -265,6 +265,8 @@ const LogViewerToolbar: React.FC<Props> = ({
           emphasis={colorize ? 'soft' : 'ghost'}
           color={colorize ? 'primary' : 'neutral'}
           onClick={onToggleColorize}
+          aria-label="Toggle ANSI colors"
+          aria-pressed={colorize}
         >
           <LuPalette size={14} />
         </IconButton>
