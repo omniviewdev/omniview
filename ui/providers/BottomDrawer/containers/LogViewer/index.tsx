@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { keyframes } from '@emotion/react';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -18,6 +19,11 @@ import { saveLogsNative, copyLogsToClipboard } from './utils/downloadLogs';
 import { findEntryIndexByTime } from './utils/binarySearchTimestamp';
 import type { LogEntry, LogStreamEvent, SearchMatch } from './types';
 import { StreamEventType } from './types';
+
+const copyFlash = keyframes`
+  0%, 30% { background-color: rgba(76, 175, 80, 0.4); }
+  100% { background-color: transparent; }
+`;
 
 interface Props {
   sessionId: string;
@@ -54,12 +60,26 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
     copyFeedbackTimer.current = setTimeout(() => setCopyFeedback(null), 1500);
   }, []);
 
-  // Clean up feedback timer on unmount
+  // Copied line flash state
+  const [copiedLineIndex, setCopiedLineIndex] = useState<number | null>(null);
+  const copiedLineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flashCopiedLine = useCallback((lineIndex: number) => {
+    if (copiedLineTimer.current) clearTimeout(copiedLineTimer.current);
+    setCopiedLineIndex(lineIndex);
+    copiedLineTimer.current = setTimeout(() => setCopiedLineIndex(null), 400);
+  }, []);
+
+  // Clean up timers on unmount
   React.useEffect(() => {
     return () => {
       if (copyFeedbackTimer.current) {
         clearTimeout(copyFeedbackTimer.current);
         copyFeedbackTimer.current = null;
+      }
+      if (copiedLineTimer.current) {
+        clearTimeout(copiedLineTimer.current);
+        copiedLineTimer.current = null;
       }
     };
   }, []);
@@ -161,11 +181,49 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
     if (ok) flashCopyFeedback('all');
   }, [filteredEntries, flashCopyFeedback]);
 
-  // Keyboard shortcuts for copy actions
+  // Copy the log line at the current search match
+  const handleCopyMatchLine = useCallback(async () => {
+    if (search.matches.length === 0) return;
+    const match = search.matches[search.currentMatchIndex];
+    const entry = filteredEntries[match.lineIndex];
+    if (!entry) return;
+    const ok = await copyLogsToClipboard([entry]);
+    if (ok) flashCopiedLine(match.lineIndex);
+  }, [search.matches, search.currentMatchIndex, filteredEntries, flashCopiedLine]);
+
+  // Keyboard shortcuts
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // Escape from search input — return focus to the scroll area
+      if (e.key === 'Escape' && (e.target as HTMLElement).tagName === 'INPUT') {
+        parentRef.current?.focus();
+        return;
+      }
+
       const mod = e.metaKey || e.ctrlKey;
-      if (!mod || !e.shiftKey) return;
+      if (!mod) return;
+
+      // Cmd/Ctrl+F — focus search input
+      if (!e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        const el = (e.currentTarget as HTMLElement).querySelector<HTMLInputElement>(
+          'input[placeholder="Search in logs"]',
+        );
+        if (el) {
+          el.focus();
+          el.select();
+        }
+        return;
+      }
+
+      // Cmd/Ctrl+Shift+L — copy current match line (works from search input too)
+      if (e.shiftKey && (e.key === 'L' || e.key === 'l')) {
+        e.preventDefault();
+        handleCopyMatchLine();
+        return;
+      }
+
+      if (!e.shiftKey) return;
 
       // Don't intercept when typing in an input or editable area
       const target = e.target as HTMLElement;
@@ -187,7 +245,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
         handleCopyVisible();
       }
     },
-    [handleCopyAll, handleCopyVisible],
+    [handleCopyAll, handleCopyVisible, handleCopyMatchLine],
   );
 
   // Build per-line search match index
@@ -460,6 +518,9 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
                   sx={{
                     minWidth: '100%',
                     width: wrap ? '100%' : 'max-content',
+                    ...(virtualRow.index === copiedLineIndex && {
+                      animation: `${copyFlash} 350ms ease-out`,
+                    }),
                   }}
                 >
                   <LogEntryComponent
