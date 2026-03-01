@@ -30,6 +30,8 @@ const mockSetIsRegex = vi.fn();
 const mockSetCaseSensitive = vi.fn();
 const mockNextMatch = vi.fn();
 const mockPrevMatch = vi.fn();
+let mockSearchMatches: SearchMatch[] = [];
+let mockCurrentMatchIndex = 0;
 
 vi.mock('../hooks/useLogSearch', () => ({
   useLogSearch: () => ({
@@ -39,9 +41,9 @@ vi.mock('../hooks/useLogSearch', () => ({
     setIsRegex: mockSetIsRegex,
     caseSensitive: false,
     setCaseSensitive: mockSetCaseSensitive,
-    matches: [] as SearchMatch[],
-    totalMatches: 0,
-    currentMatchIndex: 0,
+    matches: mockSearchMatches,
+    totalMatches: mockSearchMatches.length,
+    currentMatchIndex: mockCurrentMatchIndex,
     capped: false,
     nextMatch: mockNextMatch,
     prevMatch: mockPrevMatch,
@@ -76,6 +78,7 @@ vi.mock('../LogViewerToolbar', () => {
     __esModule: true,
     default: (props: any) => (
       <div data-testid="log-toolbar">
+        <input data-search-input data-testid="search-input" />
         <button data-testid="toggle-timestamps" onClick={props.onToggleTimestamps}>timestamps</button>
         <button data-testid="toggle-wrap" onClick={props.onToggleWrap}>wrap</button>
         <button data-testid="toggle-follow" onClick={props.onToggleFollow}>follow</button>
@@ -147,6 +150,8 @@ describe('LogViewerContainer', () => {
     mockEntries = [];
     mockVersion = 0;
     mockLineCount = 0;
+    mockSearchMatches = [];
+    mockCurrentMatchIndex = 0;
   });
 
   afterEach(() => {
@@ -294,6 +299,122 @@ describe('LogViewerContainer', () => {
       fireEvent.keyDown(wrapper, { key: 'V', ctrlKey: true, shiftKey: true });
     });
     expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
+  });
+
+  it('Cmd+F focuses the search input (Mac)', () => {
+    mockEntries = [makeEntry(0)];
+    mockVersion = 1;
+    mockLineCount = 1;
+
+    const { container, getByTestId } = render(<LogViewerContainer sessionId="sess-1" />);
+    const wrapper = container.firstElementChild as HTMLElement;
+    const searchInput = getByTestId('search-input') as HTMLInputElement;
+
+    // Focus should not be on search input initially
+    expect(document.activeElement).not.toBe(searchInput);
+
+    fireEvent.keyDown(wrapper, { key: 'f', metaKey: true });
+
+    expect(document.activeElement).toBe(searchInput);
+  });
+
+  it('Ctrl+F focuses the search input (Windows/Linux)', () => {
+    mockEntries = [makeEntry(0)];
+    mockVersion = 1;
+    mockLineCount = 1;
+
+    const { container, getByTestId } = render(<LogViewerContainer sessionId="sess-1" />);
+    const wrapper = container.firstElementChild as HTMLElement;
+    const searchInput = getByTestId('search-input') as HTMLInputElement;
+
+    expect(document.activeElement).not.toBe(searchInput);
+
+    fireEvent.keyDown(wrapper, { key: 'F', ctrlKey: true });
+
+    expect(document.activeElement).toBe(searchInput);
+  });
+
+  it('Escape from search input returns focus to the scroll area', () => {
+    mockEntries = [makeEntry(0)];
+    mockVersion = 1;
+    mockLineCount = 1;
+
+    const { container, getByTestId } = render(<LogViewerContainer sessionId="sess-1" />);
+    const searchInput = getByTestId('search-input') as HTMLInputElement;
+    searchInput.focus();
+    expect(document.activeElement).toBe(searchInput);
+
+    fireEvent.keyDown(searchInput, { key: 'Escape' });
+
+    // Focus should move to the scroll area (tabindex=0 element inside the container)
+    const wrapper = container.firstElementChild as HTMLElement;
+    const scrollArea = wrapper.querySelector('[tabindex="0"]:not([data-testid="log-toolbar"] *)');
+    expect(document.activeElement).toBe(scrollArea);
+  });
+
+  it('Cmd+Shift+L copies the current match log line (Mac)', async () => {
+    mockEntries = [makeEntry(0), makeEntry(1, 'match line'), makeEntry(2)];
+    mockVersion = 1;
+    mockLineCount = 3;
+    mockSearchMatches = [{ lineIndex: 1, startOffset: 0, endOffset: 5 }];
+    mockCurrentMatchIndex = 0;
+
+    const { container } = render(<LogViewerContainer sessionId="sess-1" />);
+    const wrapper = container.firstElementChild as HTMLElement;
+
+    await act(async () => {
+      fireEvent.keyDown(wrapper, { key: 'L', metaKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith([mockEntries[1]]);
+  });
+
+  it('Ctrl+Shift+L copies the current match log line (Windows/Linux)', async () => {
+    mockEntries = [makeEntry(0), makeEntry(1, 'match line'), makeEntry(2)];
+    mockVersion = 1;
+    mockLineCount = 3;
+    mockSearchMatches = [{ lineIndex: 1, startOffset: 0, endOffset: 5 }];
+    mockCurrentMatchIndex = 0;
+
+    const { container } = render(<LogViewerContainer sessionId="sess-1" />);
+    const wrapper = container.firstElementChild as HTMLElement;
+
+    await act(async () => {
+      fireEvent.keyDown(wrapper, { key: 'l', ctrlKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith([mockEntries[1]]);
+  });
+
+  it('Cmd+Shift+L works from the search input', async () => {
+    mockEntries = [makeEntry(0), makeEntry(1, 'match line'), makeEntry(2)];
+    mockVersion = 1;
+    mockLineCount = 3;
+    mockSearchMatches = [{ lineIndex: 1, startOffset: 0, endOffset: 5 }];
+    mockCurrentMatchIndex = 0;
+
+    const { getByTestId } = render(<LogViewerContainer sessionId="sess-1" />);
+    const searchInput = getByTestId('search-input') as HTMLInputElement;
+    searchInput.focus();
+
+    await act(async () => {
+      fireEvent.keyDown(searchInput, { key: 'L', metaKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith([mockEntries[1]]);
+  });
+
+  it('Cmd+Shift+L does nothing when no search matches exist', async () => {
+    mockEntries = [makeEntry(0), makeEntry(1)];
+    mockVersion = 1;
+    mockLineCount = 2;
+    mockSearchMatches = [];
+
+    const { container } = render(<LogViewerContainer sessionId="sess-1" />);
+    const wrapper = container.firstElementChild as HTMLElement;
+
+    mockCopyLogsToClipboard.mockClear();
+    await act(async () => {
+      fireEvent.keyDown(wrapper, { key: 'L', metaKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).not.toHaveBeenCalled();
   });
 
   it('does not trigger copy shortcuts from editable elements', async () => {
