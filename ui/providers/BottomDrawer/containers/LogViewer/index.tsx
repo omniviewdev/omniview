@@ -185,17 +185,17 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
     const container = logEl?.parentElement;
     if (!logEl || !container) return;
 
-    const siblings: HTMLElement[] = [];
+    const saved: [HTMLElement, string][] = [];
     for (const child of container.children) {
       if (child !== logEl && child instanceof HTMLElement) {
+        saved.push([child, child.style.pointerEvents]);
         child.style.pointerEvents = 'none';
-        siblings.push(child);
       }
     }
 
     const restore = () => {
-      for (const sib of siblings) {
-        sib.style.pointerEvents = '';
+      for (const [el, prev] of saved) {
+        el.style.pointerEvents = prev;
       }
       document.removeEventListener('mouseup', restore);
       window.removeEventListener('blur', restore);
