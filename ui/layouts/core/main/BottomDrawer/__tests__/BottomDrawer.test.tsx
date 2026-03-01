@@ -288,6 +288,57 @@ describe('BottomDrawerContainer', () => {
     expect(drawer.style.height).toBe('32px');
   });
 
+  it('minHeight stays at 32px floor when expanded', () => {
+    mockUseBottomDrawer.mockReturnValue({
+      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
+      focused: 0,
+    });
+
+    const { container } = render(<BottomDrawerContainer />);
+    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+
+    // Expanded to 400px — minHeight should still be 32px (the floor)
+    expect(drawer.style.height).toBe('400px');
+    expect(drawer.style.minHeight).toBe('32px');
+    expect(drawer.style.maxHeight).toBe('400px');
+  });
+
+  it('minHeight stays at 32px floor when fullscreen', () => {
+    mockUseBottomDrawer.mockReturnValue({
+      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
+      focused: 0,
+    });
+
+    const { container, getByTestId } = render(<BottomDrawerContainer />);
+
+    act(() => {
+      fireEvent.click(getByTestId('btn-fullscreen'));
+    });
+
+    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    expect(drawer.style.height).toBe('900px');
+    expect(drawer.style.minHeight).toBe('32px');
+    expect(drawer.style.maxHeight).toBe('900px');
+  });
+
+  it('all height properties lock to 32px when minimized', () => {
+    mockUseBottomDrawer.mockReturnValue({
+      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
+      focused: 0,
+    });
+
+    const { container, getByTestId } = render(<BottomDrawerContainer />);
+
+    act(() => {
+      fireEvent.click(getByTestId('btn-minimize'));
+    });
+
+    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    expect(drawer.style.height).toBe('32px');
+    expect(drawer.style.minHeight).toBe('32px');
+    expect(drawer.style.maxHeight).toBe('32px');
+  });
+
   it('renders terminal container for terminal tab variant', () => {
     mockUseBottomDrawer.mockReturnValue({
       tabs: [{ id: 'sess-1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],

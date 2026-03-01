@@ -63,6 +63,7 @@ const BottomDrawerContainer: React.FC = () => {
     }
 
     drawerRef.current.style.height = `${height}px`;
+    drawerRef.current.style.minHeight = `${minHeight}px`;
     drawerRef.current.style.maxHeight = `${height}px`;
     setDrawerHeight(height);
   }, []);
@@ -163,6 +164,7 @@ const BottomDrawerContainer: React.FC = () => {
     if (e.detail === 2) {
       if (drawerRef.current.style.height === `${minHeight}px`) {
         drawerRef.current.style.height = `${defaultHeight}px`;
+        drawerRef.current.style.minHeight = `${minHeight}px`;
         drawerRef.current.style.maxHeight = `${defaultHeight}px`;
         setDrawerHeight(defaultHeight);
         bottomDrawerChannel.emit('onResizeReset')
@@ -170,6 +172,7 @@ const BottomDrawerContainer: React.FC = () => {
       }
 
       drawerRef.current.style.height = `${minHeight}px`;
+      drawerRef.current.style.minHeight = `${minHeight}px`;
       drawerRef.current.style.maxHeight = `${minHeight}px`;
 
       setDrawerHeight(minHeight);
@@ -193,6 +196,7 @@ const BottomDrawerContainer: React.FC = () => {
 
     // Directly update the drawer's height bypassing React's state
     drawerRef.current.style.height = `${newHeight}px`;
+    drawerRef.current.style.minHeight = `${minHeight}px`;
     drawerRef.current.style.maxHeight = `${newHeight}px`;
     bottomDrawerChannel.emit('onResizeHandler', newHeight);
   }, [isDragging, minHeight]);
@@ -210,6 +214,7 @@ const BottomDrawerContainer: React.FC = () => {
         setDrawerHeight(minHeight);
         bottomDrawerChannel.emit('onResizeReset')
         drawerRef.current.style.height = `${minHeight}px`;
+        drawerRef.current.style.minHeight = `${minHeight}px`;
         drawerRef.current.style.maxHeight = `${minHeight}px`;
         return;
       }
