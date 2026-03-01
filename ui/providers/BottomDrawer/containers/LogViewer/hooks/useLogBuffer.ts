@@ -14,6 +14,8 @@ interface UseLogBufferResult {
   clear: () => void;
   getEntries: () => LogEntry[];
   lineCount: number;
+  /** Incremented on head eviction or clear; signals search indices are invalid. */
+  evictionCount: number;
 }
 
 export function useLogBuffer(opts: UseLogBufferOpts = {}): UseLogBufferResult {
@@ -21,6 +23,7 @@ export function useLogBuffer(opts: UseLogBufferOpts = {}): UseLogBufferResult {
   const bufferRef = useRef<LogEntry[]>([]);
   const [version, setVersion] = useState(0);
   const rafRef = useRef<number | null>(null);
+  const evictionCountRef = useRef(0);
 
   const scheduleRender = useCallback(() => {
     if (rafRef.current !== null) return;
@@ -39,6 +42,7 @@ export function useLogBuffer(opts: UseLogBufferOpts = {}): UseLogBufferResult {
       if (buffer.length > maxLines) {
         const excess = buffer.length - maxLines;
         buffer.splice(0, excess);
+        evictionCountRef.current++;
       }
 
       scheduleRender();
@@ -48,6 +52,7 @@ export function useLogBuffer(opts: UseLogBufferOpts = {}): UseLogBufferResult {
 
   const clear = useCallback(() => {
     bufferRef.current = [];
+    evictionCountRef.current++;
     setVersion((v) => v + 1);
   }, []);
 
@@ -60,5 +65,6 @@ export function useLogBuffer(opts: UseLogBufferOpts = {}): UseLogBufferResult {
     clear,
     getEntries,
     lineCount: bufferRef.current.length,
+    evictionCount: evictionCountRef.current,
   };
 }

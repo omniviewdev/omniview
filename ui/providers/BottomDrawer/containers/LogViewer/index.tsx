@@ -38,7 +38,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
   // Track programmatic scrolls so scroll handler doesn't disengage follow
   const isAutoScrolling = useRef(false);
 
-  const { entries, version, append, clear: clearBuffer, lineCount } = useLogBuffer();
+  const { entries, version, append, clear: clearBuffer, lineCount, evictionCount } = useLogBuffer();
 
   const handleClear = useCallback(() => {
     clearBuffer();
@@ -55,7 +55,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
 
   const filteredLineCount = filteredEntries.length;
 
-  const search = useLogSearch({ entries: filteredEntries, version });
+  const search = useLogSearch({ entries: filteredEntries, version, evictionCount });
 
   const handleLines = useCallback(
     (newEntries: LogEntry[]) => {

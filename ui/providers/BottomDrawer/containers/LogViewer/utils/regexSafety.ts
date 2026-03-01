@@ -72,12 +72,62 @@ export interface SafeSearchResult<T> {
 }
 
 /**
- * Run a global regex across `count` lines with built-in safety limits.
+ * Run a global regex across lines `[startIndex, endIndex)` with built-in safety limits.
  *
  * Stops early when:
- *  - `MAX_MATCH_COUNT` matches have been collected
+ *  - `matchBudget` matches have been collected (defaults to `MAX_MATCH_COUNT`)
  *  - `SEARCH_TIME_BUDGET_MS` has elapsed (checked every 512 lines)
  *  - A zero-length match is encountered (prevents infinite exec() loop)
+ *
+ * @param pattern      A global RegExp (must have the `g` flag).
+ * @param startIndex   First line index to search (inclusive).
+ * @param endIndex     Last line index to search (exclusive).
+ * @param getLine      Accessor for line content by index.
+ * @param onMatch      Factory called for each match to build the result item.
+ * @param matchBudget  Max matches to collect (defaults to `MAX_MATCH_COUNT`).
+ */
+export function execSafeSearchRange<T>(
+  pattern: RegExp,
+  startIndex: number,
+  endIndex: number,
+  getLine: (index: number) => string,
+  onMatch: (lineIndex: number, start: number, end: number) => T,
+  matchBudget: number = MAX_MATCH_COUNT,
+): SafeSearchResult<T> {
+  const results: T[] = [];
+  const t0 = performance.now();
+  let linesSearched = 0;
+
+  for (let i = startIndex; i < endIndex; i++) {
+    const line = getLine(i);
+    pattern.lastIndex = 0;
+
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(line)) !== null) {
+      // Zero-length match → break to prevent infinite loop
+      if (m[0].length === 0) break;
+
+      results.push(onMatch(i, m.index, m.index + m[0].length));
+
+      if (results.length >= matchBudget) {
+        return { results, capped: true };
+      }
+    }
+
+    linesSearched++;
+    // Amortize performance.now() overhead — check every 512 lines
+    if ((linesSearched & 511) === 0 && linesSearched > 0 && performance.now() - t0 > SEARCH_TIME_BUDGET_MS) {
+      return { results, capped: true };
+    }
+  }
+
+  return { results, capped: false };
+}
+
+/**
+ * Run a global regex across `count` lines with built-in safety limits.
+ *
+ * Convenience wrapper around `execSafeSearchRange` that searches `[0, count)`.
  *
  * @param pattern   A global RegExp (must have the `g` flag).
  * @param count     Number of lines to search.
@@ -90,30 +140,5 @@ export function execSafeSearch<T>(
   getLine: (index: number) => string,
   onMatch: (lineIndex: number, start: number, end: number) => T,
 ): SafeSearchResult<T> {
-  const results: T[] = [];
-  const t0 = performance.now();
-
-  for (let i = 0; i < count; i++) {
-    const line = getLine(i);
-    pattern.lastIndex = 0;
-
-    let m: RegExpExecArray | null;
-    while ((m = pattern.exec(line)) !== null) {
-      // Zero-length match → break to prevent infinite loop
-      if (m[0].length === 0) break;
-
-      results.push(onMatch(i, m.index, m.index + m[0].length));
-
-      if (results.length >= MAX_MATCH_COUNT) {
-        return { results, capped: true };
-      }
-    }
-
-    // Amortize performance.now() overhead — check every 512 lines
-    if ((i & 511) === 0 && i > 0 && performance.now() - t0 > SEARCH_TIME_BUDGET_MS) {
-      return { results, capped: true };
-    }
-  }
-
-  return { results, capped: false };
+  return execSafeSearchRange(pattern, 0, count, getLine, onMatch);
 }
