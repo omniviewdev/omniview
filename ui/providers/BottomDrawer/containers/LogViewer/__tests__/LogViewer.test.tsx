@@ -259,6 +259,44 @@ describe('LogViewerContainer', () => {
     vi.restoreAllMocks();
   });
 
+  it('Ctrl+A selects only within the log scroll area', () => {
+    mockEntries = [makeEntry(0)];
+    mockVersion = 1;
+    mockLineCount = 1;
+
+    const mockRange = {
+      selectNodeContents: vi.fn(),
+      setStart: vi.fn(),
+      setEnd: vi.fn(),
+      collapse: vi.fn(),
+      cloneRange: vi.fn(),
+      detach: vi.fn(),
+      toString: vi.fn(),
+    };
+    const mockSelection = {
+      removeAllRanges: vi.fn(),
+      addRange: vi.fn(),
+    };
+
+    vi.spyOn(document, 'createRange').mockReturnValue(mockRange as any);
+    vi.spyOn(window, 'getSelection').mockReturnValue(mockSelection as any);
+
+    const { getByTestId } = render(<LogViewerContainer sessionId="sess-1" />);
+
+    const entry = getByTestId('log-entry-0');
+    const scrollArea = entry.closest('[tabindex="0"]') as HTMLElement;
+    expect(scrollArea).toBeTruthy();
+
+    // Fire Ctrl+A (Windows/Linux) on the scroll area
+    fireEvent.keyDown(scrollArea, { key: 'a', ctrlKey: true });
+
+    expect(mockRange.selectNodeContents).toHaveBeenCalledWith(scrollArea);
+    expect(mockSelection.removeAllRanges).toHaveBeenCalled();
+    expect(mockSelection.addRange).toHaveBeenCalledWith(mockRange);
+
+    vi.restoreAllMocks();
+  });
+
   it('disables pointer-events on toolbar during drag from log area', () => {
     mockEntries = [makeEntry(0)];
     mockVersion = 1;
@@ -281,6 +319,25 @@ describe('LogViewerContainer', () => {
 
     // Release — toolbar should be restored
     fireEvent.mouseUp(document);
+    expect(toolbar.style.pointerEvents).toBe('');
+  });
+
+  it('restores pointer-events on window blur (drag leaves window)', () => {
+    mockEntries = [makeEntry(0)];
+    mockVersion = 1;
+    mockLineCount = 1;
+
+    const { getByTestId } = render(<LogViewerContainer sessionId="sess-1" />);
+
+    const toolbar = getByTestId('log-toolbar');
+    const entry = getByTestId('log-entry-0');
+    const scrollArea = entry.closest('[tabindex="0"]') as HTMLElement;
+
+    fireEvent.mouseDown(scrollArea, { button: 0 });
+    expect(toolbar.style.pointerEvents).toBe('none');
+
+    // Window loses focus (user dragged outside) — should restore
+    fireEvent(window, new Event('blur'));
     expect(toolbar.style.pointerEvents).toBe('');
   });
 });

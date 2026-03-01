@@ -197,8 +197,11 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
       for (const sib of siblings) {
         sib.style.pointerEvents = '';
       }
+      document.removeEventListener('mouseup', restore);
+      window.removeEventListener('blur', restore);
     };
     document.addEventListener('mouseup', restore, { once: true });
+    window.addEventListener('blur', restore, { once: true });
   }, []);
 
   return (
@@ -362,6 +365,11 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
             whiteSpace: wrap ? 'normal' : 'pre',
             userSelect: 'text',
             outline: 'none',
+            '&:focus-visible': {
+              outline: '2px solid',
+              outlineColor: 'primary.outlinedBorder',
+              outlineOffset: -2,
+            },
           }}
         >
           <Box sx={{ paddingTop: `${paddingTop}px`, paddingBottom: `${paddingBottom}px` }}>
