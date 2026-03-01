@@ -20,7 +20,7 @@ export interface IconButtonProps {
   sx?: SxProps<Theme>;
 }
 
-export default function IconButton({
+const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton({
   children,
   color = 'neutral',
   emphasis,
@@ -32,7 +32,7 @@ export default function IconButton({
   title,
   sx,
   ...rest
-}: IconButtonProps) {
+}, ref) {
   const muiColor = toMuiColor(color) as any;
   const muiSize = toMuiSize(size) as any;
 
@@ -54,6 +54,7 @@ export default function IconButton({
 
   return (
     <MuiIconButton
+      ref={ref}
       color={muiColor}
       size={muiSize}
       disabled={disabled || loading}
@@ -75,6 +76,8 @@ export default function IconButton({
       )}
     </MuiIconButton>
   );
-}
+});
 
 IconButton.displayName = 'IconButton';
+
+export default IconButton;

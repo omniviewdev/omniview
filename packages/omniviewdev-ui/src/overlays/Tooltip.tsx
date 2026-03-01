@@ -38,7 +38,7 @@ export default function Tooltip({
     ) : variant === 'rich' ? (
       <Box sx={{ p: 1, maxWidth: 320 }}>{resolvedTitle}</Box>
     ) : (
-      title
+      resolvedTitle
     );
 
   return (

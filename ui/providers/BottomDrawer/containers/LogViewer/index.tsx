@@ -14,7 +14,7 @@ import { useLogBuffer } from './hooks/useLogBuffer';
 import { useLogStream } from './hooks/useLogStream';
 import { useLogSearch } from './hooks/useLogSearch';
 import { useLogSources } from './hooks/useLogSources';
-import { saveLogsNative } from './utils/downloadLogs';
+import { saveLogsNative, copyLogsToClipboard } from './utils/downloadLogs';
 import { findEntryIndexByTime } from './utils/binarySearchTimestamp';
 import type { LogEntry, LogStreamEvent, SearchMatch } from './types';
 import { StreamEventType } from './types';
@@ -43,6 +43,16 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
   const handleClear = useCallback(() => {
     clearBuffer();
   }, [clearBuffer]);
+
+  // Copy feedback state
+  const [copyFeedback, setCopyFeedback] = useState<'visible' | 'all' | null>(null);
+  const copyFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flashCopyFeedback = useCallback((kind: 'visible' | 'all') => {
+    if (copyFeedbackTimer.current) clearTimeout(copyFeedbackTimer.current);
+    setCopyFeedback(kind);
+    copyFeedbackTimer.current = setTimeout(() => setCopyFeedback(null), 1500);
+  }, []);
 
   // Source selection (multi-select filtering)
   const sourceState = useLogSources({ sessionId, events, entries, version });
@@ -126,6 +136,38 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
     }
   }, [filteredEntries, rowVirtualizer]);
 
+  // Copy visible log lines (entries currently in the virtual viewport)
+  const handleCopyVisible = useCallback(async () => {
+    const range = rowVirtualizer.range;
+    if (!range) return;
+    const visible = filteredEntries.slice(range.startIndex, range.endIndex + 1);
+    const ok = await copyLogsToClipboard(visible);
+    if (ok) flashCopyFeedback('visible');
+  }, [filteredEntries, rowVirtualizer, flashCopyFeedback]);
+
+  // Copy all filtered log lines
+  const handleCopyAll = useCallback(async () => {
+    const ok = await copyLogsToClipboard(filteredEntries);
+    if (ok) flashCopyFeedback('all');
+  }, [filteredEntries, flashCopyFeedback]);
+
+  // Keyboard shortcuts for copy actions
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || !e.shiftKey) return;
+
+      if (e.key === 'C' || e.key === 'c') {
+        e.preventDefault();
+        handleCopyAll();
+      } else if (e.key === 'V' || e.key === 'v') {
+        e.preventDefault();
+        handleCopyVisible();
+      }
+    },
+    [handleCopyAll, handleCopyVisible],
+  );
+
   // Build per-line search match index
   const matchesByLine = useMemo(() => {
     const map = new Map<number, SearchMatch[]>();
@@ -164,6 +206,8 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
 
   return (
     <Box
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
       sx={{
         display: 'flex',
         flexDirection: 'column',
@@ -171,6 +215,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
         minHeight: 0,
         overflow: 'hidden',
         position: 'relative',
+        outline: 'none',
       }}
     >
       <LogViewerToolbar
@@ -199,6 +244,9 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
         onToggleFollow={() => setFollow(!follow)}
         paused={paused}
         onTogglePaused={() => setPaused(!paused)}
+        onCopyVisible={handleCopyVisible}
+        onCopyAll={handleCopyAll}
+        copyFeedback={copyFeedback}
         onDownload={() => saveLogsNative(filteredEntries)}
         onClear={handleClear}
         lineCount={lineCount}
