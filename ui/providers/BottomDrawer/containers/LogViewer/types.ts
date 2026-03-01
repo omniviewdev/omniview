@@ -1,13 +1,27 @@
+export interface AnsiSegment {
+  text: string;
+  fg?: string;
+  bg?: string;
+  bold?: boolean;
+  dim?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+}
+
 export interface LogEntry {
   lineNumber: number;
   sessionId: string;
   sourceId: string;
   labels: Record<string, string>;
   timestamp: string;
+  /** Plain text content with ANSI codes stripped (used by search, level detection, download). */
   content: string;
   origin: 'CURRENT' | 'PREVIOUS' | 'SYSTEM';
   level?: 'error' | 'warn' | 'info' | 'debug' | 'trace';
   isJson?: boolean;
+  /** Styled segments for ANSI color rendering. Empty when no ANSI codes were present. */
+  ansiSegments?: AnsiSegment[];
 }
 
 export interface LogSource {

@@ -182,4 +182,97 @@ describe('LogEntryComponent', () => {
     // scrollIntoView should be called exactly once (only the current match)
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
+
+  // ---- ANSI color rendering ----
+
+  it('renders ANSI-colored content with styled spans', () => {
+    const { container } = render(
+      <LogEntryComponent
+        entry={makeEntry({
+          content: 'ERROR something broke',
+          ansiSegments: [
+            { text: 'ERROR', fg: '#cc0000', bold: true },
+            { text: ' something broke' },
+          ],
+        })}
+        {...defaultProps}
+      />,
+    );
+
+    // Full text should be present across elements
+    expect(container.textContent).toContain('ERROR something broke');
+
+    // The ERROR span should have red color and bold
+    const errorSpan = screen.getByText('ERROR');
+    expect(errorSpan.tagName).toBe('SPAN');
+    expect(errorSpan.style.color).toBe('rgb(204, 0, 0)');
+    expect(errorSpan.style.fontWeight).toBe('bold');
+
+    // The unstyled text should be a bare text node (no wrapper span)
+    expect(container.textContent).toContain(' something broke');
+  });
+
+  it('renders plain content when ansiSegments is undefined', () => {
+    render(
+      <LogEntryComponent
+        entry={makeEntry({ content: 'plain text', ansiSegments: undefined })}
+        {...defaultProps}
+      />,
+    );
+    expect(screen.getByText('plain text')).toBeInTheDocument();
+  });
+
+  it('renders ANSI segments with search highlights overlaid', () => {
+    // content = "ERROR normal" (stripped), segments carry color
+    const matches: SearchMatch[] = [
+      { lineIndex: 0, startOffset: 0, endOffset: 5 }, // "ERROR"
+    ];
+    const { container } = render(
+      <LogEntryComponent
+        entry={makeEntry({
+          content: 'ERROR normal',
+          ansiSegments: [
+            { text: 'ERROR', fg: '#cc0000' },
+            { text: ' normal' },
+          ],
+        })}
+        {...defaultProps}
+        searchMatches={matches}
+        currentMatchOffset={0}
+      />,
+    );
+
+    // The highlighted ERROR span should have orange background (search highlight)
+    const orangeSpans = spansByBg(container, ORANGE);
+    expect(orangeSpans).toHaveLength(1);
+    expect(orangeSpans[0]).toHaveTextContent('ERROR');
+  });
+
+  it('renders search highlight that spans across ANSI segment boundaries', () => {
+    // content = "helloworld" (stripped), search matches "llowor" (offsets 2-8)
+    const matches: SearchMatch[] = [
+      { lineIndex: 0, startOffset: 2, endOffset: 8 }, // "llowor"
+    ];
+    const { container } = render(
+      <LogEntryComponent
+        entry={makeEntry({
+          content: 'helloworld',
+          ansiSegments: [
+            { text: 'hello', fg: '#4e9a06' },   // green
+            { text: 'world', fg: '#3465a4' },    // blue
+          ],
+        })}
+        {...defaultProps}
+        searchMatches={matches}
+        currentMatchOffset={2}
+      />,
+    );
+
+    // Should have orange highlight spans for the match
+    const orangeSpans = spansByBg(container, ORANGE);
+    expect(orangeSpans.length).toBeGreaterThanOrEqual(1);
+    // Combined text of all orange spans should be "llowor"
+    const orangeText = orangeSpans.map(s => s.textContent).join('');
+    expect(orangeText).toBe('llowor');
+  });
 });
