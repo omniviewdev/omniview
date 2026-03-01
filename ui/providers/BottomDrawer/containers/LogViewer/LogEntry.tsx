@@ -339,7 +339,7 @@ const LogEntryComponent: React.FC<Props> = ({
 
 export default React.memo(LogEntryComponent, (prev, next) => {
   return (
-    prev.entry.lineNumber === next.entry.lineNumber &&
+    prev.entry === next.entry &&
     prev.showTimestamps === next.showTimestamps &&
     prev.showSources === next.showSources &&
     prev.showLineNumbers === next.showLineNumbers &&
