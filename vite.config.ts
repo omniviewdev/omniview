@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 // import federation from '@originjs/vite-plugin-federation';
 // import topLevelAwait from 'vite-plugin-top-level-await';
@@ -17,6 +17,13 @@ const reactCompilerConfig = {
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./ui/test-setup.ts'],
+    css: false,
+    include: ['ui/**/*.{spec,test}.{ts,tsx}'],
+  },
   build: {
     minify: false,
     sourcemap: false,

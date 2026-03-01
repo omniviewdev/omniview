@@ -1,10 +1,11 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
 import LogEntryComponent from './LogEntry';
 import type { LogEntry, SearchMatch } from './types';
 
 // Mock scrollIntoView — jsdom doesn't implement it
-const scrollIntoView = jest.fn();
+const scrollIntoView = vi.fn();
 Element.prototype.scrollIntoView = scrollIntoView;
 
 function makeEntry(overrides: Partial<LogEntry> = {}): LogEntry {
@@ -40,11 +41,11 @@ function spansByBg(container: HTMLElement, color: string) {
 
 beforeEach(() => {
   scrollIntoView.mockClear();
-  jest.useFakeTimers();
+  vi.useFakeTimers();
 });
 
 afterEach(() => {
-  jest.useRealTimers();
+  vi.useRealTimers();
 });
 
 describe('LogEntryComponent', () => {
@@ -139,7 +140,7 @@ describe('LogEntryComponent', () => {
     );
 
     // Flush the requestAnimationFrame scheduled by the ref callback
-    jest.advanceTimersByTime(16);
+    vi.advanceTimersByTime(16);
 
     expect(scrollIntoView).toHaveBeenCalledWith({
       block: 'nearest',
@@ -160,7 +161,7 @@ describe('LogEntryComponent', () => {
       />,
     );
 
-    jest.advanceTimersByTime(16);
+    vi.advanceTimersByTime(16);
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
@@ -178,7 +179,7 @@ describe('LogEntryComponent', () => {
       />,
     );
 
-    jest.advanceTimersByTime(16);
+    vi.advanceTimersByTime(16);
 
     // scrollIntoView should be called exactly once (only the current match)
     expect(scrollIntoView).toHaveBeenCalledTimes(1);

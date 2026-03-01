@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import {
   compileSearchPattern,
   execSafeSearch,
@@ -134,7 +135,7 @@ describe('execSafeSearch', () => {
   it('respects time budget', () => {
     // Mock performance.now to exceed the budget after a few lines
     let callCount = 0;
-    jest.spyOn(performance, 'now').mockImplementation(() => {
+    vi.spyOn(performance, 'now').mockImplementation(() => {
       callCount++;
       // After the first check (at line 512), return a value past the budget
       return callCount > 1 ? SEARCH_TIME_BUDGET_MS + 1 : 0;
@@ -149,7 +150,7 @@ describe('execSafeSearch', () => {
       // Should have stopped early
       expect(capped).toBe(true);
     } finally {
-      (performance.now as jest.Mock).mockRestore?.();
+      vi.mocked(performance.now).mockRestore?.();
     }
   });
 });

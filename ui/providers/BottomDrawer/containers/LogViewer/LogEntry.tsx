@@ -289,6 +289,7 @@ const LogEntryComponent: React.FC<Props> = ({
         <Text
           sx={{
             color: 'text.secondary',
+            userSelect: 'none',
             flexShrink: 0,
             fontSize: 'inherit',
             fontFamily: 'inherit',
@@ -312,6 +313,7 @@ const LogEntryComponent: React.FC<Props> = ({
             color: SOURCE_COLORS[sourceColorIndex(entry.sourceId)][1],
             flexShrink: 0,
             whiteSpace: 'nowrap',
+            userSelect: 'none',
           }}
         >
           {entry.sourceId}

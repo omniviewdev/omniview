@@ -1,16 +1,17 @@
 import { render, cleanup, act, fireEvent } from '@testing-library/react';
+import { vi } from 'vitest';
 import type { LogEntry, SearchMatch } from '../types';
 
 // ─── Hook mocks ────────────────────────────────────────────────────────────────
 
-const mockAppend = jest.fn();
-const mockClearBuffer = jest.fn();
+const mockAppend = vi.fn();
+const mockClearBuffer = vi.fn();
 
 let mockEntries: LogEntry[] = [];
 let mockVersion = 0;
 let mockLineCount = 0;
 
-jest.mock('../hooks/useLogBuffer', () => ({
+vi.mock('../hooks/useLogBuffer', () => ({
   useLogBuffer: () => ({
     entries: mockEntries,
     version: mockVersion,
@@ -20,17 +21,17 @@ jest.mock('../hooks/useLogBuffer', () => ({
   }),
 }));
 
-jest.mock('../hooks/useLogStream', () => ({
-  useLogStream: jest.fn(),
+vi.mock('../hooks/useLogStream', () => ({
+  useLogStream: vi.fn(),
 }));
 
-const mockSetQuery = jest.fn();
-const mockSetIsRegex = jest.fn();
-const mockSetCaseSensitive = jest.fn();
-const mockNextMatch = jest.fn();
-const mockPrevMatch = jest.fn();
+const mockSetQuery = vi.fn();
+const mockSetIsRegex = vi.fn();
+const mockSetCaseSensitive = vi.fn();
+const mockNextMatch = vi.fn();
+const mockPrevMatch = vi.fn();
 
-jest.mock('../hooks/useLogSearch', () => ({
+vi.mock('../hooks/useLogSearch', () => ({
   useLogSearch: () => ({
     query: '',
     setQuery: mockSetQuery,
@@ -47,21 +48,21 @@ jest.mock('../hooks/useLogSearch', () => ({
   }),
 }));
 
-jest.mock('../hooks/useLogSources', () => ({
+vi.mock('../hooks/useLogSources', () => ({
   useLogSources: () => ({
     sources: [],
     allSelected: true,
     selectedSourceIds: new Set<string>(),
-    toggleSource: jest.fn(),
-    toggleAll: jest.fn(),
+    toggleSource: vi.fn(),
+    toggleAll: vi.fn(),
     dimensions: [],
-    toggleValue: jest.fn(),
+    toggleValue: vi.fn(),
   }),
 }));
 
 // ─── Sub-component mocks ────────────────────────────────────────────────────────
 
-jest.mock('../LogEntry', () => {
+vi.mock('../LogEntry', () => {
   return {
     __esModule: true,
     default: ({ entry }: { entry: LogEntry }) => (
@@ -70,7 +71,7 @@ jest.mock('../LogEntry', () => {
   };
 });
 
-jest.mock('../LogViewerToolbar', () => {
+vi.mock('../LogViewerToolbar', () => {
   return {
     __esModule: true,
     default: (props: any) => (
@@ -84,26 +85,26 @@ jest.mock('../LogViewerToolbar', () => {
   };
 });
 
-jest.mock('../FilterSelect', () => ({
+vi.mock('../FilterSelect', () => ({
   __esModule: true,
   default: () => <div data-testid="filter-select" />,
 }));
 
-jest.mock('../JumpToTime', () => ({
+vi.mock('../JumpToTime', () => ({
   __esModule: true,
   default: () => <div data-testid="jump-to-time" />,
 }));
 
-jest.mock('../utils/downloadLogs', () => ({
-  saveLogsNative: jest.fn(),
+vi.mock('../utils/downloadLogs', () => ({
+  saveLogsNative: vi.fn(),
 }));
 
-jest.mock('../utils/binarySearchTimestamp', () => ({
-  findEntryIndexByTime: jest.fn(() => 0),
+vi.mock('../utils/binarySearchTimestamp', () => ({
+  findEntryIndexByTime: vi.fn(() => 0),
 }));
 
 // Virtual list mock — render items directly instead of virtualizing
-jest.mock('@tanstack/react-virtual', () => ({
+vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: (opts: any) => {
     const items = Array.from({ length: opts.count }, (_, i) => ({
       index: i,
@@ -115,8 +116,8 @@ jest.mock('@tanstack/react-virtual', () => ({
     return {
       getVirtualItems: () => items,
       getTotalSize: () => opts.count * 18,
-      scrollToIndex: jest.fn(),
-      measureElement: jest.fn(),
+      scrollToIndex: vi.fn(),
+      measureElement: vi.fn(),
     };
   },
 }));
@@ -137,7 +138,7 @@ function makeEntry(n: number, content = `log line ${n}`): LogEntry {
 
 describe('LogViewerContainer', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     mockEntries = [];
     mockVersion = 0;
     mockLineCount = 0;
