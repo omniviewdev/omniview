@@ -162,6 +162,48 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
     ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end
     : 0;
 
+  // Scope Cmd+A / Ctrl+A to the log scroll area only
+  const handleLogKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+      e.preventDefault();
+      const el = parentRef.current;
+      if (!el) return;
+      const sel = window.getSelection();
+      if (!sel) return;
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }, []);
+
+  // Contain drag selections: disable pointer-events on siblings while dragging
+  // so the selection cannot escape the log scroll area into the toolbar/input.
+  const handleLogMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    const logEl = parentRef.current;
+    const container = logEl?.parentElement;
+    if (!logEl || !container) return;
+
+    const saved: [HTMLElement, string][] = [];
+    for (const child of container.children) {
+      if (child !== logEl && child instanceof HTMLElement) {
+        saved.push([child, child.style.pointerEvents]);
+        child.style.pointerEvents = 'none';
+      }
+    }
+
+    const restore = () => {
+      for (const [el, prev] of saved) {
+        el.style.pointerEvents = prev;
+      }
+      document.removeEventListener('mouseup', restore);
+      window.removeEventListener('blur', restore);
+    };
+    document.addEventListener('mouseup', restore, { once: true });
+    window.addEventListener('blur', restore, { once: true });
+  }, []);
+
   return (
     <Box
       sx={{
@@ -171,6 +213,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
         minHeight: 0,
         overflow: 'hidden',
         position: 'relative',
+        userSelect: 'none',
       }}
     >
       <LogViewerToolbar
@@ -311,12 +354,22 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
         <Box
           ref={parentRef}
           onScroll={handleScroll}
+          onKeyDown={handleLogKeyDown}
+          onMouseDown={handleLogMouseDown}
+          tabIndex={0}
           sx={{
             flex: 1,
             minHeight: 0,
             overflow: 'auto',
             bgcolor: 'black',
             whiteSpace: wrap ? 'normal' : 'pre',
+            userSelect: 'text',
+            outline: 'none',
+            '&:focus-visible': {
+              outline: '2px solid',
+              outlineColor: 'primary.outlinedBorder',
+              outlineOffset: -2,
+            },
           }}
         >
           <Box sx={{ paddingTop: `${paddingTop}px`, paddingBottom: `${paddingBottom}px` }}>
