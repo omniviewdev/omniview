@@ -22,6 +22,9 @@ import {
   LuPlay,
   LuPalette,
   LuX,
+  LuCopy,
+  LuClipboardCheck,
+  LuClipboard,
 } from 'react-icons/lu';
 
 /** Fires `action` on click, then repeats while held (accelerating). */
@@ -74,6 +77,9 @@ interface Props {
   onToggleFollow: () => void;
   paused: boolean;
   onTogglePaused: () => void;
+  onCopyVisible: () => void;
+  onCopyAll: () => void;
+  copyFeedback: 'visible' | 'all' | null;
   onDownload: () => void;
   onClear: () => void;
 
@@ -112,12 +118,16 @@ const LogViewerToolbar: React.FC<Props> = ({
   onToggleFollow,
   paused,
   onTogglePaused,
+  onCopyVisible,
+  onCopyAll,
+  copyFeedback,
   onDownload,
   onClear,
   filterSelectors,
   jumpToTime,
   lineCount,
 }) => {
+  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.userAgent);
   const prevHold = useHoldRepeat(onPrevMatch);
   const nextHold = useHoldRepeat(onNextMatch);
 
@@ -297,6 +307,30 @@ const LogViewerToolbar: React.FC<Props> = ({
       </Tooltip>
 
       <Divider orientation="vertical" sx={{ mx: 0.5 }} />
+
+      <Tooltip content={copyFeedback === 'visible' ? 'Copied!' : `Copy visible lines (${isMac ? '⌘⇧V' : 'Ctrl+Shift+V'})`}>
+        <IconButton
+          size="sm"
+          emphasis={copyFeedback === 'visible' ? 'soft' : 'ghost'}
+          color={copyFeedback === 'visible' ? 'success' : 'neutral'}
+          onClick={onCopyVisible}
+          aria-label="Copy visible lines"
+        >
+          {copyFeedback === 'visible' ? <LuClipboardCheck size={14} /> : <LuCopy size={14} />}
+        </IconButton>
+      </Tooltip>
+
+      <Tooltip content={copyFeedback === 'all' ? 'Copied!' : `Copy all lines (${isMac ? '⌘⇧C' : 'Ctrl+Shift+C'})`}>
+        <IconButton
+          size="sm"
+          emphasis={copyFeedback === 'all' ? 'soft' : 'ghost'}
+          color={copyFeedback === 'all' ? 'success' : 'neutral'}
+          onClick={onCopyAll}
+          aria-label="Copy all lines"
+        >
+          {copyFeedback === 'all' ? <LuClipboardCheck size={14} /> : <LuClipboard size={14} />}
+        </IconButton>
+      </Tooltip>
 
       <Tooltip content="Download">
         <IconButton size="sm" emphasis="ghost" onClick={onDownload}>

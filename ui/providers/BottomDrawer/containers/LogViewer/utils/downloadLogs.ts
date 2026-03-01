@@ -1,7 +1,8 @@
 import { SaveFileDialog, WriteFileContent } from '@omniviewdev/runtime/api';
 import type { LogEntry } from '../types';
 
-function formatAsText(entries: LogEntry[]): string {
+/** Format entries as plain text lines. Exported for clipboard use. */
+export function formatAsText(entries: LogEntry[]): string {
   return entries.map((e) => {
     const ts = e.timestamp ? `[${e.timestamp}] ` : '';
     const src = e.sourceId ? `[${e.sourceId}] ` : '';
@@ -79,4 +80,15 @@ function downloadBlob(content: string, filename: string, mimeType: string): void
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Copy log entries as plain text to the system clipboard. Returns true on success. */
+export async function copyLogsToClipboard(entries: LogEntry[]): Promise<boolean> {
+  if (entries.length === 0) return false;
+  try {
+    await navigator.clipboard.writeText(formatAsText(entries));
+    return true;
+  } catch {
+    return false;
+  }
 }

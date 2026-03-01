@@ -80,6 +80,8 @@ vi.mock('../LogViewerToolbar', () => {
         <button data-testid="toggle-wrap" onClick={props.onToggleWrap}>wrap</button>
         <button data-testid="toggle-follow" onClick={props.onToggleFollow}>follow</button>
         <button data-testid="toggle-paused" onClick={props.onTogglePaused}>pause</button>
+        <button type="button" data-testid="copy-visible" onClick={props.onCopyVisible}>copy visible</button>
+        <button type="button" data-testid="copy-all" onClick={props.onCopyAll}>copy all</button>
       </div>
     ),
   };
@@ -95,8 +97,10 @@ vi.mock('../JumpToTime', () => ({
   default: () => <div data-testid="jump-to-time" />,
 }));
 
+const mockCopyLogsToClipboard = vi.fn().mockResolvedValue(true);
 vi.mock('../utils/downloadLogs', () => ({
   saveLogsNative: vi.fn(),
+  copyLogsToClipboard: (...args: any[]) => mockCopyLogsToClipboard(...args),
 }));
 
 vi.mock('../utils/binarySearchTimestamp', () => ({
@@ -118,6 +122,7 @@ vi.mock('@tanstack/react-virtual', () => ({
       getTotalSize: () => opts.count * 18,
       scrollToIndex: vi.fn(),
       measureElement: vi.fn(),
+      range: opts.count > 2 ? { startIndex: 1, endIndex: 2 } : opts.count > 0 ? { startIndex: 0, endIndex: opts.count - 1 } : null,
     };
   },
 }));
@@ -216,6 +221,110 @@ describe('LogViewerContainer', () => {
 
     // follow defaults to true
     expect(queryByText('Jump to bottom')).toBeNull();
+  });
+
+  it('copy all copies every filtered entry to clipboard', async () => {
+    mockEntries = [makeEntry(0), makeEntry(1), makeEntry(2)];
+    mockVersion = 1;
+    mockLineCount = 3;
+
+    const { getByTestId } = render(<LogViewerContainer sessionId="sess-1" />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId('copy-all'));
+    });
+
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
+  });
+
+  it('copy visible copies only viewport entries to clipboard', async () => {
+    mockEntries = [makeEntry(0), makeEntry(1), makeEntry(2), makeEntry(3)];
+    mockVersion = 1;
+    mockLineCount = 4;
+
+    const { getByTestId } = render(<LogViewerContainer sessionId="sess-1" />);
+
+    await act(async () => {
+      fireEvent.click(getByTestId('copy-visible'));
+    });
+
+    // The virtualizer mock range is { startIndex: 1, endIndex: 2 } for count > 2
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith([mockEntries[1], mockEntries[2]]);
+  });
+
+  it('Cmd+Shift+C triggers copy all', async () => {
+    mockEntries = [makeEntry(0), makeEntry(1)];
+    mockVersion = 1;
+    mockLineCount = 2;
+
+    const { container } = render(<LogViewerContainer sessionId="sess-1" />);
+    const wrapper = container.firstElementChild as HTMLElement;
+
+    await act(async () => {
+      fireEvent.keyDown(wrapper, { key: 'C', metaKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
+
+    mockCopyLogsToClipboard.mockClear();
+
+    // Also works with Ctrl (Windows/Linux)
+    await act(async () => {
+      fireEvent.keyDown(wrapper, { key: 'C', ctrlKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
+  });
+
+  it('Cmd+Shift+V triggers copy visible', async () => {
+    mockEntries = [makeEntry(0), makeEntry(1)];
+    mockVersion = 1;
+    mockLineCount = 2;
+
+    const { container } = render(<LogViewerContainer sessionId="sess-1" />);
+    const wrapper = container.firstElementChild as HTMLElement;
+
+    await act(async () => {
+      fireEvent.keyDown(wrapper, { key: 'V', metaKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
+
+    mockCopyLogsToClipboard.mockClear();
+
+    // Also works with Ctrl (Windows/Linux)
+    await act(async () => {
+      fireEvent.keyDown(wrapper, { key: 'V', ctrlKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).toHaveBeenCalledWith(mockEntries);
+  });
+
+  it('does not trigger copy shortcuts from editable elements', async () => {
+    mockEntries = [makeEntry(0), makeEntry(1)];
+    mockVersion = 1;
+    mockLineCount = 2;
+
+    const { container } = render(<LogViewerContainer sessionId="sess-1" />);
+    const wrapper = container.firstElementChild as HTMLElement;
+
+    // contentEditable div
+    const editable = document.createElement('div');
+    editable.contentEditable = 'true';
+    wrapper.appendChild(editable);
+    editable.focus();
+
+    mockCopyLogsToClipboard.mockClear();
+    await act(async () => {
+      fireEvent.keyDown(editable, { key: 'C', metaKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).not.toHaveBeenCalled();
+
+    // input element
+    const input = document.createElement('input');
+    wrapper.appendChild(input);
+    input.focus();
+
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'C', ctrlKey: true, shiftKey: true });
+    });
+    expect(mockCopyLogsToClipboard).not.toHaveBeenCalled();
   });
 
   // ---- Selection containment ----
