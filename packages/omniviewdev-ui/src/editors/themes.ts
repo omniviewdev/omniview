@@ -120,9 +120,16 @@ export const solarizedLight: editor.IStandaloneThemeData = {
   },
 };
 
+export const MONACO_THEME_NAMES = {
+  omniviewDark: 'omniview-dark',
+  omniviewLight: 'omniview-light',
+  solarizedDark: 'solarized-dark',
+  solarizedLight: 'solarized-light',
+} as const;
+
 export function registerOmniviewThemes(monaco: typeof import('monaco-editor')) {
-  monaco.editor.defineTheme('omniview-dark', omniviewDark);
-  monaco.editor.defineTheme('omniview-light', omniviewLight);
-  monaco.editor.defineTheme('solarized-dark', solarizedDark);
-  monaco.editor.defineTheme('solarized-light', solarizedLight);
+  monaco.editor.defineTheme(MONACO_THEME_NAMES.omniviewDark, omniviewDark);
+  monaco.editor.defineTheme(MONACO_THEME_NAMES.omniviewLight, omniviewLight);
+  monaco.editor.defineTheme(MONACO_THEME_NAMES.solarizedDark, solarizedDark);
+  monaco.editor.defineTheme(MONACO_THEME_NAMES.solarizedLight, solarizedLight);
 }

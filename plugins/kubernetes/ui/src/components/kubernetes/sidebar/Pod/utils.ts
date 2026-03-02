@@ -3,7 +3,7 @@ import { ContainerStatus } from "kubernetes-types/core/v1";
 export type ContainerStatusInfo = {
   text: string;
   icon?: string;
-  color: "primary" | "neutral" | "warning" | "success" | "danger";
+  color: "primary" | "neutral" | "warning" | "success" | "danger" | "info";
 };
 
 /**
@@ -19,7 +19,7 @@ export const getStatus = (status: ContainerStatus) => {
     return {
       text: "Waiting",
       icon: "LuTimer",
-      color: "warning",
+      color: "info",
     } as ContainerStatusInfo;
   } else if (
     status.state?.terminated &&

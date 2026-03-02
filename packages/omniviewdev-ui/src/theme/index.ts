@@ -13,6 +13,13 @@ export { default as AppTheme } from './AppTheme';
 export type { ColorMode, ThemeVariant } from './AppTheme';
 export { ThemeVariantContext, useThemeVariant } from './AppTheme';
 
+// ---------------------------------------------------------------------------
+// Theme Registry
+// ---------------------------------------------------------------------------
+export { ThemeRegistry } from './registry/registry';
+export { initThemeRegistry } from './registry/init';
+export type { ThemeDefinition, ThemePalettes } from './registry/types';
+
 export {
   brand,
   gray,

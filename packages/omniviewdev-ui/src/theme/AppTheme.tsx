@@ -7,35 +7,19 @@
  * tree in <AppTheme> to get consistent styling.
  *
  * Supports theme variants (e.g. 'solarized') via the `variant` prop. Each
- * variant supplies its own palette set and component customizations while
- * sharing typography, shape, and layout tokens.
+ * variant is registered in the ThemeRegistry and supplies its own palette set
+ * and component customizations while sharing typography, shape, and layout
+ * tokens.
  */
 import { ThemeProvider, createTheme, useColorScheme, CssBaseline } from '@mui/material';
 import type { ThemeOptions } from '@mui/material/styles';
 import { useMemo, useEffect, createContext, useContext, type ReactNode } from 'react';
-import {
-  getDesignTokens,
-  typography,
-  shape,
-  customShadows,
-} from './primitives';
-import { createInputsCustomizations, inputsCustomizations } from './customizations/inputs';
-import { createNavigationCustomizations, navigationCustomizations } from './customizations/navigation';
-import { createFeedbackCustomizations, feedbackCustomizations } from './customizations/feedback';
-import { createDataDisplayCustomizations, dataDisplayCustomizations } from './customizations/dataDisplay';
-import {
-  solarizedGray,
-  solarizedBrand,
-  solarizedGreen,
-  solarizedOrange,
-  solarizedRed,
-  solarizedPurple,
-  getSolarizedDesignTokens,
-  solarizedCustomShadows,
-} from './solarized';
+import { typography, shape } from './primitives';
+import { ThemeRegistry } from './registry/registry';
+import type { ThemeVariant } from './registry/types';
 
+export type { ThemeVariant } from './registry/types';
 export type ColorMode = 'light' | 'dark' | 'system';
-export type ThemeVariant = 'default' | 'solarized';
 
 // ---------------------------------------------------------------------------
 // Theme-variant context — lets descendants (CodeEditor, ColorSchemeToggle,
@@ -86,42 +70,27 @@ function ColorModeSync({ mode }: { mode: ColorMode }) {
 /**
  * OvThemeSync — keeps the `data-ov-theme` attribute on <html> in sync with
  * the chosen variant + MUI's *actual* resolved color mode so that CSS
- * custom-property themes update when the user toggles light/dark.
+ * custom-property themes update when the user toggles light/dark or when
+ * the OS preference changes.
  */
 function OvThemeSync({ variant }: { variant: ThemeVariant }) {
-  const { mode } = useColorScheme();
+  const { mode, systemMode } = useColorScheme();
 
   useEffect(() => {
-    const resolvedMode = (mode === 'system' || !mode)
-      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-      : mode;
+    const resolvedMode =
+      mode === 'system'
+        ? (systemMode ?? 'dark')
+        : (mode ?? 'dark');
 
     const attr = variant === 'default'
       ? resolvedMode
       : `${variant}-${resolvedMode}`;
 
     document.documentElement.setAttribute('data-ov-theme', attr);
-  }, [variant, mode]);
+  }, [variant, mode, systemMode]);
 
   return null;
 }
-
-// ---------------------------------------------------------------------------
-// Solarized customizations (computed once at module level)
-// ---------------------------------------------------------------------------
-const solarizedPalettes = {
-  gray: solarizedGray,
-  brand: solarizedBrand,
-  green: solarizedGreen,
-  orange: solarizedOrange,
-  red: solarizedRed,
-  purple: solarizedPurple,
-};
-
-const solarizedInputs = createInputsCustomizations(solarizedPalettes);
-const solarizedNavigation = createNavigationCustomizations(solarizedPalettes);
-const solarizedFeedback = createFeedbackCustomizations(solarizedPalettes);
-const solarizedDataDisplay = createDataDisplayCustomizations(solarizedPalettes);
 
 export default function AppTheme({
   children,
@@ -135,9 +104,7 @@ export default function AppTheme({
       return createTheme();
     }
 
-    const isSolarized = variant === 'solarized';
-    const tokensFn = isSolarized ? getSolarizedDesignTokens : getDesignTokens;
-    const shadowsFn = isSolarized ? solarizedCustomShadows : customShadows;
+    const def = ThemeRegistry.get(variant);
 
     return createTheme({
       cssVariables: {
@@ -145,12 +112,12 @@ export default function AppTheme({
         cssVarPrefix: 'ov-mui',
       },
       colorSchemes: {
-        light: { palette: tokensFn('light').palette },
-        dark: { palette: tokensFn('dark').palette },
+        light: { palette: def.getDesignTokens('light').palette },
+        dark: { palette: def.getDesignTokens('dark').palette },
       },
       typography,
       shape,
-      shadows: shadowsFn('light'),
+      shadows: def.getShadows('light'),
       components: {
         MuiCssBaseline: {
           styleOverrides: {
@@ -158,10 +125,7 @@ export default function AppTheme({
             body: { height: '100%' },
           },
         },
-        ...(isSolarized ? solarizedInputs : inputsCustomizations),
-        ...(isSolarized ? solarizedNavigation : navigationCustomizations),
-        ...(isSolarized ? solarizedFeedback : feedbackCustomizations),
-        ...(isSolarized ? solarizedDataDisplay : dataDisplayCustomizations),
+        ...def.getCustomizations(),
         ...themeComponents,
       },
     });

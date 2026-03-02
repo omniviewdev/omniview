@@ -3,8 +3,8 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import type { SxProps, Theme } from '@mui/material/styles';
 import { DiffEditor, type Monaco } from '@monaco-editor/react';
-import { registerOmniviewThemes } from './themes';
-import { useThemeVariant } from '../theme/AppTheme';
+import { registerOmniviewThemes, MONACO_THEME_NAMES } from './themes';
+import { useThemeVariant } from '../theme';
 
 export interface DiffViewerProps {
   original: string;
@@ -67,7 +67,11 @@ export default function DiffViewer({
         original={original}
         modified={modified}
         language={language}
-        theme={variant === 'solarized' ? `solarized-${colorMode === 'light' ? 'light' : 'dark'}` : `omniview-${colorMode === 'light' ? 'light' : 'dark'}`}
+        theme={
+          variant === 'solarized'
+            ? (colorMode === 'light' ? MONACO_THEME_NAMES.solarizedLight : MONACO_THEME_NAMES.solarizedDark)
+            : (colorMode === 'light' ? MONACO_THEME_NAMES.omniviewLight : MONACO_THEME_NAMES.omniviewDark)
+        }
         beforeMount={handleBeforeMount}
         options={{
           readOnly,

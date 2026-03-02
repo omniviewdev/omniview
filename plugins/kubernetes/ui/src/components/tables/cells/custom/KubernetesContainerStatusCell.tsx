@@ -27,7 +27,7 @@ export const KubernetesContainerStatusCell: React.FC<Props> = ({ data }) => {
     }
 
     if (status.state?.waiting) {
-      return theme.palette.warning.main;
+      return theme.palette.info.main;
     }
 
     if (status.state?.terminated) {
@@ -38,7 +38,7 @@ export const KubernetesContainerStatusCell: React.FC<Props> = ({ data }) => {
     }
 
     if (status.state?.running) {
-      return theme.palette.warning.main;
+      return theme.palette.info.main;
     }
 
     return theme.palette.grey[600];

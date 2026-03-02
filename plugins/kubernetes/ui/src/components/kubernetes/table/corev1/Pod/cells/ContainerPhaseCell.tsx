@@ -1,13 +1,13 @@
 import React from "react"
 import { Text } from "@omniviewdev/ui/typography"
 
-const colorMap: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = {
+const colorMap: Record<string, 'success' | 'warning' | 'danger' | 'neutral' | 'info'> = {
   "Active": "success",
-  "Pending": "warning",
+  "Pending": "info",
   "Running": "success",
   "Succeeded": "success",
   "Failed": "danger",
-  "Unknown": "warning",
+  "Unknown": "info",
   "Terminating": "neutral",
   "Terminated": "danger",
 }

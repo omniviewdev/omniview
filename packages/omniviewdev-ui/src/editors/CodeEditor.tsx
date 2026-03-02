@@ -3,8 +3,8 @@ import Box from '@mui/material/Box';
 import type { SxProps, Theme } from '@mui/material/styles';
 import Editor, { type Monaco, type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
-import { registerOmniviewThemes } from './themes';
-import { useThemeVariant } from '../theme/AppTheme';
+import { registerOmniviewThemes, MONACO_THEME_NAMES } from './themes';
+import { useThemeVariant } from '../theme';
 
 export interface CodeEditorProps {
   value: string;
@@ -22,9 +22,11 @@ export interface CodeEditorProps {
 
 function resolveEditorTheme(variant: string, colorMode: string, explicit?: string): string {
   if (explicit) return explicit;
-  const prefix = variant === 'solarized' ? 'solarized' : 'omniview';
   const mode = colorMode === 'light' ? 'light' : 'dark';
-  return `${prefix}-${mode}`;
+  if (variant === 'solarized') {
+    return mode === 'light' ? MONACO_THEME_NAMES.solarizedLight : MONACO_THEME_NAMES.solarizedDark;
+  }
+  return mode === 'light' ? MONACO_THEME_NAMES.omniviewLight : MONACO_THEME_NAMES.omniviewDark;
 }
 
 export default function CodeEditor({

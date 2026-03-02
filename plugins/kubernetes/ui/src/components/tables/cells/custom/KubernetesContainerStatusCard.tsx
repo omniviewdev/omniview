@@ -83,7 +83,7 @@ const ContainerStatusCard: React.FC<Props> = ({
           />
           <Chip
             size="sm"
-            color={status.ready ? 'primary' : 'warning'}
+            color={status.ready ? 'primary' : 'info'}
             emphasis='outline'
             sx={{ borderRadius: 'sm' }}
             label={getStatusText()}

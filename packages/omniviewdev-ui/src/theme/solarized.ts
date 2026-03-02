@@ -46,32 +46,32 @@ export const solarizedBrand = {
   900: '#032A40',
 };
 
-/** Green — 10-step scale around Solarized Green (#859900). Dark steps read clearly green for chip distinction. */
+/** Green — 10-step scale. Cooler green (less yellow/orange) for Solarized harmony. */
 export const solarizedGreen = {
-  50:  '#F5F7E6',
-  100: '#E5EBBD',
-  200: '#93B86A',
-  300: '#A8BB4D',
-  400: '#859900',
-  500: '#6E7F00',
-  600: '#5D6B06',
-  700: '#434F04',
+  50:  '#F2F7E8',
+  100: '#DCEBC4',
+  200: '#84B86A',
+  300: '#8FBB4D',
+  400: '#7A9B00',
+  500: '#5E7F00',
+  600: '#4D6B06',
+  700: '#384F04',
   800: '#0F3D2A',
   900: '#083320',
 };
 
-/** Orange — 10-step scale around Solarized Yellow (#B58900). Dark steps read clearly amber for chip distinction. */
+/** Orange — 10-step scale around Solarized Yellow (#B58900). Darker chip values for stronger contrast with green. */
 export const solarizedOrange = {
   50:  '#FEF8E6',
   100: '#FAECBA',
-  200: '#D4B85A',
+  200: '#B89A4A',
   300: '#DFB540',
   400: '#B58900',
   500: '#997300',
   600: '#9B4A08',
   700: '#6E5302',
-  800: '#3D2808',
-  900: '#2D1E06',
+  800: '#2A1E06',
+  900: '#1A1204',
 };
 
 /** Red — 10-step scale around Solarized Red (#DC322F). */
@@ -105,6 +105,11 @@ export const solarizedPurple = {
 // ---------------------------------------------------------------------------
 // Design Tokens (mode-aware palette)
 // ---------------------------------------------------------------------------
+
+const getSolarizedBaseShadow = (mode: PaletteMode): string =>
+  mode === 'dark'
+    ? '0 4px 12px rgba(0, 20, 26, 0.35), 0 2px 4px rgba(0, 20, 26, 0.25)'
+    : '0 4px 12px rgba(88, 110, 117, 0.12), 0 2px 4px rgba(88, 110, 117, 0.08)';
 
 export const getSolarizedDesignTokens = (mode: PaletteMode) => ({
   palette: {
@@ -190,18 +195,12 @@ export const getSolarizedDesignTokens = (mode: PaletteMode) => ({
       hover: mode === 'dark' ? 'rgba(147, 161, 161, 0.04)' : 'rgba(88, 110, 117, 0.04)',
       selected: mode === 'dark' ? 'rgba(38, 139, 210, 0.10)' : 'rgba(38, 139, 210, 0.10)',
     },
-    baseShadow:
-      mode === 'dark'
-        ? '0 4px 12px rgba(0, 20, 26, 0.35), 0 2px 4px rgba(0, 20, 26, 0.25)'
-        : '0 4px 12px rgba(88, 110, 117, 0.12), 0 2px 4px rgba(88, 110, 117, 0.08)',
+    baseShadow: getSolarizedBaseShadow(mode),
   },
 });
 
 export const solarizedCustomShadows = (mode: PaletteMode): Shadows => {
-  const baseShadow =
-    mode === 'dark'
-      ? '0 4px 12px rgba(0, 20, 26, 0.35), 0 2px 4px rgba(0, 20, 26, 0.25)'
-      : '0 4px 12px rgba(88, 110, 117, 0.12), 0 2px 4px rgba(88, 110, 117, 0.08)';
+  const baseShadow = getSolarizedBaseShadow(mode);
 
   const shadows = [...defaultTheme.shadows] as Shadows;
   shadows[1] = baseShadow;

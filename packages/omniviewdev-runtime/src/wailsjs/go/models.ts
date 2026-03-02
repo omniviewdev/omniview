@@ -1616,12 +1616,6 @@ export namespace time {
 
 export namespace trivy {
 	
-	export enum Scanner {
-	    VULN = "vuln",
-	    MISCONFIG = "misconfig",
-	    SECRET = "secret",
-	    LICENSE = "license",
-	}
 	export enum Command {
 	    CONFIG = "config",
 	    FILESYSTEM = "fs",
@@ -1630,6 +1624,12 @@ export namespace trivy {
 	    REPOSITORY = "repository",
 	    ROOTFS = "rootfs",
 	    SBOM = "sbom",
+	}
+	export enum Scanner {
+	    VULN = "vuln",
+	    MISCONFIG = "misconfig",
+	    SECRET = "secret",
+	    LICENSE = "license",
 	}
 	export class ScanOptions {
 	    filePatterns: string[];

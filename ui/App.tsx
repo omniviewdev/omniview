@@ -24,8 +24,10 @@ import './utils/globalutils';
 import './providers/monaco/bootstrap';
 
 import { StyledEngineProvider } from '@mui/material/styles';
-import { AppTheme } from '@omniviewdev/ui/theme';
+import { AppTheme, initThemeRegistry } from '@omniviewdev/ui/theme';
 import type { ThemeVariant } from '@omniviewdev/ui/theme';
+
+initThemeRegistry();
 
 // Providers
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
@@ -77,23 +79,38 @@ log.debug("starting up the application")
 
 const THEME_VARIANT_KEY = 'ov-theme-variant';
 
-function AppWithTheme({ children }: { children: React.ReactNode }) {
-  const { settings } = useSettings();
-  const [variant, setVariant] = useState<ThemeVariant>(() => {
+function safeGetThemeVariant(): ThemeVariant {
+  try {
     const stored = localStorage.getItem(THEME_VARIANT_KEY);
     return stored === 'solarized' ? 'solarized' : 'default';
-  });
+  } catch {
+    return 'default';
+  }
+}
+
+function safeSetThemeVariant(value: ThemeVariant): void {
+  try {
+    localStorage.setItem(THEME_VARIANT_KEY, value);
+  } catch {
+    // non-fatal in restricted storage environments
+  }
+}
+
+function AppWithTheme({ children }: { children: React.ReactNode }) {
+  const { settings } = useSettings();
+  const [variant, setVariant] = useState<ThemeVariant>(safeGetThemeVariant);
+
+  const appearanceTheme = settings?.['appearance.theme'];
 
   useEffect(() => {
-    const v = settings?.['appearance.theme'];
-    if (typeof v === 'string') {
-      const resolved: ThemeVariant = v === 'solarized' ? 'solarized' : 'default';
+    if (typeof appearanceTheme === 'string') {
+      const resolved: ThemeVariant = appearanceTheme === 'solarized' ? 'solarized' : 'default';
       if (resolved !== variant) {
         setVariant(resolved);
-        localStorage.setItem(THEME_VARIANT_KEY, resolved);
+        safeSetThemeVariant(resolved);
       }
     }
-  }, [settings]);
+  }, [appearanceTheme, variant]);
 
   return (
     <AppTheme defaultMode="dark" variant={variant}>

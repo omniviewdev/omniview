@@ -12,7 +12,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gobuffalo/flect v1.0.2
 	github.com/google/uuid v1.6.0
-	github.com/omniviewdev/plugin-sdk v0.1.1
+	github.com/omniviewdev/plugin-sdk v0.1.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0
 	helm.sh/helm/v3 v3.20.0
@@ -158,4 +158,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
-
