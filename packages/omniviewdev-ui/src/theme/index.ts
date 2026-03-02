@@ -50,7 +50,7 @@ export {
   solarizedPurple,
   getSolarizedDesignTokens,
   solarizedCustomShadows,
-} from './solarized';
+} from './registry/variants/solarized/palettes';
 
 // ---------------------------------------------------------------------------
 // CSS Custom Property Runtime Theming

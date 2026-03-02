@@ -7,7 +7,7 @@ import {
   solarizedPurple,
   getSolarizedDesignTokens,
   solarizedCustomShadows,
-} from '../../../solarized';
+} from './palettes';
 import { createInputsCustomizations } from '../../../customizations/inputs';
 import { createNavigationCustomizations } from '../../../customizations/navigation';
 import { createFeedbackCustomizations } from '../../../customizations/feedback';
