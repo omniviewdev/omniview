@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 // ensure we preload deps first before anything
 import { preloadSharedDeps } from './features/plugins/api/preloader';
@@ -25,6 +25,7 @@ import './providers/monaco/bootstrap';
 
 import { StyledEngineProvider } from '@mui/material/styles';
 import { AppTheme } from '@omniviewdev/ui/theme';
+import type { ThemeVariant } from '@omniviewdev/ui/theme';
 
 // Providers
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
@@ -35,7 +36,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query';
-import { ExtensionProvider } from '@omniviewdev/runtime';
+import { ExtensionProvider, useSettings } from '@omniviewdev/runtime';
 import BottomDrawerProvider from './providers/BottomDrawer/provider';
 import { SettingsProvider } from '@omniviewdev/runtime';
 import { EXTENSION_REGISTRY } from './features/extensions/store'
@@ -74,42 +75,71 @@ const queryClient = new QueryClient({
 
 log.debug("starting up the application")
 
+const THEME_VARIANT_KEY = 'ov-theme-variant';
+
+function AppWithTheme({ children }: { children: React.ReactNode }) {
+  const { settings } = useSettings();
+  const [variant, setVariant] = useState<ThemeVariant>(() => {
+    const stored = localStorage.getItem(THEME_VARIANT_KEY);
+    return stored === 'solarized' ? 'solarized' : 'default';
+  });
+
+  useEffect(() => {
+    const v = settings?.['appearance.theme'];
+    if (typeof v === 'string') {
+      const resolved: ThemeVariant = v === 'solarized' ? 'solarized' : 'default';
+      if (resolved !== variant) {
+        setVariant(resolved);
+        localStorage.setItem(THEME_VARIANT_KEY, resolved);
+      }
+    }
+  }, [settings]);
+
+  return (
+    <AppTheme defaultMode="dark" variant={variant}>
+      {children}
+    </AppTheme>
+  );
+}
+
 /**
  * Render out the core layout for the application
  */
-const App: React.FC = () => (
-  <ErrorBoundary FallbackComponent={RootErrorFallback}>
-    <QueryClientProvider client={queryClient}>
-      <SettingsProvider>
-        <ExtensionProvider registry={EXTENSION_REGISTRY}>
-          <AppSnackbarProvider>
-            <StyledEngineProvider injectFirst>
-              <Provider store={store}>
-                <AppTheme defaultMode="dark">
-                  <ErrorBoundary
-                    FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
-                    onError={onBoundaryError}
-                  >
-                    <OperationsProvider>
-                      <ConfirmationModalProvider>
-                        <RightDrawerProvider>
-                          <BottomDrawerProvider>
-                            <PluginRegistryProvider>
-                              <RouteProvider />
-                            </PluginRegistryProvider>
-                          </BottomDrawerProvider>
-                        </RightDrawerProvider>
-                      </ConfirmationModalProvider>
-                    </OperationsProvider>
-                  </ErrorBoundary>
-                </AppTheme>
-              </Provider>
-            </StyledEngineProvider>
-          </AppSnackbarProvider>
-        </ExtensionProvider>
-      </SettingsProvider>
-    </QueryClientProvider>
-  </ErrorBoundary>
-);
+const App: React.FC = () => {
+  return (
+    <ErrorBoundary FallbackComponent={RootErrorFallback}>
+      <QueryClientProvider client={queryClient}>
+        <SettingsProvider>
+          <ExtensionProvider registry={EXTENSION_REGISTRY}>
+            <AppSnackbarProvider>
+              <StyledEngineProvider injectFirst>
+                <Provider store={store}>
+                  <AppWithTheme>
+                    <ErrorBoundary
+                      FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
+                      onError={onBoundaryError}
+                    >
+                      <OperationsProvider>
+                        <ConfirmationModalProvider>
+                          <RightDrawerProvider>
+                            <BottomDrawerProvider>
+                              <PluginRegistryProvider>
+                                <RouteProvider />
+                              </PluginRegistryProvider>
+                            </BottomDrawerProvider>
+                          </RightDrawerProvider>
+                        </ConfirmationModalProvider>
+                      </OperationsProvider>
+                    </ErrorBoundary>
+                  </AppWithTheme>
+                </Provider>
+              </StyledEngineProvider>
+            </AppSnackbarProvider>
+          </ExtensionProvider>
+        </SettingsProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  );
+};
 
 export default App;

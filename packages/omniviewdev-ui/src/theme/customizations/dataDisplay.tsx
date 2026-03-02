@@ -8,9 +8,35 @@ import { typographyClasses } from '@mui/material/Typography';
 import { buttonBaseClasses } from '@mui/material/ButtonBase';
 import { chipClasses } from '@mui/material/Chip';
 import { iconButtonClasses } from '@mui/material/IconButton';
-import { gray, brand, green, orange, red, purple } from '../primitives';
+import {
+  gray as defaultGray,
+  brand as defaultBrand,
+  green as defaultGreen,
+  orange as defaultOrange,
+  red as defaultRed,
+  purple as defaultPurple,
+} from '../primitives';
 
-export const dataDisplayCustomizations: Components<Theme> = {
+type ColorScale = Record<number, string>;
+
+interface DataDisplayPalettes {
+  gray: ColorScale;
+  brand: ColorScale;
+  green: ColorScale;
+  orange: ColorScale;
+  red: ColorScale;
+  purple: ColorScale;
+}
+
+export function createDataDisplayCustomizations(palettes?: Partial<DataDisplayPalettes>): Components<Theme> {
+  const gray = palettes?.gray ?? defaultGray;
+  const brand = palettes?.brand ?? defaultBrand;
+  const green = palettes?.green ?? defaultGreen;
+  const orange = palettes?.orange ?? defaultOrange;
+  const red = palettes?.red ?? defaultRed;
+  const purple = palettes?.purple ?? defaultPurple;
+
+  return {
   MuiList: {
     styleOverrides: {
       root: { padding: '8px', display: 'flex', flexDirection: 'column', gap: 0 },
@@ -105,7 +131,7 @@ export const dataDisplayCustomizations: Components<Theme> = {
             style: {
               border: `1px solid ${theme.palette.divider}`,
               boxShadow: 'none',
-              background: 'hsl(0, 0%, 100%)',
+              background: gray[50],
               '&:hover': {
                 borderColor: gray[300],
                 boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.08)',
@@ -360,4 +386,7 @@ export const dataDisplayCustomizations: Components<Theme> = {
       root: { WebkitFontSmoothing: 'antialiased', MozOsxFontSmoothing: 'grayscale' },
     },
   },
-};
+  };
+}
+
+export const dataDisplayCustomizations = createDataDisplayCustomizations();

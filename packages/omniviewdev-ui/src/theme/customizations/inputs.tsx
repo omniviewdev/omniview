@@ -10,9 +10,20 @@ import { toggleButtonClasses } from '@mui/material/ToggleButton';
 import CheckBoxOutlineBlankRoundedIcon from '@mui/icons-material/CheckBoxOutlineBlankRounded';
 import CheckRoundedIcon from '@mui/icons-material/CheckRounded';
 import RemoveRoundedIcon from '@mui/icons-material/RemoveRounded';
-import { gray, brand } from '../primitives';
+import { gray as defaultGray, brand as defaultBrand } from '../primitives';
 
-export const inputsCustomizations: Components<Theme> = {
+type ColorScale = Record<number, string>;
+
+interface InputPalettes {
+  gray: ColorScale;
+  brand: ColorScale;
+}
+
+export function createInputsCustomizations(palettes?: Partial<InputPalettes>): Components<Theme> {
+  const gray = palettes?.gray ?? defaultGray;
+  const brand = palettes?.brand ?? defaultBrand;
+
+  return {
   MuiButtonBase: {
     defaultProps: {
       disableTouchRipple: true,
@@ -538,4 +549,7 @@ export const inputsCustomizations: Components<Theme> = {
       }),
     },
   },
-};
+  };
+}
+
+export const inputsCustomizations = createInputsCustomizations();

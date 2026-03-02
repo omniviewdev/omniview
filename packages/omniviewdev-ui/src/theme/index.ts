@@ -10,7 +10,8 @@
 // MUI Theme
 // ---------------------------------------------------------------------------
 export { default as AppTheme } from './AppTheme';
-export type { ColorMode } from './AppTheme';
+export type { ColorMode, ThemeVariant } from './AppTheme';
+export { ThemeVariantContext, useThemeVariant } from './AppTheme';
 
 export {
   brand,
@@ -25,10 +26,24 @@ export {
   customShadows,
 } from './primitives';
 
-export { inputsCustomizations } from './customizations/inputs';
-export { navigationCustomizations } from './customizations/navigation';
-export { feedbackCustomizations } from './customizations/feedback';
-export { dataDisplayCustomizations } from './customizations/dataDisplay';
+export { inputsCustomizations, createInputsCustomizations } from './customizations/inputs';
+export { navigationCustomizations, createNavigationCustomizations } from './customizations/navigation';
+export { feedbackCustomizations, createFeedbackCustomizations } from './customizations/feedback';
+export { dataDisplayCustomizations, createDataDisplayCustomizations } from './customizations/dataDisplay';
+
+// ---------------------------------------------------------------------------
+// Solarized Variant
+// ---------------------------------------------------------------------------
+export {
+  solarizedGray,
+  solarizedBrand,
+  solarizedGreen,
+  solarizedOrange,
+  solarizedRed,
+  solarizedPurple,
+  getSolarizedDesignTokens,
+  solarizedCustomShadows,
+} from './solarized';
 
 // ---------------------------------------------------------------------------
 // CSS Custom Property Runtime Theming

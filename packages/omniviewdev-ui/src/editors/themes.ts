@@ -58,7 +58,71 @@ export const omniviewLight: editor.IStandaloneThemeData = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Solarized (Ethan Schoonover)
+// ---------------------------------------------------------------------------
+
+export const solarizedDark: editor.IStandaloneThemeData = {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [
+    { token: '', foreground: '839496' },
+    { token: 'comment', foreground: '586e75', fontStyle: 'italic' },
+    { token: 'keyword', foreground: '859900' },
+    { token: 'string', foreground: '2aa198' },
+    { token: 'number', foreground: 'd33682' },
+    { token: 'type', foreground: 'b58900' },
+    { token: 'variable', foreground: 'b58900' },
+    { token: 'constant', foreground: 'cb4b16' },
+    { token: 'function', foreground: '268bd2' },
+    { token: 'operator', foreground: '859900' },
+  ],
+  colors: {
+    'editor.background': '#002b36',
+    'editor.foreground': '#839496',
+    'editor.lineHighlightBackground': '#073642',
+    'editor.selectionBackground': '#073642',
+    'editorCursor.foreground': '#268bd2',
+    'editorLineNumber.foreground': '#586e75',
+    'editorLineNumber.activeForeground': '#93a1a1',
+    'editor.inactiveSelectionBackground': '#073642aa',
+    'editorIndentGuide.background': '#073642',
+    'editorIndentGuide.activeBackground': '#586e75',
+  },
+};
+
+export const solarizedLight: editor.IStandaloneThemeData = {
+  base: 'vs',
+  inherit: true,
+  rules: [
+    { token: '', foreground: '657b83' },
+    { token: 'comment', foreground: '93a1a1', fontStyle: 'italic' },
+    { token: 'keyword', foreground: '859900' },
+    { token: 'string', foreground: '2aa198' },
+    { token: 'number', foreground: 'd33682' },
+    { token: 'type', foreground: 'b58900' },
+    { token: 'variable', foreground: 'b58900' },
+    { token: 'constant', foreground: 'cb4b16' },
+    { token: 'function', foreground: '268bd2' },
+    { token: 'operator', foreground: '859900' },
+  ],
+  colors: {
+    'editor.background': '#fdf6e3',
+    'editor.foreground': '#657b83',
+    'editor.lineHighlightBackground': '#eee8d5',
+    'editor.selectionBackground': '#eee8d5',
+    'editorCursor.foreground': '#268bd2',
+    'editorLineNumber.foreground': '#93a1a1',
+    'editorLineNumber.activeForeground': '#586e75',
+    'editor.inactiveSelectionBackground': '#eee8d5aa',
+    'editorIndentGuide.background': '#eee8d5',
+    'editorIndentGuide.activeBackground': '#93a1a1',
+  },
+};
+
 export function registerOmniviewThemes(monaco: typeof import('monaco-editor')) {
   monaco.editor.defineTheme('omniview-dark', omniviewDark);
   monaco.editor.defineTheme('omniview-light', omniviewLight);
+  monaco.editor.defineTheme('solarized-dark', solarizedDark);
+  monaco.editor.defineTheme('solarized-light', solarizedLight);
 }
