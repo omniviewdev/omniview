@@ -7,9 +7,7 @@
  * shades (700–900) for dark-mode surfaces.
  */
 import type { PaletteMode, Shadows } from '@mui/material/styles';
-import { createTheme } from '@mui/material/styles';
-
-const defaultTheme = createTheme();
+import defaultShadows from '@mui/material/styles/shadows';
 
 // ---------------------------------------------------------------------------
 // Color Palettes
@@ -40,7 +38,7 @@ export const solarizedBrand = {
   300: '#4FA3DD',
   400: '#268BD2',
   500: '#1A73AD',
-  600: '#2E91D5',
+  600: '#155F94',
   700: '#105F94',
   800: '#07354F',
   900: '#032A40',
@@ -64,8 +62,8 @@ export const solarizedGreen = {
 export const solarizedOrange = {
   50:  '#FEF8E6',
   100: '#FAECBA',
-  200: '#B89A4A',
-  300: '#DFB540',
+  200: '#DFB540',
+  300: '#B89A4A',
   400: '#B58900',
   500: '#997300',
   600: '#9B4A08',
@@ -120,9 +118,7 @@ export const getSolarizedDesignTokens = (mode: PaletteMode) => ({
       dark: solarizedBrand[700],
       contrastText: solarizedBrand[50],
       ...(mode === 'dark' && {
-        contrastText: solarizedBrand[50],
         light: solarizedBrand[300],
-        main: solarizedBrand[400],
         dark: solarizedBrand[700],
       }),
     },
@@ -202,7 +198,7 @@ export const getSolarizedDesignTokens = (mode: PaletteMode) => ({
 export const solarizedCustomShadows = (mode: PaletteMode): Shadows => {
   const baseShadow = getSolarizedBaseShadow(mode);
 
-  const shadows = [...defaultTheme.shadows] as Shadows;
+  const shadows = [...defaultShadows] as Shadows;
   shadows[1] = baseShadow;
   return shadows;
 };
