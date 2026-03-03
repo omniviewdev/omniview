@@ -127,6 +127,23 @@ export const MONACO_THEME_NAMES = {
   solarizedLight: 'solarized-light',
 } as const;
 
+/**
+ * Resolve the Monaco editor theme name from app theme variant and color mode.
+ * Use in CodeEditor and DiffViewer to keep theme selection DRY.
+ */
+export function resolveEditorTheme(
+  variant: string,
+  colorMode: string,
+  explicit?: string,
+): string {
+  if (explicit) return explicit;
+  const mode = colorMode === 'light' ? 'light' : 'dark';
+  if (variant === 'solarized') {
+    return mode === 'light' ? MONACO_THEME_NAMES.solarizedLight : MONACO_THEME_NAMES.solarizedDark;
+  }
+  return mode === 'light' ? MONACO_THEME_NAMES.omniviewLight : MONACO_THEME_NAMES.omniviewDark;
+}
+
 export function registerOmniviewThemes(monaco: typeof import('monaco-editor')) {
   monaco.editor.defineTheme(MONACO_THEME_NAMES.omniviewDark, omniviewDark);
   monaco.editor.defineTheme(MONACO_THEME_NAMES.omniviewLight, omniviewLight);
