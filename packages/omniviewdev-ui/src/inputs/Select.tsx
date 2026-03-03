@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import MuiSelect from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
@@ -65,6 +65,9 @@ export default function Select({
   sx,
 }: SelectProps) {
   const [search, setSearch] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const searchRef = useRef<HTMLInputElement>(null);
   const muiSize = toMuiInputSize(size);
   const muiColor = toMuiColor(color) as any;
   const hasError = typeof error === 'string' ? !!error : error;
@@ -78,6 +81,51 @@ export default function Select({
 
   const handleChange = (e: SelectChangeEvent<string | string[]>) => {
     onChange(e.target.value);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setIsOpen(false);
+      setFocusedIndex(-1);
+      return;
+    }
+
+    if (e.key === 'Tab' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      e.stopPropagation();
+      const next = focusedIndex + 1;
+      setFocusedIndex(next >= filteredOptions.length ? 0 : next);
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      const prev = focusedIndex - 1;
+      setFocusedIndex(prev < 0 ? filteredOptions.length - 1 : prev);
+      return;
+    }
+
+    if (e.key === 'Enter' && focusedIndex >= 0 && focusedIndex < filteredOptions.length) {
+      e.preventDefault();
+      e.stopPropagation();
+      const opt = filteredOptions[focusedIndex];
+      if (!opt.disabled) {
+        if (multiple) {
+          const arr = Array.isArray(value) ? value : [];
+          const newValue = arr.includes(opt.value)
+            ? arr.filter((v) => v !== opt.value)
+            : [...arr, opt.value];
+          onChange(newValue);
+        } else {
+          onChange(opt.value);
+          setIsOpen(false);
+        }
+      }
+      return;
+    }
+
+    e.stopPropagation();
   };
 
   return (
@@ -105,7 +153,9 @@ export default function Select({
         label={label}
         notched={label ? (!!placeholder || undefined) : undefined}
         input={multiple ? <OutlinedInput label={label} /> : undefined}
-        onClose={() => { if (searchable) setSearch(''); }}
+        open={isOpen}
+        onOpen={() => { setIsOpen(true); setFocusedIndex(-1); }}
+        onClose={() => { setIsOpen(false); setFocusedIndex(-1); if (searchable) setSearch(''); }}
         renderValue={
           multiple
             ? (selected) => {
@@ -192,7 +242,6 @@ export default function Select({
         {searchable && (
           <Box
             sx={{ px: 1, pb: 0.5, pt: 0.5 }}
-            onKeyDown={(e) => e.stopPropagation()}
             onClickCapture={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
@@ -212,9 +261,11 @@ export default function Select({
               <InputBase
                 autoFocus
                 fullWidth
+                inputRef={searchRef}
                 placeholder="Search..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setFocusedIndex(-1); }}
+                onKeyDown={handleSearchKeyDown}
                 sx={{
                   flex: 1,
                   fontSize: '0.75rem',
@@ -231,8 +282,14 @@ export default function Select({
             <CircularProgress size={16} sx={{ mr: 1 }} /> Loading...
           </MenuItem>
         )}
-        {filteredOptions.map((opt) => (
-          <MenuItem key={opt.value} value={opt.value} disabled={opt.disabled}>
+        {filteredOptions.map((opt, idx) => (
+          <MenuItem
+            key={opt.value}
+            value={opt.value}
+            disabled={opt.disabled}
+            onMouseEnter={() => setFocusedIndex(idx)}
+            sx={idx === focusedIndex ? { bgcolor: 'action.focus' } : undefined}
+          >
             {opt.icon && <ListItemIcon sx={{ minWidth: 28 }}>{opt.icon}</ListItemIcon>}
             <ListItemText>{opt.label}</ListItemText>
           </MenuItem>
