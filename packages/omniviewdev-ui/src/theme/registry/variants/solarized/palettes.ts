@@ -40,7 +40,7 @@ export const solarizedBrand = {
   400: '#268BD2',
   500: '#1A73AD',
   600: '#155F94',
-  700: '#105F94',
+  700: '#0F4E7A',
   800: '#07354F',
   900: '#032A40',
 };
@@ -49,8 +49,8 @@ export const solarizedBrand = {
 export const solarizedGreen = {
   50:  '#F2F7E8',
   100: '#DCEBC4',
-  200: '#84B86A',
-  300: '#8FBB4D',
+  200: '#8FBB4D',
+  300: '#84B86A',
   400: '#7A9B00',
   500: '#5E7F00',
   600: '#4D6B06',
