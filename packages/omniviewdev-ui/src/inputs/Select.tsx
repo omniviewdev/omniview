@@ -331,8 +331,12 @@ export default function Select({
             key={opt.value}
             value={opt.value}
             disabled={opt.disabled}
-            onMouseEnter={() => setFocusedIndex(idx)}
-            sx={idx === focusedIndex ? { bgcolor: "action.focus" } : undefined}
+            {...(searchable
+              ? {
+                  onMouseEnter: () => setFocusedIndex(idx),
+                  sx: idx === focusedIndex ? { bgcolor: "action.focus" } : undefined,
+                }
+              : {})}
           >
             {opt.icon && (
               <ListItemIcon sx={{ minWidth: 28 }}>{opt.icon}</ListItemIcon>
