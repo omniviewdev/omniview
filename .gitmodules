@@ -1,0 +1,4 @@
+[submodule "plugins/kubernetes"]
+	path = plugins/kubernetes
+	url = https://github.com/mononen/omniview-plugin-kubernetes.git
+	branch = main

@@ -243,6 +243,122 @@
 }
 
 /* ================================================================
+ * SOLARIZED DARK
+ * Ethan Schoonover's Solarized palette — dark variant.
+ * Overrides the gray-scale primitives so that var()-based semantic
+ * tokens (backgrounds, borders) resolve automatically.
+ * ================================================================ */
+[data-ov-theme="solarized-dark"] {
+  /* Neutral scale: base03 → base02 → base01 → base00 → base0 → base1 → base2 */
+  --ov-scale-gray-0:  #002B36;
+  --ov-scale-gray-1:  #04313C;
+  --ov-scale-gray-2:  #073642;
+  --ov-scale-gray-3:  #133E49;
+  --ov-scale-gray-4:  #1E4651;
+  --ov-scale-gray-5:  #2A4E58;
+  --ov-scale-gray-6:  #35565F;
+  --ov-scale-gray-7:  #415E66;
+  --ov-scale-gray-8:  #4C666E;
+  --ov-scale-gray-9:  #586E75;
+  --ov-scale-gray-10: #657B83;
+  --ov-scale-gray-11: #839496;
+  --ov-scale-gray-12: #93A1A1;
+  --ov-scale-gray-13: #EEE8D5;
+
+  --ov-fg-base:     #93A1A1;
+  --ov-fg-default:  rgba(147, 161, 161, 0.92);
+  --ov-fg-muted:    rgba(147, 161, 161, 0.64);
+  --ov-fg-faint:    rgba(147, 161, 161, 0.44);
+  --ov-fg-disabled: rgba(147, 161, 161, 0.28);
+  --ov-fg-accent:   #268BD2;
+
+  --ov-accent:        #268BD2;
+  --ov-accent-muted:  rgba(38, 139, 210, 0.20);
+  --ov-accent-subtle: rgba(38, 139, 210, 0.10);
+  --ov-accent-fg:     #268BD2;
+
+  --ov-success-emphasis: #5B6B00;
+  --ov-success-default:  #859900;
+  --ov-success-muted:    rgba(133, 153, 0, 0.12);
+
+  --ov-warning-emphasis: #7B5D00;
+  --ov-warning-default:  #B58900;
+  --ov-warning-muted:    rgba(181, 137, 0, 0.12);
+
+  --ov-danger-emphasis:  #B5211E;
+  --ov-danger-default:   #DC322F;
+  --ov-danger-muted:     rgba(220, 50, 47, 0.12);
+
+  --ov-info-emphasis:    #1A6091;
+  --ov-info-default:     #268BD2;
+  --ov-info-muted:       rgba(38, 139, 210, 0.12);
+
+  --ov-shadow-sm: 0 1px 3px rgba(0, 20, 26, 0.30), 0 1px 2px rgba(0, 20, 26, 0.20);
+  --ov-shadow-md: 0 4px 12px rgba(0, 20, 26, 0.35), 0 2px 4px rgba(0, 20, 26, 0.25);
+  --ov-shadow-lg: 0 8px 24px rgba(0, 20, 26, 0.40), 0 4px 8px rgba(0, 20, 26, 0.30);
+  --ov-shadow-xl: 0 16px 48px rgba(0, 20, 26, 0.45);
+
+  --ov-state-hover:    rgba(147, 161, 161, 0.04);
+  --ov-state-active:   rgba(147, 161, 161, 0.07);
+  --ov-state-selected: var(--ov-accent-subtle);
+  --ov-state-focus:    0 0 0 2px var(--ov-accent);
+}
+
+/* ================================================================
+ * SOLARIZED LIGHT
+ * Ethan Schoonover's Solarized palette — light variant.
+ * ================================================================ */
+[data-ov-theme="solarized-light"] {
+  --ov-bg-base:             #FDF6E3;
+  --ov-bg-surface:          #EEE8D5;
+  --ov-bg-surface-raised:   #FDF6E3;
+  --ov-bg-surface-overlay:  #FDF6E3;
+  --ov-bg-surface-inset:    #E4DECB;
+
+  --ov-fg-base:     #586E75;
+  --ov-fg-default:  rgba(88, 110, 117, 0.92);
+  --ov-fg-muted:    rgba(88, 110, 117, 0.64);
+  --ov-fg-faint:    rgba(88, 110, 117, 0.44);
+  --ov-fg-disabled: rgba(88, 110, 117, 0.28);
+  --ov-fg-accent:   #268BD2;
+
+  --ov-border-default:  #C9C2AF;
+  --ov-border-muted:    #DDD6C1;
+  --ov-border-emphasis: #93A1A1;
+
+  --ov-accent:        #268BD2;
+  --ov-accent-muted:  rgba(38, 139, 210, 0.20);
+  --ov-accent-subtle: rgba(38, 139, 210, 0.10);
+  --ov-accent-fg:     #1A6091;
+
+  --ov-success-emphasis: #5B6B00;
+  --ov-success-default:  #859900;
+  --ov-success-muted:    rgba(133, 153, 0, 0.10);
+
+  --ov-warning-emphasis: #7B5D00;
+  --ov-warning-default:  #B58900;
+  --ov-warning-muted:    rgba(181, 137, 0, 0.10);
+
+  --ov-danger-emphasis:  #B5211E;
+  --ov-danger-default:   #DC322F;
+  --ov-danger-muted:     rgba(220, 50, 47, 0.10);
+
+  --ov-info-emphasis:    #1A6091;
+  --ov-info-default:     #268BD2;
+  --ov-info-muted:       rgba(38, 139, 210, 0.10);
+
+  --ov-shadow-sm: 0 1px 3px rgba(88, 110, 117, 0.10), 0 1px 2px rgba(88, 110, 117, 0.06);
+  --ov-shadow-md: 0 4px 12px rgba(88, 110, 117, 0.12), 0 2px 4px rgba(88, 110, 117, 0.08);
+  --ov-shadow-lg: 0 8px 24px rgba(88, 110, 117, 0.16), 0 4px 8px rgba(88, 110, 117, 0.10);
+  --ov-shadow-xl: 0 16px 48px rgba(88, 110, 117, 0.20);
+
+  --ov-state-hover:    rgba(88, 110, 117, 0.04);
+  --ov-state-active:   rgba(88, 110, 117, 0.07);
+  --ov-state-selected: var(--ov-accent-subtle);
+  --ov-state-focus:    0 0 0 2px var(--ov-accent);
+}
+
+/* ================================================================
  * REDUCED MOTION
  * ================================================================ */
 @media (prefers-reduced-motion: reduce) {

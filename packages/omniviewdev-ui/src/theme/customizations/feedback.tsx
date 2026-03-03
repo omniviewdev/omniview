@@ -3,16 +3,21 @@
  * Alert, Dialog, Popover, LinearProgress
  */
 import { alpha, type Components, type Theme } from '@mui/material/styles';
-import { gray } from '../primitives';
+import { gray as defaultGray } from '../primitives';
 
-export const feedbackCustomizations: Components<Theme> = {
+type ColorScale = Record<number, string>;
+
+interface FeedbackPalettes {
+  gray: ColorScale;
+}
+
+export function createFeedbackCustomizations(palettes?: Partial<FeedbackPalettes>): Components<Theme> {
+  const gray = palettes?.gray ?? defaultGray;
+
+  return {
   MuiAlert: {
     styleOverrides: {
-      root: {
-        // Sizing and color are handled by the Alert wrapper component.
-        // We intentionally don't set padding, borderRadius, or severity-based
-        // color variants here to avoid specificity fights with the sx prop.
-      },
+      root: {},
     },
   },
   MuiDialog: {
@@ -24,7 +29,7 @@ export const feedbackCustomizations: Components<Theme> = {
           borderColor: theme.palette.divider,
           backgroundColor: gray[50],
           ...theme.applyStyles('dark', {
-            backgroundColor: 'hsl(220, 25%, 10%)',
+            backgroundColor: gray[900],
             borderColor: alpha(gray[700], 0.6),
           }),
         },
@@ -41,7 +46,7 @@ export const feedbackCustomizations: Components<Theme> = {
         backgroundColor: gray[50],
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
         ...theme.applyStyles('dark', {
-          backgroundColor: 'hsl(220, 25%, 10%)',
+          backgroundColor: gray[900],
           borderColor: alpha(gray[700], 0.6),
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
         }),
@@ -56,4 +61,7 @@ export const feedbackCustomizations: Components<Theme> = {
       }),
     },
   },
-};
+  };
+}
+
+export const feedbackCustomizations = createFeedbackCustomizations();

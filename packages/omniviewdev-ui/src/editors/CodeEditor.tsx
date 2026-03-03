@@ -3,7 +3,8 @@ import Box from '@mui/material/Box';
 import type { SxProps, Theme } from '@mui/material/styles';
 import Editor, { type Monaco, type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
-import { registerOmniviewThemes } from './themes';
+import { registerOmniviewThemes, resolveEditorTheme } from './themes';
+import { useThemeVariant } from '../theme';
 
 export interface CodeEditorProps {
   value: string;
@@ -33,6 +34,7 @@ export default function CodeEditor({
   sx,
 }: CodeEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const { variant, colorMode } = useThemeVariant();
 
   const handleBeforeMount = useCallback((monaco: Monaco) => {
     registerOmniviewThemes(monaco as unknown as typeof import('monaco-editor'));
@@ -51,7 +53,7 @@ export default function CodeEditor({
     [onSave],
   );
 
-  const resolvedTheme = theme ?? 'omniview-dark';
+  const resolvedTheme = resolveEditorTheme(variant, colorMode, theme);
 
   return (
     <Box

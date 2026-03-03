@@ -13,4 +13,4 @@ export type { CommandPaletteProps, CommandItem } from './CommandPalette';
 export { default as MarkdownPreview } from './MarkdownPreview';
 export type { MarkdownPreviewProps } from './MarkdownPreview';
 
-export { registerOmniviewThemes, omniviewDark, omniviewLight } from './themes';
+export { registerOmniviewThemes, resolveEditorTheme, omniviewDark, omniviewLight, solarizedDark, solarizedLight, MONACO_THEME_NAMES } from './themes';

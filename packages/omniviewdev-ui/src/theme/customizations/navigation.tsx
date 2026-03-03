@@ -10,9 +10,20 @@ import { dividerClasses } from '@mui/material/Divider';
 import { menuItemClasses } from '@mui/material/MenuItem';
 import { tabClasses } from '@mui/material/Tab';
 import UnfoldMoreRoundedIcon from '@mui/icons-material/UnfoldMoreRounded';
-import { gray, brand } from '../primitives';
+import { gray as defaultGray, brand as defaultBrand } from '../primitives';
 
-export const navigationCustomizations: Components<Theme> = {
+type ColorScale = Record<number, string>;
+
+interface NavigationPalettes {
+  gray: ColorScale;
+  brand: ColorScale;
+}
+
+export function createNavigationCustomizations(palettes?: Partial<NavigationPalettes>): Components<Theme> {
+  const gray = palettes?.gray ?? defaultGray;
+  const brand = palettes?.brand ?? defaultBrand;
+
+  return {
   MuiMenuItem: {
     styleOverrides: {
       root: ({ theme }) => ({
@@ -39,7 +50,7 @@ export const navigationCustomizations: Components<Theme> = {
         borderRadius: theme.shape.borderRadius,
         border: `1px solid ${theme.palette.divider}`,
         backgroundImage: 'none',
-        background: 'hsl(0, 0%, 100%)',
+        background: gray[50],
         boxShadow: 'hsla(220, 30%, 5%, 0.07) 0px 4px 16px 0px, hsla(220, 25%, 10%, 0.07) 0px 8px 16px -5px',
         [`& .${buttonBaseClasses.root}`]: {
           '&.Mui-selected': { backgroundColor: alpha(theme.palette.action.selected, 0.3) },
@@ -154,4 +165,7 @@ export const navigationCustomizations: Components<Theme> = {
       }),
     },
   },
-};
+  };
+}
+
+export const navigationCustomizations = createNavigationCustomizations();
