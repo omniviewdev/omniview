@@ -73,6 +73,12 @@ export default function Select({
   const hasError = typeof error === "string" ? !!error : error;
   const errorText = typeof error === "string" ? error : undefined;
 
+  const closeAndReset = () => {
+    setIsOpen(false);
+    setFocusedIndex(-1);
+    if (searchable) setSearch("");
+  };
+
   const filteredOptions = useMemo(() => {
     if (!searchable || !search) return options;
     const lower = search.toLowerCase();
@@ -85,12 +91,11 @@ export default function Select({
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") {
-      setIsOpen(false);
-      setFocusedIndex(-1);
+      closeAndReset();
       return;
     }
 
-    if (e.key === "Tab" || e.key === "ArrowDown") {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
       e.stopPropagation();
       if (filteredOptions.length === 0) return;
@@ -124,7 +129,7 @@ export default function Select({
           onChange(newValue);
         } else {
           onChange(opt.value);
-          setIsOpen(false);
+          closeAndReset();
         }
       }
       return;
@@ -169,11 +174,7 @@ export default function Select({
           setIsOpen(true);
           setFocusedIndex(-1);
         }}
-        onClose={() => {
-          setIsOpen(false);
-          setFocusedIndex(-1);
-          if (searchable) setSearch("");
-        }}
+        onClose={closeAndReset}
         renderValue={
           multiple
             ? (selected) => {
@@ -217,12 +218,11 @@ export default function Select({
                       );
                     })}
                     {clearable && arr.length > 1 && (
-                      <span
-                        role="button"
+                      <button
+                        type="button"
                         aria-label="Clear all"
-                        onMouseDown={(e) => {
+                        onClick={(e) => {
                           e.stopPropagation();
-                          e.preventDefault();
                           onChange([]);
                         }}
                         style={{
@@ -233,10 +233,13 @@ export default function Select({
                           cursor: "pointer",
                           color: "var(--ov-fg-faint)",
                           lineHeight: 0,
+                          background: "none",
+                          border: "none",
+                          padding: 0,
                         }}
                       >
                         <ClearIcon sx={{ fontSize: 16 }} />
-                      </span>
+                      </button>
                     )}
                   </Box>
                 );
