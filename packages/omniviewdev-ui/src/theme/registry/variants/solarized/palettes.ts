@@ -6,8 +6,9 @@
  * with lighter tints (50–200) for light-mode surfaces and darker
  * shades (700–900) for dark-mode surfaces.
  */
-import type { PaletteMode, Shadows } from '@mui/material/styles';
-import defaultShadows from '@mui/material/styles/shadows';
+import { createTheme, type PaletteMode, type Shadows } from '@mui/material/styles';
+
+const defaultTheme = createTheme();
 
 // ---------------------------------------------------------------------------
 // Color Palettes
@@ -198,7 +199,7 @@ export const getSolarizedDesignTokens = (mode: PaletteMode) => ({
 export const solarizedCustomShadows = (mode: PaletteMode): Shadows => {
   const baseShadow = getSolarizedBaseShadow(mode);
 
-  const shadows = [...defaultShadows] as Shadows;
+  const shadows = [...defaultTheme.shadows] as Shadows;
   shadows[1] = baseShadow;
   return shadows;
 };
