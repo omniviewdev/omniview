@@ -346,19 +346,29 @@ func TestIntegration_StateAlwaysFlows(t *testing.T) {
 	// NOT subscribed to anything.
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
 	sink.OnStateChange(resource.WatchStateEvent{
+		Connection:  "conn-1",
 		ResourceKey: "pods",
 		State:       resource.WatchStateSynced,
 	})
 
-	// STATE should still be emitted.
+	// STATE should still be emitted (2 events: per-plugin/connection + global).
 	events := emitter.EventsWithKey("STATE")
 	require.NotEmpty(t, events)
 
-	// Verify both per-plugin and global STATE events.
-	perPlugin := emitter.EventsWithKey("p1/informer/STATE")
-	global := emitter.EventsWithKey("informer/STATE")
+	// Verify per-plugin/connection event: ${pluginID}/${connectionID}/watch/STATE
+	perPlugin := emitter.EventsWithKey("p1/conn-1/watch/STATE")
 	assert.NotEmpty(t, perPlugin)
-	assert.NotEmpty(t, global)
+
+	// Verify global event.
+	all := emitter.Events()
+	var foundGlobal bool
+	for _, ev := range all {
+		if ev.Key == "watch/STATE" {
+			foundGlobal = true
+			break
+		}
+	}
+	assert.True(t, foundGlobal, "expected global watch/STATE event")
 }
 
 // EI-012: Subscribe to unknown resource key — no crash.
@@ -424,13 +434,13 @@ func TestIntegration_OutOfOrderEvents(t *testing.T) {
 	assert.Equal(t, []string{"ADD", "DELETE", "ADD"}, eventTypes)
 }
 
-// EI-015: SDK error propagated to caller unchanged.
+// EI-015: SDK error propagated to caller via AppError detail.
 func TestIntegration_ErrorPropagation(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
-	expectedErr := errors.New("upstream SDK error: connection timed out")
+	expectedMsg := "upstream SDK error: connection timed out"
 	mock := &mockProvider{
 		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
-			return nil, expectedErr
+			return nil, errors.New(expectedMsg)
 		},
 	}
 	registerMockPlugin(ctrl, "p1", mock)
@@ -438,7 +448,10 @@ func TestIntegration_ErrorPropagation(t *testing.T) {
 	result, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.Equal(t, expectedErr.Error(), err.Error())
+
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr), "error should be an AppError")
+	assert.Contains(t, appErr.Detail, expectedMsg)
 }
 
 // EI-016: Two plugins with same resource key, no cross-contamination.

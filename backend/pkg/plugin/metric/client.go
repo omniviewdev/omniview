@@ -3,7 +3,7 @@ package metric
 import (
 	"time"
 
-	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/metric"
+	sdkmetric "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
 // Client is the Wails-bound client exposing metric methods to the frontend.

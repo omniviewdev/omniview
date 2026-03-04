@@ -3,7 +3,7 @@ package logs
 import (
 	"context"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/logs"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 

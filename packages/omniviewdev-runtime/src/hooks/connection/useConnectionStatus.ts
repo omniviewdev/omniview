@@ -2,11 +2,13 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import {
   ListAllConnections,
+  GetAllConnectionStates,
   StopConnection,
-  StartConnectionInformer,
+  StartConnectionWatch,
 } from '../../wailsjs/go/resource/Client';
 import type { types } from '../../wailsjs/go/models';
-import type { InformerStateEvent } from '../../types/informer';
+import { WatchState } from '../../types/watch';
+import type { WatchStateEvent } from '../../types/watch';
 import {
   type ActiveSync,
   type ResourceTracker,
@@ -17,6 +19,21 @@ import {
   trackerKey,
   updateTracker,
 } from '../../utils/activeSyncAggregator';
+
+/**
+ * Mirrors backend resource.ConnectionState.
+ * Locally declared until Wails v3 model generation handles cross-package types.
+ */
+interface ConnectionStateResponse {
+  connection: types.Connection;
+  started: boolean;
+  resources: Record<string, number>;
+  resourceCounts: Record<string, number>;
+  totalResources: number;
+  syncedCount: number;
+  errorCount: number;
+  lastSyncTime?: string;
+}
 
 export interface ConnectionStatusEntry {
   pluginID: string;
@@ -39,13 +56,13 @@ export interface ConnectionStatusSummary {
   aggregateProgress: number;
   /** Disconnect a connection by plugin/connection ID */
   disconnect: (pluginID: string, connectionID: string) => Promise<void>;
-  /** Retry informer sync for a connection */
-  retryInformer: (pluginID: string, connectionID: string) => Promise<void>;
+  /** Retry watch sync for a connection */
+  retryWatch: (pluginID: string, connectionID: string) => Promise<void>;
 }
 
 /**
  * Unified hook that tracks connection status across all plugins.
- * Combines ListAllConnections query + connection/status events + informer/STATE events.
+ * Combines ListAllConnections query + connection/status events + watch/STATE events.
  */
 export function useConnectionStatus(): ConnectionStatusSummary {
   // Set of "pluginID/connectionID" keys for started connections
@@ -56,11 +73,44 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   const [syncs, setSyncs] = useState<Map<string, ActiveSync>>(new Map());
   const trackersRef = useRef<Map<string, ResourceTracker>>(new Map());
 
-  // Fetch initial connections on mount
+  // Hydrate full connection + watch state on mount
   useEffect(() => {
-    ListAllConnections()
-      .then((result: Record<string, types.Connection[]>) => {
-        if (result) setAllConnections(result);
+    GetAllConnectionStates()
+      .then((result: Record<string, ConnectionStateResponse[]>) => {
+        if (!result) return;
+
+        const conns: Record<string, types.Connection[]> = {};
+        const keys = new Set<string>();
+        const newSyncs = new Map<string, ActiveSync>();
+
+        for (const [pluginID, states] of Object.entries(result)) {
+          conns[pluginID] = states.map((s) => s.connection);
+
+          for (const s of states) {
+            if (!s.started) continue;
+
+            const key = `${pluginID}/${s.connection.id}`;
+            keys.add(key);
+
+            // Build a tracker from the backend's resource states
+            const tracker: ResourceTracker = {
+              pluginID,
+              connectionID: s.connection.id,
+              states: {},
+            };
+            if (s.resources) {
+              for (const [resourceKey, numericState] of Object.entries(s.resources)) {
+                tracker.states[resourceKey] = numericState as WatchState;
+              }
+            }
+            trackersRef.current.set(key, tracker);
+            newSyncs.set(key, computeActiveSync(tracker));
+          }
+        }
+
+        setAllConnections(conns);
+        setStartedKeys(keys);
+        setSyncs(newSyncs);
       })
       .catch(() => {
         // silently ignore - connections may not be available yet
@@ -110,11 +160,11 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     return cancel;
   }, []);
 
-  // Listen for informer/STATE events
-  const handleInformerEvent = useCallback((event: InformerStateEvent) => {
+  // Listen for watch/STATE events
+  const handleWatchEvent = useCallback((event: WatchStateEvent) => {
     const key = trackerKey(event);
 
-    // If we get informer events for a connection, it's started
+    // If we get watch events for a connection, it's started
     setStartedKeys((prev) => {
       if (prev.has(key)) return prev;
       const next = new Set(prev);
@@ -133,17 +183,17 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   }, []);
 
   useEffect(() => {
-    const cancel = EventsOn('informer/STATE', handleInformerEvent);
+    const cancel = EventsOn('watch/STATE', handleWatchEvent);
     return cancel;
-  }, [handleInformerEvent]);
+  }, [handleWatchEvent]);
 
   // Actions
   const disconnect = useCallback(async (pluginID: string, connectionID: string) => {
     await StopConnection(pluginID, connectionID);
   }, []);
 
-  const retryInformer = useCallback(async (pluginID: string, connectionID: string) => {
-    await StartConnectionInformer(pluginID, connectionID);
+  const retryWatch = useCallback(async (pluginID: string, connectionID: string) => {
+    await StartConnectionWatch(pluginID, connectionID);
   }, []);
 
   // Build entries from started connections
@@ -190,6 +240,6 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     hasSyncing: hasActiveSyncing(syncArray),
     aggregateProgress: computeAggregateProgress(syncArray),
     disconnect,
-    retryInformer,
+    retryWatch,
   };
 }

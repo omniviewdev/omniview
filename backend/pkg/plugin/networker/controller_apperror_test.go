@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"github.com/omniviewdev/plugin-sdk/pkg/networker"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 )
 
 // newTestController builds a minimal networker controller for apperror tests.

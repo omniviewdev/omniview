@@ -13,7 +13,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/terminal"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	"github.com/omniviewdev/plugin-sdk/pkg/exec"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -309,6 +309,9 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	if ch, ok := c.inChans[pluginID]; ok {
 		close(ch)
 		delete(c.inChans, pluginID)
+	}
+	if provider, ok := c.clients[pluginID]; ok {
+		provider.Close()
 	}
 	delete(c.clients, pluginID)
 	return nil

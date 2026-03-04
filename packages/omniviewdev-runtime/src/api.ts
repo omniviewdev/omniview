@@ -11,5 +11,6 @@ export * as LogsClient from './wailsjs/go/logs/Client';
 export * as MetricClient from './wailsjs/go/metric/Client';
 
 export * as DevServerManager from './wailsjs/go/devserver/DevServerManager';
+export * as PluginLogManager from './wailsjs/go/pluginlog/Manager';
 
 export * from './wailsjs/go/main/App';

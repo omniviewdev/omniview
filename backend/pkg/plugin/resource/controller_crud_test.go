@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,7 +52,9 @@ func TestGet_ProviderError(t *testing.T) {
 }
 
 func TestGet_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
+	ctrl, _ := newTestControllerWithEmitter(t)
+	var called atomic.Int32
+	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
 	mock := &mockProvider{
 		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
 			return nil, status.Error(codes.Unavailable, "connection lost")
@@ -61,8 +65,7 @@ func TestGet_ConnectionError_TriggersCrash(t *testing.T) {
 	_, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
 	assert.Error(t, err)
 
-	events := emitter.EventsWithKey("plugin/crash")
-	assert.NotEmpty(t, events)
+	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
 func TestGet_NonConnectionError_NoCrash(t *testing.T) {
@@ -128,7 +131,9 @@ func TestList_ProviderError(t *testing.T) {
 }
 
 func TestList_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
+	ctrl, _ := newTestControllerWithEmitter(t)
+	var called atomic.Int32
+	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
 	mock := &mockProvider{
 		ListFunc: func(_ context.Context, _ string, _ resource.ListInput) (*resource.ListResult, error) {
 			return nil, status.Error(codes.Unavailable, "dead")
@@ -137,7 +142,7 @@ func TestList_ConnectionError_TriggersCrash(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, _ = ctrl.List("p1", "conn-1", "pods", resource.ListInput{})
-	assert.NotEmpty(t, emitter.EventsWithKey("plugin/crash"))
+	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
 // ============================================================================
@@ -172,7 +177,9 @@ func TestFind_ProviderError(t *testing.T) {
 }
 
 func TestFind_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
+	ctrl, _ := newTestControllerWithEmitter(t)
+	var called atomic.Int32
+	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
 	mock := &mockProvider{
 		FindFunc: func(_ context.Context, _ string, _ resource.FindInput) (*resource.FindResult, error) {
 			return nil, status.Error(codes.Unavailable, "dead")
@@ -181,7 +188,7 @@ func TestFind_ConnectionError_TriggersCrash(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, _ = ctrl.Find("p1", "conn-1", "pods", resource.FindInput{})
-	assert.NotEmpty(t, emitter.EventsWithKey("plugin/crash"))
+	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
 // ============================================================================
@@ -216,7 +223,9 @@ func TestCreate_ProviderError(t *testing.T) {
 }
 
 func TestCreate_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
+	ctrl, _ := newTestControllerWithEmitter(t)
+	var called atomic.Int32
+	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
 	mock := &mockProvider{
 		CreateFunc: func(_ context.Context, _ string, _ resource.CreateInput) (*resource.CreateResult, error) {
 			return nil, status.Error(codes.Unavailable, "dead")
@@ -225,7 +234,7 @@ func TestCreate_ConnectionError_TriggersCrash(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, _ = ctrl.Create("p1", "conn-1", "pods", resource.CreateInput{})
-	assert.NotEmpty(t, emitter.EventsWithKey("plugin/crash"))
+	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
 // ============================================================================
@@ -260,7 +269,9 @@ func TestUpdate_ProviderError(t *testing.T) {
 }
 
 func TestUpdate_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
+	ctrl, _ := newTestControllerWithEmitter(t)
+	var called atomic.Int32
+	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
 	mock := &mockProvider{
 		UpdateFunc: func(_ context.Context, _ string, _ resource.UpdateInput) (*resource.UpdateResult, error) {
 			return nil, status.Error(codes.Unavailable, "dead")
@@ -269,7 +280,7 @@ func TestUpdate_ConnectionError_TriggersCrash(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, _ = ctrl.Update("p1", "conn-1", "pods", resource.UpdateInput{})
-	assert.NotEmpty(t, emitter.EventsWithKey("plugin/crash"))
+	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
 // ============================================================================
@@ -304,7 +315,9 @@ func TestDelete_ProviderError(t *testing.T) {
 }
 
 func TestDelete_ConnectionError_TriggersCrash(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
+	ctrl, _ := newTestControllerWithEmitter(t)
+	var called atomic.Int32
+	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
 	mock := &mockProvider{
 		DeleteFunc: func(_ context.Context, _ string, _ resource.DeleteInput) (*resource.DeleteResult, error) {
 			return nil, status.Error(codes.Unavailable, "dead")
@@ -313,7 +326,7 @@ func TestDelete_ConnectionError_TriggersCrash(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, _ = ctrl.Delete("p1", "conn-1", "pods", resource.DeleteInput{})
-	assert.NotEmpty(t, emitter.EventsWithKey("plugin/crash"))
+	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
 // ============================================================================

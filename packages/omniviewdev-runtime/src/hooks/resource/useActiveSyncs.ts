@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
-import type { InformerStateEvent } from '../../types/informer';
+import type { WatchStateEvent } from '../../types/watch';
 import {
   type ActiveSync,
   type ResourceTracker,
@@ -15,15 +15,15 @@ import {
 export type { ActiveSync };
 
 /**
- * useActiveSyncs aggregates informer sync state across all connections.
- * Subscribes to the global `informer/STATE` event topic.
+ * useActiveSyncs aggregates watch sync state across all connections.
+ * Subscribes to the global `watch/STATE` event topic.
  */
 export const useActiveSyncs = () => {
   const [syncs, setSyncs] = useState<Map<string, ActiveSync>>(new Map());
   const trackersRef = useRef<Map<string, ResourceTracker>>(new Map());
   const removalTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  const handleEvent = useCallback((event: InformerStateEvent) => {
+  const handleEvent = useCallback((event: WatchStateEvent) => {
     const key = trackerKey(event);
     const tracker = updateTracker(trackersRef.current, event);
     const activeSync = computeActiveSync(tracker);
@@ -56,7 +56,7 @@ export const useActiveSyncs = () => {
   }, []);
 
   useEffect(() => {
-    const cancel = EventsOn('informer/STATE', handleEvent);
+    const cancel = EventsOn('watch/STATE', handleEvent);
     return () => {
       cancel();
       for (const timer of removalTimers.current.values()) {

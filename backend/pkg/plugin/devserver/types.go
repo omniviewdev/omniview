@@ -69,14 +69,14 @@ type DevServerState struct {
 	ViteStatus        DevProcessStatus `json:"viteStatus"`
 	GoStatus          DevProcessStatus `json:"goStatus"`
 	LastBuildDuration time.Duration    `json:"lastBuildDuration"`
-	LastBuildTime     time.Time        `json:"lastBuildTime"`
+	LastBuildTime     string           `json:"lastBuildTime"`
 	LastError         string           `json:"lastError"`
 	GRPCConnected     bool             `json:"grpcConnected"`
 }
 
 // LogEntry is a single log line from either the Vite process or the Go build.
 type LogEntry struct {
-	Timestamp time.Time `json:"timestamp"`
+	Timestamp string    `json:"timestamp"`
 	Source    string    `json:"source"` // "vite" | "go-build" | "go-watch" | "manager"
 	Level     string    `json:"level"`  // "info" | "warn" | "error" | "debug"
 	Message   string    `json:"message"`

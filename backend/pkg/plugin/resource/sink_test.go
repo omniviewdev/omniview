@@ -113,35 +113,79 @@ func TestSink_OnStateChange_AlwaysEmits(t *testing.T) {
 	sink, _, emitter := newSinkTestSetup(t)
 	// No subscription — STATE should still flow.
 
-	sink.OnStateChange(resource.WatchStateEvent{ResourceKey: "pods", State: resource.WatchStateSynced})
+	sink.OnStateChange(resource.WatchStateEvent{Connection: "conn-1", ResourceKey: "pods", State: resource.WatchStateSynced})
 
 	events := emitter.EventsWithKey("STATE")
-	assert.Len(t, events, 2) // per-plugin + global
+	assert.Len(t, events, 2) // per-plugin/connection + global
 }
 
-func TestSink_OnStateChange_EmitsPerPlugin(t *testing.T) {
+func TestSink_OnStateChange_EmitsPerPluginConnection(t *testing.T) {
 	sink, _, emitter := newSinkTestSetup(t)
 
-	sink.OnStateChange(resource.WatchStateEvent{ResourceKey: "pods", State: resource.WatchStateSynced})
+	sink.OnStateChange(resource.WatchStateEvent{Connection: "conn-1", ResourceKey: "pods", State: resource.WatchStateSynced})
 
-	events := emitter.EventsWithKey("plugin-a/informer/STATE")
+	// Key format: ${pluginID}/${connectionID}/watch/STATE
+	events := emitter.EventsWithKey("plugin-a/conn-1/watch/STATE")
 	assert.Len(t, events, 1)
 }
 
 func TestSink_OnStateChange_EmitsGlobal(t *testing.T) {
 	sink, _, emitter := newSinkTestSetup(t)
 
-	sink.OnStateChange(resource.WatchStateEvent{ResourceKey: "pods", State: resource.WatchStateSynced})
+	sink.OnStateChange(resource.WatchStateEvent{Connection: "conn-1", ResourceKey: "pods", State: resource.WatchStateSynced})
 
 	all := emitter.Events()
 	var found bool
 	for _, ev := range all {
-		if ev.Key == "informer/STATE" {
+		if ev.Key == "watch/STATE" {
 			found = true
 			break
 		}
 	}
-	assert.True(t, found, "expected global informer/STATE event")
+	assert.True(t, found, "expected global watch/STATE event")
+}
+
+func TestSink_OnStateChange_SetsPluginID(t *testing.T) {
+	sink, _, emitter := newSinkTestSetup(t)
+
+	sink.OnStateChange(resource.WatchStateEvent{
+		Connection:  "conn-1",
+		ResourceKey: "pods",
+		State:       resource.WatchStateSynced,
+	})
+
+	ev := emitter.WaitForEvent(t, "STATE", time.Second)
+	payload, ok := ev.Data.(resource.WatchStateEvent)
+	assert.True(t, ok)
+	assert.Equal(t, "plugin-a", payload.PluginID)
+	assert.Equal(t, "conn-1", payload.Connection)
+}
+
+func TestSink_OnStateChange_EventKeyFormat(t *testing.T) {
+	sink, _, emitter := newSinkTestSetup(t)
+
+	sink.OnStateChange(resource.WatchStateEvent{
+		Connection:  "my-cluster",
+		ResourceKey: "core::v1::Pod",
+		State:       resource.WatchStateSyncing,
+	})
+
+	// Exactly 2 events emitted: per-connection + global
+	all := emitter.Events()
+	assert.Len(t, all, 2)
+
+	// Per-connection key matches frontend listener pattern: ${pluginID}/${connectionID}/watch/STATE
+	assert.Equal(t, "plugin-a/my-cluster/watch/STATE", all[0].Key)
+	// Global key for status bar aggregation
+	assert.Equal(t, "watch/STATE", all[1].Key)
+
+	// Both events carry the same enriched payload
+	perPayload, ok := all[0].Data.(resource.WatchStateEvent)
+	assert.True(t, ok)
+	assert.Equal(t, "plugin-a", perPayload.PluginID)
+	assert.Equal(t, "my-cluster", perPayload.Connection)
+	assert.Equal(t, "core::v1::Pod", perPayload.ResourceKey)
+	assert.Equal(t, resource.WatchStateSyncing, perPayload.State)
 }
 
 func TestSink_EventKeyFormat_ADD(t *testing.T) {

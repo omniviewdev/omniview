@@ -50,8 +50,12 @@ jest.mock('@/providers/BottomDrawer/containers/LogViewer', () => {
   return { __esModule: true, default: ({ sessionId }: { sessionId: string }) => <div data-testid={`logviewer-${sessionId}`} /> };
 });
 
-jest.mock('@/providers/BottomDrawer/containers/DevBuildOutput', () => {
+jest.mock('@/providers/BottomDrawer/containers/DevBuildViewer', () => {
   return { __esModule: true, default: ({ pluginId }: { pluginId: string }) => <div data-testid={`devbuild-${pluginId}`} /> };
+});
+
+jest.mock('@/providers/BottomDrawer/containers/PluginLogViewer', () => {
+  return { __esModule: true, default: ({ pluginId }: { pluginId: string }) => <div data-testid={`pluginlogs-${pluginId}`} /> };
 });
 
 // MUI needs theme

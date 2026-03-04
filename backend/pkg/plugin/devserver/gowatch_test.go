@@ -358,9 +358,9 @@ func TestGoWatcherStart_WatchesNestedSubdirs(t *testing.T) {
 	require.NoError(t, gw.Start())
 	defer gw.Stop()
 
-	// First log: "Watching 4 directories under pkg/"
+	// First log: "Watching N directories for Go changes" (4 pkg dirs + 1 root dir)
 	require.GreaterOrEqual(t, len(logs), 1)
-	assert.Contains(t, logs[0].Message, "Watching 4 directories")
+	assert.Contains(t, logs[0].Message, "Watching 5 directories")
 }
 
 func TestGoWatcherStart_SkipsHiddenVendorNodeModules(t *testing.T) {
@@ -388,9 +388,9 @@ func TestGoWatcherStart_SkipsHiddenVendorNodeModules(t *testing.T) {
 	require.NoError(t, gw.Start())
 	defer gw.Stop()
 
-	// First log: "Watching 2 directories under pkg/"
+	// First log: "Watching N directories for Go changes" (2 pkg dirs + 1 root dir)
 	require.GreaterOrEqual(t, len(logs), 1)
-	assert.Contains(t, logs[0].Message, "Watching 2 directories")
+	assert.Contains(t, logs[0].Message, "Watching 3 directories")
 }
 
 // ============================================================================
@@ -499,4 +499,239 @@ func TestTransferBinary_ReadOnlyDestDir(t *testing.T) {
 	assert.Equal(t, 500, appErr.Status)
 	assert.Equal(t, "Failed to create destination binary", appErr.Title)
 	assert.Contains(t, appErr.Detail, "permission denied")
+}
+
+// ============================================================================
+// parseGoWorkUseDirectives tests
+// ============================================================================
+
+func TestParseGoWorkUseDirectives_BlockSyntax(t *testing.T) {
+	data := []byte(`go 1.22
+
+use (
+	.
+	../plugin-sdk
+	../some-other-module
+)
+`)
+	paths := parseGoWorkUseDirectives(data)
+	assert.Equal(t, []string{".", "../plugin-sdk", "../some-other-module"}, paths)
+}
+
+func TestParseGoWorkUseDirectives_SingleLineSyntax(t *testing.T) {
+	data := []byte(`go 1.22
+
+use ./local-module
+use ../sibling-module
+`)
+	paths := parseGoWorkUseDirectives(data)
+	assert.Equal(t, []string{"./local-module", "../sibling-module"}, paths)
+}
+
+func TestParseGoWorkUseDirectives_MixedSyntax(t *testing.T) {
+	data := []byte(`go 1.22
+
+use ./standalone
+
+use (
+	.
+	../sdk
+)
+`)
+	paths := parseGoWorkUseDirectives(data)
+	assert.Equal(t, []string{"./standalone", ".", "../sdk"}, paths)
+}
+
+func TestParseGoWorkUseDirectives_IgnoresComments(t *testing.T) {
+	data := []byte(`go 1.22
+
+use (
+	.
+	// ../commented-out
+	../real-module
+)
+`)
+	paths := parseGoWorkUseDirectives(data)
+	assert.Equal(t, []string{".", "../real-module"}, paths)
+}
+
+func TestParseGoWorkUseDirectives_EmptyFile(t *testing.T) {
+	paths := parseGoWorkUseDirectives([]byte(""))
+	assert.Nil(t, paths)
+}
+
+func TestParseGoWorkUseDirectives_NoUseDirectives(t *testing.T) {
+	data := []byte(`go 1.22
+
+toolchain go1.22.4
+`)
+	paths := parseGoWorkUseDirectives(data)
+	assert.Nil(t, paths)
+}
+
+func TestParseGoWorkUseDirectives_EmptyBlock(t *testing.T) {
+	data := []byte(`go 1.22
+
+use (
+)
+`)
+	paths := parseGoWorkUseDirectives(data)
+	assert.Nil(t, paths)
+}
+
+func TestParseGoWorkUseDirectives_WhitespaceInBlock(t *testing.T) {
+	data := []byte(`go 1.22
+
+use (
+	.
+
+	../plugin-sdk
+
+)
+`)
+	paths := parseGoWorkUseDirectives(data)
+	assert.Equal(t, []string{".", "../plugin-sdk"}, paths)
+}
+
+// ============================================================================
+// go.work watching tests
+// ============================================================================
+
+func TestGoWatcherStart_WatchesGoWorkModules(t *testing.T) {
+	devPath := t.TempDir()
+
+	// Create pkg/ (required by Start).
+	require.NoError(t, os.MkdirAll(filepath.Join(devPath, "pkg"), 0755))
+
+	// Create a sibling SDK module with pkg/ subdirectories.
+	sdkPkg := filepath.Join(devPath, "../plugin-sdk/pkg")
+	sdkPkgV1 := filepath.Join(devPath, "../plugin-sdk/pkg/v1")
+	require.NoError(t, os.MkdirAll(sdkPkgV1, 0755))
+	defer os.RemoveAll(filepath.Join(devPath, "../plugin-sdk"))
+
+	// Write a go.work file referencing the SDK.
+	goWork := []byte("go 1.22\n\nuse (\n\t.\n\t../plugin-sdk\n)\n")
+	require.NoError(t, os.WriteFile(filepath.Join(devPath, "go.work"), goWork, 0644))
+
+	var logs []LogEntry
+	gw := newGoWatcherProcess(
+		context.Background(),
+		zap.NewNop().Sugar(),
+		"gowork-test",
+		devPath,
+		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
+		&mockPluginReloader{},
+		func(e LogEntry) { logs = append(logs, e) },
+		func(DevProcessStatus) {},
+		func(time.Duration, string) {},
+		func(string, []BuildError) {},
+	)
+
+	require.NoError(t, gw.Start())
+	defer gw.Stop()
+
+	// Should watch: pkg/ (1) + root (1) + sdk/pkg/ (1) + sdk/pkg/v1/ (1) = 4 directories.
+	require.GreaterOrEqual(t, len(logs), 1)
+	assert.Contains(t, logs[0].Message, "Watching 4 directories")
+
+	// Verify that the SDK directories are actually being watched by checking
+	// the watcher's watched paths include the SDK pkg dir.
+	watchList := gw.watcher.WatchList()
+	found := false
+	for _, w := range watchList {
+		abs, _ := filepath.Abs(sdkPkg)
+		wAbs, _ := filepath.Abs(w)
+		if abs == wAbs {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "watcher should include SDK pkg/ directory; watched: %v", watchList)
+}
+
+func TestGoWatcherStart_NoGoWork_StillWorks(t *testing.T) {
+	devPath := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(devPath, "pkg"), 0755))
+	// No go.work file — should still work fine.
+
+	var logs []LogEntry
+	gw := newGoWatcherProcess(
+		context.Background(),
+		zap.NewNop().Sugar(),
+		"no-gowork",
+		devPath,
+		BuildOpts{},
+		&mockPluginReloader{},
+		func(e LogEntry) { logs = append(logs, e) },
+		func(DevProcessStatus) {},
+		func(time.Duration, string) {},
+		func(string, []BuildError) {},
+	)
+
+	require.NoError(t, gw.Start())
+	defer gw.Stop()
+
+	// Should watch: pkg/ (1) + root (1) = 2 directories.
+	require.GreaterOrEqual(t, len(logs), 1)
+	assert.Contains(t, logs[0].Message, "Watching 2 directories")
+}
+
+func TestGoWatcherStart_GoWork_SkipsDotModule(t *testing.T) {
+	devPath := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(devPath, "pkg"), 0755))
+
+	// go.work with only "." module — should not double-count the current dir.
+	goWork := []byte("go 1.22\n\nuse .\n")
+	require.NoError(t, os.WriteFile(filepath.Join(devPath, "go.work"), goWork, 0644))
+
+	var logs []LogEntry
+	gw := newGoWatcherProcess(
+		context.Background(),
+		zap.NewNop().Sugar(),
+		"dot-only",
+		devPath,
+		BuildOpts{},
+		&mockPluginReloader{},
+		func(e LogEntry) { logs = append(logs, e) },
+		func(DevProcessStatus) {},
+		func(time.Duration, string) {},
+		func(string, []BuildError) {},
+	)
+
+	require.NoError(t, gw.Start())
+	defer gw.Stop()
+
+	// "." is skipped, so only pkg/ (1) + root (1) = 2 directories.
+	require.GreaterOrEqual(t, len(logs), 1)
+	assert.Contains(t, logs[0].Message, "Watching 2 directories")
+}
+
+func TestGoWatcherStart_GoWork_NonExistentModule(t *testing.T) {
+	devPath := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(devPath, "pkg"), 0755))
+
+	// Reference a module that doesn't exist.
+	goWork := []byte("go 1.22\n\nuse ../nonexistent-module\n")
+	require.NoError(t, os.WriteFile(filepath.Join(devPath, "go.work"), goWork, 0644))
+
+	var logs []LogEntry
+	gw := newGoWatcherProcess(
+		context.Background(),
+		zap.NewNop().Sugar(),
+		"missing-mod",
+		devPath,
+		BuildOpts{},
+		&mockPluginReloader{},
+		func(e LogEntry) { logs = append(logs, e) },
+		func(DevProcessStatus) {},
+		func(time.Duration, string) {},
+		func(string, []BuildError) {},
+	)
+
+	require.NoError(t, gw.Start())
+	defer gw.Stop()
+
+	// Non-existent module is silently skipped. Only pkg/ (1) + root (1) = 2.
+	require.GreaterOrEqual(t, len(logs), 1)
+	assert.Contains(t, logs[0].Message, "Watching 2 directories")
 }

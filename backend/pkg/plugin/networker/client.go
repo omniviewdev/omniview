@@ -1,7 +1,7 @@
 package networker
 
 import (
-	sdknetworker "github.com/omniviewdev/plugin-sdk/pkg/networker"
+	sdknetworker "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 )
 
 type Client struct {
@@ -14,7 +14,7 @@ func NewClient(controller Controller) *Client {
 	}
 }
 
-func (c *Client) GetSupportedPortForwardTargets(plugin string) []string {
+func (c *Client) GetSupportedPortForwardTargets(plugin string) ([]string, error) {
 	return c.controller.GetSupportedPortForwardTargets(plugin)
 }
 

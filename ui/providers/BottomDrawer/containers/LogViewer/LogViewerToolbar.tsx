@@ -88,6 +88,12 @@ interface Props {
   // Jump to time
   jumpToTime?: React.ReactNode;
 
+  // Injection slots
+  /** Elements rendered at the start of the toolbar (before search input) */
+  toolbarPrefix?: React.ReactNode;
+  /** Elements rendered after the follow button, before copy section */
+  toolbarActions?: React.ReactNode;
+
   // Status
   lineCount: number;
 }
@@ -125,6 +131,8 @@ const LogViewerToolbar: React.FC<Props> = ({
   onClear,
   filterSelectors,
   jumpToTime,
+  toolbarPrefix,
+  toolbarActions,
   lineCount,
 }) => {
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.userAgent);
@@ -146,6 +154,10 @@ const LogViewerToolbar: React.FC<Props> = ({
         flexShrink: 0,
       }}
     >
+      {/* Prefix slot (e.g., status chip for dev build) */}
+      {toolbarPrefix}
+      {toolbarPrefix && <Divider orientation="vertical" sx={{ mx: 0.5 }} />}
+
       {/* Search */}
       <TextField
         size="sm"
@@ -295,6 +307,9 @@ const LogViewerToolbar: React.FC<Props> = ({
       </Tooltip>
 
       {jumpToTime}
+
+      {/* Custom actions slot (e.g., restart/rebuild for dev build) */}
+      {toolbarActions}
 
       <Tooltip content={paused ? 'Resume' : 'Pause'}>
         <IconButton

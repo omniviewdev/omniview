@@ -17,10 +17,11 @@ export interface FilterDimension {
 }
 
 interface UseLogSourcesOpts {
-  sessionId: string;
+  sessionId?: string;
   events: LogStreamEvent[];
   entries: LogEntry[];
   version: number;
+  declaredDimensions?: Array<{ key: string; displayName?: string }>;
 }
 
 export interface UseLogSourcesResult {
@@ -57,17 +58,26 @@ function parseFilterLabels(raw: string): Array<{ key: string; displayName?: stri
     });
 }
 
-export function useLogSources({ sessionId, events, entries, version }: UseLogSourcesOpts): UseLogSourcesResult {
+export function useLogSources({ sessionId, events, entries, version, declaredDimensions: propDeclaredDimensions }: UseLogSourcesOpts): UseLogSourcesResult {
   const [sources, setSources] = useState<LogSourceInfo[]>([]);
   // Per-dimension selection state: dimensionKey → Set of selected values
   const [selectionMap, setSelectionMap] = useState<Record<string, Set<string>>>({});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedEventCount = useRef(0);
 
-  // Declared dimension keys from session params (empty = auto-derive)
-  const [declaredDimensions, setDeclaredDimensions] = useState<Array<{ key: string; displayName?: string }> | null>(null);
+  // Declared dimension keys from session params or prop (empty = auto-derive)
+  const [declaredDimensions, setDeclaredDimensions] = useState<Array<{ key: string; displayName?: string }> | null>(
+    propDeclaredDimensions ?? null,
+  );
 
-  // Fetch initial session sources + params on mount
+  // Use prop-provided dimensions when available (e.g. from LogDataSource)
+  useEffect(() => {
+    if (propDeclaredDimensions) {
+      setDeclaredDimensions(propDeclaredDimensions);
+    }
+  }, [propDeclaredDimensions]);
+
+  // Fetch initial session sources + params on mount (only for SDK sessions)
   useEffect(() => {
     if (!sessionId) return;
     LogsClient.GetSession(sessionId)
@@ -226,13 +236,14 @@ export function useLogSources({ sessionId, events, entries, version }: UseLogSou
     [sources.length, selectedSourceIds.size],
   );
 
-  // Debounced backend sync
+  // Debounced backend sync (only for SDK sessions)
   const syncToBackend = useCallback(
     (ids: Set<string>, allSources: LogSourceInfo[]) => {
+      if (!sessionId) return; // No backend sync for non-session sources
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         const all = ids.size === allSources.length;
-        LogsClient.UpdateSessionOptions(sessionId, {
+        LogsClient.UpdateSessionOptions(sessionId!, {
           params: { enabled_sources: all ? '' : Array.from(ids).join(',') },
         } as any).catch(() => {
           // Best effort

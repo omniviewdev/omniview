@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -165,7 +166,16 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 
 	// Start watch event listener (uses WatchEventSink callback pattern).
 	sink := &engineWatchSink{pluginID: pluginID, ctrl: c}
-	go c.listenForWatchEvents(pluginID, provider, watchCtx, sink)
+	watchReady := make(chan struct{})
+	go c.listenForWatchEvents(pluginID, provider, watchCtx, sink, watchReady)
+
+	// Wait for the gRPC stream to be established (with timeout).
+	select {
+	case <-watchReady:
+		logger.Debug("watch event stream established")
+	case <-time.After(10 * time.Second):
+		logger.Warnw("watch event stream did not establish in time, continuing anyway")
+	}
 
 	// Start connection watcher.
 	go c.listenForConnectionEvents(pluginID, provider, watchCtx)
@@ -259,6 +269,24 @@ func (c *controller) withSession(pluginID, connectionID string) (ResourceProvide
 }
 
 // ============================================================================
+// Error Conversion
+// ============================================================================
+
+// toAppError converts resource operation errors to structured AppErrors for the
+// Wails boundary. ResourceOperationError carries machine-readable codes (FORBIDDEN,
+// UNAUTHORIZED, etc.) that would otherwise be lost when Wails calls .Error().
+func toAppError(err error, pluginID string) error {
+	if err == nil {
+		return nil
+	}
+	var roe *resource.ResourceOperationError
+	if errors.As(err, &roe) {
+		return apperror.FromResourceOperationError(roe.Error(), pluginID)
+	}
+	return apperror.Internal(err, "Resource operation failed")
+}
+
+// ============================================================================
 // CRUD
 // ============================================================================
 
@@ -271,8 +299,9 @@ func (c *controller) Get(pluginID, connectionID, key string, input resource.GetI
 	if err != nil {
 		c.logger.Errorw("RPC failed", "op", "Get", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
+		return nil, toAppError(err, pluginID)
 	}
-	return result, err
+	return result, nil
 }
 
 func (c *controller) List(pluginID, connectionID, key string, input resource.ListInput) (*resource.ListResult, error) {
@@ -284,8 +313,9 @@ func (c *controller) List(pluginID, connectionID, key string, input resource.Lis
 	if err != nil {
 		c.logger.Errorw("RPC failed", "op", "List", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
+		return nil, toAppError(err, pluginID)
 	}
-	return result, err
+	return result, nil
 }
 
 func (c *controller) Find(pluginID, connectionID, key string, input resource.FindInput) (*resource.FindResult, error) {
@@ -297,8 +327,9 @@ func (c *controller) Find(pluginID, connectionID, key string, input resource.Fin
 	if err != nil {
 		c.logger.Errorw("RPC failed", "op", "Find", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
+		return nil, toAppError(err, pluginID)
 	}
-	return result, err
+	return result, nil
 }
 
 func (c *controller) Create(pluginID, connectionID, key string, input resource.CreateInput) (*resource.CreateResult, error) {
@@ -310,8 +341,9 @@ func (c *controller) Create(pluginID, connectionID, key string, input resource.C
 	if err != nil {
 		c.logger.Errorw("RPC failed", "op", "Create", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
+		return nil, toAppError(err, pluginID)
 	}
-	return result, err
+	return result, nil
 }
 
 func (c *controller) Update(pluginID, connectionID, key string, input resource.UpdateInput) (*resource.UpdateResult, error) {
@@ -323,8 +355,9 @@ func (c *controller) Update(pluginID, connectionID, key string, input resource.U
 	if err != nil {
 		c.logger.Errorw("RPC failed", "op", "Update", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
+		return nil, toAppError(err, pluginID)
 	}
-	return result, err
+	return result, nil
 }
 
 func (c *controller) Delete(pluginID, connectionID, key string, input resource.DeleteInput) (*resource.DeleteResult, error) {
@@ -336,8 +369,9 @@ func (c *controller) Delete(pluginID, connectionID, key string, input resource.D
 	if err != nil {
 		c.logger.Errorw("RPC failed", "op", "Delete", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
+		return nil, toAppError(err, pluginID)
 	}
-	return result, err
+	return result, nil
 }
 
 // ============================================================================
@@ -459,6 +493,55 @@ func (c *controller) ListAllConnections() (map[string][]types.Connection, error)
 	return result, nil
 }
 
+func (c *controller) GetAllConnectionStates() (map[string][]ConnectionState, error) {
+	c.connsMu.RLock()
+	connsCopy := make(map[string][]types.Connection, len(c.connections))
+	for k, v := range c.connections {
+		cp := make([]types.Connection, len(v))
+		copy(cp, v)
+		connsCopy[k] = cp
+	}
+	c.connsMu.RUnlock()
+
+	result := make(map[string][]ConnectionState, len(connsCopy))
+
+	for pluginID, conns := range connsCopy {
+		states := make([]ConnectionState, 0, len(conns))
+
+		for _, conn := range conns {
+			cs := ConnectionState{
+				Connection:     conn,
+				Resources:      make(map[string]resource.WatchState),
+				ResourceCounts: make(map[string]int),
+			}
+
+			// Try to get watch state; if it succeeds the connection is active.
+			summary, err := c.GetWatchState(pluginID, conn.ID)
+			if err == nil && summary != nil && len(summary.Resources) > 0 {
+				cs.Started = true
+				cs.Resources = summary.Resources
+				cs.ResourceCounts = summary.ResourceCounts
+
+				for _, state := range summary.Resources {
+					cs.TotalResources++
+					switch state {
+					case resource.WatchStateSynced:
+						cs.SyncedCount++
+					case resource.WatchStateError, resource.WatchStateFailed:
+						cs.ErrorCount++
+					}
+				}
+			}
+
+			states = append(states, cs)
+		}
+
+		result[pluginID] = states
+	}
+
+	return result, nil
+}
+
 func (c *controller) GetConnection(pluginID, connectionID string) (types.Connection, error) {
 	c.connsMu.RLock()
 	conns, ok := c.connections[pluginID]
@@ -525,7 +608,7 @@ func (c *controller) RemoveConnection(pluginID, connectionID string) error {
 }
 
 // ============================================================================
-// Watch / Informer
+// Watch
 // ============================================================================
 
 func (c *controller) StartConnectionWatch(pluginID, connectionID string) error {
@@ -549,7 +632,25 @@ func (c *controller) GetWatchState(pluginID, connectionID string) (*resource.Wat
 	if err != nil {
 		return nil, err
 	}
-	return provider.GetWatchState(context.Background(), connectionID)
+	summary, err := provider.GetWatchState(context.Background(), connectionID)
+	if err != nil {
+		return nil, err
+	}
+	var nonIdle int
+	for key, state := range summary.Resources {
+		if state != resource.WatchStateIdle {
+			nonIdle++
+			c.logger.Debugw("[watch-state] GetWatchState non-idle",
+				"pluginID", pluginID, "connectionID", connectionID,
+				"key", key, "state", state,
+			)
+		}
+	}
+	c.logger.Infow("[watch-state] GetWatchState response",
+		"pluginID", pluginID, "connectionID", connectionID,
+		"totalResources", len(summary.Resources), "nonIdle", nonIdle,
+	)
+	return summary, nil
 }
 
 func (c *controller) EnsureResourceWatch(pluginID, connectionID, resourceKey string) error {
@@ -703,8 +804,9 @@ func (c *controller) ExecuteAction(pluginID, connectionID, key, actionID string,
 	if err != nil {
 		c.logger.Errorw("RPC failed", "op", "ExecuteAction", "pluginID", pluginID,
 			"key", key, "actionID", actionID, "error", err)
+		return nil, toAppError(err, pluginID)
 	}
-	return result, err
+	return result, nil
 }
 
 func (c *controller) StreamAction(pluginID, connectionID, key, actionID string, input resource.ActionInput) (string, error) {
@@ -797,8 +899,10 @@ func (c *controller) GetResourceEvents(pluginID, connectionID, key, id, namespac
 
 // listenForWatchEvents runs ListenForEvents with the engine sink.
 // Blocks until ctx is cancelled or the stream errors.
-func (c *controller) listenForWatchEvents(pluginID string, provider ResourceProvider, ctx context.Context, sink resource.WatchEventSink) {
-	c.logger.Infow("watch event listener started", "pluginID", pluginID)
+// Closes the ready channel before calling ListenForEvents to signal the caller.
+func (c *controller) listenForWatchEvents(pluginID string, provider ResourceProvider, ctx context.Context, sink resource.WatchEventSink, ready chan struct{}) {
+	c.logger.Infow("watch event listener starting", "pluginID", pluginID)
+	close(ready) // Signal that we're about to call ListenForEvents
 	err := provider.ListenForEvents(ctx, sink)
 	if err != nil && ctx.Err() == nil {
 		c.triggerCrashRecovery(pluginID, err, "watch")
@@ -861,15 +965,12 @@ func (c *controller) checkConnectionError(pluginID string, err error) {
 	}
 }
 
-// triggerCrashRecovery emits a crash event and invokes the crash callback once per plugin.
+// triggerCrashRecovery invokes the crash callback once per plugin.
+// The "plugin/crash" event is emitted by HandlePluginCrash (the callback)
+// to avoid duplicate notifications when multiple listeners detect the same crash.
 func (c *controller) triggerCrashRecovery(pluginID string, err error, listener string) {
 	c.logger.Errorw("plugin event stream died — plugin process may have crashed",
 		"pluginID", pluginID, "error", err, "listener", listener)
-
-	c.emitter.Emit("plugin/crash", map[string]interface{}{
-		"pluginID": pluginID,
-		"error":    err.Error(),
-	})
 
 	c.pluginsMu.RLock()
 	ps, ok := c.plugins[pluginID]

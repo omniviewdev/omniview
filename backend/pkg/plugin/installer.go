@@ -15,7 +15,9 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -56,7 +58,7 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 	}
 
 	// Copy plugin.yaml to ~/.omniview/plugins/<pluginID>/.
-	if err = transferPluginBuild(path, metadata, metadata.ID, types.BuildOpts{
+	if err = transferPluginBuild(path, metadata, metadata.ID, plugintypes.BuildOpts{
 		ExcludeBackend: true,
 		ExcludeUI:      true,
 	}); err != nil {
@@ -74,12 +76,34 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 	// Start the dev server (Vite + GoWatcher with initial build).
 	if pm.devServerMgr != nil {
 		l.Infow("starting dev server (triggers initial build)", "pluginID", metadata.ID)
-		if _, startErr := pm.devServerMgr.StartDevServerForPath(metadata.ID, path); startErr != nil {
+		state, startErr := pm.devServerMgr.StartDevServerForPath(metadata.ID, path)
+		if startErr != nil {
 			emitEvent(pm.ctx, EventDevInstallError, metadata)
 			return nil, apperror.Wrap(startErr, apperror.TypePluginBuildFailed, 500, "Dev server failed to start").
 				WithActions(apperror.OpenSettingsAction("developer"))
 		}
 		l.Infow("dev server started successfully", "pluginID", metadata.ID)
+
+		// If the initial build failed, register the plugin as pending rebuild
+		// and return. The GoWatcher is still running — it will call ReloadPlugin
+		// when the user fixes the code and the build succeeds.
+		if state.GoStatus == devserver.DevProcessStatusError {
+			l.Infow("initial build failed, deferring to GoWatcher for rebuild", "pluginID", metadata.ID)
+			record := plugintypes.NewPluginRecord(metadata.ID, *metadata, lifecycle.PhaseBuildFailed)
+			record.DevMode = true
+			record.DevPath = path
+			record.LastError = state.LastError
+
+			pm.recordsMu.Lock()
+			pm.records[metadata.ID] = record
+			pm.recordsMu.Unlock()
+
+			emitEvent(pm.ctx, EventDevInstallComplete, metadata)
+			if err = pm.writePluginStateJSON(); err != nil {
+				l.Warnw("failed to persist plugin state after build-failed stub", "pluginID", metadata.ID, "error", err)
+			}
+			return metadata, nil
+		}
 	} else {
 		emitEvent(pm.ctx, EventDevInstallError, metadata)
 		return nil, apperror.New(apperror.TypeSettingsMissingConfig, 422, "No dev server manager configured",
@@ -281,7 +305,7 @@ func (pm *pluginManager) UninstallPlugin(id string) (sdktypes.PluginInfo, error)
 
 // Build-related helper functions (extracted from dev.go).
 
-func transferPluginBuild(path string, meta *config.PluginMeta, pluginID string, opts types.BuildOpts) error {
+func transferPluginBuild(path string, meta *config.PluginMeta, pluginID string, opts plugintypes.BuildOpts) error {
 	installLocation := getPluginLocation(pluginID)
 
 	if err := os.MkdirAll(installLocation, 0755); err != nil {
@@ -352,7 +376,7 @@ func transferPluginBuild(path string, meta *config.PluginMeta, pluginID string, 
 	return g.Wait()
 }
 
-func buildPluginBinary(path string, opts types.BuildOpts) error {
+func buildPluginBinary(path string, opts plugintypes.BuildOpts) error {
 	if path == "" {
 		return apperror.New(apperror.TypeValidation, 422, "Invalid plugin path", "Plugin binary path is empty.")
 	}
@@ -391,7 +415,7 @@ func buildPluginBinary(path string, opts types.BuildOpts) error {
 	return nil
 }
 
-func buildPluginUi(path string, opts types.BuildOpts) error {
+func buildPluginUi(path string, opts plugintypes.BuildOpts) error {
 	if path == "" {
 		return apperror.New(apperror.TypeValidation, 422, "Invalid plugin path", "Plugin UI path is empty.")
 	}
@@ -433,7 +457,7 @@ func buildPluginUi(path string, opts types.BuildOpts) error {
 	return nil
 }
 
-func buildAndTransferPlugin(path string, meta *config.PluginMeta, pluginID string, opts types.BuildOpts) error {
+func buildAndTransferPlugin(path string, meta *config.PluginMeta, pluginID string, opts plugintypes.BuildOpts) error {
 	if meta == nil {
 		return apperror.New(apperror.TypeValidation, 422, "Invalid plugin", "Plugin metadata is missing.")
 	}

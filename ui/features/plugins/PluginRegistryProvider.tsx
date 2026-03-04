@@ -25,20 +25,21 @@ export const PluginRegistryContext = createContext<PluginRegistryContextValue>({
 });
 
 /**
- * Derive a stable string key from plugin IDs + dev server states so the
+ * Derive a stable string key from plugin IDs/phases + dev server states so the
  * loading effect only re-fires when something meaningful changes — not on
- * every React Query reference change.
+ * every React Query reference change. Including phase ensures the effect
+ * re-fires when a plugin transitions (e.g., Failed → Running after recovery).
  */
 function buildStableKey(
-  pluginIds: string[],
+  plugins: Array<{ id: string; phase: string }>,
   devStates: DevServerState[],
 ): string {
-  const plugins = [...pluginIds].sort().join(',');
-  const devs = devStates
+  const pluginKey = plugins.map(p => `${p.id}:${p.phase}`).sort().join(',');
+  const devKey = devStates
     .map(s => `${s.pluginID}:${s.viteStatus}:${s.vitePort}`)
     .sort()
     .join(',');
-  return `${plugins}|${devs}`;
+  return `${pluginKey}|${devKey}`;
 }
 
 export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
@@ -61,7 +62,7 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
   const stableKey = useMemo(() => {
     if (!plugins.data) return '';
     return buildStableKey(
-      plugins.data.map(p => p.id),
+      plugins.data.map(p => ({ id: p.id, phase: p.phase })),
       allStates.data ?? [],
     );
   }, [plugins.data, allStates.data]);
@@ -89,6 +90,14 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
     for (const plugin of pluginList) {
       const pluginId = plugin.id;
       if (loadedRef.current.has(pluginId)) continue;
+
+      // Skip plugins that aren't operational — they'll load incrementally
+      // when they transition to Running (via recovery, reload, or dev build).
+      const { phase } = plugin;
+      if (phase === 'Failed' || phase === 'BuildFailed' || phase === 'Recovering') {
+        deferred.push(pluginId);
+        continue;
+      }
 
       const devState = devStates.find((s) => s.pluginID === pluginId);
       const isDevReady =
@@ -228,10 +237,10 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
       });
     });
     const offRecovered = EventsOn('plugin/recovered', (data: { pluginID: string }) => {
-      showSnackbar({
-        message: `Plugin "${data.pluginID}" recovered successfully`,
-        status: 'success',
-      });
+      // No toast — recovery is silent. The user only sees the initial crash
+      // notification and (if recovery fails) the final "could not recover".
+      // Re-trigger UI loading for the recovered plugin.
+      loadedRef.current.delete(data.pluginID);
       void queryClient.invalidateQueries({ queryKey: ['plugins'] });
     });
     const offFailed = EventsOn('plugin/crash_recovery_failed', (data: { pluginID: string; error: string }) => {
@@ -252,7 +261,12 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
       // Invalidate plugin queries so the UI reflects the new state.
       void queryClient.invalidateQueries({ queryKey: ['plugins'] });
 
-      // Show user-facing notifications for important transitions.
+      // Crash-related transitions are covered by dedicated events:
+      // plugin/crash, plugin/recovered, plugin/crash_recovery_failed.
+      // Skip notifications here to avoid duplicates.
+      if (data.from === 'Recovering') return;
+
+      // Show user-facing notifications for non-crash transitions.
       if (data.to === 'Failed') {
         showSnackbar({
           message: `Plugin "${data.pluginID}" failed`,
@@ -264,11 +278,6 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
           message: `Plugin "${data.pluginID}" build failed`,
           status: 'error',
           details: data.reason,
-        });
-      } else if (data.from === 'Recovering' && data.to === 'Running') {
-        showSnackbar({
-          message: `Plugin "${data.pluginID}" recovered`,
-          status: 'success',
         });
       }
     });
@@ -283,8 +292,26 @@ export const PluginRegistryProvider: React.FC<React.PropsWithChildren> = ({ chil
       // Clear failed state if it was previously broken
       setFailedPlugins(prev => prev.filter(f => f.pluginId !== pluginId));
 
+      // Check if a dev server is running for this plugin so we load via
+      // Vite ESM instead of SystemJS. Refetch to pick up any state that
+      // was emitted during the install flow.
+      await queryClient.invalidateQueries({ queryKey: ['devservers'] });
+      const freshDevStates: DevServerState[] = queryClient.getQueryData(['devservers']) ?? [];
+      const devState = freshDevStates.find(s => s.pluginID === pluginId);
+      const isDevReady = devState && devState.viteStatus === 'ready' && devState.vitePort > 0;
+
+      // If a dev server exists but isn't ready yet, defer loading — the
+      // main loading effect will pick it up once viteStatus becomes 'ready'.
+      if (devState && !isDevReady) {
+        console.debug(`[PluginRegistry] install_complete for "${pluginId}" — dev server not ready yet, deferring`);
+        return;
+      }
+
       try {
-        await loadAndRegisterPlugin(pluginId);
+        await loadAndRegisterPlugin(pluginId, {
+          dev: !!isDevReady,
+          devPort: devState?.vitePort,
+        });
         loadedRef.current.add(pluginId);
         setRouteVersion(v => v + 1);
       } catch (err) {

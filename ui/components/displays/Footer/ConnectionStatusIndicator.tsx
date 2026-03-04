@@ -113,19 +113,19 @@ function ConnectionRow({
       : '#3fb950';
 
   const statusText = isSyncing && sync
-    ? `Syncing ${sync.doneCount}/${sync.totalResources} resources`
+    ? `Syncing ${sync.doneCount}/${sync.watchedTotal} resources`
     : hasErrors && sync
       ? `${sync.errorCount} error${sync.errorCount !== 1 ? 's' : ''}`
-      : sync && sync.totalResources > 0
-        ? `Connected \u00B7 ${sync.totalResources} resources`
+      : sync && sync.watchedTotal > 0
+        ? `Connected \u00B7 ${sync.watchedTotal} resources`
         : 'Connected';
 
   const percent = sync ? Math.round(sync.progress * 100) : 0;
 
   const handleDetails = () => {
     window.dispatchEvent(
-      new CustomEvent('ov:show-sync-modal', {
-        detail: { connectionID },
+      new CustomEvent('ov:show-connection-state', {
+        detail: { pluginID, connectionID, connectionName: name },
       }),
     );
   };
@@ -177,7 +177,7 @@ function ConnectionRow({
         sx={{
           fontSize: '0.6875rem',
           color: 'var(--ov-fg-muted, #8b949e)',
-          pl: '19px',
+          pl: '13px',
           mb: isSyncing ? 0.5 : 0,
         }}
       >
@@ -186,7 +186,7 @@ function ConnectionRow({
 
       {/* Progress bar when syncing */}
       {isSyncing && (
-        <Box sx={{ pl: '19px', mb: 0.5 }}>
+        <Box sx={{ pl: '13px', mb: 0.5 }}>
           <LinearProgress
             variant="determinate"
             value={percent}
@@ -328,7 +328,7 @@ export default function ConnectionStatusIndicator() {
     hasSyncing,
     aggregateProgress,
     disconnect,
-    retryInformer,
+    retryWatch,
   } = useConnectionStatus();
 
   const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
@@ -401,7 +401,7 @@ export default function ConnectionStatusIndicator() {
         grouped={grouped}
         connectedCount={connectedCount}
         onDisconnect={(p, c) => disconnect(p, c).catch(() => {})}
-        onRetry={(p, c) => retryInformer(p, c).catch(() => {})}
+        onRetry={(p, c) => retryWatch(p, c).catch(() => {})}
       />
     </>
   );

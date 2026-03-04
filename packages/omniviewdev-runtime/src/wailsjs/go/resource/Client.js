@@ -14,8 +14,8 @@ export function Delete(arg1, arg2, arg3, arg4) {
   return window['go']['resource']['Client']['Delete'](arg1, arg2, arg3, arg4);
 }
 
-export function EnsureInformerForResource(arg1, arg2, arg3) {
-  return window['go']['resource']['Client']['EnsureInformerForResource'](arg1, arg2, arg3);
+export function EnsureResourceWatch(arg1, arg2, arg3) {
+  return window['go']['resource']['Client']['EnsureResourceWatch'](arg1, arg2, arg3);
 }
 
 export function ExecuteAction(arg1, arg2, arg3, arg4, arg5) {
@@ -34,6 +34,10 @@ export function GetActions(arg1, arg2, arg3) {
   return window['go']['resource']['Client']['GetActions'](arg1, arg2, arg3);
 }
 
+export function GetAllConnectionStates() {
+  return window['go']['resource']['Client']['GetAllConnectionStates']();
+}
+
 export function GetConnection(arg1, arg2) {
   return window['go']['resource']['Client']['GetConnection'](arg1, arg2);
 }
@@ -42,24 +46,32 @@ export function GetConnectionNamespaces(arg1, arg2) {
   return window['go']['resource']['Client']['GetConnectionNamespaces'](arg1, arg2);
 }
 
-export function GetDefaultLayout(arg1) {
-  return window['go']['resource']['Client']['GetDefaultLayout'](arg1);
-}
-
 export function GetEditorSchemas(arg1, arg2) {
   return window['go']['resource']['Client']['GetEditorSchemas'](arg1, arg2);
 }
 
-export function GetInformerState(arg1, arg2) {
-  return window['go']['resource']['Client']['GetInformerState'](arg1, arg2);
+export function GetFilterFields(arg1, arg2, arg3) {
+  return window['go']['resource']['Client']['GetFilterFields'](arg1, arg2, arg3);
 }
 
-export function GetLayout(arg1, arg2) {
-  return window['go']['resource']['Client']['GetLayout'](arg1, arg2);
+export function GetHealth(arg1, arg2, arg3, arg4) {
+  return window['go']['resource']['Client']['GetHealth'](arg1, arg2, arg3, arg4);
+}
+
+export function GetRelationships(arg1, arg2) {
+  return window['go']['resource']['Client']['GetRelationships'](arg1, arg2);
+}
+
+export function GetResourceCapabilities(arg1, arg2) {
+  return window['go']['resource']['Client']['GetResourceCapabilities'](arg1, arg2);
 }
 
 export function GetResourceDefinition(arg1, arg2) {
   return window['go']['resource']['Client']['GetResourceDefinition'](arg1, arg2);
+}
+
+export function GetResourceEvents(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['resource']['Client']['GetResourceEvents'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function GetResourceGroup(arg1, arg2) {
@@ -70,6 +82,10 @@ export function GetResourceGroups(arg1, arg2) {
   return window['go']['resource']['Client']['GetResourceGroups'](arg1, arg2);
 }
 
+export function GetResourceSchema(arg1, arg2, arg3) {
+  return window['go']['resource']['Client']['GetResourceSchema'](arg1, arg2, arg3);
+}
+
 export function GetResourceType(arg1, arg2) {
   return window['go']['resource']['Client']['GetResourceType'](arg1, arg2);
 }
@@ -78,8 +94,16 @@ export function GetResourceTypes(arg1, arg2) {
   return window['go']['resource']['Client']['GetResourceTypes'](arg1, arg2);
 }
 
+export function GetWatchState(arg1, arg2) {
+  return window['go']['resource']['Client']['GetWatchState'](arg1, arg2);
+}
+
 export function HasResourceType(arg1, arg2) {
   return window['go']['resource']['Client']['HasResourceType'](arg1, arg2);
+}
+
+export function IsResourceWatchRunning(arg1, arg2, arg3) {
+  return window['go']['resource']['Client']['IsResourceWatchRunning'](arg1, arg2, arg3);
 }
 
 export function List(arg1, arg2, arg3, arg4) {
@@ -106,24 +130,32 @@ export function RemoveConnection(arg1, arg2) {
   return window['go']['resource']['Client']['RemoveConnection'](arg1, arg2);
 }
 
-export function SetLayout(arg1, arg2, arg3) {
-  return window['go']['resource']['Client']['SetLayout'](arg1, arg2, arg3);
+export function ResolveRelationships(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['resource']['Client']['ResolveRelationships'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function RestartResourceWatch(arg1, arg2, arg3) {
+  return window['go']['resource']['Client']['RestartResourceWatch'](arg1, arg2, arg3);
 }
 
 export function StartConnection(arg1, arg2) {
   return window['go']['resource']['Client']['StartConnection'](arg1, arg2);
 }
 
-export function StartConnectionInformer(arg1, arg2) {
-  return window['go']['resource']['Client']['StartConnectionInformer'](arg1, arg2);
+export function StartConnectionWatch(arg1, arg2) {
+  return window['go']['resource']['Client']['StartConnectionWatch'](arg1, arg2);
 }
 
 export function StopConnection(arg1, arg2) {
   return window['go']['resource']['Client']['StopConnection'](arg1, arg2);
 }
 
-export function StopConnectionInformer(arg1, arg2) {
-  return window['go']['resource']['Client']['StopConnectionInformer'](arg1, arg2);
+export function StopConnectionWatch(arg1, arg2) {
+  return window['go']['resource']['Client']['StopConnectionWatch'](arg1, arg2);
+}
+
+export function StopResourceWatch(arg1, arg2, arg3) {
+  return window['go']['resource']['Client']['StopResourceWatch'](arg1, arg2, arg3);
 }
 
 export function StreamAction(arg1, arg2, arg3, arg4, arg5) {

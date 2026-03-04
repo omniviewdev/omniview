@@ -1,6 +1,6 @@
 package types
 
-// AddResourceEvent is an event that is emitted when a resource is added to an informer
+// AddResourceEvent is an event that is emitted when a resource is added to the watch cache.
 // This is used to notify the cluster manager of the new resource so it can dispatch it
 // to the frontend runtime and any other service listeners.
 type AddResourceEvent[T any] struct {
@@ -11,7 +11,7 @@ type AddResourceEvent[T any] struct {
 	ClusterContext string
 }
 
-// UpdateResourceEvent is an event that is emitted when a resource is updated in an informer
+// UpdateResourceEvent is an event that is emitted when a resource is updated in the watch cache.
 // This is used to notify the cluster manager of the updated resource so it can dispatch it
 // to the frontend runtime and any other service listeners.
 type UpdateResourceEvent[T any] struct {
@@ -36,7 +36,7 @@ type UpdateObject[T any] struct {
 	NewObj T `json:"newObj"`
 }
 
-// DeleteResourceEvent is an event that is emitted when a resource is deleted from an informer
+// DeleteResourceEvent is an event that is emitted when a resource is deleted from the watch cache.
 // This is used to notify the cluster manager of the deleted resource so it can dispatch it
 // to the frontend runtime and any other service listeners.
 type DeleteResourceEvent[T any] struct {

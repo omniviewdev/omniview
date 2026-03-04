@@ -40,6 +40,8 @@ export const ErrorTypes = {
   // Connection
   CONNECTION_NOT_FOUND: 'omniview:connection/not-found',
   CONNECTION_FAILED: 'omniview:connection/failed',
+  RESOURCE_CONNECTION_ERROR: 'omniview:resource/connection-error',
+  RESOURCE_CERTIFICATE_ERROR: 'omniview:resource/certificate-error',
 
   // Session
   SESSION_NOT_FOUND: 'omniview:session/not-found',

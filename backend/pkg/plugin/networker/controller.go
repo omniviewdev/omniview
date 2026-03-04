@@ -12,7 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	"github.com/omniviewdev/plugin-sdk/pkg/networker"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -30,7 +30,7 @@ type Controller interface {
 	Run(ctx context.Context)
 
 	// GetSupportedPortForwardTargets returns the supported targets for port forwarding
-	GetSupportedPortForwardTargets(pluginID string) []string
+	GetSupportedPortForwardTargets(pluginID string) ([]string, error)
 
 	// GetPortForwardSession returns a port forward session by ID
 	GetPortForwardSession(sessionID string) (*networker.PortForwardSession, error)
@@ -159,6 +159,9 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStop")
 
+	if provider, ok := c.clients[pluginID]; ok {
+		provider.StopAll()
+	}
 	delete(c.clients, pluginID)
 	return nil
 }
@@ -221,19 +224,20 @@ func (c *controller) getUnconnectedCtx(
 	return sdktypes.NewPluginContextWithConnection(ctx, "networker", nil, nil, nil)
 }
 
-func (c *controller) GetSupportedPortForwardTargets(plugin string) []string {
-	if provider, ok := c.clients[plugin]; ok {
-		return provider.GetSupportedPortForwardTargets(
-			sdktypes.NewPluginContextWithConnection(
-				context.Background(),
-				"networker",
-				nil,
-				nil,
-				nil,
-			),
-		)
+func (c *controller) GetSupportedPortForwardTargets(plugin string) ([]string, error) {
+	provider, ok := c.clients[plugin]
+	if !ok {
+		return nil, apperror.PluginNotFound(plugin)
 	}
-	return nil
+	return provider.GetSupportedPortForwardTargets(
+		sdktypes.NewPluginContextWithConnection(
+			context.Background(),
+			"networker",
+			nil,
+			nil,
+			nil,
+		),
+	)
 }
 
 func (c *controller) GetPortForwardSession(

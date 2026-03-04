@@ -1,7 +1,7 @@
 package settings
 
 import (
-	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/settings"
+	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 

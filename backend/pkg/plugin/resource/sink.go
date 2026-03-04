@@ -43,10 +43,22 @@ func (s *engineWatchSink) OnDelete(p resource.WatchDeletePayload) {
 }
 
 func (s *engineWatchSink) OnStateChange(e resource.WatchStateEvent) {
+	// Enrich with plugin identity (Connection is already set by the SDK's
+	// connectionEnrichingSink wrapper).
+	e.PluginID = s.pluginID
+
+	s.ctrl.logger.Infow("[watch-state] engine sink received",
+		"pluginID", s.pluginID,
+		"connection", e.Connection,
+		"resourceKey", e.ResourceKey,
+		"state", e.State,
+		"resourceCount", e.ResourceCount,
+	)
+
 	// STATE events always flow regardless of subscription status.
-	// Emit per-plugin/resource state event.
-	eventKey := fmt.Sprintf("%s/informer/STATE", s.pluginID)
+	// Emit per-plugin/connection state event so per-connection hooks can match.
+	eventKey := fmt.Sprintf("%s/%s/watch/STATE", s.pluginID, e.Connection)
 	s.ctrl.emitter.Emit(eventKey, e)
 	// Global event for footer/status bar aggregation.
-	s.ctrl.emitter.Emit("informer/STATE", e)
+	s.ctrl.emitter.Emit("watch/STATE", e)
 }

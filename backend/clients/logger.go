@@ -66,12 +66,16 @@ func CreateLogger(dev bool) *zap.SugaredLogger {
 			Logger: &ll,
 		}, nil
 	})
+	outputPaths := []string{fmt.Sprintf("lumberjack:%s", logFile)}
+	if dev {
+		outputPaths = append(outputPaths, "stderr")
+	}
 	loggerConfig := zap.Config{
 		Level:         zap.NewAtomicLevelAt(level),
 		Development:   dev,
 		Encoding:      "console",
 		EncoderConfig: encoderConfig,
-		OutputPaths:   []string{fmt.Sprintf("lumberjack:%s", logFile)},
+		OutputPaths:   outputPaths,
 	}
 	logger, err := loggerConfig.Build()
 	if err != nil {

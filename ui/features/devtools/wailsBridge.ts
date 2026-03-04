@@ -1,4 +1,5 @@
 import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { DevServerManager } from '@omniviewdev/runtime/api';
 import { devToolsChannel } from './events';
 import type { DevServerState, DevBuildLine, DevBuildError } from './types';
 
@@ -27,6 +28,19 @@ export function initDevToolsBridge(): () => void {
   cleanups.push(
     EventsOn('plugin/devserver/error', (pluginId: string, errors: DevBuildError[]) => {
       devToolsChannel.emit('onBuildError', { pluginId, errors });
+    }),
+  );
+
+  // Wire outgoing events from the frontend to the backend.
+  cleanups.push(
+    devToolsChannel.on('onRestartDevServer', (pluginId: string) => {
+      DevServerManager.RestartDevServer(pluginId);
+    }),
+  );
+
+  cleanups.push(
+    devToolsChannel.on('onRebuildPlugin', (pluginId: string) => {
+      DevServerManager.RebuildPlugin(pluginId);
     }),
   );
 

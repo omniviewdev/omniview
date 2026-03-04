@@ -10,7 +10,8 @@ import { useTheme } from '@mui/material/styles';
 import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
 import TerminalContainer from '@/providers/BottomDrawer/containers/Terminal';
 import LogViewerContainer from '@/providers/BottomDrawer/containers/LogViewer';
-import DevBuildOutput from '@/providers/BottomDrawer/containers/DevBuildOutput';
+import DevBuildViewer from '@/providers/BottomDrawer/containers/DevBuildViewer';
+import PluginLogViewer from '@/providers/BottomDrawer/containers/PluginLogViewer';
 import EditorDebugPanel from '@/providers/BottomDrawer/containers/EditorDebugPanel';
 import { useBottomDrawer } from '@omniviewdev/runtime';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
@@ -344,7 +345,9 @@ const BottomDrawerContainer: React.FC = () => {
                 {tab.variant === 'editor-debug' ? (
                   <EditorDebugPanel />
                 ) : tab.variant === 'devbuild' ? (
-                  <DevBuildOutput pluginId={tab.id.replace(/^devbuild-/, '')} />
+                  <DevBuildViewer pluginId={tab.id.replace(/^devbuild-/, '')} />
+                ) : tab.variant === 'plugin-logs' ? (
+                  <PluginLogViewer pluginId={tab.id.replace(/^pluginlogs-/, '')} />
                 ) : tab.variant === 'logs' ? (
                   <LogViewerContainerMemo sessionId={tab.id} />
                 ) : (

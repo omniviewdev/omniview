@@ -3,7 +3,7 @@ package exec
 import (
 	"context"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/exec"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -55,4 +55,8 @@ func (a *AdapterV1) ResizeSession(ctx *types.PluginContext, sessionID string, co
 
 func (a *AdapterV1) Stream(ctx context.Context, in chan exec.StreamInput) (chan exec.StreamOutput, error) {
 	return a.inner.Stream(ctx, in)
+}
+
+func (a *AdapterV1) Close() {
+	a.inner.Close()
 }

@@ -1,7 +1,7 @@
 package logs
 
 import (
-	sdklogs "github.com/omniviewdev/plugin-sdk/pkg/logs"
+	sdklogs "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 )
 
 type Client struct {

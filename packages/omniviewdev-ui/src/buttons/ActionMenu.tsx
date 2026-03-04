@@ -23,12 +23,15 @@ export interface ActionMenuProps {
   items: ActionMenuItem[];
   trigger?: React.ReactNode;
   size?: ComponentSize;
+  /** Accessible label for the default trigger button. */
+  label?: string;
 }
 
 export default function ActionMenu({
   items,
   trigger,
   size = 'sm',
+  label = 'Actions',
 }: ActionMenuProps) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
@@ -47,7 +50,7 @@ export default function ActionMenu({
             size={size}
             color="neutral"
             onClick={() => setOpen(true)}
-            aria-label="Actions"
+            aria-label={label}
           >
             <MoreVertIcon fontSize="inherit" />
           </IconButton>

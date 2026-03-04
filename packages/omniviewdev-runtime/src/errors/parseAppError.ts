@@ -2,6 +2,32 @@ import type { AppError, AppErrorAction } from './types';
 import { ErrorTypes } from './types';
 
 /**
+ * Maps ResourceOperationError codes to AppError type URIs and HTTP status codes.
+ * Mirrors Go apperror.mapResourceCode.
+ */
+function mapResourceCode(code: string): { typeUri: string; status: number } {
+  switch (code) {
+    case 'NOT_FOUND':
+      return { typeUri: ErrorTypes.RESOURCE_NOT_FOUND, status: 404 };
+    case 'FORBIDDEN':
+      return { typeUri: ErrorTypes.RESOURCE_FORBIDDEN, status: 403 };
+    case 'UNAUTHORIZED':
+      return { typeUri: ErrorTypes.RESOURCE_UNAUTHORIZED, status: 401 };
+    case 'CONFLICT':
+    case 'ALREADY_EXISTS':
+      return { typeUri: ErrorTypes.RESOURCE_CONFLICT, status: 409 };
+    case 'TIMEOUT':
+      return { typeUri: ErrorTypes.RESOURCE_TIMEOUT, status: 408 };
+    case 'CONNECTION_ERROR':
+      return { typeUri: ErrorTypes.RESOURCE_CONNECTION_ERROR, status: 503 };
+    case 'CERTIFICATE_ERROR':
+      return { typeUri: ErrorTypes.RESOURCE_CERTIFICATE_ERROR, status: 502 };
+    default:
+      return { typeUri: ErrorTypes.INTERNAL, status: 500 };
+  }
+}
+
+/**
  * Parse any error shape from the Wails boundary into a structured AppError.
  *
  * Handles:
@@ -44,6 +70,23 @@ export function parseAppError(error: unknown): AppError {
         typeof parsed.detail === 'string'
       ) {
         return parsed as unknown as AppError;
+      }
+
+      // Defense-in-depth: recognize ResourceOperationError shape {code, title, message}
+      // from the plugin-sdk that may arrive without engine wrapping.
+      if (
+        typeof parsed.code === 'string' &&
+        typeof parsed.title === 'string' &&
+        typeof parsed.message === 'string'
+      ) {
+        const { typeUri, status } = mapResourceCode(parsed.code as string);
+        return {
+          type: typeUri,
+          title: parsed.title as string,
+          status,
+          detail: parsed.message as string,
+          suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions as string[] : undefined,
+        };
       }
     } catch {
       // Fall through to plain string handling

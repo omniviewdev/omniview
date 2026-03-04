@@ -270,6 +270,23 @@ func (m *DevServerManager) RestartDevServer(pluginID string) (DevServerState, er
 	return m.StartDevServer(pluginID)
 }
 
+// RebuildPlugin triggers a Go rebuild, transfers the binary, and reloads the plugin
+// without restarting the Vite dev server.
+func (m *DevServerManager) RebuildPlugin(pluginID string) error {
+	m.mu.RLock()
+	inst, exists := m.instances[pluginID]
+	m.mu.RUnlock()
+
+	if !exists {
+		return apperror.New(apperror.TypeValidation, 422,
+			"No dev server running",
+			fmt.Sprintf("No dev server is running for plugin '%s'.", pluginID))
+	}
+
+	inst.TriggerRebuild()
+	return nil
+}
+
 // GetDevServerState returns the current state of the dev server for a single plugin.
 func (m *DevServerManager) GetDevServerState(pluginID string) DevServerState {
 	m.mu.RLock()

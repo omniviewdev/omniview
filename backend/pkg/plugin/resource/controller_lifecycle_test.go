@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -212,8 +213,9 @@ func TestListenForWatchEvents_ContextCancel(t *testing.T) {
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
 
 	done := make(chan struct{})
+	ready := make(chan struct{})
 	go func() {
-		ctrl.listenForWatchEvents("p1", mock, ctx, sink)
+		ctrl.listenForWatchEvents("p1", mock, ctx, sink, ready)
 		close(done)
 	}()
 
@@ -226,7 +228,9 @@ func TestListenForWatchEvents_ContextCancel(t *testing.T) {
 }
 
 func TestListenForWatchEvents_ProviderError_CrashRecovery(t *testing.T) {
-	ctrl, emitter := newTestControllerWithEmitter(t)
+	ctrl, _ := newTestControllerWithEmitter(t)
+	var called atomic.Int32
+	ctrl.onCrashCallback = func(_ string) { called.Add(1) }
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
 	errorProvider := &mockProvider{
@@ -240,15 +244,15 @@ func TestListenForWatchEvents_ProviderError_CrashRecovery(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
+	ready2 := make(chan struct{})
 	go func() {
 		defer wg.Done()
-		ctrl.listenForWatchEvents("p1", errorProvider, ctx, sink)
+		ctrl.listenForWatchEvents("p1", errorProvider, ctx, sink, ready2)
 	}()
 	wg.Wait()
 
-	// Should have emitted crash event.
-	events := emitter.EventsWithKey("plugin/crash")
-	assert.NotEmpty(t, events)
+	// Crash callback should have been invoked.
+	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
 func TestListenForWatchEvents_ProviderError_ContextDone_NoCrash(t *testing.T) {
@@ -263,8 +267,9 @@ func TestListenForWatchEvents_ProviderError_ContextDone_NoCrash(t *testing.T) {
 		},
 	}
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	ready3 := make(chan struct{})
 
-	ctrl.listenForWatchEvents("p1", errorProvider, ctx, sink)
+	ctrl.listenForWatchEvents("p1", errorProvider, ctx, sink, ready3)
 
 	events := emitter.EventsWithKey("plugin/crash")
 	assert.Empty(t, events, "should not crash if context already done")

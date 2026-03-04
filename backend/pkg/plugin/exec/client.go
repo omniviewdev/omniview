@@ -1,7 +1,7 @@
 package exec
 
 import (
-	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/exec"
+	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
 
 type Client struct {

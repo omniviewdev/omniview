@@ -1,7 +1,7 @@
 package networker
 
 import (
-	"github.com/omniviewdev/plugin-sdk/pkg/networker"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -19,7 +19,7 @@ func NewAdapterV1(inner networker.Provider) *AdapterV1 {
 	return &AdapterV1{inner: inner}
 }
 
-func (a *AdapterV1) GetSupportedPortForwardTargets(ctx *types.PluginContext) []string {
+func (a *AdapterV1) GetSupportedPortForwardTargets(ctx *types.PluginContext) ([]string, error) {
 	return a.inner.GetSupportedPortForwardTargets(ctx)
 }
 
@@ -41,4 +41,8 @@ func (a *AdapterV1) StartPortForwardSession(ctx *types.PluginContext, opts netwo
 
 func (a *AdapterV1) ClosePortForwardSession(ctx *types.PluginContext, sessionID string) (*networker.PortForwardSession, error) {
 	return a.inner.ClosePortForwardSession(ctx, sessionID)
+}
+
+func (a *AdapterV1) StopAll() {
+	a.inner.StopAll()
 }

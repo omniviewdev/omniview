@@ -26,6 +26,7 @@ type Service interface {
 	LoadConnections(pluginID string) ([]types.Connection, error)
 	ListConnections(pluginID string) ([]types.Connection, error)
 	ListAllConnections() (map[string][]types.Connection, error)
+	GetAllConnectionStates() (map[string][]ConnectionState, error)
 	GetConnection(pluginID, connectionID string) (types.Connection, error)
 	GetConnectionNamespaces(pluginID, connectionID string) ([]string, error)
 	AddConnection(pluginID string, connection types.Connection) error

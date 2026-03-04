@@ -110,7 +110,7 @@ func TestTriggerCrashRecovery_CallbackInvoked(t *testing.T) {
 		assert.Equal(t, "plugin-a", pluginID)
 	}
 
-	ctrl.triggerCrashRecovery("plugin-a", errors.New("connection lost"), "informer")
+	ctrl.triggerCrashRecovery("plugin-a", errors.New("connection lost"), "watch")
 
 	// The callback is invoked in a goroutine (go c.onCrashCallback(pluginID)),
 	// so give it a moment to execute.
@@ -130,7 +130,7 @@ func TestTriggerCrashRecovery_OnceSemantics(t *testing.T) {
 
 	// Trigger crash recovery three times for the same plugin.
 	for i := 0; i < 3; i++ {
-		ctrl.triggerCrashRecovery("plugin-a", errors.New("crash"), "informer")
+		ctrl.triggerCrashRecovery("plugin-a", errors.New("crash"), "watch")
 	}
 
 	// Wait until the single allowed callback has a chance to run.
@@ -150,7 +150,7 @@ func TestTriggerCrashRecovery_NilCallback_NoPanic(t *testing.T) {
 
 	// Must not panic.
 	assert.NotPanics(t, func() {
-		ctrl.triggerCrashRecovery("plugin-a", errors.New("crash"), "informer")
+		ctrl.triggerCrashRecovery("plugin-a", errors.New("crash"), "watch")
 	})
 }
 
@@ -162,7 +162,7 @@ func TestTriggerCrashRecovery_MissingPluginState_NoPanic(t *testing.T) {
 	}
 
 	assert.NotPanics(t, func() {
-		ctrl.triggerCrashRecovery("unknown-plugin", errors.New("crash"), "informer")
+		ctrl.triggerCrashRecovery("unknown-plugin", errors.New("crash"), "watch")
 	})
 }
 
@@ -182,7 +182,7 @@ func TestTriggerCrashRecovery_IndependentPlugins(t *testing.T) {
 	}
 
 	// Crash plugin A.
-	ctrl.triggerCrashRecovery("plugin-a", errors.New("crash"), "informer")
+	ctrl.triggerCrashRecovery("plugin-a", errors.New("crash"), "watch")
 
 	assert.Eventually(t, func() bool {
 		return countA.Load() == 1
@@ -196,7 +196,7 @@ func TestTriggerCrashRecovery_IndependentPlugins(t *testing.T) {
 	}, 2*1e9, 10*1e6, "plugin-b callback should fire independently")
 
 	// Trigger A again -- should NOT fire a second time.
-	ctrl.triggerCrashRecovery("plugin-a", errors.New("crash again"), "informer")
+	ctrl.triggerCrashRecovery("plugin-a", errors.New("crash again"), "watch")
 
 	// Small sleep-equivalent: use Eventually to confirm no extra call.
 	assert.Never(t, func() bool {

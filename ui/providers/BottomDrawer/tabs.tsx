@@ -36,6 +36,7 @@ import { ExecClient, LogsClient } from '@omniviewdev/runtime/api';
 
 import { bottomDrawerChannel } from './events';
 import { devToolsChannel } from '@/features/devtools/events';
+import { pluginLogChannel } from '@/features/pluginlogs/events';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
 
 type Props = {
@@ -241,6 +242,24 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, isFullscreen, onMinimi
       }
     });
 
+    const unsubscribeOpenPluginLogs = pluginLogChannel.on('onOpenPluginLogs', (pluginId) => {
+      const tabId = `pluginlogs-${pluginId}`;
+      const existing = tabs.find(
+        (tab) => tab.variant === 'plugin-logs' && tab.id === tabId,
+      );
+
+      if (existing) {
+        focusTab({ id: existing.id });
+      } else {
+        createTab({
+          id: tabId,
+          title: `${pluginId} Logs`,
+          variant: 'plugin-logs',
+          icon: 'LuScroll',
+        });
+      }
+    });
+
     // DEV-only keyboard shortcut: Ctrl+Shift+E opens editor debug panel
     const handleEditorDebugShortcut = (e: KeyboardEvent) => {
       if (import.meta.env.DEV && e.ctrlKey && e.shiftKey && e.key === 'E') {
@@ -256,6 +275,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, isFullscreen, onMinimi
       unsubscribeSessionClosed();
       unsubscribeOpenBuildOutput();
       unsubscribeOpenEditorDebug();
+      unsubscribeOpenPluginLogs();
       document.removeEventListener('keydown', handleEditorDebugShortcut);
     };
   }, [tabs]);

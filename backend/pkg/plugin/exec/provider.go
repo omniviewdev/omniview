@@ -3,7 +3,7 @@ package exec
 import (
 	"context"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/exec"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -20,4 +20,5 @@ type ExecProvider interface {
 	CloseSession(ctx *types.PluginContext, sessionID string) error
 	ResizeSession(ctx *types.PluginContext, sessionID string, cols, rows int32) error
 	Stream(ctx context.Context, in chan exec.StreamInput) (chan exec.StreamOutput, error)
+	Close()
 }

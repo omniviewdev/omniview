@@ -43,6 +43,9 @@ const (
 
 	// State persistence.
 	EventStateWriteError = "plugin/state_write_error"
+
+	// Protocol version.
+	EventDeprecatedProtocol = "plugin/deprecated_protocol"
 )
 
 // StateChangePayload is sent with EventStateChange.
@@ -52,6 +55,13 @@ type StateChangePayload struct {
 	To        lifecycle.PluginPhase `json:"to"`
 	Reason    string              `json:"reason"`
 	Timestamp time.Time           `json:"timestamp"`
+}
+
+// DeprecatedProtocolPayload is sent with EventDeprecatedProtocol.
+type DeprecatedProtocolPayload struct {
+	PluginID       string `json:"pluginID"`
+	Version        int    `json:"version"`
+	CurrentVersion int    `json:"currentVersion"`
 }
 
 // eventEmitFn is the function used to emit events. It defaults to

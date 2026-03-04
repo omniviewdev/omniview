@@ -210,8 +210,14 @@ func mapResourceCode(code string) (string, int) {
 		return TypeResourceUnauthorized, 401
 	case "CONFLICT":
 		return TypeResourceConflict, 409
+	case "ALREADY_EXISTS":
+		return TypeResourceConflict, 409
 	case "TIMEOUT":
 		return TypeResourceTimeout, 408
+	case "CONNECTION_ERROR":
+		return TypeConnectionFailed, 503
+	case "CERTIFICATE_ERROR":
+		return TypeConnectionFailed, 502
 	default:
 		return TypeInternal, 500
 	}

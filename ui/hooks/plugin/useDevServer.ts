@@ -5,33 +5,15 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { DevServerManager } from '@omniviewdev/runtime/api';
+import { devserver } from '@omniviewdev/runtime/models';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-/**
- * Mirrors the Go DevServerState struct (backend/pkg/plugin/devserver/types.go).
- */
-export interface DevServerState {
-  pluginID: string;
-  mode: 'managed' | 'external' | 'idle';
-  devPath: string;
-  vitePort: number;
-  viteURL: string;
-  viteStatus: 'idle' | 'starting' | 'building' | 'running' | 'ready' | 'error' | 'stopped';
-  goStatus: 'idle' | 'starting' | 'building' | 'running' | 'ready' | 'error' | 'stopped';
-  lastBuildDuration: number;
-  lastBuildTime: string;
-  lastError: string;
-  grpcConnected: boolean;
-}
-
-export interface DevLogEntry {
-  timestamp: string;
-  source: 'vite' | 'go-build' | 'go-watch' | 'manager';
-  level: 'info' | 'warn' | 'error' | 'debug';
-  message: string;
-  pluginID: string;
-}
+// Re-export from the Wails binding models so consumers don't need to import
+// from two places.
+export type DevServerState = devserver.DevServerState;
+export type DevLogEntry = devserver.LogEntry;
 
 export interface DevBuildError {
   file: string;
@@ -66,28 +48,6 @@ function upsertState(
   }
   return [...existing, incoming];
 }
-
-// ── Wails Binding Accessors ────────────────────────────────────────────────
-
-const DevServerAPI = {
-  listStates: (): Promise<DevServerState[]> =>
-    (window as any).go.devserver.DevServerManager.ListDevServerStates(),
-
-  getState: (pluginID: string): Promise<DevServerState> =>
-    (window as any).go.devserver.DevServerManager.GetDevServerState(pluginID),
-
-  start: (pluginID: string): Promise<DevServerState> =>
-    (window as any).go.devserver.DevServerManager.StartDevServer(pluginID),
-
-  stop: (pluginID: string): Promise<void> =>
-    (window as any).go.devserver.DevServerManager.StopDevServer(pluginID),
-
-  restart: (pluginID: string): Promise<DevServerState> =>
-    (window as any).go.devserver.DevServerManager.RestartDevServer(pluginID),
-
-  getLogs: (pluginID: string, count: number): Promise<DevLogEntry[]> =>
-    (window as any).go.devserver.DevServerManager.GetDevServerLogs(pluginID, count),
-};
 
 // ── Hook ───────────────────────────────────────────────────────────────────
 
@@ -128,14 +88,14 @@ export function useDevServer(pluginID?: string) {
 
   const allStates = useQuery({
     queryKey: KEYS.all,
-    queryFn: DevServerAPI.listStates,
+    queryFn: () => DevServerManager.ListDevServerStates(),
     refetchOnWindowFocus: true,
     staleTime: 30_000,
   });
 
   const state = useQuery({
     queryKey: KEYS.one(pluginID ?? ''),
-    queryFn: () => DevServerAPI.getState(pluginID!),
+    queryFn: () => DevServerManager.GetDevServerState(pluginID!),
     enabled: !!pluginID,
     staleTime: 30_000,
   });
@@ -143,7 +103,7 @@ export function useDevServer(pluginID?: string) {
   // ── Mutations ──────────────────────────────────────────────────────────
 
   const start = useMutation({
-    mutationFn: DevServerAPI.start,
+    mutationFn: (id: string) => DevServerManager.StartDevServer(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: KEYS.all });
       if (pluginID) {
@@ -153,7 +113,7 @@ export function useDevServer(pluginID?: string) {
   });
 
   const stop = useMutation({
-    mutationFn: DevServerAPI.stop,
+    mutationFn: (id: string) => DevServerManager.StopDevServer(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: KEYS.all });
       if (pluginID) {
@@ -163,7 +123,7 @@ export function useDevServer(pluginID?: string) {
   });
 
   const restart = useMutation({
-    mutationFn: DevServerAPI.restart,
+    mutationFn: (id: string) => DevServerManager.RestartDevServer(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: KEYS.all });
       if (pluginID) {

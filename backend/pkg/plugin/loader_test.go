@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -448,6 +449,111 @@ func TestInitialize_DoesNotLoseFailedPluginState(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "Failed plugin state should still be in the state file")
+}
+
+// mockBackend is a minimal PluginBackend for unit tests.
+type mockBackend struct {
+	version int
+}
+
+func (b *mockBackend) Dispense(string) (interface{}, error) { return nil, nil }
+func (b *mockBackend) Healthy() bool                        { return true }
+func (b *mockBackend) Stop() error                          { return nil }
+func (b *mockBackend) Kill()                                {}
+func (b *mockBackend) Exited() bool                         { return false }
+func (b *mockBackend) NegotiatedVersion() int               { return b.version }
+
+func TestStartPlugin_DeprecatedProtocol_EmitsEvent(t *testing.T) {
+	pm := newTestManager(t)
+	pm.ctx = context.Background()
+
+	// Capture emitted events.
+	var mu sync.Mutex
+	var emitted []struct {
+		event string
+		data  []interface{}
+	}
+	eventEmitFn = func(_ context.Context, event string, data ...interface{}) {
+		mu.Lock()
+		emitted = append(emitted, struct {
+			event string
+			data  []interface{}
+		}{event, data})
+		mu.Unlock()
+	}
+	t.Cleanup(func() {
+		eventEmitFn = func(_ context.Context, _ string, _ ...interface{}) {}
+	})
+
+	record := &plugintypes.PluginRecord{
+		ID:    "old-plugin",
+		Phase: lifecycle.PhaseStarting,
+		Metadata: config.PluginMeta{
+			ID:   "old-plugin",
+			Name: "Old Plugin",
+		},
+	}
+
+	// Backend reports version 0 (older than CurrentProtocolVersion).
+	backend := &mockBackend{version: 0}
+
+	err := pm.startPlugin(record, backend)
+	require.NoError(t, err)
+
+	// Verify deprecation event was emitted.
+	mu.Lock()
+	defer mu.Unlock()
+
+	var found bool
+	for _, e := range emitted {
+		if e.event == EventDeprecatedProtocol {
+			found = true
+			require.Len(t, e.data, 1)
+			payload, ok := e.data[0].(DeprecatedProtocolPayload)
+			require.True(t, ok, "payload should be DeprecatedProtocolPayload")
+			assert.Equal(t, "old-plugin", payload.PluginID)
+			assert.Equal(t, 0, payload.Version)
+			assert.Equal(t, plugintypes.CurrentProtocolVersion, payload.CurrentVersion)
+			break
+		}
+	}
+	assert.True(t, found, "expected EventDeprecatedProtocol to be emitted")
+}
+
+func TestStartPlugin_CurrentProtocol_NoDeprecationEvent(t *testing.T) {
+	pm := newTestManager(t)
+	pm.ctx = context.Background()
+
+	var mu sync.Mutex
+	var emitted []string
+	eventEmitFn = func(_ context.Context, event string, _ ...interface{}) {
+		mu.Lock()
+		emitted = append(emitted, event)
+		mu.Unlock()
+	}
+	t.Cleanup(func() {
+		eventEmitFn = func(_ context.Context, _ string, _ ...interface{}) {}
+	})
+
+	record := &plugintypes.PluginRecord{
+		ID:    "current-plugin",
+		Phase: lifecycle.PhaseStarting,
+		Metadata: config.PluginMeta{
+			ID:   "current-plugin",
+			Name: "Current Plugin",
+		},
+	}
+
+	backend := &mockBackend{version: plugintypes.CurrentProtocolVersion}
+
+	err := pm.startPlugin(record, backend)
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	for _, e := range emitted {
+		assert.NotEqual(t, EventDeprecatedProtocol, e, "should not emit deprecation for current version")
+	}
 }
 
 func TestCapStringsToCapabilities_TableDriven(t *testing.T) {

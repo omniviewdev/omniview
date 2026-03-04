@@ -73,6 +73,10 @@ func (c *Client) ListAllConnections() (map[string][]types.Connection, error) {
 	return c.controller.ListAllConnections()
 }
 
+func (c *Client) GetAllConnectionStates() (map[string][]ConnectionState, error) {
+	return c.controller.GetAllConnectionStates()
+}
+
 func (c *Client) GetConnection(pluginID, connectionID string) (types.Connection, error) {
 	return c.controller.GetConnection(pluginID, connectionID)
 }

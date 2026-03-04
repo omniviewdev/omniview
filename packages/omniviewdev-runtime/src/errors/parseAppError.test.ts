@@ -1,4 +1,4 @@
-import { parseAppError, isCancelledError, actionToSnackbar, createErrorHandler } from './parseAppError';
+import { parseAppError, isCancelledError, actionToSnackbar, createErrorHandler, showAppError } from './parseAppError';
 import { ErrorTypes } from './types';
 import type { AppErrorAction } from './types';
 
@@ -113,7 +113,7 @@ describe('actionToSnackbar', () => {
   it('open-url action calls window.open', () => {
     const action: AppErrorAction = { type: 'open-url', label: 'Docs', target: 'https://example.com' };
     const originalOpen = window.open;
-    const mockOpen = jest.fn();
+    const mockOpen = vi.fn();
     window.open = mockOpen;
 
     const result = actionToSnackbar(action);
@@ -125,7 +125,7 @@ describe('actionToSnackbar', () => {
 
   it('copy action writes to clipboard', () => {
     const action: AppErrorAction = { type: 'copy', label: 'Copy', target: 'abc123' };
-    const mockWrite = jest.fn().mockResolvedValue(undefined);
+    const mockWrite = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText: mockWrite } });
 
     const result = actionToSnackbar(action);
@@ -143,7 +143,7 @@ describe('actionToSnackbar', () => {
 
 describe('createErrorHandler', () => {
   it('suppresses cancelled errors', () => {
-    const showSnackbar = jest.fn();
+    const showSnackbar = vi.fn();
     const handler = createErrorHandler(showSnackbar, 'Operation failed');
 
     handler('cancelled');
@@ -160,7 +160,7 @@ describe('createErrorHandler', () => {
   });
 
   it('shows structured error in snackbar', () => {
-    const showSnackbar = jest.fn();
+    const showSnackbar = vi.fn();
     const handler = createErrorHandler(showSnackbar, 'Operation failed');
 
     const json = JSON.stringify({
@@ -183,7 +183,7 @@ describe('createErrorHandler', () => {
   });
 
   it('uses fallbackTitle for generic errors', () => {
-    const showSnackbar = jest.fn();
+    const showSnackbar = vi.fn();
     const handler = createErrorHandler(showSnackbar, 'Install failed');
 
     handler('something broke');
@@ -196,8 +196,7 @@ describe('createErrorHandler', () => {
 
 describe('showAppError', () => {
   it('shows structured error with context message', () => {
-    const { showAppError } = require('./parseAppError');
-    const showSnackbar = jest.fn();
+    const showSnackbar = vi.fn();
 
     const json = JSON.stringify({
       type: 'omniview:plugin/not-found',
@@ -219,8 +218,7 @@ describe('showAppError', () => {
   });
 
   it('uses appErr.title when no context message', () => {
-    const { showAppError } = require('./parseAppError');
-    const showSnackbar = jest.fn();
+    const showSnackbar = vi.fn();
 
     const json = JSON.stringify({
       type: 'omniview:session/not-found',
@@ -236,8 +234,7 @@ describe('showAppError', () => {
   });
 
   it('suppresses cancelled errors', () => {
-    const { showAppError } = require('./parseAppError');
-    const showSnackbar = jest.fn();
+    const showSnackbar = vi.fn();
 
     showAppError(showSnackbar, 'cancelled');
     expect(showSnackbar).not.toHaveBeenCalled();

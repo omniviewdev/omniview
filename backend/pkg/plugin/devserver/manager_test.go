@@ -239,8 +239,8 @@ func TestManager_GetDevServerLogs_WithInstance(t *testing.T) {
 	noopErrors := func(string, []BuildError) {}
 
 	inst := NewDevServerInstance(ctx, zap.NewNop().Sugar(), "plugin-a", "/dev/path", 15173, BuildOpts{}, nil, noop, noopLogs, noopErrors)
-	inst.appendLog(LogEntry{Message: "build started", Source: "go-build", Level: "info", Timestamp: time.Now()})
-	inst.appendLog(LogEntry{Message: "build complete", Source: "go-build", Level: "info", Timestamp: time.Now()})
+	inst.appendLog(LogEntry{Message: "build started", Source: "go-build", Level: "info", Timestamp: time.Now().Format(time.RFC3339)})
+	inst.appendLog(LogEntry{Message: "build complete", Source: "go-build", Level: "info", Timestamp: time.Now().Format(time.RFC3339)})
 
 	mgr.mu.Lock()
 	mgr.instances["plugin-a"] = inst
@@ -520,6 +520,44 @@ func TestManager_RestartDevServer_NotRunning(t *testing.T) {
 	require.True(t, errors.As(err, &appErr))
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
+}
+
+// ============================================================================
+// RebuildPlugin tests
+// ============================================================================
+
+func TestManager_RebuildPlugin_NotRunning(t *testing.T) {
+	mgr := newTestManager(t)
+
+	err := mgr.RebuildPlugin("nonexistent-plugin")
+	require.Error(t, err)
+	var appErr *apperror.AppError
+	require.True(t, errors.As(err, &appErr))
+	assert.Equal(t, apperror.TypeValidation, appErr.Type)
+	assert.Equal(t, 422, appErr.Status)
+	assert.Contains(t, appErr.Title, "No dev server running")
+}
+
+func TestManager_RebuildPlugin_WithInstance(t *testing.T) {
+	mgr := newTestManager(t)
+
+	// Create an instance with a nil goWatcher — TriggerRebuild is a no-op.
+	noop := func(string, DevServerState) {}
+	noopLogs := func(string, []LogEntry) {}
+	noopErrors := func(string, []BuildError) {}
+	inst := NewDevServerInstance(
+		context.Background(), zap.NewNop().Sugar(),
+		"rebuild-plugin", "/dev/path", 15173, BuildOpts{}, nil,
+		noop, noopLogs, noopErrors,
+	)
+
+	mgr.mu.Lock()
+	mgr.instances["rebuild-plugin"] = inst
+	mgr.mu.Unlock()
+
+	// Should succeed (TriggerRebuild is no-op with nil goWatcher, but no error).
+	err := mgr.RebuildPlugin("rebuild-plugin")
+	assert.NoError(t, err)
 }
 
 // ============================================================================

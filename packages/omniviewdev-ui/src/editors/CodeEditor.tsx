@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import React, { useRef, useCallback } from 'react';
 import Box from '@mui/material/Box';
 import type { SxProps, Theme } from '@mui/material/styles';
 import Editor, { type Monaco, type OnMount } from '@monaco-editor/react';
@@ -17,6 +17,8 @@ export interface CodeEditorProps {
   maxHeight?: number | string;
   theme?: string;
   onSave?: (value: string) => void;
+  /** Custom loading indicator shown while the editor initializes. */
+  loading?: React.ReactNode;
   sx?: SxProps<Theme>;
 }
 
@@ -31,6 +33,7 @@ export default function CodeEditor({
   maxHeight,
   theme,
   onSave,
+  loading,
   sx,
 }: CodeEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -72,6 +75,7 @@ export default function CodeEditor({
         theme={resolvedTheme}
         beforeMount={handleBeforeMount}
         onMount={handleMount}
+        loading={loading}
         options={{
           readOnly,
           minimap: { enabled: minimap },

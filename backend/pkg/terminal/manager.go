@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"  // Import the pty package for creating pseudo-terminal devices.
 	"github.com/google/uuid" // UUID package for generating unique identifiers.
@@ -20,7 +21,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/exec"
+	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -36,6 +37,8 @@ type Manager struct {
 	log      *zap.SugaredLogger
 	sessions map[string]*sdkexec.Session
 	ptys     map[string]*os.File
+	cancels  map[string]context.CancelFunc
+	buffers  map[string]*sdkexec.OutputBuffer
 
 	inMux     chan sdkexec.StreamInput
 	outMux    chan sdkexec.StreamOutput
@@ -57,6 +60,8 @@ func NewManager(
 		log:       log.Named("TerminalManager"),
 		sessions:  make(map[string]*sdkexec.Session),
 		ptys:      make(map[string]*os.File),
+		cancels:   make(map[string]context.CancelFunc),
+		buffers:   make(map[string]*sdkexec.OutputBuffer),
 		inMux:     inMux,
 		outMux:    outMux,
 		resizeMux: resizeMux,
@@ -160,14 +165,21 @@ func (m *Manager) StartSession(
 		opts.ID = uuid.NewString()
 	}
 
-	session := sdkexec.NewSessionFromOpts(ctx, cancel, opts)
-	session.SetPty(ptyFile)
-	// TODO: separate stderr to the separate stream
+	session := &sdkexec.Session{
+		ID:        opts.ID,
+		Command:   opts.Command,
+		Labels:    opts.Labels,
+		Params:    opts.Params,
+		Attached:  false,
+		CreatedAt: time.Now(),
+	}
 
 	m.mux.Lock()
 	logger.Debug("past lock")
 	m.sessions[opts.ID] = session
 	m.ptys[opts.ID] = ptyFile
+	m.cancels[opts.ID] = cancel
+	m.buffers[opts.ID] = sdkexec.NewDefaultOutputBuffer()
 	m.mux.Unlock()
 
 	logger.Debugw("session started",
@@ -203,7 +215,7 @@ func (m *Manager) handleWaitForCompletion(_ context.Context, sessionID string, c
 	if err := cmd.Wait(); err != nil {
 		m.log.Errorw("error waiting for command", "session", sessionID, "error", err)
 	}
-	m.terminateSession(m.sessions[sessionID])
+	m.terminateSession(sessionID)
 }
 
 func (m *Manager) handleSignals(ctx context.Context, sessionID string, cmd *exec.Cmd) {
@@ -252,10 +264,6 @@ func (m *Manager) handleOutStream(
 	sessionID string,
 	stream io.Reader,
 ) {
-	session, ok := m.sessions[sessionID]
-	if !ok {
-		m.log.Errorw("failed to write to session buffer: couldn't find session")
-	}
 	for {
 		buf := make([]byte, DefaultReadBufferSize)
 		read, err := stream.Read(buf)
@@ -268,8 +276,11 @@ func (m *Manager) handleOutStream(
 				)
 			}
 
-			if session != nil && m.sessions[session.ID] != nil {
-				session.Close()
+			m.mux.RLock()
+			_, exists := m.sessions[sessionID]
+			m.mux.RUnlock()
+			if exists {
+				m.terminateSession(sessionID)
 			}
 
 			return
@@ -282,14 +293,16 @@ func (m *Manager) handleOutStream(
 				Data:      buf[:read],
 			}
 
-			session, ok := m.sessions[sessionID]
+			m.mux.RLock()
+			buffer, ok := m.buffers[sessionID]
+			m.mux.RUnlock()
 			if !ok {
 				// soft error
 				m.log.Errorw("failed to write to session buffer: couldn't find session")
 				continue
 			}
 
-			session.RecordToBuffer(buf[:read])
+			buffer.Append(buf[:read])
 		}
 	}
 }
@@ -299,14 +312,14 @@ func (m *Manager) writeToSession(sessionID string, bytes []byte) error {
 	m.mux.RLock()
 	defer m.mux.RUnlock()
 
-	session, exists := m.sessions[sessionID]
+	ptyFile, exists := m.ptys[sessionID]
 	if !exists {
 		err := apperror.SessionNotFound(sessionID)
 		m.log.Error(err)
 		return err
 	}
 
-	if _, err := session.Write(bytes); err != nil {
+	if _, err := ptyFile.Write(bytes); err != nil {
 		m.log.Errorw("error writing to session", "session", sessionID, "error", err)
 		return err
 	}
@@ -339,8 +352,11 @@ func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, err
 		return nil, nil, err
 	}
 
-	// log the buffer data to see what's wrong
-	data := session.GetBufferData()
+	buffer := m.buffers[sessionID]
+	var data []byte
+	if buffer != nil {
+		data = buffer.GetAll()
+	}
 	m.log.Debugf("session buffer data: %q", data)
 
 	// pointer, no need to reassign
@@ -352,7 +368,7 @@ func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, err
 	}
 
 	m.log.Debugw("session attached", "session", sessionID)
-	return session, session.GetBufferData(), nil
+	return session, data, nil
 }
 
 // DetachFromSession marks a session as not attached, stopping output broadcast.
@@ -379,22 +395,35 @@ func (m *Manager) CloseSession(sessionID string) error {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 
-	session, exists := m.sessions[sessionID]
+	_, exists := m.sessions[sessionID]
 	if !exists {
 		err := apperror.SessionNotFound(sessionID)
 		m.log.Error(err)
 		return err
 	}
 
-	m.terminateSession(session)
+	m.terminateSessionLocked(sessionID)
 	return nil
 }
 
-func (m *Manager) terminateSession(session *sdkexec.Session) {
-	if session == nil {
-		return
+// terminateSession acquires the lock and terminates the session.
+func (m *Manager) terminateSession(sessionID string) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+	m.terminateSessionLocked(sessionID)
+}
+
+// terminateSessionLocked terminates a session. Caller must hold m.mux.
+func (m *Manager) terminateSessionLocked(sessionID string) {
+	if cancel, ok := m.cancels[sessionID]; ok {
+		cancel()
 	}
-	session.Close()
-	delete(m.sessions, session.ID)
-	m.log.Debugw("session terminated", "session", session.ID)
+	if ptyFile, ok := m.ptys[sessionID]; ok {
+		ptyFile.Close()
+	}
+	delete(m.sessions, sessionID)
+	delete(m.ptys, sessionID)
+	delete(m.cancels, sessionID)
+	delete(m.buffers, sessionID)
+	m.log.Debugw("session terminated", "session", sessionID)
 }

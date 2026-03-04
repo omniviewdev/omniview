@@ -8,6 +8,7 @@ export * from './useResources';
 export * from './useResourceMutations'
 export * from './useResourceActions'
 export * from './useEditorSchemas'
-export * from './useInformerState'
+export * from './useWatchState'
 export * from './useActiveSyncs'
 export * from './useStreamAction'
+export * from './useEventBatcher'
