@@ -112,6 +112,15 @@ export default function Select({
       return;
     }
 
+    if (e.key === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (filteredOptions.length === 0) return;
+      const next = focusedIndex + 1;
+      setFocusedIndex(next >= filteredOptions.length ? 0 : next);
+      return;
+    }
+
     if (
       e.key === "Enter" &&
       focusedIndex >= 0 &&
