@@ -962,6 +962,9 @@ func (c *controller) scheduleAutoConnect(
 	for _, conn := range conns {
 		conn := conn
 		auto := conn.Lifecycle.AutoConnect
+		if auto == nil {
+			continue
+		}
 		if !auto.Enabled {
 			continue
 		}

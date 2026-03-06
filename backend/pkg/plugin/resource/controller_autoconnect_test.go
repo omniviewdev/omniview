@@ -25,7 +25,7 @@ func TestScheduleAutoConnect_StartsEligibleConnection(t *testing.T) {
 	conn := types.Connection{
 		ID: "conn-1",
 		Lifecycle: types.ConnectionLifecycle{
-			AutoConnect: types.ConnectionAutoConnect{
+			AutoConnect: &types.ConnectionAutoConnect{
 				Enabled: true,
 				Triggers: []types.ConnectionAutoConnectTrigger{
 					types.ConnectionAutoConnectTriggerPluginStart,
@@ -54,7 +54,7 @@ func TestScheduleAutoConnect_SkipsOnTriggerMismatch(t *testing.T) {
 	conn := types.Connection{
 		ID: "conn-1",
 		Lifecycle: types.ConnectionLifecycle{
-			AutoConnect: types.ConnectionAutoConnect{
+			AutoConnect: &types.ConnectionAutoConnect{
 				Enabled: true,
 				Triggers: []types.ConnectionAutoConnectTrigger{
 					types.ConnectionAutoConnectTriggerPluginStart,
@@ -83,7 +83,7 @@ func TestScheduleAutoConnect_RetryNoneAttemptsOnce(t *testing.T) {
 	conn := types.Connection{
 		ID: "conn-1",
 		Lifecycle: types.ConnectionLifecycle{
-			AutoConnect: types.ConnectionAutoConnect{
+			AutoConnect: &types.ConnectionAutoConnect{
 				Enabled: true,
 				Triggers: []types.ConnectionAutoConnectTrigger{
 					types.ConnectionAutoConnectTriggerPluginStart,
@@ -116,7 +116,7 @@ func TestScheduleAutoConnect_RetryOnChangeAttemptsOnSignatureChange(t *testing.T
 		ID:   "conn-1",
 		Data: map[string]any{"docker_host": "unix:///var/run/docker.sock"},
 		Lifecycle: types.ConnectionLifecycle{
-			AutoConnect: types.ConnectionAutoConnect{
+			AutoConnect: &types.ConnectionAutoConnect{
 				Enabled: true,
 				Triggers: []types.ConnectionAutoConnectTrigger{
 					types.ConnectionAutoConnectTriggerPluginStart,
@@ -152,7 +152,7 @@ func TestListenForConnectionEvents_AutoConnectsOnDiscoveredTrigger(t *testing.T)
 				{
 					ID: "conn-1",
 					Lifecycle: types.ConnectionLifecycle{
-						AutoConnect: types.ConnectionAutoConnect{
+						AutoConnect: &types.ConnectionAutoConnect{
 							Enabled: true,
 							Triggers: []types.ConnectionAutoConnectTrigger{
 								types.ConnectionAutoConnectTriggerConnectionDiscovered,
@@ -209,4 +209,25 @@ func TestShouldAttemptAutoConnect_EmptyRetryBehavesAsNone(t *testing.T) {
 
 	second := ctrl.shouldAttemptAutoConnect("p1", "conn-1", "sig-2", "")
 	require.False(t, second)
+}
+
+func TestScheduleAutoConnect_SkipsWhenAutoConnectNil(t *testing.T) {
+	ctrl, _ := newTestControllerWithEmitter(t)
+
+	var starts atomic.Int32
+	registerMockPlugin(ctrl, "p1", &mockProvider{
+		StartConnectionFunc: func(_ context.Context, _ string) (types.ConnectionStatus, error) {
+			starts.Add(1)
+			return types.ConnectionStatus{Status: types.ConnectionStatusConnected}, nil
+		},
+	})
+
+	conn := types.Connection{
+		ID:        "conn-1",
+		Lifecycle: types.ConnectionLifecycle{AutoConnect: nil},
+	}
+
+	ctrl.scheduleAutoConnect("p1", []types.Connection{conn}, types.ConnectionAutoConnectTriggerPluginStart)
+	time.Sleep(50 * time.Millisecond)
+	require.EqualValues(t, 0, starts.Load())
 }

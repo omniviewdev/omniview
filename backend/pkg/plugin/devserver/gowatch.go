@@ -3,6 +3,7 @@ package devserver
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -208,12 +209,24 @@ func (gw *goWatcherProcess) Start() error {
 
 			// Reload the plugin so the fresh binary is picked up.
 			if err := gw.reloader.ReloadPlugin(gw.pluginID); err != nil {
-				gw.logger.Errorw("initial plugin reload failed", "error", err)
-				gw.appendLog(LogEntry{
-					Source:  "go-build",
-					Level:   "error",
-					Message: fmt.Sprintf("Initial reload failed: %v", err),
-				})
+				var appErr *apperror.AppError
+				if errors.As(err, &appErr) && appErr.Type == apperror.TypePluginNotLoaded {
+					// During dev install the watcher may finish initial build before
+					// InstallInDevMode has called LoadPlugin; this is expected.
+					gw.logger.Infow("initial plugin reload skipped (plugin not loaded yet)")
+					gw.appendLog(LogEntry{
+						Source:  "go-build",
+						Level:   "info",
+						Message: "Initial reload skipped: plugin not loaded yet",
+					})
+				} else {
+					gw.logger.Errorw("initial plugin reload failed", "error", err)
+					gw.appendLog(LogEntry{
+						Source:  "go-build",
+						Level:   "error",
+						Message: fmt.Sprintf("Initial reload failed: %v", err),
+					})
+				}
 			} else {
 				gw.appendLog(LogEntry{
 					Source:  "go-build",

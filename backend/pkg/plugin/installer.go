@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -23,9 +24,22 @@ import (
 )
 
 // InstallInDevMode installs a plugin from a directory selected via dialog.
-func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
+func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err error) {
 	l := pm.logger.Named("InstallInDevMode")
 	l.Infow("InstallInDevMode called")
+	defer func() {
+		if r := recover(); r != nil {
+			l.Errorw("panic in InstallInDevMode",
+				"panic", r,
+				"stack", string(debug.Stack()),
+			)
+			if metadata != nil {
+				emitEvent(pm.ctx, EventDevInstallError, metadata)
+			}
+			metadata = nil
+			err = apperror.Internal(fmt.Errorf("panic: %v", r), "Install in dev mode failed")
+		}
+	}()
 
 	path, err := runtime.OpenDirectoryDialog(pm.ctx, runtime.OpenDialogOptions{})
 	if err != nil {
@@ -38,7 +52,7 @@ func (pm *pluginManager) InstallInDevMode() (*config.PluginMeta, error) {
 
 	l.Infow("installing plugin in dev mode", "path", path)
 
-	metadata, err := parseMetadataFromPluginPath(path)
+	metadata, err = parseMetadataFromPluginPath(path)
 	if err != nil {
 		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to parse plugin metadata")
 	}
