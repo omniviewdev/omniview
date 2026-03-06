@@ -73,6 +73,9 @@ vi.mock('@mui/material/styles', async () => ({
 
 import BottomDrawerContainer from '../../BottomDrawer/index';
 
+const drawerModeStorageKey = 'omniview.bottomDrawer.mode';
+const drawerExpandedHeightStorageKey = 'omniview.bottomDrawer.expandedHeight';
+
 describe('BottomDrawerContainer', () => {
   const defaultDrawerState = {
     tabs: [] as any[],
@@ -83,6 +86,7 @@ describe('BottomDrawerContainer', () => {
     vi.clearAllMocks();
     Object.keys(mocks.eventBusHandlers).forEach(k => delete mocks.eventBusHandlers[k]);
     mocks.mockUseBottomDrawer.mockReturnValue(defaultDrawerState);
+    localStorage.clear();
     // Reset window.innerHeight
     Object.defineProperty(window, 'innerHeight', { value: 900, writable: true });
   });
@@ -96,6 +100,40 @@ describe('BottomDrawerContainer', () => {
     const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
     expect(drawer).toBeTruthy();
     // Initial state — minHeight should be 32px
+    expect(drawer.style.height).toBe('32px');
+  });
+
+  it('starts minimized with tabs when no saved startup state exists', () => {
+    mocks.mockUseBottomDrawer.mockReturnValue({
+      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
+      focused: 0,
+    });
+
+    const { container } = render(<BottomDrawerContainer />);
+    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    expect(drawer.style.height).toBe('32px');
+  });
+
+  it('restores saved expanded height when tabs exist on startup', () => {
+    localStorage.setItem(drawerModeStorageKey, 'expanded');
+    localStorage.setItem(drawerExpandedHeightStorageKey, '520');
+
+    mocks.mockUseBottomDrawer.mockReturnValue({
+      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
+      focused: 0,
+    });
+
+    const { container } = render(<BottomDrawerContainer />);
+    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    expect(drawer.style.height).toBe('520px');
+  });
+
+  it('forces minimized startup when saved state is expanded but there are no tabs', () => {
+    localStorage.setItem(drawerModeStorageKey, 'expanded');
+    localStorage.setItem(drawerExpandedHeightStorageKey, '520');
+
+    const { container } = render(<BottomDrawerContainer />);
+    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
     expect(drawer.style.height).toBe('32px');
   });
 
@@ -298,12 +336,14 @@ describe('BottomDrawerContainer', () => {
   });
 
   it('minHeight stays at 32px floor when expanded', () => {
+    const { container, rerender } = render(<BottomDrawerContainer />);
+
     mocks.mockUseBottomDrawer.mockReturnValue({
       tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
       focused: 0,
     });
+    rerender(<BottomDrawerContainer />);
 
-    const { container } = render(<BottomDrawerContainer />);
     const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
 
     // Expanded to 400px — minHeight should still be 32px (the floor)

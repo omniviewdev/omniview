@@ -96,6 +96,10 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
   };
 
   const createTabs: CreateTabs = (newTabs: CreateTabOpts[]) => {
+    if (newTabs.length === 0) {
+      return;
+    }
+
     const toCreate = newTabs.map((opts) => {
       const id = opts.id ?? window.crypto.randomUUID();
       return {
@@ -108,6 +112,7 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
         properties: opts.properties,
       };
     }) as BottomDrawerTab[];
+
     setTabs([...tabs, ...toCreate]);
     bottomDrawerChannel.emit('onTabCreated');
   };

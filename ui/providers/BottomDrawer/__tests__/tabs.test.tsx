@@ -140,6 +140,16 @@ describe('BottomDrawerTabs', () => {
     expect(buttons.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('does not call createTabs when ListSessions returns no sessions', async () => {
+    render(<BottomDrawerTabs {...defaultProps} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mocks.mockCreateTabs).not.toHaveBeenCalled();
+  });
+
   it('clicking + creates a terminal session', async () => {
     const { container } = render(<BottomDrawerTabs {...defaultProps} />);
 

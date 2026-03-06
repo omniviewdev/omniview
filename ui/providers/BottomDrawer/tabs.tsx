@@ -328,8 +328,9 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, isFullscreen, onMinimi
           });
         });
 
-        console.log('newTabs', newTabs);
-        createTabs(newTabs);
+        if (newTabs.length > 0) {
+          createTabs(newTabs);
+        }
       }).catch((err: unknown) => {
         console.error(err);
       });
