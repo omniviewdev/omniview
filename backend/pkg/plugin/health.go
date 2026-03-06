@@ -13,15 +13,15 @@ import (
 
 const (
 	healthCheckInterval = 30 * time.Second
-	maxCrashRetries     = 5
-	initialCrashBackoff = 1 * time.Second
-	maxCrashBackoff     = 60 * time.Second
+	maxCrashRetries     = 3
+	initialCrashBackoff = 2 * time.Second
+	maxCrashBackoff     = 30 * time.Second
 
 	// maxTotalCrashes is the hard limit on total crash-recovery cycles per
 	// plugin within crashBudgetWindow. This prevents infinite recovery loops
 	// when a plugin keeps crashing immediately after being reloaded.
-	maxTotalCrashes    = 8
-	crashBudgetWindow  = 5 * time.Minute
+	maxTotalCrashes   = 5
+	crashBudgetWindow = 5 * time.Minute
 )
 
 // crashBudget tracks the total number of crash-recovery cycles for a plugin
@@ -121,6 +121,22 @@ func (hc *HealthChecker) CancelRecovery(pluginID string) {
 	}
 	delete(hc.recoveryStates, pluginID)
 	delete(hc.crashBudgets, pluginID)
+}
+
+// IsInCrashCycle returns true if the plugin has already crashed at least once
+// within the current budget window. Used by HandlePluginCrash to suppress
+// repeated "plugin/crash" notifications during crash-recover-crash loops.
+func (hc *HealthChecker) IsInCrashCycle(pluginID string) bool {
+	hc.mu.Lock()
+	defer hc.mu.Unlock()
+	cb := hc.crashBudgets[pluginID]
+	if cb == nil {
+		return false
+	}
+	if time.Since(cb.windowStart) > crashBudgetWindow {
+		return false
+	}
+	return cb.count > 0
 }
 
 // HandleCrashWithBackoff handles a plugin crash with exponential backoff.

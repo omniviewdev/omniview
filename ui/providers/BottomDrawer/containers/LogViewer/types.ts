@@ -72,3 +72,33 @@ export const LEVEL_COLORS: Record<LogLevel, string> = {
   debug: '#757575',
   trace: '#9e9e9e',
 };
+
+/**
+ * Handlers that a data source pushes data into.
+ * LogViewerContainer provides these when it calls source.connect().
+ */
+export interface LogDataSourceHandlers {
+  onLines: (entries: LogEntry[]) => void;
+  onEvent: (event: LogStreamEvent) => void;
+}
+
+/**
+ * Abstraction over where log entries come from.
+ * SDK log sessions, plugin process logs, and dev build logs
+ * all implement this interface.
+ */
+export interface LogDataSource {
+  /** Connect to the source. Returns a cleanup function. */
+  connect(handlers: LogDataSourceHandlers): () => void;
+
+  /** Load historical log entries (e.g. from ring buffer). */
+  loadHistory?(): Promise<LogEntry[]>;
+
+  /**
+   * Declared filter dimensions (e.g. [{key: "source"}, {key: "level"}]).
+   * When provided, useLogSources uses these instead of fetching from
+   * LogsClient.GetSession. When absent, useLogSources derives dimensions
+   * from entry labels (auto-derive behavior).
+   */
+  declaredDimensions?: Array<{ key: string; displayName?: string }>;
+}

@@ -1,7 +1,7 @@
 import { useQueries } from '@tanstack/react-query';
 
 // Types
-import { types } from '../../wailsjs/go/models';
+import { resource } from '../../wailsjs/go/models';
 import { List } from '../../wailsjs/go/resource/Client';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
@@ -62,16 +62,9 @@ export const useResourceSearch = ({
   const results = useQueries({
     queries: searches.map(search => ({
       queryKey: getQueryKey(search),
-      queryFn: async () => List(pluginID, connectionID, search.key, types.ListInput.createFrom({
-        params: {},
-        order: {
-          by: 'name',
-          direction: true,
-        },
-        pagination: {
-          page: 1,
-          pageSize: 200,
-        },
+      queryFn: async () => List(pluginID, connectionID, search.key, resource.ListInput.createFrom({
+        order: [{ field: 'name', descending: false }],
+        pagination: { page: 1, pageSize: 200 },
         namespaces: search.namespaces,
       })).then((data) => {
         console.log(data.result);

@@ -1,15 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-const mockYamlUpdate = jest.fn();
-const mockSetDiagnosticsOptions = jest.fn();
+const mocks = vi.hoisted(() => ({
+  mockYamlUpdate: vi.fn(),
+  mockSetDiagnosticsOptions: vi.fn(),
+}));
 
-jest.mock('./bootstrap', () => ({
-  monacoYaml: { update: mockYamlUpdate },
+vi.mock('@/providers/monaco/bootstrap', () => ({
+  monacoYaml: { update: mocks.mockYamlUpdate },
   monaco: {
     languages: {
       json: {
         jsonDefaults: {
-          setDiagnosticsOptions: mockSetDiagnosticsOptions,
+          setDiagnosticsOptions: mocks.mockSetDiagnosticsOptions,
         },
       },
     },
@@ -33,8 +35,8 @@ function makeSchema(overrides: Record<string, any> = {}) {
 
 describe('SchemaRegistry', () => {
   beforeEach(() => {
-    mockYamlUpdate.mockClear();
-    mockSetDiagnosticsOptions.mockClear();
+    mocks.mockYamlUpdate.mockClear();
+    mocks.mockSetDiagnosticsOptions.mockClear();
     schemaRegistry.unregister('test-plugin', 'conn-1');
     schemaRegistry.unregister('test-plugin', 'conn-2');
     schemaRegistry.unregister('other-plugin', 'conn-1');
@@ -44,8 +46,8 @@ describe('SchemaRegistry', () => {
     schemaRegistry.register('test-plugin', 'conn-1', [makeSchema()]);
     await flushMicrotasks();
 
-    expect(mockYamlUpdate).toHaveBeenCalledTimes(1);
-    const call = mockYamlUpdate.mock.calls[0][0];
+    expect(mocks.mockYamlUpdate).toHaveBeenCalledTimes(1);
+    const call = mocks.mockYamlUpdate.mock.calls[0][0];
     expect(call.enableSchemaRequest).toBe(true);
     expect(call.schemas).toHaveLength(1);
     expect(call.schemas[0].uri).toBe('k8s://test-cluster/core/v1/Pod');
@@ -53,15 +55,15 @@ describe('SchemaRegistry', () => {
   });
 
   it('registers JSON schemas and flushes to jsonDefaults', async () => {
-    mockSetDiagnosticsOptions.mockClear();
+    mocks.mockSetDiagnosticsOptions.mockClear();
 
     schemaRegistry.register('test-plugin', 'conn-1', [
       makeSchema({ language: 'json', uri: 'json://test/schema' }),
     ]);
     await flushMicrotasks();
 
-    expect(mockSetDiagnosticsOptions).toHaveBeenCalled();
-    const lastCall = mockSetDiagnosticsOptions.mock.calls[mockSetDiagnosticsOptions.mock.calls.length - 1][0];
+    expect(mocks.mockSetDiagnosticsOptions).toHaveBeenCalled();
+    const lastCall = mocks.mockSetDiagnosticsOptions.mock.calls[mocks.mockSetDiagnosticsOptions.mock.calls.length - 1][0];
     expect(lastCall.validate).toBe(true);
     expect(lastCall.schemas).toHaveLength(1);
     expect(lastCall.schemas[0].uri).toBe('json://test/schema');
@@ -76,7 +78,7 @@ describe('SchemaRegistry', () => {
     ]);
     await flushMicrotasks();
 
-    const lastCall = mockYamlUpdate.mock.calls[mockYamlUpdate.mock.calls.length - 1][0];
+    const lastCall = mocks.mockYamlUpdate.mock.calls[mocks.mockYamlUpdate.mock.calls.length - 1][0];
     expect(lastCall.schemas).toHaveLength(1);
     expect(lastCall.schemas[0].uri).toBe('k8s://updated/schema');
   });
@@ -88,7 +90,7 @@ describe('SchemaRegistry', () => {
     ]);
     await flushMicrotasks();
 
-    const lastCall = mockYamlUpdate.mock.calls[mockYamlUpdate.mock.calls.length - 1][0];
+    const lastCall = mocks.mockYamlUpdate.mock.calls[mocks.mockYamlUpdate.mock.calls.length - 1][0];
     expect(lastCall.schemas).toHaveLength(2);
   });
 
@@ -99,7 +101,7 @@ describe('SchemaRegistry', () => {
     schemaRegistry.unregister('test-plugin', 'conn-1');
     await flushMicrotasks();
 
-    const lastCall = mockYamlUpdate.mock.calls[mockYamlUpdate.mock.calls.length - 1][0];
+    const lastCall = mocks.mockYamlUpdate.mock.calls[mocks.mockYamlUpdate.mock.calls.length - 1][0];
     expect(lastCall.schemas).toHaveLength(0);
   });
 
@@ -113,7 +115,7 @@ describe('SchemaRegistry', () => {
     schemaRegistry.unregisterPlugin('test-plugin');
     await flushMicrotasks();
 
-    const lastCall = mockYamlUpdate.mock.calls[mockYamlUpdate.mock.calls.length - 1][0];
+    const lastCall = mocks.mockYamlUpdate.mock.calls[mocks.mockYamlUpdate.mock.calls.length - 1][0];
     expect(lastCall.schemas).toHaveLength(0);
   });
 
@@ -126,7 +128,7 @@ describe('SchemaRegistry', () => {
     ]);
     await flushMicrotasks();
 
-    const lastCall = mockYamlUpdate.mock.calls[mockYamlUpdate.mock.calls.length - 1][0];
+    const lastCall = mocks.mockYamlUpdate.mock.calls[mocks.mockYamlUpdate.mock.calls.length - 1][0];
     expect(lastCall.schemas[0].schema).toEqual(schemaObj);
   });
 
@@ -136,7 +138,7 @@ describe('SchemaRegistry', () => {
     ]);
     await flushMicrotasks();
 
-    const lastCall = mockYamlUpdate.mock.calls[mockYamlUpdate.mock.calls.length - 1][0];
+    const lastCall = mocks.mockYamlUpdate.mock.calls[mocks.mockYamlUpdate.mock.calls.length - 1][0];
     expect(lastCall.schemas[0].uri).toBe('https://example.com/schema.json');
   });
 
@@ -148,12 +150,12 @@ describe('SchemaRegistry', () => {
     ]);
     await flushMicrotasks();
 
-    const lastCall = mockYamlUpdate.mock.calls[mockYamlUpdate.mock.calls.length - 1][0];
+    const lastCall = mocks.mockYamlUpdate.mock.calls[mocks.mockYamlUpdate.mock.calls.length - 1][0];
     expect(lastCall.schemas).toHaveLength(0);
   });
 
   it('batches multiple register calls into a single flush', async () => {
-    const callsBefore = mockYamlUpdate.mock.calls.length;
+    const callsBefore = mocks.mockYamlUpdate.mock.calls.length;
 
     schemaRegistry.register('test-plugin', 'conn-1', [makeSchema()]);
     schemaRegistry.register('test-plugin', 'conn-2', [
@@ -162,8 +164,8 @@ describe('SchemaRegistry', () => {
 
     await flushMicrotasks();
 
-    expect(mockYamlUpdate.mock.calls.length - callsBefore).toBe(1);
-    const lastCall = mockYamlUpdate.mock.calls[mockYamlUpdate.mock.calls.length - 1][0];
+    expect(mocks.mockYamlUpdate.mock.calls.length - callsBefore).toBe(1);
+    const lastCall = mocks.mockYamlUpdate.mock.calls[mocks.mockYamlUpdate.mock.calls.length - 1][0];
     expect(lastCall.schemas).toHaveLength(2);
   });
 });

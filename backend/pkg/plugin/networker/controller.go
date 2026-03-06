@@ -3,7 +3,6 @@ package networker
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	"go.uber.org/zap"
 
@@ -13,7 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	"github.com/omniviewdev/plugin-sdk/pkg/networker"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -31,7 +30,7 @@ type Controller interface {
 	Run(ctx context.Context)
 
 	// GetSupportedPortForwardTargets returns the supported targets for port forwarding
-	GetSupportedPortForwardTargets(pluginID string) []string
+	GetSupportedPortForwardTargets(pluginID string) ([]string, error)
 
 	// GetPortForwardSession returns a port forward session by ID
 	GetPortForwardSession(sessionID string) (*networker.PortForwardSession, error)
@@ -68,7 +67,7 @@ type sessionIndex struct {
 func NewController(
 	logger *zap.SugaredLogger,
 	sp pkgsettings.Provider,
-	resourceClient resource.IClient,
+	resourceClient resource.Service,
 ) Controller {
 	return &controller{
 		logger:           logger.Named("NetworkerController"),
@@ -85,13 +84,13 @@ type controller struct {
 	ctx              context.Context
 	logger           *zap.SugaredLogger
 	settingsProvider pkgsettings.Provider
-	clients          map[string]networker.Provider
+	clients          map[string]NetworkerProvider
 	sessionIndex     map[string]sessionIndex
 
 	// forwarder channels
 	stops map[string]chan struct{}
 
-	resourceClient resource.IClient
+	resourceClient resource.Service
 }
 
 // Run stores the Wails application context for event emission.
@@ -106,10 +105,39 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	logger.Debug("OnPluginInit")
 
 	if c.clients == nil {
-		c.clients = make(map[string]networker.Provider)
+		c.clients = make(map[string]NetworkerProvider)
 	}
 	if c.stops == nil {
 		c.stops = make(map[string]chan struct{})
+	}
+}
+
+// dispenseProvider extracts the networker provider from the backend,
+// wrapping it in the version-appropriate adapter.
+func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (NetworkerProvider, error) {
+	raw, err := backend.Dispense("networker")
+	if err != nil {
+		return nil, err
+	}
+
+	version := backend.NegotiatedVersion()
+	switch version {
+	case 1:
+		v1, ok := raw.(networker.Provider)
+		if !ok {
+			return nil, apperror.New(
+				apperror.TypePluginLoadFailed, 500,
+				"Plugin type mismatch",
+				fmt.Sprintf("Expected networker.Provider for v1, got %T", raw),
+			)
+		}
+		return NewAdapterV1(v1), nil
+	default:
+		return nil, apperror.New(
+			apperror.TypePluginLoadFailed, 500,
+			"Unsupported SDK protocol version",
+			fmt.Sprintf("Plugin '%s' negotiated v%d for networker, engine supports v1", pluginID, version),
+		)
 	}
 }
 
@@ -117,15 +145,8 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStart")
 
-	raw, err := backend.Dispense("networker")
+	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
-		return err
-	}
-
-	provider, ok := raw.(networker.Provider)
-	if !ok {
-		typeof := reflect.TypeOf(raw).String()
-		err = apperror.New(apperror.TypePluginLoadFailed, 500, "Plugin type mismatch", fmt.Sprintf("Expected networker.Provider but got '%s'.", typeof))
 		logger.Error(err)
 		return err
 	}
@@ -138,6 +159,9 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStop")
 
+	if provider, ok := c.clients[pluginID]; ok {
+		provider.StopAll()
+	}
 	delete(c.clients, pluginID)
 	return nil
 }
@@ -200,19 +224,20 @@ func (c *controller) getUnconnectedCtx(
 	return sdktypes.NewPluginContextWithConnection(ctx, "networker", nil, nil, nil)
 }
 
-func (c *controller) GetSupportedPortForwardTargets(plugin string) []string {
-	if provider, ok := c.clients[plugin]; ok {
-		return provider.GetSupportedPortForwardTargets(
-			sdktypes.NewPluginContextWithConnection(
-				context.Background(),
-				"networker",
-				nil,
-				nil,
-				nil,
-			),
-		)
+func (c *controller) GetSupportedPortForwardTargets(plugin string) ([]string, error) {
+	provider, ok := c.clients[plugin]
+	if !ok {
+		return nil, apperror.PluginNotFound(plugin)
 	}
-	return nil
+	return provider.GetSupportedPortForwardTargets(
+		sdktypes.NewPluginContextWithConnection(
+			context.Background(),
+			"networker",
+			nil,
+			nil,
+			nil,
+		),
+	)
 }
 
 func (c *controller) GetPortForwardSession(

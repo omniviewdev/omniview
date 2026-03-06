@@ -2,23 +2,28 @@
  * Pure aggregation logic for active sync tracking.
  * Extracted from useActiveSyncs for testability.
  */
-import { InformerResourceState } from '../types/informer';
-import type { InformerStateEvent } from '../types/informer';
+import { WatchState } from '../types/watch';
+import type { WatchStateEvent } from '../types/watch';
 
 export interface ActiveSync {
   pluginID: string;
   connectionID: string;
+  /** Total resources including skipped */
   totalResources: number;
+  /** Total watched resources (excluding skipped) */
+  watchedTotal: number;
   syncedCount: number;
   errorCount: number;
-  /** Count of resources in any terminal state (Synced + Error + Cancelled) */
+  forbiddenCount: number;
+  skippedCount: number;
+  /** Count of watched resources in any terminal state (Synced + Error + Stopped + Failed + Forbidden) */
   doneCount: number;
-  /** 0-1 progress fraction */
+  /** 0-1 progress fraction based on watched resources only */
   progress: number;
 }
 
 export interface ResourceTracker {
-  states: Record<string, InformerResourceState>;
+  states: Record<string, WatchState>;
   pluginID: string;
   connectionID: string;
 }
@@ -29,31 +34,44 @@ export function computeActiveSync(tracker: ResourceTracker): ActiveSync {
   const total = states.length;
   let synced = 0;
   let errors = 0;
+  let forbidden = 0;
+  let skipped = 0;
   for (const s of states) {
-    if (s === InformerResourceState.Synced) synced++;
-    if (s === InformerResourceState.Error) errors++;
+    if (s === WatchState.SYNCED) synced++;
+    if (s === WatchState.ERROR || s === WatchState.FAILED) errors++;
+    if (s === WatchState.FORBIDDEN) forbidden++;
+    if (s === WatchState.SKIPPED) skipped++;
   }
 
-  // A resource is "done" if it has reached a terminal state (Synced, Error, or Cancelled)
+  // Watched resources = total minus skipped
+  const watchedTotal = total - skipped;
+
+  // A watched resource is "done" if it has reached a terminal state (excluding SKIPPED)
   const done = states.filter(
-    s => s === InformerResourceState.Synced || s === InformerResourceState.Error || s === InformerResourceState.Cancelled
+    s => s === WatchState.SYNCED || s === WatchState.ERROR || s === WatchState.STOPPED ||
+         s === WatchState.FAILED || s === WatchState.FORBIDDEN
   ).length;
-  const progress = total > 0 ? done / total : 0;
+
+  // Progress based on watched resources only
+  const progress = watchedTotal > 0 ? done / watchedTotal : 0;
 
   return {
     pluginID: tracker.pluginID,
     connectionID: tracker.connectionID,
     totalResources: total,
+    watchedTotal,
     syncedCount: synced,
     errorCount: errors,
+    forbiddenCount: forbidden,
+    skippedCount: skipped,
     doneCount: done,
     progress,
   };
 }
 
-/** Whether a sync is considered "done" (all resources reached terminal state) */
+/** Whether a sync is considered "done" (all watched resources reached terminal state) */
 export function isSyncDone(sync: ActiveSync): boolean {
-  return sync.totalResources > 0 && sync.doneCount >= sync.totalResources;
+  return sync.watchedTotal > 0 && sync.doneCount >= sync.watchedTotal;
 }
 
 /** Whether any syncs are still actively in progress */
@@ -61,23 +79,23 @@ export function hasActiveSyncing(syncs: ActiveSync[]): boolean {
   return syncs.some(s => !isSyncDone(s));
 }
 
-/** Compute aggregate progress across multiple syncs */
+/** Compute aggregate progress across multiple syncs (watched resources only) */
 export function aggregateProgress(syncs: ActiveSync[]): number {
-  const totalResources = syncs.reduce((a, s) => a + s.totalResources, 0);
-  if (totalResources === 0) return 0;
+  const totalWatched = syncs.reduce((a, s) => a + s.watchedTotal, 0);
+  if (totalWatched === 0) return 0;
   const totalDone = syncs.reduce((a, s) => a + s.doneCount, 0);
-  return totalDone / totalResources;
+  return totalDone / totalWatched;
 }
 
 /** Build a tracker key from an event */
-export function trackerKey(event: InformerStateEvent): string {
+export function trackerKey(event: WatchStateEvent): string {
   return `${event.pluginId}/${event.connection}`;
 }
 
 /** Update a trackers map with a new event, returning the updated tracker */
 export function updateTracker(
   trackers: Map<string, ResourceTracker>,
-  event: InformerStateEvent,
+  event: WatchStateEvent,
 ): ResourceTracker {
   const key = trackerKey(event);
 

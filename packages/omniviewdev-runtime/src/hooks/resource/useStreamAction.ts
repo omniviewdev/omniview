@@ -2,7 +2,7 @@ import React from 'react';
 import { useSnackbar } from '../snackbar/useSnackbar';
 import { showAppError } from '../../errors/parseAppError';
 import { useOperations } from '../operations/useOperations';
-import { types } from '../../wailsjs/go/models';
+import { resource } from '../../wailsjs/go/models';
 import { StreamAction } from '../../wailsjs/go/resource/Client';
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
@@ -56,7 +56,7 @@ export const useStreamAction = ({
           connectionID,
           resourceKey,
           actionID,
-          types.ActionInput.createFrom({ id, namespace, params }),
+          resource.ActionInput.createFrom({ id, namespace, params }),
         );
 
         addOperation({

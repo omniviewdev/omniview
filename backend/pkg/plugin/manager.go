@@ -17,6 +17,7 @@ import (
 	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
 	pluginmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog"
 	regclient "github.com/omniviewdev/registry"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
@@ -65,6 +66,7 @@ type Manager interface {
 
 	SetDevServerChecker(checker DevServerChecker)
 	SetDevServerManager(mgr *devserver.DevServerManager)
+	SetPluginLogManager(mgr *pluginlog.Manager)
 }
 
 // NewManager returns a new plugin manager.
@@ -121,6 +123,7 @@ type pluginManager struct {
 	devServerMgr        *devserver.DevServerManager
 	pidTracker          *PluginPIDTracker
 	healthChecker       *HealthChecker
+	pluginLogMgr        *pluginlog.Manager
 	backendFactory      func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error)
 }
 
@@ -139,11 +142,17 @@ func (pm *pluginManager) Run(ctx context.Context) {
 func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	pm.logger.Errorw("plugin process crashed — attempting recovery", "pluginID", pluginID)
 
-	// Emit crash event for the frontend.
-	emitEvent(pm.ctx, "plugin/crash", map[string]interface{}{
-		"pluginID": pluginID,
-		"error":    "plugin process exited unexpectedly",
-	})
+	// Only emit the user-facing "plugin/crash" notification on the FIRST crash.
+	// If the plugin is already in a crash-recover-crash loop (budget window active),
+	// suppress repeated notifications — the health checker will emit a single
+	// "crash_recovery_failed" when it gives up.
+	inCrashCycle := pm.healthChecker != nil && pm.healthChecker.IsInCrashCycle(pluginID)
+	if !inCrashCycle {
+		emitEvent(pm.ctx, "plugin/crash", map[string]interface{}{
+			"pluginID": pluginID,
+			"error":    "plugin process exited unexpectedly",
+		})
+	}
 
 	// Transition state machine to Recovering and set Phase so the health
 	// checker skips this plugin (it only checks Phase == PhaseRunning).
@@ -206,6 +215,12 @@ func (pm *pluginManager) Shutdown() {
 	if err := pm.pidTracker.Save(); err != nil {
 		pm.logger.Warnw("failed to save plugin PID file", "error", err)
 	}
+
+	if pm.pluginLogMgr != nil {
+		if err := pm.pluginLogMgr.Close(); err != nil {
+			pm.logger.Warnw("failed to close plugin log manager", "error", err)
+		}
+	}
 }
 
 // SetDevServerChecker sets the dev server checker.
@@ -218,9 +233,21 @@ func (pm *pluginManager) SetDevServerManager(mgr *devserver.DevServerManager) {
 	pm.devServerMgr = mgr
 }
 
+// SetPluginLogManager sets the per-plugin log manager.
+func (pm *pluginManager) SetPluginLogManager(mgr *pluginlog.Manager) {
+	pm.pluginLogMgr = mgr
+}
+
 // Initialize discovers and loads all installed plugins.
 func (pm *pluginManager) Initialize(ctx context.Context) error {
 	pm.ctx = ctx
+
+	// Wire real-time emission via Wails events for the plugin log manager.
+	if pm.pluginLogMgr != nil {
+		pm.pluginLogMgr.OnEmit(func(entry pluginlog.LogEntry) {
+			runtime.EventsEmit(ctx, "plugin/process/log", entry)
+		})
+	}
 
 	// Kill any orphaned plugin processes from a previous unclean shutdown.
 	pm.pidTracker.CleanupStale(pm.logger)
@@ -305,6 +332,29 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 					pluginID: state.ID,
 					devPath:  state.DevPath,
 				})
+
+				// If the dev binary doesn't exist, create a stub record
+				// and skip LoadPlugin. Phase 2 will start the dev server,
+				// build the binary, and call ReloadPlugin.
+				binPath := filepath.Join(getPluginLocation(file.Name()), "bin", "plugin")
+				if _, statErr := os.Stat(binPath); os.IsNotExist(statErr) {
+					meta, metaErr := sdktypes.LoadPluginMetadata(getPluginLocation(file.Name()))
+					if metaErr == nil {
+						record := plugintypes.NewPluginRecord(file.Name(), meta, lifecycle.PhaseBuildFailed)
+						record.Enabled = state.Enabled
+						record.DevMode = true
+						record.DevPath = state.DevPath
+						pm.recordsMu.Lock()
+						pm.records[file.Name()] = record
+						pm.recordsMu.Unlock()
+						pm.logger.Infow("dev plugin binary missing, deferring to dev server",
+							"pluginID", file.Name())
+					} else {
+						pm.logger.Warnw("dev plugin binary missing and metadata unreadable",
+							"pluginID", file.Name(), "error", metaErr)
+					}
+					continue
+				}
 			}
 		}
 

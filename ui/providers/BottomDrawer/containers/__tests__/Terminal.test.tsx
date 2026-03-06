@@ -1,74 +1,84 @@
 import { render, cleanup, act } from '@testing-library/react';
 
 // ─── xterm mocks ───────────────────────────────────────────────────────────────
-const mockOpen = jest.fn();
-const mockLoadAddon = jest.fn();
-const mockFocus = jest.fn();
-const mockDispose = jest.fn();
+const mocks = vi.hoisted(() => {
+  const state = {
+    onResizeCallback: null as ((e: { rows: number; cols: number }) => void) | null,
+    onDataCallback: null as ((data: string) => void) | null,
+  };
 
-let onResizeCallback: ((e: { rows: number; cols: number }) => void) | null = null;
-let onDataCallback: ((data: string) => void) | null = null;
+  return {
+    state,
+    mockOpen: vi.fn(),
+    mockLoadAddon: vi.fn(),
+    mockFocus: vi.fn(),
+    mockDispose: vi.fn(),
+    mockOnResize: vi.fn((cb) => { state.onResizeCallback = cb; }),
+    mockOnData: vi.fn((cb) => { state.onDataCallback = cb; }),
+    mockFit: vi.fn(),
+    mockEventsOn: vi.fn(() => vi.fn()),
+    mockEventsOff: vi.fn(),
+    mockAttachSession: vi.fn().mockResolvedValue(undefined),
+    mockDetachSession: vi.fn().mockResolvedValue(undefined),
+    mockResizeSession: vi.fn().mockResolvedValue(undefined),
+    mockWriteSession: vi.fn().mockResolvedValue(undefined),
+    mockEmit: vi.fn(),
+    mockChannelOn: vi.fn((_event: any, _handler: any) => vi.fn()),
+  };
+});
 
-const mockOnResize = jest.fn((cb) => { onResizeCallback = cb; });
-const mockOnData = jest.fn((cb) => { onDataCallback = cb; });
-
-jest.mock('@xterm/xterm', () => ({
-  Terminal: jest.fn().mockImplementation((opts: any) => ({
-    options: opts,
-    open: mockOpen,
-    loadAddon: mockLoadAddon,
-    focus: mockFocus,
-    dispose: mockDispose,
-    onResize: mockOnResize,
-    onData: mockOnData,
-    write: jest.fn(),
-  })),
+vi.mock('@xterm/xterm', () => ({
+  Terminal: vi.fn(function (this: any, opts: any) {
+    return {
+      options: opts,
+      open: mocks.mockOpen,
+      loadAddon: mocks.mockLoadAddon,
+      focus: mocks.mockFocus,
+      dispose: mocks.mockDispose,
+      onResize: mocks.mockOnResize,
+      onData: mocks.mockOnData,
+      write: vi.fn(),
+    };
+  }),
 }));
 
-const mockFit = jest.fn();
-jest.mock('@xterm/addon-fit', () => ({
-  FitAddon: jest.fn().mockImplementation(() => ({
-    fit: mockFit,
-    dispose: jest.fn(),
-  })),
+vi.mock('@xterm/addon-fit', () => ({
+  FitAddon: vi.fn(function (this: any) {
+    return {
+      fit: mocks.mockFit,
+      dispose: vi.fn(),
+    };
+  }),
 }));
 
-jest.mock('@xterm/addon-canvas', () => ({
-  CanvasAddon: jest.fn().mockImplementation(() => ({ dispose: jest.fn() })),
+vi.mock('@xterm/addon-canvas', () => ({
+  CanvasAddon: vi.fn(function (this: any) { return { dispose: vi.fn() }; }),
 }));
 
-jest.mock('@xterm/addon-webgl', () => ({
-  WebglAddon: jest.fn().mockImplementation(() => ({ dispose: jest.fn() })),
+vi.mock('@xterm/addon-webgl', () => ({
+  WebglAddon: vi.fn(function (this: any) { return { dispose: vi.fn() }; }),
 }));
 
-jest.mock('@xterm/addon-web-links', () => ({
-  WebLinksAddon: jest.fn().mockImplementation(() => ({ dispose: jest.fn() })),
+vi.mock('@xterm/addon-web-links', () => ({
+  WebLinksAddon: vi.fn(function (this: any) { return { dispose: vi.fn() }; }),
 }));
 
 // ─── runtime mocks ─────────────────────────────────────────────────────────────
-const mockEventsOn = jest.fn(() => jest.fn());
-const mockEventsOff = jest.fn();
-
-jest.mock('@omniviewdev/runtime/runtime', () => ({
-  EventsOn: mockEventsOn,
-  EventsOff: mockEventsOff,
+vi.mock('@omniviewdev/runtime/runtime', () => ({
+  EventsOn: mocks.mockEventsOn,
+  EventsOff: mocks.mockEventsOff,
 }));
 
-const mockAttachSession = jest.fn().mockResolvedValue(undefined);
-const mockDetachSession = jest.fn().mockResolvedValue(undefined);
-const mockResizeSession = jest.fn().mockResolvedValue(undefined);
-const mockWriteSession = jest.fn().mockResolvedValue(undefined);
-
-jest.mock('@omniviewdev/runtime/api', () => ({
+vi.mock('@omniviewdev/runtime/api', () => ({
   ExecClient: {
-    AttachSession: (...args: any[]) => mockAttachSession(...args),
-    DetachSession: (...args: any[]) => mockDetachSession(...args),
-    ResizeSession: (...args: any[]) => mockResizeSession(...args),
-    WriteSession: (...args: any[]) => mockWriteSession(...args),
+    AttachSession: (...args: any[]) => mocks.mockAttachSession(...args),
+    DetachSession: (...args: any[]) => mocks.mockDetachSession(...args),
+    ResizeSession: (...args: any[]) => mocks.mockResizeSession(...args),
+    WriteSession: (...args: any[]) => mocks.mockWriteSession(...args),
   },
 }));
 
-jest.mock('@omniviewdev/runtime', () => ({
+vi.mock('@omniviewdev/runtime', () => ({
   useSettings: () => ({
     settings: {
       'terminal.cursorBlink': true,
@@ -79,37 +89,35 @@ jest.mock('@omniviewdev/runtime', () => ({
   }),
 }));
 
-jest.mock('@/features/logger', () => ({
+vi.mock('@/features/logger', () => ({
   __esModule: true,
-  default: { error: jest.fn() },
+  default: { error: vi.fn() },
 }));
 
 // Mock the event bus
-const mockEmit = jest.fn();
-const mockChannelOn = jest.fn((_event: any, _handler: any) => jest.fn());
-jest.mock('../../events', () => ({
+vi.mock('../../events', () => ({
   bottomDrawerChannel: {
-    emit: (...args: any[]) => mockEmit(...args),
-    on: (event: any, handler: any) => mockChannelOn(event, handler),
+    emit: (...args: any[]) => mocks.mockEmit(...args),
+    on: (event: any, handler: any) => mocks.mockChannelOn(event, handler),
   },
 }));
 
-jest.mock('@/utils/debounce', () => ({
+vi.mock('@/utils/debounce', () => ({
   debounce: (fn: Function) => fn,
 }));
 
-jest.mock('js-base64', () => ({
-  Base64: { toUint8Array: jest.fn((_s: string) => new Uint8Array()) },
+vi.mock('js-base64', () => ({
+  Base64: { toUint8Array: vi.fn((_s: string) => new Uint8Array()) },
 }));
 
 // ─── ResizeObserver spy ─────────────────────────────────────────────────────────
 let resizeObserverCallback: ResizeObserverCallback | null = null;
-const mockObserve = jest.fn();
-const mockUnobserve = jest.fn();
-const mockDisconnect = jest.fn();
+const mockObserve = vi.fn();
+const mockUnobserve = vi.fn();
+const mockDisconnect = vi.fn();
 
 beforeEach(() => {
-  global.ResizeObserver = jest.fn().mockImplementation((cb: ResizeObserverCallback) => {
+  global.ResizeObserver = vi.fn(function (this: any, cb: ResizeObserverCallback) {
     resizeObserverCallback = cb;
     return {
       observe: mockObserve,
@@ -125,9 +133,9 @@ import { Terminal } from '@xterm/xterm';
 
 describe('TerminalContainer', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    onResizeCallback = null;
-    onDataCallback = null;
+    vi.clearAllMocks();
+    mocks.state.onResizeCallback = null;
+    mocks.state.onDataCallback = null;
     resizeObserverCallback = null;
   });
 
@@ -139,7 +147,7 @@ describe('TerminalContainer', () => {
     render(<TerminalContainer sessionId="" />);
 
     expect(Terminal).not.toHaveBeenCalled();
-    expect(mockOpen).not.toHaveBeenCalled();
+    expect(mocks.mockOpen).not.toHaveBeenCalled();
   });
 
   it('mounts and creates terminal with correct options', () => {
@@ -161,14 +169,14 @@ describe('TerminalContainer', () => {
         }),
       }),
     );
-    expect(mockOpen).toHaveBeenCalled();
+    expect(mocks.mockOpen).toHaveBeenCalled();
   });
 
   it('loads FitAddon, CanvasAddon, and WebglAddon', () => {
     render(<TerminalContainer sessionId="test-session-123" />);
 
     // FitAddon + CanvasAddon + WebglAddon + WebLinksAddon = 4
-    expect(mockLoadAddon).toHaveBeenCalledTimes(4);
+    expect(mocks.mockLoadAddon).toHaveBeenCalledTimes(4);
   });
 
   it('calls fitAddon.fit() after attach resolves', async () => {
@@ -176,8 +184,8 @@ describe('TerminalContainer', () => {
       render(<TerminalContainer sessionId="test-session-123" />);
     });
 
-    expect(mockAttachSession).toHaveBeenCalledWith('test-session-123');
-    expect(mockFit).toHaveBeenCalled();
+    expect(mocks.mockAttachSession).toHaveBeenCalledWith('test-session-123');
+    expect(mocks.mockFit).toHaveBeenCalled();
   });
 
   it('sets up ResizeObserver on the container div', () => {
@@ -190,13 +198,13 @@ describe('TerminalContainer', () => {
   it('calls ExecClient.ResizeSession on terminal.onResize', () => {
     render(<TerminalContainer sessionId="test-session-123" />);
 
-    expect(onResizeCallback).toBeTruthy();
+    expect(mocks.state.onResizeCallback).toBeTruthy();
 
     act(() => {
-      onResizeCallback!({ rows: 24, cols: 80 });
+      mocks.state.onResizeCallback!({ rows: 24, cols: 80 });
     });
 
-    expect(mockResizeSession).toHaveBeenCalledWith('test-session-123', 24, 80);
+    expect(mocks.mockResizeSession).toHaveBeenCalledWith('test-session-123', 24, 80);
   });
 
   it('calls ExecClient.WriteSession on terminal.onData', async () => {
@@ -204,13 +212,13 @@ describe('TerminalContainer', () => {
       render(<TerminalContainer sessionId="test-session-123" />);
     });
 
-    expect(onDataCallback).toBeTruthy();
+    expect(mocks.state.onDataCallback).toBeTruthy();
 
     act(() => {
-      onDataCallback!('hello');
+      mocks.state.onDataCallback!('hello');
     });
 
-    expect(mockWriteSession).toHaveBeenCalledWith('test-session-123', 'hello');
+    expect(mocks.mockWriteSession).toHaveBeenCalledWith('test-session-123', 'hello');
   });
 
   it('cleans up on unmount', async () => {
@@ -223,10 +231,10 @@ describe('TerminalContainer', () => {
 
     unmount();
 
-    expect(mockDispose).toHaveBeenCalled();
-    expect(mockDetachSession).toHaveBeenCalledWith('test-session-123');
+    expect(mocks.mockDispose).toHaveBeenCalled();
+    expect(mocks.mockDetachSession).toHaveBeenCalledWith('test-session-123');
     // Signal handlers should be cleaned up via EventsOff
-    expect(mockEventsOff).toHaveBeenCalled();
+    expect(mocks.mockEventsOff).toHaveBeenCalled();
   });
 
   it('container div has correct styles', () => {
@@ -244,20 +252,20 @@ describe('TerminalContainer', () => {
   it('ResizeObserver callback triggers fit', () => {
     render(<TerminalContainer sessionId="test-session-123" />);
 
-    const fitCallsBefore = mockFit.mock.calls.length;
+    const fitCallsBefore = mocks.mockFit.mock.calls.length;
 
     act(() => {
       resizeObserverCallback!([], {} as ResizeObserver);
     });
 
     // debounce is mocked to be immediate, so fit should have been called
-    expect(mockFit.mock.calls.length).toBeGreaterThan(fitCallsBefore);
+    expect(mocks.mockFit.mock.calls.length).toBeGreaterThan(fitCallsBefore);
   });
 
   it('focuses the terminal after open', () => {
     render(<TerminalContainer sessionId="test-session-123" />);
 
-    expect(mockFocus).toHaveBeenCalled();
+    expect(mocks.mockFocus).toHaveBeenCalled();
   });
 
   it('sets up signal handlers via EventsOn', async () => {
@@ -266,7 +274,7 @@ describe('TerminalContainer', () => {
     });
 
     // Should register stdout, stderr, and signal handlers
-    const eventNames = mockEventsOn.mock.calls.map((call: any[]) => call[0]);
+    const eventNames = mocks.mockEventsOn.mock.calls.map((call: any[]) => call[0]);
     expect(eventNames).toContain('core/exec/stream/stdout/test-session-123');
     expect(eventNames).toContain('core/exec/stream/stderr/test-session-123');
     expect(eventNames).toContain('core/exec/signal/CLOSE/test-session-123');
@@ -276,6 +284,6 @@ describe('TerminalContainer', () => {
     render(<TerminalContainer sessionId="test-session-123" />);
 
     // Should subscribe to onResizeReset via bottomDrawerChannel.on
-    expect(mockChannelOn).toHaveBeenCalledWith('onResizeReset', expect.any(Function));
+    expect(mocks.mockChannelOn).toHaveBeenCalledWith('onResizeReset', expect.any(Function));
   });
 });

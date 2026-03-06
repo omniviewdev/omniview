@@ -1,4 +1,4 @@
-import { monaco, monacoYaml } from './bootstrap';
+import { monaco, monacoYaml } from '@/providers/monaco/bootstrap';
 
 /**
  * EditorSchemaEntry represents a schema registered with the registry.

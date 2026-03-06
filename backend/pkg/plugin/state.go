@@ -32,6 +32,9 @@ func (pm *pluginManager) writePluginStateJSON() error {
 	pm.recordsMu.RLock()
 	records := make([]types.PluginStateRecord, 0, len(pm.records))
 	for _, r := range pm.records {
+		if r == nil {
+			continue
+		}
 		records = append(records, r.ToStateRecord())
 	}
 	pm.recordsMu.RUnlock()
@@ -72,6 +75,9 @@ func (pm *pluginManager) mergeAndWritePluginState(persisted []types.PluginStateR
 	pm.recordsMu.RLock()
 	merged := make(map[string]types.PluginStateRecord, len(pm.records)+len(persisted))
 	for _, r := range pm.records {
+		if r == nil {
+			continue
+		}
 		merged[r.ID] = r.ToStateRecord()
 	}
 	pm.recordsMu.RUnlock()

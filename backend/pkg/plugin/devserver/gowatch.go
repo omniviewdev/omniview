@@ -3,6 +3,7 @@ package devserver
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -116,11 +117,49 @@ func (gw *goWatcherProcess) Start() error {
 		return apperror.Internal(err, "Failed to scan plugin directory")
 	}
 
+	// Watch the plugin root directory for go.mod/go.sum changes.
+	if addErr := watcher.Add(gw.devPath); addErr != nil {
+		gw.logger.Warnw("failed to watch plugin root", "path", gw.devPath, "error", addErr)
+	} else {
+		watchCount++
+	}
+
+	// Parse go.work and watch workspace module pkg/ directories so that
+	// changes to dependencies like plugin-sdk trigger a rebuild.
+	goWorkPath := filepath.Join(gw.devPath, "go.work")
+	if data, err := os.ReadFile(goWorkPath); err == nil {
+		for _, mod := range parseGoWorkUseDirectives(data) {
+			if mod == "." {
+				continue
+			}
+			modPkg := filepath.Join(gw.devPath, mod, "pkg")
+			if info, statErr := os.Stat(modPkg); statErr == nil && info.IsDir() {
+				_ = filepath.Walk(modPkg, func(path string, info os.FileInfo, walkErr error) error {
+					if walkErr != nil {
+						return walkErr
+					}
+					if info.IsDir() {
+						base := filepath.Base(path)
+						if strings.HasPrefix(base, ".") || base == "vendor" || base == "node_modules" {
+							return filepath.SkipDir
+						}
+						if addErr := watcher.Add(path); addErr != nil {
+							gw.logger.Warnw("failed to watch directory", "path", path, "error", addErr)
+						} else {
+							watchCount++
+						}
+					}
+					return nil
+				})
+			}
+		}
+	}
+
 	gw.logger.Infow("go file watcher started", "directories", watchCount)
 	gw.appendLog(LogEntry{
 		Source:  "go-watch",
 		Level:   "info",
-		Message: fmt.Sprintf("Watching %d directories under pkg/", watchCount),
+		Message: fmt.Sprintf("Watching %d directories for Go changes", watchCount),
 	})
 
 	// Perform initial build so the binary exists for LoadPlugin validation.
@@ -162,6 +201,39 @@ func (gw *goWatcherProcess) Start() error {
 			})
 			gw.setBuild(duration, "")
 			gw.setStatus(DevProcessStatusReady)
+
+			// Sync plugin.yaml so capability changes are picked up.
+			if err := gw.syncPluginYaml(); err != nil {
+				gw.logger.Warnw("failed to sync plugin.yaml on initial build", "error", err)
+			}
+
+			// Reload the plugin so the fresh binary is picked up.
+			if err := gw.reloader.ReloadPlugin(gw.pluginID); err != nil {
+				var appErr *apperror.AppError
+				if errors.As(err, &appErr) && appErr.Type == apperror.TypePluginNotLoaded {
+					// During dev install the watcher may finish initial build before
+					// InstallInDevMode has called LoadPlugin; this is expected.
+					gw.logger.Infow("initial plugin reload skipped (plugin not loaded yet)")
+					gw.appendLog(LogEntry{
+						Source:  "go-build",
+						Level:   "info",
+						Message: "Initial reload skipped: plugin not loaded yet",
+					})
+				} else {
+					gw.logger.Errorw("initial plugin reload failed", "error", err)
+					gw.appendLog(LogEntry{
+						Source:  "go-build",
+						Level:   "error",
+						Message: fmt.Sprintf("Initial reload failed: %v", err),
+					})
+				}
+			} else {
+				gw.appendLog(LogEntry{
+					Source:  "go-build",
+					Level:   "info",
+					Message: "Plugin reloaded with fresh binary",
+				})
+			}
 		}
 	}
 
@@ -456,6 +528,41 @@ func (gw *goWatcherProcess) syncPluginYaml() error {
 		return apperror.Internal(err, "Failed to copy plugin.yaml")
 	}
 	return nil
+}
+
+// ============================================================================
+// go.work parsing
+// ============================================================================
+
+// parseGoWorkUseDirectives extracts module paths from a go.work file's "use" directives.
+// Handles both single-line ("use ./foo") and block ("use (\n  ./foo\n  ./bar\n)") forms.
+func parseGoWorkUseDirectives(data []byte) []string {
+	var paths []string
+	lines := strings.Split(string(data), "\n")
+	inBlock := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "use (") {
+			inBlock = true
+			continue
+		}
+		if inBlock {
+			if line == ")" {
+				inBlock = false
+				continue
+			}
+			p := strings.TrimSpace(line)
+			if p != "" && !strings.HasPrefix(p, "//") {
+				paths = append(paths, p)
+			}
+		} else if strings.HasPrefix(line, "use ") {
+			p := strings.TrimSpace(strings.TrimPrefix(line, "use"))
+			if p != "" {
+				paths = append(paths, p)
+			}
+		}
+	}
+	return paths
 }
 
 // ============================================================================

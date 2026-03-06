@@ -58,6 +58,15 @@ function formatTimestamp(ts: string): string {
   }
 }
 
+function sourceDisplay(entry: LogEntryType): string {
+  return (
+    entry.labels?.container ||
+    entry.labels?.pod ||
+    entry.labels?.source ||
+    entry.sourceId
+  );
+}
+
 /** Build a CSS style object for an ANSI segment. */
 function ansiStyle(seg: AnsiSegment): React.CSSProperties | undefined {
   if (!seg.fg && !seg.bg && !seg.bold && !seg.dim && !seg.italic && !seg.underline && !seg.strikethrough) {
@@ -214,6 +223,7 @@ const LogEntryComponent: React.FC<Props> = ({
   currentMatchOffset = -1,
 }) => {
   const levelColor = entry.level ? LEVEL_COLORS[entry.level] : undefined;
+  const sourceText = sourceDisplay(entry);
 
   const scrollToMatchRef = React.useCallback((node: HTMLSpanElement | null) => {
     if (node) {
@@ -303,6 +313,7 @@ const LogEntryComponent: React.FC<Props> = ({
       {/* Source badge */}
       {showSources && entry.sourceId && (
         <span
+          title={entry.sourceId}
           style={{
             fontSize: '10px',
             lineHeight: '16px',
@@ -317,7 +328,7 @@ const LogEntryComponent: React.FC<Props> = ({
             WebkitUserSelect: 'none',
           }}
         >
-          {entry.sourceId}
+          {sourceText}
         </span>
       )}
 

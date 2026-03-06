@@ -1,5 +1,5 @@
-import { InformerResourceState } from '../types/informer';
-import type { InformerStateEvent } from '../types/informer';
+import { WatchState } from '../types/watch';
+import type { WatchStateEvent } from '../types/watch';
 import {
   computeActiveSync,
   isSyncDone,
@@ -17,9 +17,9 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': InformerResourceState.Synced,
-        'core::v1::Service': InformerResourceState.Synced,
-        'apps::v1::Deployment': InformerResourceState.Synced,
+        'core::v1::Pod': WatchState.SYNCED,
+        'core::v1::Service': WatchState.SYNCED,
+        'apps::v1::Deployment': WatchState.SYNCED,
       },
     };
 
@@ -36,10 +36,10 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': InformerResourceState.Synced,
-        'core::v1::Service': InformerResourceState.Syncing,
-        'apps::v1::Deployment': InformerResourceState.Error,
-        'core::v1::Secret': InformerResourceState.Pending,
+        'core::v1::Pod': WatchState.SYNCED,
+        'core::v1::Service': WatchState.SYNCING,
+        'apps::v1::Deployment': WatchState.ERROR,
+        'core::v1::Secret': WatchState.IDLE,
       },
     };
 
@@ -56,8 +56,8 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': InformerResourceState.Synced,
-        'core::v1::Service': InformerResourceState.Error,
+        'core::v1::Pod': WatchState.SYNCED,
+        'core::v1::Service': WatchState.ERROR,
       },
     };
 
@@ -73,8 +73,8 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': InformerResourceState.Synced,
-        'core::v1::Service': InformerResourceState.Cancelled,
+        'core::v1::Pod': WatchState.SYNCED,
+        'core::v1::Service': WatchState.STOPPED,
       },
     };
 
@@ -103,16 +103,39 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': InformerResourceState.Pending,
-        'core::v1::Service': InformerResourceState.Pending,
+        'core::v1::Pod': WatchState.IDLE,
+        'core::v1::Service': WatchState.IDLE,
       },
     };
 
     const result = computeActiveSync(tracker);
     expect(result.totalResources).toBe(2);
+    expect(result.watchedTotal).toBe(2);
     expect(result.syncedCount).toBe(0);
     expect(result.doneCount).toBe(0);
     expect(result.progress).toBe(0);
+  });
+
+  it('excludes SKIPPED resources from watchedTotal and progress', () => {
+    const tracker: ResourceTracker = {
+      pluginID: 'k8s',
+      connectionID: 'cluster1',
+      states: {
+        'core::v1::Pod': WatchState.SYNCED,
+        'core::v1::Service': WatchState.SYNCED,
+        'resource::v1alpha3::DeviceClass': WatchState.SKIPPED,
+        'resource::v1alpha3::ResourceClaim': WatchState.SKIPPED,
+        'resource::v1alpha3::ResourceSlice': WatchState.SKIPPED,
+      },
+    };
+
+    const result = computeActiveSync(tracker);
+    expect(result.totalResources).toBe(5);
+    expect(result.watchedTotal).toBe(2);
+    expect(result.skippedCount).toBe(3);
+    expect(result.syncedCount).toBe(2);
+    expect(result.doneCount).toBe(2);
+    expect(result.progress).toBe(1); // 2/2 watched are done
   });
 });
 
@@ -120,7 +143,7 @@ describe('isSyncDone', () => {
   it('returns true when all resources are synced', () => {
     const sync: ActiveSync = {
       pluginID: 'k8s', connectionID: 'c1',
-      totalResources: 3, syncedCount: 3, errorCount: 0, doneCount: 3, progress: 1,
+      totalResources: 3, watchedTotal: 3, syncedCount: 3, errorCount: 0, forbiddenCount: 0, skippedCount: 0, doneCount: 3, progress: 1,
     };
     expect(isSyncDone(sync)).toBe(true);
   });
@@ -128,7 +151,7 @@ describe('isSyncDone', () => {
   it('returns true when all resources are either synced or errored', () => {
     const sync: ActiveSync = {
       pluginID: 'k8s', connectionID: 'c1',
-      totalResources: 3, syncedCount: 2, errorCount: 1, doneCount: 3, progress: 1,
+      totalResources: 3, watchedTotal: 3, syncedCount: 2, errorCount: 1, forbiddenCount: 0, skippedCount: 0, doneCount: 3, progress: 1,
     };
     expect(isSyncDone(sync)).toBe(true);
   });
@@ -136,7 +159,7 @@ describe('isSyncDone', () => {
   it('returns true when all resources errored', () => {
     const sync: ActiveSync = {
       pluginID: 'k8s', connectionID: 'c1',
-      totalResources: 3, syncedCount: 0, errorCount: 3, doneCount: 3, progress: 1,
+      totalResources: 3, watchedTotal: 3, syncedCount: 0, errorCount: 3, forbiddenCount: 0, skippedCount: 0, doneCount: 3, progress: 1,
     };
     expect(isSyncDone(sync)).toBe(true);
   });
@@ -144,7 +167,7 @@ describe('isSyncDone', () => {
   it('returns true when mix of synced, errored, and cancelled', () => {
     const sync: ActiveSync = {
       pluginID: 'k8s', connectionID: 'c1',
-      totalResources: 4, syncedCount: 2, errorCount: 1, doneCount: 4, progress: 1,
+      totalResources: 4, watchedTotal: 4, syncedCount: 2, errorCount: 1, forbiddenCount: 0, skippedCount: 0, doneCount: 4, progress: 1,
     };
     expect(isSyncDone(sync)).toBe(true);
   });
@@ -152,7 +175,7 @@ describe('isSyncDone', () => {
   it('returns false when some resources are still syncing', () => {
     const sync: ActiveSync = {
       pluginID: 'k8s', connectionID: 'c1',
-      totalResources: 3, syncedCount: 1, errorCount: 0, doneCount: 1, progress: 0.33,
+      totalResources: 3, watchedTotal: 3, syncedCount: 1, errorCount: 0, forbiddenCount: 0, skippedCount: 0, doneCount: 1, progress: 0.33,
     };
     expect(isSyncDone(sync)).toBe(false);
   });
@@ -160,7 +183,7 @@ describe('isSyncDone', () => {
   it('returns false for empty sync', () => {
     const sync: ActiveSync = {
       pluginID: 'k8s', connectionID: 'c1',
-      totalResources: 0, syncedCount: 0, errorCount: 0, doneCount: 0, progress: 0,
+      totalResources: 0, watchedTotal: 0, syncedCount: 0, errorCount: 0, forbiddenCount: 0, skippedCount: 0, doneCount: 0, progress: 0,
     };
     expect(isSyncDone(sync)).toBe(false);
   });
@@ -173,29 +196,29 @@ describe('hasActiveSyncing', () => {
 
   it('returns false when all syncs are done', () => {
     const syncs: ActiveSync[] = [
-      { pluginID: 'k8s', connectionID: 'c1', totalResources: 3, syncedCount: 3, errorCount: 0, doneCount: 3, progress: 1 },
-      { pluginID: 'k8s', connectionID: 'c2', totalResources: 2, syncedCount: 2, errorCount: 0, doneCount: 2, progress: 1 },
+      { pluginID: 'k8s', connectionID: 'c1', totalResources: 3, watchedTotal: 3, syncedCount: 3, errorCount: 0, forbiddenCount: 0, skippedCount: 0, doneCount: 3, progress: 1 },
+      { pluginID: 'k8s', connectionID: 'c2', totalResources: 2, watchedTotal: 2, syncedCount: 2, errorCount: 0, forbiddenCount: 0, skippedCount: 0, doneCount: 2, progress: 1 },
     ];
     expect(hasActiveSyncing(syncs)).toBe(false);
   });
 
   it('returns false when all resources errored (terminal state)', () => {
     const syncs: ActiveSync[] = [
-      { pluginID: 'k8s', connectionID: 'c1', totalResources: 3, syncedCount: 0, errorCount: 3, doneCount: 3, progress: 1 },
+      { pluginID: 'k8s', connectionID: 'c1', totalResources: 3, watchedTotal: 3, syncedCount: 0, errorCount: 3, forbiddenCount: 0, skippedCount: 0, doneCount: 3, progress: 1 },
     ];
     expect(hasActiveSyncing(syncs)).toBe(false);
   });
 
   it('returns false when done via cancelled + synced', () => {
     const syncs: ActiveSync[] = [
-      { pluginID: 'k8s', connectionID: 'c1', totalResources: 4, syncedCount: 2, errorCount: 0, doneCount: 4, progress: 1 },
+      { pluginID: 'k8s', connectionID: 'c1', totalResources: 4, watchedTotal: 4, syncedCount: 2, errorCount: 0, forbiddenCount: 0, skippedCount: 0, doneCount: 4, progress: 1 },
     ];
     expect(hasActiveSyncing(syncs)).toBe(false);
   });
 
   it('returns true when some resources are still in progress', () => {
     const syncs: ActiveSync[] = [
-      { pluginID: 'k8s', connectionID: 'c1', totalResources: 3, syncedCount: 1, errorCount: 0, doneCount: 1, progress: 0.33 },
+      { pluginID: 'k8s', connectionID: 'c1', totalResources: 3, watchedTotal: 3, syncedCount: 1, errorCount: 0, forbiddenCount: 0, skippedCount: 0, doneCount: 1, progress: 0.33 },
     ];
     expect(hasActiveSyncing(syncs)).toBe(true);
   });
@@ -208,15 +231,15 @@ describe('aggregateProgress', () => {
 
   it('computes aggregate across multiple syncs', () => {
     const syncs: ActiveSync[] = [
-      { pluginID: 'k8s', connectionID: 'c1', totalResources: 4, syncedCount: 2, errorCount: 0, doneCount: 2, progress: 0.5 },
-      { pluginID: 'k8s', connectionID: 'c2', totalResources: 6, syncedCount: 6, errorCount: 0, doneCount: 6, progress: 1 },
+      { pluginID: 'k8s', connectionID: 'c1', totalResources: 4, watchedTotal: 4, syncedCount: 2, errorCount: 0, forbiddenCount: 0, skippedCount: 0, doneCount: 2, progress: 0.5 },
+      { pluginID: 'k8s', connectionID: 'c2', totalResources: 6, watchedTotal: 6, syncedCount: 6, errorCount: 0, forbiddenCount: 0, skippedCount: 0, doneCount: 6, progress: 1 },
     ];
     expect(aggregateProgress(syncs)).toBe(0.8);
   });
 
   it('includes errors and cancelled in aggregate progress', () => {
     const syncs: ActiveSync[] = [
-      { pluginID: 'k8s', connectionID: 'c1', totalResources: 4, syncedCount: 1, errorCount: 1, doneCount: 4, progress: 1 },
+      { pluginID: 'k8s', connectionID: 'c1', totalResources: 4, watchedTotal: 4, syncedCount: 1, errorCount: 1, forbiddenCount: 0, skippedCount: 0, doneCount: 4, progress: 1 },
     ];
     expect(aggregateProgress(syncs)).toBe(1);
   });
@@ -224,13 +247,12 @@ describe('aggregateProgress', () => {
 
 describe('trackerKey', () => {
   it('creates key from event fields', () => {
-    const event: InformerStateEvent = {
+    const event: WatchStateEvent = {
       pluginId: 'kubernetes',
       connection: 'cluster-1',
       resourceKey: 'core::v1::Pod',
-      state: InformerResourceState.Syncing,
+      state: WatchState.SYNCING,
       resourceCount: 0,
-      totalCount: -1,
     };
     expect(trackerKey(event)).toBe('kubernetes/cluster-1');
   });
@@ -239,19 +261,18 @@ describe('trackerKey', () => {
 describe('updateTracker', () => {
   it('creates a new tracker for unknown connection', () => {
     const trackers = new Map<string, ResourceTracker>();
-    const event: InformerStateEvent = {
+    const event: WatchStateEvent = {
       pluginId: 'k8s',
       connection: 'c1',
       resourceKey: 'core::v1::Pod',
-      state: InformerResourceState.Syncing,
+      state: WatchState.SYNCING,
       resourceCount: 0,
-      totalCount: -1,
     };
 
     const tracker = updateTracker(trackers, event);
     expect(tracker.pluginID).toBe('k8s');
     expect(tracker.connectionID).toBe('c1');
-    expect(tracker.states['core::v1::Pod']).toBe(InformerResourceState.Syncing);
+    expect(tracker.states['core::v1::Pod']).toBe(WatchState.SYNCING);
   });
 
   it('updates existing tracker state', () => {
@@ -259,20 +280,19 @@ describe('updateTracker', () => {
     trackers.set('k8s/c1', {
       pluginID: 'k8s',
       connectionID: 'c1',
-      states: { 'core::v1::Pod': InformerResourceState.Syncing },
+      states: { 'core::v1::Pod': WatchState.SYNCING },
     });
 
-    const event: InformerStateEvent = {
+    const event: WatchStateEvent = {
       pluginId: 'k8s',
       connection: 'c1',
       resourceKey: 'core::v1::Pod',
-      state: InformerResourceState.Synced,
+      state: WatchState.SYNCED,
       resourceCount: 42,
-      totalCount: 42,
     };
 
     const tracker = updateTracker(trackers, event);
-    expect(tracker.states['core::v1::Pod']).toBe(InformerResourceState.Synced);
+    expect(tracker.states['core::v1::Pod']).toBe(WatchState.SYNCED);
   });
 
   it('tracks multiple resources per connection', () => {
@@ -280,15 +300,15 @@ describe('updateTracker', () => {
 
     updateTracker(trackers, {
       pluginId: 'k8s', connection: 'c1', resourceKey: 'core::v1::Pod',
-      state: InformerResourceState.Synced, resourceCount: 10, totalCount: 10,
+      state: WatchState.SYNCED, resourceCount: 10,
     });
     const tracker = updateTracker(trackers, {
       pluginId: 'k8s', connection: 'c1', resourceKey: 'core::v1::Service',
-      state: InformerResourceState.Syncing, resourceCount: 0, totalCount: -1,
+      state: WatchState.SYNCING, resourceCount: 0,
     });
 
     expect(Object.keys(tracker.states)).toHaveLength(2);
-    expect(tracker.states['core::v1::Pod']).toBe(InformerResourceState.Synced);
-    expect(tracker.states['core::v1::Service']).toBe(InformerResourceState.Syncing);
+    expect(tracker.states['core::v1::Pod']).toBe(WatchState.SYNCED);
+    expect(tracker.states['core::v1::Service']).toBe(WatchState.SYNCING);
   });
 });

@@ -26,6 +26,10 @@ export function ListDevServerStates() {
   return window['go']['devserver']['DevServerManager']['ListDevServerStates']();
 }
 
+export function RebuildPlugin(arg1) {
+  return window['go']['devserver']['DevServerManager']['RebuildPlugin'](arg1);
+}
+
 export function RestartDevServer(arg1) {
   return window['go']['devserver']['DevServerManager']['RestartDevServer'](arg1);
 }

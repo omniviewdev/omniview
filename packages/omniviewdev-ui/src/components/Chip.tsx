@@ -115,6 +115,19 @@ export default function Chip({
   const shapeSx = shape ? { borderRadius: toBorderRadius(shape) } : undefined;
   const transformSx = textTransform ? { '& .MuiChip-label': { textTransform } } : undefined;
 
+  // Normalize icon alignment — react-icons (and other SVG-based icon libs)
+  // set explicit width/height on their <svg> elements which bypass MUI's
+  // fontSize-based sizing.  Force SVGs inside the icon slot to inherit the
+  // chip's font-size so they stay proportional and vertically centred.
+  const iconNormalizeSx = {
+    '& .MuiChip-icon': {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      '& svg': { width: '1em', height: '1em' },
+    },
+  };
+
   return (
     <MuiChip
       label={resolvedLabel}
@@ -126,6 +139,7 @@ export default function Chip({
       onClick={onClick}
       disabled={disabled}
       sx={{
+        ...iconNormalizeSx,
         ...overrideSx,
         ...sizeSx,
         ...shapeSx,

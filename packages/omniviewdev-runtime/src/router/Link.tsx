@@ -24,13 +24,13 @@ type LinkProps = {
  * <Link to="/dashboard">Go to Dashboard</Link>
  */
 const Link: React.FC<LinkProps> = ({ to, withinContext, ...props }) => {
-  const { meta } = usePluginContext()
+  const { pluginId } = usePluginContext();
 
-  if (!meta.id) {
+  if (!pluginId) {
     console.error('Link used outside of a plugin context');
   }
 
-  const resolvedTo = `/_plugin/${meta.id}${to.startsWith('/') ? '' : '/'}${to}`;
+  const resolvedTo = `/_plugin/${pluginId}${to.startsWith('/') ? '' : '/'}${to}`;
 
   // Memoize the link, and default to not adding underline
   return React.useMemo(() => <OriginalLink style={{ textDecoration: 'none', color: 'inherit' }} {...props} to={resolvedTo} />, [props, resolvedTo]);

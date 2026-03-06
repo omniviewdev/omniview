@@ -4,8 +4,8 @@ import (
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
-// IClient is the system/UI facing client for making settings requests to the settings controller.
-type IClient interface {
+// Service is the system/UI facing client for making settings requests to the settings controller.
+type Service interface {
 	// ListPlugins returns a list of all the plugins that are registered with the settings controller
 	ListPlugins() ([]string, error)
 
@@ -44,7 +44,7 @@ func NewClient(controller Controller) *Client {
 	}
 }
 
-var _ IClient = (*Client)(nil)
+var _ Service = (*Client)(nil)
 
 func (c *Client) Values() map[string]any {
 	return c.controller.Values()

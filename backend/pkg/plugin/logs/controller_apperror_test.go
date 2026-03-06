@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"github.com/omniviewdev/plugin-sdk/pkg/logs"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 )
 
 // newTestController builds a minimal logs controller for apperror tests.

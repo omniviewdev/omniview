@@ -4,6 +4,8 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/wailsapp/wails/v2"
@@ -25,6 +27,7 @@ import (
 	pluginlogs "github.com/omniviewdev/omniview/backend/pkg/plugin/logs"
 	pluginmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
@@ -35,6 +38,7 @@ import (
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	"github.com/omniviewdev/omniview/internal/version"
 
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -113,6 +117,17 @@ func main() {
 	dataController := data.NewController(log)
 	dataClient := data.NewClient(dataController)
 
+	// Initialize per-plugin log manager for capturing plugin process stderr.
+	// Created here so it can be bound to Wails for UI access.
+	home, _ := os.UserHomeDir()
+	pluginLogManager, pluginLogErr := pluginlog.NewManager(
+		filepath.Join(home, ".omniview", "logs"),
+		pluginlog.DefaultRotation(),
+	)
+	if pluginLogErr != nil {
+		log.Warnw("failed to initialize plugin log manager", "error", pluginLogErr)
+	}
+
 	pluginRegistryClient := registry.NewClient("")
 	pluginManager := plugin.NewManager(
 		log,
@@ -142,6 +157,10 @@ func main() {
 	// skips plugins managed by DevServerManager.
 	pluginManager.SetDevServerChecker(devServerManager)
 	pluginManager.SetDevServerManager(devServerManager)
+
+	if pluginLogManager != nil {
+		pluginManager.SetPluginLogManager(pluginLogManager)
+	}
 
 	// Create an instance of the app structure
 	app := NewApp()
@@ -224,6 +243,7 @@ func main() {
 
 			// plugin system
 			pluginManager,
+			pluginLogManager,
 			devServerManager,
 			resourceClient,
 			settingsClient,
@@ -240,6 +260,8 @@ func main() {
 			trivy.AllCommands,
 			trivy.AllScanners,
 			sdktypes.AllConnectionStatusCodes,
+			sdkresource.AllWatchStates,
+			sdkresource.AllSyncPolicies,
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{

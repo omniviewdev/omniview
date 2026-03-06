@@ -173,7 +173,7 @@ export type BottomDrawerTab = {
   createdAt: Date;
   updatedAt: Date;
   icon?: string | React.ReactNode;
-  variant: 'terminal' | 'logs' | 'editor' | 'browser' | 'file' | 'devbuild' | 'editor-debug' | 'other';
+  variant: 'terminal' | 'logs' | 'editor' | 'browser' | 'file' | 'devbuild' | 'plugin-logs' | 'editor-debug' | 'other';
   properties?: Record<string, unknown>;
 };
 

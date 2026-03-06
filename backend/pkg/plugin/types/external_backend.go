@@ -10,8 +10,8 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	lc "github.com/omniviewdev/plugin-sdk/pkg/lifecycle"
-	"github.com/omniviewdev/plugin-sdk/proto"
+	lc "github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
+	lifecyclepb "github.com/omniviewdev/plugin-sdk/proto/v1/lifecycle"
 )
 
 // ExternalBackend wraps a go-plugin Client and ClientProtocol pair.
@@ -45,7 +45,7 @@ func (b *ExternalBackend) Healthy() bool {
 			defer cancel()
 			resp, rpcErr := lcClient.HealthCheck(ctx)
 			if rpcErr == nil {
-				return resp.Status == proto.ServingStatus_SERVING
+				return resp.Status == lifecyclepb.ServingStatus_SERVING_STATUS_SERVING
 			}
 		}
 	}
@@ -133,6 +133,11 @@ func (b *ExternalBackend) detectViaProbing() ([]string, error) {
 	}
 
 	return caps, nil
+}
+
+// NegotiatedVersion returns the SDK protocol version negotiated via go-plugin.
+func (b *ExternalBackend) NegotiatedVersion() int {
+	return b.pluginClient.NegotiatedVersion()
 }
 
 // ReattachConfig exposes the plugin process PID for the PID tracker.

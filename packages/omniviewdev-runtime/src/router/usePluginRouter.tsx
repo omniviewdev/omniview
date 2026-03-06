@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { usePluginContext } from '../context';
 
 /**
@@ -40,13 +40,13 @@ type PluginNavigateOptions = {
 function usePluginRouter() {
   const originalNavigate = useNavigate();
   const location = useLocation();
-  const { meta } = usePluginContext()
+  const { pluginId } = usePluginContext();
 
-  if (!meta.id) {
+  if (!pluginId) {
     console.error('usePluginRouter used outside of a plugin context');
   }
 
-  const pluginPrefix = `/_plugin/${meta.id}`;
+  const pluginPrefix = `/_plugin/${pluginId}`;
 
   /**
    * The current pathname relative to the plugin root, with the
@@ -67,7 +67,7 @@ function usePluginRouter() {
    *   resolution (relative to the current matched route).
    * @param opts - Navigation options
    */
-  const navigate = (path: string, opts?: PluginNavigateOptions) => {
+  const navigate = useCallback((path: string, opts?: PluginNavigateOptions) => {
     const { ...rest } = opts ?? {};
 
     if (path.startsWith('/')) {
@@ -77,13 +77,13 @@ function usePluginRouter() {
       // Relative path — delegate to react-router's native relative navigation
       originalNavigate(path, rest);
     }
-  };
+  }, [originalNavigate, pluginPrefix]);
 
   return useMemo(() => ({
     location,
     navigate,
     pluginPath,
-  }), [location.pathname]);
+  }), [location, navigate, pluginPath]);
 }
 
 export default usePluginRouter;

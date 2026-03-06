@@ -22,14 +22,35 @@ type Props = {
   handleChange: (name: string, value: any) => void;
 };
 
+const toStringArray = (value: any): string[] => {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map(part => part.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
 /**
  * Renders a single setting entry based on the type of setting.
  */
 const SettingsEntry: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
-  switch (setting.type) {
+  const settingType = setting.type as unknown as string;
+
+  switch (settingType) {
     case settings.SettingType.TEXT:
       /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <TextSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
+    case 'select':
+      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+      return <SelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
+    case 'multiselect':
+      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+      return <MultiSelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
     case settings.SettingType.TOGGLE:
       /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <ToggleSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
@@ -68,68 +89,12 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
     });
   };
 
-  if (Array.isArray(setting.value)) {
-    return (
-      <Stack direction='row' spacing={1} width={'100%'}>
-        <Autocomplete
-          size='small'
-          multiple
-          freeSolo={setting.options?.length === 0}
-          value={isChanged ? draftValue as string[] : setting.value as string[]}
-          onChange={(_, val) => {
-            console.log('Autocomplete value:', val);
-            handleChange(id, val);
-          }}
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          options={setting.options.map(option => ({ label: option.label, id: option.value }))}
-          sx={{
-            width: '100%',
-            ...(isChanged && {
-              outline: '2px solid var(--Select-focusedHighlight)',
-              outlineOffset: '2px',
-            }),
-          }}
-          renderInput={(params) => <MuiTextField {...params} placeholder={setting.value.length > 0 ? undefined : 'Kubeconfigs'} />}
-        />
-        {setting.fileSelection?.enabled ? (
-          <IconButton size='sm' emphasis='soft' onClick={async () => handleFileSelection()}>
-            <LuFile />
-          </IconButton>
-        ) : undefined
-        }
-      </Stack>
-    );
+  if (Array.isArray(setting.value) || Array.isArray(setting.default)) {
+    return <MultiSelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
   }
 
   if (setting.options?.length) {
-    return (
-      // Options selection
-      <Select
-        size='sm'
-        fullWidth
-        value={isChanged ? draftValue as string : setting.value as string}
-        onChange={(value) => {
-          handleChange(id, value);
-        }}
-        options={setting.options.map(option => ({
-          value: option.value as string,
-          label: option.label,
-        }))}
-        sx={{
-          '&::before': {
-            display: 'none',
-          },
-          '&:focus-within': {
-            outline: '2px solid var(--Select-focusedHighlight)',
-            outlineOffset: '2px',
-          },
-          ...(isChanged && {
-            outline: '2px solid var(--Select-focusedHighlight)',
-            outlineOffset: '2px',
-          }),
-        }}
-      />
-    );
+    return <SelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
   }
 
   // Normal single input
@@ -155,6 +120,118 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
         }),
       }}
     />
+  );
+};
+
+const SelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
+  const isChanged = draftValue !== undefined;
+
+  return (
+    <Select
+      size='sm'
+      fullWidth
+      value={isChanged ? draftValue as string : setting.value as string}
+      onChange={(value) => {
+        handleChange(id, value);
+      }}
+      options={setting.options.map(option => ({
+        value: option.value as string,
+        label: option.label,
+      }))}
+      sx={{
+        '&::before': {
+          display: 'none',
+        },
+        '&:focus-within': {
+          outline: '2px solid var(--Select-focusedHighlight)',
+          outlineOffset: '2px',
+        },
+        ...(isChanged && {
+          outline: '2px solid var(--Select-focusedHighlight)',
+          outlineOffset: '2px',
+        }),
+      }}
+    />
+  );
+};
+
+const MultiSelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
+  const isChanged = draftValue !== undefined;
+  const selectedValues = toStringArray(isChanged ? draftValue : setting.value);
+
+  return (
+    <Stack direction='row' spacing={1} width={'100%'}>
+      {setting.options?.length ? (
+        <Select
+          size='sm'
+          fullWidth
+          multiple
+          value={selectedValues}
+          onChange={(value) => {
+            handleChange(id, value);
+          }}
+          options={setting.options.map(option => ({
+            value: option.value as string,
+            label: option.label,
+          }))}
+          sx={{
+            '&::before': {
+              display: 'none',
+            },
+            '&:focus-within': {
+              outline: '2px solid var(--Select-focusedHighlight)',
+              outlineOffset: '2px',
+            },
+            ...(isChanged && {
+              outline: '2px solid var(--Select-focusedHighlight)',
+              outlineOffset: '2px',
+            }),
+          }}
+        />
+      ) : (
+        <Autocomplete
+          size='small'
+          multiple
+          freeSolo
+          value={selectedValues}
+          onChange={(_, val) => {
+            handleChange(id, val);
+          }}
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          options={setting.options.map(option => ({ label: option.label, id: option.value }))}
+          sx={{
+            width: '100%',
+            ...(isChanged && {
+              outline: '2px solid var(--Select-focusedHighlight)',
+              outlineOffset: '2px',
+            }),
+          }}
+          renderInput={(params) => <MuiTextField {...params} placeholder={selectedValues.length > 0 ? undefined : 'Values'} />}
+        />
+      )}
+      {setting.fileSelection?.enabled ? (
+        <IconButton size='sm' emphasis='soft' onClick={async () => {
+          if (!setting.fileSelection?.enabled) {
+            return;
+          }
+
+          const newValue = toStringArray(isChanged ? draftValue : setting.value);
+
+          OpenFileSelectionDialog(main.FileDialogOptions.createFrom({
+            showHiddenFiles: true,
+          })).then((result) => {
+            if (result) {
+              newValue.push(...result);
+              handleChange(id, newValue);
+            }
+          }).catch((err: unknown) => {
+            console.error('Error opening file selection dialog:', parseAppError(err).detail);
+          });
+        }}>
+          <LuFile />
+        </IconButton>
+      ) : undefined}
+    </Stack>
   );
 };
 

@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { showAppError } from '../../errors/parseAppError';
-import { types } from '../../wailsjs/go/models';
+import { resource } from '../../wailsjs/go/models';
 import { Create, Update, Delete } from '../../wailsjs/go/resource/Client';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
@@ -60,16 +60,14 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResource
   const { showSnackbar } = useSnackbar();
 
   const createMutation = useMutation({
-    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: Partial<types.CreateInput> }) =>
+    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { input?: any; namespace?: string } }) =>
       Create(
         pluginID,
         opts.connectionID,
         opts.resourceKey,
-        types.CreateInput.createFrom({
-          params: { ...opts.params, ...input.params },
-          input: { ...opts.params, ...input.input },
-          id: opts.resourceID,
-          namespace: opts.namespace,
+        resource.CreateInput.createFrom({
+          input: input.input,
+          namespace: input.namespace ?? opts.namespace ?? '',
         })
       ),
     onSuccess: (_, { opts }) => {
@@ -81,16 +79,15 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResource
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: Partial<types.UpdateInput> }) =>
+    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { input?: any } }) =>
       Update(
         pluginID,
         opts.connectionID,
         opts.resourceKey,
-        types.UpdateInput.createFrom({
-          params: { ...opts.params, ...input.params },
-          input: { ...opts.params, ...input.input },
+        resource.UpdateInput.createFrom({
+          input: input.input,
           id: opts.resourceID,
-          namespace: opts.namespace,
+          namespace: opts.namespace ?? '',
         })
       ),
     onSuccess: (_, { opts }) => {
@@ -102,17 +99,15 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResource
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: Partial<types.DeleteInput> }) =>
+    mutationFn: async ({ opts, input }: { opts: ResourceMutationOptions; input: { gracePeriodSeconds?: number } }) =>
       Delete(
         pluginID,
         opts.connectionID,
         opts.resourceKey,
-        types.DeleteInput.createFrom({
-          ...input,
-          params: { ...opts.params, ...input.params },
-          input: { ...opts.params, ...input.input },
+        resource.DeleteInput.createFrom({
           id: opts.resourceID,
-          namespace: opts.namespace,
+          namespace: opts.namespace ?? '',
+          gracePeriodSeconds: input.gracePeriodSeconds,
         })
       ),
     onSuccess: (_, { opts }) => {

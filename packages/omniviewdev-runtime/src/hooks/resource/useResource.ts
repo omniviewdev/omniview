@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
-import { types } from '../../wailsjs/go/models';
+import { resource } from '../../wailsjs/go/models';
 import { Get, Update, Delete } from '../../wailsjs/go/resource/Client';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
@@ -37,24 +37,6 @@ type UseResourceOptions = {
    */
   namespace?: string;
 
-  /**
-   * Optional parameters to pass to the resource fetch
-   * @example { labelSelector: "app=nginx" }
-   */
-  getParams?: Record<string, unknown>;
-
-  /**
-   * Optional parameters to pass to the resource update
-   * @example { dryRun: true }
-   */
-  updateParams?: Record<string, unknown>;
-
-  /**
-  * Optional parameters to pass to the resource delete
-  * @example { cascade: true }
-  * @example { force: true }
-  */
-  deleteParams?: Record<string, unknown>;
 };
 
 /**
@@ -70,9 +52,6 @@ export const useResource = ({
   resourceKey,
   resourceID,
   namespace = '',
-  getParams = {},
-  updateParams = {},
-  deleteParams = {},
 }: UseResourceOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
@@ -83,9 +62,8 @@ export const useResource = ({
   // === Mutations === //
 
   const { mutateAsync: update } = useMutation({
-    mutationFn: async (opts: Partial<types.UpdateInput>) => Update(pluginID, connectionID, resourceKey, types.UpdateInput.createFrom({
-      params: { ...updateParams, ...opts.params },
-      input: { ...updateParams, ...opts.input },
+    mutationFn: async (opts: { input?: any }) => Update(pluginID, connectionID, resourceKey, resource.UpdateInput.createFrom({
+      input: opts.input,
       id: resourceID,
       namespace,
     })),
@@ -97,12 +75,10 @@ export const useResource = ({
   });
 
   const { mutateAsync: remove } = useMutation({
-    mutationFn: async (opts: Partial<types.DeleteInput>) => Delete(pluginID, connectionID, resourceKey, types.DeleteInput.createFrom({
-      params: { ...deleteParams, ...opts.params },
-      input: { ...deleteParams, ...opts.input },
+    mutationFn: async (opts: { gracePeriodSeconds?: number } = {}) => Delete(pluginID, connectionID, resourceKey, resource.DeleteInput.createFrom({
       id: resourceID,
-      ...opts,
       namespace,
+      gracePeriodSeconds: opts.gracePeriodSeconds,
     })),
     onSuccess: async () => {
       showSnackbar(`Resource ${resourceID} deleted`, 'success');
@@ -113,8 +89,7 @@ export const useResource = ({
 
   const resourceQuery = useQuery({
     queryKey,
-    queryFn: async () => Get(pluginID, connectionID, resourceKey, types.GetInput.createFrom({
-      params: getParams,
+    queryFn: async () => Get(pluginID, connectionID, resourceKey, resource.GetInput.createFrom({
       id: resourceID,
       namespace,
     })),

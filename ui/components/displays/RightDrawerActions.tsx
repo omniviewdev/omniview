@@ -72,9 +72,40 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
     }, 150);
   }, []);
 
+  const actionTitle = typeof action.title === 'string' ? action.title : '';
+  const dividerBefore = actionTitle === 'Start' || actionTitle === 'Delete';
+
+  const wrapped = (node: React.ReactNode) => (
+    <Box
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        ...(dividerBefore
+          ? {
+              ml: 0.75,
+              pl: 0.75,
+              position: 'relative',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: '1px',
+                height: '16px',
+                backgroundColor: 'rgba(148, 163, 184, 0.45)',
+              },
+            }
+          : {}),
+      }}
+    >
+      {node}
+    </Box>
+  );
+
   // Simple action button (no list)
   if (!!action.action && !action.list) {
-    return (
+    return wrapped(
       <Tooltip arrow content={action.title} emphasis='soft'>
         <span>
           <IconButton
@@ -90,7 +121,7 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
 
   // List action with single item: click directly triggers the action
   if (!!action.list && listItems.length === 1) {
-    return (
+    return wrapped(
       <Tooltip arrow content={action.title} emphasis='soft'>
         <span>
           <IconButton
@@ -106,7 +137,7 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
 
   // List action with multiple items: hover to show menu
   if (!!action.list && listItems.length > 1) {
-    return (
+    return wrapped(
       <span
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}

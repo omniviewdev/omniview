@@ -538,6 +538,114 @@ func TestIntegration_ExternalWatcher_ScanOnStart(t *testing.T) {
 }
 
 // ============================================================================
+// Initial build reload test
+// ============================================================================
+
+// TestIntegration_GoWatcher_InitialBuild_TriggersReload verifies that the initial
+// build in Start() calls ReloadPlugin so the fresh binary is picked up immediately.
+// This was Bug 1: initial build transferred the binary but never reloaded.
+func TestIntegration_GoWatcher_InitialBuild_TriggersReload(t *testing.T) {
+	goPath, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("go binary not found in PATH; skipping integration test")
+	}
+
+	devPath := t.TempDir()
+	copyTestFixture(t, filepath.Join("testdata", "test-plugin"), devPath)
+	t.Setenv("GOWORK", "off")
+	t.Setenv("HOME", t.TempDir())
+
+	statusRec := newGoWatcherStatusRecorder()
+	reloader := &mockPluginReloader{}
+	var logEntries []LogEntry
+
+	gw := newGoWatcherProcess(
+		context.Background(),
+		zap.NewNop().Sugar(),
+		"test-initial-reload",
+		devPath,
+		BuildOpts{GoPath: goPath},
+		reloader,
+		func(e LogEntry) { logEntries = append(logEntries, e) },
+		statusRec.record,
+		func(time.Duration, string) {},
+		func(string, []BuildError) {},
+	)
+
+	err = gw.Start()
+	require.NoError(t, err, "Start() should succeed")
+	defer gw.Stop()
+
+	// Should reach Ready status from the initial build.
+	ok := statusRec.waitForStatus(DevProcessStatusReady, 10*time.Second)
+	require.True(t, ok, "should reach Ready status after initial build")
+
+	// ReloadPlugin should have been called exactly once during Start().
+	assert.Equal(t, 1, reloader.getCallCount(),
+		"ReloadPlugin should be called once after initial build")
+	assert.Equal(t, "test-initial-reload", reloader.getLastPluginID())
+
+	// Verify the reload log message appeared.
+	hasReloadMsg := false
+	for _, entry := range logEntries {
+		if entry.Message == "Plugin reloaded with fresh binary" {
+			hasReloadMsg = true
+			break
+		}
+	}
+	assert.True(t, hasReloadMsg, "should log 'Plugin reloaded with fresh binary'")
+}
+
+// TestIntegration_GoWatcher_InitialBuild_ReloadFails verifies that when the
+// initial build succeeds but ReloadPlugin fails, the failure is logged but
+// Start() still succeeds (the watcher keeps running so the user can fix it).
+func TestIntegration_GoWatcher_InitialBuild_ReloadFails(t *testing.T) {
+	goPath, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("go binary not found in PATH; skipping integration test")
+	}
+
+	devPath := t.TempDir()
+	copyTestFixture(t, filepath.Join("testdata", "test-plugin"), devPath)
+	t.Setenv("GOWORK", "off")
+	t.Setenv("HOME", t.TempDir())
+
+	reloader := &mockPluginReloader{err: fmt.Errorf("reload error: simulated")}
+	var logEntries []LogEntry
+
+	gw := newGoWatcherProcess(
+		context.Background(),
+		zap.NewNop().Sugar(),
+		"test-reload-fail",
+		devPath,
+		BuildOpts{GoPath: goPath},
+		reloader,
+		func(e LogEntry) { logEntries = append(logEntries, e) },
+		func(DevProcessStatus) {},
+		func(time.Duration, string) {},
+		func(string, []BuildError) {},
+	)
+
+	err = gw.Start()
+	require.NoError(t, err, "Start() should succeed even when reload fails")
+	defer gw.Stop()
+
+	// ReloadPlugin was called but failed.
+	assert.Equal(t, 1, reloader.getCallCount())
+
+	// Should have an error log about the failed reload.
+	hasErrorLog := false
+	for _, entry := range logEntries {
+		if entry.Source == "go-build" && entry.Level == "error" &&
+			entry.Message == "Initial reload failed: reload error: simulated" {
+			hasErrorLog = true
+			break
+		}
+	}
+	assert.True(t, hasErrorLog, "should log initial reload failure")
+}
+
+// ============================================================================
 // Bug-exposing tests (these should FAIL before fixes, PASS after)
 // ============================================================================
 
@@ -826,9 +934,15 @@ func TestIntegration_GoWatcher_IgnoresNonGoFiles(t *testing.T) {
 	require.True(t, statusRec.waitForStatus(DevProcessStatusReady, 5*time.Second))
 
 	// Write non-Go files in the watched pkg/ directory.
+	// Covers typical frontend/config files that should never trigger a Go rebuild.
 	require.NoError(t, os.WriteFile(filepath.Join(devPath, "pkg", "notes.txt"), []byte("hello"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(devPath, "pkg", "data.json"), []byte("{}"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(devPath, "pkg", "script.py"), []byte("pass"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(devPath, "pkg", "component.ts"), []byte("export const x = 1;"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(devPath, "pkg", "component.tsx"), []byte("export default () => null;"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(devPath, "pkg", "styles.css"), []byte("body{}"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(devPath, "pkg", "README.md"), []byte("# readme"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(devPath, "pkg", "config.yaml"), []byte("key: val"), 0644))
 
 	// Wait longer than the debounce interval + some margin.
 	time.Sleep(1500 * time.Millisecond)

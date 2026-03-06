@@ -49,6 +49,10 @@ func resolveHomeDir() string {
 	return homeDirPath
 }
 
+func getOmniviewLogDir() string {
+	return filepath.Join(resolveHomeDir(), ".omniview", "logs")
+}
+
 func getPluginDir() string {
 	if pluginDirOverride != "" {
 		return pluginDirOverride

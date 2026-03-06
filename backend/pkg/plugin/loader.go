@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
@@ -16,14 +18,14 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	ep "github.com/omniviewdev/plugin-sdk/pkg/exec"
-	lc "github.com/omniviewdev/plugin-sdk/pkg/lifecycle"
-	lp "github.com/omniviewdev/plugin-sdk/pkg/logs"
-	mp "github.com/omniviewdev/plugin-sdk/pkg/metric"
-	np "github.com/omniviewdev/plugin-sdk/pkg/networker"
-	rp "github.com/omniviewdev/plugin-sdk/pkg/resource/plugin"
+	ep "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
+	lc "github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
+	lp "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
+	mp "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
+	np "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
+	rpv1 "github.com/omniviewdev/plugin-sdk/pkg/v1/resource/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
-	sp "github.com/omniviewdev/plugin-sdk/pkg/settings"
+	sp "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -191,24 +193,34 @@ func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, lo
 		return pm.backendFactory(metadata, location)
 	}
 
+	// Build the hclog writer: always write to stdout, and additionally
+	// persist to the plugin's rotated log file when the log manager is available.
+	var logOutput io.Writer = os.Stdout
+	if pm.pluginLogMgr != nil {
+		logOutput = io.MultiWriter(os.Stdout, pm.pluginLogMgr.Stream(id))
+	}
+
 	pluginClient := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig: metadata.GenerateHandshakeConfig(),
-		Plugins: map[string]goplugin.Plugin{
-			"resource":  &rp.ResourcePlugin{},
-			"exec":      &ep.Plugin{},
-			"networker": &np.Plugin{},
-			"log":       &lp.Plugin{},
-			"metric":    &mp.Plugin{},
-			"settings":  &sp.SettingsPlugin{},
-			"lifecycle": &lc.Plugin{},
+		VersionedPlugins: map[int]goplugin.PluginSet{
+			1: {
+				"resource":  &rpv1.GRPCPlugin{},
+				"exec":      &ep.Plugin{},
+				"networker": &np.Plugin{},
+				"log":       &lp.Plugin{},
+				"metric":    &mp.Plugin{},
+				"settings":  &sp.SettingsPlugin{},
+				"lifecycle": &lc.Plugin{},
+			},
 		},
 		GRPCDialOptions: sdk.GRPCDialOptions(),
 		//nolint:gosec // this is completely software controlled
 		Cmd:              exec.Command(filepath.Join(location, "bin", "plugin")),
+		StartTimeout:     15 * time.Second, // Don't block startup for broken plugins (default is 60s)
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Name:   id,
-			Output: os.Stdout,
+			Output: logOutput,
 			Level:  hclog.Debug,
 		}),
 	})
@@ -319,6 +331,20 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 
 	ctx := context.Background()
 	pluginID := record.ID
+
+	// Record the negotiated SDK protocol version.
+	version := backend.NegotiatedVersion()
+	record.ProtocolVersion = version
+	if version < plugintypes.CurrentProtocolVersion {
+		pm.logger.Warnw("plugin uses deprecated SDK protocol version",
+			"pluginID", pluginID, "version", version,
+			"current", plugintypes.CurrentProtocolVersion)
+		emitEvent(pm.ctx, EventDeprecatedProtocol, DeprecatedProtocolPayload{
+			PluginID:       pluginID,
+			Version:        version,
+			CurrentVersion: plugintypes.CurrentProtocolVersion,
+		})
+	}
 
 	for name, manager := range pm.managers {
 		if err := manager.OnPluginStart(ctx, pluginID, record.Metadata); err != nil {

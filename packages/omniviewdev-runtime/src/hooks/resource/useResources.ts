@@ -4,41 +4,16 @@ import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
 
 // Types
-import { types } from '../../wailsjs/go/models';
-import { InformerResourceState } from '../../types/informer';
-import type { InformerStateEvent } from '../../types/informer';
+import { resource as resourceModels } from '../../wailsjs/go/models';
+import { WatchState } from '../../types/watch';
+import type { WatchStateEvent } from '../../types/watch';
 
 // Underlying client
 import { List, Create, SubscribeResource, UnsubscribeResource } from '../../wailsjs/go/resource/Client';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { produce } from 'immer';
-import get from 'lodash.get';
 import { useResolvedPluginId } from '../useResolvedPluginId';
-
-type AddPayload = {
-  data: any;
-  key: string;
-  connection: string;
-  id: string;
-  namespace: string;
-};
-
-type UpdatePayload = {
-  oldData: any;
-  newData: any;
-  key: string;
-  connection: string;
-  id: string;
-  namespace: string;
-};
-
-type DeletePayload = {
-  data: any;
-  key: string;
-  connection: string;
-  id: string;
-  namespace: string;
-};
+import { useEventBatcher } from './useEventBatcher';
+import type { AddPayload, UpdatePayload, DeletePayload } from './useEventBatcher';
 
 type UseResourcesOptions = {
   /**
@@ -69,22 +44,11 @@ type UseResourcesOptions = {
   namespaces?: string[];
 
   /**
-   * The dot-delimited path on which id's can be used for updates. In order for the informer
+   * The dot-delimited path on which id's can be used for updates. In order for the watch
    * live functionality to work, this must be set to the path on which the ID is located.
    */
   idAccessor?: string;
 
-  /**
-   * Optional parameters to pass to the resource fetch
-   * @example { labelSelector: "app=nginx" }
-   */
-  listParams?: Record<string, unknown>;
-
-  /**
-  * Optional parameters to pass to the resource create
-  * @example { dryRun: true }
-  */
-  createParams?: Record<string, unknown>;
 };
 
 /**
@@ -99,39 +63,44 @@ export const useResources = ({
   connectionID,
   resourceKey,
   idAccessor,
-  namespaces = [],
-  listParams = {},
-  createParams = {},
+  namespaces,
 }: UseResourcesOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
-  const queryKey = [pluginID, connectionID, resourceKey, namespaces, 'list'];
-  const getResourceKey = (id: string, namespace: string) => [pluginID, connectionID, resourceKey, namespace, id];
+  const stableNamespaces = React.useMemo(() => namespaces ?? [], [namespaces]);
+  const queryKey = React.useMemo(
+    () => [pluginID, connectionID, resourceKey, stableNamespaces, 'list'],
+    [pluginID, connectionID, resourceKey, stableNamespaces],
+  );
+  const getResourceKey = React.useCallback(
+    (id: string, namespace: string) => [pluginID, connectionID, resourceKey, namespace, id],
+    [pluginID, connectionID, resourceKey],
+  );
 
   // === Mutations === //
 
   const { mutateAsync: create } = useMutation({
-    mutationFn: async (opts: Partial<types.CreateInput>) => Create(pluginID, connectionID, resourceKey, types.CreateInput.createFrom({
-      params: opts.params as Record<string, unknown> || createParams,
+    mutationFn: async (opts: { input?: any; namespace?: string }) => Create(pluginID, connectionID, resourceKey, resourceModels.CreateInput.createFrom({
       input: opts.input,
-      namespaces,
+      namespace: opts.namespace ?? (stableNamespaces.length === 1 ? stableNamespaces[0] : ''),
     })),
     onSuccess: async (data) => {
+      const result = data.result as any;
       let foundID = '';
 
       // Attempt to find an ID based on some common patterns
-      if (data.result.metadata?.name) {
-        foundID = data.result.metadata.name as string;
-      } else if (data.result?.id) {
-        foundID = data.result?.id as string;
-      } else if (data.result?.name) {
-        foundID = data.result?.name as string;
-      } else if (data.result?.ID) {
-        foundID = data.result?.ID as string;
-      } else if (data.result?.Name) {
-        foundID = data.result.Name as string;
+      if (result?.metadata?.name) {
+        foundID = result.metadata.name as string;
+      } else if (result?.id) {
+        foundID = result.id as string;
+      } else if (result?.name) {
+        foundID = result.name as string;
+      } else if (result?.ID) {
+        foundID = result.ID as string;
+      } else if (result?.Name) {
+        foundID = result.Name as string;
       }
 
       const message = foundID ? `Resource ${foundID} created` : 'Resource created';
@@ -144,106 +113,37 @@ export const useResources = ({
 
   const resourceQuery = useQuery({
     queryKey,
-    queryFn: async () => List(pluginID, connectionID, resourceKey, types.ListInput.createFrom({
-      params: listParams,
-      order: {
-        by: 'name',
-        direction: true,
-      },
-      pagination: {
-        page: 1,
-        pageSize: 200,
-      },
-      namespaces,
+    queryFn: async () => List(pluginID, connectionID, resourceKey, resourceModels.ListInput.createFrom({
+      order: [{ field: 'name', descending: false }],
+      pagination: { page: 1, pageSize: 200 },
+      namespaces: stableNamespaces,
     })),
     placeholderData: (previousData, _) => previousData,
     retry: false,
   });
 
 
-  // === Informer Cache Updates === //
+  // === Watch State === //
 
-  /**
-   * Handle adding new resources to the resource list
-   */
-  const onResourceAdd = React.useCallback((newResource: AddPayload) => {
-    if (!idAccessor) {
-      return;
-    }
+  const [watchState, setWatchState] = React.useState<WatchState>(
+    WatchState.IDLE
+  );
 
-    queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
-      return produce(oldData, (draft) => {
-        if (!draft) {
-          draft = types.ListResult.createFrom({
-            result: [],
-            success: true,
-            pagination: {},
-          });
+  React.useEffect(() => {
+    const cancel = EventsOn(
+      `${pluginID}/${connectionID}/watch/STATE`,
+      (event: WatchStateEvent) => {
+        if (event.resourceKey === resourceKey) {
+          setWatchState(event.state);
         }
+      },
+    );
+    return cancel;
+  }, [pluginID, connectionID, resourceKey]);
 
-        const index = draft.result.findIndex(item => get(newResource.data, idAccessor) === get(item, idAccessor));
-        if (index === -1) {
-          // not found - push it on
-          draft.result.push(newResource.data)
-          return;
-        }
-      });
-    });
-    queryClient.setQueryData(getResourceKey(newResource.id, newResource.namespace), { result: newResource.data });
-  }, []);
+  // === Watch Cache Updates (adaptive batching) === //
 
-  /**
-   * Handle updating resources in the resource list
-   */
-  const onResourceUpdate = React.useCallback((updateEvent: UpdatePayload) => {
-    if (!idAccessor) {
-      return;
-    }
-
-    queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
-      return produce(oldData, (draft) => {
-        if (!draft) {
-          draft = types.ListResult.createFrom({
-            result: [],
-            success: true,
-            pagination: {},
-          });
-        }
-
-        const index = draft.result.findIndex(item => get(updateEvent.newData, idAccessor) === get(item, idAccessor));
-        if (index !== -1) {
-          draft.result[index] = updateEvent.newData;
-          return;
-        }
-      });
-    });
-    queryClient.setQueryData(getResourceKey(updateEvent.id, updateEvent.namespace), { result: updateEvent.newData });
-  }, []);
-
-  /**
-   * Handle deleting pods from the resource list
-   */
-  const onResourceDelete = React.useCallback((deletedResource: DeletePayload) => {
-    if (!idAccessor) {
-      return;
-    }
-
-    queryClient.setQueryData(queryKey, (oldData: types.ListResult) => {
-      return produce(oldData, (draft) => {
-        if (!draft) {
-          return;
-        }
-
-        const index = draft.result.findIndex(item => get(deletedResource.data, idAccessor) === get(item, idAccessor));
-        if (index !== -1) {
-          draft.result.splice(index, 1);
-          return;
-        }
-      });
-    });
-    // TODO - don't delete yet, just set to undefined
-    // queryClient.setQueryData(getResourceKey(deletedResource.id, deletedResource.namespace), undefined);
-  }, []);
+  const enqueue = useEventBatcher(queryClient, queryKey, getResourceKey, idAccessor, watchState);
 
   // Subscribe to live resource events when this view mounts. The Go side only
   // forwards ADD/UPDATE/DELETE events over the Wails bridge for resources with
@@ -253,47 +153,33 @@ export const useResources = ({
       return;
     }
 
-    let cancelled = false;
+    // Tell Go we want live events for this resource. The initial List
+    // query already returns current data, and live ADD/UPDATE/DELETE
+    // events are applied to the cache via useEventBatcher from this
+    // point forward — no need to re-List after subscribing.
+    SubscribeResource(pluginID, connectionID, resourceKey);
 
-    // Tell Go we want live events for this resource, then refetch to
-    // catch any events that arrived before the subscription was active.
-    SubscribeResource(pluginID, connectionID, resourceKey).then(() => {
-      if (!cancelled) {
-        void queryClient.invalidateQueries({ queryKey });
-      }
-    });
-
-    const addCloser = EventsOn(`${pluginID}/${connectionID}/${resourceKey}/ADD`, onResourceAdd);
-    const updateCloser = EventsOn(`${pluginID}/${connectionID}/${resourceKey}/UPDATE`, onResourceUpdate);
-    const deleteCloser = EventsOn(`${pluginID}/${connectionID}/${resourceKey}/DELETE`, onResourceDelete);
+    const addCloser = EventsOn(
+      `${pluginID}/${connectionID}/${resourceKey}/ADD`,
+      (payload: AddPayload) => enqueue({ type: 'ADD', payload }),
+    );
+    const updateCloser = EventsOn(
+      `${pluginID}/${connectionID}/${resourceKey}/UPDATE`,
+      (payload: UpdatePayload) => enqueue({ type: 'UPDATE', payload }),
+    );
+    const deleteCloser = EventsOn(
+      `${pluginID}/${connectionID}/${resourceKey}/DELETE`,
+      (payload: DeletePayload) => enqueue({ type: 'DELETE', payload }),
+    );
 
     return () => {
-      cancelled = true;
       addCloser();
       updateCloser();
       deleteCloser();
       // Tell Go we no longer need live events
       void UnsubscribeResource(pluginID, connectionID, resourceKey);
     };
-  }, [pluginID, connectionID, resourceKey]);
-
-  // === Informer State === //
-
-  const [informerState, setInformerState] = React.useState<InformerResourceState>(
-    InformerResourceState.Pending
-  );
-
-  React.useEffect(() => {
-    const cancel = EventsOn(
-      `${pluginID}/${connectionID}/informer/STATE`,
-      (event: InformerStateEvent) => {
-        if (event.resourceKey === resourceKey) {
-          setInformerState(event.state);
-        }
-      },
-    );
-    return cancel;
-  }, [pluginID, connectionID, resourceKey]);
+  }, [pluginID, connectionID, resourceKey, enqueue]);
 
   return {
     /**
@@ -311,16 +197,16 @@ export const useResources = ({
      */
     create,
 
-    /** Current informer state for this resource type */
-    informerState,
+    /** Current watch state for this resource type */
+    watchState,
 
-    /** Whether the informer is currently syncing */
-    isSyncing: informerState === InformerResourceState.Syncing,
+    /** Whether the watch is currently syncing */
+    isSyncing: watchState === WatchState.SYNCING,
 
-    /** Whether the informer has fully synced */
-    isSynced: informerState === InformerResourceState.Synced,
+    /** Whether the watch has fully synced */
+    isSynced: watchState === WatchState.SYNCED,
 
-    /** Whether the informer encountered an error */
-    informerError: informerState === InformerResourceState.Error,
+    /** Whether the watch encountered an error */
+    watchError: watchState === WatchState.ERROR,
   };
 };

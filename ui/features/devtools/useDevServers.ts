@@ -18,7 +18,7 @@ export function useDevServers() {
       .then((states) => {
         if (!states || states.length === 0) return;
         setServers(new Map(
-          (states as unknown as DevServerState[]).map((s) => [s.pluginID, s]),
+          states.map((s) => [s.pluginID, s]),
         ));
       })
       .catch(() => {

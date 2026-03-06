@@ -144,9 +144,13 @@ export function resolveEditorTheme(
   return mode === 'light' ? MONACO_THEME_NAMES.omniviewLight : MONACO_THEME_NAMES.omniviewDark;
 }
 
+let registered = false;
+
 export function registerOmniviewThemes(monaco: typeof import('monaco-editor')) {
+  if (registered) return;
   monaco.editor.defineTheme(MONACO_THEME_NAMES.omniviewDark, omniviewDark);
   monaco.editor.defineTheme(MONACO_THEME_NAMES.omniviewLight, omniviewLight);
   monaco.editor.defineTheme(MONACO_THEME_NAMES.solarizedDark, solarizedDark);
   monaco.editor.defineTheme(MONACO_THEME_NAMES.solarizedLight, solarizedLight);
+  registered = true;
 }

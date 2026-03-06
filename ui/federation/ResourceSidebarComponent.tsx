@@ -21,7 +21,7 @@ import {
 } from '@omniviewdev/runtime'
 
 // types
-import { types, ui } from '@omniviewdev/runtime/models';
+import { resource, ui } from '@omniviewdev/runtime/models';
 
 // icons
 import Icon from '@/components/icons/Icon';
@@ -76,7 +76,7 @@ const ResourceDrawerContainer: React.FC<Props> = ({
   * Update the resource
   */
   const onResourceUpdate = async (data: Record<string, unknown>) => {
-    const input = types.UpdateInput.createFrom({
+    const input = resource.UpdateInput.createFrom({
       input: data,
       params: {},
       id: resourceID,

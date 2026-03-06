@@ -1,12 +1,18 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { PluginContextProvider } from '@omniviewdev/runtime';
 
-const mockGetPluginMeta = jest.fn();
-const mockPluginValues = jest.fn();
+const mockGetPluginMeta = vi.fn();
+const mockPluginValues = vi.fn();
+let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+let consoleDebugSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   mockGetPluginMeta.mockReset();
   mockPluginValues.mockReset().mockResolvedValue({});
+  consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
 
   // Wails JS bindings call window['go'][...] — set up the stubs.
   (window as any).go = {
@@ -25,11 +31,15 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (window as any).go;
+  consoleLogSpy.mockRestore();
+  consoleErrorSpy.mockRestore();
+  consoleDebugSpy.mockRestore();
 });
 
 describe('PluginContextProvider', () => {
   it('shows loading spinner initially', () => {
     // Never resolve so we stay in loading state
+    mockPluginValues.mockReturnValue(new Promise(() => {}));
     mockGetPluginMeta.mockReturnValue(new Promise(() => {}));
 
     const { container } = render(

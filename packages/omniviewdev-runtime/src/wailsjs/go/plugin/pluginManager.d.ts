@@ -6,6 +6,7 @@ import {config} from '../models';
 import {context} from '../models';
 import {plugin} from '../models';
 import {devserver} from '../models';
+import {pluginlog} from '../models';
 
 export function GetPlugin(arg1:string):Promise<types.PluginInfo>;
 
@@ -50,6 +51,8 @@ export function SearchPlugins(arg1:string,arg2:string,arg3:string):Promise<Array
 export function SetDevServerChecker(arg1:plugin.DevServerChecker):Promise<void>;
 
 export function SetDevServerManager(arg1:devserver.DevServerManager):Promise<void>;
+
+export function SetPluginLogManager(arg1:pluginlog.Manager):Promise<void>;
 
 export function Shutdown():Promise<void>;
 

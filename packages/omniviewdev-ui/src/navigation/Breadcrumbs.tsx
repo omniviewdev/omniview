@@ -37,7 +37,7 @@ export default function Breadcrumbs({
       {items.map((item, i) => {
         const isLast = i === items.length - 1;
         const content = (
-          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
             {item.icon}
             <span>{item.label}</span>
           </Box>
@@ -45,7 +45,12 @@ export default function Breadcrumbs({
 
         if (isLast) {
           return (
-            <Typography key={i} variant="body2" sx={{ fontSize: 'inherit', color: 'var(--ov-fg-base)', fontWeight: 500 }}>
+            <Typography
+              key={i}
+              component="span"
+              variant="body2"
+              sx={{ fontSize: 'inherit', color: 'var(--ov-fg-base)', fontWeight: 500 }}
+            >
               {content}
             </Typography>
           );
@@ -75,7 +80,7 @@ export default function Breadcrumbs({
         }
 
         return (
-          <Typography key={i} variant="body2" sx={{ fontSize: 'inherit', color: 'inherit' }}>
+          <Typography key={i} component="span" variant="body2" sx={{ fontSize: 'inherit', color: 'inherit' }}>
             {content}
           </Typography>
         );

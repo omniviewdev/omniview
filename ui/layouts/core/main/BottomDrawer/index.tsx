@@ -10,7 +10,8 @@ import { useTheme } from '@mui/material/styles';
 import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
 import TerminalContainer from '@/providers/BottomDrawer/containers/Terminal';
 import LogViewerContainer from '@/providers/BottomDrawer/containers/LogViewer';
-import DevBuildOutput from '@/providers/BottomDrawer/containers/DevBuildOutput';
+import DevBuildViewer from '@/providers/BottomDrawer/containers/DevBuildViewer';
+import PluginLogViewer from '@/providers/BottomDrawer/containers/PluginLogViewer';
 import EditorDebugPanel from '@/providers/BottomDrawer/containers/EditorDebugPanel';
 import { useBottomDrawer } from '@omniviewdev/runtime';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
@@ -25,6 +26,11 @@ const LogViewerContainerMemo = React.memo(LogViewerContainer, (prev, next) => {
   return prev.sessionId === next.sessionId;
 });
 
+type DrawerStartupMode = 'minimized' | 'expanded';
+
+const drawerModeStorageKey = 'omniview.bottomDrawer.mode';
+const drawerExpandedHeightStorageKey = 'omniview.bottomDrawer.expandedHeight';
+
 /**
  * Sticky resizable drawer at the bottom of the screen used to display
  * interactive context items, such as terminals and reports.
@@ -34,6 +40,7 @@ const BottomDrawerContainer: React.FC = () => {
   const defaultHeight = 400;
 
   const { tabs, focused } = useBottomDrawer();
+  const hasTabs = tabs.length > 0;
 
   const [height, setDrawerHeight] = React.useState<number>(minHeight);
   const lastExpandedHeightRef = React.useRef<number>(defaultHeight);
@@ -46,6 +53,42 @@ const BottomDrawerContainer: React.FC = () => {
   // Ref for the sidebar to calculate changes in width
   const drawerRef = React.useRef<HTMLDivElement>(null);
   const dragHandleRef = React.useRef<HTMLDivElement>(null);
+  const startupModeRef = React.useRef<DrawerStartupMode>('minimized');
+  const startupResolvedRef = React.useRef(false);
+  const prevTabCountRef = React.useRef(0);
+
+  const persistDrawerState = React.useCallback((mode: DrawerStartupMode, expandedHeight?: number) => {
+    startupModeRef.current = mode;
+    try {
+      localStorage.setItem(drawerModeStorageKey, mode);
+
+      if (mode === 'expanded') {
+        const height = expandedHeight ?? lastExpandedHeightRef.current;
+        localStorage.setItem(drawerExpandedHeightStorageKey, String(height));
+      }
+    } catch {
+      // storage is best-effort only
+    }
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const savedMode = localStorage.getItem(drawerModeStorageKey);
+      if (savedMode === 'expanded' || savedMode === 'minimized') {
+        startupModeRef.current = savedMode;
+      }
+
+      const savedHeightRaw = localStorage.getItem(drawerExpandedHeightStorageKey);
+      if (savedHeightRaw !== null) {
+        const savedHeight = Number.parseInt(savedHeightRaw, 10);
+        if (!Number.isNaN(savedHeight)) {
+          lastExpandedHeightRef.current = Math.max(savedHeight, minHeight);
+        }
+      }
+    } catch {
+      // storage read failures should not block UI rendering
+    }
+  }, []);
 
   // common methods
   const expandDrawerToHeight = React.useCallback((height: number) => {
@@ -75,17 +118,25 @@ const BottomDrawerContainer: React.FC = () => {
       lastExpandedHeightRef.current = height;
     }
     expandDrawerToHeight(minHeight)
+    persistDrawerState('minimized');
     bottomDrawerChannel.emit('onResizeReset')
-  }, [height, expandDrawerToHeight]);
+  }, [height, expandDrawerToHeight, persistDrawerState]);
 
   // expand to last known expanded height (or default)
   const expand = React.useCallback(() => {
+    if (!hasTabs) {
+      return;
+    }
     expandDrawerToHeight(lastExpandedHeightRef.current)
+    persistDrawerState('expanded', lastExpandedHeightRef.current);
     bottomDrawerChannel.emit('onResizeReset')
-  }, [expandDrawerToHeight])
+  }, [hasTabs, expandDrawerToHeight, persistDrawerState])
 
   // fullscreen toggle
   const fullscreen = React.useCallback(() => {
+    if (!hasTabs) {
+      return;
+    }
     if (height >= window.innerHeight) {
       // Already fullscreen — restore to last expanded height
       expandDrawerToHeight(lastExpandedHeightRef.current)
@@ -96,67 +147,85 @@ const BottomDrawerContainer: React.FC = () => {
       }
       expandDrawerToHeight(window.innerHeight)
     }
+    persistDrawerState('expanded', lastExpandedHeightRef.current);
     bottomDrawerChannel.emit('onResizeReset')
-  }, [height, expandDrawerToHeight])
+  }, [hasTabs, height, expandDrawerToHeight, persistDrawerState])
 
 
   // ========================== EVENT BUS HANDLING ========================== //
 
   React.useEffect(() => {
     const unsubscribeOnResizeDrawer = bottomDrawerChannel.on('onResize', (height) => {
+      if (!hasTabs) {
+        return;
+      }
       expandDrawerToHeight(height);
     });
 
     const closerFullScreen = EventsOn("menu/view/bottomdrawer/fullscreen", () => {
-      expandDrawerToHeight(window.innerHeight);
+      fullscreen();
     })
     const unsubscribeOnFullScreen = bottomDrawerChannel.on('onFullscreen', () => {
-      expandDrawerToHeight(window.innerHeight);
+      fullscreen();
     });
 
     const closerMinimize = EventsOn("menu/view/bottomdrawer/minimize", () => {
-      expandDrawerToHeight(minHeight);
+      minimize();
     });
     const unsubscribeOnMinimize = bottomDrawerChannel.on('onMinimize', () => {
-      expandDrawerToHeight(minHeight);
-    });
-
-    const unsubscribeOnTabCreated = bottomDrawerChannel.on('onTabCreated', () => {
-      if (!drawerRef.current) return;
-      const cur = parseInt(drawerRef.current.style.height, 10);
-      if (isNaN(cur) || cur < defaultHeight) {
-        expandDrawerToHeight(defaultHeight);
-      }
+      minimize();
     });
 
     return () => {
       unsubscribeOnResizeDrawer();
       unsubscribeOnFullScreen();
       unsubscribeOnMinimize();
-      unsubscribeOnTabCreated();
 
       closerFullScreen();
       closerMinimize();
     };
-  }, [expandDrawerToHeight]);
+  }, [hasTabs, expandDrawerToHeight, fullscreen, minimize]);
 
   React.useEffect(() => {
     if (!drawerRef.current) {
       return;
     }
 
+    const nextTabCount = tabs.length;
+    const prevTabCount = prevTabCountRef.current;
     const currentHeight = parseInt(drawerRef.current.style.height, 10);
 
-    // if the tabs change, expand the window, or if there is a new tab
-    if (tabs.length > 0 && (isNaN(currentHeight) || currentHeight < defaultHeight)) {
-      expandDrawerToHeight(defaultHeight);
-    } else if (tabs.length === 0) {
-      expandDrawerToHeight(minHeight);
+    if (!startupResolvedRef.current) {
+      startupResolvedRef.current = true;
+
+      if (nextTabCount === 0) {
+        expandDrawerToHeight(minHeight);
+      } else if (startupModeRef.current === 'expanded') {
+        expandDrawerToHeight(lastExpandedHeightRef.current);
+      } else {
+        expandDrawerToHeight(minHeight);
+      }
+
+      prevTabCountRef.current = nextTabCount;
+      return;
     }
-  }, [tabs, expandDrawerToHeight]);
+
+    if (nextTabCount === 0) {
+      expandDrawerToHeight(minHeight);
+      prevTabCountRef.current = 0;
+      return;
+    }
+
+    // Auto-expand only when a new tab is added after startup resolution.
+    if (nextTabCount > prevTabCount && (isNaN(currentHeight) || currentHeight < defaultHeight)) {
+      expandDrawerToHeight(defaultHeight);
+    }
+
+    prevTabCountRef.current = nextTabCount;
+  }, [tabs.length, expandDrawerToHeight]);
 
   const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!drawerRef.current) {
+    if (!drawerRef.current || !hasTabs) {
       return;
     }
 
@@ -167,6 +236,7 @@ const BottomDrawerContainer: React.FC = () => {
         drawerRef.current.style.minHeight = `${minHeight}px`;
         drawerRef.current.style.maxHeight = `${defaultHeight}px`;
         setDrawerHeight(defaultHeight);
+        persistDrawerState('expanded', defaultHeight);
         bottomDrawerChannel.emit('onResizeReset')
         return;
       }
@@ -176,17 +246,21 @@ const BottomDrawerContainer: React.FC = () => {
       drawerRef.current.style.maxHeight = `${minHeight}px`;
 
       setDrawerHeight(minHeight);
+      persistDrawerState('minimized');
       bottomDrawerChannel.emit('onResizeReset')
     }
-  }, []);
+  }, [hasTabs, persistDrawerState]);
 
   const handleMouseDown = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!hasTabs) {
+      return;
+    }
     setIsDragging(true);
     e.preventDefault(); // Prevent text selection during drag
-  }, []);
+  }, [hasTabs]);
 
   const handleMouseMove = React.useCallback((e: MouseEvent) => {
-    if (!isDragging || !drawerRef.current) {
+    if (!isDragging || !drawerRef.current || !hasTabs) {
       return;
     }
 
@@ -199,10 +273,13 @@ const BottomDrawerContainer: React.FC = () => {
     drawerRef.current.style.minHeight = `${minHeight}px`;
     drawerRef.current.style.maxHeight = `${newHeight}px`;
     bottomDrawerChannel.emit('onResizeHandler', newHeight);
-  }, [isDragging, minHeight]);
+  }, [hasTabs, isDragging, minHeight]);
 
   const handleMouseUp = React.useCallback(() => {
     setIsDragging(false);
+    if (!hasTabs) {
+      return;
+    }
     // Optionally sync your React state here if needed for other purposes
     if (drawerRef.current) {
       const currentHeight = drawerRef.current.style.height;
@@ -212,6 +289,7 @@ const BottomDrawerContainer: React.FC = () => {
       // to keep the drawer open, close it
       if (newHeight < 100) {
         setDrawerHeight(minHeight);
+        persistDrawerState('minimized');
         bottomDrawerChannel.emit('onResizeReset')
         drawerRef.current.style.height = `${minHeight}px`;
         drawerRef.current.style.minHeight = `${minHeight}px`;
@@ -219,9 +297,10 @@ const BottomDrawerContainer: React.FC = () => {
         return;
       }
       setDrawerHeight(newHeight)
+      persistDrawerState('expanded', newHeight);
 
     }
-  }, []);
+  }, [hasTabs, persistDrawerState]);
 
   React.useEffect(() => {
     // const handleMouseUpGlobal = () => {
@@ -260,6 +339,7 @@ const BottomDrawerContainer: React.FC = () => {
           flexShrink: 1,
           display: 'flex',
           flexDirection: 'column',
+          height: minHeight,
           minHeight: minHeight,
           maxHeight: minHeight,
           overflow: 'hidden',
@@ -272,6 +352,7 @@ const BottomDrawerContainer: React.FC = () => {
       >
         <div
           ref={dragHandleRef}
+          data-testid="bottom-drawer-drag-handle"
           style={{
             position: 'absolute',
             left: 0,
@@ -279,11 +360,12 @@ const BottomDrawerContainer: React.FC = () => {
             bottom: 0,
             height: '10px',
             width: '100%',
-            cursor: 'row-resize',
+            cursor: hasTabs ? 'row-resize' : 'default',
             zIndex: 1291,
             borderTop: `${isDragging ? 4 : 2}px solid ${theme.palette.primary.main}`,
             borderRadius: '0px 0px 0px 0px',
-            opacity: isDragging ? 0.5 : isHovering ? 0.2 : 0,
+            opacity: hasTabs ? (isDragging ? 0.5 : isHovering ? 0.2 : 0) : 0,
+            pointerEvents: hasTabs ? 'auto' : 'none',
             transition: 'opacity 0.2s, border 0.2s',
           }}
           onClick={handleClick}
@@ -309,6 +391,7 @@ const BottomDrawerContainer: React.FC = () => {
         >
           <Divider />
           <BottomDrawerTabs
+            hasTabs={hasTabs}
             isMinimized={height === minHeight}
             isFullscreen={height >= window.innerHeight}
             onMinimize={minimize}
@@ -344,7 +427,9 @@ const BottomDrawerContainer: React.FC = () => {
                 {tab.variant === 'editor-debug' ? (
                   <EditorDebugPanel />
                 ) : tab.variant === 'devbuild' ? (
-                  <DevBuildOutput pluginId={tab.id.replace(/^devbuild-/, '')} />
+                  <DevBuildViewer pluginId={tab.id.replace(/^devbuild-/, '')} />
+                ) : tab.variant === 'plugin-logs' ? (
+                  <PluginLogViewer pluginId={tab.id.replace(/^pluginlogs-/, '')} />
                 ) : tab.variant === 'logs' ? (
                   <LogViewerContainerMemo sessionId={tab.id} />
                 ) : (
@@ -361,4 +446,3 @@ const BottomDrawerContainer: React.FC = () => {
 
 BottomDrawerContainer.displayName = 'BottomDrawerContainer';
 export default BottomDrawerContainer;
-

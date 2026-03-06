@@ -16,7 +16,7 @@ describe('eventbus', () => {
       'on-event-1': () => void;
     }>();
 
-    const handler = jest.fn();
+    const handler = vi.fn();
     bus.on('on-event-1', handler);
 
     bus.emit('on-event-1');
@@ -28,7 +28,7 @@ describe('eventbus', () => {
       'on-event-1': (payload: { data: string }) => void;
     }>();
 
-    const handler = jest.fn();
+    const handler = vi.fn();
     bus.on('on-event-1', handler);
 
     const payload = { data: 'serialized::test=sample&' };
@@ -42,10 +42,10 @@ describe('eventbus', () => {
       'on-event-2': () => void;
     }>();
 
-    const handler1 = jest.fn();
+    const handler1 = vi.fn();
     bus.on('on-event-1', handler1);
 
-    const handler2 = jest.fn();
+    const handler2 = vi.fn();
     bus.on('on-event-2', handler2);
 
     bus.emit('on-event-1');
@@ -62,8 +62,8 @@ describe('eventbus', () => {
       'on-test-event': (payload: { data: string }) => void;
     }>();
 
-    const handler1 = jest.fn();
-    const handler2 = jest.fn();
+    const handler1 = vi.fn();
+    const handler2 = vi.fn();
     bus.on('on-test-event', handler1);
     bus.on('on-test-event', handler2);
 
@@ -80,7 +80,7 @@ describe('eventbus', () => {
       'on-test-event': (payload: { data: string }) => void;
     }>();
 
-    const handler = jest.fn();
+    const handler = vi.fn();
     bus.once('on-test-event', handler);
 
     bus.emit('on-test-event', { data: 'serialized::test=sample&' });
@@ -95,7 +95,7 @@ describe('eventbus', () => {
       'on-event-2': () => void;
     }>();
 
-    const handler1 = jest.fn();
+    const handler1 = vi.fn();
     const unsubscribe = bus.on('on-event-1', handler1);
 
     bus.emit('on-event-1', 198237);
@@ -113,7 +113,7 @@ describe('eventbus', () => {
       'on-event-2': () => void;
     }>();
 
-    const handler1 = jest.fn();
+    const handler1 = vi.fn();
     bus.on('on-event-1', handler1);
 
     bus.emit('on-event-1', 198237);
@@ -132,12 +132,12 @@ describe('eventbus', () => {
       'on-event-1': () => void;
     }>();
 
-    const handler1 = jest.fn();
-    const handler2 = jest.fn().mockImplementation(() => {
+    const handler1 = vi.fn();
+    const handler2 = vi.fn().mockImplementation(() => {
       throw testError;
     });
-    const handler3 = jest.fn();
-    const handler4 = jest.fn();
+    const handler3 = vi.fn();
+    const handler4 = vi.fn();
     bus.on('on-event-1', handler1);
     bus.on('on-event-1', handler2);
     bus.on('on-event-1', handler3);
@@ -152,7 +152,7 @@ describe('eventbus', () => {
   });
 
   it('should fire all event handlers and log error', () => {
-    const onError = jest.fn();
+    const onError = vi.fn();
     const testError = new Error('Handler #2 failed.');
 
     const bus = eventbus<{
@@ -161,12 +161,12 @@ describe('eventbus', () => {
           onError,
         });
 
-    const handler1 = jest.fn();
-    const handler2 = jest.fn().mockImplementation(() => {
+    const handler1 = vi.fn();
+    const handler2 = vi.fn().mockImplementation(() => {
       throw testError;
     });
-    const handler3 = jest.fn();
-    const handler4 = jest.fn();
+    const handler3 = vi.fn();
+    const handler4 = vi.fn();
     bus.on('on-event-1', handler1);
     bus.on('on-event-1', handler2);
     bus.on('on-event-1', handler3);

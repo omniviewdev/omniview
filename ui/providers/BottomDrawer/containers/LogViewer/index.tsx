@@ -12,12 +12,13 @@ import LogViewerToolbar from './LogViewerToolbar';
 import FilterSelect from './FilterSelect';
 import JumpToTime from './JumpToTime';
 import { useLogBuffer } from './hooks/useLogBuffer';
-import { useLogStream } from './hooks/useLogStream';
+import { useLogDataSource } from './hooks/useLogDataSource';
 import { useLogSearch } from './hooks/useLogSearch';
 import { useLogSources } from './hooks/useLogSources';
+import { createSessionSource } from './sources/sessionSource';
 import { saveLogsNative, copyLogsToClipboard } from './utils/downloadLogs';
 import { findEntryIndexByTime } from './utils/binarySearchTimestamp';
-import type { LogEntry, LogStreamEvent, SearchMatch } from './types';
+import type { LogEntry, LogDataSource, LogStreamEvent, SearchMatch } from './types';
 import { StreamEventType } from './types';
 
 const copyFlash = keyframes`
@@ -26,10 +27,17 @@ const copyFlash = keyframes`
 `;
 
 interface Props {
-  sessionId: string;
+  /** SDK log session ID. Used when no `source` is provided. */
+  sessionId?: string;
+  /** Pluggable data source. When provided, replaces the session-based stream. */
+  source?: LogDataSource;
+  /** Extra elements rendered at the start of the toolbar (before search). */
+  toolbarPrefix?: React.ReactNode;
+  /** Extra action buttons rendered after the follow button. */
+  toolbarActions?: React.ReactNode;
 }
 
-const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
+const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix, toolbarActions }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const [showTimestamps, setShowTimestamps] = useState(true);
   const [showSources, setShowSources] = useState(true);
@@ -84,8 +92,15 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
     };
   }, []);
 
+  // Data source: either explicit source or session-based stream
+  const sessionSource = useMemo(
+    () => sessionId ? createSessionSource(sessionId) : null,
+    [sessionId],
+  );
+  const effectiveSource = source ?? sessionSource;
+
   // Source selection (multi-select filtering)
-  const sourceState = useLogSources({ sessionId, events, entries, version });
+  const sourceState = useLogSources({ sessionId, events, entries, version, declaredDimensions: effectiveSource?.declaredDimensions });
 
   // Filter entries by selected sources
   const filteredEntries = useMemo(() => {
@@ -108,8 +123,8 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
     setEvents((prev) => [...prev.slice(-99), event]);
   }, []);
 
-  useLogStream({
-    sessionId,
+  useLogDataSource({
+    source: effectiveSource!,
     onLines: handleLines,
     onEvent: handleEvent,
     paused,
@@ -399,6 +414,8 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
             ))
         }
         jumpToTime={<JumpToTime onJumpToTime={jumpToTime} />}
+        toolbarPrefix={toolbarPrefix}
+        toolbarActions={toolbarActions}
       />
 
       {/* Error banner when logs are flowing but errors occurred */}
@@ -566,5 +583,8 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId }) => {
 };
 
 export default React.memo(LogViewerContainer, (prev, next) => {
-  return prev.sessionId === next.sessionId;
+  return prev.sessionId === next.sessionId
+    && prev.source === next.source
+    && prev.toolbarPrefix === next.toolbarPrefix
+    && prev.toolbarActions === next.toolbarActions;
 });

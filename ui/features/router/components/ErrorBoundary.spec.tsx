@@ -1,11 +1,13 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-jest.mock('react-router-dom', () => ({ useRouteError: jest.fn() }));
-jest.mock('@/features/logger', () => ({ __esModule: true, default: { error: jest.fn() } }));
-jest.mock('@/utils/env', () => ({ isDev: jest.fn(() => true) }));
-jest.mock('@/utils/errorId', () => ({ generateErrorId: jest.fn(() => 'ERR-test') }));
+import logger from '@/features/logger';
+import { isDev } from '@/utils/env';
+vi.mock('react-router-dom', () => ({ useRouteError: vi.fn() }));
+vi.mock('@/features/logger', () => ({ __esModule: true, default: { error: vi.fn() } }));
+vi.mock('@/utils/env', () => ({ isDev: vi.fn(() => true) }));
+vi.mock('@/utils/errorId', () => ({ generateErrorId: vi.fn(() => 'ERR-test') }));
 
-const reloadMock = jest.fn();
+const reloadMock = vi.fn();
 Object.defineProperty(window, 'location', {
   value: { ...window.location, reload: reloadMock },
   writable: true,
@@ -14,14 +16,20 @@ Object.defineProperty(window, 'location', {
 import { useRouteError } from 'react-router-dom';
 import { RouterErrorBoundary } from './ErrorBoundary';
 
-const mockUseRouteError = useRouteError as jest.Mock;
-const mockLogError = jest.requireMock('@/features/logger').default.error as jest.Mock;
-const mockIsDev = jest.requireMock('@/utils/env').isDev as jest.Mock;
+const mockUseRouteError = vi.mocked(useRouteError);
+const mockLogError = vi.mocked(logger.error);
+const mockIsDev = vi.mocked(isDev);
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 describe('RouterErrorBoundary', () => {
   beforeEach(() => {
     mockLogError.mockClear();
     mockIsDev.mockReturnValue(true);
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
   });
 
   it('renders FullPageErrorFallback with error message when useRouteError returns Error', () => {

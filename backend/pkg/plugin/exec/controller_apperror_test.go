@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"github.com/omniviewdev/plugin-sdk/pkg/exec"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
 
 // newTestController builds a minimal exec controller for apperror tests.

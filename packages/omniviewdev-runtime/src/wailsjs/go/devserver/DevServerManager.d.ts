@@ -15,6 +15,8 @@ export function IsManaged(arg1:string):Promise<boolean>;
 
 export function ListDevServerStates():Promise<Array<devserver.DevServerState>>;
 
+export function RebuildPlugin(arg1:string):Promise<void>;
+
 export function RestartDevServer(arg1:string):Promise<devserver.DevServerState>;
 
 export function Shutdown():Promise<void>;

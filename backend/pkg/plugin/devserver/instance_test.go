@@ -84,7 +84,7 @@ func TestInstance_SetBuildResult_WithError(t *testing.T) {
 	assert.Equal(t, dur, state.LastBuildDuration)
 	assert.Equal(t, "compile error: undefined Foo", state.LastError)
 	assert.False(t, state.GRPCConnected) // error → grpc not connected
-	assert.False(t, state.LastBuildTime.IsZero())
+	assert.NotEmpty(t, state.LastBuildTime)
 	require.Equal(t, 1, sr.count())
 }
 
@@ -101,7 +101,7 @@ func TestInstance_SetBuildResult_Success(t *testing.T) {
 	assert.Equal(t, dur, state.LastBuildDuration)
 	assert.Empty(t, state.LastError)
 	assert.True(t, state.GRPCConnected) // success → grpc connected
-	assert.False(t, state.LastBuildTime.IsZero())
+	assert.NotEmpty(t, state.LastBuildTime)
 	// 1 call from setBuildResult (setLastError doesn't emit status)
 	require.Equal(t, 1, sr.count())
 }
@@ -122,13 +122,13 @@ func TestInstance_AppendLog(t *testing.T) {
 	require.Len(t, last.entries, 1)
 	assert.Equal(t, "server started", last.entries[0].Message)
 	assert.Equal(t, "log-test", last.entries[0].PluginID) // pluginID injected
-	assert.False(t, last.entries[0].Timestamp.IsZero())    // timestamp set
+	assert.NotEmpty(t, last.entries[0].Timestamp)           // timestamp set
 }
 
 func TestInstance_AppendLog_PreservesTimestamp(t *testing.T) {
 	inst, _, lr, _ := newTestInstance(t, "log-ts")
 
-	fixedTime := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+	fixedTime := "2025-06-15T12:00:00Z"
 	inst.appendLog(LogEntry{
 		Source:    "go-build",
 		Level:     "info",
@@ -292,6 +292,50 @@ func TestDevServerInstance_Stop_Order(t *testing.T) {
 			"goWatcher.Stop (idx %d) should be called before cancel (idx %d); order: %v",
 			gwIdx, cancelIdx, order)
 	}
+}
+
+func TestInstance_TriggerRebuild_NilGoWatcher(t *testing.T) {
+	inst, _, _, _ := newTestInstance(t, "trigger-nil")
+	// goWatcher is nil — TriggerRebuild should be a no-op, not panic.
+	inst.TriggerRebuild()
+}
+
+func TestInstance_TriggerRebuild_CallsHandleRebuild(t *testing.T) {
+	inst, _, _, _ := newTestInstance(t, "trigger-rebuild")
+
+	// Attach a goWatcher that records handleRebuild calls via the reloader mock.
+	reloader := &mockPluginReloader{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create a minimal goWatcher with real enough internals to test handleRebuild.
+	// We need: reloader, appendLog, setStatus, setBuild, emitErrors, logger, pluginID, devPath.
+	// handleRebuild calls runGoBuild which needs GoPath — with empty GoPath it will fail,
+	// which is fine for testing that the path is exercised.
+	doneCh := make(chan struct{})
+	close(doneCh)
+	inst.goWatcher = &goWatcherProcess{
+		ctx:      ctx,
+		cancel:   cancel,
+		logger:   zap.NewNop().Sugar(),
+		pluginID: "trigger-rebuild",
+		devPath:  t.TempDir(),
+		buildOpts: BuildOpts{GoPath: ""}, // will cause build to fail
+		reloader: reloader,
+		appendLog: func(LogEntry) {},
+		setStatus: func(DevProcessStatus) {},
+		setBuild:  func(time.Duration, string) {},
+		emitErrors: func(string, []BuildError) {},
+		done:     doneCh,
+	}
+
+	// TriggerRebuild should call handleRebuild("manual-trigger").
+	// Build will fail (no GoPath), but the point is that it exercises the path
+	// and doesn't panic.
+	inst.TriggerRebuild()
+
+	// Reloader should NOT be called because build failed.
+	assert.Equal(t, 0, reloader.getCallCount())
 }
 
 func TestInstance_StateTransitions(t *testing.T) {

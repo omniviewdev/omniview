@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { showAppError } from '../../errors/parseAppError';
-import { types } from '../../wailsjs/go/models';
+import { resource } from '../../wailsjs/go/models';
 import { GetActions, ExecuteAction } from '../../wailsjs/go/resource/Client';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
@@ -107,7 +107,7 @@ export const useExecuteAction = ({
         connectionID,
         resourceKey,
         actionID,
-        types.ActionInput.createFrom({ id, namespace, params }),
+        resource.ActionInput.createFrom({ id, namespace, params }),
       ),
     onSuccess: (result) => {
       if (result.message) {

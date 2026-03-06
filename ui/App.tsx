@@ -17,6 +17,10 @@ initDevSharedDeps(true);
 import { initDevToolsBridge } from './features/devtools/wailsBridge';
 initDevToolsBridge();
 
+// Bridge plugin process log events (plugin/process/log) to the frontend pluginLogChannel.
+import { initPluginLogBridge } from './features/pluginlogs/wailsBridge';
+initPluginLogBridge();
+
 import { Provider } from 'react-redux';
 import { store } from './store/store';
 
@@ -43,6 +47,7 @@ import BottomDrawerProvider from './providers/BottomDrawer/provider';
 import { SettingsProvider } from '@omniviewdev/runtime';
 import { EXTENSION_REGISTRY } from './features/extensions/store'
 import { ConfirmationModalProvider } from './contexts/ConfirmationModalContext';
+import { ConnectionStateProvider } from './features/connectionState';
 import { OperationsProvider } from '@omniviewdev/runtime';
 import { PluginRegistryProvider } from './features/plugins/PluginRegistryProvider';
 import { RouteProvider } from './features/router/RouteProvider';
@@ -138,6 +143,7 @@ const App: React.FC = () => {
                     >
                       <OperationsProvider>
                         <ConfirmationModalProvider>
+                          <ConnectionStateProvider>
                           <RightDrawerProvider>
                             <BottomDrawerProvider>
                               <PluginRegistryProvider>
@@ -145,6 +151,7 @@ const App: React.FC = () => {
                               </PluginRegistryProvider>
                             </BottomDrawerProvider>
                           </RightDrawerProvider>
+                          </ConnectionStateProvider>
                         </ConfirmationModalProvider>
                       </OperationsProvider>
                     </ErrorBoundary>

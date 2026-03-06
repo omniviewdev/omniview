@@ -173,7 +173,7 @@ func (inst *DevServerInstance) State() DevServerState {
 		ViteStatus:        inst.viteStatus,
 		GoStatus:          inst.goStatus,
 		LastBuildDuration: inst.lastBuildDuration,
-		LastBuildTime:     inst.lastBuildTime,
+		LastBuildTime:     inst.lastBuildTime.Format(time.RFC3339),
 		LastError:         inst.lastError,
 		GRPCConnected:     inst.grpcConnected,
 	}
@@ -196,6 +196,13 @@ func (inst *DevServerInstance) VitePGID() int {
 		return 0
 	}
 	return inst.vite.PGID()
+}
+
+// TriggerRebuild triggers an explicit Go rebuild + transfer + reload cycle.
+func (inst *DevServerInstance) TriggerRebuild() {
+	if inst.goWatcher != nil {
+		inst.goWatcher.handleRebuild("manual-trigger")
+	}
 }
 
 // ============================================================================
@@ -241,8 +248,8 @@ func (inst *DevServerInstance) setBuildResult(duration time.Duration, buildErr s
 
 func (inst *DevServerInstance) appendLog(entry LogEntry) {
 	entry.PluginID = inst.pluginID
-	if entry.Timestamp.IsZero() {
-		entry.Timestamp = time.Now()
+	if entry.Timestamp == "" {
+		entry.Timestamp = time.Now().Format(time.RFC3339)
 	}
 
 	inst.mu.Lock()

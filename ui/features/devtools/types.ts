@@ -1,40 +1,15 @@
 /**
  * Types for the plugin dev tools system.
- * These mirror the Go-side DevServerState and related structs.
+ * Core types (DevServerState, DevBuildLine) are re-exported from the
+ * Wails-generated bindings so there is a single source of truth.
  */
+import { devserver } from '@omniviewdev/runtime/models';
 
-/** The mode a dev server instance is running in. */
-export type DevServerMode = 'managed' | 'external' | 'idle';
+/** Dev server state, re-exported from the Wails binding models. */
+export type DevServerState = devserver.DevServerState;
 
-/** Status of either the Vite dev server or Go watcher process. Mirrors Go DevProcessStatus. */
-export type DevProcessStatus = 'idle' | 'starting' | 'building' | 'running' | 'ready' | 'error' | 'stopped';
-
-/** Status of the Vite dev server. */
-export type ViteStatus = DevProcessStatus;
-
-/** Status of the Go backend. */
-export type GoStatus = DevProcessStatus;
-
-/** Aggregate status for display purposes. */
-export type DevServerAggregateStatus = 'ready' | 'building' | 'error' | 'stopped' | 'connecting';
-
-/**
- * Full dev server state for a single plugin.
- * Matches the JSON emitted by the Go DevServerManager via Wails events.
- */
-export interface DevServerState {
-  pluginID: string;
-  mode: DevServerMode;
-  viteStatus: ViteStatus;
-  vitePort: number;
-  viteURL: string;
-  goStatus: GoStatus;
-  grpcConnected: boolean;
-  lastBuildDuration?: number;
-  lastBuildTime?: string;
-  lastError?: string;
-  devPath?: string;
-}
+/** A single line of build output, re-exported from the Wails binding models. */
+export type DevBuildLine = devserver.LogEntry;
 
 /** A structured build error from the Go compiler output. */
 export interface DevBuildError {
@@ -45,15 +20,6 @@ export interface DevBuildError {
   severity: 'error' | 'warning';
 }
 
-/** A single line of build output (from Vite or Go compiler). */
-export interface DevBuildLine {
-  pluginID: string;
-  source: 'vite' | 'go-build' | 'go-watch' | 'manager';
-  timestamp: string;
-  message: string;
-  level: 'info' | 'warn' | 'error' | 'debug';
-}
-
 /** Summary of all dev server instances, used by the footer indicators. */
 export interface DevServerSummary {
   total: number;
@@ -62,6 +28,9 @@ export interface DevServerSummary {
   error: number;
   stopped: number;
 }
+
+/** Aggregate status for display purposes. */
+export type DevServerAggregateStatus = 'ready' | 'building' | 'error' | 'stopped' | 'connecting';
 
 /** Derive the aggregate status from a DevServerState. */
 export function getAggregateStatus(state: DevServerState): DevServerAggregateStatus {
