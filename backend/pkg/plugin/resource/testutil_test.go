@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // ============================================================================
@@ -131,47 +131,47 @@ func (e *recordingEmitter) Reset() {
 // ============================================================================
 
 type mockProvider struct {
-	GetFunc                    func(ctx context.Context, key string, input resource.GetInput) (*resource.GetResult, error)
-	ListFunc                   func(ctx context.Context, key string, input resource.ListInput) (*resource.ListResult, error)
-	FindFunc                   func(ctx context.Context, key string, input resource.FindInput) (*resource.FindResult, error)
-	CreateFunc                 func(ctx context.Context, key string, input resource.CreateInput) (*resource.CreateResult, error)
-	UpdateFunc                 func(ctx context.Context, key string, input resource.UpdateInput) (*resource.UpdateResult, error)
-	DeleteFunc                 func(ctx context.Context, key string, input resource.DeleteInput) (*resource.DeleteResult, error)
-	StartConnectionFunc        func(ctx context.Context, connectionID string) (types.ConnectionStatus, error)
-	StopConnectionFunc         func(ctx context.Context, connectionID string) (types.Connection, error)
-	LoadConnectionsFunc        func(ctx context.Context) ([]types.Connection, error)
-	ListConnectionsFunc        func(ctx context.Context) ([]types.Connection, error)
-	GetConnectionFunc          func(ctx context.Context, id string) (types.Connection, error)
+	GetFunc                     func(ctx context.Context, key string, input resource.GetInput) (*resource.GetResult, error)
+	ListFunc                    func(ctx context.Context, key string, input resource.ListInput) (*resource.ListResult, error)
+	FindFunc                    func(ctx context.Context, key string, input resource.FindInput) (*resource.FindResult, error)
+	CreateFunc                  func(ctx context.Context, key string, input resource.CreateInput) (*resource.CreateResult, error)
+	UpdateFunc                  func(ctx context.Context, key string, input resource.UpdateInput) (*resource.UpdateResult, error)
+	DeleteFunc                  func(ctx context.Context, key string, input resource.DeleteInput) (*resource.DeleteResult, error)
+	StartConnectionFunc         func(ctx context.Context, connectionID string) (types.ConnectionStatus, error)
+	StopConnectionFunc          func(ctx context.Context, connectionID string) (types.Connection, error)
+	LoadConnectionsFunc         func(ctx context.Context) ([]types.Connection, error)
+	ListConnectionsFunc         func(ctx context.Context) ([]types.Connection, error)
+	GetConnectionFunc           func(ctx context.Context, id string) (types.Connection, error)
 	GetConnectionNamespacesFunc func(ctx context.Context, id string) ([]string, error)
-	UpdateConnectionFunc       func(ctx context.Context, connection types.Connection) (types.Connection, error)
-	DeleteConnectionFunc       func(ctx context.Context, id string) error
-	WatchConnectionsFunc       func(ctx context.Context, stream chan<- []types.Connection) error
-	StartConnectionWatchFunc   func(ctx context.Context, connectionID string) error
-	StopConnectionWatchFunc    func(ctx context.Context, connectionID string) error
-	HasWatchFunc               func(ctx context.Context, connectionID string) bool
-	GetWatchStateFunc          func(ctx context.Context, connectionID string) (*resource.WatchConnectionSummary, error)
-	ListenForEventsFunc        func(ctx context.Context, sink resource.WatchEventSink) error
-	EnsureResourceWatchFunc    func(ctx context.Context, connectionID, resourceKey string) error
-	StopResourceWatchFunc      func(ctx context.Context, connectionID, resourceKey string) error
-	RestartResourceWatchFunc   func(ctx context.Context, connectionID, resourceKey string) error
-	IsResourceWatchRunningFunc func(ctx context.Context, connectionID, resourceKey string) (bool, error)
-	GetResourceGroupsFunc      func(ctx context.Context, connectionID string) map[string]resource.ResourceGroup
-	GetResourceGroupFunc       func(ctx context.Context, id string) (resource.ResourceGroup, error)
-	GetResourceTypesFunc       func(ctx context.Context, connectionID string) map[string]resource.ResourceMeta
-	GetResourceTypeFunc        func(ctx context.Context, id string) (*resource.ResourceMeta, error)
-	HasResourceTypeFunc        func(ctx context.Context, id string) bool
-	GetResourceDefinitionFunc  func(ctx context.Context, id string) (resource.ResourceDefinition, error)
+	UpdateConnectionFunc        func(ctx context.Context, connection types.Connection) (types.Connection, error)
+	DeleteConnectionFunc        func(ctx context.Context, id string) error
+	WatchConnectionsFunc        func(ctx context.Context, stream chan<- []types.Connection) error
+	StartConnectionWatchFunc    func(ctx context.Context, connectionID string) error
+	StopConnectionWatchFunc     func(ctx context.Context, connectionID string) error
+	HasWatchFunc                func(ctx context.Context, connectionID string) bool
+	GetWatchStateFunc           func(ctx context.Context, connectionID string) (*resource.WatchConnectionSummary, error)
+	ListenForEventsFunc         func(ctx context.Context, sink resource.WatchEventSink) error
+	EnsureResourceWatchFunc     func(ctx context.Context, connectionID, resourceKey string) error
+	StopResourceWatchFunc       func(ctx context.Context, connectionID, resourceKey string) error
+	RestartResourceWatchFunc    func(ctx context.Context, connectionID, resourceKey string) error
+	IsResourceWatchRunningFunc  func(ctx context.Context, connectionID, resourceKey string) (bool, error)
+	GetResourceGroupsFunc       func(ctx context.Context, connectionID string) map[string]resource.ResourceGroup
+	GetResourceGroupFunc        func(ctx context.Context, id string) (resource.ResourceGroup, error)
+	GetResourceTypesFunc        func(ctx context.Context, connectionID string) map[string]resource.ResourceMeta
+	GetResourceTypeFunc         func(ctx context.Context, id string) (*resource.ResourceMeta, error)
+	HasResourceTypeFunc         func(ctx context.Context, id string) bool
+	GetResourceDefinitionFunc   func(ctx context.Context, id string) (resource.ResourceDefinition, error)
 	GetResourceCapabilitiesFunc func(ctx context.Context, resourceKey string) (*resource.ResourceCapabilities, error)
-	GetResourceSchemaFunc      func(ctx context.Context, connectionID, resourceKey string) (json.RawMessage, error)
-	GetFilterFieldsFunc        func(ctx context.Context, connectionID, resourceKey string) ([]resource.FilterField, error)
-	GetActionsFunc             func(ctx context.Context, key string) ([]resource.ActionDescriptor, error)
-	ExecuteActionFunc          func(ctx context.Context, key, actionID string, input resource.ActionInput) (*resource.ActionResult, error)
-	StreamActionFunc           func(ctx context.Context, key, actionID string, input resource.ActionInput, stream chan<- resource.ActionEvent) error
-	GetEditorSchemasFunc       func(ctx context.Context, connectionID string) ([]resource.EditorSchema, error)
-	GetRelationshipsFunc       func(ctx context.Context, resourceKey string) ([]resource.RelationshipDescriptor, error)
-	ResolveRelationshipsFunc   func(ctx context.Context, connectionID, resourceKey, id, namespace string) ([]resource.ResolvedRelationship, error)
-	GetHealthFunc              func(ctx context.Context, connectionID, resourceKey string, data json.RawMessage) (*resource.ResourceHealth, error)
-	GetResourceEventsFunc      func(ctx context.Context, connectionID, resourceKey, id, namespace string, limit int32) ([]resource.ResourceEvent, error)
+	GetResourceSchemaFunc       func(ctx context.Context, connectionID, resourceKey string) (json.RawMessage, error)
+	GetFilterFieldsFunc         func(ctx context.Context, connectionID, resourceKey string) ([]resource.FilterField, error)
+	GetActionsFunc              func(ctx context.Context, key string) ([]resource.ActionDescriptor, error)
+	ExecuteActionFunc           func(ctx context.Context, key, actionID string, input resource.ActionInput) (*resource.ActionResult, error)
+	StreamActionFunc            func(ctx context.Context, key, actionID string, input resource.ActionInput, stream chan<- resource.ActionEvent) error
+	GetEditorSchemasFunc        func(ctx context.Context, connectionID string) ([]resource.EditorSchema, error)
+	GetRelationshipsFunc        func(ctx context.Context, resourceKey string) ([]resource.RelationshipDescriptor, error)
+	ResolveRelationshipsFunc    func(ctx context.Context, connectionID, resourceKey, id, namespace string) ([]resource.ResolvedRelationship, error)
+	GetHealthFunc               func(ctx context.Context, connectionID, resourceKey string, data json.RawMessage) (*resource.ResourceHealth, error)
+	GetResourceEventsFunc       func(ctx context.Context, connectionID, resourceKey, id, namespace string, limit int32) ([]resource.ResourceEvent, error)
 }
 
 // compile-time check
@@ -570,11 +570,12 @@ func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter)
 	t.Helper()
 	emitter := newRecordingEmitter()
 	ctrl := &controller{
-		logger:      zap.NewNop().Sugar(),
-		plugins:     make(map[string]*pluginState),
-		connections: make(map[string][]types.Connection),
-		subs:        newSubscriptionManager(),
-		emitter:     emitter,
+		logger:              zap.NewNop().Sugar(),
+		plugins:             make(map[string]*pluginState),
+		connections:         make(map[string][]types.Connection),
+		autoConnectAttempts: make(map[string]string),
+		subs:                newSubscriptionManager(),
+		emitter:             emitter,
 	}
 	return ctrl, emitter
 }

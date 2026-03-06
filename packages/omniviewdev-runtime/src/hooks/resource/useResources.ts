@@ -63,21 +63,28 @@ export const useResources = ({
   connectionID,
   resourceKey,
   idAccessor,
-  namespaces = [],
+  namespaces,
 }: UseResourcesOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
-  const queryKey = [pluginID, connectionID, resourceKey, namespaces, 'list'];
-  const getResourceKey = (id: string, namespace: string) => [pluginID, connectionID, resourceKey, namespace, id];
+  const stableNamespaces = React.useMemo(() => namespaces ?? [], [namespaces]);
+  const queryKey = React.useMemo(
+    () => [pluginID, connectionID, resourceKey, stableNamespaces, 'list'],
+    [pluginID, connectionID, resourceKey, stableNamespaces],
+  );
+  const getResourceKey = React.useCallback(
+    (id: string, namespace: string) => [pluginID, connectionID, resourceKey, namespace, id],
+    [pluginID, connectionID, resourceKey],
+  );
 
   // === Mutations === //
 
   const { mutateAsync: create } = useMutation({
     mutationFn: async (opts: { input?: any; namespace?: string }) => Create(pluginID, connectionID, resourceKey, resourceModels.CreateInput.createFrom({
       input: opts.input,
-      namespace: opts.namespace ?? (namespaces.length === 1 ? namespaces[0] : ''),
+      namespace: opts.namespace ?? (stableNamespaces.length === 1 ? stableNamespaces[0] : ''),
     })),
     onSuccess: async (data) => {
       const result = data.result as any;
@@ -109,7 +116,7 @@ export const useResources = ({
     queryFn: async () => List(pluginID, connectionID, resourceKey, resourceModels.ListInput.createFrom({
       order: [{ field: 'name', descending: false }],
       pagination: { page: 1, pageSize: 200 },
-      namespaces,
+      namespaces: stableNamespaces,
     })),
     placeholderData: (previousData, _) => previousData,
     retry: false,

@@ -1457,6 +1457,8 @@ export namespace settings {
 	
 	export enum SettingType {
 	    TEXT = "text",
+	    SELECT = "select",
+	    MULTISELECT = "multiselect",
 	    INTEGER = "integer",
 	    FLOAT = "float",
 	    TOGGLE = "toggle",

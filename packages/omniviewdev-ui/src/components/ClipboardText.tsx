@@ -30,8 +30,10 @@ export default function ClipboardText({
         display: 'inline-flex',
         alignItems: 'center',
         gap: 0.5,
+        width: '100%',
         maxWidth,
         minWidth: 0,
+        overflow: 'hidden',
         ...sx as Record<string, unknown>,
       }}
     >
@@ -42,6 +44,8 @@ export default function ClipboardText({
             fontSize: '0.8125rem',
             color: 'var(--ov-fg-default)',
             fontFamily: 'var(--ov-font-mono)',
+            minWidth: 0,
+            maxWidth: '100%',
             ...(truncate && {
               overflow: 'hidden',
               textOverflow: 'ellipsis',

@@ -3,6 +3,8 @@ package resource
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,8 +21,8 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -53,6 +55,9 @@ type controller struct {
 	connsMu     sync.RWMutex
 	connections map[string][]types.Connection
 
+	autoConnectMu       sync.Mutex
+	autoConnectAttempts map[string]string
+
 	subs *subscriptionManager
 
 	onCrashCallback func(pluginID string)
@@ -67,11 +72,12 @@ var (
 // NewController creates a new resource Controller.
 func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controller {
 	return &controller{
-		logger:           logger.Named("ResourceController"),
-		settingsProvider: sp,
-		plugins:          make(map[string]*pluginState),
-		connections:      make(map[string][]types.Connection),
-		subs:             newSubscriptionManager(),
+		logger:              logger.Named("ResourceController"),
+		settingsProvider:    sp,
+		plugins:             make(map[string]*pluginState),
+		connections:         make(map[string][]types.Connection),
+		autoConnectAttempts: make(map[string]string),
+		subs:                newSubscriptionManager(),
 	}
 }
 
@@ -155,6 +161,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 		watchCancel: watchCancel,
 	}
 	c.pluginsMu.Unlock()
+	c.clearAutoConnectAttempts(pluginID)
 
 	// Load connections from the plugin.
 	if conns, err := c.LoadConnections(pluginID); err != nil {
@@ -162,6 +169,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	} else if len(conns) > 0 {
 		eventKey := fmt.Sprintf("%s/connection/sync", pluginID)
 		c.emitter.Emit(eventKey, c.getConnections(pluginID))
+		c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerPluginStart)
 	}
 
 	// Start watch event listener (uses WatchEventSink callback pattern).
@@ -206,6 +214,7 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	c.connsMu.Lock()
 	delete(c.connections, pluginID)
 	c.connsMu.Unlock()
+	c.clearAutoConnectAttempts(pluginID)
 
 	c.subs.RemoveAll(pluginID)
 
@@ -940,8 +949,145 @@ func (c *controller) listenForConnectionEvents(pluginID string, provider Resourc
 
 			eventKey := fmt.Sprintf("%s/connection/sync", pluginID)
 			c.emitter.Emit(eventKey, conns)
+			c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerConnectionDiscovered)
 		}
 	}
+}
+
+func (c *controller) scheduleAutoConnect(
+	pluginID string,
+	conns []types.Connection,
+	trigger types.ConnectionAutoConnectTrigger,
+) {
+	for _, conn := range conns {
+		conn := conn
+		auto := conn.Lifecycle.AutoConnect
+		if !auto.Enabled {
+			continue
+		}
+		if !containsAutoConnectTrigger(auto.Triggers, trigger) {
+			continue
+		}
+
+		signature := autoConnectConnectionSignature(conn)
+		if !c.shouldAttemptAutoConnect(pluginID, conn.ID, signature, auto.Retry) {
+			continue
+		}
+
+		go func() {
+			c.logger.Infow("auto-connect attempt starting",
+				"pluginID", pluginID,
+				"connectionID", conn.ID,
+				"trigger", string(trigger),
+			)
+
+			status, err := c.StartConnection(pluginID, conn.ID)
+			if err != nil {
+				c.logger.Warnw("auto-connect attempt failed",
+					"pluginID", pluginID,
+					"connectionID", conn.ID,
+					"trigger", string(trigger),
+					"error", err,
+				)
+				return
+			}
+			if status.Status != types.ConnectionStatusConnected {
+				c.logger.Warnw("auto-connect attempt did not connect",
+					"pluginID", pluginID,
+					"connectionID", conn.ID,
+					"trigger", string(trigger),
+					"status", string(status.Status),
+					"details", status.Details,
+					"error", status.Error,
+				)
+				return
+			}
+			c.logger.Infow("auto-connect attempt succeeded",
+				"pluginID", pluginID,
+				"connectionID", conn.ID,
+				"trigger", string(trigger),
+			)
+		}()
+	}
+}
+
+func (c *controller) shouldAttemptAutoConnect(
+	pluginID string,
+	connectionID string,
+	signature string,
+	retry types.ConnectionAutoConnectRetry,
+) bool {
+	c.autoConnectMu.Lock()
+	defer c.autoConnectMu.Unlock()
+
+	if retry == "" {
+		retry = types.ConnectionAutoConnectRetryNone
+	}
+
+	key := pluginID + "::" + connectionID
+	prevSig, ok := c.autoConnectAttempts[key]
+
+	switch retry {
+	case types.ConnectionAutoConnectRetryOnChange:
+		if ok && prevSig == signature {
+			return false
+		}
+	default:
+		if ok {
+			return false
+		}
+	}
+
+	c.autoConnectAttempts[key] = signature
+	return true
+}
+
+func (c *controller) clearAutoConnectAttempts(pluginID string) {
+	prefix := pluginID + "::"
+	c.autoConnectMu.Lock()
+	defer c.autoConnectMu.Unlock()
+	for key := range c.autoConnectAttempts {
+		if strings.HasPrefix(key, prefix) {
+			delete(c.autoConnectAttempts, key)
+		}
+	}
+}
+
+func containsAutoConnectTrigger(
+	triggers []types.ConnectionAutoConnectTrigger,
+	trigger types.ConnectionAutoConnectTrigger,
+) bool {
+	for _, t := range triggers {
+		if t == trigger {
+			return true
+		}
+	}
+	return false
+}
+
+func autoConnectConnectionSignature(conn types.Connection) string {
+	payload := struct {
+		Name        string                    `json:"name"`
+		Description string                    `json:"description"`
+		Avatar      string                    `json:"avatar"`
+		Data        map[string]any            `json:"data"`
+		Labels      map[string]any            `json:"labels"`
+		Lifecycle   types.ConnectionLifecycle `json:"lifecycle"`
+	}{
+		Name:        conn.Name,
+		Description: conn.Description,
+		Avatar:      conn.Avatar,
+		Data:        conn.Data,
+		Labels:      conn.Labels,
+		Lifecycle:   conn.Lifecycle,
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return conn.ID
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 // ============================================================================
