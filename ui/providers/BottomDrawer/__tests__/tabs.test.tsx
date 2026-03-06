@@ -1,4 +1,5 @@
 import { render, cleanup, act, fireEvent } from '@testing-library/react';
+import type { ReactNode } from 'react';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────────
 const mocks = vi.hoisted(() => ({
@@ -84,6 +85,10 @@ vi.mock('@/components/icons/Icon', () => {
   return { __esModule: true, default: ({ name }: { name: string }) => <span data-testid={`icon-${name}`} /> };
 });
 
+vi.mock('@omniviewdev/ui/menus', () => ({
+  ContextMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
 // DnD mocks - minimal stubs
 vi.mock('@dnd-kit/core', () => ({
   DndContext: ({ children }: any) => <div>{children}</div>,
@@ -116,6 +121,7 @@ import BottomDrawerTabs from '../tabs';
 
 describe('BottomDrawerTabs', () => {
   const defaultProps = {
+    hasTabs: false,
     isMinimized: false,
     isFullscreen: false,
     onMinimize: vi.fn(),
@@ -213,9 +219,10 @@ describe('BottomDrawerTabs', () => {
   it('collapse button calls onMinimize when not minimized', () => {
     const onMinimize = vi.fn();
     const onExpand = vi.fn();
+    mocks.mockTabs = [{ id: 'tab1', title: 'Session 1', variant: 'terminal', icon: 'LuTerminal' }];
 
     const { container } = render(
-      <BottomDrawerTabs {...defaultProps} isMinimized={false} onMinimize={onMinimize} onExpand={onExpand} />,
+      <BottomDrawerTabs {...defaultProps} hasTabs={true} isMinimized={false} onMinimize={onMinimize} onExpand={onExpand} />,
     );
 
     // The last button is the collapse/expand button
@@ -233,9 +240,10 @@ describe('BottomDrawerTabs', () => {
   it('collapse button calls onExpand when minimized', () => {
     const onMinimize = vi.fn();
     const onExpand = vi.fn();
+    mocks.mockTabs = [{ id: 'tab1', title: 'Session 1', variant: 'terminal', icon: 'LuTerminal' }];
 
     const { container } = render(
-      <BottomDrawerTabs {...defaultProps} isMinimized={true} onMinimize={onMinimize} onExpand={onExpand} />,
+      <BottomDrawerTabs {...defaultProps} hasTabs={true} isMinimized={true} onMinimize={onMinimize} onExpand={onExpand} />,
     );
 
     // The last button is the collapse/expand button
@@ -252,9 +260,10 @@ describe('BottomDrawerTabs', () => {
 
   it('fullscreen button calls onFullscreen', () => {
     const onFullscreen = vi.fn();
+    mocks.mockTabs = [{ id: 'tab1', title: 'Session 1', variant: 'terminal', icon: 'LuTerminal' }];
 
     const { container } = render(
-      <BottomDrawerTabs {...defaultProps} onFullscreen={onFullscreen} />,
+      <BottomDrawerTabs {...defaultProps} hasTabs={true} onFullscreen={onFullscreen} />,
     );
 
     // The second-to-last button is the fullscreen button
@@ -266,5 +275,37 @@ describe('BottomDrawerTabs', () => {
     });
 
     expect(onFullscreen).toHaveBeenCalled();
+  });
+
+  it('disables resize controls when no tabs exist', () => {
+    const onFullscreen = vi.fn();
+    const onMinimize = vi.fn();
+    const onExpand = vi.fn();
+
+    const { container } = render(
+      <BottomDrawerTabs
+        {...defaultProps}
+        hasTabs={false}
+        onFullscreen={onFullscreen}
+        onMinimize={onMinimize}
+        onExpand={onExpand}
+      />,
+    );
+
+    const buttons = container.querySelectorAll('button');
+    const fullscreenBtn = buttons[buttons.length - 2] as HTMLButtonElement;
+    const collapseBtn = buttons[buttons.length - 1] as HTMLButtonElement;
+
+    expect(fullscreenBtn.disabled).toBe(true);
+    expect(collapseBtn.disabled).toBe(true);
+
+    act(() => {
+      fireEvent.click(fullscreenBtn);
+      fireEvent.click(collapseBtn);
+    });
+
+    expect(onFullscreen).not.toHaveBeenCalled();
+    expect(onMinimize).not.toHaveBeenCalled();
+    expect(onExpand).not.toHaveBeenCalled();
   });
 });

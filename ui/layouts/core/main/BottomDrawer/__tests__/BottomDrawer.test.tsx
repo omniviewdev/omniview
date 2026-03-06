@@ -36,6 +36,7 @@ vi.mock('@/providers/BottomDrawer/events', () => ({
 vi.mock('@/providers/BottomDrawer/tabs', () => {
   const MockTabs = (props: any) => (
     <div data-testid="bottom-drawer-tabs" data-props={JSON.stringify({
+      hasTabs: props.hasTabs,
       isMinimized: props.isMinimized,
       isFullscreen: props.isFullscreen,
     })}>
@@ -246,6 +247,7 @@ describe('BottomDrawerContainer', () => {
 
     const tabsEl = getByTestId('bottom-drawer-tabs');
     const props = JSON.parse(tabsEl.getAttribute('data-props')!);
+    expect(props.hasTabs).toBe(true);
     expect(props.isMinimized).toBe(false);
     expect(props.isFullscreen).toBe(false);
   });
@@ -261,7 +263,7 @@ describe('BottomDrawerContainer', () => {
     rerender(<BottomDrawerContainer />);
 
     const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
-    const dragHandle = drawer.querySelector('[style*="cursor: row-resize"]') as HTMLElement;
+    const dragHandle = drawer.querySelector('[data-testid="bottom-drawer-drag-handle"]') as HTMLElement;
     expect(dragHandle).toBeTruthy();
 
     // Drawer starts at 400px from tab expansion
@@ -278,6 +280,26 @@ describe('BottomDrawerContainer', () => {
       fireEvent.click(dragHandle, { detail: 2 });
     });
     expect(drawer.style.height).toBe('400px');
+  });
+
+  it('does not expand when there are no tabs', () => {
+    const { container, getByTestId } = render(<BottomDrawerContainer />);
+    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const dragHandle = getByTestId('bottom-drawer-drag-handle');
+    const onResize = mocks.eventBusHandlers['onResize'];
+
+    expect(drawer.style.height).toBe('32px');
+
+    act(() => {
+      fireEvent.click(getByTestId('btn-expand'));
+      fireEvent.click(getByTestId('btn-fullscreen'));
+      fireEvent.click(dragHandle, { detail: 2 });
+      if (onResize) {
+        onResize(600);
+      }
+    });
+
+    expect(drawer.style.height).toBe('32px');
   });
 
   it('event bus onResize sets height', () => {

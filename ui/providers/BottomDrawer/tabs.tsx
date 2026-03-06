@@ -40,6 +40,7 @@ import { pluginLogChannel } from '@/features/pluginlogs/events';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
 
 type Props = {
+  hasTabs: boolean;
   isMinimized: boolean;
   isFullscreen: boolean;
   onMinimize: () => void;
@@ -51,8 +52,9 @@ type Props = {
 /**
  * Renders the tabs for the bottom drawer.
  */
-const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, isFullscreen, onMinimize, onExpand, onFullscreen }) => {
+const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen, onMinimize, onExpand, onFullscreen }) => {
   const { tabs, focused, focusTab, closeTab, closeTabs, createTab, createTabs, updateTab, reorderTab } = useBottomDrawer();
+  const canResize = hasTabs;
   const { settings } = useSettings();
 
   const getContextMenuItems = React.useCallback((index: number): ContextMenuItem[] => [
@@ -440,12 +442,17 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, isFullscreen, onMinimi
           size="sm"
           emphasis='soft'
           color='neutral'
+          disabled={!canResize}
           sx={{
             flex: 'none',
             minHeight: 28,
             minWidth: 28,
           }}
-          onClick={onFullscreen}
+          onClick={() => {
+            if (canResize) {
+              onFullscreen();
+            }
+          }}
         >
           {isFullscreen ? <LuMinimize size={14} /> : <LuMaximize size={14} />}
         </IconButton>
@@ -453,12 +460,16 @@ const BottomDrawerTabs: React.FC<Props> = ({ isMinimized, isFullscreen, onMinimi
           size="sm"
           emphasis='soft'
           color='neutral'
+          disabled={!canResize}
           sx={{
             flex: 'none',
             minHeight: 28,
             minWidth: 28,
           }}
           onClick={() => {
+            if (!canResize) {
+              return;
+            }
             if (isMinimized) {
               onExpand()
             } else {

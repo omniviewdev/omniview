@@ -40,6 +40,7 @@ const BottomDrawerContainer: React.FC = () => {
   const defaultHeight = 400;
 
   const { tabs, focused } = useBottomDrawer();
+  const hasTabs = tabs.length > 0;
 
   const [height, setDrawerHeight] = React.useState<number>(minHeight);
   const lastExpandedHeightRef = React.useRef<number>(defaultHeight);
@@ -123,13 +124,19 @@ const BottomDrawerContainer: React.FC = () => {
 
   // expand to last known expanded height (or default)
   const expand = React.useCallback(() => {
+    if (!hasTabs) {
+      return;
+    }
     expandDrawerToHeight(lastExpandedHeightRef.current)
     persistDrawerState('expanded', lastExpandedHeightRef.current);
     bottomDrawerChannel.emit('onResizeReset')
-  }, [expandDrawerToHeight, persistDrawerState])
+  }, [hasTabs, expandDrawerToHeight, persistDrawerState])
 
   // fullscreen toggle
   const fullscreen = React.useCallback(() => {
+    if (!hasTabs) {
+      return;
+    }
     if (height >= window.innerHeight) {
       // Already fullscreen — restore to last expanded height
       expandDrawerToHeight(lastExpandedHeightRef.current)
@@ -142,13 +149,16 @@ const BottomDrawerContainer: React.FC = () => {
     }
     persistDrawerState('expanded', lastExpandedHeightRef.current);
     bottomDrawerChannel.emit('onResizeReset')
-  }, [height, expandDrawerToHeight, persistDrawerState])
+  }, [hasTabs, height, expandDrawerToHeight, persistDrawerState])
 
 
   // ========================== EVENT BUS HANDLING ========================== //
 
   React.useEffect(() => {
     const unsubscribeOnResizeDrawer = bottomDrawerChannel.on('onResize', (height) => {
+      if (!hasTabs) {
+        return;
+      }
       expandDrawerToHeight(height);
     });
 
@@ -174,7 +184,7 @@ const BottomDrawerContainer: React.FC = () => {
       closerFullScreen();
       closerMinimize();
     };
-  }, [expandDrawerToHeight, fullscreen, minimize]);
+  }, [hasTabs, expandDrawerToHeight, fullscreen, minimize]);
 
   React.useEffect(() => {
     if (!drawerRef.current) {
@@ -215,7 +225,7 @@ const BottomDrawerContainer: React.FC = () => {
   }, [tabs.length, expandDrawerToHeight]);
 
   const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!drawerRef.current) {
+    if (!drawerRef.current || !hasTabs) {
       return;
     }
 
@@ -239,15 +249,18 @@ const BottomDrawerContainer: React.FC = () => {
       persistDrawerState('minimized');
       bottomDrawerChannel.emit('onResizeReset')
     }
-  }, [persistDrawerState]);
+  }, [hasTabs, persistDrawerState]);
 
   const handleMouseDown = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!hasTabs) {
+      return;
+    }
     setIsDragging(true);
     e.preventDefault(); // Prevent text selection during drag
-  }, []);
+  }, [hasTabs]);
 
   const handleMouseMove = React.useCallback((e: MouseEvent) => {
-    if (!isDragging || !drawerRef.current) {
+    if (!isDragging || !drawerRef.current || !hasTabs) {
       return;
     }
 
@@ -260,10 +273,13 @@ const BottomDrawerContainer: React.FC = () => {
     drawerRef.current.style.minHeight = `${minHeight}px`;
     drawerRef.current.style.maxHeight = `${newHeight}px`;
     bottomDrawerChannel.emit('onResizeHandler', newHeight);
-  }, [isDragging, minHeight]);
+  }, [hasTabs, isDragging, minHeight]);
 
   const handleMouseUp = React.useCallback(() => {
     setIsDragging(false);
+    if (!hasTabs) {
+      return;
+    }
     // Optionally sync your React state here if needed for other purposes
     if (drawerRef.current) {
       const currentHeight = drawerRef.current.style.height;
@@ -284,7 +300,7 @@ const BottomDrawerContainer: React.FC = () => {
       persistDrawerState('expanded', newHeight);
 
     }
-  }, [persistDrawerState]);
+  }, [hasTabs, persistDrawerState]);
 
   React.useEffect(() => {
     // const handleMouseUpGlobal = () => {
@@ -336,6 +352,7 @@ const BottomDrawerContainer: React.FC = () => {
       >
         <div
           ref={dragHandleRef}
+          data-testid="bottom-drawer-drag-handle"
           style={{
             position: 'absolute',
             left: 0,
@@ -343,11 +360,12 @@ const BottomDrawerContainer: React.FC = () => {
             bottom: 0,
             height: '10px',
             width: '100%',
-            cursor: 'row-resize',
+            cursor: hasTabs ? 'row-resize' : 'default',
             zIndex: 1291,
             borderTop: `${isDragging ? 4 : 2}px solid ${theme.palette.primary.main}`,
             borderRadius: '0px 0px 0px 0px',
-            opacity: isDragging ? 0.5 : isHovering ? 0.2 : 0,
+            opacity: hasTabs ? (isDragging ? 0.5 : isHovering ? 0.2 : 0) : 0,
+            pointerEvents: hasTabs ? 'auto' : 'none',
             transition: 'opacity 0.2s, border 0.2s',
           }}
           onClick={handleClick}
@@ -373,6 +391,7 @@ const BottomDrawerContainer: React.FC = () => {
         >
           <Divider />
           <BottomDrawerTabs
+            hasTabs={hasTabs}
             isMinimized={height === minHeight}
             isFullscreen={height >= window.innerHeight}
             onMinimize={minimize}

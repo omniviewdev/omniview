@@ -19,11 +19,17 @@ import { RouterErrorBoundary } from './ErrorBoundary';
 const mockUseRouteError = vi.mocked(useRouteError);
 const mockLogError = vi.mocked(logger.error);
 const mockIsDev = vi.mocked(isDev);
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 describe('RouterErrorBoundary', () => {
   beforeEach(() => {
     mockLogError.mockClear();
     mockIsDev.mockReturnValue(true);
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
   });
 
   it('renders FullPageErrorFallback with error message when useRouteError returns Error', () => {
