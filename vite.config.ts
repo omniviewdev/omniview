@@ -61,6 +61,9 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled', '@mui/material', '@mui/x-charts'],
     alias: {
+      '@/providers/monaco/bootstrap': process.env.VITEST
+        ? path.resolve(__dirname, './ui/providers/monaco/bootstrap.mock.ts')
+        : path.resolve(__dirname, './ui/providers/monaco/bootstrap.ts'),
       // prepare for eventual package splitting
       '@infraview': path.resolve(__dirname, './ui/pkg'),
       // core routes

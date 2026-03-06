@@ -1,5 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import logger from '@/features/logger';
+import { isDev } from '@/utils/env';
 
 import {
   createErrorMeta,
@@ -12,18 +14,18 @@ import {
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-jest.mock('@/features/logger', () => ({ __esModule: true, default: { error: jest.fn() } }));
-jest.mock('@/utils/errorId', () => ({ generateErrorId: jest.fn(() => 'ERR-test') }));
-jest.mock('@/utils/env', () => ({ isDev: jest.fn(() => true) }));
+vi.mock('@/features/logger', () => ({ __esModule: true, default: { error: vi.fn() } }));
+vi.mock('@/utils/errorId', () => ({ generateErrorId: vi.fn(() => 'ERR-test') }));
+vi.mock('@/utils/env', () => ({ isDev: vi.fn(() => true) }));
 
-const mockIsDev = jest.requireMock('@/utils/env').isDev as jest.Mock;
-const mockLogError = jest.requireMock('@/features/logger').default.error as jest.Mock;
+const mockIsDev = vi.mocked(isDev);
+const mockLogError = vi.mocked(logger.error);
 
 // clipboard + reload mocks
-const writeTextMock = jest.fn().mockResolvedValue(undefined);
+const writeTextMock = vi.fn().mockResolvedValue(undefined);
 Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
 
-const reloadMock = jest.fn();
+const reloadMock = vi.fn();
 Object.defineProperty(window, 'location', {
   value: { ...window.location, reload: reloadMock },
   writable: true,
@@ -80,7 +82,7 @@ describe('onBoundaryError', () => {
 // ─── FullPageErrorFallback ───────────────────────────────────────────────────
 
 describe('FullPageErrorFallback', () => {
-  const resetMock = jest.fn();
+  const resetMock = vi.fn();
 
   beforeEach(() => {
     resetMock.mockClear();
@@ -188,7 +190,7 @@ describe('FullPageErrorFallback', () => {
 // ─── PanelErrorFallback ─────────────────────────────────────────────────────
 
 describe('PanelErrorFallback', () => {
-  const resetMock = jest.fn();
+  const resetMock = vi.fn();
   beforeEach(() => resetMock.mockClear());
 
   describe('dev mode', () => {
@@ -234,7 +236,7 @@ describe('PanelErrorFallback', () => {
 // ─── InlineErrorFallback ────────────────────────────────────────────────────
 
 describe('InlineErrorFallback', () => {
-  const resetMock = jest.fn();
+  const resetMock = vi.fn();
   beforeEach(() => resetMock.mockClear());
 
   it('renders "Failed to render {label}"', () => {

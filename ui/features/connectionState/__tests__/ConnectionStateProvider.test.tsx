@@ -8,12 +8,12 @@ import { ConnectionStateProvider, useConnectionStateDialog } from '../index';
 const mockWatchStateReturn = {
   summary: { data: null } as any,
   isFullySynced: false,
-  getResourceState: jest.fn(),
+  getResourceState: vi.fn(),
   syncProgress: 0,
   errorCount: 0,
 };
 
-jest.mock('@omniviewdev/runtime', () => ({
+vi.mock('@omniviewdev/runtime', () => ({
   useWatchState: () => mockWatchStateReturn,
   WatchState: { IDLE: 0, SYNCING: 1, SYNCED: 2, ERROR: 3, FAILED: 4, FORBIDDEN: 5, STOPPED: 6, SKIPPED: 7 },
   parseResourceKey: (key: string) => {
@@ -27,49 +27,49 @@ jest.mock('@omniviewdev/runtime', () => ({
   },
 }));
 
-const mockEnsureResourceWatch = jest.fn().mockResolvedValue(undefined);
-jest.mock('@omniviewdev/runtime/api', () => ({
+const mockEnsureResourceWatch = vi.fn().mockResolvedValue(undefined);
+vi.mock('@omniviewdev/runtime/api', () => ({
   ResourceClient: {
     EnsureResourceWatch: (...args: any[]) => mockEnsureResourceWatch(...args),
   },
 }));
 
 // Minimal MUI stubs
-jest.mock('@mui/material/Dialog', () => ({
+vi.mock('@mui/material/Dialog', () => ({
   __esModule: true,
   default: ({ open, children }: any) => open ? <div data-testid="dialog">{children}</div> : null,
 }));
-jest.mock('@mui/material/DialogContent', () => ({
+vi.mock('@mui/material/DialogContent', () => ({
   __esModule: true,
   default: ({ children }: any) => <div>{children}</div>,
 }));
-jest.mock('@mui/material/DialogActions', () => ({
+vi.mock('@mui/material/DialogActions', () => ({
   __esModule: true,
   default: ({ children }: any) => <div>{children}</div>,
 }));
-jest.mock('@mui/material/CircularProgress', () => ({
+vi.mock('@mui/material/CircularProgress', () => ({
   __esModule: true,
   default: () => <span />,
 }));
-jest.mock('@mui/material/LinearProgress', () => ({
+vi.mock('@mui/material/LinearProgress', () => ({
   __esModule: true,
   default: () => <div />,
 }));
-jest.mock('@mui/material/IconButton', () => ({
+vi.mock('@mui/material/IconButton', () => ({
   __esModule: true,
   default: ({ children, onClick }: any) => <button onClick={onClick}>{children}</button>,
 }));
-jest.mock('@mui/material/Box', () => ({
+vi.mock('@mui/material/Box', () => ({
   __esModule: true,
   default: ({ children }: any) => <div>{children}</div>,
 }));
-jest.mock('@omniviewdev/ui/buttons', () => ({
+vi.mock('@omniviewdev/ui/buttons', () => ({
   Button: ({ children, onClick }: any) => <button onClick={onClick}>{children}</button>,
 }));
-jest.mock('@omniviewdev/ui/typography', () => ({
+vi.mock('@omniviewdev/ui/typography', () => ({
   Text: ({ children }: any) => <span>{children}</span>,
 }));
-jest.mock('react-icons/lu', () => ({
+vi.mock('react-icons/lu', () => ({
   LuCircleCheck: () => <span />,
   LuCircleAlert: () => <span />,
   LuCircleSlash: () => <span />,
@@ -95,14 +95,14 @@ function TestConsumer() {
 
 describe('ConnectionStateProvider', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.useFakeTimers();
+    vi.clearAllMocks();
+    vi.useFakeTimers();
     mockWatchStateReturn.summary = { data: null };
     mockWatchStateReturn.isFullySynced = false;
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('opens dialog on show() call', () => {
@@ -159,7 +159,7 @@ describe('ConnectionStateProvider', () => {
 
     // Re-render to pick up the mock change
     act(() => {
-      jest.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(2000);
     });
 
     // Dialog should still be open (manual open = no auto-close)
@@ -167,7 +167,7 @@ describe('ConnectionStateProvider', () => {
   });
 
   it('throws when useConnectionStateDialog is used outside provider', () => {
-    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<TestConsumer />)).toThrow(
       'useConnectionStateDialog must be used within a ConnectionStateProvider',
     );

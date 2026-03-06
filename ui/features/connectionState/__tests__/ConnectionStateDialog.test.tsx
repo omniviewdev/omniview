@@ -1,9 +1,10 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import { WatchState } from '@omniviewdev/runtime';
 import ConnectionStateDialog from '../ConnectionStateDialog';
 
 // Mock @omniviewdev/runtime — we only need WatchState and the resource key utils.
-// Values must be defined inside the factory because jest.mock is hoisted.
-jest.mock('@omniviewdev/runtime', () => ({
+// Values must be defined inside the factory because vi.mock is hoisted.
+vi.mock('@omniviewdev/runtime', () => ({
   WatchState: {
     IDLE: 0,
     SYNCING: 1,
@@ -25,51 +26,48 @@ jest.mock('@omniviewdev/runtime', () => ({
   },
 }));
 
-// Retrieve WatchState from the mock for use in tests
-const { WatchState } = jest.requireMock<any>('@omniviewdev/runtime');
-
 // Minimal MUI stubs — Dialog renders children when open
-jest.mock('@mui/material/Dialog', () => ({
+vi.mock('@mui/material/Dialog', () => ({
   __esModule: true,
   default: ({ open, children }: any) => open ? <div data-testid="dialog">{children}</div> : null,
 }));
-jest.mock('@mui/material/DialogContent', () => ({
+vi.mock('@mui/material/DialogContent', () => ({
   __esModule: true,
   default: ({ children }: any) => <div data-testid="dialog-content">{children}</div>,
 }));
-jest.mock('@mui/material/DialogActions', () => ({
+vi.mock('@mui/material/DialogActions', () => ({
   __esModule: true,
   default: ({ children }: any) => <div data-testid="dialog-actions">{children}</div>,
 }));
-jest.mock('@mui/material/CircularProgress', () => ({
+vi.mock('@mui/material/CircularProgress', () => ({
   __esModule: true,
   default: () => <span data-testid="spinner" />,
 }));
-jest.mock('@mui/material/LinearProgress', () => ({
+vi.mock('@mui/material/LinearProgress', () => ({
   __esModule: true,
   default: ({ value }: any) => <div data-testid="progress-bar" data-value={value} />,
 }));
-jest.mock('@mui/material/IconButton', () => ({
+vi.mock('@mui/material/IconButton', () => ({
   __esModule: true,
   default: ({ children, onClick }: any) => <button data-testid="close-btn" onClick={onClick}>{children}</button>,
 }));
-jest.mock('@mui/material/Box', () => ({
+vi.mock('@mui/material/Box', () => ({
   __esModule: true,
   default: ({ children, ...rest }: any) => <div {...rest}>{children}</div>,
 }));
 
 // Stub @omniviewdev/ui components
-jest.mock('@omniviewdev/ui/buttons', () => ({
+vi.mock('@omniviewdev/ui/buttons', () => ({
   Button: ({ children, onClick, ...rest }: any) => (
     <button onClick={onClick} data-testid={`btn-${children}`} {...rest}>{children}</button>
   ),
 }));
-jest.mock('@omniviewdev/ui/typography', () => ({
+vi.mock('@omniviewdev/ui/typography', () => ({
   Text: ({ children, ...rest }: any) => <span {...rest}>{children}</span>,
 }));
 
 // Stub react-icons
-jest.mock('react-icons/lu', () => ({
+vi.mock('react-icons/lu', () => ({
   LuCircleCheck: () => <span data-testid="icon-check" />,
   LuCircleAlert: () => <span data-testid="icon-alert" />,
   LuCircleSlash: () => <span data-testid="icon-slash" />,
@@ -79,16 +77,16 @@ jest.mock('react-icons/lu', () => ({
 
 const defaultProps = {
   open: true,
-  onClose: jest.fn(),
+  onClose: vi.fn(),
   connectionName: 'my-cluster',
   resources: {} as Record<string, number>,
   resourceCounts: {} as Record<string, number>,
-  onRetryResource: jest.fn(),
+  onRetryResource: vi.fn(),
 };
 
 describe('ConnectionStateDialog', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it('renders nothing when closed', () => {

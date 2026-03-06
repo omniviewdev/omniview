@@ -1,8 +1,8 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { PluginContextProvider } from '@omniviewdev/runtime';
 
-const mockGetPluginMeta = jest.fn();
-const mockPluginValues = jest.fn();
+const mockGetPluginMeta = vi.fn();
+const mockPluginValues = vi.fn();
 
 beforeEach(() => {
   mockGetPluginMeta.mockReset();
