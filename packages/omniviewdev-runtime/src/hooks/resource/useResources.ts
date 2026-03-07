@@ -82,7 +82,7 @@ export const useResources = ({
   // === Mutations === //
 
   const { mutateAsync: create } = useMutation({
-    mutationFn: async (opts: { input?: any; namespace?: string }) => Create(pluginID, connectionID, resourceKey, resourceModels.CreateInput.createFrom({
+    mutationFn: async (opts: { input?: any; namespace?: string }) => Create(pluginID, connectionID, resourceKey, resourceModels.ClientCreateInput.createFrom({
       input: opts.input,
       namespace: opts.namespace ?? (stableNamespaces.length === 1 ? stableNamespaces[0] : ''),
     })),

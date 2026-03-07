@@ -65,7 +65,7 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResource
         pluginID,
         opts.connectionID,
         opts.resourceKey,
-        resource.CreateInput.createFrom({
+        resource.ClientCreateInput.createFrom({
           input: input.input,
           namespace: input.namespace ?? opts.namespace ?? '',
         })
@@ -84,7 +84,7 @@ export const useResourceMutations = ({ pluginID: explicitPluginID }: UseResource
         pluginID,
         opts.connectionID,
         opts.resourceKey,
-        resource.UpdateInput.createFrom({
+        resource.ClientUpdateInput.createFrom({
           input: input.input,
           id: opts.resourceID,
           namespace: opts.namespace ?? '',
