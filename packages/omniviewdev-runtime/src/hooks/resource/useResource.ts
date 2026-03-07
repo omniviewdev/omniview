@@ -62,7 +62,7 @@ export const useResource = ({
   // === Mutations === //
 
   const { mutateAsync: update } = useMutation({
-    mutationFn: async (opts: { input?: any }) => Update(pluginID, connectionID, resourceKey, resource.UpdateInput.createFrom({
+    mutationFn: async (opts: { input?: any }) => Update(pluginID, connectionID, resourceKey, resource.ClientUpdateInput.createFrom({
       input: opts.input,
       id: resourceID,
       namespace,
