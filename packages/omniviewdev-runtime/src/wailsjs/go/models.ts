@@ -1679,6 +1679,68 @@ export namespace resource {
 	        this.message = source["message"];
 	    }
 	}
+	export class ClientCreateInput {
+	    input: any;
+	    namespace: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClientCreateInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.input = source["input"];
+	        this.namespace = source["namespace"];
+	    }
+	}
+	export class ClientListResult {
+	    result: any[];
+	    success: boolean;
+	    totalCount: number;
+	    nextCursor?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClientListResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.result = source["result"];
+	        this.success = source["success"];
+	        this.totalCount = source["totalCount"];
+	        this.nextCursor = source["nextCursor"];
+	    }
+	}
+	export class ClientResult {
+	    result: any;
+	    success: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClientResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.result = source["result"];
+	        this.success = source["success"];
+	    }
+	}
+	export class ClientUpdateInput {
+	    input: any;
+	    id: string;
+	    namespace: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClientUpdateInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.input = source["input"];
+	        this.id = source["id"];
+	        this.namespace = source["namespace"];
+	    }
+	}
 	export class ResourceLink {
 	    idAccessor: string;
 	    namespaceAccessor: string;
@@ -1761,34 +1823,6 @@ export namespace resource {
 		    return a;
 		}
 	}
-	export class CreateInput {
-	    input: number[];
-	    namespace: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new CreateInput(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.input = source["input"];
-	        this.namespace = source["namespace"];
-	    }
-	}
-	export class CreateResult {
-	    result: number[];
-	    success: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new CreateResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.result = source["result"];
-	        this.success = source["success"];
-	    }
-	}
 	export class DeleteInput {
 	    id: string;
 	    namespace: string;
@@ -1803,20 +1837,6 @@ export namespace resource {
 	        this.id = source["id"];
 	        this.namespace = source["namespace"];
 	        this.gracePeriodSeconds = source["gracePeriodSeconds"];
-	    }
-	}
-	export class DeleteResult {
-	    result: number[];
-	    success: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new DeleteResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.result = source["result"];
-	        this.success = source["success"];
 	    }
 	}
 	export class EditorSchema {
@@ -1984,24 +2004,6 @@ export namespace resource {
 		    return a;
 		}
 	}
-	export class FindResult {
-	    result: number[][];
-	    success: boolean;
-	    totalCount: number;
-	    nextCursor?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new FindResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.result = source["result"];
-	        this.success = source["success"];
-	        this.totalCount = source["totalCount"];
-	        this.nextCursor = source["nextCursor"];
-	    }
-	}
 	export class GetInput {
 	    id: string;
 	    namespace: string;
@@ -2014,20 +2016,6 @@ export namespace resource {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.namespace = source["namespace"];
-	    }
-	}
-	export class GetResult {
-	    result: number[];
-	    success: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new GetResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.result = source["result"];
-	        this.success = source["success"];
 	    }
 	}
 	export class HealthCondition {
@@ -2103,24 +2091,6 @@ export namespace resource {
 		    }
 		    return a;
 		}
-	}
-	export class ListResult {
-	    result: number[][];
-	    success: boolean;
-	    totalCount: number;
-	    nextCursor?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ListResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.result = source["result"];
-	        this.success = source["success"];
-	        this.totalCount = source["totalCount"];
-	        this.nextCursor = source["nextCursor"];
-	    }
 	}
 	
 	
@@ -2496,36 +2466,6 @@ export namespace resource {
 	
 	
 	
-	export class UpdateInput {
-	    input: number[];
-	    id: string;
-	    namespace: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new UpdateInput(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.input = source["input"];
-	        this.id = source["id"];
-	        this.namespace = source["namespace"];
-	    }
-	}
-	export class UpdateResult {
-	    result: number[];
-	    success: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new UpdateResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.result = source["result"];
-	        this.success = source["success"];
-	    }
-	}
 	export class WatchScope {
 	    partitions?: string[];
 	

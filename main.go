@@ -102,16 +102,16 @@ func main() {
 	settingsController := settings.NewController(log, settingsProvider)
 	settingsClient := settings.NewClient(settingsController)
 
-	execController := exec.NewController(log, settingsProvider, resourceClient)
+	execController := exec.NewController(log, settingsProvider, resourceController)
 	execClient := exec.NewClient(execController)
 
-	networkerController := networker.NewController(log, settingsProvider, resourceClient)
+	networkerController := networker.NewController(log, settingsProvider, resourceController)
 	networkerClient := networker.NewClient(networkerController)
 
-	logsController := pluginlogs.NewController(log, settingsProvider, resourceClient)
+	logsController := pluginlogs.NewController(log, settingsProvider, resourceController)
 	logsClient := pluginlogs.NewClient(logsController)
 
-	metricController := pluginmetric.NewController(log, settingsProvider, resourceClient)
+	metricController := pluginmetric.NewController(log, settingsProvider, resourceController)
 	metricClient := pluginmetric.NewClient(metricController)
 
 	dataController := data.NewController(log)

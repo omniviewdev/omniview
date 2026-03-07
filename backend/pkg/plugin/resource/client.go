@@ -7,9 +7,13 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
-// Client is a thin wrapper that exposes only the Service interface for Wails binding.
-// The controller has lifecycle methods (OnPluginStart, etc.) that must not be exposed
-// to the frontend — this is a Wails constraint, not a design choice.
+// NOTE: Client intentionally does NOT implement Service. It is the Wails-bound
+// frontend API layer that converts between SDK types (json.RawMessage) and
+// frontend-friendly types (interface{} → "any" in TypeScript).
+
+// Client is a thin Wails-bound wrapper around the Controller.
+// It converts SDK types (json.RawMessage) to frontend-friendly types (interface{})
+// so that Wails generates "any" in TypeScript instead of "number[]".
 type Client struct {
 	controller Controller
 }
@@ -18,37 +22,69 @@ func NewClient(controller Controller) *Client {
 	return &Client{controller: controller}
 }
 
-// compile-time assertion
-var _ Service = (*Client)(nil)
+// Client no longer satisfies Service — it uses frontend-facing types
+// (interface{} instead of json.RawMessage) so Wails generates correct TS.
 
 func (c *Client) ListPlugins() ([]string, error) {
 	return c.controller.ListPlugins()
 }
 
-// CRUD
+// CRUD — converts between SDK types and frontend-facing types
 
-func (c *Client) Get(pluginID, connectionID, key string, input resource.GetInput) (*resource.GetResult, error) {
-	return c.controller.Get(pluginID, connectionID, key, input)
+func (c *Client) Get(pluginID, connectionID, key string, input resource.GetInput) (*ClientResult, error) {
+	result, err := c.controller.Get(pluginID, connectionID, key, input)
+	if err != nil {
+		return nil, err
+	}
+	return toClientResult(result), nil
 }
 
-func (c *Client) List(pluginID, connectionID, key string, input resource.ListInput) (*resource.ListResult, error) {
-	return c.controller.List(pluginID, connectionID, key, input)
+func (c *Client) List(pluginID, connectionID, key string, input resource.ListInput) (*ClientListResult, error) {
+	result, err := c.controller.List(pluginID, connectionID, key, input)
+	if err != nil {
+		return nil, err
+	}
+	return toClientListResult(result), nil
 }
 
-func (c *Client) Find(pluginID, connectionID, key string, input resource.FindInput) (*resource.FindResult, error) {
-	return c.controller.Find(pluginID, connectionID, key, input)
+func (c *Client) Find(pluginID, connectionID, key string, input resource.FindInput) (*ClientListResult, error) {
+	result, err := c.controller.Find(pluginID, connectionID, key, input)
+	if err != nil {
+		return nil, err
+	}
+	return findToClientListResult(result), nil
 }
 
-func (c *Client) Create(pluginID, connectionID, key string, input resource.CreateInput) (*resource.CreateResult, error) {
-	return c.controller.Create(pluginID, connectionID, key, input)
+func (c *Client) Create(pluginID, connectionID, key string, input ClientCreateInput) (*ClientResult, error) {
+	sdkInput, err := toSDKCreateInput(input)
+	if err != nil {
+		return nil, err
+	}
+	result, err := c.controller.Create(pluginID, connectionID, key, sdkInput)
+	if err != nil {
+		return nil, err
+	}
+	return createToClientResult(result), nil
 }
 
-func (c *Client) Update(pluginID, connectionID, key string, input resource.UpdateInput) (*resource.UpdateResult, error) {
-	return c.controller.Update(pluginID, connectionID, key, input)
+func (c *Client) Update(pluginID, connectionID, key string, input ClientUpdateInput) (*ClientResult, error) {
+	sdkInput, err := toSDKUpdateInput(input)
+	if err != nil {
+		return nil, err
+	}
+	result, err := c.controller.Update(pluginID, connectionID, key, sdkInput)
+	if err != nil {
+		return nil, err
+	}
+	return updateToClientResult(result), nil
 }
 
-func (c *Client) Delete(pluginID, connectionID, key string, input resource.DeleteInput) (*resource.DeleteResult, error) {
-	return c.controller.Delete(pluginID, connectionID, key, input)
+func (c *Client) Delete(pluginID, connectionID, key string, input resource.DeleteInput) (*ClientResult, error) {
+	result, err := c.controller.Delete(pluginID, connectionID, key, input)
+	if err != nil {
+		return nil, err
+	}
+	return deleteToClientResult(result), nil
 }
 
 // Connection lifecycle
@@ -171,8 +207,12 @@ func (c *Client) GetFilterFields(pluginID, connectionID, key string) ([]resource
 	return c.controller.GetFilterFields(pluginID, connectionID, key)
 }
 
-func (c *Client) GetResourceSchema(pluginID, connectionID, key string) (json.RawMessage, error) {
-	return c.controller.GetResourceSchema(pluginID, connectionID, key)
+func (c *Client) GetResourceSchema(pluginID, connectionID, key string) (interface{}, error) {
+	raw, err := c.controller.GetResourceSchema(pluginID, connectionID, key)
+	if err != nil {
+		return nil, err
+	}
+	return interface{}(raw), nil
 }
 
 // Actions
@@ -207,8 +247,12 @@ func (c *Client) ResolveRelationships(pluginID, connectionID, key, id, namespace
 
 // Health
 
-func (c *Client) GetHealth(pluginID, connectionID, key string, data json.RawMessage) (*resource.ResourceHealth, error) {
-	return c.controller.GetHealth(pluginID, connectionID, key, data)
+func (c *Client) GetHealth(pluginID, connectionID, key string, data interface{}) (*resource.ResourceHealth, error) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	return c.controller.GetHealth(pluginID, connectionID, key, json.RawMessage(raw))
 }
 
 func (c *Client) GetResourceEvents(pluginID, connectionID, key, id, namespace string, limit int32) ([]resource.ResourceEvent, error) {
