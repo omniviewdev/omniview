@@ -119,6 +119,17 @@ export type CreateExtensionPointOptions<ComponentProps> = ExtensionPointSettings
 };
 
 /**
+ * A registration entry that a plugin exports to register a component into an extension point.
+ * The host app processes these at plugin load time.
+ */
+export type ExtensionRegistration<Props = any> = {
+  /** The ID of the extension point to register into */
+  extensionPointId: string;
+  /** The registration options for the component */
+  registration: RegisterOpts<Props>;
+};
+
+/**
  * A registry to hold an extension points registered extensions, providing type safe access to the components.
  *
  * @param ComponentProps The props type for the component that is registered in the registry.
