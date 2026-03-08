@@ -405,6 +405,11 @@ func (c *controller) StartConnection(pluginID, connectionID string) (types.Conne
 	}
 
 	if conn.Status == types.ConnectionStatusConnected && conn.Connection != nil {
+		// Stamp the refresh time so the frontend TTL check reflects the real state.
+		conn.Connection.LastRefresh = time.Now()
+		if conn.Connection.ExpiryTime == 0 {
+			conn.Connection.ExpiryTime = types.ConnectionDefaultExpiryTime
+		}
 		c.connsMu.Lock()
 		c.connections[pluginID] = mergeConnections(c.connections[pluginID], []types.Connection{*conn.Connection})
 		c.connsMu.Unlock()
@@ -435,6 +440,8 @@ func (c *controller) StopConnection(pluginID, connectionID string) (types.Connec
 		return types.Connection{}, err
 	}
 
+	// Clear LastRefresh so the frontend TTL check shows disconnected.
+	conn.LastRefresh = time.Time{}
 	c.connsMu.Lock()
 	c.connections[pluginID] = mergeConnections(c.connections[pluginID], []types.Connection{conn})
 	c.connsMu.Unlock()
