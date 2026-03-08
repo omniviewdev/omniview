@@ -140,6 +140,10 @@ const Home: React.FC = () => {
     }
   };
 
+  const handleDragCancel = () => {
+    setActiveId(null);
+  };
+
   // If no cards are registered, fall back to the original Welcome page
   if (registrations.length === 0) {
     return <Welcome />;
@@ -201,6 +205,7 @@ const Home: React.FC = () => {
           collisionDetection={closestCenter}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
         >
           <SortableContext items={idsToRender} strategy={rectSortingStrategy}>
             <Grid container spacing={2} alignItems="stretch">
