@@ -4,8 +4,6 @@ import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import SettingsIcon from '@mui/icons-material/Settings';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { Text } from '@omniviewdev/ui/typography';
@@ -19,10 +17,6 @@ type Props = {
   config: HomepageCardConfig;
   isHidden: boolean;
   isEditMode: boolean;
-  isFirst: boolean;
-  isLast: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onToggleHidden: () => void;
   onConfigChange: (config: HomepageCardConfig) => void;
 };
@@ -32,10 +26,6 @@ const HomepageCard: React.FC<Props> = ({
   config,
   isHidden,
   isEditMode,
-  isFirst,
-  isLast,
-  onMoveUp,
-  onMoveDown,
   onToggleHidden,
   onConfigChange,
 }) => {
@@ -62,71 +52,53 @@ const HomepageCard: React.FC<Props> = ({
         height: '100%',
       }}
     >
-      {/* Card header */}
-      <Stack
-        direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ px: 1.5, py: 1, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}
-      >
-        <Stack direction="row" alignItems="center" gap={1}>
-          {meta?.icon ? (
-            <Tooltip title={registration.label}>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <meta.icon size={18} />
-              </Box>
-            </Tooltip>
-          ) : (
-            <Text size="sm" weight="semibold">
-              {registration.label}
-            </Text>
-          )}
-          {isHidden && isEditMode && (
-            <Chip label="Hidden" size="small" sx={{ height: 18, fontSize: 10 }} />
-          )}
-        </Stack>
-
-        <Stack direction="row" alignItems="center" gap={0.5}>
-          {isEditMode && (
-            <>
-              <Tooltip title="Move up">
-                <span>
-                  <IconButton size="small" onClick={onMoveUp} disabled={isFirst}>
-                    <ArrowUpwardIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </span>
-              </Tooltip>
-              <Tooltip title="Move down">
-                <span>
-                  <IconButton size="small" onClick={onMoveDown} disabled={isLast}>
-                    <ArrowDownwardIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </span>
-              </Tooltip>
-              <Tooltip title={isHidden ? 'Show card' : 'Hide card'}>
-                <IconButton size="small" onClick={onToggleHidden}>
-                  {isHidden ? (
-                    <VisibilityIcon sx={{ fontSize: 16 }} />
-                  ) : (
-                    <VisibilityOffIcon sx={{ fontSize: 16 }} />
-                  )}
-                </IconButton>
-              </Tooltip>
-            </>
-          )}
-
-          {meta && (
-            <Tooltip title="Card settings">
-              <IconButton size="small" onClick={(e) => setConfigAnchor(e.currentTarget)}>
-                <SettingsIcon sx={{ fontSize: 16 }} />
+      {/* Edit-mode toolbar */}
+      {isEditMode && (
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="flex-end"
+          sx={{ px: 1, py: 0.5, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}
+        >
+          <Stack direction="row" alignItems="center" gap={0.5}>
+            {isHidden && (
+              <Chip label="Hidden" size="small" sx={{ height: 18, fontSize: 10 }} />
+            )}
+            <Tooltip title={isHidden ? 'Show card' : 'Hide card'}>
+              <IconButton size="small" onClick={onToggleHidden}>
+                {isHidden ? (
+                  <VisibilityIcon sx={{ fontSize: 16 }} />
+                ) : (
+                  <VisibilityOffIcon sx={{ fontSize: 16 }} />
+                )}
               </IconButton>
             </Tooltip>
-          )}
+            {meta && (
+              <Tooltip title="Card settings">
+                <IconButton size="small" onClick={(e) => setConfigAnchor(e.currentTarget)}>
+                  <SettingsIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Stack>
         </Stack>
-      </Stack>
+      )}
+
+      {/* Card icon header */}
+      <Box sx={{ display: 'flex', justifyContent: 'center', pt: 2, pb: 0.5 }}>
+        {meta?.icon ? (
+          <Tooltip title={registration.label}>
+            <Box sx={{ display: 'flex', alignItems: 'center', opacity: 0.7 }}>
+              <meta.icon size={48} />
+            </Box>
+          </Tooltip>
+        ) : (
+          <Text size="sm" weight="semibold">{registration.label}</Text>
+        )}
+      </Box>
 
       {/* Card content */}
-      <Box sx={{ flex: 1, overflow: 'auto' }}>
+      <Box sx={{ flex: 1, overflow: 'auto', px: 1.5, pb: 1.5 }}>
         <Component pluginID={registration.plugin} config={config} />
       </Box>
 

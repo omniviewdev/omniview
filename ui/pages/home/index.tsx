@@ -4,6 +4,23 @@ import Grid from '@mui/material/Grid';
 import Button from '@mui/material/Button';
 import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  rectSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useExtensionPoint } from '@omniviewdev/runtime';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
 import { Stack } from '@omniviewdev/ui/layout';
@@ -14,9 +31,46 @@ import HomepageCard from './HomepageCard';
 import HomepageEmptyState from './HomepageEmptyState';
 import Welcome from '../welcome';
 
+// ── Sortable card wrapper ─────────────────────────────────────────────────────
+
+type SortableCardProps = {
+  id: string;
+  children: React.ReactNode;
+  gridSize: Record<string, number>;
+  isDragging: boolean;
+};
+
+const SortableCard: React.FC<SortableCardProps> = ({ id, children, gridSize, isDragging }) => {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+
+  return (
+    <Grid
+      ref={setNodeRef}
+      size={gridSize}
+      sx={{
+        display: 'flex',
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.3 : 1,
+        zIndex: isDragging ? 0 : 'auto',
+      }}
+    >
+      <Box
+        sx={{ width: '100%', cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
+        {...attributes}
+        {...listeners}
+      >
+        {children}
+      </Box>
+    </Grid>
+  );
+};
+
+// ── Home page ─────────────────────────────────────────────────────────────────
+
 const Home: React.FC = () => {
   const [isEditMode, setIsEditMode] = React.useState(false);
-  // Force re-render when new plugins load
+  const [activeId, setActiveId] = React.useState<string | null>(null);
   const [, forceUpdate] = React.useReducer((x: number) => x + 1, 0);
 
   React.useEffect(() => {
@@ -30,6 +84,13 @@ const Home: React.FC = () => {
   const { settings, setOrder, toggleHidden, updateCardConfig, isHidden, getCardConfig } =
     useHomepageCardSettings();
 
+  // Memoize the registration map to avoid recreating on every render
+  const regMap = React.useMemo(
+    () => Object.fromEntries(registrations.map((r) => [r.id, r])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [registrations.map((r) => r.id).join(',')],
+  );
+
   // Sync any newly registered card IDs into the persisted order (append new ones)
   const registrationIds = registrations.map((r) => r.id).join(',');
   React.useEffect(() => {
@@ -40,50 +101,72 @@ const Home: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registrationIds]);
 
+  // Build ordered list — memoized; only recalculates when order or known IDs change
+  const orderedIds = React.useMemo(
+    () => [
+      ...settings.order.filter((id) => regMap[id]),
+      ...registrations.map((r) => r.id).filter((id) => !settings.order.includes(id)),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [settings.order, registrationIds],
+  );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveId(null);
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = orderedIds.indexOf(active.id as string);
+      const newIndex = orderedIds.indexOf(over.id as string);
+      setOrder(arrayMove(orderedIds, oldIndex, newIndex));
+    }
+  };
+
   // If no cards are registered, fall back to the original Welcome page
   if (registrations.length === 0) {
     return <Welcome />;
   }
 
-  // Build the ordered list: persisted order filtered to known IDs, plus any unseen IDs appended
-  const regMap = Object.fromEntries(registrations.map((r) => [r.id, r]));
-  const orderedIds = [
-    ...settings.order.filter((id) => regMap[id]),
-    ...registrations.map((r) => r.id).filter((id) => !settings.order.includes(id)),
-  ];
-
-  const moveUp = (index: number) => {
-    if (index === 0) return;
-    const next = [...orderedIds];
-    [next[index - 1], next[index]] = [next[index], next[index - 1]];
-    setOrder(next);
-  };
-
-  const moveDown = (index: number) => {
-    if (index === orderedIds.length - 1) return;
-    const next = [...orderedIds];
-    [next[index], next[index + 1]] = [next[index + 1], next[index]];
-    setOrder(next);
-  };
-
   const visibleCount = orderedIds.filter((id) => !isHidden(id)).length;
 
+  const renderCard = (id: string) => {
+    const reg = regMap[id];
+    if (!reg) return null;
+    const meta = reg.meta as HomepageCardMeta | undefined;
+    const defaultConfig = meta?.defaultConfig ?? { sections: [], maxItems: 5 };
+    const config = getCardConfig(id, defaultConfig);
+    return (
+      <HomepageCard
+        registration={reg}
+        config={config}
+        isHidden={isHidden(id)}
+        isEditMode={isEditMode}
+        onToggleHidden={() => toggleHidden(id)}
+        onConfigChange={(cfg) => updateCardConfig(id, cfg)}
+      />
+    );
+  };
+
+  const getGridSize = (id: string) => {
+    const meta = (regMap[id]?.meta as HomepageCardMeta | undefined);
+    const width = meta?.defaultWidth ?? 'medium';
+    return width === 'small' ? { xs: 12, sm: 6, lg: 3 }
+      : width === 'large' ? { xs: 12 }
+      : { xs: 12, sm: 6, lg: 4 };
+  };
+
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        overflow: 'auto',
-        p: 2,
-        gap: 2,
-      }}
-    >
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', p: 2, gap: 2 }}>
       {/* Page header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between">
-        <Text size="lg" weight="semibold">
-          Home
-        </Text>
+        <Text size="lg" weight="semibold">Home</Text>
         <Button
           size="small"
           variant={isEditMode ? 'contained' : 'outlined'}
@@ -98,38 +181,35 @@ const Home: React.FC = () => {
       {visibleCount === 0 && !isEditMode ? (
         <HomepageEmptyState />
       ) : (
-        <Grid container spacing={2} alignItems="stretch">
-          {orderedIds.map((id, index) => {
-            const reg = regMap[id];
-            if (!reg) return null;
-            const meta = reg.meta as HomepageCardMeta | undefined;
-            const defaultConfig = meta?.defaultConfig ?? { sections: [], maxItems: 5 };
-            const config = getCardConfig(id, defaultConfig);
-            const width = meta?.defaultWidth ?? 'medium';
-            const gridSize = width === 'small' ? { xs: 12, sm: 6, lg: 3 }
-              : width === 'large' ? { xs: 12 }
-              : { xs: 12, sm: 6, lg: 4 };
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={orderedIds} strategy={rectSortingStrategy}>
+            <Grid container spacing={2} alignItems="stretch">
+              {orderedIds.map((id) => (
+                <SortableCard
+                  key={id}
+                  id={id}
+                  gridSize={getGridSize(id)}
+                  isDragging={activeId === id}
+                >
+                  {renderCard(id)}
+                </SortableCard>
+              ))}
+            </Grid>
+          </SortableContext>
 
-            return (
-              <Grid key={id} size={gridSize} sx={{ display: 'flex' }}>
-                <Box sx={{ width: '100%' }}>
-                  <HomepageCard
-                    registration={reg}
-                    config={config}
-                    isHidden={isHidden(id)}
-                    isEditMode={isEditMode}
-                    isFirst={index === 0}
-                    isLast={index === orderedIds.length - 1}
-                    onMoveUp={() => moveUp(index)}
-                    onMoveDown={() => moveDown(index)}
-                    onToggleHidden={() => toggleHidden(id)}
-                    onConfigChange={(cfg) => updateCardConfig(id, cfg)}
-                  />
-                </Box>
-              </Grid>
-            );
-          })}
-        </Grid>
+          <DragOverlay>
+            {activeId && (
+              <Box sx={{ opacity: 0.85, pointerEvents: 'none', boxShadow: 6, borderRadius: 2 }}>
+                {renderCard(activeId)}
+              </Box>
+            )}
+          </DragOverlay>
+        </DndContext>
       )}
     </Box>
   );
