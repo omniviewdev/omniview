@@ -13,7 +13,7 @@ import InstalledPlugins from '../../pages/plugins/InstalledPlugins';
 import Settings from '../../pages/settings';
 
 // Home
-import Welcome from '../../pages/welcome';
+import Home from '../../pages/home';
 
 // Trivy
 import TrivyLayout from '../../pages/trivy';
@@ -33,7 +33,7 @@ export const coreRoutes: RouteObject[] = [
       {
         path: '/',
         index: true,
-        Component: Welcome,
+        Component: Home,
       },
       {
         path: 'plugins',

@@ -1,6 +1,6 @@
 import React from 'react';
 import builtInPlugins from './builtins';
-import { PluginWindow, DrawerContext, DrawerFactory } from '@omniviewdev/runtime';
+import { PluginWindow, DrawerContext, DrawerFactory, type ExtensionRegistration } from '@omniviewdev/runtime';
 import { EXTENSION_REGISTRY } from '../../extensions/store';
 import { registerPlugin, registerPluginSidebars, registerPluginDrawers } from '../PluginManager';
 import { SystemJS } from './systemjs';
@@ -163,6 +163,23 @@ export async function loadAndRegisterPlugin(
   const { drawers } = exports as { drawers?: Record<string, DrawerFactory> };
   if (drawers) {
     registerPluginDrawers(pluginID, drawers);
+  }
+
+  // Register extension point contributions if the plugin exports them
+  const { extensionRegistrations } = exports as { extensionRegistrations?: ExtensionRegistration[] };
+  if (extensionRegistrations) {
+    for (const { extensionPointId, registration } of extensionRegistrations) {
+      const ep = EXTENSION_REGISTRY.getExtensionPoint(extensionPointId);
+      if (ep) {
+        try {
+          ep.register(registration);
+        } catch (e) {
+          console.warn(`[loader] Failed to register extension "${registration.id}" into "${extensionPointId}":`, e);
+        }
+      } else {
+        console.warn(`[loader] Extension point "${extensionPointId}" not found — skipping "${registration.id}"`);
+      }
+    }
   }
 
   console.debug(`[loader] loadAndRegisterPlugin "${pluginID}" complete — emitting recalc_routes`, { plugin: pluginID });
