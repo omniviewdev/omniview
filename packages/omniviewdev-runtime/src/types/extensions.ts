@@ -68,7 +68,7 @@ export type RegisterOpts<Props> = {
   /**
    * The component to render
    */
-  component: React.Component<Props>;
+  component: React.ComponentType<Props>;
 
   /**
    * Additional optional metadata for the component
@@ -283,7 +283,7 @@ export class ExtensionPointStore<ComponentProps> {
   /**
    * Provide the components that match the given context.
    */
-  provide(context: ExtensionRenderContext): Array<React.Component<ComponentProps>> {
+  provide(context: ExtensionRenderContext): Array<React.ComponentType<ComponentProps>> {
     if (this._settings.disabled) {
       return [];
     }
@@ -304,7 +304,7 @@ export class ExtensionPointStore<ComponentProps> {
     if (ids) {
       let components = ids.map((id) => this._extensions.get(id))
         .filter((v): v is Registration<ComponentProps> => !!v)
-        .map((v) => v.component);
+        .map((v) => v.component as React.ComponentType<ComponentProps>);
 
       if (this._settings.order) {
         components = this.reorderComponents(components, ids, this._settings.order);
@@ -319,7 +319,7 @@ export class ExtensionPointStore<ComponentProps> {
     // if the order is set, reorder the components
     let components = ids.map((id) => this._extensions.get(id))
       .filter((v): v is Registration<ComponentProps> => !!v)
-      .map((v) => v.component);
+      .map((v) => v.component as React.ComponentType<ComponentProps>);
 
     // Reorder components if order is set
     if (this._settings.order) {
@@ -329,9 +329,9 @@ export class ExtensionPointStore<ComponentProps> {
     return components;
   }
 
-  reorderComponents(components: Array<React.Component<ComponentProps>>, ids: string[], order: string[]): Array<React.Component<ComponentProps>> {
+  reorderComponents(components: Array<React.ComponentType<ComponentProps>>, ids: string[], order: string[]): Array<React.ComponentType<ComponentProps>> {
     const idToComponentMap = new Map(ids.map((id, index) => [id, components[index]]));
-    return order.map((id) => idToComponentMap.get(id)).filter((component): component is React.Component<ComponentProps> => !!component);
+    return order.map((id) => idToComponentMap.get(id)).filter((component): component is React.ComponentType<ComponentProps> => !!component);
   }
 
   /**

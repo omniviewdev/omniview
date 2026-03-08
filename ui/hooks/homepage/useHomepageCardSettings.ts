@@ -30,33 +30,38 @@ function writeSettings(s: HomepageCardSettings): void {
 export function useHomepageCardSettings() {
   const [settings, setSettingsState] = useState<HomepageCardSettings>(readSettings);
 
-  const save = useCallback((next: HomepageCardSettings) => {
-    writeSettings(next);
-    setSettingsState(next);
+  const save = useCallback((updater: (prev: HomepageCardSettings) => HomepageCardSettings) => {
+    setSettingsState((prev) => {
+      const next = updater(prev);
+      writeSettings(next);
+      return next;
+    });
   }, []);
 
   const setOrder = useCallback(
     (ids: string[]) => {
-      save({ ...settings, order: ids });
+      save((prev) => ({ ...prev, order: ids }));
     },
-    [settings, save],
+    [save],
   );
 
   const toggleHidden = useCallback(
     (id: string) => {
-      const hidden = settings.hidden.includes(id)
-        ? settings.hidden.filter((h) => h !== id)
-        : [...settings.hidden, id];
-      save({ ...settings, hidden });
+      save((prev) => {
+        const hidden = prev.hidden.includes(id)
+          ? prev.hidden.filter((h) => h !== id)
+          : [...prev.hidden, id];
+        return { ...prev, hidden };
+      });
     },
-    [settings, save],
+    [save],
   );
 
   const updateCardConfig = useCallback(
     (id: string, config: HomepageCardConfig) => {
-      save({ ...settings, configs: { ...settings.configs, [id]: config } });
+      save((prev) => ({ ...prev, configs: { ...prev.configs, [id]: config } }));
     },
-    [settings, save],
+    [save],
   );
 
   const isHidden = useCallback(

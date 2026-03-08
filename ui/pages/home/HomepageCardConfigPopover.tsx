@@ -24,6 +24,7 @@ const HomepageCardConfigPopover: React.FC<Props> = ({
   config,
   onConfigChange,
 }) => {
+  const [maxItemsInput, setMaxItemsInput] = React.useState(String(config.maxItems ?? 5));
   const allSections = meta.defaultConfig.sections;
 
   const toggleSection = (section: string) => {
@@ -34,11 +35,19 @@ const HomepageCardConfigPopover: React.FC<Props> = ({
   };
 
   const handleMaxItems = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMaxItemsInput(e.target.value);
     const val = parseInt(e.target.value, 10);
-    if (!isNaN(val) && val > 0) {
+    if (!isNaN(val) && val >= 1 && val <= 20) {
       onConfigChange({ ...config, maxItems: val });
     }
   };
+
+  const maxItemsError = (() => {
+    const val = parseInt(maxItemsInput, 10);
+    if (isNaN(val) || val < 1) return 'Must be at least 1';
+    if (val > 20) return 'Must be at most 20';
+    return null;
+  })();
 
   return (
     <Popover
@@ -79,9 +88,11 @@ const HomepageCardConfigPopover: React.FC<Props> = ({
             label="Max items per section"
             type="number"
             size="small"
-            value={config.maxItems ?? 5}
+            value={maxItemsInput}
             onChange={handleMaxItems}
             inputProps={{ min: 1, max: 20 }}
+            error={Boolean(maxItemsError)}
+            helperText={maxItemsError ?? undefined}
           />
         </Stack>
       </Box>

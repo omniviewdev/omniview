@@ -5,7 +5,7 @@ import type React from 'react';
  * Plugins that contribute homepage cards import these types.
  */
 
-export type HomepageCardSection = 'recent' | 'favorites' | 'folders' | string;
+export type HomepageCardSection = 'recent' | 'favorites' | 'folders' | (string & {});
 
 export type HomepageCardConfig = {
   sections: HomepageCardSection[];

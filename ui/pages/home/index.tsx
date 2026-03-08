@@ -84,19 +84,23 @@ const Home: React.FC = () => {
   const { settings, setOrder, toggleHidden, updateCardConfig, isHidden, getCardConfig } =
     useHomepageCardSettings();
 
-  // Memoize the registration map to avoid recreating on every render
+  // Stable primitive dep: join IDs so the memo only recomputes when the set of registered IDs changes,
+  // not on every render where the `registrations` array reference is new.
+  const registrationIds = registrations.map((r) => r.id).join(',');
+
   const regMap = React.useMemo(
     () => Object.fromEntries(registrations.map((r) => [r.id, r])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [registrations.map((r) => r.id).join(',')],
+    [registrationIds],
   );
 
-  // Sync any newly registered card IDs into the persisted order (append new ones)
-  const registrationIds = registrations.map((r) => r.id).join(',');
+  // Sync order: append newly registered IDs, prune IDs for plugins that are no longer loaded.
   React.useEffect(() => {
+    const currentIds = new Set(registrations.map((r) => r.id));
     const newIds = registrations.map((r) => r.id).filter((id) => !settings.order.includes(id));
-    if (newIds.length > 0) {
-      setOrder([...settings.order, ...newIds]);
+    const pruned = settings.order.filter((id) => currentIds.has(id));
+    if (newIds.length > 0 || pruned.length !== settings.order.length) {
+      setOrder([...pruned, ...newIds]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registrationIds]);

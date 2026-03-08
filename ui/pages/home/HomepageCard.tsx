@@ -37,7 +37,7 @@ const HomepageCard: React.FC<Props> = ({
   }
 
   const meta = registration.meta as HomepageCardMeta | undefined;
-  const Component = registration.component as unknown as React.FC<HomepageCardProps>;
+  const Component = registration.component as React.FC<HomepageCardProps>;
 
   return (
     <Box
