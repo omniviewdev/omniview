@@ -7,6 +7,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -18,6 +19,7 @@ import {
   SortableContext,
   useSortable,
   rectSortingStrategy,
+  sortableKeyboardCoordinates,
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -38,10 +40,11 @@ type SortableCardProps = {
   children: React.ReactNode;
   gridSize: Record<string, number>;
   isDragging: boolean;
+  isEditMode: boolean;
 };
 
-const SortableCard: React.FC<SortableCardProps> = ({ id, children, gridSize, isDragging }) => {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+const SortableCard: React.FC<SortableCardProps> = ({ id, children, gridSize, isDragging, isEditMode }) => {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id, disabled: !isEditMode });
 
   return (
     <Grid
@@ -56,9 +59,12 @@ const SortableCard: React.FC<SortableCardProps> = ({ id, children, gridSize, isD
       }}
     >
       <Box
-        sx={{ width: '100%', cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
-        {...attributes}
-        {...listeners}
+        sx={{
+          width: '100%',
+          ...(isEditMode && { cursor: 'grab', '&:active': { cursor: 'grabbing' } }),
+        }}
+        {...(isEditMode && attributes)}
+        {...(isEditMode && listeners)}
       >
         {children}
       </Box>
@@ -117,6 +123,7 @@ const Home: React.FC = () => {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -203,6 +210,7 @@ const Home: React.FC = () => {
                   id={id}
                   gridSize={getGridSize(id)}
                   isDragging={activeId === id}
+                  isEditMode={isEditMode}
                 >
                   {renderCard(id)}
                 </SortableCard>
