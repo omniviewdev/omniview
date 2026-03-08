@@ -140,6 +140,10 @@ const Home: React.FC = () => {
 
   const visibleCount = orderedIds.filter((id) => !isHidden(id)).length;
 
+  // In normal mode exclude hidden IDs from both the SortableContext and Grid to
+  // avoid empty cells that disrupt layout. In edit mode all cards are shown.
+  const idsToRender = isEditMode ? orderedIds : orderedIds.filter((id) => !isHidden(id));
+
   const renderCard = (id: string) => {
     const reg = regMap[id];
     if (!reg) return null;
@@ -191,9 +195,9 @@ const Home: React.FC = () => {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <SortableContext items={orderedIds} strategy={rectSortingStrategy}>
+          <SortableContext items={idsToRender} strategy={rectSortingStrategy}>
             <Grid container spacing={2} alignItems="stretch">
-              {orderedIds.map((id) => (
+              {idsToRender.map((id) => (
                 <SortableCard
                   key={id}
                   id={id}
