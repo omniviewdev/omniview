@@ -118,11 +118,6 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
   };
 
   const handleClick = () => {
-    if (isConnected()) {
-      navigate(`/connection/${encodeURIComponent(id)}/resources`);
-      return;
-    }
-
     setConnecting(true);
     startConnection()
       .then(status => {
@@ -148,10 +143,9 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
   const isConnected = () => {
     // compute from last refresh (timestamp) and expiry time (duration)
     const refreshTime = new Date(last_refresh);
-    // if we have no valid refresh time, we can't determine if the connection is connected, so assume we are
+    // if we have no valid refresh time, we've never successfully connected
     if (refreshTime.toString() === 'Invalid Date') {
-      console.log('Invalid Date for refresh time', last_refresh);
-      return true;
+      return false;
     }
 
     const now = new Date();
