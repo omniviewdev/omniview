@@ -39,6 +39,13 @@ type LoadPluginOptions struct {
 // LoadPlugin loads a plugin from its installation directory.
 // If the plugin is already loaded and running, this is a no-op.
 func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error) {
+	opsMu := pm.pluginOpsLock(id)
+	opsMu.Lock()
+	defer opsMu.Unlock()
+	return pm.loadPluginLocked(id, opts)
+}
+
+func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error) {
 	log := pm.logger.Named("LoadPlugin").With("id", id, "opts", opts)
 
 	// Idempotent: if already loaded and running, return existing.
@@ -235,6 +242,10 @@ func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, lo
 
 // ReloadPlugin stops and re-loads a plugin.
 func (pm *pluginManager) ReloadPlugin(id string) (sdktypes.PluginInfo, error) {
+	opsMu := pm.pluginOpsLock(id)
+	opsMu.Lock()
+	defer opsMu.Unlock()
+
 	pm.recordsMu.RLock()
 	record, ok := pm.records[id]
 	pm.recordsMu.RUnlock()
@@ -254,16 +265,23 @@ func (pm *pluginManager) ReloadPlugin(id string) (sdktypes.PluginInfo, error) {
 		},
 	}
 
-	if err := pm.UnloadPlugin(id); err != nil {
+	if err := pm.unloadPluginLocked(id); err != nil {
 		return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
 			"Failed to unload plugin during reload").WithInstance(id)
 	}
-	return pm.LoadPlugin(id, opts)
+	return pm.loadPluginLocked(id, opts)
 }
 
 // UnloadPlugin unloads a plugin, stopping it if running.
 // If the plugin is already unloaded, this is a no-op.
 func (pm *pluginManager) UnloadPlugin(id string) error {
+	opsMu := pm.pluginOpsLock(id)
+	opsMu.Lock()
+	defer opsMu.Unlock()
+	return pm.unloadPluginLocked(id)
+}
+
+func (pm *pluginManager) unloadPluginLocked(id string) error {
 	pm.recordsMu.RLock()
 	record, ok := pm.records[id]
 	pm.recordsMu.RUnlock()
@@ -374,6 +392,9 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 
 	// Start controllers for detected capabilities.
 	for _, cap := range detectedCaps {
+		if cap == sdktypes.CapabilitySettings {
+			continue // already handled above
+		}
 		var ctrl plugintypes.Controller
 		switch cap {
 		case sdktypes.CapabilityResource:
@@ -436,6 +457,9 @@ func (pm *pluginManager) stopPlugin(record *plugintypes.PluginRecord) error {
 	}
 
 	for _, cap := range record.Capabilities {
+		if cap == sdktypes.CapabilitySettings {
+			continue // already handled above
+		}
 		var ctrl plugintypes.Controller
 		switch cap {
 		case sdktypes.CapabilityResource:
@@ -486,6 +510,9 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 	}
 
 	for _, cap := range record.Capabilities {
+		if cap == sdktypes.CapabilitySettings {
+			continue // already handled above
+		}
 		var ctrl plugintypes.Controller
 		switch cap {
 		case sdktypes.CapabilityResource:
