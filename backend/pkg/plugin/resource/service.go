@@ -23,6 +23,7 @@ type Service interface {
 	// Connection lifecycle
 	StartConnection(pluginID, connectionID string) (types.ConnectionStatus, error)
 	StopConnection(pluginID, connectionID string) (types.Connection, error)
+	CheckConnection(pluginID, connectionID string) (types.ConnectionStatus, error)
 	LoadConnections(pluginID string) ([]types.Connection, error)
 	ListConnections(pluginID string) ([]types.Connection, error)
 	ListAllConnections() (map[string][]types.Connection, error)

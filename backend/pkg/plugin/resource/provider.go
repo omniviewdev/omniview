@@ -26,6 +26,7 @@ type ResourceProvider interface {
 	// Connection lifecycle
 	StartConnection(ctx context.Context, connectionID string) (types.ConnectionStatus, error)
 	StopConnection(ctx context.Context, connectionID string) (types.Connection, error)
+	CheckConnection(ctx context.Context, connectionID string) (types.ConnectionStatus, error)
 	LoadConnections(ctx context.Context) ([]types.Connection, error)
 	ListConnections(ctx context.Context) ([]types.Connection, error)
 	GetConnection(ctx context.Context, id string) (types.Connection, error)

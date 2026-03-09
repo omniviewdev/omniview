@@ -6,6 +6,10 @@ export function AddConnection(arg1, arg2) {
   return window['go']['resource']['Client']['AddConnection'](arg1, arg2);
 }
 
+export function CheckConnection(arg1, arg2) {
+  return window['go']['resource']['Client']['CheckConnection'](arg1, arg2);
+}
+
 export function Create(arg1, arg2, arg3, arg4) {
   return window['go']['resource']['Client']['Create'](arg1, arg2, arg3, arg4);
 }

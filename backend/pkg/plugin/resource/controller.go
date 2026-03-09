@@ -456,6 +456,15 @@ func (c *controller) StopConnection(pluginID, connectionID string) (types.Connec
 	return conn, nil
 }
 
+func (c *controller) CheckConnection(pluginID, connectionID string) (types.ConnectionStatus, error) {
+	provider, err := c.getProvider(pluginID)
+	if err != nil {
+		return types.ConnectionStatus{}, err
+	}
+
+	return provider.CheckConnection(context.Background(), connectionID)
+}
+
 func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error) {
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
@@ -1017,6 +1026,16 @@ func (c *controller) scheduleAutoConnect(
 				"connectionID", conn.ID,
 				"trigger", string(trigger),
 			)
+
+			// Start watches for the newly connected connection so resource
+			// syncing begins automatically (especially important after crash recovery).
+			if err := c.StartConnectionWatch(pluginID, conn.ID); err != nil {
+				c.logger.Warnw("auto-connect: failed to start connection watch",
+					"pluginID", pluginID,
+					"connectionID", conn.ID,
+					"error", err,
+				)
+			}
 		}()
 	}
 }
@@ -1106,6 +1125,14 @@ func autoConnectConnectionSignature(conn types.Connection) string {
 
 // isConnectionError returns true if the error indicates the plugin process is unreachable.
 func isConnectionError(err error) bool {
+	// A ResourceOperationError means the plugin responded over gRPC.
+	// The error describes a downstream problem (e.g. cluster unreachable),
+	// NOT a plugin process crash.
+	var roe *resource.ResourceOperationError
+	if errors.As(err, &roe) {
+		return false
+	}
+
 	s, ok := status.FromError(err)
 	if !ok {
 		msg := err.Error()

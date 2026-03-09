@@ -59,6 +59,10 @@ func (a *AdapterV1) StopConnection(ctx context.Context, connectionID string) (ty
 	return a.inner.StopConnection(ctx, connectionID)
 }
 
+func (a *AdapterV1) CheckConnection(ctx context.Context, connectionID string) (types.ConnectionStatus, error) {
+	return a.inner.CheckConnection(ctx, connectionID)
+}
+
 func (a *AdapterV1) LoadConnections(ctx context.Context) ([]types.Connection, error) {
 	return a.inner.LoadConnections(ctx)
 }

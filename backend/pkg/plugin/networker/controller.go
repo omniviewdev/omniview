@@ -218,9 +218,19 @@ func (c *controller) getConnectedCtx(
 	// get the connection from the right resource
 	connection, err := c.resourceClient.GetConnection(plugin, connectionID)
 	if err != nil {
-		c.logger.Errorw("error getting connection: ", "err", err)
+		c.logger.Errorw("getConnectedCtx: failed to get connection",
+			"pluginID", plugin,
+			"connectionID", connectionID,
+			"err", err,
+		)
 		return nil
 	}
+
+	c.logger.Debugw("getConnectedCtx: resolved connection",
+		"pluginID", plugin,
+		"connectionID", connectionID,
+		"connectionDataKeys", mapKeys(connection.Data),
+	)
 
 	return sdktypes.NewPluginContextWithConnection(
 		context.Background(),
@@ -229,6 +239,15 @@ func (c *controller) getConnectedCtx(
 		nil,
 		&connection,
 	)
+}
+
+// mapKeys returns the keys from a map (for diagnostic logging).
+func mapKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func (c *controller) getUnconnectedCtx(
@@ -352,20 +371,59 @@ func (c *controller) StartResourcePortForwardingSession(
 	pluginID, connectionID string,
 	opts networker.PortForwardSessionOptions,
 ) (*networker.PortForwardSession, error) {
+	c.logger.Infow("StartResourcePortForwardingSession: request received",
+		"pluginID", pluginID,
+		"connectionID", connectionID,
+		"connectionType", opts.ConnectionType,
+		"protocol", opts.Protocol,
+		"localPort", opts.LocalPort,
+		"remotePort", opts.RemotePort,
+	)
+
 	c.mu.RLock()
 	provider, ok := c.clients[pluginID]
 	c.mu.RUnlock()
 	if !ok {
+		c.logger.Errorw("StartResourcePortForwardingSession: plugin not found",
+			"pluginID", pluginID,
+		)
 		return nil, apperror.PluginNotFound(pluginID)
 	}
 
-	session, err := provider.StartPortForwardSession(
-		c.getConnectedCtx(pluginID, connectionID),
-		opts,
+	pctx := c.getConnectedCtx(pluginID, connectionID)
+	if pctx == nil {
+		c.logger.Errorw("StartResourcePortForwardingSession: nil plugin context (connection lookup failed)",
+			"pluginID", pluginID,
+			"connectionID", connectionID,
+		)
+		return nil, apperror.New(apperror.TypeConnectionNotFound, 404,
+			"Connection lookup failed",
+			fmt.Sprintf("Could not resolve connection '%s' for plugin '%s'", connectionID, pluginID),
+		)
+	}
+
+	c.logger.Infow("StartResourcePortForwardingSession: dispatching to plugin",
+		"pluginID", pluginID,
 	)
+
+	session, err := provider.StartPortForwardSession(pctx, opts)
 	if err != nil {
+		c.logger.Errorw("StartResourcePortForwardingSession: plugin returned error",
+			"pluginID", pluginID,
+			"connectionID", connectionID,
+			"err", err,
+		)
 		return nil, err
 	}
+
+	c.logger.Infow("StartResourcePortForwardingSession: session created",
+		"pluginID", pluginID,
+		"sessionID", session.ID,
+		"localPort", session.LocalPort,
+		"remotePort", session.RemotePort,
+		"state", session.State,
+	)
+
 	c.mu.Lock()
 	c.sessionIndex[session.ID] = sessionIndex{
 		pluginID:     pluginID,
