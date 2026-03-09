@@ -152,22 +152,20 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 		return err
 	}
 
-	c.clients[pluginID] = provider
-
-	// Get supported resources
+	// Get supported resources before acquiring the lock (this makes an RPC call).
 	info, handlers := provider.GetSupportedResources(c.getUnconnectedCtx(context.Background()))
 
+	inchan := make(chan metric.StreamInput)
+
 	c.mux.Lock()
+	c.clients[pluginID] = provider
 	c.providerInfos[pluginID] = info
 	c.handlerMap[pluginID] = handlers
 	for _, h := range handlers {
 		c.resourceIndex[h.Resource] = append(c.resourceIndex[h.Resource], pluginID)
 	}
-	c.mux.Unlock()
-
-	// Start the stream for this plugin
-	inchan := make(chan metric.StreamInput)
 	c.inChans[pluginID] = inchan
+	c.mux.Unlock()
 
 	go func() {
 		stream, err := provider.StreamMetrics(c.ctx, inchan)
@@ -210,6 +208,8 @@ func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) er
 }
 
 func (c *controller) ListPlugins() ([]string, error) {
+	c.mux.RLock()
+	defer c.mux.RUnlock()
 	plugins := make([]string, 0, len(c.clients))
 	for k := range c.clients {
 		plugins = append(plugins, k)
@@ -218,6 +218,8 @@ func (c *controller) ListPlugins() ([]string, error) {
 }
 
 func (c *controller) HasPlugin(pluginID string) bool {
+	c.mux.RLock()
+	defer c.mux.RUnlock()
 	_, ok := c.clients[pluginID]
 	return ok
 }
@@ -352,7 +354,9 @@ func (c *controller) Query(
 	pluginID, connectionID string,
 	req metric.QueryRequest,
 ) (*metric.QueryResponse, error) {
+	c.mux.RLock()
 	client, ok := c.clients[pluginID]
+	c.mux.RUnlock()
 	if !ok {
 		return nil, apperror.PluginNotFound(pluginID)
 	}
@@ -420,7 +424,9 @@ func (c *controller) Subscribe(
 	pluginID, connectionID string,
 	req SubscribeRequest,
 ) (string, error) {
+	c.mux.RLock()
 	inchan, ok := c.inChans[pluginID]
+	c.mux.RUnlock()
 	if !ok {
 		return "", apperror.PluginNotFound(pluginID)
 	}
@@ -456,11 +462,11 @@ func (c *controller) Unsubscribe(subscriptionID string) error {
 		c.mux.Unlock()
 		return apperror.New(apperror.TypeSessionNotFound, 404, "Subscription not found", fmt.Sprintf("Subscription '%s' was not found.", subscriptionID))
 	}
+	inchan, chanOk := c.inChans[sub.pluginID]
 	delete(c.subscriptions, subscriptionID)
 	c.mux.Unlock()
 
-	inchan, ok := c.inChans[sub.pluginID]
-	if !ok {
+	if !chanOk {
 		return apperror.PluginNotFound(sub.pluginID)
 	}
 

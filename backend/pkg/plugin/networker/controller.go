@@ -3,6 +3,7 @@ package networker
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -84,13 +85,12 @@ type controller struct {
 	ctx              context.Context
 	logger           *zap.SugaredLogger
 	settingsProvider pkgsettings.Provider
-	clients          map[string]NetworkerProvider
-	sessionIndex     map[string]sessionIndex
+	resourceClient   resource.Service
 
-	// forwarder channels
-	stops map[string]chan struct{}
-
-	resourceClient resource.Service
+	mu           sync.RWMutex
+	clients      map[string]NetworkerProvider
+	sessionIndex map[string]sessionIndex
+	stops        map[string]chan struct{}
 }
 
 // Run stores the Wails application context for event emission.
@@ -104,12 +104,14 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginInit")
 
+	c.mu.Lock()
 	if c.clients == nil {
 		c.clients = make(map[string]NetworkerProvider)
 	}
 	if c.stops == nil {
 		c.stops = make(map[string]chan struct{})
 	}
+	c.mu.Unlock()
 }
 
 // dispenseProvider extracts the networker provider from the backend,
@@ -151,7 +153,9 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 		return err
 	}
 
+	c.mu.Lock()
 	c.clients[pluginID] = provider
+	c.mu.Unlock()
 	return nil
 }
 
@@ -159,10 +163,13 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStop")
 
-	if provider, ok := c.clients[pluginID]; ok {
+	c.mu.Lock()
+	provider, ok := c.clients[pluginID]
+	delete(c.clients, pluginID)
+	c.mu.Unlock()
+	if ok {
 		provider.StopAll()
 	}
-	delete(c.clients, pluginID)
 	return nil
 }
 
@@ -170,7 +177,9 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginShutdown")
 
+	c.mu.Lock()
 	delete(c.clients, pluginID)
+	c.mu.Unlock()
 	return nil
 }
 
@@ -184,6 +193,8 @@ func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) er
 
 func (c *controller) ListPlugins() ([]string, error) {
 	c.logger.Debug("ListPlugins")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	plugins := make([]string, 0, len(c.clients))
 	for k := range c.clients {
 		plugins = append(plugins, k)
@@ -192,6 +203,8 @@ func (c *controller) ListPlugins() ([]string, error) {
 }
 
 func (c *controller) HasPlugin(pluginID string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	_, ok := c.clients[pluginID]
 	return ok
 }
@@ -225,7 +238,9 @@ func (c *controller) getUnconnectedCtx(
 }
 
 func (c *controller) GetSupportedPortForwardTargets(plugin string) ([]string, error) {
+	c.mu.RLock()
 	provider, ok := c.clients[plugin]
+	c.mu.RUnlock()
 	if !ok {
 		return nil, apperror.PluginNotFound(plugin)
 	}
@@ -243,12 +258,14 @@ func (c *controller) GetSupportedPortForwardTargets(plugin string) ([]string, er
 func (c *controller) GetPortForwardSession(
 	sessionID string,
 ) (*networker.PortForwardSession, error) {
+	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
+		c.mu.RUnlock()
 		return nil, apperror.SessionNotFound(sessionID)
 	}
-
 	provider, ok := c.clients[index.pluginID]
+	c.mu.RUnlock()
 	if !ok {
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
@@ -262,7 +279,9 @@ func (c *controller) GetPortForwardSession(
 func (c *controller) ListPortForwardSessions(
 	pluginID, connectionID string,
 ) ([]*networker.PortForwardSession, error) {
+	c.mu.RLock()
 	provider, ok := c.clients[pluginID]
+	c.mu.RUnlock()
 	if !ok {
 		return nil, apperror.PluginNotFound(pluginID)
 	}
@@ -273,25 +292,36 @@ func (c *controller) ListPortForwardSessions(
 }
 
 func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSession, error) {
-	// Collect unique plugin+connection pairs from session index
+	c.mu.RLock()
 	type pair struct{ pluginID, connectionID string }
 	seen := make(map[pair]struct{})
 	for _, idx := range c.sessionIndex {
 		seen[pair{idx.pluginID, idx.connectionID}] = struct{}{}
 	}
-
-	var all []*networker.PortForwardSession
+	// Snapshot clients we need
+	type providerPair struct {
+		pair
+		provider NetworkerProvider
+	}
+	var pairs []providerPair
 	for p := range seen {
 		provider, ok := c.clients[p.pluginID]
 		if !ok {
 			continue
 		}
+		pairs = append(pairs, providerPair{p, provider})
+	}
+	c.mu.RUnlock()
+
+	var all []*networker.PortForwardSession
+	for _, pp := range pairs {
+		provider := pp.provider
 		sessions, err := provider.ListPortForwardSessions(
-			c.getConnectedCtx(p.pluginID, p.connectionID),
+			c.getConnectedCtx(pp.pluginID, pp.connectionID),
 		)
 		if err != nil {
 			c.logger.Warnw("ListAllPortForwardSessions: error listing sessions",
-				"pluginID", p.pluginID, "connectionID", p.connectionID, "err", err)
+				"pluginID", pp.pluginID, "connectionID", pp.connectionID, "err", err)
 			continue
 		}
 		all = append(all, sessions...)
@@ -304,7 +334,9 @@ func (c *controller) FindPortForwardSessions(
 	connectionID string,
 	request networker.FindPortForwardSessionRequest,
 ) ([]*networker.PortForwardSession, error) {
+	c.mu.RLock()
 	provider, ok := c.clients[pluginID]
+	c.mu.RUnlock()
 	if !ok {
 		return nil, apperror.PluginNotFound(pluginID)
 	}
@@ -320,7 +352,9 @@ func (c *controller) StartResourcePortForwardingSession(
 	pluginID, connectionID string,
 	opts networker.PortForwardSessionOptions,
 ) (*networker.PortForwardSession, error) {
+	c.mu.RLock()
 	provider, ok := c.clients[pluginID]
+	c.mu.RUnlock()
 	if !ok {
 		return nil, apperror.PluginNotFound(pluginID)
 	}
@@ -332,10 +366,12 @@ func (c *controller) StartResourcePortForwardingSession(
 	if err != nil {
 		return nil, err
 	}
+	c.mu.Lock()
 	c.sessionIndex[session.ID] = sessionIndex{
 		pluginID:     pluginID,
 		connectionID: connectionID,
 	}
+	c.mu.Unlock()
 
 	if c.ctx != nil {
 		runtime.EventsEmit(c.ctx, PortForwardSessionCreated, session)
@@ -348,12 +384,14 @@ func (c *controller) StartResourcePortForwardingSession(
 func (c *controller) ClosePortForwardSession(
 	sessionID string,
 ) (*networker.PortForwardSession, error) {
+	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
+		c.mu.RUnlock()
 		return nil, apperror.SessionNotFound(sessionID)
 	}
-
 	provider, ok := c.clients[index.pluginID]
+	c.mu.RUnlock()
 	if !ok {
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
@@ -366,7 +404,9 @@ func (c *controller) ClosePortForwardSession(
 		return nil, err
 	}
 
+	c.mu.Lock()
 	delete(c.sessionIndex, sessionID)
+	c.mu.Unlock()
 
 	if c.ctx != nil {
 		runtime.EventsEmit(c.ctx, PortForwardSessionClosed, session)
