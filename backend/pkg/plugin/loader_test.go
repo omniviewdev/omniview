@@ -597,14 +597,22 @@ func TestConcurrentReloads_Serialized(t *testing.T) {
 	// panic with "concurrent map writes" or produce a race.
 	const N = 10
 	var wg sync.WaitGroup
+	errs := make(chan error, N)
 	wg.Add(N)
 	for range N {
 		go func() {
 			defer wg.Done()
-			pm.ReloadPlugin("concurrent-test")
+			_, err := pm.ReloadPlugin("concurrent-test")
+			if err != nil {
+				errs <- err
+			}
 		}()
 	}
 	wg.Wait()
+	close(errs)
+	for reloadErr := range errs {
+		t.Logf("reload error (may be expected under contention): %v", reloadErr)
+	}
 
 	// Verify the plugin is still in a valid state.
 	pm.recordsMu.RLock()

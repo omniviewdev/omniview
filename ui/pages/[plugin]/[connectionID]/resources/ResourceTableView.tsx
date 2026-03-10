@@ -83,8 +83,8 @@ export default function ResourceTableView(): React.ReactElement {
           {appErr.detail}
           {appErr.suggestions && appErr.suggestions.length > 0 && (
             <Box component='ul' sx={{ pl: 2, mt: 1, mb: 0 }}>
-              {appErr.suggestions.map((s) => (
-                <li key={s}>{s}</li>
+              {appErr.suggestions.map((s, i) => (
+                <li key={`${i}-${s}`}>{s}</li>
               ))}
             </Box>
           )}

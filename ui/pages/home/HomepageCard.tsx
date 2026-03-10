@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
@@ -32,6 +32,12 @@ const HomepageCard: React.FC<Props> = ({
   onConfigChange,
 }) => {
   const [configAnchor, setConfigAnchor] = React.useState<HTMLElement | null>(null);
+
+  const providerValue = useMemo(() => ({
+    pluginId: registration.plugin,
+    meta: new runtimeConfig.PluginMeta(),
+    settings: {},
+  }), [registration.plugin]);
 
   // In normal mode, hidden cards are not rendered
   if (isHidden && !isEditMode) {
@@ -102,11 +108,7 @@ const HomepageCard: React.FC<Props> = ({
       {/* Card content — use a lightweight context provider instead of
           PluginContextProvider which blocks rendering on async metadata fetch */}
       <Box sx={{ flex: 1, overflow: 'auto', px: 1.5, pb: 1.5 }}>
-        <PluginContext.Provider value={{
-          pluginId: registration.plugin,
-          meta: new runtimeConfig.PluginMeta(),
-          settings: {},
-        }}>
+        <PluginContext.Provider value={providerValue}>
           <Component pluginID={registration.plugin} config={config} />
         </PluginContext.Provider>
       </Box>

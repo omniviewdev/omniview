@@ -144,7 +144,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
     // compute from last refresh (timestamp) and expiry time (duration)
     const refreshTime = new Date(last_refresh);
     // if we have no valid refresh time, we've never successfully connected
-    if (refreshTime.toString() === 'Invalid Date') {
+    if (isNaN(refreshTime.getTime())) {
       return false;
     }
 

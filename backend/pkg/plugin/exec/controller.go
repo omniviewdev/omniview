@@ -403,13 +403,29 @@ func (c *controller) getUnconnectedCtx(
 func (c *controller) GetPluginHandlers(plugin string) map[string]exec.Handler {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.handlerMap[plugin]
+	src := c.handlerMap[plugin]
+	if src == nil {
+		return nil
+	}
+	cp := make(map[string]exec.Handler, len(src))
+	for k, v := range src {
+		cp[k] = v
+	}
+	return cp
 }
 
 func (c *controller) GetHandlers() map[string]map[string]exec.Handler {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.handlerMap
+	cp := make(map[string]map[string]exec.Handler, len(c.handlerMap))
+	for plugin, inner := range c.handlerMap {
+		innerCp := make(map[string]exec.Handler, len(inner))
+		for k, v := range inner {
+			innerCp[k] = v
+		}
+		cp[plugin] = innerCp
+	}
+	return cp
 }
 
 func (c *controller) GetHandler(

@@ -462,7 +462,13 @@ func (c *controller) CheckConnection(pluginID, connectionID string) (types.Conne
 		return types.ConnectionStatus{}, err
 	}
 
-	return provider.CheckConnection(context.Background(), connectionID)
+	status, err := provider.CheckConnection(context.Background(), connectionID)
+	if err != nil {
+		c.logger.Errorw("RPC failed", "op", "CheckConnection", "pluginID", pluginID, "connectionID", connectionID, "error", err)
+		c.checkConnectionError(pluginID, err)
+		return types.ConnectionStatus{}, toAppError(err, pluginID)
+	}
+	return status, nil
 }
 
 func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
@@ -33,6 +34,20 @@ import (
 const (
 	MaxPluginSize = 1024 * 1024 * 1024 // 1GB
 )
+
+// sensitivePattern matches tokens, long hex/base64 strings, and other
+// potentially sensitive values that should not appear in crash reports.
+var sensitivePattern = regexp.MustCompile(
+	`(?i)` +
+		`(?:token|password|secret|key|auth|credential|bearer)\s*[:=]\s*\S+` + // key=value pairs
+		`|[A-Za-z0-9+/]{40,}={0,2}` + // long base64 strings
+		`|[0-9a-f]{32,}`, // long hex strings
+)
+
+// sanitizeLogMessage redacts sensitive-looking patterns in a log message.
+func sanitizeLogMessage(msg string) string {
+	return sensitivePattern.ReplaceAllString(msg, "[REDACTED]")
+}
 
 // Manager manages the lifecycle and registration of plugins.
 type Manager interface {
@@ -169,11 +184,12 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	if pm.pluginLogMgr != nil {
 		recent := pm.pluginLogMgr.GetLogs(pluginID, 20)
 		for _, entry := range recent {
-			line := fmt.Sprintf("[%s] %s %s", entry.Level, entry.Timestamp, entry.Message)
+			sanitized := sanitizeLogMessage(entry.Message)
+			line := fmt.Sprintf("[%s] %s %s", entry.Level, entry.Timestamp, sanitized)
 			crashContext = append(crashContext, line)
 			// Keep track of the last error-level message as the crash reason.
 			if entry.Level == "error" {
-				crashError = entry.Message
+				crashError = sanitized
 			}
 		}
 	}

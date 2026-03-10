@@ -464,15 +464,16 @@ func (c *controller) Unsubscribe(subscriptionID string) error {
 	}
 	inchan, chanOk := c.inChans[sub.pluginID]
 	delete(c.subscriptions, subscriptionID)
-	c.mux.Unlock()
-
 	if !chanOk {
+		c.mux.Unlock()
 		return apperror.PluginNotFound(sub.pluginID)
 	}
-
+	// Send while holding the lock to prevent removePlugin from closing
+	// the channel concurrently.
 	inchan <- metric.StreamInput{
 		SubscriptionID: subscriptionID,
 		Command:        metric.StreamCommandUnsubscribe,
 	}
+	c.mux.Unlock()
 	return nil
 }

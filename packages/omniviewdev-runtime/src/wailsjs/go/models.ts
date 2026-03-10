@@ -2695,7 +2695,7 @@ export namespace trivy {
 	    filePatterns: string[];
 	    skipDirs: string[];
 	    skipFiles: string[];
-	    scanners: string[];
+	    scanners: Scanner[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ScanOptions(source);

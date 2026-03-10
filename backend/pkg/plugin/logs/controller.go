@@ -265,6 +265,17 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 		delete(c.inChans, pluginID)
 	}
 	delete(c.clients, pluginID)
+	// Clean up handler map entries so stale plugins don't advertise resources.
+	for plugin, resources := range c.handlerMap {
+		for resKey, handler := range resources {
+			if handler.Plugin == pluginID {
+				delete(resources, resKey)
+			}
+		}
+		if len(resources) == 0 {
+			delete(c.handlerMap, plugin)
+		}
+	}
 	c.mu.Unlock()
 	return nil
 }
@@ -272,7 +283,21 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
 	c.logger.With("pluginID", pluginID).Debug("OnPluginShutdown")
 	c.mu.Lock()
+	if ch, ok := c.inChans[pluginID]; ok {
+		close(ch)
+		delete(c.inChans, pluginID)
+	}
 	delete(c.clients, pluginID)
+	for plugin, resources := range c.handlerMap {
+		for resKey, handler := range resources {
+			if handler.Plugin == pluginID {
+				delete(resources, resKey)
+			}
+		}
+		if len(resources) == 0 {
+			delete(c.handlerMap, plugin)
+		}
+	}
 	c.mu.Unlock()
 	return nil
 }
@@ -458,22 +483,22 @@ func (c *controller) CloseSession(sessionID string) error {
 }
 
 func (c *controller) SendCommand(sessionID string, cmd logs.LogStreamCommand) error {
-	c.mu.RLock()
+	c.mu.Lock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
-		c.mu.RUnlock()
+		c.mu.Unlock()
 		return apperror.SessionNotFound(sessionID)
 	}
 	inchan, ok := c.inChans[index.pluginID]
-	c.mu.RUnlock()
 	if !ok {
+		c.mu.Unlock()
 		return apperror.PluginNotFound(index.pluginID)
 	}
-
 	inchan <- logs.StreamInput{
 		SessionID: sessionID,
 		Command:   cmd,
 	}
+	c.mu.Unlock()
 	return nil
 }
 
