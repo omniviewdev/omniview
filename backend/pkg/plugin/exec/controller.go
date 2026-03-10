@@ -51,7 +51,6 @@ func NewController(
 	return &controller{
 		logger:           logger.Named("ExecController"),
 		settingsProvider: sp,
-		stops:            make(map[string]chan struct{}),
 		sessionIndex:     make(map[string]sessionIndex),
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
@@ -73,7 +72,6 @@ type controller struct {
 	mu           sync.RWMutex
 	clients      map[string]ExecProvider
 	sessionIndex map[string]sessionIndex
-	stops        map[string]chan struct{}
 	inChans      map[string]chan exec.StreamInput
 	handlerMap   map[string]map[string]exec.Handler
 
@@ -90,6 +88,17 @@ func (c *controller) Run(ctx context.Context) {
 	c.ctx = ctx
 	go c.runMux()      // plugin mux
 	go c.runLocalMux() // local terminal should be muxed separately to avoid latency
+}
+
+// safeSend sends to ch, recovering from a closed-channel panic that can occur
+// if OnPluginStop closes the channel between our map lookup and the send.
+func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Warnw("send on closed exec input channel", "sessionID", input.SessionID)
+		}
+	}()
+	ch <- input
 }
 
 func listenOnOut(
@@ -170,15 +179,17 @@ func (c *controller) runMux() {
 			return
 		case input := <-c.inputMux:
 			c.logger.Debugw("got input", "input", input)
+			// Capture the channel under lock, then send outside it to avoid
+			// holding RLock during a potentially blocking send.
+			var ch chan exec.StreamInput
 			c.mu.RLock()
-			idx, found := c.sessionIndex[input.SessionID]
-			if found {
-				client, ok := c.inChans[idx.pluginID]
-				if ok {
-					client <- input
-				}
+			if idx, found := c.sessionIndex[input.SessionID]; found {
+				ch = c.inChans[idx.pluginID]
 			}
 			c.mu.RUnlock()
+			if ch != nil {
+				c.safeSend(ch, input)
+			}
 		case output := <-c.outputMux:
 			// dispatch to ui
 			if c.ctx == nil {
@@ -227,9 +238,6 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	c.mu.Lock()
 	if c.clients == nil {
 		c.clients = make(map[string]ExecProvider)
-	}
-	if c.stops == nil {
-		c.stops = make(map[string]chan struct{})
 	}
 	c.mu.Unlock()
 }
@@ -542,25 +550,32 @@ func (c *controller) ListSessions() ([]*exec.Session, error) {
 	return sessions, nil
 }
 
+// lookupSession reads sessionIndex and clients/inChans in a single RLock.
+// Returns the index, client (may be nil for WriteSession callers), and whether
+// the session was found at all. Callers must check local separately.
+func (c *controller) lookupSession(sessionID string) (sessionIndex, ExecProvider, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	idx, ok := c.sessionIndex[sessionID]
+	if !ok {
+		return sessionIndex{}, nil, false
+	}
+	client := c.clients[idx.pluginID]
+	return idx, client, true
+}
+
 func (c *controller) GetSession(
 	sessionID string,
 ) (*exec.Session, error) {
 	c.logger.Debug("GetSession")
-	c.mu.RLock()
-	index, ok := c.sessionIndex[sessionID]
-	c.mu.RUnlock()
+	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
-
 	if index.local {
 		return c.terminalManager.GetSession(sessionID)
 	}
-
-	c.mu.RLock()
-	client, ok := c.clients[index.pluginID]
-	c.mu.RUnlock()
-	if !ok {
+	if client == nil {
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.GetSession(
@@ -571,20 +586,14 @@ func (c *controller) GetSession(
 
 func (c *controller) AttachSession(sessionID string) (*exec.Session, []byte, error) {
 	c.logger.Debug("AttachSession")
-	c.mu.RLock()
-	index, ok := c.sessionIndex[sessionID]
-	c.mu.RUnlock()
+	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return nil, nil, apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.AttachSession(sessionID)
 	}
-
-	c.mu.RLock()
-	client, ok := c.clients[index.pluginID]
-	c.mu.RUnlock()
-	if !ok {
+	if client == nil {
 		return nil, nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.AttachSession(
@@ -595,20 +604,14 @@ func (c *controller) AttachSession(sessionID string) (*exec.Session, []byte, err
 
 func (c *controller) DetachSession(sessionID string) (*exec.Session, error) {
 	c.logger.Debug("DetachSession")
-	c.mu.RLock()
-	index, ok := c.sessionIndex[sessionID]
-	c.mu.RUnlock()
+	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.DetachSession(sessionID)
 	}
-
-	c.mu.RLock()
-	client, ok := c.clients[index.pluginID]
-	c.mu.RUnlock()
-	if !ok {
+	if client == nil {
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.DetachSession(
@@ -623,6 +626,10 @@ func (c *controller) WriteSession(
 ) error {
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
+	var inchan chan exec.StreamInput
+	if ok && !index.local {
+		inchan = c.inChans[index.pluginID]
+	}
 	c.mu.RUnlock()
 	if !ok {
 		return apperror.SessionNotFound(sessionID)
@@ -630,44 +637,30 @@ func (c *controller) WriteSession(
 	if index.local {
 		return c.terminalManager.WriteSession(sessionID, data)
 	}
-
-	// Hold RLock during the send to prevent OnPluginStop from closing the
-	// channel concurrently (send-on-closed-channel panic).
-	c.mu.RLock()
-	inchan, ok := c.inChans[index.pluginID]
-	if !ok {
-		c.mu.RUnlock()
+	if inchan == nil {
 		return apperror.SessionNotFound(sessionID)
 	}
 	c.logger.Debug("Writing to session")
-	inchan <- exec.StreamInput{
+	c.safeSend(inchan, exec.StreamInput{
 		SessionID: sessionID,
 		Data:      data,
-	}
-	c.mu.RUnlock()
+	})
 	return nil
 }
 
 func (c *controller) CloseSession(
 	sessionID string,
 ) error {
-	c.mu.RLock()
-	index, ok := c.sessionIndex[sessionID]
-	c.mu.RUnlock()
+	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.CloseSession(sessionID)
 	}
-
-	c.mu.RLock()
-	client, ok := c.clients[index.pluginID]
-	c.mu.RUnlock()
-	if !ok {
+	if client == nil {
 		return apperror.PluginNotFound(index.pluginID)
 	}
-
 	return client.CloseSession(
 		c.getConnectedCtx(context.TODO(), index.pluginID, index.connectionID),
 		sessionID,
@@ -678,19 +671,14 @@ func (c *controller) ResizeSession(
 	sessionID string,
 	rows, cols uint16,
 ) error {
-	c.mu.RLock()
-	index, ok := c.sessionIndex[sessionID]
-	c.mu.RUnlock()
+	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.ResizeSession(sessionID, rows, cols)
 	}
-	c.mu.RLock()
-	client, ok := c.clients[index.pluginID]
-	c.mu.RUnlock()
-	if !ok {
+	if client == nil {
 		return apperror.PluginNotFound(index.pluginID)
 	}
 	return client.ResizeSession(
