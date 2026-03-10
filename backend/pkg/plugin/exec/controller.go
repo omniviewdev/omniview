@@ -92,8 +92,7 @@ func (c *controller) Run(ctx context.Context) {
 
 // safeSend sends to ch, recovering from a closed-channel panic that can occur
 // if OnPluginStop closes the channel between our map lookup and the send.
-func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) error {
-	var err error
+func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("send on closed exec input channel for session %s", input.SessionID)
@@ -101,7 +100,7 @@ func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) 
 		}
 	}()
 	ch <- input
-	return err
+	return nil
 }
 
 func listenOnOut(
@@ -337,6 +336,12 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	}
 	provider, ok := c.clients[pluginID]
 	delete(c.clients, pluginID)
+	// Remove stale sessions belonging to this plugin.
+	for sid, idx := range c.sessionIndex {
+		if idx.pluginID == pluginID {
+			delete(c.sessionIndex, sid)
+		}
+	}
 	// Clean up handler map entries so stale plugins don't advertise resources.
 	for plugin, resources := range c.handlerMap {
 		for resKey, handler := range resources {
