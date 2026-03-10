@@ -2676,12 +2676,6 @@ export namespace time {
 
 export namespace trivy {
 	
-	export enum Scanner {
-	    VULN = "vuln",
-	    MISCONFIG = "misconfig",
-	    SECRET = "secret",
-	    LICENSE = "license",
-	}
 	export enum Command {
 	    CONFIG = "config",
 	    FILESYSTEM = "fs",
@@ -2691,11 +2685,17 @@ export namespace trivy {
 	    ROOTFS = "rootfs",
 	    SBOM = "sbom",
 	}
+	export enum Scanner {
+	    VULN = "vuln",
+	    MISCONFIG = "misconfig",
+	    SECRET = "secret",
+	    LICENSE = "license",
+	}
 	export class ScanOptions {
 	    filePatterns: string[];
 	    skipDirs: string[];
 	    skipFiles: string[];
-	    scanners: string[];
+	    scanners: Scanner[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ScanOptions(source);

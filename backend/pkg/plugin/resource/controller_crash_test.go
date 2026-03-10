@@ -10,6 +10,8 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // ======================== isConnectionError tests ======================== //
@@ -205,6 +207,30 @@ func TestTriggerCrashRecovery_IndependentPlugins(t *testing.T) {
 
 	assert.Equal(t, int32(1), countA.Load())
 	assert.Equal(t, int32(1), countB.Load())
+}
+
+func TestIsConnectionError_ResourceOperationError(t *testing.T) {
+	// A ResourceOperationError means the plugin responded — not a crash.
+	roe := &resource.ResourceOperationError{
+		Code:        "CONNECTION_ERROR",
+		Title:       "Connection error",
+		Message:     "dial tcp 127.0.0.1:51501: connect: connection refused",
+		Suggestions: []string{"Check that the cluster is running"},
+	}
+	assert.False(t, isConnectionError(roe),
+		"ResourceOperationError should NOT be treated as a plugin crash")
+}
+
+func TestIsConnectionError_WrappedResourceOperationError(t *testing.T) {
+	// Even when wrapped with fmt.Errorf, the guard should still work.
+	roe := &resource.ResourceOperationError{
+		Code:    "CONNECTION_ERROR",
+		Title:   "Connection error",
+		Message: "connection refused",
+	}
+	wrapped := errors.Join(errors.New("rpc failed"), roe)
+	assert.False(t, isConnectionError(wrapped),
+		"wrapped ResourceOperationError should NOT be treated as a plugin crash")
 }
 
 // ======================== SetCrashCallback test ======================== //

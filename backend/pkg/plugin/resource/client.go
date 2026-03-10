@@ -97,6 +97,10 @@ func (c *Client) StopConnection(pluginID, connectionID string) (types.Connection
 	return c.controller.StopConnection(pluginID, connectionID)
 }
 
+func (c *Client) CheckConnection(pluginID, connectionID string) (types.ConnectionStatus, error) {
+	return c.controller.CheckConnection(pluginID, connectionID)
+}
+
 func (c *Client) LoadConnections(pluginID string) ([]types.Connection, error) {
 	return c.controller.LoadConnections(pluginID)
 }

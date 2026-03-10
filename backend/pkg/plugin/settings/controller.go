@@ -3,6 +3,7 @@ package settings
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"go.uber.org/zap"
@@ -32,6 +33,7 @@ var _ Controller = (*controller)(nil)
 type controller struct {
 	logger           *zap.SugaredLogger
 	settingsProvider pkgsettings.Provider
+	mu               sync.RWMutex
 	clients          map[string]SettingsProvider
 }
 
@@ -48,9 +50,11 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginInit")
 
+	c.mu.Lock()
 	if c.clients == nil {
 		c.clients = make(map[string]SettingsProvider)
 	}
+	c.mu.Unlock()
 }
 
 // dispenseProvider extracts the settings provider from the backend,
@@ -96,7 +100,9 @@ func (c *controller) OnPluginStart(
 		return err
 	}
 
+	c.mu.Lock()
 	c.clients[pluginID] = provider
+	c.mu.Unlock()
 	return nil
 }
 
@@ -104,7 +110,9 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStop")
 
+	c.mu.Lock()
 	delete(c.clients, pluginID)
+	c.mu.Unlock()
 
 	return nil
 }
@@ -127,6 +135,8 @@ func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) er
 func (c *controller) ListPlugins() ([]string, error) {
 	c.logger.Debug("ListPlugins")
 
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	plugins := make([]string, 0, len(c.clients))
 	for k := range c.clients {
 		plugins = append(plugins, k)
@@ -138,6 +148,8 @@ func (c *controller) ListPlugins() ([]string, error) {
 func (c *controller) HasPlugin(pluginID string) bool {
 	c.logger.Debug("HasPlugin")
 
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	_, hasClient := c.clients[pluginID]
 	return hasClient
 }
@@ -149,10 +161,15 @@ func (c *controller) Values() map[string]any {
 	logger := c.logger.With("method", "Values")
 	logger.Debug("Listing all settings values")
 
-	// create a new map to hold the values
+	c.mu.RLock()
+	snapshot := make(map[string]SettingsProvider, len(c.clients))
+	for k, v := range c.clients {
+		snapshot[k] = v
+	}
+	c.mu.RUnlock()
+
 	values := make(map[string]any)
-	// call all plugin clients simultaneously to collect them into the key value store
-	for pluginID, client := range c.clients {
+	for pluginID, client := range snapshot {
 		clientValues := client.ListSettings()
 		for settingID, setting := range clientValues {
 			key := fmt.Sprintf("%s.%s", pluginID, settingID)
@@ -170,7 +187,9 @@ func (c *controller) PluginValues(plugin string) map[string]any {
 	if plugin == "" {
 		return nil
 	}
+	c.mu.RLock()
 	client, ok := c.clients[plugin]
+	c.mu.RUnlock()
 	if !ok {
 		logger.Error(errors.New("plugin not found"))
 		return nil
@@ -190,7 +209,9 @@ func (c *controller) PluginValues(plugin string) map[string]any {
 func (c *controller) ListSettings(plugin string) map[string]pkgsettings.Setting {
 	logger := c.logger.With("plugin", plugin, "method", "ListSettings")
 
+	c.mu.RLock()
 	client, ok := c.clients[plugin]
+	c.mu.RUnlock()
 	if !ok {
 		logger.Error(errors.New("plugin not found"))
 		return nil
@@ -204,7 +225,9 @@ func (c *controller) ListSettings(plugin string) map[string]pkgsettings.Setting 
 func (c *controller) GetSetting(plugin, id string) (pkgsettings.Setting, error) {
 	logger := c.logger.With("plugin", plugin, "method", "GetSetting", "id", id)
 
+	c.mu.RLock()
 	client, ok := c.clients[plugin]
+	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(plugin)
 		logger.Error(err)
@@ -218,7 +241,9 @@ func (c *controller) GetSetting(plugin, id string) (pkgsettings.Setting, error) 
 func (c *controller) SetSetting(plugin, id string, value any) error {
 	logger := c.logger.With("plugin", plugin, "method", "SetSetting", "id", id)
 
+	c.mu.RLock()
 	client, ok := c.clients[plugin]
+	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(plugin)
 		logger.Error(err)
@@ -232,7 +257,9 @@ func (c *controller) SetSetting(plugin, id string, value any) error {
 func (c *controller) SetSettings(plugin string, settings map[string]any) error {
 	logger := c.logger.With("plugin", plugin, "method", "SetSettings", "entries", settings)
 
+	c.mu.RLock()
 	client, ok := c.clients[plugin]
+	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(plugin)
 		logger.Error(err)

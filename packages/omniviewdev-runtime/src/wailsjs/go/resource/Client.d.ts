@@ -5,6 +5,8 @@ import {resource} from '../models';
 
 export function AddConnection(arg1:string,arg2:types.Connection):Promise<void>;
 
+export function CheckConnection(arg1:string,arg2:string):Promise<types.ConnectionStatus>;
+
 export function Create(arg1:string,arg2:string,arg3:string,arg4:resource.ClientCreateInput):Promise<resource.ClientResult>;
 
 export function Delete(arg1:string,arg2:string,arg3:string,arg4:resource.DeleteInput):Promise<resource.ClientResult>;

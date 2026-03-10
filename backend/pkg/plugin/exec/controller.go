@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.uber.org/zap"
@@ -50,7 +51,6 @@ func NewController(
 	return &controller{
 		logger:           logger.Named("ExecController"),
 		settingsProvider: sp,
-		stops:            make(map[string]chan struct{}),
 		sessionIndex:     make(map[string]sessionIndex),
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
@@ -68,12 +68,12 @@ type controller struct {
 	ctx              context.Context
 	logger           *zap.SugaredLogger
 	settingsProvider pkgsettings.Provider
-	clients          map[string]ExecProvider
-	sessionIndex     map[string]sessionIndex
 
-	// session channels
-	stops   map[string]chan struct{}
-	inChans map[string]chan exec.StreamInput
+	mu           sync.RWMutex
+	clients      map[string]ExecProvider
+	sessionIndex map[string]sessionIndex
+	inChans      map[string]chan exec.StreamInput
+	handlerMap   map[string]map[string]exec.Handler
 
 	// multiplexer channels
 	inputMux  chan exec.StreamInput
@@ -81,7 +81,6 @@ type controller struct {
 	resizeMux chan exec.StreamResize
 
 	resourceClient  resource.Service
-	handlerMap      map[string]map[string]exec.Handler
 	terminalManager *terminal.Manager
 }
 
@@ -89,6 +88,19 @@ func (c *controller) Run(ctx context.Context) {
 	c.ctx = ctx
 	go c.runMux()      // plugin mux
 	go c.runLocalMux() // local terminal should be muxed separately to avoid latency
+}
+
+// safeSend sends to ch, recovering from a closed-channel panic that can occur
+// if OnPluginStop closes the channel between our map lookup and the send.
+func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("send on closed exec input channel for session %s", input.SessionID)
+			c.logger.Warnw("send on closed exec input channel", "sessionID", input.SessionID)
+		}
+	}()
+	ch <- input
+	return nil
 }
 
 func listenOnOut(
@@ -145,7 +157,9 @@ func (c *controller) runLocalMux() {
 				c.logger.Debug("closing session")
 				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
 				// session doesn't exist anymore, remove it from the index
+				c.mu.Lock()
 				delete(c.sessionIndex, output.SessionID)
+				c.mu.Unlock()
 			default:
 				c.logger.Debugw("received signal", "signal", output.Signal.String())
 				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
@@ -167,8 +181,16 @@ func (c *controller) runMux() {
 			return
 		case input := <-c.inputMux:
 			c.logger.Debugw("got input", "input", input)
-			if client, ok := c.inChans[input.SessionID]; ok {
-				client <- input
+			// Capture the channel under lock, then send outside it to avoid
+			// holding RLock during a potentially blocking send.
+			var ch chan exec.StreamInput
+			c.mu.RLock()
+			if idx, found := c.sessionIndex[input.SessionID]; found {
+				ch = c.inChans[idx.pluginID]
+			}
+			c.mu.RUnlock()
+			if ch != nil {
+				c.safeSend(ch, input)
 			}
 		case output := <-c.outputMux:
 			// dispatch to ui
@@ -198,7 +220,9 @@ func (c *controller) runMux() {
 				c.logger.Debug("closing session")
 				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
 				// session doesn't exist anymore, remove it from the index
+				c.mu.Lock()
 				delete(c.sessionIndex, output.SessionID)
+				c.mu.Unlock()
 			default:
 				c.logger.Debugw("received signal", "signal", output.Signal.String())
 				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
@@ -213,12 +237,11 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginInit")
 
+	c.mu.Lock()
 	if c.clients == nil {
 		c.clients = make(map[string]ExecProvider)
 	}
-	if c.stops == nil {
-		c.stops = make(map[string]chan struct{})
-	}
+	c.mu.Unlock()
 }
 
 // dispenseProvider extracts the exec provider from the backend,
@@ -260,32 +283,32 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 		return err
 	}
 
-	c.clients[pluginID] = provider
-
-	// get the handlers and ensure the map is updated
+	// Get the handlers before acquiring the lock (this makes an RPC call).
 	handlers := provider.GetSupportedResources(c.getUnconnectedCtx(context.Background(), ""))
+
+	inchan := make(chan exec.StreamInput)
+
+	// Start the stream before registering state so a Stream failure doesn't
+	// leave stale entries in clients/inChans/handlerMap.
+	stream, err := provider.Stream(c.ctx, inchan)
+	if err != nil {
+		close(inchan)
+		logger.Errorw("error starting stream", "error", err)
+		return err
+	}
+
+	c.mu.Lock()
+	c.clients[pluginID] = provider
 	for _, handler := range handlers {
 		if _, ok := c.handlerMap[handler.Plugin]; !ok {
 			c.handlerMap[handler.Plugin] = make(map[string]exec.Handler)
 		}
-
-		// TODO: for now we're just overwriting, but we should do something else here once we
-		// determine what we should support. Eventually we should support multiple handlers
-		// for a single resource type.
 		c.handlerMap[handler.Plugin][handler.Resource] = handler
 	}
-
-	inchan := make(chan exec.StreamInput)
 	c.inChans[pluginID] = inchan
+	c.mu.Unlock()
 
-	// start the stream on a goroutine
 	go func() {
-		stream, err := provider.Stream(c.ctx, inchan)
-		if err != nil {
-			logger.Error("error starting stream: ", err)
-			return
-		}
-
 		for {
 			select {
 			case <-c.ctx.Done():
@@ -306,14 +329,34 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginStop")
 
+	c.mu.Lock()
 	if ch, ok := c.inChans[pluginID]; ok {
 		close(ch)
 		delete(c.inChans, pluginID)
 	}
-	if provider, ok := c.clients[pluginID]; ok {
+	provider, ok := c.clients[pluginID]
+	delete(c.clients, pluginID)
+	// Remove stale sessions belonging to this plugin.
+	for sid, idx := range c.sessionIndex {
+		if idx.pluginID == pluginID {
+			delete(c.sessionIndex, sid)
+		}
+	}
+	// Clean up handler map entries so stale plugins don't advertise resources.
+	for plugin, resources := range c.handlerMap {
+		for resKey, handler := range resources {
+			if handler.Plugin == pluginID {
+				delete(resources, resKey)
+			}
+		}
+		if len(resources) == 0 {
+			delete(c.handlerMap, plugin)
+		}
+	}
+	c.mu.Unlock()
+	if ok {
 		provider.Close()
 	}
-	delete(c.clients, pluginID)
 	return nil
 }
 
@@ -321,7 +364,30 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 	logger := c.logger.With("pluginID", pluginID)
 	logger.Debug("OnPluginShutdown")
 
+	c.mu.Lock()
 	delete(c.clients, pluginID)
+	if ch, ok := c.inChans[pluginID]; ok {
+		close(ch)
+		delete(c.inChans, pluginID)
+	}
+	// Remove stale sessions belonging to this plugin.
+	for sid, idx := range c.sessionIndex {
+		if idx.pluginID == pluginID {
+			delete(c.sessionIndex, sid)
+		}
+	}
+	// Clean up handler map entries so stale plugins don't advertise resources.
+	for plugin, resources := range c.handlerMap {
+		for resKey, handler := range resources {
+			if handler.Plugin == pluginID {
+				delete(resources, resKey)
+			}
+		}
+		if len(resources) == 0 {
+			delete(c.handlerMap, plugin)
+		}
+	}
+	c.mu.Unlock()
 	return nil
 }
 
@@ -335,6 +401,8 @@ func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) er
 
 func (c *controller) ListPlugins() ([]string, error) {
 	c.logger.Debug("ListPlugins")
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	plugins := make([]string, 0, len(c.clients))
 	for k := range c.clients {
 		plugins = append(plugins, k)
@@ -343,6 +411,8 @@ func (c *controller) ListPlugins() ([]string, error) {
 }
 
 func (c *controller) HasPlugin(pluginID string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	_, ok := c.clients[pluginID]
 	return ok
 }
@@ -384,17 +454,39 @@ func (c *controller) getUnconnectedCtx(
 }
 
 func (c *controller) GetPluginHandlers(plugin string) map[string]exec.Handler {
-	return c.handlerMap[plugin]
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	src := c.handlerMap[plugin]
+	if src == nil {
+		return nil
+	}
+	cp := make(map[string]exec.Handler, len(src))
+	for k, v := range src {
+		cp[k] = v
+	}
+	return cp
 }
 
 func (c *controller) GetHandlers() map[string]map[string]exec.Handler {
-	return c.handlerMap
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	cp := make(map[string]map[string]exec.Handler, len(c.handlerMap))
+	for plugin, inner := range c.handlerMap {
+		innerCp := make(map[string]exec.Handler, len(inner))
+		for k, v := range inner {
+			innerCp[k] = v
+		}
+		cp[plugin] = innerCp
+	}
+	return cp
 }
 
 func (c *controller) GetHandler(
 	plugin string,
 	resource string,
 ) *exec.Handler {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	p, ok := c.handlerMap[plugin]
 	if !ok {
 		return nil
@@ -420,11 +512,15 @@ func (c *controller) CreateSession(
 		if err != nil {
 			return nil, err
 		}
+		c.mu.Lock()
 		c.sessionIndex[session.ID] = sessionIndex{local: true}
+		c.mu.Unlock()
 		return session, nil
 	}
 
+	c.mu.RLock()
 	client, ok := c.clients[plugin]
+	c.mu.RUnlock()
 	if !ok {
 		return nil, apperror.PluginNotFound(plugin)
 	}
@@ -437,11 +533,13 @@ func (c *controller) CreateSession(
 		return nil, err
 	}
 
+	c.mu.Lock()
 	c.sessionIndex[session.ID] = sessionIndex{
 		local:        false,
 		pluginID:     plugin,
 		connectionID: connectionID,
 	}
+	c.mu.Unlock()
 
 	return session, nil
 }
@@ -450,9 +548,15 @@ func (c *controller) ListSessions() ([]*exec.Session, error) {
 	c.logger.Debug("ListSessions")
 	ctx := c.getUnconnectedCtx(context.Background(), "")
 
-	// go through all clients and list sessions
-	sessions := make([]*exec.Session, 0)
+	c.mu.RLock()
+	clients := make([]ExecProvider, 0, len(c.clients))
 	for _, client := range c.clients {
+		clients = append(clients, client)
+	}
+	c.mu.RUnlock()
+
+	sessions := make([]*exec.Session, 0)
+	for _, client := range clients {
 		clientSessions, err := client.ListSessions(ctx)
 		if err != nil {
 			return nil, err
@@ -466,21 +570,32 @@ func (c *controller) ListSessions() ([]*exec.Session, error) {
 	return sessions, nil
 }
 
+// lookupSession reads sessionIndex and clients/inChans in a single RLock.
+// Returns the index, client (may be nil for WriteSession callers), and whether
+// the session was found at all. Callers must check local separately.
+func (c *controller) lookupSession(sessionID string) (sessionIndex, ExecProvider, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	idx, ok := c.sessionIndex[sessionID]
+	if !ok {
+		return sessionIndex{}, nil, false
+	}
+	client := c.clients[idx.pluginID]
+	return idx, client, true
+}
+
 func (c *controller) GetSession(
 	sessionID string,
 ) (*exec.Session, error) {
 	c.logger.Debug("GetSession")
-	index, ok := c.sessionIndex[sessionID]
+	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
-
 	if index.local {
 		return c.terminalManager.GetSession(sessionID)
 	}
-
-	client, ok := c.clients[index.pluginID]
-	if !ok {
+	if client == nil {
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.GetSession(
@@ -491,16 +606,14 @@ func (c *controller) GetSession(
 
 func (c *controller) AttachSession(sessionID string) (*exec.Session, []byte, error) {
 	c.logger.Debug("AttachSession")
-	index, ok := c.sessionIndex[sessionID]
+	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return nil, nil, apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.AttachSession(sessionID)
 	}
-
-	client, ok := c.clients[index.pluginID]
-	if !ok {
+	if client == nil {
 		return nil, nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.AttachSession(
@@ -511,16 +624,14 @@ func (c *controller) AttachSession(sessionID string) (*exec.Session, []byte, err
 
 func (c *controller) DetachSession(sessionID string) (*exec.Session, error) {
 	c.logger.Debug("DetachSession")
-	index, ok := c.sessionIndex[sessionID]
+	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.DetachSession(sessionID)
 	}
-
-	client, ok := c.clients[index.pluginID]
-	if !ok {
+	if client == nil {
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
 	return client.DetachSession(
@@ -533,42 +644,42 @@ func (c *controller) WriteSession(
 	sessionID string,
 	data []byte,
 ) error {
+	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
+	var inchan chan exec.StreamInput
+	if ok && !index.local {
+		inchan = c.inChans[index.pluginID]
+	}
+	c.mu.RUnlock()
 	if !ok {
 		return apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.WriteSession(sessionID, data)
 	}
-
-	inchan, ok := c.inChans[index.pluginID]
-	if !ok {
+	if inchan == nil {
 		return apperror.SessionNotFound(sessionID)
 	}
 	c.logger.Debug("Writing to session")
-	inchan <- exec.StreamInput{
+	return c.safeSend(inchan, exec.StreamInput{
 		SessionID: sessionID,
 		Data:      data,
-	}
-	return nil
+	})
 }
 
 func (c *controller) CloseSession(
 	sessionID string,
 ) error {
-	index, ok := c.sessionIndex[sessionID]
+	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.CloseSession(sessionID)
 	}
-
-	client, ok := c.clients[index.pluginID]
-	if !ok {
+	if client == nil {
 		return apperror.PluginNotFound(index.pluginID)
 	}
-
 	return client.CloseSession(
 		c.getConnectedCtx(context.TODO(), index.pluginID, index.connectionID),
 		sessionID,
@@ -579,15 +690,14 @@ func (c *controller) ResizeSession(
 	sessionID string,
 	rows, cols uint16,
 ) error {
-	index, ok := c.sessionIndex[sessionID]
+	index, client, ok := c.lookupSession(sessionID)
 	if !ok {
 		return apperror.SessionNotFound(sessionID)
 	}
 	if index.local {
 		return c.terminalManager.ResizeSession(sessionID, rows, cols)
 	}
-	client, ok := c.clients[index.pluginID]
-	if !ok {
+	if client == nil {
 		return apperror.PluginNotFound(index.pluginID)
 	}
 	return client.ResizeSession(

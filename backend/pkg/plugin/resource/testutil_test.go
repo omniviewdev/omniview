@@ -139,6 +139,7 @@ type mockProvider struct {
 	DeleteFunc                  func(ctx context.Context, key string, input resource.DeleteInput) (*resource.DeleteResult, error)
 	StartConnectionFunc         func(ctx context.Context, connectionID string) (types.ConnectionStatus, error)
 	StopConnectionFunc          func(ctx context.Context, connectionID string) (types.Connection, error)
+	CheckConnectionFunc         func(ctx context.Context, connectionID string) (types.ConnectionStatus, error)
 	LoadConnectionsFunc         func(ctx context.Context) ([]types.Connection, error)
 	ListConnectionsFunc         func(ctx context.Context) ([]types.Connection, error)
 	GetConnectionFunc           func(ctx context.Context, id string) (types.Connection, error)
@@ -231,6 +232,13 @@ func (m *mockProvider) StopConnection(ctx context.Context, connectionID string) 
 		return m.StopConnectionFunc(ctx, connectionID)
 	}
 	return types.Connection{}, nil
+}
+
+func (m *mockProvider) CheckConnection(ctx context.Context, connectionID string) (types.ConnectionStatus, error) {
+	if m.CheckConnectionFunc != nil {
+		return m.CheckConnectionFunc(ctx, connectionID)
+	}
+	return types.ConnectionStatus{Status: types.ConnectionStatusConnected}, nil
 }
 
 func (m *mockProvider) LoadConnections(ctx context.Context) ([]types.Connection, error) {

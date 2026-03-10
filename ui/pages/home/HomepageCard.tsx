@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
@@ -8,6 +8,8 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { Text } from '@omniviewdev/ui/typography';
 import { Stack } from '@omniviewdev/ui/layout';
+import { PluginContext } from '@omniviewdev/runtime';
+import { config as runtimeConfig } from '@omniviewdev/runtime/models';
 import type { Registration } from '@omniviewdev/runtime';
 import type { HomepageCardProps, HomepageCardMeta, HomepageCardConfig } from '@/features/extensions/homepage/types';
 import HomepageCardConfigPopover from './HomepageCardConfigPopover';
@@ -30,6 +32,12 @@ const HomepageCard: React.FC<Props> = ({
   onConfigChange,
 }) => {
   const [configAnchor, setConfigAnchor] = React.useState<HTMLElement | null>(null);
+
+  const providerValue = useMemo(() => ({
+    pluginId: registration.plugin,
+    meta: new runtimeConfig.PluginMeta(),
+    settings: {},
+  }), [registration.plugin]);
 
   // In normal mode, hidden cards are not rendered
   if (isHidden && !isEditMode) {
@@ -97,9 +105,12 @@ const HomepageCard: React.FC<Props> = ({
         )}
       </Box>
 
-      {/* Card content */}
+      {/* Card content — use a lightweight context provider instead of
+          PluginContextProvider which blocks rendering on async metadata fetch */}
       <Box sx={{ flex: 1, overflow: 'auto', px: 1.5, pb: 1.5 }}>
-        <Component pluginID={registration.plugin} config={config} />
+        <PluginContext.Provider value={providerValue}>
+          <Component pluginID={registration.plugin} config={config} />
+        </PluginContext.Provider>
       </Box>
 
       {/* Config popover */}

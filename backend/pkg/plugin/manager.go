@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
@@ -33,6 +34,20 @@ import (
 const (
 	MaxPluginSize = 1024 * 1024 * 1024 // 1GB
 )
+
+// sensitivePattern matches tokens, long hex/base64 strings, and other
+// potentially sensitive values that should not appear in crash reports.
+var sensitivePattern = regexp.MustCompile(
+	`(?i)` +
+		`(?:token|password|secret|key|auth|credential|bearer)\s*[:=]\s*\S+` + // key=value pairs
+		`|[A-Za-z0-9+/]{40,}={0,2}` + // long base64 strings
+		`|[0-9a-f]{32,}`, // long hex strings
+)
+
+// sanitizeLogMessage redacts sensitive-looking patterns in a log message.
+func sanitizeLogMessage(msg string) string {
+	return sensitivePattern.ReplaceAllString(msg, "[REDACTED]")
+}
 
 // Manager manages the lifecycle and registration of plugins.
 type Manager interface {
@@ -99,6 +114,7 @@ func NewManager(
 		settingsProvider: settingsProvider,
 		registryClient:   registryClient,
 		pidTracker:       NewPluginPIDTracker(),
+		pluginOpsLocks:   make(map[string]*sync.Mutex),
 	}
 }
 
@@ -125,6 +141,26 @@ type pluginManager struct {
 	healthChecker       *HealthChecker
 	pluginLogMgr        *pluginlog.Manager
 	backendFactory      func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error)
+
+	// pluginOpsMu serializes load/reload/unload operations per plugin to
+	// prevent concurrent lifecycle transitions for the same plugin (e.g.
+	// two file-change events triggering simultaneous reloads).
+	pluginOpsMu   sync.Mutex
+	pluginOpsLocks map[string]*sync.Mutex
+}
+
+// pluginOpsLock returns a per-plugin mutex that serializes load/reload/unload
+// operations. This prevents concurrent lifecycle transitions for the same
+// plugin (e.g. two file-change events triggering simultaneous reloads).
+func (pm *pluginManager) pluginOpsLock(pluginID string) *sync.Mutex {
+	pm.pluginOpsMu.Lock()
+	mu, ok := pm.pluginOpsLocks[pluginID]
+	if !ok {
+		mu = &sync.Mutex{}
+		pm.pluginOpsLocks[pluginID] = mu
+	}
+	pm.pluginOpsMu.Unlock()
+	return mu
 }
 
 // Run starts the plugin manager's background tasks.
@@ -140,7 +176,38 @@ func (pm *pluginManager) Run(ctx context.Context) {
 
 // HandlePluginCrash handles a plugin process crash with exponential backoff recovery.
 func (pm *pluginManager) HandlePluginCrash(pluginID string) {
-	pm.logger.Errorw("plugin process crashed — attempting recovery", "pluginID", pluginID)
+	// Capture the last few log entries before the crash for diagnostics.
+	// These are pulled from the in-memory ring buffer that captures all
+	// plugin stderr output (including panic stack traces).
+	var crashContext []string
+	var crashError string
+	if pm.pluginLogMgr != nil {
+		recent := pm.pluginLogMgr.GetLogs(pluginID, 20)
+		for _, entry := range recent {
+			sanitized := sanitizeLogMessage(entry.Message)
+			line := fmt.Sprintf("[%s] %s %s", entry.Level, entry.Timestamp, sanitized)
+			crashContext = append(crashContext, line)
+			// Keep track of the last error-level message as the crash reason.
+			if entry.Level == "error" {
+				crashError = sanitized
+			}
+		}
+	}
+
+	if crashError == "" {
+		crashError = "plugin process exited unexpectedly"
+	}
+
+	pm.logger.Errorw("plugin process crashed — attempting recovery",
+		"pluginID", pluginID,
+		"crashReason", crashError,
+	)
+	if len(crashContext) > 0 {
+		pm.logger.Errorw("plugin crash context (last log entries)",
+			"pluginID", pluginID,
+			"entries", crashContext,
+		)
+	}
 
 	// Only emit the user-facing "plugin/crash" notification on the FIRST crash.
 	// If the plugin is already in a crash-recover-crash loop (budget window active),
@@ -150,7 +217,7 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	if !inCrashCycle {
 		emitEvent(pm.ctx, "plugin/crash", map[string]interface{}{
 			"pluginID": pluginID,
-			"error":    "plugin process exited unexpectedly",
+			"error":    crashError,
 		})
 	}
 

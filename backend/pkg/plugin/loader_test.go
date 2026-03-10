@@ -32,6 +32,7 @@ func newTestManager(t *testing.T) *pluginManager {
 		connfullControllers: make(map[sdktypes.Capability]plugintypes.ConnectedController),
 		managers:            make(map[string]plugintypes.PluginManager),
 		pidTracker:          NewPluginPIDTracker(),
+		pluginOpsLocks:      make(map[string]*sync.Mutex),
 	}
 }
 
@@ -368,6 +369,7 @@ func TestDevPlugin_SurvivesRestart(t *testing.T) {
 		connfullControllers: make(map[sdktypes.Capability]plugintypes.ConnectedController),
 		managers:            make(map[string]plugintypes.PluginManager),
 		pidTracker:          NewPluginPIDTracker(),
+		pluginOpsLocks:      make(map[string]*sync.Mutex),
 	}
 	// Use the same plugin dir as pm1.
 	pm2.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
@@ -449,6 +451,174 @@ func TestInitialize_DoesNotLoseFailedPluginState(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "Failed plugin state should still be in the state file")
+}
+
+// trackingController records each lifecycle call for assertions.
+type trackingController struct {
+	mu        sync.Mutex
+	initCalls []string
+	startCalls []string
+	stopCalls  []string
+	shutCalls  []string
+}
+
+func (tc *trackingController) OnPluginInit(pluginID string, _ config.PluginMeta) {
+	tc.mu.Lock()
+	tc.initCalls = append(tc.initCalls, pluginID)
+	tc.mu.Unlock()
+}
+func (tc *trackingController) OnPluginStart(pluginID string, _ config.PluginMeta, _ plugintypes.PluginBackend) error {
+	tc.mu.Lock()
+	tc.startCalls = append(tc.startCalls, pluginID)
+	tc.mu.Unlock()
+	return nil
+}
+func (tc *trackingController) OnPluginStop(pluginID string, _ config.PluginMeta) error {
+	tc.mu.Lock()
+	tc.stopCalls = append(tc.stopCalls, pluginID)
+	tc.mu.Unlock()
+	return nil
+}
+func (tc *trackingController) OnPluginShutdown(pluginID string, _ config.PluginMeta) error {
+	tc.mu.Lock()
+	tc.shutCalls = append(tc.shutCalls, pluginID)
+	tc.mu.Unlock()
+	return nil
+}
+func (tc *trackingController) OnPluginDestroy(_ string, _ config.PluginMeta) error { return nil }
+func (tc *trackingController) ListPlugins() ([]string, error)                       { return nil, nil }
+func (tc *trackingController) HasPlugin(_ string) bool                              { return false }
+
+// capDetectingBackend is a mock backend that reports detected capabilities.
+type capDetectingBackend struct {
+	version int
+	caps    []string
+}
+
+func (b *capDetectingBackend) Dispense(string) (interface{}, error) { return nil, nil }
+func (b *capDetectingBackend) Healthy() bool                        { return true }
+func (b *capDetectingBackend) Stop() error                          { return nil }
+func (b *capDetectingBackend) Kill()                                {}
+func (b *capDetectingBackend) Exited() bool                         { return false }
+func (b *capDetectingBackend) NegotiatedVersion() int               { return b.version }
+func (b *capDetectingBackend) DetectCapabilities() ([]string, error) {
+	return b.caps, nil
+}
+
+func TestStartPlugin_SettingsNotCalledTwice(t *testing.T) {
+	pm := newTestManager(t)
+	pm.ctx = context.Background()
+
+	settingsCtrl := &trackingController{}
+	execCtrl := &trackingController{}
+	pm.connlessControllers[sdktypes.CapabilitySettings] = settingsCtrl
+	pm.connlessControllers[sdktypes.CapabilityExec] = execCtrl
+
+	// Backend that detects exec capability.
+	backend := &capDetectingBackend{
+		version: plugintypes.CurrentProtocolVersion,
+		caps:    []string{"exec"},
+	}
+
+	record := &plugintypes.PluginRecord{
+		ID:       "test",
+		Phase:    lifecycle.PhaseStarting,
+		Metadata: config.PluginMeta{ID: "test", Name: "test"},
+	}
+
+	err := pm.startPlugin(record, backend)
+	require.NoError(t, err)
+
+	settingsCtrl.mu.Lock()
+	defer settingsCtrl.mu.Unlock()
+	assert.Len(t, settingsCtrl.startCalls, 1, "settings OnPluginStart should be called exactly once")
+
+	execCtrl.mu.Lock()
+	defer execCtrl.mu.Unlock()
+	assert.Len(t, execCtrl.startCalls, 1, "exec OnPluginStart should be called exactly once")
+}
+
+func TestStopPlugin_SettingsNotCalledTwice(t *testing.T) {
+	pm := newTestManager(t)
+
+	settingsCtrl := &trackingController{}
+	pm.connlessControllers[sdktypes.CapabilitySettings] = settingsCtrl
+	pm.connlessControllers[sdktypes.CapabilityExec] = &trackingController{}
+
+	record := &plugintypes.PluginRecord{
+		ID:           "test",
+		Phase:        lifecycle.PhaseRunning,
+		Metadata:     config.PluginMeta{ID: "test"},
+		Capabilities: []sdktypes.Capability{sdktypes.CapabilityExec, sdktypes.CapabilitySettings},
+	}
+
+	err := pm.stopPlugin(record)
+	require.NoError(t, err)
+
+	settingsCtrl.mu.Lock()
+	defer settingsCtrl.mu.Unlock()
+	assert.Len(t, settingsCtrl.stopCalls, 1, "settings OnPluginStop should be called exactly once")
+}
+
+func TestShutdownPlugin_SettingsNotCalledTwice(t *testing.T) {
+	pm := newTestManager(t)
+
+	settingsCtrl := &trackingController{}
+	pm.connlessControllers[sdktypes.CapabilitySettings] = settingsCtrl
+
+	backend := &mockBackend{version: plugintypes.CurrentProtocolVersion}
+	record := &plugintypes.PluginRecord{
+		ID:           "test",
+		Phase:        lifecycle.PhaseRunning,
+		Metadata:     config.PluginMeta{ID: "test", Capabilities: []string{"settings"}},
+		Backend:      backend,
+		Capabilities: []sdktypes.Capability{sdktypes.CapabilitySettings},
+	}
+
+	err := pm.shutdownPlugin("test", record)
+	require.NoError(t, err)
+
+	settingsCtrl.mu.Lock()
+	defer settingsCtrl.mu.Unlock()
+	assert.Len(t, settingsCtrl.shutCalls, 1, "settings OnPluginShutdown should be called exactly once")
+}
+
+func TestConcurrentReloads_Serialized(t *testing.T) {
+	pm := newTestManager(t)
+	pm.ctx = context.Background()
+	installPluginFixture(t, "concurrent-test", []string{"ui"}, false)
+	require.NoError(t, os.MkdirAll(filepath.Join(getPluginDir(), "concurrent-test", "assets"), 0755))
+
+	// Initial load.
+	_, err := pm.LoadPlugin("concurrent-test", nil)
+	require.NoError(t, err)
+
+	// Launch multiple concurrent reloads. With serialization, none should
+	// panic with "concurrent map writes" or produce a race.
+	const N = 10
+	var wg sync.WaitGroup
+	errs := make(chan error, N)
+	wg.Add(N)
+	for range N {
+		go func() {
+			defer wg.Done()
+			_, err := pm.ReloadPlugin("concurrent-test")
+			if err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for reloadErr := range errs {
+		t.Logf("reload error (may be expected under contention): %v", reloadErr)
+	}
+
+	// Verify the plugin is still in a valid state.
+	pm.recordsMu.RLock()
+	_, ok := pm.records["concurrent-test"]
+	pm.recordsMu.RUnlock()
+	assert.True(t, ok, "plugin should still be loaded after concurrent reloads")
 }
 
 // mockBackend is a minimal PluginBackend for unit tests.

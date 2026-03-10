@@ -1,8 +1,11 @@
 import React from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 
 // Material-ui
 import Box from '@mui/material/Box';
+import Alert from '@mui/material/Alert';
+import AlertTitle from '@mui/material/AlertTitle';
+import Button from '@mui/material/Button';
 import { useTheme } from '@mui/material/styles';
 import { Stack } from '@omniviewdev/ui/layout';
 import { Text } from '@omniviewdev/ui/typography';
@@ -15,6 +18,7 @@ import {
   useResourceTypes,
   useResourceGroups,
   useSnackbar,
+  parseAppError,
 } from '@omniviewdev/runtime';
 
 // Types
@@ -50,6 +54,7 @@ export default function ResourceTableView(): React.ReactElement {
   const { groups } = useResourceGroups({ pluginID, connectionID });
   const { connection } = useConnection({ pluginID, connectionID });
 
+  const navigate = useNavigate();
   const plugin = usePluginContext();
   const { showSnackbar } = useSnackbar();
 
@@ -65,12 +70,28 @@ export default function ResourceTableView(): React.ReactElement {
     }
   }, []);
 
-  if (groups.isLoading || connection.isLoading || !groups.data || !connection.data) {
-    return (<></>);
+  if (groups.isError) {
+    const appErr = parseAppError(groups.error);
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2, p: 4 }}>
+        <Alert severity='error' sx={{ maxWidth: 560, width: '100%' }}>
+          <AlertTitle>{appErr.title}</AlertTitle>
+          {appErr.detail}
+          {appErr.suggestions && appErr.suggestions.length > 0 && (
+            <Box component='ul' sx={{ pl: 2, mt: 1, mb: 0 }}>
+              {appErr.suggestions.map((s, i) => (
+                <li key={`${i}-${s}`}>{s}</li>
+              ))}
+            </Box>
+          )}
+        </Alert>
+        <Button variant='outlined' size='small' onClick={() => navigate(-1)}>Go Back</Button>
+      </Box>
+    );
   }
 
-  if (groups.isError) {
-    return (<>{types.error}</>);
+  if (groups.isLoading || connection.isLoading || !groups.data || !connection.data) {
+    return (<></>);
   }
 
   const getSections = () => {
