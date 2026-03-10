@@ -70,10 +70,6 @@ export default function ResourceTableView(): React.ReactElement {
     }
   }, []);
 
-  if (groups.isLoading || connection.isLoading || !groups.data || !connection.data) {
-    return (<></>);
-  }
-
   if (groups.isError) {
     const appErr = parseAppError(groups.error);
     return (
@@ -92,6 +88,10 @@ export default function ResourceTableView(): React.ReactElement {
         <Button variant='outlined' size='small' onClick={() => navigate(-1)}>Go Back</Button>
       </Box>
     );
+  }
+
+  if (groups.isLoading || connection.isLoading || !groups.data || !connection.data) {
+    return (<></>);
   }
 
   const getSections = () => {

@@ -171,11 +171,14 @@ func (c *controller) runMux() {
 		case input := <-c.inputMux:
 			c.logger.Debugw("got input", "input", input)
 			c.mu.RLock()
-			client, ok := c.inChans[input.SessionID]
-			c.mu.RUnlock()
-			if ok {
-				client <- input
+			idx, found := c.sessionIndex[input.SessionID]
+			if found {
+				client, ok := c.inChans[idx.pluginID]
+				if ok {
+					client <- input
+				}
 			}
+			c.mu.RUnlock()
 		case output := <-c.outputMux:
 			// dispatch to ui
 			if c.ctx == nil {
@@ -321,6 +324,17 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	}
 	provider, ok := c.clients[pluginID]
 	delete(c.clients, pluginID)
+	// Clean up handler map entries so stale plugins don't advertise resources.
+	for plugin, resources := range c.handlerMap {
+		for resKey, handler := range resources {
+			if handler.Plugin == pluginID {
+				delete(resources, resKey)
+			}
+		}
+		if len(resources) == 0 {
+			delete(c.handlerMap, plugin)
+		}
+	}
 	c.mu.Unlock()
 	if ok {
 		provider.Close()
@@ -334,6 +348,17 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 
 	c.mu.Lock()
 	delete(c.clients, pluginID)
+	// Clean up handler map entries so stale plugins don't advertise resources.
+	for plugin, resources := range c.handlerMap {
+		for resKey, handler := range resources {
+			if handler.Plugin == pluginID {
+				delete(resources, resKey)
+			}
+		}
+		if len(resources) == 0 {
+			delete(c.handlerMap, plugin)
+		}
+	}
 	c.mu.Unlock()
 	return nil
 }
@@ -606,10 +631,12 @@ func (c *controller) WriteSession(
 		return c.terminalManager.WriteSession(sessionID, data)
 	}
 
+	// Hold RLock during the send to prevent OnPluginStop from closing the
+	// channel concurrently (send-on-closed-channel panic).
 	c.mu.RLock()
 	inchan, ok := c.inChans[index.pluginID]
-	c.mu.RUnlock()
 	if !ok {
+		c.mu.RUnlock()
 		return apperror.SessionNotFound(sessionID)
 	}
 	c.logger.Debug("Writing to session")
@@ -617,6 +644,7 @@ func (c *controller) WriteSession(
 		SessionID: sessionID,
 		Data:      data,
 	}
+	c.mu.RUnlock()
 	return nil
 }
 

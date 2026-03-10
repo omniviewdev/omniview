@@ -13,6 +13,7 @@ linters:
     - errname
     - errorlint
     - exhaustive
+    - exhaustruct
     - forbidigo
     - funlen
     - gocheckcompilerdirectives
@@ -198,6 +199,9 @@ formatters:
         - prefix(github.com/omniviewdev)
         - blank
         - dot
+    goimports:
+      local-prefixes:
+        - github.com/omniviewdev
   exclusions:
     generated: lax
     paths:
