@@ -92,13 +92,16 @@ func (c *controller) Run(ctx context.Context) {
 
 // safeSend sends to ch, recovering from a closed-channel panic that can occur
 // if OnPluginStop closes the channel between our map lookup and the send.
-func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) {
+func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) error {
+	var err error
 	defer func() {
 		if r := recover(); r != nil {
+			err = fmt.Errorf("send on closed exec input channel for session %s", input.SessionID)
 			c.logger.Warnw("send on closed exec input channel", "sessionID", input.SessionID)
 		}
 	}()
 	ch <- input
+	return err
 }
 
 func listenOnOut(
@@ -286,6 +289,15 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 
 	inchan := make(chan exec.StreamInput)
 
+	// Start the stream before registering state so a Stream failure doesn't
+	// leave stale entries in clients/inChans/handlerMap.
+	stream, err := provider.Stream(c.ctx, inchan)
+	if err != nil {
+		close(inchan)
+		logger.Errorw("error starting stream", "error", err)
+		return err
+	}
+
 	c.mu.Lock()
 	c.clients[pluginID] = provider
 	for _, handler := range handlers {
@@ -297,14 +309,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	c.inChans[pluginID] = inchan
 	c.mu.Unlock()
 
-	// start the stream on a goroutine
 	go func() {
-		stream, err := provider.Stream(c.ctx, inchan)
-		if err != nil {
-			logger.Error("error starting stream: ", err)
-			return
-		}
-
 		for {
 			select {
 			case <-c.ctx.Done():
@@ -356,6 +361,16 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 
 	c.mu.Lock()
 	delete(c.clients, pluginID)
+	if ch, ok := c.inChans[pluginID]; ok {
+		close(ch)
+		delete(c.inChans, pluginID)
+	}
+	// Remove stale sessions belonging to this plugin.
+	for sid, idx := range c.sessionIndex {
+		if idx.pluginID == pluginID {
+			delete(c.sessionIndex, sid)
+		}
+	}
 	// Clean up handler map entries so stale plugins don't advertise resources.
 	for plugin, resources := range c.handlerMap {
 		for resKey, handler := range resources {
@@ -641,11 +656,10 @@ func (c *controller) WriteSession(
 		return apperror.SessionNotFound(sessionID)
 	}
 	c.logger.Debug("Writing to session")
-	c.safeSend(inchan, exec.StreamInput{
+	return c.safeSend(inchan, exec.StreamInput{
 		SessionID: sessionID,
 		Data:      data,
 	})
-	return nil
 }
 
 func (c *controller) CloseSession(
