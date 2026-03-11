@@ -100,12 +100,11 @@ export function useExtensionPoint<
 export const ExtensionProvider: React.FC<ExtensionProviderProps> = ({ registry, children }) => {
   const initialRegistry = React.useRef<ExtensionPointRegistryContract>(registry);
 
-  React.useEffect(() => {
-    invariant(
-      initialRegistry.current === registry,
-      'You can\'t change the extension registry after it has been rendered',
-    );
-  }, [registry]);
+  // Synchronous check — throw before children render with a different registry
+  invariant(
+    initialRegistry.current === registry,
+    'You can\'t change the extension registry after it has been rendered',
+  );
 
   return (
     <ExtensionRegistryContext.Provider value={initialRegistry.current}>

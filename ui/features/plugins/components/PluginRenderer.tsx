@@ -43,9 +43,9 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
       <ErrorBoundary
         FallbackComponent={(props) => <PanelErrorFallback {...props} label={`Plugin: ${data.pluginID}`} boundary="Plugin Renderer" />}
         onError={onBoundaryError}
-        resetKeys={[loadedAt]}
+        resetKeys={[data.pluginID, loadedAt]}
       >
-        <PluginContextProvider pluginId={data.pluginID} key={loadedAt}>
+        <PluginContextProvider pluginId={data.pluginID} key={`${data.pluginID}-${loadedAt}`}>
           <Outlet />
         </PluginContextProvider>
       </ErrorBoundary>

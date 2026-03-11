@@ -91,7 +91,7 @@ idle ──→ loading ──→ ready
 
 1. **Import** — `deps.importModule(pluginId)` fetches the JS module (SystemJS in prod, ESM in dev)
 2. **Validate** — `deps.validateExports(module)` checks the module exports a `PluginWindow` and valid contribution shapes
-3. **Build registrations** — Extract routes from `PluginWindow._routes`
+3. **Build registrations** — Extract routes (set via `PluginWindow.withRoutes()`)
 4. **Normalize contributions** — Transform sidebars, drawers, and extension registrations into a unified `NormalizedContribution[]`
 5. **Define extension points** — Register any extension points the plugin declares
 6. **Apply contributions** — Register contributions into the extension point registry
@@ -109,8 +109,8 @@ Extension points are the primary way plugins contribute UI to the host.
 
 ### How They Work
 
-1. **Host declares an extension point** — e.g., `sidebar:resource:{group}:{version}:{kind}`
-2. **Plugins register contributions** — Components or data matching an extension point ID pattern
+1. **Extension points are declared** — The host defines built-in extension points (see below), and plugins can declare their own via `PluginWindow.registerExtensionPoints()`
+2. **Plugins register contributions** — Components or data matching an extension point ID
 3. **Host renders contributions** — `<ExtensionPointRenderer extensionPointId="..." />` resolves and renders all matched contributions
 
 ### Built-in Extension Points

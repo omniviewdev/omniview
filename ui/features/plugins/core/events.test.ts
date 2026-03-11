@@ -318,6 +318,23 @@ describe('Group 9: Event System', () => {
       }).not.toThrow();
     });
   });
+
+  // ── 9.8 plugin/recovered ────────────────────────────────────────────
+
+  describe('9.8 plugin/recovered', () => {
+    it('9.8.22 — logs debug message for recovered plugin', async () => {
+      const s = setup();
+      s.importer.register('A', validModule());
+      await s.service.load('A');
+
+      s.service.startEventListeners();
+      s.eventBus.emit('plugin/recovered', { pluginID: 'A' });
+
+      expect(s.log.byLevel('debug').some((l) =>
+        l.message.includes('recovered'),
+      )).toBe(true);
+    });
+  });
 });
 
 // ─── Group 20: Lifecycle Operations ─────────────────────────────────
@@ -410,5 +427,8 @@ describe('Group 20: Lifecycle Operations', () => {
 
     // After stale result arrives, state should still be clean
     expect(s.service.getPluginState('A')).toBeUndefined();
+    const debug3 = s.service.getDebugSnapshot();
+    expect(Object.keys(debug3.plugins)).toHaveLength(0);
+    expect(s.service.getSnapshot().registrations.size).toBe(0);
   });
 });

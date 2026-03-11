@@ -13,7 +13,6 @@ export interface InstalledPluginDescriptor {
   readonly id: string;
   readonly dev: boolean;
   readonly devPort?: number;
-  readonly moduleHash?: string;
 }
 
 export function useInstalledPlugins(): {

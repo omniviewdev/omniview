@@ -6,9 +6,11 @@ import Typography from '@mui/material/Typography';
 
 // ─── Boundary Log Event ─────────────────────────────────────────────
 
+export type BoundaryKind = 'plugin-route' | 'drawer-surface' | 'modal-surface';
+
 export interface PluginBoundaryLogEvent {
   readonly pluginId: string;
-  readonly boundary: string;
+  readonly boundary: BoundaryKind;
   readonly extensionPointId?: string;
   readonly contributionId?: string;
   readonly resourceKey?: string;
@@ -26,11 +28,11 @@ export function logPluginBoundaryError(event: PluginBoundaryLogEvent): void {
     pluginId: event.pluginId,
     boundary: event.boundary,
   };
-  if (event.extensionPointId) context.extensionPointId = event.extensionPointId;
-  if (event.contributionId) context.contributionId = event.contributionId;
-  if (event.resourceKey) context.resourceKey = event.resourceKey;
-  if (event.stack) context.stack = event.stack;
-  if (event.componentStack) context.componentStack = event.componentStack;
+  if (event.extensionPointId !== undefined) context.extensionPointId = event.extensionPointId;
+  if (event.contributionId !== undefined) context.contributionId = event.contributionId;
+  if (event.resourceKey !== undefined) context.resourceKey = event.resourceKey;
+  if (event.stack !== undefined) context.stack = event.stack;
+  if (event.componentStack !== undefined) context.componentStack = event.componentStack;
 
   // Use console.error for boundary crashes — this is the host's boundary logger,
   // not the service's structured logger (which operates on service lifecycle events).
@@ -90,7 +92,7 @@ export function DefaultExtensionFallback({
 export interface DefaultPluginFallbackProps {
   readonly error: Error;
   readonly pluginId: string;
-  readonly boundary: string;
+  readonly boundary: BoundaryKind;
   readonly resourceKey?: string;
 }
 
@@ -140,7 +142,7 @@ export function DefaultPluginFallback({
 
 export interface PluginSurfaceBoundaryProps {
   readonly pluginId: string;
-  readonly boundary: 'plugin-route' | 'drawer-surface' | 'modal-surface';
+  readonly boundary: BoundaryKind;
   readonly resourceKey?: string;
   readonly children: React.ReactNode;
   readonly fallback?: React.ComponentType<DefaultPluginFallbackProps>;

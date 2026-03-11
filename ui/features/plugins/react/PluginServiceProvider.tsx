@@ -57,7 +57,6 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
       id: p.id,
       dev: p.dev,
       devPort: p.devPort,
-      moduleHash: p.moduleHash,
     }));
 
     void service.loadAll(descriptors)

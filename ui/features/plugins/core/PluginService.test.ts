@@ -1051,6 +1051,7 @@ describe('Group 12: Backend Phase Tracking', () => {
     // backendPhase was on the state before reload; reload's transition preserves it via spread
     const state = s.service.getPluginState('A');
     expect(state?.phase).toBe('ready');
+    expect(state?.backendPhase).toBe('Running');
   });
 
   it('#7 backendPhase updates trigger snapshot change', () => {
