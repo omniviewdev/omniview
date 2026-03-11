@@ -394,6 +394,8 @@ export class PluginService {
       if (!this.isCurrentGeneration(pluginId, generation)) return;
 
       const validated = this.deps.validateExports(rawModule);
+      const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
+      const declaredDependencies = extractDeclaredDependencies(rawDeps);
       const normalizedContributions = normalizeContributions(pluginId, validated);
       const extensionPoints = this.extractExtensionPoints(validated);
       const registrationsObj = this.buildRegistrations(validated);
@@ -417,6 +419,25 @@ export class PluginService {
         { excludePluginId: pluginId },
       );
 
+      // F1: Update dependency data
+      this.dependencyAnalyzer.removePlugin(pluginId);
+      if (declaredDependencies) {
+        this.dependencyAnalyzer.addPlugin(pluginId, declaredDependencies);
+
+        const cycles = this.dependencyAnalyzer.detectCycles();
+        if (cycles.length > 0) {
+          this.deps.log.warn(
+            `Dependency cycle detected after retrying "${pluginId}": ${cycles.map((c) => c.join(' → ')).join('; ')}`,
+            { pluginId, cycles },
+          );
+        }
+
+        const depWarnings = this.getDependencyWarnings(pluginId);
+        for (const w of depWarnings) {
+          this.deps.log.warn(w, { pluginId });
+        }
+      }
+
       this.transition(pluginId, 'ready', {
         pluginWindow: validated.plugin,
         loadedAt: Date.now(),
@@ -426,6 +447,7 @@ export class PluginService {
         error: null,
         validationErrors: [],
         moduleHash: opts?.moduleHash ?? null,
+        declaredDependencies,
       });
 
       this.deps.log.debug(`Plugin "${pluginId}" ready after retry`, { plugin: pluginId, retryCount });
@@ -789,6 +811,12 @@ export class PluginService {
             { pluginId, cycles },
           );
         }
+
+        // Advisory missing dependency warnings
+        const depWarnings = this.getDependencyWarnings(pluginId);
+        for (const w of depWarnings) {
+          this.deps.log.warn(w, { pluginId });
+        }
       }
 
       this.transition(pluginId, 'ready', {
@@ -885,6 +913,19 @@ export class PluginService {
       this.dependencyAnalyzer.removePlugin(pluginId);
       if (declaredDependencies) {
         this.dependencyAnalyzer.addPlugin(pluginId, declaredDependencies);
+
+        const cycles = this.dependencyAnalyzer.detectCycles();
+        if (cycles.length > 0) {
+          this.deps.log.warn(
+            `Dependency cycle detected after reloading "${pluginId}": ${cycles.map((c) => c.join(' → ')).join('; ')}`,
+            { pluginId, cycles },
+          );
+        }
+
+        const depWarnings = this.getDependencyWarnings(pluginId);
+        for (const w of depWarnings) {
+          this.deps.log.warn(w, { pluginId });
+        }
       }
 
       // Atomic swap
@@ -1027,13 +1068,16 @@ export class PluginService {
     const epIdSet = new Set(extensionPointIds);
 
     // Replay from pending map first (so pending contributions get priority)
-    const replayedContributionIds = new Set<string>();
+    // Key by extensionPointId:contributionId to allow the same contributionId
+    // across different extension points.
+    const replayedKeys = new Set<string>();
     for (const epId of extensionPointIds) {
       const pending = this.pendingContributionsByExtensionPoint.get(epId);
       if (!pending || pending.length === 0) continue;
 
       const remaining: NormalizedContribution[] = [];
       for (const c of pending) {
+        const dedupeKey = `${c.extensionPointId}:${c.contributionId}`;
         try {
           this.deps.registerContribution(c.extensionPointId, {
             id: c.contributionId,
@@ -1042,7 +1086,7 @@ export class PluginService {
             value: c.value,
             meta: c.meta,
           });
-          replayedContributionIds.add(c.contributionId);
+          replayedKeys.add(dedupeKey);
           this.deps.log.debug(
             `Replayed pending contribution "${c.contributionId}" to "${c.extensionPointId}"`,
             { pluginId: c.pluginId, contributionId: c.contributionId, extensionPointId: c.extensionPointId },
@@ -1050,6 +1094,12 @@ export class PluginService {
         } catch (err) {
           if (err instanceof MissingExtensionPointError) {
             remaining.push(c);
+          } else if (err instanceof DuplicateContributionError) {
+            // Stale duplicate — discard from pending, do not keep in remaining
+            this.deps.log.debug(
+              `Discarded stale duplicate pending contribution "${c.contributionId}" for "${c.extensionPointId}"`,
+              { pluginId: c.pluginId, contributionId: c.contributionId, extensionPointId: c.extensionPointId },
+            );
           } else {
             throw err;
           }
@@ -1071,7 +1121,8 @@ export class PluginService {
       if (!pluginState || pluginState.phase !== 'ready') continue;
 
       for (const c of contributions) {
-        if (epIdSet.has(c.extensionPointId) && !replayedContributionIds.has(c.contributionId)) {
+        const dedupeKey = `${c.extensionPointId}:${c.contributionId}`;
+        if (epIdSet.has(c.extensionPointId) && !replayedKeys.has(dedupeKey)) {
           try {
             this.deps.registerContribution(c.extensionPointId, {
               id: c.contributionId,
