@@ -41,8 +41,12 @@
   },
   "scripts": {
     "build": "tsc && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:verbose": "vitest run --reporter=verbose",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "lint": "eslint --cache --ext .js,.jsx,.ts,.tsx ./src",
-    "lint:fix": "npm run lint -- --fix"
+    "lint:fix": "pnpm lint -- --fix"
   },
   "keywords": [
     "omniview"

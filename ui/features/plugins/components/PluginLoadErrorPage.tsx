@@ -2,8 +2,8 @@ import React from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
-import { LuRefreshCw } from 'react-icons/lu';
-import { usePluginRegistry } from '../usePluginRegistry';
+import { LuRefreshCw, LuRotateCcw } from 'react-icons/lu';
+import { usePluginService } from '@/features/plugins';
 
 interface PluginLoadErrorPageProps {
   pluginId: string;
@@ -11,17 +11,33 @@ interface PluginLoadErrorPageProps {
 }
 
 export default function PluginLoadErrorPage({ pluginId, error }: PluginLoadErrorPageProps) {
-  const { retryPlugin } = usePluginRegistry();
+  const { plugins, retry, forceReset } = usePluginService();
+  const pluginState = plugins.get(pluginId);
   const [retrying, setRetrying] = React.useState(false);
 
   const handleRetry = async () => {
     setRetrying(true);
     try {
-      await retryPlugin(pluginId);
+      await retry(pluginId);
     } finally {
       setRetrying(false);
     }
   };
+
+  const handleReset = async () => {
+    setRetrying(true);
+    try {
+      await forceReset(pluginId);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  // Show validation errors if present, otherwise fall back to generic error
+  const validationErrors = pluginState?.validationErrors ?? [];
+  const displayError = validationErrors.length > 0
+    ? validationErrors.join('\n')
+    : (pluginState?.error ?? error);
 
   return (
     <Box
@@ -84,7 +100,7 @@ export default function PluginLoadErrorPage({ pluginId, error }: PluginLoadError
             textAlign: 'left',
           }}
         >
-          {error}
+          {displayError}
         </Typography>
       </Box>
 
@@ -114,6 +130,31 @@ export default function PluginLoadErrorPage({ pluginId, error }: PluginLoadError
         >
           <LuRefreshCw size={14} />
           {retrying ? 'Retrying...' : 'Retry'}
+        </Box>
+        <Box
+          component="button"
+          onClick={handleReset}
+          disabled={retrying}
+          sx={{
+            all: 'unset',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            px: 2,
+            py: 1,
+            fontSize: '0.8125rem',
+            fontWeight: 500,
+            fontFamily: 'var(--ov-font-ui)',
+            color: 'var(--ov-fg-muted)',
+            bgcolor: 'rgba(255,255,255,0.06)',
+            borderRadius: '6px',
+            cursor: retrying ? 'wait' : 'pointer',
+            opacity: retrying ? 0.7 : 1,
+            '&:hover': retrying ? {} : { bgcolor: 'rgba(255,255,255,0.1)' },
+          }}
+        >
+          <LuRotateCcw size={14} />
+          Reset
         </Box>
       </Box>
     </Box>

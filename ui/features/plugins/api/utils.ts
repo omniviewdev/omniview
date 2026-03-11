@@ -22,7 +22,7 @@ function addPreload(id: string, preload: (() => Promise<System.Module>) | System
   try {
     resolvedId = System.resolve(id);
   } catch (e) {
-    console.log(e);
+    console.debug('[PluginService] SystemJS resolve failed for', id, e);
   }
 
   if (resolvedId && System.has(resolvedId)) {
@@ -31,7 +31,7 @@ function addPreload(id: string, preload: (() => Promise<System.Module>) | System
 
   const moduleId = resolvedId || id;
   if (typeof preload === 'function') {
-    console.log(`registering preload function for module ${id}`)
+    console.debug(`[PluginService] registering preload function for module ${id}`);
     SystemJS.register(id, [], (_export: any) => {
       return {
         execute: async function () {
@@ -41,7 +41,7 @@ function addPreload(id: string, preload: (() => Promise<System.Module>) | System
       };
     });
   } else {
-    console.log(`registering preload string for module ${moduleId}`)
+    console.debug(`[PluginService] registering preload for module ${moduleId}`);
     SystemJS.set(moduleId, preload);
   }
 }

@@ -63,13 +63,13 @@ export async function exportSharedDepsForDev(): Promise<void> {
   window.__OMNIVIEW_SHARED_READY__ = true;
 
   const elapsed = (performance.now() - startTime).toFixed(1);
-  console.log(
-    `[omniview:shared-deps] Exported ${entries.length - failures.length}/${entries.length} shared deps to window.__OMNIVIEW_SHARED__ in ${elapsed}ms`
+  console.debug(
+    `[PluginService] Exported ${entries.length - failures.length}/${entries.length} shared deps to window.__OMNIVIEW_SHARED__ in ${elapsed}ms`,
   );
 
   if (failures.length > 0) {
     for (const { name, error } of failures) {
-      console.error(`[omniview:shared-deps] Failed to resolve "${name}":`, error);
+      console.error(`[PluginService] Failed to resolve shared dep "${name}":`, error);
     }
   }
 }

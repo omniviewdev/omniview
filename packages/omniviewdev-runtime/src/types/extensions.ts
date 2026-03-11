@@ -1,376 +1,311 @@
-export type ExtensionPointSettings = {
-  /**
-  * The ID of the plugin (or 'core') that owns the extension point
-  */
-  owner: string;
-
-  /**
-  * The ID of the extension point
-  */
-  id: string;
-
-  /**
-  * The human readable label for the extension point
-  */
-  name: string;
-
-  /**
-  * A description of the extension point
-  */
-  description?: string;
-
-  /**
-  * Set the extension point to support rendering multiple components or a single component.
-  */
-  mode: 'single' | 'multiple';
-
-  /**
-  * Disable the extension point to prevent rendering components.
-  * This is useful when the extension point should be disabled temporarily.
-  */
-  disabled?: boolean;
-
-  /**
-  * Selected component to render when the extension point is in single-component mode.
-  */
-  selected?: string;
-
-  /**
-  * The order in which the components should be rendered when the extension point is in multiple-component mode.
-  */
-  order?: string[];
-};
-
-/**
- * Options required during registration of the extension to the extension point's registry.
- */
-export type RegisterOpts<Props> = {
-  /**
-   * The ID of the registered component
-   */
-  id: string;
-
-  /**
-   * The plugin that owns the view
-   */
-  plugin: string;
-
-  /**
-   * The human readable label for the component
-   */
-  label: string;
-
-  /**
-   * A description of the component
-   */
-  description?: string;
-
-  /**
-   * The component to render
-   */
-  component: React.ComponentType<Props>;
-
-  /**
-   * Additional optional metadata for the component
-   */
-  meta?: unknown;
-};
-
-export type Registration<Props> = RegisterOpts<Props> & {
-  /**
-  * The time the component was registered
-  */
-  registeredAt: Date;
-
-  /**
-  * The time the component was last updated
-  * This will be the same as `registeredAt` if the component has not been updated
-  */
-  updatedAt: Date;
-
-  /**
-  * Whether the component is enabled
-  * This can be used to disable a component without unregistering it.
-  */
-  enabled?: boolean;
-};
-
 /**
  * Context that can be passed to the registry to provide additional information to the matcher.
  * The context should generate a cache key that can be used to cache the results of the matcher
  * to avoid recalculating the same result multiple times.
  */
 export type ExtensionRenderContext = {
-  getCacheKey: () => string;
-};
-
-export type CreateExtensionPointOptions<ComponentProps> = ExtensionPointSettings & {
-  /**
-   * Define a custom matcher to use to find which extensions to register based on any number of args.
-   * This is useful when the extension should only be registered for certain resources, like for example
-   * when a registry contains components that should only be rendered for specific resources.
-   *
-   * @param context The context to use to determine if the extension should be registered. The extension point
-   *                renderer will call this function with the context provided by the extension point.
-   * @param item The item to check if it should be registered
-   * @returns Whether the item should be registered
-   */
-  matcher?: (context: ExtensionRenderContext, item: Registration<ComponentProps>) => boolean;
+  getCacheKey?(): string;
 };
 
 /**
- * A registration entry that a plugin exports to register a component into an extension point.
+ * A contribution registration entry stored within an extension point store.
+ * Generic over TValue — not limited to React components.
+ */
+export interface ExtensionContributionRegistration<TValue = unknown> {
+  id: string;
+  plugin: string;
+  label: string;
+  value: TValue;
+  meta?: unknown;
+}
+
+/**
+ * Settings for defining an extension point.
+ * Generic over TContext (the render/lookup context) and TValue (what contributions hold).
+ */
+export interface ExtensionPointSettings<
+  TContext = ExtensionRenderContext,
+  TValue = unknown,
+> {
+  /** Unique extension point identifier */
+  id: string;
+
+  /** The plugin (or 'core') that owns this extension point */
+  pluginId?: string;
+
+  /** Whether this extension point resolves one or many contributions */
+  mode?: 'single' | 'multiple';
+
+  /**
+   * Filter contributions for a given context. Applied in both single and multiple modes.
+   */
+  matcher?: (
+    contribution: ExtensionContributionRegistration<TValue>,
+    context?: TContext,
+  ) => boolean;
+
+  /**
+   * In single mode, select which of the matched contributions to return.
+   * If not provided, the first match in deterministic order is used.
+   */
+  select?: (
+    contributions: ExtensionContributionRegistration<TValue>[],
+    context?: TContext,
+  ) => ExtensionContributionRegistration<TValue> | undefined;
+}
+
+/**
+ * A registration entry that a plugin exports to register a value into an extension point.
  * The host app processes these at plugin load time.
  */
-export type ExtensionRegistration<Props = any> = {
+export type ExtensionRegistration<TValue = unknown> = {
   /** The ID of the extension point to register into */
   extensionPointId: string;
-  /** The registration options for the component */
-  registration: RegisterOpts<Props>;
+  /** The registration options */
+  registration: Omit<ExtensionContributionRegistration<TValue>, 'plugin'> & {
+    plugin?: string;
+  };
 };
 
 /**
- * A registry to hold an extension points registered extensions, providing type safe access to the components.
- *
- * @param ComponentProps The props type for the component that is registered in the registry.
+ * Store contract for an extension point.
+ * Generic over TValue (what contributions hold) and TContext (the lookup context).
  */
-export class ExtensionPointStore<ComponentProps> {
-  private readonly _settings: ExtensionPointSettings;
-  private readonly _extensions = new Map<string, Registration<ComponentProps>>();
+export interface ExtensionPointStoreContract<
+  TValue = unknown,
+  TContext = ExtensionRenderContext,
+> {
+  readonly id: string;
+  readonly mode: 'single' | 'multiple';
+
+  /** The plugin (or 'core') that owns this extension point, if set. */
+  readonly pluginId?: string;
+
+  /** Monotonically increasing version — increments on every mutation. */
+  readonly version: number;
+
+  register(contribution: ExtensionContributionRegistration<TValue>): void;
+  unregister(contributionId: string): void;
+
+  provide(context?: TContext): TValue[];
+  list(context?: TContext): ExtensionContributionRegistration<TValue>[];
+  listAll(): ExtensionContributionRegistration<TValue>[];
+
+  subscribe(listener: () => void): () => void;
+}
+
+/**
+ * Registry contract for managing extension points.
+ */
+export interface ExtensionPointRegistryContract {
+  addExtensionPoint<TValue = unknown, TContext = ExtensionRenderContext>(
+    settings: ExtensionPointSettings<TContext, TValue> & { pluginId?: string },
+  ): void;
+
+  getExtensionPoint<TValue = unknown, TContext = ExtensionRenderContext>(
+    id: string,
+  ): ExtensionPointStoreContract<TValue, TContext> | undefined;
+
+  hasExtensionPoint(id: string): boolean;
+  listExtensionPoints(): string[];
+
+  removeExtensionPoints(pluginId: string): void;
+  removeContributions(pluginId: string): void;
+
+  subscribe(listener: () => void): () => void;
+}
+
+/**
+ * A registry to hold an extension point's registered contributions, providing type safe access.
+ *
+ * Generic over TValue (what contributions hold) and TContext (the lookup context).
+ */
+export class ExtensionPointStore<TValue = unknown, TContext = ExtensionRenderContext>
+  implements ExtensionPointStoreContract<TValue, TContext>
+{
+  readonly id: string;
+  readonly mode: 'single' | 'multiple';
+
+  private readonly _pluginId?: string;
+  private _version = 0;
+  private readonly _contributions = new Map<string, ExtensionContributionRegistration<TValue>>();
   private readonly _lookupCache = new Map<string, string[]>();
-  private readonly _matchCache = new Map<string, boolean>();
-  private readonly _matcher?: (context: ExtensionRenderContext, item: Registration<ComponentProps>) => boolean;
+  private readonly _matcher?: (
+    contribution: ExtensionContributionRegistration<TValue>,
+    context?: TContext,
+  ) => boolean;
+  private readonly _select?: (
+    contributions: ExtensionContributionRegistration<TValue>[],
+    context?: TContext,
+  ) => ExtensionContributionRegistration<TValue> | undefined;
+  private readonly _listeners = new Set<() => void>();
 
-  constructor(opts: CreateExtensionPointOptions<ComponentProps>) {
-    const { matcher, ...settings } = opts;
-    this._settings = settings;
-    this._matcher = opts.matcher;
+  constructor(settings: ExtensionPointSettings<TContext, TValue>) {
+    this.id = settings.id;
+    this.mode = settings.mode ?? 'multiple';
+    this._pluginId = settings.pluginId;
+    this._matcher = settings.matcher;
+    this._select = settings.select;
   }
 
-  settings(): ExtensionPointSettings {
-    return this._settings;
+  get pluginId(): string | undefined {
+    return this._pluginId;
   }
 
-  /**
-  * Registers a new component within the registry. Throws an error if a component with the same ID already exists.
-  * This method should be used when initializing components or dynamically adding new components at runtime.
-  *
-  * @param opts The registration options for the component, containing its ID, plugin, and other metadata.
-  * @throws Error if a component with the same ID is already registered.
-  * @example
-  * registry.register({
-  *   id: 'unique-sidebar-item',
-  *   plugin: 'examplePlugin',
-  *   label: 'My Sidebar Item',
-  *   component: MyComponent,
-  * });
-  */
-  register(opts: RegisterOpts<ComponentProps>) {
-    if (this._extensions.get(opts.id)) {
-      throw new Error(`Resource sidebar view with id ${opts.id} already exists`);
-    }
-
-    const registration: Registration<ComponentProps> = {
-      ...opts,
-      registeredAt: new Date(),
-      updatedAt: new Date(),
-      enabled: true,
-    };
-
-    this._extensions.set(opts.id, registration);
-
-    const keys = Array.from(this._matchCache.keys());
-    for (const key of keys) {
-      if (key.startsWith(opts.plugin)) {
-        this._matchCache.delete(key);
-      }
-    }
+  get version(): number {
+    return this._version;
   }
 
   /**
-  * Unregisters a component from the registry by its ID. Useful for cleanup or when components are dynamically removed.
-  *
-  * @param id The ID of the component to unregister.
-  * @example
-  * registry.unregister('unique-sidebar-item');
-  */
-  unregister(id: string) {
-    this._extensions.delete(id);
-  }
-
-
-  /**
-  * Retrieves a component by its ID from the registry. Returns undefined if no such component exists.
-  *
-  * @param id The ID of the component to retrieve.
-  * @returns The component associated with the given ID, or undefined if not found.
-  * @example
-  * const component = registry.get('unique-sidebar-item');
-  * if (component) {
-  *   render(component);
-  * }
-  */
-  get(id: string) {
-    return this._extensions.get(id)?.component;
-  }
-
-  /**
-  * Lists all registered components in the registry. Useful for debugging or generating summaries of available components.
-  *
-  * @returns An array of all registered components.
-  * @example
-  * const allComponents = registry.list();
-  * console.log('Registered Components:', allComponents);
-  */
-  list() {
-    return Array.from(this._extensions.values());
-  }
-
-  generateMatchCacheKey(item: Registration<ComponentProps>) {
-    return `${item.plugin}/${item.id}`;
-  }
-
-  /**
-   * Calculate the matches for the given context.
+   * Register a contribution. Throws if the contribution ID already exists.
    */
-  calculateMatches(context: ExtensionRenderContext) {
-    // check the cache first
-    if (!this._matcher) {
-      // all items match
-      return Array.from(this._extensions.values());
+  register(contribution: ExtensionContributionRegistration<TValue>): void {
+    if (this._contributions.has(contribution.id)) {
+      throw new Error(
+        `Contribution with id "${contribution.id}" already exists in extension point "${this.id}"`,
+      );
+    }
+    this._contributions.set(contribution.id, contribution);
+    this._invalidateCache();
+    this._notify();
+  }
+
+  /**
+   * Unregister a contribution by ID.
+   */
+  unregister(contributionId: string): void {
+    if (this._contributions.delete(contributionId)) {
+      this._invalidateCache();
+      this._notify();
+    }
+  }
+
+  /**
+   * Synchronously provide matched values for the given context.
+   * In single mode, matcher is applied first, then select (or first match) picks one.
+   * In multiple mode, all matched contributions are returned in deterministic order.
+   */
+  provide(context?: TContext): TValue[] {
+    const matched = this._getMatched(context);
+    return matched.map((c) => c.value);
+  }
+
+  /**
+   * Synchronously list matched contribution registrations for the given context.
+   */
+  list(context?: TContext): ExtensionContributionRegistration<TValue>[] {
+    return this._getMatched(context);
+  }
+
+  /**
+   * List all contributions regardless of context/matcher.
+   */
+  listAll(): ExtensionContributionRegistration<TValue>[] {
+    return Array.from(this._contributions.values());
+  }
+
+  /**
+   * Subscribe to changes in this store. Returns an unsubscribe function.
+   */
+  subscribe(listener: () => void): () => void {
+    this._listeners.add(listener);
+    return () => {
+      this._listeners.delete(listener);
+    };
+  }
+
+  /**
+   * Remove all contributions owned by the given plugin.
+   */
+  removeContributionsByPlugin(pluginId: string): void {
+    let changed = false;
+    for (const [id, contrib] of this._contributions) {
+      if (contrib.plugin === pluginId) {
+        this._contributions.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this._invalidateCache();
+      this._notify();
+    }
+  }
+
+  // --- private ---
+
+  private _getMatched(context?: TContext): ExtensionContributionRegistration<TValue>[] {
+    // Check cache
+    const cacheKey = this._getCacheKey(context);
+    if (cacheKey != null) {
+      const cachedIds = this._lookupCache.get(cacheKey);
+      if (cachedIds) {
+        const result = cachedIds
+          .map((id) => this._contributions.get(id))
+          .filter((c): c is ExtensionContributionRegistration<TValue> => c != null);
+        return this._applyMode(result, context);
+      }
     }
 
+    // Compute matches
+    let all = this._sortDeterministic(Array.from(this._contributions.values()));
 
-    const matched: Array<Registration<ComponentProps>> = [];
-    for (const item of this._extensions.values()) {
-      const matchCacheKey = this.generateMatchCacheKey(item);
-      const hasCachedMatch = this._matchCache.has(matchCacheKey);
-
-      // depending on how complex the matcher is, the matching logic may take a bit, so we'll cache
-      // both the individual matches to speed things up for a large amount of extensions.
-      if (hasCachedMatch && this._matchCache.get(matchCacheKey)) {
-        matched.push(item);
-        continue;
-      }
-
-      if (this._matcher(context, item)) {
-        // add to the match cache
-        this._matchCache.set(matchCacheKey, true);
-        matched.push(item);
-      } else if (!hasCachedMatch) {
-        this._matchCache.set(matchCacheKey, false);
-      }
+    if (this._matcher && context !== undefined) {
+      all = all.filter((c) => this._matcher!(c, context));
     }
 
+    // Cache the result
+    if (cacheKey != null) {
+      this._lookupCache.set(cacheKey, all.map((c) => c.id));
+    }
+
+    return this._applyMode(all, context);
+  }
+
+  private _applyMode(
+    matched: ExtensionContributionRegistration<TValue>[],
+    context?: TContext,
+  ): ExtensionContributionRegistration<TValue>[] {
+    if (this.mode === 'single') {
+      if (this._select) {
+        const selected = this._select(matched, context);
+        return selected ? [selected] : [];
+      }
+      return matched.length > 0 ? [matched[0]] : [];
+    }
     return matched;
   }
 
   /**
-   * Preload the registry caches with the given expected context to avoid on-first-request calculation.
-   * This is useful when the registry is used to provide components for a specific context, like for
-   * specific resources types.
-   *
-   * If the cache is already populated for the expected context, the cache key will be recalculated.
-   *
-   * @param context The context expected to be called preload the registry with on provide.
+   * Sort contributions deterministically: plugin ascending, then id ascending.
    */
-  preload(context: ExtensionRenderContext) {
-    const matched = this.calculateMatches(context);
-    const cacheKey = context.getCacheKey();
-    this._lookupCache.set(cacheKey, matched.map((view) => view.id));
+  private _sortDeterministic(
+    contributions: ExtensionContributionRegistration<TValue>[],
+  ): ExtensionContributionRegistration<TValue>[] {
+    return [...contributions].sort((a, b) => {
+      const pluginCmp = a.plugin.localeCompare(b.plugin);
+      if (pluginCmp !== 0) return pluginCmp;
+      return a.id.localeCompare(b.id);
+    });
   }
 
-  /**
-   * Provide the components that match the given context.
-   */
-  provide(context: ExtensionRenderContext): Array<React.ComponentType<ComponentProps>> {
-    if (this._settings.disabled) {
-      return [];
-    }
-
-    if (this._settings.mode === 'single') {
-      const selected = this._extensions.get(this._settings.selected!);
-      if (selected) {
-        return [selected.component];
+  private _getCacheKey(context?: TContext): string | undefined {
+    if (context != null && typeof context === 'object' && 'getCacheKey' in context) {
+      const fn = (context as ExtensionRenderContext).getCacheKey;
+      if (typeof fn === 'function') {
+        return fn();
       }
-
-      return [];
     }
-
-    // check the cache first
-    const cacheKey = context.getCacheKey();
-    let ids = this._lookupCache.get(cacheKey);
-
-    if (ids) {
-      let components = ids.map((id) => this._extensions.get(id))
-        .filter((v): v is Registration<ComponentProps> => !!v)
-        .map((v) => v.component as React.ComponentType<ComponentProps>);
-
-      if (this._settings.order) {
-        components = this.reorderComponents(components, ids, this._settings.order);
-      }
-
-      return components;
-    }
-
-    ids = this.calculateMatches(context).map((view) => view.id);
-    this._lookupCache.set(cacheKey, ids);
-
-    // if the order is set, reorder the components
-    let components = ids.map((id) => this._extensions.get(id))
-      .filter((v): v is Registration<ComponentProps> => !!v)
-      .map((v) => v.component as React.ComponentType<ComponentProps>);
-
-    // Reorder components if order is set
-    if (this._settings.order) {
-      components = this.reorderComponents(components, ids, this._settings.order);
-    }
-
-    return components;
+    return undefined;
   }
 
-  reorderComponents(components: Array<React.ComponentType<ComponentProps>>, ids: string[], order: string[]): Array<React.ComponentType<ComponentProps>> {
-    const idToComponentMap = new Map(ids.map((id, index) => [id, components[index]]));
-    return order.map((id) => idToComponentMap.get(id)).filter((component): component is React.ComponentType<ComponentProps> => !!component);
-  }
-
-  /**
-   * Reorder the components in the registry based on the given order.
-   */
-  reorder(order: string[]) {
-    const reordered = order
-      .map((id) => this._extensions.get(id))
-      .filter((v): v is Registration<ComponentProps> => !!v);
-
-    const missing = Array.from(this._extensions.values()).filter((v) => !order.includes(v.id));
-    const ordered = [...reordered, ...missing];
-
-    this._extensions.clear();
-    ordered.forEach((v) => this._extensions.set(v.id, v));
-
-    // reorder the lookup cache entries
-    const keys = Array.from(this._lookupCache.keys());
-    for (const key of keys) {
-      const ids = this._lookupCache.get(key);
-      if (!ids) {
-        continue;
-      }
-
-      const reorderedIds = ids.filter((id) => order.includes(id));
-      this._lookupCache.set(key, reorderedIds);
-    }
-  }
-
-  clearLookupCache() {
+  private _invalidateCache(): void {
     this._lookupCache.clear();
   }
 
-  clearMatchCache() {
-    this._matchCache.clear();
-  }
-
-  clearAllCaches() {
-    this.clearLookupCache();
-    this.clearMatchCache();
+  private _notify(): void {
+    this._version++;
+    for (const listener of this._listeners) {
+      listener();
+    }
   }
 }
