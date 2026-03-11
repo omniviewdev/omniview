@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PluginWindow } from '@omniviewdev/runtime';
 
 import { PluginService } from './PluginService';
-import { createTestDeps } from '../testing/helpers';
+import { createTestDeps, createDeferred } from '../testing/helpers';
 import type { PluginServiceConfig } from './types';
 
 // ─── Module Factories ───────────────────────────────────────────────
@@ -83,10 +83,9 @@ describe('Group 9: Event System', () => {
 
       s.eventBus.emit('plugin/install_finished', { id: 'A' });
 
-      // Give async load time to complete
-      await new Promise((r) => setTimeout(r, 50));
-
-      expect(s.service.getPluginState('A')?.phase).toBe('ready');
+      await vi.waitFor(() => {
+        expect(s.service.getPluginState('A')?.phase).toBe('ready');
+      });
     });
 
     it('9.2.6 — triggers reload if already loaded', async () => {
@@ -102,11 +101,10 @@ describe('Group 9: Event System', () => {
       s.importer.register('A', validModule());
       s.eventBus.emit('plugin/install_finished', { id: 'A' });
 
-      await new Promise((r) => setTimeout(r, 50));
-
-      expect(s.service.getPluginState('A')?.phase).toBe('ready');
-      // Verify reimport occurred (reload calls importPlugin again)
-      expect(s.importer.importCount).toBeGreaterThan(importCountBefore);
+      await vi.waitFor(() => {
+        expect(s.service.getPluginState('A')?.phase).toBe('ready');
+        expect(s.importer.importCount).toBeGreaterThan(importCountBefore);
+      });
     });
 
     it('9.2.7 — missing pluginId in payload', () => {
@@ -138,10 +136,10 @@ describe('Group 9: Event System', () => {
       s.importer.register('A', validModule());
       s.eventBus.emit('plugin/update_complete', { id: 'A' });
 
-      await new Promise((r) => setTimeout(r, 50));
-
-      expect(s.service.getPluginState('A')?.phase).toBe('ready');
-      expect(s.importer.importCount).toBeGreaterThan(importCountBefore);
+      await vi.waitFor(() => {
+        expect(s.service.getPluginState('A')?.phase).toBe('ready');
+        expect(s.importer.importCount).toBeGreaterThan(importCountBefore);
+      });
     });
 
     it('9.3.10 — for unloaded plugin falls back to load', async () => {
@@ -151,9 +149,9 @@ describe('Group 9: Event System', () => {
 
       s.eventBus.emit('plugin/update_complete', { id: 'A' });
 
-      await new Promise((r) => setTimeout(r, 50));
-
-      expect(s.service.getPluginState('A')?.phase).toBe('ready');
+      await vi.waitFor(() => {
+        expect(s.service.getPluginState('A')?.phase).toBe('ready');
+      });
     });
   });
 
@@ -170,10 +168,10 @@ describe('Group 9: Event System', () => {
       s.importer.register('A', validModule());
       s.eventBus.emit('plugin/dev_reload_complete', { id: 'A' });
 
-      await new Promise((r) => setTimeout(r, 50));
-
-      expect(s.service.getPluginState('A')?.phase).toBe('ready');
-      expect(s.importer.importCount).toBeGreaterThan(importCountBefore);
+      await vi.waitFor(() => {
+        expect(s.service.getPluginState('A')?.phase).toBe('ready');
+        expect(s.importer.importCount).toBeGreaterThan(importCountBefore);
+      });
     });
 
     it('9.4.12 — for non-dev plugin is ignored and logged', async () => {
@@ -185,7 +183,8 @@ describe('Group 9: Event System', () => {
       s.service.startEventListeners();
       s.eventBus.emit('plugin/dev_reload_complete', { id: 'A' });
 
-      await new Promise((r) => setTimeout(r, 50));
+      // Allow microtask queue to drain (event handler is synchronous for non-dev case)
+      await Promise.resolve();
 
       // Should NOT reload — loadedAt unchanged
       expect(s.service.getPluginState('A')?.loadedAt).toBe(loadedAt1);
@@ -385,12 +384,12 @@ describe('Group 20: Lifecycle Operations', () => {
     expect(s.eventBus.listenerCount()).toBe(0);
   });
 
-  it('20.7 — reset() clears inflightLoads', async () => {
-    // Use a factory function that returns a never-resolving promise
-    s.importer.register('A', () => new Promise(() => {}));
+  it('20.7 — reset() clears inflightLoads and discards stale results', async () => {
+    const deferred = createDeferred<unknown>();
+    s.importer.register('A', () => deferred.promise);
 
-    // Start load (will hang on import) — fire and forget
-    void s.service.load('A');
+    // Start load (will hang on import until deferred resolves)
+    const loadPromise = s.service.load('A');
 
     // Plugin should be in loading state
     expect(s.service.getPluginState('A')?.phase).toBe('loading');
@@ -403,11 +402,13 @@ describe('Group 20: Lifecycle Operations', () => {
     s.service.reset();
 
     const debug2 = s.service.getDebugSnapshot();
-    // After reset, no plugins exist
     expect(Object.keys(debug2.plugins)).toHaveLength(0);
 
-    // The load promise should eventually resolve (due to generation check)
-    // but the service state is cleared
-    // We don't await loadPromise as it's now orphaned — just verify state is clean
+    // Resolve the deferred — the stale load should be discarded
+    deferred.resolve(validModule());
+    await loadPromise;
+
+    // After stale result arrives, state should still be clean
+    expect(s.service.getPluginState('A')).toBeUndefined();
   });
 });

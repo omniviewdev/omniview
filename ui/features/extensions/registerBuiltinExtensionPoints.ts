@@ -32,9 +32,9 @@ function registerIfAbsent(
   if (registry.hasExtensionPoint(id)) {
     // Already registered — verify ownership
     const store = registry.getExtensionPoint(id);
-    if (store && (store as any).pluginId !== 'core') {
+    if (store && store.pluginId !== 'core') {
       throw new Error(
-        `Builtin extension point "${id}" has been claimed by non-core owner "${(store as any).pluginId}"`,
+        `Builtin extension point "${id}" has been claimed by non-core owner "${store.pluginId}"`,
       );
     }
     // Core-owned, already registered — idempotent no-op

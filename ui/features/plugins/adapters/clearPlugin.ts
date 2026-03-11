@@ -17,5 +17,5 @@ export async function clearPlugin(opts: {
     return;
   }
   const modulePath = `${window.location.protocol}//${window.location.host}/_/plugins/${opts.pluginId}/assets/entry.js`;
-  await SystemJS.delete(modulePath);
+  SystemJS.delete(modulePath);
 }

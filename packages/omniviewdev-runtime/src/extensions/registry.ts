@@ -16,6 +16,7 @@ import {
  */
 export class ExtensionPointRegistry implements ExtensionPointRegistryContract {
   private _stores = new Map<string, ExtensionPointStore<any, any>>();
+  private _storeUnsubs = new Map<string, () => void>();
   private _listeners = new Set<() => void>();
 
   constructor(opts?: { initialStores?: Array<ExtensionPointSettings<any, any>> }) {
@@ -41,7 +42,10 @@ export class ExtensionPointRegistry implements ExtensionPointRegistryContract {
       );
     }
 
-    this._stores.set(id, new ExtensionPointStore<TValue, TContext>({ ...settings, id }));
+    const store = new ExtensionPointStore<TValue, TContext>({ ...settings, id });
+    this._stores.set(id, store);
+    // Forward store-level mutations (register/unregister) to registry subscribers
+    this._storeUnsubs.set(id, store.subscribe(() => this._notify()));
     this._notify();
   }
 
@@ -79,6 +83,8 @@ export class ExtensionPointRegistry implements ExtensionPointRegistryContract {
     let changed = false;
     for (const [id, store] of this._stores) {
       if (store.pluginId === pluginId) {
+        this._storeUnsubs.get(id)?.();
+        this._storeUnsubs.delete(id);
         this._stores.delete(id);
         changed = true;
       }

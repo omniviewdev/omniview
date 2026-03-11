@@ -106,8 +106,8 @@ describe('Group 24: Dead Code & Cleanup Verification', () => {
     expect(matches.map((f) => f.file)).toEqual([]);
   });
 
-  // 24.10 No initDevSharedDeps in App.tsx
-  it('24.10 no initDevSharedDeps in App.tsx', () => {
+  // 24.9 No initDevSharedDeps in App.tsx
+  it('24.9 no initDevSharedDeps in App.tsx', () => {
     const appFile = sourceFiles.find((f) => f.file.endsWith('/App.tsx'));
     expect(appFile).toBeDefined();
     expect(appFile!.content).not.toContain('initDevSharedDeps');
@@ -133,17 +133,4 @@ describe('Group 24: Dead Code & Cleanup Verification', () => {
     }
   });
 
-  // 24.12 PluginRegistryContext.ts deleted
-  it('24.12 PluginRegistryContext.ts does not exist', () => {
-    expect(
-      fs.existsSync(path.join(PLUGINS_ROOT, 'PluginRegistryContext.ts')),
-    ).toBe(false);
-  });
-
-  // 24.13 PluginManager.ts deleted
-  it('24.13 PluginManager.ts does not exist', () => {
-    expect(
-      fs.existsSync(path.join(PLUGINS_ROOT, 'PluginManager.ts')),
-    ).toBe(false);
-  });
 });

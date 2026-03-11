@@ -104,7 +104,6 @@ describe('Group 18: Observability & Logging', () => {
   // 18.5 Timeout logs error
   it('18.5 import timeout produces error log', async () => {
     const deferred = createDeferred<unknown>();
-    s.importer.register('A', () => deferred.promise);
 
     const t = setup({ importTimeoutMs: 10 });
     t.importer.register('A', () => deferred.promise);

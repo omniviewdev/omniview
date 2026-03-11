@@ -78,6 +78,9 @@ export interface ExtensionPointStoreContract<
   readonly id: string;
   readonly mode: 'single' | 'multiple';
 
+  /** The plugin (or 'core') that owns this extension point, if set. */
+  readonly pluginId?: string;
+
   /** Monotonically increasing version — increments on every mutation. */
   readonly version: number;
 
@@ -278,7 +281,7 @@ export class ExtensionPointStore<TValue = unknown, TContext = ExtensionRenderCon
   private _sortDeterministic(
     contributions: ExtensionContributionRegistration<TValue>[],
   ): ExtensionContributionRegistration<TValue>[] {
-    return contributions.sort((a, b) => {
+    return [...contributions].sort((a, b) => {
       const pluginCmp = a.plugin.localeCompare(b.plugin);
       if (pluginCmp !== 0) return pluginCmp;
       return a.id.localeCompare(b.id);

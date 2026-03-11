@@ -83,15 +83,6 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
     );
   }
 
-  // Functions are typeof 'object' === false, but we already checked above.
-  // Extra check for functions:
-  if (typeof plugin === 'function') {
-    throw new PluginValidationError(
-      "'plugin' must be an object, not a function",
-      { errors: ["'plugin' must be an object, not a function"] },
-    );
-  }
-
   const pw = plugin as Record<string, unknown>;
 
   // --- Routes validation ---

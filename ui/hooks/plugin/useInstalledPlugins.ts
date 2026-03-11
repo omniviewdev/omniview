@@ -40,8 +40,8 @@ export function useInstalledPlugins(): {
                 .map((s) => [s.pluginID, s.vitePort]),
             );
           }
-        } catch {
-          // Dev server manager may not be available; fall through
+        } catch (err) {
+          console.debug('[useInstalledPlugins] DevServerManager unavailable:', err);
         }
       }
 

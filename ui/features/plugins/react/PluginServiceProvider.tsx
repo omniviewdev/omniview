@@ -60,9 +60,13 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
       moduleHash: p.moduleHash,
     }));
 
-    void service.loadAll(descriptors).then(() => {
-      service.markReady();
-    });
+    void service.loadAll(descriptors)
+      .catch((err) => {
+        console.error('[PluginServiceProvider] loadAll failed:', err);
+      })
+      .finally(() => {
+        service.markReady();
+      });
   }, [isLoading, installedPlugins, service]);
 
   // Dev mode: expose debug surface

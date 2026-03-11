@@ -4,7 +4,7 @@ The plugin UI system loads, manages, and renders plugin frontend modules within 
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────┐
 │ PluginServiceProvider (React)                       │
 │   owns PluginService instance, drives startup       │
@@ -29,7 +29,7 @@ The plugin UI system loads, manages, and renders plugin frontend modules within 
 
 ## Directory Structure
 
-```
+```text
 ui/features/plugins/
 ├── core/                    # Framework-agnostic business logic
 │   ├── PluginService.ts     # Central service class — state machine, lifecycle
@@ -75,7 +75,7 @@ ui/features/plugins/
 
 A plugin moves through these phases:
 
-```
+```text
 idle ──→ loading ──→ ready
   ↑         │         │
   │         ▼         ▼
@@ -142,7 +142,7 @@ Uses `useSyncExternalStore` — re-renders only when the service snapshot change
 
 Derives the route tree from loaded plugin registrations. Each plugin's routes are wrapped under `path: pluginId` with a `PluginRenderer` layout:
 
-```
+```text
 /_plugin/{pluginId}/...routes
 ```
 

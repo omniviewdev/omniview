@@ -325,22 +325,22 @@ describe('validatePluginExports', () => {
   describe('extension point definition validation', () => {
     it('#43 duplicate extension point IDs within one plugin', () => {
       const p = pw();
-      (p as any)._extensions = [
+      p.registerExtensionPoints([
         { id: 'my-ep', mode: 'multiple' },
         { id: 'my-ep', mode: 'single' },
-      ];
+      ]);
       expect(() => validatePluginExports({ plugin: p })).toThrow(/Duplicate extension point ID.*my-ep/);
     });
 
     it('#44 extension definition with missing id', () => {
       const p = pw();
-      (p as any)._extensions = [{}];
+      p.registerExtensionPoints([{} as any]);
       expect(() => validatePluginExports({ plugin: p })).toThrow(/id/);
     });
 
     it('#45 extension definition with non-string id', () => {
       const p = pw();
-      (p as any)._extensions = [{ id: 42 }];
+      p.registerExtensionPoints([{ id: 42 } as any]);
       expect(() => validatePluginExports({ plugin: p })).toThrow(/string.*id/);
     });
   });

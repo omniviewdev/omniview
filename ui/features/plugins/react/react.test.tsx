@@ -230,8 +230,8 @@ describe('Group 23.8: PluginServiceProvider migration checks', () => {
     const providerPath = path.resolve(__dirname, 'PluginServiceProvider.tsx');
     const providerSource = fs.readFileSync(providerPath, 'utf-8');
 
-    expect(providerSource).toContain('useInstalledPlugins');
-    expect(providerSource).not.toContain('usePluginManager');
+    expect(providerSource).toMatch(/\buseInstalledPlugins\s*\(/);
+    expect(providerSource).not.toMatch(/\busePluginManager\s*\(/);
   });
 
   it('23.8.30 — provider does not compose usePluginService during bootstrap', () => {
@@ -239,7 +239,7 @@ describe('Group 23.8: PluginServiceProvider migration checks', () => {
     const providerSource = fs.readFileSync(providerPath, 'utf-8');
 
     // Provider must not call usePluginService() — it accesses the service directly via ref
-    expect(providerSource).not.toContain('usePluginService');
+    expect(providerSource).not.toMatch(/\busePluginService\s*\(/);
   });
 });
 

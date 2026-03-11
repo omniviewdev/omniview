@@ -69,7 +69,7 @@ export async function exportSharedDepsForDev(): Promise<void> {
 
   if (failures.length > 0) {
     for (const { name, error } of failures) {
-      console.error(`[omniview:shared-deps] Failed to resolve "${name}":`, error);
+      console.error(`[PluginService] Failed to resolve shared dep "${name}":`, error);
     }
   }
 }

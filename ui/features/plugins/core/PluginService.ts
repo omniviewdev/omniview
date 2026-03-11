@@ -531,7 +531,6 @@ export class PluginService {
             phase: 'error',
             error: data.error ?? 'Crash recovery failed',
           });
-          this.invalidateSnapshot();
           this.notify();
         }
       }),
@@ -844,8 +843,12 @@ export class PluginService {
               value: c.value,
               meta: c.meta,
             });
-          } catch {
-            // Extension point may have been removed again; ignore
+          } catch (e) {
+            // Extension point may have been removed again — log for debugging
+            console.debug(
+              `[PluginService] replay: failed to register contribution "${c.contributionId}" → EP "${c.extensionPointId}" (plugin "${pid}")`,
+              e,
+            );
           }
         }
       }
@@ -883,7 +886,10 @@ export class PluginService {
     const extensions = (pw as any)._extensions ?? (pw as any).extensions ?? [];
     if (!Array.isArray(extensions)) return [];
 
-    return extensions as ExtensionPointSettings[];
+    return extensions.filter(
+      (ep: unknown): ep is ExtensionPointSettings =>
+        ep != null && typeof ep === 'object' && typeof (ep as any).id === 'string',
+    );
   }
 
   // ── Private: Timeout ────────────────────────────────────────────
@@ -1009,7 +1015,6 @@ export class PluginService {
       pluginWindow: null,
     });
 
-    this.invalidateSnapshot();
     this.notify();
   }
 

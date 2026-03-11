@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 
-const ROOT = '/Users/joshuapare/Repos/omniviewdev/omniview-plugin-sdk-rewrite';
+const ROOT = path.resolve(__dirname, '../../../..');
 
 function readSource(relPath: string): string {
   return fs.readFileSync(path.join(ROOT, relPath), 'utf-8');

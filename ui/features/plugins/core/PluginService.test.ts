@@ -472,11 +472,15 @@ describe('Group 5: Reload Operations', () => {
   it('#11 loadedAt updated on successful reload', async () => {
     s.importer.register('A', validModule());
     await s.service.load('A');
-    const loadedAt1 = s.service.getPluginState('A')?.loadedAt!;
+    const state1 = s.service.getPluginState('A');
+    expect(state1).toBeDefined();
+    const loadedAt1 = state1!.loadedAt;
     await new Promise((r) => setTimeout(r, 5));
     s.importer.register('A', validModule());
     await s.service.reload('A');
-    expect(s.service.getPluginState('A')?.loadedAt!).toBeGreaterThan(loadedAt1);
+    const state2 = s.service.getPluginState('A');
+    expect(state2).toBeDefined();
+    expect(state2!.loadedAt).toBeGreaterThan(loadedAt1);
   });
 });
 

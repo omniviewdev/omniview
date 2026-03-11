@@ -69,6 +69,7 @@ export const usePluginManager = () => {
       closer1()
       closer2()
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable refs from hooks; single-run effect
   }, []);
 
   // === Mutations === //

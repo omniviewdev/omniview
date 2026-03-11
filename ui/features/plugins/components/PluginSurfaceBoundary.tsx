@@ -191,11 +191,13 @@ export function PluginSurfaceBoundary({
     [pluginId, boundary, resourceKey, FallbackComponent],
   );
 
+  const effectiveResetKeys = [pluginId, boundary, resourceKey, ...(resetKeys ?? [])];
+
   return (
     <ErrorBoundary
       fallbackRender={renderFallback}
       onError={handleError}
-      resetKeys={resetKeys}
+      resetKeys={effectiveResetKeys}
     >
       {children}
     </ErrorBoundary>

@@ -27,9 +27,8 @@ export function usePluginService(): UsePluginServiceResult {
 
   const snapshot = useSyncExternalStore(subscribe, getSnapshot);
 
-  return useMemo(
+  const actions = useMemo(
     () => ({
-      ...snapshot,
       load: service.load.bind(service),
       unload: service.unload.bind(service),
       reload: service.reload.bind(service),
@@ -37,6 +36,11 @@ export function usePluginService(): UsePluginServiceResult {
       forceReset: service.forceReset.bind(service),
       getDebugSnapshot: service.getDebugSnapshot.bind(service),
     }),
-    [snapshot, service],
+    [service],
+  );
+
+  return useMemo(
+    () => ({ ...snapshot, ...actions }),
+    [snapshot, actions],
   );
 }

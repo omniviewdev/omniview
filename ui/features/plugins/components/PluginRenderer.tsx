@@ -26,7 +26,7 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
   const { plugins } = usePluginService();
 
   const pluginState = data?.pluginID ? plugins.get(data.pluginID) : undefined;
-  const loadedAt = pluginState?.loadedAt ?? 0;
+  const loadedAt = pluginState?.phase === 'ready' ? pluginState.loadedAt : undefined;
 
   if (!data?.pluginID) {
     console.warn('[PluginRenderer] no pluginID in loader data');
