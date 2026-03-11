@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import type { FallbackProps } from 'react-error-boundary';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import { PluginServiceContext } from '../react/context';
 
 // ─── Boundary Log Event ─────────────────────────────────────────────
 
@@ -167,6 +168,8 @@ export function PluginSurfaceBoundary({
   fallback: FallbackComponent = DefaultPluginFallback,
   resetKeys,
 }: PluginSurfaceBoundaryProps): React.ReactElement {
+  const service = useContext(PluginServiceContext);
+
   const handleError = React.useCallback(
     (error: Error, info: React.ErrorInfo) => {
       logPluginBoundaryError({
@@ -177,8 +180,21 @@ export function PluginSurfaceBoundary({
         stack: error.stack ?? '',
         componentStack: info.componentStack ?? '',
       });
+      // F3: Record crash (no quarantine check — quarantine only applies to
+      // extension contributions rendered via ExtensionPointRenderer)
+      service?.recordBoundaryCrash({
+        contributionId: `${pluginId}/${boundary}${resourceKey ? `/${resourceKey}` : ''}`,
+        pluginId,
+        extensionPointId: '',
+        boundary,
+        resourceKey,
+        errorMessage: error.message,
+        stack: error.stack,
+        componentStack: info.componentStack ?? undefined,
+        timestamp: Date.now(),
+      });
     },
-    [pluginId, boundary, resourceKey],
+    [pluginId, boundary, resourceKey, service],
   );
 
   const renderFallback = React.useCallback(

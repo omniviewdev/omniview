@@ -4,6 +4,7 @@ import type {
   SidebarComponent,
   DrawerFactory,
   ExtensionRegistration,
+  DeclaredDependencies,
 } from './types';
 
 // Re-export from canonical source for backwards compatibility with existing imports.
@@ -113,4 +114,20 @@ export function normalizeContributions(
   }
 
   return contributions;
+}
+
+/**
+ * Extract declared dependencies from raw plugin exports.
+ * Returns undefined if no dependencies field is present.
+ * Validation has already ensured correct shape.
+ */
+export function extractDeclaredDependencies(
+  raw: unknown,
+): DeclaredDependencies | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const deps = raw as Record<string, unknown>;
+  return {
+    plugins: Array.isArray(deps.plugins) ? (deps.plugins as string[]) : [],
+    extensionPoints: Array.isArray(deps.extensionPoints) ? (deps.extensionPoints as string[]) : [],
+  };
 }

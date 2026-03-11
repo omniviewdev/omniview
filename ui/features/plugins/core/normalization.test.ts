@@ -4,6 +4,7 @@ import {
   normalizeExtensionRegistration,
   normalizeLegacySidebar,
   normalizeLegacyDrawer,
+  extractDeclaredDependencies,
   RESOURCE_SIDEBAR_EXTENSION_POINT_ID,
   RESOURCE_DRAWER_EXTENSION_POINT_ID,
 } from './normalization';
@@ -186,7 +187,7 @@ describe('normalizeContributions', () => {
     expect(result.every((c) => c.source === 'legacy-sidebar')).toBe(true);
   });
 
-  it('consumers cannot distinguish contribution source', () => {
+  it('consumers cannot distinguish contribution source (Group 13.1 #6)', () => {
     // All contributions have the same NormalizedContribution shape
     const validated = makeValidated({
       extensionRegistrations: [
@@ -206,5 +207,46 @@ describe('normalizeContributions', () => {
       expect(c).toHaveProperty('value');
       expect(c).toHaveProperty('label');
     }
+  });
+});
+
+// ─── extractDeclaredDependencies ────────────────────────────────────
+
+describe('extractDeclaredDependencies', () => {
+  it('extracts full dependencies', () => {
+    const raw = {
+      plugins: ['plugin-a', 'plugin-b'],
+      extensionPoints: ['ep/1'],
+    };
+    const result = extractDeclaredDependencies(raw);
+    expect(result).toEqual({
+      plugins: ['plugin-a', 'plugin-b'],
+      extensionPoints: ['ep/1'],
+    });
+  });
+
+  it('defaults missing fields to empty arrays', () => {
+    const result = extractDeclaredDependencies({});
+    expect(result).toEqual({ plugins: [], extensionPoints: [] });
+  });
+
+  it('returns undefined for undefined input', () => {
+    const result = extractDeclaredDependencies(undefined);
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined for null input', () => {
+    const result = extractDeclaredDependencies(null);
+    expect(result).toBeUndefined();
+  });
+
+  it('defaults missing plugins to empty array', () => {
+    const result = extractDeclaredDependencies({ extensionPoints: ['ep/1'] });
+    expect(result).toEqual({ plugins: [], extensionPoints: ['ep/1'] });
+  });
+
+  it('defaults missing extensionPoints to empty array', () => {
+    const result = extractDeclaredDependencies({ plugins: ['p1'] });
+    expect(result).toEqual({ plugins: ['p1'], extensionPoints: [] });
   });
 });

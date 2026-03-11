@@ -3,7 +3,9 @@ import { ensureBuiltinExtensionPointsRegistered } from '@/features/extensions/re
 import { EventsOn } from '@omniviewdev/runtime/runtime';
 import { validatePluginExports } from '../core/validation';
 import { MissingExtensionPointError } from '../core/errors';
-import type { PluginServiceDeps } from '../core/types';
+import { InMemoryCrashDataStrategy } from '../core/CrashDataService';
+import type { PluginServiceDeps, PluginServiceConfig } from '../core/types';
+import { DEFAULT_CONFIG } from '../core/types';
 import { importPlugin } from './importPlugin';
 import { clearPlugin } from './clearPlugin';
 import { ensureDevSharedDeps } from './devSharedDeps';
@@ -26,8 +28,12 @@ const pluginServiceLogger = {
  * Wires the real extension registry, SystemJS/ESM import adapters,
  * Wails event system, and real validation pipeline.
  */
-export function createProductionDeps(): PluginServiceDeps {
+export function createProductionDeps(config?: Partial<PluginServiceConfig>): PluginServiceDeps {
+  const resolved = { ...DEFAULT_CONFIG, ...config };
+  const crashData = new InMemoryCrashDataStrategy({ maxRecordsPerContribution: resolved.maxCrashRecordsPerContribution });
+
   return {
+    crashData,
     importPlugin,
     clearPlugin,
 

@@ -1,6 +1,7 @@
 import { ExtensionPointRegistry } from '@omniviewdev/runtime';
 import { validatePluginExports } from '../core/validation';
 import { MissingExtensionPointError } from '../core/errors';
+import { InMemoryCrashDataStrategy } from '../core/CrashDataService';
 import type {
   PluginServiceDeps,
   PluginImportOpts,
@@ -126,6 +127,7 @@ export interface TestDeps {
   eventBus: InMemoryEventBus;
   extensions: ExtensionPointRegistry;
   log: LogCapture;
+  crashData: InMemoryCrashDataStrategy;
 }
 
 /**
@@ -150,8 +152,10 @@ export function createTestDeps(): TestDeps {
   const eventBus = new InMemoryEventBus();
   const extensions = new ExtensionPointRegistry();
   const log = new LogCapture();
+  const crashData = new InMemoryCrashDataStrategy({ maxRecordsPerContribution: 10 });
 
   const deps: PluginServiceDeps = {
+    crashData,
     importPlugin: importer.importPlugin,
 
     clearPlugin: async () => {
@@ -199,7 +203,7 @@ export function createTestDeps(): TestDeps {
     log: log.logger,
   };
 
-  return { deps, importer, eventBus, extensions, log };
+  return { deps, importer, eventBus, extensions, log, crashData };
 }
 
 // ─── Deferred Promise ───────────────────────────────────────────────

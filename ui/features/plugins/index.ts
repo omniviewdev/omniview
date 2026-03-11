@@ -4,6 +4,7 @@ export { PluginServiceProvider } from './react/PluginServiceProvider';
 export { usePluginService } from './react/usePluginService';
 export { usePluginRoutes } from './react/usePluginRoutes';
 export { ExtensionPointRenderer } from './components/ExtensionPointRenderer';
+export { QuarantinedContributionFallback } from './components/QuarantinedContributionFallback';
 export { PluginSurfaceBoundary } from './components/PluginSurfaceBoundary';
 export {
   logPluginBoundaryError,
@@ -18,6 +19,11 @@ export type {
   PluginServiceConfig,
   PluginServiceDebugSnapshot,
   ResourceExtensionRenderContext,
+  DeclaredDependencies,
+  CrashRecord,
+  CrashDataStrategy,
+  QuarantineInfo,
+  DependencyGraph,
 } from './core/types';
 
 export type {
@@ -29,3 +35,6 @@ export type {
   DefaultExtensionFallbackProps,
   DefaultPluginFallbackProps,
 } from './components/PluginSurfaceBoundary';
+export type {
+  QuarantinedContributionFallbackProps,
+} from './components/QuarantinedContributionFallback';
