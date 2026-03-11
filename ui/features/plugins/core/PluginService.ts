@@ -7,6 +7,7 @@ import {
   PluginValidationError,
   PluginTimeoutError,
   MissingExtensionPointError,
+  DuplicateContributionError,
 } from './errors';
 import type {
   PluginPhase,
@@ -1083,7 +1084,7 @@ export class PluginService {
             // Tolerate MissingExtensionPointError (EP removed) and duplicate
             // registration (contribution already registered during applyContributions).
             if (err instanceof MissingExtensionPointError) continue;
-            if (err instanceof Error && err.message.includes('already exists')) continue;
+            if (err instanceof DuplicateContributionError) continue;
             throw err;
           }
         }

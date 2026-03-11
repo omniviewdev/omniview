@@ -1,6 +1,6 @@
 import { ExtensionPointRegistry } from '@omniviewdev/runtime';
 import { validatePluginExports } from '../core/validation';
-import { MissingExtensionPointError } from '../core/errors';
+import { MissingExtensionPointError, DuplicateContributionError } from '../core/errors';
 import { InMemoryCrashDataStrategy } from '../core/CrashDataService';
 import type {
   PluginServiceDeps,
@@ -188,7 +188,19 @@ export function createTestDeps(opts?: { maxCrashRecordsPerContribution?: number 
           },
         );
       }
-      store.register(contribution);
+      try {
+        store.register(contribution);
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('already exists')) {
+          throw new DuplicateContributionError(err.message, {
+            pluginId: contribution.plugin,
+            extensionPointId,
+            contributionId: contribution.id,
+            cause: err,
+          });
+        }
+        throw err;
+      }
     },
 
     removeContributions: (pluginId) => {

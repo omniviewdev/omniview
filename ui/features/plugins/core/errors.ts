@@ -84,6 +84,25 @@ export class MissingExtensionPointError extends PluginServiceError {
 }
 
 /**
+ * Thrown when a contribution with the same ID is already registered
+ * in the target extension point.
+ */
+export class DuplicateContributionError extends PluginServiceError {
+  readonly extensionPointId: string;
+  readonly contributionId: string;
+
+  constructor(
+    message: string,
+    opts: { pluginId?: string; extensionPointId: string; contributionId: string; cause?: unknown },
+  ) {
+    super(message, { pluginId: opts.pluginId, cause: opts.cause });
+    this.name = 'DuplicateContributionError';
+    this.extensionPointId = opts.extensionPointId;
+    this.contributionId = opts.contributionId;
+  }
+}
+
+/**
  * Thrown when an extension point ID is already registered by another owner.
  */
 export class DuplicateExtensionPointError extends PluginServiceError {

@@ -2,7 +2,7 @@ import { EXTENSION_REGISTRY } from '@/features/extensions/store';
 import { ensureBuiltinExtensionPointsRegistered } from '@/features/extensions/registerBuiltinExtensionPoints';
 import { EventsOn } from '@omniviewdev/runtime/runtime';
 import { validatePluginExports } from '../core/validation';
-import { MissingExtensionPointError } from '../core/errors';
+import { MissingExtensionPointError, DuplicateContributionError } from '../core/errors';
 import { InMemoryCrashDataStrategy } from '../core/CrashDataService';
 import type { PluginServiceDeps, PluginServiceConfig } from '../core/types';
 import { DEFAULT_CONFIG } from '../core/types';
@@ -65,7 +65,20 @@ export function createProductionDeps(config?: Partial<PluginServiceConfig>): Plu
           },
         );
       }
-      store.register(contribution);
+      try {
+        store.register(contribution);
+      } catch (err) {
+        // Wrap the registry's plain Error into a typed error for structured handling
+        if (err instanceof Error && err.message.includes('already exists')) {
+          throw new DuplicateContributionError(err.message, {
+            pluginId: contribution.plugin,
+            extensionPointId,
+            contributionId: contribution.id,
+            cause: err,
+          });
+        }
+        throw err;
+      }
     },
 
     removeContributions: (pluginId) => {
