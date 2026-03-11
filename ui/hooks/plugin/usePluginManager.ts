@@ -2,10 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar, createErrorHandler, parseAppError, actionToSnackbar } from '@omniviewdev/runtime';
 import { PluginManager } from '@omniviewdev/runtime/api';
 import React from 'react';
-import { EventsEmit, EventsOn } from '@omniviewdev/runtime/runtime';
+import { EventsOn } from '@omniviewdev/runtime/runtime';
 import { type config, type types } from '@omniviewdev/runtime/models';
 
-import { clearPlugin, loadAndRegisterPlugin } from '@/features/plugins/api/loader';
+import { usePluginService } from '@/features/plugins';
 
 enum Entity {
   PLUGINS = 'plugins',
@@ -17,6 +17,7 @@ enum Entity {
 export const usePluginManager = () => {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
+  const { load } = usePluginService();
 
   // Listen for backend init_complete to immediately refresh the plugin list
   // instead of waiting for the 2s poll interval.
@@ -61,34 +62,12 @@ export const usePluginManager = () => {
         actions: appErr.actions?.map(actionToSnackbar),
       });
     });
-    const closer3 = EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
-      queryClient.setQueryData([Entity.PLUGINS], (oldData: types.PluginInfo[] | undefined) =>
-        oldData?.map(plugin =>
-          plugin.id === meta.id ? { ...plugin, phase: 'Running', lastError: '' } : plugin,
-        ),
-      );
 
-      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: types.PluginInfo | undefined) =>
-        oldData ? { ...oldData, phase: 'Running', lastError: '' } : oldData,
-      );
-
-      // Trigger a reload of the plugin ui
-      clearPlugin({ pluginId: meta.id })
-    });
-
-    // const closer4 = EventsOn('plugin/dev_install_start', (meta: config.PluginMeta) => {
-    //   showSnackbar({
-    //     message: `Installing plugin '${meta.name}' in development mode`,
-    //     status: 'info',
-    //   });
-    // });
+    // dev_reload_complete is handled by PluginService internally — no manual wiring needed
 
     return () => {
-      // Cleanup watchers
       closer1()
       closer2()
-      closer3()
-      // closer4()
     };
   }, []);
 
@@ -106,8 +85,7 @@ export const usePluginManager = () => {
       });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
-      loadAndRegisterPlugin(data.id);
-      EventsEmit('plugin/install_complete', data)
+      void load(data.id);
     },
     onError: createErrorHandler(showSnackbar, 'Plugin installation failed'),
   });
@@ -124,12 +102,9 @@ export const usePluginManager = () => {
         details: 'This plugin will be reloaded automatically when the source files change.',
       });
 
-      // Don't call loadAndRegisterPlugin here — dev plugins need the Vite
-      // dev server to be ready first. The PluginRegistryProvider will
-      // automatically load the plugin when the dev server reaches "ready"
-      // status via the stableKey mechanism.
-
-      EventsEmit('plugin/install_complete', data)
+      // Don't call load() here — dev plugins need the Vite dev server to be
+      // ready first. The PluginServiceProvider defers dev plugin loading
+      // until the dev server is available.
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
     },
@@ -198,6 +173,7 @@ export const usePluginManager = () => {
 export const usePlugin = ({ id }: { id: string }) => {
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
+  const { reload: serviceReload, unload: serviceUnload } = usePluginService();
 
   const plugin = useQuery({
     queryKey: [Entity.PLUGINS, id],
@@ -251,7 +227,7 @@ export const usePlugin = ({ id }: { id: string }) => {
         status: 'success',
       });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
-      loadAndRegisterPlugin(metadata.id)
+      void serviceReload(metadata.id);
     },
     onError: createErrorHandler(showSnackbar, 'Failed to reload plugin'),
   });
@@ -270,7 +246,7 @@ export const usePlugin = ({ id }: { id: string }) => {
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, 'registry'] });
-      clearPlugin({ pluginId: metadata.id })
+      void serviceUnload(metadata.id);
     },
     onError: createErrorHandler(showSnackbar, 'Failed to uninstall plugin'),
   });
@@ -290,8 +266,7 @@ export const usePlugin = ({ id }: { id: string }) => {
       });
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS, id] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
-      EventsEmit('plugin/install_complete', meta)
-      loadAndRegisterPlugin(meta.id)
+      void serviceReload(meta.id);
     },
     onError: createErrorHandler(showSnackbar, 'Plugin update failed'),
   });

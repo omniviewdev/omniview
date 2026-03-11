@@ -26,10 +26,9 @@ import { useParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
 import { PluginManager } from '@omniviewdev/runtime/api';
-import { EventsEmit } from '@omniviewdev/runtime/runtime';
 
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
-import { loadAndRegisterPlugin } from '@/features/plugins/api/loader';
+import { usePluginService } from '@/features/plugins';
 import PluginListItem from './PluginListItem';
 import PluginFilterPopover, {
   getActiveFilterCount,
@@ -104,6 +103,7 @@ const ToolbarButton = styled('button')({
 const PluginsNav: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>();
   const { plugins, available, installFromPath, installDev } = usePluginManager();
+  const { load } = usePluginService();
   const queryClient = useQueryClient();
   const { showSnackbar } = useSnackbar();
 
@@ -151,8 +151,7 @@ const PluginsNav: React.FC = () => {
       });
       void queryClient.invalidateQueries({ queryKey: ['plugins'] });
       void queryClient.refetchQueries({ queryKey: ['plugins'] });
-      EventsEmit('plugin/install_complete', meta);
-      loadAndRegisterPlugin(meta.id);
+      void load(meta.id);
       setInstallingIds(prev => {
         const next = new Set(prev);
         next.delete(meta.id);

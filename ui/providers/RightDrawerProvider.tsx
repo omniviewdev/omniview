@@ -22,7 +22,13 @@ import { resource } from '@omniviewdev/runtime/models';
 import RightDrawer from '@/components/displays/RightDrawer';
 import { bottomDrawerChannel } from './BottomDrawer/events';
 import { createLinkedResourceDrawer } from '@/federation/LinkedResourceDrawer';
-import { getSidebarComponent, getDrawerFactory } from '@/features/plugins/PluginManager';
+import { useExtensionPoint } from '@omniviewdev/runtime';
+import { RESOURCE_DRAWER_EXTENSION_POINT_ID } from '@/features/extensions/drawer/extensionPoint';
+import { RESOURCE_SIDEBAR_EXTENSION_POINT_ID } from '@/features/extensions/sidebar/extensionPoint';
+import { createResourceExtensionRenderContext } from '@/features/extensions/resource/context';
+import type { DrawerFactory as PluginDrawerFactory } from '@/features/plugins/core/types';
+import type { SidebarComponent } from '@/features/plugins/core/types';
+import type { ResourceExtensionRenderContext } from '@/features/plugins/core/types';
 import log from '@/features/logger';
 
 type Props = {
@@ -45,6 +51,14 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
 
   const { showSnackbar } = useSnackbar();
   const theme = useTheme();
+
+  // Extension point hooks for plugin sidebar/drawer resolution
+  const drawerEP = useExtensionPoint<PluginDrawerFactory, ResourceExtensionRenderContext>(
+    RESOURCE_DRAWER_EXTENSION_POINT_ID,
+  );
+  const sidebarEP = useExtensionPoint<SidebarComponent, ResourceExtensionRenderContext>(
+    RESOURCE_SIDEBAR_EXTENSION_POINT_ID,
+  );
   const [isDragging, setIsDragging] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
 
@@ -223,16 +237,20 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       ).then(() => closeDrawer());
     };
 
+    // Resolve drawer/sidebar via extension points — synchronous lookup
+    const epContext = createResourceExtensionRenderContext(params.pluginID, params.resourceKey);
+    const factory = drawerEP?.provide(epContext)?.[0];
+    const sidebarComponent = sidebarEP?.provide(epContext)?.[0];
+
     // Prefer a full drawer factory from the plugin (same views + actions as table row clicks).
     // Fall back to the generic linked-resource drawer with sidebar component overlay.
-    const factory = getDrawerFactory(params.pluginID, params.resourceKey);
     const drawer = factory
       ? factory(closeDrawer)
       : createLinkedResourceDrawer(
           params.resourceKey,
           onSubmit,
           closeDrawer,
-          getSidebarComponent(params.pluginID, params.resourceKey),
+          sidebarComponent,
         );
 
     // Fetch the resource, then open the drawer with data in ctx — same as row clicks
@@ -260,7 +278,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       log.error(err instanceof Error ? err : new Error(String(err)), { event: 'fetch_linked_resource', resourceID: params.resourceID });
       showAppError(showSnackbar, err, `Failed to load resource: ${params.resourceID}`);
     });
-  }, [closeDrawer, openDrawer]);
+  }, [closeDrawer, openDrawer, drawerEP, sidebarEP]);
 
   const contextValue = useMemo(() => ({
     closeDrawer,

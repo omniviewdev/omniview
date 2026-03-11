@@ -1,18 +1,15 @@
-import { useContext, useEffect, useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { createHashRouter, RouterProvider, type RouteObject } from 'react-router-dom';
-import { PluginRegistryContext } from '../plugins/PluginRegistryProvider';
-import { getAllPluginRoutes } from '../plugins/PluginManager';
+import { usePluginRoutes } from '@/features/plugins';
 import { coreRoutes } from './routes';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
 import PrimaryLoading from '@/components/util/PrimaryLoading';
 
-const buildPluginRouteWrapper = () => {
+const buildPluginRouteWrapper = (pluginRoutes: RouteObject[]) => {
   // Deep-clone the top-level route and its children array to avoid mutating
   // the module-level coreRoutes. Previous code used a shallow spread and
   // pushed onto the original children array, accumulating duplicate _plugin
-  // entries on every call (install, reload, recalc_routes).
+  // entries on every call.
   const coreChildren = [...(coreRoutes[0].children ?? [])];
-  const pluginRoutes = getAllPluginRoutes();
 
   console.debug('[RouteProvider] buildPluginRouteWrapper', {
     coreChildCount: coreChildren.length,
@@ -33,7 +30,7 @@ const buildPluginRouteWrapper = () => {
 };
 
 export const RouteProvider = () => {
-  const { ready, routeVersion } = useContext(PluginRegistryContext);
+  const { ready, routeVersion, routes: pluginRoutes } = usePluginRoutes();
   const [router, setRouter] = useState<ReturnType<typeof createHashRouter>>();
 
   /**
@@ -49,28 +46,10 @@ export const RouteProvider = () => {
       return;
     }
 
-    const newRouter = createHashRouter(buildPluginRouteWrapper());
+    const newRouter = createHashRouter(buildPluginRouteWrapper(pluginRoutes));
     setRouter(newRouter);
     console.debug('[RouteProvider] router created', { routeVersion });
   }, [ready, routeVersion]);
-
-
-  /**
-   * Listen for changes to the dev plugins for when they reload so that we
-   * can react to them.
-   */
-  useEffect(() => {
-    if (!ready) {
-      return;
-    }
-
-    const cleanup = EventsOn("core/window/recalc_routes", () => {
-      console.debug('[RouteProvider] recalc_routes event received — rebuilding router');
-      setRouter(createHashRouter(buildPluginRouteWrapper()));
-    });
-
-    return () => cleanup();
-  }, [ready]);
 
   if (!ready || !router) {
     console.debug('[RouteProvider] rendering PrimaryLoading', { ready, hasRouter: !!router });

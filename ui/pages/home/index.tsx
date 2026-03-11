@@ -24,7 +24,6 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useExtensionPoint } from '@omniviewdev/runtime';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
 import { Stack } from '@omniviewdev/ui/layout';
 import { Text } from '@omniviewdev/ui/typography';
 import type { HomepageCardProps, HomepageCardMeta } from '@/features/extensions/homepage/types';
@@ -77,13 +76,6 @@ const SortableCard: React.FC<SortableCardProps> = ({ id, children, gridSize, isD
 const Home: React.FC = () => {
   const [isEditMode, setIsEditMode] = React.useState(false);
   const [activeId, setActiveId] = React.useState<string | null>(null);
-  const [, forceUpdate] = React.useReducer((x: number) => x + 1, 0);
-
-  React.useEffect(() => {
-    const cleanup = EventsOn('core/window/recalc_routes', forceUpdate);
-    return () => cleanup();
-  }, []);
-
   const ep = useExtensionPoint<HomepageCardProps>('omniview/home/card');
   const registrations = ep?.list() ?? [];
 

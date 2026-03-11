@@ -4,14 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { preloadSharedDeps } from './features/plugins/api/preloader';
 preloadSharedDeps();
 
-// In dev mode, eagerly export shared deps to window.__OMNIVIEW_SHARED__
-// so that dev-mode plugins (loaded via native ESM from Vite) get the host's
-// singleton instances of React, MUI, etc.
-import { initDevSharedDeps } from './features/plugins/api/devSharedReady';
-// Always export shared deps — dev-mode plugins need window.__OMNIVIEW_SHARED__
-// even when the host app itself is built in production mode (e.g. wails dev).
-initDevSharedDeps(true);
-
 // Bridge Go-side Wails events (plugin/devserver/*) to the frontend devToolsChannel
 // event bus so DevModeSection and other consumers receive real-time status updates.
 import { initDevToolsBridge } from './features/devtools/wailsBridge';
@@ -49,7 +41,7 @@ import { EXTENSION_REGISTRY } from './features/extensions/store'
 import { ConfirmationModalProvider } from './contexts/ConfirmationModalContext';
 import { ConnectionStateProvider } from './features/connectionState';
 import { OperationsProvider } from '@omniviewdev/runtime';
-import { PluginRegistryProvider } from './features/plugins/PluginRegistryProvider';
+import { PluginServiceProvider } from '@/features/plugins';
 import { RouteProvider } from './features/router/RouteProvider';
 import log from '@/features/logger'
 
@@ -146,9 +138,9 @@ const App: React.FC = () => {
                           <ConnectionStateProvider>
                           <RightDrawerProvider>
                             <BottomDrawerProvider>
-                              <PluginRegistryProvider>
+                              <PluginServiceProvider>
                                 <RouteProvider />
-                              </PluginRegistryProvider>
+                              </PluginServiceProvider>
                             </BottomDrawerProvider>
                           </RightDrawerProvider>
                           </ConnectionStateProvider>

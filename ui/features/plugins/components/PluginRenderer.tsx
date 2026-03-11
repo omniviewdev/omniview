@@ -2,13 +2,11 @@ import React from 'react';
 import Box from '@mui/material/Box';
 import { ErrorBoundary } from 'react-error-boundary';
 
-import { PluginContextProvider, parseAppError } from '@omniviewdev/runtime';
+import { PluginContextProvider } from '@omniviewdev/runtime';
 import { Outlet, useLoaderData } from 'react-router-dom';
-import { clearPlugin, loadAndRegisterPlugin } from '../api/loader';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
-import { type config } from '@omniviewdev/runtime/models';
 import PluginDevOverlay from '@/features/devtools/components/PluginDevOverlay';
 import { PanelErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
+import { usePluginService } from '@/features/plugins';
 
 export type PluginRendererProps = {}
 
@@ -16,53 +14,19 @@ export type PluginRendererProps = {}
  * PluginRenderer loads a plugin with a UI entrypoint, injecting the necessary
  * contexts and rendering the component.
  *
- * Two change flows exist in dev mode:
+ * Reload is driven by the PluginService — when a plugin reloads (Go backend
+ * change, manual reload, etc.), its `loadedAt` timestamp changes, which causes
+ * a React key change here, unmounting and re-mounting the plugin subtree.
  *
- * 1. UI changes (.tsx/.ts/.css files):
- *    Handled entirely by Vite HMR + React Fast Refresh.
- *    No event, no re-mount, no action needed here.
- *    Components update in-place with state preserved.
- *
- * 2. Go changes (.go files):
- *    Backend rebuilds binary, restarts plugin process, re-establishes gRPC.
- *    Emits `plugin/dev_reload_complete` event.
- *    This component increments `reloadKey`, causing PluginContextProvider
- *    to unmount and re-mount with the new gRPC backend.
- *    Only the plugin tree re-mounts — rest of app is untouched.
+ * UI-only changes (HMR via Vite) are handled transparently by React Fast
+ * Refresh with no re-mount needed.
  */
 const PluginRenderer: React.FC<PluginRendererProps> = () => {
   const data = useLoaderData() as { pluginID: string } | undefined;
-  const [reloadKey, setReloadKey] = React.useState(0);
+  const { plugins } = usePluginService();
 
-  console.debug(`[PluginRenderer] render`, { pluginID: data?.pluginID, reloadKey });
-
-  React.useEffect(() => {
-    if (!data?.pluginID) return;
-
-    console.debug(`[PluginRenderer] subscribing to dev_reload_complete`, { plugin: data.pluginID });
-
-    const closer = EventsOn('plugin/dev_reload_complete', (meta: config.PluginMeta) => {
-      if (meta.id === data.pluginID) {
-        console.debug(`[PluginRenderer] Go reload event for "${data.pluginID}" — clearing and re-importing`, { plugin: data.pluginID });
-        // Go backend changed: clear old module, re-import, then re-mount
-        // via key increment (NOT a full page refresh)
-        clearPlugin({ pluginId: data.pluginID })
-          .then(() => loadAndRegisterPlugin(data.pluginID))
-          .then(() => {
-            setReloadKey(k => k + 1);
-            console.debug(`[PluginRenderer] Go reload complete for "${data.pluginID}" — re-mounting`, { plugin: data.pluginID });
-          })
-          .catch((error: unknown) => {
-            const appErr = parseAppError(error);
-            console.error(`[PluginRenderer] error reloading plugin ${data.pluginID}:`, appErr.detail);
-          });
-      }
-    });
-
-    return () => {
-      closer();
-    };
-  }, [data?.pluginID]);
+  const pluginState = data?.pluginID ? plugins.get(data.pluginID) : undefined;
+  const loadedAt = pluginState?.loadedAt ?? 0;
 
   if (!data?.pluginID) {
     console.warn('[PluginRenderer] no pluginID in loader data');
@@ -75,9 +39,9 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
       <ErrorBoundary
         FallbackComponent={(props) => <PanelErrorFallback {...props} label={`Plugin: ${data.pluginID}`} boundary="Plugin Renderer" />}
         onError={onBoundaryError}
-        resetKeys={[reloadKey]}
+        resetKeys={[loadedAt]}
       >
-        <PluginContextProvider pluginId={data.pluginID} key={reloadKey}>
+        <PluginContextProvider pluginId={data.pluginID} key={loadedAt}>
           <Outlet />
         </PluginContextProvider>
       </ErrorBoundary>

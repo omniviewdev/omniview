@@ -59,7 +59,7 @@ export default defineConfig({
     },
   ],
   resolve: {
-    dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled', '@mui/material', '@mui/x-charts'],
+    dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled', '@mui/material', '@mui/x-charts', '@omniviewdev/runtime'],
     alias: {
       '@/providers/monaco/bootstrap': process.env.VITEST
         ? path.resolve(__dirname, './ui/providers/monaco/bootstrap.mock.ts')
@@ -104,6 +104,15 @@ export default defineConfig({
       '@omniviewdev/ui/cells': path.resolve(__dirname, 'packages/omniviewdev-ui/src/cells/index.ts'),
       '@omniviewdev/ui/utils': path.resolve(__dirname, 'packages/omniviewdev-ui/src/utils/index.ts'),
       '@omniviewdev/ui': path.resolve(__dirname, 'packages/omniviewdev-ui/src/index.ts'),
+
+      // Resolve @omniviewdev/runtime to source so vitest uses a single
+      // module instance (avoids symlink-induced dual-instance bug where
+      // test files and source files get different copies of the registry).
+      // NOTE: Subpaths must come BEFORE the parent path (vite uses prefix matching).
+      '@omniviewdev/runtime/api': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/api.ts'),
+      '@omniviewdev/runtime/models': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/models.ts'),
+      '@omniviewdev/runtime/runtime': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/runtime.ts'),
+      '@omniviewdev/runtime': path.resolve(__dirname, 'packages/omniviewdev-runtime/src/index.ts'),
     },
   },
 });

@@ -1,11 +1,9 @@
 import { type ResourceSidebarComponentProps } from '../types';
-import { type CreateExtensionPointOptions } from '@omniviewdev/runtime/types/extensions';
+import { type ExtensionPointSettings } from '@omniviewdev/runtime';
 
-export const store: CreateExtensionPointOptions<ResourceSidebarComponentProps> = {
-  owner: 'core',
+export const store: ExtensionPointSettings<ResourceSidebarComponentProps> = {
+  pluginId: 'core',
   id: 'omniview/resource/sidebar/infopanel',
-  name: 'Resource Sidebar Information Panel',
-  description: 'Main infopanel for displaying a resource in the right sidebar.',
   mode: 'single',
 };
 

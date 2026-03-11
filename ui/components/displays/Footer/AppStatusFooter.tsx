@@ -26,7 +26,7 @@ import { devToolsChannel } from '@/features/devtools/events';
 import type { DevServerAggregateStatus, DevServerState } from '@/features/devtools/types';
 import { getAggregateStatus } from '@/features/devtools/types';
 import { useDevServer } from '@/hooks/plugin/useDevServer';
-import { usePluginRegistry } from '@/features/plugins/usePluginRegistry';
+import { usePluginService } from '@/features/plugins';
 import { usePortForwardSessions, useOperations } from '@omniviewdev/runtime';
 import type { Operation } from '@omniviewdev/runtime';
 
@@ -700,9 +700,17 @@ function FailedPluginPopover({
 }
 
 function FailedPluginIndicator() {
-  const { failedPlugins, retryPlugin } = usePluginRegistry();
+  const { plugins, retry } = usePluginService();
   const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
   const chipRef = React.useRef<HTMLDivElement>(null);
+
+  const failedPlugins = React.useMemo(
+    () =>
+      Array.from(plugins.values())
+        .filter((p) => p.phase === 'error')
+        .map((p) => ({ pluginId: p.id, error: p.error ?? '' })),
+    [plugins],
+  );
 
   if (failedPlugins.length === 0) return null;
 
@@ -724,7 +732,7 @@ function FailedPluginIndicator() {
         failures={failedPlugins}
         anchorEl={anchorEl}
         onClose={() => setAnchorEl(null)}
-        onRetry={retryPlugin}
+        onRetry={(pluginId) => void retry(pluginId)}
       />
     </>
   );
