@@ -51,9 +51,9 @@ export function useInstalledPlugins(): {
         devPort: devPortsByPlugin?.get(p.id),
       }));
     },
-    // Poll until we get results (backend may not be ready yet)
+    // Poll until first successful fetch (backend may not be ready yet)
     refetchInterval: (query) => {
-      return query.state.data?.length === 0 ? 2000 : false;
+      return query.state.status !== 'success' ? 2000 : false;
     },
   });
 

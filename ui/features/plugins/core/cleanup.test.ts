@@ -19,7 +19,7 @@ function readAllSourceFiles(dir: string): Array<{ file: string; content: string 
     for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
       const full = path.join(d, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === '.git') continue;
+        if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'coverage' || entry.name === 'dist') continue;
         walk(full);
       } else if (/\.(ts|tsx)$/.test(entry.name)) {
         results.push({ file: full, content: fs.readFileSync(full, 'utf-8') });

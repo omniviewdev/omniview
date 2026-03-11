@@ -65,7 +65,7 @@ export function DefaultExtensionFallback({
         border: '1px solid',
         borderColor: 'error.main',
         borderRadius: 1,
-        bgcolor: 'error.50',
+        bgcolor: 'error.light',
       }}
     >
       <Typography variant="caption" color="error.main" fontWeight="bold">
@@ -112,7 +112,7 @@ export function DefaultPluginFallback({
         border: '1px solid',
         borderColor: 'error.main',
         borderRadius: 1,
-        bgcolor: 'error.50',
+        bgcolor: 'error.light',
       }}
     >
       <Typography variant="subtitle2" color="error.main" fontWeight="bold">

@@ -124,7 +124,7 @@ Defined in `ui/features/extensions/registerBuiltinExtensionPoints.ts`:
 
 ### Error Isolation
 
-Each contribution is wrapped in its own `ErrorBoundary`. A crash in one plugin's contribution does not affect other contributions or the host. Crashes are logged via `logPluginBoundaryError()` with structured data (plugin ID, extension point ID, contribution ID, stack trace).
+Each contribution is wrapped in its own React `ErrorBoundary`, which catches render-time and lifecycle errors. A render crash in one plugin's contribution does not affect other contributions or the host. Crashes are logged via `logPluginBoundaryError()` with structured data (plugin ID, extension point ID, contribution ID, stack trace). Note that `ErrorBoundary` does not catch errors in event handlers, async callbacks, or non-render code paths — those require explicit `try/catch` handling within the plugin.
 
 ## React Integration
 
@@ -140,7 +140,7 @@ Uses `useSyncExternalStore` — re-renders only when the service snapshot change
 
 ### `usePluginRoutes()`
 
-Derives the route tree from loaded plugin registrations. Each plugin's routes are wrapped under `path: pluginId` with a `PluginRenderer` layout:
+Derives the route tree from loaded plugin registrations. Each plugin's routes are nested under `/_plugin/{pluginId}` with a `PluginRenderer` layout component. The `usePluginRoutes` hook creates a wrapper route per plugin with `path: pluginId`, and `RouteProvider` nests those under the top-level `/_plugin` parent:
 
 ```text
 /_plugin/{pluginId}/...routes

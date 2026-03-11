@@ -33,6 +33,10 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
     return <>No Plugin ID found</>;
   }
 
+  if (loadedAt == null) {
+    return null;
+  }
+
   return (
     <Box sx={{ position: 'relative', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <PluginDevOverlay pluginId={data.pluginID} />

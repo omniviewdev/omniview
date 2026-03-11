@@ -39,6 +39,10 @@ export function useExtensionPoint<
     sentinel: object;
   } | null>(null);
 
+  // Resolve store outside subscribe so it can be included in the dependency array.
+  // This ensures re-subscription when the store instance is replaced (EP removed & re-added).
+  const store = registry?.getExtensionPoint<TValue, TContext>(id);
+
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       const unsubs: Array<() => void> = [];
@@ -47,7 +51,6 @@ export function useExtensionPoint<
         unsubs.push(registry.subscribe(onStoreChange));
       }
 
-      const store = registry?.getExtensionPoint<TValue, TContext>(id);
       if (store) {
         unsubs.push(store.subscribe(onStoreChange));
       }
@@ -58,7 +61,7 @@ export function useExtensionPoint<
         }
       };
     },
-    [registry, id],
+    [registry, id, store],
   );
 
   const getSnapshot = useCallback(() => {

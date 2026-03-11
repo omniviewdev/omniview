@@ -172,8 +172,15 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
   }
 
   // --- Extension point definition validation ---
-  const extensions = (pw._extensions ?? pw.extensions ?? []) as unknown[];
-  if (Array.isArray(extensions) && extensions.length > 0) {
+  const rawExtensions = pw._extensions ?? pw.extensions;
+  if (rawExtensions != null && !Array.isArray(rawExtensions)) {
+    throw new PluginValidationError(
+      "'_extensions' or 'extensions' must be an array if present",
+      { errors: ["'_extensions' or 'extensions' must be an array if present"] },
+    );
+  }
+  const extensions = (rawExtensions ?? []) as unknown[];
+  if (extensions.length > 0) {
     const seenIds = new Set<string>();
     for (const ep of extensions) {
       if (ep == null || typeof ep !== 'object') {

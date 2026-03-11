@@ -21,7 +21,7 @@ function validModule(overrides?: {
     pw.withRoutes(overrides.routes);
   }
   if (overrides?.extensionPoints) {
-    (pw as any)._extensions = overrides.extensionPoints;
+    pw.registerExtensionPoints(overrides.extensionPoints);
   }
   return {
     plugin: pw,
