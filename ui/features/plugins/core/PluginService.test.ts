@@ -231,7 +231,7 @@ describe('Group 3: Load Operations', () => {
       expect(s.service.getPluginState('A')?.phase).toBe('error');
     });
 
-    it('#22 load fails fast on missing extension point', async () => {
+    it('#22 load soft-resolves missing extension point (contribution held pending)', async () => {
       s.importer.register('A', validModule({
         extensionRegistrations: [{
           extensionPointId: 'missing-ep',
@@ -239,7 +239,8 @@ describe('Group 3: Load Operations', () => {
         }],
       }));
       await s.service.load('A');
-      expect(s.service.getPluginState('A')?.phase).toBe('error');
+      expect(s.service.getPluginState('A')?.phase).toBe('ready');
+      expect(s.service.getPendingContributions().get('missing-ep')).toHaveLength(1);
     });
 
     it('#24 error state has null pluginWindow', async () => {
@@ -990,7 +991,7 @@ describe('Group 11: Batch Operations (loadAll)', () => {
     expect(store?.listAll()).toHaveLength(1);
   });
 
-  it('#13 genuine missing target EP still fails', async () => {
+  it('#13 missing target EP soft-resolves (contribution held pending)', async () => {
     const s = setup();
     s.importer.register('A', validModule({
       extensionRegistrations: [{
@@ -1007,9 +1008,10 @@ describe('Group 11: Batch Operations (loadAll)', () => {
       { id: 'C', dev: false },
     ]);
 
-    expect(s.service.getPluginState('A')?.phase).toBe('error');
+    expect(s.service.getPluginState('A')?.phase).toBe('ready');
     expect(s.service.getPluginState('B')?.phase).toBe('ready');
     expect(s.service.getPluginState('C')?.phase).toBe('ready');
+    expect(s.service.getPendingContributions().get('missing-ep')).toHaveLength(1);
   });
 });
 

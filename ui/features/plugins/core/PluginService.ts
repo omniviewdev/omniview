@@ -1,9 +1,13 @@
 import type { RouteObject } from 'react-router-dom';
 import { assertValidTransition } from './transitions';
-import { normalizeContributions } from './normalization';
+import { normalizeContributions, extractDeclaredDependencies } from './normalization';
+import { DependencyAnalyzer } from './DependencyAnalyzer';
+import { QuarantineManager } from './QuarantineManager';
 import {
   PluginValidationError,
   PluginTimeoutError,
+  MissingExtensionPointError,
+  DuplicateContributionError,
 } from './errors';
 import type {
   PluginPhase,
@@ -22,6 +26,10 @@ import type {
   PluginDescriptor,
   PluginLoadOpts,
   ExtensionPointSettings,
+  DeclaredDependencies,
+  QuarantineInfo,
+  DependencyGraph,
+  CrashRecord,
 } from './types';
 import { DEFAULT_CONFIG } from './types';
 
@@ -76,6 +84,11 @@ export class PluginService {
   // Contribution replay storage
   private normalizedContributionsByPlugin = new Map<string, NormalizedContribution[]>();
   private definedExtensionPointIdsByPlugin = new Map<string, string[]>();
+  private pendingContributionsByExtensionPoint = new Map<string, NormalizedContribution[]>();
+
+  private readonly dependencyAnalyzer = new DependencyAnalyzer();
+  private readonly quarantineManager: QuarantineManager;
+  private readonly quarantineListeners = new Set<(info: QuarantineInfo) => void>();
 
   // Snapshot memoization
   private cachedSnapshot: PluginServiceSnapshot | null = null;
@@ -91,6 +104,26 @@ export class PluginService {
   constructor(deps: PluginServiceDeps, config?: Partial<PluginServiceConfig>) {
     this.deps = deps;
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.quarantineManager = new QuarantineManager({
+      crashData: deps.crashData,
+      threshold: this.config.quarantineCrashThreshold,
+      onQuarantine: (info) => {
+        this.deps.log.warn(
+          `Contribution "${info.contributionId}" quarantined after ${info.crashCount} crashes`,
+          { pluginId: info.pluginId, contributionId: info.contributionId, extensionPointId: info.extensionPointId },
+        );
+        for (const listener of this.quarantineListeners) {
+          try {
+            listener(info);
+          } catch (err) {
+            this.deps.log.error(
+              `Quarantine listener threw for "${info.contributionId}"`,
+              { pluginId: info.pluginId, contributionId: info.contributionId, error: err instanceof Error ? err.message : String(err) },
+            );
+          }
+        }
+      },
+    });
   }
 
   // ── Queries ─────────────────────────────────────────────────────
@@ -131,6 +164,76 @@ export class PluginService {
     return this.routeVersion;
   }
 
+  getPendingContributions(): ReadonlyMap<string, readonly NormalizedContribution[]> {
+    const result = new Map<string, readonly NormalizedContribution[]>();
+    for (const [key, arr] of this.pendingContributionsByExtensionPoint) {
+      result.set(key, [...arr]);
+    }
+    return result;
+  }
+
+  // ── Quarantine API ────────────────────────────────────────────────
+
+  isQuarantined(contributionId: string): boolean {
+    return this.quarantineManager.isQuarantined(contributionId);
+  }
+
+  unquarantine(contributionId: string): void {
+    this.quarantineManager.unquarantine(contributionId);
+    this.notify();
+  }
+
+  listQuarantined(): QuarantineInfo[] {
+    return this.quarantineManager.listQuarantined();
+  }
+
+  onQuarantineActivated(listener: (info: QuarantineInfo) => void): () => void {
+    this.quarantineListeners.add(listener);
+    return () => { this.quarantineListeners.delete(listener); };
+  }
+
+  // ── Dependency API ────────────────────────────────────────────────
+
+  getDependencyWarnings(pluginId: string): string[] {
+    const loadedPlugins = new Set<string>();
+    const registeredEPs = new Set<string>();
+    for (const [id, s] of this.state) {
+      if (s.phase === 'ready') {
+        loadedPlugins.add(id);
+        const epIds = this.definedExtensionPointIdsByPlugin.get(id);
+        if (epIds) {
+          for (const epId of epIds) registeredEPs.add(epId);
+        }
+      }
+    }
+    return this.dependencyAnalyzer.checkMissingDependencies(pluginId, loadedPlugins, registeredEPs);
+  }
+
+  getDependencyGraph(): DependencyGraph {
+    return this.dependencyAnalyzer.getGraph();
+  }
+
+  // ── Crash Data API ────────────────────────────────────────────────
+
+  recordContributionCrash(record: CrashRecord): void {
+    this.deps.crashData.recordCrash(record);
+    this.quarantineManager.checkAndQuarantine(
+      record.contributionId,
+      record.pluginId,
+      record.extensionPointId,
+    );
+    this.notify();
+  }
+
+  recordBoundaryCrash(record: CrashRecord): void {
+    this.deps.crashData.recordCrash(record);
+    this.notify();
+  }
+
+  getCrashCount(contributionId: string): number {
+    return this.deps.crashData.getCrashCount(contributionId);
+  }
+
   getDebugSnapshot(): PluginServiceDebugSnapshot {
     const plugins: Record<string, PluginServiceDebugPluginState> = {};
 
@@ -141,6 +244,7 @@ export class PluginService {
         contributedExtensionPoints: this.getContributedExtensionPointIds(id),
         contributions: this.getContributionDebugRecords(id),
         definedExtensionPoints: this.getDefinedExtensionPointIds(id),
+        dependencyWarnings: this.getDependencyWarnings(id),
       };
     }
 
@@ -150,6 +254,9 @@ export class PluginService {
       ready: this.ready,
       routeVersion: this.routeVersion,
       eventListenersActive: this.eventCleanups.length > 0,
+      pendingContributions: this.getPendingContributionsDebug(),
+      quarantinedContributions: this.quarantineManager.listQuarantined(),
+      recentCrashes: this.getRecentCrashes(),
     };
   }
 
@@ -287,6 +394,8 @@ export class PluginService {
       if (!this.isCurrentGeneration(pluginId, generation)) return;
 
       const validated = this.deps.validateExports(rawModule);
+      const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
+      const declaredDependencies = extractDeclaredDependencies(rawDeps);
       const normalizedContributions = normalizeContributions(pluginId, validated);
       const extensionPoints = this.extractExtensionPoints(validated);
       const registrationsObj = this.buildRegistrations(validated);
@@ -310,6 +419,25 @@ export class PluginService {
         { excludePluginId: pluginId },
       );
 
+      // F1: Update dependency data
+      this.dependencyAnalyzer.removePlugin(pluginId);
+      if (declaredDependencies) {
+        this.dependencyAnalyzer.addPlugin(pluginId, declaredDependencies);
+
+        const cycles = this.dependencyAnalyzer.detectCycles();
+        if (cycles.length > 0) {
+          this.deps.log.warn(
+            `Dependency cycle detected after retrying "${pluginId}": ${cycles.map((c) => c.join(' → ')).join('; ')}`,
+            { pluginId, cycles },
+          );
+        }
+
+        const depWarnings = this.getDependencyWarnings(pluginId);
+        for (const w of depWarnings) {
+          this.deps.log.warn(w, { pluginId });
+        }
+      }
+
       this.transition(pluginId, 'ready', {
         pluginWindow: validated.plugin,
         loadedAt: Date.now(),
@@ -319,6 +447,7 @@ export class PluginService {
         error: null,
         validationErrors: [],
         moduleHash: opts?.moduleHash ?? null,
+        declaredDependencies,
       });
 
       this.deps.log.debug(`Plugin "${pluginId}" ready after retry`, { plugin: pluginId, retryCount });
@@ -432,6 +561,7 @@ export class PluginService {
           error: null,
           validationErrors: [],
           moduleHash: p.moduleHash,
+          declaredDependencies: p.declaredDependencies,
         });
 
         readyCount++;
@@ -441,6 +571,44 @@ export class PluginService {
       } catch (err) {
         failedCount++;
         this.handleLoadError(p.pluginId, err, 0);
+      }
+    }
+
+    // Replay pending contributions only for EPs from plugins that reached ready.
+    const allNewEpIds: string[] = [];
+    for (const p of prepared) {
+      const ps = this.state.get(p.pluginId);
+      if (ps?.phase === 'ready') {
+        allNewEpIds.push(...p.extensionPoints.map((ep) => ep.id));
+      }
+    }
+    if (allNewEpIds.length > 0) {
+      this.replayContributionsForExtensionPoints(allNewEpIds);
+    }
+
+    // F1: Register dependency metadata and run diagnostics
+    for (const p of prepared) {
+      if (p.declaredDependencies) {
+        this.dependencyAnalyzer.addPlugin(p.pluginId, p.declaredDependencies);
+      }
+    }
+
+    // Check for cycles after all plugins loaded
+    const cycles = this.dependencyAnalyzer.detectCycles();
+    if (cycles.length > 0) {
+      this.deps.log.warn(
+        `Dependency cycle detected among plugins: ${cycles.map((c) => c.join(' -> ')).join('; ')}`,
+        { cycles },
+      );
+    }
+
+    // Emit missing dependency advisories
+    for (const p of prepared) {
+      if (p.declaredDependencies) {
+        const warnings = this.getDependencyWarnings(p.pluginId);
+        for (const w of warnings) {
+          this.deps.log.warn(w, { pluginId: p.pluginId });
+        }
       }
     }
 
@@ -558,8 +726,13 @@ export class PluginService {
     this.inflightLoads.clear();
     this.normalizedContributionsByPlugin.clear();
     this.definedExtensionPointIdsByPlugin.clear();
+    this.pendingContributionsByExtensionPoint.clear();
     this.loadGeneration.clear();
     this.legacyWarningEmitted.clear();
+    this.quarantineManager.clearAll();
+    this.deps.crashData.clearAll();
+    this.dependencyAnalyzer.clear();
+    // Note: quarantineListeners are NOT cleared — Provider subscriptions persist across reset
     this.cachedSnapshot = null;
     this.cachedRoutes = null;
     this.ready = false;
@@ -601,6 +774,8 @@ export class PluginService {
       if (!this.isCurrentGeneration(pluginId, generation)) return;
 
       const validated = this.deps.validateExports(rawModule);
+      const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
+      const declaredDependencies = extractDeclaredDependencies(rawDeps);
       const normalizedContributions = normalizeContributions(pluginId, validated);
       const extensionPoints = this.extractExtensionPoints(validated);
       const registrationsObj = this.buildRegistrations(validated);
@@ -624,6 +799,26 @@ export class PluginService {
         { excludePluginId: pluginId },
       );
 
+      // F1: Store and analyze dependencies
+      if (declaredDependencies) {
+        this.dependencyAnalyzer.addPlugin(pluginId, declaredDependencies);
+
+        // Advisory cycle detection — log but never block
+        const cycles = this.dependencyAnalyzer.detectCycles();
+        if (cycles.length > 0) {
+          this.deps.log.warn(
+            `Dependency cycle detected after loading "${pluginId}": ${cycles.map((c) => c.join(' → ')).join('; ')}`,
+            { pluginId, cycles },
+          );
+        }
+
+        // Advisory missing dependency warnings
+        const depWarnings = this.getDependencyWarnings(pluginId);
+        for (const w of depWarnings) {
+          this.deps.log.warn(w, { pluginId });
+        }
+      }
+
       this.transition(pluginId, 'ready', {
         pluginWindow: validated.plugin,
         loadedAt: Date.now(),
@@ -633,6 +828,7 @@ export class PluginService {
         error: null,
         validationErrors: [],
         moduleHash: opts.moduleHash ?? null,
+        declaredDependencies,
       });
 
       this.deps.log.debug(`Plugin "${pluginId}" ready`, { plugin: pluginId });
@@ -679,13 +875,20 @@ export class PluginService {
       if (!this.isCurrentGeneration(pluginId, generation)) return;
 
       const validated = this.deps.validateExports(rawModule);
+      const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
+      const declaredDependencies = extractDeclaredDependencies(rawDeps);
       const normalizedContributions = normalizeContributions(pluginId, validated);
       const extensionPoints = this.extractExtensionPoints(validated);
       const registrationsObj = this.buildRegistrations(validated);
 
-      // Remove old registrations before applying new ones
+      // F2: Clear quarantine and crash data for reloading plugin
+      this.quarantineManager.clearForPlugin(pluginId);
+      this.deps.crashData.clearForPlugin(pluginId);
+
+      // Remove old registrations and pending contributions before applying new ones
       this.deps.removeContributions(pluginId);
       this.deps.removeExtensionPoints(pluginId);
+      this.removePluginPendingContributions(pluginId);
 
       // Register new extension points
       this.registerExtensionPoints(pluginId, extensionPoints);
@@ -706,6 +909,25 @@ export class PluginService {
         { excludePluginId: pluginId },
       );
 
+      // F1: Update dependency data (remove stale edges first)
+      this.dependencyAnalyzer.removePlugin(pluginId);
+      if (declaredDependencies) {
+        this.dependencyAnalyzer.addPlugin(pluginId, declaredDependencies);
+
+        const cycles = this.dependencyAnalyzer.detectCycles();
+        if (cycles.length > 0) {
+          this.deps.log.warn(
+            `Dependency cycle detected after reloading "${pluginId}": ${cycles.map((c) => c.join(' → ')).join('; ')}`,
+            { pluginId, cycles },
+          );
+        }
+
+        const depWarnings = this.getDependencyWarnings(pluginId);
+        for (const w of depWarnings) {
+          this.deps.log.warn(w, { pluginId });
+        }
+      }
+
       // Atomic swap
       this.transition(pluginId, 'ready', {
         pluginWindow: validated.plugin,
@@ -716,6 +938,7 @@ export class PluginService {
         error: null,
         validationErrors: [],
         moduleHash: opts?.moduleHash ?? null,
+        declaredDependencies,
       });
 
       this.deps.log.debug(`Plugin "${pluginId}" reloaded successfully`, { plugin: pluginId });
@@ -773,6 +996,8 @@ export class PluginService {
       }));
 
       const validated = this.deps.validateExports(rawModule);
+      const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
+      const declaredDependencies = extractDeclaredDependencies(rawDeps);
       const normalizedContributions = normalizeContributions(pluginId, validated);
       const extensionPoints = this.extractExtensionPoints(validated);
       const registrationsObj = this.buildRegistrations(validated);
@@ -787,6 +1012,7 @@ export class PluginService {
         isDev,
         devPort,
         moduleHash,
+        declaredDependencies,
       };
     } catch (err) {
       this.handleLoadError(pluginId, err, 0);
@@ -808,13 +1034,28 @@ export class PluginService {
     contributions: NormalizedContribution[],
   ): void {
     for (const c of contributions) {
-      this.deps.registerContribution(c.extensionPointId, {
-        id: c.contributionId,
-        plugin: pluginId,
-        label: c.label,
-        value: c.value,
-        meta: c.meta,
-      });
+      try {
+        this.deps.registerContribution(c.extensionPointId, {
+          id: c.contributionId,
+          plugin: pluginId,
+          label: c.label,
+          value: c.value,
+          meta: c.meta,
+        });
+      } catch (err) {
+        if (err instanceof MissingExtensionPointError) {
+          const pending = this.pendingContributionsByExtensionPoint.get(c.extensionPointId) ?? [];
+          pending.push(c);
+          this.pendingContributionsByExtensionPoint.set(c.extensionPointId, pending);
+
+          this.deps.log.debug(
+            `Contribution "${c.contributionId}" held pending — extension point "${c.extensionPointId}" not yet registered`,
+            { pluginId, contributionId: c.contributionId, extensionPointId: c.extensionPointId },
+          );
+        } else {
+          throw err;
+        }
+      }
     }
   }
 
@@ -826,15 +1067,62 @@ export class PluginService {
 
     const epIdSet = new Set(extensionPointIds);
 
+    // Replay from pending map first (so pending contributions get priority)
+    // Key by extensionPointId:contributionId to allow the same contributionId
+    // across different extension points.
+    const replayedKeys = new Set<string>();
+    for (const epId of extensionPointIds) {
+      const pending = this.pendingContributionsByExtensionPoint.get(epId);
+      if (!pending || pending.length === 0) continue;
+
+      const remaining: NormalizedContribution[] = [];
+      for (const c of pending) {
+        const dedupeKey = `${c.extensionPointId}:${c.contributionId}`;
+        try {
+          this.deps.registerContribution(c.extensionPointId, {
+            id: c.contributionId,
+            plugin: c.pluginId,
+            label: c.label,
+            value: c.value,
+            meta: c.meta,
+          });
+          replayedKeys.add(dedupeKey);
+          this.deps.log.debug(
+            `Replayed pending contribution "${c.contributionId}" to "${c.extensionPointId}"`,
+            { pluginId: c.pluginId, contributionId: c.contributionId, extensionPointId: c.extensionPointId },
+          );
+        } catch (err) {
+          if (err instanceof MissingExtensionPointError) {
+            remaining.push(c);
+          } else if (err instanceof DuplicateContributionError) {
+            // Stale duplicate — discard from pending, do not keep in remaining
+            this.deps.log.debug(
+              `Discarded stale duplicate pending contribution "${c.contributionId}" for "${c.extensionPointId}"`,
+              { pluginId: c.pluginId, contributionId: c.contributionId, extensionPointId: c.extensionPointId },
+            );
+          } else {
+            throw err;
+          }
+        }
+      }
+
+      if (remaining.length === 0) {
+        this.pendingContributionsByExtensionPoint.delete(epId);
+      } else {
+        this.pendingContributionsByExtensionPoint.set(epId, remaining);
+      }
+    }
+
+    // Replay from normalizedContributionsByPlugin (existing behavior)
     for (const [pid, contributions] of this.normalizedContributionsByPlugin) {
       if (opts?.excludePluginId && pid === opts.excludePluginId) continue;
 
-      // Only replay for plugins that are in ready state
       const pluginState = this.state.get(pid);
       if (!pluginState || pluginState.phase !== 'ready') continue;
 
       for (const c of contributions) {
-        if (epIdSet.has(c.extensionPointId)) {
+        const dedupeKey = `${c.extensionPointId}:${c.contributionId}`;
+        if (epIdSet.has(c.extensionPointId) && !replayedKeys.has(dedupeKey)) {
           try {
             this.deps.registerContribution(c.extensionPointId, {
               id: c.contributionId,
@@ -843,12 +1131,12 @@ export class PluginService {
               value: c.value,
               meta: c.meta,
             });
-          } catch (e) {
-            // Extension point may have been removed again — log for debugging
-            console.debug(
-              `[PluginService] replay: failed to register contribution "${c.contributionId}" → EP "${c.extensionPointId}" (plugin "${pid}")`,
-              e,
-            );
+          } catch (err) {
+            // Tolerate MissingExtensionPointError (EP removed) and duplicate
+            // registration (contribution already registered during applyContributions).
+            if (err instanceof MissingExtensionPointError) continue;
+            if (err instanceof DuplicateContributionError) continue;
+            throw err;
           }
         }
       }
@@ -861,6 +1149,21 @@ export class PluginService {
     this.registrations.delete(pluginId);
     this.normalizedContributionsByPlugin.delete(pluginId);
     this.definedExtensionPointIdsByPlugin.delete(pluginId);
+    this.removePluginPendingContributions(pluginId);
+    this.quarantineManager.clearForPlugin(pluginId);
+    this.deps.crashData.clearForPlugin(pluginId);
+    this.dependencyAnalyzer.removePlugin(pluginId);
+  }
+
+  private removePluginPendingContributions(pluginId: string): void {
+    for (const [epId, contributions] of this.pendingContributionsByExtensionPoint) {
+      const filtered = contributions.filter((c) => c.pluginId !== pluginId);
+      if (filtered.length === 0) {
+        this.pendingContributionsByExtensionPoint.delete(epId);
+      } else {
+        this.pendingContributionsByExtensionPoint.set(epId, filtered);
+      }
+    }
   }
 
   private buildRegistrations(validated: ValidatedExports): PluginRegistrations {
@@ -1004,6 +1307,9 @@ export class PluginService {
       error: message,
     });
 
+    // Clean up any pending contributions queued during the failed load
+    this.removePluginPendingContributions(pluginId);
+
     // Transition to error, preserving existing state fields
     const current = this.state.get(pluginId);
     this.state.set(pluginId, {
@@ -1076,12 +1382,45 @@ export class PluginService {
   private getContributionDebugRecords(pluginId: string): PluginDebugContributionRecord[] {
     const contributions = this.normalizedContributionsByPlugin.get(pluginId);
     if (!contributions) return [];
-    return contributions.map((c) => ({
-      id: c.contributionId,
-      extensionPointId: c.extensionPointId,
-      source: c.source,
-      resourceKey: (c.meta as { resourceKey?: string })?.resourceKey,
-    }));
+    return contributions.map((c) => {
+      const pendingList = this.pendingContributionsByExtensionPoint.get(c.extensionPointId);
+      const isPending = pendingList?.some((p) => p.contributionId === c.contributionId) ?? false;
+
+      return {
+        id: c.contributionId,
+        extensionPointId: c.extensionPointId,
+        source: c.source,
+        resourceKey: (c.meta as { resourceKey?: string })?.resourceKey,
+        status: isPending
+          ? 'pending' as const
+          : this.quarantineManager.isQuarantined(c.contributionId)
+            ? 'quarantined' as const
+            : 'applied' as const,
+        crashCount: this.deps.crashData.getCrashCount(c.contributionId),
+      };
+    });
+  }
+
+  private getPendingContributionsDebug(): Record<string, { pluginId: string; contributionId: string; extensionPointId: string }[]> {
+    const result: Record<string, { pluginId: string; contributionId: string; extensionPointId: string }[]> = {};
+    for (const [epId, contributions] of this.pendingContributionsByExtensionPoint) {
+      result[epId] = contributions.map((c) => ({
+        pluginId: c.pluginId,
+        contributionId: c.contributionId,
+        extensionPointId: c.extensionPointId,
+      }));
+    }
+    return result;
+  }
+
+  private getRecentCrashes(): CrashRecord[] {
+    const allHistory = this.deps.crashData.getAllCrashHistory();
+    const all: CrashRecord[] = [];
+    for (const records of allHistory.values()) {
+      all.push(...records);
+    }
+    all.sort((a, b) => b.timestamp - a.timestamp);
+    return all.slice(0, 50);
   }
 
   private getDefinedExtensionPointIds(pluginId: string): string[] {

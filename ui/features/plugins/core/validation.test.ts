@@ -344,6 +344,77 @@ describe('validatePluginExports', () => {
       expect(() => validatePluginExports({ plugin: p })).toThrow(/string.*id/);
     });
   });
+
+  // ── 1.7 Dependencies Field Validation ─────────────────────────────
+
+  describe('validatePluginExports — dependencies field', () => {
+    it('accepts exports without dependencies (backward compatible)', () => {
+      const result = validatePluginExports({ plugin: pw() });
+      expect(result.plugin).toBeDefined();
+    });
+
+    it('accepts valid dependencies object', () => {
+      const result = validatePluginExports({
+        plugin: pw(),
+        dependencies: { plugins: ['plugin-a', 'plugin-b'], extensionPoints: ['ep/1'] },
+      });
+      expect(result.plugin).toBeDefined();
+    });
+
+    it('accepts dependencies with only plugins', () => {
+      const result = validatePluginExports({
+        plugin: pw(),
+        dependencies: { plugins: ['plugin-a'] },
+      });
+      expect(result.plugin).toBeDefined();
+    });
+
+    it('accepts dependencies with only extensionPoints', () => {
+      const result = validatePluginExports({
+        plugin: pw(),
+        dependencies: { extensionPoints: ['ep/1'] },
+      });
+      expect(result.plugin).toBeDefined();
+    });
+
+    it('accepts empty dependencies object', () => {
+      const result = validatePluginExports({
+        plugin: pw(),
+        dependencies: {},
+      });
+      expect(result.plugin).toBeDefined();
+    });
+
+    it('rejects non-object dependencies', () => {
+      expect(() =>
+        validatePluginExports({ plugin: pw(), dependencies: 'bad' }),
+      ).toThrow(/dependencies.*object/i);
+    });
+
+    it('rejects dependencies.plugins that is not an array', () => {
+      expect(() =>
+        validatePluginExports({ plugin: pw(), dependencies: { plugins: 'not-array' } }),
+      ).toThrow(/plugins.*array/i);
+    });
+
+    it('rejects dependencies.plugins with non-string items', () => {
+      expect(() =>
+        validatePluginExports({ plugin: pw(), dependencies: { plugins: [123] } }),
+      ).toThrow(/plugins.*string/i);
+    });
+
+    it('rejects dependencies.extensionPoints that is not an array', () => {
+      expect(() =>
+        validatePluginExports({ plugin: pw(), dependencies: { extensionPoints: {} } }),
+      ).toThrow(/extensionPoints.*array/i);
+    });
+
+    it('rejects dependencies.extensionPoints with non-string items', () => {
+      expect(() =>
+        validatePluginExports({ plugin: pw(), dependencies: { extensionPoints: [null] } }),
+      ).toThrow(/extensionPoints.*string/i);
+    });
+  });
 });
 
 // ─── validateResourceKeyFormat ───────────────────────────────────────

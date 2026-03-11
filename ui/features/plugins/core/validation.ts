@@ -206,6 +206,51 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
     }
   }
 
+  // --- dependencies (optional, advisory) ---
+  if ('dependencies' in exp && exp.dependencies !== undefined && exp.dependencies !== null) {
+    if (typeof exp.dependencies !== 'object' || Array.isArray(exp.dependencies)) {
+      throw new PluginValidationError(
+        "'dependencies' must be an object",
+        { errors: ["'dependencies' must be an object"] },
+      );
+    }
+    const deps = exp.dependencies as Record<string, unknown>;
+
+    if ('plugins' in deps && deps.plugins !== undefined) {
+      if (!Array.isArray(deps.plugins)) {
+        throw new PluginValidationError(
+          "'dependencies.plugins' must be an array",
+          { errors: ["'dependencies.plugins' must be an array"] },
+        );
+      }
+      for (const item of deps.plugins) {
+        if (typeof item !== 'string') {
+          throw new PluginValidationError(
+            "'dependencies.plugins' must contain only strings",
+            { errors: ["'dependencies.plugins' must contain only strings"] },
+          );
+        }
+      }
+    }
+
+    if ('extensionPoints' in deps && deps.extensionPoints !== undefined) {
+      if (!Array.isArray(deps.extensionPoints)) {
+        throw new PluginValidationError(
+          "'dependencies.extensionPoints' must be an array",
+          { errors: ["'dependencies.extensionPoints' must be an array"] },
+        );
+      }
+      for (const item of deps.extensionPoints) {
+        if (typeof item !== 'string') {
+          throw new PluginValidationError(
+            "'dependencies.extensionPoints' must contain only strings",
+            { errors: ["'dependencies.extensionPoints' must contain only strings"] },
+          );
+        }
+      }
+    }
+  }
+
   return {
     plugin: plugin as ValidatedExports['plugin'],
     extensionRegistrations: extensionRegistrations as ValidatedExports['extensionRegistrations'],

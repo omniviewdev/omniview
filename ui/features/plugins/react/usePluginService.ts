@@ -10,6 +10,11 @@ export interface UsePluginServiceResult extends PluginServiceSnapshot {
   readonly retry: PluginService['retry'];
   readonly forceReset: PluginService['forceReset'];
   readonly getDebugSnapshot: PluginService['getDebugSnapshot'];
+  readonly isQuarantined: PluginService['isQuarantined'];
+  readonly unquarantine: PluginService['unquarantine'];
+  readonly listQuarantined: PluginService['listQuarantined'];
+  readonly getDependencyGraph: PluginService['getDependencyGraph'];
+  readonly getDependencyWarnings: PluginService['getDependencyWarnings'];
 }
 
 /**
@@ -35,6 +40,11 @@ export function usePluginService(): UsePluginServiceResult {
       retry: service.retry.bind(service),
       forceReset: service.forceReset.bind(service),
       getDebugSnapshot: service.getDebugSnapshot.bind(service),
+      isQuarantined: service.isQuarantined.bind(service),
+      unquarantine: service.unquarantine.bind(service),
+      listQuarantined: service.listQuarantined.bind(service),
+      getDependencyGraph: service.getDependencyGraph.bind(service),
+      getDependencyWarnings: service.getDependencyWarnings.bind(service),
     }),
     [service],
   );

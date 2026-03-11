@@ -68,6 +68,17 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
       });
   }, [isLoading, installedPlugins, service]);
 
+  // Listen for quarantine activations
+  useEffect(() => {
+    const cleanup = service.onQuarantineActivated((info) => {
+      // TODO: Wire to notification/toast system when available
+      console.warn(
+        `[PluginService] Contribution quarantined: ${info.contributionId} (plugin: ${info.pluginId}, crashes: ${info.crashCount})`,
+      );
+    });
+    return cleanup;
+  }, [service]);
+
   // Dev mode: expose debug surface
   useEffect(() => {
     if (import.meta.env.DEV) {
@@ -75,6 +86,10 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
         getDebugSnapshot: service.getDebugSnapshot.bind(service),
         forceReset: service.forceReset.bind(service),
         retry: service.retry.bind(service),
+        unquarantine: service.unquarantine.bind(service),
+        listQuarantined: service.listQuarantined.bind(service),
+        getCrashCount: service.getCrashCount.bind(service),
+        getDependencyGraph: service.getDependencyGraph.bind(service),
       };
       return () => {
         delete (window as any).__PLUGIN_SERVICE__;

@@ -83,6 +83,7 @@ export interface PluginState {
   readonly pluginWindow: any | null; // PluginWindow at runtime
   readonly validationErrors: string[];
   readonly moduleHash: string | null;
+  readonly declaredDependencies?: DeclaredDependencies;
 }
 
 // ─── Validated Exports ───────────────────────────────────────────────
@@ -131,6 +132,7 @@ export interface PreparedPluginLoad {
   readonly isDev: boolean;
   readonly devPort: number | null;
   readonly moduleHash: string | null;
+  readonly declaredDependencies?: DeclaredDependencies;
 }
 
 // ─── Plugin Service Snapshot ─────────────────────────────────────────
@@ -149,6 +151,57 @@ export interface PluginDebugContributionRecord {
   readonly extensionPointId: string;
   readonly source: NormalizedContribution['source'];
   readonly resourceKey?: string;
+  readonly status: 'applied' | 'pending' | 'quarantined';
+  readonly crashCount: number;
+}
+
+// ─── Declared Dependencies (F1) ─────────────────────────────────────
+
+export interface DeclaredDependencies {
+  readonly plugins: readonly string[];
+  readonly extensionPoints: readonly string[];
+}
+
+// ─── Crash Data (F3) ────────────────────────────────────────────────
+
+export interface CrashRecord {
+  readonly contributionId: string;
+  readonly pluginId: string;
+  readonly extensionPointId: string;
+  readonly boundary: string;
+  readonly resourceKey?: string;
+  readonly errorMessage: string;
+  readonly stack?: string;
+  readonly componentStack?: string;
+  readonly timestamp: number;
+}
+
+export interface CrashDataStrategy {
+  recordCrash(record: CrashRecord): void;
+  clearForContribution(contributionId: string): void;
+  clearForPlugin(pluginId: string): void;
+  clearAll(): void;
+  getCrashCount(contributionId: string): number;
+  getCrashHistory(contributionId: string): readonly CrashRecord[];
+  getAllCrashHistory(): ReadonlyMap<string, readonly CrashRecord[]>;
+  subscribe(listener: () => void): () => void;
+}
+
+// ─── Quarantine (F2) ────────────────────────────────────────────────
+
+export interface QuarantineInfo {
+  readonly contributionId: string;
+  readonly pluginId: string;
+  readonly extensionPointId: string;
+  readonly crashCount: number;
+  readonly quarantinedAt: number;
+}
+
+// ─── Dependency Graph (F1) ──────────────────────────────────────────
+
+export interface DependencyGraph {
+  readonly nodes: readonly string[];
+  readonly edges: readonly [from: string, to: string][];
 }
 
 export interface PluginServiceDebugPluginState extends PluginState {
@@ -156,6 +209,7 @@ export interface PluginServiceDebugPluginState extends PluginState {
   readonly contributedExtensionPoints: string[];
   readonly contributions: PluginDebugContributionRecord[];
   readonly definedExtensionPoints: string[];
+  readonly dependencyWarnings: string[];
 }
 
 export interface PluginServiceDebugSnapshot {
@@ -164,6 +218,9 @@ export interface PluginServiceDebugSnapshot {
   readonly ready: boolean;
   readonly routeVersion: number;
   readonly eventListenersActive: boolean;
+  readonly pendingContributions: Record<string, { pluginId: string; contributionId: string; extensionPointId: string }[]>;
+  readonly quarantinedContributions: QuarantineInfo[];
+  readonly recentCrashes: CrashRecord[];
 }
 
 // ─── Plugin Import/Load Options ──────────────────────────────────────
@@ -196,6 +253,8 @@ export interface PluginServiceConfig {
   readonly retryBaseDelayMs: number;
   readonly retryMaxDelayMs: number;
   readonly maxConcurrentLoads: number;
+  readonly quarantineCrashThreshold: number;
+  readonly maxCrashRecordsPerContribution: number;
 }
 
 export const DEFAULT_CONFIG: Readonly<PluginServiceConfig> = {
@@ -204,6 +263,8 @@ export const DEFAULT_CONFIG: Readonly<PluginServiceConfig> = {
   retryBaseDelayMs: 1_000,
   retryMaxDelayMs: 30_000,
   maxConcurrentLoads: 5,
+  quarantineCrashThreshold: 3,
+  maxCrashRecordsPerContribution: 10,
 };
 
 // ─── Plugin Service Dependencies ─────────────────────────────────────
@@ -233,6 +294,7 @@ export interface PluginServiceDeps {
   removeContributions(pluginId: string): void;
   ensureDevSharedDeps(): Promise<void>;
   validateExports(exports: unknown): ValidatedExports;
+  crashData: CrashDataStrategy;
 
   log: {
     debug(message: string, data?: Record<string, unknown>): void;
