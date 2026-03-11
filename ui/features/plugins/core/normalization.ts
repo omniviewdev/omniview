@@ -117,9 +117,10 @@ export function normalizeContributions(
 }
 
 /**
- * Extract declared dependencies from raw plugin exports.
- * Returns undefined if no dependencies field is present.
- * Validation has already ensured correct shape.
+ * Extract declared dependencies from the nested dependencies object
+ * (i.e., rawModule.dependencies, not the full raw module).
+ * Returns undefined if the input is null/undefined.
+ * Validation has already ensured correct shape; arrays are shallow-cloned.
  */
 export function extractDeclaredDependencies(
   raw: unknown,
@@ -127,7 +128,7 @@ export function extractDeclaredDependencies(
   if (raw === undefined || raw === null) return undefined;
   const deps = raw as Record<string, unknown>;
   return {
-    plugins: Array.isArray(deps.plugins) ? (deps.plugins as string[]) : [],
-    extensionPoints: Array.isArray(deps.extensionPoints) ? (deps.extensionPoints as string[]) : [],
+    plugins: Array.isArray(deps.plugins) ? [...(deps.plugins as string[])] : [],
+    extensionPoints: Array.isArray(deps.extensionPoints) ? [...(deps.extensionPoints as string[])] : [],
   };
 }

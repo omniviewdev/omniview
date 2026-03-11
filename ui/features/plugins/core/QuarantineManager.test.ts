@@ -83,6 +83,8 @@ describe('QuarantineManager', () => {
       manager.clearForPlugin('plugin-a');
       expect(manager.isQuarantined('c1')).toBe(false);
       expect(manager.isQuarantined('c2')).toBe(false);
+      expect(crashData.getCrashCount('c1')).toBe(0);
+      expect(crashData.getCrashCount('c2')).toBe(0);
     });
 
     it('does not affect other plugins', () => {
@@ -111,6 +113,8 @@ describe('QuarantineManager', () => {
       manager.clearAll();
       expect(manager.isQuarantined('c1')).toBe(false);
       expect(manager.isQuarantined('c2')).toBe(false);
+      expect(crashData.getCrashCount('c1')).toBe(0);
+      expect(crashData.getCrashCount('c2')).toBe(0);
     });
   });
 

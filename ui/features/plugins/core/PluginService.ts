@@ -112,7 +112,14 @@ export class PluginService {
           { pluginId: info.pluginId, contributionId: info.contributionId, extensionPointId: info.extensionPointId },
         );
         for (const listener of this.quarantineListeners) {
-          listener(info);
+          try {
+            listener(info);
+          } catch (err) {
+            this.deps.log.error(
+              `Quarantine listener threw for "${info.contributionId}"`,
+              { pluginId: info.pluginId, contributionId: info.contributionId, error: err instanceof Error ? err.message : String(err) },
+            );
+          }
         }
       },
     });
@@ -156,8 +163,12 @@ export class PluginService {
     return this.routeVersion;
   }
 
-  getPendingContributions(): ReadonlyMap<string, NormalizedContribution[]> {
-    return new Map(this.pendingContributionsByExtensionPoint);
+  getPendingContributions(): ReadonlyMap<string, readonly NormalizedContribution[]> {
+    const result = new Map<string, readonly NormalizedContribution[]>();
+    for (const [key, arr] of this.pendingContributionsByExtensionPoint) {
+      result.set(key, [...arr]);
+    }
+    return result;
   }
 
   // ── Quarantine API ────────────────────────────────────────────────
@@ -205,20 +216,17 @@ export class PluginService {
 
   recordContributionCrash(record: CrashRecord): void {
     this.deps.crashData.recordCrash(record);
-    const wasBefore = this.quarantineManager.isQuarantined(record.contributionId);
     this.quarantineManager.checkAndQuarantine(
       record.contributionId,
       record.pluginId,
       record.extensionPointId,
     );
-    // Notify subscribers so UI re-renders when quarantine state changes
-    if (!wasBefore && this.quarantineManager.isQuarantined(record.contributionId)) {
-      this.notify();
-    }
+    this.notify();
   }
 
   recordBoundaryCrash(record: CrashRecord): void {
     this.deps.crashData.recordCrash(record);
+    this.notify();
   }
 
   getCrashCount(contributionId: string): number {
@@ -530,6 +538,7 @@ export class PluginService {
           error: null,
           validationErrors: [],
           moduleHash: p.moduleHash,
+          declaredDependencies: p.declaredDependencies,
         });
 
         readyCount++;
@@ -542,10 +551,13 @@ export class PluginService {
       }
     }
 
-    // Replay pending contributions for all newly registered EPs in this batch.
+    // Replay pending contributions only for EPs from plugins that reached ready.
     const allNewEpIds: string[] = [];
     for (const p of prepared) {
-      allNewEpIds.push(...p.extensionPoints.map((ep) => ep.id));
+      const ps = this.state.get(p.pluginId);
+      if (ps?.phase === 'ready') {
+        allNewEpIds.push(...p.extensionPoints.map((ep) => ep.id));
+      }
     }
     if (allNewEpIds.length > 0) {
       this.replayContributionsForExtensionPoints(allNewEpIds);
@@ -565,6 +577,16 @@ export class PluginService {
         `Dependency cycle detected among plugins: ${cycles.map((c) => c.join(' -> ')).join('; ')}`,
         { cycles },
       );
+    }
+
+    // Emit missing dependency advisories
+    for (const p of prepared) {
+      if (p.declaredDependencies) {
+        const warnings = this.getDependencyWarnings(p.pluginId);
+        for (const w of warnings) {
+          this.deps.log.warn(w, { pluginId: p.pluginId });
+        }
+      }
     }
 
     // Count plugins that failed during prepare (not in prepared array)
@@ -1057,10 +1079,12 @@ export class PluginService {
               value: c.value,
               meta: c.meta,
             });
-          } catch {
-            // Expected: MissingExtensionPointError (EP removed again) or
-            // duplicate registration (contribution already registered during
-            // initial applyContributions in this batch). Both are harmless.
+          } catch (err) {
+            // Tolerate MissingExtensionPointError (EP removed) and duplicate
+            // registration (contribution already registered during applyContributions).
+            if (err instanceof MissingExtensionPointError) continue;
+            if (err instanceof Error && err.message.includes('already exists')) continue;
+            throw err;
           }
         }
       }
@@ -1230,6 +1254,9 @@ export class PluginService {
       plugin: pluginId,
       error: message,
     });
+
+    // Clean up any pending contributions queued during the failed load
+    this.removePluginPendingContributions(pluginId);
 
     // Transition to error, preserving existing state fields
     const current = this.state.get(pluginId);

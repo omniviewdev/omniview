@@ -147,12 +147,12 @@ export interface TestDeps {
  * - Cache invalidation works
  * - Subscriptions fire
  */
-export function createTestDeps(): TestDeps {
+export function createTestDeps(opts?: { maxCrashRecordsPerContribution?: number }): TestDeps {
   const importer = new InMemoryModuleImporter();
   const eventBus = new InMemoryEventBus();
   const extensions = new ExtensionPointRegistry();
   const log = new LogCapture();
-  const crashData = new InMemoryCrashDataStrategy({ maxRecordsPerContribution: 10 });
+  const crashData = new InMemoryCrashDataStrategy({ maxRecordsPerContribution: opts?.maxCrashRecordsPerContribution ?? 10 });
 
   const deps: PluginServiceDeps = {
     crashData,

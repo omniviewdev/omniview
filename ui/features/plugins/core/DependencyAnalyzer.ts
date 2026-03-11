@@ -128,7 +128,7 @@ export class DependencyAnalyzer {
 
   /**
    * Returns a snapshot of the full dependency graph: all known nodes and directed edges.
-   * An edge [A, B] means plugin A declares a dependency on B.
+   * An edge [A, B] means plugin A declares a dependency on B (plugin or extension point).
    */
   getGraph(): DependencyGraph {
     const nodes = new Set<string>();
@@ -139,6 +139,10 @@ export class DependencyAnalyzer {
       for (const dep of entry.plugins) {
         nodes.add(dep);
         edges.push([pluginId, dep]);
+      }
+      for (const ep of entry.extensionPoints) {
+        nodes.add(ep);
+        edges.push([pluginId, ep]);
       }
     }
 

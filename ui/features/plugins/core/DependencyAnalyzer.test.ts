@@ -8,7 +8,9 @@ describe('DependencyAnalyzer', () => {
       analyzer.addPlugin('plugin-a', { plugins: ['plugin-b'], extensionPoints: ['ep/1'] });
       const graph = analyzer.getGraph();
       expect(graph.nodes).toContain('plugin-a');
+      expect(graph.nodes).toContain('ep/1');
       expect(graph.edges).toContainEqual(['plugin-a', 'plugin-b']);
+      expect(graph.edges).toContainEqual(['plugin-a', 'ep/1']);
     });
 
     it('removes a plugin and its edges', () => {
@@ -26,6 +28,17 @@ describe('DependencyAnalyzer', () => {
       const graph = analyzer.getGraph();
       expect(graph.nodes).toContain('plugin-a');
       expect(graph.edges).toHaveLength(0);
+    });
+
+    it('clear() resets all state', () => {
+      const analyzer = new DependencyAnalyzer();
+      analyzer.addPlugin('a', { plugins: ['b'], extensionPoints: ['ep/1'] });
+      analyzer.addPlugin('b', { plugins: ['a'], extensionPoints: [] });
+      analyzer.clear();
+      const graph = analyzer.getGraph();
+      expect(graph.nodes).toHaveLength(0);
+      expect(graph.edges).toHaveLength(0);
+      expect(analyzer.detectCycles()).toEqual([]);
     });
   });
 
@@ -135,6 +148,14 @@ describe('DependencyAnalyzer', () => {
       const graph = analyzer.getGraph();
       expect(graph.nodes).toEqual(expect.arrayContaining(['a', 'b', 'c']));
       expect(graph.edges).toEqual(expect.arrayContaining([['a', 'b'], ['a', 'c']]));
+    });
+
+    it('includes extension point dependencies as edges', () => {
+      const analyzer = new DependencyAnalyzer();
+      analyzer.addPlugin('a', { plugins: ['b'], extensionPoints: ['ep/1', 'ep/2'] });
+      const graph = analyzer.getGraph();
+      expect(graph.nodes).toEqual(expect.arrayContaining(['a', 'b', 'ep/1', 'ep/2']));
+      expect(graph.edges).toEqual(expect.arrayContaining([['a', 'b'], ['a', 'ep/1'], ['a', 'ep/2']]));
     });
   });
 });
