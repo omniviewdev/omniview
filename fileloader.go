@@ -84,6 +84,13 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 	requestedFilename = strings.TrimPrefix(requestedFilename, "/_")
 
+	requestedFilename = filepath.Clean(requestedFilename)
+	// Reject traversal attempts that escape the .omniview root
+	if strings.Contains(requestedFilename, "..") {
+		respondUnauthorized()
+		return
+	}
+
 	h.logger.Debugw(ctx, "requested file", "path", requestedFilename)
 
 	if !isAllowed(requestedFilename) {

@@ -116,6 +116,9 @@ func (s *Service) Init(ctx context.Context) error {
 	s.meterProvider = NewMeterProvider(s.resource, s.switchableMetricExp)
 	otel.SetMeterProvider(s.meterProvider)
 	if err := otelruntime.Start(otelruntime.WithMinimumReadMemStatsInterval(15 * time.Second)); err != nil {
+		otel.SetMeterProvider(noopmeter.NewMeterProvider())
+		_ = s.meterProvider.Shutdown(context.Background())
+		s.meterProvider = nil
 		return err
 	}
 
@@ -130,7 +133,7 @@ func (s *Service) Init(ctx context.Context) error {
 
 	// Start profiling if enabled at boot.
 	if s.cfg.Enabled && s.cfg.Profiling && s.cfg.PyroscopeEndpoint != "" {
-		profiler, err := startProfiling(s.version, s.cfg.PyroscopeEndpoint, s.cfg.GrafanaUser, s.cfg.GrafanaToken)
+		profiler, err := startProfiling(s.version, s.cfg.PyroscopeEndpoint)
 		if err != nil {
 			return err
 		}
@@ -295,7 +298,7 @@ func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
 
 	// Profiling toggle.
 	if cfg.Profiling && s.profiler == nil && cfg.PyroscopeEndpoint != "" {
-		profiler, err := startProfiling(s.version, cfg.PyroscopeEndpoint, cfg.GrafanaUser, cfg.GrafanaToken)
+		profiler, err := startProfiling(s.version, cfg.PyroscopeEndpoint)
 		if err != nil {
 			return err
 		}
@@ -320,7 +323,9 @@ func (s *Service) Config() TelemetryConfig {
 func (s *Service) swapTraceExporter(exp sdktrace.SpanExporter) {
 	if s.switchableTraceExp != nil {
 		if old := s.switchableTraceExp.Swap(exp); old != nil {
-			_ = old.Shutdown(context.Background())
+			if err := old.Shutdown(context.Background()); err != nil {
+				fmt.Fprintf(os.Stderr, "telemetry: trace exporter shutdown error: %v\n", err)
+			}
 		}
 	}
 }
@@ -328,7 +333,9 @@ func (s *Service) swapTraceExporter(exp sdktrace.SpanExporter) {
 func (s *Service) swapMetricExporter(exp sdkmetric.Exporter) {
 	if s.switchableMetricExp != nil {
 		if old := s.switchableMetricExp.Swap(exp); old != nil {
-			_ = old.Shutdown(context.Background())
+			if err := old.Shutdown(context.Background()); err != nil {
+				fmt.Fprintf(os.Stderr, "telemetry: metric exporter shutdown error: %v\n", err)
+			}
 		}
 	}
 }
@@ -336,7 +343,9 @@ func (s *Service) swapMetricExporter(exp sdkmetric.Exporter) {
 func (s *Service) swapLogExporter(exp sdklog.Exporter) {
 	if s.switchableLogExp != nil {
 		if old := s.switchableLogExp.Swap(exp); old != nil {
-			_ = old.Shutdown(context.Background())
+			if err := old.Shutdown(context.Background()); err != nil {
+				fmt.Fprintf(os.Stderr, "telemetry: log exporter shutdown error: %v\n", err)
+			}
 		}
 	}
 }

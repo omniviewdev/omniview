@@ -420,6 +420,9 @@ func (p *provider) ResetSetting(id string) error {
 	}
 	setting.ResetValue()
 	p.store[category].Settings[settingKey] = setting
+	if err := p.SaveSettings(); err != nil {
+		return err
+	}
 	p.notifyChangeHandlers(map[string]struct{}{category: {}})
 	return nil
 }

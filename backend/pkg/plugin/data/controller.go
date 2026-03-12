@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
+
+var safeKeyRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // Controller provides a JSON key-value store for plugins to persist arbitrary data.
 // Each key is stored as a separate JSON file under ~/.omniview/plugins/{pluginID}/data/.
@@ -35,6 +39,9 @@ func NewController(logger logging.Logger) Controller {
 
 // dataDir returns the data directory for a plugin, creating it if necessary.
 func (c *controller) dataDir(pluginID string) (string, error) {
+	if !safeKeyRe.MatchString(pluginID) {
+		return "", fmt.Errorf("invalid plugin ID %q: must match [A-Za-z0-9_-]+", pluginID)
+	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -51,6 +58,9 @@ func (c *controller) keyPath(pluginID, key string) (string, error) {
 	dir, err := c.dataDir(pluginID)
 	if err != nil {
 		return "", err
+	}
+	if !safeKeyRe.MatchString(key) {
+		return "", fmt.Errorf("invalid key %q: must match [A-Za-z0-9_-]+", key)
 	}
 	return filepath.Join(dir, key+".json"), nil
 }

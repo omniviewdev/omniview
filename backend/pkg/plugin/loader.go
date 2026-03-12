@@ -218,8 +218,6 @@ func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, lo
 		cmd.Env = append(os.Environ(),
 			"OMNIVIEW_TELEMETRY_ENABLED="+strconv.FormatBool(cfg.Enabled),
 			"OMNIVIEW_TELEMETRY_OTLP_ENDPOINT="+cfg.OTLPEndpoint,
-			"OMNIVIEW_TELEMETRY_AUTH_HEADER="+cfg.AuthHeader,
-			"OMNIVIEW_TELEMETRY_AUTH_VALUE="+cfg.AuthValue,
 			"OMNIVIEW_TELEMETRY_PROFILING="+strconv.FormatBool(cfg.Profiling),
 			"OMNIVIEW_TELEMETRY_PYROSCOPE_ENDPOINT="+cfg.PyroscopeEndpoint,
 			"OMNIVIEW_PLUGIN_ID="+id,

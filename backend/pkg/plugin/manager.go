@@ -36,11 +36,10 @@ const (
 )
 
 // TelemetryEnvConfig holds the subset of telemetry configuration injected into plugin processes.
+// Auth credentials are NOT included — they are managed host-side only.
 type TelemetryEnvConfig struct {
 	Enabled           bool
 	OTLPEndpoint      string
-	AuthHeader        string
-	AuthValue         string
 	Profiling         bool
 	PyroscopeEndpoint string
 }
@@ -340,7 +339,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	if err != nil {
 		pm.logger.Warnw(pm.ctx, "failed to read plugin state file, reconciling from filesystem", "error", err)
 		reconciler := NewReconciler(pm.logger)
-		result, reconErr := reconciler.ReconcileFromFilesystem(getPluginDir())
+		result, reconErr := reconciler.ReconcileFromFilesystem(pm.ctx, getPluginDir())
 		if reconErr != nil {
 			pm.logger.Errorw(pm.ctx, "filesystem reconciliation failed", "error", reconErr)
 		} else {

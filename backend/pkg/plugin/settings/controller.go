@@ -208,7 +208,9 @@ func (c *controller) PluginValues(plugin string) map[string]any {
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
-		logger.Errorw(ctx, "error", "error", errors.New("plugin not found"))
+		err := errors.New("plugin not found")
+		recordError(span, err)
+		logger.Errorw(ctx, "error", "error", err)
 		return nil
 	}
 
@@ -233,6 +235,7 @@ func (c *controller) ListSettings(plugin string) map[string]pkgsettings.Setting 
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
+		recordError(span, errors.New("plugin not found"))
 		logger.Errorw(ctx, "error", "error", errors.New("plugin not found"))
 		return nil
 	}

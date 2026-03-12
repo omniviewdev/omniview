@@ -233,13 +233,14 @@ func (c *controller) HasPlugin(pluginID string) bool {
 // ====================================== Port Forwarding Implementation ====================================== //
 
 func (c *controller) getConnectedCtx(
+	ctx context.Context,
 	plugin string,
 	connectionID string,
 ) *sdktypes.PluginContext {
 	// get the connection from the right resource
 	connection, err := c.resourceClient.GetConnection(plugin, connectionID)
 	if err != nil {
-		c.logger.Errorw(context.Background(), "getConnectedCtx: failed to get connection",
+		c.logger.Errorw(ctx, "getConnectedCtx: failed to get connection",
 			"pluginID", plugin,
 			"connectionID", connectionID,
 			"err", err,
@@ -247,14 +248,14 @@ func (c *controller) getConnectedCtx(
 		return nil
 	}
 
-	c.logger.Debugw(context.Background(), "getConnectedCtx: resolved connection",
+	c.logger.Debugw(ctx, "getConnectedCtx: resolved connection",
 		"pluginID", plugin,
 		"connectionID", connectionID,
 		"connectionDataKeys", mapKeys(connection.Data),
 	)
 
 	return sdktypes.NewPluginContextWithConnection(
-		context.Background(),
+		ctx,
 		"networker",
 		nil,
 		nil,
@@ -304,7 +305,7 @@ func (c *controller) GetSupportedPortForwardTargets(plugin string) ([]string, er
 func (c *controller) GetPortForwardSession(
 	sessionID string,
 ) (*networker.PortForwardSession, error) {
-	_, span := tracer.Start(context.Background(), "networker.GetPortForwardSession")
+	ctx, span := tracer.Start(context.Background(), "networker.GetPortForwardSession")
 	defer span.End()
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
@@ -330,7 +331,7 @@ func (c *controller) GetPortForwardSession(
 	)
 
 	return provider.GetPortForwardSession(
-		c.getConnectedCtx(index.pluginID, index.connectionID),
+		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
 		sessionID,
 	)
 }
@@ -338,7 +339,7 @@ func (c *controller) GetPortForwardSession(
 func (c *controller) ListPortForwardSessions(
 	pluginID, connectionID string,
 ) ([]*networker.PortForwardSession, error) {
-	_, span := tracer.Start(context.Background(), "networker.ListPortForwardSessions")
+	ctx, span := tracer.Start(context.Background(), "networker.ListPortForwardSessions")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("plugin_id", pluginID),
@@ -355,7 +356,7 @@ func (c *controller) ListPortForwardSessions(
 	}
 
 	return provider.ListPortForwardSessions(
-		c.getConnectedCtx(pluginID, connectionID),
+		c.getConnectedCtx(ctx, pluginID, connectionID),
 	)
 }
 
@@ -390,7 +391,7 @@ func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSessi
 	for _, pp := range pairs {
 		provider := pp.provider
 		sessions, err := provider.ListPortForwardSessions(
-			c.getConnectedCtx(pp.pluginID, pp.connectionID),
+			c.getConnectedCtx(ctx, pp.pluginID, pp.connectionID),
 		)
 		if err != nil {
 			c.logger.Warnw(ctx, "ListAllPortForwardSessions: error listing sessions",
@@ -407,7 +408,7 @@ func (c *controller) FindPortForwardSessions(
 	connectionID string,
 	request networker.FindPortForwardSessionRequest,
 ) ([]*networker.PortForwardSession, error) {
-	_, span := tracer.Start(context.Background(), "networker.FindPortForwardSessions")
+	ctx, span := tracer.Start(context.Background(), "networker.FindPortForwardSessions")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("plugin_id", pluginID),
@@ -424,7 +425,7 @@ func (c *controller) FindPortForwardSessions(
 	}
 
 	return provider.FindPortForwardSessions(
-		c.getConnectedCtx(pluginID, connectionID),
+		c.getConnectedCtx(ctx, pluginID, connectionID),
 		request,
 	)
 }
@@ -466,7 +467,7 @@ func (c *controller) StartResourcePortForwardingSession(
 		return nil, err
 	}
 
-	pctx := c.getConnectedCtx(pluginID, connectionID)
+	pctx := c.getConnectedCtx(ctx, pluginID, connectionID)
 	if pctx == nil {
 		c.logger.Errorw(ctx, "StartResourcePortForwardingSession: nil plugin context (connection lookup failed)",
 			"pluginID", pluginID,
@@ -521,7 +522,7 @@ func (c *controller) StartResourcePortForwardingSession(
 func (c *controller) ClosePortForwardSession(
 	sessionID string,
 ) (*networker.PortForwardSession, error) {
-	_, span := tracer.Start(context.Background(), "networker.ClosePortForwardSession")
+	ctx, span := tracer.Start(context.Background(), "networker.ClosePortForwardSession")
 	defer span.End()
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
@@ -547,7 +548,7 @@ func (c *controller) ClosePortForwardSession(
 	)
 
 	session, err := provider.ClosePortForwardSession(
-		c.getConnectedCtx(index.pluginID, index.connectionID),
+		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
 		sessionID,
 	)
 	if err != nil {

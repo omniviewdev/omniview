@@ -7,19 +7,16 @@ import (
 	"github.com/grafana/pyroscope-go"
 )
 
-// profilingConfig builds a Pyroscope configuration for the given version, endpoint,
-// and optional basic-auth credentials (required for Grafana Cloud Profiles).
-func profilingConfig(version, endpoint, authUser, authPassword string) pyroscope.Config {
+// profilingConfig builds a Pyroscope configuration for the given version and endpoint.
+func profilingConfig(version, endpoint string) pyroscope.Config {
 	addr := endpoint
 	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
 		addr = "http://" + addr
 	}
 	return pyroscope.Config{
-		ApplicationName:   "omniview",
-		ServerAddress:     addr,
-		BasicAuthUser:     authUser,
-		BasicAuthPassword: authPassword,
-		Tags:              map[string]string{"version": version},
+		ApplicationName: "omniview",
+		ServerAddress:   addr,
+		Tags:            map[string]string{"version": version},
 		ProfileTypes: []pyroscope.ProfileType{
 			pyroscope.ProfileCPU,
 			pyroscope.ProfileAllocSpace,
@@ -28,10 +25,9 @@ func profilingConfig(version, endpoint, authUser, authPassword string) pyroscope
 	}
 }
 
-// startProfiling starts the Pyroscope profiler with the given version, endpoint,
-// and optional auth credentials.
-func startProfiling(version, endpoint, authUser, authPassword string) (*pyroscope.Profiler, error) {
-	cfg := profilingConfig(version, endpoint, authUser, authPassword)
+// startProfiling starts the Pyroscope profiler with the given version and endpoint.
+func startProfiling(version, endpoint string) (*pyroscope.Profiler, error) {
+	cfg := profilingConfig(version, endpoint)
 	return pyroscope.Start(cfg)
 }
 

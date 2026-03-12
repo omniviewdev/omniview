@@ -15,8 +15,7 @@ import (
 // NewTraceExporter creates an OTLP HTTP trace exporter.
 func NewTraceExporter(ctx context.Context, endpoint, authHeader, authValue string) (sdktrace.SpanExporter, error) {
 	opts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpoint(endpoint),
-		otlptracehttp.WithInsecure(),
+		otlptracehttp.WithEndpointURL(endpoint),
 	}
 	if authHeader != "" && authValue != "" {
 		opts = append(opts, otlptracehttp.WithHeaders(map[string]string{authHeader: authValue}))
@@ -27,8 +26,7 @@ func NewTraceExporter(ctx context.Context, endpoint, authHeader, authValue strin
 // NewMetricExporter creates an OTLP HTTP metric exporter.
 func NewMetricExporter(ctx context.Context, endpoint, authHeader, authValue string) (sdkmetric.Exporter, error) {
 	opts := []otlpmetrichttp.Option{
-		otlpmetrichttp.WithEndpoint(endpoint),
-		otlpmetrichttp.WithInsecure(),
+		otlpmetrichttp.WithEndpointURL(endpoint),
 	}
 	if authHeader != "" && authValue != "" {
 		opts = append(opts, otlpmetrichttp.WithHeaders(map[string]string{authHeader: authValue}))
@@ -39,8 +37,7 @@ func NewMetricExporter(ctx context.Context, endpoint, authHeader, authValue stri
 // NewLogExporter creates an OTLP HTTP log exporter.
 func NewLogExporter(ctx context.Context, endpoint, authHeader, authValue string) (sdklog.Exporter, error) {
 	opts := []otlploghttp.Option{
-		otlploghttp.WithEndpoint(endpoint),
-		otlploghttp.WithInsecure(),
+		otlploghttp.WithEndpointURL(endpoint),
 	}
 	if authHeader != "" && authValue != "" {
 		opts = append(opts, otlploghttp.WithHeaders(map[string]string{authHeader: authValue}))

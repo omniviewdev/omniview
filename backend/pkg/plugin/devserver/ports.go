@@ -127,7 +127,7 @@ func (pa *PortAllocator) SavePIDs() {
 // CleanupStaleProcesses kills zombie Vite dev server process groups left over
 // from a previous unclean shutdown. It reads the PID file written by SavePIDs,
 // kills each recorded process group, and removes the file.
-func (pa *PortAllocator) CleanupStaleProcesses(logger logging.Logger) {
+func (pa *PortAllocator) CleanupStaleProcesses(ctx context.Context, logger logging.Logger) {
 	pidFile := pidFilePath()
 	b, err := os.ReadFile(pidFile)
 	if err != nil {
@@ -138,7 +138,7 @@ func (pa *PortAllocator) CleanupStaleProcesses(logger logging.Logger) {
 
 	var data map[string]int
 	if err := json.Unmarshal(b, &data); err != nil {
-		logger.Warnw(context.Background(), "failed to parse devserver PID file", "error", err)
+		logger.Warnw(ctx, "failed to parse devserver PID file", "error", err)
 		return
 	}
 
@@ -152,7 +152,7 @@ func (pa *PortAllocator) CleanupStaleProcesses(logger logging.Logger) {
 		if err := killProcessGroup(pgid); err != nil {
 			// Process already dead — that's fine.
 			if !isProcessNotFound(err) {
-				logger.Warnw(context.Background(), "failed to kill stale dev server process group",
+				logger.Warnw(ctx, "failed to kill stale dev server process group",
 					"port", portStr,
 					"pgid", pgid,
 					"error", err,
@@ -161,7 +161,7 @@ func (pa *PortAllocator) CleanupStaleProcesses(logger logging.Logger) {
 			continue
 		}
 
-		logger.Infow(context.Background(), "killed stale dev server process group",
+		logger.Infow(ctx, "killed stale dev server process group",
 			"port", portStr,
 			"pgid", pgid,
 		)
@@ -169,7 +169,7 @@ func (pa *PortAllocator) CleanupStaleProcesses(logger logging.Logger) {
 	}
 
 	if killed > 0 {
-		logger.Infow(context.Background(), "cleaned up stale dev server processes", "count", killed)
+		logger.Infow(ctx, "cleaned up stale dev server processes", "count", killed)
 	}
 }
 

@@ -78,9 +78,7 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildGrafanaUser=${{ secrets.GRAFANA_INSTANCE_ID }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildGrafanaToken=${{ secrets.GRAFANA_API_TOKEN }}"
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}"
 
       - name: Import Code-Signing Certificates
         uses: Apple-Actions/import-codesign-certs@v3
@@ -208,9 +206,7 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildGrafanaUser=${{ secrets.GRAFANA_INSTANCE_ID }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildGrafanaToken=${{ secrets.GRAFANA_API_TOKEN }}"
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}"
 
       - name: Rename executable
         working-directory: ./build/bin
@@ -283,9 +279,7 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildGrafanaUser=${{ secrets.GRAFANA_INSTANCE_ID }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildGrafanaToken=${{ secrets.GRAFANA_API_TOKEN }}"
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}"
 
       - name: Rename executable
         working-directory: ./build/bin

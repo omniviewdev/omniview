@@ -168,8 +168,6 @@ func main() {
 			return plugin.TelemetryEnvConfig{
 				Enabled:           cfg.Enabled,
 				OTLPEndpoint:      cfg.OTLPEndpoint,
-				AuthHeader:        cfg.AuthHeader,
-				AuthValue:         cfg.AuthValue,
 				Profiling:         cfg.Profiling,
 				PyroscopeEndpoint: cfg.PyroscopeEndpoint,
 			}
@@ -218,7 +216,7 @@ func main() {
 		// Wire telemetry settings hot-toggle: when any setting in the
 		// "telemetry" category changes, rebuild TelemetryConfig and apply.
 		telemetryFromSettings := func(vals map[string]any) telemetry.TelemetryConfig {
-			cfg := telemetry.TelemetryConfig{}
+			cfg := telemetrySvc.Config()
 			if v, ok := vals["enabled"].(bool); ok {
 				cfg.Enabled = v
 			}

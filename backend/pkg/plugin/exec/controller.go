@@ -191,7 +191,7 @@ func (c *controller) runMux() {
 		case <-c.ctx.Done():
 			return
 		case input := <-c.inputMux:
-			c.logger.Debugw(context.Background(), "got input", "input", input)
+			c.logger.Debugw(context.Background(), "got input", "sessionID", input.SessionID, "payloadSize", len(input.Data))
 			// Capture the channel under lock, then send outside it to avoid
 			// holding RLock during a potentially blocking send.
 			var ch chan exec.StreamInput
@@ -342,28 +342,23 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	return nil
 }
 
-func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
-	ctx, span := tracer.Start(context.Background(), "exec.OnPluginStop")
-	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID))
-
-	logger := c.logger.With(logging.Any("pluginID", pluginID))
-	logger.Debugw(ctx, "OnPluginStop")
-
+// cleanupPluginLocked removes all state for a plugin and returns the provider if it existed.
+// Must NOT be called with c.mu held — it acquires the lock internally.
+func (c *controller) cleanupPluginLocked(pluginID string) (ExecProvider, bool) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if ch, ok := c.inChans[pluginID]; ok {
 		close(ch)
 		delete(c.inChans, pluginID)
 	}
 	provider, ok := c.clients[pluginID]
 	delete(c.clients, pluginID)
-	// Remove stale sessions belonging to this plugin.
 	for sid, idx := range c.sessionIndex {
 		if idx.pluginID == pluginID {
 			delete(c.sessionIndex, sid)
 		}
 	}
-	// Clean up handler map entries so stale plugins don't advertise resources.
 	for plugin, resources := range c.handlerMap {
 		for resKey, handler := range resources {
 			if handler.Plugin == pluginID {
@@ -374,8 +369,18 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 			delete(c.handlerMap, plugin)
 		}
 	}
-	c.mu.Unlock()
-	if ok {
+	return provider, ok
+}
+
+func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+	ctx, span := tracer.Start(context.Background(), "exec.OnPluginStop")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID))
+
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(ctx, "OnPluginStop")
+
+	if provider, ok := c.cleanupPluginLocked(pluginID); ok {
 		provider.Close()
 	}
 	return nil
@@ -385,30 +390,7 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginShutdown")
 
-	c.mu.Lock()
-	delete(c.clients, pluginID)
-	if ch, ok := c.inChans[pluginID]; ok {
-		close(ch)
-		delete(c.inChans, pluginID)
-	}
-	// Remove stale sessions belonging to this plugin.
-	for sid, idx := range c.sessionIndex {
-		if idx.pluginID == pluginID {
-			delete(c.sessionIndex, sid)
-		}
-	}
-	// Clean up handler map entries so stale plugins don't advertise resources.
-	for plugin, resources := range c.handlerMap {
-		for resKey, handler := range resources {
-			if handler.Plugin == pluginID {
-				delete(resources, resKey)
-			}
-		}
-		if len(resources) == 0 {
-			delete(c.handlerMap, plugin)
-		}
-	}
-	c.mu.Unlock()
+	c.cleanupPluginLocked(pluginID)
 	return nil
 }
 
@@ -448,7 +430,7 @@ func (c *controller) getConnectedCtx(
 	// get the connection from the right resource
 	connection, err := c.resourceClient.GetConnection(plugin, connectionID)
 	if err != nil {
-		c.logger.Errorw(context.Background(), "error getting connection", "error", err)
+		c.logger.Errorw(ctx, "error getting connection", "error", err)
 		return nil
 	}
 
@@ -523,9 +505,14 @@ func (c *controller) CreateSession(
 	plugin string,
 	connectionID string,
 	opts exec.SessionOptions,
-) (*exec.Session, error) {
+) (session *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.CreateSession")
 	defer span.End()
+	defer func() {
+		if err != nil {
+			recordError(span, err)
+		}
+	}()
 	span.SetAttributes(
 		attribute.String("plugin_id", plugin),
 		attribute.String("connection_id", connectionID),
@@ -533,12 +520,11 @@ func (c *controller) CreateSession(
 
 	if plugin == "local" {
 		// start local terminal
-		session, err := c.terminalManager.StartSession(
+		session, err = c.terminalManager.StartSession(
 			c.getUnconnectedCtx(ctx, plugin),
 			opts,
 		)
 		if err != nil {
-			recordError(span, err)
 			return nil, err
 		}
 		c.mu.Lock()
@@ -554,12 +540,11 @@ func (c *controller) CreateSession(
 		return nil, apperror.PluginNotFound(plugin)
 	}
 
-	session, err := client.CreateSession(
+	session, err = client.CreateSession(
 		c.getConnectedCtx(ctx, plugin, connectionID),
 		opts,
 	)
 	if err != nil {
-		recordError(span, err)
 		return nil, err
 	}
 
@@ -574,9 +559,14 @@ func (c *controller) CreateSession(
 	return session, nil
 }
 
-func (c *controller) ListSessions() ([]*exec.Session, error) {
+func (c *controller) ListSessions() (sessions []*exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.ListSessions")
 	defer span.End()
+	defer func() {
+		if err != nil {
+			recordError(span, err)
+		}
+	}()
 
 	c.logger.Debugw(ctx, "ListSessions")
 	pctx := c.getUnconnectedCtx(ctx, "")
@@ -588,11 +578,10 @@ func (c *controller) ListSessions() ([]*exec.Session, error) {
 	}
 	c.mu.RUnlock()
 
-	sessions := make([]*exec.Session, 0)
+	sessions = make([]*exec.Session, 0)
 	for _, client := range clients {
 		clientSessions, err := client.ListSessions(pctx)
 		if err != nil {
-			recordError(span, err)
 			return nil, err
 		}
 		sessions = append(sessions, clientSessions...)
@@ -620,9 +609,14 @@ func (c *controller) lookupSession(sessionID string) (sessionIndex, ExecProvider
 
 func (c *controller) GetSession(
 	sessionID string,
-) (*exec.Session, error) {
+) (session *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.GetSession")
 	defer span.End()
+	defer func() {
+		if err != nil {
+			recordError(span, err)
+		}
+	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.logger.Debugw(ctx, "GetSession")
@@ -642,9 +636,14 @@ func (c *controller) GetSession(
 	)
 }
 
-func (c *controller) AttachSession(sessionID string) (*exec.Session, []byte, error) {
+func (c *controller) AttachSession(sessionID string) (session *exec.Session, data []byte, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.AttachSession")
 	defer span.End()
+	defer func() {
+		if err != nil {
+			recordError(span, err)
+		}
+	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.logger.Debugw(ctx, "AttachSession")
@@ -664,9 +663,14 @@ func (c *controller) AttachSession(sessionID string) (*exec.Session, []byte, err
 	)
 }
 
-func (c *controller) DetachSession(sessionID string) (*exec.Session, error) {
+func (c *controller) DetachSession(sessionID string) (session *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.DetachSession")
 	defer span.End()
+	defer func() {
+		if err != nil {
+			recordError(span, err)
+		}
+	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.logger.Debugw(ctx, "DetachSession")
@@ -689,9 +693,14 @@ func (c *controller) DetachSession(sessionID string) (*exec.Session, error) {
 func (c *controller) WriteSession(
 	sessionID string,
 	data []byte,
-) error {
+) (err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.WriteSession")
 	defer span.End()
+	defer func() {
+		if err != nil {
+			recordError(span, err)
+		}
+	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.mu.RLock()
@@ -719,9 +728,14 @@ func (c *controller) WriteSession(
 
 func (c *controller) CloseSession(
 	sessionID string,
-) error {
+) (err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.CloseSession")
 	defer span.End()
+	defer func() {
+		if err != nil {
+			recordError(span, err)
+		}
+	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	index, client, ok := c.lookupSession(sessionID)
@@ -743,9 +757,14 @@ func (c *controller) CloseSession(
 func (c *controller) ResizeSession(
 	sessionID string,
 	rows, cols uint16,
-) error {
+) (err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.ResizeSession")
 	defer span.End()
+	defer func() {
+		if err != nil {
+			recordError(span, err)
+		}
+	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	index, client, ok := c.lookupSession(sessionID)

@@ -64,7 +64,7 @@ func (m *DevServerManager) Initialize(ctx context.Context) {
 	// unclean shutdown (crash, SIGKILL, etc.). These zombie node processes
 	// hold ports in our allocated range and prevent new dev servers from
 	// starting.
-	m.ports.CleanupStaleProcesses(m.logger)
+	m.ports.CleanupStaleProcesses(m.ctx, m.logger)
 
 	// Start the external watcher for .devinfo files.
 	watcher, err := NewExternalWatcher(

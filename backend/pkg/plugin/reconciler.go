@@ -37,6 +37,7 @@ type ReconcileResult struct {
 // Reconcile compares the filesystem with persisted state and produces
 // a consistent set of plugin records.
 func (r *Reconciler) Reconcile(
+	ctx context.Context,
 	pluginDir string,
 	persistedStates []plugintypes.PluginStateRecord,
 ) (*ReconcileResult, error) {
@@ -72,7 +73,7 @@ func (r *Reconciler) Reconcile(
 		// Try to load metadata.
 		meta, metaErr := sdktypes.LoadPluginMetadata(location)
 		if metaErr != nil {
-			r.logger.Warnw(context.Background(), "plugin directory missing metadata, skipping",
+			r.logger.Warnw(ctx, "plugin directory missing metadata, skipping",
 				"pluginID", id, "error", metaErr)
 			continue
 		}
@@ -95,7 +96,7 @@ func (r *Reconciler) Reconcile(
 			result.Records[id] = record
 		} else {
 			// On disk but not in state — orphan. Adopt it.
-			r.logger.Infow(context.Background(), "adopting orphan plugin from filesystem", "pluginID", id)
+			r.logger.Infow(ctx, "adopting orphan plugin from filesystem", "pluginID", id)
 			result.Orphans = append(result.Orphans, id)
 
 			record := plugintypes.NewPluginRecord(id, meta, lifecycle.PhaseInstalled)
@@ -106,7 +107,7 @@ func (r *Reconciler) Reconcile(
 	// Check for ghosts: in state but not on disk.
 	for id := range stateByID {
 		if !diskIDs[id] {
-			r.logger.Warnw(context.Background(), "plugin in state but not on disk (ghost)", "pluginID", id)
+			r.logger.Warnw(ctx, "plugin in state but not on disk (ghost)", "pluginID", id)
 			result.Ghosts = append(result.Ghosts, id)
 		}
 	}
@@ -142,9 +143,10 @@ func (r *Reconciler) determineInitialPhase(
 // ReconcileFromFilesystem rebuilds state entirely from the filesystem.
 // Used when the state file is corrupt or missing.
 func (r *Reconciler) ReconcileFromFilesystem(
+	ctx context.Context,
 	pluginDir string,
 ) (*ReconcileResult, error) {
-	r.logger.Infow(context.Background(), "rebuilding plugin state from filesystem")
+	r.logger.Infow(ctx, "rebuilding plugin state from filesystem")
 
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
@@ -170,7 +172,7 @@ func (r *Reconciler) ReconcileFromFilesystem(
 
 		meta, metaErr := sdktypes.LoadPluginMetadata(location)
 		if metaErr != nil {
-			r.logger.Warnw(context.Background(), "skipping directory without valid metadata",
+			r.logger.Warnw(ctx, "skipping directory without valid metadata",
 				"dir", id, "error", metaErr)
 			continue
 		}
@@ -185,7 +187,7 @@ func (r *Reconciler) ReconcileFromFilesystem(
 		record := plugintypes.NewPluginRecord(id, meta, phase)
 		result.Records[id] = record
 
-		r.logger.Infow(context.Background(), "recovered plugin from filesystem",
+		r.logger.Infow(ctx, "recovered plugin from filesystem",
 			"pluginID", id, "phase", phase)
 	}
 
