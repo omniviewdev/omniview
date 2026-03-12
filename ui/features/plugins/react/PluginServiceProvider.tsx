@@ -1,4 +1,5 @@
-import React, { useRef, useMemo, useEffect, useSyncExternalStore } from 'react';
+import React, { useRef, useMemo, useEffect } from 'react';
+import { EventsOn } from '@omniviewdev/runtime/runtime';
 import { PluginServiceContext } from './context';
 import { PluginService } from '../core/PluginService';
 import { createProductionDeps } from '../adapters/createProductionDeps';
@@ -18,7 +19,8 @@ export interface PluginServiceProviderProps {
  * - Starts/stops event listeners on mount/unmount
  * - Orchestrates initial loadAll + markReady
  * - Provides the service via context
- * - Shows children only after service is ready
+ * - Always renders children (RouteProvider handles loading state)
+ * - Defers dev plugin loading until dev server reports ready
  */
 export function PluginServiceProvider({ children }: PluginServiceProviderProps) {
   const serviceRef = useRef<PluginService | null>(null);
@@ -29,12 +31,6 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
   }
 
   const service = serviceRef.current;
-
-  // Subscribe to snapshot for readiness gating
-  const snapshot = useSyncExternalStore(
-    service.subscribe.bind(service),
-    service.getSnapshot.bind(service),
-  );
 
   // Read-only startup data — acyclic, does not use the service consumer hook
   const { plugins: installedPlugins, isLoading } = useInstalledPlugins();
@@ -53,11 +49,15 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
     if (isLoading || loadStarted.current) return;
     loadStarted.current = true;
 
-    const descriptors: PluginDescriptor[] = installedPlugins.map((p) => ({
-      id: p.id,
-      dev: p.dev,
-      devPort: p.devPort,
-    }));
+    // Exclude dev plugins whose dev server hasn't started yet (no port).
+    // They will be loaded later when the dev server status event fires.
+    const descriptors: PluginDescriptor[] = installedPlugins
+      .filter((p) => !p.dev || (p.dev && p.devPort && p.devPort > 0))
+      .map((p) => ({
+        id: p.id,
+        dev: p.dev,
+        devPort: p.devPort,
+      }));
 
     void service.loadAll(descriptors)
       .catch((err) => {
@@ -76,6 +76,32 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
         `[PluginService] Contribution quarantined: ${info.contributionId} (plugin: ${info.pluginId}, crashes: ${info.crashCount})`,
       );
     });
+    return cleanup;
+  }, [service]);
+
+  // Listen for dev server readiness — load dev plugins once their server is up
+  useEffect(() => {
+    const cleanup = EventsOn('plugin/devserver/status', (state: {
+      pluginID: string;
+      vitePort: number;
+      viteStatus: string;
+    }) => {
+      if (state.viteStatus !== 'ready' || !state.vitePort || state.vitePort <= 0) return;
+
+      const ps = service.getPluginState(state.pluginID);
+      const devOpts = { dev: true, devPort: state.vitePort };
+
+      if (ps?.phase === 'error') {
+        void service.retry(state.pluginID, devOpts).catch((err) => {
+          console.error(`[PluginServiceProvider] deferred dev retry failed for ${state.pluginID}:`, err);
+        });
+      } else if (!ps || ps.phase === 'idle') {
+        void service.load(state.pluginID, devOpts).catch((err) => {
+          console.error(`[PluginServiceProvider] deferred dev load failed for ${state.pluginID}:`, err);
+        });
+      }
+    });
+
     return cleanup;
   }, [service]);
 
@@ -99,7 +125,7 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
 
   return (
     <PluginServiceContext.Provider value={service}>
-      {snapshot.ready ? children : null}
+      {children}
     </PluginServiceContext.Provider>
   );
 }

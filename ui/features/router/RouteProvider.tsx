@@ -30,29 +30,23 @@ const buildPluginRouteWrapper = (pluginRoutes: RouteObject[]) => {
 };
 
 export const RouteProvider = () => {
-  const { ready, routeVersion, routes: pluginRoutes } = usePluginRoutes();
+  const { routeVersion, routes: pluginRoutes } = usePluginRoutes();
   const [router, setRouter] = useState<ReturnType<typeof createHashRouter>>();
 
   /**
-   * When we have all of the plugins loaded, patch them and load them into
-   * the route list. Make sure we do this before we paint to the screen.
-   * Also rebuild when routeVersion changes (incremental plugin loads).
+   * Build the router immediately with whatever plugin routes are available
+   * (could be zero on the first render). The router is rebuilt each time
+   * routeVersion bumps, so plugins that finish loading later are picked up
+   * incrementally without blocking the initial render.
    */
   useLayoutEffect(() => {
-    if (!ready) {
-      // Clear stale router so the loading gate stays consistent.
-      setRouter(undefined);
-      console.debug('[RouteProvider] not ready — cleared router');
-      return;
-    }
-
     const newRouter = createHashRouter(buildPluginRouteWrapper(pluginRoutes));
     setRouter(newRouter);
     console.debug('[RouteProvider] router created', { routeVersion });
-  }, [ready, routeVersion]);
+  }, [routeVersion]);
 
-  if (!ready || !router) {
-    console.debug('[RouteProvider] rendering PrimaryLoading', { ready, hasRouter: !!router });
+  if (!router) {
+    console.debug('[RouteProvider] rendering PrimaryLoading (first render)');
     return <PrimaryLoading message="Preparing workspace..." />;
   }
 
