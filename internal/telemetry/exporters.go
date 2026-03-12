@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -56,3 +57,21 @@ func (noopSpanExporter) Shutdown(_ context.Context) error                       
 func NewNoopTraceExporter() sdktrace.SpanExporter {
 	return noopSpanExporter{}
 }
+
+type noopMetricExporter struct{}
+
+func (noopMetricExporter) Export(_ context.Context, _ *metricdata.ResourceMetrics) error { return nil }
+func (noopMetricExporter) Temporality(_ sdkmetric.InstrumentKind) metricdata.Temporality {
+	return metricdata.CumulativeTemporality
+}
+func (noopMetricExporter) Aggregation(_ sdkmetric.InstrumentKind) sdkmetric.Aggregation {
+	return sdkmetric.AggregationDefault{}
+}
+func (noopMetricExporter) Shutdown(_ context.Context) error   { return nil }
+func (noopMetricExporter) ForceFlush(_ context.Context) error { return nil }
+
+type noopLogExporter struct{}
+
+func (noopLogExporter) Export(_ context.Context, _ []sdklog.Record) error { return nil }
+func (noopLogExporter) Shutdown(_ context.Context) error                  { return nil }
+func (noopLogExporter) ForceFlush(_ context.Context) error                { return nil }
