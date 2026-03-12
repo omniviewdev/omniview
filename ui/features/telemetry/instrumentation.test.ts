@@ -32,7 +32,9 @@ vi.mock('@opentelemetry/api', () => {
 import { instrumentBinding } from './instrumentation';
 
 describe('instrumentBinding', () => {
-  it('prepends carrier to binding arguments', async () => {
+  it('prepends carrier to binding arguments and completes span lifecycle', async () => {
+    mockSpan.setStatus.mockClear();
+    mockSpan.end.mockClear();
     const mockBinding = vi.fn().mockResolvedValue('result');
     const instrumented = instrumentBinding('TestBinding', mockBinding);
     const result = await instrumented('arg1', 'arg2');
@@ -40,6 +42,8 @@ describe('instrumentBinding', () => {
     const [carrier, ...rest] = mockBinding.mock.calls[0];
     expect(carrier).toHaveProperty('traceparent');
     expect(rest).toEqual(['arg1', 'arg2']);
+    expect(mockSpan.setStatus).toHaveBeenCalledWith({ code: 0 }); // SpanStatusCode.OK
+    expect(mockSpan.end).toHaveBeenCalledOnce();
   });
 
   it('records exception on binding error', async () => {

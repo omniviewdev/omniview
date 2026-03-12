@@ -1,6 +1,6 @@
 import { trace, context, propagation, SpanStatusCode } from '@opentelemetry/api';
 
-type WailsBinding = (...args: any[]) => Promise<any>;
+export type WailsBinding = (...args: any[]) => Promise<any>;
 const TRACER_NAME = 'omniview.wails';
 
 export function instrumentBinding(name: string, fn: WailsBinding): WailsBinding {

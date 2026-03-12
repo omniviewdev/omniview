@@ -12,8 +12,9 @@ import (
 func buildTelemetrySettings() map[string]settings.Setting {
 	defaults := telemetry.DefaultConfig(false) // production defaults for settings UI
 
-	logLevelOptions := make([]settings.SettingOption, 0, len(telemetry.ValidLogLevels))
-	for _, lvl := range telemetry.ValidLogLevels {
+	validLevels := telemetry.GetValidLogLevels()
+	logLevelOptions := make([]settings.SettingOption, 0, len(validLevels))
+	for _, lvl := range validLevels {
 		logLevelOptions = append(logLevelOptions, settings.SettingOption{
 			Value: lvl,
 			Label: lvl,
@@ -62,7 +63,7 @@ func buildTelemetrySettings() map[string]settings.Setting {
 					return fmt.Errorf("expected string, got %T", v)
 				}
 				if !telemetry.IsValidLogLevel(s) {
-					return fmt.Errorf("invalid log level %q; valid values: %v", s, telemetry.ValidLogLevels)
+					return fmt.Errorf("invalid log level %q; valid values: %v", s, telemetry.GetValidLogLevels())
 				}
 				return nil
 			},

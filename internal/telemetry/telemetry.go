@@ -13,11 +13,13 @@ import (
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	otelruntime "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
+	noopmeter "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	nooptrace "go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -124,9 +126,20 @@ func (s *Service) Init(ctx context.Context) error {
 }
 
 // Shutdown gracefully stops all telemetry subsystems, flushing any buffered data.
+// It first swaps global OTel providers to noop implementations so that callers
+// using otel.Tracer() / otel.Meter() after shutdown get safe no-ops instead of
+// closed providers.
 func (s *Service) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Swap globals to noop before shutting down the concrete providers.
+	if s.tracerProvider != nil {
+		otel.SetTracerProvider(nooptrace.NewTracerProvider())
+	}
+	if s.meterProvider != nil {
+		otel.SetMeterProvider(noopmeter.NewMeterProvider())
+	}
 
 	var errs []error
 	if s.tracerProvider != nil {

@@ -1,13 +1,22 @@
 package telemetry
 
-import "slices"
+// validLogLevels is the canonical set of accepted log level strings.
+var validLogLevels = map[string]struct{}{
+	"debug": {},
+	"info":  {},
+	"warn":  {},
+	"error": {},
+}
 
-// ValidLogLevels lists the accepted values for LogsShipLevel.
-var ValidLogLevels = []string{"debug", "info", "warn", "error"}
+// GetValidLogLevels returns a copy of the accepted log level strings.
+func GetValidLogLevels() []string {
+	return []string{"debug", "info", "warn", "error"}
+}
 
 // IsValidLogLevel reports whether s is a recognized log level.
 func IsValidLogLevel(s string) bool {
-	return slices.Contains(ValidLogLevels, s)
+	_, ok := validLogLevels[s]
+	return ok
 }
 
 // TelemetryConfig holds all telemetry-related configuration.

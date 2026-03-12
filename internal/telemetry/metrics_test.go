@@ -15,6 +15,7 @@ func TestNewMetrics(t *testing.T) {
 
 	m, err := NewMetrics(mp)
 	require.NoError(t, err)
+	require.NotNil(t, m)
 	assert.NotNil(t, m.PluginLoadDuration)
 	assert.NotNil(t, m.PluginActive)
 	assert.NotNil(t, m.PluginCrashes)
