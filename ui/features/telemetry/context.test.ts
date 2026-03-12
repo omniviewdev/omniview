@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createTelemetryContext, emptyContext, type TelemetryContext } from './context';
+import { createTelemetryContext, emptyContext } from './context';
 
 describe('TelemetryContext', () => {
   it('creates context with provided fields', () => {
