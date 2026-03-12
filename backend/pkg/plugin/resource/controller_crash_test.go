@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -81,7 +81,7 @@ func TestIsConnectionError_GRPCStatusErrors(t *testing.T) {
 // triggerCrashRecovery tests. It uses a recording emitter so we don't need Wails.
 func newCrashTestController() *controller {
 	ctrl := &controller{
-		logger:  zap.NewNop().Sugar(),
+		logger:  logging.NewNop(),
 		plugins: make(map[string]*pluginState),
 		emitter: &noopEmitter{},
 		subs:    newSubscriptionManager(),

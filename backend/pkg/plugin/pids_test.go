@@ -11,13 +11,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
-func testLogger(t *testing.T) *zap.SugaredLogger {
+func testLogger(t *testing.T) logging.Logger {
 	t.Helper()
-	logger, _ := zap.NewDevelopment()
-	return logger.Sugar()
+	return logging.NewNop()
 }
 
 func TestPluginPIDTracker_RecordAndRemove(t *testing.T) {

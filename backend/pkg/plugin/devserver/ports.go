@@ -1,6 +1,7 @@
 package devserver
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -8,7 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
@@ -126,7 +127,7 @@ func (pa *PortAllocator) SavePIDs() {
 // CleanupStaleProcesses kills zombie Vite dev server process groups left over
 // from a previous unclean shutdown. It reads the PID file written by SavePIDs,
 // kills each recorded process group, and removes the file.
-func (pa *PortAllocator) CleanupStaleProcesses(logger *zap.SugaredLogger) {
+func (pa *PortAllocator) CleanupStaleProcesses(logger logging.Logger) {
 	pidFile := pidFilePath()
 	b, err := os.ReadFile(pidFile)
 	if err != nil {
@@ -137,7 +138,7 @@ func (pa *PortAllocator) CleanupStaleProcesses(logger *zap.SugaredLogger) {
 
 	var data map[string]int
 	if err := json.Unmarshal(b, &data); err != nil {
-		logger.Warnw("failed to parse devserver PID file", "error", err)
+		logger.Warnw(context.Background(), "failed to parse devserver PID file", "error", err)
 		return
 	}
 
@@ -151,7 +152,7 @@ func (pa *PortAllocator) CleanupStaleProcesses(logger *zap.SugaredLogger) {
 		if err := killProcessGroup(pgid); err != nil {
 			// Process already dead — that's fine.
 			if !isProcessNotFound(err) {
-				logger.Warnw("failed to kill stale dev server process group",
+				logger.Warnw(context.Background(), "failed to kill stale dev server process group",
 					"port", portStr,
 					"pgid", pgid,
 					"error", err,
@@ -160,7 +161,7 @@ func (pa *PortAllocator) CleanupStaleProcesses(logger *zap.SugaredLogger) {
 			continue
 		}
 
-		logger.Infow("killed stale dev server process group",
+		logger.Infow(context.Background(), "killed stale dev server process group",
 			"port", portStr,
 			"pgid", pgid,
 		)
@@ -168,7 +169,7 @@ func (pa *PortAllocator) CleanupStaleProcesses(logger *zap.SugaredLogger) {
 	}
 
 	if killed > 0 {
-		logger.Infow("cleaned up stale dev server processes", "count", killed)
+		logger.Infow(context.Background(), "cleaned up stale dev server processes", "count", killed)
 	}
 }
 

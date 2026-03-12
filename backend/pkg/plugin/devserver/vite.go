@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
@@ -31,7 +31,7 @@ const (
 // viteProcess manages a single Vite dev server child process.
 type viteProcess struct {
 	ctx       context.Context
-	logger    *zap.SugaredLogger
+	logger    logging.Logger
 	pluginID  string
 	devPath   string
 	port      int
@@ -49,7 +49,7 @@ type viteProcess struct {
 // newViteProcess creates a viteProcess. Call Start() to spawn.
 func newViteProcess(
 	ctx context.Context,
-	logger *zap.SugaredLogger,
+	logger logging.Logger,
 	pluginID string,
 	devPath string,
 	port int,
@@ -190,7 +190,7 @@ func (vp *viteProcess) Start() error {
 		return killProcessGroup(vp.pgid)
 	}
 
-	vp.logger.Infow("vite process spawned", "pid", cmd.Process.Pid, "pgid", vp.pgid, "port", vp.port)
+	vp.logger.Infow(context.Background(), "vite process spawned", "pid", cmd.Process.Pid, "pgid", vp.pgid, "port", vp.port)
 
 	vp.appendLog(LogEntry{
 		Source:  "vite",
@@ -223,7 +223,7 @@ func (vp *viteProcess) Start() error {
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			vp.logger.Warnw("vite stdout scanner error", "error", err)
+			vp.logger.Warnw(context.Background(), "vite stdout scanner error", "error", err)
 		}
 	}()
 
@@ -244,14 +244,14 @@ func (vp *viteProcess) Start() error {
 	go func() {
 		err := cmd.Wait()
 		if err != nil {
-			vp.logger.Warnw("vite process exited with error", "error", err)
+			vp.logger.Warnw(context.Background(), "vite process exited with error", "error", err)
 			vp.appendLog(LogEntry{
 				Source:  "vite",
 				Level:   "error",
 				Message: fmt.Sprintf("Vite process exited: %v", err),
 			})
 		} else {
-			vp.logger.Info("vite process exited cleanly")
+			vp.logger.Infow(context.Background(), "vite process exited cleanly")
 			vp.appendLog(LogEntry{
 				Source:  "vite",
 				Level:   "info",
@@ -266,7 +266,7 @@ func (vp *viteProcess) Start() error {
 		select {
 		case <-readyCh:
 			vp.setStatus(DevProcessStatusReady)
-			vp.logger.Infow("vite dev server is ready", "port", vp.port)
+			vp.logger.Infow(context.Background(), "vite dev server is ready", "port", vp.port)
 			vp.appendLog(LogEntry{
 				Source:  "vite",
 				Level:   "info",
@@ -274,7 +274,7 @@ func (vp *viteProcess) Start() error {
 			})
 		case <-time.After(viteReadyTimeout):
 			vp.setStatus(DevProcessStatusError)
-			vp.logger.Errorw("vite dev server did not become ready in time", "timeout", viteReadyTimeout)
+			vp.logger.Errorw(context.Background(), "vite dev server did not become ready in time", "timeout", viteReadyTimeout)
 			vp.appendLog(LogEntry{
 				Source:  "vite",
 				Level:   "error",
@@ -312,7 +312,7 @@ func (vp *viteProcess) Stop() {
 		return
 	}
 
-	vp.logger.Info("stopping vite process")
+	vp.logger.Infow(context.Background(), "stopping vite process")
 
 	// Send SIGTERM (or equivalent) to the process group.
 	if pgid > 0 {
@@ -324,10 +324,10 @@ func (vp *viteProcess) Stop() {
 	// Wait for exit or timeout.
 	select {
 	case <-vp.done:
-		vp.logger.Info("vite process stopped after SIGTERM")
+		vp.logger.Infow(context.Background(), "vite process stopped after SIGTERM")
 		return
 	case <-time.After(viteStopGracePeriod):
-		vp.logger.Warn("vite process did not stop after SIGTERM; sending SIGKILL")
+		vp.logger.Warnw(context.Background(), "vite process did not stop after SIGTERM; sending SIGKILL")
 		if pgid > 0 {
 			_ = killProcessGroup(pgid)
 		} else {
@@ -338,9 +338,9 @@ func (vp *viteProcess) Stop() {
 	// Wait for final exit after SIGKILL.
 	select {
 	case <-vp.done:
-		vp.logger.Info("vite process stopped after SIGKILL")
+		vp.logger.Infow(context.Background(), "vite process stopped after SIGKILL")
 	case <-time.After(3 * time.Second):
-		vp.logger.Error("vite process did not exit after SIGKILL; giving up")
+		vp.logger.Errorw(context.Background(), "vite process did not exit after SIGKILL; giving up")
 	}
 }
 

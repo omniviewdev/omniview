@@ -8,7 +8,12 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
@@ -19,6 +24,13 @@ import (
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
+
+var tracer = otel.Tracer("omniview.logs")
+
+func recordError(span trace.Span, err error) {
+	span.RecordError(err)
+	span.SetStatus(otelcodes.Error, err.Error())
+}
 
 const (
 	BatchFlushInterval = 50 * time.Millisecond
@@ -47,7 +59,7 @@ var _ Controller = (*controller)(nil)
 
 type controller struct {
 	ctx              context.Context
-	logger           *zap.SugaredLogger
+	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
 	resourceClient   resource.Service
 	outputMux        chan logs.StreamOutput
@@ -69,7 +81,7 @@ type logBatch struct {
 }
 
 func NewController(
-	logger *zap.SugaredLogger,
+	logger logging.Logger,
 	sp pkgsettings.Provider,
 	resourceClient resource.Service,
 ) Controller {
@@ -110,7 +122,7 @@ func (c *controller) handleOutput(output logs.StreamOutput) {
 		eventKey := "core/logs/event/" + output.SessionID
 		data, err := json.Marshal(output.Event)
 		if err != nil {
-			c.logger.Errorw("failed to marshal log event", "error", err)
+			c.logger.Errorw(context.Background(), "failed to marshal log event", "error", err)
 			return
 		}
 		runtime.EventsEmit(c.ctx, eventKey, string(data))
@@ -157,7 +169,7 @@ func (c *controller) flushBatchLocked(sessionID string, batch *logBatch) {
 	eventKey := "core/logs/lines/" + sessionID
 	data, err := json.Marshal(batch.lines)
 	if err != nil {
-		c.logger.Errorw("failed to marshal log batch", "error", err)
+		c.logger.Errorw(context.Background(), "failed to marshal log batch", "error", err)
 	} else {
 		runtime.EventsEmit(c.ctx, eventKey, string(data))
 	}
@@ -168,8 +180,8 @@ func (c *controller) flushBatchLocked(sessionID string, batch *logBatch) {
 // ================================ Controller Lifecycle ================================ //
 
 func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginInit")
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(context.Background(), "OnPluginInit")
 
 	c.mu.Lock()
 	if c.clients == nil {
@@ -208,17 +220,22 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Log
 }
 
 func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginStart")
+	ctx, span := tracer.Start(context.Background(), "logs.OnPluginStart")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID))
+
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(ctx, "OnPluginStart")
 
 	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
-		logger.Error(err)
+		recordError(span, err)
+		logger.Errorw(ctx, "error", "error", err)
 		return err
 	}
 
 	// Get the handlers before acquiring the lock (this makes an RPC call).
-	handlers := provider.GetSupportedResources(c.getUnconnectedCtx(context.Background()))
+	handlers := provider.GetSupportedResources(c.getUnconnectedCtx(ctx))
 
 	inchan := make(chan logs.StreamInput)
 
@@ -237,7 +254,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	go func() {
 		stream, err := provider.Stream(c.ctx, inchan)
 		if err != nil {
-			logger.Errorw("error starting log stream", "error", err)
+			logger.Errorw(context.Background(), "error starting log stream", "error", err)
 			return
 		}
 
@@ -258,7 +275,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 }
 
 func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
-	c.logger.With("pluginID", pluginID).Debug("OnPluginStop")
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginStop")
 	c.mu.Lock()
 	if ch, ok := c.inChans[pluginID]; ok {
 		close(ch)
@@ -281,7 +298,7 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 }
 
 func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
-	c.logger.With("pluginID", pluginID).Debug("OnPluginShutdown")
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginShutdown")
 	c.mu.Lock()
 	if ch, ok := c.inChans[pluginID]; ok {
 		close(ch)
@@ -303,7 +320,7 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
-	c.logger.With("pluginID", pluginID).Debug("OnPluginDestroy")
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginDestroy")
 	return nil
 }
 
@@ -333,7 +350,7 @@ func (c *controller) getConnectedCtx(
 ) *sdktypes.PluginContext {
 	connection, err := c.resourceClient.GetConnection(pluginID, connectionID)
 	if err != nil {
-		c.logger.Errorw("error getting connection", "error", err)
+		c.logger.Errorw(ctx, "error getting connection", "error", err)
 		return nil
 	}
 
@@ -376,18 +393,28 @@ func (c *controller) CreateSession(
 	connectionID string,
 	opts logs.CreateSessionOptions,
 ) (*logs.LogSession, error) {
+	ctx, span := tracer.Start(context.Background(), "logs.CreateSession")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+	)
+
 	c.mu.RLock()
 	client, ok := c.clients[pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		return nil, apperror.PluginNotFound(pluginID)
+		err := apperror.PluginNotFound(pluginID)
+		recordError(span, err)
+		return nil, err
 	}
 
 	session, err := client.CreateSession(
-		c.getConnectedCtx(context.Background(), pluginID, connectionID),
+		c.getConnectedCtx(ctx, pluginID, connectionID),
 		opts,
 	)
 	if err != nil {
+		recordError(span, err)
 		return nil, err
 	}
 
@@ -405,26 +432,37 @@ func (c *controller) CreateSession(
 }
 
 func (c *controller) GetSession(sessionID string) (*logs.LogSession, error) {
+	ctx, span := tracer.Start(context.Background(), "logs.GetSession")
+	defer span.End()
+	span.SetAttributes(attribute.String("session_id", sessionID))
+
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
 		c.mu.RUnlock()
-		return nil, apperror.SessionNotFound(sessionID)
+		err := apperror.SessionNotFound(sessionID)
+		recordError(span, err)
+		return nil, err
 	}
 	client, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		return nil, apperror.PluginNotFound(index.pluginID)
+		err := apperror.PluginNotFound(index.pluginID)
+		recordError(span, err)
+		return nil, err
 	}
 
 	return client.GetSession(
-		c.getConnectedCtx(context.Background(), index.pluginID, index.connectionID),
+		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
 		sessionID,
 	)
 }
 
 func (c *controller) ListSessions() ([]*logs.LogSession, error) {
-	ctx := c.getUnconnectedCtx(context.Background())
+	bgCtx, span := tracer.Start(context.Background(), "logs.ListSessions")
+	defer span.End()
+
+	ctx := c.getUnconnectedCtx(bgCtx)
 
 	c.mu.RLock()
 	clients := make([]LogsProvider, 0, len(c.clients))
@@ -437,6 +475,7 @@ func (c *controller) ListSessions() ([]*logs.LogSession, error) {
 	for _, client := range clients {
 		clientSessions, err := client.ListSessions(ctx)
 		if err != nil {
+			recordError(span, err)
 			return nil, err
 		}
 		sessions = append(sessions, clientSessions...)
@@ -446,23 +485,32 @@ func (c *controller) ListSessions() ([]*logs.LogSession, error) {
 }
 
 func (c *controller) CloseSession(sessionID string) error {
+	ctx, span := tracer.Start(context.Background(), "logs.CloseSession")
+	defer span.End()
+	span.SetAttributes(attribute.String("session_id", sessionID))
+
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
 		c.mu.RUnlock()
-		return apperror.SessionNotFound(sessionID)
+		err := apperror.SessionNotFound(sessionID)
+		recordError(span, err)
+		return err
 	}
 	client, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		return apperror.PluginNotFound(index.pluginID)
+		err := apperror.PluginNotFound(index.pluginID)
+		recordError(span, err)
+		return err
 	}
 
 	err := client.CloseSession(
-		c.getConnectedCtx(context.Background(), index.pluginID, index.connectionID),
+		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
 		sessionID,
 	)
 	if err != nil {
+		recordError(span, err)
 		return err
 	}
 
@@ -483,16 +531,27 @@ func (c *controller) CloseSession(sessionID string) error {
 }
 
 func (c *controller) SendCommand(sessionID string, cmd logs.LogStreamCommand) error {
+	_, span := tracer.Start(context.Background(), "logs.SendCommand")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("session_id", sessionID),
+		attribute.Int("command", int(cmd)),
+	)
+
 	c.mu.Lock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
 		c.mu.Unlock()
-		return apperror.SessionNotFound(sessionID)
+		err := apperror.SessionNotFound(sessionID)
+		recordError(span, err)
+		return err
 	}
 	inchan, ok := c.inChans[index.pluginID]
 	if !ok {
 		c.mu.Unlock()
-		return apperror.PluginNotFound(index.pluginID)
+		err := apperror.PluginNotFound(index.pluginID)
+		recordError(span, err)
+		return err
 	}
 	inchan <- logs.StreamInput{
 		SessionID: sessionID,
@@ -506,20 +565,28 @@ func (c *controller) UpdateSessionOptions(
 	sessionID string,
 	opts logs.LogSessionOptions,
 ) (*logs.LogSession, error) {
+	ctx, span := tracer.Start(context.Background(), "logs.UpdateSessionOptions")
+	defer span.End()
+	span.SetAttributes(attribute.String("session_id", sessionID))
+
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
 		c.mu.RUnlock()
-		return nil, apperror.SessionNotFound(sessionID)
+		err := apperror.SessionNotFound(sessionID)
+		recordError(span, err)
+		return nil, err
 	}
 	client, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		return nil, apperror.PluginNotFound(index.pluginID)
+		err := apperror.PluginNotFound(index.pluginID)
+		recordError(span, err)
+		return nil, err
 	}
 
 	return client.UpdateSessionOptions(
-		c.getConnectedCtx(context.Background(), index.pluginID, index.connectionID),
+		c.getConnectedCtx(ctx, index.pluginID, index.connectionID),
 		sessionID,
 		opts,
 	)

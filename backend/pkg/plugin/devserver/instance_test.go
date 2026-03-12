@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 func TestNewDevServerInstance(t *testing.T) {
@@ -245,7 +245,7 @@ func TestDevServerInstance_Stop_Order(t *testing.T) {
 	// Attach a viteProcess with nil cmd — Stop() is a no-op (returns early).
 	// We verify ordering through the goWatcher and cancel tracking.
 	inst.vite = &viteProcess{
-		logger: zap.NewNop().Sugar(),
+		logger: logging.NewNop(),
 		done:   make(chan struct{}),
 	}
 
@@ -317,7 +317,7 @@ func TestInstance_TriggerRebuild_CallsHandleRebuild(t *testing.T) {
 	inst.goWatcher = &goWatcherProcess{
 		ctx:      ctx,
 		cancel:   cancel,
-		logger:   zap.NewNop().Sugar(),
+		logger:   logging.NewNop(),
 		pluginID: "trigger-rebuild",
 		devPath:  t.TempDir(),
 		buildOpts: BuildOpts{GoPath: ""}, // will cause build to fail

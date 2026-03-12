@@ -1,10 +1,11 @@
 package plugin
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
@@ -14,11 +15,11 @@ import (
 // Reconciler audits the filesystem against persisted state and
 // produces a consistent set of plugin records for the manager.
 type Reconciler struct {
-	logger *zap.SugaredLogger
+	logger logging.Logger
 }
 
 // NewReconciler creates a new Reconciler.
-func NewReconciler(logger *zap.SugaredLogger) *Reconciler {
+func NewReconciler(logger logging.Logger) *Reconciler {
 	return &Reconciler{
 		logger: logger.Named("Reconciler"),
 	}
@@ -71,7 +72,7 @@ func (r *Reconciler) Reconcile(
 		// Try to load metadata.
 		meta, metaErr := sdktypes.LoadPluginMetadata(location)
 		if metaErr != nil {
-			r.logger.Warnw("plugin directory missing metadata, skipping",
+			r.logger.Warnw(context.Background(), "plugin directory missing metadata, skipping",
 				"pluginID", id, "error", metaErr)
 			continue
 		}
@@ -94,7 +95,7 @@ func (r *Reconciler) Reconcile(
 			result.Records[id] = record
 		} else {
 			// On disk but not in state — orphan. Adopt it.
-			r.logger.Infow("adopting orphan plugin from filesystem", "pluginID", id)
+			r.logger.Infow(context.Background(), "adopting orphan plugin from filesystem", "pluginID", id)
 			result.Orphans = append(result.Orphans, id)
 
 			record := plugintypes.NewPluginRecord(id, meta, lifecycle.PhaseInstalled)
@@ -105,7 +106,7 @@ func (r *Reconciler) Reconcile(
 	// Check for ghosts: in state but not on disk.
 	for id := range stateByID {
 		if !diskIDs[id] {
-			r.logger.Warnw("plugin in state but not on disk (ghost)", "pluginID", id)
+			r.logger.Warnw(context.Background(), "plugin in state but not on disk (ghost)", "pluginID", id)
 			result.Ghosts = append(result.Ghosts, id)
 		}
 	}
@@ -143,7 +144,7 @@ func (r *Reconciler) determineInitialPhase(
 func (r *Reconciler) ReconcileFromFilesystem(
 	pluginDir string,
 ) (*ReconcileResult, error) {
-	r.logger.Infow("rebuilding plugin state from filesystem")
+	r.logger.Infow(context.Background(), "rebuilding plugin state from filesystem")
 
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
@@ -169,7 +170,7 @@ func (r *Reconciler) ReconcileFromFilesystem(
 
 		meta, metaErr := sdktypes.LoadPluginMetadata(location)
 		if metaErr != nil {
-			r.logger.Warnw("skipping directory without valid metadata",
+			r.logger.Warnw(context.Background(), "skipping directory without valid metadata",
 				"dir", id, "error", metaErr)
 			continue
 		}
@@ -184,7 +185,7 @@ func (r *Reconciler) ReconcileFromFilesystem(
 		record := plugintypes.NewPluginRecord(id, meta, phase)
 		result.Records[id] = record
 
-		r.logger.Infow("recovered plugin from filesystem",
+		r.logger.Infow(context.Background(), "recovered plugin from filesystem",
 			"pluginID", id, "phase", phase)
 	}
 

@@ -107,7 +107,11 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ needs.check-changes.outputs.nightly_version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=true"
+              -X github.com/omniviewdev/omniview/internal/version.Development=true \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildAuthHeader=${{ secrets.TELEMETRY_AUTH_HEADER }} \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildAuthValue=${{ secrets.TELEMETRY_AUTH_VALUE }}"
 
       - name: Import Code-Signing Certificates
         uses: Apple-Actions/import-codesign-certs@v3
@@ -227,7 +231,11 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ needs.check-changes.outputs.nightly_version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=true"
+              -X github.com/omniviewdev/omniview/internal/version.Development=true \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildAuthHeader=${{ secrets.TELEMETRY_AUTH_HEADER }} \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildAuthValue=${{ secrets.TELEMETRY_AUTH_VALUE }}"
 
       - name: Rename executable
         working-directory: ./build/bin
@@ -292,7 +300,11 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ needs.check-changes.outputs.nightly_version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=true"
+              -X github.com/omniviewdev/omniview/internal/version.Development=true \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildAuthHeader=${{ secrets.TELEMETRY_AUTH_HEADER }} \
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildAuthValue=${{ secrets.TELEMETRY_AUTH_VALUE }}"
 
       - name: Rename executable
         working-directory: ./build/bin

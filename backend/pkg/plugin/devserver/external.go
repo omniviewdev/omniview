@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
@@ -28,7 +28,7 @@ type ExternalConnection struct {
 // manages connections to externally-run plugin processes.
 type ExternalWatcher struct {
 	ctx         context.Context
-	logger      *zap.SugaredLogger
+	logger      logging.Logger
 	watcher     *fsnotify.Watcher
 	connections map[string]*ExternalConnection // pluginID -> connection
 	mu          sync.RWMutex
@@ -44,7 +44,7 @@ type ExternalWatcher struct {
 
 // NewExternalWatcher creates a new watcher for .devinfo files.
 func NewExternalWatcher(
-	logger *zap.SugaredLogger,
+	logger logging.Logger,
 	onConnect func(pluginID string, info *DevInfoFile),
 	onDisconnect func(pluginID string),
 ) (*ExternalWatcher, error) {
@@ -91,7 +91,7 @@ func (ew *ExternalWatcher) Start(ctx context.Context) error {
 		if entry.IsDir() {
 			pluginPath := filepath.Join(ew.pluginDir, entry.Name())
 			if err := ew.watcher.Add(pluginPath); err != nil {
-				ew.logger.Warnw("failed to watch plugin directory",
+				ew.logger.Warnw(ctx, "failed to watch plugin directory",
 					"path", pluginPath,
 					"error", err,
 				)
@@ -110,7 +110,7 @@ func (ew *ExternalWatcher) Start(ctx context.Context) error {
 	// Start the event loop.
 	go ew.run()
 
-	ew.logger.Info("external watcher started")
+	ew.logger.Infow(ctx, "external watcher started")
 	return nil
 }
 
@@ -130,11 +130,11 @@ func (ew *ExternalWatcher) Stop() {
 		select {
 		case <-ew.done:
 		case <-time.After(5 * time.Second):
-			ew.logger.Warn("external watcher event loop did not exit in time")
+			ew.logger.Warnw(context.Background(), "external watcher event loop did not exit in time")
 		}
 	}
 
-	ew.logger.Info("external watcher stopped")
+	ew.logger.Infow(context.Background(), "external watcher stopped")
 }
 
 // IsExternallyManaged returns true if the plugin has an active external connection.
@@ -161,7 +161,7 @@ func (ew *ExternalWatcher) GetExternalInfo(pluginID string) *DevInfoFile {
 func (ew *ExternalWatcher) scanExistingDevInfoFiles() {
 	entries, err := os.ReadDir(ew.pluginDir)
 	if err != nil {
-		ew.logger.Warnw("failed to scan for existing devinfo files", "error", err)
+		ew.logger.Warnw(context.Background(), "failed to scan for existing devinfo files", "error", err)
 		return
 	}
 
@@ -172,7 +172,7 @@ func (ew *ExternalWatcher) scanExistingDevInfoFiles() {
 
 		devInfoPath := filepath.Join(ew.pluginDir, entry.Name(), ".devinfo")
 		if _, err := os.Stat(devInfoPath); err == nil {
-			ew.logger.Infow("found existing .devinfo file", "path", devInfoPath)
+			ew.logger.Infow(context.Background(), "found existing .devinfo file", "path", devInfoPath)
 			ew.handleDevInfoCreated(devInfoPath)
 		}
 	}
@@ -198,7 +198,7 @@ func (ew *ExternalWatcher) run() {
 					info, err := os.Stat(event.Name)
 					if err == nil && info.IsDir() && filepath.Dir(event.Name) == ew.pluginDir {
 						if err := ew.watcher.Add(event.Name); err != nil {
-							ew.logger.Warnw("failed to watch new plugin directory",
+							ew.logger.Warnw(context.Background(), "failed to watch new plugin directory",
 								"path", event.Name,
 								"error", err,
 							)
@@ -219,28 +219,28 @@ func (ew *ExternalWatcher) run() {
 			if !ok {
 				return
 			}
-			ew.logger.Warnw("external watcher error", "error", err)
+			ew.logger.Warnw(context.Background(), "external watcher error", "error", err)
 		}
 	}
 }
 
 // handleDevInfoCreated processes a new or updated .devinfo file.
 func (ew *ExternalWatcher) handleDevInfoCreated(path string) {
-	ew.logger.Infow("detected .devinfo file", "path", path)
+	ew.logger.Infow(context.Background(), "detected .devinfo file", "path", path)
 
 	// Small delay to ensure atomic rename is complete.
 	time.Sleep(50 * time.Millisecond)
 
 	info, err := readDevInfoFile(path)
 	if err != nil {
-		ew.logger.Warnw("failed to read .devinfo file", "path", path, "error", err)
+		ew.logger.Warnw(context.Background(), "failed to read .devinfo file", "path", path, "error", err)
 		return
 	}
 
 	// Validate the plugin ID matches the directory name.
 	dirName := filepath.Base(filepath.Dir(path))
 	if info.PluginID != "" && info.PluginID != dirName {
-		ew.logger.Warnw("plugin ID mismatch in .devinfo",
+		ew.logger.Warnw(context.Background(), "plugin ID mismatch in .devinfo",
 			"expected", dirName,
 			"got", info.PluginID,
 		)
@@ -254,7 +254,7 @@ func (ew *ExternalWatcher) handleDevInfoCreated(path string) {
 
 	// Validate PID is alive.
 	if !isPIDAlive(info.PID) {
-		ew.logger.Warnw("plugin PID is not alive, ignoring .devinfo",
+		ew.logger.Warnw(context.Background(), "plugin PID is not alive, ignoring .devinfo",
 			"pluginID", pluginID,
 			"pid", info.PID,
 		)
@@ -281,7 +281,7 @@ func (ew *ExternalWatcher) handleDevInfoCreated(path string) {
 	}
 	ew.connections[pluginID] = conn
 
-	ew.logger.Infow("external plugin connected",
+	ew.logger.Infow(context.Background(), "external plugin connected",
 		"pluginID", pluginID,
 		"pid", info.PID,
 		"addr", info.Addr,
@@ -305,7 +305,7 @@ func (ew *ExternalWatcher) handleDevInfoRemoved(path string) {
 	defer ew.mu.Unlock()
 
 	if conn, ok := ew.connections[dirName]; ok {
-		ew.logger.Infow("external plugin disconnected (devinfo removed)",
+		ew.logger.Infow(context.Background(), "external plugin disconnected (devinfo removed)",
 			"pluginID", dirName,
 		)
 		ew.disconnectLocked(dirName, conn)
@@ -339,7 +339,7 @@ func (ew *ExternalWatcher) healthCheckLoop(ctx context.Context, pluginID string,
 			return
 		case <-ticker.C:
 			if !isPIDAlive(pid) {
-				ew.logger.Infow("external plugin PID died",
+				ew.logger.Infow(ctx, "external plugin PID died",
 					"pluginID", pluginID,
 					"pid", pid,
 				)
@@ -393,4 +393,3 @@ func readDevInfoFile(path string) (*DevInfoFile, error) {
 
 	return &info, nil
 }
-

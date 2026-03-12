@@ -76,6 +76,10 @@ type Provider interface {
 	// RegisterSettings registers a list of settings with the provider to a category
 	RegisterSettings(categoryID string, settings ...Setting) error
 
+	// RegisterChangeHandler registers a callback that fires after settings in the
+	// given category are saved. Only one handler per category.
+	RegisterChangeHandler(categoryID string, fn CategoryChangeFunc)
+
 	// GetCategories returns a list of all categories, with the settings removed. This
 	// is intended for use in the UI to display the categories menu.
 	GetCategories() []Category
@@ -141,11 +145,16 @@ func NewProvider(opts ProviderOpts) Provider {
 	return provider
 }
 
+// CategoryChangeFunc is called after settings in a category are saved.
+// The map contains all current setting values for the category.
+type CategoryChangeFunc func(values map[string]any)
+
 type provider struct {
-	ctx      context.Context
-	pluginID string
-	logger   *zap.SugaredLogger
-	store    Store
+	ctx              context.Context
+	pluginID         string
+	logger           *zap.SugaredLogger
+	store            Store
+	changeHandlers   map[string]CategoryChangeFunc
 }
 
 // define custom merge behavior to make sure we don't overwrite any existing settings,
@@ -350,13 +359,21 @@ func (p *provider) GetSettingValue(id string) (any, error) {
 }
 
 func (p *provider) SetSettings(settings map[string]any) error {
+	changedCategories := make(map[string]struct{})
 	for id, value := range settings {
 		err := p.setSetting(id, value)
 		if err != nil {
 			return err
 		}
+		if cat, _, err := p.parseSettingID(id); err == nil {
+			changedCategories[cat] = struct{}{}
+		}
 	}
-	return p.SaveSettings()
+	if err := p.SaveSettings(); err != nil {
+		return err
+	}
+	p.notifyChangeHandlers(changedCategories)
+	return nil
 }
 
 // private method so we can save after a bulk vs individual setting change.
@@ -382,21 +399,28 @@ func (p *provider) SetSetting(id string, value any) error {
 	if err := p.setSetting(id, value); err != nil {
 		return err
 	}
-	return p.SaveSettings()
+	if err := p.SaveSettings(); err != nil {
+		return err
+	}
+	if cat, _, err := p.parseSettingID(id); err == nil {
+		p.notifyChangeHandlers(map[string]struct{}{cat: {}})
+	}
+	return nil
 }
 
 func (p *provider) ResetSetting(id string) error {
-	category, id, err := p.parseSettingID(id)
+	category, settingKey, err := p.parseSettingID(id)
 	if err != nil {
 		return err
 	}
 
-	setting, ok := p.store[category].Settings[id]
+	setting, ok := p.store[category].Settings[settingKey]
 	if !ok {
 		return ErrSettingNotFound
 	}
 	setting.ResetValue()
-	p.store[category].Settings[id] = setting
+	p.store[category].Settings[settingKey] = setting
+	p.notifyChangeHandlers(map[string]struct{}{category: {}})
 	return nil
 }
 
@@ -422,6 +446,28 @@ func (p *provider) RegisterSettings(category string, settings ...Setting) error 
 		}
 	}
 	return nil
+}
+
+func (p *provider) RegisterChangeHandler(categoryID string, fn CategoryChangeFunc) {
+	if p.changeHandlers == nil {
+		p.changeHandlers = make(map[string]CategoryChangeFunc)
+	}
+	p.changeHandlers[categoryID] = fn
+}
+
+func (p *provider) notifyChangeHandlers(changedCategories map[string]struct{}) {
+	for cat := range changedCategories {
+		fn, ok := p.changeHandlers[cat]
+		if !ok {
+			continue
+		}
+		vals, err := p.GetCategoryValues(cat)
+		if err != nil {
+			p.logger.Warnw("failed to get category values for change handler", "category", cat, "error", err)
+			continue
+		}
+		fn(vals)
+	}
 }
 
 func (p *provider) GetCategories() []Category {

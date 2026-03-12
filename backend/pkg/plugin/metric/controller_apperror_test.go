@@ -6,14 +6,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
 func newTestController() Controller {
-	return NewController(zap.NewNop().Sugar(), nil, nil)
+	return NewController(logging.NewNop(), nil, nil)
 }
 
 func TestQuery_PluginNotFound(t *testing.T) {

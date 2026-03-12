@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"context"
 	"fmt"
 
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
@@ -47,7 +48,7 @@ func (s *engineWatchSink) OnStateChange(e resource.WatchStateEvent) {
 	// connectionEnrichingSink wrapper).
 	e.PluginID = s.pluginID
 
-	s.ctrl.logger.Infow("[watch-state] engine sink received",
+	s.ctrl.logger.Infow(context.Background(), "[watch-state] engine sink received",
 		"pluginID", s.pluginID,
 		"connection", e.Connection,
 		"resourceKey", e.ResourceKey,

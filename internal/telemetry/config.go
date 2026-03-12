@@ -26,6 +26,16 @@ func IsValidLogLevel(s string) bool {
 	return ok
 }
 
+// Build-time defaults injected via ldflags (e.g. -X ...config.buildOTLPEndpoint=...).
+// These are used as production defaults so that secrets like Grafana Cloud
+// credentials never appear in source.
+var (
+	buildOTLPEndpoint      string // e.g. "https://otlp-gateway-prod-us-central-0.grafana.net/otlp"
+	buildPyroscopeEndpoint string // e.g. "https://profiles-prod-us-central-0.grafana.net"
+	buildAuthHeader        string // e.g. "Authorization"
+	buildAuthValue         string // e.g. "Basic <base64>"
+)
+
 // TelemetryConfig holds all telemetry-related configuration.
 type TelemetryConfig struct {
 	Enabled           bool
@@ -45,7 +55,7 @@ type TelemetryConfig struct {
 func DefaultConfig(isDev bool) TelemetryConfig {
 	if isDev {
 		return TelemetryConfig{
-			Enabled:           true,
+			Enabled:           false,
 			Traces:            true,
 			Metrics:           true,
 			LogsShip:          true,
@@ -56,11 +66,15 @@ func DefaultConfig(isDev bool) TelemetryConfig {
 		}
 	}
 	return TelemetryConfig{
-		Enabled:       false,
-		Traces:        true,
-		Metrics:       true,
-		LogsShip:      true,
-		LogsShipLevel: "warn",
-		Profiling:     false,
+		Enabled:           false,
+		Traces:            true,
+		Metrics:           true,
+		LogsShip:          true,
+		LogsShipLevel:     "warn",
+		Profiling:         false,
+		OTLPEndpoint:      buildOTLPEndpoint,
+		PyroscopeEndpoint: buildPyroscopeEndpoint,
+		AuthHeader:        buildAuthHeader,
+		AuthValue:         buildAuthValue,
 	}
 }

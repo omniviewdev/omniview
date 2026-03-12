@@ -73,55 +73,52 @@ func (s *Service) Init(ctx context.Context) error {
 	}
 	s.resource = res
 
-	// Always initialize switchable exporters so ApplyConfig works even if
-	// telemetry starts disabled.
+	// Always initialize switchable exporters and providers so ApplyConfig can
+	// hot-swap exporters even when telemetry starts disabled.
 	s.switchableTraceExp = &SwitchableSpanExporter{}
 	s.switchableMetricExp = &SwitchableMetricExporter{}
 	s.switchableLogExp = &SwitchableLogExporter{}
 
-	if !s.cfg.Enabled {
-		s.zapLogger, _, err = buildZapLogger(s.isDev, nil, "")
-		return err
+	// When enabled with a valid endpoint, swap in real exporters before creating providers.
+	if s.cfg.Enabled && s.cfg.OTLPEndpoint != "" {
+		if s.cfg.Traces {
+			exp, err := NewTraceExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
+			if err != nil {
+				return err
+			}
+			s.switchableTraceExp.Swap(exp)
+		}
+		if s.cfg.Metrics {
+			exp, err := NewMetricExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
+			if err != nil {
+				return err
+			}
+			s.switchableMetricExp.Swap(exp)
+		}
+		if s.cfg.LogsShip {
+			exp, err := NewLogExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
+			if err != nil {
+				return err
+			}
+			s.switchableLogExp.Swap(exp)
+		}
 	}
 
-	// Traces
-	if s.cfg.Traces {
-		exp, err := NewTraceExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
-		if err != nil {
-			return err
-		}
-		s.switchableTraceExp.Swap(exp)
-	}
+	// Always create providers — they delegate to switchable exporters which
+	// start as noop and get swapped to real exporters via ApplyConfig.
 	s.tracerProvider = NewTracerProvider(s.resource, s.switchableTraceExp)
-	if s.cfg.Profiling && s.cfg.PyroscopeEndpoint != "" {
+	if s.cfg.Enabled && s.cfg.Profiling && s.cfg.PyroscopeEndpoint != "" {
 		otel.SetTracerProvider(otelpyroscope.NewTracerProvider(s.tracerProvider))
 	} else {
 		otel.SetTracerProvider(s.tracerProvider)
 	}
 
-	// Metrics
-	if s.cfg.Metrics {
-		exp, err := NewMetricExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
-		if err != nil {
-			return err
-		}
-		s.switchableMetricExp.Swap(exp)
-	}
 	s.meterProvider = NewMeterProvider(s.resource, s.switchableMetricExp)
 	otel.SetMeterProvider(s.meterProvider)
 	if err := otelruntime.Start(otelruntime.WithMinimumReadMemStatsInterval(15 * time.Second)); err != nil {
 		return err
 	}
 
-	// Logs — always create the LoggerProvider with the switchable exporter so
-	// that the otelzap bridge core is wired into the logger from the start.
-	if s.cfg.LogsShip {
-		exp, err := NewLogExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
-		if err != nil {
-			return err
-		}
-		s.switchableLogExp.Swap(exp)
-	}
 	s.loggerProvider = NewLoggerProvider(s.resource, s.switchableLogExp)
 
 	var otelLevel *zap.AtomicLevel
@@ -131,7 +128,8 @@ func (s *Service) Init(ctx context.Context) error {
 		return err
 	}
 
-	if s.cfg.Profiling && s.cfg.PyroscopeEndpoint != "" {
+	// Start profiling if enabled at boot.
+	if s.cfg.Enabled && s.cfg.Profiling && s.cfg.PyroscopeEndpoint != "" {
 		profiler, err := startProfiling(s.version, s.cfg.PyroscopeEndpoint)
 		if err != nil {
 			return err
@@ -242,9 +240,12 @@ func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
 		return nil
 	}
 
-	// Per-signal toggles.
-	if cfg.Traces != s.cfg.Traces || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint {
-		if cfg.Traces {
+	wasEnabled := s.cfg.Enabled
+	hasEndpoint := cfg.OTLPEndpoint != ""
+
+	// Per-signal toggles. Signals require both the toggle AND a valid endpoint.
+	if cfg.Traces != s.cfg.Traces || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint || !wasEnabled {
+		if cfg.Traces && hasEndpoint {
 			exp, err := NewTraceExporter(context.Background(), cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 			if err != nil {
 				return err
@@ -255,8 +256,8 @@ func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
 		}
 	}
 
-	if cfg.Metrics != s.cfg.Metrics || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint {
-		if cfg.Metrics {
+	if cfg.Metrics != s.cfg.Metrics || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint || !wasEnabled {
+		if cfg.Metrics && hasEndpoint {
 			exp, err := NewMetricExporter(context.Background(), cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 			if err != nil {
 				return err
@@ -267,8 +268,8 @@ func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
 		}
 	}
 
-	if cfg.LogsShip != s.cfg.LogsShip || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint {
-		if cfg.LogsShip {
+	if cfg.LogsShip != s.cfg.LogsShip || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint || !wasEnabled {
+		if cfg.LogsShip && hasEndpoint {
 			exp, err := NewLogExporter(context.Background(), cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 			if err != nil {
 				return err
@@ -281,6 +282,15 @@ func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
 
 	if cfg.LogsShipLevel != s.cfg.LogsShipLevel {
 		s.SetLogShipLevel(cfg.LogsShipLevel)
+	}
+
+	// Update tracer provider wrapper when profiling changes.
+	if cfg.Profiling != s.cfg.Profiling && s.tracerProvider != nil {
+		if cfg.Profiling && cfg.PyroscopeEndpoint != "" {
+			otel.SetTracerProvider(otelpyroscope.NewTracerProvider(s.tracerProvider))
+		} else {
+			otel.SetTracerProvider(s.tracerProvider)
+		}
 	}
 
 	// Profiling toggle.

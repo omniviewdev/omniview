@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 func TestPrependToPath(t *testing.T) {
@@ -74,7 +74,7 @@ func TestPrependToPath(t *testing.T) {
 
 func TestNewViteProcess(t *testing.T) {
 	ctx := context.Background()
-	logger := zap.NewNop().Sugar()
+	logger := logging.NewNop()
 	appendLog := func(LogEntry) {}
 	setStatus := func(DevProcessStatus) {}
 
@@ -93,7 +93,7 @@ func TestNewViteProcess(t *testing.T) {
 
 func TestViteProcess_Stop_NilCmd(t *testing.T) {
 	vp := &viteProcess{
-		logger: zap.NewNop().Sugar(),
+		logger: logging.NewNop(),
 		done:   make(chan struct{}),
 	}
 	// cmd is nil — Stop should return early without panic.
@@ -102,7 +102,7 @@ func TestViteProcess_Stop_NilCmd(t *testing.T) {
 
 func TestViteProcess_Stop_NilProcess(t *testing.T) {
 	vp := &viteProcess{
-		logger: zap.NewNop().Sugar(),
+		logger: logging.NewNop(),
 		done:   make(chan struct{}),
 		cmd:    &exec.Cmd{}, // cmd non-nil but Process is nil
 	}
@@ -132,7 +132,7 @@ func newTestViteProcessWithSleep(t *testing.T, ctx context.Context) *viteProcess
 
 	vp := &viteProcess{
 		ctx:       ctx,
-		logger:    zap.NewNop().Sugar(),
+		logger:    logging.NewNop(),
 		pluginID:  "test",
 		appendLog: func(LogEntry) {},
 		setStatus: func(DevProcessStatus) {},

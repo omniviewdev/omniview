@@ -30,10 +30,11 @@ func TestServiceDisabled(t *testing.T) {
 	err := svc.Init(context.Background())
 	require.NoError(t, err)
 
-	// With telemetry disabled the global tracer should produce unsampled spans.
+	// With telemetry disabled, providers are still created (for hot-toggle),
+	// but exporters are noop — spans are sampled but silently dropped.
 	tracer := otel.Tracer("test")
 	_, span := tracer.Start(context.Background(), "test")
-	assert.False(t, span.SpanContext().IsSampled())
+	assert.True(t, span.SpanContext().IsValid())
 	span.End()
 
 	assert.NotNil(t, svc.ZapLogger())

@@ -385,7 +385,7 @@ func TestWithSession_CreatesSessionContext(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	provider, ctx, err := ctrl.withSession("p1", "conn-1")
+	provider, ctx, err := ctrl.withSession(context.Background(), "p1", "conn-1")
 	require.NoError(t, err)
 	assert.NotNil(t, provider)
 
@@ -397,7 +397,7 @@ func TestWithSession_CreatesSessionContext(t *testing.T) {
 func TestWithSession_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 
-	_, _, err := ctrl.withSession("nonexistent", "c1")
+	_, _, err := ctrl.withSession(context.Background(), "nonexistent", "c1")
 	assert.Error(t, err)
 }
 

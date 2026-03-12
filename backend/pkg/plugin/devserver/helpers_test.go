@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // ============================================================================
@@ -164,7 +164,7 @@ func newTestInstance(t *testing.T, pluginID string) (*DevServerInstance, *status
 
 	inst := NewDevServerInstance(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		pluginID,
 		t.TempDir(),
 		15173,

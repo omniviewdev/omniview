@@ -3,7 +3,7 @@ package ui
 import (
 	"context"
 
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
@@ -12,11 +12,11 @@ import (
 
 // ComponentManager is responsible for managing UI components.
 type componentManager struct {
-	logger                 *zap.SugaredLogger
+	logger                 logging.Logger
 	resourceComponentStore ResourceComponentStore
 }
 
-func NewComponentManager(logger *zap.SugaredLogger) *componentManager {
+func NewComponentManager(logger logging.Logger) *componentManager {
 	return &componentManager{
 		logger:                 logger.Named("ComponentManager"),
 		resourceComponentStore: NewResourceComponentStore(),
@@ -26,32 +26,32 @@ func NewComponentManager(logger *zap.SugaredLogger) *componentManager {
 var _ types.PluginManager = (*componentManager)(nil)
 
 func (cm *componentManager) OnPluginInit(_ context.Context, pluginID string, meta config.PluginMeta) error {
-	logger := cm.logger.With("pluginID", pluginID, "action", "OnPluginInit")
-	logger.Debug("initializing plugin")
+	logger := cm.logger.With(logging.Any("pluginID", pluginID), logging.Any("action", "OnPluginInit"))
+	logger.Debugw(context.Background(), "initializing plugin")
 
 	cm.resourceComponentStore.AddPlugin(pluginID)
 	return nil
 }
 
 func (cm *componentManager) OnPluginStart(_ context.Context, pluginID string, meta config.PluginMeta) error {
-	logger := cm.logger.With("pluginID", pluginID, "action", "OnPluginStart")
-	logger.Debug("starting plugin")
+	logger := cm.logger.With(logging.Any("pluginID", pluginID), logging.Any("action", "OnPluginStart"))
+	logger.Debugw(context.Background(), "starting plugin")
 
 	rc := loadResourceComponents(meta)
 	for _, c := range rc {
-		logger.Debug("adding component", c.String())
+		logger.Debugw(context.Background(), "adding component", "component", c.String())
 
 		if err := cm.resourceComponentStore.AddComponent(c); err != nil {
 			// log error
-			cm.logger.Errorw("error adding component", "error", err)
+			cm.logger.Errorw(context.Background(), "error adding component", "error", err)
 		}
 	}
 	return nil
 }
 
 func (cm *componentManager) OnPluginStop(_ context.Context, pluginID string, meta config.PluginMeta) error {
-	logger := cm.logger.With("pluginID", pluginID, "action", "OnPluginStop")
-	logger.Debug("stopping plugin")
+	logger := cm.logger.With(logging.Any("pluginID", pluginID), logging.Any("action", "OnPluginStop"))
+	logger.Debugw(context.Background(), "stopping plugin")
 
 	// nothing to do here
 	cm.resourceComponentStore.RemovePlugin(pluginID)
@@ -59,16 +59,16 @@ func (cm *componentManager) OnPluginStop(_ context.Context, pluginID string, met
 }
 
 func (cm *componentManager) OnPluginShutdown(_ context.Context, pluginID string, meta config.PluginMeta) error {
-	logger := cm.logger.With("pluginID", pluginID, "action", "OnPluginShutdown")
-	logger.Debug("shutting down plugin")
+	logger := cm.logger.With(logging.Any("pluginID", pluginID), logging.Any("action", "OnPluginShutdown"))
+	logger.Debugw(context.Background(), "shutting down plugin")
 	cm.resourceComponentStore.RemovePlugin(pluginID)
-	logger.Debug("plugin shutdown complete")
+	logger.Debugw(context.Background(), "plugin shutdown complete")
 	return nil
 }
 
 func (cm *componentManager) OnPluginDestroy(_ context.Context, pluginID string, meta config.PluginMeta) error {
-	logger := cm.logger.With("pluginID", pluginID, "action", "OnPluginDestroy")
-	logger.Debug("destroying plugin")
+	logger := cm.logger.With(logging.Any("pluginID", pluginID), logging.Any("action", "OnPluginDestroy"))
+	logger.Debugw(context.Background(), "destroying plugin")
 	// not super necessary, but just in case
 	cm.resourceComponentStore.RemovePlugin(pluginID)
 	return nil

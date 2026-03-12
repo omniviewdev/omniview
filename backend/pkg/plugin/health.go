@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 )
@@ -34,7 +34,7 @@ type crashBudget struct {
 // HealthChecker periodically checks the health of running plugins
 // and triggers crash recovery when issues are detected.
 type HealthChecker struct {
-	logger          *zap.SugaredLogger
+	logger          logging.Logger
 	pm              *pluginManager
 	mu              sync.Mutex
 	recoveryStates  map[string]*CrashRecoveryState
@@ -43,7 +43,7 @@ type HealthChecker struct {
 }
 
 // NewHealthChecker creates a new HealthChecker.
-func NewHealthChecker(logger *zap.SugaredLogger, pm *pluginManager) *HealthChecker {
+func NewHealthChecker(logger logging.Logger, pm *pluginManager) *HealthChecker {
 	return &HealthChecker{
 		logger:          logger.Named("HealthChecker"),
 		pm:              pm,
@@ -83,7 +83,7 @@ func (hc *HealthChecker) checkAll() {
 		}
 
 		if !hc.checkPlugin(id) {
-			hc.logger.Warnw("plugin health check failed, triggering recovery",
+			hc.logger.Warnw(hc.pm.ctx, "plugin health check failed, triggering recovery",
 				"pluginID", id)
 			go hc.pm.HandlePluginCrash(id)
 		}
@@ -160,7 +160,7 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	}
 	cb.count++
 	if cb.count > maxTotalCrashes {
-		hc.logger.Errorw("crash budget exhausted — plugin keeps crashing, giving up",
+		hc.logger.Errorw(hc.pm.ctx, "crash budget exhausted — plugin keeps crashing, giving up",
 			"pluginID", pluginID, "totalCrashes", cb.count, "window", crashBudgetWindow)
 		if record, ok := hc.pm.records[pluginID]; ok {
 			record.Phase = lifecycle.PhaseFailed
@@ -187,7 +187,7 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 
 	// Guard against nil manager context.
 	if hc.pm.ctx == nil {
-		hc.logger.Errorw("cannot start crash recovery: manager context is nil", "pluginID", pluginID)
+		hc.logger.Errorw(context.Background(), "cannot start crash recovery: manager context is nil", "pluginID", pluginID)
 		hc.mu.Unlock()
 		return
 	}
@@ -216,14 +216,14 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 		// Check if cancelled (plugin uninstalled).
 		select {
 		case <-ctx.Done():
-			hc.logger.Infow("crash recovery cancelled", "pluginID", pluginID)
+			hc.logger.Infow(ctx, "crash recovery cancelled", "pluginID", pluginID)
 			return
 		default:
 		}
 
 		hc.mu.Lock()
 		if state.Attempts >= maxCrashRetries {
-			hc.logger.Errorw("max crash recovery attempts reached",
+			hc.logger.Errorw(hc.pm.ctx, "max crash recovery attempts reached",
 				"pluginID", pluginID, "attempts", state.Attempts)
 
 			// Mark the plugin record as failed if we have one.
@@ -253,7 +253,7 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 		attempt := state.Attempts
 		hc.mu.Unlock()
 
-		hc.logger.Infow("waiting before crash recovery attempt",
+		hc.logger.Infow(hc.pm.ctx, "waiting before crash recovery attempt",
 			"pluginID", pluginID,
 			"attempt", attempt,
 			"backoff", backoff,
@@ -266,18 +266,18 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 		case <-timer.C:
 		case <-ctx.Done():
 			timer.Stop()
-			hc.logger.Infow("crash recovery cancelled during backoff", "pluginID", pluginID)
+			hc.logger.Infow(ctx, "crash recovery cancelled during backoff", "pluginID", pluginID)
 			return
 		}
 
 		if _, err := hc.pm.ReloadPlugin(pluginID); err != nil {
-			hc.logger.Errorw("crash recovery attempt failed",
+			hc.logger.Errorw(hc.pm.ctx, "crash recovery attempt failed",
 				"pluginID", pluginID, "attempt", attempt, "error", err)
 			continue
 		}
 
 		// Success — reset the state.
-		hc.logger.Infow("plugin recovered after crash",
+		hc.logger.Infow(hc.pm.ctx, "plugin recovered after crash",
 			"pluginID", pluginID, "attempts", attempt)
 
 		hc.mu.Lock()

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // emitStatusFunc is the callback type for emitting status updates.
@@ -24,7 +24,7 @@ type DevServerInstance struct {
 	// Immutable fields (set at construction, never change)
 	ctx       context.Context
 	cancel    context.CancelFunc
-	logger    *zap.SugaredLogger
+	logger    logging.Logger
 	pluginID  string
 	devPath   string // absolute path to the plugin source directory
 	vitePort  int
@@ -55,7 +55,7 @@ type DevServerInstance struct {
 // NewDevServerInstance creates a new instance. Call Start() to begin.
 func NewDevServerInstance(
 	parentCtx context.Context,
-	logger *zap.SugaredLogger,
+	logger logging.Logger,
 	pluginID string,
 	devPath string,
 	vitePort int,
@@ -70,7 +70,7 @@ func NewDevServerInstance(
 	return &DevServerInstance{
 		ctx:        ctx,
 		cancel:     cancel,
-		logger:     logger.Named("instance").With("pluginID", pluginID),
+		logger:     logger.Named("instance").With(logging.Any("pluginID", pluginID)),
 		pluginID:   pluginID,
 		devPath:    devPath,
 		vitePort:   vitePort,
@@ -88,7 +88,7 @@ func NewDevServerInstance(
 
 // Start spawns the Vite dev server and Go watcher in background goroutines.
 func (inst *DevServerInstance) Start() error {
-	inst.logger.Info("starting dev server instance")
+	inst.logger.Infow(context.Background(), "starting dev server instance")
 
 	// Start Vite process.
 	inst.vite = newViteProcess(
@@ -134,7 +134,7 @@ func (inst *DevServerInstance) Start() error {
 // Sub-processes are stopped BEFORE the context is cancelled so that their
 // Stop methods can still look up and signal the process group.
 func (inst *DevServerInstance) Stop() {
-	inst.logger.Info("stopping dev server instance")
+	inst.logger.Infow(context.Background(), "stopping dev server instance")
 
 	// Stop sub-processes FIRST while the context is still alive,
 	// so they can do graceful SIGTERM → SIGKILL on the process group.
@@ -151,7 +151,7 @@ func (inst *DevServerInstance) Stop() {
 	inst.setViteStatus(DevProcessStatusStopped)
 	inst.setGoStatus(DevProcessStatusStopped)
 
-	inst.logger.Info("dev server instance stopped")
+	inst.logger.Infow(context.Background(), "dev server instance stopped")
 }
 
 // State returns a snapshot of the current state, safe for JSON serialization.

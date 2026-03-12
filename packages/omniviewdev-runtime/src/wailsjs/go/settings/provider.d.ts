@@ -35,6 +35,8 @@ export function ListSettings():Promise<settings.Store>;
 
 export function LoadSettings():Promise<void>;
 
+export function RegisterChangeHandler(arg1:string,arg2:settings.CategoryChangeFunc):Promise<void>;
+
 export function RegisterSetting(arg1:string,arg2:settings.Setting):Promise<void>;
 
 export function RegisterSettings(arg1:string,arg2:Array<settings.Setting>):Promise<void>;

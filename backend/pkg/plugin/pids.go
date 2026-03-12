@@ -1,12 +1,13 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
 
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // PluginPIDTracker tracks PIDs of running plugin binary processes so that
@@ -72,7 +73,7 @@ func (t *PluginPIDTracker) Save() error {
 // CleanupStale reads the PID file from a previous session, kills any processes
 // that are still alive, and removes the file. This should be called early in
 // Initialize(), before any new plugins are started.
-func (t *PluginPIDTracker) CleanupStale(logger *zap.SugaredLogger) {
+func (t *PluginPIDTracker) CleanupStale(logger logging.Logger) {
 	pidFile := pluginPIDFilePath()
 	b, err := os.ReadFile(pidFile)
 	if err != nil {
@@ -83,7 +84,7 @@ func (t *PluginPIDTracker) CleanupStale(logger *zap.SugaredLogger) {
 
 	var data map[string]int
 	if err := json.Unmarshal(b, &data); err != nil {
-		logger.Warnw("failed to parse plugin PID file", "error", err)
+		logger.Warnw(context.Background(), "failed to parse plugin PID file", "error", err)
 		return
 	}
 
@@ -96,7 +97,7 @@ func (t *PluginPIDTracker) CleanupStale(logger *zap.SugaredLogger) {
 		if err := killProcess(pid); err != nil {
 			// Process already dead — that's fine.
 			if !isProcessNotFound(err) {
-				logger.Warnw("failed to kill stale plugin process",
+				logger.Warnw(context.Background(), "failed to kill stale plugin process",
 					"pluginID", pluginID,
 					"pid", pid,
 					"error", err,
@@ -105,7 +106,7 @@ func (t *PluginPIDTracker) CleanupStale(logger *zap.SugaredLogger) {
 			continue
 		}
 
-		logger.Infow("killed stale plugin process",
+		logger.Infow(context.Background(), "killed stale plugin process",
 			"pluginID", pluginID,
 			"pid", pid,
 		)
@@ -113,6 +114,6 @@ func (t *PluginPIDTracker) CleanupStale(logger *zap.SugaredLogger) {
 	}
 
 	if killed > 0 {
-		logger.Infow("cleaned up stale plugin processes", "count", killed)
+		logger.Infow(context.Background(), "cleaned up stale plugin processes", "count", killed)
 	}
 }

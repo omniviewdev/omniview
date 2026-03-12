@@ -9,7 +9,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
@@ -20,6 +25,13 @@ import (
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
+
+var tracer = otel.Tracer("omniview.metric")
+
+func recordError(span trace.Span, err error) {
+	span.RecordError(err)
+	span.SetStatus(otelcodes.Error, err.Error())
+}
 
 // MetricProviderSummary is a lightweight summary of a metric provider,
 // exposed to the frontend.
@@ -73,7 +85,7 @@ var _ Controller = (*controller)(nil)
 
 type controller struct {
 	ctx              context.Context
-	logger           *zap.SugaredLogger
+	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
 	clients          map[string]MetricProvider
 	providerInfos    map[string]*metric.ProviderInfo // pluginID -> provider info
@@ -86,7 +98,7 @@ type controller struct {
 }
 
 func NewController(
-	logger *zap.SugaredLogger,
+	logger logging.Logger,
 	sp pkgsettings.Provider,
 	resourceClient resource.Service,
 ) Controller {
@@ -110,7 +122,7 @@ func (c *controller) Run(ctx context.Context) {
 // ================================ Controller Lifecycle ================================ //
 
 func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
-	c.logger.With("pluginID", pluginID).Debug("OnPluginInit")
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginInit")
 }
 
 // dispenseProvider extracts the metric provider from the backend,
@@ -143,12 +155,12 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Met
 }
 
 func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginStart")
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(context.Background(), "OnPluginStart")
 
 	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
-		logger.Error(err)
+		logger.Errorw(context.Background(), "error", "error", err)
 		return err
 	}
 
@@ -170,7 +182,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	go func() {
 		stream, err := provider.StreamMetrics(c.ctx, inchan)
 		if err != nil {
-			logger.Errorw("error starting metric stream", "error", err)
+			logger.Errorw(context.Background(), "error starting metric stream", "error", err)
 			return
 		}
 
@@ -191,19 +203,19 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 }
 
 func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
-	c.logger.With("pluginID", pluginID).Debug("OnPluginStop")
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginStop")
 	c.removePlugin(pluginID)
 	return nil
 }
 
 func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
-	c.logger.With("pluginID", pluginID).Debug("OnPluginShutdown")
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginShutdown")
 	c.removePlugin(pluginID)
 	return nil
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
-	c.logger.With("pluginID", pluginID).Debug("OnPluginDestroy")
+	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginDestroy")
 	return nil
 }
 
@@ -258,7 +270,7 @@ func (c *controller) removePlugin(pluginID string) {
 func (c *controller) handleStreamOutput(output metric.StreamOutput) {
 	data, err := json.Marshal(output)
 	if err != nil {
-		c.logger.Errorw("failed to marshal metric stream output", "error", err)
+		c.logger.Errorw(context.Background(), "failed to marshal metric stream output", "error", err)
 		return
 	}
 
@@ -278,7 +290,7 @@ func (c *controller) getConnectedCtx(
 ) *sdktypes.PluginContext {
 	connection, err := c.resourceClient.GetConnection(pluginID, connectionID)
 	if err != nil {
-		c.logger.Errorw("error getting connection", "error", err)
+		c.logger.Errorw(ctx, "error getting connection", "error", err)
 		return nil
 	}
 
@@ -354,17 +366,32 @@ func (c *controller) Query(
 	pluginID, connectionID string,
 	req metric.QueryRequest,
 ) (*metric.QueryResponse, error) {
+	ctx, span := tracer.Start(context.Background(), "metric.Query")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+		attribute.String("resource_key", req.ResourceKey),
+	)
+
 	c.mux.RLock()
 	client, ok := c.clients[pluginID]
 	c.mux.RUnlock()
 	if !ok {
-		return nil, apperror.PluginNotFound(pluginID)
+		err := apperror.PluginNotFound(pluginID)
+		recordError(span, err)
+		return nil, err
 	}
 
-	return client.Query(
-		c.getConnectedCtx(context.Background(), pluginID, connectionID),
+	resp, err := client.Query(
+		c.getConnectedCtx(ctx, pluginID, connectionID),
 		req,
 	)
+	if err != nil {
+		recordError(span, err)
+		return nil, err
+	}
+	return resp, nil
 }
 
 func (c *controller) QueryAll(
@@ -375,6 +402,15 @@ func (c *controller) QueryAll(
 	startTime, endTime time.Time,
 	step time.Duration,
 ) (map[string]*metric.QueryResponse, error) {
+	ctx, span := tracer.Start(context.Background(), "metric.QueryAll")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("connection_id", connectionID),
+		attribute.String("resource_key", resourceKey),
+		attribute.String("resource_id", resourceID),
+		attribute.String("namespace", namespace),
+	)
+
 	c.mux.RLock()
 	pluginIDs, ok := c.resourceIndex[resourceKey]
 	c.mux.RUnlock()
@@ -405,7 +441,7 @@ func (c *controller) QueryAll(
 			defer wg.Done()
 			resp, err := c.Query(pid, connectionID, req)
 			if err != nil {
-				c.logger.Warnw("error querying metric provider", "pluginID", pid, "error", err)
+				c.logger.Warnw(ctx, "error querying metric provider", "pluginID", pid, "error", err)
 				return
 			}
 			mu.Lock()
@@ -424,14 +460,26 @@ func (c *controller) Subscribe(
 	pluginID, connectionID string,
 	req SubscribeRequest,
 ) (string, error) {
+	_, span := tracer.Start(context.Background(), "metric.Subscribe")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+		attribute.String("resource_key", req.ResourceKey),
+		attribute.String("resource_id", req.ResourceID),
+	)
+
 	c.mux.RLock()
 	inchan, ok := c.inChans[pluginID]
 	c.mux.RUnlock()
 	if !ok {
-		return "", apperror.PluginNotFound(pluginID)
+		err := apperror.PluginNotFound(pluginID)
+		recordError(span, err)
+		return "", err
 	}
 
 	subscriptionID := uuid.NewString()
+	span.SetAttributes(attribute.String("subscription_id", subscriptionID))
 
 	c.mux.Lock()
 	c.subscriptions[subscriptionID] = subscriptionIndex{
@@ -456,17 +504,26 @@ func (c *controller) Subscribe(
 }
 
 func (c *controller) Unsubscribe(subscriptionID string) error {
+	_, span := tracer.Start(context.Background(), "metric.Unsubscribe")
+	defer span.End()
+	span.SetAttributes(attribute.String("subscription_id", subscriptionID))
+
 	c.mux.Lock()
 	sub, ok := c.subscriptions[subscriptionID]
 	if !ok {
 		c.mux.Unlock()
-		return apperror.New(apperror.TypeSessionNotFound, 404, "Subscription not found", fmt.Sprintf("Subscription '%s' was not found.", subscriptionID))
+		err := apperror.New(apperror.TypeSessionNotFound, 404, "Subscription not found", fmt.Sprintf("Subscription '%s' was not found.", subscriptionID))
+		recordError(span, err)
+		return err
 	}
+	span.SetAttributes(attribute.String("plugin_id", sub.pluginID))
 	inchan, chanOk := c.inChans[sub.pluginID]
 	delete(c.subscriptions, subscriptionID)
 	if !chanOk {
 		c.mux.Unlock()
-		return apperror.PluginNotFound(sub.pluginID)
+		err := apperror.PluginNotFound(sub.pluginID)
+		recordError(span, err)
+		return err
 	}
 	// Send while holding the lock to prevent removePlugin from closing
 	// the channel concurrently.

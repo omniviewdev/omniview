@@ -5,7 +5,12 @@ import (
 	"fmt"
 	"sync"
 
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
@@ -17,6 +22,13 @@ import (
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
+
+var tracer = otel.Tracer("omniview.networker")
+
+func recordError(span trace.Span, err error) {
+	span.RecordError(err)
+	span.SetStatus(otelcodes.Error, err.Error())
+}
 
 // Wails event keys for port-forward session lifecycle.
 const (
@@ -66,7 +78,7 @@ type sessionIndex struct {
 }
 
 func NewController(
-	logger *zap.SugaredLogger,
+	logger logging.Logger,
 	sp pkgsettings.Provider,
 	resourceClient resource.Service,
 ) Controller {
@@ -83,7 +95,7 @@ var _ Controller = &controller{}
 
 type controller struct {
 	ctx              context.Context
-	logger           *zap.SugaredLogger
+	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
 	resourceClient   resource.Service
 
@@ -101,8 +113,8 @@ func (c *controller) Run(ctx context.Context) {
 // ====================================== Controller Implementation ====================================== //
 
 func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginInit")
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(context.Background(), "OnPluginInit")
 
 	c.mu.Lock()
 	if c.clients == nil {
@@ -144,12 +156,17 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Net
 }
 
 func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginStart")
+	ctx, span := tracer.Start(context.Background(), "networker.OnPluginStart")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID))
+
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(ctx, "OnPluginStart")
 
 	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
-		logger.Error(err)
+		recordError(span, err)
+		logger.Errorw(ctx, "error", "error", err)
 		return err
 	}
 
@@ -160,8 +177,12 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 }
 
 func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginStop")
+	ctx, span := tracer.Start(context.Background(), "networker.OnPluginStop")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", pluginID))
+
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(ctx, "OnPluginStop")
 
 	c.mu.Lock()
 	provider, ok := c.clients[pluginID]
@@ -174,8 +195,8 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 }
 
 func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginShutdown")
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(context.Background(), "OnPluginShutdown")
 
 	c.mu.Lock()
 	delete(c.clients, pluginID)
@@ -184,15 +205,15 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginDestroy")
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(context.Background(), "OnPluginDestroy")
 
 	// nil action
 	return nil
 }
 
 func (c *controller) ListPlugins() ([]string, error) {
-	c.logger.Debug("ListPlugins")
+	c.logger.Debugw(context.Background(), "ListPlugins")
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	plugins := make([]string, 0, len(c.clients))
@@ -218,7 +239,7 @@ func (c *controller) getConnectedCtx(
 	// get the connection from the right resource
 	connection, err := c.resourceClient.GetConnection(plugin, connectionID)
 	if err != nil {
-		c.logger.Errorw("getConnectedCtx: failed to get connection",
+		c.logger.Errorw(context.Background(), "getConnectedCtx: failed to get connection",
 			"pluginID", plugin,
 			"connectionID", connectionID,
 			"err", err,
@@ -226,7 +247,7 @@ func (c *controller) getConnectedCtx(
 		return nil
 	}
 
-	c.logger.Debugw("getConnectedCtx: resolved connection",
+	c.logger.Debugw(context.Background(), "getConnectedCtx: resolved connection",
 		"pluginID", plugin,
 		"connectionID", connectionID,
 		"connectionDataKeys", mapKeys(connection.Data),
@@ -257,15 +278,21 @@ func (c *controller) getUnconnectedCtx(
 }
 
 func (c *controller) GetSupportedPortForwardTargets(plugin string) ([]string, error) {
+	ctx, span := tracer.Start(context.Background(), "networker.GetSupportedPortForwardTargets")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin_id", plugin))
+
 	c.mu.RLock()
 	provider, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
-		return nil, apperror.PluginNotFound(plugin)
+		err := apperror.PluginNotFound(plugin)
+		recordError(span, err)
+		return nil, err
 	}
 	return provider.GetSupportedPortForwardTargets(
 		sdktypes.NewPluginContextWithConnection(
-			context.Background(),
+			ctx,
 			"networker",
 			nil,
 			nil,
@@ -277,17 +304,30 @@ func (c *controller) GetSupportedPortForwardTargets(plugin string) ([]string, er
 func (c *controller) GetPortForwardSession(
 	sessionID string,
 ) (*networker.PortForwardSession, error) {
+	_, span := tracer.Start(context.Background(), "networker.GetPortForwardSession")
+	defer span.End()
+	span.SetAttributes(attribute.String("session_id", sessionID))
+
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
 		c.mu.RUnlock()
-		return nil, apperror.SessionNotFound(sessionID)
+		err := apperror.SessionNotFound(sessionID)
+		recordError(span, err)
+		return nil, err
 	}
 	provider, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		return nil, apperror.PluginNotFound(index.pluginID)
+		err := apperror.PluginNotFound(index.pluginID)
+		recordError(span, err)
+		return nil, err
 	}
+
+	span.SetAttributes(
+		attribute.String("plugin_id", index.pluginID),
+		attribute.String("connection_id", index.connectionID),
+	)
 
 	return provider.GetPortForwardSession(
 		c.getConnectedCtx(index.pluginID, index.connectionID),
@@ -298,11 +338,20 @@ func (c *controller) GetPortForwardSession(
 func (c *controller) ListPortForwardSessions(
 	pluginID, connectionID string,
 ) ([]*networker.PortForwardSession, error) {
+	_, span := tracer.Start(context.Background(), "networker.ListPortForwardSessions")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+	)
+
 	c.mu.RLock()
 	provider, ok := c.clients[pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		return nil, apperror.PluginNotFound(pluginID)
+		err := apperror.PluginNotFound(pluginID)
+		recordError(span, err)
+		return nil, err
 	}
 
 	return provider.ListPortForwardSessions(
@@ -311,6 +360,9 @@ func (c *controller) ListPortForwardSessions(
 }
 
 func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSession, error) {
+	ctx, span := tracer.Start(context.Background(), "networker.ListAllPortForwardSessions")
+	defer span.End()
+
 	c.mu.RLock()
 	type pair struct{ pluginID, connectionID string }
 	seen := make(map[pair]struct{})
@@ -332,6 +384,8 @@ func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSessi
 	}
 	c.mu.RUnlock()
 
+	span.SetAttributes(attribute.Int("provider_count", len(pairs)))
+
 	var all []*networker.PortForwardSession
 	for _, pp := range pairs {
 		provider := pp.provider
@@ -339,7 +393,7 @@ func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSessi
 			c.getConnectedCtx(pp.pluginID, pp.connectionID),
 		)
 		if err != nil {
-			c.logger.Warnw("ListAllPortForwardSessions: error listing sessions",
+			c.logger.Warnw(ctx, "ListAllPortForwardSessions: error listing sessions",
 				"pluginID", pp.pluginID, "connectionID", pp.connectionID, "err", err)
 			continue
 		}
@@ -353,11 +407,20 @@ func (c *controller) FindPortForwardSessions(
 	connectionID string,
 	request networker.FindPortForwardSessionRequest,
 ) ([]*networker.PortForwardSession, error) {
+	_, span := tracer.Start(context.Background(), "networker.FindPortForwardSessions")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+	)
+
 	c.mu.RLock()
 	provider, ok := c.clients[pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		return nil, apperror.PluginNotFound(pluginID)
+		err := apperror.PluginNotFound(pluginID)
+		recordError(span, err)
+		return nil, err
 	}
 
 	return provider.FindPortForwardSessions(
@@ -371,7 +434,18 @@ func (c *controller) StartResourcePortForwardingSession(
 	pluginID, connectionID string,
 	opts networker.PortForwardSessionOptions,
 ) (*networker.PortForwardSession, error) {
-	c.logger.Infow("StartResourcePortForwardingSession: request received",
+	ctx, span := tracer.Start(context.Background(), "networker.StartResourcePortForwardingSession")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+		attribute.String("connection_type", string(opts.ConnectionType)),
+		attribute.String("protocol", string(opts.Protocol)),
+		attribute.Int("local_port", int(opts.LocalPort)),
+		attribute.Int("remote_port", int(opts.RemotePort)),
+	)
+
+	c.logger.Infow(ctx, "StartResourcePortForwardingSession: request received",
 		"pluginID", pluginID,
 		"connectionID", connectionID,
 		"connectionType", opts.ConnectionType,
@@ -384,31 +458,36 @@ func (c *controller) StartResourcePortForwardingSession(
 	provider, ok := c.clients[pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		c.logger.Errorw("StartResourcePortForwardingSession: plugin not found",
+		c.logger.Errorw(ctx, "StartResourcePortForwardingSession: plugin not found",
 			"pluginID", pluginID,
 		)
-		return nil, apperror.PluginNotFound(pluginID)
+		err := apperror.PluginNotFound(pluginID)
+		recordError(span, err)
+		return nil, err
 	}
 
 	pctx := c.getConnectedCtx(pluginID, connectionID)
 	if pctx == nil {
-		c.logger.Errorw("StartResourcePortForwardingSession: nil plugin context (connection lookup failed)",
+		c.logger.Errorw(ctx, "StartResourcePortForwardingSession: nil plugin context (connection lookup failed)",
 			"pluginID", pluginID,
 			"connectionID", connectionID,
 		)
-		return nil, apperror.New(apperror.TypeConnectionNotFound, 404,
+		err := apperror.New(apperror.TypeConnectionNotFound, 404,
 			"Connection lookup failed",
 			fmt.Sprintf("Could not resolve connection '%s' for plugin '%s'", connectionID, pluginID),
 		)
+		recordError(span, err)
+		return nil, err
 	}
 
-	c.logger.Infow("StartResourcePortForwardingSession: dispatching to plugin",
+	c.logger.Infow(ctx, "StartResourcePortForwardingSession: dispatching to plugin",
 		"pluginID", pluginID,
 	)
 
 	session, err := provider.StartPortForwardSession(pctx, opts)
 	if err != nil {
-		c.logger.Errorw("StartResourcePortForwardingSession: plugin returned error",
+		recordError(span, err)
+		c.logger.Errorw(ctx, "StartResourcePortForwardingSession: plugin returned error",
 			"pluginID", pluginID,
 			"connectionID", connectionID,
 			"err", err,
@@ -416,7 +495,7 @@ func (c *controller) StartResourcePortForwardingSession(
 		return nil, err
 	}
 
-	c.logger.Infow("StartResourcePortForwardingSession: session created",
+	c.logger.Infow(ctx, "StartResourcePortForwardingSession: session created",
 		"pluginID", pluginID,
 		"sessionID", session.ID,
 		"localPort", session.LocalPort,
@@ -442,23 +521,37 @@ func (c *controller) StartResourcePortForwardingSession(
 func (c *controller) ClosePortForwardSession(
 	sessionID string,
 ) (*networker.PortForwardSession, error) {
+	_, span := tracer.Start(context.Background(), "networker.ClosePortForwardSession")
+	defer span.End()
+	span.SetAttributes(attribute.String("session_id", sessionID))
+
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	if !ok {
 		c.mu.RUnlock()
-		return nil, apperror.SessionNotFound(sessionID)
+		err := apperror.SessionNotFound(sessionID)
+		recordError(span, err)
+		return nil, err
 	}
 	provider, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
-		return nil, apperror.PluginNotFound(index.pluginID)
+		err := apperror.PluginNotFound(index.pluginID)
+		recordError(span, err)
+		return nil, err
 	}
+
+	span.SetAttributes(
+		attribute.String("plugin_id", index.pluginID),
+		attribute.String("connection_id", index.connectionID),
+	)
 
 	session, err := provider.ClosePortForwardSession(
 		c.getConnectedCtx(index.pluginID, index.connectionID),
 		sessionID,
 	)
 	if err != nil {
+		recordError(span, err)
 		return nil, err
 	}
 
