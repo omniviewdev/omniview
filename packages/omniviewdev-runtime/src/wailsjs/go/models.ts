@@ -1510,6 +1510,11 @@ export namespace registry {
 
 export namespace resource {
 	
+	export enum SyncPolicy {
+	    ON_CONNECT = 0,
+	    ON_FIRST_QUERY = 1,
+	    NEVER = 2,
+	}
 	export enum WatchState {
 	    IDLE = 0,
 	    SYNCING = 1,
@@ -1519,11 +1524,6 @@ export namespace resource {
 	    FAILED = 5,
 	    FORBIDDEN = 6,
 	    SKIPPED = 7,
-	}
-	export enum SyncPolicy {
-	    ON_CONNECT = 0,
-	    ON_FIRST_QUERY = 1,
-	    NEVER = 2,
 	}
 	export class SchemaProperty {
 	    type: string;
@@ -2695,7 +2695,7 @@ export namespace trivy {
 	    filePatterns: string[];
 	    skipDirs: string[];
 	    skipFiles: string[];
-	    scanners: Scanner[];
+	    scanners: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ScanOptions(source);

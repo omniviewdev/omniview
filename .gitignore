@@ -50,3 +50,6 @@ dist-ssr
 
 # Benchmark output
 benchmarks/
+
+# Superpowers brainstorm sessions
+.superpowers/

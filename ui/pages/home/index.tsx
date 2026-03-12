@@ -76,7 +76,7 @@ const SortableCard: React.FC<SortableCardProps> = ({ id, children, gridSize, isD
 const Home: React.FC = () => {
   const [isEditMode, setIsEditMode] = React.useState(false);
   const [activeId, setActiveId] = React.useState<string | null>(null);
-  const ep = useExtensionPoint<HomepageCardProps>('omniview/home/card');
+  const ep = useExtensionPoint<React.FC<HomepageCardProps>>('omniview/home/card');
   const registrations = ep?.list() ?? [];
 
   const { settings, setOrder, toggleHidden, updateCardConfig, isHidden, getCardConfig } =

@@ -17,7 +17,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"github.com/omniviewdev/omniview/backend/clients"
+	"go.uber.org/zap"
+
 	"github.com/omniviewdev/omniview/backend/diagnostics"
 	"github.com/omniviewdev/omniview/backend/menus"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
@@ -36,6 +37,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
 	"github.com/omniviewdev/omniview/backend/pkg/trivy"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
+	"github.com/omniviewdev/omniview/internal/telemetry"
 	"github.com/omniviewdev/omniview/internal/version"
 
 	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
@@ -76,8 +78,24 @@ func (a *pluginReloaderAdapter) ReloadPlugin(id string) error {
 
 //nolint:funlen // main function is expected to be long
 func main() {
-	// nillogger := logger.NewFileLogger("/dev/null")
-	log := clients.CreateLogger(version.IsDevelopment())
+	// Bootstrap telemetry (tracing, metrics, log shipping, profiling).
+	telemetryCfg := telemetry.DefaultConfig(version.IsDevelopment())
+	telemetrySvc := telemetry.New(
+		telemetryCfg,
+		version.Version,
+		version.GitCommit,
+		version.BuildDate,
+		version.IsDevelopment(),
+	)
+	if err := telemetrySvc.Init(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "telemetry init failed, continuing without telemetry: %v\n", err)
+	}
+	zapLogger := telemetrySvc.ZapLogger()
+	if zapLogger == nil {
+		zapLogger, _ = zap.NewProduction()
+	}
+	log := zapLogger.Sugar()
+
 	diagnosticsClient := diagnostics.NewDiagnosticsClient(version.IsDevelopment())
 
 	settingsProvider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{
@@ -176,6 +194,7 @@ func main() {
 			coresettings.Terminal,
 			coresettings.Editor,
 			coresettings.Developer,
+			coresettings.Telemetry,
 		); err != nil {
 			log.Errorw("error while initializing settings system", "error", err)
 		}
@@ -228,14 +247,16 @@ func main() {
 		OnStartup:     startup,
 		OnDomReady:    app.domReady,
 		OnBeforeClose: app.beforeClose,
-		OnShutdown: func(_ context.Context) {
+		OnShutdown: func(ctx context.Context) {
 			devServerManager.Shutdown()
 			pluginManager.Shutdown()
+			_ = telemetrySvc.Shutdown(ctx)
 		},
 		WindowStartState: options.Normal,
 		Bind: []any{
 			app,
 			diagnosticsClient,
+			telemetry.NewTelemetryBinding(telemetrySvc),
 
 			// core engines/providers
 			settingsProvider,
