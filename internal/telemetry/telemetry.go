@@ -130,7 +130,7 @@ func (s *Service) Init(ctx context.Context) error {
 
 	// Start profiling if enabled at boot.
 	if s.cfg.Enabled && s.cfg.Profiling && s.cfg.PyroscopeEndpoint != "" {
-		profiler, err := startProfiling(s.version, s.cfg.PyroscopeEndpoint)
+		profiler, err := startProfiling(s.version, s.cfg.PyroscopeEndpoint, s.cfg.GrafanaUser, s.cfg.GrafanaToken)
 		if err != nil {
 			return err
 		}
@@ -295,7 +295,7 @@ func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
 
 	// Profiling toggle.
 	if cfg.Profiling && s.profiler == nil && cfg.PyroscopeEndpoint != "" {
-		profiler, err := startProfiling(s.version, cfg.PyroscopeEndpoint)
+		profiler, err := startProfiling(s.version, cfg.PyroscopeEndpoint, cfg.GrafanaUser, cfg.GrafanaToken)
 		if err != nil {
 			return err
 		}
