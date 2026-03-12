@@ -42,6 +42,10 @@ type Service struct {
 	zapLogger      *zap.Logger
 	otelLevel      *zap.AtomicLevel // hot-togglable OTel core level
 
+	switchableTraceExp  *SwitchableSpanExporter
+	switchableMetricExp *SwitchableMetricExporter
+	switchableLogExp    *SwitchableLogExporter
+
 	mu sync.Mutex
 }
 
@@ -69,43 +73,56 @@ func (s *Service) Init(ctx context.Context) error {
 	}
 	s.resource = res
 
+	// Always initialize switchable exporters so ApplyConfig works even if
+	// telemetry starts disabled.
+	s.switchableTraceExp = &SwitchableSpanExporter{}
+	s.switchableMetricExp = &SwitchableMetricExporter{}
+	s.switchableLogExp = &SwitchableLogExporter{}
+
 	if !s.cfg.Enabled {
 		s.zapLogger, _, err = buildZapLogger(s.isDev, nil, "")
 		return err
 	}
 
+	// Traces
 	if s.cfg.Traces {
 		exp, err := NewTraceExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
 		if err != nil {
 			return err
 		}
-		s.tracerProvider = NewTracerProvider(s.resource, exp)
-		if s.cfg.Profiling && s.cfg.PyroscopeEndpoint != "" {
-			otel.SetTracerProvider(otelpyroscope.NewTracerProvider(s.tracerProvider))
-		} else {
-			otel.SetTracerProvider(s.tracerProvider)
-		}
+		s.switchableTraceExp.Swap(exp)
+	}
+	s.tracerProvider = NewTracerProvider(s.resource, s.switchableTraceExp)
+	if s.cfg.Profiling && s.cfg.PyroscopeEndpoint != "" {
+		otel.SetTracerProvider(otelpyroscope.NewTracerProvider(s.tracerProvider))
+	} else {
+		otel.SetTracerProvider(s.tracerProvider)
 	}
 
+	// Metrics
 	if s.cfg.Metrics {
 		exp, err := NewMetricExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
 		if err != nil {
 			return err
 		}
-		s.meterProvider = NewMeterProvider(s.resource, exp)
-		otel.SetMeterProvider(s.meterProvider)
-		if err := otelruntime.Start(otelruntime.WithMinimumReadMemStatsInterval(15 * time.Second)); err != nil {
-			return err
-		}
+		s.switchableMetricExp.Swap(exp)
+	}
+	s.meterProvider = NewMeterProvider(s.resource, s.switchableMetricExp)
+	otel.SetMeterProvider(s.meterProvider)
+	if err := otelruntime.Start(otelruntime.WithMinimumReadMemStatsInterval(15 * time.Second)); err != nil {
+		return err
 	}
 
+	// Logs — always create the LoggerProvider with the switchable exporter so
+	// that the otelzap bridge core is wired into the logger from the start.
 	if s.cfg.LogsShip {
 		exp, err := NewLogExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
 		if err != nil {
 			return err
 		}
-		s.loggerProvider = NewLoggerProvider(s.resource, exp)
+		s.switchableLogExp.Swap(exp)
 	}
+	s.loggerProvider = NewLoggerProvider(s.resource, s.switchableLogExp)
 
 	var otelLevel *zap.AtomicLevel
 	s.zapLogger, otelLevel, err = buildZapLogger(s.isDev, s.loggerProvider, s.cfg.LogsShipLevel)
@@ -203,6 +220,115 @@ func (s *Service) SetLogShipLevel(level string) {
 		return
 	}
 	s.otelLevel.SetLevel(zapLvl)
+}
+
+// ApplyConfig applies new telemetry settings at runtime by swapping exporters.
+// This is the primary hot-toggle mechanism — called when the user changes
+// telemetry settings via the UI.
+func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Master switch OFF — swap all to noop.
+	if !cfg.Enabled {
+		s.swapTraceExporter(noopSpanExporter{})
+		s.swapMetricExporter(noopMetricExporter{})
+		s.swapLogExporter(noopLogExporter{})
+		if s.profiler != nil {
+			_ = s.profiler.Stop()
+			s.profiler = nil
+		}
+		s.cfg = cfg
+		return nil
+	}
+
+	// Per-signal toggles.
+	if cfg.Traces != s.cfg.Traces || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint {
+		if cfg.Traces {
+			exp, err := NewTraceExporter(context.Background(), cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+			if err != nil {
+				return err
+			}
+			s.swapTraceExporter(exp)
+		} else {
+			s.swapTraceExporter(noopSpanExporter{})
+		}
+	}
+
+	if cfg.Metrics != s.cfg.Metrics || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint {
+		if cfg.Metrics {
+			exp, err := NewMetricExporter(context.Background(), cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+			if err != nil {
+				return err
+			}
+			s.swapMetricExporter(exp)
+		} else {
+			s.swapMetricExporter(noopMetricExporter{})
+		}
+	}
+
+	if cfg.LogsShip != s.cfg.LogsShip || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint {
+		if cfg.LogsShip {
+			exp, err := NewLogExporter(context.Background(), cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+			if err != nil {
+				return err
+			}
+			s.swapLogExporter(exp)
+		} else {
+			s.swapLogExporter(noopLogExporter{})
+		}
+	}
+
+	if cfg.LogsShipLevel != s.cfg.LogsShipLevel {
+		s.SetLogShipLevel(cfg.LogsShipLevel)
+	}
+
+	// Profiling toggle.
+	if cfg.Profiling && s.profiler == nil && cfg.PyroscopeEndpoint != "" {
+		profiler, err := startProfiling(s.version, cfg.PyroscopeEndpoint)
+		if err != nil {
+			return err
+		}
+		s.profiler = profiler
+	} else if !cfg.Profiling && s.profiler != nil {
+		_ = s.profiler.Stop()
+		s.profiler = nil
+	}
+
+	s.cfg = cfg
+	return nil
+}
+
+// Config returns the current telemetry configuration.
+func (s *Service) Config() TelemetryConfig {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cfg
+}
+
+// Helper methods for swapping exporters (shuts down old exporter).
+func (s *Service) swapTraceExporter(exp sdktrace.SpanExporter) {
+	if s.switchableTraceExp != nil {
+		if old := s.switchableTraceExp.Swap(exp); old != nil {
+			_ = old.Shutdown(context.Background())
+		}
+	}
+}
+
+func (s *Service) swapMetricExporter(exp sdkmetric.Exporter) {
+	if s.switchableMetricExp != nil {
+		if old := s.switchableMetricExp.Swap(exp); old != nil {
+			_ = old.Shutdown(context.Background())
+		}
+	}
+}
+
+func (s *Service) swapLogExporter(exp sdklog.Exporter) {
+	if s.switchableLogExp != nil {
+		if old := s.switchableLogExp.Swap(exp); old != nil {
+			_ = old.Shutdown(context.Background())
+		}
+	}
 }
 
 // parseShipLevel converts a config level string to a zapcore.Level.
