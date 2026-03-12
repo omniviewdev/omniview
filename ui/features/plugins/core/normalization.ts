@@ -23,13 +23,13 @@ export function normalizeExtensionRegistration(
   pluginId: string,
   registration: ExtensionRegistration<any>,
 ): NormalizedContribution {
-  const reg = registration.registration;
+  const reg = registration.registration as Record<string, any>;
   return {
     source: 'extension-registration',
     pluginId,
     extensionPointId: registration.extensionPointId,
     contributionId: `${pluginId}/${reg.id}`,
-    value: reg.value,
+    value: reg.value ?? reg.component,
     label: reg.label,
     meta: reg.meta,
   };

@@ -10,12 +10,12 @@ import { Text } from '@omniviewdev/ui/typography';
 import { Stack } from '@omniviewdev/ui/layout';
 import { PluginContext } from '@omniviewdev/runtime';
 import { config as runtimeConfig } from '@omniviewdev/runtime/models';
-import type { Registration } from '@omniviewdev/runtime';
+import type { ExtensionContributionRegistration } from '@omniviewdev/runtime';
 import type { HomepageCardProps, HomepageCardMeta, HomepageCardConfig } from '@/features/extensions/homepage/types';
 import HomepageCardConfigPopover from './HomepageCardConfigPopover';
 
 type Props = {
-  registration: Registration<HomepageCardProps>;
+  registration: ExtensionContributionRegistration<HomepageCardProps>;
   config: HomepageCardConfig;
   isHidden: boolean;
   isEditMode: boolean;
@@ -45,7 +45,7 @@ const HomepageCard: React.FC<Props> = ({
   }
 
   const meta = registration.meta as HomepageCardMeta | undefined;
-  const Component = registration.component as React.FC<HomepageCardProps>;
+  const Component = registration.value as unknown as React.FC<HomepageCardProps>;
 
   return (
     <Box
