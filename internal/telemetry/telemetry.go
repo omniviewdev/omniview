@@ -38,6 +38,7 @@ type Service struct {
 	loggerProvider *sdklog.LoggerProvider
 	profiler       *pyroscope.Profiler
 	zapLogger      *zap.Logger
+	otelLevel      *zap.AtomicLevel // hot-togglable OTel core level
 
 	mu sync.Mutex
 }
@@ -67,7 +68,7 @@ func (s *Service) Init(ctx context.Context) error {
 	s.resource = res
 
 	if !s.cfg.Enabled {
-		s.zapLogger, err = buildZapLogger(s.isDev, nil)
+		s.zapLogger, _, err = buildZapLogger(s.isDev, nil, "")
 		return err
 	}
 
@@ -104,7 +105,9 @@ func (s *Service) Init(ctx context.Context) error {
 		s.loggerProvider = NewLoggerProvider(s.resource, exp)
 	}
 
-	s.zapLogger, err = buildZapLogger(s.isDev, s.loggerProvider)
+	var otelLevel *zap.AtomicLevel
+	s.zapLogger, otelLevel, err = buildZapLogger(s.isDev, s.loggerProvider, s.cfg.LogsShipLevel)
+	s.otelLevel = otelLevel
 	if err != nil {
 		return err
 	}
@@ -167,18 +170,79 @@ func (s *Service) Resource() *resource.Resource { return s.resource }
 // ZapLogger returns the triple-core Zap logger.
 func (s *Service) ZapLogger() *zap.Logger { return s.zapLogger }
 
+// SetLogShipLevel hot-toggles the minimum log level shipped via OTLP.
+// This is safe to call from any goroutine.
+func (s *Service) SetLogShipLevel(level string) {
+	if s.otelLevel == nil {
+		return
+	}
+	var zapLvl zapcore.Level
+	switch level {
+	case "debug":
+		zapLvl = zapcore.DebugLevel
+	case "info":
+		zapLvl = zapcore.InfoLevel
+	case "warn":
+		zapLvl = zapcore.WarnLevel
+	case "error":
+		zapLvl = zapcore.ErrorLevel
+	default:
+		return
+	}
+	s.otelLevel.SetLevel(zapLvl)
+}
+
+// parseShipLevel converts a config level string to a zapcore.Level.
+func parseShipLevel(level string) zapcore.Level {
+	switch level {
+	case "debug":
+		return zapcore.DebugLevel
+	case "info":
+		return zapcore.InfoLevel
+	case "error":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.WarnLevel
+	}
+}
+
+// levelFilterCore wraps a zapcore.Core and gates entries by an AtomicLevel.
+// This allows hot-toggling the minimum severity without rebuilding the logger.
+type levelFilterCore struct {
+	zapcore.Core
+	level *zap.AtomicLevel
+}
+
+func (c *levelFilterCore) Enabled(lvl zapcore.Level) bool {
+	return c.level.Enabled(lvl)
+}
+
+func (c *levelFilterCore) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	if !c.level.Enabled(ent.Level) {
+		return ce
+	}
+	return c.Core.Check(ent, ce)
+}
+
+func (c *levelFilterCore) With(fields []zapcore.Field) zapcore.Core {
+	return &levelFilterCore{Core: c.Core.With(fields), level: c.level}
+}
+
 // buildZapLogger constructs a Zap logger with up to three cores:
 //   - fileCore: JSON logs rotated by lumberjack
 //   - consoleCore: human-readable stderr output (dev mode only)
 //   - otelCore: OTel log bridge (when loggerProvider is non-nil)
-func buildZapLogger(isDev bool, loggerProvider *sdklog.LoggerProvider) (*zap.Logger, error) {
+//
+// The returned *zap.AtomicLevel (nil when loggerProvider is nil) controls the
+// OTel core and can be used for hot-toggling the ship level at runtime.
+func buildZapLogger(isDev bool, loggerProvider *sdklog.LoggerProvider, shipLevel string) (*zap.Logger, *zap.AtomicLevel, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("cannot determine home directory: %w", err)
+		return nil, nil, fmt.Errorf("cannot determine home directory: %w", err)
 	}
 	logDir := filepath.Join(home, ".omniview", "logs")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	fileWriter := &lumberjack.Logger{
@@ -198,10 +262,16 @@ func buildZapLogger(isDev bool, loggerProvider *sdklog.LoggerProvider) (*zap.Log
 		cores = append(cores, consoleCore)
 	}
 
+	var atomicLevel *zap.AtomicLevel
 	if loggerProvider != nil {
+		lvl := zap.NewAtomicLevelAt(parseShipLevel(shipLevel))
+		atomicLevel = &lvl
 		otelCore := otelzap.NewCore("omniview", otelzap.WithLoggerProvider(loggerProvider))
-		cores = append(cores, otelCore)
+		cores = append(cores, &levelFilterCore{
+			Core:  otelCore,
+			level: atomicLevel,
+		})
 	}
 
-	return zap.New(zapcore.NewTee(cores...)), nil
+	return zap.New(zapcore.NewTee(cores...)), atomicLevel, nil
 }

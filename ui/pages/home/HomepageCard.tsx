@@ -15,7 +15,7 @@ import type { HomepageCardProps, HomepageCardMeta, HomepageCardConfig } from '@/
 import HomepageCardConfigPopover from './HomepageCardConfigPopover';
 
 type Props = {
-  registration: ExtensionContributionRegistration<HomepageCardProps>;
+  registration: ExtensionContributionRegistration<React.FC<HomepageCardProps>>;
   config: HomepageCardConfig;
   isHidden: boolean;
   isEditMode: boolean;
@@ -45,7 +45,7 @@ const HomepageCard: React.FC<Props> = ({
   }
 
   const meta = registration.meta as HomepageCardMeta | undefined;
-  const Component = registration.value as unknown as React.FC<HomepageCardProps>;
+  const Component = registration.value;
 
   return (
     <Box

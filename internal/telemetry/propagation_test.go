@@ -13,6 +13,10 @@ import (
 )
 
 func TestInjectExtractRoundtrip(t *testing.T) {
+	// Save and restore the global propagator so this test doesn't leak state.
+	prev := otel.GetTextMapPropagator()
+	t.Cleanup(func() { otel.SetTextMapPropagator(prev) })
+
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	tp := sdktrace.NewTracerProvider()
 	defer tp.Shutdown(context.Background())

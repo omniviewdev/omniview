@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"strings"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"go.uber.org/zap"
@@ -32,9 +33,24 @@ func (b *ZapBackend) Write(_ context.Context, r logging.Record) error {
 	return nil
 }
 
-// Sync flushes the underlying Zap logger buffers.
+// Sync flushes the underlying Zap logger buffers. It suppresses the
+// well-known spurious "sync /dev/stderr" error that occurs on macOS/Linux
+// when stderr is a terminal.
 func (b *ZapBackend) Sync(_ context.Context) error {
-	return b.logger.Sync()
+	err := b.logger.Sync()
+	if err != nil && isSpuriousSyncErr(err) {
+		return nil
+	}
+	return err
+}
+
+// isSpuriousSyncErr returns true for the harmless "sync /dev/stderr:
+// inappropriate ioctl" or "invalid argument" errors emitted by zap on
+// non-seekable file descriptors.
+func isSpuriousSyncErr(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "inappropriate ioctl") ||
+		strings.Contains(msg, "invalid argument")
 }
 
 // toZapLevel maps a plugin-sdk log level to a Zap level.
@@ -62,6 +78,14 @@ func convertField(f logging.Field) zap.Field {
 		return zap.Int(f.Key, v)
 	case int64:
 		return zap.Int64(f.Key, v)
+	case float32:
+		return zap.Float32(f.Key, v)
+	case float64:
+		return zap.Float64(f.Key, v)
+	case uint:
+		return zap.Uint(f.Key, v)
+	case uint64:
+		return zap.Uint64(f.Key, v)
 	case bool:
 		return zap.Bool(f.Key, v)
 	case error:

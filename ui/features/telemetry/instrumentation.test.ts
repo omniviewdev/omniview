@@ -1,21 +1,25 @@
 import { describe, it, expect, vi } from 'vitest';
 
+const mockSpan = {
+  spanContext: () => ({ traceId: 'abc123', spanId: 'def456' }),
+  setStatus: vi.fn(),
+  recordException: vi.fn(),
+  end: vi.fn(),
+};
+const mockTracer = {
+  startSpan: vi.fn(() => mockSpan),
+};
+
 vi.mock('@opentelemetry/api', () => {
-  const mockSpan = {
-    spanContext: () => ({ traceId: 'abc123', spanId: 'def456' }),
-    setStatus: vi.fn(),
-    recordException: vi.fn(),
-    end: vi.fn(),
-  };
-  const mockTracer = {
-    startSpan: vi.fn(() => mockSpan),
-  };
   return {
     trace: {
       getTracer: () => mockTracer,
       setSpan: (_ctx: unknown, span: unknown) => ({ _span: span }),
     },
-    context: { active: () => ({}) },
+    context: {
+      active: () => ({}),
+      with: (_ctx: unknown, fn: () => unknown) => fn(),
+    },
     propagation: {
       inject: (_ctx: unknown, carrier: Record<string, string>) => {
         carrier['traceparent'] = '00-abc123-def456-01';
@@ -39,9 +43,13 @@ describe('instrumentBinding', () => {
   });
 
   it('records exception on binding error', async () => {
+    mockSpan.recordException.mockClear();
+    mockSpan.setStatus.mockClear();
     const error = new Error('binding failed');
     const mockBinding = vi.fn().mockRejectedValue(error);
     const instrumented = instrumentBinding('TestBinding', mockBinding);
     await expect(instrumented()).rejects.toThrow('binding failed');
+    expect(mockSpan.recordException).toHaveBeenCalledWith(error);
+    expect(mockSpan.setStatus).toHaveBeenCalledWith({ code: 1 });
   });
 });

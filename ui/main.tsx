@@ -10,7 +10,11 @@ import { initTelemetry, type LogSink } from './features/telemetry';
 // Bridge frontend telemetry to the existing DiagnosticsClient.Log Wails binding.
 const bridgeSink: LogSink = {
   write(level, msg, fields) {
-    DiagnosticsClient.Log(level, msg, fields).catch(() => {});
+    DiagnosticsClient.Log(level, msg, fields).catch((err) => {
+      if (import.meta.env?.DEV) {
+        console.error('[bridgeSink] DiagnosticsClient.Log failed:', err);
+      }
+    });
   },
 };
 

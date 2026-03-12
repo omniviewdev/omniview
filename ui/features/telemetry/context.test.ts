@@ -8,6 +8,13 @@ describe('TelemetryContext', () => {
     expect(ctx.pluginId).toBe('kubernetes');
   });
 
+  it('createTelemetryContext with no args returns empty context', () => {
+    const ctx = createTelemetryContext();
+    expect(ctx.component).toBeUndefined();
+    expect(ctx.pluginId).toBeUndefined();
+    expect(ctx.traceId).toBeUndefined();
+  });
+
   it('emptyContext returns empty object', () => {
     const ctx = emptyContext();
     expect(ctx.component).toBeUndefined();

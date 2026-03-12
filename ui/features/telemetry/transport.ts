@@ -14,7 +14,19 @@ export class WailsTransport extends BaseTransport {
   }
 
   send(items: TransportItem | TransportItem[]): void {
-    const data = JSON.stringify(items);
-    this.ingest(data).catch(() => {});
+    let data: string;
+    try {
+      data = JSON.stringify(items);
+    } catch (err) {
+      if (import.meta.env?.DEV) {
+        console.error('[WailsTransport] JSON.stringify failed:', err);
+      }
+      return;
+    }
+    this.ingest(data).catch((err) => {
+      if (import.meta.env?.DEV) {
+        console.error('[WailsTransport] ingest failed:', err);
+      }
+    });
   }
 }

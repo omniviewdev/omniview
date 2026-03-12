@@ -17,12 +17,12 @@ export interface Logger {
 export function createLogger(component: string, sink: LogSink, baseFields?: Fields): Logger {
   const enrichAndWrite = (level: string, ctx: TelemetryContext, msg: string, fields?: Fields) => {
     sink.write(level, msg, {
-      ...baseFields,
-      ...fields,
       _component: component,
       ...(ctx.traceId ? { traceId: ctx.traceId } : {}),
       ...(ctx.spanId ? { spanId: ctx.spanId } : {}),
       ...(ctx.pluginId ? { pluginId: ctx.pluginId } : {}),
+      ...baseFields,
+      ...fields,
     });
   };
 

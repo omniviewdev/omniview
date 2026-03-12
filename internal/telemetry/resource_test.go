@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,4 +25,6 @@ func TestNewResource(t *testing.T) {
 	assert.Equal(t, "2026-03-11", attrMap["omniview.build_date"].AsString())
 	assert.True(t, attrMap["omniview.development"].AsBool())
 	assert.NotEmpty(t, attrMap["service.instance.id"].AsString())
+	assert.Equal(t, runtime.GOOS, attrMap["os.type"].AsString())
+	assert.Equal(t, runtime.GOARCH, attrMap["host.arch"].AsString())
 }

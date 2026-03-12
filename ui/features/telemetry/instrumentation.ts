@@ -7,10 +7,11 @@ export function instrumentBinding(name: string, fn: WailsBinding): WailsBinding 
   return async (...args: any[]) => {
     const tracer = trace.getTracer(TRACER_NAME);
     const span = tracer.startSpan(`wails.${name}`);
+    const spanCtx = trace.setSpan(context.active(), span);
     const carrier: Record<string, string> = {};
-    propagation.inject(trace.setSpan(context.active(), span), carrier);
+    propagation.inject(spanCtx, carrier);
     try {
-      const result = await fn(carrier, ...args);
+      const result = await context.with(spanCtx, () => fn(carrier, ...args));
       span.setStatus({ code: SpanStatusCode.OK });
       return result;
     } catch (err) {

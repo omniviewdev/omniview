@@ -1,5 +1,15 @@
 package telemetry
 
+import "slices"
+
+// ValidLogLevels lists the accepted values for LogsShipLevel.
+var ValidLogLevels = []string{"debug", "info", "warn", "error"}
+
+// IsValidLogLevel reports whether s is a recognized log level.
+func IsValidLogLevel(s string) bool {
+	return slices.Contains(ValidLogLevels, s)
+}
+
 // TelemetryConfig holds all telemetry-related configuration.
 type TelemetryConfig struct {
 	Enabled           bool

@@ -55,10 +55,11 @@ func TestServiceEnabledTracesOnly(t *testing.T) {
 	err := svc.Init(context.Background())
 	require.NoError(t, err)
 
-	// With traces enabled the global tracer should produce valid spans.
+	// With traces enabled the global tracer should produce valid, sampled spans.
 	tracer := otel.Tracer("test")
 	_, span := tracer.Start(context.Background(), "test")
 	assert.True(t, span.SpanContext().IsValid())
+	assert.True(t, span.SpanContext().IsSampled())
 	span.End()
 
 	assert.NotNil(t, svc.ZapLogger())

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createLogger, type LogSink } from './logger';
-import { emptyContext } from './context';
+import { emptyContext, createTelemetryContext } from './context';
 
 describe('Logger', () => {
   const createMockSink = (): LogSink & { calls: Array<{ level: string; msg: string; fields: Record<string, unknown> }> } => {
@@ -11,7 +11,7 @@ describe('Logger', () => {
     };
   };
 
-  it('logs at each level with context enrichment', () => {
+  it('enriches log entries with component and user fields', () => {
     const sink = createMockSink();
     const log = createLogger('TestComponent', sink);
     const ctx = emptyContext();
@@ -21,6 +21,24 @@ describe('Logger', () => {
     expect(sink.calls[0].msg).toBe('hello');
     expect(sink.calls[0].fields.key).toBe('value');
     expect(sink.calls[0].fields._component).toBe('TestComponent');
+  });
+
+  it('includes trace context fields when present', () => {
+    const sink = createMockSink();
+    const log = createLogger('Comp', sink);
+    const ctx = createTelemetryContext({ traceId: 'tid', spanId: 'sid', pluginId: 'k8s' });
+    log.info(ctx, 'traced');
+    expect(sink.calls[0].fields.traceId).toBe('tid');
+    expect(sink.calls[0].fields.spanId).toBe('sid');
+    expect(sink.calls[0].fields.pluginId).toBe('k8s');
+  });
+
+  it('user fields override built-in context keys', () => {
+    const sink = createMockSink();
+    const log = createLogger('Comp', sink);
+    const ctx = createTelemetryContext({ pluginId: 'default' });
+    log.info(ctx, 'override', { pluginId: 'custom' });
+    expect(sink.calls[0].fields.pluginId).toBe('custom');
   });
 
   it('named() creates a child logger with dot-separated name', () => {
