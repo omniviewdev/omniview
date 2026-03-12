@@ -1,21 +1,28 @@
 package telemetry
 
-// validLogLevels is the canonical set of accepted log level strings.
-var validLogLevels = map[string]struct{}{
-	"debug": {},
-	"info":  {},
-	"warn":  {},
-	"error": {},
+// validLogLevelList is the single canonical, ordered list of accepted log levels.
+var validLogLevelList = []string{"debug", "info", "warn", "error"}
+
+// validLogLevelSet is derived from validLogLevelList for O(1) lookups.
+var validLogLevelSet map[string]struct{}
+
+func init() {
+	validLogLevelSet = make(map[string]struct{}, len(validLogLevelList))
+	for _, l := range validLogLevelList {
+		validLogLevelSet[l] = struct{}{}
+	}
 }
 
 // GetValidLogLevels returns a copy of the accepted log level strings.
 func GetValidLogLevels() []string {
-	return []string{"debug", "info", "warn", "error"}
+	out := make([]string, len(validLogLevelList))
+	copy(out, validLogLevelList)
+	return out
 }
 
 // IsValidLogLevel reports whether s is a recognized log level.
 func IsValidLogLevel(s string) bool {
-	_, ok := validLogLevels[s]
+	_, ok := validLogLevelSet[s]
 	return ok
 }
 

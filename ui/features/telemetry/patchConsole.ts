@@ -2,14 +2,6 @@ import { trace } from '@opentelemetry/api';
 import { createLogger, type LogSink } from './logger';
 import { emptyContext, type TelemetryContext } from './context';
 
-let originalConsole: {
-  log: typeof console.log;
-  info: typeof console.info;
-  warn: typeof console.warn;
-  error: typeof console.error;
-  debug: typeof console.debug;
-} | null = null;
-
 let patched = false;
 
 function serializeArg(arg: unknown): string {
@@ -27,14 +19,13 @@ function serializeArg(arg: unknown): string {
 export function patchConsole(sink: LogSink): void {
   if (patched) return;
 
-  originalConsole = {
+  const saved = {
     log: console.log.bind(console),
     info: console.info.bind(console),
     warn: console.warn.bind(console),
     error: console.error.bind(console),
     debug: console.debug.bind(console),
   };
-  patched = true;
 
   const logger = createLogger('console', sink);
   const getCtx = (): TelemetryContext => {
@@ -45,9 +36,11 @@ export function patchConsole(sink: LogSink): void {
   };
   const fmt = (...args: unknown[]) => args.map(serializeArg).join(' ');
 
-  console.log = (...args: unknown[]) => { originalConsole!.log(...args); logger.debug(getCtx(), fmt(...args)); };
-  console.info = (...args: unknown[]) => { originalConsole!.info(...args); logger.info(getCtx(), fmt(...args)); };
-  console.warn = (...args: unknown[]) => { originalConsole!.warn(...args); logger.warn(getCtx(), fmt(...args)); };
-  console.error = (...args: unknown[]) => { originalConsole!.error(...args); logger.error(getCtx(), fmt(...args)); };
-  console.debug = (...args: unknown[]) => { originalConsole!.debug(...args); logger.trace(getCtx(), fmt(...args)); };
+  console.log = (...args: unknown[]) => { saved.log(...args); try { logger.debug(getCtx(), fmt(...args)); } catch { /* fail-open */ } };
+  console.info = (...args: unknown[]) => { saved.info(...args); try { logger.info(getCtx(), fmt(...args)); } catch { /* fail-open */ } };
+  console.warn = (...args: unknown[]) => { saved.warn(...args); try { logger.warn(getCtx(), fmt(...args)); } catch { /* fail-open */ } };
+  console.error = (...args: unknown[]) => { saved.error(...args); try { logger.error(getCtx(), fmt(...args)); } catch { /* fail-open */ } };
+  console.debug = (...args: unknown[]) => { saved.debug(...args); try { logger.trace(getCtx(), fmt(...args)); } catch { /* fail-open */ } };
+
+  patched = true;
 }
