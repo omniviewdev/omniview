@@ -35,6 +35,16 @@ const (
 	MaxPluginSize = 1024 * 1024 * 1024 // 1GB
 )
 
+// TelemetryEnvConfig holds the subset of telemetry configuration injected into plugin processes.
+type TelemetryEnvConfig struct {
+	Enabled           bool
+	OTLPEndpoint      string
+	AuthHeader        string
+	AuthValue         string
+	Profiling         bool
+	PyroscopeEndpoint string
+}
+
 // sensitivePattern matches tokens, long hex/base64 strings, and other
 // potentially sensitive values that should not appear in crash reports.
 var sensitivePattern = regexp.MustCompile(
@@ -96,6 +106,7 @@ func NewManager(
 	managers map[string]plugintypes.PluginManager,
 	settingsProvider pkgsettings.Provider,
 	registryClient *registry.Client,
+	telemetryConfigFn func() TelemetryEnvConfig,
 ) Manager {
 	return &pluginManager{
 		logger:  logger,
@@ -110,11 +121,12 @@ func NewManager(
 		connfullControllers: map[sdktypes.Capability]plugintypes.ConnectedController{
 			sdktypes.CapabilityResource: resourceController,
 		},
-		managers:         managers,
-		settingsProvider: settingsProvider,
-		registryClient:   registryClient,
-		pidTracker:       NewPluginPIDTracker(),
-		pluginOpsLocks:   make(map[string]*sync.Mutex),
+		managers:          managers,
+		settingsProvider:  settingsProvider,
+		registryClient:    registryClient,
+		telemetryConfigFn: telemetryConfigFn,
+		pidTracker:        NewPluginPIDTracker(),
+		pluginOpsLocks:    make(map[string]*sync.Mutex),
 	}
 }
 
@@ -141,6 +153,7 @@ type pluginManager struct {
 	healthChecker       *HealthChecker
 	pluginLogMgr        *pluginlog.Manager
 	backendFactory      func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error)
+	telemetryConfigFn   func() TelemetryEnvConfig // returns current telemetry config for env injection
 
 	// pluginOpsMu serializes load/reload/unload operations per plugin to
 	// prevent concurrent lifecycle transitions for the same plugin (e.g.

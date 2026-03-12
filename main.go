@@ -158,6 +158,17 @@ func main() {
 		managers,
 		settingsProvider,
 		pluginRegistryClient,
+		func() plugin.TelemetryEnvConfig {
+			cfg := telemetrySvc.Config()
+			return plugin.TelemetryEnvConfig{
+				Enabled:           cfg.Enabled,
+				OTLPEndpoint:      cfg.OTLPEndpoint,
+				AuthHeader:        cfg.AuthHeader,
+				AuthValue:         cfg.AuthValue,
+				Profiling:         cfg.Profiling,
+				PyroscopeEndpoint: cfg.PyroscopeEndpoint,
+			}
+		},
 	)
 
 	// Wire crash recovery: when a plugin crash is detected by the resource

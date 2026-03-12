@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -207,6 +208,23 @@ func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, lo
 		logOutput = io.MultiWriter(os.Stdout, pm.pluginLogMgr.Stream(id))
 	}
 
+	//nolint:gosec // this is completely software controlled
+	cmd := exec.Command(filepath.Join(location, "bin", "plugin"))
+
+	// Inject telemetry env vars if config function is available.
+	if pm.telemetryConfigFn != nil {
+		cfg := pm.telemetryConfigFn()
+		cmd.Env = append(os.Environ(),
+			"OMNIVIEW_TELEMETRY_ENABLED="+strconv.FormatBool(cfg.Enabled),
+			"OMNIVIEW_TELEMETRY_OTLP_ENDPOINT="+cfg.OTLPEndpoint,
+			"OMNIVIEW_TELEMETRY_AUTH_HEADER="+cfg.AuthHeader,
+			"OMNIVIEW_TELEMETRY_AUTH_VALUE="+cfg.AuthValue,
+			"OMNIVIEW_TELEMETRY_PROFILING="+strconv.FormatBool(cfg.Profiling),
+			"OMNIVIEW_TELEMETRY_PYROSCOPE_ENDPOINT="+cfg.PyroscopeEndpoint,
+			"OMNIVIEW_PLUGIN_ID="+id,
+		)
+	}
+
 	pluginClient := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig: metadata.GenerateHandshakeConfig(),
 		VersionedPlugins: map[int]goplugin.PluginSet{
@@ -220,9 +238,8 @@ func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, lo
 				"lifecycle": &lc.Plugin{},
 			},
 		},
-		GRPCDialOptions: sdk.GRPCDialOptions(),
-		//nolint:gosec // this is completely software controlled
-		Cmd:              exec.Command(filepath.Join(location, "bin", "plugin")),
+		GRPCDialOptions:  sdk.GRPCDialOptions(),
+		Cmd:              cmd,
 		StartTimeout:     15 * time.Second, // Don't block startup for broken plugins (default is 60s)
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{
