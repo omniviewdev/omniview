@@ -20,7 +20,11 @@ export function initTracing(appVersion: string): BasicTracerProvider {
 
 export function getTracerProvider(): BasicTracerProvider | null { return provider; }
 
-export function shutdownTracing(): Promise<void> {
-  if (provider) return provider.shutdown();
-  return Promise.resolve();
+export async function shutdownTracing(): Promise<void> {
+  if (!provider) return;
+  try {
+    await provider.shutdown();
+  } finally {
+    provider = null;
+  }
 }

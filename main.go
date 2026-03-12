@@ -17,6 +17,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"go.uber.org/zap"
+
 	"github.com/omniviewdev/omniview/backend/diagnostics"
 	"github.com/omniviewdev/omniview/backend/menus"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
@@ -86,9 +88,13 @@ func main() {
 		version.IsDevelopment(),
 	)
 	if err := telemetrySvc.Init(context.Background()); err != nil {
-		panic(fmt.Sprintf("telemetry init failed: %v", err))
+		fmt.Fprintf(os.Stderr, "telemetry init failed, continuing without telemetry: %v\n", err)
 	}
-	log := telemetrySvc.ZapLogger().Sugar()
+	zapLogger := telemetrySvc.ZapLogger()
+	if zapLogger == nil {
+		zapLogger, _ = zap.NewProduction()
+	}
+	log := zapLogger.Sugar()
 
 	diagnosticsClient := diagnostics.NewDiagnosticsClient(version.IsDevelopment())
 

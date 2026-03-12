@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -171,7 +172,11 @@ func (s *Service) ZapLogger() *zap.Logger { return s.zapLogger }
 //   - consoleCore: human-readable stderr output (dev mode only)
 //   - otelCore: OTel log bridge (when loggerProvider is non-nil)
 func buildZapLogger(isDev bool, loggerProvider *sdklog.LoggerProvider) (*zap.Logger, error) {
-	logDir := filepath.Join(os.Getenv("HOME"), ".omniview", "logs")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	logDir := filepath.Join(home, ".omniview", "logs")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return nil, err
 	}

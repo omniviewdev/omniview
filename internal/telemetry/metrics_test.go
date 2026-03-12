@@ -21,6 +21,7 @@ func TestNewMetrics(t *testing.T) {
 	assert.NotNil(t, m.PluginQuarantines)
 	assert.NotNil(t, m.ResourceOpDuration)
 	assert.NotNil(t, m.ResourceOpErrors)
+	assert.NotNil(t, m.ResourceWatchActive)
 	assert.NotNil(t, m.WailsCallDuration)
 	assert.NotNil(t, m.WailsCalls)
 }

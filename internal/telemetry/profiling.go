@@ -2,16 +2,20 @@ package telemetry
 
 import (
 	"context"
-	"fmt"
+	"strings"
 
 	"github.com/grafana/pyroscope-go"
 )
 
 // profilingConfig builds a Pyroscope configuration for the given version and endpoint.
 func profilingConfig(version, endpoint string) pyroscope.Config {
+	addr := endpoint
+	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
+		addr = "http://" + addr
+	}
 	return pyroscope.Config{
 		ApplicationName: "omniview",
-		ServerAddress:   fmt.Sprintf("http://%s", endpoint),
+		ServerAddress:   addr,
 		Tags:            map[string]string{"version": version},
 		ProfileTypes: []pyroscope.ProfileType{
 			pyroscope.ProfileCPU,

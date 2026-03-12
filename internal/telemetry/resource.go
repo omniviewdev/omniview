@@ -21,7 +21,7 @@ func NewResource(version, gitCommit, buildDate string, isDev bool) (*resource.Re
 			attribute.String("omniview.build_date", buildDate),
 			attribute.Bool("omniview.development", isDev),
 			attribute.String("os.type", runtime.GOOS),
-			attribute.String("os.arch", runtime.GOARCH),
+			attribute.String("host.arch", runtime.GOARCH),
 			attribute.String("service.instance.id", uuid.New().String()),
 		),
 	)

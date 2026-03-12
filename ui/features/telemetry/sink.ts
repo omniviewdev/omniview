@@ -1,5 +1,7 @@
 import type { LogSink } from './logger';
 
+const noopSink: LogSink = { write: () => {} };
+
 let defaultSink: LogSink | null = null;
 
 export function setDefaultSink(sink: LogSink): void {
@@ -7,8 +9,5 @@ export function setDefaultSink(sink: LogSink): void {
 }
 
 export function getDefaultSink(): LogSink {
-  if (!defaultSink) {
-    throw new Error('Telemetry not initialized. Call initTelemetry() first.');
-  }
-  return defaultSink;
+  return defaultSink ?? noopSink;
 }
