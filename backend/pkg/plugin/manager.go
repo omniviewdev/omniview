@@ -384,6 +384,14 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	}
 	var devPlugins []devEntry
 
+	// First pass: collect dev plugin entries and stub records (lightweight, sequential).
+	// Also build a list of plugins that need LoadPlugin called.
+	type loadEntry struct {
+		pluginID string
+		opts     *LoadPluginOptions
+	}
+	var toLoad []loadEntry
+
 	for _, file := range files {
 		if !file.IsDir() {
 			continue
@@ -425,10 +433,26 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 			}
 		}
 
-		if _, err = pm.LoadPlugin(file.Name(), opts); err != nil {
-			pm.logger.Errorw("error loading plugin", "pluginID", file.Name(), "error", err)
-		}
+		toLoad = append(toLoad, loadEntry{pluginID: file.Name(), opts: opts})
 	}
+
+	// Second pass: load plugins concurrently with a bounded worker pool.
+	const maxConcurrentLoads = 4
+	sem := make(chan struct{}, maxConcurrentLoads)
+	var loadWg sync.WaitGroup
+
+	for _, entry := range toLoad {
+		loadWg.Add(1)
+		sem <- struct{}{} // acquire semaphore slot
+		go func(pluginID string, opts *LoadPluginOptions) {
+			defer loadWg.Done()
+			defer func() { <-sem }() // release semaphore slot
+			if _, loadErr := pm.LoadPlugin(pluginID, opts); loadErr != nil {
+				pm.logger.Errorw("error loading plugin", "pluginID", pluginID, "error", loadErr)
+			}
+		}(entry.pluginID, entry.opts)
+	}
+	loadWg.Wait()
 
 	// Phase 2: Start dev servers in the background.
 	if len(devPlugins) > 0 && pm.devServerMgr != nil {
