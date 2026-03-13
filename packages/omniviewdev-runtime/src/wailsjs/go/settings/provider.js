@@ -66,6 +66,10 @@ export function LoadSettings() {
   return window['go']['settings']['provider']['LoadSettings']();
 }
 
+export function RegisterChangeHandler(arg1, arg2) {
+  return window['go']['settings']['provider']['RegisterChangeHandler'](arg1, arg2);
+}
+
 export function RegisterSetting(arg1, arg2) {
   return window['go']['settings']['provider']['RegisterSetting'](arg1, arg2);
 }

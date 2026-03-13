@@ -4,9 +4,11 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/logger"
@@ -94,12 +96,16 @@ func main() {
 	if zapLogger == nil {
 		zapLogger, _ = zap.NewProduction()
 	}
-	log := zapLogger.Sugar()
+	log := logging.New(logging.Config{
+		Name:    "omniview",
+		Backend: telemetry.NewZapBackend(zapLogger),
+		Level:   logging.NewLevelController(logging.LevelDebug),
+	})
 
 	diagnosticsClient := diagnostics.NewDiagnosticsClient(version.IsDevelopment())
 
 	settingsProvider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{
-		Logger: log,
+		Logger: zapLogger.Sugar(),
 	})
 
 	// Create our plugin system managers
@@ -143,7 +149,7 @@ func main() {
 		pluginlog.DefaultRotation(),
 	)
 	if pluginLogErr != nil {
-		log.Warnw("failed to initialize plugin log manager", "error", pluginLogErr)
+		log.Warnw(context.Background(), "failed to initialize plugin log manager", "error", pluginLogErr)
 	}
 
 	pluginRegistryClient := registry.NewClient("")
@@ -158,6 +164,15 @@ func main() {
 		managers,
 		settingsProvider,
 		pluginRegistryClient,
+		func() plugin.TelemetryEnvConfig {
+			cfg := telemetrySvc.Config()
+			return plugin.TelemetryEnvConfig{
+				Enabled:           cfg.Enabled,
+				OTLPEndpoint:      cfg.OTLPEndpoint,
+				Profiling:         cfg.Profiling,
+				PyroscopeEndpoint: cfg.PyroscopeEndpoint,
+			}
+		},
 	)
 
 	// Wire crash recovery: when a plugin crash is detected by the resource
@@ -196,13 +211,74 @@ func main() {
 			coresettings.Developer,
 			coresettings.Telemetry,
 		); err != nil {
-			log.Errorw("error while initializing settings system", "error", err)
+			log.Errorw(ctx, "error while initializing settings system", "error", err)
+		}
+
+		// Wire telemetry settings hot-toggle: when any setting in the
+		// "telemetry" category changes, rebuild TelemetryConfig and apply.
+		telemetryFromSettings := func(vals map[string]any) telemetry.TelemetryConfig {
+			cfg := telemetrySvc.Config()
+			if v, ok := vals["enabled"].(bool); ok {
+				cfg.Enabled = v
+			}
+			if v, ok := vals["traces"].(bool); ok {
+				cfg.Traces = v
+			}
+			if v, ok := vals["metrics"].(bool); ok {
+				cfg.Metrics = v
+			}
+			if v, ok := vals["logs_ship"].(bool); ok {
+				cfg.LogsShip = v
+			}
+			if v, ok := vals["logs_ship_level"].(string); ok {
+				cfg.LogsShipLevel = v
+			}
+			if v, ok := vals["profiling"].(bool); ok {
+				cfg.Profiling = v
+			}
+			if v, ok := vals["endpoint_otlp"].(string); ok {
+				cfg.OTLPEndpoint = v
+			}
+			if v, ok := vals["endpoint_pyroscope"].(string); ok {
+				cfg.PyroscopeEndpoint = v
+			}
+			if v, ok := vals["auth_header"].(string); ok {
+				cfg.AuthHeader = v
+			}
+			if v, ok := vals["auth_value"].(string); ok {
+				cfg.AuthValue = v
+			}
+			return cfg
+		}
+
+		settingsProvider.RegisterChangeHandler("telemetry", func(vals map[string]any) {
+			cfg := telemetryFromSettings(vals)
+			if err := telemetrySvc.ApplyConfig(ctx, cfg); err != nil {
+				log.Errorw(ctx, "failed to apply telemetry config change", "error", err)
+			} else {
+				log.Infow(ctx, "telemetry config updated from settings")
+			}
+		})
+
+		// Apply the persisted telemetry settings immediately so telemetry
+		// activates on startup (the change handler only fires on changes).
+		if vals, err := settingsProvider.GetCategoryValues("telemetry"); err == nil {
+			cfg := telemetryFromSettings(vals)
+			if err := telemetrySvc.ApplyConfig(ctx, cfg); err != nil {
+				log.Errorw(ctx, "failed to apply initial telemetry config", "error", err)
+			} else {
+				log.Infow(ctx, "telemetry initialized from persisted settings", "enabled", cfg.Enabled)
+			}
 		}
 
 		// Apply user-configured marketplace URL to the registry client.
 		if marketplaceURL, err := settingsProvider.GetString("developer.marketplace_url"); err == nil && marketplaceURL != "" {
 			pluginRegistryClient.SetBaseURL(marketplaceURL)
-			log.Infow("using custom marketplace URL", "url", marketplaceURL)
+			safeHost := marketplaceURL
+			if u, parseErr := url.Parse(marketplaceURL); parseErr == nil {
+				safeHost = u.Host
+			}
+			log.Infow(ctx, "using custom marketplace URL", "host", safeHost)
 		}
 
 		resourceController.Run(ctx)
@@ -217,7 +293,7 @@ func main() {
 
 		// Initialize the plugin system
 		if err := pluginManager.Initialize(ctx); err != nil {
-			log.Errorw("error while initializing plugin system", "error", err)
+			log.Errorw(ctx, "error while initializing plugin system", "error", err)
 		}
 		pluginManager.Run(ctx)
 		runtime.MenuSetApplicationMenu(ctx, menus.GetMenus(ctx))
@@ -314,6 +390,6 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalw(context.Background(), "wails app exited with error", "error", err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -27,6 +28,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sp "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // LoadPluginOptions configures how a plugin is loaded.
@@ -46,13 +48,13 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (sdktype
 }
 
 func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error) {
-	log := pm.logger.Named("LoadPlugin").With("id", id, "opts", opts)
+	log := pm.logger.Named("LoadPlugin").With(logging.Any("id", id), logging.Any("opts", opts))
 
 	// Idempotent: if already loaded and running, return existing.
 	pm.recordsMu.RLock()
 	if existing, ok := pm.records[id]; ok {
 		if existing.Phase == lifecycle.PhaseRunning {
-			log.Debugw("plugin already loaded and running, skipping", "pluginID", id)
+			log.Debugw(pm.ctx, "plugin already loaded and running, skipping", "pluginID", id)
 			info := existing.ToInfo()
 			pm.recordsMu.RUnlock()
 			return info, nil
@@ -71,7 +73,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	pm.recordsMu.Unlock()
 
 	location := getPluginLocation(id)
-	log.Debugw("loading plugin from location", "location", location, "pluginID", id)
+	log.Debugw(pm.ctx, "loading plugin from location", "location", location, "pluginID", id)
 
 	if _, err := os.Stat(location); os.IsNotExist(err) {
 		return sdktypes.PluginInfo{}, apperror.PluginNotFound(id)
@@ -122,7 +124,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 		record.DevPath = opts.DevModePath
 	}
 
-	pm.logger.Debugw("found metadata",
+	pm.logger.Debugw(pm.ctx, "found metadata",
 		"metadata", metadata,
 		"hasBackendCapabilities", metadata.HasBackendCapabilities(),
 		"hasUiCapabilities", metadata.HasUICapabilities(),
@@ -207,6 +209,21 @@ func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, lo
 		logOutput = io.MultiWriter(os.Stdout, pm.pluginLogMgr.Stream(id))
 	}
 
+	//nolint:gosec // this is completely software controlled
+	cmd := exec.Command(filepath.Join(location, "bin", "plugin"))
+
+	// Inject telemetry env vars if config function is available.
+	if pm.telemetryConfigFn != nil {
+		cfg := pm.telemetryConfigFn()
+		cmd.Env = append(os.Environ(),
+			"OMNIVIEW_TELEMETRY_ENABLED="+strconv.FormatBool(cfg.Enabled),
+			"OMNIVIEW_TELEMETRY_OTLP_ENDPOINT="+cfg.OTLPEndpoint,
+			"OMNIVIEW_TELEMETRY_PROFILING="+strconv.FormatBool(cfg.Profiling),
+			"OMNIVIEW_TELEMETRY_PYROSCOPE_ENDPOINT="+cfg.PyroscopeEndpoint,
+			"OMNIVIEW_PLUGIN_ID="+id,
+		)
+	}
+
 	pluginClient := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig: metadata.GenerateHandshakeConfig(),
 		VersionedPlugins: map[int]goplugin.PluginSet{
@@ -220,9 +237,8 @@ func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, lo
 				"lifecycle": &lc.Plugin{},
 			},
 		},
-		GRPCDialOptions: sdk.GRPCDialOptions(),
-		//nolint:gosec // this is completely software controlled
-		Cmd:              exec.Command(filepath.Join(location, "bin", "plugin")),
+		GRPCDialOptions:  sdk.GRPCDialOptions(),
+		Cmd:              cmd,
 		StartTimeout:     15 * time.Second, // Don't block startup for broken plugins (default is 60s)
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{
@@ -316,7 +332,7 @@ func (pm *pluginManager) initPlugin(record *plugintypes.PluginRecord) error {
 
 	for name, manager := range pm.managers {
 		if err := manager.OnPluginInit(ctx, pluginID, record.Metadata); err != nil {
-			pm.logger.Errorw("error invoking init for plugin manager",
+			pm.logger.Errorw(ctx, "error invoking init for plugin manager",
 				"manager", name, "pluginID", record.Metadata.ID, "error", err)
 		}
 	}
@@ -354,7 +370,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 	version := backend.NegotiatedVersion()
 	record.ProtocolVersion = version
 	if version < plugintypes.CurrentProtocolVersion {
-		pm.logger.Warnw("plugin uses deprecated SDK protocol version",
+		pm.logger.Warnw(ctx, "plugin uses deprecated SDK protocol version",
 			"pluginID", pluginID, "version", version,
 			"current", plugintypes.CurrentProtocolVersion)
 		emitEvent(pm.ctx, EventDeprecatedProtocol, DeprecatedProtocolPayload{
@@ -366,7 +382,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 
 	for name, manager := range pm.managers {
 		if err := manager.OnPluginStart(ctx, pluginID, record.Metadata); err != nil {
-			pm.logger.Errorw("error invoking start for plugin manager",
+			pm.logger.Errorw(ctx, "error invoking start for plugin manager",
 				"manager", name, "pluginID", record.Metadata.ID, "error", err)
 		}
 	}
@@ -382,7 +398,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 	if detector, ok := backend.(plugintypes.CapabilityDetector); ok {
 		capStrings, err := detector.DetectCapabilities()
 		if err != nil {
-			pm.logger.Debugw("capability detection failed", "pluginID", pluginID, "error", err)
+			pm.logger.Debugw(ctx, "capability detection failed", "pluginID", pluginID, "error", err)
 		} else {
 			detectedCaps = capStringsToCapabilities(capStrings)
 		}
@@ -406,13 +422,13 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 			continue
 		}
 		if err := ctrl.OnPluginStart(pluginID, record.Metadata, backend); err != nil {
-			pm.logger.Warnw("failed to start capability controller",
+			pm.logger.Warnw(ctx, "failed to start capability controller",
 				"pluginID", pluginID, "capability", cap.String(), "error", err)
 			continue
 		}
 	}
 
-	pm.logger.Infow("detected plugin capabilities",
+	pm.logger.Infow(ctx, "detected plugin capabilities",
 		"pluginID", record.Metadata.ID,
 		"capabilities", record.Capabilities,
 	)
@@ -445,7 +461,7 @@ func (pm *pluginManager) stopPlugin(record *plugintypes.PluginRecord) error {
 
 	for name, manager := range pm.managers {
 		if err := manager.OnPluginStop(ctx, pluginID, record.Metadata); err != nil {
-			pm.logger.Errorw("error invoking stop for plugin manager",
+			pm.logger.Errorw(ctx, "error invoking stop for plugin manager",
 				"manager", name, "pluginID", record.Metadata.ID, "error", err)
 		}
 	}
@@ -488,7 +504,7 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 
 	for name, manager := range pm.managers {
 		if err := manager.OnPluginShutdown(ctx, pluginID, record.Metadata); err != nil {
-			pm.logger.Errorw("error invoking shutdown for plugin manager",
+			pm.logger.Errorw(ctx, "error invoking shutdown for plugin manager",
 				"manager", name, "pluginID", record.Metadata.ID, "error", err)
 		}
 	}
@@ -496,7 +512,7 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 	if record.Metadata.HasBackendCapabilities() {
 		if record.Backend != nil {
 			if err := record.Backend.Stop(); err != nil {
-				pm.logger.Warnw("error closing plugin backend", "pluginID", pluginID, "error", err)
+				pm.logger.Warnw(ctx, "error closing plugin backend", "pluginID", pluginID, "error", err)
 			}
 			record.Backend.Kill()
 		}

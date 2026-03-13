@@ -17,8 +17,7 @@ import (
 	"github.com/creack/pty"  // Import the pty package for creating pseudo-terminal devices.
 	"github.com/google/uuid" // UUID package for generating unique identifiers.
 
-	// Wails runtime for backend-frontend communication.
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
@@ -34,7 +33,7 @@ const (
 
 // Manager manages terminal sessions, allowing creation, attachment, and more.
 type Manager struct {
-	log      *zap.SugaredLogger
+	log      logging.Logger
 	sessions map[string]*sdkexec.Session
 	ptys     map[string]*os.File
 	cancels  map[string]context.CancelFunc
@@ -50,7 +49,7 @@ type Manager struct {
 // latency sensitive with the local manager, we're going to directly return
 // the channels for in and out that the exec controller will use.
 func NewManager(
-	log *zap.SugaredLogger,
+	log logging.Logger,
 ) (*Manager, chan sdkexec.StreamInput, chan sdkexec.StreamOutput, chan sdkexec.StreamResize) {
 	inMux := make(chan sdkexec.StreamInput)
 	outMux := make(chan sdkexec.StreamOutput)
@@ -89,7 +88,7 @@ func (m *Manager) ListSessions(_ *types.PluginContext) []*sdkexec.Session {
 		sessions = append(sessions, session)
 	}
 
-	m.log.Debugw("listed sessions", "sessions", sessions)
+	m.log.Debugw(context.Background(), "listed sessions", "sessions", sessions)
 	return sessions
 }
 
@@ -98,8 +97,8 @@ func (m *Manager) StartSession(
 	pCtx *types.PluginContext,
 	opts sdkexec.SessionOptions,
 ) (*sdkexec.Session, error) {
-	logger := m.log.With("action", "StartSession")
-	logger.Debugw("starting session", "options", opts, "context", pCtx)
+	logger := m.log.With(logging.Any("action", "StartSession"))
+	logger.Debugw(context.Background(), "starting session", "options", opts, "context", pCtx)
 
 	// Set up the command to run in a new pseudo-terminal.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -149,7 +148,7 @@ func (m *Manager) StartSession(
 	ptyFile, err := pty.Start(cmd)
 	if err != nil {
 		err = apperror.Wrap(err, apperror.TypeSessionFailed, 500, "Failed to start terminal")
-		logger.Error(err)
+		logger.Errorw(ctx, "failed to start terminal", "error", err)
 		cancel()
 		return nil, err
 	}
@@ -175,14 +174,14 @@ func (m *Manager) StartSession(
 	}
 
 	m.mux.Lock()
-	logger.Debug("past lock")
+	logger.Debugw(ctx, "past lock")
 	m.sessions[opts.ID] = session
 	m.ptys[opts.ID] = ptyFile
 	m.cancels[opts.ID] = cancel
 	m.buffers[opts.ID] = sdkexec.NewDefaultOutputBuffer()
 	m.mux.Unlock()
 
-	logger.Debugw("session started",
+	logger.Debugw(ctx, "session started",
 		"session", session,
 		"command", session.Command,
 	)
@@ -201,11 +200,11 @@ func (m *Manager) ResizeSession(sessionID string, rows, cols uint16) error {
 	ptyFile, exists := m.ptys[sessionID]
 	if !exists {
 		err := apperror.SessionNotFound(sessionID)
-		m.log.Error(err)
+		m.log.Errorw(context.Background(), "session not found", "error", err)
 		return err
 	}
 	if err := pty.Setsize(ptyFile, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
-		m.log.Errorw("error resizing pty", "session", sessionID, "error", err)
+		m.log.Errorw(context.Background(), "error resizing pty", "session", sessionID, "error", err)
 		return err
 	}
 	return nil
@@ -213,7 +212,7 @@ func (m *Manager) ResizeSession(sessionID string, rows, cols uint16) error {
 
 func (m *Manager) handleWaitForCompletion(_ context.Context, sessionID string, cmd *exec.Cmd) {
 	if err := cmd.Wait(); err != nil {
-		m.log.Errorw("error waiting for command", "session", sessionID, "error", err)
+		m.log.Errorw(context.Background(), "error waiting for command", "session", sessionID, "error", err)
 	}
 	m.terminateSession(sessionID)
 }
@@ -231,17 +230,17 @@ func (m *Manager) handleSignals(ctx context.Context, sessionID string, cmd *exec
 		case sig := <-ch:
 			switch sig {
 			case syscall.SIGTERM:
-				m.log.Debug("SIGTERM received")
+				m.log.Debugw(ctx, "SIGTERM received")
 				cmd.Process.Signal(syscall.SIGTERM)
 			case syscall.SIGINT:
-				m.log.Debug("SIGINT received")
+				m.log.Debugw(ctx, "SIGINT received")
 				cmd.Process.Signal(syscall.SIGINT)
 			case syscall.SIGQUIT:
-				m.log.Debug("SIGQUIT received")
+				m.log.Debugw(ctx, "SIGQUIT received")
 				cmd.Process.Signal(syscall.SIGQUIT)
 			}
 		case <-ctx.Done():
-			m.log.Debugw(
+			m.log.Debugw(ctx,
 				"context cancelled, stopping signal handling",
 				"session", sessionID,
 			)
@@ -269,7 +268,7 @@ func (m *Manager) handleOutStream(
 		read, err := stream.Read(buf)
 		if err != nil {
 			if err != io.EOF {
-				m.log.Errorw(
+				m.log.Errorw(context.Background(),
 					"error reading from stream",
 					"session", sessionID,
 					"error", err,
@@ -298,7 +297,7 @@ func (m *Manager) handleOutStream(
 			m.mux.RUnlock()
 			if !ok {
 				// soft error
-				m.log.Errorw("failed to write to session buffer: couldn't find session")
+				m.log.Errorw(context.Background(), "failed to write to session buffer: couldn't find session")
 				continue
 			}
 
@@ -315,12 +314,12 @@ func (m *Manager) writeToSession(sessionID string, bytes []byte) error {
 	ptyFile, exists := m.ptys[sessionID]
 	if !exists {
 		err := apperror.SessionNotFound(sessionID)
-		m.log.Error(err)
+		m.log.Errorw(context.Background(), "session not found", "error", err)
 		return err
 	}
 
 	if _, err := ptyFile.Write(bytes); err != nil {
-		m.log.Errorw("error writing to session", "session", sessionID, "error", err)
+		m.log.Errorw(context.Background(), "error writing to session", "session", sessionID, "error", err)
 		return err
 	}
 
@@ -348,7 +347,7 @@ func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, err
 	session, exists := m.sessions[sessionID]
 	if !exists {
 		err := apperror.SessionNotFound(sessionID)
-		m.log.Error(err)
+		m.log.Errorw(context.Background(), "session not found", "error", err)
 		return nil, nil, err
 	}
 
@@ -357,7 +356,7 @@ func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, err
 	if buffer != nil {
 		data = buffer.GetAll()
 	}
-	m.log.Debugf("session buffer data: %q", data)
+	m.log.Debugw(context.Background(), fmt.Sprintf("session buffer data: %q", data))
 
 	// pointer, no need to reassign
 	session.Attached = true
@@ -367,7 +366,7 @@ func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, err
 		Data:      data,
 	}
 
-	m.log.Debugw("session attached", "session", sessionID)
+	m.log.Debugw(context.Background(), "session attached", "session", sessionID)
 	return session, data, nil
 }
 
@@ -379,13 +378,13 @@ func (m *Manager) DetachSession(sessionID string) (*sdkexec.Session, error) {
 	session, exists := m.sessions[sessionID]
 	if !exists {
 		err := apperror.SessionNotFound(sessionID)
-		m.log.Error(err)
+		m.log.Errorw(context.Background(), "session not found", "error", err)
 		return nil, err
 	}
 
 	session.Attached = false
 
-	m.log.Debugw("session detached", "session", sessionID)
+	m.log.Debugw(context.Background(), "session detached", "session", sessionID)
 	return session, nil
 }
 
@@ -398,7 +397,7 @@ func (m *Manager) CloseSession(sessionID string) error {
 	_, exists := m.sessions[sessionID]
 	if !exists {
 		err := apperror.SessionNotFound(sessionID)
-		m.log.Error(err)
+		m.log.Errorw(context.Background(), "session not found", "error", err)
 		return err
 	}
 
@@ -425,5 +424,5 @@ func (m *Manager) terminateSessionLocked(sessionID string) {
 	delete(m.ptys, sessionID)
 	delete(m.cancels, sessionID)
 	delete(m.buffers, sessionID)
-	m.log.Debugw("session terminated", "session", sessionID)
+	m.log.Debugw(context.Background(), "session terminated", "session", sessionID)
 }

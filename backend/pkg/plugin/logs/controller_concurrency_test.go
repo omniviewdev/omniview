@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
@@ -42,7 +42,7 @@ func (s *stubLogsProvider) UpdateSessionOptions(_ *sdktypes.PluginContext, _ str
 func TestController_ConcurrentMapAccess(t *testing.T) {
 	ctrl := &controller{
 		ctx:          context.Background(),
-		logger:       zap.NewNop().Sugar(),
+		logger:       logging.NewNop(),
 		clients:      make(map[string]LogsProvider),
 		sessionIndex: make(map[string]sessionIndex),
 		inChans:      make(map[string]chan logs.StreamInput),
@@ -107,7 +107,7 @@ func TestController_ConcurrentMapAccess(t *testing.T) {
 func TestController_ConcurrentSessionIndex(t *testing.T) {
 	ctrl := &controller{
 		ctx:          context.Background(),
-		logger:       zap.NewNop().Sugar(),
+		logger:       logging.NewNop(),
 		clients:      make(map[string]LogsProvider),
 		sessionIndex: make(map[string]sessionIndex),
 		inChans:      make(map[string]chan logs.StreamInput),

@@ -13,7 +13,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
@@ -129,7 +129,7 @@ func newTestExternalWatcher(t *testing.T) (*ExternalWatcher, *connectRecorder, *
 
 	ew := &ExternalWatcher{
 		ctx:          context.Background(),
-		logger:       zap.NewNop().Sugar(),
+		logger:       logging.NewNop(),
 		connections:  make(map[string]*ExternalConnection),
 		pluginDir:    t.TempDir(),
 		onConnect:    cr.record,
@@ -389,7 +389,7 @@ func TestExternalWatcher_IsExternallyManaged(t *testing.T) {
 }
 
 func TestNewExternalWatcher(t *testing.T) {
-	logger := zap.NewNop().Sugar()
+	logger := logging.NewNop()
 	onConnect := func(string, *DevInfoFile) {}
 	onDisconnect := func(string) {}
 

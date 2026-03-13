@@ -1,14 +1,18 @@
 package settings
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
 
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -18,6 +22,8 @@ import (
 const (
 	PluginName = "settings"
 )
+
+var tracer = otel.Tracer("omniview.settings")
 
 // Controller handles all requests to interface with the settings capabilities on installed plugins.
 //
@@ -31,14 +37,14 @@ type Controller interface {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	logger           *zap.SugaredLogger
+	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
 	mu               sync.RWMutex
 	clients          map[string]SettingsProvider
 }
 
 // NewController returns a new Controller instance.
-func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controller {
+func NewController(logger logging.Logger, sp pkgsettings.Provider) Controller {
 	return &controller{
 		logger:           logger.Named("SettingsController"),
 		settingsProvider: sp,
@@ -47,8 +53,8 @@ func NewController(logger *zap.SugaredLogger, sp pkgsettings.Provider) Controlle
 }
 
 func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginInit")
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(context.Background(), "OnPluginInit")
 
 	c.mu.Lock()
 	if c.clients == nil {
@@ -91,12 +97,12 @@ func (c *controller) OnPluginStart(
 	meta config.PluginMeta,
 	backend internaltypes.PluginBackend,
 ) error {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginStart")
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(context.Background(), "OnPluginStart")
 
 	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
-		logger.Error(err)
+		logger.Errorw(context.Background(), "error", "error", err)
 		return err
 	}
 
@@ -107,8 +113,8 @@ func (c *controller) OnPluginStart(
 }
 
 func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginStop")
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(context.Background(), "OnPluginStop")
 
 	c.mu.Lock()
 	delete(c.clients, pluginID)
@@ -118,22 +124,22 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 }
 
 func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginShutdown")
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(context.Background(), "OnPluginShutdown")
 
 	return c.OnPluginStop(pluginID, meta)
 }
 
 func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
-	logger := c.logger.With("pluginID", pluginID)
-	logger.Debug("OnPluginDestroy")
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
+	logger.Debugw(context.Background(), "OnPluginDestroy")
 
 	// nothing to do here
 	return nil
 }
 
 func (c *controller) ListPlugins() ([]string, error) {
-	c.logger.Debug("ListPlugins")
+	c.logger.Debugw(context.Background(), "ListPlugins")
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -146,7 +152,7 @@ func (c *controller) ListPlugins() ([]string, error) {
 }
 
 func (c *controller) HasPlugin(pluginID string) bool {
-	c.logger.Debug("HasPlugin")
+	c.logger.Debugw(context.Background(), "HasPlugin")
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -158,8 +164,10 @@ func (c *controller) HasPlugin(pluginID string) bool {
 
 // Values returns all of the values for all of the plugins
 func (c *controller) Values() map[string]any {
-	logger := c.logger.With("method", "Values")
-	logger.Debug("Listing all settings values")
+	ctx, span := tracer.Start(context.Background(), "settings.Values")
+	defer span.End()
+	logger := c.logger.With(logging.Any("method", "Values"))
+	logger.Debugw(ctx, "Listing all settings values")
 
 	c.mu.RLock()
 	snapshot := make(map[string]SettingsProvider, len(c.clients))
@@ -181,8 +189,11 @@ func (c *controller) Values() map[string]any {
 }
 
 func (c *controller) PluginValues(plugin string) map[string]any {
-	logger := c.logger.With("plugin", plugin, "method", "PluginValues")
-	logger.Debug("Listing settings values for plugin")
+	ctx, span := tracer.Start(context.Background(), "settings.PluginValues")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin", plugin))
+	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "PluginValues"))
+	logger.Debugw(ctx, "Listing settings values for plugin")
 
 	if plugin == "" {
 		return nil
@@ -191,7 +202,9 @@ func (c *controller) PluginValues(plugin string) map[string]any {
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
-		logger.Error(errors.New("plugin not found"))
+		err := errors.New("plugin not found")
+		telemetryutil.RecordError(span, err)
+		logger.Errorw(ctx, "plugin not found", "error", err)
 		return nil
 	}
 
@@ -207,13 +220,17 @@ func (c *controller) PluginValues(plugin string) map[string]any {
 
 // ListSettings returns the settings store.
 func (c *controller) ListSettings(plugin string) map[string]pkgsettings.Setting {
-	logger := c.logger.With("plugin", plugin, "method", "ListSettings")
+	ctx, span := tracer.Start(context.Background(), "settings.ListSettings")
+	defer span.End()
+	span.SetAttributes(attribute.String("plugin", plugin))
+	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "ListSettings"))
 
 	c.mu.RLock()
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
-		logger.Error(errors.New("plugin not found"))
+		telemetryutil.RecordError(span, errors.New("plugin not found"))
+		logger.Errorw(ctx, "plugin not found for ListSettings")
 		return nil
 	}
 
@@ -222,48 +239,76 @@ func (c *controller) ListSettings(plugin string) map[string]pkgsettings.Setting 
 
 // GetSetting returns the setting by ID. This ID should be in the form of a dot separated string
 // that represents the path to the setting. For example, "appearance.theme".
-func (c *controller) GetSetting(plugin, id string) (pkgsettings.Setting, error) {
-	logger := c.logger.With("plugin", plugin, "method", "GetSetting", "id", id)
+func (c *controller) GetSetting(plugin, id string) (result pkgsettings.Setting, retErr error) {
+	ctx, span := tracer.Start(context.Background(), "settings.GetSetting")
+	defer span.End()
+	defer func() {
+		if retErr != nil {
+			telemetryutil.RecordError(span, retErr)
+		}
+	}()
+	span.SetAttributes(attribute.String("plugin", plugin), attribute.String("setting_id", id))
+	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "GetSetting"), logging.Any("id", id))
 
 	c.mu.RLock()
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
-		err := apperror.PluginNotFound(plugin)
-		logger.Error(err)
-		return pkgsettings.Setting{}, err
+		retErr = apperror.PluginNotFound(plugin)
+		logger.Errorw(ctx, "plugin not found for GetSetting", "error", retErr)
+		return pkgsettings.Setting{}, retErr
 	}
 
 	return client.GetSetting(id)
 }
 
 // SetSetting sets the value of the setting by ID.
-func (c *controller) SetSetting(plugin, id string, value any) error {
-	logger := c.logger.With("plugin", plugin, "method", "SetSetting", "id", id)
+func (c *controller) SetSetting(plugin, id string, value any) (retErr error) {
+	ctx, span := tracer.Start(context.Background(), "settings.SetSetting")
+	defer span.End()
+	defer func() {
+		if retErr != nil {
+			telemetryutil.RecordError(span, retErr)
+		}
+	}()
+	span.SetAttributes(attribute.String("plugin", plugin), attribute.String("setting_id", id))
+	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "SetSetting"), logging.Any("id", id))
 
 	c.mu.RLock()
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
-		err := apperror.PluginNotFound(plugin)
-		logger.Error(err)
-		return err
+		retErr = apperror.PluginNotFound(plugin)
+		logger.Errorw(ctx, "plugin not found for SetSetting", "error", retErr)
+		return retErr
 	}
 
 	return client.SetSetting(id, value)
 }
 
 // SetSettings sets multiple settings at once.
-func (c *controller) SetSettings(plugin string, settings map[string]any) error {
-	logger := c.logger.With("plugin", plugin, "method", "SetSettings", "entries", settings)
+func (c *controller) SetSettings(plugin string, settings map[string]any) (retErr error) {
+	ctx, span := tracer.Start(context.Background(), "settings.SetSettings")
+	defer span.End()
+	defer func() {
+		if retErr != nil {
+			telemetryutil.RecordError(span, retErr)
+		}
+	}()
+	span.SetAttributes(attribute.String("plugin", plugin))
+	settingKeys := make([]string, 0, len(settings))
+	for k := range settings {
+		settingKeys = append(settingKeys, k)
+	}
+	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "SetSettings"), logging.Any("keys", settingKeys))
 
 	c.mu.RLock()
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
-		err := apperror.PluginNotFound(plugin)
-		logger.Error(err)
-		return err
+		retErr = apperror.PluginNotFound(plugin)
+		logger.Errorw(ctx, "plugin not found for SetSettings", "error", retErr)
+		return retErr
 	}
 
 	return client.SetSettings(settings)

@@ -8,7 +8,7 @@ import (
 
 func TestDefaultDevConfig(t *testing.T) {
 	cfg := DefaultConfig(true)
-	assert.True(t, cfg.Enabled)
+	assert.False(t, cfg.Enabled)
 	assert.True(t, cfg.Traces)
 	assert.True(t, cfg.Metrics)
 	assert.True(t, cfg.LogsShip)

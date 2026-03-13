@@ -19,7 +19,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 const (
@@ -31,7 +31,7 @@ const (
 type goWatcherProcess struct {
 	ctx    context.Context
 	cancel context.CancelFunc
-	logger *zap.SugaredLogger
+	logger logging.Logger
 
 	pluginID  string
 	devPath   string
@@ -50,7 +50,7 @@ type goWatcherProcess struct {
 // newGoWatcherProcess creates a Go watcher. Call Start() to begin watching.
 func newGoWatcherProcess(
 	parentCtx context.Context,
-	logger *zap.SugaredLogger,
+	logger logging.Logger,
 	pluginID string,
 	devPath string,
 	buildOpts BuildOpts,
@@ -105,7 +105,7 @@ func (gw *goWatcherProcess) Start() error {
 				return filepath.SkipDir
 			}
 			if addErr := watcher.Add(path); addErr != nil {
-				gw.logger.Warnw("failed to watch directory", "path", path, "error", addErr)
+				gw.logger.Warnw(context.Background(), "failed to watch directory", "path", path, "error", addErr)
 			} else {
 				watchCount++
 			}
@@ -119,7 +119,7 @@ func (gw *goWatcherProcess) Start() error {
 
 	// Watch the plugin root directory for go.mod/go.sum changes.
 	if addErr := watcher.Add(gw.devPath); addErr != nil {
-		gw.logger.Warnw("failed to watch plugin root", "path", gw.devPath, "error", addErr)
+		gw.logger.Warnw(context.Background(), "failed to watch plugin root", "path", gw.devPath, "error", addErr)
 	} else {
 		watchCount++
 	}
@@ -144,7 +144,7 @@ func (gw *goWatcherProcess) Start() error {
 							return filepath.SkipDir
 						}
 						if addErr := watcher.Add(path); addErr != nil {
-							gw.logger.Warnw("failed to watch directory", "path", path, "error", addErr)
+							gw.logger.Warnw(context.Background(), "failed to watch directory", "path", path, "error", addErr)
 						} else {
 							watchCount++
 						}
@@ -155,7 +155,7 @@ func (gw *goWatcherProcess) Start() error {
 		}
 	}
 
-	gw.logger.Infow("go file watcher started", "directories", watchCount)
+	gw.logger.Infow(context.Background(), "go file watcher started", "directories", watchCount)
 	gw.appendLog(LogEntry{
 		Source:  "go-watch",
 		Level:   "info",
@@ -172,7 +172,7 @@ func (gw *goWatcherProcess) Start() error {
 
 	startTime := time.Now()
 	if err := gw.runGoBuild(); err != nil {
-		gw.logger.Warnw("initial go build failed", "error", err)
+		gw.logger.Warnw(context.Background(), "initial go build failed", "error", err)
 		gw.appendLog(LogEntry{
 			Source:  "go-build",
 			Level:   "error",
@@ -184,7 +184,7 @@ func (gw *goWatcherProcess) Start() error {
 	} else {
 		duration := time.Since(startTime)
 		if err := gw.transferBinary(); err != nil {
-			gw.logger.Errorw("initial binary transfer failed", "error", err)
+			gw.logger.Errorw(context.Background(), "initial binary transfer failed", "error", err)
 			gw.appendLog(LogEntry{
 				Source:  "go-build",
 				Level:   "error",
@@ -193,7 +193,7 @@ func (gw *goWatcherProcess) Start() error {
 			gw.setBuild(duration, err.Error())
 			gw.setStatus(DevProcessStatusError)
 		} else {
-			gw.logger.Infow("initial build succeeded", "duration", duration)
+			gw.logger.Infow(context.Background(), "initial build succeeded", "duration", duration)
 			gw.appendLog(LogEntry{
 				Source:  "go-build",
 				Level:   "info",
@@ -204,7 +204,7 @@ func (gw *goWatcherProcess) Start() error {
 
 			// Sync plugin.yaml so capability changes are picked up.
 			if err := gw.syncPluginYaml(); err != nil {
-				gw.logger.Warnw("failed to sync plugin.yaml on initial build", "error", err)
+				gw.logger.Warnw(context.Background(), "failed to sync plugin.yaml on initial build", "error", err)
 			}
 
 			// Reload the plugin so the fresh binary is picked up.
@@ -213,14 +213,14 @@ func (gw *goWatcherProcess) Start() error {
 				if errors.As(err, &appErr) && appErr.Type == apperror.TypePluginNotLoaded {
 					// During dev install the watcher may finish initial build before
 					// InstallInDevMode has called LoadPlugin; this is expected.
-					gw.logger.Infow("initial plugin reload skipped (plugin not loaded yet)")
+					gw.logger.Infow(context.Background(), "initial plugin reload skipped (plugin not loaded yet)")
 					gw.appendLog(LogEntry{
 						Source:  "go-build",
 						Level:   "info",
 						Message: "Initial reload skipped: plugin not loaded yet",
 					})
 				} else {
-					gw.logger.Errorw("initial plugin reload failed", "error", err)
+					gw.logger.Errorw(context.Background(), "initial plugin reload failed", "error", err)
 					gw.appendLog(LogEntry{
 						Source:  "go-build",
 						Level:   "error",
@@ -253,7 +253,7 @@ func (gw *goWatcherProcess) Stop() {
 	select {
 	case <-gw.done:
 	case <-time.After(5 * time.Second):
-		gw.logger.Warn("go watcher event loop did not exit in time")
+		gw.logger.Warnw(context.Background(), "go watcher event loop did not exit in time")
 	}
 }
 
@@ -285,7 +285,7 @@ func (gw *goWatcherProcess) eventLoop() {
 			if !ok {
 				return
 			}
-			gw.logger.Errorw("fsnotify error", "error", err)
+			gw.logger.Errorw(context.Background(), "fsnotify error", "error", err)
 			gw.appendLog(LogEntry{
 				Source:  "go-watch",
 				Level:   "error",
@@ -306,7 +306,7 @@ func (gw *goWatcherProcess) eventLoop() {
 				continue
 			}
 
-			gw.logger.Debugw("go file changed", "file", event.Name, "op", event.Op)
+			gw.logger.Debugw(context.Background(), "go file changed", "file", event.Name, "op", event.Op)
 
 			// Debounce: reset the timer for this file path.
 			mu.Lock()
@@ -329,8 +329,8 @@ func (gw *goWatcherProcess) eventLoop() {
 
 // handleRebuild performs a go build, copies the binary if successful, and triggers plugin reload.
 func (gw *goWatcherProcess) handleRebuild(changedFile string) {
-	l := gw.logger.With("changedFile", changedFile)
-	l.Info("rebuilding plugin binary")
+	l := gw.logger.With(logging.Any("changedFile", changedFile))
+	l.Infow(context.Background(), "rebuilding plugin binary")
 
 	gw.setStatus(DevProcessStatusBuilding)
 	gw.appendLog(LogEntry{
@@ -346,7 +346,7 @@ func (gw *goWatcherProcess) handleRebuild(changedFile string) {
 	duration := time.Since(startTime)
 
 	if buildErr != nil {
-		l.Warnw("go build failed", "duration", duration, "error", buildErr)
+		l.Warnw(context.Background(), "go build failed", "duration", duration, "error", buildErr)
 		gw.appendLog(LogEntry{
 			Source:  "go-build",
 			Level:   "error",
@@ -357,7 +357,7 @@ func (gw *goWatcherProcess) handleRebuild(changedFile string) {
 		return
 	}
 
-	l.Infow("go build succeeded", "duration", duration)
+	l.Infow(context.Background(), "go build succeeded", "duration", duration)
 	gw.appendLog(LogEntry{
 		Source:  "go-build",
 		Level:   "info",
@@ -367,12 +367,12 @@ func (gw *goWatcherProcess) handleRebuild(changedFile string) {
 	// Sync plugin.yaml so capability changes (e.g. adding "metric") are
 	// picked up on reload without requiring a full reinstall.
 	if err := gw.syncPluginYaml(); err != nil {
-		l.Warnw("failed to sync plugin.yaml", "error", err)
+		l.Warnw(context.Background(), "failed to sync plugin.yaml", "error", err)
 	}
 
 	// Transfer the binary to ~/.omniview/plugins/<id>/bin/plugin.
 	if err := gw.transferBinary(); err != nil {
-		l.Errorw("failed to transfer binary", "error", err)
+		l.Errorw(context.Background(), "failed to transfer binary", "error", err)
 		gw.appendLog(LogEntry{
 			Source:  "go-build",
 			Level:   "error",
@@ -391,7 +391,7 @@ func (gw *goWatcherProcess) handleRebuild(changedFile string) {
 
 	// Trigger plugin reload via the plugin reloader.
 	if err := gw.reloader.ReloadPlugin(gw.pluginID); err != nil {
-		l.Errorw("plugin reload failed", "error", err)
+		l.Errorw(context.Background(), "plugin reload failed", "error", err)
 		gw.appendLog(LogEntry{
 			Source:  "go-build",
 			Level:   "error",

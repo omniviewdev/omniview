@@ -8,16 +8,16 @@ import (
 	"regexp"
 	"strings"
 
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/wailsapp/mimetype"
-	"go.uber.org/zap"
 )
 
 type FileLoader struct {
 	http.Handler
-	logger *zap.SugaredLogger
+	logger logging.Logger
 }
 
-func NewFileLoader(logger *zap.SugaredLogger) *FileLoader {
+func NewFileLoader(logger logging.Logger) *FileLoader {
 	return &FileLoader{
 		logger: logger,
 	}
@@ -67,10 +67,11 @@ func forceMimeType(path string) string {
 
 func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	var err error
+	ctx := req.Context()
 	respondUnauthorized := func() {
 		res.WriteHeader(http.StatusUnauthorized)
 		if _, err = res.Write([]byte("Unauthorized")); err != nil {
-			h.logger.Errorw("error writing unauthorized response", "error", err)
+			h.logger.Errorw(ctx, "error writing unauthorized response", "error", err)
 		}
 	}
 
@@ -83,7 +84,9 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 	requestedFilename = strings.TrimPrefix(requestedFilename, "/_")
 
-	h.logger.Debugw("requested file", "path", requestedFilename)
+	requestedFilename = filepath.Clean(requestedFilename)
+
+	h.logger.Debugw(ctx, "requested file", "path", requestedFilename)
 
 	if !isAllowed(requestedFilename) {
 		respondUnauthorized()
@@ -96,20 +99,26 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 
 	toFetch := filepath.Join(homeDir, ".omniview", requestedFilename)
-	h.logger.Infow("fetching file", "path", toFetch)
+	// Containment check: ensure resolved path stays under ~/.omniview
+	omniviewRoot := filepath.Join(homeDir, ".omniview")
+	if !strings.HasPrefix(toFetch, omniviewRoot+string(filepath.Separator)) {
+		respondUnauthorized()
+		return
+	}
+	h.logger.Infow(ctx, "fetching file", "path", toFetch)
 
 	fileData, err := os.ReadFile(toFetch)
 	if err != nil {
 		res.WriteHeader(http.StatusBadRequest)
 		if _, err = fmt.Fprintf(res, "Could not load file %s", toFetch); err != nil {
-			h.logger.Errorw("error serving file", "error", err)
+			h.logger.Errorw(ctx, "error serving file", "error", err)
 		}
 		return
 	}
 
 	// set content type
 	contentType := mimetype.Detect(fileData).String()
-	h.logger.Infow("content type", "type", contentType)
+	h.logger.Infow(ctx, "content type", "type", contentType)
 	if strings.HasPrefix(contentType, "text/plain") {
 		// don't like this but it's the only way to force the right mime type.
 		contentType = forceMimeType(requestedFilename)
@@ -123,6 +132,6 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 
 	if _, err = res.Write(fileData); err != nil {
-		h.logger.Errorw("error serving file", "error", err)
+		h.logger.Errorw(ctx, "error serving file", "error", err)
 	}
 }

@@ -1,13 +1,15 @@
 package data
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // Controller provides a JSON key-value store for plugins to persist arbitrary data.
@@ -22,11 +24,11 @@ type Controller interface {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	logger *zap.SugaredLogger
+	logger logging.Logger
 }
 
 // NewController creates a new data store controller.
-func NewController(logger *zap.SugaredLogger) Controller {
+func NewController(logger logging.Logger) Controller {
 	return &controller{
 		logger: logger.Named("DataController"),
 	}
@@ -38,7 +40,12 @@ func (c *controller) dataDir(pluginID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(homeDir, ".omniview", "plugins", pluginID, "data")
+	dir := filepath.Join(homeDir, ".omniview", "plugins", filepath.Clean(pluginID), "data")
+	// Containment check: ensure the resolved path stays under .omniview/plugins.
+	pluginsRoot := filepath.Join(homeDir, ".omniview", "plugins")
+	if !strings.HasPrefix(dir, pluginsRoot+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid plugin ID %q: path escapes plugins directory", pluginID)
+	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
@@ -51,15 +58,20 @@ func (c *controller) keyPath(pluginID, key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, key+".json"), nil
+	full := filepath.Join(dir, filepath.Clean(key)+".json")
+	// Containment check: ensure the key doesn't escape the data directory.
+	if !strings.HasPrefix(full, dir+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid key %q: path escapes data directory", key)
+	}
+	return full, nil
 }
 
 func (c *controller) Get(pluginID, key string) (any, error) {
-	logger := c.logger.With("pluginID", pluginID, "key", key)
+	logger := c.logger.With(logging.Any("pluginID", pluginID), logging.Any("key", key))
 
 	path, err := c.keyPath(pluginID, key)
 	if err != nil {
-		logger.Errorw("failed to resolve key path", "error", err)
+		logger.Errorw(context.Background(), "failed to resolve key path", "error", err)
 		return nil, err
 	}
 
@@ -68,13 +80,13 @@ func (c *controller) Get(pluginID, key string) (any, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		logger.Errorw("failed to read data file", "error", err)
+		logger.Errorw(context.Background(), "failed to read data file", "error", err)
 		return nil, err
 	}
 
 	var value any
 	if err := json.Unmarshal(data, &value); err != nil {
-		logger.Errorw("failed to unmarshal data", "error", err)
+		logger.Errorw(context.Background(), "failed to unmarshal data", "error", err)
 		return nil, err
 	}
 
@@ -82,22 +94,22 @@ func (c *controller) Get(pluginID, key string) (any, error) {
 }
 
 func (c *controller) Set(pluginID, key string, value any) error {
-	logger := c.logger.With("pluginID", pluginID, "key", key)
+	logger := c.logger.With(logging.Any("pluginID", pluginID), logging.Any("key", key))
 
 	path, err := c.keyPath(pluginID, key)
 	if err != nil {
-		logger.Errorw("failed to resolve key path", "error", err)
+		logger.Errorw(context.Background(), "failed to resolve key path", "error", err)
 		return err
 	}
 
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
-		logger.Errorw("failed to marshal data", "error", err)
+		logger.Errorw(context.Background(), "failed to marshal data", "error", err)
 		return err
 	}
 
 	if err := os.WriteFile(path, data, 0600); err != nil {
-		logger.Errorw("failed to write data file", "error", err)
+		logger.Errorw(context.Background(), "failed to write data file", "error", err)
 		return err
 	}
 
@@ -105,11 +117,11 @@ func (c *controller) Set(pluginID, key string, value any) error {
 }
 
 func (c *controller) Delete(pluginID, key string) error {
-	logger := c.logger.With("pluginID", pluginID, "key", key)
+	logger := c.logger.With(logging.Any("pluginID", pluginID), logging.Any("key", key))
 
 	path, err := c.keyPath(pluginID, key)
 	if err != nil {
-		logger.Errorw("failed to resolve key path", "error", err)
+		logger.Errorw(context.Background(), "failed to resolve key path", "error", err)
 		return err
 	}
 
@@ -117,7 +129,7 @@ func (c *controller) Delete(pluginID, key string) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		logger.Errorw("failed to delete data file", "error", err)
+		logger.Errorw(context.Background(), "failed to delete data file", "error", err)
 		return err
 	}
 
@@ -125,11 +137,11 @@ func (c *controller) Delete(pluginID, key string) error {
 }
 
 func (c *controller) Keys(pluginID string) ([]string, error) {
-	logger := c.logger.With("pluginID", pluginID)
+	logger := c.logger.With(logging.Any("pluginID", pluginID))
 
 	dir, err := c.dataDir(pluginID)
 	if err != nil {
-		logger.Errorw("failed to resolve data dir", "error", err)
+		logger.Errorw(context.Background(), "failed to resolve data dir", "error", err)
 		return nil, err
 	}
 
@@ -138,7 +150,7 @@ func (c *controller) Keys(pluginID string) ([]string, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return []string{}, nil
 		}
-		logger.Errorw("failed to read data dir", "error", err)
+		logger.Errorw(context.Background(), "failed to read data dir", "error", err)
 		return nil, err
 	}
 

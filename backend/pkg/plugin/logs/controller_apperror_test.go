@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
@@ -16,7 +16,7 @@ import (
 // newTestController builds a minimal logs controller for apperror tests.
 // No plugins are registered, so every lookup must fail with a structured error.
 func newTestController() Controller {
-	ctrl := NewController(zap.NewNop().Sugar(), nil, nil)
+	ctrl := NewController(logging.NewNop(), nil, nil)
 	ctrl.Run(context.Background())
 	return ctrl
 }

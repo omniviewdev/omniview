@@ -26,7 +26,14 @@ func IsValidLogLevel(s string) bool {
 	return ok
 }
 
+// Build-time defaults injected via ldflags (e.g. -X ...buildOTLPEndpoint=...).
+var (
+	buildOTLPEndpoint      string // e.g. "https://otlp-gateway-prod-us-east-2.grafana.net/otlp"
+	buildPyroscopeEndpoint string // e.g. "https://profiles-prod-001.grafana.net"
+)
+
 // TelemetryConfig holds all telemetry-related configuration.
+// AuthHeader/AuthValue are set at runtime via the settings UI, never at build time.
 type TelemetryConfig struct {
 	Enabled           bool
 	Traces            bool
@@ -42,25 +49,35 @@ type TelemetryConfig struct {
 
 // DefaultConfig returns sensible defaults based on whether the app is running
 // in development mode or production mode.
+// orDefault returns s if non-empty, otherwise fallback.
+func orDefault(s, fallback string) string {
+	if s != "" {
+		return s
+	}
+	return fallback
+}
+
 func DefaultConfig(isDev bool) TelemetryConfig {
 	if isDev {
 		return TelemetryConfig{
-			Enabled:           true,
+			Enabled:           false,
 			Traces:            true,
 			Metrics:           true,
 			LogsShip:          true,
 			LogsShipLevel:     "debug",
 			Profiling:         true,
-			OTLPEndpoint:      "localhost:4318",
-			PyroscopeEndpoint: "localhost:4040",
+			OTLPEndpoint:      orDefault(buildOTLPEndpoint, "localhost:4318"),
+			PyroscopeEndpoint: orDefault(buildPyroscopeEndpoint, "localhost:4040"),
 		}
 	}
 	return TelemetryConfig{
-		Enabled:       false,
-		Traces:        true,
-		Metrics:       true,
-		LogsShip:      true,
-		LogsShipLevel: "warn",
-		Profiling:     false,
+		Enabled:           false,
+		Traces:            true,
+		Metrics:           true,
+		LogsShip:          true,
+		LogsShipLevel:     "warn",
+		Profiling:         false,
+		OTLPEndpoint:      buildOTLPEndpoint,
+		PyroscopeEndpoint: buildPyroscopeEndpoint,
 	}
 }

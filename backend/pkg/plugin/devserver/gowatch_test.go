@@ -11,7 +11,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
@@ -132,7 +132,7 @@ func TestTransferBinary_Success(t *testing.T) {
 	t.Setenv("HOME", fakeHome)
 
 	gw := &goWatcherProcess{
-		logger:   zap.NewNop().Sugar(),
+		logger:   logging.NewNop(),
 		pluginID: "transfer-test",
 		devPath:  devPath,
 	}
@@ -160,7 +160,7 @@ func TestTransferBinary_SourceMissing(t *testing.T) {
 	t.Setenv("HOME", fakeHome)
 
 	gw := &goWatcherProcess{
-		logger:   zap.NewNop().Sugar(),
+		logger:   logging.NewNop(),
 		pluginID: "missing-src",
 		devPath:  devPath,
 	}
@@ -186,7 +186,7 @@ func TestTransferBinary_DestDirCreated(t *testing.T) {
 	t.Setenv("HOME", fakeHome)
 
 	gw := &goWatcherProcess{
-		logger:   zap.NewNop().Sugar(),
+		logger:   logging.NewNop(),
 		pluginID: "dest-create",
 		devPath:  devPath,
 	}
@@ -215,7 +215,7 @@ func TestTransferBinary_OverwritesExisting(t *testing.T) {
 	t.Setenv("HOME", fakeHome)
 
 	gw := &goWatcherProcess{
-		logger:   zap.NewNop().Sugar(),
+		logger:   logging.NewNop(),
 		pluginID: "overwrite-test",
 		devPath:  devPath,
 	}
@@ -255,7 +255,7 @@ func TestParseBuildErrors_RelativePaths(t *testing.T) {
 
 func TestNewGoWatcherProcess(t *testing.T) {
 	ctx := context.Background()
-	logger := zap.NewNop().Sugar()
+	logger := logging.NewNop()
 	reloader := &mockPluginReloader{}
 	appendLog := func(LogEntry) {}
 	setStatus := func(DevProcessStatus) {}
@@ -281,7 +281,7 @@ func TestGoWatcherProcess_Stop_NilWatcher(t *testing.T) {
 	gw := &goWatcherProcess{
 		ctx:    ctx,
 		cancel: cancel,
-		logger: zap.NewNop().Sugar(),
+		logger: logging.NewNop(),
 		done:   doneCh,
 	}
 
@@ -300,7 +300,7 @@ func TestGoWatcherProcess_Stop_WithWatcher(t *testing.T) {
 	gw := &goWatcherProcess{
 		ctx:     ctx,
 		cancel:  cancel,
-		logger:  zap.NewNop().Sugar(),
+		logger:  logging.NewNop(),
 		watcher: watcher,
 		done:    doneCh,
 	}
@@ -312,7 +312,7 @@ func TestGoWatcherProcess_Stop_WithWatcher(t *testing.T) {
 func TestRunGoBuild_EmptyGoPath(t *testing.T) {
 	gw := &goWatcherProcess{
 		ctx:        context.Background(),
-		logger:     zap.NewNop().Sugar(),
+		logger:     logging.NewNop(),
 		pluginID:   "empty-go",
 		devPath:    t.TempDir(),
 		buildOpts:  BuildOpts{GoPath: ""},
@@ -344,7 +344,7 @@ func TestGoWatcherStart_WatchesNestedSubdirs(t *testing.T) {
 	var logs []LogEntry
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"nested-test",
 		devPath,
 		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
@@ -374,7 +374,7 @@ func TestGoWatcherStart_SkipsHiddenVendorNodeModules(t *testing.T) {
 	var logs []LogEntry
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"skip-test",
 		devPath,
 		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
@@ -407,7 +407,7 @@ func TestGoWatcherStart_InitialBuild_FailsGracefully(t *testing.T) {
 	var statuses []DevProcessStatus
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"fail-build",
 		devPath,
 		BuildOpts{GoPath: ""}, // Empty → build will fail
@@ -449,7 +449,7 @@ func TestGoWatcherStart_InitialBuild_StatusProgression(t *testing.T) {
 	var statuses []DevProcessStatus
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"status-test",
 		devPath,
 		BuildOpts{GoPath: "nonexistent-go-binary"},
@@ -486,7 +486,7 @@ func TestTransferBinary_ReadOnlyDestDir(t *testing.T) {
 	t.Cleanup(func() { os.Chmod(dstDir, 0755) })
 
 	gw := &goWatcherProcess{
-		logger:   zap.NewNop().Sugar(),
+		logger:   logging.NewNop(),
 		pluginID: "readonly-test",
 		devPath:  devPath,
 	}
@@ -616,7 +616,7 @@ func TestGoWatcherStart_WatchesGoWorkModules(t *testing.T) {
 	var logs []LogEntry
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"gowork-test",
 		devPath,
 		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
@@ -657,7 +657,7 @@ func TestGoWatcherStart_NoGoWork_StillWorks(t *testing.T) {
 	var logs []LogEntry
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"no-gowork",
 		devPath,
 		BuildOpts{},
@@ -687,7 +687,7 @@ func TestGoWatcherStart_GoWork_SkipsDotModule(t *testing.T) {
 	var logs []LogEntry
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"dot-only",
 		devPath,
 		BuildOpts{},
@@ -717,7 +717,7 @@ func TestGoWatcherStart_GoWork_NonExistentModule(t *testing.T) {
 	var logs []LogEntry
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"missing-mod",
 		devPath,
 		BuildOpts{},

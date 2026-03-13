@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
@@ -27,7 +27,7 @@ type PluginReloader interface {
 // It is exposed as a Wails binding. All public methods are callable from the frontend.
 type DevServerManager struct {
 	ctx              context.Context
-	logger           *zap.SugaredLogger
+	logger           logging.Logger
 	mu               sync.RWMutex
 	instances        map[string]*DevServerInstance // pluginID -> instance
 	ports            *PortAllocator
@@ -40,7 +40,7 @@ type DevServerManager struct {
 // NewDevServerManager creates a new DevServerManager. Call Initialize() with the Wails
 // context before using any other methods.
 func NewDevServerManager(
-	logger *zap.SugaredLogger,
+	logger logging.Logger,
 	pluginRef PluginRef,
 	pluginReloader PluginReloader,
 	settingsProvider pkgsettings.Provider,
@@ -64,7 +64,7 @@ func (m *DevServerManager) Initialize(ctx context.Context) {
 	// unclean shutdown (crash, SIGKILL, etc.). These zombie node processes
 	// hold ports in our allocated range and prevent new dev servers from
 	// starting.
-	m.ports.CleanupStaleProcesses(m.logger)
+	m.ports.CleanupStaleProcesses(m.ctx, m.logger)
 
 	// Start the external watcher for .devinfo files.
 	watcher, err := NewExternalWatcher(
@@ -73,21 +73,21 @@ func (m *DevServerManager) Initialize(ctx context.Context) {
 		m.handleExternalDisconnect,
 	)
 	if err != nil {
-		m.logger.Errorw("failed to create external watcher", "error", err)
+		m.logger.Errorw(ctx, "failed to create external watcher", "error", err)
 	} else {
 		m.externalWatcher = watcher
 		if err := watcher.Start(ctx); err != nil {
-			m.logger.Errorw("failed to start external watcher", "error", err)
+			m.logger.Errorw(ctx, "failed to start external watcher", "error", err)
 		}
 	}
 
-	m.logger.Info("DevServerManager initialized")
+	m.logger.Infow(ctx, "DevServerManager initialized")
 }
 
 // Shutdown stops all running dev server instances and the external watcher.
 // Called from Wails OnShutdown.
 func (m *DevServerManager) Shutdown() {
-	m.logger.Info("DevServerManager shutting down")
+	m.logger.Infow(context.Background(), "DevServerManager shutting down")
 
 	// Stop the external watcher first.
 	if m.externalWatcher != nil {
@@ -103,7 +103,7 @@ func (m *DevServerManager) Shutdown() {
 
 	for _, id := range ids {
 		if err := m.StopDevServer(id); err != nil {
-			m.logger.Errorw("error stopping dev server during shutdown",
+			m.logger.Errorw(context.Background(), "error stopping dev server during shutdown",
 				"pluginID", id,
 				"error", err,
 			)
@@ -114,7 +114,7 @@ func (m *DevServerManager) Shutdown() {
 	// try to kill already-dead processes.
 	m.ports.SavePIDs()
 
-	m.logger.Info("DevServerManager shutdown complete")
+	m.logger.Infow(context.Background(), "DevServerManager shutdown complete")
 }
 
 // ============================================================================
@@ -127,14 +127,14 @@ func (m *DevServerManager) Shutdown() {
 //
 // Returns the initial DevServerState.
 func (m *DevServerManager) StartDevServer(pluginID string) (DevServerState, error) {
-	l := m.logger.With("method", "StartDevServer", "pluginID", pluginID)
-	l.Info("starting dev server")
+	l := m.logger.With(logging.Any("method", "StartDevServer"), logging.Any("pluginID", pluginID))
+	l.Infow(context.Background(), "starting dev server")
 
 	// Fast path: if already running, return existing state without looking up the plugin.
 	m.mu.RLock()
 	if inst, exists := m.instances[pluginID]; exists {
 		m.mu.RUnlock()
-		l.Warn("dev server already running")
+		l.Warnw(context.Background(), "dev server already running")
 		return inst.State(), nil
 	}
 	m.mu.RUnlock()
@@ -160,8 +160,8 @@ func (m *DevServerManager) StartDevServer(pluginID string) (DevServerState, erro
 // been loaded yet but we need the dev server (and its initial Go build) to run
 // before LoadPlugin.
 func (m *DevServerManager) StartDevServerForPath(pluginID, devPath string) (DevServerState, error) {
-	l := m.logger.With("method", "StartDevServerForPath", "pluginID", pluginID, "devPath", devPath)
-	l.Info("starting dev server for path")
+	l := m.logger.With(logging.Any("method", "StartDevServerForPath"), logging.Any("pluginID", pluginID))
+	l.Debugw(context.Background(), "starting dev server for path", "devPath", devPath)
 
 	if devPath == "" {
 		return DevServerState{}, apperror.New(apperror.TypeValidation, 422, "Missing dev path", fmt.Sprintf("Plugin '%s' has no development path configured.", pluginID))
@@ -172,14 +172,14 @@ func (m *DevServerManager) StartDevServerForPath(pluginID, devPath string) (DevS
 
 // startDevServer is the shared implementation for StartDevServer and StartDevServerForPath.
 func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerState, error) {
-	l := m.logger.With("method", "startDevServer", "pluginID", pluginID)
+	l := m.logger.With(logging.Any("method", "startDevServer"), logging.Any("pluginID", pluginID))
 
 	m.mu.Lock()
 
 	// Check if already running.
 	if inst, exists := m.instances[pluginID]; exists {
 		m.mu.Unlock()
-		l.Warn("dev server already running")
+		l.Warnw(context.Background(), "dev server already running")
 		return inst.State(), nil
 	}
 
@@ -229,14 +229,14 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 	state := inst.State()
 	m.emitStatus(pluginID, state)
 
-	l.Infow("dev server started", "port", port)
+	l.Infow(context.Background(), "dev server started", "port", port)
 	return state, nil
 }
 
 // StopDevServer stops the managed dev server for the given plugin.
 func (m *DevServerManager) StopDevServer(pluginID string) error {
-	l := m.logger.With("method", "StopDevServer", "pluginID", pluginID)
-	l.Info("stopping dev server")
+	l := m.logger.With(logging.Any("method", "StopDevServer"), logging.Any("pluginID", pluginID))
+	l.Infow(context.Background(), "stopping dev server")
 
 	m.mu.Lock()
 	inst, exists := m.instances[pluginID]
@@ -259,13 +259,13 @@ func (m *DevServerManager) StopDevServer(pluginID string) error {
 	}
 	m.emitStatus(pluginID, state)
 
-	l.Info("dev server stopped")
+	l.Infow(context.Background(), "dev server stopped")
 	return nil
 }
 
 // RestartDevServer stops and then starts the dev server for the given plugin.
 func (m *DevServerManager) RestartDevServer(pluginID string) (DevServerState, error) {
-	m.logger.Infow("restarting dev server", "pluginID", pluginID)
+	m.logger.Infow(context.Background(), "restarting dev server", "pluginID", pluginID)
 	_ = m.StopDevServer(pluginID)
 	return m.StartDevServer(pluginID)
 }
@@ -382,7 +382,7 @@ func (m *DevServerManager) GetExternalPluginInfo(pluginID string) *DevInfoFile {
 
 // handleExternalConnect is called by ExternalWatcher when a .devinfo file is detected.
 func (m *DevServerManager) handleExternalConnect(pluginID string, info *DevInfoFile) {
-	m.logger.Infow("external plugin connected",
+	m.logger.Infow(context.Background(), "external plugin connected",
 		"pluginID", pluginID,
 		"addr", info.Addr,
 		"vitePort", info.VitePort,
@@ -405,7 +405,7 @@ func (m *DevServerManager) handleExternalConnect(pluginID string, info *DevInfoF
 
 // handleExternalDisconnect is called by ExternalWatcher when an external plugin disconnects.
 func (m *DevServerManager) handleExternalDisconnect(pluginID string) {
-	m.logger.Infow("external plugin disconnected", "pluginID", pluginID)
+	m.logger.Infow(context.Background(), "external plugin disconnected", "pluginID", pluginID)
 
 	state := DevServerState{
 		PluginID:      pluginID,

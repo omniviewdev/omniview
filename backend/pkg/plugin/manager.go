@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	pluginexec "github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
@@ -29,11 +28,21 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 const (
 	MaxPluginSize = 1024 * 1024 * 1024 // 1GB
 )
+
+// TelemetryEnvConfig holds the subset of telemetry configuration injected into plugin processes.
+// Auth credentials are NOT included — they are managed host-side only.
+type TelemetryEnvConfig struct {
+	Enabled           bool
+	OTLPEndpoint      string
+	Profiling         bool
+	PyroscopeEndpoint string
+}
 
 // sensitivePattern matches tokens, long hex/base64 strings, and other
 // potentially sensitive values that should not appear in crash reports.
@@ -86,7 +95,7 @@ type Manager interface {
 
 // NewManager returns a new plugin manager.
 func NewManager(
-	logger *zap.SugaredLogger,
+	logger logging.Logger,
 	resourceController resource.Controller,
 	settingsController settings.Controller,
 	execController pluginexec.Controller,
@@ -96,6 +105,7 @@ func NewManager(
 	managers map[string]plugintypes.PluginManager,
 	settingsProvider pkgsettings.Provider,
 	registryClient *registry.Client,
+	telemetryConfigFn func() TelemetryEnvConfig,
 ) Manager {
 	return &pluginManager{
 		logger:  logger,
@@ -110,11 +120,12 @@ func NewManager(
 		connfullControllers: map[sdktypes.Capability]plugintypes.ConnectedController{
 			sdktypes.CapabilityResource: resourceController,
 		},
-		managers:         managers,
-		settingsProvider: settingsProvider,
-		registryClient:   registryClient,
-		pidTracker:       NewPluginPIDTracker(),
-		pluginOpsLocks:   make(map[string]*sync.Mutex),
+		managers:          managers,
+		settingsProvider:  settingsProvider,
+		registryClient:    registryClient,
+		telemetryConfigFn: telemetryConfigFn,
+		pidTracker:        NewPluginPIDTracker(),
+		pluginOpsLocks:    make(map[string]*sync.Mutex),
 	}
 }
 
@@ -127,7 +138,7 @@ type DevServerChecker interface {
 // pluginManager is the concrete implementation.
 type pluginManager struct {
 	ctx                 context.Context
-	logger              *zap.SugaredLogger
+	logger              logging.Logger
 	recordsMu           sync.RWMutex
 	records             map[string]*plugintypes.PluginRecord
 	connlessControllers map[sdktypes.Capability]plugintypes.Controller
@@ -141,6 +152,7 @@ type pluginManager struct {
 	healthChecker       *HealthChecker
 	pluginLogMgr        *pluginlog.Manager
 	backendFactory      func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error)
+	telemetryConfigFn   func() TelemetryEnvConfig // returns current telemetry config for env injection
 
 	// pluginOpsMu serializes load/reload/unload operations per plugin to
 	// prevent concurrent lifecycle transitions for the same plugin (e.g.
@@ -198,12 +210,12 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 		crashError = "plugin process exited unexpectedly"
 	}
 
-	pm.logger.Errorw("plugin process crashed — attempting recovery",
+	pm.logger.Errorw(pm.ctx, "plugin process crashed — attempting recovery",
 		"pluginID", pluginID,
 		"crashReason", crashError,
 	)
 	if len(crashContext) > 0 {
-		pm.logger.Errorw("plugin crash context (last log entries)",
+		pm.logger.Errorw(pm.ctx, "plugin crash context (last log entries)",
 			"pluginID", pluginID,
 			"entries", crashContext,
 		)
@@ -247,14 +259,14 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 		return
 	}
 	if _, err := pm.ReloadPlugin(pluginID); err != nil {
-		pm.logger.Errorw("plugin crash recovery failed", "pluginID", pluginID, "error", err)
+		pm.logger.Errorw(pm.ctx, "plugin crash recovery failed", "pluginID", pluginID, "error", err)
 		emitEvent(pm.ctx, EventCrashRecoveryFailed, map[string]interface{}{
 			"pluginID": pluginID,
 			"error":    err.Error(),
 		})
 		return
 	}
-	pm.logger.Infow("plugin recovered after crash", "pluginID", pluginID)
+	pm.logger.Infow(pm.ctx, "plugin recovered after crash", "pluginID", pluginID)
 	emitEvent(pm.ctx, EventRecovered, map[string]interface{}{"pluginID": pluginID})
 }
 
@@ -280,12 +292,12 @@ func (pm *pluginManager) Shutdown() {
 	}
 
 	if err := pm.pidTracker.Save(); err != nil {
-		pm.logger.Warnw("failed to save plugin PID file", "error", err)
+		pm.logger.Warnw(pm.ctx, "failed to save plugin PID file", "error", err)
 	}
 
 	if pm.pluginLogMgr != nil {
 		if err := pm.pluginLogMgr.Close(); err != nil {
-			pm.logger.Warnw("failed to close plugin log manager", "error", err)
+			pm.logger.Warnw(pm.ctx, "failed to close plugin log manager", "error", err)
 		}
 	}
 }
@@ -325,21 +337,21 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 
 	states, err := readPluginStateJSON()
 	if err != nil {
-		pm.logger.Warnw("failed to read plugin state file, reconciling from filesystem", "error", err)
+		pm.logger.Warnw(pm.ctx, "failed to read plugin state file, reconciling from filesystem", "error", err)
 		reconciler := NewReconciler(pm.logger)
-		result, reconErr := reconciler.ReconcileFromFilesystem(getPluginDir())
+		result, reconErr := reconciler.ReconcileFromFilesystem(pm.ctx, getPluginDir())
 		if reconErr != nil {
-			pm.logger.Errorw("filesystem reconciliation failed", "error", reconErr)
+			pm.logger.Errorw(pm.ctx, "filesystem reconciliation failed", "error", reconErr)
 		} else {
 			states = make([]plugintypes.PluginStateRecord, 0, len(result.Records))
 			for _, r := range result.Records {
 				states = append(states, r.ToStateRecord())
 			}
-			pm.logger.Infow("recovered plugin state from filesystem", "count", len(states))
+			pm.logger.Infow(pm.ctx, "recovered plugin state from filesystem", "count", len(states))
 		}
 	}
 
-	pm.logger.Debugw("Loading plugins states from disk", "states", states)
+	pm.logger.Debugw(pm.ctx, "Loading plugins states from disk", "states", states)
 
 	files, err := os.ReadDir(getPluginDir())
 	if err != nil {
@@ -362,10 +374,10 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 		}
 
 		if devExists && !canonExists {
-			pm.logger.Infow("migrating dev plugin directory to canonical ID",
+			pm.logger.Infow(pm.ctx, "migrating dev plugin directory to canonical ID",
 				"from", devDir, "to", canonDir)
 			if renameErr := os.Rename(devDir, canonDir); renameErr != nil {
-				pm.logger.Errorw("failed to rename dev plugin directory",
+				pm.logger.Errorw(pm.ctx, "failed to rename dev plugin directory",
 					"from", devDir, "to", canonDir, "error", renameErr)
 			}
 		}
@@ -422,10 +434,10 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 						pm.recordsMu.Lock()
 						pm.records[file.Name()] = record
 						pm.recordsMu.Unlock()
-						pm.logger.Infow("dev plugin binary missing, deferring to dev server",
+						pm.logger.Infow(pm.ctx, "dev plugin binary missing, deferring to dev server",
 							"pluginID", file.Name())
 					} else {
-						pm.logger.Warnw("dev plugin binary missing and metadata unreadable",
+						pm.logger.Warnw(pm.ctx, "dev plugin binary missing and metadata unreadable",
 							"pluginID", file.Name(), "error", metaErr)
 					}
 					continue
@@ -448,7 +460,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 			defer loadWg.Done()
 			defer func() { <-sem }() // release semaphore slot
 			if _, loadErr := pm.LoadPlugin(pluginID, opts); loadErr != nil {
-				pm.logger.Errorw("error loading plugin", "pluginID", pluginID, "error", loadErr)
+				pm.logger.Errorw(pm.ctx, "error loading plugin", "pluginID", pluginID, "error", loadErr)
 			}
 		}(entry.pluginID, entry.opts)
 	}
@@ -462,21 +474,21 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 				wg.Add(1)
 				go func(pluginID, devPath string) {
 					defer wg.Done()
-					pm.logger.Infow("starting dev server (background)", "pluginID", pluginID, "devPath", devPath)
+					pm.logger.Infow(pm.ctx, "starting dev server (background)", "pluginID", pluginID)
 					if _, startErr := pm.devServerMgr.StartDevServerForPath(pluginID, devPath); startErr != nil {
-						pm.logger.Warnw("failed to start dev server", "pluginID", pluginID, "error", startErr)
+						pm.logger.Warnw(pm.ctx, "failed to start dev server", "pluginID", pluginID, "error", startErr)
 					}
 				}(dp.pluginID, dp.devPath)
 			}
 			wg.Wait()
-			pm.logger.Infow("all dev servers started")
+			pm.logger.Infow(pm.ctx, "all dev servers started")
 		}()
 	}
 
 	// Merge loaded plugin state with persisted state so that plugins which
 	// failed to load this time (e.g. missing binary) are not lost.
 	if err = pm.mergeAndWritePluginState(states); err != nil {
-		pm.logger.Error(err)
+		pm.logger.Errorw(pm.ctx, "failed to merge and persist plugin state", "error", err)
 	}
 
 	runtime.EventsEmit(pm.ctx, EventInitComplete)
@@ -544,7 +556,7 @@ func (pm *pluginManager) syncRegistryURL() {
 	// If the setting is empty, the compiled-in default is used.
 	if key, err := pm.settingsProvider.GetString("developer.registry_public_key"); err == nil && key != "" {
 		if err := regclient.SetPublicKey(key); err != nil {
-			pm.logger.Warnw("invalid registry public key in settings, using default", "error", err)
+			pm.logger.Warnw(pm.ctx, "invalid registry public key in settings, using default", "error", err)
 		}
 	}
 }

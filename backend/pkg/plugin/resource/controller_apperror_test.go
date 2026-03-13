@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
@@ -17,7 +17,7 @@ import (
 // newTestController creates a controller with a no-op logger and no settings
 // provider, then calls Run so the context is initialised.
 func newTestController() *controller {
-	ctrl := NewController(zap.NewNop().Sugar(), nil).(*controller)
+	ctrl := NewController(logging.NewNop(), nil).(*controller)
 	ctrl.Run(context.Background())
 	return ctrl
 }

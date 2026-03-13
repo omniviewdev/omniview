@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
@@ -578,7 +578,7 @@ func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter)
 	t.Helper()
 	emitter := newRecordingEmitter()
 	ctrl := &controller{
-		logger:              zap.NewNop().Sugar(),
+		logger:              logging.NewNop(),
 		plugins:             make(map[string]*pluginState),
 		connections:         make(map[string][]types.Connection),
 		autoConnectAttempts: make(map[string]string),

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -83,6 +84,54 @@ func TestZapBackendSync(t *testing.T) {
 
 	err := backend.Sync(context.Background())
 	assert.NoError(t, err)
+}
+
+func TestZapBackendContextInjected(t *testing.T) {
+	core, logs := observer.New(zapcore.DebugLevel)
+	zapLogger := zap.New(core)
+	backend := NewZapBackend(zapLogger)
+
+	traceID, _ := trace.TraceIDFromHex("0af7651916cd43dd8448eb211c80319c")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+	})
+	ctx := trace.ContextWithSpanContext(context.Background(), sc)
+
+	record := logging.Record{
+		Timestamp: time.Now(),
+		Level:     logging.LevelInfo,
+		Message:   "traced operation",
+	}
+	err := backend.Write(ctx, record)
+	require.NoError(t, err)
+
+	entry := logs.All()[0]
+	fieldMap := entry.ContextMap()
+	assert.Equal(t, "0af7651916cd43dd8448eb211c80319c", fieldMap["trace_id"])
+	assert.Equal(t, "00f067aa0ba902b7", fieldMap["span_id"])
+}
+
+func TestZapBackendNilContext(t *testing.T) {
+	core, logs := observer.New(zapcore.DebugLevel)
+	zapLogger := zap.New(core)
+	backend := NewZapBackend(zapLogger)
+
+	record := logging.Record{
+		Timestamp: time.Now(),
+		Level:     logging.LevelInfo,
+		Message:   "no context",
+	}
+	//nolint:staticcheck // intentionally passing nil
+	err := backend.Write(nil, record)
+	require.NoError(t, err)
+
+	// Should not have trace_id or span_id fields.
+	fieldMap := logs.All()[0].ContextMap()
+	assert.NotContains(t, fieldMap, "trace_id")
+	assert.NotContains(t, fieldMap, "span_id")
 }
 
 // Compile-time interface assertion.

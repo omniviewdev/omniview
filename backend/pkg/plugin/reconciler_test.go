@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -44,7 +45,7 @@ func TestReconciler_EmptyDirectory(t *testing.T) {
 	dir := t.TempDir()
 	r := NewReconciler(testLogger(t))
 
-	result, err := r.Reconcile(dir, nil)
+	result, err := r.Reconcile(context.Background(), dir, nil)
 	require.NoError(t, err)
 	assert.Empty(t, result.Records)
 	assert.Empty(t, result.Orphans)
@@ -56,7 +57,7 @@ func TestReconciler_ValidPluginAdoptedAsOrphan(t *testing.T) {
 	createPluginDir(t, dir, "test-plugin", []string{"ui"})
 
 	r := NewReconciler(testLogger(t))
-	result, err := r.Reconcile(dir, nil)
+	result, err := r.Reconcile(context.Background(), dir, nil)
 	require.NoError(t, err)
 
 	assert.Len(t, result.Records, 1)
@@ -72,7 +73,7 @@ func TestReconciler_DirectoryWithoutPluginYAML_Skipped(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "bad-plugin"), 0755))
 
 	r := NewReconciler(testLogger(t))
-	result, err := r.Reconcile(dir, nil)
+	result, err := r.Reconcile(context.Background(), dir, nil)
 	require.NoError(t, err)
 
 	assert.Empty(t, result.Records)
@@ -91,7 +92,7 @@ func TestReconciler_PersistedStateWithNoMatchingDirectory_Ghost(t *testing.T) {
 	}
 
 	r := NewReconciler(testLogger(t))
-	result, err := r.Reconcile(dir, persisted)
+	result, err := r.Reconcile(context.Background(), dir, persisted)
 	require.NoError(t, err)
 
 	assert.Empty(t, result.Records)
@@ -117,7 +118,7 @@ func TestReconciler_BothPersistedAndDirectory_MergedRecord(t *testing.T) {
 	}
 
 	r := NewReconciler(testLogger(t))
-	result, err := r.Reconcile(dir, persisted)
+	result, err := r.Reconcile(context.Background(), dir, persisted)
 	require.NoError(t, err)
 
 	assert.Len(t, result.Records, 1)
@@ -131,7 +132,7 @@ func TestReconciler_BothPersistedAndDirectory_MergedRecord(t *testing.T) {
 
 func TestReconciler_MissingPluginDir_EmptyResult(t *testing.T) {
 	r := NewReconciler(testLogger(t))
-	result, err := r.Reconcile("/nonexistent/path/that/does/not/exist", nil)
+	result, err := r.Reconcile(context.Background(), "/nonexistent/path/that/does/not/exist", nil)
 	require.NoError(t, err)
 	assert.Empty(t, result.Records)
 }
@@ -142,7 +143,7 @@ func TestReconciler_FilesIgnored(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "not-a-dir"), []byte("hello"), 0644))
 
 	r := NewReconciler(testLogger(t))
-	result, err := r.Reconcile(dir, nil)
+	result, err := r.Reconcile(context.Background(), dir, nil)
 	require.NoError(t, err)
 	assert.Empty(t, result.Records)
 }
@@ -203,7 +204,7 @@ func TestReconcileFromFilesystem(t *testing.T) {
 	createPluginDir(t, dir, "plugin-b", []string{"resource"})
 
 	r := NewReconciler(testLogger(t))
-	result, err := r.ReconcileFromFilesystem(dir)
+	result, err := r.ReconcileFromFilesystem(context.Background(), dir)
 	require.NoError(t, err)
 
 	assert.Len(t, result.Records, 2)

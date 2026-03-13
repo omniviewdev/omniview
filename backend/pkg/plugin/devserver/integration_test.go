@@ -17,7 +17,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
@@ -198,7 +198,7 @@ func TestIntegration_GoWatcher_BuildOnFileChange(t *testing.T) {
 	// Create and start the watcher.
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"test-integration",
 		devPath,
 		BuildOpts{GoPath: goPath},
@@ -271,7 +271,7 @@ func TestIntegration_GoWatcher_BuildError(t *testing.T) {
 
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"test-build-error",
 		devPath,
 		BuildOpts{GoPath: goPath},
@@ -331,7 +331,7 @@ func TestIntegration_GoWatcher_Start_MissingPkgDir(t *testing.T) {
 
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"test-no-pkg",
 		devPath,
 		BuildOpts{GoPath: "/usr/bin/go"},
@@ -376,7 +376,7 @@ func TestIntegration_ExternalWatcher_DetectDevInfo(t *testing.T) {
 
 	ew := &ExternalWatcher{
 		ctx:          ctx,
-		logger:       zap.NewNop().Sugar(),
+		logger:       logging.NewNop(),
 		watcher:      watcher,
 		connections:  make(map[string]*ExternalConnection),
 		pluginDir:    pluginDir,
@@ -448,7 +448,7 @@ func TestIntegration_ExternalWatcher_StaleDevInfo(t *testing.T) {
 
 	ew := &ExternalWatcher{
 		ctx:          ctx,
-		logger:       zap.NewNop().Sugar(),
+		logger:       logging.NewNop(),
 		watcher:      watcher,
 		connections:  make(map[string]*ExternalConnection),
 		pluginDir:    pluginDir,
@@ -517,7 +517,7 @@ func TestIntegration_ExternalWatcher_ScanOnStart(t *testing.T) {
 
 	ew := &ExternalWatcher{
 		ctx:          ctx,
-		logger:       zap.NewNop().Sugar(),
+		logger:       logging.NewNop(),
 		watcher:      watcher,
 		connections:  make(map[string]*ExternalConnection),
 		pluginDir:    pluginDir,
@@ -561,7 +561,7 @@ func TestIntegration_GoWatcher_InitialBuild_TriggersReload(t *testing.T) {
 
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"test-initial-reload",
 		devPath,
 		BuildOpts{GoPath: goPath},
@@ -615,7 +615,7 @@ func TestIntegration_GoWatcher_InitialBuild_ReloadFails(t *testing.T) {
 
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"test-reload-fail",
 		devPath,
 		BuildOpts{GoPath: goPath},
@@ -672,7 +672,7 @@ func TestIntegration_ExternalWatcher_StopBlocksUntilRunExits(t *testing.T) {
 
 	ew := &ExternalWatcher{
 		ctx:          ctx,
-		logger:       zap.NewNop().Sugar(),
+		logger:       logging.NewNop(),
 		watcher:      watcher,
 		connections:  make(map[string]*ExternalConnection),
 		pluginDir:    pluginDir,
@@ -742,7 +742,7 @@ func TestIntegration_GoWatcher_NoBuildAfterStop(t *testing.T) {
 
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"test-stop-build",
 		devPath,
 		BuildOpts{GoPath: goPath},
@@ -799,7 +799,7 @@ func TestIntegration_ExternalWatcher_RenameDisconnects(t *testing.T) {
 
 	ew := &ExternalWatcher{
 		ctx:          ctx,
-		logger:       zap.NewNop().Sugar(),
+		logger:       logging.NewNop(),
 		watcher:      watcher,
 		connections:  make(map[string]*ExternalConnection),
 		pluginDir:    pluginDir,
@@ -866,7 +866,7 @@ func TestIntegration_GoWatcher_DebounceRapidChanges(t *testing.T) {
 
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"test-debounce",
 		devPath,
 		BuildOpts{GoPath: goPath},
@@ -918,7 +918,7 @@ func TestIntegration_GoWatcher_IgnoresNonGoFiles(t *testing.T) {
 
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"test-ignore-nongo",
 		devPath,
 		BuildOpts{GoPath: goPath},
@@ -976,7 +976,7 @@ func TestIntegration_GoWatcher_NestedSubdirChange(t *testing.T) {
 
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"test-nested",
 		devPath,
 		BuildOpts{GoPath: goPath},
@@ -1019,7 +1019,7 @@ func TestIntegration_GoWatcher_ReloaderError(t *testing.T) {
 
 	gw := newGoWatcherProcess(
 		context.Background(),
-		zap.NewNop().Sugar(),
+		logging.NewNop(),
 		"test-reload-err",
 		devPath,
 		BuildOpts{GoPath: goPath},
@@ -1065,7 +1065,7 @@ func TestIntegration_ExternalWatcher_AutoWatchNewDir(t *testing.T) {
 
 	ew := &ExternalWatcher{
 		ctx:          ctx,
-		logger:       zap.NewNop().Sugar(),
+		logger:       logging.NewNop(),
 		watcher:      watcher,
 		connections:  make(map[string]*ExternalConnection),
 		pluginDir:    pluginDir,
@@ -1127,7 +1127,7 @@ func TestIntegration_ExternalWatcher_HealthCheckDetectsDeadPID(t *testing.T) {
 
 	ew := &ExternalWatcher{
 		ctx:          ctx,
-		logger:       zap.NewNop().Sugar(),
+		logger:       logging.NewNop(),
 		watcher:      watcher,
 		connections:  make(map[string]*ExternalConnection),
 		pluginDir:    pluginDir,
