@@ -43,6 +43,7 @@ type Controller interface {
 	plugintypes.ConnectedController
 	Service
 	SetCrashCallback(cb func(pluginID string))
+	Graph() *graph.RelationshipGraph
 }
 
 // pluginState holds per-plugin runtime state.
@@ -107,6 +108,11 @@ func NewController(logger logging.Logger, sp pkgsettings.Provider) Controller {
 // SetCrashCallback sets the function called when a plugin crash is detected.
 func (c *controller) SetCrashCallback(cb func(pluginID string)) {
 	c.onCrashCallback = cb
+}
+
+// Graph returns the underlying RelationshipGraph for use by external services.
+func (c *controller) Graph() *graph.RelationshipGraph {
+	return c.graph
 }
 
 // ============================================================================
@@ -378,6 +384,9 @@ func (c *controller) Get(pluginID, connectionID, key string, input resource.GetI
 		c.checkConnectionError(pluginID, err)
 		return nil, toAppError(err, pluginID)
 	}
+	if result != nil && len(result.Result) > 0 {
+		c.observeResponse(pluginID, connectionID, key, input.ID, input.Namespace, result.Result)
+	}
 	return result, nil
 }
 
@@ -453,6 +462,9 @@ func (c *controller) Update(pluginID, connectionID, key string, input resource.U
 		c.logger.Errorw(ctx, "RPC failed", "op", "Update", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
 		return nil, toAppError(err, pluginID)
+	}
+	if result != nil && len(result.Result) > 0 {
+		c.observeResponse(pluginID, connectionID, key, input.ID, input.Namespace, result.Result)
 	}
 	return result, nil
 }
@@ -1485,5 +1497,44 @@ func (c *controller) triggerCrashRecovery(pluginID string, err error, listener s
 	c.pluginsMu.RUnlock()
 	if ok && c.onCrashCallback != nil {
 		ps.crashOnce.Do(func() { go c.onCrashCallback(pluginID) })
+	}
+}
+
+// observeResponse updates the registry from a CRUD response. Unlike watch
+// events (which carry ResourceMetadata from the plugin), CRUD responses
+// only have raw JSON. We build a minimal entry from the known request
+// parameters. The full metadata (UID, Labels, CreatedAt) will be populated
+// when the corresponding watch event arrives — watch events are authoritative.
+//
+// This ensures resources discovered via Get/List/Create/Update are at least
+// present in the registry (for graph edge resolution), even before the
+// watch event confirms them.
+func (c *controller) observeResponse(pluginID, connectionID, resourceKey, id, namespace string, data json.RawMessage) {
+	if len(data) == 0 || id == "" {
+		return
+	}
+
+	entry := registry.ResourceEntry{
+		PluginID:     pluginID,
+		ConnectionID: connectionID,
+		ResourceKey:  resourceKey,
+		ID:           id,
+		Namespace:    namespace,
+		Labels:       map[string]string{}, // populated by watch event
+	}
+
+	old, existed := c.registryStore.Put(entry)
+
+	rawCopy := make(json.RawMessage, len(data))
+	copy(rawCopy, data)
+
+	if existed {
+		c.dispatcher.Enqueue(indexer.Event{
+			Type: indexer.EventUpdate, Entry: entry, Old: old, Raw: rawCopy,
+		})
+	} else {
+		c.dispatcher.Enqueue(indexer.Event{
+			Type: indexer.EventAdd, Entry: entry, Raw: rawCopy,
+		})
 	}
 }
