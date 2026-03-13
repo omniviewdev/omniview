@@ -14,6 +14,10 @@ import (
 
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 )
 
 // ============================================================================
@@ -577,6 +581,13 @@ func TestRecordingEmitter_Reset(t *testing.T) {
 func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter) {
 	t.Helper()
 	emitter := newRecordingEmitter()
+	store := registry.NewMemoryStore()
+	g := graph.NewRelationshipGraph()
+	graphIndexer := graph.NewGraphIndexer(g, store)
+	disp := indexer.NewDispatcher([]indexer.ResourceIndexer{graphIndexer})
+	disp.Start()
+	t.Cleanup(disp.Stop)
+
 	ctrl := &controller{
 		logger:              logging.NewNop(),
 		plugins:             make(map[string]*pluginState),
@@ -584,6 +595,9 @@ func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter)
 		autoConnectAttempts: make(map[string]string),
 		subs:                newSubscriptionManager(),
 		emitter:             emitter,
+		registryStore:       store,
+		dispatcher:          disp,
+		graph:               g,
 	}
 	return ctrl, emitter
 }

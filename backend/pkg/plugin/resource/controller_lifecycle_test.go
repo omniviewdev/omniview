@@ -210,7 +210,7 @@ func TestListenForWatchEvents_ContextCancel(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	done := make(chan struct{})
 	ready := make(chan struct{})
@@ -240,7 +240,7 @@ func TestListenForWatchEvents_ProviderError_CrashRecovery(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -266,7 +266,7 @@ func TestListenForWatchEvents_ProviderError_ContextDone_NoCrash(t *testing.T) {
 			return assert.AnError
 		},
 	}
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	ready3 := make(chan struct{})
 
 	ctrl.listenForWatchEvents("p1", errorProvider, ctx, sink, ready3)

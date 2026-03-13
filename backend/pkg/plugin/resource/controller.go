@@ -21,6 +21,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
@@ -67,6 +70,11 @@ type controller struct {
 
 	subs *subscriptionManager
 
+	// Resource registry and relationship graph
+	registryStore registry.RegistryStore
+	dispatcher    *indexer.Dispatcher
+	graph         *graph.RelationshipGraph
+
 	onCrashCallback func(pluginID string)
 }
 
@@ -78,6 +86,11 @@ var (
 
 // NewController creates a new resource Controller.
 func NewController(logger logging.Logger, sp pkgsettings.Provider) Controller {
+	store := registry.NewMemoryStore()
+	g := graph.NewRelationshipGraph()
+	graphIndexer := graph.NewGraphIndexer(g, store)
+	dispatcher := indexer.NewDispatcher([]indexer.ResourceIndexer{graphIndexer})
+
 	return &controller{
 		logger:              logger.Named("ResourceController"),
 		settingsProvider:    sp,
@@ -85,6 +98,9 @@ func NewController(logger logging.Logger, sp pkgsettings.Provider) Controller {
 		connections:         make(map[string][]types.Connection),
 		autoConnectAttempts: make(map[string]string),
 		subs:                newSubscriptionManager(),
+		registryStore:       store,
+		dispatcher:          dispatcher,
+		graph:               g,
 	}
 }
 
@@ -100,6 +116,7 @@ func (c *controller) SetCrashCallback(cb func(pluginID string)) {
 // Run starts the controller's background tasks.
 func (c *controller) Run(ctx context.Context) {
 	c.emitter = newWailsEmitter(ctx)
+	c.dispatcher.Start()
 }
 
 // dispenseProvider creates a ResourceProvider from a PluginBackend using version negotiation.
@@ -179,8 +196,28 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 		c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerPluginStart)
 	}
 
+	// Bootstrap relationship declarations for the graph indexer.
+	if resourceTypes := provider.GetResourceTypes(context.Background(), ""); resourceTypes != nil {
+		for rk := range resourceTypes {
+			decls, err := provider.GetRelationships(context.Background(), rk)
+			if err != nil {
+				logger.Warnw(context.Background(), "failed to get relationships", "resourceKey", rk, "error", err)
+				continue
+			}
+			if len(decls) > 0 {
+				c.graph.SetDeclarations(pluginID, rk, decls)
+				logger.Debugw(context.Background(), "cached relationship declarations", "resourceKey", rk, "count", len(decls))
+			}
+		}
+	}
+
 	// Start watch event listener (uses WatchEventSink callback pattern).
-	sink := &engineWatchSink{pluginID: pluginID, ctrl: c}
+	sink := &engineWatchSink{
+		pluginID:   pluginID,
+		ctrl:       c,
+		store:      c.registryStore,
+		dispatcher: c.dispatcher,
+	}
 	watchReady := make(chan struct{})
 	go c.listenForWatchEvents(pluginID, provider, watchCtx, sink, watchReady)
 
@@ -218,12 +255,30 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	delete(c.plugins, pluginID)
 	c.pluginsMu.Unlock()
 
+	// Capture connections before deleting them — needed for registry cleanup.
+	c.connsMu.RLock()
+	pluginConns := append([]types.Connection(nil), c.connections[pluginID]...)
+	c.connsMu.RUnlock()
+
 	c.connsMu.Lock()
 	delete(c.connections, pluginID)
 	c.connsMu.Unlock()
 	c.clearAutoConnectAttempts(pluginID)
 
 	c.subs.RemoveAll(pluginID)
+
+	// Clean up registry entries for all connections of this plugin.
+	for _, conn := range pluginConns {
+		removed := c.registryStore.DeleteByConnection(pluginID, conn.ID)
+		for _, entry := range removed {
+			c.dispatcher.Enqueue(indexer.Event{
+				Type:  indexer.EventDelete,
+				Entry: entry,
+			})
+		}
+		c.graph.RemoveEdgesForConnection(pluginID, conn.ID)
+	}
+	c.graph.ClearDeclarationsForPlugin(pluginID)
 
 	return nil
 }
