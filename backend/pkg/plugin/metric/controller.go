@@ -11,12 +11,11 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	otelcodes "go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
@@ -27,11 +26,6 @@ import (
 )
 
 var tracer = otel.Tracer("omniview.metric")
-
-func recordError(span trace.Span, err error) {
-	span.RecordError(err)
-	span.SetStatus(otelcodes.Error, err.Error())
-}
 
 // MetricProviderSummary is a lightweight summary of a metric provider,
 // exposed to the frontend.
@@ -379,7 +373,7 @@ func (c *controller) Query(
 	c.mux.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
@@ -388,7 +382,7 @@ func (c *controller) Query(
 		req,
 	)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return resp, nil
@@ -474,7 +468,7 @@ func (c *controller) Subscribe(
 	c.mux.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return "", err
 	}
 
@@ -513,7 +507,7 @@ func (c *controller) Unsubscribe(subscriptionID string) error {
 	if !ok {
 		c.mux.Unlock()
 		err := apperror.New(apperror.TypeSessionNotFound, 404, "Subscription not found", fmt.Sprintf("Subscription '%s' was not found.", subscriptionID))
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	span.SetAttributes(attribute.String("plugin_id", sub.pluginID))
@@ -522,7 +516,7 @@ func (c *controller) Unsubscribe(subscriptionID string) error {
 	if !chanOk {
 		c.mux.Unlock()
 		err := apperror.PluginNotFound(sub.pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	// Send while holding the lock to prevent removePlugin from closing

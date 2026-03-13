@@ -85,11 +85,6 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	requestedFilename = strings.TrimPrefix(requestedFilename, "/_")
 
 	requestedFilename = filepath.Clean(requestedFilename)
-	// Reject traversal attempts that escape the .omniview root
-	if strings.Contains(requestedFilename, "..") {
-		respondUnauthorized()
-		return
-	}
 
 	h.logger.Debugw(ctx, "requested file", "path", requestedFilename)
 
@@ -104,6 +99,12 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 
 	toFetch := filepath.Join(homeDir, ".omniview", requestedFilename)
+	// Containment check: ensure resolved path stays under ~/.omniview
+	omniviewRoot := filepath.Join(homeDir, ".omniview")
+	if !strings.HasPrefix(toFetch, omniviewRoot+string(filepath.Separator)) {
+		respondUnauthorized()
+		return
+	}
 	h.logger.Infow(ctx, "fetching file", "path", toFetch)
 
 	fileData, err := os.ReadFile(toFetch)

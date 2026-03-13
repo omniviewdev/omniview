@@ -488,7 +488,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// Merge loaded plugin state with persisted state so that plugins which
 	// failed to load this time (e.g. missing binary) are not lost.
 	if err = pm.mergeAndWritePluginState(states); err != nil {
-		pm.logger.Errorw(pm.ctx, err.Error())
+		pm.logger.Errorw(pm.ctx, "failed to merge and persist plugin state", "error", err)
 	}
 
 	runtime.EventsEmit(pm.ctx, EventInitComplete)

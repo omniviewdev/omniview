@@ -10,12 +10,11 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	otelcodes "go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
@@ -26,11 +25,6 @@ import (
 )
 
 var tracer = otel.Tracer("omniview.logs")
-
-func recordError(span trace.Span, err error) {
-	span.RecordError(err)
-	span.SetStatus(otelcodes.Error, err.Error())
-}
 
 const (
 	BatchFlushInterval = 50 * time.Millisecond
@@ -229,7 +223,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 
 	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		logger.Errorw(ctx, "error", "error", err)
 		return err
 	}
@@ -405,7 +399,7 @@ func (c *controller) CreateSession(
 	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
@@ -414,7 +408,7 @@ func (c *controller) CreateSession(
 		opts,
 	)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
@@ -441,14 +435,14 @@ func (c *controller) GetSession(sessionID string) (*logs.LogSession, error) {
 	if !ok {
 		c.mu.RUnlock()
 		err := apperror.SessionNotFound(sessionID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	client, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(index.pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
@@ -475,7 +469,7 @@ func (c *controller) ListSessions() ([]*logs.LogSession, error) {
 	for _, client := range clients {
 		clientSessions, err := client.ListSessions(ctx)
 		if err != nil {
-			recordError(span, err)
+			telemetryutil.RecordError(span, err)
 			return nil, err
 		}
 		sessions = append(sessions, clientSessions...)
@@ -494,14 +488,14 @@ func (c *controller) CloseSession(sessionID string) error {
 	if !ok {
 		c.mu.RUnlock()
 		err := apperror.SessionNotFound(sessionID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	client, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(index.pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 
@@ -510,7 +504,7 @@ func (c *controller) CloseSession(sessionID string) error {
 		sessionID,
 	)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 
@@ -543,14 +537,14 @@ func (c *controller) SendCommand(sessionID string, cmd logs.LogStreamCommand) er
 	if !ok {
 		c.mu.Unlock()
 		err := apperror.SessionNotFound(sessionID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	inchan, ok := c.inChans[index.pluginID]
 	if !ok {
 		c.mu.Unlock()
 		err := apperror.PluginNotFound(index.pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	inchan <- logs.StreamInput{
@@ -574,14 +568,14 @@ func (c *controller) UpdateSessionOptions(
 	if !ok {
 		c.mu.RUnlock()
 		err := apperror.SessionNotFound(sessionID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	client, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(index.pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 

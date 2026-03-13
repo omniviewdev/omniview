@@ -7,13 +7,12 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	otelcodes "go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -24,11 +23,6 @@ import (
 )
 
 var tracer = otel.Tracer("omniview.networker")
-
-func recordError(span trace.Span, err error) {
-	span.RecordError(err)
-	span.SetStatus(otelcodes.Error, err.Error())
-}
 
 // Wails event keys for port-forward session lifecycle.
 const (
@@ -165,7 +159,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 
 	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		logger.Errorw(ctx, "error", "error", err)
 		return err
 	}
@@ -288,7 +282,7 @@ func (c *controller) GetSupportedPortForwardTargets(plugin string) ([]string, er
 	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(plugin)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return provider.GetSupportedPortForwardTargets(
@@ -314,14 +308,14 @@ func (c *controller) GetPortForwardSession(
 	if !ok {
 		c.mu.RUnlock()
 		err := apperror.SessionNotFound(sessionID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	provider, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(index.pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
@@ -351,7 +345,7 @@ func (c *controller) ListPortForwardSessions(
 	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
@@ -420,7 +414,7 @@ func (c *controller) FindPortForwardSessions(
 	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
@@ -463,7 +457,7 @@ func (c *controller) StartResourcePortForwardingSession(
 			"pluginID", pluginID,
 		)
 		err := apperror.PluginNotFound(pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
@@ -477,7 +471,7 @@ func (c *controller) StartResourcePortForwardingSession(
 			"Connection lookup failed",
 			fmt.Sprintf("Could not resolve connection '%s' for plugin '%s'", connectionID, pluginID),
 		)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
@@ -487,7 +481,7 @@ func (c *controller) StartResourcePortForwardingSession(
 
 	session, err := provider.StartPortForwardSession(pctx, opts)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		c.logger.Errorw(ctx, "StartResourcePortForwardingSession: plugin returned error",
 			"pluginID", pluginID,
 			"connectionID", connectionID,
@@ -531,14 +525,14 @@ func (c *controller) ClosePortForwardSession(
 	if !ok {
 		c.mu.RUnlock()
 		err := apperror.SessionNotFound(sessionID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	provider, ok := c.clients[index.pluginID]
 	c.mu.RUnlock()
 	if !ok {
 		err := apperror.PluginNotFound(index.pluginID)
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
@@ -552,7 +546,7 @@ func (c *controller) ClosePortForwardSession(
 		sessionID,
 	)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 

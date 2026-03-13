@@ -160,8 +160,8 @@ func (m *DevServerManager) StartDevServer(pluginID string) (DevServerState, erro
 // been loaded yet but we need the dev server (and its initial Go build) to run
 // before LoadPlugin.
 func (m *DevServerManager) StartDevServerForPath(pluginID, devPath string) (DevServerState, error) {
-	l := m.logger.With(logging.Any("method", "StartDevServerForPath"), logging.Any("pluginID", pluginID), logging.Any("devPath", devPath))
-	l.Infow(context.Background(), "starting dev server for path")
+	l := m.logger.With(logging.Any("method", "StartDevServerForPath"), logging.Any("pluginID", pluginID))
+	l.Debugw(context.Background(), "starting dev server for path", "devPath", devPath)
 
 	if devPath == "" {
 		return DevServerState{}, apperror.New(apperror.TypeValidation, 422, "Missing dev path", fmt.Sprintf("Plugin '%s' has no development path configured.", pluginID))

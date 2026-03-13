@@ -94,7 +94,7 @@ func TestApplyConfig_ToggleTracesOnOff(t *testing.T) {
 
 	// Toggle traces OFF
 	recorder.Reset()
-	require.NoError(t, svc.ApplyConfig(TelemetryConfig{
+	require.NoError(t, svc.ApplyConfig(context.Background(), TelemetryConfig{
 		Enabled:      true,
 		Traces:       false,
 		OTLPEndpoint: "localhost:4318",
@@ -107,7 +107,7 @@ func TestApplyConfig_ToggleTracesOnOff(t *testing.T) {
 	assert.Empty(t, recorder.GetSpans())
 
 	// Toggle traces back ON — swap in recorder again
-	require.NoError(t, svc.ApplyConfig(TelemetryConfig{
+	require.NoError(t, svc.ApplyConfig(context.Background(), TelemetryConfig{
 		Enabled:      true,
 		Traces:       true,
 		OTLPEndpoint: "localhost:4318",
@@ -135,7 +135,7 @@ func TestApplyConfig_MasterSwitchOff(t *testing.T) {
 	defer svc.Shutdown(context.Background())
 
 	// Turn everything off
-	require.NoError(t, svc.ApplyConfig(TelemetryConfig{
+	require.NoError(t, svc.ApplyConfig(context.Background(), TelemetryConfig{
 		Enabled: false,
 	}))
 

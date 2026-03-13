@@ -46,7 +46,7 @@ type Service struct {
 	switchableMetricExp *SwitchableMetricExporter
 	switchableLogExp    *SwitchableLogExporter
 
-	mu sync.Mutex
+	mu sync.RWMutex
 }
 
 // New creates a telemetry Service. Call Init to start it.
@@ -225,8 +225,8 @@ func (s *Service) SetLogShipLevel(level string) {
 
 // ApplyConfig applies new telemetry settings at runtime by swapping exporters.
 // This is the primary hot-toggle mechanism — called when the user changes
-// telemetry settings via the UI.
-func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
+// telemetry settings via the UI. The context is used for exporter creation.
+func (s *Service) ApplyConfig(ctx context.Context, cfg TelemetryConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -249,7 +249,7 @@ func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
 	// Per-signal toggles. Signals require both the toggle AND a valid endpoint.
 	if cfg.Traces != s.cfg.Traces || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint || !wasEnabled {
 		if cfg.Traces && hasEndpoint {
-			exp, err := NewTraceExporter(context.Background(), cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+			exp, err := NewTraceExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 			if err != nil {
 				return err
 			}
@@ -261,7 +261,7 @@ func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
 
 	if cfg.Metrics != s.cfg.Metrics || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint || !wasEnabled {
 		if cfg.Metrics && hasEndpoint {
-			exp, err := NewMetricExporter(context.Background(), cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+			exp, err := NewMetricExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 			if err != nil {
 				return err
 			}
@@ -273,7 +273,7 @@ func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
 
 	if cfg.LogsShip != s.cfg.LogsShip || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint || !wasEnabled {
 		if cfg.LogsShip && hasEndpoint {
-			exp, err := NewLogExporter(context.Background(), cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+			exp, err := NewLogExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 			if err != nil {
 				return err
 			}
@@ -314,8 +314,8 @@ func (s *Service) ApplyConfig(cfg TelemetryConfig) error {
 
 // Config returns the current telemetry configuration.
 func (s *Service) Config() TelemetryConfig {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.cfg
 }
 

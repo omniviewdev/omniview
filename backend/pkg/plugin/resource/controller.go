@@ -16,12 +16,12 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -34,11 +34,6 @@ const PluginName = "resource"
 
 var tracer = otel.Tracer("omniview.resource")
 
-// recordError marks a span as errored and attaches the error message.
-func recordError(span trace.Span, err error) {
-	span.RecordError(err)
-	span.SetStatus(otelcodes.Error, err.Error())
-}
 
 // Controller is the lifecycle + service interface for the resource capability.
 type Controller interface {
@@ -318,12 +313,12 @@ func (c *controller) Get(pluginID, connectionID, key string, input resource.GetI
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.Get(ctx, key, input)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		c.logger.Errorw(ctx, "RPC failed", "op", "Get", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
 		return nil, toAppError(err, pluginID)
@@ -337,12 +332,12 @@ func (c *controller) List(pluginID, connectionID, key string, input resource.Lis
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.List(ctx, key, input)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		c.logger.Errorw(ctx, "RPC failed", "op", "List", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
 		return nil, toAppError(err, pluginID)
@@ -356,12 +351,12 @@ func (c *controller) Find(pluginID, connectionID, key string, input resource.Fin
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.Find(ctx, key, input)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		c.logger.Errorw(ctx, "RPC failed", "op", "Find", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
 		return nil, toAppError(err, pluginID)
@@ -375,12 +370,12 @@ func (c *controller) Create(pluginID, connectionID, key string, input resource.C
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.Create(ctx, key, input)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		c.logger.Errorw(ctx, "RPC failed", "op", "Create", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
 		return nil, toAppError(err, pluginID)
@@ -394,12 +389,12 @@ func (c *controller) Update(pluginID, connectionID, key string, input resource.U
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.Update(ctx, key, input)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		c.logger.Errorw(ctx, "RPC failed", "op", "Update", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
 		return nil, toAppError(err, pluginID)
@@ -413,12 +408,12 @@ func (c *controller) Delete(pluginID, connectionID, key string, input resource.D
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.Delete(ctx, key, input)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		c.logger.Errorw(ctx, "RPC failed", "op", "Delete", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
 		return nil, toAppError(err, pluginID)
@@ -442,13 +437,13 @@ func (c *controller) StartConnection(pluginID, connectionID string) (types.Conne
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return types.ConnectionStatus{}, err
 	}
 
 	conn, err := provider.StartConnection(ctx, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return types.ConnectionStatus{}, err
 	}
 
@@ -483,13 +478,13 @@ func (c *controller) StopConnection(pluginID, connectionID string) (types.Connec
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return types.Connection{}, err
 	}
 
 	conn, err := provider.StopConnection(ctx, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return types.Connection{}, err
 	}
 
@@ -520,7 +515,7 @@ func (c *controller) CheckConnection(pluginID, connectionID string) (types.Conne
 
 	status, err := provider.CheckConnection(ctx, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		c.logger.Errorw(ctx, "RPC failed", "op", "CheckConnection", "pluginID", pluginID, "connectionID", connectionID, "error", err)
 		c.checkConnectionError(pluginID, err)
 		return types.ConnectionStatus{}, toAppError(err, pluginID)
@@ -534,13 +529,13 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 	span.SetAttributes(attribute.String("plugin_id", pluginID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
 	conns, err := provider.LoadConnections(ctx)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 
@@ -657,12 +652,12 @@ func (c *controller) GetConnectionNamespaces(pluginID, connectionID string) ([]s
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.GetConnectionNamespaces(ctx, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return result, nil
@@ -719,11 +714,11 @@ func (c *controller) StartConnectionWatch(pluginID, connectionID string) error {
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	if err := provider.StartConnectionWatch(ctx, connectionID); err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	return nil
@@ -735,11 +730,11 @@ func (c *controller) StopConnectionWatch(pluginID, connectionID string) error {
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	if err := provider.StopConnectionWatch(ctx, connectionID); err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	return nil
@@ -751,12 +746,12 @@ func (c *controller) GetWatchState(pluginID, connectionID string) (*resource.Wat
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	summary, err := provider.GetWatchState(ctx, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	var nonIdle int
@@ -782,11 +777,11 @@ func (c *controller) EnsureResourceWatch(pluginID, connectionID, resourceKey str
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", resourceKey))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	if err := provider.EnsureResourceWatch(ctx, connectionID, resourceKey); err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	return nil
@@ -798,11 +793,11 @@ func (c *controller) StopResourceWatch(pluginID, connectionID, resourceKey strin
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", resourceKey))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	if err := provider.StopResourceWatch(ctx, connectionID, resourceKey); err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	return nil
@@ -814,11 +809,11 @@ func (c *controller) RestartResourceWatch(pluginID, connectionID, resourceKey st
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", resourceKey))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	if err := provider.RestartResourceWatch(ctx, connectionID, resourceKey); err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return err
 	}
 	return nil
@@ -830,12 +825,12 @@ func (c *controller) IsResourceWatchRunning(pluginID, connectionID, resourceKey 
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", resourceKey))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return false, err
 	}
 	result, err := provider.IsResourceWatchRunning(ctx, connectionID, resourceKey)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return false, err
 	}
 	return result, nil
@@ -873,7 +868,7 @@ func (c *controller) GetResourceGroups(pluginID, connectionID string) map[string
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil
 	}
 	return provider.GetResourceGroups(ctx, connectionID)
@@ -885,12 +880,12 @@ func (c *controller) GetResourceGroup(pluginID, groupID string) (resource.Resour
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("group_id", groupID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return resource.ResourceGroup{}, err
 	}
 	result, err := provider.GetResourceGroup(ctx, groupID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return resource.ResourceGroup{}, err
 	}
 	return result, nil
@@ -902,7 +897,7 @@ func (c *controller) GetResourceTypes(pluginID, connectionID string) map[string]
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil
 	}
 	return provider.GetResourceTypes(ctx, connectionID)
@@ -914,12 +909,12 @@ func (c *controller) GetResourceType(pluginID, typeID string) (*resource.Resourc
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("type_id", typeID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.GetResourceType(ctx, typeID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return result, nil
@@ -931,7 +926,7 @@ func (c *controller) HasResourceType(pluginID, typeID string) bool {
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("type_id", typeID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return false
 	}
 	return provider.HasResourceType(ctx, typeID)
@@ -943,12 +938,12 @@ func (c *controller) GetResourceDefinition(pluginID, typeID string) (resource.Re
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("type_id", typeID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return resource.ResourceDefinition{}, err
 	}
 	result, err := provider.GetResourceDefinition(ctx, typeID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return resource.ResourceDefinition{}, err
 	}
 	return result, nil
@@ -960,12 +955,12 @@ func (c *controller) GetResourceCapabilities(pluginID, key string) (*resource.Re
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.GetResourceCapabilities(ctx, key)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return result, nil
@@ -977,12 +972,12 @@ func (c *controller) GetFilterFields(pluginID, connectionID, key string) ([]reso
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.GetFilterFields(ctx, connectionID, key)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return result, nil
@@ -994,12 +989,12 @@ func (c *controller) GetResourceSchema(pluginID, connectionID, key string) (json
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.GetResourceSchema(ctx, connectionID, key)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return result, nil
@@ -1015,12 +1010,12 @@ func (c *controller) GetActions(pluginID, connectionID, key string) ([]resource.
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.GetActions(ctx, key)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return result, nil
@@ -1032,12 +1027,12 @@ func (c *controller) ExecuteAction(pluginID, connectionID, key, actionID string,
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key), attribute.String("action_id", actionID))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.ExecuteAction(ctx, key, actionID, input)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		c.logger.Errorw(ctx, "RPC failed", "op", "ExecuteAction", "pluginID", pluginID,
 			"key", key, "actionID", actionID, "error", err)
 		return nil, toAppError(err, pluginID)
@@ -1051,7 +1046,7 @@ func (c *controller) StreamAction(pluginID, connectionID, key, actionID string, 
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key), attribute.String("action_id", actionID))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return "", err
 	}
 
@@ -1091,12 +1086,12 @@ func (c *controller) GetEditorSchemas(pluginID, connectionID string) ([]resource
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.GetEditorSchemas(ctx, connectionID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return result, nil
@@ -1112,12 +1107,12 @@ func (c *controller) GetRelationships(pluginID, key string) ([]resource.Relation
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.GetRelationships(ctx, key)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return result, nil
@@ -1129,12 +1124,12 @@ func (c *controller) ResolveRelationships(pluginID, connectionID, key, id, names
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.ResolveRelationships(ctx, connectionID, key, id, namespace)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return result, nil
@@ -1150,12 +1145,12 @@ func (c *controller) GetHealth(pluginID, connectionID, key string, data json.Raw
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.GetHealth(ctx, connectionID, key, data)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return result, nil
@@ -1167,12 +1162,12 @@ func (c *controller) GetResourceEvents(pluginID, connectionID, key, id, namespac
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	result, err := provider.GetResourceEvents(ctx, connectionID, key, id, namespace, limit)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
 	return result, nil

@@ -8,10 +8,9 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	otelcodes "go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/terminal"
@@ -24,11 +23,6 @@ import (
 )
 
 var tracer = otel.Tracer("omniview.exec")
-
-func recordError(span trace.Span, err error) {
-	span.RecordError(err)
-	span.SetStatus(otelcodes.Error, err.Error())
-}
 
 type Controller interface {
 	internaltypes.Controller
@@ -294,7 +288,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 
 	provider, err := dispenseProvider(pluginID, backend)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		logger.Errorw(ctx, "error dispensing provider", "error", err)
 		return err
 	}
@@ -308,7 +302,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	// leave stale entries in clients/inChans/handlerMap.
 	stream, err := provider.Stream(c.ctx, inchan)
 	if err != nil {
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		close(inchan)
 		logger.Errorw(ctx, "error starting stream", "error", err)
 		return err
@@ -510,7 +504,7 @@ func (c *controller) CreateSession(
 	defer span.End()
 	defer func() {
 		if err != nil {
-			recordError(span, err)
+			telemetryutil.RecordError(span, err)
 		}
 	}()
 	span.SetAttributes(
@@ -564,7 +558,7 @@ func (c *controller) ListSessions() (sessions []*exec.Session, err error) {
 	defer span.End()
 	defer func() {
 		if err != nil {
-			recordError(span, err)
+			telemetryutil.RecordError(span, err)
 		}
 	}()
 
@@ -614,7 +608,7 @@ func (c *controller) GetSession(
 	defer span.End()
 	defer func() {
 		if err != nil {
-			recordError(span, err)
+			telemetryutil.RecordError(span, err)
 		}
 	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))
@@ -641,7 +635,7 @@ func (c *controller) AttachSession(sessionID string) (session *exec.Session, dat
 	defer span.End()
 	defer func() {
 		if err != nil {
-			recordError(span, err)
+			telemetryutil.RecordError(span, err)
 		}
 	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))
@@ -668,7 +662,7 @@ func (c *controller) DetachSession(sessionID string) (session *exec.Session, err
 	defer span.End()
 	defer func() {
 		if err != nil {
-			recordError(span, err)
+			telemetryutil.RecordError(span, err)
 		}
 	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))
@@ -698,7 +692,7 @@ func (c *controller) WriteSession(
 	defer span.End()
 	defer func() {
 		if err != nil {
-			recordError(span, err)
+			telemetryutil.RecordError(span, err)
 		}
 	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))
@@ -733,7 +727,7 @@ func (c *controller) CloseSession(
 	defer span.End()
 	defer func() {
 		if err != nil {
-			recordError(span, err)
+			telemetryutil.RecordError(span, err)
 		}
 	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))
@@ -762,7 +756,7 @@ func (c *controller) ResizeSession(
 	defer span.End()
 	defer func() {
 		if err != nil {
-			recordError(span, err)
+			telemetryutil.RecordError(span, err)
 		}
 	}()
 	span.SetAttributes(attribute.String("session_id", sessionID))

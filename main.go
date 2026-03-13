@@ -252,7 +252,7 @@ func main() {
 
 		settingsProvider.RegisterChangeHandler("telemetry", func(vals map[string]any) {
 			cfg := telemetryFromSettings(vals)
-			if err := telemetrySvc.ApplyConfig(cfg); err != nil {
+			if err := telemetrySvc.ApplyConfig(ctx, cfg); err != nil {
 				log.Errorw(ctx, "failed to apply telemetry config change", "error", err)
 			} else {
 				log.Infow(ctx, "telemetry config updated from settings")
@@ -263,7 +263,7 @@ func main() {
 		// activates on startup (the change handler only fires on changes).
 		if vals, err := settingsProvider.GetCategoryValues("telemetry"); err == nil {
 			cfg := telemetryFromSettings(vals)
-			if err := telemetrySvc.ApplyConfig(cfg); err != nil {
+			if err := telemetrySvc.ApplyConfig(ctx, cfg); err != nil {
 				log.Errorw(ctx, "failed to apply initial telemetry config", "error", err)
 			} else {
 				log.Infow(ctx, "telemetry initialized from persisted settings", "enabled", cfg.Enabled)

@@ -7,13 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
-
-var safeKeyRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // Controller provides a JSON key-value store for plugins to persist arbitrary data.
 // Each key is stored as a separate JSON file under ~/.omniview/plugins/{pluginID}/data/.
@@ -39,14 +36,16 @@ func NewController(logger logging.Logger) Controller {
 
 // dataDir returns the data directory for a plugin, creating it if necessary.
 func (c *controller) dataDir(pluginID string) (string, error) {
-	if !safeKeyRe.MatchString(pluginID) {
-		return "", fmt.Errorf("invalid plugin ID %q: must match [A-Za-z0-9_-]+", pluginID)
-	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(homeDir, ".omniview", "plugins", pluginID, "data")
+	dir := filepath.Join(homeDir, ".omniview", "plugins", filepath.Clean(pluginID), "data")
+	// Containment check: ensure the resolved path stays under .omniview/plugins.
+	pluginsRoot := filepath.Join(homeDir, ".omniview", "plugins")
+	if !strings.HasPrefix(dir, pluginsRoot+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid plugin ID %q: path escapes plugins directory", pluginID)
+	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
@@ -59,10 +58,12 @@ func (c *controller) keyPath(pluginID, key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !safeKeyRe.MatchString(key) {
-		return "", fmt.Errorf("invalid key %q: must match [A-Za-z0-9_-]+", key)
+	full := filepath.Join(dir, filepath.Clean(key)+".json")
+	// Containment check: ensure the key doesn't escape the data directory.
+	if !strings.HasPrefix(full, dir+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid key %q: path escapes data directory", key)
 	}
-	return filepath.Join(dir, key+".json"), nil
+	return full, nil
 }
 
 func (c *controller) Get(pluginID, key string) (any, error) {

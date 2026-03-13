@@ -10,10 +10,9 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	otelcodes "go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -25,11 +24,6 @@ const (
 )
 
 var tracer = otel.Tracer("omniview.settings")
-
-func recordError(span trace.Span, err error) {
-	span.RecordError(err)
-	span.SetStatus(otelcodes.Error, err.Error())
-}
 
 // Controller handles all requests to interface with the settings capabilities on installed plugins.
 //
@@ -209,7 +203,7 @@ func (c *controller) PluginValues(plugin string) map[string]any {
 	c.mu.RUnlock()
 	if !ok {
 		err := errors.New("plugin not found")
-		recordError(span, err)
+		telemetryutil.RecordError(span, err)
 		logger.Errorw(ctx, "error", "error", err)
 		return nil
 	}
@@ -235,7 +229,7 @@ func (c *controller) ListSettings(plugin string) map[string]pkgsettings.Setting 
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
-		recordError(span, errors.New("plugin not found"))
+		telemetryutil.RecordError(span, errors.New("plugin not found"))
 		logger.Errorw(ctx, "error", "error", errors.New("plugin not found"))
 		return nil
 	}
@@ -245,9 +239,14 @@ func (c *controller) ListSettings(plugin string) map[string]pkgsettings.Setting 
 
 // GetSetting returns the setting by ID. This ID should be in the form of a dot separated string
 // that represents the path to the setting. For example, "appearance.theme".
-func (c *controller) GetSetting(plugin, id string) (pkgsettings.Setting, error) {
+func (c *controller) GetSetting(plugin, id string) (result pkgsettings.Setting, retErr error) {
 	ctx, span := tracer.Start(context.Background(), "settings.GetSetting")
 	defer span.End()
+	defer func() {
+		if retErr != nil {
+			telemetryutil.RecordError(span, retErr)
+		}
+	}()
 	span.SetAttributes(attribute.String("plugin", plugin), attribute.String("setting_id", id))
 	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "GetSetting"), logging.Any("id", id))
 
@@ -255,19 +254,23 @@ func (c *controller) GetSetting(plugin, id string) (pkgsettings.Setting, error) 
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
-		err := apperror.PluginNotFound(plugin)
-		recordError(span, err)
-		logger.Errorw(ctx, "error", "error", err)
-		return pkgsettings.Setting{}, err
+		retErr = apperror.PluginNotFound(plugin)
+		logger.Errorw(ctx, "error", "error", retErr)
+		return pkgsettings.Setting{}, retErr
 	}
 
 	return client.GetSetting(id)
 }
 
 // SetSetting sets the value of the setting by ID.
-func (c *controller) SetSetting(plugin, id string, value any) error {
+func (c *controller) SetSetting(plugin, id string, value any) (retErr error) {
 	ctx, span := tracer.Start(context.Background(), "settings.SetSetting")
 	defer span.End()
+	defer func() {
+		if retErr != nil {
+			telemetryutil.RecordError(span, retErr)
+		}
+	}()
 	span.SetAttributes(attribute.String("plugin", plugin), attribute.String("setting_id", id))
 	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "SetSetting"), logging.Any("id", id))
 
@@ -275,19 +278,23 @@ func (c *controller) SetSetting(plugin, id string, value any) error {
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
-		err := apperror.PluginNotFound(plugin)
-		recordError(span, err)
-		logger.Errorw(ctx, "error", "error", err)
-		return err
+		retErr = apperror.PluginNotFound(plugin)
+		logger.Errorw(ctx, "error", "error", retErr)
+		return retErr
 	}
 
 	return client.SetSetting(id, value)
 }
 
 // SetSettings sets multiple settings at once.
-func (c *controller) SetSettings(plugin string, settings map[string]any) error {
+func (c *controller) SetSettings(plugin string, settings map[string]any) (retErr error) {
 	ctx, span := tracer.Start(context.Background(), "settings.SetSettings")
 	defer span.End()
+	defer func() {
+		if retErr != nil {
+			telemetryutil.RecordError(span, retErr)
+		}
+	}()
 	span.SetAttributes(attribute.String("plugin", plugin))
 	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "SetSettings"), logging.Any("entries", settings))
 
@@ -295,10 +302,9 @@ func (c *controller) SetSettings(plugin string, settings map[string]any) error {
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
-		err := apperror.PluginNotFound(plugin)
-		recordError(span, err)
-		logger.Errorw(ctx, "error", "error", err)
-		return err
+		retErr = apperror.PluginNotFound(plugin)
+		logger.Errorw(ctx, "error", "error", retErr)
+		return retErr
 	}
 
 	return client.SetSettings(settings)
