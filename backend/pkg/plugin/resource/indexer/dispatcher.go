@@ -1,0 +1,64 @@
+package indexer
+
+import "log"
+
+const defaultBufferSize = 10_000
+
+type Dispatcher struct {
+	indexers []ResourceIndexer
+	events   chan Event
+	done     chan struct{}
+}
+
+func NewDispatcher(indexers []ResourceIndexer) *Dispatcher {
+	return &Dispatcher{
+		indexers: indexers,
+		events:   make(chan Event, defaultBufferSize),
+		done:     make(chan struct{}),
+	}
+}
+
+func (d *Dispatcher) Start() {
+	go d.loop()
+}
+
+func (d *Dispatcher) Stop() {
+	close(d.events)
+	<-d.done
+}
+
+func (d *Dispatcher) Enqueue(event Event) {
+	d.events <- event
+}
+
+func (d *Dispatcher) loop() {
+	defer close(d.done)
+	for event := range d.events {
+		for _, idx := range d.indexers {
+			d.dispatch(idx, event)
+		}
+	}
+}
+
+func (d *Dispatcher) dispatch(idx ResourceIndexer, event Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("indexer %q panicked on %v event: %v", idx.Name(), event.Type, r)
+		}
+	}()
+
+	switch event.Type {
+	case EventAdd:
+		idx.OnAdd(event.Entry, event.Raw)
+	case EventUpdate:
+		if event.Old != nil {
+			idx.OnUpdate(*event.Old, event.Entry, event.Raw)
+		} else {
+			idx.OnAdd(event.Entry, event.Raw)
+		}
+	case EventDelete:
+		idx.OnDelete(event.Entry)
+	default:
+		log.Printf("indexer dispatcher: unknown event type %d", event.Type)
+	}
+}
