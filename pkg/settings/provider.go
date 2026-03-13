@@ -381,13 +381,28 @@ func (p *provider) SetSettings(settings map[string]any) error {
 		entries = append(entries, staged{setting: setting, category: cat, id: id})
 	}
 
-	// Commit: apply all validated settings.
+	// Record original values for rollback, then apply.
+	type original struct {
+		category string
+		id       string
+		setting  Setting
+	}
+	originals := make([]original, 0, len(entries))
 	changedCategories := make(map[string]struct{}, len(entries))
 	for _, e := range entries {
+		originals = append(originals, original{
+			category: e.category,
+			id:       e.id,
+			setting:  p.store[e.category].Settings[e.id],
+		})
 		p.store[e.category].Settings[e.id] = e.setting
 		changedCategories[e.category] = struct{}{}
 	}
 	if err := p.SaveSettings(); err != nil {
+		// Rollback in-memory state to match persisted state.
+		for _, o := range originals {
+			p.store[o.category].Settings[o.id] = o.setting
+		}
 		return err
 	}
 	p.notifyChangeHandlers(changedCategories)
@@ -487,7 +502,9 @@ func (p *provider) notifyChangeHandlers(changedCategories map[string]struct{}) {
 			p.logger.Warnw("failed to get category values for change handler", "category", cat, "error", err)
 			continue
 		}
-		fn(vals)
+		go func(category string, handler CategoryChangeFunc, values map[string]any) {
+			handler(values)
+		}(cat, fn, vals)
 	}
 }
 

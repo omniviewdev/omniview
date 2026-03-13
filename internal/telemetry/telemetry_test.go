@@ -123,6 +123,8 @@ func TestApplyConfig_ToggleTracesOnOff(t *testing.T) {
 func TestApplyConfig_MasterSwitchOff(t *testing.T) {
 	t.Cleanup(resetGlobalOTel)
 
+	recorder := tracetest.NewInMemoryExporter()
+
 	svc := New(TelemetryConfig{
 		Enabled:      true,
 		Traces:       true,
@@ -134,10 +136,21 @@ func TestApplyConfig_MasterSwitchOff(t *testing.T) {
 	require.NoError(t, svc.Init(context.Background()))
 	defer svc.Shutdown(context.Background())
 
+	// Swap in recorder so we can observe
+	svc.switchableTraceExp.Swap(recorder)
+
 	// Turn everything off
 	require.NoError(t, svc.ApplyConfig(context.Background(), TelemetryConfig{
 		Enabled: false,
 	}))
 
 	assert.False(t, svc.cfg.Enabled)
+
+	// Emit a span after master switch OFF — should not be exported.
+	recorder.Reset()
+	tracer := otel.Tracer("test-off")
+	_, span := tracer.Start(context.Background(), "after-master-off")
+	span.End()
+	svc.tracerProvider.ForceFlush(context.Background())
+	assert.Empty(t, recorder.GetSpans(), "no spans should be exported after master switch off")
 }

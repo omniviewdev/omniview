@@ -474,7 +474,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 				wg.Add(1)
 				go func(pluginID, devPath string) {
 					defer wg.Done()
-					pm.logger.Infow(pm.ctx, "starting dev server (background)", "pluginID", pluginID, "devPath", devPath)
+					pm.logger.Infow(pm.ctx, "starting dev server (background)", "pluginID", pluginID)
 					if _, startErr := pm.devServerMgr.StartDevServerForPath(pluginID, devPath); startErr != nil {
 						pm.logger.Warnw(pm.ctx, "failed to start dev server", "pluginID", pluginID, "error", startErr)
 					}

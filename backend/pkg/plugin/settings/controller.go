@@ -204,7 +204,7 @@ func (c *controller) PluginValues(plugin string) map[string]any {
 	if !ok {
 		err := errors.New("plugin not found")
 		telemetryutil.RecordError(span, err)
-		logger.Errorw(ctx, "error", "error", err)
+		logger.Errorw(ctx, "plugin not found", "error", err)
 		return nil
 	}
 
@@ -230,7 +230,7 @@ func (c *controller) ListSettings(plugin string) map[string]pkgsettings.Setting 
 	c.mu.RUnlock()
 	if !ok {
 		telemetryutil.RecordError(span, errors.New("plugin not found"))
-		logger.Errorw(ctx, "error", "error", errors.New("plugin not found"))
+		logger.Errorw(ctx, "plugin not found for ListSettings")
 		return nil
 	}
 
@@ -255,7 +255,7 @@ func (c *controller) GetSetting(plugin, id string) (result pkgsettings.Setting, 
 	c.mu.RUnlock()
 	if !ok {
 		retErr = apperror.PluginNotFound(plugin)
-		logger.Errorw(ctx, "error", "error", retErr)
+		logger.Errorw(ctx, "plugin not found for GetSetting", "error", retErr)
 		return pkgsettings.Setting{}, retErr
 	}
 
@@ -279,7 +279,7 @@ func (c *controller) SetSetting(plugin, id string, value any) (retErr error) {
 	c.mu.RUnlock()
 	if !ok {
 		retErr = apperror.PluginNotFound(plugin)
-		logger.Errorw(ctx, "error", "error", retErr)
+		logger.Errorw(ctx, "plugin not found for SetSetting", "error", retErr)
 		return retErr
 	}
 
@@ -296,14 +296,18 @@ func (c *controller) SetSettings(plugin string, settings map[string]any) (retErr
 		}
 	}()
 	span.SetAttributes(attribute.String("plugin", plugin))
-	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "SetSettings"), logging.Any("entries", settings))
+	settingKeys := make([]string, 0, len(settings))
+	for k := range settings {
+		settingKeys = append(settingKeys, k)
+	}
+	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "SetSettings"), logging.Any("keys", settingKeys))
 
 	c.mu.RLock()
 	client, ok := c.clients[plugin]
 	c.mu.RUnlock()
 	if !ok {
 		retErr = apperror.PluginNotFound(plugin)
-		logger.Errorw(ctx, "error", "error", retErr)
+		logger.Errorw(ctx, "plugin not found for SetSettings", "error", retErr)
 		return retErr
 	}
 

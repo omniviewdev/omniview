@@ -510,6 +510,7 @@ func (c *controller) CheckConnection(pluginID, connectionID string) (types.Conne
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
+		telemetryutil.RecordError(span, err)
 		return types.ConnectionStatus{}, err
 	}
 

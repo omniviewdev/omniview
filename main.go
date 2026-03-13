@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -273,7 +274,11 @@ func main() {
 		// Apply user-configured marketplace URL to the registry client.
 		if marketplaceURL, err := settingsProvider.GetString("developer.marketplace_url"); err == nil && marketplaceURL != "" {
 			pluginRegistryClient.SetBaseURL(marketplaceURL)
-			log.Infow(ctx, "using custom marketplace URL", "url", marketplaceURL)
+			safeHost := marketplaceURL
+			if u, parseErr := url.Parse(marketplaceURL); parseErr == nil {
+				safeHost = u.Host
+			}
+			log.Infow(ctx, "using custom marketplace URL", "host", safeHost)
 		}
 
 		resourceController.Run(ctx)

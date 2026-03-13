@@ -245,42 +245,77 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg TelemetryConfig) error {
 
 	wasEnabled := s.cfg.Enabled
 	hasEndpoint := cfg.OTLPEndpoint != ""
+	configChanged := cfg.OTLPEndpoint != s.cfg.OTLPEndpoint ||
+		cfg.AuthHeader != s.cfg.AuthHeader ||
+		cfg.AuthValue != s.cfg.AuthValue ||
+		!wasEnabled
 
-	// Per-signal toggles. Signals require both the toggle AND a valid endpoint.
-	if cfg.Traces != s.cfg.Traces || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint || !wasEnabled {
+	// Stage 1: Allocate all new exporters/profiler into locals. If any
+	// constructor fails we return without mutating live state.
+	var newTraceExp sdktrace.SpanExporter
+	var newMetricExp sdkmetric.Exporter
+	var newLogExp sdklog.Exporter
+	var newProfiler *pyroscope.Profiler
+
+	needTraceSwap := cfg.Traces != s.cfg.Traces || configChanged
+	if needTraceSwap {
 		if cfg.Traces && hasEndpoint {
 			exp, err := NewTraceExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 			if err != nil {
 				return err
 			}
-			s.swapTraceExporter(exp)
+			newTraceExp = exp
 		} else {
-			s.swapTraceExporter(noopSpanExporter{})
+			newTraceExp = noopSpanExporter{}
 		}
 	}
 
-	if cfg.Metrics != s.cfg.Metrics || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint || !wasEnabled {
+	needMetricSwap := cfg.Metrics != s.cfg.Metrics || configChanged
+	if needMetricSwap {
 		if cfg.Metrics && hasEndpoint {
 			exp, err := NewMetricExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 			if err != nil {
 				return err
 			}
-			s.swapMetricExporter(exp)
+			newMetricExp = exp
 		} else {
-			s.swapMetricExporter(noopMetricExporter{})
+			newMetricExp = noopMetricExporter{}
 		}
 	}
 
-	if cfg.LogsShip != s.cfg.LogsShip || cfg.OTLPEndpoint != s.cfg.OTLPEndpoint || !wasEnabled {
+	needLogSwap := cfg.LogsShip != s.cfg.LogsShip || configChanged
+	if needLogSwap {
 		if cfg.LogsShip && hasEndpoint {
 			exp, err := NewLogExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 			if err != nil {
 				return err
 			}
-			s.swapLogExporter(exp)
+			newLogExp = exp
 		} else {
-			s.swapLogExporter(noopLogExporter{})
+			newLogExp = noopLogExporter{}
 		}
+	}
+
+	needProfilerStart := cfg.Profiling && s.profiler == nil && cfg.PyroscopeEndpoint != ""
+	needProfilerEndpointChange := cfg.Profiling && s.profiler != nil &&
+		cfg.PyroscopeEndpoint != s.cfg.PyroscopeEndpoint && cfg.PyroscopeEndpoint != ""
+	if needProfilerStart || needProfilerEndpointChange {
+		profiler, err := startProfiling(s.version, cfg.PyroscopeEndpoint)
+		if err != nil {
+			return err
+		}
+		newProfiler = profiler
+	}
+
+	// Stage 2: All allocations succeeded — apply atomically.
+	if needTraceSwap {
+		s.swapTraceExporter(newTraceExp)
+	}
+	if needMetricSwap {
+		s.swapMetricExporter(newMetricExp)
+	}
+	if needLogSwap {
+		s.swapLogExporter(newLogExp)
 	}
 
 	if cfg.LogsShipLevel != s.cfg.LogsShipLevel {
@@ -288,7 +323,7 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg TelemetryConfig) error {
 	}
 
 	// Update tracer provider wrapper when profiling changes.
-	if cfg.Profiling != s.cfg.Profiling && s.tracerProvider != nil {
+	if (cfg.Profiling != s.cfg.Profiling || cfg.PyroscopeEndpoint != s.cfg.PyroscopeEndpoint) && s.tracerProvider != nil {
 		if cfg.Profiling && cfg.PyroscopeEndpoint != "" {
 			otel.SetTracerProvider(otelpyroscope.NewTracerProvider(s.tracerProvider))
 		} else {
@@ -297,12 +332,11 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg TelemetryConfig) error {
 	}
 
 	// Profiling toggle.
-	if cfg.Profiling && s.profiler == nil && cfg.PyroscopeEndpoint != "" {
-		profiler, err := startProfiling(s.version, cfg.PyroscopeEndpoint)
-		if err != nil {
-			return err
+	if newProfiler != nil {
+		if s.profiler != nil {
+			_ = s.profiler.Stop()
 		}
-		s.profiler = profiler
+		s.profiler = newProfiler
 	} else if !cfg.Profiling && s.profiler != nil {
 		_ = s.profiler.Stop()
 		s.profiler = nil

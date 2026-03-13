@@ -6,7 +6,11 @@ import (
 )
 
 // RecordError records an error on a span and sets the span status to Error.
+// It is a no-op if err is nil.
 func RecordError(span trace.Span, err error) {
+	if err == nil {
+		return
+	}
 	span.RecordError(err)
 	span.SetStatus(otelcodes.Error, err.Error())
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
@@ -244,17 +245,21 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	c.inChans[pluginID] = inchan
 	c.mu.Unlock()
 
-	// Start the stream
+	// Start the stream using the span-linked context for trace correlation.
+	// We derive a new context from c.ctx that carries the current span so
+	// that logs emitted inside the goroutine are correlated with the
+	// OnPluginStart trace, while still respecting the controller's lifecycle.
+	streamCtx := trace.ContextWithSpan(c.ctx, span)
 	go func() {
-		stream, err := provider.Stream(c.ctx, inchan)
+		stream, err := provider.Stream(streamCtx, inchan)
 		if err != nil {
-			logger.Errorw(context.Background(), "error starting log stream", "error", err)
+			logger.Errorw(streamCtx, "error starting log stream", "error", err)
 			return
 		}
 
 		for {
 			select {
-			case <-c.ctx.Done():
+			case <-streamCtx.Done():
 				return
 			case output, ok := <-stream:
 				if !ok {
