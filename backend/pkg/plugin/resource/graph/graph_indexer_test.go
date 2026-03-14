@@ -101,9 +101,11 @@ func TestGraphIndexer_FieldPathWithIncomingDirection(t *testing.T) {
 	idx.OnAdd(pod, raw)
 
 	// With EdgeIncoming the edge should point FROM the ReplicaSet TO the Pod.
+	// The ReplicaSet inherits the Pod's namespace since fieldPath extraction
+	// defaults to the source entry's namespace.
 	rsNode := GraphNode{
 		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "apps::v1::ReplicaSet", ID: "nginx-rs", Namespace: "",
+		ResourceKey: "apps::v1::ReplicaSet", ID: "nginx-rs", Namespace: "default",
 	}
 	edges := g.EdgesFrom(rsNode.Key())
 	if len(edges) != 1 {

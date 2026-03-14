@@ -154,10 +154,10 @@ func TestIntegration_OwnershipChain(t *testing.T) {
 	disp.Flush()
 
 	// Verify: ownership edge exists (ReplicaSet → Pod)
-	// The extractor doesn't know the ReplicaSet's namespace, so it uses "" (cluster-scoped key)
+	// The extractor inherits the Pod's namespace ("default") for the target.
 	rsNode := graph.GraphNode{
 		PluginID: "k8s", ConnectionID: "c1",
-		ResourceKey: "apps::v1::ReplicaSet", ID: "web-abc", Namespace: "",
+		ResourceKey: "apps::v1::ReplicaSet", ID: "web-abc", Namespace: "default",
 	}
 	edges, _ := g.GetRelated(rsNode, graph.Outgoing, nil)
 	if len(edges) != 1 {

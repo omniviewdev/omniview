@@ -92,7 +92,7 @@ func (gi *GraphIndexer) extractFieldPath(source GraphNode, entry registry.Resour
 			ConnectionID: entry.ConnectionID,
 			ResourceKey:  decl.TargetResourceKey,
 			ID:           targetID,
-			Namespace:    "",
+			Namespace:    entry.Namespace,
 		}
 
 		// EdgeIncoming reverses edge direction (used for ownership)
