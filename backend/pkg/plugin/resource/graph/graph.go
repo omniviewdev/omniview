@@ -32,7 +32,7 @@ func NewRelationshipGraph() *RelationshipGraph {
 }
 
 func edgeKey(e GraphEdge) string {
-	return e.Source.Key() + "->" + e.Target.Key() + ":" + string(e.Type)
+	return e.Source.Key() + "->" + e.Target.Key() + ":" + string(e.Type) + ":" + e.Label
 }
 
 func (g *RelationshipGraph) AddEdge(edge GraphEdge) {

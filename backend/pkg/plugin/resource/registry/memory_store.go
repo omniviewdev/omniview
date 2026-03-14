@@ -54,6 +54,30 @@ func (s *MemoryStore) Put(entry ResourceEntry) (old *ResourceEntry, existed bool
 	return old, existed
 }
 
+func (s *MemoryStore) PutIfAbsent(entry ResourceEntry) (existing *ResourceEntry, loaded bool) {
+	key := entry.EntryKey()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if prev, ok := s.entries[key]; ok {
+		prev.Labels = maps.Clone(prev.Labels)
+		return &prev, true
+	}
+
+	ck := connKey(entry.PluginID, entry.ConnectionID)
+	entry.Labels = maps.Clone(entry.Labels)
+	s.entries[key] = entry
+
+	if s.byConn[ck] == nil {
+		s.byConn[ck] = make(map[string]struct{})
+	}
+	s.byConn[ck][key] = struct{}{}
+	s.addLabelIndex(key, entry.Labels)
+
+	return nil, false
+}
+
 func (s *MemoryStore) Get(pluginID, connectionID, resourceKey, namespace, id string) (*ResourceEntry, bool) {
 	key := (ResourceEntry{
 		PluginID: pluginID, ConnectionID: connectionID,

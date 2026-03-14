@@ -39,23 +39,34 @@ func (d *Dispatcher) Stop() {
 }
 
 func (d *Dispatcher) Enqueue(event Event) {
-	select {
-	case <-d.stopping:
-		return
-	case d.events <- event:
-	}
+	d.safeSend(event)
 }
 
 // Flush blocks until all previously-enqueued events have been processed.
 // Useful for deterministic testing without time.Sleep.
 func (d *Dispatcher) Flush() {
 	barrier := make(chan struct{})
-	select {
-	case <-d.stopping:
+	if !d.safeSend(Event{Type: eventFlush, flush: barrier}) {
 		return
-	case d.events <- Event{Type: eventFlush, flush: barrier}:
 	}
 	<-barrier
+}
+
+// safeSend attempts to send an event on the events channel. Returns false if
+// the dispatcher is stopping. Uses recover to handle the narrow race where
+// Stop() closes the events channel between select evaluation and send.
+func (d *Dispatcher) safeSend(event Event) (sent bool) {
+	defer func() {
+		if recover() != nil {
+			sent = false
+		}
+	}()
+	select {
+	case <-d.stopping:
+		return false
+	case d.events <- event:
+		return true
+	}
 }
 
 func (d *Dispatcher) loop() {

@@ -198,6 +198,14 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	c.pluginsMu.Unlock()
 	c.clearAutoConnectAttempts(pluginID)
 
+	// Clean up stale registry/graph state from the previous plugin instance.
+	c.connsMu.RLock()
+	prevConns := append([]types.Connection(nil), c.connections[pluginID]...)
+	c.connsMu.RUnlock()
+	if len(prevConns) > 0 {
+		c.cleanupPluginGraphState(pluginID, prevConns)
+	}
+
 	// Load connections from the plugin.
 	if conns, err := c.LoadConnections(pluginID); err != nil {
 		logger.Errorw(context.Background(), "failed to load connections from plugin", "error", err)
@@ -280,8 +288,17 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 
 	c.subs.RemoveAll(pluginID)
 
-	// Clean up registry entries for all connections of this plugin.
-	for _, conn := range pluginConns {
+	c.cleanupPluginGraphState(pluginID, pluginConns)
+
+	return nil
+}
+
+// cleanupPluginGraphState removes registry entries, graph edges, and
+// declarations for the given plugin and its connections. Called during both
+// plugin stop and plugin restart (to avoid stale state leaking into the
+// replacement).
+func (c *controller) cleanupPluginGraphState(pluginID string, conns []types.Connection) {
+	for _, conn := range conns {
 		removed := c.registryStore.DeleteByConnection(pluginID, conn.ID)
 		for _, entry := range removed {
 			c.dispatcher.Enqueue(indexer.Event{
@@ -292,8 +309,6 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 		c.graph.RemoveEdgesForConnection(pluginID, conn.ID)
 	}
 	c.graph.ClearDeclarationsForPlugin(pluginID)
-
-	return nil
 }
 
 func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
@@ -1521,16 +1536,8 @@ func (c *controller) observeResponse(pluginID, connectionID, resourceKey, id, na
 		return
 	}
 
-	// If the entry already exists (populated by a watch event with labels/UID),
-	// preserve that metadata — watch events are authoritative.
-	if existing, ok := c.registryStore.Get(pluginID, connectionID, resourceKey, namespace, id); ok && existing != nil {
-		rawCopy := make(json.RawMessage, len(data))
-		copy(rawCopy, data)
-		c.dispatcher.Enqueue(indexer.Event{
-			Type: indexer.EventUpdate, Entry: *existing, Raw: rawCopy,
-		})
-		return
-	}
+	rawCopy := make(json.RawMessage, len(data))
+	copy(rawCopy, data)
 
 	entry := registry.ResourceEntry{
 		PluginID:     pluginID,
@@ -1540,12 +1547,17 @@ func (c *controller) observeResponse(pluginID, connectionID, resourceKey, id, na
 		Namespace:    namespace,
 	}
 
-	c.registryStore.Put(entry)
-
-	rawCopy := make(json.RawMessage, len(data))
-	copy(rawCopy, data)
-
-	c.dispatcher.Enqueue(indexer.Event{
-		Type: indexer.EventAdd, Entry: entry, Raw: rawCopy,
-	})
+	// Atomically insert only if no entry exists yet. If a watch event already
+	// populated the entry with authoritative metadata (Labels, UID, CreatedAt),
+	// PutIfAbsent returns the existing entry and we re-index with the new raw
+	// data without overwriting that metadata.
+	if existing, loaded := c.registryStore.PutIfAbsent(entry); loaded {
+		c.dispatcher.Enqueue(indexer.Event{
+			Type: indexer.EventUpdate, Entry: *existing, Old: existing, Raw: rawCopy,
+		})
+	} else {
+		c.dispatcher.Enqueue(indexer.Event{
+			Type: indexer.EventAdd, Entry: entry, Raw: rawCopy,
+		})
+	}
 }
