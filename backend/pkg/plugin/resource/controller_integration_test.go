@@ -159,7 +159,7 @@ func TestIntegration_WatchEventsFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	// Simulate watch event through sink.
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	sink.OnAdd(resource.WatchAddPayload{
 		Connection: "conn-1",
 		Key:        "pods",
@@ -183,7 +183,7 @@ func TestIntegration_SubscriptionGates(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	// No subscription — event should NOT appear.
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-1"})
@@ -204,7 +204,7 @@ func TestIntegration_Unsubscribe_StopsEvents(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	// Subscribe, emit, verify.
 	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
@@ -224,7 +224,7 @@ func TestIntegration_RefCounted_Subscriptions(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	// Subscribe twice.
 	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
@@ -303,8 +303,8 @@ func TestIntegration_MultiPlugin_Isolation(t *testing.T) {
 	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
 	_ = ctrl.SubscribeResource("p2", "conn-1", "pods")
 
-	sink1 := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
-	sink2 := &engineWatchSink{pluginID: "p2", ctrl: ctrl}
+	sink1 := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
+	sink2 := &engineWatchSink{pluginID: "p2", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	// Emit from plugin 1 only.
 	sink1.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-from-p1"})
@@ -344,7 +344,7 @@ func TestIntegration_StateAlwaysFlows(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
 	// NOT subscribed to anything.
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	sink.OnStateChange(resource.WatchStateEvent{
 		Connection:  "conn-1",
 		ResourceKey: "pods",
@@ -390,7 +390,7 @@ func TestIntegration_SubscribeBeforeConnect(t *testing.T) {
 	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
 
 	// Later, events arrive through sink (simulating post-connect watch events).
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-1"})
 
 	ev := emitter.WaitForEvent(t, "ADD", time.Second)
@@ -405,7 +405,7 @@ func TestIntegration_OutOfOrderEvents(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
 
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	// Emit events in sequence.
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-1"})
@@ -485,7 +485,7 @@ func TestIntegration_SameKeyTwoPlugins(t *testing.T) {
 	assert.JSONEq(t, `{"source":"p2"}`, string(r2.Result))
 
 	// Event isolation: sink for p1 only emits to p1 event keys.
-	sink1 := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink1 := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	sink1.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-1"})
 
 	time.Sleep(50 * time.Millisecond)
@@ -507,7 +507,7 @@ func TestIntegration_RapidSubUnsub(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	for i := 0; i < 100; i++ {
 		_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
