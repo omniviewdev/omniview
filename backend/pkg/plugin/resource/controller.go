@@ -1514,27 +1514,31 @@ func (c *controller) observeResponse(pluginID, connectionID, resourceKey, id, na
 		return
 	}
 
+	// If the entry already exists (populated by a watch event with labels/UID),
+	// preserve that metadata — watch events are authoritative.
+	if existing, ok := c.registryStore.Get(pluginID, connectionID, resourceKey, namespace, id); ok && existing != nil {
+		rawCopy := make(json.RawMessage, len(data))
+		copy(rawCopy, data)
+		c.dispatcher.Enqueue(indexer.Event{
+			Type: indexer.EventUpdate, Entry: *existing, Raw: rawCopy,
+		})
+		return
+	}
+
 	entry := registry.ResourceEntry{
 		PluginID:     pluginID,
 		ConnectionID: connectionID,
 		ResourceKey:  resourceKey,
 		ID:           id,
 		Namespace:    namespace,
-		Labels:       map[string]string{}, // populated by watch event
 	}
 
-	old, existed := c.registryStore.Put(entry)
+	c.registryStore.Put(entry)
 
 	rawCopy := make(json.RawMessage, len(data))
 	copy(rawCopy, data)
 
-	if existed {
-		c.dispatcher.Enqueue(indexer.Event{
-			Type: indexer.EventUpdate, Entry: entry, Old: old, Raw: rawCopy,
-		})
-	} else {
-		c.dispatcher.Enqueue(indexer.Event{
-			Type: indexer.EventAdd, Entry: entry, Raw: rawCopy,
-		})
-	}
+	c.dispatcher.Enqueue(indexer.Event{
+		Type: indexer.EventAdd, Entry: entry, Raw: rawCopy,
+	})
 }

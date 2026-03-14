@@ -25,23 +25,35 @@ type engineWatchSink struct {
 var _ resource.WatchEventSink = (*engineWatchSink)(nil)
 
 func (s *engineWatchSink) entryFromAddPayload(p resource.WatchAddPayload) registry.ResourceEntry {
-	return registry.ResourceEntry{
+	entry := registry.ResourceEntry{
 		PluginID:     s.pluginID,
 		ConnectionID: p.Connection,
 		ResourceKey:  p.Key,
 		ID:           p.ID,
 		Namespace:    p.Namespace,
+		UID:          p.Metadata.UID,
+		Labels:       p.Metadata.Labels,
 	}
+	if p.Metadata.CreatedAt != nil {
+		entry.CreatedAt = *p.Metadata.CreatedAt
+	}
+	return entry
 }
 
 func (s *engineWatchSink) entryFromUpdatePayload(p resource.WatchUpdatePayload) registry.ResourceEntry {
-	return registry.ResourceEntry{
+	entry := registry.ResourceEntry{
 		PluginID:     s.pluginID,
 		ConnectionID: p.Connection,
 		ResourceKey:  p.Key,
 		ID:           p.ID,
 		Namespace:    p.Namespace,
+		UID:          p.Metadata.UID,
+		Labels:       p.Metadata.Labels,
 	}
+	if p.Metadata.CreatedAt != nil {
+		entry.CreatedAt = *p.Metadata.CreatedAt
+	}
+	return entry
 }
 
 func (s *engineWatchSink) OnAdd(p resource.WatchAddPayload) {

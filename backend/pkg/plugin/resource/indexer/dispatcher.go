@@ -1,6 +1,9 @@
 package indexer
 
-import "log"
+import (
+	"log"
+	"sync/atomic"
+)
 
 const defaultBufferSize = 10_000
 
@@ -8,6 +11,7 @@ type Dispatcher struct {
 	indexers []ResourceIndexer
 	events   chan Event
 	done     chan struct{}
+	stopped  atomic.Bool
 }
 
 func NewDispatcher(indexers []ResourceIndexer) *Dispatcher {
@@ -23,17 +27,36 @@ func (d *Dispatcher) Start() {
 }
 
 func (d *Dispatcher) Stop() {
+	d.stopped.Store(true)
 	close(d.events)
 	<-d.done
 }
 
 func (d *Dispatcher) Enqueue(event Event) {
+	if d.stopped.Load() {
+		return
+	}
 	d.events <- event
+}
+
+// Flush blocks until all previously-enqueued events have been processed.
+// Useful for deterministic testing without time.Sleep.
+func (d *Dispatcher) Flush() {
+	if d.stopped.Load() {
+		return
+	}
+	barrier := make(chan struct{})
+	d.events <- Event{Type: eventFlush, flush: barrier}
+	<-barrier
 }
 
 func (d *Dispatcher) loop() {
 	defer close(d.done)
 	for event := range d.events {
+		if event.Type == eventFlush {
+			close(event.flush)
+			continue
+		}
 		for _, idx := range d.indexers {
 			d.dispatch(idx, event)
 		}

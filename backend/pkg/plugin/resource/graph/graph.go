@@ -62,13 +62,19 @@ func (g *RelationshipGraph) AddEdge(edge GraphEdge) {
 func (g *RelationshipGraph) EdgesFrom(nodeKey string) []GraphEdge {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return g.forward[nodeKey]
+	src := g.forward[nodeKey]
+	out := make([]GraphEdge, len(src))
+	copy(out, src)
+	return out
 }
 
 func (g *RelationshipGraph) EdgesTo(nodeKey string) []GraphEdge {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return g.reverse[nodeKey]
+	src := g.reverse[nodeKey]
+	out := make([]GraphEdge, len(src))
+	copy(out, src)
+	return out
 }
 
 func (g *RelationshipGraph) RemoveEdgesForNode(nodeKey string) {
@@ -127,9 +133,12 @@ func (g *RelationshipGraph) RemoveEdgesForConnection(pluginID, connectionID stri
 		delete(g.selectorCache, nodeKey)
 	}
 
-	// Also remove stale reverse-index entries for target nodes in this
-	// connection (edges from other connections pointing at now-removed nodes
-	// are not touched — only the reverse-index bookkeeping is cleaned up).
+	// Clean up remaining reverse-index entries for target nodes in this
+	// connection. Phase 1 already handled edges originating from this
+	// connection. What remains are edges from external sources pointing at
+	// nodes in this connection. We keep the forward entries and their
+	// interned strings (the external source still exists), but remove the
+	// reverse-index bookkeeping since the target node is gone.
 	for key := range g.reverse {
 		if strings.HasPrefix(key, prefix) {
 			delete(g.reverse, key)

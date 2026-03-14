@@ -1,10 +1,8 @@
-// backend/pkg/plugin/resource/graph_integration_test.go
 package resource
 
 import (
 	"encoding/json"
 	"testing"
-	"time"
 
 	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 
@@ -23,7 +21,6 @@ func TestIntegration_WatchEventToGraphQuery(t *testing.T) {
 	defer disp.Stop()
 
 	ctrl, _ := newTestControllerWithEmitter(t)
-	// Override the ctrl's components with our test ones
 	ctrl.registryStore = store
 	ctrl.dispatcher = disp
 	ctrl.graph = g
@@ -59,8 +56,7 @@ func TestIntegration_WatchEventToGraphQuery(t *testing.T) {
 		}`),
 	})
 
-	// Wait for async indexer to process
-	time.Sleep(50 * time.Millisecond)
+	disp.Flush()
 
 	// Verify: registry has the entry
 	entry, ok := store.Get("k8s", "c1", "core::v1::Pod", "default", "nginx")
@@ -91,7 +87,7 @@ func TestIntegration_WatchEventToGraphQuery(t *testing.T) {
 		Data: json.RawMessage(`{"metadata":{"name":"nginx","namespace":"default","uid":"pod-uid-1"}}`),
 	})
 
-	time.Sleep(50 * time.Millisecond)
+	disp.Flush()
 
 	// Verify: registry entry removed
 	_, ok = store.Get("k8s", "c1", "core::v1::Pod", "default", "nginx")
@@ -155,7 +151,7 @@ func TestIntegration_OwnershipChain(t *testing.T) {
 		Metadata: sdkresource.ResourceMetadata{UID: "pod-uid-1"},
 	})
 
-	time.Sleep(50 * time.Millisecond)
+	disp.Flush()
 
 	// Verify: ownership edge exists (ReplicaSet → Pod)
 	// The extractor doesn't know the ReplicaSet's namespace, so it uses "" (cluster-scoped key)
@@ -207,7 +203,7 @@ func TestIntegration_ConnectionTeardown(t *testing.T) {
 		})
 	}
 
-	time.Sleep(50 * time.Millisecond)
+	disp.Flush()
 
 	// Verify 3 entries + 3 edges
 	results := store.ScanByResourceKey("k8s", "c1", "core::v1::Pod")
@@ -222,7 +218,7 @@ func TestIntegration_ConnectionTeardown(t *testing.T) {
 	}
 	g.RemoveEdgesForConnection("k8s", "c1")
 
-	time.Sleep(50 * time.Millisecond)
+	disp.Flush()
 
 	// Verify all cleaned up
 	results = store.ScanByResourceKey("k8s", "c1", "core::v1::Pod")

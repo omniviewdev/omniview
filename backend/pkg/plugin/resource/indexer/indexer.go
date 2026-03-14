@@ -20,6 +20,7 @@ const (
 	EventAdd EventType = iota
 	EventUpdate
 	EventDelete
+	eventFlush // internal: used by Dispatcher.Flush()
 )
 
 type Event struct {
@@ -27,4 +28,5 @@ type Event struct {
 	Entry registry.ResourceEntry
 	Old   *registry.ResourceEntry
 	Raw   json.RawMessage
+	flush chan struct{} // internal: signaled when flush barrier is reached
 }
