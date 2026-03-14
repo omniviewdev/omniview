@@ -35,9 +35,10 @@ func (s *MemoryStore) Put(entry ResourceEntry) (old *ResourceEntry, existed bool
 	defer s.mu.Unlock()
 
 	if prev, ok := s.entries[key]; ok {
+		prev.Labels = maps.Clone(prev.Labels)
 		old = &prev
 		existed = true
-		s.removeLabelIndex(key, prev.Labels)
+		s.removeLabelIndex(key, s.entries[key].Labels)
 	}
 
 	entry.Labels = maps.Clone(entry.Labels)
@@ -95,6 +96,7 @@ func (s *MemoryStore) Delete(pluginID, connectionID, resourceKey, namespace, id 
 		}
 	}
 
+	entry.Labels = maps.Clone(entry.Labels)
 	return &entry, true
 }
 
@@ -112,9 +114,10 @@ func (s *MemoryStore) DeleteByConnection(pluginID, connectionID string) []Resour
 	removed := make([]ResourceEntry, 0, len(keys))
 	for key := range keys {
 		if entry, ok := s.entries[key]; ok {
-			removed = append(removed, entry)
 			s.removeLabelIndex(key, entry.Labels)
 			delete(s.entries, key)
+			entry.Labels = maps.Clone(entry.Labels)
+			removed = append(removed, entry)
 		}
 	}
 	delete(s.byConn, ck)
@@ -181,6 +184,7 @@ func (s *MemoryStore) ScanByLabel(pluginID, connectionID, resourceKey string, se
 	for key := range candidates {
 		if len(key) > len(prefix) && key[:len(prefix)] == prefix {
 			if entry, ok := s.entries[key]; ok {
+				entry.Labels = maps.Clone(entry.Labels)
 				result = append(result, entry)
 			}
 		}
@@ -197,6 +201,7 @@ func (s *MemoryStore) ScanByResourceKey(pluginID, connectionID, resourceKey stri
 	var result []ResourceEntry
 	for key, entry := range s.entries {
 		if len(key) > len(prefix) && key[:len(prefix)] == prefix {
+			entry.Labels = maps.Clone(entry.Labels)
 			result = append(result, entry)
 		}
 	}

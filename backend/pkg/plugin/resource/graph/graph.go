@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"maps"
 	"strings"
 	"sync"
 
@@ -184,14 +185,17 @@ func (g *RelationshipGraph) ClearDeclarationsForPlugin(pluginID string) {
 func (g *RelationshipGraph) SetSelectorCache(nodeKey string, selector map[string]string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.selectorCache[nodeKey] = selector
+	g.selectorCache[nodeKey] = maps.Clone(selector)
 }
 
 func (g *RelationshipGraph) GetSelectorCache(nodeKey string) (map[string]string, bool) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	sel, ok := g.selectorCache[nodeKey]
-	return sel, ok
+	if !ok {
+		return nil, false
+	}
+	return maps.Clone(sel), true
 }
 
 func (g *RelationshipGraph) releaseEdgeStrings(edge GraphEdge) {

@@ -29,7 +29,10 @@ func (d *Dispatcher) Start() {
 }
 
 func (d *Dispatcher) Stop() {
-	d.stopped.Store(true)
+	if !d.stopped.CompareAndSwap(false, true) {
+		<-d.done
+		return
+	}
 	close(d.stopping)
 	close(d.events)
 	<-d.done

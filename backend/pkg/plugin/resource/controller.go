@@ -208,16 +208,18 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	}
 
 	// Bootstrap relationship declarations for the graph indexer.
-	if resourceTypes := provider.GetResourceTypes(context.Background(), ""); resourceTypes != nil {
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer bootstrapCancel()
+	if resourceTypes := provider.GetResourceTypes(bootstrapCtx, ""); resourceTypes != nil {
 		for rk := range resourceTypes {
-			decls, err := provider.GetRelationships(context.Background(), rk)
+			decls, err := provider.GetRelationships(bootstrapCtx, rk)
 			if err != nil {
-				logger.Warnw(context.Background(), "failed to get relationships", "resourceKey", rk, "error", err)
+				logger.Warnw(bootstrapCtx, "failed to get relationships", "resourceKey", rk, "error", err)
 				continue
 			}
 			if len(decls) > 0 {
 				c.graph.SetDeclarations(pluginID, rk, decls)
-				logger.Debugw(context.Background(), "cached relationship declarations", "resourceKey", rk, "count", len(decls))
+				logger.Debugw(bootstrapCtx, "cached relationship declarations", "resourceKey", rk, "count", len(decls))
 			}
 		}
 	}
@@ -1511,8 +1513,8 @@ func (c *controller) triggerCrashRecovery(pluginID string, err error, listener s
 // parameters. The full metadata (UID, Labels, CreatedAt) will be populated
 // when the corresponding watch event arrives — watch events are authoritative.
 //
-// This ensures resources discovered via Get/List/Create/Update are at least
-// present in the registry (for graph edge resolution), even before the
+// This ensures resources discovered via Get or Update are at least present
+// in the registry (for graph edge resolution), even before the
 // watch event confirms them.
 func (c *controller) observeResponse(pluginID, connectionID, resourceKey, id, namespace string, data json.RawMessage) {
 	if len(data) == 0 || id == "" {
