@@ -11,8 +11,8 @@ type RelationshipGraph struct {
 	mu            sync.RWMutex
 	forward       map[string][]GraphEdge
 	reverse       map[string][]GraphEdge
-	declarations  map[string][]resource.RelationshipDescriptor
-	pluginDecls   map[string][]string
+	declarations  map[declMapKey][]resource.RelationshipDescriptor
+	pluginDecls   map[string][]declMapKey
 	selectorCache map[string]map[string]string
 	deferredEdges map[string][]deferredEdge
 	strings       *stringInterner
@@ -22,8 +22,8 @@ func NewRelationshipGraph() *RelationshipGraph {
 	return &RelationshipGraph{
 		forward:       make(map[string][]GraphEdge),
 		reverse:       make(map[string][]GraphEdge),
-		declarations:  make(map[string][]resource.RelationshipDescriptor),
-		pluginDecls:   make(map[string][]string),
+		declarations:  make(map[declMapKey][]resource.RelationshipDescriptor),
+		pluginDecls:   make(map[string][]declMapKey),
 		selectorCache: make(map[string]map[string]string),
 		deferredEdges: make(map[string][]deferredEdge),
 		strings:       newStringInterner(),
@@ -146,24 +146,37 @@ func (g *RelationshipGraph) RemoveEdgesForConnection(pluginID, connectionID stri
 	}
 }
 
+type declMapKey struct {
+	pluginID    string
+	resourceKey string
+}
+
 func (g *RelationshipGraph) SetDeclarations(pluginID, resourceKey string, decls []resource.RelationshipDescriptor) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.declarations[resourceKey] = decls
-	g.pluginDecls[pluginID] = append(g.pluginDecls[pluginID], resourceKey)
+	dk := declMapKey{pluginID, resourceKey}
+	g.declarations[dk] = decls
+	g.pluginDecls[pluginID] = append(g.pluginDecls[pluginID], dk)
 }
 
+// GetDeclarations returns declarations for a resource key across all plugins.
 func (g *RelationshipGraph) GetDeclarations(resourceKey string) []resource.RelationshipDescriptor {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return g.declarations[resourceKey]
+	var result []resource.RelationshipDescriptor
+	for dk, decls := range g.declarations {
+		if dk.resourceKey == resourceKey {
+			result = append(result, decls...)
+		}
+	}
+	return result
 }
 
 func (g *RelationshipGraph) ClearDeclarationsForPlugin(pluginID string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	for _, rk := range g.pluginDecls[pluginID] {
-		delete(g.declarations, rk)
+	for _, dk := range g.pluginDecls[pluginID] {
+		delete(g.declarations, dk)
 	}
 	delete(g.pluginDecls, pluginID)
 }

@@ -1,6 +1,9 @@
 package registry
 
-import "sync"
+import (
+	"maps"
+	"sync"
+)
 
 // MemoryStore is the in-memory implementation of RegistryStore.
 // Uses a two-level map: entryKey → ResourceEntry for O(1) lookups,
@@ -37,6 +40,7 @@ func (s *MemoryStore) Put(entry ResourceEntry) (old *ResourceEntry, existed bool
 		s.removeLabelIndex(key, prev.Labels)
 	}
 
+	entry.Labels = maps.Clone(entry.Labels)
 	s.entries[key] = entry
 
 	if s.byConn[ck] == nil {
@@ -62,6 +66,7 @@ func (s *MemoryStore) Get(pluginID, connectionID, resourceKey, namespace, id str
 	if !ok {
 		return nil, false
 	}
+	entry.Labels = maps.Clone(entry.Labels)
 	return &entry, true
 }
 

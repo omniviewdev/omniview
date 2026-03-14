@@ -2,12 +2,12 @@ package graph
 
 import "testing"
 
-func TestInterner_InternReturnsSamePointer(t *testing.T) {
+func TestInterner_InternReturnsSameString(t *testing.T) {
 	si := newStringInterner()
 	a := si.Intern("hello")
 	b := si.Intern("hello")
 	if a != b {
-		t.Fatal("expected same string pointer for same input")
+		t.Fatal("expected same string for same input")
 	}
 }
 
@@ -41,7 +41,7 @@ func TestInterner_DifferentStrings(t *testing.T) {
 	a := si.Intern("foo")
 	b := si.Intern("bar")
 	if a == b {
-		t.Fatal("different strings should have different pointers")
+		t.Fatal("different strings should not be equal")
 	}
 	if si.Len() != 2 {
 		t.Fatalf("expected 2 entries, got %d", si.Len())

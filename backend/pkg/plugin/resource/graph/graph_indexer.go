@@ -194,6 +194,12 @@ func (gi *GraphIndexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry
 		if len(parts) < 5 {
 			continue
 		}
+
+		// Only match selectors within the same plugin and connection.
+		if parts[0] != entry.PluginID || parts[1] != entry.ConnectionID {
+			continue
+		}
+
 		selectorResourceKey := parts[2]
 
 		decls := gi.graph.GetDeclarations(selectorResourceKey)

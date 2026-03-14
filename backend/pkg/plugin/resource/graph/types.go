@@ -34,6 +34,8 @@ type GraphNode struct {
 	Namespace    string `json:"namespace,omitempty"`
 }
 
+// Key returns a unique string for this node. Uses "/" as separator — callers
+// must ensure component values do not contain "/".
 func (n GraphNode) Key() string {
 	return n.PluginID + "/" + n.ConnectionID + "/" + n.ResourceKey + "/" + n.Namespace + "/" + n.ID
 }

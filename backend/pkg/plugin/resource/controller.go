@@ -125,6 +125,11 @@ func (c *controller) Run(ctx context.Context) {
 	c.dispatcher.Start()
 }
 
+// Shutdown stops background tasks. Must be called on application exit.
+func (c *controller) Shutdown() {
+	c.dispatcher.Stop()
+}
+
 // dispenseProvider creates a ResourceProvider from a PluginBackend using version negotiation.
 func dispenseProvider(pluginID string, backend plugintypes.PluginBackend) (ResourceProvider, int, error) {
 	raw, err := backend.Dispense(PluginName)

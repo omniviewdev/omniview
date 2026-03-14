@@ -1,6 +1,8 @@
 package resource
 
 import (
+	"fmt"
+
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 )
 
@@ -27,12 +29,14 @@ func (s *GraphService) GetRelated(
 
 	var dir graph.Direction
 	switch direction {
+	case "outgoing":
+		dir = graph.Outgoing
 	case "incoming":
 		dir = graph.Incoming
 	case "both":
 		dir = graph.Both
 	default:
-		dir = graph.Outgoing
+		return nil, fmt.Errorf("invalid direction: %q (must be \"outgoing\", \"incoming\", or \"both\")", direction)
 	}
 
 	var rt *graph.RelationshipType

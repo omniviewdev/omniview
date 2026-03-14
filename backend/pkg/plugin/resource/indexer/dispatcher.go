@@ -11,6 +11,7 @@ type Dispatcher struct {
 	indexers []ResourceIndexer
 	events   chan Event
 	done     chan struct{}
+	stopping chan struct{}
 	stopped  atomic.Bool
 }
 
@@ -19,6 +20,7 @@ func NewDispatcher(indexers []ResourceIndexer) *Dispatcher {
 		indexers: indexers,
 		events:   make(chan Event, defaultBufferSize),
 		done:     make(chan struct{}),
+		stopping: make(chan struct{}),
 	}
 }
 
@@ -28,25 +30,28 @@ func (d *Dispatcher) Start() {
 
 func (d *Dispatcher) Stop() {
 	d.stopped.Store(true)
+	close(d.stopping)
 	close(d.events)
 	<-d.done
 }
 
 func (d *Dispatcher) Enqueue(event Event) {
-	if d.stopped.Load() {
+	select {
+	case <-d.stopping:
 		return
+	case d.events <- event:
 	}
-	d.events <- event
 }
 
 // Flush blocks until all previously-enqueued events have been processed.
 // Useful for deterministic testing without time.Sleep.
 func (d *Dispatcher) Flush() {
-	if d.stopped.Load() {
-		return
-	}
 	barrier := make(chan struct{})
-	d.events <- Event{Type: eventFlush, flush: barrier}
+	select {
+	case <-d.stopping:
+		return
+	case d.events <- Event{Type: eventFlush, flush: barrier}:
+	}
 	<-barrier
 }
 

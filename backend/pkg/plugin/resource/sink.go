@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 
@@ -32,7 +33,7 @@ func (s *engineWatchSink) entryFromAddPayload(p resource.WatchAddPayload) regist
 		ID:           p.ID,
 		Namespace:    p.Namespace,
 		UID:          p.Metadata.UID,
-		Labels:       p.Metadata.Labels,
+		Labels:       maps.Clone(p.Metadata.Labels),
 	}
 	if p.Metadata.CreatedAt != nil {
 		entry.CreatedAt = *p.Metadata.CreatedAt
@@ -48,7 +49,7 @@ func (s *engineWatchSink) entryFromUpdatePayload(p resource.WatchUpdatePayload) 
 		ID:           p.ID,
 		Namespace:    p.Namespace,
 		UID:          p.Metadata.UID,
-		Labels:       p.Metadata.Labels,
+		Labels:       maps.Clone(p.Metadata.Labels),
 	}
 	if p.Metadata.CreatedAt != nil {
 		entry.CreatedAt = *p.Metadata.CreatedAt
