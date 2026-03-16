@@ -56,12 +56,3 @@ type DependencyNode struct {
 	Edge     GraphEdge        `json:"edge"`
 	Children []DependencyNode `json:"children"`
 }
-
-type deferredEdge struct {
-	Source    GraphNode
-	Type      RelationshipType
-	Label     string
-	TargetKey string
-	TargetID  string
-	TargetNS  string
-}

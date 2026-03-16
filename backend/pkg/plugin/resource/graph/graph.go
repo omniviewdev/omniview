@@ -15,7 +15,6 @@ type RelationshipGraph struct {
 	declarations  map[declMapKey][]resource.RelationshipDescriptor
 	pluginDecls   map[string][]declMapKey
 	selectorCache map[string]map[string]string
-	deferredEdges map[string][]deferredEdge
 	strings       *stringInterner
 }
 
@@ -26,7 +25,6 @@ func NewRelationshipGraph() *RelationshipGraph {
 		declarations:  make(map[declMapKey][]resource.RelationshipDescriptor),
 		pluginDecls:   make(map[string][]declMapKey),
 		selectorCache: make(map[string]map[string]string),
-		deferredEdges: make(map[string][]deferredEdge),
 		strings:       newStringInterner(),
 	}
 }
