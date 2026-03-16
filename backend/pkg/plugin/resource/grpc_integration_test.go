@@ -136,7 +136,7 @@ func TestL3_03_WatchEventsFlowThroughGRPC(t *testing.T) {
 	// Start the watch listener (same as OnPluginStart does).
 	watchCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	watchReady := make(chan struct{})
 	go ctrl.listenForWatchEvents("p1", grpcProvider, watchCtx, sink, watchReady)
 
@@ -188,7 +188,7 @@ func TestL3_04_SubscriptionGatingViaGRPC(t *testing.T) {
 
 	watchCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	watchReady := make(chan struct{})
 	go ctrl.listenForWatchEvents("p1", grpcProvider, watchCtx, sink, watchReady)
 
@@ -238,7 +238,7 @@ func TestL3_05_StateEventKeyFormatViaGRPC(t *testing.T) {
 
 	watchCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	watchReady := make(chan struct{})
 	go ctrl.listenForWatchEvents("p1", grpcProvider, watchCtx, sink, watchReady)
 
@@ -317,7 +317,7 @@ func TestL3_07_MixedEventsViaGRPC(t *testing.T) {
 
 	watchCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	watchReady := make(chan struct{})
 	go ctrl.listenForWatchEvents("p1", grpcProvider, watchCtx, sink, watchReady)
 

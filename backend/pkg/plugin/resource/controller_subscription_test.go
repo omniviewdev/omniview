@@ -110,7 +110,7 @@ func TestSubscription_RemoveAllOnStop(t *testing.T) {
 
 func TestSubscription_GatesADD(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	// Not subscribed — should not emit.
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods"})
@@ -126,7 +126,7 @@ func TestSubscription_GatesADD(t *testing.T) {
 
 func TestSubscription_GatesUPDATE_DELETE(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	// Not subscribed.
 	sink.OnUpdate(resource.WatchUpdatePayload{Connection: "conn-1", Key: "pods"})
@@ -137,7 +137,7 @@ func TestSubscription_GatesUPDATE_DELETE(t *testing.T) {
 
 func TestSubscription_STATEBypassesGate(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	// Not subscribed — STATE should still emit.
 	sink.OnStateChange(resource.WatchStateEvent{ResourceKey: "pods", State: resource.WatchStateSynced})

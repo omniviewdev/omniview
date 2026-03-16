@@ -162,7 +162,7 @@ func TestConcurrent_SinkEmission(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
 
-	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl}
+	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {

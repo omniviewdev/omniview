@@ -1,0 +1,106 @@
+package indexer
+
+import (
+	"log"
+	"sync/atomic"
+)
+
+const defaultBufferSize = 10_000
+
+type Dispatcher struct {
+	indexers []ResourceIndexer
+	events   chan Event
+	done     chan struct{}
+	stopping chan struct{}
+	stopped  atomic.Bool
+}
+
+func NewDispatcher(indexers []ResourceIndexer) *Dispatcher {
+	return &Dispatcher{
+		indexers: indexers,
+		events:   make(chan Event, defaultBufferSize),
+		done:     make(chan struct{}),
+		stopping: make(chan struct{}),
+	}
+}
+
+func (d *Dispatcher) Start() {
+	go d.loop()
+}
+
+func (d *Dispatcher) Stop() {
+	if !d.stopped.CompareAndSwap(false, true) {
+		<-d.done
+		return
+	}
+	close(d.stopping)
+	close(d.events)
+	<-d.done
+}
+
+func (d *Dispatcher) Enqueue(event Event) {
+	d.safeSend(event)
+}
+
+// Flush blocks until all previously-enqueued events have been processed.
+// Useful for deterministic testing without time.Sleep.
+func (d *Dispatcher) Flush() {
+	barrier := make(chan struct{})
+	if !d.safeSend(Event{Type: eventFlush, flush: barrier}) {
+		return
+	}
+	<-barrier
+}
+
+// safeSend attempts to send an event on the events channel. Returns false if
+// the dispatcher is stopping. Uses recover to handle the narrow race where
+// Stop() closes the events channel between select evaluation and send.
+func (d *Dispatcher) safeSend(event Event) (sent bool) {
+	defer func() {
+		if recover() != nil {
+			sent = false
+		}
+	}()
+	select {
+	case <-d.stopping:
+		return false
+	case d.events <- event:
+		return true
+	}
+}
+
+func (d *Dispatcher) loop() {
+	defer close(d.done)
+	for event := range d.events {
+		if event.Type == eventFlush {
+			close(event.flush)
+			continue
+		}
+		for _, idx := range d.indexers {
+			d.dispatch(idx, event)
+		}
+	}
+}
+
+func (d *Dispatcher) dispatch(idx ResourceIndexer, event Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("indexer %q panicked on %v event: %v", idx.Name(), event.Type, r)
+		}
+	}()
+
+	switch event.Type {
+	case EventAdd:
+		idx.OnAdd(event.Entry, event.Raw)
+	case EventUpdate:
+		if event.Old != nil {
+			idx.OnUpdate(*event.Old, event.Entry, event.Raw)
+		} else {
+			idx.OnAdd(event.Entry, event.Raw)
+		}
+	case EventDelete:
+		idx.OnDelete(event.Entry)
+	default:
+		log.Printf("indexer dispatcher: unknown event type %d", event.Type)
+	}
+}

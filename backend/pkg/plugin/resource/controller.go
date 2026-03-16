@@ -21,6 +21,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
@@ -40,6 +43,7 @@ type Controller interface {
 	plugintypes.ConnectedController
 	Service
 	SetCrashCallback(cb func(pluginID string))
+	Graph() *graph.RelationshipGraph
 }
 
 // pluginState holds per-plugin runtime state.
@@ -67,6 +71,11 @@ type controller struct {
 
 	subs *subscriptionManager
 
+	// Resource registry and relationship graph
+	registryStore registry.RegistryStore
+	dispatcher    *indexer.Dispatcher
+	graph         *graph.RelationshipGraph
+
 	onCrashCallback func(pluginID string)
 }
 
@@ -78,6 +87,11 @@ var (
 
 // NewController creates a new resource Controller.
 func NewController(logger logging.Logger, sp pkgsettings.Provider) Controller {
+	store := registry.NewMemoryStore()
+	g := graph.NewRelationshipGraph()
+	graphIndexer := graph.NewGraphIndexer(g, store)
+	dispatcher := indexer.NewDispatcher([]indexer.ResourceIndexer{graphIndexer})
+
 	return &controller{
 		logger:              logger.Named("ResourceController"),
 		settingsProvider:    sp,
@@ -85,12 +99,20 @@ func NewController(logger logging.Logger, sp pkgsettings.Provider) Controller {
 		connections:         make(map[string][]types.Connection),
 		autoConnectAttempts: make(map[string]string),
 		subs:                newSubscriptionManager(),
+		registryStore:       store,
+		dispatcher:          dispatcher,
+		graph:               g,
 	}
 }
 
 // SetCrashCallback sets the function called when a plugin crash is detected.
 func (c *controller) SetCrashCallback(cb func(pluginID string)) {
 	c.onCrashCallback = cb
+}
+
+// Graph returns the underlying RelationshipGraph for use by external services.
+func (c *controller) Graph() *graph.RelationshipGraph {
+	return c.graph
 }
 
 // ============================================================================
@@ -100,6 +122,12 @@ func (c *controller) SetCrashCallback(cb func(pluginID string)) {
 // Run starts the controller's background tasks.
 func (c *controller) Run(ctx context.Context) {
 	c.emitter = newWailsEmitter(ctx)
+	c.dispatcher.Start()
+}
+
+// Shutdown stops background tasks. Must be called on application exit.
+func (c *controller) Shutdown() {
+	c.dispatcher.Stop()
 }
 
 // dispenseProvider creates a ResourceProvider from a PluginBackend using version negotiation.
@@ -170,6 +198,14 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	c.pluginsMu.Unlock()
 	c.clearAutoConnectAttempts(pluginID)
 
+	// Clean up stale registry/graph state from the previous plugin instance.
+	c.connsMu.RLock()
+	prevConns := append([]types.Connection(nil), c.connections[pluginID]...)
+	c.connsMu.RUnlock()
+	if len(prevConns) > 0 {
+		c.cleanupPluginGraphState(pluginID, prevConns)
+	}
+
 	// Load connections from the plugin.
 	if conns, err := c.LoadConnections(pluginID); err != nil {
 		logger.Errorw(context.Background(), "failed to load connections from plugin", "error", err)
@@ -179,8 +215,30 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 		c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerPluginStart)
 	}
 
+	// Bootstrap relationship declarations for the graph indexer.
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer bootstrapCancel()
+	if resourceTypes := provider.GetResourceTypes(bootstrapCtx, ""); resourceTypes != nil {
+		for rk := range resourceTypes {
+			decls, err := provider.GetRelationships(bootstrapCtx, rk)
+			if err != nil {
+				logger.Warnw(bootstrapCtx, "failed to get relationships", "resourceKey", rk, "error", err)
+				continue
+			}
+			if len(decls) > 0 {
+				c.graph.SetDeclarations(pluginID, rk, decls)
+				logger.Debugw(bootstrapCtx, "cached relationship declarations", "resourceKey", rk, "count", len(decls))
+			}
+		}
+	}
+
 	// Start watch event listener (uses WatchEventSink callback pattern).
-	sink := &engineWatchSink{pluginID: pluginID, ctrl: c}
+	sink := &engineWatchSink{
+		pluginID:   pluginID,
+		ctrl:       c,
+		store:      c.registryStore,
+		dispatcher: c.dispatcher,
+	}
 	watchReady := make(chan struct{})
 	go c.listenForWatchEvents(pluginID, provider, watchCtx, sink, watchReady)
 
@@ -218,6 +276,11 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	delete(c.plugins, pluginID)
 	c.pluginsMu.Unlock()
 
+	// Capture connections before deleting them — needed for registry cleanup.
+	c.connsMu.RLock()
+	pluginConns := append([]types.Connection(nil), c.connections[pluginID]...)
+	c.connsMu.RUnlock()
+
 	c.connsMu.Lock()
 	delete(c.connections, pluginID)
 	c.connsMu.Unlock()
@@ -225,7 +288,27 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 
 	c.subs.RemoveAll(pluginID)
 
+	c.cleanupPluginGraphState(pluginID, pluginConns)
+
 	return nil
+}
+
+// cleanupPluginGraphState removes registry entries, graph edges, and
+// declarations for the given plugin and its connections. Called during both
+// plugin stop and plugin restart (to avoid stale state leaking into the
+// replacement).
+func (c *controller) cleanupPluginGraphState(pluginID string, conns []types.Connection) {
+	for _, conn := range conns {
+		removed := c.registryStore.DeleteByConnection(pluginID, conn.ID)
+		for _, entry := range removed {
+			c.dispatcher.Enqueue(indexer.Event{
+				Type:  indexer.EventDelete,
+				Entry: entry,
+			})
+		}
+		c.graph.RemoveEdgesForConnection(pluginID, conn.ID)
+	}
+	c.graph.ClearDeclarationsForPlugin(pluginID)
 }
 
 func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
@@ -323,6 +406,9 @@ func (c *controller) Get(pluginID, connectionID, key string, input resource.GetI
 		c.checkConnectionError(pluginID, err)
 		return nil, toAppError(err, pluginID)
 	}
+	if result != nil && len(result.Result) > 0 {
+		c.observeResponse(pluginID, connectionID, key, input.ID, input.Namespace, result.Result)
+	}
 	return result, nil
 }
 
@@ -398,6 +484,9 @@ func (c *controller) Update(pluginID, connectionID, key string, input resource.U
 		c.logger.Errorw(ctx, "RPC failed", "op", "Update", "pluginID", pluginID, "key", key, "error", err)
 		c.checkConnectionError(pluginID, err)
 		return nil, toAppError(err, pluginID)
+	}
+	if result != nil && len(result.Result) > 0 {
+		c.observeResponse(pluginID, connectionID, key, input.ID, input.Namespace, result.Result)
 	}
 	return result, nil
 }
@@ -1430,5 +1519,45 @@ func (c *controller) triggerCrashRecovery(pluginID string, err error, listener s
 	c.pluginsMu.RUnlock()
 	if ok && c.onCrashCallback != nil {
 		ps.crashOnce.Do(func() { go c.onCrashCallback(pluginID) })
+	}
+}
+
+// observeResponse updates the registry from a CRUD response. Unlike watch
+// events (which carry ResourceMetadata from the plugin), CRUD responses
+// only have raw JSON. We build a minimal entry from the known request
+// parameters. The full metadata (UID, Labels, CreatedAt) will be populated
+// when the corresponding watch event arrives — watch events are authoritative.
+//
+// This ensures resources discovered via Get or Update are at least present
+// in the registry (for graph edge resolution), even before the
+// watch event confirms them.
+func (c *controller) observeResponse(pluginID, connectionID, resourceKey, id, namespace string, data json.RawMessage) {
+	if len(data) == 0 || id == "" {
+		return
+	}
+
+	rawCopy := make(json.RawMessage, len(data))
+	copy(rawCopy, data)
+
+	entry := registry.ResourceEntry{
+		PluginID:     pluginID,
+		ConnectionID: connectionID,
+		ResourceKey:  resourceKey,
+		ID:           id,
+		Namespace:    namespace,
+	}
+
+	// Atomically insert only if no entry exists yet. If a watch event already
+	// populated the entry with authoritative metadata (Labels, UID, CreatedAt),
+	// PutIfAbsent returns the existing entry and we re-index with the new raw
+	// data without overwriting that metadata.
+	if existing, loaded := c.registryStore.PutIfAbsent(entry); loaded {
+		c.dispatcher.Enqueue(indexer.Event{
+			Type: indexer.EventUpdate, Entry: *existing, Old: existing, Raw: rawCopy,
+		})
+	} else {
+		c.dispatcher.Enqueue(indexer.Event{
+			Type: indexer.EventAdd, Entry: entry, Raw: rawCopy,
+		})
 	}
 }

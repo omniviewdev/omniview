@@ -12,7 +12,12 @@ import (
 func newSinkTestSetup(t *testing.T) (*engineWatchSink, *controller, *recordingEmitter) {
 	t.Helper()
 	ctrl, emitter := newTestControllerWithEmitter(t)
-	sink := &engineWatchSink{pluginID: "plugin-a", ctrl: ctrl}
+	sink := &engineWatchSink{
+		pluginID:   "plugin-a",
+		ctrl:       ctrl,
+		store:      ctrl.registryStore,
+		dispatcher: ctrl.dispatcher,
+	}
 	return sink, ctrl, emitter
 }
 
