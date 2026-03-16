@@ -12,7 +12,7 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.7.0
 	github.com/nxadm/tail v1.4.11
-	github.com/omniviewdev/plugin-sdk v0.3.1
+	github.com/omniviewdev/plugin-sdk v0.4.0
 	github.com/omniviewdev/registry v0.2.1
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
