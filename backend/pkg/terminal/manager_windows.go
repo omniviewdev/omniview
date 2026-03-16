@@ -7,8 +7,7 @@ import (
 	"os"
 	"sync"
 
-	"go.uber.org/zap"
-
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -18,7 +17,7 @@ var errUnsupported = fmt.Errorf("terminal sessions are not supported on Windows"
 // Manager manages terminal sessions. On Windows, PTY-based sessions are not
 // supported, so all operations return errors.
 type Manager struct {
-	log      *zap.SugaredLogger
+	log      logging.Logger
 	sessions map[string]*sdkexec.Session
 	ptys     map[string]*os.File
 
@@ -29,7 +28,7 @@ type Manager struct {
 }
 
 func NewManager(
-	log *zap.SugaredLogger,
+	log logging.Logger,
 ) (*Manager, chan sdkexec.StreamInput, chan sdkexec.StreamOutput, chan sdkexec.StreamResize) {
 	inMux := make(chan sdkexec.StreamInput)
 	outMux := make(chan sdkexec.StreamOutput)

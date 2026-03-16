@@ -11,13 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	logging "github.com/omniviewdev/plugin-sdk/log"
 )
-
-func testLogger(t *testing.T) logging.Logger {
-	t.Helper()
-	return logging.NewNop()
-}
 
 func TestPluginPIDTracker_RecordAndRemove(t *testing.T) {
 	tracker := NewPluginPIDTracker()
