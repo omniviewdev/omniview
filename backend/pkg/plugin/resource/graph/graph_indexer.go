@@ -87,12 +87,17 @@ func (gi *GraphIndexer) extractFieldPath(source GraphNode, entry registry.Resour
 	}
 
 	for _, targetID := range targetIDs {
+		targetNS := entry.Namespace
+		if decl.TargetNamespaced != nil && !*decl.TargetNamespaced {
+			targetNS = ""
+		}
+
 		target := GraphNode{
 			PluginID:     entry.PluginID,
 			ConnectionID: entry.ConnectionID,
 			ResourceKey:  decl.TargetResourceKey,
 			ID:           targetID,
-			Namespace:    entry.Namespace,
+			Namespace:    targetNS,
 		}
 
 		// EdgeIncoming reverses edge direction (used for ownership)

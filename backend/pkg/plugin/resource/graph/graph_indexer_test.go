@@ -381,3 +381,77 @@ func TestGraphIndexer_LabelSelector_LabelUpdateBreaksMatch(t *testing.T) {
 		t.Fatalf("expected 0 edges after pod label change, got %d: %v", len(edges), edges)
 	}
 }
+
+// TestGraphIndexer_FieldPath_ClusterScopedTarget — TargetNamespaced=false gives empty namespace.
+func TestGraphIndexer_FieldPath_ClusterScopedTarget(t *testing.T) {
+	g, _, idx := setupIndexer()
+
+	clusterScoped := false
+	g.SetDeclarations("k8s", "core::v1::Pod", []resource.RelationshipDescriptor{
+		{
+			Type:              resource.RelRunsOn,
+			TargetResourceKey: "core::v1::Node",
+			Label:             "runs on",
+			TargetNamespaced:  &clusterScoped,
+			Extractor: &resource.RelationshipExtractor{
+				Method:    "fieldPath",
+				FieldPath: "spec.nodeName",
+			},
+		},
+	})
+
+	pod := makeEntry("core::v1::Pod", "default", "nginx")
+	raw := json.RawMessage(`{"spec":{"nodeName":"worker-1"}}`)
+
+	idx.OnAdd(pod, raw)
+
+	podNode := GraphNode{
+		PluginID: "k8s", ConnectionID: "c1",
+		ResourceKey: "core::v1::Pod", ID: "nginx", Namespace: "default",
+	}
+	edges := g.EdgesFrom(podNode.Key())
+	if len(edges) != 1 {
+		t.Fatalf("expected 1 edge, got %d", len(edges))
+	}
+	e := edges[0]
+	if e.Target.Namespace != "" {
+		t.Errorf("expected empty namespace for cluster-scoped target, got %q", e.Target.Namespace)
+	}
+	if e.Target.ID != "worker-1" {
+		t.Errorf("expected target ID 'worker-1', got %q", e.Target.ID)
+	}
+}
+
+// TestGraphIndexer_FieldPath_NamespacedTargetDefault — nil TargetNamespaced inherits source namespace.
+func TestGraphIndexer_FieldPath_NamespacedTargetDefault(t *testing.T) {
+	g, _, idx := setupIndexer()
+
+	g.SetDeclarations("k8s", "core::v1::Pod", []resource.RelationshipDescriptor{
+		{
+			Type:              resource.RelUses,
+			TargetResourceKey: "core::v1::ConfigMap",
+			Label:             "uses",
+			Extractor: &resource.RelationshipExtractor{
+				Method:    "fieldPath",
+				FieldPath: "spec.volumes.0.configMap.name",
+			},
+		},
+	})
+
+	pod := makeEntry("core::v1::Pod", "production", "app-pod")
+	raw := json.RawMessage(`{"spec":{"volumes":[{"configMap":{"name":"app-config"}}]}}`)
+
+	idx.OnAdd(pod, raw)
+
+	podNode := GraphNode{
+		PluginID: "k8s", ConnectionID: "c1",
+		ResourceKey: "core::v1::Pod", ID: "app-pod", Namespace: "production",
+	}
+	edges := g.EdgesFrom(podNode.Key())
+	if len(edges) != 1 {
+		t.Fatalf("expected 1 edge, got %d", len(edges))
+	}
+	if edges[0].Target.Namespace != "production" {
+		t.Errorf("expected namespace 'production', got %q", edges[0].Target.Namespace)
+	}
+}
