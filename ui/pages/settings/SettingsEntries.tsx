@@ -9,6 +9,7 @@ import { Text } from '@omniviewdev/ui/typography';
 import { type SectionSelection } from '.';
 import SettingsEntry from './SettingsEntry';
 import { type settings } from '@omniviewdev/runtime/models';
+import { useDevMode } from '@/hooks/useDevMode';
 
 type Props = SectionSelection & {
   settings: Record<string, settings.Setting>;
@@ -20,6 +21,8 @@ type Props = SectionSelection & {
  * Displays and allows modification to application settings, given a settings namespace and section.
  */
 const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues, setDraftValues }) => {
+  const devMode = useDevMode();
+
   const handleChange = (name: string, value: any) => {
     const id = `${sectionID}.${name}`;
     setDraftValues({ ...draftValues, [id]: value });
@@ -28,6 +31,10 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
   if (!settings) {
     return <></>;
   }
+
+  const visibleSettings = Object.entries(settings).filter(
+    ([, setting]) => !setting.devOnly || devMode,
+  );
 
   return (
     <Stack
@@ -42,7 +49,7 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
         scrollbarWidth: 'none',
       }}
     >
-      {Object.entries(settings).map(([id, setting], index) => (
+      {visibleSettings.map(([id, setting], index) => (
         <Box
           key={id}
           sx={{
@@ -51,7 +58,7 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
             gap: { xs: 1, md: 4 },
             alignItems: { xs: 'stretch', md: 'flex-start' },
             py: 2.5,
-            borderBottom: index < Object.keys(settings).length - 1 ? '1px solid' : 'none',
+            borderBottom: index < visibleSettings.length - 1 ? '1px solid' : 'none',
             borderColor: 'divider',
           }}
         >
