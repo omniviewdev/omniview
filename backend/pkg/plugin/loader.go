@@ -281,16 +281,22 @@ func (pm *pluginManager) ReloadPlugin(id string) (sdktypes.PluginInfo, error) {
 		},
 	}
 
-	// Clear any exhausted crash budget so a manual reload gets fresh retries.
-	if pm.healthChecker != nil {
-		pm.healthChecker.ResetBudget(id)
-	}
-
 	if err := pm.unloadPluginLocked(id); err != nil {
 		return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
 			"Failed to unload plugin during reload").WithInstance(id)
 	}
 	return pm.loadPluginLocked(id, opts)
+}
+
+// RetryFailedPlugin resets the crash budget and reloads the plugin.
+// Use this for user-initiated retries (e.g. the UI "Retry Plugin" button)
+// so the plugin gets fresh recovery attempts. Do NOT use for automated
+// crash recovery — use ReloadPlugin instead.
+func (pm *pluginManager) RetryFailedPlugin(id string) (sdktypes.PluginInfo, error) {
+	if pm.healthChecker != nil {
+		pm.healthChecker.CancelRecovery(id)
+	}
+	return pm.ReloadPlugin(id)
 }
 
 // UnloadPlugin unloads a plugin, stopping it if running.

@@ -6,7 +6,7 @@ import {
   StopConnection,
   StartConnectionWatch,
 } from '../../wailsjs/go/resource/Client';
-import { ReloadPlugin } from '../../wailsjs/go/plugin/pluginManager';
+import { RetryFailedPlugin } from '../../wailsjs/go/plugin/pluginManager';
 import type { types } from '../../wailsjs/go/models';
 import { WatchState } from '../../types/watch';
 import type { WatchStateEvent } from '../../types/watch';
@@ -87,20 +87,22 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   // Listen for plugin crash recovery events
   useEffect(() => {
     const cancelCrash = EventsOn('plugin/crash_recovery_failed', (data: { pluginID?: string; error?: string }) => {
-      if (!data?.pluginID) return;
+      const pluginID = data?.pluginID;
+      if (!pluginID) return;
       setFailedPlugins((prev) => {
         const next = new Map(prev);
-        next.set(data.pluginID!, data.error ?? 'Crash recovery failed');
+        next.set(pluginID, data.error ?? 'Crash recovery failed');
         return next;
       });
     });
 
     const cancelRecovered = EventsOn('plugin/recovered', (data: { pluginID?: string }) => {
-      if (!data?.pluginID) return;
+      const pluginID = data?.pluginID;
+      if (!pluginID) return;
       setFailedPlugins((prev) => {
-        if (!prev.has(data.pluginID!)) return prev;
+        if (!prev.has(pluginID)) return prev;
         const next = new Map(prev);
-        next.delete(data.pluginID!);
+        next.delete(pluginID);
         return next;
       });
     });
@@ -235,6 +237,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   }, []);
 
   const retryPlugin = useCallback(async (pluginID: string) => {
+    const previousError = failedPlugins.get(pluginID);
     // Clear the failed state optimistically before reload
     setFailedPlugins((prev) => {
       if (!prev.has(pluginID)) return prev;
@@ -242,8 +245,18 @@ export function useConnectionStatus(): ConnectionStatusSummary {
       next.delete(pluginID);
       return next;
     });
-    await ReloadPlugin(pluginID);
-  }, []);
+    try {
+      await RetryFailedPlugin(pluginID);
+    } catch (err) {
+      // Restore failed state if reload fails immediately
+      setFailedPlugins((prev) => {
+        const next = new Map(prev);
+        next.set(pluginID, previousError ?? 'Reload failed');
+        return next;
+      });
+      throw err;
+    }
+  }, [failedPlugins]);
 
   // Build entries from started connections
   const entries: ConnectionStatusEntry[] = [];

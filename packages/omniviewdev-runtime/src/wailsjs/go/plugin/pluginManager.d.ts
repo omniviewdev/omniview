@@ -44,6 +44,8 @@ export function LoadPlugin(arg1:string,arg2:plugin.LoadPluginOptions):Promise<ty
 
 export function ReloadPlugin(arg1:string):Promise<types.PluginInfo>;
 
+export function RetryFailedPlugin(arg1:string):Promise<types.PluginInfo>;
+
 export function Run(arg1:context.Context):Promise<void>;
 
 export function SearchPlugins(arg1:string,arg2:string,arg3:string):Promise<Array<registry.AvailablePlugin>>;

@@ -71,6 +71,7 @@ type Manager interface {
 
 	LoadPlugin(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error)
 	ReloadPlugin(id string) (sdktypes.PluginInfo, error)
+	RetryFailedPlugin(id string) (sdktypes.PluginInfo, error)
 	UninstallPlugin(id string) (sdktypes.PluginInfo, error)
 
 	GetPlugin(id string) (sdktypes.PluginInfo, error)

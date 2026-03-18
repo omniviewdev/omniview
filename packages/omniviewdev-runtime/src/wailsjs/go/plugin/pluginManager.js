@@ -74,6 +74,10 @@ export function ReloadPlugin(arg1) {
   return window['go']['plugin']['pluginManager']['ReloadPlugin'](arg1);
 }
 
+export function RetryFailedPlugin(arg1) {
+  return window['go']['plugin']['pluginManager']['RetryFailedPlugin'](arg1);
+}
+
 export function Run(arg1) {
   return window['go']['plugin']['pluginManager']['Run'](arg1);
 }

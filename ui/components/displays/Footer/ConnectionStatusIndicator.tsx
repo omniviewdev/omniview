@@ -109,8 +109,11 @@ function ConnectionRow({
   const { pluginID, connectionID, name, sync, isSyncing, hasErrors, pluginFailed } = entry;
 
   let dotColor = '#3fb950';
-  if (pluginFailed || hasErrors) dotColor = '#f85149';
-  else if (isSyncing) dotColor = '#58a6ff';
+  if (pluginFailed || hasErrors) {
+    dotColor = '#f85149';
+  } else if (isSyncing) {
+    dotColor = '#58a6ff';
+  }
 
   let statusText = 'Connected';
   if (pluginFailed) {
@@ -358,9 +361,13 @@ export default function ConnectionStatusIndicator() {
 
   if (failedCount > 0) {
     dotColor = '#f85149';
-    label = `${failedCount} failed`;
+    const nonFailedErrors = errorCount - failedCount;
+    label = nonFailedErrors > 0
+      ? `${failedCount} failed, ${nonFailedErrors} error${nonFailedErrors !== 1 ? 's' : ''}`
+      : `${failedCount} failed`;
   } else if (errorCount > 0) {
     dotColor = '#f85149';
+    label = `${errorCount} error${errorCount !== 1 ? 's' : ''}`;
   } else if (hasSyncing) {
     dotColor = '#58a6ff';
     label = `${syncingCount} syncing`;
@@ -424,9 +431,21 @@ export default function ConnectionStatusIndicator() {
         onClose={() => setAnchorEl(null)}
         grouped={grouped}
         connectedCount={connectedCount}
-        onDisconnect={(p, c) => disconnect(p, c).catch(() => {})}
-        onRetry={(p, c) => retryWatch(p, c).catch(() => {})}
-        onRetryPlugin={(p) => retryPlugin(p).catch(() => {})}
+        onDisconnect={(p, c) => {
+          void disconnect(p, c).catch((err: unknown) => {
+            console.error('Disconnect failed:', err);
+          });
+        }}
+        onRetry={(p, c) => {
+          void retryWatch(p, c).catch((err: unknown) => {
+            console.error('Retry watch failed:', err);
+          });
+        }}
+        onRetryPlugin={(p) => {
+          void retryPlugin(p).catch((err: unknown) => {
+            console.error('Retry plugin failed:', err);
+          });
+        }}
       />
     </>
   );
