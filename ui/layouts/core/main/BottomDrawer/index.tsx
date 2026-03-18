@@ -96,9 +96,7 @@ const BottomDrawerContainer: React.FC = () => {
       return;
     }
 
-    if (height < minHeight) {
-      height = minHeight;
-    }
+    height = Math.min(Math.max(height, minHeight), window.innerHeight);
 
     // Track the last non-minimized, non-fullscreen height for restore
     if (height > minHeight && height < window.innerHeight) {

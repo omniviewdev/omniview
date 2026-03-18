@@ -185,7 +185,7 @@ const LogViewerToolbar: React.FC<Props> = ({
                 emphasis="ghost"
                 color="neutral"
                 onClick={() => onSearchChange('')}
-                sx={{ minWidth: 0, minHeight: 0, width: 18, height: 18 }}
+                sx={{ minWidth: 24, minHeight: 24, width: 24, height: 24 }}
               >
                 <LuX size={10} />
               </IconButton>
