@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"testing"
 
@@ -43,6 +44,9 @@ func TestPluginPIDTracker_RecordAndRemove(t *testing.T) {
 }
 
 func TestPluginPIDTracker_SaveAndLoad(t *testing.T) {
+	// Ensure the directory exists (CI runners may not have ~/.omniview)
+	require.NoError(t, os.MkdirAll(filepath.Dir(pluginPIDFilePath()), 0755))
+
 	tracker := NewPluginPIDTracker()
 	tracker.Record("aws", 12345)
 	tracker.Record("kubernetes", 67890)
@@ -63,6 +67,9 @@ func TestPluginPIDTracker_SaveAndLoad(t *testing.T) {
 }
 
 func TestPluginPIDTracker_CleanupStale_KillsProcesses(t *testing.T) {
+	// Ensure the directory exists (CI runners may not have ~/.omniview)
+	require.NoError(t, os.MkdirAll(filepath.Dir(pluginPIDFilePath()), 0755))
+
 	// Spawn a real sleep process to kill
 	cmd := exec.Command("sleep", "300")
 	require.NoError(t, cmd.Start())
@@ -107,6 +114,9 @@ func TestPluginPIDTracker_CleanupStale_NoFile(t *testing.T) {
 }
 
 func TestPluginPIDTracker_CleanupStale_DeadProcess(t *testing.T) {
+	// Ensure the directory exists (CI runners may not have ~/.omniview)
+	require.NoError(t, os.MkdirAll(filepath.Dir(pluginPIDFilePath()), 0755))
+
 	// Spawn a process and kill it immediately so the PID is dead
 	cmd := exec.Command("sleep", "300")
 	require.NoError(t, cmd.Start())

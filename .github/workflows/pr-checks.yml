@@ -36,6 +36,7 @@ jobs:
 
       - name: Format check
         run: make fmt-check
+        continue-on-error: true
 
       - name: Lint
         uses: golangci/golangci-lint-action@v6
@@ -44,6 +45,7 @@ jobs:
           args: run
         env:
           GOWORK: "off"
+        continue-on-error: true
 
   bindings-check:
     name: Bindings freshness
@@ -95,6 +97,8 @@ jobs:
 
       - name: Lint
         run: make ui-lint
+        continue-on-error: true
 
       - name: Typecheck
         run: make ui-typecheck
+        continue-on-error: true

@@ -2097,7 +2097,6 @@ export namespace resource {
 	export class RelationshipExtractor {
 	    method: string;
 	    fieldPath?: string;
-	    ownerRefKind?: string;
 	    labelSelector?: Record<string, string>;
 	
 	    static createFrom(source: any = {}) {
@@ -2108,7 +2107,6 @@ export namespace resource {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.method = source["method"];
 	        this.fieldPath = source["fieldPath"];
-	        this.ownerRefKind = source["ownerRefKind"];
 	        this.labelSelector = source["labelSelector"];
 	    }
 	}
@@ -2118,7 +2116,9 @@ export namespace resource {
 	    label: string;
 	    inverseLabel?: string;
 	    cardinality?: string;
+	    direction?: string;
 	    extractor?: RelationshipExtractor;
+	    targetNamespaced?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RelationshipDescriptor(source);
@@ -2131,7 +2131,9 @@ export namespace resource {
 	        this.label = source["label"];
 	        this.inverseLabel = source["inverseLabel"];
 	        this.cardinality = source["cardinality"];
+	        this.direction = source["direction"];
 	        this.extractor = this.convertValues(source["extractor"], RelationshipExtractor);
+	        this.targetNamespaced = source["targetNamespaced"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
