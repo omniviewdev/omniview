@@ -6,6 +6,7 @@ import {
   StopConnection,
   StartConnectionWatch,
 } from '../../wailsjs/go/resource/Client';
+import { RetryFailedPlugin } from '../../wailsjs/go/plugin/pluginManager';
 import type { types } from '../../wailsjs/go/models';
 import { WatchState } from '../../types/watch';
 import type { WatchStateEvent } from '../../types/watch';
@@ -44,6 +45,10 @@ export interface ConnectionStatusEntry {
   sync?: ActiveSync;
   isSyncing: boolean;
   hasErrors: boolean;
+  /** True when the plugin's crash recovery has been exhausted */
+  pluginFailed: boolean;
+  /** Error message from the crash recovery failure */
+  pluginError?: string;
 }
 
 export interface ConnectionStatusSummary {
@@ -52,12 +57,15 @@ export interface ConnectionStatusSummary {
   connectedCount: number;
   syncingCount: number;
   errorCount: number;
+  failedCount: number;
   hasSyncing: boolean;
   aggregateProgress: number;
   /** Disconnect a connection by plugin/connection ID */
   disconnect: (pluginID: string, connectionID: string) => Promise<void>;
   /** Retry watch sync for a connection */
   retryWatch: (pluginID: string, connectionID: string) => Promise<void>;
+  /** Retry a failed plugin (reload it after crash recovery exhaustion) */
+  retryPlugin: (pluginID: string) => Promise<void>;
 }
 
 /**
@@ -72,6 +80,38 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   // Sync state per connection
   const [syncs, setSyncs] = useState<Map<string, ActiveSync>>(new Map());
   const trackersRef = useRef<Map<string, ResourceTracker>>(new Map());
+
+  // Track plugins whose crash recovery has been exhausted
+  const [failedPlugins, setFailedPlugins] = useState<Map<string, string>>(new Map());
+
+  // Listen for plugin crash recovery events
+  useEffect(() => {
+    const cancelCrash = EventsOn('plugin/crash_recovery_failed', (data: { pluginID?: string; error?: string }) => {
+      const pluginID = data?.pluginID;
+      if (!pluginID) return;
+      setFailedPlugins((prev) => {
+        const next = new Map(prev);
+        next.set(pluginID, data.error ?? 'Crash recovery failed');
+        return next;
+      });
+    });
+
+    const cancelRecovered = EventsOn('plugin/recovered', (data: { pluginID?: string }) => {
+      const pluginID = data?.pluginID;
+      if (!pluginID) return;
+      setFailedPlugins((prev) => {
+        if (!prev.has(pluginID)) return prev;
+        const next = new Map(prev);
+        next.delete(pluginID);
+        return next;
+      });
+    });
+
+    return () => {
+      cancelCrash();
+      cancelRecovered();
+    };
+  }, []);
 
   // Hydrate full connection + watch state on mount
   useEffect(() => {
@@ -196,6 +236,28 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     await StartConnectionWatch(pluginID, connectionID);
   }, []);
 
+  const retryPlugin = useCallback(async (pluginID: string) => {
+    const previousError = failedPlugins.get(pluginID);
+    // Clear the failed state optimistically before reload
+    setFailedPlugins((prev) => {
+      if (!prev.has(pluginID)) return prev;
+      const next = new Map(prev);
+      next.delete(pluginID);
+      return next;
+    });
+    try {
+      await RetryFailedPlugin(pluginID);
+    } catch (err) {
+      // Restore failed state if reload fails immediately
+      setFailedPlugins((prev) => {
+        const next = new Map(prev);
+        next.set(pluginID, previousError ?? 'Reload failed');
+        return next;
+      });
+      throw err;
+    }
+  }, [failedPlugins]);
+
   // Build entries from started connections
   const entries: ConnectionStatusEntry[] = [];
   for (const key of startedKeys) {
@@ -205,6 +267,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     const sync = syncs.get(key);
     const syncing = sync != null && !isSyncDone(sync);
     const hasErrors = sync != null && sync.errorCount > 0;
+    const pluginError = failedPlugins.get(pluginID);
 
     entries.push({
       pluginID,
@@ -214,7 +277,9 @@ export function useConnectionStatus(): ConnectionStatusSummary {
       isStarted: true,
       sync,
       isSyncing: syncing,
-      hasErrors,
+      hasErrors: hasErrors || pluginError != null,
+      pluginFailed: pluginError != null,
+      pluginError,
     });
   }
 
@@ -230,6 +295,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   const syncArray = Array.from(syncs.values());
   const syncingEntries = entries.filter((e) => e.isSyncing);
   const errorEntries = entries.filter((e) => e.hasErrors);
+  const failedEntries = entries.filter((e) => e.pluginFailed);
 
   return {
     entries,
@@ -237,9 +303,11 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     connectedCount: entries.length,
     syncingCount: syncingEntries.length,
     errorCount: errorEntries.length,
+    failedCount: failedEntries.length,
     hasSyncing: hasActiveSyncing(syncArray),
     aggregateProgress: computeAggregateProgress(syncArray),
     disconnect,
     retryWatch,
+    retryPlugin,
   };
 }

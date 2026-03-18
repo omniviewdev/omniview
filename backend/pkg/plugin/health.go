@@ -123,6 +123,18 @@ func (hc *HealthChecker) CancelRecovery(pluginID string) {
 	delete(hc.crashBudgets, pluginID)
 }
 
+// ResetBudget clears the crash budget and recovery state for a plugin.
+// This should be called when the user manually triggers a reload so that
+// the plugin gets fresh retry attempts instead of being immediately
+// rejected by an exhausted budget from a prior crash cycle.
+func (hc *HealthChecker) ResetBudget(pluginID string) {
+	hc.mu.Lock()
+	defer hc.mu.Unlock()
+
+	delete(hc.crashBudgets, pluginID)
+	delete(hc.recoveryStates, pluginID)
+}
+
 // IsInCrashCycle returns true if the plugin has already crashed at least once
 // within the current budget window. Used by HandlePluginCrash to suppress
 // repeated "plugin/crash" notifications during crash-recover-crash loops.
