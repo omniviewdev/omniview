@@ -120,6 +120,7 @@ func main() {
 	// Setup the plugin systems
 	resourceController := resource.NewController(log, settingsProvider)
 	resourceClient := resource.NewClient(resourceController)
+	graphService := resource.NewGraphService(resourceController.Graph())
 
 	settingsController := settings.NewController(log, settingsProvider)
 	settingsClient := settings.NewClient(settingsController)
@@ -340,6 +341,7 @@ func main() {
 			pluginLogManager,
 			devServerManager,
 			resourceClient,
+			graphService,
 			settingsClient,
 			execClient,
 			networkerClient,
