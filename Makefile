@@ -1,5 +1,78 @@
 
 .PHONY: docs prepare sync packages dev dev-plugin runtime build
+.PHONY: check go-build go-vet go-test go-lint bindings bindings-check
+.PHONY: ui-install ui-build ui-lint ui-typecheck fmt fmt-check
+
+# ──────────────────────────────────────────────
+# CI / Verification targets
+# ──────────────────────────────────────────────
+
+# Run all checks in sequence, fail fast on first error.
+# Note: dist/.gitkeep satisfies the go:embed directive so Go checks work without a frontend build.
+check: go-build go-vet go-test go-lint fmt-check bindings-check ui-install ui-build ui-lint ui-typecheck
+
+# Go checks
+go-build:
+	GOWORK=off go build ./...
+
+go-vet:
+	GOWORK=off go vet ./...
+
+go-test:
+	GOWORK=off go test ./...
+
+go-lint:
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		GOWORK=off golangci-lint run; \
+	else \
+		echo "golangci-lint not installed, skipping"; \
+	fi
+
+# Go formatting
+fmt:
+	goimports -w .
+	gofmt -w .
+
+fmt-check:
+	@UNFORMATTED=$$(gofmt -l .); \
+	if [ -n "$$UNFORMATTED" ]; then \
+		echo "The following Go files are not formatted:"; \
+		echo "$$UNFORMATTED"; \
+		exit 1; \
+	fi
+
+# Wails bindings
+bindings:
+	GOWORK=off wails generate module
+
+bindings-check:
+	@TMPDIR=$$(mktemp -d); \
+	cp -R packages/omniviewdev-runtime/src/wailsjs "$$TMPDIR/wailsjs-before"; \
+	GOWORK=off wails generate module; \
+	if ! diff -r packages/omniviewdev-runtime/src/wailsjs "$$TMPDIR/wailsjs-before" >/dev/null 2>&1; then \
+		echo "Wails bindings are stale. Run 'make bindings' and commit the result."; \
+		rm -rf "$$TMPDIR"; \
+		exit 1; \
+	fi; \
+	rm -rf "$$TMPDIR"
+
+# Frontend checks
+ui-install:
+	pnpm install --frozen-lockfile
+
+ui-build:
+	$(MAKE) packages
+	pnpm build
+
+ui-lint:
+	ESLINT_USE_FLAT_CONFIG=false pnpm lint
+
+ui-typecheck:
+	pnpm exec tsc -p tsconfig.app.json --noEmit
+
+# ──────────────────────────────────────────────
+# Development targets
+# ──────────────────────────────────────────────
 
 prepare:
 	go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
@@ -59,17 +132,3 @@ sign:
 .PHONY: build-debug
 build-debug:
 	wails build -clean -debug
-
-lint: lint-core lint-plugin lint-kubernetes
-
-lint-core:
-	cd src && golangci-lint run --fix
-
-lint-plugin:
-	cd packages/plugin && golangci-lint run --fix
-
-lint-kubernetes:
-	cd plugins/kubernetes && golangci-lint run --fix
-
-install-kubernetes:
-	cd plugins/kubernetes && go build pkg/main.go
