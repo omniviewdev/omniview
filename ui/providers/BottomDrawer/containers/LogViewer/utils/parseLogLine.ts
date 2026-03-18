@@ -22,8 +22,8 @@ const JSON_LEVEL_RE =
 // Match bracketed level: [ERROR], [WARN], [info]
 const BRACKET_LEVEL_RE = /\[([A-Za-z]+)\]/g;
 
-// Match key=value level: level=ERROR, severity=warn
-const KV_LEVEL_RE = /\b(?:level|severity|lvl)[=:]([a-zA-Z]+)\b/i;
+// Match key=value level: level=ERROR, severity=warn, level = "error", severity : 'warn'
+const KV_LEVEL_RE = /\b(?:level|severity|lvl)\s*[=:]\s*["']?([a-zA-Z]+)["']?\b/i;
 
 // Match level keyword at/near line start (with optional leading timestamp):
 // "ERROR ...", "2024-01-01 ERROR ...", "2024-01-01T00:00:00Z ERROR ..."
