@@ -144,13 +144,13 @@ const LogViewerToolbar: React.FC<Props> = ({
       sx={{
         display: 'flex',
         alignItems: 'center',
-        gap: 0.5,
-        px: 1,
-        py: 0.5,
+        gap: 0.25,
+        px: 0.75,
+        py: 0.25,
         borderBottom: '1px solid',
         borderColor: 'divider',
         bgcolor: 'background.surface',
-        minHeight: 32,
+        minHeight: 28,
         flexShrink: 0,
       }}
     >
@@ -160,14 +160,14 @@ const LogViewerToolbar: React.FC<Props> = ({
 
       {/* Search */}
       <TextField
-        size="sm"
+        size="xs"
         placeholder="Search in logs"
         autoFocus
         autoComplete="off"
         inputProps={{ 'data-search-input': true }}
         value={searchQuery}
         onChange={(value) => onSearchChange(value)}
-        startAdornment={<LuSearch size={14} />}
+        startAdornment={<LuSearch size={12} />}
         endAdornment={
           <>
             {matchCount > 0 ? (
@@ -181,13 +181,13 @@ const LogViewerToolbar: React.FC<Props> = ({
             ) : null}
             {searchQuery && (
               <IconButton
-                size="sm"
+                size="xs"
                 emphasis="ghost"
                 color="neutral"
                 onClick={() => onSearchChange('')}
-                sx={{ minWidth: 0, minHeight: 0, width: 20, height: 20 }}
+                sx={{ minWidth: 0, minHeight: 0, width: 18, height: 18 }}
               >
-                <LuX size={12} />
+                <LuX size={10} />
               </IconButton>
             )}
           </>
@@ -205,31 +205,31 @@ const LogViewerToolbar: React.FC<Props> = ({
 
       <Tooltip content="Case sensitive">
         <IconButton
-          size="sm"
+          size="xs"
           emphasis={caseSensitive ? 'soft' : 'ghost'}
           color={caseSensitive ? 'primary' : 'neutral'}
           onClick={onToggleCaseSensitive}
         >
-          <LuCaseSensitive size={14} />
+          <LuCaseSensitive size={12} />
         </IconButton>
       </Tooltip>
 
       <Tooltip content="Regex">
         <IconButton
-          size="sm"
+          size="xs"
           emphasis={isRegex ? 'soft' : 'ghost'}
           color={isRegex ? 'primary' : 'neutral'}
           onClick={onToggleRegex}
         >
-          <LuRegex size={14} />
+          <LuRegex size={12} />
         </IconButton>
       </Tooltip>
 
-      <IconButton size="sm" emphasis="ghost" disabled={matchCount === 0} {...prevHold}>
-        <LuChevronUp size={14} />
+      <IconButton size="xs" emphasis="ghost" disabled={matchCount === 0} {...prevHold}>
+        <LuChevronUp size={12} />
       </IconButton>
-      <IconButton size="sm" emphasis="ghost" disabled={matchCount === 0} {...nextHold}>
-        <LuChevronDown size={14} />
+      <IconButton size="xs" emphasis="ghost" disabled={matchCount === 0} {...nextHold}>
+        <LuChevronDown size={12} />
       </IconButton>
 
       <Divider orientation="vertical" sx={{ mx: 0.5 }} />
@@ -240,69 +240,69 @@ const LogViewerToolbar: React.FC<Props> = ({
       {/* Controls */}
       <Tooltip content="Timestamps">
         <IconButton
-          size="sm"
+          size="xs"
           emphasis={showTimestamps ? 'soft' : 'ghost'}
           color={showTimestamps ? 'primary' : 'neutral'}
           onClick={onToggleTimestamps}
         >
-          <LuClock size={14} />
+          <LuClock size={12} />
         </IconButton>
       </Tooltip>
 
       <Tooltip content="Source badges">
         <IconButton
-          size="sm"
+          size="xs"
           emphasis={showSources ? 'soft' : 'ghost'}
           color={showSources ? 'primary' : 'neutral'}
           onClick={onToggleSources}
         >
-          <LuTag size={14} />
+          <LuTag size={12} />
         </IconButton>
       </Tooltip>
 
       <Tooltip content="Line numbers">
         <IconButton
-          size="sm"
+          size="xs"
           emphasis={showLineNumbers ? 'soft' : 'ghost'}
           color={showLineNumbers ? 'primary' : 'neutral'}
           onClick={onToggleLineNumbers}
         >
-          <LuHash size={14} />
+          <LuHash size={12} />
         </IconButton>
       </Tooltip>
 
       <Tooltip content="Word wrap">
         <IconButton
-          size="sm"
+          size="xs"
           emphasis={wrap ? 'soft' : 'ghost'}
           color={wrap ? 'primary' : 'neutral'}
           onClick={onToggleWrap}
         >
-          <LuWrapText size={14} />
+          <LuWrapText size={12} />
         </IconButton>
       </Tooltip>
 
       <Tooltip content={colorize ? 'ANSI colors on' : 'ANSI colors off'}>
         <IconButton
-          size="sm"
+          size="xs"
           emphasis={colorize ? 'soft' : 'ghost'}
           color={colorize ? 'primary' : 'neutral'}
           onClick={onToggleColorize}
           aria-label="Toggle ANSI colors"
           aria-pressed={colorize}
         >
-          <LuPalette size={14} />
+          <LuPalette size={12} />
         </IconButton>
       </Tooltip>
 
       <Tooltip content={follow ? 'Following' : 'Follow output'}>
         <IconButton
-          size="sm"
+          size="xs"
           emphasis={follow ? 'soft' : 'ghost'}
           color={follow ? 'primary' : 'neutral'}
           onClick={onToggleFollow}
         >
-          <LuArrowDownToLine size={14} />
+          <LuArrowDownToLine size={12} />
         </IconButton>
       </Tooltip>
 
@@ -313,12 +313,12 @@ const LogViewerToolbar: React.FC<Props> = ({
 
       <Tooltip content={paused ? 'Resume' : 'Pause'}>
         <IconButton
-          size="sm"
+          size="xs"
           emphasis={paused ? 'soft' : 'ghost'}
           color={paused ? 'warning' : 'neutral'}
           onClick={onTogglePaused}
         >
-          {paused ? <LuPlay size={14} /> : <LuPause size={14} />}
+          {paused ? <LuPlay size={12} /> : <LuPause size={12} />}
         </IconButton>
       </Tooltip>
 
@@ -326,37 +326,37 @@ const LogViewerToolbar: React.FC<Props> = ({
 
       <Tooltip content={copyFeedback === 'visible' ? 'Copied!' : `Copy visible lines (${isMac ? '⌘⇧V' : 'Ctrl+Shift+V'})`}>
         <IconButton
-          size="sm"
+          size="xs"
           emphasis={copyFeedback === 'visible' ? 'soft' : 'ghost'}
           color={copyFeedback === 'visible' ? 'success' : 'neutral'}
           onClick={onCopyVisible}
           aria-label="Copy visible lines"
         >
-          {copyFeedback === 'visible' ? <LuClipboardCheck size={14} /> : <LuCopy size={14} />}
+          {copyFeedback === 'visible' ? <LuClipboardCheck size={12} /> : <LuCopy size={12} />}
         </IconButton>
       </Tooltip>
 
       <Tooltip content={copyFeedback === 'all' ? 'Copied!' : `Copy all lines (${isMac ? '⌘⇧C' : 'Ctrl+Shift+C'})`}>
         <IconButton
-          size="sm"
+          size="xs"
           emphasis={copyFeedback === 'all' ? 'soft' : 'ghost'}
           color={copyFeedback === 'all' ? 'success' : 'neutral'}
           onClick={onCopyAll}
           aria-label="Copy all lines"
         >
-          {copyFeedback === 'all' ? <LuClipboardCheck size={14} /> : <LuClipboard size={14} />}
+          {copyFeedback === 'all' ? <LuClipboardCheck size={12} /> : <LuClipboard size={12} />}
         </IconButton>
       </Tooltip>
 
       <Tooltip content="Download">
-        <IconButton size="sm" emphasis="ghost" onClick={onDownload}>
-          <LuDownload size={14} />
+        <IconButton size="xs" emphasis="ghost" onClick={onDownload}>
+          <LuDownload size={12} />
         </IconButton>
       </Tooltip>
 
       <Tooltip content="Clear">
-        <IconButton size="sm" emphasis="ghost" onClick={onClear}>
-          <LuTrash2 size={14} />
+        <IconButton size="xs" emphasis="ghost" onClick={onClear}>
+          <LuTrash2 size={12} />
         </IconButton>
       </Tooltip>
 
