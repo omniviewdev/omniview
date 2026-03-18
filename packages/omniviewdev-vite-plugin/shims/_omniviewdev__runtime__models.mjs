@@ -21,7 +21,6 @@ export const plugin = mod.plugin;
 export const registry = mod.registry;
 export const settings = mod.settings;
 export const time = mod.time;
-export const trivy = mod.trivy;
 export const types = mod.types;
 export const ui = mod.ui;
 export const utils = mod.utils;
