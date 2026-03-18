@@ -12,7 +12,7 @@ export default function CoreLayout() {
   return (
     <>
       <CssBaseline />
-      <Box sx={{ display: 'flex', minHeight: '100dvh', flexDirection: 'column' }}>
+      <Box data-testid="app-shell" sx={{ display: 'flex', minHeight: '100dvh', flexDirection: 'column' }}>
         <Layout.Header />
         <Box
           component='main'
