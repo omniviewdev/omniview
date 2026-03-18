@@ -99,26 +99,29 @@ function ConnectionRow({
   entry,
   onDisconnect,
   onRetry,
+  onRetryPlugin,
 }: {
   entry: ConnectionStatusEntry;
   onDisconnect: (pluginID: string, connectionID: string) => void;
   onRetry: (pluginID: string, connectionID: string) => void;
+  onRetryPlugin: (pluginID: string) => void;
 }) {
-  const { pluginID, connectionID, name, sync, isSyncing, hasErrors } = entry;
+  const { pluginID, connectionID, name, sync, isSyncing, hasErrors, pluginFailed } = entry;
 
-  const dotColor = hasErrors
-    ? '#f85149'
-    : isSyncing
-      ? '#58a6ff'
-      : '#3fb950';
+  let dotColor = '#3fb950';
+  if (pluginFailed || hasErrors) dotColor = '#f85149';
+  else if (isSyncing) dotColor = '#58a6ff';
 
-  const statusText = isSyncing && sync
-    ? `Syncing ${sync.doneCount}/${sync.watchedTotal} resources`
-    : hasErrors && sync
-      ? `${sync.errorCount} error${sync.errorCount !== 1 ? 's' : ''}`
-      : sync && sync.watchedTotal > 0
-        ? `Connected \u00B7 ${sync.watchedTotal} resources`
-        : 'Connected';
+  let statusText = 'Connected';
+  if (pluginFailed) {
+    statusText = 'Plugin crashed \u2014 recovery failed';
+  } else if (isSyncing && sync) {
+    statusText = `Syncing ${sync.doneCount}/${sync.watchedTotal} resources`;
+  } else if (hasErrors && sync) {
+    statusText = `${sync.errorCount} error${sync.errorCount !== 1 ? 's' : ''}`;
+  } else if (sync && sync.watchedTotal > 0) {
+    statusText = `Connected \u00B7 ${sync.watchedTotal} resources`;
+  }
 
   const percent = sync ? Math.round(sync.progress * 100) : 0;
 
@@ -205,14 +208,22 @@ function ConnectionRow({
 
       {/* Actions */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 0.25, mt: 0.25 }}>
-        {sync && (
+        {sync && !pluginFailed && (
           <PopoverAction
             icon={<LuInfo size={11} />}
             label="Details"
             onClick={handleDetails}
           />
         )}
-        {hasErrors && (
+        {pluginFailed && (
+          <PopoverAction
+            icon={<LuRefreshCw size={11} />}
+            label="Retry Plugin"
+            onClick={() => onRetryPlugin(pluginID)}
+            color="#58a6ff"
+          />
+        )}
+        {hasErrors && !pluginFailed && (
           <PopoverAction
             icon={<LuRefreshCw size={11} />}
             label="Retry"
@@ -241,6 +252,7 @@ function ConnectionStatusPopover({
   connectedCount,
   onDisconnect,
   onRetry,
+  onRetryPlugin,
 }: {
   anchorEl: HTMLElement | null;
   onClose: () => void;
@@ -248,6 +260,7 @@ function ConnectionStatusPopover({
   connectedCount: number;
   onDisconnect: (pluginID: string, connectionID: string) => void;
   onRetry: (pluginID: string, connectionID: string) => void;
+  onRetryPlugin: (pluginID: string) => void;
 }) {
   return (
     <Popover
@@ -306,6 +319,7 @@ function ConnectionStatusPopover({
                 entry={entry}
                 onDisconnect={onDisconnect}
                 onRetry={onRetry}
+                onRetryPlugin={onRetryPlugin}
               />
             ))}
           </React.Fragment>
@@ -325,10 +339,12 @@ export default function ConnectionStatusIndicator() {
     connectedCount,
     syncingCount,
     errorCount,
+    failedCount,
     hasSyncing,
     aggregateProgress,
     disconnect,
     retryWatch,
+    retryPlugin,
   } = useConnectionStatus();
 
   const [anchorEl, setAnchorEl] = React.useState<HTMLElement | null>(null);
@@ -337,10 +353,18 @@ export default function ConnectionStatusIndicator() {
   // Nothing to show
   if (connectedCount === 0) return null;
 
-  const dotColor = errorCount > 0 ? '#f85149' : hasSyncing ? '#58a6ff' : '#3fb950';
-  const label = hasSyncing
-    ? `${syncingCount} syncing`
-    : `${connectedCount} connected`;
+  let dotColor = '#3fb950';
+  let label = `${connectedCount} connected`;
+
+  if (failedCount > 0) {
+    dotColor = '#f85149';
+    label = `${failedCount} failed`;
+  } else if (errorCount > 0) {
+    dotColor = '#f85149';
+  } else if (hasSyncing) {
+    dotColor = '#58a6ff';
+    label = `${syncingCount} syncing`;
+  }
 
   const tooltipText = `${connectedCount} connection${connectedCount !== 1 ? 's' : ''} active`;
 
@@ -402,6 +426,7 @@ export default function ConnectionStatusIndicator() {
         connectedCount={connectedCount}
         onDisconnect={(p, c) => disconnect(p, c).catch(() => {})}
         onRetry={(p, c) => retryWatch(p, c).catch(() => {})}
+        onRetryPlugin={(p) => retryPlugin(p).catch(() => {})}
       />
     </>
   );

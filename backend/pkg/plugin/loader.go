@@ -281,6 +281,11 @@ func (pm *pluginManager) ReloadPlugin(id string) (sdktypes.PluginInfo, error) {
 		},
 	}
 
+	// Clear any exhausted crash budget so a manual reload gets fresh retries.
+	if pm.healthChecker != nil {
+		pm.healthChecker.ResetBudget(id)
+	}
+
 	if err := pm.unloadPluginLocked(id); err != nil {
 		return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
 			"Failed to unload plugin during reload").WithInstance(id)
