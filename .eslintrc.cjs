@@ -65,13 +65,14 @@ module.exports = {
   parserOptions: {
     warnOnUnsupportedTypeScriptVersion: false,
     sourceType: 'module',
-    project: 'tsconfig.json',
+    project: 'tsconfig.app.json',
     ecmaFeatures: {
       jsx: true,
     },
   },
   plugins: [
     '@typescript-eslint',
+    '@stylistic',
     'import',
   ],
   settings: {
@@ -97,14 +98,16 @@ module.exports = {
       'error',
       {
         'ts-expect-error': 'allow-with-description',
+        'ts-ignore': true,
         minimumDescriptionLength: 4,
       },
     ],
     '@typescript-eslint/ban-tslint-comment': 'error',
-    '@typescript-eslint/ban-types': [
+
+    // Replaces removed @typescript-eslint/ban-types (split in v8)
+    '@typescript-eslint/no-restricted-types': [
       'error',
       {
-        extendDefaults: false,
         types: {
           String: {
             message: 'Use `string` instead.',
@@ -141,12 +144,6 @@ module.exports = {
               'The `object` type is hard to use. Use `Record<string, unknown>` instead. See: https://github.com/typescript-eslint/typescript-eslint/pull/848',
             fixWith: 'Record<string, unknown>',
           },
-          Function: 'Use a specific function type instead, like `() => void`.',
-          // null: {
-          //   message:
-          //     'Use `undefined` instead. See: https://github.com/sindresorhus/meta/issues/7',
-          //   fixWith: 'undefined',
-          // },
           Buffer: {
             message:
               'Use Uint8Array instead. See: https://sindresorhus.com/blog/goodbye-nodejs-buffer',
@@ -161,14 +158,19 @@ module.exports = {
         },
       },
     ],
+    '@typescript-eslint/no-unsafe-function-type': 'error',
+    '@typescript-eslint/no-wrapper-object-types': 'error',
+
     '@typescript-eslint/class-literal-property-style': ['error', 'getters'],
     '@typescript-eslint/consistent-generic-constructors': [
       'error',
       'constructor',
     ],
     '@typescript-eslint/consistent-indexed-object-style': 'error',
+
+    // Stylistic rules (moved from @typescript-eslint in v8)
     'brace-style': 'off',
-    '@typescript-eslint/brace-style': [
+    '@stylistic/brace-style': [
       'error',
       '1tbs',
       {
@@ -176,9 +178,9 @@ module.exports = {
       },
     ],
     'comma-dangle': 'off',
-    '@typescript-eslint/comma-dangle': ['error', 'always-multiline'],
+    '@stylistic/comma-dangle': ['error', 'always-multiline'],
     'comma-spacing': 'off',
-    '@typescript-eslint/comma-spacing': [
+    '@stylistic/comma-spacing': [
       'error',
       {
         before: false,
@@ -237,9 +239,9 @@ module.exports = {
     // ],
 
     'func-call-spacing': 'off',
-    '@typescript-eslint/func-call-spacing': ['error', 'never'],
+    '@stylistic/function-call-spacing': ['error', 'never'],
     indent: 'off',
-    '@typescript-eslint/indent': [
+    '@stylistic/indent': [
       'error',
       2,
       {
@@ -247,9 +249,9 @@ module.exports = {
       },
     ],
     'keyword-spacing': 'off',
-    '@typescript-eslint/keyword-spacing': 'error',
+    '@stylistic/keyword-spacing': 'error',
     'lines-between-class-members': 'off',
-    '@typescript-eslint/lines-between-class-members': [
+    '@stylistic/lines-between-class-members': [
       'error',
       'always',
       {
@@ -258,7 +260,7 @@ module.exports = {
         exceptAfterSingleLine: true,
       },
     ],
-    '@typescript-eslint/member-delimiter-style': [
+    '@stylistic/member-delimiter-style': [
       'error',
       {
         multiline: {
@@ -358,10 +360,12 @@ module.exports = {
     '@typescript-eslint/no-dynamic-delete': 'error',
     'no-empty-function': 'off',
     '@typescript-eslint/no-empty-function': 'error',
-    '@typescript-eslint/no-empty-interface': [
+
+    // Replaces removed @typescript-eslint/no-empty-interface (v8)
+    '@typescript-eslint/no-empty-object-type': [
       'error',
       {
-        allowSingleExtends: true,
+        allowInterfaces: 'with-single-extends',
       },
     ],
 
@@ -392,11 +396,11 @@ module.exports = {
     // ],
 
     'no-extra-semi': 'off',
-    '@typescript-eslint/no-extra-semi': 'error',
+    '@stylistic/no-extra-semi': 'error',
     'no-loop-func': 'off',
     '@typescript-eslint/no-loop-func': 'error',
-    'no-loss-of-precision': 'off',
-    '@typescript-eslint/no-loss-of-precision': 'error',
+    // Removed in @typescript-eslint v8 — base ESLint rule handles this now
+    'no-loss-of-precision': 'error',
     '@typescript-eslint/no-extraneous-class': [
       'error',
       {
@@ -468,6 +472,7 @@ module.exports = {
     // The rule is buggy and keeps inferring `any` for types that are not `any`. Just a lot of false-positives.
     // '@typescript-eslint/no-redundant-type-constituents': 'error',
 
+    // no-require-imports subsumes the removed no-var-requires in v8
     '@typescript-eslint/no-require-imports': 'error',
     '@typescript-eslint/no-this-alias': [
       'error',
@@ -475,8 +480,9 @@ module.exports = {
         allowDestructuring: true,
       },
     ],
+    // Replaces removed @typescript-eslint/no-throw-literal (renamed in v8)
     'no-throw-literal': 'off',
-    '@typescript-eslint/no-throw-literal': [
+    '@typescript-eslint/only-throw-error': [
       'error',
       {
         // This should ideally be `false`, but it makes rethrowing errors inconvenient. There should be a separate `allowRethrowingUnknown` option.
@@ -534,9 +540,9 @@ module.exports = {
     '@typescript-eslint/no-useless-constructor': 'error',
     'object-curly-spacing': 'off',
     'curly': ['error', 'all'],
-    '@typescript-eslint/object-curly-spacing': ['error', 'always'],
+    '@stylistic/object-curly-spacing': ['error', 'always'],
     'padding-line-between-statements': 'off',
-    '@typescript-eslint/padding-line-between-statements': [
+    '@stylistic/padding-line-between-statements': [
       'error',
       {
         blankLine: 'always',
@@ -544,7 +550,6 @@ module.exports = {
         next: '*',
       },
     ],
-    '@typescript-eslint/no-var-requires': 'error',
     '@typescript-eslint/non-nullable-type-assertion-style': 'error',
     '@typescript-eslint/parameter-properties': [
       'error',
@@ -584,10 +589,10 @@ module.exports = {
 
     '@typescript-eslint/prefer-reduce-type-parameter': 'error',
     '@typescript-eslint/prefer-string-starts-ends-with': 'error',
-    '@typescript-eslint/prefer-ts-expect-error': 'error',
+    // Removed in v8 — covered by ban-ts-comment with ts-ignore: true
     '@typescript-eslint/promise-function-async': 'error',
     quotes: 'off',
-    '@typescript-eslint/quotes': ['error', 'single'],
+    '@stylistic/quotes': ['error', 'single'],
     '@typescript-eslint/restrict-plus-operands': [
       'error',
       {
@@ -613,7 +618,7 @@ module.exports = {
     // '@typescript-eslint/require-await': 'error',
 
     'space-before-function-paren': 'off',
-    '@typescript-eslint/space-before-function-paren': [
+    '@stylistic/space-before-function-paren': [
       'error',
       {
         anonymous: 'always',
@@ -622,11 +627,11 @@ module.exports = {
       },
     ],
     'space-infix-ops': 'off',
-    '@typescript-eslint/space-infix-ops': 'error',
+    '@stylistic/space-infix-ops': 'error',
     semi: 'off',
-    '@typescript-eslint/semi': ['error', 'always'],
+    '@stylistic/semi': ['error', 'always'],
     'space-before-blocks': 'off',
-    '@typescript-eslint/space-before-blocks': ['error', 'always'],
+    '@stylistic/space-before-blocks': ['error', 'always'],
 
     // TODO: Reconsider enabling it again in 2023.
     // NOTE: The rule was complete redone in typescript-eslint v3, so this config needs to be changed before this is enabled.
@@ -656,7 +661,7 @@ module.exports = {
         lib: 'never',
       },
     ],
-    '@typescript-eslint/type-annotation-spacing': 'error',
+    '@stylistic/type-annotation-spacing': 'error',
 
     // Disabled as it crashes on most code.
     // https://github.com/typescript-eslint/typescript-eslint/search?q=%22unbound-method%22&state=open&type=Issues
