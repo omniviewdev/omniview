@@ -1,8 +1,0 @@
-feat: remove legacy trivy code
-
-Trivy scanning will be a separate plugin. Remove all inline trivy code:
-- backend/pkg/trivy/ (Go manager and wrapper)
-- ui/pages/trivy/ (dashboard, scan, vulnerability, license, SBOM, misconfiguration pages)
-- Wails bindings and auto-generated models for trivy
-- Route definitions in both route files
-- Trivy client binding and enum registration in main.go
