@@ -2580,6 +2580,7 @@ export namespace settings {
 	    options: SettingOption[];
 	    fileSelection?: SettingFileSelection;
 	    sensitive: boolean;
+	    devOnly: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Setting(source);
@@ -2596,6 +2597,7 @@ export namespace settings {
 	        this.options = this.convertValues(source["options"], SettingOption);
 	        this.fileSelection = this.convertValues(source["fileSelection"], SettingFileSelection);
 	        this.sensitive = source["sensitive"];
+	        this.devOnly = source["devOnly"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
