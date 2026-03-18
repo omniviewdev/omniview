@@ -37,7 +37,7 @@ const drawerExpandedHeightStorageKey = 'omniview.bottomDrawer.expandedHeight';
  */
 const BottomDrawerContainer: React.FC = () => {
   const minHeight = 32;
-  const defaultHeight = 400;
+  const defaultHeight = 550;
 
   const { tabs, focused } = useBottomDrawer();
   const hasTabs = tabs.length > 0;
@@ -96,9 +96,7 @@ const BottomDrawerContainer: React.FC = () => {
       return;
     }
 
-    if (height < minHeight) {
-      height = minHeight;
-    }
+    height = Math.min(Math.max(height, minHeight), window.innerHeight);
 
     // Track the last non-minimized, non-fullscreen height for restore
     if (height > minHeight && height < window.innerHeight) {
