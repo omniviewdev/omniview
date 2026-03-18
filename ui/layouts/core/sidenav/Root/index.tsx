@@ -12,10 +12,9 @@ const Root: React.FC<BoxProps> = (props: BoxProps) => (
         bgcolor: 'background.default',
         display: 'flex',
         flexDirection: 'row',
-        flexGrow: 1,
+        flex: 1,
+        minHeight: 0,
         overflow: 'hidden',
-        // minHeight: '100%',
-        // maxHeight: '100%',
         // Display: 'grid',
         // gridTemplateColumns: {
         //   xs: '1fr',
