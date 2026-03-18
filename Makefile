@@ -34,27 +34,44 @@ fmt:
 	gofmt -w .
 
 fmt-check:
-	@UNFORMATTED=$$(gofmt -l .); \
+	@FAILED=0; \
+	if command -v goimports >/dev/null 2>&1; then \
+		UNIMPORTED=$$(goimports -l .); \
+		if [ -n "$$UNIMPORTED" ]; then \
+			echo "The following Go files have incorrect imports (run goimports):"; \
+			echo "$$UNIMPORTED"; \
+			FAILED=1; \
+		fi; \
+	fi; \
+	UNFORMATTED=$$(gofmt -l .); \
 	if [ -n "$$UNFORMATTED" ]; then \
-		echo "The following Go files are not formatted:"; \
+		echo "The following Go files are not formatted (run gofmt):"; \
 		echo "$$UNFORMATTED"; \
-		exit 1; \
-	fi
+		FAILED=1; \
+	fi; \
+	if [ "$$FAILED" -eq 1 ]; then exit 1; fi
 
 # Wails bindings
 bindings:
 	GOWORK=off wails generate module
 
 bindings-check:
-	@TMPDIR=$$(mktemp -d); \
+	@set -e; \
+	TMPDIR=$$(mktemp -d); \
+	cleanup() { \
+		if [ -d "$$TMPDIR/wailsjs-before" ]; then \
+			rm -rf packages/omniviewdev-runtime/src/wailsjs; \
+			cp -R "$$TMPDIR/wailsjs-before" packages/omniviewdev-runtime/src/wailsjs; \
+		fi; \
+		rm -rf "$$TMPDIR"; \
+	}; \
+	trap cleanup EXIT; \
 	cp -R packages/omniviewdev-runtime/src/wailsjs "$$TMPDIR/wailsjs-before"; \
 	GOWORK=off wails generate module; \
 	if ! diff -r packages/omniviewdev-runtime/src/wailsjs "$$TMPDIR/wailsjs-before" >/dev/null 2>&1; then \
 		echo "Wails bindings are stale. Run 'make bindings' and commit the result."; \
-		rm -rf "$$TMPDIR"; \
 		exit 1; \
-	fi; \
-	rm -rf "$$TMPDIR"
+	fi
 
 # Frontend checks
 ui-install:
@@ -65,7 +82,7 @@ ui-build:
 	pnpm build
 
 ui-lint:
-	ESLINT_USE_FLAT_CONFIG=false pnpm lint
+	pnpm lint
 
 ui-typecheck:
 	pnpm exec tsc -p tsconfig.app.json --noEmit

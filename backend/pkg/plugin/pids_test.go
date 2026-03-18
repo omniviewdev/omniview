@@ -14,6 +14,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ensurePluginPIDDir creates the ~/.omniview directory if it doesn't exist.
+// CI runners may not have this directory pre-created.
+func ensurePluginPIDDir(t *testing.T) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Dir(pluginPIDFilePath()), 0755))
+}
+
 func TestPluginPIDTracker_RecordAndRemove(t *testing.T) {
 	tracker := NewPluginPIDTracker()
 
@@ -44,8 +51,7 @@ func TestPluginPIDTracker_RecordAndRemove(t *testing.T) {
 }
 
 func TestPluginPIDTracker_SaveAndLoad(t *testing.T) {
-	// Ensure the directory exists (CI runners may not have ~/.omniview)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pluginPIDFilePath()), 0755))
+	ensurePluginPIDDir(t)
 
 	tracker := NewPluginPIDTracker()
 	tracker.Record("aws", 12345)
@@ -67,8 +73,7 @@ func TestPluginPIDTracker_SaveAndLoad(t *testing.T) {
 }
 
 func TestPluginPIDTracker_CleanupStale_KillsProcesses(t *testing.T) {
-	// Ensure the directory exists (CI runners may not have ~/.omniview)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pluginPIDFilePath()), 0755))
+	ensurePluginPIDDir(t)
 
 	// Spawn a real sleep process to kill
 	cmd := exec.Command("sleep", "300")
@@ -114,8 +119,7 @@ func TestPluginPIDTracker_CleanupStale_NoFile(t *testing.T) {
 }
 
 func TestPluginPIDTracker_CleanupStale_DeadProcess(t *testing.T) {
-	// Ensure the directory exists (CI runners may not have ~/.omniview)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pluginPIDFilePath()), 0755))
+	ensurePluginPIDDir(t)
 
 	// Spawn a process and kill it immediately so the PID is dead
 	cmd := exec.Command("sleep", "300")

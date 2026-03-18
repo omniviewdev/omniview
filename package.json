@@ -8,7 +8,7 @@
     "build": "pnpm run bundle:yaml-worker && tsc && vite build",
     "bundle:yaml-worker": "esbuild node_modules/monaco-yaml/yaml.worker.js --bundle --format=esm --outfile=ui/providers/monaco/yaml.worker.bundle.js --platform=browser",
     "postinstall": "pnpm run bundle:yaml-worker",
-    "lint": "eslint ui --ext ts,tsx --report-unused-disable-directives",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint ui --ext ts,tsx --report-unused-disable-directives",
     "preview": "nx preview",
     "test": "vitest run",
     "bench": "vitest bench --config vitest.bench.config.ts"

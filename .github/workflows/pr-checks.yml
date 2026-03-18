@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: pr-checks-${{ github.head_ref }}
+  group: pr-checks-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
@@ -41,7 +41,7 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v2.1
           args: run
         env:
           GOWORK: "off"
