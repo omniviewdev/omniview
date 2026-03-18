@@ -10,8 +10,8 @@ concurrency:
 
 env:
   GO_VERSION: "1.26"
-  NODE_VERSION: "20"
-  PNPM_VERSION: "10"
+  NODE_VERSION: "20.18.1"
+  PNPM_VERSION: "9.15.0"
 
 jobs:
   go-checks:

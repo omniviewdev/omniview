@@ -35,13 +35,15 @@ fmt:
 
 fmt-check:
 	@FAILED=0; \
-	if command -v goimports >/dev/null 2>&1; then \
-		UNIMPORTED=$$(goimports -l .); \
-		if [ -n "$$UNIMPORTED" ]; then \
-			echo "The following Go files have incorrect imports (run goimports):"; \
-			echo "$$UNIMPORTED"; \
-			FAILED=1; \
-		fi; \
+	if ! command -v goimports >/dev/null 2>&1; then \
+		echo "goimports not found. Install with: go install golang.org/x/tools/cmd/goimports@latest"; \
+		exit 1; \
+	fi; \
+	UNIMPORTED=$$(goimports -l .); \
+	if [ -n "$$UNIMPORTED" ]; then \
+		echo "The following Go files have incorrect imports (run goimports):"; \
+		echo "$$UNIMPORTED"; \
+		FAILED=1; \
 	fi; \
 	UNFORMATTED=$$(gofmt -l .); \
 	if [ -n "$$UNFORMATTED" ]; then \
