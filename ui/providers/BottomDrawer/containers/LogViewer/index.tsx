@@ -39,8 +39,8 @@ interface Props {
 
 const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix, toolbarActions }) => {
   const parentRef = useRef<HTMLDivElement>(null);
-  const [showTimestamps, setShowTimestamps] = useState(true);
-  const [showSources, setShowSources] = useState(true);
+  const [showTimestamps, setShowTimestamps] = useState(false);
+  const [showSources, setShowSources] = useState(false);
   const [showLineNumbers, setShowLineNumbers] = useState(false);
   const [wrap, setWrap] = useState(false);
   const [colorize, setColorize] = useState(true);
