@@ -25,14 +25,6 @@ import ResourceTableView from './pages/[plugin]/[connectionID]/resources/Resourc
 
 import { RouterErrorBoundary } from './features/router/components/ErrorBoundary';
 
-// Trivy
-import TrivyLayout from './pages/trivy';
-import TrivyDashboard from './pages/trivy/pages/scan';
-import TrivyScan from './pages/trivy/pages/scan';
-import TrivyVulnerabilities from './pages/trivy/pages/vulnerabilities';
-import TrivyLicenses from './pages/trivy/pages/licenses';
-import TrivySBOM from './pages/trivy/pages/sbom';
-import TrivyMisconfiguration from './pages/trivy/pages/misconfiguration';
 import PluginRenderer from './features/plugins/components/PluginRenderer';
 import PluginDetails from './pages/plugins/PluginDetails';
 import InstalledPlugins from './pages/plugins/InstalledPlugins';
@@ -66,39 +58,6 @@ export const scoped: RouteObject[] = [
         path: 'settings',
         Component: Settings,
       },
-      {
-        path: 'trivy',
-        Component: TrivyLayout,
-        ErrorBoundary: RouterErrorBoundary,
-        children: [
-          {
-            path: '',
-            index: true,
-            Component: TrivyDashboard,
-          },
-          {
-            path: 'scan',
-            Component: TrivyScan,
-          },
-          {
-            path: 'vulnerability',
-            Component: TrivyVulnerabilities,
-          },
-          {
-            path: 'misconfiguration',
-            Component: TrivyMisconfiguration,
-          },
-          {
-            path: 'license',
-            Component: TrivyLicenses,
-          },
-          {
-            path: 'sbom',
-            Component: TrivySBOM,
-          },
-        ],
-      },
-
       /**
        * NOTE: The new UI implementation will exist here
        */

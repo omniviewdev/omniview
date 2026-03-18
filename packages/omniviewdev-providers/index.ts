@@ -15,7 +15,6 @@ export * as resource from './internal/resource/Client';
 export * as runtime from './internal/runtime/runtime';
 export * as settings from './internal/settings/Client';
 export * as settingsProvider from './internal/settings/provider';
-export * as trivy from './internal/trivy/Manager';
 export * as ui from './internal/ui/Client';
 export * as utils from './internal/utils/Client';
 
