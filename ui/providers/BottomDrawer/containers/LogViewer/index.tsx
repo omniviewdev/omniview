@@ -5,7 +5,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '@omniviewdev/ui/buttons';
 import { Text } from '@omniviewdev/ui/typography';
-import { LuArrowDown, LuTriangleAlert } from 'react-icons/lu';
+import { LuArrowDown, LuTriangleAlert, LuUnplug, LuX } from 'react-icons/lu';
 
 import LogEntryComponent from './LogEntry';
 import LogViewerToolbar from './LogViewerToolbar';
@@ -18,6 +18,7 @@ import { useLogSources } from './hooks/useLogSources';
 import { createSessionSource } from './sources/sessionSource';
 import { saveLogsNative, copyLogsToClipboard } from './utils/downloadLogs';
 import { findEntryIndexByTime } from './utils/binarySearchTimestamp';
+import { bottomDrawerChannel } from '../../events';
 import type { LogEntry, LogDataSource, LogStreamEvent, SearchMatch } from './types';
 import { StreamEventType } from './types';
 
@@ -296,6 +297,24 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   const hasErrors = streamErrors.length > 0;
   const latestError = hasErrors ? streamErrors[streamErrors.length - 1] : null;
 
+  // Derive stream-ended / source-removed state from events
+  const streamEnded = useMemo(
+    () => events.some((e) => e.type === StreamEventType.STREAM_ENDED),
+    [events],
+  );
+  const sourcesRemoved = useMemo(
+    () => events.filter((e) => e.type === StreamEventType.SOURCE_REMOVED),
+    [events],
+  );
+  const hasSourcesRemoved = sourcesRemoved.length > 0;
+  const streamDead = streamEnded || (hasSourcesRemoved && !hasErrors);
+
+  const handleCloseTab = useCallback(() => {
+    if (sessionId) {
+      bottomDrawerChannel.emit('onSessionClosed', { id: sessionId });
+    }
+  }, [sessionId]);
+
   const virtualItems = rowVirtualizer.getVirtualItems();
   const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
   const paddingBottom = virtualItems.length > 0
@@ -419,7 +438,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
       />
 
       {/* Error banner when logs are flowing but errors occurred */}
-      {hasErrors && filteredLineCount > 0 && (
+      {hasErrors && filteredLineCount > 0 && !streamDead && (
         <Box
           sx={{
             display: 'flex',
@@ -441,8 +460,44 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
         </Box>
       )}
 
+      {/* Dead stream banner — resource deleted or connection lost */}
+      {streamDead && filteredLineCount > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 1.5,
+            py: 0.75,
+            bgcolor: hasSourcesRemoved ? 'danger.softBg' : 'warning.softBg',
+            borderBottom: '1px solid',
+            borderColor: hasSourcesRemoved ? 'danger.outlinedBorder' : 'warning.outlinedBorder',
+            flexShrink: 0,
+          }}
+        >
+          <LuUnplug size={14} />
+          <Text variant="caption" size="xs" sx={{ color: hasSourcesRemoved ? 'danger.plainColor' : 'warning.plainColor', flex: 1 }}>
+            {hasSourcesRemoved
+              ? `Resource removed — ${sourcesRemoved.length} source${sourcesRemoved.length !== 1 ? 's' : ''} no longer available`
+              : 'Log stream ended — connection lost'}
+          </Text>
+          {sessionId && (
+            <Button
+              size="sm"
+              emphasis="soft"
+              color="neutral"
+              startAdornment={<LuX size={12} />}
+              onClick={handleCloseTab}
+              sx={{ flexShrink: 0 }}
+            >
+              Close tab
+            </Button>
+          )}
+        </Box>
+      )}
+
       {/* Empty error state -- no logs and errors present */}
-      {hasErrors && filteredLineCount === 0 ? (
+      {(hasErrors || streamDead) && filteredLineCount === 0 ? (
         <Box
           sx={{
             flex: 1,
@@ -456,28 +511,68 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
             minHeight: 0,
           }}
         >
-          <LuTriangleAlert size={32} color="var(--palette-error-main)" />
-          <Text weight="semibold" sx={{ color: 'error.main' }}>
-            Failed to stream logs
-          </Text>
-          {streamErrors.map((err, i) => (
-            <Text
-              key={i}
-              size="sm"
-              sx={{
-                color: 'text.secondary',
-                fontFamily: 'monospace',
-                fontSize: '12px',
-                maxWidth: 600,
-                textAlign: 'center',
-              }}
-            >
-              {err.source_id && <><strong>{err.source_id}:</strong>{' '}</>}
-              {err.message}
-            </Text>
-          ))}
+          {streamDead && !hasErrors ? (
+            <>
+              <LuUnplug size={32} color="var(--palette-warning-main)" />
+              <Text weight="semibold" sx={{ color: 'warning.main' }}>
+                {hasSourcesRemoved ? 'Resource no longer available' : 'Log stream ended'}
+              </Text>
+              <Text size="sm" sx={{ color: 'text.secondary', maxWidth: 600, textAlign: 'center' }}>
+                {hasSourcesRemoved
+                  ? 'The resource was deleted or is no longer accessible.'
+                  : 'The connection to the log stream was lost.'}
+              </Text>
+              {sessionId && (
+                <Button
+                  size="sm"
+                  emphasis="soft"
+                  color="neutral"
+                  startAdornment={<LuX size={14} />}
+                  onClick={handleCloseTab}
+                  sx={{ mt: 1 }}
+                >
+                  Close tab
+                </Button>
+              )}
+            </>
+          ) : (
+            <>
+              <LuTriangleAlert size={32} color="var(--palette-error-main)" />
+              <Text weight="semibold" sx={{ color: 'error.main' }}>
+                Failed to stream logs
+              </Text>
+              {streamErrors.map((err, i) => (
+                <Text
+                  key={i}
+                  size="sm"
+                  sx={{
+                    color: 'text.secondary',
+                    fontFamily: 'monospace',
+                    fontSize: '12px',
+                    maxWidth: 600,
+                    textAlign: 'center',
+                  }}
+                >
+                  {err.source_id && <><strong>{err.source_id}:</strong>{' '}</>}
+                  {err.message}
+                </Text>
+              ))}
+              {sessionId && (
+                <Button
+                  size="sm"
+                  emphasis="soft"
+                  color="neutral"
+                  startAdornment={<LuX size={14} />}
+                  onClick={handleCloseTab}
+                  sx={{ mt: 1 }}
+                >
+                  Close tab
+                </Button>
+              )}
+            </>
+          )}
         </Box>
-      ) : !hasErrors && filteredLineCount === 0 ? (
+      ) : !(hasErrors || streamDead) && filteredLineCount === 0 ? (
         /* Loading state — waiting for log data */
         <Box
           sx={{
