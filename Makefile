@@ -1,5 +1,5 @@
 
-.PHONY: docs prepare sync packages dev dev-plugin runtime build
+.PHONY: docs prepare sync packages dev dev-plugin runtime build e2e e2e-ui e2e-report
 .PHONY: check go-build go-vet go-test go-lint bindings bindings-check
 .PHONY: ui-install ui-build ui-lint ui-typecheck fmt fmt-check
 
@@ -151,3 +151,12 @@ sign:
 .PHONY: build-debug
 build-debug:
 	wails build -clean -debug
+
+e2e:
+	cd e2e && pnpm install && pnpm exec playwright install chromium && pnpm exec playwright test
+
+e2e-ui:
+	cd e2e && pnpm exec playwright test --ui
+
+e2e-report:
+	cd e2e && pnpm exec playwright show-report
