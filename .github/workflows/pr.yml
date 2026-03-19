@@ -58,11 +58,9 @@ jobs:
       - name: Build workspace packages
         run: make packages
 
-      - name: Install e2e dependencies
-        run: cd e2e && pnpm install
-
       - name: Install Playwright browsers
-        run: cd e2e && npx playwright install --with-deps chromium
+        working-directory: e2e
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Start wails dev
         run: |
@@ -72,7 +70,8 @@ jobs:
           echo "Wails dev server is ready"
 
       - name: Run Playwright tests
-        run: cd e2e && npx playwright test
+        working-directory: e2e
+        run: pnpm test
 
       - name: Upload test report
         if: always()
