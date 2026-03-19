@@ -28,7 +28,6 @@ export default function CoreLayout() {
             overflow: 'hidden',
           }}
         >
-          <Layout.Sidebar />
           <Container />
         </Box>
         <AppStatusFooter />
