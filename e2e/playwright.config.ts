@@ -15,13 +15,13 @@ export default defineConfig({
     video: 'on-first-retry',
     trace: 'on-first-retry',
   },
-  webServer: {
-    command: process.env.CI
-      ? 'cd .. && xvfb-run wails dev -loglevel Error -tags webkit2_41'
-      : 'cd .. && wails dev -loglevel Error',
+  // Locally, Playwright manages wails dev lifecycle.
+  // In CI, wails dev is started as a background step because xvfb-run +
+  // wails dev creates a process tree that doesn't shut down cleanly.
+  webServer: process.env.CI ? undefined : {
+    command: 'cd .. && wails dev -loglevel Error',
     url: 'http://localhost:34115',
-    // CI runners are slower — give wails dev more time to compile and start
-    timeout: process.env.CI ? 300_000 : 120_000,
-    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+    reuseExistingServer: true,
   },
 });

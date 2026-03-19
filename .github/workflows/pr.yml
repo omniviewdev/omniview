@@ -62,6 +62,20 @@ jobs:
         working-directory: e2e
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Start wails dev
+        run: |
+          xvfb-run wails dev -loglevel Error -tags webkit2_41 &
+          echo "Waiting for Wails dev server..."
+          for i in $(seq 1 150); do
+            if curl -sf http://localhost:34115 > /dev/null 2>&1; then
+              echo "Wails dev server is ready (${i}s)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Timed out waiting for Wails dev server"
+          exit 1
+
       - name: Run Playwright tests
         working-directory: e2e
         run: pnpm test
