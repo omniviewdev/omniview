@@ -15,12 +15,11 @@ export default defineConfig({
     video: 'on-first-retry',
     trace: 'on-first-retry',
   },
-  // In CI, wails dev is started as a background step in the workflow.
-  // Locally, start wails dev automatically or reuse an existing one.
-  webServer: process.env.CI ? undefined : {
-    command: 'cd .. && wails dev',
+  webServer: {
+    command: 'cd .. && wails dev -loglevel Error',
     url: 'http://localhost:34115',
-    timeout: 120_000,
-    reuseExistingServer: true,
+    // CI runners are slower — give wails dev more time to compile and start
+    timeout: process.env.CI ? 300_000 : 120_000,
+    reuseExistingServer: !process.env.CI,
   },
 });
