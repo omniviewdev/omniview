@@ -64,7 +64,7 @@ jobs:
 
       - name: Start wails dev
         run: |
-          xvfb-run wails dev -loglevel Error -tags webkit2_41 -nosyncgomod -noreload -skipbindings &
+          xvfb-run wails dev -loglevel Error -tags webkit2_41 -nosyncgomod -m -noreload -skipbindings &
           echo "Waiting for Wails dev server..."
           for i in $(seq 1 150); do
             if curl -sf http://localhost:34115 > /dev/null 2>&1; then
