@@ -464,6 +464,132 @@ export namespace exec {
 
 }
 
+export namespace graph {
+	
+	export class GraphNode {
+	    pluginId: string;
+	    connectionId: string;
+	    resourceKey: string;
+	    id: string;
+	    namespace?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GraphNode(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pluginId = source["pluginId"];
+	        this.connectionId = source["connectionId"];
+	        this.resourceKey = source["resourceKey"];
+	        this.id = source["id"];
+	        this.namespace = source["namespace"];
+	    }
+	}
+	export class GraphEdge {
+	    source: GraphNode;
+	    target: GraphNode;
+	    type: string;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GraphEdge(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.source = this.convertValues(source["source"], GraphNode);
+	        this.target = this.convertValues(source["target"], GraphNode);
+	        this.type = source["type"];
+	        this.label = source["label"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DependencyNode {
+	    edge: GraphEdge;
+	    children: DependencyNode[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DependencyNode(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.edge = this.convertValues(source["edge"], GraphEdge);
+	        this.children = this.convertValues(source["children"], DependencyNode);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DependencyTree {
+	    root: GraphNode;
+	    children: DependencyNode[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DependencyTree(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.root = this.convertValues(source["root"], GraphNode);
+	        this.children = this.convertValues(source["children"], DependencyNode);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+
+}
+
 export namespace logs {
 	
 	export class ActionTargetBuilder {
@@ -1510,6 +1636,11 @@ export namespace registry {
 
 export namespace resource {
 	
+	export enum SyncPolicy {
+	    ON_CONNECT = 0,
+	    ON_FIRST_QUERY = 1,
+	    NEVER = 2,
+	}
 	export enum WatchState {
 	    IDLE = 0,
 	    SYNCING = 1,
@@ -1519,11 +1650,6 @@ export namespace resource {
 	    FAILED = 5,
 	    FORBIDDEN = 6,
 	    SKIPPED = 7,
-	}
-	export enum SyncPolicy {
-	    ON_CONNECT = 0,
-	    ON_FIRST_QUERY = 1,
-	    NEVER = 2,
 	}
 	export class SchemaProperty {
 	    type: string;
