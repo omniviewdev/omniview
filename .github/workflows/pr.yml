@@ -1,0 +1,188 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  NODE_OPTIONS: "--max-old-space-size=4096"
+  GO_VERSION: "1.26"
+  NODE_VERSION: "20"
+  PNPM_VERSION: "10"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # E2E Tests — Playwright against wails dev
+  # ─────────────────────────────────────────────────────────────────────────────
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: |
+            - args: []
+            - args: [--global, typescript]
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: "go.sum"
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build workspace packages
+        run: make packages
+
+      - name: Install e2e dependencies
+        working-directory: e2e
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        working-directory: e2e
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Start wails dev
+        run: |
+          wails dev -loglevel Error &
+          echo "Waiting for Wails dev server..."
+          timeout 120 bash -c 'until curl -sf http://localhost:34115 > /dev/null 2>&1; do sleep 2; done'
+          echo "Wails dev server is ready"
+
+      - name: Run Playwright tests
+        working-directory: e2e
+        run: pnpm test
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build Artifacts — downloadable binaries for manual testing
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-artifacts:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin/universal
+            artifact-name: pr-build-macos
+            extra-flags: ""
+          - os: ubuntu-latest
+            platform: linux/amd64
+            artifact-name: pr-build-linux
+            extra-flags: "-tags webkit2_41"
+          - os: windows-latest
+            platform: windows/amd64
+            artifact-name: pr-build-windows
+            extra-flags: ""
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: |
+            - args: []
+            - args: [--global, typescript]
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: "go.sum"
+
+      - name: Install Wails
+        shell: bash
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build workspace packages
+        shell: bash
+        run: make packages
+
+      - name: Build Omniview
+        shell: bash
+        run: |
+          wails build -platform ${{ matrix.platform }} \
+            ${{ matrix.extra-flags }} \
+            -webview2 download \
+            -ldflags "\
+              -X github.com/omniviewdev/omniview/internal/version.Version=0.0.0-pr.${{ github.event.pull_request.number }} \
+              -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
+              -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+              -X github.com/omniviewdev/omniview/internal/version.Development=true"
+
+      - name: Prepare artifact (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd build/bin
+          zip -r Omniview-pr${{ github.event.pull_request.number }}-macos.zip Omniview.app
+
+      - name: Prepare artifact (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build/bin
+        run: mv Omniview "Omniview-pr${{ github.event.pull_request.number }}-linux-amd64"
+
+      - name: Prepare artifact (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build/bin
+        run: Rename-Item -Path "Omniview.exe" -NewName "Omniview-pr${{ github.event.pull_request.number }}-windows-amd64.exe"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: |
+            build/bin/*.zip
+            build/bin/Omniview-pr*
+          if-no-files-found: error
+          retention-days: 5
