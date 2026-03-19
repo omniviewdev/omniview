@@ -21,6 +21,7 @@ export default function CoreLayoutSidebar() {
 
   return (
     <Box
+      data-testid='app-sidebar'
       className='CoreLayoutSidebar'
       sx={{
         position: 'fixed',

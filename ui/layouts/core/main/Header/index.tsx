@@ -58,6 +58,7 @@ const CoreLayoutHeader: React.FC<BoxProps> = props => {
       />
       <Box
         component='header'
+        data-testid='app-header'
         className='CoreLayoutHeader'
         onClick={handleClick}
         sx={[

@@ -1136,6 +1136,7 @@ export default function AppStatusFooter() {
         }}
       />
       <IDEStatusFooter
+        data-testid="app-footer"
         height={24}
         left={
           <>

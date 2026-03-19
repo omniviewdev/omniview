@@ -12,10 +12,11 @@ export default function CoreLayout() {
   return (
     <>
       <CssBaseline />
-      <Box sx={{ display: 'flex', minHeight: '100dvh', flexDirection: 'column' }}>
+      <Box data-testid="app-shell" sx={{ display: 'flex', minHeight: '100dvh', flexDirection: 'column' }}>
         <Layout.Header />
         <Box
           component='main'
+          data-testid='app-main-content'
           className='MainContent'
           sx={{
             flex: 1,
@@ -27,7 +28,6 @@ export default function CoreLayout() {
             overflow: 'hidden',
           }}
         >
-          <Layout.Sidebar />
           <Container />
         </Box>
         <AppStatusFooter />
