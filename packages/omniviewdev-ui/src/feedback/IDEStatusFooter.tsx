@@ -425,6 +425,7 @@ export interface IDEStatusFooterProps {
   right?: React.ReactNode;
   height?: number;
   sx?: SxProps<Theme>;
+  'data-testid'?: string;
 }
 
 function IDEStatusFooter({
@@ -432,9 +433,11 @@ function IDEStatusFooter({
   right,
   height = 22,
   sx,
+  'data-testid': dataTestId,
 }: IDEStatusFooterProps) {
   return (
     <Box
+      data-testid={dataTestId}
       sx={{
         display: 'flex',
         alignItems: 'center',

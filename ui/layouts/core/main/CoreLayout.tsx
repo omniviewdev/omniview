@@ -16,6 +16,7 @@ export default function CoreLayout() {
         <Layout.Header />
         <Box
           component='main'
+          data-testid='app-main-content'
           className='MainContent'
           sx={{
             flex: 1,

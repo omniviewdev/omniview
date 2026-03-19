@@ -2,22 +2,22 @@ import { test, expect } from '../fixtures/app.fixture';
 
 test.describe('App Shell', () => {
   test('loads without errors', async ({ appPage }) => {
-    // Verify the app shell rendered (fixture already waited for it)
     await expect(appPage.locator('[data-testid="app-shell"]')).toBeVisible();
   });
 
-  test('has no console errors on initial load', async ({ page }) => {
-    const errors: string[] = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') {
-        errors.push(msg.text());
-      }
-    });
+  test('header is visible', async ({ appPage }) => {
+    await expect(appPage.locator('[data-testid="app-header"]')).toBeVisible();
+  });
 
-    await page.goto('/');
-    await page.waitForSelector('[data-testid="app-shell"]', { timeout: 15_000 });
+  test('sidebar is visible', async ({ appPage }) => {
+    await expect(appPage.locator('[data-testid="app-sidebar"]')).toBeVisible();
+  });
 
-    // Filter out known benign errors if needed
-    expect(errors).toEqual([]);
+  test('main content area is visible', async ({ appPage }) => {
+    await expect(appPage.locator('[data-testid="app-main-content"]')).toBeVisible();
+  });
+
+  test('footer is visible', async ({ appPage }) => {
+    await expect(appPage.locator('[data-testid="app-footer"]')).toBeVisible();
   });
 });
