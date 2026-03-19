@@ -16,7 +16,9 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'cd .. && wails dev -loglevel Error',
+    command: process.env.CI
+      ? 'cd .. && wails dev -loglevel Error -tags webkit2_41'
+      : 'cd .. && wails dev -loglevel Error',
     url: 'http://localhost:34115',
     // CI runners are slower — give wails dev more time to compile and start
     timeout: process.env.CI ? 300_000 : 120_000,
