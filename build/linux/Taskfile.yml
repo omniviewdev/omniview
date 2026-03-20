@@ -3,37 +3,42 @@ version: '3'
 includes:
   common: ../Taskfile.yml
 
-vars:
-  APP_NAME: '{{.APP_NAME}}'
-  BIN_DIR: '{{.ROOT_DIR}}/bin'
-
 tasks:
   build:
-    summary: Build for Linux
-    deps:
-      - task: common:go:mod:tidy
-      - task: common:generate:icons
-      - task: common:build:frontend
+    summary: Builds the application for Linux
     cmds:
       - task: build:native
+        vars:
+          DEV: '{{.DEV}}'
 
   build:native:
-    summary: Build natively on Linux
+    summary: Builds the application natively on Linux
     internal: true
-    dir: "{{.ROOT_DIR}}"
+    deps:
+      - task: common:go:mod:tidy
+      - task: common:build:frontend
+        vars:
+          BUILD_FLAGS:
+            ref: .BUILD_FLAGS
+          DEV:
+            ref: .DEV
+      - task: common:generate:icons
     cmds:
-      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o {{.BIN_DIR}}/{{.APP_NAME}}
+      - go build {{.BUILD_FLAGS}} -o {{.OUTPUT}}
+    vars:
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+      DEFAULT_OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}'
+      OUTPUT: '{{ .OUTPUT | default .DEFAULT_OUTPUT }}'
     env:
       GOOS: linux
-      CGO_ENABLED: "1"
+      CGO_ENABLED: 1
       GOARCH: '{{.ARCH | default ARCH}}'
 
   package:
-    summary: Package Linux application
-    cmds:
+    summary: Packages the application for Linux
+    deps:
       - task: build
 
   run:
-    summary: Run the Linux application
     cmds:
-      - "{{.BIN_DIR}}/{{.APP_NAME}}"
+      - '{{.BIN_DIR}}/{{.APP_NAME}}'

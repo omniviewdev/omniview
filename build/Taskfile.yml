@@ -1,84 +1,76 @@
 version: '3'
 
 tasks:
-  # ──────────────────────────────────────────────
-  # Go
-  # ──────────────────────────────────────────────
-
   go:mod:tidy:
-    summary: Tidy Go modules
+    summary: Runs `go mod tidy`
     internal: true
     cmds:
       - go mod tidy
 
-  # ──────────────────────────────────────────────
-  # Frontend
-  # ──────────────────────────────────────────────
-
-  ui:install:
+  install:frontend:deps:
     summary: Install frontend dependencies
     dir: "{{.ROOT_DIR}}"
+    sources:
+      - package.json
+      - pnpm-lock.yaml
+    generates:
+      - node_modules/.pnpm/lock.yaml
     cmds:
       - pnpm install
-    sources:
-      - "{{.ROOT_DIR}}/package.json"
-      - "{{.ROOT_DIR}}/pnpm-lock.yaml"
-    generates:
-      - "{{.ROOT_DIR}}/node_modules/.pnpm/lock.yaml"
 
   build:frontend:
-    summary: Build the frontend
+    label: build:frontend (DEV={{.DEV}})
+    summary: Build the frontend project
     dir: "{{.ROOT_DIR}}"
+    deps:
+      - task: install:frontend:deps
+      - task: generate:bindings
+        vars:
+          BUILD_FLAGS:
+            ref: .BUILD_FLAGS
     cmds:
-      - pnpm run build
+      - pnpm run {{.BUILD_COMMAND}} -q
     env:
       PRODUCTION: '{{if eq .DEV "true"}}false{{else}}true{{end}}'
-
-  dev:frontend:
-    summary: Run the Vite dev server
-    dir: "{{.ROOT_DIR}}"
-    cmds:
-      - pnpm run dev -- --port {{.VITE_PORT}} --strictPort
-
-  # ──────────────────────────────────────────────
-  # Bindings
-  # ──────────────────────────────────────────────
+    vars:
+      BUILD_COMMAND: '{{if eq .DEV "true"}}build:dev{{else}}build{{end}}'
 
   generate:bindings:
-    summary: Generate TypeScript bindings from Go services
+    label: generate:bindings (BUILD_FLAGS={{.BUILD_FLAGS}})
+    summary: Generates bindings for the frontend
     dir: "{{.ROOT_DIR}}"
+    deps:
+      - task: go:mod:tidy
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - packages/omniviewdev-runtime/src/bindings/**/*
     cmds:
-      - GOWORK=off wails3 generate bindings -d packages/omniviewdev-runtime/src/bindings -f '{{.BUILD_FLAGS | default ""}}' -clean=true -ts
-
-  # ──────────────────────────────────────────────
-  # Icons
-  # ──────────────────────────────────────────────
+      - GOWORK=off wails3 generate bindings -d packages/omniviewdev-runtime/src/bindings -f '{{.BUILD_FLAGS}}' -clean=true -ts
 
   generate:icons:
-    summary: Generate platform icons from appicon.png
+    summary: Generates platform icons from appicon.png
     dir: build
+    sources:
+      - "appicon.png"
+    generates:
+      - "darwin/icons.icns"
+      - "windows/icon.ico"
     cmds:
       - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
 
-  # ──────────────────────────────────────────────
-  # Build assets
-  # ──────────────────────────────────────────────
+  dev:frontend:
+    summary: Runs the frontend in development mode
+    dir: "{{.ROOT_DIR}}"
+    deps:
+      - task: install:frontend:deps
+    cmds:
+      - pnpm run dev -- --port {{.VITE_PORT}} --strictPort
 
   update:build-assets:
-    summary: Regenerate platform build assets from config.yml
+    summary: Updates the build assets
     dir: build
     cmds:
-      - wails3 update build-assets -name "{{.APP_NAME}}" -config config.yml -dir .
-
-  # ──────────────────────────────────────────────
-  # Packages (workspace)
-  # ──────────────────────────────────────────────
-
-  packages:
-    summary: Build all workspace packages in dependency order
-    dir: "{{.ROOT_DIR}}"
-    cmds:
-      - pnpm --filter @omniviewdev/providers run build
-      - pnpm --filter @omniviewdev/vite-plugin run build
-      - pnpm --filter @omniviewdev/ui run build
-      - pnpm --filter @omniviewdev/runtime run build
+      - wails3 update build-assets -name "{{.APP_NAME}}" -binaryname "{{.APP_NAME}}" -config config.yml -dir .

@@ -3,40 +3,40 @@ version: '3'
 includes:
   common: ../Taskfile.yml
 
-vars:
-  APP_NAME: '{{.APP_NAME}}'
-  BIN_DIR: '{{.ROOT_DIR}}/bin'
-
 tasks:
   build:
-    summary: Build for Windows
-    deps:
-      - task: common:go:mod:tidy
-      - task: common:generate:icons
-      - task: common:build:frontend
+    summary: Builds the application for Windows
     cmds:
       - task: build:native
+        vars:
+          DEV: '{{.DEV}}'
 
   build:native:
-    summary: Build natively for Windows
+    summary: Builds the application using native Go cross-compilation
     internal: true
-    dir: "{{.ROOT_DIR}}"
+    deps:
+      - task: common:go:mod:tidy
+      - task: common:build:frontend
+        vars:
+          BUILD_FLAGS:
+            ref: .BUILD_FLAGS
+          DEV:
+            ref: .DEV
+      - task: common:generate:icons
     cmds:
-      - wails3 generate syso -arch {{.ARCH | default "amd64"}} -icon build/windows/icon.ico -manifest build/windows/wails.exe.manifest -info build/windows/info.json -out wails_windows_{{.ARCH | default "amd64"}}.syso
-      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o {{.BIN_DIR}}/{{.APP_NAME}}.exe
-      - cmd: rm -f wails_windows_*.syso
-        ignore_error: true
+      - go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
+    vars:
+      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui"{{end}}'
     env:
       GOOS: windows
-      CGO_ENABLED: '{{.CGO_ENABLED | default "0"}}'
+      CGO_ENABLED: 0
       GOARCH: '{{.ARCH | default ARCH}}'
 
   package:
-    summary: Package Windows application
-    cmds:
+    summary: Packages the application for Windows
+    deps:
       - task: build
 
   run:
-    summary: Run the Windows application
     cmds:
-      - "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
+      - '{{.BIN_DIR}}/{{.APP_NAME}}.exe'
