@@ -16,14 +16,6 @@ import * as config$0 from "../../../../../plugin-sdk/pkg/config/models.js";
 import * as time$0 from "../../../../../../../time/models.js";
 
 /**
- * PluginBackend abstracts the communication channel to a plugin process.
- * The primary implementation wraps go-plugin (ExternalBackend), but this
- * interface also enables in-process backends for tests and future bundled
- * plugins.
- */
-export type PluginBackend = any;
-
-/**
  * PluginStateRecord is the subset of PluginRecord that gets persisted to disk.
  */
 export class PluginStateRecord {

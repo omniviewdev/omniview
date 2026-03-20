@@ -4,7 +4,3 @@
 export {
     PluginStateRecord
 } from "./models.js";
-
-export type {
-    PluginBackend
-} from "./models.js";

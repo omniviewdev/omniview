@@ -10,6 +10,5 @@ export {
 } from "./models.js";
 
 export type {
-    CategoryChangeFunc,
     Store
 } from "./models.js";

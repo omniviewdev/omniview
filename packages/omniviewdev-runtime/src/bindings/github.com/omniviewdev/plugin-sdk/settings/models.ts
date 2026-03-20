@@ -49,12 +49,6 @@ export class Category {
     }
 }
 
-/**
- * CategoryChangeFunc is called after settings in a category are saved.
- * The map contains all current setting values for the category.
- */
-export type CategoryChangeFunc = any;
-
 export class Setting {
     /**
      * ID is the unique identifier of the setting

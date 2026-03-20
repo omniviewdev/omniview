@@ -3,16 +3,23 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
+	logssdk "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
+	metricsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
+	networkersdk "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -205,15 +212,18 @@ func (s *DevServerService) GetExternalPluginInfo(pluginID string) *devserver.Dev
 	return s.mgr.GetExternalPluginInfo(pluginID)
 }
 
-// ResourceControllerService wraps the resource.Controller interface so it can
-// be registered as a Wails v3 service (which requires a concrete pointer type).
-// Embedding the interface promotes all its methods to the wrapper struct.
+// ---------------------------------------------------------------------------
+// ResourceControllerService — explicit delegation (no interface embedding).
+// Excluded: OnPluginInit, OnPluginStart, OnPluginStop, OnPluginShutdown,
+//           OnPluginDestroy, Run, SetCrashCallback, Graph, HasPlugin
+// ---------------------------------------------------------------------------
+
 type ResourceControllerService struct {
-	resource.Controller
+	ctrl resource.Controller
 }
 
 func (s *ResourceControllerService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
-	if ss, ok := s.Controller.(interface {
+	if ss, ok := s.ctrl.(interface {
 		ServiceStartup(context.Context, application.ServiceOptions) error
 	}); ok {
 		return ss.ServiceStartup(ctx, options)
@@ -222,46 +232,547 @@ func (s *ResourceControllerService) ServiceStartup(ctx context.Context, options 
 }
 
 func (s *ResourceControllerService) ServiceShutdown() error {
-	if ss, ok := s.Controller.(interface{ ServiceShutdown() error }); ok {
+	if ss, ok := s.ctrl.(interface{ ServiceShutdown() error }); ok {
 		return ss.ServiceShutdown()
 	}
 	return nil
 }
 
-// SettingsControllerService wraps the settings.Controller interface.
+// CRUD
+func (s *ResourceControllerService) Get(pluginID, connectionID, key string, input sdkresource.GetInput) (*sdkresource.GetResult, error) {
+	return s.ctrl.Get(pluginID, connectionID, key, input)
+}
+func (s *ResourceControllerService) List(pluginID, connectionID, key string, input sdkresource.ListInput) (*sdkresource.ListResult, error) {
+	return s.ctrl.List(pluginID, connectionID, key, input)
+}
+func (s *ResourceControllerService) Find(pluginID, connectionID, key string, input sdkresource.FindInput) (*sdkresource.FindResult, error) {
+	return s.ctrl.Find(pluginID, connectionID, key, input)
+}
+func (s *ResourceControllerService) Create(pluginID, connectionID, key string, input sdkresource.CreateInput) (*sdkresource.CreateResult, error) {
+	return s.ctrl.Create(pluginID, connectionID, key, input)
+}
+func (s *ResourceControllerService) Update(pluginID, connectionID, key string, input sdkresource.UpdateInput) (*sdkresource.UpdateResult, error) {
+	return s.ctrl.Update(pluginID, connectionID, key, input)
+}
+func (s *ResourceControllerService) Delete(pluginID, connectionID, key string, input sdkresource.DeleteInput) (*sdkresource.DeleteResult, error) {
+	return s.ctrl.Delete(pluginID, connectionID, key, input)
+}
+
+// Connection lifecycle
+func (s *ResourceControllerService) StartConnection(pluginID, connectionID string) (sdktypes.ConnectionStatus, error) {
+	return s.ctrl.StartConnection(pluginID, connectionID)
+}
+func (s *ResourceControllerService) StopConnection(pluginID, connectionID string) (sdktypes.Connection, error) {
+	return s.ctrl.StopConnection(pluginID, connectionID)
+}
+func (s *ResourceControllerService) CheckConnection(pluginID, connectionID string) (sdktypes.ConnectionStatus, error) {
+	return s.ctrl.CheckConnection(pluginID, connectionID)
+}
+func (s *ResourceControllerService) LoadConnections(pluginID string) ([]sdktypes.Connection, error) {
+	return s.ctrl.LoadConnections(pluginID)
+}
+func (s *ResourceControllerService) ListConnections(pluginID string) ([]sdktypes.Connection, error) {
+	return s.ctrl.ListConnections(pluginID)
+}
+func (s *ResourceControllerService) ListAllConnections() (map[string][]sdktypes.Connection, error) {
+	return s.ctrl.ListAllConnections()
+}
+func (s *ResourceControllerService) GetAllConnectionStates() (map[string][]resource.ConnectionState, error) {
+	return s.ctrl.GetAllConnectionStates()
+}
+func (s *ResourceControllerService) GetConnection(pluginID, connectionID string) (sdktypes.Connection, error) {
+	return s.ctrl.GetConnection(pluginID, connectionID)
+}
+func (s *ResourceControllerService) GetConnectionNamespaces(pluginID, connectionID string) ([]string, error) {
+	return s.ctrl.GetConnectionNamespaces(pluginID, connectionID)
+}
+func (s *ResourceControllerService) AddConnection(pluginID string, connection sdktypes.Connection) error {
+	return s.ctrl.AddConnection(pluginID, connection)
+}
+func (s *ResourceControllerService) UpdateConnection(pluginID string, connection sdktypes.Connection) (sdktypes.Connection, error) {
+	return s.ctrl.UpdateConnection(pluginID, connection)
+}
+func (s *ResourceControllerService) RemoveConnection(pluginID, connectionID string) error {
+	return s.ctrl.RemoveConnection(pluginID, connectionID)
+}
+
+// Watch lifecycle
+func (s *ResourceControllerService) StartConnectionWatch(pluginID, connectionID string) error {
+	return s.ctrl.StartConnectionWatch(pluginID, connectionID)
+}
+func (s *ResourceControllerService) StopConnectionWatch(pluginID, connectionID string) error {
+	return s.ctrl.StopConnectionWatch(pluginID, connectionID)
+}
+func (s *ResourceControllerService) GetWatchState(pluginID, connectionID string) (*sdkresource.WatchConnectionSummary, error) {
+	return s.ctrl.GetWatchState(pluginID, connectionID)
+}
+func (s *ResourceControllerService) EnsureResourceWatch(pluginID, connectionID, resourceKey string) error {
+	return s.ctrl.EnsureResourceWatch(pluginID, connectionID, resourceKey)
+}
+func (s *ResourceControllerService) StopResourceWatch(pluginID, connectionID, resourceKey string) error {
+	return s.ctrl.StopResourceWatch(pluginID, connectionID, resourceKey)
+}
+func (s *ResourceControllerService) RestartResourceWatch(pluginID, connectionID, resourceKey string) error {
+	return s.ctrl.RestartResourceWatch(pluginID, connectionID, resourceKey)
+}
+func (s *ResourceControllerService) IsResourceWatchRunning(pluginID, connectionID, resourceKey string) (bool, error) {
+	return s.ctrl.IsResourceWatchRunning(pluginID, connectionID, resourceKey)
+}
+
+// Subscriptions
+func (s *ResourceControllerService) SubscribeResource(pluginID, connectionID, resourceKey string) error {
+	return s.ctrl.SubscribeResource(pluginID, connectionID, resourceKey)
+}
+func (s *ResourceControllerService) UnsubscribeResource(pluginID, connectionID, resourceKey string) error {
+	return s.ctrl.UnsubscribeResource(pluginID, connectionID, resourceKey)
+}
+
+// Type metadata
+func (s *ResourceControllerService) GetResourceGroups(pluginID, connectionID string) map[string]sdkresource.ResourceGroup {
+	return s.ctrl.GetResourceGroups(pluginID, connectionID)
+}
+func (s *ResourceControllerService) GetResourceGroup(pluginID, groupID string) (sdkresource.ResourceGroup, error) {
+	return s.ctrl.GetResourceGroup(pluginID, groupID)
+}
+func (s *ResourceControllerService) GetResourceTypes(pluginID, connectionID string) map[string]sdkresource.ResourceMeta {
+	return s.ctrl.GetResourceTypes(pluginID, connectionID)
+}
+func (s *ResourceControllerService) GetResourceType(pluginID, typeID string) (*sdkresource.ResourceMeta, error) {
+	return s.ctrl.GetResourceType(pluginID, typeID)
+}
+func (s *ResourceControllerService) HasResourceType(pluginID, typeID string) bool {
+	return s.ctrl.HasResourceType(pluginID, typeID)
+}
+func (s *ResourceControllerService) GetResourceDefinition(pluginID, typeID string) (sdkresource.ResourceDefinition, error) {
+	return s.ctrl.GetResourceDefinition(pluginID, typeID)
+}
+func (s *ResourceControllerService) GetResourceCapabilities(pluginID, key string) (*sdkresource.ResourceCapabilities, error) {
+	return s.ctrl.GetResourceCapabilities(pluginID, key)
+}
+func (s *ResourceControllerService) GetFilterFields(pluginID, connectionID, key string) ([]sdkresource.FilterField, error) {
+	return s.ctrl.GetFilterFields(pluginID, connectionID, key)
+}
+func (s *ResourceControllerService) GetResourceSchema(pluginID, connectionID, key string) (json.RawMessage, error) {
+	return s.ctrl.GetResourceSchema(pluginID, connectionID, key)
+}
+
+// Actions
+func (s *ResourceControllerService) GetActions(pluginID, connectionID, key string) ([]sdkresource.ActionDescriptor, error) {
+	return s.ctrl.GetActions(pluginID, connectionID, key)
+}
+func (s *ResourceControllerService) ExecuteAction(pluginID, connectionID, key, actionID string, input sdkresource.ActionInput) (*sdkresource.ActionResult, error) {
+	return s.ctrl.ExecuteAction(pluginID, connectionID, key, actionID, input)
+}
+func (s *ResourceControllerService) StreamAction(pluginID, connectionID, key, actionID string, input sdkresource.ActionInput) (string, error) {
+	return s.ctrl.StreamAction(pluginID, connectionID, key, actionID, input)
+}
+
+// Editor schemas
+func (s *ResourceControllerService) GetEditorSchemas(pluginID, connectionID string) ([]sdkresource.EditorSchema, error) {
+	return s.ctrl.GetEditorSchemas(pluginID, connectionID)
+}
+
+// Relationships
+func (s *ResourceControllerService) GetRelationships(pluginID, key string) ([]sdkresource.RelationshipDescriptor, error) {
+	return s.ctrl.GetRelationships(pluginID, key)
+}
+func (s *ResourceControllerService) ResolveRelationships(pluginID, connectionID, key, id, namespace string) ([]sdkresource.ResolvedRelationship, error) {
+	return s.ctrl.ResolveRelationships(pluginID, connectionID, key, id, namespace)
+}
+
+// Health
+func (s *ResourceControllerService) GetHealth(pluginID, connectionID, key string, data json.RawMessage) (*sdkresource.ResourceHealth, error) {
+	return s.ctrl.GetHealth(pluginID, connectionID, key, data)
+}
+func (s *ResourceControllerService) GetResourceEvents(pluginID, connectionID, key, id, namespace string, limit int32) ([]sdkresource.ResourceEvent, error) {
+	return s.ctrl.GetResourceEvents(pluginID, connectionID, key, id, namespace, limit)
+}
+
+// ListPlugins
+func (s *ResourceControllerService) ListPlugins() ([]string, error) {
+	return s.ctrl.ListPlugins()
+}
+
+// HasPlugin
+func (s *ResourceControllerService) HasPlugin(pluginID string) bool {
+	return s.ctrl.HasPlugin(pluginID)
+}
+
+// ---------------------------------------------------------------------------
+// SettingsControllerService — explicit delegation.
+// Excluded: OnPluginInit, OnPluginStart, OnPluginStop, OnPluginShutdown,
+//           OnPluginDestroy, ServiceStartup, ServiceShutdown
+// ---------------------------------------------------------------------------
+
 type SettingsControllerService struct {
-	settings.Controller
+	ctrl settings.Controller
 }
 
-// ExecControllerService wraps the exec.Controller interface.
+func (s *SettingsControllerService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	if ss, ok := s.ctrl.(interface {
+		ServiceStartup(context.Context, application.ServiceOptions) error
+	}); ok {
+		return ss.ServiceStartup(ctx, options)
+	}
+	return nil
+}
+func (s *SettingsControllerService) ServiceShutdown() error {
+	if ss, ok := s.ctrl.(interface{ ServiceShutdown() error }); ok {
+		return ss.ServiceShutdown()
+	}
+	return nil
+}
+func (s *SettingsControllerService) ListPlugins() ([]string, error) {
+	return s.ctrl.ListPlugins()
+}
+func (s *SettingsControllerService) HasPlugin(pluginID string) bool {
+	return s.ctrl.HasPlugin(pluginID)
+}
+func (s *SettingsControllerService) Values() map[string]any {
+	return s.ctrl.Values()
+}
+func (s *SettingsControllerService) PluginValues(plugin string) map[string]any {
+	return s.ctrl.PluginValues(plugin)
+}
+func (s *SettingsControllerService) ListSettings(plugin string) map[string]pkgsettings.Setting {
+	return s.ctrl.ListSettings(plugin)
+}
+func (s *SettingsControllerService) GetSetting(plugin, id string) (pkgsettings.Setting, error) {
+	return s.ctrl.GetSetting(plugin, id)
+}
+func (s *SettingsControllerService) SetSetting(plugin, id string, value any) error {
+	return s.ctrl.SetSetting(plugin, id, value)
+}
+func (s *SettingsControllerService) SetSettings(plugin string, settingsMap map[string]any) error {
+	return s.ctrl.SetSettings(plugin, settingsMap)
+}
+
+// ---------------------------------------------------------------------------
+// ExecControllerService — explicit delegation.
+// Excluded: OnPluginInit, OnPluginStart, OnPluginStop, OnPluginShutdown,
+//           OnPluginDestroy, ServiceStartup, ServiceShutdown
+// ---------------------------------------------------------------------------
+
 type ExecControllerService struct {
-	exec.Controller
+	ctrl exec.Controller
 }
 
-// LogsControllerService wraps the pluginlogs.Controller interface.
+func (s *ExecControllerService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	if ss, ok := s.ctrl.(interface {
+		ServiceStartup(context.Context, application.ServiceOptions) error
+	}); ok {
+		return ss.ServiceStartup(ctx, options)
+	}
+	return nil
+}
+func (s *ExecControllerService) ServiceShutdown() error {
+	if ss, ok := s.ctrl.(interface{ ServiceShutdown() error }); ok {
+		return ss.ServiceShutdown()
+	}
+	return nil
+}
+func (s *ExecControllerService) CreateSession(plugin, connectionID string, opts execsdk.SessionOptions) (*execsdk.Session, error) {
+	return s.ctrl.CreateSession(plugin, connectionID, opts)
+}
+func (s *ExecControllerService) CreateTerminal(opts execsdk.SessionOptions) (*execsdk.Session, error) {
+	return s.ctrl.CreateTerminal(opts)
+}
+func (s *ExecControllerService) ListSessions() ([]*execsdk.Session, error) {
+	return s.ctrl.ListSessions()
+}
+func (s *ExecControllerService) GetSession(sessionID string) (*execsdk.Session, error) {
+	return s.ctrl.GetSession(sessionID)
+}
+func (s *ExecControllerService) AttachSession(sessionID string) (*execsdk.Session, []byte, error) {
+	return s.ctrl.AttachSession(sessionID)
+}
+func (s *ExecControllerService) DetachSession(sessionID string) (*execsdk.Session, error) {
+	return s.ctrl.DetachSession(sessionID)
+}
+func (s *ExecControllerService) WriteSession(sessionID string, data []byte) error {
+	return s.ctrl.WriteSession(sessionID, data)
+}
+func (s *ExecControllerService) CloseSession(sessionID string) error {
+	return s.ctrl.CloseSession(sessionID)
+}
+func (s *ExecControllerService) ResizeSession(sessionID string, rows, cols uint16) error {
+	return s.ctrl.ResizeSession(sessionID, rows, cols)
+}
+func (s *ExecControllerService) GetHandler(plugin, resource string) *execsdk.Handler {
+	return s.ctrl.GetHandler(plugin, resource)
+}
+func (s *ExecControllerService) GetHandlers() map[string]map[string]execsdk.Handler {
+	return s.ctrl.GetHandlers()
+}
+func (s *ExecControllerService) GetPluginHandlers(plugin string) map[string]execsdk.Handler {
+	return s.ctrl.GetPluginHandlers(plugin)
+}
+func (s *ExecControllerService) ListPlugins() ([]string, error) {
+	return s.ctrl.ListPlugins()
+}
+func (s *ExecControllerService) HasPlugin(pluginID string) bool {
+	return s.ctrl.HasPlugin(pluginID)
+}
+
+// ---------------------------------------------------------------------------
+// LogsControllerService — explicit delegation.
+// Excluded: OnPluginInit, OnPluginStart, OnPluginStop, OnPluginShutdown,
+//           OnPluginDestroy, ServiceStartup, ServiceShutdown
+// ---------------------------------------------------------------------------
+
 type LogsControllerService struct {
-	pluginlogs.Controller
+	ctrl pluginlogs.Controller
 }
 
-// MetricControllerService wraps the pluginmetric.Controller interface.
+func (s *LogsControllerService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	if ss, ok := s.ctrl.(interface {
+		ServiceStartup(context.Context, application.ServiceOptions) error
+	}); ok {
+		return ss.ServiceStartup(ctx, options)
+	}
+	return nil
+}
+func (s *LogsControllerService) ServiceShutdown() error {
+	if ss, ok := s.ctrl.(interface{ ServiceShutdown() error }); ok {
+		return ss.ServiceShutdown()
+	}
+	return nil
+}
+func (s *LogsControllerService) GetSupportedResources(pluginID string) []logssdk.Handler {
+	return s.ctrl.GetSupportedResources(pluginID)
+}
+func (s *LogsControllerService) CreateSession(plugin, connectionID string, opts logssdk.CreateSessionOptions) (*logssdk.LogSession, error) {
+	return s.ctrl.CreateSession(plugin, connectionID, opts)
+}
+func (s *LogsControllerService) GetSession(sessionID string) (*logssdk.LogSession, error) {
+	return s.ctrl.GetSession(sessionID)
+}
+func (s *LogsControllerService) ListSessions() ([]*logssdk.LogSession, error) {
+	return s.ctrl.ListSessions()
+}
+func (s *LogsControllerService) CloseSession(sessionID string) error {
+	return s.ctrl.CloseSession(sessionID)
+}
+func (s *LogsControllerService) SendCommand(sessionID string, cmd logssdk.LogStreamCommand) error {
+	return s.ctrl.SendCommand(sessionID, cmd)
+}
+func (s *LogsControllerService) UpdateSessionOptions(sessionID string, opts logssdk.LogSessionOptions) (*logssdk.LogSession, error) {
+	return s.ctrl.UpdateSessionOptions(sessionID, opts)
+}
+func (s *LogsControllerService) ListPlugins() ([]string, error) {
+	return s.ctrl.ListPlugins()
+}
+func (s *LogsControllerService) HasPlugin(pluginID string) bool {
+	return s.ctrl.HasPlugin(pluginID)
+}
+
+// ---------------------------------------------------------------------------
+// MetricControllerService — explicit delegation.
+// Excluded: OnPluginInit, OnPluginStart, OnPluginStop, OnPluginShutdown,
+//           OnPluginDestroy, ServiceStartup, ServiceShutdown
+// ---------------------------------------------------------------------------
+
 type MetricControllerService struct {
-	pluginmetric.Controller
+	ctrl pluginmetric.Controller
 }
 
-// NetworkerControllerService wraps the networker.Controller interface.
+func (s *MetricControllerService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	if ss, ok := s.ctrl.(interface {
+		ServiceStartup(context.Context, application.ServiceOptions) error
+	}); ok {
+		return ss.ServiceStartup(ctx, options)
+	}
+	return nil
+}
+func (s *MetricControllerService) ServiceShutdown() error {
+	if ss, ok := s.ctrl.(interface{ ServiceShutdown() error }); ok {
+		return ss.ServiceShutdown()
+	}
+	return nil
+}
+func (s *MetricControllerService) GetProviders() []pluginmetric.MetricProviderSummary {
+	return s.ctrl.GetProviders()
+}
+func (s *MetricControllerService) GetProvidersForResource(resourceKey string) []pluginmetric.MetricProviderSummary {
+	return s.ctrl.GetProvidersForResource(resourceKey)
+}
+func (s *MetricControllerService) Query(pluginID, connectionID string, req metricsdk.QueryRequest) (*metricsdk.QueryResponse, error) {
+	return s.ctrl.Query(pluginID, connectionID, req)
+}
+func (s *MetricControllerService) QueryAll(connectionID, resourceKey, resourceID, namespace string,
+	resourceData map[string]interface{}, metricIDs []string,
+	shape metricsdk.MetricShape, startTime, endTime time.Time, step time.Duration,
+) (map[string]*metricsdk.QueryResponse, error) {
+	return s.ctrl.QueryAll(connectionID, resourceKey, resourceID, namespace, resourceData, metricIDs, shape, startTime, endTime, step)
+}
+func (s *MetricControllerService) Subscribe(pluginID, connectionID string, req pluginmetric.SubscribeRequest) (string, error) {
+	return s.ctrl.Subscribe(pluginID, connectionID, req)
+}
+func (s *MetricControllerService) Unsubscribe(subscriptionID string) error {
+	return s.ctrl.Unsubscribe(subscriptionID)
+}
+func (s *MetricControllerService) ListPlugins() ([]string, error) {
+	return s.ctrl.ListPlugins()
+}
+func (s *MetricControllerService) HasPlugin(pluginID string) bool {
+	return s.ctrl.HasPlugin(pluginID)
+}
+
+// ---------------------------------------------------------------------------
+// NetworkerControllerService — explicit delegation.
+// Excluded: OnPluginInit, OnPluginStart, OnPluginStop, OnPluginShutdown,
+//           OnPluginDestroy, ServiceStartup, ServiceShutdown
+// ---------------------------------------------------------------------------
+
 type NetworkerControllerService struct {
-	networker.Controller
+	ctrl networker.Controller
 }
 
-// DataControllerService wraps the data.Controller interface.
+func (s *NetworkerControllerService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	if ss, ok := s.ctrl.(interface {
+		ServiceStartup(context.Context, application.ServiceOptions) error
+	}); ok {
+		return ss.ServiceStartup(ctx, options)
+	}
+	return nil
+}
+func (s *NetworkerControllerService) ServiceShutdown() error {
+	if ss, ok := s.ctrl.(interface{ ServiceShutdown() error }); ok {
+		return ss.ServiceShutdown()
+	}
+	return nil
+}
+func (s *NetworkerControllerService) GetSupportedPortForwardTargets(pluginID string) ([]string, error) {
+	return s.ctrl.GetSupportedPortForwardTargets(pluginID)
+}
+func (s *NetworkerControllerService) GetPortForwardSession(sessionID string) (*networkersdk.PortForwardSession, error) {
+	return s.ctrl.GetPortForwardSession(sessionID)
+}
+func (s *NetworkerControllerService) ListPortForwardSessions(pluginID, connectionID string) ([]*networkersdk.PortForwardSession, error) {
+	return s.ctrl.ListPortForwardSessions(pluginID, connectionID)
+}
+func (s *NetworkerControllerService) ListAllPortForwardSessions() ([]*networkersdk.PortForwardSession, error) {
+	return s.ctrl.ListAllPortForwardSessions()
+}
+func (s *NetworkerControllerService) FindPortForwardSessions(pluginID, connectionID string, request networkersdk.FindPortForwardSessionRequest) ([]*networkersdk.PortForwardSession, error) {
+	return s.ctrl.FindPortForwardSessions(pluginID, connectionID, request)
+}
+func (s *NetworkerControllerService) StartResourcePortForwardingSession(pluginID, connectionID string, opts networkersdk.PortForwardSessionOptions) (*networkersdk.PortForwardSession, error) {
+	return s.ctrl.StartResourcePortForwardingSession(pluginID, connectionID, opts)
+}
+func (s *NetworkerControllerService) ClosePortForwardSession(sessionID string) (*networkersdk.PortForwardSession, error) {
+	return s.ctrl.ClosePortForwardSession(sessionID)
+}
+func (s *NetworkerControllerService) ListPlugins() ([]string, error) {
+	return s.ctrl.ListPlugins()
+}
+func (s *NetworkerControllerService) HasPlugin(pluginID string) bool {
+	return s.ctrl.HasPlugin(pluginID)
+}
+
+// ---------------------------------------------------------------------------
+// DataControllerService — explicit delegation.
+// Excluded: ServiceStartup, ServiceShutdown (data.Controller has no plugin
+// lifecycle methods since it doesn't embed types.Controller).
+// ---------------------------------------------------------------------------
+
 type DataControllerService struct {
-	data.Controller
+	ctrl data.Controller
 }
 
-// SettingsProviderService wraps the settings.Provider interface so it can be
-// registered as a Wails v3 service.
+func (s *DataControllerService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	if ss, ok := s.ctrl.(interface {
+		ServiceStartup(context.Context, application.ServiceOptions) error
+	}); ok {
+		return ss.ServiceStartup(ctx, options)
+	}
+	return nil
+}
+func (s *DataControllerService) ServiceShutdown() error {
+	if ss, ok := s.ctrl.(interface{ ServiceShutdown() error }); ok {
+		return ss.ServiceShutdown()
+	}
+	return nil
+}
+func (s *DataControllerService) Get(pluginID, key string) (any, error) {
+	return s.ctrl.Get(pluginID, key)
+}
+func (s *DataControllerService) Set(pluginID, key string, value any) error {
+	return s.ctrl.Set(pluginID, key, value)
+}
+func (s *DataControllerService) Delete(pluginID, key string) error {
+	return s.ctrl.Delete(pluginID, key)
+}
+func (s *DataControllerService) Keys(pluginID string) ([]string, error) {
+	return s.ctrl.Keys(pluginID)
+}
+
+// ---------------------------------------------------------------------------
+// SettingsProviderService — explicit delegation.
+// Excluded: Initialize, RegisterChangeHandler, RegisterSetting,
+//           RegisterSettings (internal-only methods).
+// ---------------------------------------------------------------------------
+
 type SettingsProviderService struct {
-	pkgsettings.Provider
+	provider pkgsettings.Provider
+}
+
+func (s *SettingsProviderService) LoadSettings() error {
+	return s.provider.LoadSettings()
+}
+func (s *SettingsProviderService) SaveSettings() error {
+	return s.provider.SaveSettings()
+}
+func (s *SettingsProviderService) ListSettings() pkgsettings.Store {
+	return s.provider.ListSettings()
+}
+func (s *SettingsProviderService) Values() map[string]any {
+	return s.provider.Values()
+}
+func (s *SettingsProviderService) GetSetting(id string) (pkgsettings.Setting, error) {
+	return s.provider.GetSetting(id)
+}
+func (s *SettingsProviderService) GetSettingValue(id string) (any, error) {
+	return s.provider.GetSettingValue(id)
+}
+func (s *SettingsProviderService) SetSetting(id string, value any) error {
+	return s.provider.SetSetting(id, value)
+}
+func (s *SettingsProviderService) SetSettings(settingsMap map[string]any) error {
+	return s.provider.SetSettings(settingsMap)
+}
+func (s *SettingsProviderService) ResetSetting(id string) error {
+	return s.provider.ResetSetting(id)
+}
+func (s *SettingsProviderService) GetCategories() []pkgsettings.Category {
+	return s.provider.GetCategories()
+}
+func (s *SettingsProviderService) GetCategory(id string) (pkgsettings.Category, error) {
+	return s.provider.GetCategory(id)
+}
+func (s *SettingsProviderService) GetCategoryValues(id string) (map[string]interface{}, error) {
+	return s.provider.GetCategoryValues(id)
+}
+func (s *SettingsProviderService) GetString(id string) (string, error) {
+	return s.provider.GetString(id)
+}
+func (s *SettingsProviderService) GetStringSlice(id string) ([]string, error) {
+	return s.provider.GetStringSlice(id)
+}
+func (s *SettingsProviderService) GetInt(id string) (int, error) {
+	return s.provider.GetInt(id)
+}
+func (s *SettingsProviderService) GetIntSlice(id string) ([]int, error) {
+	return s.provider.GetIntSlice(id)
+}
+func (s *SettingsProviderService) GetFloat(id string) (float64, error) {
+	return s.provider.GetFloat(id)
+}
+func (s *SettingsProviderService) GetFloatSlice(id string) ([]float64, error) {
+	return s.provider.GetFloatSlice(id)
+}
+func (s *SettingsProviderService) GetBool(id string) (bool, error) {
+	return s.provider.GetBool(id)
 }
 
 // BootstrapService wraps the startup/shutdown logic that was previously in the
@@ -505,23 +1016,24 @@ func main() {
 	pluginManagerSvc := &PluginManagerService{mgr: pluginManager}
 
 	// Build the service list. All concrete pointer types use NewService directly.
-	// The BootstrapService must come first so startup logic runs before other
-	// services that might depend on initialized controllers.
+	// BootstrapService is registered first so startup logic runs before other
+	// services that might depend on initialized controllers. It has no
+	// frontend-facing methods — only ServiceStartup/ServiceShutdown.
 	services := []application.Service{
 		application.NewService(bootstrapService),
 		application.NewService(appService),
 		application.NewService(diagnosticsClient),
 		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
-		application.NewService(&SettingsProviderService{Provider: settingsProvider}),
+		application.NewService(&SettingsProviderService{provider: settingsProvider}),
 		application.NewService(pluginManagerSvc),
 		application.NewService(&DevServerService{mgr: devServerManager}),
-		application.NewService(&ResourceControllerService{Controller: resourceController}),
-		application.NewService(&SettingsControllerService{Controller: settingsController}),
-		application.NewService(&ExecControllerService{Controller: execController}),
-		application.NewService(&NetworkerControllerService{Controller: networkerController}),
-		application.NewService(&LogsControllerService{Controller: logsController}),
-		application.NewService(&MetricControllerService{Controller: metricController}),
-		application.NewService(&DataControllerService{Controller: dataController}),
+		application.NewService(&ResourceControllerService{ctrl: resourceController}),
+		application.NewService(&SettingsControllerService{ctrl: settingsController}),
+		application.NewService(&ExecControllerService{ctrl: execController}),
+		application.NewService(&NetworkerControllerService{ctrl: networkerController}),
+		application.NewService(&LogsControllerService{ctrl: logsController}),
+		application.NewService(&MetricControllerService{ctrl: metricController}),
+		application.NewService(&DataControllerService{ctrl: dataController}),
 		application.NewService(ui.NewServiceWrapper(uiManager)),
 		application.NewService(utilsClient),
 	}
