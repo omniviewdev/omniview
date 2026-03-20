@@ -1,8 +1,8 @@
 import { useMutation } from '@tanstack/react-query';
 import { useSnackbar } from '../snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
-import { CreateSession, CloseSession } from '../../wailsjs/go/logs/Client';
-import { logs } from '../../wailsjs/go/models';
+import { CreateSession, CloseSession } from '../../bindings/github.com/omniviewdev/omniview/logscontrollerservice';
+import { CreateSessionOptions, LogSessionOptions } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/logs/models';
 import { useBottomDrawer } from '../drawer';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
@@ -41,11 +41,11 @@ export const useLogs = ({ pluginID: explicitPluginID }: UseLogSessionOptions) =>
       tailLines = 1000,
       params,
     }: CreateLogSessionArgs) => {
-      const opts = logs.CreateSessionOptions.createFrom({
+      const opts = CreateSessionOptions.createFrom({
         resource_key: resourceKey,
         resource_id: resourceID,
         resource_data: resourceData,
-        options: logs.LogSessionOptions.createFrom({
+        options: LogSessionOptions.createFrom({
           target: target ?? '',
           follow,
           include_previous: false,

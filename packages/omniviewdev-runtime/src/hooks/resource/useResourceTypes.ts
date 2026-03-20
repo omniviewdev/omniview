@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 // Underlying client
-import { GetResourceTypes } from '../../wailsjs/go/resource/Client';
+import { GetResourceTypes } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceTypesOptions = {

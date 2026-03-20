@@ -14,7 +14,7 @@ vi.mock('../useResolvedPluginId', () => ({
 
 // Mock GetWatchState — controlled via mockGetWatchState.
 let mockGetWatchState: vi.Mock;
-vi.mock('../../wailsjs/go/resource/Client', () => ({
+vi.mock('../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice', () => ({
   get GetWatchState() { return mockGetWatchState; },
 }));
 

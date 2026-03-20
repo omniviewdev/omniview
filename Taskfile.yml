@@ -114,30 +114,35 @@ tasks:
           if [ "$FAILED" -eq 1 ]; then exit 1; fi
 
   check:bindings:
-    summary: Generate Wails bindings
+    summary: Generate Wails v3 TypeScript bindings
     aliases: [bindings]
     cmds:
-      - GOWORK=off wails generate module
+      - task: common:generate:bindings
 
   check:bindings-check:
     summary: Verify Wails bindings are up to date
     cmds:
       - cmd: |
           set -e
+          BINDINGS_DIR=packages/omniviewdev-runtime/src/bindings
           TMPDIR=$(mktemp -d)
           cleanup() {
-            if [ -d "$TMPDIR/wailsjs-before" ]; then
-              rm -rf packages/omniviewdev-runtime/src/wailsjs
-              cp -R "$TMPDIR/wailsjs-before" packages/omniviewdev-runtime/src/wailsjs
+            if [ -d "$TMPDIR/bindings-before" ]; then
+              rm -rf "$BINDINGS_DIR"
+              cp -R "$TMPDIR/bindings-before" "$BINDINGS_DIR"
             fi
             rm -rf "$TMPDIR"
           }
           trap cleanup EXIT
-          cp -R packages/omniviewdev-runtime/src/wailsjs "$TMPDIR/wailsjs-before"
-          GOWORK=off wails generate module
-          if ! diff -r packages/omniviewdev-runtime/src/wailsjs "$TMPDIR/wailsjs-before" >/dev/null 2>&1; then
-            echo "Wails bindings are stale. Run 'task check:bindings' and commit the result."
-            exit 1
+          if [ -d "$BINDINGS_DIR" ]; then
+            cp -R "$BINDINGS_DIR" "$TMPDIR/bindings-before"
+          fi
+          GOWORK=off wails3 generate bindings -d "$BINDINGS_DIR" -clean=true -ts
+          if [ -d "$TMPDIR/bindings-before" ]; then
+            if ! diff -r "$BINDINGS_DIR" "$TMPDIR/bindings-before" >/dev/null 2>&1; then
+              echo "Wails bindings are stale. Run 'task check:bindings' and commit the result."
+              exit 1
+            fi
           fi
 
   check:ui-install:

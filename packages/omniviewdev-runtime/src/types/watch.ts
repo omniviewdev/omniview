@@ -1,15 +1,10 @@
 /**
  * Re-export Wails-generated enums from Go source of truth.
- * These are generated from AllWatchStates / AllSyncPolicies in
- * plugin-sdk/pkg/v1/resource/watch.go via Wails EnumBind.
+ * These are generated from plugin-sdk/pkg/v1/resource via Wails v3 bindings.
  */
-import { resource } from '../wailsjs/go/models';
+import { WatchState } from '../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
 
-export type WatchState = resource.WatchState;
-export const WatchState = resource.WatchState;
-
-export type SyncPolicy = resource.SyncPolicy;
-export const SyncPolicy = resource.SyncPolicy;
+export { WatchState };
 
 /**
  * WatchStateEvent is emitted when a resource's watch state changes.

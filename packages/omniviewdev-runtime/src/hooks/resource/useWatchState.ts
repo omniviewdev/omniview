@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { produce } from 'immer';
 
-import { GetWatchState } from '../../wailsjs/go/resource/Client';
+import { GetWatchState } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
 import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import type {
@@ -51,8 +51,8 @@ export const useWatchState = ({
         let synced = 0;
         let errors = 0;
         for (const state of Object.values(draft.resources)) {
-          if (state === WatchState.SYNCED) synced++;
-          if (state === WatchState.ERROR || state === WatchState.FAILED) errors++;
+          if (state === WatchState.WatchStateSynced) synced++;
+          if (state === WatchState.WatchStateError || state === WatchState.WatchStateFailed) errors++;
         }
         draft.syncedCount = synced;
         draft.errorCount = errors;
@@ -71,8 +71,8 @@ export const useWatchState = ({
 
       for (const [key, state] of Object.entries(result.resources ?? {})) {
         resources[key] = state as WatchState;
-        if (state === WatchState.SYNCED) syncedCount++;
-        if (state === WatchState.ERROR) errorCount++;
+        if (state === WatchState.WatchStateSynced) syncedCount++;
+        if (state === WatchState.WatchStateError) errorCount++;
       }
 
       const resourceCounts: Record<string, number> = {};
@@ -98,12 +98,12 @@ export const useWatchState = ({
       let terminalCount = 0;
       for (const state of Object.values(data.resources)) {
         if (
-          state === WatchState.SYNCED ||
-          state === WatchState.ERROR ||
-          state === WatchState.STOPPED ||
-          state === WatchState.FAILED ||
-          state === WatchState.FORBIDDEN ||
-          state === WatchState.SKIPPED
+          state === WatchState.WatchStateSynced ||
+          state === WatchState.WatchStateError ||
+          state === WatchState.WatchStateStopped ||
+          state === WatchState.WatchStateFailed ||
+          state === WatchState.WatchStateForbidden ||
+          state === WatchState.WatchStateSkipped
         ) {
           terminalCount++;
         }
@@ -161,12 +161,12 @@ export const useWatchState = ({
   if (data?.resources) {
     for (const state of Object.values(data.resources)) {
       if (
-        state === WatchState.SYNCED ||
-        state === WatchState.ERROR ||
-        state === WatchState.STOPPED ||
-        state === WatchState.FAILED ||
-        state === WatchState.FORBIDDEN ||
-        state === WatchState.SKIPPED
+        state === WatchState.WatchStateSynced ||
+        state === WatchState.WatchStateError ||
+        state === WatchState.WatchStateStopped ||
+        state === WatchState.WatchStateFailed ||
+        state === WatchState.WatchStateForbidden ||
+        state === WatchState.WatchStateSkipped
       ) {
         terminalCount++;
       }

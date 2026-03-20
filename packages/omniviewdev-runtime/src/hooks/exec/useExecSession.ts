@@ -1,8 +1,8 @@
 import { useMutation } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { parseAppError, showAppError } from '../../errors/parseAppError';
-import { exec } from '../../wailsjs/go/models';
-import { CreateSession } from '../../wailsjs/go/exec/Client';
+import { SessionOptions } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/exec/models';
+import { CreateSession } from '../../bindings/github.com/omniviewdev/omniview/execcontrollerservice';
 import { useBottomDrawer } from '../drawer';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
@@ -19,7 +19,7 @@ type CreateSessionOptions = {
   connectionID: string;
   icon?: string | React.ReactNode;
   label?: string;
-  opts: Partial<exec.SessionOptions>
+  opts: Partial<SessionOptions>
 }
 
 /**
@@ -48,7 +48,7 @@ export const useExec = ({ pluginID: explicitPluginID }: UseResourceMutationsOpti
         },
       });
 
-      const sessionOpts = exec.SessionOptions.createFrom({
+      const sessionOpts = SessionOptions.createFrom({
         command: ['/bin/bash'],
         tty: true,
         ...opts,

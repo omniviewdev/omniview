@@ -4,12 +4,12 @@ import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
 
 // Types
-import { resource as resourceModels } from '../../wailsjs/go/models';
+import { CreateInput, ListInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
 import { WatchState } from '../../types/watch';
 import type { WatchStateEvent } from '../../types/watch';
 
 // Underlying client
-import { List, Create, SubscribeResource, UnsubscribeResource } from '../../wailsjs/go/resource/Client';
+import { List, Create, SubscribeResource, UnsubscribeResource } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
 import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useEventBatcher } from './useEventBatcher';
@@ -82,7 +82,7 @@ export const useResources = ({
   // === Mutations === //
 
   const { mutateAsync: create } = useMutation({
-    mutationFn: async (opts: { input?: any; namespace?: string }) => Create(pluginID, connectionID, resourceKey, resourceModels.ClientCreateInput.createFrom({
+    mutationFn: async (opts: { input?: any; namespace?: string }) => Create(pluginID, connectionID, resourceKey, CreateInput.createFrom({
       input: opts.input,
       namespace: opts.namespace ?? (stableNamespaces.length === 1 ? stableNamespaces[0] : ''),
     })),
@@ -113,7 +113,7 @@ export const useResources = ({
 
   const resourceQuery = useQuery({
     queryKey,
-    queryFn: async () => List(pluginID, connectionID, resourceKey, resourceModels.ListInput.createFrom({
+    queryFn: async () => List(pluginID, connectionID, resourceKey, ListInput.createFrom({
       order: [{ field: 'name', descending: false }],
       pagination: { page: 1, pageSize: 200 },
       namespaces: stableNamespaces,
@@ -126,7 +126,7 @@ export const useResources = ({
   // === Watch State === //
 
   const [watchState, setWatchState] = React.useState<WatchState>(
-    WatchState.IDLE
+    WatchState.WatchStateIdle
   );
 
   React.useEffect(() => {
@@ -202,12 +202,12 @@ export const useResources = ({
     watchState,
 
     /** Whether the watch is currently syncing */
-    isSyncing: watchState === WatchState.SYNCING,
+    isSyncing: watchState === WatchState.WatchStateSyncing,
 
     /** Whether the watch has fully synced */
-    isSynced: watchState === WatchState.SYNCED,
+    isSynced: watchState === WatchState.WatchStateSynced,
 
     /** Whether the watch encountered an error */
-    watchError: watchState === WatchState.ERROR,
+    watchError: watchState === WatchState.WatchStateError,
   };
 };

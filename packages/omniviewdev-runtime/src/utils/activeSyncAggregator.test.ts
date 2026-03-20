@@ -17,9 +17,9 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.SYNCED,
-        'core::v1::Service': WatchState.SYNCED,
-        'apps::v1::Deployment': WatchState.SYNCED,
+        'core::v1::Pod': WatchState.WatchStateSynced,
+        'core::v1::Service': WatchState.WatchStateSynced,
+        'apps::v1::Deployment': WatchState.WatchStateSynced,
       },
     };
 
@@ -36,10 +36,10 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.SYNCED,
-        'core::v1::Service': WatchState.SYNCING,
-        'apps::v1::Deployment': WatchState.ERROR,
-        'core::v1::Secret': WatchState.IDLE,
+        'core::v1::Pod': WatchState.WatchStateSynced,
+        'core::v1::Service': WatchState.WatchStateSyncing,
+        'apps::v1::Deployment': WatchState.WatchStateError,
+        'core::v1::Secret': WatchState.WatchStateIdle,
       },
     };
 
@@ -56,8 +56,8 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.SYNCED,
-        'core::v1::Service': WatchState.ERROR,
+        'core::v1::Pod': WatchState.WatchStateSynced,
+        'core::v1::Service': WatchState.WatchStateError,
       },
     };
 
@@ -73,8 +73,8 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.SYNCED,
-        'core::v1::Service': WatchState.STOPPED,
+        'core::v1::Pod': WatchState.WatchStateSynced,
+        'core::v1::Service': WatchState.WatchStateStopped,
       },
     };
 
@@ -103,8 +103,8 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.IDLE,
-        'core::v1::Service': WatchState.IDLE,
+        'core::v1::Pod': WatchState.WatchStateIdle,
+        'core::v1::Service': WatchState.WatchStateIdle,
       },
     };
 
@@ -121,11 +121,11 @@ describe('computeActiveSync', () => {
       pluginID: 'k8s',
       connectionID: 'cluster1',
       states: {
-        'core::v1::Pod': WatchState.SYNCED,
-        'core::v1::Service': WatchState.SYNCED,
-        'resource::v1alpha3::DeviceClass': WatchState.SKIPPED,
-        'resource::v1alpha3::ResourceClaim': WatchState.SKIPPED,
-        'resource::v1alpha3::ResourceSlice': WatchState.SKIPPED,
+        'core::v1::Pod': WatchState.WatchStateSynced,
+        'core::v1::Service': WatchState.WatchStateSynced,
+        'resource::v1alpha3::DeviceClass': WatchState.WatchStateSkipped,
+        'resource::v1alpha3::ResourceClaim': WatchState.WatchStateSkipped,
+        'resource::v1alpha3::ResourceSlice': WatchState.WatchStateSkipped,
       },
     };
 
@@ -251,7 +251,7 @@ describe('trackerKey', () => {
       pluginId: 'kubernetes',
       connection: 'cluster-1',
       resourceKey: 'core::v1::Pod',
-      state: WatchState.SYNCING,
+      state: WatchState.WatchStateSyncing,
       resourceCount: 0,
     };
     expect(trackerKey(event)).toBe('kubernetes/cluster-1');
@@ -265,14 +265,14 @@ describe('updateTracker', () => {
       pluginId: 'k8s',
       connection: 'c1',
       resourceKey: 'core::v1::Pod',
-      state: WatchState.SYNCING,
+      state: WatchState.WatchStateSyncing,
       resourceCount: 0,
     };
 
     const tracker = updateTracker(trackers, event);
     expect(tracker.pluginID).toBe('k8s');
     expect(tracker.connectionID).toBe('c1');
-    expect(tracker.states['core::v1::Pod']).toBe(WatchState.SYNCING);
+    expect(tracker.states['core::v1::Pod']).toBe(WatchState.WatchStateSyncing);
   });
 
   it('updates existing tracker state', () => {
@@ -280,19 +280,19 @@ describe('updateTracker', () => {
     trackers.set('k8s/c1', {
       pluginID: 'k8s',
       connectionID: 'c1',
-      states: { 'core::v1::Pod': WatchState.SYNCING },
+      states: { 'core::v1::Pod': WatchState.WatchStateSyncing },
     });
 
     const event: WatchStateEvent = {
       pluginId: 'k8s',
       connection: 'c1',
       resourceKey: 'core::v1::Pod',
-      state: WatchState.SYNCED,
+      state: WatchState.WatchStateSynced,
       resourceCount: 42,
     };
 
     const tracker = updateTracker(trackers, event);
-    expect(tracker.states['core::v1::Pod']).toBe(WatchState.SYNCED);
+    expect(tracker.states['core::v1::Pod']).toBe(WatchState.WatchStateSynced);
   });
 
   it('tracks multiple resources per connection', () => {
@@ -300,15 +300,15 @@ describe('updateTracker', () => {
 
     updateTracker(trackers, {
       pluginId: 'k8s', connection: 'c1', resourceKey: 'core::v1::Pod',
-      state: WatchState.SYNCED, resourceCount: 10,
+      state: WatchState.WatchStateSynced, resourceCount: 10,
     });
     const tracker = updateTracker(trackers, {
       pluginId: 'k8s', connection: 'c1', resourceKey: 'core::v1::Service',
-      state: WatchState.SYNCING, resourceCount: 0,
+      state: WatchState.WatchStateSyncing, resourceCount: 0,
     });
 
     expect(Object.keys(tracker.states)).toHaveLength(2);
-    expect(tracker.states['core::v1::Pod']).toBe(WatchState.SYNCED);
-    expect(tracker.states['core::v1::Service']).toBe(WatchState.SYNCING);
+    expect(tracker.states['core::v1::Pod']).toBe(WatchState.WatchStateSynced);
+    expect(tracker.states['core::v1::Service']).toBe(WatchState.WatchStateSyncing);
   });
 });

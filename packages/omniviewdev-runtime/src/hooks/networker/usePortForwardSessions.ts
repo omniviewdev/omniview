@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ClosePortForwardSession,
   ListAllPortForwardSessions,
-} from '../../wailsjs/go/networker/Client';
+} from '../../bindings/github.com/omniviewdev/omniview/networkercontrollerservice';
 import { Browser, Events } from '@wailsio/runtime';
 import { useSnackbar } from '../snackbar';
 import { createErrorHandler, parseAppError } from '../../errors/parseAppError';

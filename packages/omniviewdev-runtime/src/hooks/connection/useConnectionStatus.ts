@@ -5,9 +5,9 @@ import {
   GetAllConnectionStates,
   StopConnection,
   StartConnectionWatch,
-} from '../../wailsjs/go/resource/Client';
-import { RetryFailedPlugin } from '../../wailsjs/go/plugin/pluginManager';
-import type { types } from '../../wailsjs/go/models';
+} from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { RetryFailedPlugin } from '../../bindings/github.com/omniviewdev/omniview/pluginmanagerservice';
+import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { WatchState } from '../../types/watch';
 import type { WatchStateEvent } from '../../types/watch';
 import {
@@ -26,7 +26,7 @@ import {
  * Locally declared until Wails v3 model generation handles cross-package types.
  */
 interface ConnectionStateResponse {
-  connection: types.Connection;
+  connection: Connection;
   started: boolean;
   resources: Record<string, number>;
   resourceCounts: Record<string, number>;
@@ -76,7 +76,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   // Set of "pluginID/connectionID" keys for started connections
   const [startedKeys, setStartedKeys] = useState<Set<string>>(new Set());
   // Connection metadata from ListAllConnections
-  const [allConnections, setAllConnections] = useState<Record<string, types.Connection[]>>({});
+  const [allConnections, setAllConnections] = useState<Record<string, Connection[]>>({});
   // Sync state per connection
   const [syncs, setSyncs] = useState<Map<string, ActiveSync>>(new Map());
   const trackersRef = useRef<Map<string, ResourceTracker>>(new Map());
@@ -121,7 +121,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
       .then((result: Record<string, ConnectionStateResponse[]>) => {
         if (!result) return;
 
-        const conns: Record<string, types.Connection[]> = {};
+        const conns: Record<string, Connection[]> = {};
         const keys = new Set<string>();
         const newSyncs = new Map<string, ActiveSync>();
 
@@ -194,7 +194,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
 
       // Re-fetch connections to get latest metadata
       ListAllConnections()
-        .then((result: Record<string, types.Connection[]>) => {
+        .then((result: Record<string, Connection[]>) => {
           if (result) setAllConnections(result);
         })
         .catch(() => {});

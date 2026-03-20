@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { ListConnections, StartConnectionWatch, StopConnectionWatch } from '../../wailsjs/go/resource/Client';
-import { type types } from '../../wailsjs/go/models';
+import { ListConnections, StartConnectionWatch, StopConnectionWatch } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { Events } from '@wailsio/runtime';
@@ -29,12 +29,12 @@ export const useConnections = ({ plugin: explicitPlugin }: UseConnectionsOptions
 
   // === Mutations === //
   const { mutateAsync: startWatch } = useMutation({
-    mutationFn: async (conn: types.Connection) => StartConnectionWatch(plugin, conn.id),
+    mutationFn: async (conn: Connection) => StartConnectionWatch(plugin, conn.id),
     onError: createErrorHandler(showSnackbar, 'Failed to start connection watch'),
   });
 
   const { mutateAsync: stopWatch } = useMutation({
-    mutationFn: async (conn: types.Connection) => StopConnectionWatch(plugin, conn.id),
+    mutationFn: async (conn: Connection) => StopConnectionWatch(plugin, conn.id),
     onError: createErrorHandler(showSnackbar, 'Failed to stop connection watch'),
   });
 
@@ -42,7 +42,7 @@ export const useConnections = ({ plugin: explicitPlugin }: UseConnectionsOptions
    * Handle sync of connections from the backend
    */
   const onConnectionSync = React.useCallback((ev: Events.WailsEvent) => {
-    const connections = ev.data as types.Connection[];
+    const connections = ev.data as Connection[];
     console.log("got update to connections", connections)
     queryClient.setQueryData(queryKey, connections)
   }, []);

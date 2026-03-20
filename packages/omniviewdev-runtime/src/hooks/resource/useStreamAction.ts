@@ -2,8 +2,8 @@ import React from 'react';
 import { useSnackbar } from '../snackbar/useSnackbar';
 import { showAppError } from '../../errors/parseAppError';
 import { useOperations } from '../operations/useOperations';
-import { resource } from '../../wailsjs/go/models';
-import { StreamAction } from '../../wailsjs/go/resource/Client';
+import { ActionInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
+import { StreamAction } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
 import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
@@ -56,7 +56,7 @@ export const useStreamAction = ({
           connectionID,
           resourceKey,
           actionID,
-          resource.ActionInput.createFrom({ id, namespace, params }),
+          ActionInput.createFrom({ id, namespace, params }),
         );
 
         addOperation({

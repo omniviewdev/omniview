@@ -1,1 +1,1 @@
-export * from './wailsjs/go/models'
+export * from './bindings/github.com/omniviewdev/omniview/models';

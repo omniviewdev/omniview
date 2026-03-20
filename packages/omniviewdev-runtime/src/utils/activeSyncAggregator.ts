@@ -37,10 +37,10 @@ export function computeActiveSync(tracker: ResourceTracker): ActiveSync {
   let forbidden = 0;
   let skipped = 0;
   for (const s of states) {
-    if (s === WatchState.SYNCED) synced++;
-    if (s === WatchState.ERROR || s === WatchState.FAILED) errors++;
-    if (s === WatchState.FORBIDDEN) forbidden++;
-    if (s === WatchState.SKIPPED) skipped++;
+    if (s === WatchState.WatchStateSynced) synced++;
+    if (s === WatchState.WatchStateError || s === WatchState.WatchStateFailed) errors++;
+    if (s === WatchState.WatchStateForbidden) forbidden++;
+    if (s === WatchState.WatchStateSkipped) skipped++;
   }
 
   // Watched resources = total minus skipped
@@ -48,8 +48,8 @@ export function computeActiveSync(tracker: ResourceTracker): ActiveSync {
 
   // A watched resource is "done" if it has reached a terminal state (excluding SKIPPED)
   const done = states.filter(
-    s => s === WatchState.SYNCED || s === WatchState.ERROR || s === WatchState.STOPPED ||
-         s === WatchState.FAILED || s === WatchState.FORBIDDEN
+    s => s === WatchState.WatchStateSynced || s === WatchState.WatchStateError || s === WatchState.WatchStateStopped ||
+         s === WatchState.WatchStateFailed || s === WatchState.WatchStateForbidden
   ).length;
 
   // Progress based on watched resources only

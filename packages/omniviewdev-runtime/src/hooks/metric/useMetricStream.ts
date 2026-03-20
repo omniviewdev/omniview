@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Events } from '@wailsio/runtime';
-import { Subscribe, Unsubscribe } from '../../wailsjs/go/metric/Client';
-import type { metric } from '../../wailsjs/go/models';
+import { Subscribe, Unsubscribe } from '../../bindings/github.com/omniviewdev/omniview/metriccontrollerservice';
+import type { MetricResult } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 export type UseMetricStreamOptions = {
@@ -27,7 +27,7 @@ export type UseMetricStreamOptions = {
 
 export type UseMetricStreamResult = {
   /** The latest stream output */
-  data: metric.MetricResult[] | null;
+  data: MetricResult[] | null;
   /** The subscription ID */
   subscriptionID: string | null;
   /** Whether the stream is active */
@@ -60,7 +60,7 @@ export const useMetricStream = (
   } = opts;
   const pluginID = useResolvedPluginId(explicitPluginID);
 
-  const [data, setData] = useState<metric.MetricResult[] | null>(null);
+  const [data, setData] = useState<MetricResult[] | null>(null);
   const [subscriptionID, setSubscriptionID] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);

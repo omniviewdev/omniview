@@ -48,7 +48,7 @@ tasks:
     summary: Generate TypeScript bindings from Go services
     dir: "{{.ROOT_DIR}}"
     cmds:
-      - wails3 generate bindings -f '{{.BUILD_FLAGS | default ""}}' -clean=true -ts
+      - GOWORK=off wails3 generate bindings -d packages/omniviewdev-runtime/src/bindings -f '{{.BUILD_FLAGS | default ""}}' -clean=true -ts
 
   # ──────────────────────────────────────────────
   # Icons
