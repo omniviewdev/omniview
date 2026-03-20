@@ -5,17 +5,17 @@ import Box from '@mui/material/Box';
 import { Text } from '@omniviewdev/ui/typography';
 
 // types
-import { type types } from '@omniviewdev/runtime/models';
+import type { Connection } from '@omniviewdev/runtime/models';
 
 // icons
 import ConnectionTableItem from './ConnectionTableItem';
 
 
 type Props = {
-  connections: types.Connection[];
+  connections: Connection[];
 };
 
-const getConnectionOrderedLabelCols = (connections: types.Connection[]) => {
+const getConnectionOrderedLabelCols = (connections: Connection[]) => {
   const px = 7;
   const maxLabelWidth = 400;
 

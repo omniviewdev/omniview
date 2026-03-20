@@ -10,13 +10,14 @@ import { Select } from '@omniviewdev/ui/inputs';
 import { Stack } from '@omniviewdev/ui/layout';
 
 // Hooks
-import { main, settings } from '@omniviewdev/runtime/models';
+import { FileDialogOptions, SettingType } from '@omniviewdev/runtime/models';
+import type { Setting } from '@omniviewdev/runtime/models';
 import { parseAppError } from '@omniviewdev/runtime';
 import { LuFile } from 'react-icons/lu';
 import { OpenFileSelectionDialog } from '@omniviewdev/runtime/api';
 
 type Props = {
-  setting: settings.Setting;
+  setting: Setting;
   id: string;
   draftValue: any;
   handleChange: (name: string, value: any) => void;
@@ -42,7 +43,7 @@ const SettingsEntry: React.FC<Props> = ({ setting, id, draftValue, handleChange 
   const settingType = setting.type as unknown as string;
 
   switch (settingType) {
-    case settings.SettingType.TEXT:
+    case SettingType.Text:
       /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <TextSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
     case 'select':
@@ -51,11 +52,11 @@ const SettingsEntry: React.FC<Props> = ({ setting, id, draftValue, handleChange 
     case 'multiselect':
       /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <MultiSelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    case settings.SettingType.TOGGLE:
+    case SettingType.Toggle:
       /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <ToggleSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    case settings.SettingType.INTEGER:
-    case settings.SettingType.FLOAT:
+    case SettingType.Integer:
+    case SettingType.Float:
       /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <NumberSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
     default:
@@ -76,7 +77,7 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
       newValue = [];
     }
 
-    OpenFileSelectionDialog(main.FileDialogOptions.createFrom({
+    OpenFileSelectionDialog(FileDialogOptions.createFrom({
       showHiddenFiles: true,
     })).then((result) => {
       console.log('File selection dialog result:', result);
@@ -217,7 +218,7 @@ const MultiSelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleCh
 
           const newValue = toStringArray(isChanged ? draftValue : setting.value);
 
-          OpenFileSelectionDialog(main.FileDialogOptions.createFrom({
+          OpenFileSelectionDialog(FileDialogOptions.createFrom({
             showHiddenFiles: true,
           })).then((result) => {
             if (result) {

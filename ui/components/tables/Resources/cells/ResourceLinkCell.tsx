@@ -9,11 +9,11 @@ import { Tooltip } from '@omniviewdev/ui/overlays';
 import get from 'lodash.get';
 
 // types
-import { type types } from '@omniviewdev/runtime/models';
+import type { ResourceLink } from '@omniviewdev/runtime/models';
 import useRightDrawer from '@/hooks/useRightDrawer';
 import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
 
-type Props = types.ResourceLink & {
+type Props = ResourceLink & {
   value: any;
   metadata?: ResourceMetadata;
 };

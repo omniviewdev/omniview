@@ -3,13 +3,13 @@
  * Core types (DevServerState, DevBuildLine) are re-exported from the
  * Wails-generated bindings so there is a single source of truth.
  */
-import { devserver } from '@omniviewdev/runtime/models';
+import type { DevServerState as DevServerStateModel, DevServerLogEntry } from '@omniviewdev/runtime/models';
 
 /** Dev server state, re-exported from the Wails binding models. */
-export type DevServerState = devserver.DevServerState;
+export type DevServerState = DevServerStateModel;
 
 /** A single line of build output, re-exported from the Wails binding models. */
-export type DevBuildLine = devserver.LogEntry;
+export type DevBuildLine = DevServerLogEntry;
 
 /** A structured build error from the Go compiler output. */
 export interface DevBuildError {

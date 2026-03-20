@@ -1,10 +1,10 @@
 import { eventbus } from '@/events/eventbus';
-import { type exec } from '@omniviewdev/runtime/models';
+import type { SessionOptions } from '@omniviewdev/runtime/models';
 
 type OnCreateSessionOpts = {
   plugin: string;
   connection: string;
-  opts: exec.SessionOptions;
+  opts: SessionOptions;
   icon?: string;
   label?: string;
 };

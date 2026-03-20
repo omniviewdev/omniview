@@ -3,7 +3,7 @@ import { useSnackbar, createErrorHandler, parseAppError, actionToSnackbar } from
 import { PluginManager } from '@omniviewdev/runtime/api';
 import React from 'react';
 import { Events } from '@omniviewdev/runtime/runtime';
-import { type config, type types } from '@omniviewdev/runtime/models';
+import type { PluginMeta, PluginInfo } from '@omniviewdev/runtime/models';
 
 import { usePluginService } from '@/features/plugins';
 
@@ -33,26 +33,26 @@ export const usePluginManager = () => {
   React.useEffect(() => {
     // Set up watchers for plugin reload and install events
     const closer1 = Events.On('plugin/dev_reload_start', (ev) => {
-      const meta = ev.data as config.PluginMeta;
-      queryClient.setQueryData([Entity.PLUGINS], (oldData: types.PluginInfo[] | undefined) =>
+      const meta = ev.data as PluginMeta;
+      queryClient.setQueryData([Entity.PLUGINS], (oldData: PluginInfo[] | undefined) =>
         oldData?.map(plugin =>
           plugin.id === meta.id ? { ...plugin, phase: 'Starting', lastError: '' } : plugin,
         ),
       );
 
-      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: types.PluginInfo | undefined) =>
+      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: PluginInfo | undefined) =>
         oldData ? { ...oldData, phase: 'Starting', lastError: '' } : oldData,
       );
     });
     const closer2 = Events.On('plugin/dev_reload_error', (ev) => {
-      const [meta, error] = ev.data as [config.PluginMeta, string];
-      queryClient.setQueryData([Entity.PLUGINS], (oldData: types.PluginInfo[] | undefined) =>
+      const [meta, error] = ev.data as [PluginMeta, string];
+      queryClient.setQueryData([Entity.PLUGINS], (oldData: PluginInfo[] | undefined) =>
         oldData?.map(plugin =>
           plugin.id === meta.id ? { ...plugin, phase: 'Failed', lastError: error } : plugin,
         ),
       );
 
-      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: types.PluginInfo | undefined) =>
+      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: PluginInfo | undefined) =>
         oldData ? { ...oldData, phase: 'Failed', lastError: error } : oldData,
       );
 

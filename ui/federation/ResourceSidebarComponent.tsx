@@ -21,7 +21,7 @@ import {
 } from '@omniviewdev/runtime'
 
 // types
-import { resource, ui } from '@omniviewdev/runtime/models';
+import { UpdateInput, GetResourceAreaComponentInput } from '@omniviewdev/runtime/models';
 
 // icons
 import Icon from '@/components/icons/Icon';
@@ -76,7 +76,7 @@ const ResourceDrawerContainer: React.FC<Props> = ({
   * Update the resource
   */
   const onResourceUpdate = async (data: Record<string, unknown>) => {
-    const input = resource.UpdateInput.createFrom({
+    const input = UpdateInput.createFrom({
       input: data,
       params: {},
       id: resourceID,
@@ -421,7 +421,7 @@ type ResourceSidebarComponentProps = {
  * Get the dynamic resource sidebar component with the fallback
  */
 const ResourceSidebarComponent: React.FC<ResourceSidebarComponentProps> = ({ plugin, resource, data, onSubmit, onCancel, useSearch }) => {
-  const { component } = useResourceAreaComponent(ui.GetResourceAreaComponentInput.createFrom({ plugin, resource, area: 'SIDEBAR' }));
+  const { component } = useResourceAreaComponent(GetResourceAreaComponentInput.createFrom({ plugin, resource, area: 'SIDEBAR' }));
 
   if (component.isLoading) {
     return (

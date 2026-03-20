@@ -22,7 +22,7 @@ import {
 } from '@omniviewdev/runtime';
 
 // Types
-import { type types } from '@omniviewdev/runtime/models';
+import type { ResourceMeta } from '@omniviewdev/runtime/models';
 
 // Layout
 import Layout from '@/layouts/core/sidenav';
@@ -42,7 +42,7 @@ import { LuCog } from 'react-icons/lu';
 /**
  * Get the ID from the meta object
  */
-const toID = (meta: types.ResourceMeta) => `${meta.group}::${meta.version}::${meta.kind}`;
+const toID = (meta: ResourceMeta) => `${meta.group}::${meta.version}::${meta.kind}`;
 
 export default function ResourceTableView(): React.ReactElement {
   const theme = useTheme();

@@ -1,6 +1,6 @@
 // types
-import { type exec } from '@omniviewdev/runtime/models';
+import type { Handler } from '@omniviewdev/runtime/models';
 
 export type Actions = {
-  exec?: exec.Handler;
+  exec?: Handler;
 };

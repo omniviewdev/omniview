@@ -5,7 +5,7 @@ import Box from '@mui/material/Box';
 import { Text } from '@omniviewdev/ui/typography';
 import { formatTimeDifference } from '@/utils/time';
 import { convertByteUnits } from '@/utils/units';
-import { type types } from '@omniviewdev/runtime/models';
+import type { ResourceLink } from '@omniviewdev/runtime/models';
 import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
 import ResourceLinkCell from './ResourceLinkCell';
 
@@ -25,7 +25,7 @@ type Props = {
   /** Formatter for the text */
   formatter?: string;
   /** Resource links to parse */
-  resourceLink?: types.ResourceLink;
+  resourceLink?: ResourceLink;
   /** Metadata for the resource */
   metadata?: ResourceMetadata;
   /** children */

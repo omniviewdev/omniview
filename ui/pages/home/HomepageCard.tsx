@@ -9,7 +9,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import { Text } from '@omniviewdev/ui/typography';
 import { Stack } from '@omniviewdev/ui/layout';
 import { PluginContext } from '@omniviewdev/runtime';
-import { config as runtimeConfig } from '@omniviewdev/runtime/models';
+import { PluginMeta } from '@omniviewdev/runtime/models';
 import type { ExtensionContributionRegistration } from '@omniviewdev/runtime';
 import type { HomepageCardProps, HomepageCardMeta, HomepageCardConfig } from '@/features/extensions/homepage/types';
 import HomepageCardConfigPopover from './HomepageCardConfigPopover';
@@ -35,7 +35,7 @@ const HomepageCard: React.FC<Props> = ({
 
   const providerValue = useMemo(() => ({
     pluginId: registration.plugin,
-    meta: new runtimeConfig.PluginMeta(),
+    meta: new PluginMeta(),
     settings: {},
   }), [registration.plugin]);
 

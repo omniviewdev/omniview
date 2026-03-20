@@ -3,7 +3,7 @@ import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
 
 // Underlying client
 import { SettingsProvider } from '@omniviewdev/runtime/api';
-import { type settings } from '@omniviewdev/runtime/models';
+import type { Category } from '@omniviewdev/runtime/models';
 
 /**
  * Interact with the global settings provider. Intended for use in the settings UI. If you need to read or write settings
@@ -38,7 +38,7 @@ export const useSettingsProvider = () => {
 
   const settings = useQuery({
     queryKey,
-    queryFn: async () => SettingsProvider.ListSettings() as Promise<Record<string, settings.Category>>,
+    queryFn: async () => SettingsProvider.ListSettings() as Promise<Record<string, Category>>,
   });
 
   return {

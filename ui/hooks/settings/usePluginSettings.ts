@@ -3,7 +3,7 @@ import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
 
 // Underlying client
 import { SettingsClient } from '@omniviewdev/runtime/api';
-import { type settings } from '@omniviewdev/runtime/models';
+import type { Setting } from '@omniviewdev/runtime/models';
 
 type PluginSettingsOptions = {
   /**
@@ -34,7 +34,7 @@ export const usePluginSettings = ({ plugin }: PluginSettingsOptions) => {
 
   const settings = useQuery({
     queryKey,
-    queryFn: async () => SettingsClient.ListSettings(plugin) as Promise<Record<string, settings.Setting>>,
+    queryFn: async () => SettingsClient.ListSettings(plugin) as Promise<Record<string, Setting>>,
   });
 
   return {

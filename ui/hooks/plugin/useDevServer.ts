@@ -6,14 +6,14 @@ import {
 } from '@tanstack/react-query';
 import { Events } from '@omniviewdev/runtime/runtime';
 import { DevServerManager } from '@omniviewdev/runtime/api';
-import { devserver } from '@omniviewdev/runtime/models';
+import type { DevServerState as DevServerStateModel, DevServerLogEntry } from '@omniviewdev/runtime/models';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 // Re-export from the Wails binding models so consumers don't need to import
 // from two places.
-export type DevServerState = devserver.DevServerState;
-export type DevLogEntry = devserver.LogEntry;
+export type DevServerState = DevServerStateModel;
+export type DevLogEntry = DevServerLogEntry;
 
 export interface DevBuildError {
   file: string;
