@@ -5,28 +5,30 @@ import (
 	"os"
 	"runtime"
 
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// Shutdownable is an interface that can be implemented by any struct that needs to
-// perform an action at application termination.
-type Shutdownable interface {
-	// Shutdown is called at application termination.
-	Shutdown(ctx context.Context)
+// AppService is the main application service for Wails v3.
+// It is registered as a Wails service and exposes methods to the frontend.
+type AppService struct{}
+
+// NewAppService creates a new AppService.
+func NewAppService() *AppService {
+	return &AppService{}
 }
 
-// App struct.
-type App struct {
-	ctx context.Context
+// ServiceStartup is called during application startup.
+func (a *AppService) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
+	return nil
 }
 
-// NewApp creates a new App application struct.
-func NewApp() *App {
-	return &App{}
+// ServiceShutdown is called during application shutdown.
+func (a *AppService) ServiceShutdown() error {
+	return nil
 }
 
 // GetOperatingSystem returns the operating system type this application is running on.
-func (a *App) GetOperatingSystem() string {
+func (a *AppService) GetOperatingSystem() string {
 	switch runtime.GOOS {
 	case "darwin":
 		return "macos"
@@ -37,12 +39,7 @@ func (a *App) GetOperatingSystem() string {
 	}
 }
 
-// FileFilter defines a filter for dialog boxes
-type FileFilter struct {
-	DisplayName string `json:"displayName"` // Filter information EG: "Image Files (*.jpg, *.png)"
-	Pattern     string `json:"pattern"`     // semicolon separated list of extensions, EG: "*.jpg;*.png"
-}
-
+// FileDialogOptions defines options for file dialogs exposed to the frontend.
 type FileDialogOptions struct {
 	DefaultDirectory           string       `json:"defaultDirectory"`
 	DefaultFilename            string       `json:"defaultFilename"`
@@ -54,67 +51,62 @@ type FileDialogOptions struct {
 	TreatPackagesAsDirectories bool         `json:"treatPackagesAsDirectories"`
 }
 
-func (a *App) OpenFileSelectionDialog(opts FileDialogOptions) ([]string, error) {
-	wailsopts := wailsruntime.OpenDialogOptions{
-		DefaultDirectory:           opts.DefaultDirectory,
-		DefaultFilename:            opts.DefaultFilename,
-		Title:                      opts.Title,
-		ShowHiddenFiles:            opts.ShowHiddenFiles,
-		CanCreateDirectories:       opts.CanCreateDirectories,
-		ResolvesAliases:            opts.ResolvesAliases,
-		TreatPackagesAsDirectories: opts.TreatPackagesAsDirectories,
-	}
-	filters := make([]wailsruntime.FileFilter, len(opts.Filters))
-	for i, filter := range opts.Filters {
-		filters[i] = wailsruntime.FileFilter{
-			DisplayName: filter.DisplayName,
-			Pattern:     filter.Pattern,
-		}
-	}
-	wailsopts.Filters = filters
-	return wailsruntime.OpenMultipleFilesDialog(a.ctx, wailsopts)
+// FileFilter defines a filter for dialog boxes.
+type FileFilter struct {
+	DisplayName string `json:"displayName"` // Filter information EG: "Image Files (*.jpg, *.png)"
+	Pattern     string `json:"pattern"`     // semicolon separated list of extensions, EG: "*.jpg;*.png"
 }
 
-// SaveFileDialog opens a native save file dialog and returns the selected path.
-func (a *App) SaveFileDialog(opts FileDialogOptions) (string, error) {
-	wailsopts := wailsruntime.SaveDialogOptions{
-		DefaultDirectory:           opts.DefaultDirectory,
-		DefaultFilename:            opts.DefaultFilename,
-		Title:                      opts.Title,
-		ShowHiddenFiles:            opts.ShowHiddenFiles,
-		CanCreateDirectories:       opts.CanCreateDirectories,
-		TreatPackagesAsDirectories: opts.TreatPackagesAsDirectories,
+// OpenFileSelectionDialog opens a native file selection dialog using the v3 Dialog API.
+func (a *AppService) OpenFileSelectionDialog(opts FileDialogOptions) ([]string, error) {
+	app := application.Get()
+	dialog := app.Dialog.OpenFile()
+
+	if opts.Title != "" {
+		dialog.SetTitle(opts.Title)
 	}
-	filters := make([]wailsruntime.FileFilter, len(opts.Filters))
-	for i, filter := range opts.Filters {
-		filters[i] = wailsruntime.FileFilter{
-			DisplayName: filter.DisplayName,
-			Pattern:     filter.Pattern,
-		}
+	if opts.DefaultDirectory != "" {
+		dialog.SetDirectory(opts.DefaultDirectory)
 	}
-	wailsopts.Filters = filters
-	return wailsruntime.SaveFileDialog(a.ctx, wailsopts)
+	dialog.CanChooseFiles(true)
+	dialog.CanCreateDirectories(opts.CanCreateDirectories)
+	dialog.ShowHiddenFiles(opts.ShowHiddenFiles)
+	dialog.ResolvesAliases(opts.ResolvesAliases)
+	dialog.TreatsFilePackagesAsDirectories(opts.TreatPackagesAsDirectories)
+
+	for _, f := range opts.Filters {
+		dialog.AddFilter(f.DisplayName, f.Pattern)
+	}
+
+	return dialog.PromptForMultipleSelection()
+}
+
+// SaveFileDialog opens a native save file dialog using the v3 Dialog API.
+func (a *AppService) SaveFileDialog(opts FileDialogOptions) (string, error) {
+	app := application.Get()
+	dialog := app.Dialog.SaveFile()
+
+	if opts.Title != "" {
+		dialog.SetMessage(opts.Title)
+	}
+	if opts.DefaultDirectory != "" {
+		dialog.SetDirectory(opts.DefaultDirectory)
+	}
+	if opts.DefaultFilename != "" {
+		dialog.SetFilename(opts.DefaultFilename)
+	}
+	dialog.CanCreateDirectories(opts.CanCreateDirectories)
+	dialog.ShowHiddenFiles(opts.ShowHiddenFiles)
+	dialog.TreatsFilePackagesAsDirectories(opts.TreatPackagesAsDirectories)
+
+	for _, f := range opts.Filters {
+		dialog.AddFilter(f.DisplayName, f.Pattern)
+	}
+
+	return dialog.PromptForSingleSelection()
 }
 
 // WriteFileContent writes string content to the given file path.
-func (a *App) WriteFileContent(path string, content string) error {
+func (a *AppService) WriteFileContent(path string, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
-}
-
-// startup is called at application startup.
-func (a *App) startup(ctx context.Context) {
-	// Perform your setup here
-	a.ctx = ctx
-}
-
-// domReady is called after front-end resources have been loaded.
-func (a App) domReady(_ context.Context) {
-	// Add your action here
-}
-
-// beforeClose is called when the application is about to quit,
-// either by clicking the window close button or calling runtime.Quit.
-// Returning true will cause the application to continue, false will continue shutdown as normal.
-func (a *App) beforeClose(_ context.Context) (prevent bool) {
-	return false
 }

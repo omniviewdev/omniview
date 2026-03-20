@@ -12,13 +12,16 @@ import (
 	"github.com/wailsapp/mimetype"
 )
 
-type FileLoader struct {
-	http.Handler
+// PluginAssetHandler serves plugin assets from the local filesystem.
+// It is used as middleware in the Wails v3 AssetOptions to handle
+// requests for plugin-specific static files (JS, CSS, images, fonts).
+type PluginAssetHandler struct {
 	logger logging.Logger
 }
 
-func NewFileLoader(logger logging.Logger) *FileLoader {
-	return &FileLoader{
+// NewPluginAssetHandler creates a new PluginAssetHandler.
+func NewPluginAssetHandler(logger logging.Logger) *PluginAssetHandler {
+	return &PluginAssetHandler{
 		logger: logger,
 	}
 }
@@ -65,7 +68,8 @@ func forceMimeType(path string) string {
 	}
 }
 
-func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+// ServeHTTP handles HTTP requests for plugin assets.
+func (h *PluginAssetHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	var err error
 	ctx := req.Context()
 	respondUnauthorized := func() {
@@ -134,4 +138,17 @@ func (h *FileLoader) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	if _, err = res.Write(fileData); err != nil {
 		h.logger.Errorw(ctx, "error serving file", "error", err)
 	}
+}
+
+// Middleware returns an application.Middleware that intercepts plugin asset
+// requests (those prefixed with /_/) and delegates them to the
+// PluginAssetHandler. All other requests pass through to the next handler.
+func (h *PluginAssetHandler) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/_/") {
+			h.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
