@@ -295,6 +295,9 @@ importers:
 
   packages/omniviewdev-runtime:
     dependencies:
+      '@wailsio/runtime':
+        specifier: 3.0.0-alpha.79
+        version: 3.0.0-alpha.79
       lodash.get:
         specifier: ^4.4.2
         version: 4.4.2
@@ -3264,6 +3267,9 @@ packages:
 
   '@vue/shared@3.5.13':
     resolution: {integrity: sha512-/hnE/qP5ZoGpol0a5mDi45bOd7t3tjYJBjsgCsivow7D48cJeV5l05RD82lPqi7gRiphZM37rnhW1l6ZoCNNnQ==}
+
+  '@wailsio/runtime@3.0.0-alpha.79':
+    resolution: {integrity: sha512-NITzxKmJsMEruc39L166lbPJVECxzcbdqpHVqOOF7Cu/7Zqk/e3B/gNpkUjhNyo5rVb3V1wpS8oEgLUmpu1cwA==}
 
   '@welldone-software/why-did-you-render@8.0.3':
     resolution: {integrity: sha512-bb5bKPMStYnocyTBVBu4UTegZdBqzV1mPhxc0UIV/S43KFUSRflux9gvzJfu2aM4EWLJ3egTvdjOi+viK+LKGA==}
@@ -9217,6 +9223,8 @@ snapshots:
       typescript: 5.8.3
 
   '@vue/shared@3.5.13': {}
+
+  '@wailsio/runtime@3.0.0-alpha.79': {}
 
   '@welldone-software/why-did-you-render@8.0.3(react@19.2.4)':
     dependencies:
