@@ -12,7 +12,7 @@ export * as metric from './internal/metric/Client';
 export * as networker from './internal/networker/Client';
 export * as pluginManager from './internal/plugin/pluginManager';
 export * as resource from './internal/resource/Client';
-export * as runtime from './internal/runtime/runtime';
+export { Application, Browser, Clipboard, Events, Screens, System, Window, WML } from '@wailsio/runtime';
 export * as settings from './internal/settings/Client';
 export * as settingsProvider from './internal/settings/provider';
 export * as ui from './internal/ui/Client';
