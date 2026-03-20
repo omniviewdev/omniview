@@ -63,8 +63,8 @@ export {
 } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/devserver/models';
 
 // pluginlog: re-export everything except LogEntry (collides with devserver)
+export type { EmitFunc } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog/models';
 export {
-  EmitFunc,
   Manager,
   PluginLogStream,
   LogEntry as PluginLogEntry,
