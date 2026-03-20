@@ -33,6 +33,7 @@ func newTestManager(t *testing.T) *pluginManager {
 		managers:            make(map[string]plugintypes.PluginManager),
 		pidTracker:          NewPluginPIDTracker(),
 		pluginOpsLocks:      make(map[string]*sync.Mutex),
+		emitter:             testNoopEmitter{},
 	}
 }
 
@@ -370,6 +371,7 @@ func TestDevPlugin_SurvivesRestart(t *testing.T) {
 		managers:            make(map[string]plugintypes.PluginManager),
 		pidTracker:          NewPluginPIDTracker(),
 		pluginOpsLocks:      make(map[string]*sync.Mutex),
+		emitter:             testNoopEmitter{},
 	}
 	// Use the same plugin dir as pm1.
 	pm2.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
@@ -633,27 +635,37 @@ func (b *mockBackend) Kill()                                {}
 func (b *mockBackend) Exited() bool                         { return false }
 func (b *mockBackend) NegotiatedVersion() int               { return b.version }
 
+// testRecordingEmitter captures emitted events for test assertions.
+type testRecordingEmitter struct {
+	mu     sync.Mutex
+	events []testEmittedEvent
+}
+
+type testEmittedEvent struct {
+	event string
+	data  []any
+}
+
+func (e *testRecordingEmitter) Emit(event string, data ...any) {
+	e.mu.Lock()
+	e.events = append(e.events, testEmittedEvent{event: event, data: data})
+	e.mu.Unlock()
+}
+
+func (e *testRecordingEmitter) getEvents() []testEmittedEvent {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	cp := make([]testEmittedEvent, len(e.events))
+	copy(cp, e.events)
+	return cp
+}
+
 func TestStartPlugin_DeprecatedProtocol_EmitsEvent(t *testing.T) {
 	pm := newTestManager(t)
 	pm.ctx = context.Background()
 
-	// Capture emitted events.
-	var mu sync.Mutex
-	var emitted []struct {
-		event string
-		data  []interface{}
-	}
-	eventEmitFn = func(_ context.Context, event string, data ...interface{}) {
-		mu.Lock()
-		emitted = append(emitted, struct {
-			event string
-			data  []interface{}
-		}{event, data})
-		mu.Unlock()
-	}
-	t.Cleanup(func() {
-		eventEmitFn = func(_ context.Context, _ string, _ ...interface{}) {}
-	})
+	rec := &testRecordingEmitter{}
+	pm.emitter = rec
 
 	record := &plugintypes.PluginRecord{
 		ID:    "old-plugin",
@@ -671,8 +683,7 @@ func TestStartPlugin_DeprecatedProtocol_EmitsEvent(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify deprecation event was emitted.
-	mu.Lock()
-	defer mu.Unlock()
+	emitted := rec.getEvents()
 
 	var found bool
 	for _, e := range emitted {
@@ -694,16 +705,8 @@ func TestStartPlugin_CurrentProtocol_NoDeprecationEvent(t *testing.T) {
 	pm := newTestManager(t)
 	pm.ctx = context.Background()
 
-	var mu sync.Mutex
-	var emitted []string
-	eventEmitFn = func(_ context.Context, event string, _ ...interface{}) {
-		mu.Lock()
-		emitted = append(emitted, event)
-		mu.Unlock()
-	}
-	t.Cleanup(func() {
-		eventEmitFn = func(_ context.Context, _ string, _ ...interface{}) {}
-	})
+	rec := &testRecordingEmitter{}
+	pm.emitter = rec
 
 	record := &plugintypes.PluginRecord{
 		ID:    "current-plugin",
@@ -719,10 +722,9 @@ func TestStartPlugin_CurrentProtocol_NoDeprecationEvent(t *testing.T) {
 	err := pm.startPlugin(record, backend)
 	require.NoError(t, err)
 
-	mu.Lock()
-	defer mu.Unlock()
+	emitted := rec.getEvents()
 	for _, e := range emitted {
-		assert.NotEqual(t, EventDeprecatedProtocol, e, "should not emit deprecation for current version")
+		assert.NotEqual(t, EventDeprecatedProtocol, e.event, "should not emit deprecation for current version")
 	}
 }
 

@@ -1,12 +1,10 @@
 package plugin
 
 import (
-	"context"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 )
 
 // Plugin event constants.
@@ -64,22 +62,12 @@ type DeprecatedProtocolPayload struct {
 	CurrentVersion int    `json:"currentVersion"`
 }
 
-// eventEmitFn is the function used to emit events. It defaults to
-// wails/v2/pkg/runtime.EventsEmit but can be replaced in tests to avoid
-// the log.Fatal that Wails issues for non-Wails contexts.
-var eventEmitFn = runtime.EventsEmit
-
-// emitEvent is a convenience wrapper around Wails event emission.
-func emitEvent(ctx context.Context, event string, data ...interface{}) {
-	if ctx == nil {
+// emitStateChange emits a state change event to the frontend.
+func emitStateChange(emitter resource.EventEmitter, pluginID string, t lifecycle.Transition) {
+	if emitter == nil {
 		return
 	}
-	eventEmitFn(ctx, event, data...)
-}
-
-// emitStateChange emits a state change event to the frontend.
-func emitStateChange(ctx context.Context, pluginID string, t lifecycle.Transition) {
-	emitEvent(ctx, EventStateChange, StateChangePayload{
+	emitter.Emit(EventStateChange, StateChangePayload{
 		PluginID:  pluginID,
 		From:      t.From,
 		To:        t.To,

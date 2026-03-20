@@ -384,7 +384,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 		pm.logger.Warnw(ctx, "plugin uses deprecated SDK protocol version",
 			"pluginID", pluginID, "version", version,
 			"current", plugintypes.CurrentProtocolVersion)
-		emitEvent(pm.ctx, EventDeprecatedProtocol, DeprecatedProtocolPayload{
+		pm.emitter.Emit(EventDeprecatedProtocol, DeprecatedProtocolPayload{
 			PluginID:       pluginID,
 			Version:        version,
 			CurrentVersion: plugintypes.CurrentProtocolVersion,

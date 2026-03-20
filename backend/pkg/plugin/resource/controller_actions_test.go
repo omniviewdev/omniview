@@ -144,11 +144,11 @@ func TestStreamAction_EmitsEvents(t *testing.T) {
 	assert.Len(t, events, 2)
 
 	// Verify event types in order.
-	ev0, ok := events[0].Data.(resource.ActionEvent)
+	ev0, ok := events[0].Data[0].(resource.ActionEvent)
 	require.True(t, ok)
 	assert.Equal(t, "progress", ev0.Type)
 
-	ev1, ok := events[1].Data.(resource.ActionEvent)
+	ev1, ok := events[1].Data[0].(resource.ActionEvent)
 	require.True(t, ok)
 	assert.Equal(t, "complete", ev1.Type)
 }
@@ -168,7 +168,7 @@ func TestStreamAction_EmitsError(t *testing.T) {
 
 	// Wait for the error event.
 	ev := emitter.WaitForEvent(t, "action/stream/"+opID, 2*time.Second)
-	actionEv, ok := ev.Data.(resource.ActionEvent)
+	actionEv, ok := ev.Data[0].(resource.ActionEvent)
 	require.True(t, ok)
 	assert.Equal(t, "error", actionEv.Type)
 	assert.Contains(t, actionEv.Data["message"], "stream broke")

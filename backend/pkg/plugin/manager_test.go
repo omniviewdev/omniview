@@ -130,6 +130,7 @@ func TestHandlePluginCrash_WithHealthChecker(t *testing.T) {
 		logger:  testLogger(t),
 		records: make(map[string]*plugintypes.PluginRecord),
 		ctx:     context.Background(),
+		emitter: testNoopEmitter{},
 	}
 
 	pm.records["crash-test"] = &plugintypes.PluginRecord{
@@ -158,6 +159,7 @@ func TestHandlePluginCrash_SetsPhaseRecovering(t *testing.T) {
 		logger:  testLogger(t),
 		records: make(map[string]*plugintypes.PluginRecord),
 		ctx:     context.Background(),
+		emitter: testNoopEmitter{},
 	}
 
 	sm := lifecycle.NewPluginStateMachine("phase-plugin", lifecycle.PhaseRunning)
@@ -189,6 +191,7 @@ func TestHandlePluginCrash_FallbackContextAware(t *testing.T) {
 		logger:  testLogger(t),
 		records: make(map[string]*plugintypes.PluginRecord),
 		ctx:     ctx,
+		emitter: testNoopEmitter{},
 		// No healthChecker — forces fallback path.
 	}
 
@@ -215,7 +218,7 @@ func TestHandlePluginCrash_FallbackContextAware(t *testing.T) {
 }
 
 func TestRegisterStateObserver(t *testing.T) {
-	pm := &pluginManager{logger: testLogger(t)}
+	pm := &pluginManager{logger: testLogger(t), emitter: testNoopEmitter{}}
 	sm := lifecycle.NewPluginStateMachine("test", lifecycle.PhaseStarting)
 
 	var observed bool

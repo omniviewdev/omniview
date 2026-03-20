@@ -2,8 +2,8 @@ package resource
 
 import "testing"
 
-func TestWailsEmitter_ImplementsInterface(t *testing.T) {
-	var _ EventEmitter = (*wailsEmitter)(nil)
+func TestAppEmitter_ImplementsInterface(t *testing.T) {
+	var _ EventEmitter = (*appEmitter)(nil)
 }
 
 func TestRecordingEmitter_ImplementsInterface(t *testing.T) {
@@ -11,5 +11,5 @@ func TestRecordingEmitter_ImplementsInterface(t *testing.T) {
 }
 
 func TestNoopEmitter_ImplementsInterface(t *testing.T) {
-	var _ EventEmitter = (*noopEmitter)(nil)
+	var _ EventEmitter = NoopEmitter{}
 }

@@ -9,15 +9,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 )
 
-func TestEmitEvent_NilContext_NoPanic(t *testing.T) {
-	assert.NotPanics(t, func() {
-		emitEvent(nil, "plugin/test", map[string]interface{}{
-			"key": "value",
-		})
-	})
-}
-
-func TestEmitStateChange_NilContext_NoPanic(t *testing.T) {
+func TestEmitStateChange_NilEmitter_NoPanic(t *testing.T) {
 	assert.NotPanics(t, func() {
 		emitStateChange(nil, "test-plugin", lifecycle.Transition{
 			From:      lifecycle.PhaseStarting,

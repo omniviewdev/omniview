@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	pluginexec "github.com/omniviewdev/omniview/backend/pkg/plugin/exec"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
@@ -125,6 +123,7 @@ func NewManager(
 		settingsProvider:  settingsProvider,
 		registryClient:    registryClient,
 		telemetryConfigFn: telemetryConfigFn,
+		emitter:           resource.NoopEmitter{},
 		pidTracker:        NewPluginPIDTracker(),
 		pluginOpsLocks:    make(map[string]*sync.Mutex),
 	}
@@ -153,6 +152,7 @@ type pluginManager struct {
 	healthChecker       *HealthChecker
 	pluginLogMgr        *pluginlog.Manager
 	backendFactory      func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error)
+	emitter             resource.EventEmitter
 	telemetryConfigFn   func() TelemetryEnvConfig // returns current telemetry config for env injection
 
 	// pluginOpsMu serializes load/reload/unload operations per plugin to
@@ -228,7 +228,7 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	// "crash_recovery_failed" when it gives up.
 	inCrashCycle := pm.healthChecker != nil && pm.healthChecker.IsInCrashCycle(pluginID)
 	if !inCrashCycle {
-		emitEvent(pm.ctx, "plugin/crash", map[string]interface{}{
+		pm.emitter.Emit("plugin/crash", map[string]interface{}{
 			"pluginID": pluginID,
 			"error":    crashError,
 		})
@@ -261,21 +261,21 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	}
 	if _, err := pm.ReloadPlugin(pluginID); err != nil {
 		pm.logger.Errorw(pm.ctx, "plugin crash recovery failed", "pluginID", pluginID, "error", err)
-		emitEvent(pm.ctx, EventCrashRecoveryFailed, map[string]interface{}{
+		pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
 			"pluginID": pluginID,
 			"error":    err.Error(),
 		})
 		return
 	}
 	pm.logger.Infow(pm.ctx, "plugin recovered after crash", "pluginID", pluginID)
-	emitEvent(pm.ctx, EventRecovered, map[string]interface{}{"pluginID": pluginID})
+	pm.emitter.Emit(EventRecovered, map[string]interface{}{"pluginID": pluginID})
 }
 
 // registerStateObserver adds an observer to a plugin's state machine that
 // emits Wails events on every state transition.
 func (pm *pluginManager) registerStateObserver(sm *lifecycle.PluginStateMachine) {
 	sm.AddObserver(func(pluginID string, t lifecycle.Transition) {
-		emitStateChange(pm.ctx, pluginID, t)
+		emitStateChange(pm.emitter, pluginID, t)
 	})
 }
 
@@ -325,7 +325,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// Wire real-time emission via Wails events for the plugin log manager.
 	if pm.pluginLogMgr != nil {
 		pm.pluginLogMgr.OnEmit(func(entry pluginlog.LogEntry) {
-			runtime.EventsEmit(ctx, "plugin/process/log", entry)
+			pm.emitter.Emit("plugin/process/log", entry)
 		})
 	}
 
@@ -492,7 +492,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 		pm.logger.Errorw(pm.ctx, "failed to merge and persist plugin state", "error", err)
 	}
 
-	runtime.EventsEmit(pm.ctx, EventInitComplete)
+	pm.emitter.Emit(EventInitComplete)
 
 	return nil
 }

@@ -121,7 +121,9 @@ func (c *controller) Graph() *graph.RelationshipGraph {
 
 // Run starts the controller's background tasks.
 func (c *controller) Run(ctx context.Context) {
-	c.emitter = newWailsEmitter(ctx)
+	if c.emitter == nil {
+		c.emitter = NoopEmitter{}
+	}
 	c.dispatcher.Start()
 }
 

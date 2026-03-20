@@ -12,10 +12,10 @@ import (
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 )
 
-func init() {
-	// Replace the Wails event emitter with a no-op for tests.
-	eventEmitFn = func(_ context.Context, _ string, _ ...interface{}) {}
-}
+// testNoopEmitter is a no-op EventEmitter for tests.
+type testNoopEmitter struct{}
+
+func (testNoopEmitter) Emit(string, ...any) {}
 
 func newTestHealthChecker(t *testing.T) (*HealthChecker, *pluginManager) {
 	t.Helper()
@@ -23,6 +23,7 @@ func newTestHealthChecker(t *testing.T) (*HealthChecker, *pluginManager) {
 		logger:  testLogger(t),
 		records: make(map[string]*plugintypes.PluginRecord),
 		ctx:     context.Background(),
+		emitter: testNoopEmitter{},
 	}
 	hc := NewHealthChecker(testLogger(t), pm)
 	return hc, pm
@@ -353,6 +354,7 @@ func TestHandleCrashWithBackoff_NilContext(t *testing.T) {
 	pm := &pluginManager{
 		logger:  testLogger(t),
 		records: make(map[string]*plugintypes.PluginRecord),
+		emitter: testNoopEmitter{},
 		// ctx intentionally nil
 	}
 	hc := NewHealthChecker(testLogger(t), pm)

@@ -83,16 +83,12 @@ func newCrashTestController() *controller {
 	ctrl := &controller{
 		logger:  logging.NewNop(),
 		plugins: make(map[string]*pluginState),
-		emitter: &noopEmitter{},
+		emitter: NoopEmitter{},
 		subs:    newSubscriptionManager(),
 	}
 	return ctrl
 }
 
-// noopEmitter is a no-op EventEmitter for crash tests.
-type noopEmitter struct{}
-
-func (e *noopEmitter) Emit(string, interface{}) {}
 
 // addPluginState is a test helper that sets up a pluginState entry for crash tests.
 func addPluginState(ctrl *controller, pluginID string) {
