@@ -1,8 +1,7 @@
 import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
+import react, { reactCompilerPreset } from '@vitejs/plugin-react';
+import babel from '@rolldown/plugin-babel';
 import wails from '@wailsio/runtime/plugins/vite';
-// import federation from '@originjs/vite-plugin-federation';
-// import topLevelAwait from 'vite-plugin-top-level-await';
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,10 +10,6 @@ import { dirname } from 'path';
 // if in ESM context
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-const reactCompilerConfig = {
-  target: '19',
-};
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -43,11 +38,8 @@ export default defineConfig({
     },
   },
   plugins: [
-    react({
-      babel: {
-        plugins: [['babel-plugin-react-compiler', reactCompilerConfig]],
-      },
-    }),
+    react(),
+    babel({ presets: [reactCompilerPreset({ target: '19' })] }),
     wails('./packages/omniviewdev-runtime/src/bindings'),
     {
       name: 'strip-dev-scripts',

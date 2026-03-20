@@ -69,6 +69,7 @@
     "yaml": "^2.7.1"
   },
   "devDependencies": {
+    "@rolldown/plugin-babel": "^0.2.2",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@tanstack/react-query-devtools": "^5.76.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -82,7 +83,7 @@
     "@types/tinycolor2": "^1.4.6",
     "@typescript-eslint/eslint-plugin": "^8.31.0",
     "@typescript-eslint/parser": "^8.31.0",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^6.0.1",
     "@vitest/ui": "^4.0.18",
     "@wailsio/runtime": "3.0.0-alpha.79",
     "@welldone-software/why-did-you-render": "^8.0.1",
