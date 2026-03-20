@@ -59,6 +59,7 @@ export const useLogs = ({ pluginID: explicitPluginID }: UseLogSessionOptions) =>
       });
 
       const session = await CreateSession(pluginID, connectionID, opts);
+      if (!session) throw new Error('Failed to create log session: null response');
       createTab({
         id: session.id,
         title: label ?? `Logs ${session.id.substring(0, 8)}`,

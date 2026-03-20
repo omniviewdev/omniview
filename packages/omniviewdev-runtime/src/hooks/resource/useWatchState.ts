@@ -65,11 +65,13 @@ export const useWatchState = ({
     queryKey,
     queryFn: async () => {
       const result = await GetWatchState(pluginID, connectionID);
+      if (!result) throw new Error('Failed to get watch state: null response');
       const resources: Record<string, WatchState> = {};
       let syncedCount = 0;
       let errorCount = 0;
 
       for (const [key, state] of Object.entries(result.resources ?? {})) {
+        if (state == null) continue;
         resources[key] = state as WatchState;
         if (state === WatchState.WatchStateSynced) syncedCount++;
         if (state === WatchState.WatchStateError) errorCount++;
@@ -77,6 +79,7 @@ export const useWatchState = ({
 
       const resourceCounts: Record<string, number> = {};
       for (const [key, count] of Object.entries(result.resourceCounts ?? {})) {
+        if (count == null) continue;
         resourceCounts[key] = count;
       }
 

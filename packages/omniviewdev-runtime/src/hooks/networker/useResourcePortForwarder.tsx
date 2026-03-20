@@ -58,6 +58,7 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
       });
 
       const result = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts);
+      if (!result) throw new Error('Failed to start port forwarding: null response');
       if (opts.openInBrowser) {
         Browser.OpenURL(`http://localhost:${result.local_port}`);
       }

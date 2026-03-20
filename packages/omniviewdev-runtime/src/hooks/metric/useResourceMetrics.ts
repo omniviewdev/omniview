@@ -93,8 +93,8 @@ export const useResourceMetrics = (
       timeRange?.start?.getTime(),
       timeRange?.end?.getTime(),
     ],
-    queryFn: () =>
-      QueryAll(
+    queryFn: async () => {
+      const raw = await QueryAll(
         connectionID,
         resourceKey,
         resourceID,
@@ -105,7 +105,13 @@ export const useResourceMetrics = (
         timeRange?.start ?? new Date(0),
         timeRange?.end ?? new Date(0),
         stepNs,
-      ),
+      );
+      const filtered: Record<string, QueryResponse> = {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (v != null) filtered[k] = v;
+      }
+      return filtered;
+    },
     enabled: enabled && !!connectionID && !!resourceKey && (resourceKey.startsWith('cluster::') || !!resourceID) && providers.length > 0,
     refetchInterval: refreshInterval > 0 ? refreshInterval : undefined,
     staleTime: 5_000,

@@ -87,7 +87,7 @@ export const useResources = ({
       namespace: opts.namespace ?? (stableNamespaces.length === 1 ? stableNamespaces[0] : ''),
     })),
     onSuccess: async (data) => {
-      const result = data.result as any;
+      const result = data?.result as any;
       let foundID = '';
 
       // Attempt to find an ID based on some common patterns

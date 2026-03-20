@@ -21,21 +21,6 @@ import {
   updateTracker,
 } from '../../utils/activeSyncAggregator';
 
-/**
- * Mirrors backend resource.ConnectionState.
- * Locally declared until Wails v3 model generation handles cross-package types.
- */
-interface ConnectionStateResponse {
-  connection: Connection;
-  started: boolean;
-  resources: Record<string, number>;
-  resourceCounts: Record<string, number>;
-  totalResources: number;
-  syncedCount: number;
-  errorCount: number;
-  lastSyncTime?: string;
-}
-
 export interface ConnectionStatusEntry {
   pluginID: string;
   connectionID: string;
@@ -87,7 +72,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   // Listen for plugin crash recovery events
   useEffect(() => {
     const cancelCrash = Events.On('plugin/crash_recovery_failed', (ev) => {
-      const data = ev.data as { pluginID?: string; error?: string };
+      const data = ev.data as unknown as { pluginID?: string; error?: string };
       const pluginID = data?.pluginID;
       if (!pluginID) return;
       setFailedPlugins((prev) => {
@@ -98,7 +83,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
     });
 
     const cancelRecovered = Events.On('plugin/recovered', (ev) => {
-      const data = ev.data as { pluginID?: string };
+      const data = ev.data as unknown as { pluginID?: string };
       const pluginID = data?.pluginID;
       if (!pluginID) return;
       setFailedPlugins((prev) => {
@@ -118,7 +103,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   // Hydrate full connection + watch state on mount
   useEffect(() => {
     GetAllConnectionStates()
-      .then((result: Record<string, ConnectionStateResponse[]>) => {
+      .then((result) => {
         if (!result) return;
 
         const conns: Record<string, Connection[]> = {};
@@ -126,6 +111,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
         const newSyncs = new Map<string, ActiveSync>();
 
         for (const [pluginID, states] of Object.entries(result)) {
+          if (!states) continue;
           conns[pluginID] = states.map((s) => s.connection);
 
           for (const s of states) {
@@ -162,12 +148,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   // Listen for connection/status events
   useEffect(() => {
     const cancel = Events.On('connection/status', (ev) => {
-      const event = ev.data as {
-        pluginID: string;
-        connectionID: string;
-        status: string;
-        name: string;
-      };
+      const event = ev.data;
       const key = `${event.pluginID}/${event.connectionID}`;
 
       if (event.status === 'DISCONNECTED') {
@@ -194,8 +175,13 @@ export function useConnectionStatus(): ConnectionStatusSummary {
 
       // Re-fetch connections to get latest metadata
       ListAllConnections()
-        .then((result: Record<string, Connection[]>) => {
-          if (result) setAllConnections(result);
+        .then((result) => {
+          if (!result) return;
+          const filtered: Record<string, Connection[]> = {};
+          for (const [k, v] of Object.entries(result)) {
+            if (v != null) filtered[k] = v;
+          }
+          setAllConnections(filtered);
         })
         .catch(() => {});
     });

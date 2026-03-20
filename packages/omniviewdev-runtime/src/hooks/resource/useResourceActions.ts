@@ -110,7 +110,7 @@ export const useExecuteAction = ({
         ActionInput.createFrom({ id, namespace, params }),
       ),
     onSuccess: (result) => {
-      if (result.message) {
+      if (result?.message) {
         showSnackbar(result.message, 'success');
       }
       // Invalidate the resource list cache so tables refresh after actions like upgrade/rollback

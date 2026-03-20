@@ -67,6 +67,7 @@ export const useResourceSearch = ({
         pagination: { page: 1, pageSize: 200 },
         namespaces: search.namespaces,
       })).then((data) => {
+        if (!data) return [];
         console.log(data.result);
         if (data.result && search.postFilter) {
           return Object.values(data.result).filter(search.postFilter);

@@ -56,6 +56,7 @@ export const useExec = ({ pluginID: explicitPluginID }: UseResourceMutationsOpti
 
       try {
         const session = await CreateSession(pluginID, connectionID, sessionOpts);
+        if (!session) throw new Error('Failed to create session: null response');
         // Replace temp ID with real session ID and mark connected
         updateTab(
           { id: tempId },
