@@ -169,20 +169,20 @@ func (pm *pluginManager) InstallPluginVersion(
 	pluginID string,
 	version string,
 ) (*config.PluginMeta, error) {
-	pm.emitter.Emit(EventUpdateStarted, pluginID, version)
+	pm.emitter.Emit(EventUpdateStarted, UpdatePayload{PluginID: pluginID, Version: version})
 
 	pm.syncRegistryURL()
 	tmpPath, err := pm.registryClient.DownloadPlugin(context.Background(), pluginID, version)
 	if err != nil {
 		pm.logger.Errorw(pm.ctx, "failed to download and prepare", "error", err)
-		pm.emitter.Emit(EventUpdateError, pluginID, err.Error())
+		pm.emitter.Emit(EventUpdateError, UpdateErrorPayload{PluginID: pluginID, Error: err.Error()})
 		return nil, err
 	}
 
 	pm.logger.Debugw(pm.ctx, "installing plugin from downloaded tmp path", "path", tmpPath)
 	meta, err := pm.InstallPluginFromPath(tmpPath)
 	if err != nil {
-		pm.emitter.Emit(EventUpdateError, pluginID, err.Error())
+		pm.emitter.Emit(EventUpdateError, UpdateErrorPayload{PluginID: pluginID, Error: err.Error()})
 		return nil, err
 	}
 
@@ -199,7 +199,7 @@ func (pm *pluginManager) InstallPluginVersion(
 		pm.logger.Errorw(pm.ctx, "failed to persist state after version override", "error", writeErr)
 	}
 
-	pm.emitter.Emit(EventUpdateComplete, pluginID, version)
+	pm.emitter.Emit(EventUpdateComplete, UpdatePayload{PluginID: pluginID, Version: version})
 	return meta, nil
 }
 

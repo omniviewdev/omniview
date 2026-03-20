@@ -28,8 +28,8 @@ export function initDevToolsBridge(): () => void {
 
   cleanups.push(
     Events.On('plugin/devserver/error', (ev) => {
-      const [pluginId, errors] = ev.data as [string, DevBuildError[]];
-      devToolsChannel.emit('onBuildError', { pluginId, errors });
+      const payload = ev.data as { pluginID: string; errors: DevBuildError[] };
+      devToolsChannel.emit('onBuildError', { pluginId: payload.pluginID, errors: payload.errors });
     }),
   );
 

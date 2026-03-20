@@ -129,6 +129,62 @@ export class StateChangePayload {
     }
 }
 
+/**
+ * UpdateErrorPayload is sent with EventUpdateError.
+ */
+export class UpdateErrorPayload {
+    "pluginID": string;
+    "error": string;
+
+    /** Creates a new UpdateErrorPayload instance. */
+    constructor($$source: Partial<UpdateErrorPayload> = {}) {
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+        if (!("error" in $$source)) {
+            this["error"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UpdateErrorPayload instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UpdateErrorPayload {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UpdateErrorPayload($$parsedSource as Partial<UpdateErrorPayload>);
+    }
+}
+
+/**
+ * UpdatePayload is sent with EventUpdateStarted and EventUpdateComplete.
+ */
+export class UpdatePayload {
+    "pluginID": string;
+    "version": string;
+
+    /** Creates a new UpdatePayload instance. */
+    constructor($$source: Partial<UpdatePayload> = {}) {
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+        if (!("version" in $$source)) {
+            this["version"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new UpdatePayload instance from a string or object.
+     */
+    static createFrom($$source: any = {}): UpdatePayload {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new UpdatePayload($$parsedSource as Partial<UpdatePayload>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = types$0.PluginStateRecord.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);

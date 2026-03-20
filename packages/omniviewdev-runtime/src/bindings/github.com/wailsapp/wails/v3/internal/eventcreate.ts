@@ -25,6 +25,9 @@ function configure() {
         "plugin/devserver/log": $$createType5,
         "plugin/devserver/status": $$createType6,
         "plugin/state_change": $$createType7,
+        "plugin/update_complete": $$createType8,
+        "plugin/update_error": $$createType9,
+        "plugin/update_started": $$createType8,
     }));
 }
 
@@ -37,5 +40,7 @@ const $$createType4 = devserver$0.LogEntry.createFrom;
 const $$createType5 = $Create.Array($$createType4);
 const $$createType6 = devserver$0.DevServerState.createFrom;
 const $$createType7 = plugin$0.StateChangePayload.createFrom;
+const $$createType8 = plugin$0.UpdatePayload.createFrom;
+const $$createType9 = plugin$0.UpdateErrorPayload.createFrom;
 
 configure();

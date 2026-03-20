@@ -32,6 +32,7 @@ type Controller interface {
 	GetHandlers() map[string]map[string]exec.Handler
 	GetHandler(plugin, resource string) *exec.Handler
 	CreateSession(plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
+	CreateTerminal(opts exec.SessionOptions) (*exec.Session, error)
 	ListSessions() ([]*exec.Session, error)
 	GetSession(sessionID string) (*exec.Session, error)
 	AttachSession(sessionID string) (*exec.Session, []byte, error)
@@ -501,6 +502,14 @@ func (c *controller) GetHandler(
 		return nil
 	}
 	return &h
+}
+
+// CreateTerminal creates a local terminal session with TTY enabled.
+// This is a convenience wrapper for CreateSession("local", "local", opts)
+// with TTY forced on.
+func (c *controller) CreateTerminal(opts exec.SessionOptions) (*exec.Session, error) {
+	opts.TTY = true
+	return c.CreateSession("local", "local", opts)
 }
 
 func (c *controller) CreateSession(

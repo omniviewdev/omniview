@@ -4,7 +4,9 @@
 export {
     DeprecatedProtocolPayload,
     LoadPluginOptions,
-    StateChangePayload
+    StateChangePayload,
+    UpdateErrorPayload,
+    UpdatePayload
 } from "./models.js";
 
 export type {

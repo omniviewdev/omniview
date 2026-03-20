@@ -491,10 +491,10 @@ function PluginLoadingSpinner() {
     const cancelUpdateStart = Events.On(
       'plugin/update_started',
       (ev) => {
-        const [id, version] = ev.data as [string, string];
+        const payload = ev.data as { pluginID: string; version: string };
         setLoading((prev) => ({
           ...prev,
-          [id]: `Updating plugin '${id}' to '${version}'`,
+          [payload.pluginID]: `Updating plugin '${payload.pluginID}' to '${payload.version}'`,
         }));
       },
     );

@@ -38,6 +38,12 @@ export function CreateSession(plugin: string, connectionID: string, opts: exec$0
     });
 }
 
+export function CreateTerminal(opts: exec$0.SessionOptions): $CancellablePromise<exec$0.Session | null> {
+    return $Call.ByID(331634124, opts).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function DetachSession(sessionID: string): $CancellablePromise<exec$0.Session | null> {
     return $Call.ByID(1895341881, sessionID).then(($result: any) => {
         return $$createType1($result);

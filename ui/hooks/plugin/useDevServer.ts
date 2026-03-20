@@ -178,9 +178,9 @@ export function useDevBuildStream(
     const offError = Events.On(
       'plugin/devserver/error',
       (ev) => {
-        const [errorPluginID, buildErrors] = ev.data as [string, DevBuildError[]];
-        if (errorPluginID !== pluginID) return;
-        setErrors((prev) => [...prev, ...buildErrors]);
+        const payload = ev.data as { pluginID: string; errors: DevBuildError[] };
+        if (payload.pluginID !== pluginID) return;
+        setErrors((prev) => [...prev, ...payload.errors]);
       }
     );
 

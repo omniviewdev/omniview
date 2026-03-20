@@ -38,9 +38,9 @@ declare module "@wailsio/runtime" {
             "plugin/recovered": void;
             "plugin/state_change": plugin$0.StateChangePayload;
             "plugin/state_write_error": void;
-            "plugin/update_complete": void;
-            "plugin/update_error": void;
-            "plugin/update_started": void;
+            "plugin/update_complete": plugin$0.UpdatePayload;
+            "plugin/update_error": plugin$0.UpdateErrorPayload;
+            "plugin/update_started": plugin$0.UpdatePayload;
         }
     }
 }

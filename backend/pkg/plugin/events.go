@@ -20,9 +20,9 @@ func init() {
 	application.RegisterEvent[application.Void](EventReloadStart)
 	application.RegisterEvent[application.Void](EventReloadError)
 	application.RegisterEvent[application.Void](EventReloadComplete)
-	application.RegisterEvent[application.Void](EventUpdateStarted)
-	application.RegisterEvent[application.Void](EventUpdateError)
-	application.RegisterEvent[application.Void](EventUpdateComplete)
+	application.RegisterEvent[UpdatePayload](EventUpdateStarted)
+	application.RegisterEvent[UpdateErrorPayload](EventUpdateError)
+	application.RegisterEvent[UpdatePayload](EventUpdateComplete)
 	application.RegisterEvent[application.Void](EventInitComplete)
 	application.RegisterEvent[application.Void](EventCrashRecoveryFailed)
 	application.RegisterEvent[application.Void](EventRecovered)
@@ -76,6 +76,18 @@ type StateChangePayload struct {
 	To        lifecycle.PluginPhase `json:"to"`
 	Reason    string              `json:"reason"`
 	Timestamp time.Time           `json:"timestamp"`
+}
+
+// UpdatePayload is sent with EventUpdateStarted and EventUpdateComplete.
+type UpdatePayload struct {
+	PluginID string `json:"pluginID"`
+	Version  string `json:"version"`
+}
+
+// UpdateErrorPayload is sent with EventUpdateError.
+type UpdateErrorPayload struct {
+	PluginID string `json:"pluginID"`
+	Error    string `json:"error"`
 }
 
 // DeprecatedProtocolPayload is sent with EventDeprecatedProtocol.

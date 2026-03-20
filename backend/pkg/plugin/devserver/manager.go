@@ -444,5 +444,5 @@ func (m *DevServerManager) emitErrors(pluginID string, errors []BuildError) {
 	if m.app == nil || len(errors) == 0 {
 		return
 	}
-	m.app.Event.Emit(EventDevServerError, pluginID, errors)
+	m.app.Event.Emit(EventDevServerError, DevServerErrorPayload{PluginID: pluginID, Errors: errors})
 }
