@@ -14,6 +14,7 @@ import (
 	"time"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -56,6 +57,7 @@ type pluginState struct {
 
 // controller manages resource plugins on the engine side.
 type controller struct {
+	app              *application.App
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
 	emitter          EventEmitter
@@ -120,6 +122,7 @@ func (c *controller) Graph() *graph.RelationshipGraph {
 // ============================================================================
 
 // Run starts the controller's background tasks.
+// Satisfies the ConnectedController interface; prefer ServiceStartup for Wails v3.
 func (c *controller) Run(ctx context.Context) {
 	if c.emitter == nil {
 		c.emitter = NoopEmitter{}
@@ -127,9 +130,18 @@ func (c *controller) Run(ctx context.Context) {
 	c.dispatcher.Start()
 }
 
-// Shutdown stops background tasks. Must be called on application exit.
-func (c *controller) Shutdown() {
+// ServiceStartup is called by the Wails v3 runtime when the application starts.
+func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	c.app = application.Get()
+	c.emitter = newAppEmitter(c.app)
+	c.dispatcher.Start()
+	return nil
+}
+
+// ServiceShutdown is called by the Wails v3 runtime when the application shuts down.
+func (c *controller) ServiceShutdown() error {
 	c.dispatcher.Stop()
+	return nil
 }
 
 // dispenseProvider creates a ResourceProvider from a PluginBackend using version negotiation.

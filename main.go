@@ -77,6 +77,59 @@ type PluginManagerService struct {
 	plugin.Manager
 }
 
+// ResourceControllerService wraps the resource.Controller interface so it can
+// be registered as a Wails v3 service (which requires a concrete pointer type).
+// Embedding the interface promotes all its methods to the wrapper struct.
+type ResourceControllerService struct {
+	resource.Controller
+}
+
+func (s *ResourceControllerService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	if ss, ok := s.Controller.(interface {
+		ServiceStartup(context.Context, application.ServiceOptions) error
+	}); ok {
+		return ss.ServiceStartup(ctx, options)
+	}
+	return nil
+}
+
+func (s *ResourceControllerService) ServiceShutdown() error {
+	if ss, ok := s.Controller.(interface{ ServiceShutdown() error }); ok {
+		return ss.ServiceShutdown()
+	}
+	return nil
+}
+
+// SettingsControllerService wraps the settings.Controller interface.
+type SettingsControllerService struct {
+	settings.Controller
+}
+
+// ExecControllerService wraps the exec.Controller interface.
+type ExecControllerService struct {
+	exec.Controller
+}
+
+// LogsControllerService wraps the pluginlogs.Controller interface.
+type LogsControllerService struct {
+	pluginlogs.Controller
+}
+
+// MetricControllerService wraps the pluginmetric.Controller interface.
+type MetricControllerService struct {
+	pluginmetric.Controller
+}
+
+// NetworkerControllerService wraps the networker.Controller interface.
+type NetworkerControllerService struct {
+	networker.Controller
+}
+
+// DataControllerService wraps the data.Controller interface.
+type DataControllerService struct {
+	data.Controller
+}
+
 // SettingsProviderService wraps the settings.Provider interface so it can be
 // registered as a Wails v3 service.
 type SettingsProviderService struct {
@@ -87,16 +140,10 @@ type SettingsProviderService struct {
 // Wails v2 OnStartup/OnShutdown closures. It implements ServiceStartup and
 // ServiceShutdown so the Wails v3 runtime calls it automatically.
 type BootstrapService struct {
-	log                 logging.Logger
-	settingsProvider    pkgsettings.Provider
-	telemetrySvc        *telemetry.Service
-	resourceController  resource.Controller
-	execController      exec.Controller
-	logsController      pluginlogs.Controller
-	metricController    pluginmetric.Controller
-	networkerController networker.Controller
-	devServerManager    *devserver.DevServerManager
-	pluginManager       plugin.Manager
+	log                  logging.Logger
+	settingsProvider     pkgsettings.Provider
+	telemetrySvc         *telemetry.Service
+	pluginManager        plugin.Manager
 	pluginRegistryClient *registry.Client
 }
 
@@ -181,15 +228,9 @@ func (b *BootstrapService) ServiceStartup(ctx context.Context, _ application.Ser
 		b.log.Infow(ctx, "using custom marketplace URL", "host", safeHost)
 	}
 
-	b.resourceController.Run(ctx)
-	b.execController.Run(ctx)
-	b.logsController.Run(ctx)
-	b.metricController.Run(ctx)
-	b.networkerController.Run(ctx)
-
-	// Initialize dev server manager first so it has a context before
-	// pluginManager.Initialize() auto-starts dev servers.
-	b.devServerManager.Initialize(ctx)
+	// Controllers now implement ServiceStartup/ServiceShutdown and are
+	// registered as Wails v3 services, so Wails calls their lifecycle
+	// methods automatically.
 
 	// Initialize the plugin system
 	if err := b.pluginManager.Initialize(ctx); err != nil {
@@ -201,7 +242,8 @@ func (b *BootstrapService) ServiceStartup(ctx context.Context, _ application.Ser
 }
 
 func (b *BootstrapService) ServiceShutdown() error {
-	b.devServerManager.Shutdown()
+	// DevServerManager and controllers have their own ServiceShutdown
+	// called by Wails v3 automatically.
 	b.pluginManager.Shutdown()
 	_ = b.telemetrySvc.Shutdown(context.Background())
 	return nil
@@ -239,7 +281,6 @@ func main() {
 
 	// Create our plugin system managers
 	uiManager := ui.NewComponentManager(log)
-	uiClient := ui.NewClient(uiManager)
 
 	managers := map[string]types.PluginManager{
 		"ui": uiManager,
@@ -249,25 +290,18 @@ func main() {
 
 	// Setup the plugin systems
 	resourceController := resource.NewController(log, settingsProvider)
-	resourceClient := resource.NewClient(resourceController)
 
 	settingsController := settings.NewController(log, settingsProvider)
-	settingsClient := settings.NewClient(settingsController)
 
 	execController := exec.NewController(log, settingsProvider, resourceController)
-	execClient := exec.NewClient(execController)
 
 	networkerController := networker.NewController(log, settingsProvider, resourceController)
-	networkerClient := networker.NewClient(networkerController)
 
 	logsController := pluginlogs.NewController(log, settingsProvider, resourceController)
-	logsClient := pluginlogs.NewClient(logsController)
 
 	metricController := pluginmetric.NewController(log, settingsProvider, resourceController)
-	metricClient := pluginmetric.NewClient(metricController)
 
 	dataController := data.NewController(log)
-	dataClient := data.NewClient(dataController)
 
 	// Initialize per-plugin log manager for capturing plugin process stderr.
 	// Created here so it can be bound to Wails for UI access.
@@ -331,12 +365,6 @@ func main() {
 		log:                  log,
 		settingsProvider:     settingsProvider,
 		telemetrySvc:         telemetrySvc,
-		resourceController:   resourceController,
-		execController:       execController,
-		logsController:       logsController,
-		metricController:     metricController,
-		networkerController:  networkerController,
-		devServerManager:     devServerManager,
 		pluginManager:        pluginManager,
 		pluginRegistryClient: pluginRegistryClient,
 	}
@@ -359,14 +387,14 @@ func main() {
 		application.NewService(&SettingsProviderService{Provider: settingsProvider}),
 		application.NewService(pluginManagerSvc),
 		application.NewService(devServerManager),
-		application.NewService(resourceClient),
-		application.NewService(settingsClient),
-		application.NewService(execClient),
-		application.NewService(networkerClient),
-		application.NewService(logsClient),
-		application.NewService(metricClient),
-		application.NewService(dataClient),
-		application.NewService(uiClient),
+		application.NewService(&ResourceControllerService{Controller: resourceController}),
+		application.NewService(&SettingsControllerService{Controller: settingsController}),
+		application.NewService(&ExecControllerService{Controller: execController}),
+		application.NewService(&NetworkerControllerService{Controller: networkerController}),
+		application.NewService(&LogsControllerService{Controller: logsController}),
+		application.NewService(&MetricControllerService{Controller: metricController}),
+		application.NewService(&DataControllerService{Controller: dataController}),
+		application.NewService(ui.NewServiceWrapper(uiManager)),
 		application.NewService(utilsClient),
 	}
 
