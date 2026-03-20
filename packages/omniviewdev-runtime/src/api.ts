@@ -12,7 +12,7 @@ export * as LogsClient from './bindings/github.com/omniviewdev/omniview/logscont
 export * as MetricClient from './bindings/github.com/omniviewdev/omniview/metriccontrollerservice';
 export * as DataClient from './bindings/github.com/omniviewdev/omniview/datacontrollerservice';
 
-export * as DevServerManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/devserver/devservermanager';
-export * as PluginLogManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog/manager';
+export * as DevServerManager from './bindings/github.com/omniviewdev/omniview/devserverservice';
+export * as PluginLogManager from './bindings/github.com/omniviewdev/omniview/pluginlogservice';
 
 export * from './bindings/github.com/omniviewdev/omniview/appservice';

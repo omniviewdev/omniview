@@ -48,12 +48,6 @@ export class DeprecatedProtocolPayload {
 }
 
 /**
- * DevServerChecker allows the plugin manager to check if a plugin is managed
- * by the dev server system.
- */
-export type DevServerChecker = any;
-
-/**
  * LoadPluginOptions configures how a plugin is loaded.
  */
 export class LoadPluginOptions {

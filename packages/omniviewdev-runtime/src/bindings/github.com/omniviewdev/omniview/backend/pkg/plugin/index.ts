@@ -8,7 +8,3 @@ export {
     UpdateErrorPayload,
     UpdatePayload
 } from "./models.js";
-
-export type {
-    DevServerChecker
-} from "./models.js";

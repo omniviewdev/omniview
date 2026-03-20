@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -70,11 +72,137 @@ func (a *pluginReloaderAdapter) ReloadPlugin(id string) error {
 	return err
 }
 
-// PluginManagerService wraps the plugin.Manager interface so it can be
-// registered as a Wails v3 service (which requires a concrete pointer type).
-// Embedding the interface promotes all its methods to the wrapper struct.
+// PluginManagerService exposes only the frontend-safe methods of plugin.Manager.
+// Internal methods (SetDevServerChecker, SetPluginLogManager, HandlePluginCrash,
+// Initialize, Run, Shutdown) are excluded to avoid binding warnings from
+// interface/function-type parameters.
 type PluginManagerService struct {
-	plugin.Manager
+	mgr plugin.Manager
+}
+
+func (s *PluginManagerService) InstallInDevMode() (*config.PluginMeta, error) {
+	return s.mgr.InstallInDevMode()
+}
+func (s *PluginManagerService) InstallFromPathPrompt() (*config.PluginMeta, error) {
+	return s.mgr.InstallFromPathPrompt()
+}
+func (s *PluginManagerService) InstallPluginFromPath(path string) (*config.PluginMeta, error) {
+	return s.mgr.InstallPluginFromPath(path)
+}
+func (s *PluginManagerService) InstallPluginVersion(pluginID, version string) (*config.PluginMeta, error) {
+	return s.mgr.InstallPluginVersion(pluginID, version)
+}
+func (s *PluginManagerService) LoadPlugin(id string, opts *plugin.LoadPluginOptions) (sdktypes.PluginInfo, error) {
+	return s.mgr.LoadPlugin(id, opts)
+}
+func (s *PluginManagerService) ReloadPlugin(id string) (sdktypes.PluginInfo, error) {
+	return s.mgr.ReloadPlugin(id)
+}
+func (s *PluginManagerService) RetryFailedPlugin(id string) (sdktypes.PluginInfo, error) {
+	return s.mgr.RetryFailedPlugin(id)
+}
+func (s *PluginManagerService) UninstallPlugin(id string) (sdktypes.PluginInfo, error) {
+	return s.mgr.UninstallPlugin(id)
+}
+func (s *PluginManagerService) GetPlugin(id string) (sdktypes.PluginInfo, error) {
+	return s.mgr.GetPlugin(id)
+}
+func (s *PluginManagerService) ListPlugins() []sdktypes.PluginInfo {
+	return s.mgr.ListPlugins()
+}
+func (s *PluginManagerService) GetPluginMeta(id string) (config.PluginMeta, error) {
+	return s.mgr.GetPluginMeta(id)
+}
+func (s *PluginManagerService) ListPluginMetas() []config.PluginMeta {
+	return s.mgr.ListPluginMetas()
+}
+func (s *PluginManagerService) ListAvailablePlugins() ([]registry.AvailablePlugin, error) {
+	return s.mgr.ListAvailablePlugins()
+}
+func (s *PluginManagerService) SearchPlugins(query, category, sort string) ([]registry.AvailablePlugin, error) {
+	return s.mgr.SearchPlugins(query, category, sort)
+}
+func (s *PluginManagerService) GetPluginReadme(pluginID string) (string, error) {
+	return s.mgr.GetPluginReadme(pluginID)
+}
+func (s *PluginManagerService) GetPluginVersions(pluginID string) ([]registry.VersionInfo, error) {
+	return s.mgr.GetPluginVersions(pluginID)
+}
+func (s *PluginManagerService) GetPluginReviews(pluginID string, page int) ([]registry.Review, error) {
+	return s.mgr.GetPluginReviews(pluginID, page)
+}
+func (s *PluginManagerService) GetPluginDownloadStats(pluginID string) (*registry.DownloadStats, error) {
+	return s.mgr.GetPluginDownloadStats(pluginID)
+}
+func (s *PluginManagerService) GetPluginReleaseHistory(pluginID string) ([]registry.VersionInfo, error) {
+	return s.mgr.GetPluginReleaseHistory(pluginID)
+}
+
+// PluginLogService exposes only frontend-safe methods of pluginlog.Manager.
+// Excludes OnEmit (EmitFunc type), Stream (io.Writer), Close, LogDir.
+type PluginLogService struct {
+	mgr *pluginlog.Manager
+}
+
+func (s *PluginLogService) GetLogs(pluginID string, count int) []pluginlog.LogEntry {
+	return s.mgr.GetLogs(pluginID, count)
+}
+func (s *PluginLogService) ListStreams() []string {
+	return s.mgr.ListStreams()
+}
+func (s *PluginLogService) SearchLogs(pluginID, pattern string) ([]pluginlog.LogEntry, error) {
+	return s.mgr.SearchLogs(pluginID, pattern)
+}
+func (s *PluginLogService) Subscribe(pluginID string) int {
+	return s.mgr.Subscribe(pluginID)
+}
+func (s *PluginLogService) Unsubscribe(pluginID string) int {
+	return s.mgr.Unsubscribe(pluginID)
+}
+
+// DevServerService exposes only frontend-safe methods of devserver.DevServerManager.
+// The DevServerManager implements ServiceStartup/ServiceShutdown directly,
+// but registering it raw causes service/model shadowing. This wrapper separates
+// the service identity from the model type.
+type DevServerService struct {
+	mgr *devserver.DevServerManager
+}
+
+func (s *DevServerService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	return s.mgr.ServiceStartup(ctx, options)
+}
+func (s *DevServerService) ServiceShutdown() error {
+	return s.mgr.ServiceShutdown()
+}
+func (s *DevServerService) StartDevServer(pluginID string) (devserver.DevServerState, error) {
+	return s.mgr.StartDevServer(pluginID)
+}
+func (s *DevServerService) StartDevServerForPath(pluginID, devPath string) (devserver.DevServerState, error) {
+	return s.mgr.StartDevServerForPath(pluginID, devPath)
+}
+func (s *DevServerService) StopDevServer(pluginID string) error {
+	return s.mgr.StopDevServer(pluginID)
+}
+func (s *DevServerService) RestartDevServer(pluginID string) (devserver.DevServerState, error) {
+	return s.mgr.RestartDevServer(pluginID)
+}
+func (s *DevServerService) RebuildPlugin(pluginID string) error {
+	return s.mgr.RebuildPlugin(pluginID)
+}
+func (s *DevServerService) GetDevServerState(pluginID string) devserver.DevServerState {
+	return s.mgr.GetDevServerState(pluginID)
+}
+func (s *DevServerService) ListDevServerStates() []devserver.DevServerState {
+	return s.mgr.ListDevServerStates()
+}
+func (s *DevServerService) GetDevServerLogs(pluginID string, count int) []devserver.LogEntry {
+	return s.mgr.GetDevServerLogs(pluginID, count)
+}
+func (s *DevServerService) IsManaged(pluginID string) bool {
+	return s.mgr.IsManaged(pluginID)
+}
+func (s *DevServerService) GetExternalPluginInfo(pluginID string) *devserver.DevInfoFile {
+	return s.mgr.GetExternalPluginInfo(pluginID)
 }
 
 // ResourceControllerService wraps the resource.Controller interface so it can
@@ -374,7 +502,7 @@ func main() {
 
 	// Wrap the plugin manager interface in a concrete struct for v3 service
 	// registration (NewService requires a concrete pointer type).
-	pluginManagerSvc := &PluginManagerService{Manager: pluginManager}
+	pluginManagerSvc := &PluginManagerService{mgr: pluginManager}
 
 	// Build the service list. All concrete pointer types use NewService directly.
 	// The BootstrapService must come first so startup logic runs before other
@@ -386,7 +514,7 @@ func main() {
 		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
 		application.NewService(&SettingsProviderService{Provider: settingsProvider}),
 		application.NewService(pluginManagerSvc),
-		application.NewService(devServerManager),
+		application.NewService(&DevServerService{mgr: devServerManager}),
 		application.NewService(&ResourceControllerService{Controller: resourceController}),
 		application.NewService(&SettingsControllerService{Controller: settingsController}),
 		application.NewService(&ExecControllerService{Controller: execController}),
@@ -399,7 +527,7 @@ func main() {
 	}
 
 	if pluginLogManager != nil {
-		services = append(services, application.NewService(pluginLogManager))
+		services = append(services, application.NewService(&PluginLogService{mgr: pluginLogManager}))
 	}
 
 	// Strip the "dist" prefix from the embedded FS so assets are served at /.

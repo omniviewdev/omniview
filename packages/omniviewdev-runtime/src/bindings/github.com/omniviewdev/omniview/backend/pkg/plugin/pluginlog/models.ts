@@ -6,12 +6,6 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
- * EmitFunc is called for each log entry. Implementations must be safe for
- * concurrent calls from multiple plugin streams.
- */
-export type EmitFunc = any;
-
-/**
  * LogEntry represents a single log line from a plugin process.
  * Field names and JSON tags intentionally match devserver.LogEntry
  * for frontend consistency.
@@ -58,58 +52,5 @@ export class LogEntry {
     static createFrom($$source: any = {}): LogEntry {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new LogEntry($$parsedSource as Partial<LogEntry>);
-    }
-}
-
-/**
- * Manager manages per-plugin log streams with persistence, buffering,
- * and optional real-time emission. It is safe for concurrent use.
- * 
- * Emission is subscription-gated: the emit callback only fires for plugins
- * that have been explicitly subscribed via [Subscribe]. This prevents
- * unnecessary serialization and transport overhead on the Wails event bus
- * when no UI consumer is listening.
- * 
- * Wails-bindable methods: GetLogs, ListStreams, SearchLogs, Subscribe, Unsubscribe.
- */
-export class Manager {
-
-    /** Creates a new Manager instance. */
-    constructor($$source: Partial<Manager> = {}) {
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new Manager instance from a string or object.
-     */
-    static createFrom($$source: any = {}): Manager {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new Manager($$parsedSource as Partial<Manager>);
-    }
-}
-
-/**
- * PluginLogStream captures log output for a single plugin process.
- * It implements [io.Writer] so it can be used as the hclog Output target.
- * 
- * Each write is simultaneously persisted to a rotated log file, parsed
- * into a [LogEntry], buffered in a ring buffer, and optionally emitted
- * via the Manager's callback.
- */
-export class PluginLogStream {
-
-    /** Creates a new PluginLogStream instance. */
-    constructor($$source: Partial<PluginLogStream> = {}) {
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new PluginLogStream instance from a string or object.
-     */
-    static createFrom($$source: any = {}): PluginLogStream {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new PluginLogStream($$parsedSource as Partial<PluginLogStream>);
     }
 }

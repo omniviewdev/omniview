@@ -56,17 +56,13 @@ export {
   DevInfoFile,
   DevProcessStatus,
   DevServerErrorPayload,
-  DevServerManager,
   DevServerMode,
   DevServerState,
   LogEntry as DevServerLogEntry,
 } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/devserver/models';
 
-// pluginlog: re-export everything except LogEntry (collides with devserver)
-export type { EmitFunc } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog/models';
+// pluginlog: only LogEntry remains (re-aliased to avoid collision with devserver)
 export {
-  Manager,
-  PluginLogStream,
   LogEntry as PluginLogEntry,
 } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog/models';
 

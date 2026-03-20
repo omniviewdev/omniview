@@ -3,10 +3,12 @@
 
 import * as AppService from "./appservice.js";
 import * as DataControllerService from "./datacontrollerservice.js";
+import * as DevServerService from "./devserverservice.js";
 import * as ExecControllerService from "./execcontrollerservice.js";
 import * as LogsControllerService from "./logscontrollerservice.js";
 import * as MetricControllerService from "./metriccontrollerservice.js";
 import * as NetworkerControllerService from "./networkercontrollerservice.js";
+import * as PluginLogService from "./pluginlogservice.js";
 import * as PluginManagerService from "./pluginmanagerservice.js";
 import * as ResourceControllerService from "./resourcecontrollerservice.js";
 import * as SettingsControllerService from "./settingscontrollerservice.js";
@@ -14,10 +16,12 @@ import * as SettingsProviderService from "./settingsproviderservice.js";
 export {
     AppService,
     DataControllerService,
+    DevServerService,
     ExecControllerService,
     LogsControllerService,
     MetricControllerService,
     NetworkerControllerService,
+    PluginLogService,
     PluginManagerService,
     ResourceControllerService,
     SettingsControllerService,

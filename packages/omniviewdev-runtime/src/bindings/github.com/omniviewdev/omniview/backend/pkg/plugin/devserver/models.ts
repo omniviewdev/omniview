@@ -137,27 +137,6 @@ export class DevServerErrorPayload {
 }
 
 /**
- * DevServerManager manages dev server instances for plugins in development mode.
- * It is exposed as a Wails binding. All public methods are callable from the frontend.
- */
-export class DevServerManager {
-
-    /** Creates a new DevServerManager instance. */
-    constructor($$source: Partial<DevServerManager> = {}) {
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DevServerManager instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DevServerManager {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DevServerManager($$parsedSource as Partial<DevServerManager>);
-    }
-}
-
-/**
  * DevServerMode describes how the dev server for a plugin is managed.
  */
 export enum DevServerMode {
