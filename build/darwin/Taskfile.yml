@@ -1,0 +1,105 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+
+vars:
+  APP_NAME: '{{.APP_NAME}}'
+  BIN_DIR: '{{.ROOT_DIR}}/bin'
+  SIGN_IDENTITY: "Developer ID Application: Joshua Pare (696AD8J8ZT)"
+  ENTITLEMENTS: "{{.ROOT_DIR}}/build/darwin/entitlements.plist"
+  NOTARIZE_APPLE_ID: '{{.NOTARIZE_APPLE_ID | default ""}}'
+  NOTARIZE_PASSWORD: '{{.NOTARIZE_PASSWORD | default ""}}'
+  NOTARIZE_TEAM_ID: '{{.NOTARIZE_TEAM_ID | default ""}}'
+
+tasks:
+  build:
+    summary: Build for macOS
+    deps:
+      - task: common:go:mod:tidy
+      - task: common:generate:icons
+      - task: common:build:frontend
+    cmds:
+      - task: build:native
+
+  build:native:
+    summary: Build natively on macOS
+    internal: true
+    dir: "{{.ROOT_DIR}}"
+    cmds:
+      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o {{.BIN_DIR}}/{{.APP_NAME}}
+    env:
+      GOOS: darwin
+      CGO_ENABLED: "1"
+      GOARCH: '{{.ARCH | default ARCH}}'
+      CGO_CFLAGS: "-mmacosx-version-min=10.15"
+      CGO_LDFLAGS: "-mmacosx-version-min=10.15"
+      MACOSX_DEPLOYMENT_TARGET: "10.15"
+
+  package:
+    summary: Build and create .app bundle
+    cmds:
+      - task: build
+      - task: create:app:bundle
+
+  create:app:bundle:
+    summary: Create macOS .app bundle
+    cmds:
+      - cmd: |
+          set -e
+          APP_DIR="{{.BIN_DIR}}/{{.APP_NAME}}.app"
+          rm -rf "$APP_DIR"
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+          cp "{{.BIN_DIR}}/{{.APP_NAME}}" "$APP_DIR/Contents/MacOS/{{.APP_NAME}}"
+          cp "{{.ROOT_DIR}}/build/darwin/Info.plist" "$APP_DIR/Contents/Info.plist"
+          if [ -f "{{.ROOT_DIR}}/build/darwin/icons.icns" ]; then
+            cp "{{.ROOT_DIR}}/build/darwin/icons.icns" "$APP_DIR/Contents/Resources/iconfile.icns"
+          elif [ -f "{{.ROOT_DIR}}/build/appicon.icns" ]; then
+            cp "{{.ROOT_DIR}}/build/appicon.icns" "$APP_DIR/Contents/Resources/iconfile.icns"
+          fi
+
+  run:
+    summary: Run the macOS application
+    cmds:
+      - cmd: |
+          set -e
+          APP_DIR="{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
+          rm -rf "$APP_DIR"
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+          cp "{{.BIN_DIR}}/{{.APP_NAME}}" "$APP_DIR/Contents/MacOS/{{.APP_NAME}}"
+          cp "{{.ROOT_DIR}}/build/darwin/Info.dev.plist" "$APP_DIR/Contents/Info.plist"
+          if [ -f "{{.ROOT_DIR}}/build/darwin/icons.icns" ]; then
+            cp "{{.ROOT_DIR}}/build/darwin/icons.icns" "$APP_DIR/Contents/Resources/iconfile.icns"
+          elif [ -f "{{.ROOT_DIR}}/build/appicon.icns" ]; then
+            cp "{{.ROOT_DIR}}/build/appicon.icns" "$APP_DIR/Contents/Resources/iconfile.icns"
+          fi
+          codesign --force --deep --sign - "$APP_DIR"
+          "$APP_DIR/Contents/MacOS/{{.APP_NAME}}"
+
+  sign:
+    summary: Code-sign the .app bundle
+    cmds:
+      - cmd: |
+          codesign --deep --force \
+            --options runtime \
+            --entitlements "{{.ENTITLEMENTS}}" \
+            --sign "{{.SIGN_IDENTITY}}" \
+            "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+
+  sign:notarize:
+    summary: Sign, notarize, and staple the .app bundle
+    cmds:
+      - task: sign
+      - cmd: |
+          set -e
+          rm -f "{{.BIN_DIR}}/archive.zip"
+          ditto -c -k --keepParent --rsrc "{{.BIN_DIR}}/{{.APP_NAME}}.app" "{{.BIN_DIR}}/archive.zip"
+          xcrun notarytool submit "{{.BIN_DIR}}/archive.zip" \
+            --apple-id "{{.NOTARIZE_APPLE_ID}}" \
+            --password "{{.NOTARIZE_PASSWORD}}" \
+            --team-id "{{.NOTARIZE_TEAM_ID}}" \
+            --wait
+          xcrun stapler staple "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+          spctl --assess --type execute --verbose "{{.BIN_DIR}}/{{.APP_NAME}}.app"

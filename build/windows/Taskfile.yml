@@ -1,0 +1,42 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+
+vars:
+  APP_NAME: '{{.APP_NAME}}'
+  BIN_DIR: '{{.ROOT_DIR}}/bin'
+
+tasks:
+  build:
+    summary: Build for Windows
+    deps:
+      - task: common:go:mod:tidy
+      - task: common:generate:icons
+      - task: common:build:frontend
+    cmds:
+      - task: build:native
+
+  build:native:
+    summary: Build natively for Windows
+    internal: true
+    dir: "{{.ROOT_DIR}}"
+    cmds:
+      - wails3 generate syso -arch {{.ARCH | default "amd64"}} -icon build/windows/icon.ico -manifest build/windows/wails.exe.manifest -info build/windows/info.json -out wails_windows_{{.ARCH | default "amd64"}}.syso
+      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o {{.BIN_DIR}}/{{.APP_NAME}}.exe
+      - cmd: rm -f wails_windows_*.syso
+        ignore_error: true
+    env:
+      GOOS: windows
+      CGO_ENABLED: '{{.CGO_ENABLED | default "0"}}'
+      GOARCH: '{{.ARCH | default ARCH}}'
+
+  package:
+    summary: Package Windows application
+    cmds:
+      - task: build
+
+  run:
+    summary: Run the Windows application
+    cmds:
+      - "{{.BIN_DIR}}/{{.APP_NAME}}.exe"

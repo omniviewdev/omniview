@@ -1,0 +1,39 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+
+vars:
+  APP_NAME: '{{.APP_NAME}}'
+  BIN_DIR: '{{.ROOT_DIR}}/bin'
+
+tasks:
+  build:
+    summary: Build for Linux
+    deps:
+      - task: common:go:mod:tidy
+      - task: common:generate:icons
+      - task: common:build:frontend
+    cmds:
+      - task: build:native
+
+  build:native:
+    summary: Build natively on Linux
+    internal: true
+    dir: "{{.ROOT_DIR}}"
+    cmds:
+      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o {{.BIN_DIR}}/{{.APP_NAME}}
+    env:
+      GOOS: linux
+      CGO_ENABLED: "1"
+      GOARCH: '{{.ARCH | default ARCH}}'
+
+  package:
+    summary: Package Linux application
+    cmds:
+      - task: build
+
+  run:
+    summary: Run the Linux application
+    cmds:
+      - "{{.BIN_DIR}}/{{.APP_NAME}}"

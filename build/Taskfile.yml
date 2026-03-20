@@ -1,0 +1,84 @@
+version: '3'
+
+tasks:
+  # ──────────────────────────────────────────────
+  # Go
+  # ──────────────────────────────────────────────
+
+  go:mod:tidy:
+    summary: Tidy Go modules
+    internal: true
+    cmds:
+      - go mod tidy
+
+  # ──────────────────────────────────────────────
+  # Frontend
+  # ──────────────────────────────────────────────
+
+  ui:install:
+    summary: Install frontend dependencies
+    dir: "{{.ROOT_DIR}}"
+    cmds:
+      - pnpm install
+    sources:
+      - "{{.ROOT_DIR}}/package.json"
+      - "{{.ROOT_DIR}}/pnpm-lock.yaml"
+    generates:
+      - "{{.ROOT_DIR}}/node_modules/.pnpm/lock.yaml"
+
+  build:frontend:
+    summary: Build the frontend
+    dir: "{{.ROOT_DIR}}"
+    cmds:
+      - pnpm run build
+    env:
+      PRODUCTION: '{{if eq .DEV "true"}}false{{else}}true{{end}}'
+
+  dev:frontend:
+    summary: Run the Vite dev server
+    dir: "{{.ROOT_DIR}}"
+    cmds:
+      - pnpm run dev -- --port {{.VITE_PORT}} --strictPort
+
+  # ──────────────────────────────────────────────
+  # Bindings
+  # ──────────────────────────────────────────────
+
+  generate:bindings:
+    summary: Generate TypeScript bindings from Go services
+    dir: "{{.ROOT_DIR}}"
+    cmds:
+      - wails3 generate bindings -f '{{.BUILD_FLAGS | default ""}}' -clean=true -ts
+
+  # ──────────────────────────────────────────────
+  # Icons
+  # ──────────────────────────────────────────────
+
+  generate:icons:
+    summary: Generate platform icons from appicon.png
+    dir: build
+    cmds:
+      - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
+
+  # ──────────────────────────────────────────────
+  # Build assets
+  # ──────────────────────────────────────────────
+
+  update:build-assets:
+    summary: Regenerate platform build assets from config.yml
+    dir: build
+    cmds:
+      - wails3 update build-assets -name "{{.APP_NAME}}" -config config.yml -dir .
+
+  # ──────────────────────────────────────────────
+  # Packages (workspace)
+  # ──────────────────────────────────────────────
+
+  packages:
+    summary: Build all workspace packages in dependency order
+    dir: "{{.ROOT_DIR}}"
+    cmds:
+      - pnpm --filter @omniviewdev/providers run build
+      - pnpm --filter @omniviewdev/vite-plugin run build
+      - pnpm --filter @omniviewdev/ui run build
+      - pnpm --filter @omniviewdev/runtime run build
