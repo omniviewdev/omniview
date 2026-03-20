@@ -16,7 +16,7 @@ import { LuAtom, LuRefreshCcwDot, LuView } from 'react-icons/lu';
 
 // Hooks
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
-import { BrowserOpenURL } from '@omniviewdev/runtime/runtime';
+import { Browser } from '@omniviewdev/runtime/runtime';
 import UninstallPluginModal from './UninstallPluginModal';
 import PluginUpdateButton from './PluginUpdateButton';
 import DevModeSection from './DevModeSection';
@@ -38,7 +38,7 @@ const InstalledPluginCard: React.FC<Props> = ({ id }) => {
       url = `https://${url}`;
     }
     if (url !== undefined) {
-      BrowserOpenURL(url);
+      Browser.OpenURL(url);
     }
   };
 

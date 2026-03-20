@@ -17,7 +17,7 @@ import {
 
 // Types
 import { stringToColor } from '@/utils/color';
-import { types } from '@omniviewdev/runtime/models';
+import { Connection, ConnectionStatus, ConnectionStatusCode } from '@omniviewdev/runtime/models';
 
 // Icons
 import { MoreVert } from '@mui/icons-material';
@@ -26,7 +26,7 @@ import { LuPencil, LuTrash } from 'react-icons/lu';
 // Third-party
 import { Link, usePluginRouter } from '@infraview/router';
 
-type Props = Omit<types.Connection, 'createFrom' | 'convertValues'>;
+type Props = Omit<Connection, 'createFrom' | 'convertValues'>;
 
 const truncate = (input: string) => input.length > 60 ? `${input.substring(0, 60)}...` : input;
 
@@ -89,9 +89,9 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
   const { startConnection } = useConnection({ pluginID: plugin.id, connectionID: id });
   const [connecting, setConnecting] = React.useState(false);
 
-  const handleConnectionStatus = (status: types.ConnectionStatus) => {
+  const handleConnectionStatus = (status: ConnectionStatus) => {
     switch (status.status) {
-      case types.ConnectionStatusCode.UNAUTHORIZED:
+      case ConnectionStatusCode.ConnectionStatusUnauthorized:
         showSnackbar({
           status: 'warning',
           message: `Failed to authorize to '${name}'`,
@@ -99,7 +99,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
           icon: 'LuShieldClose',
         });
         break;
-      case types.ConnectionStatusCode.CONNECTED:
+      case ConnectionStatusCode.ConnectionStatusConnected:
         showSnackbar({
           status: 'success',
           message: `Connected to '${name}'`,

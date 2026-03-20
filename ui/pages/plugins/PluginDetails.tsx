@@ -15,7 +15,7 @@ import MarkdownPreview from '@uiw/react-markdown-preview';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LuDownload, LuExternalLink } from 'react-icons/lu';
 import { usePluginManager, usePlugin } from '@/hooks/plugin/usePluginManager';
-import { BrowserOpenURL } from '@omniviewdev/runtime/runtime';
+import { Browser } from '@omniviewdev/runtime/runtime';
 import PluginUpdateButton from './PluginUpdateButton';
 import UninstallPluginModal from './UninstallPluginModal';
 import PluginChangelog from './sections/PluginChangelog';
@@ -123,7 +123,7 @@ const PluginDetails: FC = () => {
             {displayRepository && (
               <Box
                 component='span'
-                onClick={() => BrowserOpenURL(displayRepository)}
+                onClick={() => Browser.OpenURL(displayRepository)}
                 sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:hover': { opacity: 0.8 } }}
               >
                 <LuExternalLink size={12} />

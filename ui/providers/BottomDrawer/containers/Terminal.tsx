@@ -14,7 +14,7 @@ import { debounce } from '@/utils/debounce';
 
 // project import
 import { ExecClient } from '@omniviewdev/runtime/api';
-import { exec } from '@omniviewdev/runtime/models';
+import { SessionOptions } from '@omniviewdev/runtime/models';
 import log from '@/features/logger';
 import { bottomDrawerChannel } from '../events';
 import { Events } from '@omniviewdev/runtime/runtime';
@@ -121,7 +121,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     }
 
     // Build session opts from stored tab properties, overriding command
-    const opts = exec.SessionOptions.createFrom({
+    const opts = SessionOptions.createFrom({
       tty: true,
       ...((props.opts ?? {}) as Record<string, unknown>),
       command,

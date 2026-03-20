@@ -19,7 +19,7 @@ import {
   LuX,
 } from 'react-icons/lu';
 import { Events } from '@omniviewdev/runtime/runtime';
-import type { config } from '@omniviewdev/runtime/models';
+import type { PluginMeta } from '@omniviewdev/runtime/models';
 
 import { useDevServers } from '@/features/devtools/useDevServers';
 import { devToolsChannel } from '@/features/devtools/events';
@@ -480,7 +480,7 @@ function PluginLoadingSpinner() {
     const cancelDevInstallStart = Events.On(
       'plugin/dev_install_start',
       (ev) => {
-        const meta = ev.data as config.PluginMeta;
+        const meta = ev.data as PluginMeta;
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Installing plugin '${meta.name}' in development mode`,
@@ -502,7 +502,7 @@ function PluginLoadingSpinner() {
     const cancelInstallStart = Events.On(
       'plugin/install_started',
       (ev) => {
-        const meta = ev.data as config.PluginMeta;
+        const meta = ev.data as PluginMeta;
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Installing plugin '${meta.name}'`,
@@ -513,7 +513,7 @@ function PluginLoadingSpinner() {
     const cancelReloadStart = Events.On(
       'plugin/dev_reload_start',
       (ev) => {
-        const meta = ev.data as config.PluginMeta;
+        const meta = ev.data as PluginMeta;
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Reloading plugin '${meta.name}'`,
@@ -521,12 +521,12 @@ function PluginLoadingSpinner() {
       },
     );
 
-    const clearLoading = (meta: config.PluginMeta) => {
+    const clearLoading = (meta: PluginMeta) => {
       setLoading((prev) => ({ ...prev, [meta.id]: '' }));
     };
 
     const clearLoadingByEv = (ev: Events.WailsEvent) => {
-      clearLoading(ev.data as config.PluginMeta);
+      clearLoading(ev.data as PluginMeta);
     };
 
     const clearLoadingById = (id: string) => {
@@ -539,12 +539,12 @@ function PluginLoadingSpinner() {
     const cancelDevInstallComplete = Events.On('plugin/dev_install_complete', clearLoadingByEv);
     const cancelInstallComplete = Events.On('plugin/install_complete', clearLoadingByEv);
     const cancelInstallFinished = Events.On('plugin/install_finished', (ev) => {
-      const meta = ev.data as config.PluginMeta;
+      const meta = ev.data as PluginMeta;
       clearLoading(meta);
       clearLoadingById(meta.id);
     });
     const cancelInstallError = Events.On('plugin/install_error', (ev) => {
-      const meta = ev.data as config.PluginMeta;
+      const meta = ev.data as PluginMeta;
       clearLoading(meta);
       clearLoadingById(meta.id);
     });
