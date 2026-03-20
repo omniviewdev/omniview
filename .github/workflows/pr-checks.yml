@@ -25,17 +25,22 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
       - name: Build
-        run: make go-build
+        run: task check:go-build
 
       - name: Vet
-        run: make go-vet
+        run: task check:go-vet
 
       - name: Test
-        run: make go-test
+        run: task check:go-test
 
       - name: Format check
-        run: make fmt-check
+        run: task check:fmt-check
         continue-on-error: true
 
       - name: Lint
@@ -58,11 +63,16 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Install wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Install wails3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
       - name: Check bindings are up to date
-        run: make bindings-check
+        run: task check:bindings-check
 
   ui-checks:
     name: UI checks
@@ -78,6 +88,11 @@ jobs:
         with:
           version: ${{ env.PNPM_VERSION }}
 
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
       - name: Get pnpm store directory
         id: pnpm-cache
         shell: bash
@@ -90,15 +105,15 @@ jobs:
           restore-keys: ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: make ui-install
+        run: task check:ui-install
 
       - name: Build
-        run: make ui-build
+        run: task check:ui-build
 
       - name: Lint
-        run: make ui-lint
+        run: task check:ui-lint
         continue-on-error: true
 
       - name: Typecheck
-        run: make ui-typecheck
+        run: task check:ui-typecheck
         continue-on-error: true
