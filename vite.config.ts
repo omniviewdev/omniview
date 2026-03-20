@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import wails from '@wailsio/runtime/plugins/vite';
 // import federation from '@originjs/vite-plugin-federation';
 // import topLevelAwait from 'vite-plugin-top-level-await';
 
@@ -47,6 +48,7 @@ export default defineConfig({
         plugins: [['babel-plugin-react-compiler', reactCompilerConfig]],
       },
     }),
+    wails('./packages/omniviewdev-runtime/src/bindings'),
     {
       name: 'strip-dev-scripts',
       transformIndexHtml(html, ctx) {
