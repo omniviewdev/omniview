@@ -2075,6 +2075,73 @@ export enum WatchState {
     WatchStateSkipped = 7,
 };
 
+/**
+ * WatchStateEvent represents a state change in a watch.
+ */
+export class WatchStateEvent {
+    /**
+     * PluginID identifies the source plugin.
+     */
+    "pluginId": string;
+
+    /**
+     * Connection is the connection ID that produced this event.
+     */
+    "connection": string;
+
+    /**
+     * ResourceKey is the resource type key (e.g., "core::v1::Pod").
+     */
+    "resourceKey": string;
+
+    /**
+     * State is the new watch state.
+     */
+    "state": WatchState;
+
+    /**
+     * Message is a human-readable description of the state change.
+     */
+    "message"?: string;
+
+    /**
+     * ResourceCount is the number of resources observed (if known).
+     */
+    "resourceCount"?: number;
+
+    /**
+     * ErrorCode is a machine-readable error classification (e.g., "FORBIDDEN", "TIMEOUT").
+     * Only set when State is WatchStateError, WatchStateFailed, or WatchStateForbidden.
+     */
+    "errorCode"?: string;
+
+    /** Creates a new WatchStateEvent instance. */
+    constructor($$source: Partial<WatchStateEvent> = {}) {
+        if (!("pluginId" in $$source)) {
+            this["pluginId"] = "";
+        }
+        if (!("connection" in $$source)) {
+            this["connection"] = "";
+        }
+        if (!("resourceKey" in $$source)) {
+            this["resourceKey"] = "";
+        }
+        if (!("state" in $$source)) {
+            this["state"] = WatchState.$zero;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new WatchStateEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): WatchStateEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new WatchStateEvent($$parsedSource as Partial<WatchStateEvent>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = $Create.Map($Create.Any, $Create.Any);
 const $$createType1 = $Create.Map($Create.Any, $Create.Any);

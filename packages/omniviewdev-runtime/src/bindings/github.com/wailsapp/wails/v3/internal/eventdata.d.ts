@@ -13,13 +13,29 @@ import type * as plugin$0 from "../../../../omniviewdev/omniview/backend/pkg/plu
 import type * as devserver$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/devserver/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as pluginlog$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/pluginlog/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as resource$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/resource/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as networker$0 from "../../../../omniviewdev/plugin-sdk/pkg/v1/networker/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as resource$1 from "../../../../omniviewdev/plugin-sdk/pkg/v1/resource/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "connection/status": resource$0.ConnectionStatusPayload;
             "core/networker/portforward/closed": networker$0.PortForwardSession | null;
             "core/networker/portforward/created": networker$0.PortForwardSession | null;
+            "menu/context/drawer-tab/close": string;
+            "menu/context/drawer-tab/close-others": string;
+            "menu/view/bottomdrawer/fullscreen": void;
+            "menu/view/bottomdrawer/minimize": void;
+            "menu/view/sidebar/minimize": void;
+            "menu/view/terminal/create": void;
             "plugin/crash_recovery_failed": void;
             "plugin/deprecated_protocol": plugin$0.DeprecatedProtocolPayload;
             "plugin/dev_install_complete": void;
@@ -35,12 +51,14 @@ declare module "@wailsio/runtime" {
             "plugin/install_error": void;
             "plugin/install_finished": void;
             "plugin/install_started": void;
+            "plugin/process/log": pluginlog$0.LogEntry;
             "plugin/recovered": void;
             "plugin/state_change": plugin$0.StateChangePayload;
             "plugin/state_write_error": void;
             "plugin/update_complete": plugin$0.UpdatePayload;
             "plugin/update_error": plugin$0.UpdateErrorPayload;
             "plugin/update_started": plugin$0.UpdatePayload;
+            "watch/STATE": resource$1.WatchStateEvent;
         }
     }
 }

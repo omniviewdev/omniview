@@ -36,6 +36,25 @@ import (
 
 const PluginName = "resource"
 
+// Event constants for resource controller events.
+const (
+	EventConnectionStatus = "connection/status"
+	EventWatchState       = "watch/STATE"
+)
+
+// ConnectionStatusPayload is emitted when a connection's status changes.
+type ConnectionStatusPayload struct {
+	PluginID     string `json:"pluginID"`
+	ConnectionID string `json:"connectionID"`
+	Status       string `json:"status"`
+	Name         string `json:"name"`
+}
+
+func init() {
+	application.RegisterEvent[ConnectionStatusPayload](EventConnectionStatus)
+	application.RegisterEvent[resource.WatchStateEvent](EventWatchState)
+}
+
 var tracer = otel.Tracer("omniview.resource")
 
 
@@ -565,11 +584,11 @@ func (c *controller) StartConnection(pluginID, connectionID string) (types.Conne
 	if conn.Connection != nil && conn.Connection.Name != "" {
 		connName = conn.Connection.Name
 	}
-	c.emitter.Emit("connection/status", map[string]interface{}{
-		"pluginID":     pluginID,
-		"connectionID": connectionID,
-		"status":       string(conn.Status),
-		"name":         connName,
+	c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{
+		PluginID:     pluginID,
+		ConnectionID: connectionID,
+		Status:       string(conn.Status),
+		Name:         connName,
 	})
 
 	return conn, nil
@@ -597,11 +616,11 @@ func (c *controller) StopConnection(pluginID, connectionID string) (types.Connec
 	c.connections[pluginID] = mergeConnections(c.connections[pluginID], []types.Connection{conn})
 	c.connsMu.Unlock()
 
-	c.emitter.Emit("connection/status", map[string]interface{}{
-		"pluginID":     pluginID,
-		"connectionID": connectionID,
-		"status":       "DISCONNECTED",
-		"name":         conn.Name,
+	c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{
+		PluginID:     pluginID,
+		ConnectionID: connectionID,
+		Status:       "DISCONNECTED",
+		Name:         conn.Name,
 	})
 
 	return conn, nil

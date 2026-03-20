@@ -99,6 +99,42 @@ export class ConnectionState {
     }
 }
 
+/**
+ * ConnectionStatusPayload is emitted when a connection's status changes.
+ */
+export class ConnectionStatusPayload {
+    "pluginID": string;
+    "connectionID": string;
+    "status": string;
+    "name": string;
+
+    /** Creates a new ConnectionStatusPayload instance. */
+    constructor($$source: Partial<ConnectionStatusPayload> = {}) {
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+        if (!("connectionID" in $$source)) {
+            this["connectionID"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ConnectionStatusPayload instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ConnectionStatusPayload {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ConnectionStatusPayload($$parsedSource as Partial<ConnectionStatusPayload>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = types$0.Connection.createFrom;
 const $$createType1 = $Create.Map($Create.Any, $Create.Any);

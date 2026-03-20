@@ -325,7 +325,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// Wire real-time emission via Wails events for the plugin log manager.
 	if pm.pluginLogMgr != nil {
 		pm.pluginLogMgr.OnEmit(func(entry pluginlog.LogEntry) {
-			pm.emitter.Emit("plugin/process/log", entry)
+			pm.emitter.Emit(EventProcessLog, entry)
 		})
 	}
 

@@ -260,10 +260,10 @@ func TestIntegration_ConnectionDisconnect(t *testing.T) {
 
 	// Emitter should have a DISCONNECTED status event.
 	ev := emitter.WaitForEvent(t, "connection/status", time.Second)
-	statusData, ok := ev.Data[0].(map[string]interface{})
+	payload, ok := ev.Data[0].(ConnectionStatusPayload)
 	require.True(t, ok)
-	assert.Equal(t, "DISCONNECTED", statusData["status"])
-	assert.Equal(t, "conn-1", statusData["connectionID"])
+	assert.Equal(t, "DISCONNECTED", payload.Status)
+	assert.Equal(t, "conn-1", payload.ConnectionID)
 }
 
 // EI-009: OnPluginStop removes plugin, connections, and subscriptions.

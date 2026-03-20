@@ -19,7 +19,7 @@ export default defineConfig({
   // In CI, wails dev is started as a background step because xvfb-run +
   // wails dev creates a process tree that doesn't shut down cleanly.
   webServer: process.env.CI ? undefined : {
-    command: 'cd .. && wails dev -loglevel Error',
+    command: 'cd .. && task dev',
     url: 'http://localhost:34115',
     timeout: 120_000,
     reuseExistingServer: true,

@@ -273,10 +273,10 @@ func TestStartConnection_EmitsStatusEvent(t *testing.T) {
 
 	events := emitter.EventsWithKey("connection/status")
 	require.NotEmpty(t, events)
-	data, ok := events[0].Data[0].(map[string]interface{})
+	payload, ok := events[0].Data[0].(ConnectionStatusPayload)
 	require.True(t, ok)
-	assert.Equal(t, "p1", data["pluginID"])
-	assert.Equal(t, "conn-1", data["connectionID"])
+	assert.Equal(t, "p1", payload.PluginID)
+	assert.Equal(t, "conn-1", payload.ConnectionID)
 }
 
 func TestStartConnection_FailedConnection(t *testing.T) {
@@ -323,9 +323,9 @@ func TestStopConnection_EmitsDisconnected(t *testing.T) {
 
 	events := emitter.EventsWithKey("connection/status")
 	require.NotEmpty(t, events)
-	data, ok := events[0].Data[0].(map[string]interface{})
+	payload, ok := events[0].Data[0].(ConnectionStatusPayload)
 	require.True(t, ok)
-	assert.Equal(t, "DISCONNECTED", data["status"])
+	assert.Equal(t, "DISCONNECTED", payload.Status)
 }
 
 // ============================================================================

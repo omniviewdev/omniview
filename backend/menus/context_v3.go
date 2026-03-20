@@ -20,12 +20,12 @@ func setupDrawerTabContextMenu(app *application.App) {
 
 	ctxMenu.Add("Close Tab").OnClick(func(ctx *application.Context) {
 		tabID := ctx.ContextMenuData()
-		app.Event.Emit("menu/context/drawer-tab/close", tabID)
+		app.Event.Emit(EventContextTabClose, tabID)
 	})
 
 	ctxMenu.Add("Close Other Tabs").OnClick(func(ctx *application.Context) {
 		tabID := ctx.ContextMenuData()
-		app.Event.Emit("menu/context/drawer-tab/close-others", tabID)
+		app.Event.Emit(EventContextTabCloseOthers, tabID)
 	})
 
 	app.ContextMenu.Add("drawer-tab", ctxMenu)

@@ -48,7 +48,8 @@ export {
     UpdateResult,
     WatchConnectionSummary,
     WatchScope,
-    WatchState
+    WatchState,
+    WatchStateEvent
 } from "./models.js";
 
 export type {

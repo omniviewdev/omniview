@@ -6,6 +6,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 )
 
@@ -28,6 +29,7 @@ func init() {
 	application.RegisterEvent[application.Void](EventRecovered)
 	application.RegisterEvent[application.Void](EventStateWriteError)
 	application.RegisterEvent[DeprecatedProtocolPayload](EventDeprecatedProtocol)
+	application.RegisterEvent[pluginlog.LogEntry](EventProcessLog)
 }
 
 // Plugin event constants.
@@ -67,6 +69,9 @@ const (
 
 	// Protocol version.
 	EventDeprecatedProtocol = "plugin/deprecated_protocol"
+
+	// Process logging.
+	EventProcessLog = "plugin/process/log"
 )
 
 // StateChangePayload is sent with EventStateChange.
