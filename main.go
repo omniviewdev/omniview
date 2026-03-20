@@ -1019,14 +1019,12 @@ func main() {
 	// BootstrapService is registered first so startup logic runs before other
 	// services that might depend on initialized controllers. It has no
 	// frontend-facing methods — only ServiceStartup/ServiceShutdown.
+	// Service registration order matters: Wails calls ServiceStartup in order.
+	// Controllers must be initialized (receive ctx + app) BEFORE the bootstrap
+	// service, because bootstrap calls pluginManager.Initialize() which triggers
+	// OnPluginStart on all controllers — they need ctx for gRPC streams.
 	services := []application.Service{
-		application.NewService(bootstrapService),
-		application.NewService(appService),
-		application.NewService(diagnosticsClient),
-		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
-		application.NewService(&SettingsProviderService{provider: settingsProvider}),
-		application.NewService(pluginManagerSvc),
-		application.NewService(&DevServerService{mgr: devServerManager}),
+		// 1. Controllers — need ctx before plugin loading
 		application.NewService(&ResourceControllerService{ctrl: resourceController}),
 		application.NewService(&SettingsControllerService{ctrl: settingsController}),
 		application.NewService(&ExecControllerService{ctrl: execController}),
@@ -1036,6 +1034,15 @@ func main() {
 		application.NewService(&DataControllerService{ctrl: dataController}),
 		application.NewService(ui.NewServiceWrapper(uiManager)),
 		application.NewService(utilsClient),
+		application.NewService(&DevServerService{mgr: devServerManager}),
+		// 2. Bootstrap — initializes settings, telemetry, loads plugins
+		application.NewService(bootstrapService),
+		// 3. Frontend-facing services (no startup order dependency)
+		application.NewService(appService),
+		application.NewService(diagnosticsClient),
+		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
+		application.NewService(&SettingsProviderService{provider: settingsProvider}),
+		application.NewService(pluginManagerSvc),
 	}
 
 	if pluginLogManager != nil {
