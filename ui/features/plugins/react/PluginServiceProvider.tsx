@@ -1,5 +1,5 @@
 import React, { useRef, useMemo, useEffect } from 'react';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 import { PluginServiceContext } from './context';
 import { PluginService } from '../core/PluginService';
 import { createProductionDeps } from '../adapters/createProductionDeps';
@@ -81,11 +81,12 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
 
   // Listen for dev server readiness — load dev plugins once their server is up
   useEffect(() => {
-    const cleanup = EventsOn('plugin/devserver/status', (state: {
-      pluginID: string;
-      vitePort: number;
-      viteStatus: string;
-    }) => {
+    const cleanup = Events.On('plugin/devserver/status', (ev) => {
+      const state = ev.data as {
+        pluginID: string;
+        vitePort: number;
+        viteStatus: string;
+      };
       if (state.viteStatus !== 'ready' || !state.vitePort || state.vitePort <= 0) return;
 
       const ps = service.getPluginState(state.pluginID);

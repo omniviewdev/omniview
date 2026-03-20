@@ -17,7 +17,7 @@ import { ExecClient } from '@omniviewdev/runtime/api';
 import { exec } from '@omniviewdev/runtime/models';
 import log from '@/features/logger';
 import { bottomDrawerChannel } from '../events';
-import * as runtime from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 import { Base64 } from 'js-base64';
 import { useSettings, parseAppError } from '@omniviewdev/runtime';
 import type { BottomDrawerTab } from '@omniviewdev/runtime';
@@ -251,7 +251,8 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     // that fail immediately (e.g., ERROR followed by CLOSE).
     const setupSignalHandlers = () => {
       // ERROR signal: structured error from plugin layer
-      runtime.EventsOn(constructSignalHandler('ERROR', sessionId), (errorInfo: any) => {
+      Events.On(constructSignalHandler('ERROR', sessionId), (ev) => {
+        const errorInfo = ev.data as any;
         if (errorInfo && typeof errorInfo === 'object') {
           const info: TerminalErrorInfo = {
             title: errorInfo.title || errorInfo.Title || 'Session error',
@@ -266,7 +267,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       });
 
       // CLOSE signal: session is done
-      runtime.EventsOn(constructSignalHandler('CLOSE', sessionId), () => {
+      Events.On(constructSignalHandler('CLOSE', sessionId), () => {
         // If an error overlay is already showing, don't auto-close the tab
         if (errorRef.current) {
           return;
@@ -277,28 +278,30 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         }
       });
 
-      runtime.EventsOn(constructSignalHandler('SIGINT', sessionId), () => { console.log('SIGINT'); });
-      runtime.EventsOn(constructSignalHandler('SIGQUIT', sessionId), () => { console.log('SIGQUIT'); });
-      runtime.EventsOn(constructSignalHandler('SIGTERM', sessionId), () => { console.log('SIGTERM'); });
-      runtime.EventsOn(constructSignalHandler('SIGKILL', sessionId), () => { console.log('SIGKILL'); });
-      runtime.EventsOn(constructSignalHandler('SIGHUP', sessionId), () => { console.log('SIGHUP'); });
-      runtime.EventsOn(constructSignalHandler('SIGUSR1', sessionId), () => { console.log('SIGUSR1'); });
-      runtime.EventsOn(constructSignalHandler('SIGUSR2', sessionId), () => { console.log('SIGUSR2'); });
-      runtime.EventsOn(constructSignalHandler('SIGWINCH', sessionId), () => { console.log('SIGWINCH'); });
+      Events.On(constructSignalHandler('SIGINT', sessionId), () => { console.log('SIGINT'); });
+      Events.On(constructSignalHandler('SIGQUIT', sessionId), () => { console.log('SIGQUIT'); });
+      Events.On(constructSignalHandler('SIGTERM', sessionId), () => { console.log('SIGTERM'); });
+      Events.On(constructSignalHandler('SIGKILL', sessionId), () => { console.log('SIGKILL'); });
+      Events.On(constructSignalHandler('SIGHUP', sessionId), () => { console.log('SIGHUP'); });
+      Events.On(constructSignalHandler('SIGUSR1', sessionId), () => { console.log('SIGUSR1'); });
+      Events.On(constructSignalHandler('SIGUSR2', sessionId), () => { console.log('SIGUSR2'); });
+      Events.On(constructSignalHandler('SIGWINCH', sessionId), () => { console.log('SIGWINCH'); });
     };
 
     setupSignalHandlers();
 
     // Function to handle attachment logic
     const attachToSession = async () => {
-      runtime.EventsOn(stdout, (data: any) => {
+      Events.On(stdout, (ev) => {
+        const data = ev.data;
         if (data !== null && data !== undefined) {
           const decoded = textDecoder.decode(Base64.toUint8Array(data));
           terminal.write(decoded);
         }
       });
 
-      runtime.EventsOn(stderr, (data: any) => {
+      Events.On(stderr, (ev) => {
+        const data = ev.data;
         if (data !== null && data !== undefined) {
           const decoded = textDecoder.decode(Base64.toUint8Array(data));
           terminal.write(decoded);
@@ -353,7 +356,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
       // cleanup signal handlers
       ['ERROR', 'CLOSE', 'SIGINT', 'SIGQUIT', 'SIGTERM', 'SIGKILL', 'SIGHUP', 'SIGUSR1', 'SIGUSR2', 'SIGWINCH'].forEach((signal) => {
-        runtime.EventsOff(constructSignalHandler(signal, sessionId));
+        Events.Off(constructSignalHandler(signal, sessionId));
       });
       ExecClient.DetachSession(sessionId).then(() => {
       }).catch((err: unknown) => {

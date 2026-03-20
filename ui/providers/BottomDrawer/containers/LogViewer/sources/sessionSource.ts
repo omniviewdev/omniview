@@ -1,4 +1,4 @@
-import { EventsOn, EventsOff } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 import type { LogDataSource, LogStreamEvent, RawLogLine } from '../types';
 import { parseRawLogLine } from '../utils/parseLogLine';
 
@@ -15,7 +15,8 @@ export function createSessionSource(sessionId: string): LogDataSource {
       const linesKey = `core/logs/lines/${sessionId}`;
       const eventKey = `core/logs/event/${sessionId}`;
 
-      const linesCleanup = EventsOn(linesKey, (data: string) => {
+      const linesCleanup = Events.On(linesKey, (ev) => {
+        const data = ev.data as string;
         try {
           const rawLines: RawLogLine[] = JSON.parse(data);
           const entries = rawLines.map(raw => parseRawLogLine(raw, ++lineCounter));
@@ -25,7 +26,8 @@ export function createSessionSource(sessionId: string): LogDataSource {
         }
       });
 
-      const eventCleanup = EventsOn(eventKey, (data: string) => {
+      const eventCleanup = Events.On(eventKey, (ev) => {
+        const data = ev.data as string;
         try {
           const event: LogStreamEvent = JSON.parse(data);
           handlers.onEvent(event);
@@ -37,8 +39,8 @@ export function createSessionSource(sessionId: string): LogDataSource {
       return () => {
         linesCleanup();
         eventCleanup();
-        EventsOff(linesKey);
-        EventsOff(eventKey);
+        Events.Off(linesKey);
+        Events.Off(eventKey);
       };
     },
     // No loadHistory — SDK sessions stream from the beginning.

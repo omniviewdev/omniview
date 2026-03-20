@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { EventsOn, EventsOff } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 import type { LogEntry, LogStreamEvent, RawLogLine } from '../types';
 import { parseRawLogLine } from '../utils/parseLogLine';
 
@@ -32,7 +32,8 @@ export function useLogStream({ sessionId, onLines, onEvent, paused }: UseLogStre
     const linesKey = `core/logs/lines/${sessionId}`;
     const eventKey = `core/logs/event/${sessionId}`;
 
-    const linesCleanup = EventsOn(linesKey, (data: string) => {
+    const linesCleanup = Events.On(linesKey, (ev) => {
+      const data = ev.data as string;
       try {
         const rawLines: RawLogLine[] = JSON.parse(data);
         const entries = rawLines.map(raw => parseRawLogLine(raw, ++lineCounterRef.current));
@@ -47,7 +48,8 @@ export function useLogStream({ sessionId, onLines, onEvent, paused }: UseLogStre
       }
     });
 
-    const eventCleanup = EventsOn(eventKey, (data: string) => {
+    const eventCleanup = Events.On(eventKey, (ev) => {
+      const data = ev.data as string;
       try {
         const event: LogStreamEvent = JSON.parse(data);
         onEvent(event);
@@ -59,8 +61,8 @@ export function useLogStream({ sessionId, onLines, onEvent, paused }: UseLogStre
     return () => {
       linesCleanup();
       eventCleanup();
-      EventsOff(linesKey);
-      EventsOff(eventKey);
+      Events.Off(linesKey);
+      Events.Off(eventKey);
     };
   }, [sessionId, onLines, onEvent]);
 

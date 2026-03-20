@@ -10,7 +10,7 @@ import type { WatchStateEvent } from '../../types/watch';
 
 // Underlying client
 import { List, Create, SubscribeResource, UnsubscribeResource } from '../../wailsjs/go/resource/Client';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useEventBatcher } from './useEventBatcher';
 import type { AddPayload, UpdatePayload, DeletePayload } from './useEventBatcher';
@@ -130,9 +130,10 @@ export const useResources = ({
   );
 
   React.useEffect(() => {
-    const cancel = EventsOn(
+    const cancel = Events.On(
       `${pluginID}/${connectionID}/watch/STATE`,
-      (event: WatchStateEvent) => {
+      (ev) => {
+        const event = ev.data as WatchStateEvent;
         if (event.resourceKey === resourceKey) {
           setWatchState(event.state);
         }
@@ -159,17 +160,17 @@ export const useResources = ({
     // point forward — no need to re-List after subscribing.
     SubscribeResource(pluginID, connectionID, resourceKey);
 
-    const addCloser = EventsOn(
+    const addCloser = Events.On(
       `${pluginID}/${connectionID}/${resourceKey}/ADD`,
-      (payload: AddPayload) => enqueue({ type: 'ADD', payload }),
+      (ev) => enqueue({ type: 'ADD', payload: ev.data as AddPayload }),
     );
-    const updateCloser = EventsOn(
+    const updateCloser = Events.On(
       `${pluginID}/${connectionID}/${resourceKey}/UPDATE`,
-      (payload: UpdatePayload) => enqueue({ type: 'UPDATE', payload }),
+      (ev) => enqueue({ type: 'UPDATE', payload: ev.data as UpdatePayload }),
     );
-    const deleteCloser = EventsOn(
+    const deleteCloser = Events.On(
       `${pluginID}/${connectionID}/${resourceKey}/DELETE`,
-      (payload: DeletePayload) => enqueue({ type: 'DELETE', payload }),
+      (ev) => enqueue({ type: 'DELETE', payload: ev.data as DeletePayload }),
     );
 
     return () => {

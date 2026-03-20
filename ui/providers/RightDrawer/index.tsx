@@ -12,7 +12,7 @@ import RightDrawerContext, { type RightDrawerContextType } from '@/contexts/Righ
 
 // local imports
 import ResourceDrawerContainer from '@/federation/ResourceSidebarComponent';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 
 type RightDrawerProviderProps = {
   children: ReactNode;
@@ -149,7 +149,7 @@ const RightDrawerProvider: React.FC<RightDrawerProviderProps> = ({ children }) =
   }, []);
 
   React.useEffect(() => {
-    const closerMinimize = EventsOn("menu/view/sidebar/minimize", () => closeDrawer())
+    const closerMinimize = Events.On("menu/view/sidebar/minimize", () => closeDrawer())
 
     return () => {
       closerMinimize()

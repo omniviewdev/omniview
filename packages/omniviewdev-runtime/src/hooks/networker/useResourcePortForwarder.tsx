@@ -1,7 +1,7 @@
 import { PortForwardResourceOpts } from './types';
 import { ALL_SESSIONS_KEY } from './usePortForwardSessions';
 import { networker } from '../../wailsjs/go/models';
-import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
+import { Browser } from '@wailsio/runtime';
 import {
   ClosePortForwardSession,
   FindPortForwardSessions,
@@ -59,7 +59,7 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
 
       const result = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts);
       if (opts.openInBrowser) {
-        BrowserOpenURL(`http://localhost:${result.local_port}`);
+        Browser.OpenURL(`http://localhost:${result.local_port}`);
       }
       return result
     },

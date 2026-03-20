@@ -4,7 +4,7 @@ import {
   useMutation,
   useQueryClient,
 } from '@tanstack/react-query';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 import { DevServerManager } from '@omniviewdev/runtime/api';
 import { devserver } from '@omniviewdev/runtime/models';
 
@@ -66,9 +66,10 @@ export function useDevServer(pluginID?: string) {
   // ── Real-time event subscription ───────────────────────────────────────
 
   React.useEffect(() => {
-    const offStatus = EventsOn(
+    const offStatus = Events.On(
       'plugin/devserver/status',
-      (state: DevServerState) => {
+      (ev) => {
+        const state = ev.data as DevServerState;
         // Update single-plugin cache
         queryClient.setQueryData(KEYS.one(state.pluginID), state);
 
@@ -158,7 +159,8 @@ export function useDevBuildStream(
   const [errors, setErrors] = React.useState<DevBuildError[]>([]);
 
   React.useEffect(() => {
-    const offLog = EventsOn('plugin/devserver/log', (entries: DevLogEntry[]) => {
+    const offLog = Events.On('plugin/devserver/log', (ev) => {
+      const entries = ev.data as DevLogEntry[];
       const filtered = entries.filter((entry) => {
         if (entry.pluginID !== pluginID) return false;
         if (sourceFilter !== 'all' && entry.source !== sourceFilter) return false;
@@ -173,9 +175,10 @@ export function useDevBuildStream(
       });
     });
 
-    const offError = EventsOn(
+    const offError = Events.On(
       'plugin/devserver/error',
-      (errorPluginID: string, buildErrors: DevBuildError[]) => {
+      (ev) => {
+        const [errorPluginID, buildErrors] = ev.data as [string, DevBuildError[]];
         if (errorPluginID !== pluginID) return;
         setErrors((prev) => [...prev, ...buildErrors]);
       }

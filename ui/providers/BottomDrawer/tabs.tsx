@@ -37,7 +37,7 @@ import { ExecClient, LogsClient } from '@omniviewdev/runtime/api';
 import { bottomDrawerChannel } from './events';
 import { devToolsChannel } from '@/features/devtools/events';
 import { pluginLogChannel } from '@/features/pluginlogs/events';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 
 type Props = {
   hasTabs: boolean;
@@ -337,7 +337,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
         console.error(err);
       });
 
-    const closerTerminal = EventsOn("menu/view/terminal/create", () => handleCreate('terminal'))
+    const closerTerminal = Events.On("menu/view/terminal/create", () => handleCreate('terminal'))
 
     return () => {
       closerTerminal()

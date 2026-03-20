@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { produce } from 'immer';
 
 import { GetWatchState } from '../../wailsjs/go/resource/Client';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import type {
   WatchConnectionSummary,
@@ -135,9 +135,10 @@ export const useWatchState = ({
     dataLoadedRef.current = false;
     pendingEventsRef.current = [];
 
-    const cancel = EventsOn(
+    const cancel = Events.On(
       `${pluginID}/${connectionID}/watch/STATE`,
-      (event: WatchStateEvent) => {
+      (ev) => {
+        const event = ev.data as WatchStateEvent;
         if (!dataLoadedRef.current) {
           pendingEventsRef.current.push(event);
         } else {

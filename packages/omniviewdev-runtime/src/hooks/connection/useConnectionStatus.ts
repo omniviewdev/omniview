@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { Events } from '@wailsio/runtime';
 import {
   ListAllConnections,
   GetAllConnectionStates,
@@ -86,7 +86,8 @@ export function useConnectionStatus(): ConnectionStatusSummary {
 
   // Listen for plugin crash recovery events
   useEffect(() => {
-    const cancelCrash = EventsOn('plugin/crash_recovery_failed', (data: { pluginID?: string; error?: string }) => {
+    const cancelCrash = Events.On('plugin/crash_recovery_failed', (ev) => {
+      const data = ev.data as { pluginID?: string; error?: string };
       const pluginID = data?.pluginID;
       if (!pluginID) return;
       setFailedPlugins((prev) => {
@@ -96,7 +97,8 @@ export function useConnectionStatus(): ConnectionStatusSummary {
       });
     });
 
-    const cancelRecovered = EventsOn('plugin/recovered', (data: { pluginID?: string }) => {
+    const cancelRecovered = Events.On('plugin/recovered', (ev) => {
+      const data = ev.data as { pluginID?: string };
       const pluginID = data?.pluginID;
       if (!pluginID) return;
       setFailedPlugins((prev) => {
@@ -159,12 +161,13 @@ export function useConnectionStatus(): ConnectionStatusSummary {
 
   // Listen for connection/status events
   useEffect(() => {
-    const cancel = EventsOn('connection/status', (event: {
-      pluginID: string;
-      connectionID: string;
-      status: string;
-      name: string;
-    }) => {
+    const cancel = Events.On('connection/status', (ev) => {
+      const event = ev.data as {
+        pluginID: string;
+        connectionID: string;
+        status: string;
+        name: string;
+      };
       const key = `${event.pluginID}/${event.connectionID}`;
 
       if (event.status === 'DISCONNECTED') {
@@ -201,7 +204,8 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   }, []);
 
   // Listen for watch/STATE events
-  const handleWatchEvent = useCallback((event: WatchStateEvent) => {
+  const handleWatchEvent = useCallback((ev: Events.WailsEvent) => {
+    const event = ev.data as WatchStateEvent;
     const key = trackerKey(event);
 
     // If we get watch events for a connection, it's started
@@ -223,7 +227,7 @@ export function useConnectionStatus(): ConnectionStatusSummary {
   }, []);
 
   useEffect(() => {
-    const cancel = EventsOn('watch/STATE', handleWatchEvent);
+    const cancel = Events.On('watch/STATE', handleWatchEvent);
     return cancel;
   }, [handleWatchEvent]);
 

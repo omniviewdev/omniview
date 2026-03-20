@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { Events } from '@wailsio/runtime';
 import { Subscribe, Unsubscribe } from '../../wailsjs/go/metric/Client';
 import type { metric } from '../../wailsjs/go/models';
 import { useResolvedPluginId } from '../useResolvedPluginId';
@@ -86,7 +86,8 @@ export const useMetricStream = (
       setError(null);
 
       // Listen for data events
-      const dataCleanup = EventsOn(`core/metrics/data/${subID}`, (rawData: string) => {
+      const dataCleanup = Events.On(`core/metrics/data/${subID}`, (ev) => {
+        const rawData = ev.data as string;
         try {
           const output = JSON.parse(rawData);
           if (output.results) {
@@ -98,7 +99,8 @@ export const useMetricStream = (
       });
 
       // Listen for error events
-      const errorCleanup = EventsOn(`core/metrics/error/${subID}`, (rawData: string) => {
+      const errorCleanup = Events.On(`core/metrics/error/${subID}`, (ev) => {
+        const rawData = ev.data as string;
         try {
           const output = JSON.parse(rawData);
           setError(output.error || 'Unknown error');

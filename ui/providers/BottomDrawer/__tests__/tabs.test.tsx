@@ -64,7 +64,9 @@ vi.mock('@omniviewdev/runtime/models', () => ({
 }));
 
 vi.mock('@omniviewdev/runtime/runtime', () => ({
-  EventsOn: mocks.mockEventsOn,
+  Events: {
+    On: mocks.mockEventsOn,
+  },
 }));
 
 vi.mock('../events', () => ({

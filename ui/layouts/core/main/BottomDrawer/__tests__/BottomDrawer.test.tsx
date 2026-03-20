@@ -22,7 +22,9 @@ vi.mock('@omniviewdev/runtime', () => ({
 }));
 
 vi.mock('@omniviewdev/runtime/runtime', () => ({
-  EventsOn: mocks.mockEventsOn,
+  Events: {
+    On: mocks.mockEventsOn,
+  },
 }));
 
 vi.mock('@/providers/BottomDrawer/events', () => ({

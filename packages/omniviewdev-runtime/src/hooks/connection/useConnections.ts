@@ -3,7 +3,7 @@ import { ListConnections, StartConnectionWatch, StopConnectionWatch } from '../.
 import { type types } from '../../wailsjs/go/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { Events } from '@wailsio/runtime';
 import React from 'react';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
@@ -41,14 +41,15 @@ export const useConnections = ({ plugin: explicitPlugin }: UseConnectionsOptions
   /**
    * Handle sync of connections from the backend
    */
-  const onConnectionSync = React.useCallback((connections: types.Connection[]) => {
+  const onConnectionSync = React.useCallback((ev: Events.WailsEvent) => {
+    const connections = ev.data as types.Connection[];
     console.log("got update to connections", connections)
     queryClient.setQueryData(queryKey, connections)
   }, []);
 
   // *Only on mount*, we want subscribe to new resources, updates and deletes
   React.useEffect(() => {
-    const syncCloser = EventsOn(`${plugin}/connection/sync`, onConnectionSync);
+    const syncCloser = Events.On(`${plugin}/connection/sync`, onConnectionSync);
 
     return () => {
       syncCloser()

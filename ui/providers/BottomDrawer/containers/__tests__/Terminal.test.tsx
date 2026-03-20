@@ -65,8 +65,10 @@ vi.mock('@xterm/addon-web-links', () => ({
 
 // ─── runtime mocks ─────────────────────────────────────────────────────────────
 vi.mock('@omniviewdev/runtime/runtime', () => ({
-  EventsOn: mocks.mockEventsOn,
-  EventsOff: mocks.mockEventsOff,
+  Events: {
+    On: mocks.mockEventsOn,
+    Off: mocks.mockEventsOff,
+  },
 }));
 
 vi.mock('@omniviewdev/runtime/api', () => ({
