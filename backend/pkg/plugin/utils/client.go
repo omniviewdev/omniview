@@ -1,10 +1,12 @@
 package utils
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 
 	"github.com/go-enry/go-enry/v2"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"gopkg.in/yaml.v3"
 )
 
@@ -12,6 +14,14 @@ type Client struct{}
 
 func NewClient() *Client {
 	return &Client{}
+}
+
+func (c *Client) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
+	return nil
+}
+
+func (c *Client) ServiceShutdown() error {
+	return nil
 }
 
 type GetLanguageInput struct {

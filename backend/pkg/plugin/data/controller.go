@@ -9,12 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // Controller provides a JSON key-value store for plugins to persist arbitrary data.
 // Each key is stored as a separate JSON file under ~/.omniview/plugins/{pluginID}/data/.
 type Controller interface {
+	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
+	ServiceShutdown() error
 	Get(pluginID, key string) (any, error)
 	Set(pluginID, key string, value any) error
 	Delete(pluginID, key string) error
@@ -32,6 +35,14 @@ func NewController(logger logging.Logger) Controller {
 	return &controller{
 		logger: logger.Named("DataController"),
 	}
+}
+
+func (c *controller) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
+	return nil
+}
+
+func (c *controller) ServiceShutdown() error {
+	return nil
 }
 
 // dataDir returns the data directory for a plugin, creating it if necessary.

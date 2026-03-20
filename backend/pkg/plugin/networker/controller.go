@@ -14,7 +14,6 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -40,8 +39,10 @@ func init() {
 type Controller interface {
 	internaltypes.Controller
 
-	// Run stores the Wails application context for event emission.
-	Run(ctx context.Context)
+	// ServiceStartup initialises the controller during application startup.
+	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
+	// ServiceShutdown cleans up resources during application shutdown.
+	ServiceShutdown() error
 
 	// GetSupportedPortForwardTargets returns the supported targets for port forwarding
 	GetSupportedPortForwardTargets(pluginID string) ([]string, error)
@@ -95,6 +96,7 @@ func NewController(
 var _ Controller = &controller{}
 
 type controller struct {
+	app              *application.App
 	ctx              context.Context
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
@@ -106,9 +108,16 @@ type controller struct {
 	stops        map[string]chan struct{}
 }
 
-// Run stores the Wails application context for event emission.
-func (c *controller) Run(ctx context.Context) {
+// ServiceStartup initialises the controller during application startup.
+func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	c.app = application.Get()
 	c.ctx = ctx
+	return nil
+}
+
+// ServiceShutdown cleans up resources during application shutdown.
+func (c *controller) ServiceShutdown() error {
+	return nil
 }
 
 // ====================================== Controller Implementation ====================================== //
@@ -512,8 +521,8 @@ func (c *controller) StartResourcePortForwardingSession(
 	}
 	c.mu.Unlock()
 
-	if c.ctx != nil {
-		runtime.EventsEmit(c.ctx, PortForwardSessionCreated, session)
+	if c.app != nil {
+		c.app.Event.Emit(PortForwardSessionCreated, session)
 	}
 
 	return session, nil
@@ -561,8 +570,8 @@ func (c *controller) ClosePortForwardSession(
 	delete(c.sessionIndex, sessionID)
 	c.mu.Unlock()
 
-	if c.ctx != nil {
-		runtime.EventsEmit(c.ctx, PortForwardSessionClosed, session)
+	if c.app != nil {
+		c.app.Event.Emit(PortForwardSessionClosed, session)
 	}
 
 	return session, nil

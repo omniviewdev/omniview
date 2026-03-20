@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
@@ -17,7 +18,7 @@ import (
 // No plugins are registered, so every lookup must fail with a structured error.
 func newTestController() Controller {
 	ctrl := NewController(logging.NewNop(), nil, nil)
-	ctrl.Run(context.Background())
+	_ = ctrl.ServiceStartup(context.Background(), application.ServiceOptions{})
 	return ctrl
 }
 

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -35,7 +35,8 @@ const (
 // Controller manages log sessions across all plugins.
 type Controller interface {
 	internaltypes.Controller
-	Run(ctx context.Context)
+	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
+	ServiceShutdown() error
 	GetSupportedResources(pluginID string) []logs.Handler
 	CreateSession(plugin, connectionID string, opts logs.CreateSessionOptions) (*logs.LogSession, error)
 	GetSession(sessionID string) (*logs.LogSession, error)
@@ -53,6 +54,7 @@ type sessionIndex struct {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
+	app              *application.App
 	ctx              context.Context
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
@@ -93,9 +95,15 @@ func NewController(
 	}
 }
 
-func (c *controller) Run(ctx context.Context) {
+func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	c.app = application.Get()
 	c.ctx = ctx
 	go c.runMux()
+	return nil
+}
+
+func (c *controller) ServiceShutdown() error {
+	return nil
 }
 
 func (c *controller) runMux() {
@@ -120,7 +128,7 @@ func (c *controller) handleOutput(output logs.StreamOutput) {
 			c.logger.Errorw(context.Background(), "failed to marshal log event", "error", err)
 			return
 		}
-		runtime.EventsEmit(c.ctx, eventKey, string(data))
+		c.app.Event.Emit(eventKey, string(data))
 	}
 }
 
@@ -166,7 +174,7 @@ func (c *controller) flushBatchLocked(sessionID string, batch *logBatch) {
 	if err != nil {
 		c.logger.Errorw(context.Background(), "failed to marshal log batch", "error", err)
 	} else {
-		runtime.EventsEmit(c.ctx, eventKey, string(data))
+		c.app.Event.Emit(eventKey, string(data))
 	}
 
 	batch.lines = batch.lines[:0]

@@ -12,7 +12,7 @@ import (
 	"runtime/debug"
 	"sync"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
@@ -42,7 +42,10 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 		}
 	}()
 
-	path, err := runtime.OpenDirectoryDialog(pm.ctx, runtime.OpenDialogOptions{})
+	path, err := application.Get().Dialog.OpenFile().
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		PromptForSingleSelection()
 	if err != nil {
 		l.Errorw(pm.ctx, err.Error())
 		return nil, err
@@ -149,7 +152,8 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 
 // InstallFromPathPrompt installs a plugin from a file selected via dialog.
 func (pm *pluginManager) InstallFromPathPrompt() (*config.PluginMeta, error) {
-	path, err := runtime.OpenFileDialog(pm.ctx, runtime.OpenDialogOptions{})
+	path, err := application.Get().Dialog.OpenFile().
+		PromptForSingleSelection()
 	if err != nil {
 		return nil, err
 	}
