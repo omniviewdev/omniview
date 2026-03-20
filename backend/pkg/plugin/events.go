@@ -3,9 +3,32 @@ package plugin
 import (
 	"time"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
+
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 )
+
+func init() {
+	application.RegisterEvent[StateChangePayload](EventStateChange)
+	application.RegisterEvent[application.Void](EventInstallStarted)
+	application.RegisterEvent[application.Void](EventInstallFinished)
+	application.RegisterEvent[application.Void](EventInstallError)
+	application.RegisterEvent[application.Void](EventDevInstallStart)
+	application.RegisterEvent[application.Void](EventDevInstallError)
+	application.RegisterEvent[application.Void](EventDevInstallComplete)
+	application.RegisterEvent[application.Void](EventReloadStart)
+	application.RegisterEvent[application.Void](EventReloadError)
+	application.RegisterEvent[application.Void](EventReloadComplete)
+	application.RegisterEvent[application.Void](EventUpdateStarted)
+	application.RegisterEvent[application.Void](EventUpdateError)
+	application.RegisterEvent[application.Void](EventUpdateComplete)
+	application.RegisterEvent[application.Void](EventInitComplete)
+	application.RegisterEvent[application.Void](EventCrashRecoveryFailed)
+	application.RegisterEvent[application.Void](EventRecovered)
+	application.RegisterEvent[application.Void](EventStateWriteError)
+	application.RegisterEvent[DeprecatedProtocolPayload](EventDeprecatedProtocol)
+}
 
 // Plugin event constants.
 const (

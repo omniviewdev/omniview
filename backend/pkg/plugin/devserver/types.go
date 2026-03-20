@@ -2,7 +2,15 @@ package devserver
 
 import (
 	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
+
+func init() {
+	application.RegisterEvent[DevServerState](EventDevServerStatus)
+	application.RegisterEvent[[]LogEntry](EventDevServerLog)
+	application.RegisterEvent[DevServerErrorPayload](EventDevServerError)
+}
 
 // ============================================================================
 // Event constants
@@ -81,6 +89,13 @@ type LogEntry struct {
 	Level     string    `json:"level"`  // "info" | "warn" | "error" | "debug"
 	Message   string    `json:"message"`
 	PluginID  string    `json:"pluginID"`
+}
+
+// DevServerErrorPayload wraps a plugin ID and its build errors into a single
+// event payload so it can be registered with RegisterEvent[T].
+type DevServerErrorPayload struct {
+	PluginID string       `json:"pluginID"`
+	Errors   []BuildError `json:"errors"`
 }
 
 // BuildError is a structured build error parsed from Go compiler output.

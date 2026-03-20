@@ -16,6 +16,8 @@ import (
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
+
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -29,6 +31,11 @@ const (
 	PortForwardSessionCreated = "core/networker/portforward/created"
 	PortForwardSessionClosed  = "core/networker/portforward/closed"
 )
+
+func init() {
+	application.RegisterEvent[*networker.PortForwardSession](PortForwardSessionCreated)
+	application.RegisterEvent[*networker.PortForwardSession](PortForwardSessionClosed)
+}
 
 type Controller interface {
 	internaltypes.Controller
