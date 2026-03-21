@@ -93,6 +93,7 @@ jobs:
         uses: arduino/setup-task@v2
         with:
           version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Wails v3
         shell: bash
@@ -220,6 +221,7 @@ jobs:
         uses: arduino/setup-task@v2
         with:
           version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Wails v3
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
@@ -288,6 +290,7 @@ jobs:
         uses: arduino/setup-task@v2
         with:
           version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Wails v3
         shell: bash

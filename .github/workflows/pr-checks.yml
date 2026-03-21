@@ -35,6 +35,7 @@ jobs:
         uses: arduino/setup-task@v2
         with:
           version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build
         run: task check:go-build
@@ -79,6 +80,7 @@ jobs:
         uses: arduino/setup-task@v2
         with:
           version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install wails3
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
@@ -104,6 +106,7 @@ jobs:
         uses: arduino/setup-task@v2
         with:
           version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get pnpm store directory
         id: pnpm-cache
