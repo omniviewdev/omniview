@@ -24,26 +24,8 @@ export default defineConfig({
     minify: false,
     sourcemap: false,
   },
-  server: {
-    host: true,
-    port: 9245,
-    strictPort: true,
-    hmr: {
-      // In Wails v3 dev mode, the webview loads pages through the Wails
-      // asset server proxy (wails://localhost). The proxy doesn't support
-      // WebSocket upgrades, so HMR must connect directly to Vite's server.
-      host: 'localhost',
-      port: 9245,
-      protocol: 'ws',
-    },
-    proxy: {
-      '/_/': {
-        bypass: function () {
-          return false;
-        },
-      },
-    },
-  },
+  // Server config is intentionally minimal — wails3 dev passes port via CLI
+  // and sets FRONTEND_DEVSERVER_URL automatically. Overriding here breaks HMR.
   plugins: [
     react(),
     babel({ presets: [reactCompilerPreset({ target: '19' })] }),
