@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"go.opentelemetry.io/otel"
@@ -25,11 +26,38 @@ const (
 
 var tracer = otel.Tracer("omniview.settings")
 
+// Service is the system/UI facing interface for making settings requests.
+type Service interface {
+	// ListPlugins returns a list of all the plugins that are registered with the settings controller
+	ListPlugins() ([]string, error)
+
+	// Values returns a list of all of the values calculated in the current setting store
+	Values() map[string]any
+
+	// PluginValues returns a list of all of the values calculated in the plugin's setting store
+	PluginValues(plugin string) map[string]any
+
+	// ListSettings returns the settings store
+	ListSettings(plugin string) map[string]pkgsettings.Setting
+
+	// GetSetting returns the setting by ID. This ID should be in the form of a dot separated string
+	// that represents the path to the setting. For example, "appearance.theme"
+	GetSetting(plugin, id string) (pkgsettings.Setting, error)
+
+	// SetSetting sets the value of the setting by ID
+	SetSetting(plugin, id string, value any) error
+
+	// SetSettings sets multiple settings at once
+	SetSettings(plugin string, settings map[string]any) error
+}
+
 // Controller handles all requests to interface with the settings capabilities on installed plugins.
 //
 // This controller is embedded in the client IDE facing client.
 type Controller interface {
 	internaltypes.Controller
+	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
+	ServiceShutdown() error
 	Service
 }
 
@@ -50,6 +78,14 @@ func NewController(logger logging.Logger, sp pkgsettings.Provider) Controller {
 		settingsProvider: sp,
 		clients:          make(map[string]SettingsProvider),
 	}
+}
+
+func (c *controller) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
+	return nil
+}
+
+func (c *controller) ServiceShutdown() error {
+	return nil
 }
 
 func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {

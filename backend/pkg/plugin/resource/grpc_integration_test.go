@@ -158,7 +158,7 @@ func TestL3_03_WatchEventsFlowThroughGRPC(t *testing.T) {
 	ev := emitter.WaitForEvent(t, "ADD", 5*time.Second)
 	assert.Equal(t, "p1/conn-1/core::v1::Pod/ADD", ev.Key)
 
-	payload, ok := ev.Data.(resource.WatchAddPayload)
+	payload, ok := ev.Data[0].(resource.WatchAddPayload)
 	require.True(t, ok)
 	assert.Equal(t, "p1", payload.PluginID)
 	assert.Equal(t, "conn-1", payload.Connection)
@@ -263,7 +263,7 @@ func TestL3_05_StateEventKeyFormatViaGRPC(t *testing.T) {
 	assert.Equal(t, "watch/STATE", events[1].Key)
 
 	// Verify payload enrichment.
-	payload, ok := events[0].Data.(resource.WatchStateEvent)
+	payload, ok := events[0].Data[0].(resource.WatchStateEvent)
 	require.True(t, ok)
 	assert.Equal(t, "p1", payload.PluginID)
 	assert.Equal(t, "my-cluster", payload.Connection)

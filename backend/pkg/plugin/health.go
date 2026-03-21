@@ -182,7 +182,7 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 			}
 		}
 		hc.mu.Unlock()
-		emitEvent(hc.pm.ctx, EventCrashRecoveryFailed, map[string]interface{}{
+		hc.pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
 			"pluginID": pluginID,
 			"error":    "crash budget exhausted — too many crashes in a short time",
 		})
@@ -248,7 +248,7 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 			}
 
 			hc.mu.Unlock()
-			emitEvent(hc.pm.ctx, EventCrashRecoveryFailed, map[string]interface{}{
+			hc.pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
 				"pluginID": pluginID,
 				"error":    "max crash recovery attempts reached",
 			})
@@ -296,7 +296,7 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 		delete(hc.recoveryStates, pluginID)
 		hc.mu.Unlock()
 
-		emitEvent(hc.pm.ctx, EventRecovered, map[string]interface{}{"pluginID": pluginID})
+		hc.pm.emitter.Emit(EventRecovered, map[string]interface{}{"pluginID": pluginID})
 		return
 	}
 }

@@ -1,0 +1,195 @@
+version: '3'
+
+includes:
+  common: ./build/Taskfile.yml
+  windows: ./build/windows/Taskfile.yml
+  darwin: ./build/darwin/Taskfile.yml
+  linux: ./build/linux/Taskfile.yml
+
+vars:
+  APP_NAME: "Omniview"
+  BIN_DIR: "bin"
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+
+tasks:
+  build:
+    summary: Builds the application
+    cmds:
+      - task: "{{OS}}:build"
+
+  package:
+    summary: Packages a production build of the application
+    cmds:
+      - task: "{{OS}}:package"
+
+  run:
+    summary: Runs the application
+    cmds:
+      - task: "{{OS}}:run"
+
+  dev:
+    summary: Runs the application in development mode
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  # Server mode (headless HTTP server) is not yet supported on macOS in
+  # Wails v3 alpha.74 due to build tag conflicts. For E2E testing,
+  # Playwright connects to the Vite dev server (port 9245) started by `task dev`.
+  # TODO: Enable server mode when Wails v3 adds !server to darwin files.
+  # build:server:
+  #   deps:
+  #     - task: common:build:frontend
+  #   cmds:
+  #     - go build -tags server -o {{.BIN_DIR}}/{{.APP_NAME}}-server
+  # run:server:
+  #   deps:
+  #     - task: build:server
+  #   cmds:
+  #     - ./{{.BIN_DIR}}/{{.APP_NAME}}-server
+
+  # ──────────────────────────────────────────────
+  # CI / Verification targets
+  # ──────────────────────────────────────────────
+
+  check:
+    summary: Run all CI checks in sequence
+    cmds:
+      - task: check:go-build
+      - task: check:go-vet
+      - task: check:go-test
+      - task: check:go-lint
+      - task: check:fmt-check
+      - task: check:bindings-check
+      - task: check:ui-install
+      - task: check:ui-build
+      - task: check:ui-lint
+      - task: check:ui-typecheck
+
+  check:go-build:
+    cmds:
+      - GOWORK=off go build ./...
+
+  check:go-vet:
+    cmds:
+      - GOWORK=off go vet ./...
+
+  check:go-test:
+    cmds:
+      - GOWORK=off go test ./...
+
+  check:go-lint:
+    cmds:
+      - cmd: |
+          if command -v golangci-lint >/dev/null 2>&1; then
+            GOWORK=off golangci-lint run
+          else
+            echo "golangci-lint not installed, skipping"
+          fi
+
+  check:fmt:
+    aliases: [fmt]
+    cmds:
+      - goimports -w .
+      - gofmt -w .
+
+  check:fmt-check:
+    cmds:
+      - cmd: |
+          FAILED=0
+          if ! command -v goimports >/dev/null 2>&1; then
+            echo "goimports not found. Install with: go install golang.org/x/tools/cmd/goimports@latest"
+            exit 1
+          fi
+          UNIMPORTED=$(goimports -l .)
+          if [ -n "$UNIMPORTED" ]; then
+            echo "The following Go files have incorrect imports (run goimports):"
+            echo "$UNIMPORTED"
+            FAILED=1
+          fi
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "The following Go files are not formatted (run gofmt):"
+            echo "$UNFORMATTED"
+            FAILED=1
+          fi
+          if [ "$FAILED" -eq 1 ]; then exit 1; fi
+
+  check:bindings:
+    aliases: [bindings]
+    cmds:
+      - task: common:generate:bindings
+
+  check:bindings-check:
+    cmds:
+      - cmd: |
+          set -e
+          BINDINGS_DIR=packages/omniviewdev-runtime/src/bindings
+          TMPDIR=$(mktemp -d)
+          cleanup() {
+            if [ -d "$TMPDIR/bindings-before" ]; then
+              rm -rf "$BINDINGS_DIR"
+              cp -R "$TMPDIR/bindings-before" "$BINDINGS_DIR"
+            fi
+            rm -rf "$TMPDIR"
+          }
+          trap cleanup EXIT
+          if [ -d "$BINDINGS_DIR" ]; then
+            cp -R "$BINDINGS_DIR" "$TMPDIR/bindings-before"
+          fi
+          GOWORK=off wails3 generate bindings -d "$BINDINGS_DIR" -clean=true -ts
+          if [ -d "$TMPDIR/bindings-before" ]; then
+            if ! diff -r "$BINDINGS_DIR" "$TMPDIR/bindings-before" >/dev/null 2>&1; then
+              echo "Wails bindings are stale. Run 'task check:bindings' and commit the result."
+              exit 1
+            fi
+          fi
+
+  check:ui-install:
+    cmds:
+      - pnpm install --frozen-lockfile
+
+  check:ui-build:
+    cmds:
+      - task: packages
+      - pnpm build
+
+  check:ui-lint:
+    cmds:
+      - pnpm lint
+
+  check:ui-typecheck:
+    cmds:
+      - pnpm exec tsc -p tsconfig.app.json --noEmit
+
+  # ──────────────────────────────────────────────
+  # Workspace packages
+  # ──────────────────────────────────────────────
+
+  packages:
+    summary: Build all workspace packages in dependency order
+    cmds:
+      - pnpm --filter @omniviewdev/providers run build
+      - pnpm --filter @omniviewdev/vite-plugin run build
+      - pnpm --filter @omniviewdev/ui run build
+      - pnpm --filter @omniviewdev/runtime run build
+
+  # ──────────────────────────────────────────────
+  # E2E tests
+  # ──────────────────────────────────────────────
+
+  e2e:
+    dir: e2e
+    cmds:
+      - pnpm install
+      - pnpm exec playwright install chromium
+      - pnpm exec playwright test
+
+  e2e-ui:
+    dir: e2e
+    cmds:
+      - pnpm exec playwright test --ui
+
+  e2e-report:
+    dir: e2e
+    cmds:
+      - pnpm exec playwright show-report

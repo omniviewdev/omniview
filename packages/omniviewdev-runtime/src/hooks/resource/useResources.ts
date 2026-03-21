@@ -4,13 +4,13 @@ import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
 
 // Types
-import { resource as resourceModels } from '../../wailsjs/go/models';
+import { CreateInput, ListInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
 import { WatchState } from '../../types/watch';
 import type { WatchStateEvent } from '../../types/watch';
 
 // Underlying client
-import { List, Create, SubscribeResource, UnsubscribeResource } from '../../wailsjs/go/resource/Client';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { List, Create, SubscribeResource, UnsubscribeResource } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useEventBatcher } from './useEventBatcher';
 import type { AddPayload, UpdatePayload, DeletePayload } from './useEventBatcher';
@@ -82,12 +82,12 @@ export const useResources = ({
   // === Mutations === //
 
   const { mutateAsync: create } = useMutation({
-    mutationFn: async (opts: { input?: any; namespace?: string }) => Create(pluginID, connectionID, resourceKey, resourceModels.ClientCreateInput.createFrom({
+    mutationFn: async (opts: { input?: any; namespace?: string }) => Create(pluginID, connectionID, resourceKey, CreateInput.createFrom({
       input: opts.input,
       namespace: opts.namespace ?? (stableNamespaces.length === 1 ? stableNamespaces[0] : ''),
     })),
     onSuccess: async (data) => {
-      const result = data.result as any;
+      const result = data?.result as any;
       let foundID = '';
 
       // Attempt to find an ID based on some common patterns
@@ -113,7 +113,7 @@ export const useResources = ({
 
   const resourceQuery = useQuery({
     queryKey,
-    queryFn: async () => List(pluginID, connectionID, resourceKey, resourceModels.ListInput.createFrom({
+    queryFn: async () => List(pluginID, connectionID, resourceKey, ListInput.createFrom({
       order: [{ field: 'name', descending: false }],
       pagination: { page: 1, pageSize: 200 },
       namespaces: stableNamespaces,
@@ -126,13 +126,14 @@ export const useResources = ({
   // === Watch State === //
 
   const [watchState, setWatchState] = React.useState<WatchState>(
-    WatchState.IDLE
+    WatchState.WatchStateIdle
   );
 
   React.useEffect(() => {
-    const cancel = EventsOn(
+    const cancel = Events.On(
       `${pluginID}/${connectionID}/watch/STATE`,
-      (event: WatchStateEvent) => {
+      (ev) => {
+        const event = ev.data as WatchStateEvent;
         if (event.resourceKey === resourceKey) {
           setWatchState(event.state);
         }
@@ -159,17 +160,17 @@ export const useResources = ({
     // point forward — no need to re-List after subscribing.
     SubscribeResource(pluginID, connectionID, resourceKey);
 
-    const addCloser = EventsOn(
+    const addCloser = Events.On(
       `${pluginID}/${connectionID}/${resourceKey}/ADD`,
-      (payload: AddPayload) => enqueue({ type: 'ADD', payload }),
+      (ev) => enqueue({ type: 'ADD', payload: ev.data as AddPayload }),
     );
-    const updateCloser = EventsOn(
+    const updateCloser = Events.On(
       `${pluginID}/${connectionID}/${resourceKey}/UPDATE`,
-      (payload: UpdatePayload) => enqueue({ type: 'UPDATE', payload }),
+      (ev) => enqueue({ type: 'UPDATE', payload: ev.data as UpdatePayload }),
     );
-    const deleteCloser = EventsOn(
+    const deleteCloser = Events.On(
       `${pluginID}/${connectionID}/${resourceKey}/DELETE`,
-      (payload: DeletePayload) => enqueue({ type: 'DELETE', payload }),
+      (ev) => enqueue({ type: 'DELETE', payload: ev.data as DeletePayload }),
     );
 
     return () => {
@@ -201,12 +202,12 @@ export const useResources = ({
     watchState,
 
     /** Whether the watch is currently syncing */
-    isSyncing: watchState === WatchState.SYNCING,
+    isSyncing: watchState === WatchState.WatchStateSyncing,
 
     /** Whether the watch has fully synced */
-    isSynced: watchState === WatchState.SYNCED,
+    isSynced: watchState === WatchState.WatchStateSynced,
 
     /** Whether the watch encountered an error */
-    watchError: watchState === WatchState.ERROR,
+    watchError: watchState === WatchState.WatchStateError,
   };
 };

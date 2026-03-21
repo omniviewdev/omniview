@@ -2,9 +2,9 @@ import React from 'react';
 import { useSnackbar } from '../snackbar/useSnackbar';
 import { showAppError } from '../../errors/parseAppError';
 import { useOperations } from '../operations/useOperations';
-import { resource } from '../../wailsjs/go/models';
-import { StreamAction } from '../../wailsjs/go/resource/Client';
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime';
+import { ActionInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
+import { StreamAction } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseStreamActionOptions = {
@@ -56,7 +56,7 @@ export const useStreamAction = ({
           connectionID,
           resourceKey,
           actionID,
-          resource.ActionInput.createFrom({ id, namespace, params }),
+          ActionInput.createFrom({ id, namespace, params }),
         );
 
         addOperation({
@@ -71,7 +71,8 @@ export const useStreamAction = ({
         });
 
         const eventKey = `action/stream/${operationID}`;
-        const cancel = EventsOn(eventKey, (event: ActionEvent) => {
+        const cancel = Events.On(eventKey, (ev) => {
+          const event = ev.data as ActionEvent;
           switch (event.type) {
             case 'progress': {
               const data = event.data ?? {};
@@ -91,7 +92,7 @@ export const useStreamAction = ({
                 completedAt: Date.now(),
               });
               showSnackbar((event.data?.message as string) ?? label + ' completed', 'success');
-              EventsOff(eventKey);
+              Events.Off(eventKey);
               break;
             case 'error':
               updateOperation(operationID, {
@@ -100,14 +101,14 @@ export const useStreamAction = ({
                 completedAt: Date.now(),
               });
               showSnackbar((event.data?.message as string) ?? label + ' failed', 'error');
-              EventsOff(eventKey);
+              Events.Off(eventKey);
               break;
           }
         });
 
         cleanupRef.current.push(() => {
           cancel();
-          EventsOff(eventKey);
+          Events.Off(eventKey);
         });
 
         return operationID;

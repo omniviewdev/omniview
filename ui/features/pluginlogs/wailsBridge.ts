@@ -1,4 +1,4 @@
-import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 import { pluginLogChannel } from './events';
 import type { PluginLogEntry } from './types';
 
@@ -11,8 +11,8 @@ export function initPluginLogBridge(): () => void {
   const cleanups: Array<() => void> = [];
 
   cleanups.push(
-    EventsOn('plugin/process/log', (entry: PluginLogEntry) => {
-      pluginLogChannel.emit('onPluginLog', entry);
+    Events.On('plugin/process/log', (ev) => {
+      pluginLogChannel.emit('onPluginLog', ev.data as PluginLogEntry);
     }),
   );
 

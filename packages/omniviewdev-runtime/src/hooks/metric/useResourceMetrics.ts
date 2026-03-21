@@ -1,6 +1,7 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { QueryAll } from '../../wailsjs/go/metric/Client';
-import type { metric } from '../../wailsjs/go/models';
+import { QueryAll } from '../../bindings/github.com/omniviewdev/omniview/metriccontrollerservice';
+import type { QueryResponse } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
+import type { MetricProviderSummary } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 import { useMetricProvidersForResource } from './useMetricProviders';
 
 export type UseResourceMetricsOptions = {
@@ -30,9 +31,9 @@ export type UseResourceMetricsOptions = {
 
 export type UseResourceMetricsResult = {
   /** Metric results keyed by provider plugin ID */
-  data: Record<string, metric.QueryResponse> | undefined;
+  data: Record<string, QueryResponse> | undefined;
   /** Available metric providers for this resource type */
-  providers: metric.MetricProviderSummary[];
+  providers: MetricProviderSummary[];
   /** Whether any query is currently loading */
   isLoading: boolean;
   /** Error from the query, if any */
@@ -79,7 +80,7 @@ export const useResourceMetrics = (
       ) * 1_000_000
     : 0;
 
-  const metricsQuery = useQuery<Record<string, metric.QueryResponse>>({
+  const metricsQuery = useQuery<Record<string, QueryResponse>>({
     queryKey: [
       'metric',
       'query',
@@ -92,8 +93,8 @@ export const useResourceMetrics = (
       timeRange?.start?.getTime(),
       timeRange?.end?.getTime(),
     ],
-    queryFn: () =>
-      QueryAll(
+    queryFn: async () => {
+      const raw = await QueryAll(
         connectionID,
         resourceKey,
         resourceID,
@@ -104,7 +105,13 @@ export const useResourceMetrics = (
         timeRange?.start ?? new Date(0),
         timeRange?.end ?? new Date(0),
         stepNs,
-      ),
+      );
+      const filtered: Record<string, QueryResponse> = {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (v != null) filtered[k] = v;
+      }
+      return filtered;
+    },
     enabled: enabled && !!connectionID && !!resourceKey && (resourceKey.startsWith('cluster::') || !!resourceID) && providers.length > 0,
     refetchInterval: refreshInterval > 0 ? refreshInterval : undefined,
     staleTime: 5_000,

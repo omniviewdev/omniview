@@ -12,7 +12,7 @@ import jsonpath from 'jsonpath';
 import { LuSquareTerminal } from 'react-icons/lu';
 
 // types
-import { exec } from '@omniviewdev/runtime/models';
+import { Handler, SessionOptions } from '@omniviewdev/runtime/models';
 
 // project imports
 import ActionMenuListItem from './ActionMenuListItem';
@@ -25,7 +25,7 @@ type Props = {
   handleLeaveMenu: (getIsOnButton: () => boolean) => void;
   handleDismiss: () => void;
   itemProps: Record<string, unknown>;
-  action: exec.Handler;
+  action: Handler;
   plugin: string;
   connection: string;
   resource: string;
@@ -37,7 +37,7 @@ type ExecTarget = {
   params: Record<string, string>;
 };
 
-const calcTargets = (action: exec.Handler, data: Record<string, unknown>): ExecTarget[] => {
+const calcTargets = (action: Handler, data: Record<string, unknown>): ExecTarget[] => {
   const targets = [] as ExecTarget[];
 
   const datas = action.target_builder.paths.reduce<Array<Record<string, unknown>>>((acc, path) => {
@@ -86,7 +86,7 @@ const ExecAction: React.FC<Props> = ({
    */
   const handlePerformExec = (label: string, params: Record<string, string>) => {
     /* eslint-disable @typescript-eslint/naming-convention */
-    const opts = exec.SessionOptions.createFrom({
+    const opts = SessionOptions.createFrom({
       params,
       resource_plugin: plugin,
       resource_key: resource,

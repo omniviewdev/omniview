@@ -1,13 +1,36 @@
 package plugin
 
 import (
-	"context"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 )
+
+func init() {
+	application.RegisterEvent[StateChangePayload](EventStateChange)
+	application.RegisterEvent[application.Void](EventInstallStarted)
+	application.RegisterEvent[application.Void](EventInstallFinished)
+	application.RegisterEvent[application.Void](EventInstallError)
+	application.RegisterEvent[application.Void](EventDevInstallStart)
+	application.RegisterEvent[application.Void](EventDevInstallError)
+	application.RegisterEvent[application.Void](EventDevInstallComplete)
+	application.RegisterEvent[application.Void](EventReloadStart)
+	application.RegisterEvent[application.Void](EventReloadError)
+	application.RegisterEvent[application.Void](EventReloadComplete)
+	application.RegisterEvent[UpdatePayload](EventUpdateStarted)
+	application.RegisterEvent[UpdateErrorPayload](EventUpdateError)
+	application.RegisterEvent[UpdatePayload](EventUpdateComplete)
+	application.RegisterEvent[application.Void](EventInitComplete)
+	application.RegisterEvent[application.Void](EventCrashRecoveryFailed)
+	application.RegisterEvent[application.Void](EventRecovered)
+	application.RegisterEvent[application.Void](EventStateWriteError)
+	application.RegisterEvent[DeprecatedProtocolPayload](EventDeprecatedProtocol)
+	application.RegisterEvent[pluginlog.LogEntry](EventProcessLog)
+}
 
 // Plugin event constants.
 const (
@@ -46,6 +69,9 @@ const (
 
 	// Protocol version.
 	EventDeprecatedProtocol = "plugin/deprecated_protocol"
+
+	// Process logging.
+	EventProcessLog = "plugin/process/log"
 )
 
 // StateChangePayload is sent with EventStateChange.
@@ -57,6 +83,18 @@ type StateChangePayload struct {
 	Timestamp time.Time           `json:"timestamp"`
 }
 
+// UpdatePayload is sent with EventUpdateStarted and EventUpdateComplete.
+type UpdatePayload struct {
+	PluginID string `json:"pluginID"`
+	Version  string `json:"version"`
+}
+
+// UpdateErrorPayload is sent with EventUpdateError.
+type UpdateErrorPayload struct {
+	PluginID string `json:"pluginID"`
+	Error    string `json:"error"`
+}
+
 // DeprecatedProtocolPayload is sent with EventDeprecatedProtocol.
 type DeprecatedProtocolPayload struct {
 	PluginID       string `json:"pluginID"`
@@ -64,22 +102,12 @@ type DeprecatedProtocolPayload struct {
 	CurrentVersion int    `json:"currentVersion"`
 }
 
-// eventEmitFn is the function used to emit events. It defaults to
-// wails/v2/pkg/runtime.EventsEmit but can be replaced in tests to avoid
-// the log.Fatal that Wails issues for non-Wails contexts.
-var eventEmitFn = runtime.EventsEmit
-
-// emitEvent is a convenience wrapper around Wails event emission.
-func emitEvent(ctx context.Context, event string, data ...interface{}) {
-	if ctx == nil {
+// emitStateChange emits a state change event to the frontend.
+func emitStateChange(emitter resource.EventEmitter, pluginID string, t lifecycle.Transition) {
+	if emitter == nil {
 		return
 	}
-	eventEmitFn(ctx, event, data...)
-}
-
-// emitStateChange emits a state change event to the frontend.
-func emitStateChange(ctx context.Context, pluginID string, t lifecycle.Transition) {
-	emitEvent(ctx, EventStateChange, StateChangePayload{
+	emitter.Emit(EventStateChange, StateChangePayload{
 		PluginID:  pluginID,
 		From:      t.From,
 		To:        t.To,

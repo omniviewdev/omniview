@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar, createErrorHandler, parseAppError, actionToSnackbar } from '@omniviewdev/runtime';
 import { PluginManager } from '@omniviewdev/runtime/api';
 import React from 'react';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
-import { type config, type types } from '@omniviewdev/runtime/models';
+import { Events } from '@omniviewdev/runtime/runtime';
+import type { PluginMeta, PluginInfo } from '@omniviewdev/runtime/models';
 
 import { usePluginService } from '@/features/plugins';
 
@@ -22,7 +22,7 @@ export const usePluginManager = () => {
   // Listen for backend init_complete to immediately refresh the plugin list
   // instead of waiting for the 2s poll interval.
   React.useEffect(() => {
-    const cleanup = EventsOn('plugin/init_complete', () => {
+    const cleanup = Events.On('plugin/init_complete', () => {
       console.debug('[usePluginManager] plugin/init_complete received');
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
     });
@@ -32,25 +32,27 @@ export const usePluginManager = () => {
   // === Watchers === //
   React.useEffect(() => {
     // Set up watchers for plugin reload and install events
-    const closer1 = EventsOn('plugin/dev_reload_start', (meta: config.PluginMeta) => {
-      queryClient.setQueryData([Entity.PLUGINS], (oldData: types.PluginInfo[] | undefined) =>
+    const closer1 = Events.On('plugin/dev_reload_start', (ev) => {
+      const meta = ev.data as PluginMeta;
+      queryClient.setQueryData([Entity.PLUGINS], (oldData: PluginInfo[] | undefined) =>
         oldData?.map(plugin =>
           plugin.id === meta.id ? { ...plugin, phase: 'Starting', lastError: '' } : plugin,
         ),
       );
 
-      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: types.PluginInfo | undefined) =>
+      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: PluginInfo | undefined) =>
         oldData ? { ...oldData, phase: 'Starting', lastError: '' } : oldData,
       );
     });
-    const closer2 = EventsOn('plugin/dev_reload_error', (meta: config.PluginMeta, error: string) => {
-      queryClient.setQueryData([Entity.PLUGINS], (oldData: types.PluginInfo[] | undefined) =>
+    const closer2 = Events.On('plugin/dev_reload_error', (ev) => {
+      const [meta, error] = ev.data as [PluginMeta, string];
+      queryClient.setQueryData([Entity.PLUGINS], (oldData: PluginInfo[] | undefined) =>
         oldData?.map(plugin =>
           plugin.id === meta.id ? { ...plugin, phase: 'Failed', lastError: error } : plugin,
         ),
       );
 
-      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: types.PluginInfo | undefined) =>
+      queryClient.setQueryData([Entity.PLUGINS, meta.id], (oldData: PluginInfo | undefined) =>
         oldData ? { ...oldData, phase: 'Failed', lastError: error } : oldData,
       );
 

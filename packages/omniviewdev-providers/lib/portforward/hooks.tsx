@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { networker } from '../../internal/models';
-import { BrowserOpenURL } from '../../internal/runtime/runtime';
+import { Browser } from '@wailsio/runtime';
 import {
   ClosePortForwardSession,
   FindPortForwardSessions,
@@ -104,7 +104,7 @@ export function useResourcePortForwarder({ pluginID, connectionID, resourceID }:
       const session = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts);
       setSessions([...sessions, session]);
       if (opts.openInBrowser) {
-        BrowserOpenURL(`http://localhost:${session.remote_port}`);
+        Browser.OpenURL(`http://localhost:${session.remote_port}`);
       }
 
       return session;

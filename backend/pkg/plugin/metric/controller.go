@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -41,7 +41,8 @@ type MetricProviderSummary struct {
 // Controller manages metric providers across all plugins.
 type Controller interface {
 	internaltypes.Controller
-	Run(ctx context.Context)
+	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
+	ServiceShutdown() error
 
 	// Discovery
 	GetProviders() []MetricProviderSummary
@@ -78,6 +79,7 @@ type subscriptionIndex struct {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
+	app              *application.App
 	ctx              context.Context
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
@@ -109,8 +111,14 @@ func NewController(
 	}
 }
 
-func (c *controller) Run(ctx context.Context) {
+func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	c.app = application.Get()
 	c.ctx = ctx
+	return nil
+}
+
+func (c *controller) ServiceShutdown() error {
+	return nil
 }
 
 // ================================ Controller Lifecycle ================================ //
@@ -270,10 +278,10 @@ func (c *controller) handleStreamOutput(output metric.StreamOutput) {
 
 	if output.Error != "" {
 		eventKey := "core/metrics/error/" + output.SubscriptionID
-		runtime.EventsEmit(c.ctx, eventKey, string(data))
+		c.app.Event.Emit(eventKey, string(data))
 	} else {
 		eventKey := "core/metrics/data/" + output.SubscriptionID
-		runtime.EventsEmit(c.ctx, eventKey, string(data))
+		c.app.Event.Emit(eventKey, string(data))
 	}
 }
 

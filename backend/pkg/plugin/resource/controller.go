@@ -14,6 +14,7 @@ import (
 	"time"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -34,6 +35,25 @@ import (
 )
 
 const PluginName = "resource"
+
+// Event constants for resource controller events.
+const (
+	EventConnectionStatus = "connection/status"
+	EventWatchState       = "watch/STATE"
+)
+
+// ConnectionStatusPayload is emitted when a connection's status changes.
+type ConnectionStatusPayload struct {
+	PluginID     string `json:"pluginID"`
+	ConnectionID string `json:"connectionID"`
+	Status       string `json:"status"`
+	Name         string `json:"name"`
+}
+
+func init() {
+	application.RegisterEvent[ConnectionStatusPayload](EventConnectionStatus)
+	application.RegisterEvent[resource.WatchStateEvent](EventWatchState)
+}
 
 var tracer = otel.Tracer("omniview.resource")
 
@@ -56,6 +76,7 @@ type pluginState struct {
 
 // controller manages resource plugins on the engine side.
 type controller struct {
+	app              *application.App
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
 	emitter          EventEmitter
@@ -120,14 +141,26 @@ func (c *controller) Graph() *graph.RelationshipGraph {
 // ============================================================================
 
 // Run starts the controller's background tasks.
+// Satisfies the ConnectedController interface; prefer ServiceStartup for Wails v3.
 func (c *controller) Run(ctx context.Context) {
-	c.emitter = newWailsEmitter(ctx)
+	if c.emitter == nil {
+		c.emitter = NoopEmitter{}
+	}
 	c.dispatcher.Start()
 }
 
-// Shutdown stops background tasks. Must be called on application exit.
-func (c *controller) Shutdown() {
+// ServiceStartup is called by the Wails v3 runtime when the application starts.
+func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	c.app = application.Get()
+	c.emitter = newAppEmitter(c.app)
+	c.dispatcher.Start()
+	return nil
+}
+
+// ServiceShutdown is called by the Wails v3 runtime when the application shuts down.
+func (c *controller) ServiceShutdown() error {
 	c.dispatcher.Stop()
+	return nil
 }
 
 // dispenseProvider creates a ResourceProvider from a PluginBackend using version negotiation.
@@ -551,11 +584,11 @@ func (c *controller) StartConnection(pluginID, connectionID string) (types.Conne
 	if conn.Connection != nil && conn.Connection.Name != "" {
 		connName = conn.Connection.Name
 	}
-	c.emitter.Emit("connection/status", map[string]interface{}{
-		"pluginID":     pluginID,
-		"connectionID": connectionID,
-		"status":       string(conn.Status),
-		"name":         connName,
+	c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{
+		PluginID:     pluginID,
+		ConnectionID: connectionID,
+		Status:       string(conn.Status),
+		Name:         connName,
 	})
 
 	return conn, nil
@@ -583,11 +616,11 @@ func (c *controller) StopConnection(pluginID, connectionID string) (types.Connec
 	c.connections[pluginID] = mergeConnections(c.connections[pluginID], []types.Connection{conn})
 	c.connsMu.Unlock()
 
-	c.emitter.Emit("connection/status", map[string]interface{}{
-		"pluginID":     pluginID,
-		"connectionID": connectionID,
-		"status":       "DISCONNECTED",
-		"name":         conn.Name,
+	c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{
+		PluginID:     pluginID,
+		ConnectionID: connectionID,
+		Status:       "DISCONNECTED",
+		Name:         conn.Name,
 	})
 
 	return conn, nil

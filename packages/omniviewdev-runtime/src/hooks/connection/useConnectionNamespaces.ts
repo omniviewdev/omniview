@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { GetConnectionNamespaces } from '../../wailsjs/go/resource/Client';
+import { GetConnectionNamespaces } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseConnectionOptions = {

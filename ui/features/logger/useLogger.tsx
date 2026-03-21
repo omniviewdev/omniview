@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { DiagnosticsClient } from "@omniviewdev/runtime/api";
-import { EventsOn } from "@omniviewdev/runtime/runtime";
+import { Events } from '@omniviewdev/runtime/runtime';
 
 export function useComponentLogs(
   component: string,
@@ -41,7 +41,7 @@ export function useComponentLogs(
     };
 
     // subscribe & start tail
-    const closer = EventsOn(`internal/log/update:${logType}`, handler);
+    const closer = Events.On(`internal/log/update:${logType}`, (ev) => handler(ev.data as string));
     DiagnosticsClient.StartTail(logType);
 
     return () => {

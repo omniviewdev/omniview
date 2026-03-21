@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { Subscribe, Unsubscribe } from '../../wailsjs/go/metric/Client';
-import type { metric } from '../../wailsjs/go/models';
+import { Events } from '@wailsio/runtime';
+import { Subscribe, Unsubscribe } from '../../bindings/github.com/omniviewdev/omniview/metriccontrollerservice';
+import type { MetricResult } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/metric/models';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 export type UseMetricStreamOptions = {
@@ -27,7 +27,7 @@ export type UseMetricStreamOptions = {
 
 export type UseMetricStreamResult = {
   /** The latest stream output */
-  data: metric.MetricResult[] | null;
+  data: MetricResult[] | null;
   /** The subscription ID */
   subscriptionID: string | null;
   /** Whether the stream is active */
@@ -60,7 +60,7 @@ export const useMetricStream = (
   } = opts;
   const pluginID = useResolvedPluginId(explicitPluginID);
 
-  const [data, setData] = useState<metric.MetricResult[] | null>(null);
+  const [data, setData] = useState<MetricResult[] | null>(null);
   const [subscriptionID, setSubscriptionID] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +86,8 @@ export const useMetricStream = (
       setError(null);
 
       // Listen for data events
-      const dataCleanup = EventsOn(`core/metrics/data/${subID}`, (rawData: string) => {
+      const dataCleanup = Events.On(`core/metrics/data/${subID}`, (ev) => {
+        const rawData = ev.data as string;
         try {
           const output = JSON.parse(rawData);
           if (output.results) {
@@ -98,7 +99,8 @@ export const useMetricStream = (
       });
 
       // Listen for error events
-      const errorCleanup = EventsOn(`core/metrics/error/${subID}`, (rawData: string) => {
+      const errorCleanup = Events.On(`core/metrics/error/${subID}`, (ev) => {
+        const rawData = ev.data as string;
         try {
           const output = JSON.parse(rawData);
           setError(output.error || 'Unknown error');

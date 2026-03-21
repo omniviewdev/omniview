@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
@@ -26,6 +26,7 @@ type PluginReloader interface {
 // DevServerManager manages dev server instances for plugins in development mode.
 // It is exposed as a Wails binding. All public methods are callable from the frontend.
 type DevServerManager struct {
+	app              *application.App
 	ctx              context.Context
 	logger           logging.Logger
 	mu               sync.RWMutex
@@ -55,9 +56,10 @@ func NewDevServerManager(
 	}
 }
 
-// Initialize is called during Wails startup (OnStartup callback). It stores the
-// Wails context needed for runtime.EventsEmit, and starts the external plugin watcher.
-func (m *DevServerManager) Initialize(ctx context.Context) {
+// ServiceStartup is called during Wails v3 service startup. It stores the
+// application reference and starts the external plugin watcher.
+func (m *DevServerManager) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	m.app = application.Get()
 	m.ctx = ctx
 
 	// Kill any stale Vite dev server processes left over from a previous
@@ -82,11 +84,11 @@ func (m *DevServerManager) Initialize(ctx context.Context) {
 	}
 
 	m.logger.Infow(ctx, "DevServerManager initialized")
+	return nil
 }
 
-// Shutdown stops all running dev server instances and the external watcher.
-// Called from Wails OnShutdown.
-func (m *DevServerManager) Shutdown() {
+// ServiceShutdown stops all running dev server instances and the external watcher.
+func (m *DevServerManager) ServiceShutdown() error {
 	m.logger.Infow(context.Background(), "DevServerManager shutting down")
 
 	// Stop the external watcher first.
@@ -115,6 +117,7 @@ func (m *DevServerManager) Shutdown() {
 	m.ports.SavePIDs()
 
 	m.logger.Infow(context.Background(), "DevServerManager shutdown complete")
+	return nil
 }
 
 // ============================================================================
@@ -424,22 +427,22 @@ func (m *DevServerManager) resolveBuildOpts() BuildOpts {
 }
 
 func (m *DevServerManager) emitStatus(pluginID string, state DevServerState) {
-	if m.ctx == nil {
+	if m.app == nil {
 		return
 	}
-	runtime.EventsEmit(m.ctx, EventDevServerStatus, state)
+	m.app.Event.Emit(EventDevServerStatus, state)
 }
 
 func (m *DevServerManager) emitLogs(pluginID string, entries []LogEntry) {
-	if m.ctx == nil || len(entries) == 0 {
+	if m.app == nil || len(entries) == 0 {
 		return
 	}
-	runtime.EventsEmit(m.ctx, EventDevServerLog, entries)
+	m.app.Event.Emit(EventDevServerLog, entries)
 }
 
 func (m *DevServerManager) emitErrors(pluginID string, errors []BuildError) {
-	if m.ctx == nil || len(errors) == 0 {
+	if m.app == nil || len(errors) == 0 {
 		return
 	}
-	runtime.EventsEmit(m.ctx, EventDevServerError, pluginID, errors)
+	m.app.Event.Emit(EventDevServerError, DevServerErrorPayload{PluginID: pluginID, Errors: errors})
 }

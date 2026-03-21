@@ -2,7 +2,7 @@ import React from 'react';
 
 // material-ui
 import Box from '@mui/material/Box';
-import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@omniviewdev/runtime/runtime';
+import { Window } from '@omniviewdev/runtime/runtime';
 
 // import TabBarProvider from '@/providers/header/TabBarProvider';
 
@@ -21,11 +21,11 @@ const HeaderTabsArea: React.FC = () => {
         // don't do anything
         break;
       default:
-        WindowIsMaximised().then((isMaximized) => {
+        Window.IsMaximised().then((isMaximized) => {
           if (isMaximized) {
-            WindowUnmaximise();
+            Window.UnMaximise();
           } else {
-            WindowMaximise();
+            Window.Maximise();
           }
         }).catch((err) => {
           console.error(err);

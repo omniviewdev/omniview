@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { ListConnections, StartConnectionWatch, StopConnectionWatch } from '../../wailsjs/go/resource/Client';
-import { type types } from '../../wailsjs/go/models';
+import { ListConnections, StartConnectionWatch, StopConnectionWatch } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { Events } from '@wailsio/runtime';
 import React from 'react';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
@@ -29,26 +29,27 @@ export const useConnections = ({ plugin: explicitPlugin }: UseConnectionsOptions
 
   // === Mutations === //
   const { mutateAsync: startWatch } = useMutation({
-    mutationFn: async (conn: types.Connection) => StartConnectionWatch(plugin, conn.id),
+    mutationFn: async (conn: Connection) => StartConnectionWatch(plugin, conn.id),
     onError: createErrorHandler(showSnackbar, 'Failed to start connection watch'),
   });
 
   const { mutateAsync: stopWatch } = useMutation({
-    mutationFn: async (conn: types.Connection) => StopConnectionWatch(plugin, conn.id),
+    mutationFn: async (conn: Connection) => StopConnectionWatch(plugin, conn.id),
     onError: createErrorHandler(showSnackbar, 'Failed to stop connection watch'),
   });
 
   /**
    * Handle sync of connections from the backend
    */
-  const onConnectionSync = React.useCallback((connections: types.Connection[]) => {
+  const onConnectionSync = React.useCallback((ev: Events.WailsEvent) => {
+    const connections = ev.data as Connection[];
     console.log("got update to connections", connections)
     queryClient.setQueryData(queryKey, connections)
   }, []);
 
   // *Only on mount*, we want subscribe to new resources, updates and deletes
   React.useEffect(() => {
-    const syncCloser = EventsOn(`${plugin}/connection/sync`, onConnectionSync);
+    const syncCloser = Events.On(`${plugin}/connection/sync`, onConnectionSync);
 
     return () => {
       syncCloser()

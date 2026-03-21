@@ -12,7 +12,7 @@ import (
 	"runtime/debug"
 	"sync"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
@@ -35,14 +35,17 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 				"stack", string(debug.Stack()),
 			)
 			if metadata != nil {
-				emitEvent(pm.ctx, EventDevInstallError, metadata)
+				pm.emitter.Emit(EventDevInstallError, metadata)
 			}
 			metadata = nil
 			err = apperror.Internal(fmt.Errorf("panic: %v", r), "Install in dev mode failed")
 		}
 	}()
 
-	path, err := runtime.OpenDirectoryDialog(pm.ctx, runtime.OpenDialogOptions{})
+	path, err := application.Get().Dialog.OpenFile().
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		PromptForSingleSelection()
 	if err != nil {
 		l.Errorw(pm.ctx, err.Error())
 		return nil, err
@@ -59,7 +62,7 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 	}
 	l.Infow(pm.ctx, "parsed plugin metadata", "pluginID", metadata.ID)
 
-	emitEvent(pm.ctx, EventDevInstallStart, metadata)
+	pm.emitter.Emit(EventDevInstallStart, metadata)
 
 	// Unload existing instance if it exists.
 	pm.recordsMu.RLock()
@@ -77,14 +80,14 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 		ExcludeBackend: true,
 		ExcludeUI:      true,
 	}); err != nil {
-		emitEvent(pm.ctx, EventDevInstallError, metadata)
+		pm.emitter.Emit(EventDevInstallError, metadata)
 		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to copy plugin metadata")
 	}
 
 	// Ensure the bin directory exists for the GoWatcher to transfer into.
 	installLocation := getPluginLocation(metadata.ID)
 	if err = os.MkdirAll(filepath.Join(installLocation, "bin"), 0755); err != nil {
-		emitEvent(pm.ctx, EventDevInstallError, metadata)
+		pm.emitter.Emit(EventDevInstallError, metadata)
 		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to create plugin bin directory")
 	}
 
@@ -93,7 +96,7 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 		l.Infow(pm.ctx, "starting dev server (triggers initial build)", "pluginID", metadata.ID)
 		state, startErr := pm.devServerMgr.StartDevServerForPath(metadata.ID, path)
 		if startErr != nil {
-			emitEvent(pm.ctx, EventDevInstallError, metadata)
+			pm.emitter.Emit(EventDevInstallError, metadata)
 			return nil, apperror.Wrap(startErr, apperror.TypePluginBuildFailed, 500, "Dev server failed to start").
 				WithActions(apperror.OpenSettingsAction("developer"))
 		}
@@ -113,14 +116,14 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 			pm.records[metadata.ID] = record
 			pm.recordsMu.Unlock()
 
-			emitEvent(pm.ctx, EventDevInstallComplete, metadata)
+			pm.emitter.Emit(EventDevInstallComplete, metadata)
 			if err = pm.writePluginStateJSON(); err != nil {
 				l.Warnw(pm.ctx, "failed to persist plugin state after build-failed stub", "pluginID", metadata.ID, "error", err)
 			}
 			return metadata, nil
 		}
 	} else {
-		emitEvent(pm.ctx, EventDevInstallError, metadata)
+		pm.emitter.Emit(EventDevInstallError, metadata)
 		return nil, apperror.New(apperror.TypeSettingsMissingConfig, 422, "No dev server manager configured",
 			"The dev server manager is not available. Ensure developer settings are configured.").
 			WithActions(apperror.OpenSettingsAction("developer"))
@@ -130,15 +133,15 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 	l.Infow(pm.ctx, "loading plugin (starting binary + gRPC connect)", "pluginID", metadata.ID)
 	_, err = pm.LoadPlugin(metadata.ID, &LoadPluginOptions{DevMode: true, DevModePath: path})
 	if err != nil {
-		emitEvent(pm.ctx, EventDevInstallError, metadata)
+		pm.emitter.Emit(EventDevInstallError, metadata)
 		return nil, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500, "Failed to load plugin")
 	}
 
-	emitEvent(pm.ctx, EventDevInstallComplete, metadata)
+	pm.emitter.Emit(EventDevInstallComplete, metadata)
 
 	if err = pm.writePluginStateJSON(); err != nil {
 		l.Errorw(pm.ctx, "failed to persist plugin state after dev install", "pluginID", metadata.ID, "error", err)
-		emitEvent(pm.ctx, EventStateWriteError, map[string]interface{}{
+		pm.emitter.Emit(EventStateWriteError, map[string]interface{}{
 			"pluginID": metadata.ID,
 			"detail":   err.Error(),
 		})
@@ -149,7 +152,8 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 
 // InstallFromPathPrompt installs a plugin from a file selected via dialog.
 func (pm *pluginManager) InstallFromPathPrompt() (*config.PluginMeta, error) {
-	path, err := runtime.OpenFileDialog(pm.ctx, runtime.OpenDialogOptions{})
+	path, err := application.Get().Dialog.OpenFile().
+		PromptForSingleSelection()
 	if err != nil {
 		return nil, err
 	}
@@ -165,20 +169,20 @@ func (pm *pluginManager) InstallPluginVersion(
 	pluginID string,
 	version string,
 ) (*config.PluginMeta, error) {
-	emitEvent(pm.ctx, EventUpdateStarted, pluginID, version)
+	pm.emitter.Emit(EventUpdateStarted, UpdatePayload{PluginID: pluginID, Version: version})
 
 	pm.syncRegistryURL()
 	tmpPath, err := pm.registryClient.DownloadPlugin(context.Background(), pluginID, version)
 	if err != nil {
 		pm.logger.Errorw(pm.ctx, "failed to download and prepare", "error", err)
-		emitEvent(pm.ctx, EventUpdateError, pluginID, err.Error())
+		pm.emitter.Emit(EventUpdateError, UpdateErrorPayload{PluginID: pluginID, Error: err.Error()})
 		return nil, err
 	}
 
 	pm.logger.Debugw(pm.ctx, "installing plugin from downloaded tmp path", "path", tmpPath)
 	meta, err := pm.InstallPluginFromPath(tmpPath)
 	if err != nil {
-		emitEvent(pm.ctx, EventUpdateError, pluginID, err.Error())
+		pm.emitter.Emit(EventUpdateError, UpdateErrorPayload{PluginID: pluginID, Error: err.Error()})
 		return nil, err
 	}
 
@@ -195,7 +199,7 @@ func (pm *pluginManager) InstallPluginVersion(
 		pm.logger.Errorw(pm.ctx, "failed to persist state after version override", "error", writeErr)
 	}
 
-	emitEvent(pm.ctx, EventUpdateComplete, pluginID, version)
+	pm.emitter.Emit(EventUpdateComplete, UpdatePayload{PluginID: pluginID, Version: version})
 	return meta, nil
 }
 
@@ -223,7 +227,7 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to parse plugin metadata")
 	}
 
-	emitEvent(pm.ctx, EventInstallStarted, metadata)
+	pm.emitter.Emit(EventInstallStarted, metadata)
 
 	location := getPluginLocation(metadata.ID)
 
@@ -231,13 +235,13 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 	// installation if the archive is corrupt or extraction fails.
 	tmpDir, mkErr := os.MkdirTemp(getPluginDir(), metadata.ID+"-install-")
 	if mkErr != nil {
-		emitEvent(pm.ctx, EventInstallError, metadata)
+		pm.emitter.Emit(EventInstallError, metadata)
 		return nil, apperror.Wrap(mkErr, apperror.TypePluginInstallFailed, 500, "Failed to create temp directory")
 	}
 	defer os.RemoveAll(tmpDir) // clean up temp dir in all cases
 
 	if err = unpackPluginArchive(path, tmpDir); err != nil {
-		emitEvent(pm.ctx, EventInstallError, metadata)
+		pm.emitter.Emit(EventInstallError, metadata)
 		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to unpack plugin package")
 	}
 
@@ -246,25 +250,25 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 	os.RemoveAll(location)
 
 	if err = os.Rename(tmpDir, location); err != nil {
-		emitEvent(pm.ctx, EventInstallError, metadata)
+		pm.emitter.Emit(EventInstallError, metadata)
 		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to install plugin files")
 	}
 
 	_, err = pm.LoadPlugin(metadata.ID, nil)
 	if err != nil {
-		emitEvent(pm.ctx, EventInstallError, metadata)
+		pm.emitter.Emit(EventInstallError, metadata)
 		return nil, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500, "Failed to load plugin after install")
 	}
 
 	if err = pm.writePluginStateJSON(); err != nil {
 		pm.logger.Errorw(pm.ctx, "failed to persist plugin state after install", "pluginID", metadata.ID, "error", err)
-		emitEvent(pm.ctx, EventStateWriteError, map[string]interface{}{
+		pm.emitter.Emit(EventStateWriteError, map[string]interface{}{
 			"pluginID": metadata.ID,
 			"detail":   err.Error(),
 		})
 	}
 
-	emitEvent(pm.ctx, EventInstallFinished, metadata)
+	pm.emitter.Emit(EventInstallFinished, metadata)
 	return metadata, nil
 }
 

@@ -14,16 +14,18 @@ vi.mock('../useResolvedPluginId', () => ({
 
 // Mock GetWatchState — controlled via mockGetWatchState.
 let mockGetWatchState: vi.Mock;
-vi.mock('../../wailsjs/go/resource/Client', () => ({
+vi.mock('../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice', () => ({
   get GetWatchState() { return mockGetWatchState; },
 }));
 
-// Mock EventsOn — captures the callback so tests can simulate events.
+// Mock Events.On — captures the callback so tests can simulate events.
 type EventCallback = (...data: any[]) => void;
 let eventListeners: Map<string, EventCallback>;
 let mockEventsOn: vi.Mock;
-vi.mock('../../wailsjs/runtime/runtime', () => ({
-  get EventsOn() { return mockEventsOn; },
+vi.mock('@wailsio/runtime', () => ({
+  Events: {
+    get On() { return mockEventsOn; },
+  },
 }));
 
 // Import after mocks
@@ -62,12 +64,16 @@ function emitStateEvent(pluginID: string, connectionID: string, resourceKey: str
   const topic = `${pluginID}/${connectionID}/watch/STATE`;
   const listener = eventListeners.get(topic);
   if (!listener) throw new Error(`No listener for ${topic}`);
+  // v3: callback receives a WailsEvent with .data
   listener({
-    pluginId: pluginID,
-    connection: connectionID,
-    resourceKey,
-    state,
-    resourceCount,
+    name: topic,
+    data: {
+      pluginId: pluginID,
+      connection: connectionID,
+      resourceKey,
+      state,
+      resourceCount,
+    },
   });
 }
 
@@ -452,7 +458,7 @@ describe('useWatchState — key changes and disabled state', () => {
     // Should not fetch.
     expect(mockGetWatchState).not.toHaveBeenCalled();
 
-    // Should not subscribe.
+    // Should not subscribe (Events.On should not have been called).
     expect(mockEventsOn).not.toHaveBeenCalled();
 
     // Should return safe defaults.

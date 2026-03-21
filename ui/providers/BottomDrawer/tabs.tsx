@@ -31,13 +31,13 @@ import {
 import Icon from '@/components/icons/Icon';
 import { LuChevronDown, LuChevronUp, LuMaximize, LuMinimize, LuPlus, LuX } from 'react-icons/lu';
 import { useSettings } from '@omniviewdev/runtime';
-import { exec, logs } from '@omniviewdev/runtime/models';
+import { SessionOptions, CreateSessionOptions, LogSessionOptions } from '@omniviewdev/runtime/models';
 import { ExecClient, LogsClient } from '@omniviewdev/runtime/api';
 
 import { bottomDrawerChannel } from './events';
 import { devToolsChannel } from '@/features/devtools/events';
 import { pluginLogChannel } from '@/features/pluginlogs/events';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 
 type Props = {
   hasTabs: boolean;
@@ -96,7 +96,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
           icon: 'LuSquareTerminal',
           properties: { status: 'connecting' },
         });
-        ExecClient.CreateTerminal(exec.CreateTerminalOptions.createFrom({ command: [settings['terminal.defaultShell'] || '/bin/bash'] }))
+        ExecClient.CreateTerminal(SessionOptions.createFrom({ command: [settings['terminal.defaultShell'] || '/bin/bash'] }))
           .then((session: any) => {
             updateTab(
               { id: tempId },
@@ -173,11 +173,11 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
     const unsubscribeCreateLogSession = bottomDrawerChannel.on('onCreateLogSession', ({
       plugin, connection, resourceKey, resourceID, resourceData, target, follow, tailLines, icon, label, params,
     }) => {
-      const opts = logs.CreateSessionOptions.createFrom({
+      const opts = CreateSessionOptions.createFrom({
         resource_key: resourceKey,
         resource_id: resourceID,
         resource_data: resourceData,
-        options: logs.LogSessionOptions.createFrom({
+        options: LogSessionOptions.createFrom({
           target: target ?? '',
           follow: follow ?? true,
           include_previous: false,
@@ -337,7 +337,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
         console.error(err);
       });
 
-    const closerTerminal = EventsOn("menu/view/terminal/create", () => handleCreate('terminal'))
+    const closerTerminal = Events.On("menu/view/terminal/create", () => handleCreate('terminal'))
 
     return () => {
       closerTerminal()

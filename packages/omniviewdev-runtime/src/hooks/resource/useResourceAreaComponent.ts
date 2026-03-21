@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { GetResourceAreaComponent } from '../../wailsjs/go/ui/Client';
-import { type ui } from '../../wailsjs/go/models';
+import { GetResourceAreaComponent } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/ui/servicewrapper';
+import type { GetResourceAreaComponentInput } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/ui/models';
 
 
-export const useResourceAreaComponent = (params: ui.GetResourceAreaComponentInput) => {
+export const useResourceAreaComponent = (params: GetResourceAreaComponentInput) => {
   const queryKey = ['component', params.plugin, params.resource, params.area];
 
   const component = useQuery({

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
-import { resource } from '../../wailsjs/go/models';
-import { Get, Update, Delete } from '../../wailsjs/go/resource/Client';
+import { UpdateInput, DeleteInput, GetInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
+import { Get, Update, Delete } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceOptions = {
@@ -62,7 +62,7 @@ export const useResource = ({
   // === Mutations === //
 
   const { mutateAsync: update } = useMutation({
-    mutationFn: async (opts: { input?: any }) => Update(pluginID, connectionID, resourceKey, resource.ClientUpdateInput.createFrom({
+    mutationFn: async (opts: { input?: any }) => Update(pluginID, connectionID, resourceKey, UpdateInput.createFrom({
       input: opts.input,
       id: resourceID,
       namespace,
@@ -75,7 +75,7 @@ export const useResource = ({
   });
 
   const { mutateAsync: remove } = useMutation({
-    mutationFn: async (opts: { gracePeriodSeconds?: number } = {}) => Delete(pluginID, connectionID, resourceKey, resource.DeleteInput.createFrom({
+    mutationFn: async (opts: { gracePeriodSeconds?: number } = {}) => Delete(pluginID, connectionID, resourceKey, DeleteInput.createFrom({
       id: resourceID,
       namespace,
       gracePeriodSeconds: opts.gracePeriodSeconds,
@@ -89,7 +89,7 @@ export const useResource = ({
 
   const resourceQuery = useQuery({
     queryKey,
-    queryFn: async () => Get(pluginID, connectionID, resourceKey, resource.GetInput.createFrom({
+    queryFn: async () => Get(pluginID, connectionID, resourceKey, GetInput.createFrom({
       id: resourceID,
       namespace,
     })),

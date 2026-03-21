@@ -13,7 +13,7 @@ import HeaderIconLink from './components/HeaderIconLink';
 import { type HeaderAreaItemList, type HeaderAreaItemListType, HeaderAreaItemType } from '@/store/header/types';
 // import usePanes from '@/hooks/usePanes';
 // import { Tooltip } from '@omniviewdev/ui/overlays';
-import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@omniviewdev/runtime/runtime';
+import { Window } from '@omniviewdev/runtime/runtime';
 
 type Props = {
   /** The items to display in the header. */
@@ -38,11 +38,11 @@ const HeaderItemsArea: React.FC<Props> = ({ items }) => {
         // don't do anything
         break;
       default:
-        WindowIsMaximised().then((isMaximized) => {
+        Window.IsMaximised().then((isMaximized) => {
           if (isMaximized) {
-            WindowUnmaximise();
+            Window.UnMaximise();
           } else {
-            WindowMaximise();
+            Window.Maximise();
           }
         }).catch((err) => {
           log.error(err instanceof Error ? err : new Error(String(err)), { event: 'window_maximize_toggle' });

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "pnpm run bundle:yaml-worker && tsc && vite build",
+    "build:dev": "vite build --minify false --mode development",
     "bundle:yaml-worker": "esbuild node_modules/monaco-yaml/yaml.worker.js --bundle --format=esm --outfile=ui/providers/monaco/yaml.worker.bundle.js --platform=browser",
     "postinstall": "pnpm run bundle:yaml-worker",
     "lint": "ESLINT_USE_FLAT_CONFIG=false eslint ui --ext ts,tsx --report-unused-disable-directives",
@@ -68,21 +69,23 @@
     "yaml": "^2.7.1"
   },
   "devDependencies": {
+    "@rolldown/plugin-babel": "^0.2.2",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@tanstack/react-query-devtools": "^5.76.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^14.2.1",
     "@types/jsonpath": "^0.2.4",
     "@types/lodash.get": "^4.4.9",
-    "@types/node": "^20.11.30",
+    "@types/node": "^25.5.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/systemjs": "^6.15.3",
     "@types/tinycolor2": "^1.4.6",
     "@typescript-eslint/eslint-plugin": "^8.31.0",
     "@typescript-eslint/parser": "^8.31.0",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^6.0.1",
     "@vitest/ui": "^4.0.18",
+    "@wailsio/runtime": "3.0.0-alpha.79",
     "@welldone-software/why-did-you-render": "^8.0.1",
     "autoprefixer": "^10.4.18",
     "babel-plugin-react-compiler": "^1.0.0",
@@ -96,7 +99,7 @@
     "identity-obj-proxy": "^3.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3",
-    "vite": "~6.2.6",
+    "vite": "~8.0.1",
     "vitest": "^4.0.18"
   },
   "pnpm": {

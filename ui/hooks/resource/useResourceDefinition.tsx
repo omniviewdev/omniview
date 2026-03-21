@@ -7,7 +7,7 @@ import get from 'lodash.get';
 
 // project imports
 import { ResourceClient, ExecClient } from '@omniviewdev/runtime/api';
-import { type types } from '@omniviewdev/runtime/models';
+import type { ColumnDefinition } from '@omniviewdev/runtime/models';
 import SelectBoxHeader from '@/components/tables/Resources/cells/SelectBoxHeader';
 import SelectBoxRow from '@/components/tables/Resources/cells/SelectBoxRow';
 import { type Actions } from '@/components/tables/Resources/actions/types';
@@ -44,7 +44,7 @@ const getAlignment = (align?: string) => {
 };
 
 type ParseColumnDefOpts = {
-  columnDefs?: types.ColumnDef[];
+  columnDefs?: ColumnDefinition[];
   actions?: Actions;
   pluginID: string;
   connectionID: string;

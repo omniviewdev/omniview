@@ -1,4 +1,4 @@
-import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 import { DevServerManager } from '@omniviewdev/runtime/api';
 import { devToolsChannel } from './events';
 import type { DevServerState, DevBuildLine, DevBuildError } from './types';
@@ -12,13 +12,14 @@ export function initDevToolsBridge(): () => void {
   const cleanups: Array<() => void> = [];
 
   cleanups.push(
-    EventsOn('plugin/devserver/status', (state: DevServerState) => {
-      devToolsChannel.emit('onStatusChange', state);
+    Events.On('plugin/devserver/status', (ev) => {
+      devToolsChannel.emit('onStatusChange', ev.data as DevServerState);
     }),
   );
 
   cleanups.push(
-    EventsOn('plugin/devserver/log', (entries: DevBuildLine[]) => {
+    Events.On('plugin/devserver/log', (ev) => {
+      const entries = ev.data as DevBuildLine[];
       for (const entry of entries) {
         devToolsChannel.emit('onBuildLog', entry);
       }
@@ -26,8 +27,9 @@ export function initDevToolsBridge(): () => void {
   );
 
   cleanups.push(
-    EventsOn('plugin/devserver/error', (pluginId: string, errors: DevBuildError[]) => {
-      devToolsChannel.emit('onBuildError', { pluginId, errors });
+    Events.On('plugin/devserver/error', (ev) => {
+      const payload = ev.data as { pluginID: string; errors: DevBuildError[] };
+      devToolsChannel.emit('onBuildError', { pluginId: payload.pluginID, errors: payload.errors });
     }),
   );
 

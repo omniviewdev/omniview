@@ -1,9 +1,9 @@
 import React from 'react';
 
 import { PluginContext } from './PluginContext';
-import { PluginValues } from '../../wailsjs/go/settings/Client';
-import { config } from '../../wailsjs/go/models';
-import { GetPluginMeta } from '../../wailsjs/go/plugin/pluginManager';
+import { PluginValues } from '../../bindings/github.com/omniviewdev/omniview/settingscontrollerservice';
+import { PluginMeta } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/config/models';
+import { GetPluginMeta } from '../../bindings/github.com/omniviewdev/omniview/pluginmanagerservice';
 import { parseAppError } from '../../errors/parseAppError';
 
 export type PluginContextProviderProps = {
@@ -13,7 +13,7 @@ export type PluginContextProviderProps = {
 export function PluginContextProvider(props: React.PropsWithChildren<PluginContextProviderProps>): React.ReactElement {
   const { children, pluginId } = props;
   const [settings, setSettings] = React.useState<Record<string, any>>({});
-  const [meta, setMeta] = React.useState<config.PluginMeta>(new config.PluginMeta);
+  const [meta, setMeta] = React.useState<PluginMeta>(new PluginMeta);
   const [metaLoaded, setMetaLoaded] = React.useState(false);
   const [metaError, setMetaError] = React.useState<string | null>(null);
 

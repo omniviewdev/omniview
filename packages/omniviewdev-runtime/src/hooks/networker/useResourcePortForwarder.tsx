@@ -1,12 +1,12 @@
 import { PortForwardResourceOpts } from './types';
 import { ALL_SESSIONS_KEY } from './usePortForwardSessions';
-import { networker } from '../../wailsjs/go/models';
-import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
+import { FindPortForwardSessionRequest, PortForwardSessionOptions } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/networker/models';
+import { Browser } from '@wailsio/runtime';
 import {
   ClosePortForwardSession,
   FindPortForwardSessions,
   StartResourcePortForwardingSession,
-} from '../../wailsjs/go/networker/Client';
+} from '../../bindings/github.com/omniviewdev/omniview/networkercontrollerservice';
 import { useSnackbar } from '../snackbar';
 import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,7 +24,7 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
 
   const sessions = useQuery({
     queryKey,
-    queryFn: async () => FindPortForwardSessions(pluginID, connectionID, networker.FindPortForwardSessionRequest.createFrom({
+    queryFn: async () => FindPortForwardSessions(pluginID, connectionID, FindPortForwardSessionRequest.createFrom({
       resource_id: resourceID,
       connection_id: connectionID,
     })).catch((e: unknown) => {
@@ -41,7 +41,7 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
 
   const forwardMutation = useMutation({
     mutationFn: async ({ opts }: { opts: Partial<PortForwardResourceOpts> }) => {
-      const sessionOpts = networker.PortForwardSessionOptions.createFrom({
+      const sessionOpts = PortForwardSessionOptions.createFrom({
         local_port: opts.localPort || 0,
         remote_port: opts.remotePort,
         protocol: opts.protocol || 'TCP',
@@ -58,8 +58,9 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
       });
 
       const result = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts);
+      if (!result) throw new Error('Failed to start port forwarding: null response');
       if (opts.openInBrowser) {
-        BrowserOpenURL(`http://localhost:${result.local_port}`);
+        Browser.OpenURL(`http://localhost:${result.local_port}`);
       }
       return result
     },
@@ -73,7 +74,7 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
   });
 
   // const forward: PortForwardResourceFunction = React.useCallback(async (opts) => {
-  //   const sessionOpts = networker.PortForwardSessionOptions.createFrom({
+  //   const sessionOpts = PortForwardSessionOptions.createFrom({
   //     local_port: opts.localPort || 0,
   //     remote_port: opts.remotePort,
   //     protocol: opts.protocol || 'TCP',

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
-// import federation from '@originjs/vite-plugin-federation';
-// import topLevelAwait from 'vite-plugin-top-level-await';
+import react, { reactCompilerPreset } from '@vitejs/plugin-react';
+import babel from '@rolldown/plugin-babel';
+import wails from '@wailsio/runtime/plugins/vite';
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -10,10 +10,6 @@ import { dirname } from 'path';
 // if in ESM context
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-const reactCompilerConfig = {
-  target: '19',
-};
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -29,24 +25,22 @@ export default defineConfig({
     sourcemap: false,
   },
   server: {
-    host: true,
-    port: 5173,
+    // Port is set via WAILS_VITE_PORT env var (wails3 dev sets it automatically).
+    // Fallback to 9245 to match the default in Taskfile.yml.
+    port: parseInt(process.env.WAILS_VITE_PORT || '9245'),
     strictPort: true,
-    proxy: {
-      '/_/': {
-        bypass: function () {
-          // Return false to produce a 404 error for the request.
-          return false;
-        },
-      },
+    // Wails webview loads from wails://localhost — force HMR to connect
+    // via ws:// to localhost so it resolves correctly.
+    // See: https://github.com/wailsapp/wails/issues/3064
+    hmr: {
+      host: 'localhost',
+      protocol: 'ws',
     },
   },
   plugins: [
-    react({
-      babel: {
-        plugins: [['babel-plugin-react-compiler', reactCompilerConfig]],
-      },
-    }),
+    react(),
+    babel({ presets: [reactCompilerPreset({ target: '19' })] }),
+    wails('./packages/omniviewdev-runtime/src/bindings'),
     {
       name: 'strip-dev-scripts',
       transformIndexHtml(html, ctx) {

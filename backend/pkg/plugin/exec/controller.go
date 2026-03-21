@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -26,11 +26,13 @@ var tracer = otel.Tracer("omniview.exec")
 
 type Controller interface {
 	internaltypes.Controller
-	Run(ctx context.Context)
+	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
+	ServiceShutdown() error
 	GetPluginHandlers(plugin string) map[string]exec.Handler
 	GetHandlers() map[string]map[string]exec.Handler
 	GetHandler(plugin, resource string) *exec.Handler
 	CreateSession(plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
+	CreateTerminal(opts exec.SessionOptions) (*exec.Session, error)
 	ListSessions() ([]*exec.Session, error)
 	GetSession(sessionID string) (*exec.Session, error)
 	AttachSession(sessionID string) (*exec.Session, []byte, error)
@@ -69,7 +71,8 @@ func NewController(
 var _ Controller = &controller{}
 
 type controller struct {
-	// wails context
+	// wails v3 application reference
+	app              *application.App
 	ctx              context.Context
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
@@ -89,10 +92,16 @@ type controller struct {
 	terminalManager *terminal.Manager
 }
 
-func (c *controller) Run(ctx context.Context) {
+func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	c.app = application.Get()
 	c.ctx = ctx
 	go c.runMux()      // plugin mux
 	go c.runLocalMux() // local terminal should be muxed separately to avoid latency
+	return nil
+}
+
+func (c *controller) ServiceShutdown() error {
+	return nil
 }
 
 // safeSend sends to ch, recovering from a closed-channel panic that can occur
@@ -136,8 +145,8 @@ func (c *controller) runLocalMux() {
 			}
 		case output := <-outMux:
 			// dispatch to ui
-			if c.ctx == nil {
-				c.logger.Errorw(context.Background(), "context is nil, cannot dispatch output")
+			if c.app == nil {
+				c.logger.Errorw(context.Background(), "app is nil, cannot dispatch output")
 			}
 
 			var eventkey string
@@ -148,9 +157,9 @@ func (c *controller) runLocalMux() {
 			case exec.StreamSignalError:
 				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
 				if output.Error != nil {
-					runtime.EventsEmit(c.ctx, eventkey, output.Error)
+					c.app.Event.Emit(eventkey, output.Error)
 				} else {
-					runtime.EventsEmit(c.ctx, eventkey, map[string]interface{}{
+					c.app.Event.Emit(eventkey, map[string]interface{}{
 						"title":      "Session error",
 						"message":    string(output.Data),
 						"suggestion": "The session encountered an error.",
@@ -170,7 +179,7 @@ func (c *controller) runLocalMux() {
 				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
 			}
 
-			runtime.EventsEmit(c.ctx, eventkey, output.Data)
+			c.app.Event.Emit(eventkey, output.Data)
 		case resize := <-resizeMux:
 			if err := manager.ResizeSession(resize.SessionID, resize.Rows, resize.Cols); err != nil {
 				c.logger.Errorw(context.Background(), "error resizing session", "error", err)
@@ -199,8 +208,8 @@ func (c *controller) runMux() {
 			}
 		case output := <-c.outputMux:
 			// dispatch to ui
-			if c.ctx == nil {
-				c.logger.Errorw(context.Background(), "context is nil, cannot dispatch output")
+			if c.app == nil {
+				c.logger.Errorw(context.Background(), "app is nil, cannot dispatch output")
 			}
 
 			var eventkey string
@@ -211,9 +220,9 @@ func (c *controller) runMux() {
 			case exec.StreamSignalError:
 				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
 				if output.Error != nil {
-					runtime.EventsEmit(c.ctx, eventkey, output.Error)
+					c.app.Event.Emit(eventkey, output.Error)
 				} else {
-					runtime.EventsEmit(c.ctx, eventkey, map[string]interface{}{
+					c.app.Event.Emit(eventkey, map[string]interface{}{
 						"title":      "Session error",
 						"message":    string(output.Data),
 						"suggestion": "The session encountered an error.",
@@ -233,7 +242,7 @@ func (c *controller) runMux() {
 				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
 			}
 
-			runtime.EventsEmit(c.ctx, eventkey, output.Data)
+			c.app.Event.Emit(eventkey, output.Data)
 		}
 	}
 }
@@ -493,6 +502,14 @@ func (c *controller) GetHandler(
 		return nil
 	}
 	return &h
+}
+
+// CreateTerminal creates a local terminal session with TTY enabled.
+// This is a convenience wrapper for CreateSession("local", "local", opts)
+// with TTY forced on.
+func (c *controller) CreateTerminal(opts exec.SessionOptions) (*exec.Session, error) {
+	opts.TTY = true
+	return c.CreateSession("local", "local", opts)
 }
 
 func (c *controller) CreateSession(

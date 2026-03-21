@@ -1,5 +1,5 @@
 import React, { createContext, useState } from 'react';
-import { Values } from '../../wailsjs/go/settings/provider';
+import { Values } from '../../bindings/github.com/omniviewdev/omniview/settingsproviderservice';
 
 // Define the context type
 export interface SettingsContextType {

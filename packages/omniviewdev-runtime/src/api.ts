@@ -1,16 +1,18 @@
-export * as ExecClient from './wailsjs/go/exec/Client';
-export * as NetworkerClient from './wailsjs/go/networker/Client';
-export * as PluginManager from './wailsjs/go/plugin/pluginManager';
-export * as ResourceClient from './wailsjs/go/resource/Client';
-export * as SettingsClient from './wailsjs/go/settings/Client';
-export * as SettingsProvider from './wailsjs/go/settings/provider';
-export * as UtilsClient from './wailsjs/go/utils/Client';
-export * as UIClient from './wailsjs/go/ui/Client';
-export * as DiagnosticsClient from './wailsjs/go/diagnostics/DiagnosticsClient';
-export * as LogsClient from './wailsjs/go/logs/Client';
-export * as MetricClient from './wailsjs/go/metric/Client';
+// v3 generated bindings — paths match `wails3 generate bindings -d packages/omniviewdev-runtime/src/bindings`
+export * as ExecClient from './bindings/github.com/omniviewdev/omniview/execcontrollerservice';
+export * as NetworkerClient from './bindings/github.com/omniviewdev/omniview/networkercontrollerservice';
+export * as PluginManager from './bindings/github.com/omniviewdev/omniview/pluginmanagerservice';
+export * as ResourceClient from './bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+export * as SettingsClient from './bindings/github.com/omniviewdev/omniview/settingscontrollerservice';
+export * as SettingsProvider from './bindings/github.com/omniviewdev/omniview/settingsproviderservice';
+export * as UtilsClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/utils/client';
+export * as UIClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/ui/servicewrapper';
+export * as DiagnosticsClient from './bindings/github.com/omniviewdev/omniview/backend/diagnostics/diagnosticsclient';
+export * as LogsClient from './bindings/github.com/omniviewdev/omniview/logscontrollerservice';
+export * as MetricClient from './bindings/github.com/omniviewdev/omniview/metriccontrollerservice';
+export * as DataClient from './bindings/github.com/omniviewdev/omniview/datacontrollerservice';
 
-export * as DevServerManager from './wailsjs/go/devserver/DevServerManager';
-export * as PluginLogManager from './wailsjs/go/pluginlog/Manager';
+export * as DevServerManager from './bindings/github.com/omniviewdev/omniview/devserverservice';
+export * as PluginLogManager from './bindings/github.com/omniviewdev/omniview/pluginlogservice';
 
-export * from './wailsjs/go/main/App';
+export * from './bindings/github.com/omniviewdev/omniview/appservice';

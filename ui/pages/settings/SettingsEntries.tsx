@@ -8,11 +8,11 @@ import { Text } from '@omniviewdev/ui/typography';
 // Types
 import { type SectionSelection } from '.';
 import SettingsEntry from './SettingsEntry';
-import { type settings } from '@omniviewdev/runtime/models';
+import type { Setting } from '@omniviewdev/runtime/models';
 import { useDevMode } from '@/hooks/useDevMode';
 
 type Props = SectionSelection & {
-  settings: Record<string, settings.Setting>;
+  settings: Record<string, Setting>;
   draftValues: Record<string, any>;
   setDraftValues: (draftValues: Record<string, any>) => void;
 };

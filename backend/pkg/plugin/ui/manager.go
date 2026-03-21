@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
@@ -16,11 +17,51 @@ type componentManager struct {
 	resourceComponentStore ResourceComponentStore
 }
 
+// ServiceWrapper exposes only frontend-safe methods of componentManager.
+// Internal plugin lifecycle methods (OnPluginInit, OnPluginStart, etc.)
+// are excluded to prevent frontend invocation.
+type ServiceWrapper struct {
+	cm *componentManager
+}
+
+// NewServiceWrapper creates a ServiceWrapper around a componentManager.
+func NewServiceWrapper(cm *componentManager) *ServiceWrapper {
+	return &ServiceWrapper{cm: cm}
+}
+
+func (s *ServiceWrapper) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	return s.cm.ServiceStartup(ctx, options)
+}
+
+func (s *ServiceWrapper) ServiceShutdown() error {
+	return s.cm.ServiceShutdown()
+}
+
+func (s *ServiceWrapper) GetPluginComponents(params GetPluginComponentsInput) map[string][]ResourceComponent {
+	return s.cm.GetPluginComponents(params)
+}
+
+func (s *ServiceWrapper) GetResourceComponents(params GetResourceComponentsInput) []ResourceComponent {
+	return s.cm.GetResourceComponents(params)
+}
+
+func (s *ServiceWrapper) GetResourceAreaComponent(params GetResourceAreaComponentInput) *ResourceComponent {
+	return s.cm.GetResourceAreaComponent(params)
+}
+
 func NewComponentManager(logger logging.Logger) *componentManager {
 	return &componentManager{
 		logger:                 logger.Named("ComponentManager"),
 		resourceComponentStore: NewResourceComponentStore(),
 	}
+}
+
+func (cm *componentManager) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
+	return nil
+}
+
+func (cm *componentManager) ServiceShutdown() error {
+	return nil
 }
 
 var _ types.PluginManager = (*componentManager)(nil)
@@ -76,6 +117,49 @@ func (cm *componentManager) OnPluginDestroy(_ context.Context, pluginID string, 
 
 func (cm *componentManager) GetResourceComponentStore() ResourceComponentStore {
 	return cm.resourceComponentStore
+}
+
+// =========================== Service methods (formerly in client.go) =========================== //
+
+type GetPluginComponentsInput struct {
+	Plugin string `json:"plugin"`
+}
+
+// GetPluginComponents returns all the registered components for a plugin.
+func (cm *componentManager) GetPluginComponents(
+	params GetPluginComponentsInput,
+) map[string][]ResourceComponent {
+	store := cm.GetResourceComponentStore()
+	return store.GetComponentsByResource(params.Plugin)
+}
+
+type GetResourceComponentsInput struct {
+	Plugin   string `json:"plugin"`
+	Resource string `json:"resource"`
+}
+
+// GetResourceComponents returns all the registered components for a plugin's resource.
+func (cm *componentManager) GetResourceComponents(params GetResourceComponentsInput) []ResourceComponent {
+	store := cm.GetResourceComponentStore()
+	return store.GetComponentsForResource(params.Plugin, params.Resource)
+}
+
+type GetResourceAreaComponentInput struct {
+	Plugin   string                `json:"plugin"`
+	Resource string                `json:"resource"`
+	Area     ResourceComponentArea `json:"area"`
+}
+
+// GetResourceAreaComponent returns the preferred component to display for the resource area.
+func (cm *componentManager) GetResourceAreaComponent(params GetResourceAreaComponentInput) *ResourceComponent {
+	store := cm.GetResourceComponentStore()
+	components := store.GetComponentsForResource(params.Plugin, params.Resource)
+	for _, component := range components {
+		if component.Area == params.Area {
+			return &component
+		}
+	}
+	return nil
 }
 
 // =========================== Handlers =========================== //

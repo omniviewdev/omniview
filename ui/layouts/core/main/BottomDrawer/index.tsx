@@ -15,7 +15,7 @@ import PluginLogViewer from '@/providers/BottomDrawer/containers/PluginLogViewer
 import EditorDebugPanel from '@/providers/BottomDrawer/containers/EditorDebugPanel';
 import { useBottomDrawer } from '@omniviewdev/runtime';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 
 const TerminalContainerMemo = React.memo(TerminalContainer, (prev, next) => {
   return prev.sessionId === next.sessionId
@@ -160,14 +160,14 @@ const BottomDrawerContainer: React.FC = () => {
       expandDrawerToHeight(height);
     });
 
-    const closerFullScreen = EventsOn("menu/view/bottomdrawer/fullscreen", () => {
+    const closerFullScreen = Events.On("menu/view/bottomdrawer/fullscreen", () => {
       fullscreen();
     })
     const unsubscribeOnFullScreen = bottomDrawerChannel.on('onFullscreen', () => {
       fullscreen();
     });
 
-    const closerMinimize = EventsOn("menu/view/bottomdrawer/minimize", () => {
+    const closerMinimize = Events.On("menu/view/bottomdrawer/minimize", () => {
       minimize();
     });
     const unsubscribeOnMinimize = bottomDrawerChannel.on('onMinimize', () => {

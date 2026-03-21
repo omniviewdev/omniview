@@ -18,7 +18,7 @@ import {
   showAppError,
 } from '@omniviewdev/runtime';
 import { ResourceClient } from '@omniviewdev/runtime/api';
-import { resource } from '@omniviewdev/runtime/models';
+import { UpdateInput, GetInput } from '@omniviewdev/runtime/models';
 import RightDrawer from '@/components/displays/RightDrawer';
 import { bottomDrawerChannel } from './BottomDrawer/events';
 import { createLinkedResourceDrawer } from '@/federation/LinkedResourceDrawer';
@@ -228,7 +228,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         params.pluginID,
         params.connectionID,
         params.resourceKey,
-        resource.UpdateInput.createFrom({
+        UpdateInput.createFrom({
           input: value,
           params: {},
           id: params.resourceID,
@@ -258,7 +258,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       params.pluginID,
       params.connectionID,
       params.resourceKey,
-      resource.GetInput.createFrom({
+      GetInput.createFrom({
         id: params.resourceID,
         namespace: params.namespace ?? '',
         params: {},

@@ -47,7 +47,7 @@ func TestSink_OnAdd_SetsPluginID(t *testing.T) {
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods"})
 
 	ev := emitter.WaitForEvent(t, "ADD", time.Second)
-	payload, ok := ev.Data.(resource.WatchAddPayload)
+	payload, ok := ev.Data[0].(resource.WatchAddPayload)
 	assert.True(t, ok)
 	assert.Equal(t, "plugin-a", payload.PluginID)
 }
@@ -78,7 +78,7 @@ func TestSink_OnUpdate_SetsPluginID(t *testing.T) {
 	sink.OnUpdate(resource.WatchUpdatePayload{Connection: "conn-1", Key: "pods"})
 
 	ev := emitter.WaitForEvent(t, "UPDATE", time.Second)
-	payload, ok := ev.Data.(resource.WatchUpdatePayload)
+	payload, ok := ev.Data[0].(resource.WatchUpdatePayload)
 	assert.True(t, ok)
 	assert.Equal(t, "plugin-a", payload.PluginID)
 }
@@ -109,7 +109,7 @@ func TestSink_OnDelete_SetsPluginID(t *testing.T) {
 	sink.OnDelete(resource.WatchDeletePayload{Connection: "conn-1", Key: "pods"})
 
 	ev := emitter.WaitForEvent(t, "DELETE", time.Second)
-	payload, ok := ev.Data.(resource.WatchDeletePayload)
+	payload, ok := ev.Data[0].(resource.WatchDeletePayload)
 	assert.True(t, ok)
 	assert.Equal(t, "plugin-a", payload.PluginID)
 }
@@ -160,7 +160,7 @@ func TestSink_OnStateChange_SetsPluginID(t *testing.T) {
 	})
 
 	ev := emitter.WaitForEvent(t, "STATE", time.Second)
-	payload, ok := ev.Data.(resource.WatchStateEvent)
+	payload, ok := ev.Data[0].(resource.WatchStateEvent)
 	assert.True(t, ok)
 	assert.Equal(t, "plugin-a", payload.PluginID)
 	assert.Equal(t, "conn-1", payload.Connection)
@@ -185,7 +185,7 @@ func TestSink_OnStateChange_EventKeyFormat(t *testing.T) {
 	assert.Equal(t, "watch/STATE", all[1].Key)
 
 	// Both events carry the same enriched payload
-	perPayload, ok := all[0].Data.(resource.WatchStateEvent)
+	perPayload, ok := all[0].Data[0].(resource.WatchStateEvent)
 	assert.True(t, ok)
 	assert.Equal(t, "plugin-a", perPayload.PluginID)
 	assert.Equal(t, "my-cluster", perPayload.Connection)

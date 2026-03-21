@@ -257,10 +257,10 @@ func TestManager_GetDevServerLogs_WithInstance(t *testing.T) {
 	assert.Equal(t, "build complete", logs[0].Message)
 }
 
-func TestManager_Shutdown_NoInstances(t *testing.T) {
+func TestManager_ServiceShutdown_NoInstances(t *testing.T) {
 	mgr := newTestManager(t)
 	// Should not panic when there are no instances or watcher.
-	mgr.Shutdown()
+	_ = mgr.ServiceShutdown()
 }
 
 func TestManager_HandleExternalConnect(t *testing.T) {
@@ -358,7 +358,7 @@ func TestManager_StartDevServer_EmptyDevPath(t *testing.T) {
 	assert.Contains(t, appErr.Title, "Missing dev path")
 }
 
-func TestManager_Shutdown_WithInstances(t *testing.T) {
+func TestManager_ServiceShutdown_WithInstances(t *testing.T) {
 	mgr := newTestManager(t)
 
 	// Create instances with no-op callbacks. These have nil vite/goWatcher
@@ -384,7 +384,7 @@ func TestManager_Shutdown_WithInstances(t *testing.T) {
 	mgr.mu.Unlock()
 
 	// Shutdown should stop all instances and not panic.
-	mgr.Shutdown()
+	_ = mgr.ServiceShutdown()
 
 	// After shutdown, instances should be removed.
 	mgr.mu.RLock()
@@ -392,7 +392,7 @@ func TestManager_Shutdown_WithInstances(t *testing.T) {
 	mgr.mu.RUnlock()
 }
 
-func TestManager_Shutdown_WithExternalWatcher(t *testing.T) {
+func TestManager_ServiceShutdown_WithExternalWatcher(t *testing.T) {
 	mgr := newTestManager(t)
 
 	// Set up a minimal external watcher with a real fsnotify watcher
@@ -410,7 +410,7 @@ func TestManager_Shutdown_WithExternalWatcher(t *testing.T) {
 	}
 
 	// Shutdown should call Stop on the external watcher, disconnecting all.
-	mgr.Shutdown()
+	_ = mgr.ServiceShutdown()
 
 	assert.False(t, ew.IsExternallyManaged("ext-plug"))
 }

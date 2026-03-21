@@ -1,6 +1,6 @@
 import { EXTENSION_REGISTRY } from '@/features/extensions/store';
 import { ensureBuiltinExtensionPointsRegistered } from '@/features/extensions/registerBuiltinExtensionPoints';
-import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 import { validatePluginExports } from '../core/validation';
 import { MissingExtensionPointError, DuplicateContributionError } from '../core/errors';
 import { InMemoryCrashDataStrategy } from '../core/CrashDataService';
@@ -38,8 +38,8 @@ export function createProductionDeps(config?: Partial<PluginServiceConfig>): Plu
     clearPlugin,
 
     onEvent: (eventName, handler) => {
-      // EventsOn returns () => void — use it for proper cleanup.
-      return EventsOn(eventName, handler);
+      // Events.On returns () => void — use it for proper cleanup.
+      return Events.On(eventName, (ev) => handler(ev.data));
     },
 
     ensureBuiltinExtensionPoints: () => {

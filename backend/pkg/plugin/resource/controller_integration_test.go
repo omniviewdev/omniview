@@ -170,7 +170,7 @@ func TestIntegration_WatchEventsFlow(t *testing.T) {
 
 	// Emitter should have recorded the event.
 	ev := emitter.WaitForEvent(t, "ADD", time.Second)
-	payload, ok := ev.Data.(resource.WatchAddPayload)
+	payload, ok := ev.Data[0].(resource.WatchAddPayload)
 	require.True(t, ok)
 	assert.Equal(t, "p1", payload.PluginID)
 	assert.Equal(t, "conn-1", payload.Connection)
@@ -194,7 +194,7 @@ func TestIntegration_SubscriptionGates(t *testing.T) {
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-2"})
 
 	ev := emitter.WaitForEvent(t, "ADD", time.Second)
-	payload, ok := ev.Data.(resource.WatchAddPayload)
+	payload, ok := ev.Data[0].(resource.WatchAddPayload)
 	require.True(t, ok)
 	assert.Equal(t, "pod-2", payload.ID)
 }
@@ -237,7 +237,7 @@ func TestIntegration_RefCounted_Subscriptions(t *testing.T) {
 	// Events still flow.
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-1"})
 	ev := emitter.WaitForEvent(t, "ADD", time.Second)
-	payload, ok := ev.Data.(resource.WatchAddPayload)
+	payload, ok := ev.Data[0].(resource.WatchAddPayload)
 	require.True(t, ok)
 	assert.Equal(t, "pod-1", payload.ID)
 }
@@ -260,10 +260,10 @@ func TestIntegration_ConnectionDisconnect(t *testing.T) {
 
 	// Emitter should have a DISCONNECTED status event.
 	ev := emitter.WaitForEvent(t, "connection/status", time.Second)
-	statusData, ok := ev.Data.(map[string]interface{})
+	payload, ok := ev.Data[0].(ConnectionStatusPayload)
 	require.True(t, ok)
-	assert.Equal(t, "DISCONNECTED", statusData["status"])
-	assert.Equal(t, "conn-1", statusData["connectionID"])
+	assert.Equal(t, "DISCONNECTED", payload.Status)
+	assert.Equal(t, "conn-1", payload.ConnectionID)
 }
 
 // EI-009: OnPluginStop removes plugin, connections, and subscriptions.
@@ -310,7 +310,7 @@ func TestIntegration_MultiPlugin_Isolation(t *testing.T) {
 	sink1.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-from-p1"})
 
 	ev := emitter.WaitForEvent(t, "ADD", time.Second)
-	payload, ok := ev.Data.(resource.WatchAddPayload)
+	payload, ok := ev.Data[0].(resource.WatchAddPayload)
 	require.True(t, ok)
 	assert.Equal(t, "p1", payload.PluginID)
 	assert.Equal(t, "pod-from-p1", payload.ID)
@@ -326,7 +326,7 @@ func TestIntegration_MultiPlugin_Isolation(t *testing.T) {
 	p1Events := 0
 	p2Events := 0
 	for _, e := range events {
-		p, ok := e.Data.(resource.WatchAddPayload)
+		p, ok := e.Data[0].(resource.WatchAddPayload)
 		require.True(t, ok)
 		if p.PluginID == "p1" {
 			p1Events++
@@ -394,7 +394,7 @@ func TestIntegration_SubscribeBeforeConnect(t *testing.T) {
 	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "pods", ID: "pod-1"})
 
 	ev := emitter.WaitForEvent(t, "ADD", time.Second)
-	payload, ok := ev.Data.(resource.WatchAddPayload)
+	payload, ok := ev.Data[0].(resource.WatchAddPayload)
 	require.True(t, ok)
 	assert.Equal(t, "pod-1", payload.ID)
 }
@@ -424,9 +424,9 @@ func TestIntegration_OutOfOrderEvents(t *testing.T) {
 	var eventTypes []string
 	for _, e := range all {
 		if e.Key == "p1/conn-1/pods/ADD" || e.Key == "p1/conn-1/pods/DELETE" {
-			if _, ok := e.Data.(resource.WatchAddPayload); ok {
+			if _, ok := e.Data[0].(resource.WatchAddPayload); ok {
 				eventTypes = append(eventTypes, "ADD")
-			} else if _, ok := e.Data.(resource.WatchDeletePayload); ok {
+			} else if _, ok := e.Data[0].(resource.WatchDeletePayload); ok {
 				eventTypes = append(eventTypes, "DELETE")
 			}
 		}
@@ -491,7 +491,7 @@ func TestIntegration_SameKeyTwoPlugins(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	events := emitter.Events()
 	for _, e := range events {
-		if payload, ok := e.Data.(resource.WatchAddPayload); ok {
+		if payload, ok := e.Data[0].(resource.WatchAddPayload); ok {
 			assert.Equal(t, "p1", payload.PluginID, "event should only have p1 plugin ID")
 		}
 	}

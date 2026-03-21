@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { GetEditorSchemas } from '../../wailsjs/go/resource/Client';
+import { GetEditorSchemas } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseEditorSchemasOptions = {

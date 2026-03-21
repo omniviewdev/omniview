@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ClosePortForwardSession,
   ListAllPortForwardSessions,
-} from '../../wailsjs/go/networker/Client';
-import { BrowserOpenURL, EventsOn } from '../../wailsjs/runtime/runtime';
+} from '../../bindings/github.com/omniviewdev/omniview/networkercontrollerservice';
+import { Browser, Events } from '@wailsio/runtime';
 import { useSnackbar } from '../snackbar';
 import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
 
@@ -32,10 +32,10 @@ export function usePortForwardSessions() {
 
   // Listen for session lifecycle events from the Go backend and invalidate the query cache.
   useEffect(() => {
-    const cancelCreated = EventsOn('core/networker/portforward/created', () => {
+    const cancelCreated = Events.On('core/networker/portforward/created', () => {
       queryClient.invalidateQueries({ queryKey: [...ALL_SESSIONS_KEY] });
     });
-    const cancelClosed = EventsOn('core/networker/portforward/closed', () => {
+    const cancelClosed = Events.On('core/networker/portforward/closed', () => {
       queryClient.invalidateQueries({ queryKey: [...ALL_SESSIONS_KEY] });
     });
 
@@ -63,7 +63,7 @@ export function usePortForwardSessions() {
     sessions,
     activeSessions,
     closeSession: closeMutation.mutateAsync,
-    openInBrowser: (localPort: number) => BrowserOpenURL(`http://localhost:${localPort}`),
+    openInBrowser: (localPort: number) => Browser.OpenURL(`http://localhost:${localPort}`),
   };
 }
 

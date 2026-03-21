@@ -1,8 +1,8 @@
 import { useQueries } from '@tanstack/react-query';
 
 // Types
-import { resource } from '../../wailsjs/go/models';
-import { List } from '../../wailsjs/go/resource/Client';
+import { ListInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
+import { List } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceSearchOptions = {
@@ -62,11 +62,12 @@ export const useResourceSearch = ({
   const results = useQueries({
     queries: searches.map(search => ({
       queryKey: getQueryKey(search),
-      queryFn: async () => List(pluginID, connectionID, search.key, resource.ListInput.createFrom({
+      queryFn: async () => List(pluginID, connectionID, search.key, ListInput.createFrom({
         order: [{ field: 'name', descending: false }],
         pagination: { page: 1, pageSize: 200 },
         namespaces: search.namespaces,
       })).then((data) => {
+        if (!data) return [];
         console.log(data.result);
         if (data.result && search.postFilter) {
           return Object.values(data.result).filter(search.postFilter);

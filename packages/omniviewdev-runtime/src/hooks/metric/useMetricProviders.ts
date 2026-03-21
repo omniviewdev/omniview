@@ -2,14 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import {
   GetProviders,
   GetProvidersForResource,
-} from '../../wailsjs/go/metric/Client';
-import type { metric } from '../../wailsjs/go/models';
+} from '../../bindings/github.com/omniviewdev/omniview/metriccontrollerservice';
+import type { MetricProviderSummary } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 
 /**
  * Hook to get all available metric providers.
  */
 export const useMetricProviders = () => {
-  return useQuery<metric.MetricProviderSummary[]>({
+  return useQuery<MetricProviderSummary[]>({
     queryKey: ['metric', 'providers'],
     queryFn: GetProviders,
     staleTime: 30_000,
@@ -20,7 +20,7 @@ export const useMetricProviders = () => {
  * Hook to get metric providers that support a specific resource type.
  */
 export const useMetricProvidersForResource = (resourceKey: string) => {
-  return useQuery<metric.MetricProviderSummary[]>({
+  return useQuery<MetricProviderSummary[]>({
     queryKey: ['metric', 'providers', resourceKey],
     queryFn: () => GetProvidersForResource(resourceKey),
     enabled: !!resourceKey,

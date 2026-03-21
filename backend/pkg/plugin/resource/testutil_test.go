@@ -26,7 +26,7 @@ import (
 
 type emittedEvent struct {
 	Key  string
-	Data interface{}
+	Data []any
 }
 
 type recordingEmitter struct {
@@ -39,7 +39,7 @@ func newRecordingEmitter() *recordingEmitter {
 	return &recordingEmitter{changed: make(chan struct{})}
 }
 
-func (e *recordingEmitter) Emit(key string, data interface{}) {
+func (e *recordingEmitter) Emit(key string, data ...any) {
 	e.mu.Lock()
 	e.events = append(e.events, emittedEvent{Key: key, Data: data})
 	close(e.changed)
@@ -490,9 +490,9 @@ func TestRecordingEmitter_EmitAndEvents(t *testing.T) {
 	events := e.Events()
 	require.Len(t, events, 2)
 	assert.Equal(t, "key-1", events[0].Key)
-	assert.Equal(t, "data-1", events[0].Data)
+	assert.Equal(t, []any{"data-1"}, events[0].Data)
 	assert.Equal(t, "key-2", events[1].Key)
-	assert.Equal(t, "data-2", events[1].Data)
+	assert.Equal(t, []any{"data-2"}, events[1].Data)
 }
 
 func TestRecordingEmitter_CountEvents(t *testing.T) {
@@ -515,8 +515,8 @@ func TestRecordingEmitter_EventsWithKey(t *testing.T) {
 
 	adds := e.EventsWithKey("ADD")
 	require.Len(t, adds, 2)
-	assert.Equal(t, "a", adds[0].Data)
-	assert.Equal(t, "c", adds[1].Data)
+	assert.Equal(t, []any{"a"}, adds[0].Data)
+	assert.Equal(t, []any{"c"}, adds[1].Data)
 
 	p1 := e.EventsWithKey("p1")
 	assert.Len(t, p1, 2)
@@ -528,7 +528,7 @@ func TestRecordingEmitter_WaitForEvent_Immediate(t *testing.T) {
 
 	ev := e.WaitForEvent(t, "target", 100*time.Millisecond)
 	assert.Equal(t, "target/event", ev.Key)
-	assert.Equal(t, "payload", ev.Data)
+	assert.Equal(t, []any{"payload"}, ev.Data)
 }
 
 func TestRecordingEmitter_WaitForEvent_Async(t *testing.T) {
@@ -541,7 +541,7 @@ func TestRecordingEmitter_WaitForEvent_Async(t *testing.T) {
 
 	ev := e.WaitForEvent(t, "async", 2*time.Second)
 	assert.Equal(t, "async/event", ev.Key)
-	assert.Equal(t, "arrived", ev.Data)
+	assert.Equal(t, []any{"arrived"}, ev.Data)
 }
 
 func TestRecordingEmitter_WaitForNEvents(t *testing.T) {

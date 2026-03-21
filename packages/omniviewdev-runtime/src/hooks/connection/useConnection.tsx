@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { GetConnection, UpdateConnection, RemoveConnection, StartConnection, StopConnection } from '../../wailsjs/go/resource/Client';
-import { type types } from '../../wailsjs/go/models';
+import { GetConnection, UpdateConnection, RemoveConnection, StartConnection, StopConnection } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { useResolvedPluginId } from '../useResolvedPluginId';
@@ -51,14 +51,14 @@ export const useConnection = ({ pluginID: explicitPluginID, connectionID }: UseC
   });
 
   const { mutateAsync: updateConnection } = useMutation({
-    mutationFn: async (conn: types.Connection) => UpdateConnection(pluginID, conn),
+    mutationFn: async (conn: Connection) => UpdateConnection(pluginID, conn),
     onSuccess(data, { name }) {
       showSnackbar({ message: `Connection ${name} successfully updated`, status: 'success' });
       // Update the list and detail
       queryClient.setQueryData(queryKey, connection);
       queryClient.setQueriesData(
         { queryKey: [pluginID, 'connection', 'list'] },
-        (previous: types.Connection[] | undefined) => previous?.map(conn => conn.id === connectionID ? data : conn),
+        (previous: Connection[] | undefined) => previous?.map(conn => conn.id === connectionID ? data : conn),
       );
     },
     onError: createErrorHandler(showSnackbar, 'Failed to update connection'),
@@ -72,7 +72,7 @@ export const useConnection = ({ pluginID: explicitPluginID, connectionID }: UseC
       queryClient.setQueryData(queryKey, undefined);
       queryClient.setQueriesData(
         { queryKey: [pluginID, 'connection', 'list'] },
-        (previous: types.Connection[] | undefined) => previous?.filter(conn => conn.id !== connectionID),
+        (previous: Connection[] | undefined) => previous?.filter(conn => conn.id !== connectionID),
       );
     },
     onError: createErrorHandler(showSnackbar, 'Failed to remove connection'),

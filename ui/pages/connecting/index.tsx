@@ -13,7 +13,7 @@ import { List, ListItem, ListSubheader } from '@omniviewdev/ui';
 import { produce } from 'immer';
 import { usePluginRouter } from '@infraview/router';
 
-import { EventsOn } from '@omniviewdev/runtime/runtime';
+import { Events } from '@omniviewdev/runtime/runtime';
 import { handleRemoveTab } from '@/store/tabs/slice';
 import { useDispatch } from 'react-redux';
 
@@ -196,13 +196,13 @@ const Connecting: FC = () => {
 
     // Go is much faster here, so we may actually receive the event before we're done setting up the listeners
     // so we need to make sure we're listening before we start the switch context
-    const readyCloser = EventsOn(ReadyEvent, (resource: string) => {
-      dispatch({ type: 'MARK_RESOURCE_READY', payload: resource });
+    const readyCloser = Events.On(ReadyEvent, (ev) => {
+      dispatch({ type: 'MARK_RESOURCE_READY', payload: ev.data as string });
     });
-    const errorCloser = EventsOn(ErrorEvent, (resource: string) => {
-      dispatch({ type: 'MARK_RESOURCE_ERROR', payload: resource });
+    const errorCloser = Events.On(ErrorEvent, (ev) => {
+      dispatch({ type: 'MARK_RESOURCE_ERROR', payload: ev.data as string });
     });
-    const allReadyCloser = EventsOn(AllReadyEvent, () => {
+    const allReadyCloser = Events.On(AllReadyEvent, () => {
       handleInitialized();
     });
     //

@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/nxadm/tail"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -24,9 +24,19 @@ const (
 
 type BackendLogger struct {
 	Sugared   *zap.SugaredLogger
+	app       *application.App
 	logDir    string
 	watchers  map[string]*tail.Tail
 	watchLock sync.Mutex
+}
+
+func (b *BackendLogger) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
+	b.app = application.Get()
+	return nil
+}
+
+func (b *BackendLogger) ServiceShutdown() error {
+	return nil
 }
 
 // NewBackendLogger creates (and binds) a Zap SugaredLogger writing to `<name>.log`.
@@ -214,7 +224,9 @@ func (b *BackendLogger) StartTail(ctx context.Context, name string) error {
 
 	go func() {
 		for line := range t.Lines {
-			runtime.EventsEmit(ctx, fmt.Sprintf(LOG_UPDATE_FMT, name), line.Text)
+			if b.app != nil {
+				b.app.Event.Emit(fmt.Sprintf(LOG_UPDATE_FMT, name), line.Text)
+			}
 		}
 	}()
 	return nil

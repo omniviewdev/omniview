@@ -11,7 +11,7 @@ import { useSelector } from 'react-redux';
 import { type RootState } from '@/store/store';
 import HeaderTabsArea from './areas/HeaderTabsArea';
 import { WindowContext } from '@/contexts/WindowContext';
-import { WindowIsMaximised, WindowMaximise, WindowUnmaximise } from '@omniviewdev/runtime/runtime';
+import { Window } from '@omniviewdev/runtime/runtime';
 
 /**
  * Primary header component for the core main layout
@@ -32,11 +32,11 @@ const CoreLayoutHeader: React.FC<BoxProps> = props => {
         // don't do anything
         break;
       default:
-        WindowIsMaximised().then((isMaximized) => {
+        Window.IsMaximised().then((isMaximized) => {
           if (isMaximized) {
-            WindowUnmaximise();
+            Window.UnMaximise();
           } else {
-            WindowMaximise();
+            Window.Maximise();
           }
         }).catch((err) => {
           console.error(err);

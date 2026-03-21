@@ -1,4 +1,4 @@
-import { networker } from "../../models";
+import type { PortForwardSession } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/networker/models';
 
 export type PortForwardResourceOpts = {
   /**
@@ -44,10 +44,10 @@ export type PortForwardResourceOpts = {
   labels?: Record<string, string>;
 };
 
-export type PortForwardResourceFunction = (opts: PortForwardResourceOpts) => Promise<networker.PortForwardSession>;
+export type PortForwardResourceFunction = (opts: PortForwardResourceOpts) => Promise<PortForwardSession>;
 
 export type ResourcePortForwarder = {
-  sessions: networker.PortForwardSession[];
+  sessions: PortForwardSession[];
   forward: PortForwardResourceFunction;
   close: (sessionId: string) => Promise<void>;
 };

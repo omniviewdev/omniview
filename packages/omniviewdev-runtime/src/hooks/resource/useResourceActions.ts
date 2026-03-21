@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { showAppError } from '../../errors/parseAppError';
-import { resource } from '../../wailsjs/go/models';
-import { GetActions, ExecuteAction } from '../../wailsjs/go/resource/Client';
+import { ActionInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
+import { GetActions, ExecuteAction } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceActionsOptions = {
@@ -107,10 +107,10 @@ export const useExecuteAction = ({
         connectionID,
         resourceKey,
         actionID,
-        resource.ActionInput.createFrom({ id, namespace, params }),
+        ActionInput.createFrom({ id, namespace, params }),
       ),
     onSuccess: (result) => {
-      if (result.message) {
+      if (result?.message) {
         showSnackbar(result.message, 'success');
       }
       // Invalidate the resource list cache so tables refresh after actions like upgrade/rollback
