@@ -178,6 +178,11 @@ jobs:
 
       - name: Build Omniview
         shell: bash
+        env:
+          CGO_ENABLED: "1"
+          CGO_CFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=10.15' || '' }}
+          CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=10.15' || '' }}
+          MACOSX_DEPLOYMENT_TARGET: ${{ runner.os == 'macOS' && '10.15' || '' }}
         run: |
           go build -tags "${{ matrix.build-tags }}" -trimpath -buildvcs=false \
             -ldflags "-w -s ${{ matrix.extra-ldflags }} \
@@ -187,11 +192,22 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.Development=true" \
             -o bin/Omniview .
 
+      - name: Create macOS .app bundle
+        if: runner.os == 'macOS'
+        run: |
+          task common:generate:icons
+          mkdir -p bin/Omniview.app/Contents/MacOS
+          mkdir -p bin/Omniview.app/Contents/Resources
+          cp build/darwin/icons.icns bin/Omniview.app/Contents/Resources/
+          cp bin/Omniview bin/Omniview.app/Contents/MacOS/
+          cp build/darwin/Info.plist bin/Omniview.app/Contents/
+          codesign --force --deep --sign - bin/Omniview.app
+
       - name: Prepare artifact (macOS)
         if: runner.os == 'macOS'
         run: |
           cd bin
-          zip -r Omniview-pr${{ github.event.pull_request.number }}-macos.zip Omniview
+          zip -r Omniview-pr${{ github.event.pull_request.number }}-macos.zip Omniview.app
 
       - name: Prepare artifact (Linux)
         if: runner.os == 'Linux'

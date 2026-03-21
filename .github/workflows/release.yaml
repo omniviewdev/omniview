@@ -73,6 +73,11 @@ jobs:
 
       - name: Build Omniview
         shell: bash
+        env:
+          CGO_ENABLED: "1"
+          CGO_CFLAGS: "-mmacosx-version-min=10.15"
+          CGO_LDFLAGS: "-mmacosx-version-min=10.15"
+          MACOSX_DEPLOYMENT_TARGET: "10.15"
         run: |
           go build -tags production -trimpath -buildvcs=false \
             -ldflags "-w -s \
@@ -84,6 +89,15 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
             -o bin/Omniview .
+
+      - name: Create macOS .app bundle
+        run: |
+          task common:generate:icons
+          mkdir -p bin/Omniview.app/Contents/MacOS
+          mkdir -p bin/Omniview.app/Contents/Resources
+          cp build/darwin/icons.icns bin/Omniview.app/Contents/Resources/
+          cp bin/Omniview bin/Omniview.app/Contents/MacOS/
+          cp build/darwin/Info.plist bin/Omniview.app/Contents/
 
       - name: Import Code-Signing Certificates
         uses: Apple-Actions/import-codesign-certs@v3
@@ -103,9 +117,9 @@ jobs:
             --options runtime \
             --entitlements build/darwin/entitlements.plist \
             --sign "$APPLE_SIGN_ID" \
-            bin/Omniview
+            bin/Omniview.app
 
-          ditto -c -k --keepParent bin/Omniview archive.zip
+          ditto -c -k --keepParent --rsrc bin/Omniview.app archive.zip
 
           xcrun notarytool submit archive.zip \
             --apple-id "$NOTARY_USER" \
@@ -113,7 +127,7 @@ jobs:
             --team-id "$TEAM_ID" \
             --wait
 
-          xcrun stapler staple bin/Omniview
+          xcrun stapler staple bin/Omniview.app
 
       - name: Checkout create-dmg
         uses: actions/checkout@v4
@@ -133,7 +147,8 @@ jobs:
             --window-pos 400 400 \
             --window-size 660 450 \
             --icon-size 80 \
-            --icon "Omniview" 180 180 \
+            --icon "Omniview.app" 180 180 \
+            --hide-extension "Omniview.app" \
             --app-drop-link 480 180 \
             "../bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.dmg" \
             "../bin"
