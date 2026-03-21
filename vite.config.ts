@@ -29,16 +29,16 @@ export default defineConfig({
     // wails3 dev sets FRONTEND_DEVSERVER_URL to this port.
     port: parseInt(process.env.WAILS_VITE_PORT || '9245'),
     strictPort: true,
-    // HMR fix for Wails webview — the webview loads pages from wails://localhost
-    // which can't resolve WS connections. Force the HMR client to connect
-    // directly to the Vite dev server. See: https://github.com/wailsapp/wails/issues/3064
+    // HMR fix for Wails v3 webview.
+    // The Wails asset server blocks WebSocket upgrades (returns 501) so the
+    // HMR WebSocket can't go through the proxy. We run HMR on a separate port
+    // that the webview connects to directly, bypassing the Wails asset server.
+    // See: https://github.com/wailsapp/wails/issues/3064
     hmr: {
       host: 'localhost',
-      port: parseInt(process.env.WAILS_VITE_PORT || '9245'),
+      port: 9246, // dedicated HMR port, one above the Vite server port
       protocol: 'ws',
-      // clientPort must match the actual Vite server port so the HMR client
-      // in the webview knows where to connect
-      clientPort: parseInt(process.env.WAILS_VITE_PORT || '9245'),
+      clientPort: 9246,
     },
   },
   plugins: [
