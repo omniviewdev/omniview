@@ -25,20 +25,16 @@ export default defineConfig({
     sourcemap: false,
   },
   server: {
-    // Port must match VITE_PORT in Taskfile.yml (default 9245).
-    // wails3 dev sets FRONTEND_DEVSERVER_URL to this port.
+    // Port is set via WAILS_VITE_PORT env var (wails3 dev sets it automatically).
+    // Fallback to 9245 to match the default in Taskfile.yml.
     port: parseInt(process.env.WAILS_VITE_PORT || '9245'),
     strictPort: true,
-    // HMR fix for Wails v3 webview.
-    // The Wails asset server blocks WebSocket upgrades (returns 501) so the
-    // HMR WebSocket can't go through the proxy. We run HMR on a separate port
-    // that the webview connects to directly, bypassing the Wails asset server.
+    // Wails webview loads from wails://localhost — force HMR to connect
+    // via ws:// to localhost so it resolves correctly.
     // See: https://github.com/wailsapp/wails/issues/3064
     hmr: {
       host: 'localhost',
-      port: 9246, // dedicated HMR port, one above the Vite server port
       protocol: 'ws',
-      clientPort: 9246,
     },
   },
   plugins: [
