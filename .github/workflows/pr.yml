@@ -16,7 +16,7 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # E2E Tests — Playwright against wails dev
+  # E2E Tests — Playwright against server mode
   # ─────────────────────────────────────────────────────────────────────────────
   e2e-tests:
     runs-on: ubuntu-latest
@@ -52,29 +52,34 @@ jobs:
           cache: true
           cache-dependency-path: "go.sum"
 
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Install Wails v3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
       - name: Build workspace packages
-        run: make packages
+        run: task packages
 
       - name: Install Playwright browsers
         working-directory: e2e
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Start wails dev
+      - name: Build and start server mode
         run: |
-          xvfb-run wails dev -loglevel Error -tags webkit2_41 -nosyncgomod -m -noreload -skipbindings &
-          echo "Waiting for Wails dev server..."
-          for i in $(seq 1 150); do
-            if curl -sf http://localhost:34115 > /dev/null 2>&1; then
-              echo "Wails dev server is ready (${i}s)"
-              exit 0
+          task common:build:frontend
+          go build -tags server -o bin/Omniview-server .
+          bin/Omniview-server &
+          echo "Waiting for server to be ready..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:34115/health > /dev/null 2>&1; then
+              echo "Server ready"
+              break
             fi
             sleep 2
           done
-          echo "Timed out waiting for Wails dev server"
-          exit 1
 
       - name: Run Playwright tests
         working-directory: e2e
@@ -101,15 +106,18 @@ jobs:
           - os: macos-latest
             platform: darwin/universal
             artifact-name: pr-build-macos
-            extra-flags: ""
+            build-tags: "production"
+            extra-ldflags: ""
           - os: ubuntu-latest
             platform: linux/amd64
             artifact-name: pr-build-linux
-            extra-flags: "-tags webkit2_41"
+            build-tags: "production,webkit2_41"
+            extra-ldflags: ""
           - os: windows-latest
             platform: windows/amd64
             artifact-name: pr-build-windows
-            extra-flags: ""
+            build-tags: "production"
+            extra-ldflags: "-H windowsgui"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -144,48 +152,56 @@ jobs:
           cache: true
           cache-dependency-path: "go.sum"
 
-      - name: Install Wails
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Install Wails v3
         shell: bash
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
       - name: Build workspace packages
         shell: bash
-        run: make packages
+        run: task packages
+
+      - name: Build frontend
+        shell: bash
+        run: task common:build:frontend
 
       - name: Build Omniview
         shell: bash
         run: |
-          wails build -platform ${{ matrix.platform }} \
-            ${{ matrix.extra-flags }} \
-            -webview2 download \
-            -ldflags "\
+          go build -tags "${{ matrix.build-tags }}" -trimpath -buildvcs=false \
+            -ldflags "-w -s ${{ matrix.extra-ldflags }} \
               -X github.com/omniviewdev/omniview/internal/version.Version=0.0.0-pr.${{ github.event.pull_request.number }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=true"
+              -X github.com/omniviewdev/omniview/internal/version.Development=true" \
+            -o bin/Omniview .
 
       - name: Prepare artifact (macOS)
         if: runner.os == 'macOS'
         run: |
-          cd build/bin
-          zip -r Omniview-pr${{ github.event.pull_request.number }}-macos.zip Omniview.app
+          cd bin
+          zip -r Omniview-pr${{ github.event.pull_request.number }}-macos.zip Omniview
 
       - name: Prepare artifact (Linux)
         if: runner.os == 'Linux'
-        working-directory: build/bin
+        working-directory: bin
         run: mv Omniview "Omniview-pr${{ github.event.pull_request.number }}-linux-amd64"
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
-        working-directory: build/bin
-        run: Rename-Item -Path "Omniview.exe" -NewName "Omniview-pr${{ github.event.pull_request.number }}-windows-amd64.exe"
+        working-directory: bin
+        run: Rename-Item -Path "Omniview" -NewName "Omniview-pr${{ github.event.pull_request.number }}-windows-amd64.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
           path: |
-            build/bin/*.zip
-            build/bin/Omniview-pr*
+            bin/*.zip
+            bin/Omniview-pr*
           if-no-files-found: error
           retention-days: 5

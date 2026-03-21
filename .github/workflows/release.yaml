@@ -57,28 +57,32 @@ jobs:
           cache: true
           cache-dependency-path: "go.sum"
 
-      - name: Install Wails
-        shell: bash
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
 
-      - name: Build runtime package
+      - name: Install Wails v3
         shell: bash
-        run: pnpm run build
-        working-directory: packages/omniviewdev-runtime
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Build frontend
+        shell: bash
+        run: task common:build:frontend
 
       - name: Build Omniview
         shell: bash
         run: |
-          wails build -platform darwin/universal \
-            -webview2 download \
-            -ldflags "\
+          go build -tags production -trimpath -buildvcs=false \
+            -ldflags "-w -s \
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}"
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
+            -o bin/Omniview .
 
       - name: Import Code-Signing Certificates
         uses: Apple-Actions/import-codesign-certs@v3
@@ -98,9 +102,9 @@ jobs:
             --options runtime \
             --entitlements build/darwin/entitlements.plist \
             --sign "$APPLE_SIGN_ID" \
-            build/bin/Omniview.app
+            bin/Omniview
 
-          ditto -c -k --keepParent --rsrc build/bin/Omniview.app archive.zip
+          ditto -c -k --keepParent bin/Omniview archive.zip
 
           xcrun notarytool submit archive.zip \
             --apple-id "$NOTARY_USER" \
@@ -108,8 +112,7 @@ jobs:
             --team-id "$TEAM_ID" \
             --wait
 
-          xcrun stapler staple build/bin/Omniview.app
-          spctl --assess --type execute --verbose build/bin/Omniview.app
+          xcrun stapler staple bin/Omniview
 
       - name: Checkout create-dmg
         uses: actions/checkout@v4
@@ -122,25 +125,23 @@ jobs:
         shell: bash
         working-directory: ./build
         run: |
-          ./create-dmg/create-dmg \
+          ../build/create-dmg/create-dmg \
             --no-internet-enable \
             --volname "Omniview" \
-            --volicon "bin/Omniview.app/Contents/Resources/iconfile.icns" \
             --text-size 12 \
             --window-pos 400 400 \
             --window-size 660 450 \
             --icon-size 80 \
-            --icon "Omniview.app" 180 180 \
-            --hide-extension "Omniview.app" \
+            --icon "Omniview" 180 180 \
             --app-drop-link 480 180 \
-            "bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.dmg" \
-            "bin"
+            "../bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.dmg" \
+            "../bin"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: build/bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.dmg
+          path: bin/Omniview_${{ steps.version.outputs.version }}_darwin_universal.dmg
           if-no-files-found: error
           retention-days: 1
 
@@ -187,36 +188,39 @@ jobs:
           cache: true
           cache-dependency-path: "go.sum"
 
-      - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
 
-      - name: Build runtime package
-        run: pnpm run build
-        working-directory: packages/omniviewdev-runtime
+      - name: Install Wails v3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Build frontend
+        run: task common:build:frontend
 
       - name: Build Omniview
         run: |
-          wails build -platform linux/amd64 \
-            -tags webkit2_41 \
-            -webview2 download \
-            -ldflags "\
+          go build -tags "production,webkit2_41" -trimpath -buildvcs=false \
+            -ldflags "-w -s \
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}"
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
+            -o bin/Omniview .
 
       - name: Rename executable
-        working-directory: ./build/bin
+        working-directory: ./bin
         run: mv Omniview "Omniview_${{ steps.version.outputs.version }}_linux_amd64"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux-binary
-          path: build/bin/Omniview_${{ steps.version.outputs.version }}_linux_amd64
+          path: bin/Omniview_${{ steps.version.outputs.version }}_linux_amd64
           if-no-files-found: error
           retention-days: 1
 
@@ -258,38 +262,42 @@ jobs:
           cache: true
           cache-dependency-path: "go.sum"
 
-      - name: Install Wails
-        shell: bash
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
 
-      - name: Build runtime package
+      - name: Install Wails v3
         shell: bash
-        run: pnpm run build
-        working-directory: packages/omniviewdev-runtime
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Build frontend
+        shell: bash
+        run: task common:build:frontend
 
       - name: Build Omniview
         shell: bash
         run: |
-          wails build -platform windows/amd64 \
-            -webview2 download \
-            -ldflags "\
+          go build -tags production -trimpath -buildvcs=false \
+            -ldflags "-w -s -H windowsgui \
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}"
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
+            -o bin/Omniview.exe .
 
       - name: Rename executable
-        working-directory: ./build/bin
+        working-directory: ./bin
         run: Rename-Item -Path "Omniview.exe" -NewName "Omniview_${{ steps.version.outputs.version }}_windows_amd64.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-binary
-          path: build/bin/Omniview_${{ steps.version.outputs.version }}_windows_amd64.exe
+          path: bin/Omniview_${{ steps.version.outputs.version }}_windows_amd64.exe
           if-no-files-found: error
           retention-days: 1
 
