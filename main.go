@@ -5,8 +5,6 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"io/fs"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -1049,12 +1047,6 @@ func main() {
 		services = append(services, application.NewService(&PluginLogService{mgr: pluginLogManager}))
 	}
 
-	// Strip the "dist" prefix from the embedded FS so assets are served at /.
-	distFS, fsErr := fs.Sub(assets, "dist")
-	if fsErr != nil {
-		log.Fatalw(context.Background(), "failed to create sub filesystem for embedded assets", "error", fsErr)
-	}
-
 	// Create the Wails v3 application
 	app := application.New(application.Options{
 		Name:        "Omniview",
@@ -1062,7 +1054,7 @@ func main() {
 		Icon:        icon,
 		Services:    services,
 		Assets: application.AssetOptions{
-			Handler:    http.FileServerFS(distFS),
+			Handler:    application.AssetFileServerFS(assets),
 			Middleware: pluginAssetHandler.Middleware,
 		},
 		Mac: application.MacOptions{
