@@ -15,12 +15,11 @@ export default defineConfig({
     video: 'on-first-retry',
     trace: 'on-first-retry',
   },
-  // Locally, Playwright manages wails dev lifecycle.
-  // In CI, wails dev is started as a background step because xvfb-run +
-  // wails dev creates a process tree that doesn't shut down cleanly.
+  // Build and run the app in server mode (headless HTTP server at :34115).
+  // In CI, the server is started as a background step instead.
   webServer: process.env.CI ? undefined : {
-    command: 'cd .. && task dev',
-    url: 'http://localhost:34115',
+    command: 'cd .. && task run:server',
+    url: 'http://localhost:34115/health',
     timeout: 120_000,
     reuseExistingServer: true,
   },

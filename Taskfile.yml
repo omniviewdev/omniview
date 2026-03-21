@@ -32,6 +32,19 @@ tasks:
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
 
+  build:server:
+    summary: Builds the application in server mode (no GUI, HTTP server only)
+    cmds:
+      - task: common:build:frontend
+      - go build -tags server -o {{.BIN_DIR}}/{{.APP_NAME}}-server
+
+  run:server:
+    summary: Runs the application in server mode
+    deps:
+      - task: build:server
+    cmds:
+      - ./{{.BIN_DIR}}/{{.APP_NAME}}-server
+
   # ──────────────────────────────────────────────
   # CI / Verification targets
   # ──────────────────────────────────────────────

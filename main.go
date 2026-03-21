@@ -1057,6 +1057,12 @@ func main() {
 			Handler:    application.AssetFileServerFS(assets),
 			Middleware: pluginAssetHandler.Middleware,
 		},
+		// Server mode options — used when built with -tags server for
+		// headless/CI testing (e.g. Playwright E2E).
+		Server: application.ServerOptions{
+			Host: "localhost",
+			Port: 34115,
+		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
