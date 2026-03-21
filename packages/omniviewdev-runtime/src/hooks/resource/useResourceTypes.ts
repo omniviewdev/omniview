@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 // Underlying client
-import { GetResourceTypes } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { GetResourceTypes } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceTypesOptions = {

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   GetProviders,
   GetProvidersForResource,
-} from '../../bindings/github.com/omniviewdev/omniview/metriccontrollerservice';
+} from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/servicewrapper';
 import type { MetricProviderSummary } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/metric/models';
 
 /**

@@ -9,7 +9,7 @@ import { WatchState } from '../../types/watch';
 import type { WatchStateEvent } from '../../types/watch';
 
 // Underlying client
-import { List, Create, SubscribeResource, UnsubscribeResource } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { List, Create, SubscribeResource, UnsubscribeResource } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import { useEventBatcher } from './useEventBatcher';

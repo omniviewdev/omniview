@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Get, Set } from '../../bindings/github.com/omniviewdev/omniview/datacontrollerservice';
+import { Get, Set } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/data/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UsePluginDataResult<T> = {

@@ -1,5 +1,5 @@
 import React, { createContext, useState } from 'react';
-import { Values } from '../../bindings/github.com/omniviewdev/omniview/settingsproviderservice';
+import { Values } from '../../bindings/github.com/omniviewdev/omniview/internal/settings/servicewrapper';
 
 // Define the context type
 export interface SettingsContextType {

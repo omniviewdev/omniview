@@ -3,7 +3,7 @@ import { useSnackbar } from '../snackbar/useSnackbar';
 import { showAppError } from '../../errors/parseAppError';
 import { useOperations } from '../operations/useOperations';
 import { ActionInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
-import { StreamAction } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { StreamAction } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 

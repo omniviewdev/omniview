@@ -6,7 +6,7 @@ import {
   ClosePortForwardSession,
   FindPortForwardSessions,
   StartResourcePortForwardingSession,
-} from '../../bindings/github.com/omniviewdev/omniview/networkercontrollerservice';
+} from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/networker/servicewrapper';
 import { useSnackbar } from '../snackbar';
 import { createErrorHandler, parseAppError } from '../../errors/parseAppError';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';

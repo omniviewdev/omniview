@@ -5,8 +5,3 @@ import * as ServiceWrapper from "./servicewrapper.js";
 export {
     ServiceWrapper
 };
-
-export {
-    ConnectionState,
-    ConnectionStatusPayload
-} from "./models.js";
