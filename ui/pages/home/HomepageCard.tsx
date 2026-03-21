@@ -6,15 +6,69 @@ import Tooltip from '@mui/material/Tooltip';
 import SettingsIcon from '@mui/icons-material/Settings';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import { ErrorBoundary } from 'react-error-boundary';
+import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
+import { LuRotateCw, LuTriangleAlert } from 'react-icons/lu';
 import { Text } from '@omniviewdev/ui/typography';
 import { Stack } from '@omniviewdev/ui/layout';
+import MuiButton from '@mui/material/Button';
 import { PluginContext } from '@omniviewdev/runtime';
 import { PluginMeta } from '@omniviewdev/runtime/models';
 import type { ExtensionContributionRegistration } from '@omniviewdev/runtime';
 import type { HomepageCardProps, HomepageCardMeta, HomepageCardConfig } from '@/features/extensions/homepage/types';
-import { InlineErrorFallback } from '@/components/errors/ErrorFallback';
 import HomepageCardConfigPopover from './HomepageCardConfigPopover';
+
+/**
+ * Card-specific error fallback that fills the card content area with a
+ * centered, visually integrated error state.
+ */
+function CardErrorFallback({ error, resetErrorBoundary, label }: FallbackProps & { label: string }) {
+  return (
+    <Stack
+      alignItems="center"
+      justifyContent="center"
+      gap={1.5}
+      sx={{
+        height: '100%',
+        minHeight: 120,
+        px: 3,
+        py: 2,
+        textAlign: 'center',
+      }}
+    >
+      <Box
+        sx={{
+          width: 40,
+          height: 40,
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'rgba(var(--mui-palette-error-mainChannel) / 0.08)',
+        }}
+      >
+        <LuTriangleAlert size={20} color="var(--mui-palette-error-main)" />
+      </Box>
+      <Stack alignItems="center" gap={0.5}>
+        <Text size="sm" weight="semibold" color="text.primary">
+          {label} failed to load
+        </Text>
+        <Text size="xs" color="text.secondary" sx={{ maxWidth: 260 }}>
+          {error.message.length > 120 ? error.message.slice(0, 120) + '…' : error.message}
+        </Text>
+      </Stack>
+      <MuiButton
+        size="small"
+        variant="outlined"
+        color="inherit"
+        onClick={resetErrorBoundary}
+        startIcon={<LuRotateCw size={13} />}
+        sx={{ textTransform: 'none', fontSize: 12 }}
+      >
+        Retry
+      </MuiButton>
+    </Stack>
+  );
+}
 
 type Props = {
   registration: ExtensionContributionRegistration<React.FC<HomepageCardProps>>;
@@ -112,7 +166,7 @@ const HomepageCard: React.FC<Props> = ({
       <Box sx={{ flex: 1, overflow: 'auto', px: 1.5, pb: 1.5 }}>
         <ErrorBoundary
           FallbackComponent={(props) => (
-            <InlineErrorFallback {...props} label={registration.label ?? registration.plugin} />
+            <CardErrorFallback {...props} label={registration.label ?? registration.plugin} />
           )}
           resetKeys={[registration.id]}
         >
