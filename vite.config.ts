@@ -28,10 +28,17 @@ export default defineConfig({
     host: true,
     port: 9245,
     strictPort: true,
+    hmr: {
+      // In Wails v3 dev mode, the webview loads pages through the Wails
+      // asset server proxy (wails://localhost). The proxy doesn't support
+      // WebSocket upgrades, so HMR must connect directly to Vite's server.
+      host: 'localhost',
+      port: 9245,
+      protocol: 'ws',
+    },
     proxy: {
       '/_/': {
         bypass: function () {
-          // Return false to produce a 404 error for the request.
           return false;
         },
       },
