@@ -1,8 +1,10 @@
 import React from 'react';
+import { ErrorBoundary } from 'react-error-boundary';
 
 // material-ui
 import { Stack } from '@omniviewdev/ui/layout';
 import { Button } from '@omniviewdev/ui/buttons';
+import { InlineErrorFallback } from '@/components/errors/ErrorFallback';
 
 // types
 import type { DrawerComponent, DrawerContext } from '@omniviewdev/runtime';
@@ -151,9 +153,16 @@ export const createLinkedResourceDrawer = (
     {
       title: 'Overview',
       icon: <LuSquareChartGantt />,
-      component: (ctx) => SidebarComponent
-        ? <SidebarComponent ctx={ctx} />
-        : <LinkedResourceOverview ctx={ctx} />,
+      component: (ctx) => (
+        <ErrorBoundary
+          FallbackComponent={(props) => <InlineErrorFallback {...props} label="Sidebar" />}
+          resetKeys={[resourceKey]}
+        >
+          {SidebarComponent
+            ? <SidebarComponent ctx={ctx} />
+            : <LinkedResourceOverview ctx={ctx} />}
+        </ErrorBoundary>
+      ),
     },
     {
       title: 'Editor',

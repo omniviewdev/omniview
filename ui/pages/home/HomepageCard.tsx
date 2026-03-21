@@ -6,12 +6,14 @@ import Tooltip from '@mui/material/Tooltip';
 import SettingsIcon from '@mui/icons-material/Settings';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import { ErrorBoundary } from 'react-error-boundary';
 import { Text } from '@omniviewdev/ui/typography';
 import { Stack } from '@omniviewdev/ui/layout';
 import { PluginContext } from '@omniviewdev/runtime';
 import { PluginMeta } from '@omniviewdev/runtime/models';
 import type { ExtensionContributionRegistration } from '@omniviewdev/runtime';
 import type { HomepageCardProps, HomepageCardMeta, HomepageCardConfig } from '@/features/extensions/homepage/types';
+import { InlineErrorFallback } from '@/components/errors/ErrorFallback';
 import HomepageCardConfigPopover from './HomepageCardConfigPopover';
 
 type Props = {
@@ -105,12 +107,19 @@ const HomepageCard: React.FC<Props> = ({
         )}
       </Box>
 
-      {/* Card content — use a lightweight context provider instead of
-          PluginContextProvider which blocks rendering on async metadata fetch */}
+      {/* Card content — wrapped in per-card error boundary so a single
+          plugin crash doesn't take down the entire homepage */}
       <Box sx={{ flex: 1, overflow: 'auto', px: 1.5, pb: 1.5 }}>
-        <PluginContext.Provider value={providerValue}>
-          <Component pluginID={registration.plugin} config={config} />
-        </PluginContext.Provider>
+        <ErrorBoundary
+          FallbackComponent={(props) => (
+            <InlineErrorFallback {...props} label={registration.label ?? registration.plugin} />
+          )}
+          resetKeys={[registration.id]}
+        >
+          <PluginContext.Provider value={providerValue}>
+            <Component pluginID={registration.plugin} config={config} />
+          </PluginContext.Provider>
+        </ErrorBoundary>
       </Box>
 
       {/* Config popover */}
