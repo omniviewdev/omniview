@@ -24,8 +24,19 @@ export default defineConfig({
     minify: false,
     sourcemap: false,
   },
-  // Server config is intentionally minimal — wails3 dev passes port via CLI
-  // and sets FRONTEND_DEVSERVER_URL automatically. Overriding here breaks HMR.
+  server: {
+    // Port must match VITE_PORT in Taskfile.yml (default 9245).
+    // wails3 dev sets FRONTEND_DEVSERVER_URL to this port.
+    port: parseInt(process.env.WAILS_VITE_PORT || '9245'),
+    strictPort: true,
+    // HMR fix for Wails webview — the webview loads from wails.localhost
+    // which can't resolve the WS connection. Force HMR to connect directly
+    // to localhost via ws:// protocol. See: https://github.com/wailsapp/wails/issues/3064
+    hmr: {
+      host: 'localhost',
+      protocol: 'ws',
+    },
+  },
   plugins: [
     react(),
     babel({ presets: [reactCompilerPreset({ target: '19' })] }),
