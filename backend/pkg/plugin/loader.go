@@ -72,7 +72,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	delete(pm.records, id)
 	pm.recordsMu.Unlock()
 
-	location := getPluginLocation(id)
+	location := pm.pluginsRoot.ResolvePath(id)
 	log.Debugw(pm.ctx, "loading plugin from location", "location", location, "pluginID", id)
 
 	if _, err := os.Stat(location); os.IsNotExist(err) {

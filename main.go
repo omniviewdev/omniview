@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
 	"time"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -40,7 +39,9 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/ui"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
 	"github.com/omniviewdev/omniview/backend/window"
+	"github.com/omniviewdev/omniview/internal/appstate"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
+	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	"github.com/omniviewdev/omniview/internal/version"
 )
@@ -707,25 +708,29 @@ func (s *DataControllerService) Keys(pluginID string) ([]string, error) {
 
 // ---------------------------------------------------------------------------
 // SettingsProviderService — explicit delegation.
-// Excluded: Initialize, RegisterChangeHandler, RegisterSetting,
-//           RegisterSettings (internal-only methods).
+// Excluded: RegisterChangeHandler, RegisterSetting, RegisterSettings
+//           (internal-only methods).
 // ---------------------------------------------------------------------------
 
 type SettingsProviderService struct {
-	provider pkgsettings.Provider
+	provider       pkgsettings.Provider
+	categoryMeta   map[string]pkgsettings.Category // Label, Icon, Description for each category
 }
 
-func (s *SettingsProviderService) LoadSettings() error {
-	return s.provider.LoadSettings()
-}
-func (s *SettingsProviderService) SaveSettings() error {
-	return s.provider.SaveSettings()
-}
 func (s *SettingsProviderService) ListSettings() pkgsettings.Store {
-	return s.provider.ListSettings()
-}
-func (s *SettingsProviderService) Values() map[string]any {
-	return s.provider.Values()
+	store := s.provider.ListSettings()
+	// Merge registered category metadata (Label, Icon, Description) into the
+	// store since RegisterSetting only populates ID + Settings.
+	result := make(pkgsettings.Store, len(store))
+	for id, cat := range store {
+		if meta, ok := s.categoryMeta[id]; ok {
+			cat.Label = meta.Label
+			cat.Description = meta.Description
+			cat.Icon = meta.Icon
+		}
+		result[id] = cat
+	}
+	return result
 }
 func (s *SettingsProviderService) GetSetting(id string) (pkgsettings.Setting, error) {
 	return s.provider.GetSetting(id)
@@ -738,18 +743,6 @@ func (s *SettingsProviderService) SetSetting(id string, value any) error {
 }
 func (s *SettingsProviderService) SetSettings(settingsMap map[string]any) error {
 	return s.provider.SetSettings(settingsMap)
-}
-func (s *SettingsProviderService) ResetSetting(id string) error {
-	return s.provider.ResetSetting(id)
-}
-func (s *SettingsProviderService) GetCategories() []pkgsettings.Category {
-	return s.provider.GetCategories()
-}
-func (s *SettingsProviderService) GetCategory(id string) (pkgsettings.Category, error) {
-	return s.provider.GetCategory(id)
-}
-func (s *SettingsProviderService) GetCategoryValues(id string) (map[string]interface{}, error) {
-	return s.provider.GetCategoryValues(id)
 }
 func (s *SettingsProviderService) GetString(id string) (string, error) {
 	return s.provider.GetString(id)
@@ -773,29 +766,128 @@ func (s *SettingsProviderService) GetBool(id string) (bool, error) {
 	return s.provider.GetBool(id)
 }
 
+// Values returns a flat map of all setting values keyed by "category.settingID".
+// This is a host-side convenience for the frontend — it was removed from the SDK
+// Provider interface (plugins don't need it) but the UI settings context uses it
+// to populate the full settings state.
+func (s *SettingsProviderService) Values() map[string]any {
+	store := s.provider.ListSettings()
+	m := make(map[string]any)
+	for catID, cat := range store {
+		for settingID, setting := range cat.Settings {
+			m[catID+"."+settingID] = setting.Value
+		}
+	}
+	return m
+}
+
+// GetCategory returns a single settings category by ID, including full metadata
+// (Label, Icon, Description) from the registered category definitions and live
+// setting values from the in-memory provider.
+func (s *SettingsProviderService) GetCategory(id string) (pkgsettings.Category, error) {
+	store := s.provider.ListSettings()
+	cat, ok := store[id]
+	if !ok {
+		return pkgsettings.Category{}, fmt.Errorf("settings category %q not found", id)
+	}
+	// The provider store may only have ID + Settings (RegisterSetting doesn't
+	// preserve Label/Icon/Description). Merge in the registered metadata.
+	if meta, hasMeta := s.categoryMeta[id]; hasMeta {
+		cat.Label = meta.Label
+		cat.Description = meta.Description
+		cat.Icon = meta.Icon
+	}
+	return cat, nil
+}
+
+// GetCategoryValues returns a flat map of setting values for a single category.
+func (s *SettingsProviderService) GetCategoryValues(id string) (map[string]any, error) {
+	cat, err := s.GetCategory(id)
+	if err != nil {
+		return nil, err
+	}
+	vals := make(map[string]any, len(cat.Settings))
+	for settingID, setting := range cat.Settings {
+		vals[settingID] = setting.Value
+	}
+	return vals, nil
+}
+
+// GetCategories returns all category metadata for the UI settings navigation.
+func (s *SettingsProviderService) GetCategories() []pkgsettings.Category {
+	store := s.provider.ListSettings()
+	cats := make([]pkgsettings.Category, 0, len(store))
+	for id, cat := range store {
+		// Merge in registered metadata (Label, Icon, Description).
+		if meta, hasMeta := s.categoryMeta[id]; hasMeta {
+			cat.Label = meta.Label
+			cat.Description = meta.Description
+			cat.Icon = meta.Icon
+		}
+		cats = append(cats, pkgsettings.Category{
+			ID:          cat.ID,
+			Label:       cat.Label,
+			Description: cat.Description,
+			Icon:        cat.Icon,
+		})
+	}
+	return cats
+}
+
+// LoadSettings is a no-op reload trigger for the frontend. With bbolt-backed
+// persistence, settings are always in memory — this exists so the frontend's
+// "reload" button still has a valid binding. It re-reads from the in-memory
+// store (which is already current).
+func (s *SettingsProviderService) LoadSettings() error {
+	return nil
+}
+
 // BootstrapService wraps the startup/shutdown logic that was previously in the
 // Wails v2 OnStartup/OnShutdown closures. It implements ServiceStartup and
 // ServiceShutdown so the Wails v3 runtime calls it automatically.
 type BootstrapService struct {
 	log                  logging.Logger
 	settingsProvider     pkgsettings.Provider
+	settingsStore        *settingsstore.Store
 	telemetrySvc         *telemetry.Service
 	pluginManager        plugin.Manager
 	pluginRegistryClient *registry.Client
 }
 
 func (b *BootstrapService) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
-	// Initialize the settings
-	if err := b.settingsProvider.Initialize(
-		ctx,
-		coresettings.General,
-		coresettings.Appearance,
-		coresettings.Terminal,
-		coresettings.Editor,
-		coresettings.Developer,
-		coresettings.Telemetry,
-	); err != nil {
-		b.log.Errorw(ctx, "error while initializing settings system", "error", err)
+	// Register core settings categories and hydrate from bbolt.
+	coreCategories := []pkgsettings.Category{
+		coresettings.General, coresettings.Appearance,
+		coresettings.Terminal, coresettings.Editor,
+		coresettings.Developer, coresettings.Telemetry,
+	}
+	for _, category := range coreCategories {
+		for _, s := range category.Settings {
+			b.settingsProvider.RegisterSetting(category.ID, s)
+		}
+		if b.settingsStore != nil {
+			if vals, loadErr := b.settingsStore.LoadCategory(category.ID); loadErr == nil && len(vals) > 0 {
+				prefixed := make(map[string]any, len(vals))
+				for k, v := range vals {
+					prefixed[category.ID+"."+k] = v
+				}
+				if setErr := b.settingsProvider.SetSettings(prefixed); setErr != nil {
+					fmt.Fprintf(os.Stderr, "failed to hydrate settings category %s: %v\n", category.ID, setErr)
+				}
+			}
+		}
+	}
+
+	// Wire persistence: save to bbolt whenever a category changes.
+	for _, category := range coreCategories {
+		catID := category.ID
+		b.settingsProvider.RegisterChangeHandler(catID, func(vals map[string]any) {
+			if b.settingsStore != nil {
+				if saveErr := b.settingsStore.SaveCategory(catID, vals); saveErr != nil {
+					fmt.Fprintf(os.Stderr, "failed to persist settings category %s: %v\n", catID, saveErr)
+				}
+			}
+		})
 	}
 
 	// Wire telemetry settings hot-toggle: when any setting in the
@@ -846,12 +938,14 @@ func (b *BootstrapService) ServiceStartup(ctx context.Context, _ application.Ser
 
 	// Apply the persisted telemetry settings immediately so telemetry
 	// activates on startup (the change handler only fires on changes).
-	if vals, err := b.settingsProvider.GetCategoryValues("telemetry"); err == nil {
-		cfg := telemetryFromSettings(vals)
-		if err := b.telemetrySvc.ApplyConfig(ctx, cfg); err != nil {
-			b.log.Errorw(ctx, "failed to apply initial telemetry config", "error", err)
-		} else {
-			b.log.Infow(ctx, "telemetry initialized from persisted settings", "enabled", cfg.Enabled)
+	if b.settingsStore != nil {
+		if vals, err := b.settingsStore.LoadCategory("telemetry"); err == nil && len(vals) > 0 {
+			cfg := telemetryFromSettings(vals)
+			if err := b.telemetrySvc.ApplyConfig(ctx, cfg); err != nil {
+				b.log.Errorw(ctx, "failed to apply initial telemetry config", "error", err)
+			} else {
+				b.log.Infow(ctx, "telemetry initialized from persisted settings", "enabled", cfg.Enabled)
+			}
 		}
 	}
 
@@ -888,14 +982,74 @@ func (b *BootstrapService) ServiceShutdown() error {
 
 //nolint:funlen // main function is expected to be long
 func main() {
-	// Bootstrap telemetry (tracing, metrics, log shipping, profiling).
+	// Initialize unified state directory.
+	stateDir, err := appstate.New()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: failed to initialize state directory: %v\n", err)
+		os.Exit(1)
+	}
+	defer stateDir.Close()
+
+	// Open bbolt settings store.
+	logDir := stateDir.Logs().ResolvePath("")
+
+	settingsStore, err := settingsstore.Open(stateDir.RootDir().ResolvePath("settings.db"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to open settings store: %v\n", err)
+	}
+	if settingsStore != nil {
+		defer settingsStore.Close()
+		if migrateErr := settingsstore.MigrateFromGOB(stateDir.Root(), settingsStore); migrateErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: settings migration had errors: %v\n", migrateErr)
+		}
+	}
+
+	// Seed telemetry config from persisted bbolt settings so that telemetry
+	// starts with the user's saved preferences rather than defaults.
 	telemetryCfg := telemetry.DefaultConfig(version.IsDevelopment())
+	if settingsStore != nil {
+		if telVals, loadErr := settingsStore.LoadCategory("telemetry"); loadErr == nil && len(telVals) > 0 {
+			if v, ok := telVals["enabled"].(bool); ok {
+				telemetryCfg.Enabled = v
+			}
+			if v, ok := telVals["traces"].(bool); ok {
+				telemetryCfg.Traces = v
+			}
+			if v, ok := telVals["metrics"].(bool); ok {
+				telemetryCfg.Metrics = v
+			}
+			if v, ok := telVals["logs_ship"].(bool); ok {
+				telemetryCfg.LogsShip = v
+			}
+			if v, ok := telVals["logs_ship_level"].(string); ok {
+				telemetryCfg.LogsShipLevel = v
+			}
+			if v, ok := telVals["profiling"].(bool); ok {
+				telemetryCfg.Profiling = v
+			}
+			if v, ok := telVals["endpoint_otlp"].(string); ok {
+				telemetryCfg.OTLPEndpoint = v
+			}
+			if v, ok := telVals["endpoint_pyroscope"].(string); ok {
+				telemetryCfg.PyroscopeEndpoint = v
+			}
+			if v, ok := telVals["auth_header"].(string); ok {
+				telemetryCfg.AuthHeader = v
+			}
+			if v, ok := telVals["auth_value"].(string); ok {
+				telemetryCfg.AuthValue = v
+			}
+		}
+	}
+
+	// Bootstrap telemetry (tracing, metrics, log shipping, profiling).
 	telemetrySvc := telemetry.New(
 		telemetryCfg,
 		version.Version,
 		version.GitCommit,
 		version.BuildDate,
 		version.IsDevelopment(),
+		logDir,
 	)
 	if err := telemetrySvc.Init(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "telemetry init failed, continuing without telemetry: %v\n", err)
@@ -910,7 +1064,11 @@ func main() {
 		Level:   logging.NewLevelController(logging.LevelDebug),
 	})
 
-	diagnosticsClient := diagnostics.NewDiagnosticsClient(version.IsDevelopment())
+	if settingsStore == nil {
+		log.Warnw(context.Background(), "settings persistence disabled; all settings will use defaults")
+	}
+
+	diagnosticsClient := diagnostics.NewDiagnosticsClient(version.IsDevelopment(), logDir)
 
 	settingsProvider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{
 		Logger: zapLogger.Sugar(),
@@ -926,9 +1084,9 @@ func main() {
 	utilsClient := utils.NewClient()
 
 	// Setup the plugin systems
-	resourceController := resource.NewController(log, settingsProvider)
+	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore)
 
-	settingsController := settings.NewController(log, settingsProvider)
+	settingsController := settings.NewController(log, settingsProvider, settingsStore)
 
 	execController := exec.NewController(log, settingsProvider, resourceController)
 
@@ -938,13 +1096,12 @@ func main() {
 
 	metricController := pluginmetric.NewController(log, settingsProvider, resourceController)
 
-	dataController := data.NewController(log)
+	dataController := data.NewController(log, stateDir.PluginData)
 
 	// Initialize per-plugin log manager for capturing plugin process stderr.
 	// Created here so it can be bound to Wails for UI access.
-	home, _ := os.UserHomeDir()
 	pluginLogManager, pluginLogErr := pluginlog.NewManager(
-		filepath.Join(home, ".omniview", "logs"),
+		logDir,
 		pluginlog.DefaultRotation(),
 	)
 	if pluginLogErr != nil {
@@ -954,6 +1111,8 @@ func main() {
 	pluginRegistryClient := registry.NewClient("")
 	pluginManager := plugin.NewManager(
 		log,
+		stateDir.RootDir(),
+		stateDir.Plugins(),
 		resourceController,
 		settingsController,
 		execController,
@@ -980,6 +1139,8 @@ func main() {
 
 	devServerManager := devserver.NewDevServerManager(
 		log,
+		stateDir.RootDir(),
+		stateDir.Plugins(),
 		&pluginRefAdapter{mgr: pluginManager},
 		&pluginReloaderAdapter{mgr: pluginManager},
 		settingsProvider,
@@ -1001,13 +1162,14 @@ func main() {
 	bootstrapService := &BootstrapService{
 		log:                  log,
 		settingsProvider:     settingsProvider,
+		settingsStore:        settingsStore,
 		telemetrySvc:         telemetrySvc,
 		pluginManager:        pluginManager,
 		pluginRegistryClient: pluginRegistryClient,
 	}
 
 	// Set up plugin asset handler middleware
-	pluginAssetHandler := NewPluginAssetHandler(log)
+	pluginAssetHandler := NewPluginAssetHandler(log, stateDir.RootDir())
 
 	// Wrap the plugin manager interface in a concrete struct for v3 service
 	// registration (NewService requires a concrete pointer type).
@@ -1039,7 +1201,17 @@ func main() {
 		application.NewService(appService),
 		application.NewService(diagnosticsClient),
 		application.NewService(telemetry.NewTelemetryBinding(telemetrySvc)),
-		application.NewService(&SettingsProviderService{provider: settingsProvider}),
+		application.NewService(&SettingsProviderService{
+			provider: settingsProvider,
+			categoryMeta: map[string]pkgsettings.Category{
+				coresettings.General.ID:    coresettings.General,
+				coresettings.Appearance.ID: coresettings.Appearance,
+				coresettings.Terminal.ID:   coresettings.Terminal,
+				coresettings.Editor.ID:     coresettings.Editor,
+				coresettings.Developer.ID:  coresettings.Developer,
+				coresettings.Telemetry.ID:  coresettings.Telemetry,
+			},
+		}),
 		application.NewService(pluginManagerSvc),
 	}
 

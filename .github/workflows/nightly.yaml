@@ -14,8 +14,8 @@ concurrency:
 
 env:
   NODE_OPTIONS: "--max-old-space-size=4096"
-  GO_VERSION: "1.26"
-  NODE_VERSION: "24"
+  GO_VERSION: "1.24"
+  NODE_VERSION: "20"
   PNPM_VERSION: "10"
 
 jobs:
@@ -89,46 +89,28 @@ jobs:
           cache: true
           cache-dependency-path: "go.sum"
 
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Wails v3
+      - name: Install Wails
         shell: bash
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build frontend
+      - name: Build runtime package
         shell: bash
-        run: task common:build:frontend
+        run: pnpm run build
+        working-directory: packages/omniviewdev-runtime
 
       - name: Build Omniview
         shell: bash
-        env:
-          CGO_ENABLED: "1"
-          CGO_CFLAGS: "-mmacosx-version-min=10.15"
-          CGO_LDFLAGS: "-mmacosx-version-min=10.15"
-          MACOSX_DEPLOYMENT_TARGET: "10.15"
         run: |
-          go build -tags production -trimpath -buildvcs=false \
-            -ldflags "-w -s \
+          wails build -platform darwin/universal \
+            -webview2 download \
+            -ldflags "\
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ needs.check-changes.outputs.nightly_version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=true \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
-            -o bin/Omniview .
-
-      - name: Create macOS .app bundle
-        run: |
-          task common:generate:icons
-          mkdir -p bin/Omniview.app/Contents/MacOS
-          mkdir -p bin/Omniview.app/Contents/Resources
-          cp build/darwin/icons.icns bin/Omniview.app/Contents/Resources/
-          cp bin/Omniview bin/Omniview.app/Contents/MacOS/
-          cp build/darwin/Info.plist bin/Omniview.app/Contents/
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
+              -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-nightly"
 
       - name: Import Code-Signing Certificates
         uses: Apple-Actions/import-codesign-certs@v3
@@ -148,9 +130,9 @@ jobs:
             --options runtime \
             --entitlements build/darwin/entitlements.plist \
             --sign "$APPLE_SIGN_ID" \
-            bin/Omniview.app
+            build/bin/Omniview.app
 
-          ditto -c -k --keepParent --rsrc bin/Omniview.app archive.zip
+          ditto -c -k --keepParent --rsrc build/bin/Omniview.app archive.zip
 
           xcrun notarytool submit archive.zip \
             --apple-id "$NOTARY_USER" \
@@ -158,7 +140,7 @@ jobs:
             --team-id "$TEAM_ID" \
             --wait
 
-          xcrun stapler staple bin/Omniview.app
+          xcrun stapler staple build/bin/Omniview.app
 
       - name: Checkout create-dmg
         uses: actions/checkout@v4
@@ -172,9 +154,10 @@ jobs:
         working-directory: ./build
         run: |
           VERSION="${{ needs.check-changes.outputs.nightly_version }}"
-          ../build/create-dmg/create-dmg \
+          ./create-dmg/create-dmg \
             --no-internet-enable \
             --volname "Omniview Nightly" \
+            --volicon "bin/Omniview.app/Contents/Resources/iconfile.icns" \
             --text-size 12 \
             --window-pos 400 400 \
             --window-size 660 450 \
@@ -182,14 +165,14 @@ jobs:
             --icon "Omniview.app" 180 180 \
             --hide-extension "Omniview.app" \
             --app-drop-link 480 180 \
-            "../bin/Omniview_${VERSION}_darwin_universal.dmg" \
-            "../bin"
+            "bin/Omniview_${VERSION}_darwin_universal.dmg" \
+            "bin"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: nightly-macos-dmg
-          path: bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_darwin_universal.dmg
+          path: build/bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_darwin_universal.dmg
           if-no-files-found: error
           retention-days: 1
 
@@ -206,11 +189,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Linux dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: libgtk-3-dev libwebkit2gtk-4.1-dev libwayland-dev build-essential pkg-config
-          version: 1.0
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -232,39 +214,36 @@ jobs:
           cache: true
           cache-dependency-path: "go.sum"
 
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Install Wails v3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-
-      - name: Build frontend
-        run: task common:build:frontend
+      - name: Build runtime package
+        run: pnpm run build
+        working-directory: packages/omniviewdev-runtime
 
       - name: Build Omniview
         run: |
-          go build -tags "production,webkit2_41" -trimpath -buildvcs=false \
-            -ldflags "-w -s \
+          wails build -platform linux/amd64 \
+            -tags webkit2_41 \
+            -webview2 download \
+            -ldflags "\
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ needs.check-changes.outputs.nightly_version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=true \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
-            -o bin/Omniview .
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
+              -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-nightly"
 
       - name: Rename executable
-        working-directory: ./bin
+        working-directory: ./build/bin
         run: mv Omniview "Omniview_${{ needs.check-changes.outputs.nightly_version }}_linux_amd64"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: nightly-linux-binary
-          path: bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_linux_amd64
+          path: build/bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_linux_amd64
           if-no-files-found: error
           retention-days: 1
 
@@ -301,42 +280,38 @@ jobs:
           cache: true
           cache-dependency-path: "go.sum"
 
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Wails v3
+      - name: Install Wails
         shell: bash
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build frontend
+      - name: Build runtime package
         shell: bash
-        run: task common:build:frontend
+        run: pnpm run build
+        working-directory: packages/omniviewdev-runtime
 
       - name: Build Omniview
         shell: bash
         run: |
-          go build -tags production -trimpath -buildvcs=false \
-            -ldflags "-w -s -H windowsgui \
+          wails build -platform windows/amd64 \
+            -webview2 download \
+            -ldflags "\
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ needs.check-changes.outputs.nightly_version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=true \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
-              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
-            -o bin/Omniview.exe .
+              -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }} \
+              -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-nightly"
 
       - name: Rename executable
-        working-directory: ./bin
+        working-directory: ./build/bin
         run: Rename-Item -Path "Omniview.exe" -NewName "Omniview_${{ needs.check-changes.outputs.nightly_version }}_windows_amd64.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: nightly-windows-binary
-          path: bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_windows_amd64.exe
+          path: build/bin/Omniview_${{ needs.check-changes.outputs.nightly_version }}_windows_amd64.exe
           if-no-files-found: error
           retention-days: 1
 

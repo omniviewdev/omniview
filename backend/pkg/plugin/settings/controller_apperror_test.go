@@ -12,7 +12,7 @@ import (
 )
 
 func newTestController() Controller {
-	return NewController(logging.NewNop(), nil)
+	return NewController(logging.NewNop(), nil, nil)
 }
 
 func TestGetSetting_PluginNotFound(t *testing.T) {

@@ -25,7 +25,7 @@ func TestServiceDisabled(t *testing.T) {
 	t.Cleanup(resetGlobalOTel)
 
 	cfg := TelemetryConfig{Enabled: false}
-	svc := New(cfg, "1.0.0", "abc", "2026-03-11", true)
+	svc := New(cfg, "1.0.0", "abc", "2026-03-11", true, t.TempDir())
 
 	err := svc.Init(context.Background())
 	require.NoError(t, err)
@@ -52,7 +52,7 @@ func TestServiceEnabledTracesOnly(t *testing.T) {
 		Profiling:    false,
 		OTLPEndpoint: "localhost:14318",
 	}
-	svc := New(cfg, "1.0.0", "abc", "2026-03-11", true)
+	svc := New(cfg, "1.0.0", "abc", "2026-03-11", true, t.TempDir())
 
 	err := svc.Init(context.Background())
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestApplyConfig_ToggleTracesOnOff(t *testing.T) {
 		Enabled:      true,
 		Traces:       true,
 		OTLPEndpoint: "localhost:4318",
-	}, "test", "abc", "2026-01-01", true)
+	}, "test", "abc", "2026-01-01", true, t.TempDir())
 
 	require.NoError(t, svc.Init(context.Background()))
 	defer svc.Shutdown(context.Background())
@@ -131,7 +131,7 @@ func TestApplyConfig_MasterSwitchOff(t *testing.T) {
 		Metrics:      true,
 		LogsShip:     true,
 		OTLPEndpoint: "localhost:4318",
-	}, "test", "abc", "2026-01-01", true)
+	}, "test", "abc", "2026-01-01", true, t.TempDir())
 
 	require.NoError(t, svc.Init(context.Background()))
 	defer svc.Shutdown(context.Background())

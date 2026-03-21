@@ -16,6 +16,7 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
 func TestReadDevInfoFile_Valid(t *testing.T) {
@@ -127,11 +128,13 @@ func newTestExternalWatcher(t *testing.T) (*ExternalWatcher, *connectRecorder, *
 	cr := &connectRecorder{}
 	dr := &disconnectRecorder{}
 
+	svc := appstate.NewTestService(t)
 	ew := &ExternalWatcher{
 		ctx:          context.Background(),
 		logger:       logging.NewNop(),
 		connections:  make(map[string]*ExternalConnection),
-		pluginDir:    t.TempDir(),
+		pluginsRoot:  svc.Plugins(),
+		pluginDir:    svc.Plugins().ResolvePath(""),
 		onConnect:    cr.record,
 		onDisconnect: dr.record,
 	}
@@ -393,7 +396,8 @@ func TestNewExternalWatcher(t *testing.T) {
 	onConnect := func(string, *DevInfoFile) {}
 	onDisconnect := func(string) {}
 
-	ew, err := NewExternalWatcher(logger, onConnect, onDisconnect)
+	svc := appstate.NewTestService(t)
+	ew, err := NewExternalWatcher(logger, svc.Plugins(), onConnect, onDisconnect)
 	require.NoError(t, err)
 	require.NotNil(t, ew)
 

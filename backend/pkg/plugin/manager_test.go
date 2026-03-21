@@ -10,6 +10,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -234,10 +235,11 @@ func TestRegisterStateObserver(t *testing.T) {
 }
 
 func TestShutdown_EmptyRecords(t *testing.T) {
+	svc := appstate.NewTestService(t)
 	pm := &pluginManager{
 		logger:     testLogger(t),
 		records:    make(map[string]*plugintypes.PluginRecord),
-		pidTracker: NewPluginPIDTracker(),
+		pidTracker: NewPluginPIDTracker(svc.RootDir()),
 	}
 
 	// Should not panic with empty records.
@@ -245,6 +247,7 @@ func TestShutdown_EmptyRecords(t *testing.T) {
 }
 
 func TestShutdown_StopsAllBackends(t *testing.T) {
+	svc := appstate.NewTestService(t)
 	backendA := plugintypes.NewInProcessBackend(nil)
 	backendB := plugintypes.NewInProcessBackend(nil)
 
@@ -273,7 +276,7 @@ func TestShutdown_StopsAllBackends(t *testing.T) {
 		connlessControllers: make(map[sdktypes.Capability]plugintypes.Controller),
 		connfullControllers: make(map[sdktypes.Capability]plugintypes.ConnectedController),
 		managers:            make(map[string]plugintypes.PluginManager),
-		pidTracker:          NewPluginPIDTracker(),
+		pidTracker:          NewPluginPIDTracker(svc.RootDir()),
 	}
 
 	pm.Shutdown()

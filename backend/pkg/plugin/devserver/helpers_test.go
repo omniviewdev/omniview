@@ -170,6 +170,7 @@ func newTestInstance(t *testing.T, pluginID string) (*DevServerInstance, *status
 		15173,
 		BuildOpts{},
 		nil,
+		nil,
 		sr.record,
 		lr.record,
 		er.record,

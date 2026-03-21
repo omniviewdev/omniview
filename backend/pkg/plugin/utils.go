@@ -10,59 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"gopkg.in/yaml.v2"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
-
-// pluginDirOverride allows tests to redirect the plugin directory.
-var pluginDirOverride string
-
-// make sure our plugin dir is all set.
-func auditPluginDir() error {
-	if err := os.MkdirAll(getPluginDir(), 0755); err != nil {
-		return fmt.Errorf("error creating plugin directory: %w", err)
-	}
-
-	return nil
-}
-
-// resolveHomeDir returns the user's home directory with safe fallbacks.
-var (
-	homeDirOnce sync.Once
-	homeDirPath string
-)
-
-func resolveHomeDir() string {
-	homeDirOnce.Do(func() {
-		var err error
-		homeDirPath, err = os.UserHomeDir()
-		if err != nil {
-			homeDirPath = os.Getenv("HOME")
-			if homeDirPath == "" {
-				homeDirPath = os.TempDir()
-			}
-		}
-	})
-	return homeDirPath
-}
-
-func getOmniviewLogDir() string {
-	return filepath.Join(resolveHomeDir(), ".omniview", "logs")
-}
-
-func getPluginDir() string {
-	if pluginDirOverride != "" {
-		return pluginDirOverride
-	}
-	return filepath.Join(resolveHomeDir(), ".omniview", "plugins")
-}
-
-func getPluginLocation(id string) string {
-	return filepath.Join(getPluginDir(), id)
-}
 
 func checkTarball(filePath string) error {
 	file, err := os.Open(filePath)

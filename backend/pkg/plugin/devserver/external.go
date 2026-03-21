@@ -13,6 +13,7 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
 // ExternalConnection tracks a connection to an externally-managed plugin.
@@ -24,7 +25,7 @@ type ExternalConnection struct {
 	cancelHealth context.CancelFunc
 }
 
-// ExternalWatcher watches for .devinfo files in ~/.omniview/plugins/ and
+// ExternalWatcher watches for .devinfo files in the plugins directory and
 // manages connections to externally-run plugin processes.
 type ExternalWatcher struct {
 	ctx         context.Context
@@ -32,7 +33,8 @@ type ExternalWatcher struct {
 	watcher     *fsnotify.Watcher
 	connections map[string]*ExternalConnection // pluginID -> connection
 	mu          sync.RWMutex
-	pluginDir   string
+	pluginsRoot *appstate.ScopedRoot
+	pluginDir   string // resolved absolute path (for fsnotify)
 	done        chan struct{} // closed when the run() goroutine exits
 
 	// onConnect is called when a new external plugin is detected.
@@ -45,15 +47,11 @@ type ExternalWatcher struct {
 // NewExternalWatcher creates a new watcher for .devinfo files.
 func NewExternalWatcher(
 	logger logging.Logger,
+	pluginsRoot *appstate.ScopedRoot,
 	onConnect func(pluginID string, info *DevInfoFile),
 	onDisconnect func(pluginID string),
 ) (*ExternalWatcher, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, apperror.Internal(err, "Failed to get home directory")
-	}
-
-	pluginDir := filepath.Join(homeDir, ".omniview", "plugins")
+	pluginDir := pluginsRoot.ResolvePath("")
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -64,6 +62,7 @@ func NewExternalWatcher(
 		logger:       logger.Named("ExternalWatcher"),
 		watcher:      watcher,
 		connections:  make(map[string]*ExternalConnection),
+		pluginsRoot:  pluginsRoot,
 		pluginDir:    pluginDir,
 		done:         make(chan struct{}),
 		onConnect:    onConnect,
@@ -77,12 +76,12 @@ func (ew *ExternalWatcher) Start(ctx context.Context) error {
 	ew.ctx = ctx
 
 	// Ensure the plugin directory exists.
-	if err := os.MkdirAll(ew.pluginDir, 0755); err != nil {
+	if err := ew.pluginsRoot.MkdirAll(".", 0755); err != nil {
 		return apperror.Internal(err, "Failed to create plugin directory")
 	}
 
 	// Watch each plugin subdirectory for .devinfo files.
-	entries, err := os.ReadDir(ew.pluginDir)
+	entries, err := ew.pluginsRoot.ReadDir(".")
 	if err != nil {
 		return apperror.Internal(err, "Failed to read plugin directory")
 	}
@@ -159,7 +158,7 @@ func (ew *ExternalWatcher) GetExternalInfo(pluginID string) *DevInfoFile {
 // and attempts to connect to them. This handles the case where the IDE restarts
 // while external plugins are still running.
 func (ew *ExternalWatcher) scanExistingDevInfoFiles() {
-	entries, err := os.ReadDir(ew.pluginDir)
+	entries, err := ew.pluginsRoot.ReadDir(".")
 	if err != nil {
 		ew.logger.Warnw(context.Background(), "failed to scan for existing devinfo files", "error", err)
 		return

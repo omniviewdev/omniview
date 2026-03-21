@@ -9,6 +9,7 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/appstate"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -36,12 +37,15 @@ type DevServerManager struct {
 	pluginReloader   PluginReloader
 	settingsProvider pkgsettings.Provider
 	externalWatcher  *ExternalWatcher
+	pluginsRoot      *appstate.ScopedRoot // scoped to ~/.omniview/plugins
 }
 
 // NewDevServerManager creates a new DevServerManager. Call Initialize() with the Wails
 // context before using any other methods.
 func NewDevServerManager(
 	logger logging.Logger,
+	stateRoot *appstate.ScopedRoot,
+	pluginsRoot *appstate.ScopedRoot,
 	pluginRef PluginRef,
 	pluginReloader PluginReloader,
 	settingsProvider pkgsettings.Provider,
@@ -49,10 +53,11 @@ func NewDevServerManager(
 	return &DevServerManager{
 		logger:           logger.Named("DevServerManager"),
 		instances:        make(map[string]*DevServerInstance),
-		ports:            NewPortAllocator(),
+		ports:            NewPortAllocator(stateRoot),
 		pluginRef:        pluginRef,
 		pluginReloader:   pluginReloader,
 		settingsProvider: settingsProvider,
+		pluginsRoot:      pluginsRoot,
 	}
 }
 
@@ -71,6 +76,7 @@ func (m *DevServerManager) ServiceStartup(ctx context.Context, options applicati
 	// Start the external watcher for .devinfo files.
 	watcher, err := NewExternalWatcher(
 		m.logger,
+		m.pluginsRoot,
 		m.handleExternalConnect,
 		m.handleExternalDisconnect,
 	)
@@ -205,6 +211,7 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 		port,
 		buildOpts,
 		m.pluginReloader,
+		m.pluginsRoot,
 		m.emitStatus,
 		m.emitLogs,
 		m.emitErrors,

@@ -20,6 +20,7 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
 // ============================================================================
@@ -195,6 +196,8 @@ func TestIntegration_GoWatcher_BuildOnFileChange(t *testing.T) {
 		logEntries = append(logEntries, entry)
 	}
 
+	testSvc := appstate.NewTestService(t)
+
 	// Create and start the watcher.
 	gw := newGoWatcherProcess(
 		context.Background(),
@@ -203,6 +206,7 @@ func TestIntegration_GoWatcher_BuildOnFileChange(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: goPath},
 		reloader,
+		testSvc.Plugins(),
 		appendLog,
 		statusRec.record,
 		buildRec.record,
@@ -247,10 +251,10 @@ func TestIntegration_GoWatcher_BuildOnFileChange(t *testing.T) {
 	_, err = os.Stat(filepath.Join(devPath, "build", "bin", "plugin"))
 	assert.NoError(t, err, "built binary should exist in devPath/build/bin/plugin")
 
-	// Verify binary was transferred to fake home.
-	transferredPath := filepath.Join(fakeHome, ".omniview", "plugins", "test-integration", "bin", "plugin")
+	// Verify binary was transferred to the plugins directory.
+	transferredPath := filepath.Join(testSvc.Plugins().ResolvePath("test-integration"), "bin", "plugin")
 	_, err = os.Stat(transferredPath)
-	assert.NoError(t, err, "binary should be transferred to ~/.omniview/plugins/<id>/bin/plugin")
+	assert.NoError(t, err, "binary should be transferred to plugins/<id>/bin/plugin")
 }
 
 func TestIntegration_GoWatcher_BuildError(t *testing.T) {
@@ -276,6 +280,7 @@ func TestIntegration_GoWatcher_BuildError(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: goPath},
 		reloader,
+		appstate.NewTestService(t).Plugins(),
 		func(LogEntry) {},
 		statusRec.record,
 		buildRec.record,
@@ -336,6 +341,7 @@ func TestIntegration_GoWatcher_Start_MissingPkgDir(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: "/usr/bin/go"},
 		&mockPluginReloader{},
+		appstate.NewTestService(t).Plugins(),
 		func(LogEntry) {},
 		func(DevProcessStatus) {},
 		func(time.Duration, string) {},
@@ -566,6 +572,7 @@ func TestIntegration_GoWatcher_InitialBuild_TriggersReload(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: goPath},
 		reloader,
+		appstate.NewTestService(t).Plugins(),
 		func(e LogEntry) { logEntries = append(logEntries, e) },
 		statusRec.record,
 		func(time.Duration, string) {},
@@ -620,6 +627,7 @@ func TestIntegration_GoWatcher_InitialBuild_ReloadFails(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: goPath},
 		reloader,
+		appstate.NewTestService(t).Plugins(),
 		func(e LogEntry) { logEntries = append(logEntries, e) },
 		func(DevProcessStatus) {},
 		func(time.Duration, string) {},
@@ -747,6 +755,7 @@ func TestIntegration_GoWatcher_NoBuildAfterStop(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: goPath},
 		reloader,
+		appstate.NewTestService(t).Plugins(),
 		func(LogEntry) {},
 		statusRec.record,
 		buildRec.record,
@@ -871,6 +880,7 @@ func TestIntegration_GoWatcher_DebounceRapidChanges(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: goPath},
 		reloader,
+		appstate.NewTestService(t).Plugins(),
 		func(LogEntry) {},
 		statusRec.record,
 		buildRec.record,
@@ -923,6 +933,7 @@ func TestIntegration_GoWatcher_IgnoresNonGoFiles(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: goPath},
 		reloader,
+		appstate.NewTestService(t).Plugins(),
 		func(LogEntry) {},
 		statusRec.record,
 		func(time.Duration, string) {},
@@ -981,6 +992,7 @@ func TestIntegration_GoWatcher_NestedSubdirChange(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: goPath},
 		reloader,
+		appstate.NewTestService(t).Plugins(),
 		func(LogEntry) {},
 		statusRec.record,
 		func(time.Duration, string) {},
@@ -1024,6 +1036,7 @@ func TestIntegration_GoWatcher_ReloaderError(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: goPath},
 		reloader,
+		appstate.NewTestService(t).Plugins(),
 		func(LogEntry) {},
 		statusRec.record,
 		buildRec.record,

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/utils"
+	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -27,9 +28,9 @@ func mergeConnections(existing, incoming []types.Connection) []types.Connection 
 }
 
 // saveToLocalStore persists the controller's connection map to a GOB file.
-func saveToLocalStore(pluginID string, connections map[string][]types.Connection) error {
+func saveToLocalStore(storeRoot *appstate.ScopedRoot, connections map[string][]types.Connection) error {
 	gob.Register(map[string]interface{}{})
-	store, err := utils.GetStore(storeName, pluginID)
+	store, err := utils.GetStore(storeName, storeRoot)
 	if err != nil {
 		return err
 	}
@@ -40,9 +41,9 @@ func saveToLocalStore(pluginID string, connections map[string][]types.Connection
 
 // loadFromLocalStore reads the connection map from a GOB file.
 // Resets LastRefresh on loaded connections (we're not actually connected yet).
-func loadFromLocalStore(pluginID string) (map[string][]types.Connection, error) {
+func loadFromLocalStore(storeRoot *appstate.ScopedRoot) (map[string][]types.Connection, error) {
 	gob.Register(map[string]interface{}{})
-	store, err := utils.GetStore(storeName, pluginID)
+	store, err := utils.GetStore(storeName, storeRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +75,6 @@ func loadFromLocalStore(pluginID string) (map[string][]types.Connection, error) 
 }
 
 // removeLocalStore deletes the GOB file for a plugin.
-func removeLocalStore(pluginID string) error {
-	return utils.RemoveStore(storeName, pluginID)
+func removeLocalStore(storeRoot *appstate.ScopedRoot) error {
+	return utils.RemoveStore(storeName, storeRoot)
 }

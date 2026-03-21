@@ -18,6 +18,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
 // ============================================================================
@@ -588,6 +589,7 @@ func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter)
 	disp.Start()
 	t.Cleanup(disp.Stop)
 
+	svc := appstate.NewTestService(t)
 	ctrl := &controller{
 		logger:              logging.NewNop(),
 		plugins:             make(map[string]*pluginState),
@@ -598,6 +600,7 @@ func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter)
 		registryStore:       store,
 		dispatcher:          disp,
 		graph:               g,
+		pluginStoreFn: svc.PluginStore,
 	}
 	return ctrl, emitter
 }

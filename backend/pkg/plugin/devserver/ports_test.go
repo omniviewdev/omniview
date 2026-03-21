@@ -6,10 +6,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
+func newTestPortAllocator(t *testing.T) *PortAllocator {
+	t.Helper()
+	svc := appstate.NewTestService(t)
+	return NewPortAllocator(svc.RootDir())
+}
+
 func TestPortAllocator_ReturnsInRange(t *testing.T) {
-	pa := NewPortAllocator()
+	pa := newTestPortAllocator(t)
 	port, err := pa.Allocate("test-plugin")
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, port, PortRangeStart)
@@ -24,14 +32,14 @@ func TestPortAllocator_SkipsUsedPorts(t *testing.T) {
 	}
 	defer listener.Close()
 
-	pa := NewPortAllocator()
+	pa := newTestPortAllocator(t)
 	port, err := pa.Allocate("test-plugin")
 	require.NoError(t, err)
 	assert.NotEqual(t, 15173, port)
 }
 
 func TestPortAllocator_UniquePerPlugin(t *testing.T) {
-	pa := NewPortAllocator()
+	pa := newTestPortAllocator(t)
 
 	port1, err := pa.Allocate("plugin-a")
 	require.NoError(t, err)
@@ -43,7 +51,7 @@ func TestPortAllocator_UniquePerPlugin(t *testing.T) {
 }
 
 func TestPortAllocator_Release(t *testing.T) {
-	pa := NewPortAllocator()
+	pa := newTestPortAllocator(t)
 
 	port1, err := pa.Allocate("test-plugin")
 	require.NoError(t, err)
@@ -57,7 +65,7 @@ func TestPortAllocator_Release(t *testing.T) {
 }
 
 func TestPortAllocator_ReleaseByPlugin(t *testing.T) {
-	pa := NewPortAllocator()
+	pa := newTestPortAllocator(t)
 
 	port, err := pa.Allocate("test-plugin")
 	require.NoError(t, err)
@@ -70,7 +78,7 @@ func TestPortAllocator_ReleaseByPlugin(t *testing.T) {
 }
 
 func TestPortAllocator_GetPort(t *testing.T) {
-	pa := NewPortAllocator()
+	pa := newTestPortAllocator(t)
 
 	port, err := pa.Allocate("test-plugin")
 	require.NoError(t, err)

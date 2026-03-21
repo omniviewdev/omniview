@@ -76,7 +76,7 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 	}
 
 	// Copy plugin.yaml to ~/.omniview/plugins/<pluginID>/.
-	if err = transferPluginBuild(path, metadata, metadata.ID, plugintypes.BuildOpts{
+	if err = pm.transferPluginBuild(path, metadata, metadata.ID, plugintypes.BuildOpts{
 		ExcludeBackend: true,
 		ExcludeUI:      true,
 	}); err != nil {
@@ -85,7 +85,7 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 	}
 
 	// Ensure the bin directory exists for the GoWatcher to transfer into.
-	installLocation := getPluginLocation(metadata.ID)
+	installLocation := pm.pluginsRoot.ResolvePath(metadata.ID)
 	if err = os.MkdirAll(filepath.Join(installLocation, "bin"), 0755); err != nil {
 		pm.emitter.Emit(EventDevInstallError, metadata)
 		return nil, apperror.Wrap(err, apperror.TypePluginInstallFailed, 500, "Failed to create plugin bin directory")
@@ -207,10 +207,6 @@ func (pm *pluginManager) InstallPluginVersion(
 func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta, error) {
 	defer os.Remove(path)
 
-	if err := auditPluginDir(); err != nil {
-		return nil, err
-	}
-
 	if !isGzippedTarball(path) {
 		return nil, apperror.New(apperror.TypeValidation, 422, "Invalid plugin package",
 			fmt.Sprintf("The file at '%s' is not a valid tar.gz archive.", path)).
@@ -229,11 +225,11 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 
 	pm.emitter.Emit(EventInstallStarted, metadata)
 
-	location := getPluginLocation(metadata.ID)
+	location := pm.pluginsRoot.ResolvePath(metadata.ID)
 
 	// Unpack to a temporary directory first so we don't destroy a working
 	// installation if the archive is corrupt or extraction fails.
-	tmpDir, mkErr := os.MkdirTemp(getPluginDir(), metadata.ID+"-install-")
+	tmpDir, mkErr := os.MkdirTemp(pm.pluginsRoot.ResolvePath(""), metadata.ID+"-install-")
 	if mkErr != nil {
 		pm.emitter.Emit(EventInstallError, metadata)
 		return nil, apperror.Wrap(mkErr, apperror.TypePluginInstallFailed, 500, "Failed to create temp directory")
@@ -311,8 +307,7 @@ func (pm *pluginManager) UninstallPlugin(id string) (sdktypes.PluginInfo, error)
 	}
 	l.Debugw(pm.ctx, "unloaded plugin", "pluginID", id)
 
-	location := getPluginLocation(id)
-	if err := os.RemoveAll(location); err != nil {
+	if err := pm.pluginsRoot.RemoveAll(id); err != nil {
 		appErr := apperror.Internal(err, "Failed to remove plugin from filesystem").WithInstance(id)
 		l.Errorw(pm.ctx, appErr.Error())
 		return sdktypes.PluginInfo{}, appErr
@@ -324,8 +319,8 @@ func (pm *pluginManager) UninstallPlugin(id string) (sdktypes.PluginInfo, error)
 
 // Build-related helper functions (extracted from dev.go).
 
-func transferPluginBuild(path string, meta *config.PluginMeta, pluginID string, opts plugintypes.BuildOpts) error {
-	installLocation := getPluginLocation(pluginID)
+func (pm *pluginManager) transferPluginBuild(path string, meta *config.PluginMeta, pluginID string, opts plugintypes.BuildOpts) error {
+	installLocation := pm.pluginsRoot.ResolvePath(pluginID)
 
 	if err := os.MkdirAll(installLocation, 0755); err != nil {
 		return apperror.Internal(err, "Failed to create plugin install location")
@@ -476,7 +471,7 @@ func buildPluginUi(path string, opts plugintypes.BuildOpts) error {
 	return nil
 }
 
-func buildAndTransferPlugin(path string, meta *config.PluginMeta, pluginID string, opts plugintypes.BuildOpts) error {
+func (pm *pluginManager) buildAndTransferPlugin(path string, meta *config.PluginMeta, pluginID string, opts plugintypes.BuildOpts) error {
 	if meta == nil {
 		return apperror.New(apperror.TypeValidation, 422, "Invalid plugin", "Plugin metadata is missing.")
 	}
@@ -516,5 +511,5 @@ func buildAndTransferPlugin(path string, meta *config.PluginMeta, pluginID strin
 		return feError
 	}
 
-	return transferPluginBuild(path, meta, pluginID, opts)
+	return pm.transferPluginBuild(path, meta, pluginID, opts)
 }

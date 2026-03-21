@@ -14,8 +14,8 @@ type DiagnosticsClient struct {
 	UI *BackendLogger
 }
 
-func NewDiagnosticsClient(dev bool) *DiagnosticsClient {
-	uiLogger, err := NewBackendLogger("ui", dev)
+func NewDiagnosticsClient(dev bool, logDir string) *DiagnosticsClient {
+	uiLogger, err := NewBackendLogger("ui", dev, logDir)
 	if err != nil {
 		log.Fatalf("failed to init UI logger: %v", err)
 	}

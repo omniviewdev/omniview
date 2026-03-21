@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
+	"github.com/omniviewdev/omniview/internal/appstate"
+
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
@@ -127,21 +129,20 @@ func TestTransferBinary_Success(t *testing.T) {
 	srcBinary := filepath.Join(buildDir, "plugin")
 	require.NoError(t, os.WriteFile(srcBinary, []byte("fake-binary-data"), 0755))
 
-	// Override HOME so transferBinary writes to a temp dir.
-	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	svc := appstate.NewTestService(t)
 
 	gw := &goWatcherProcess{
-		logger:   logging.NewNop(),
-		pluginID: "transfer-test",
-		devPath:  devPath,
+		logger:      logging.NewNop(),
+		pluginID:    "transfer-test",
+		devPath:     devPath,
+		pluginsRoot: svc.Plugins(),
 	}
 
 	err := gw.transferBinary()
 	require.NoError(t, err)
 
 	// Verify the binary was copied.
-	dstPath := filepath.Join(fakeHome, ".omniview", "plugins", "transfer-test", "bin", "plugin")
+	dstPath := filepath.Join(svc.Plugins().ResolvePath(""), "transfer-test", "bin", "plugin")
 	data, err := os.ReadFile(dstPath)
 	require.NoError(t, err)
 	assert.Equal(t, "fake-binary-data", string(data))
@@ -156,13 +157,13 @@ func TestTransferBinary_SourceMissing(t *testing.T) {
 	devPath := t.TempDir()
 	// Do NOT create the binary — it should be missing.
 
-	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	svc := appstate.NewTestService(t)
 
 	gw := &goWatcherProcess{
-		logger:   logging.NewNop(),
-		pluginID: "missing-src",
-		devPath:  devPath,
+		logger:      logging.NewNop(),
+		pluginID:    "missing-src",
+		devPath:     devPath,
+		pluginsRoot: svc.Plugins(),
 	}
 
 	err := gw.transferBinary()
@@ -182,17 +183,17 @@ func TestTransferBinary_DestDirCreated(t *testing.T) {
 	require.NoError(t, os.MkdirAll(buildDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(buildDir, "plugin"), []byte("bin"), 0755))
 
-	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	svc := appstate.NewTestService(t)
 
 	gw := &goWatcherProcess{
-		logger:   logging.NewNop(),
-		pluginID: "dest-create",
-		devPath:  devPath,
+		logger:      logging.NewNop(),
+		pluginID:    "dest-create",
+		devPath:     devPath,
+		pluginsRoot: svc.Plugins(),
 	}
 
 	// The dest dir doesn't exist yet.
-	dstDir := filepath.Join(fakeHome, ".omniview", "plugins", "dest-create", "bin")
+	dstDir := filepath.Join(svc.Plugins().ResolvePath(""), "dest-create", "bin")
 	_, err := os.Stat(dstDir)
 	assert.True(t, os.IsNotExist(err))
 
@@ -211,17 +212,17 @@ func TestTransferBinary_OverwritesExisting(t *testing.T) {
 	require.NoError(t, os.MkdirAll(buildDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(buildDir, "plugin"), []byte("new-binary"), 0755))
 
-	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	svc := appstate.NewTestService(t)
 
 	gw := &goWatcherProcess{
-		logger:   logging.NewNop(),
-		pluginID: "overwrite-test",
-		devPath:  devPath,
+		logger:      logging.NewNop(),
+		pluginID:    "overwrite-test",
+		devPath:     devPath,
+		pluginsRoot: svc.Plugins(),
 	}
 
 	// Pre-create an old binary at the destination.
-	dstDir := filepath.Join(fakeHome, ".omniview", "plugins", "overwrite-test", "bin")
+	dstDir := filepath.Join(svc.Plugins().ResolvePath(""), "overwrite-test", "bin")
 	require.NoError(t, os.MkdirAll(dstDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(dstDir, "plugin"), []byte("old-binary"), 0755))
 
@@ -264,7 +265,7 @@ func TestNewGoWatcherProcess(t *testing.T) {
 
 	gw := newGoWatcherProcess(ctx, logger, "gw-test", "/dev/path", BuildOpts{
 		GoPath: "/usr/local/go/bin/go",
-	}, reloader, appendLog, setStatus, setBuild, emitErrors)
+	}, reloader, appstate.NewTestService(t).Plugins(), appendLog, setStatus, setBuild, emitErrors)
 
 	assert.Equal(t, "gw-test", gw.pluginID)
 	assert.Equal(t, "/dev/path", gw.devPath)
@@ -349,6 +350,7 @@ func TestGoWatcherStart_WatchesNestedSubdirs(t *testing.T) {
 		devPath,
 		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
 		&mockPluginReloader{},
+		appstate.NewTestService(t).Plugins(),
 		func(e LogEntry) { logs = append(logs, e) },
 		func(DevProcessStatus) {},
 		func(time.Duration, string) {},
@@ -379,6 +381,7 @@ func TestGoWatcherStart_SkipsHiddenVendorNodeModules(t *testing.T) {
 		devPath,
 		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
 		&mockPluginReloader{},
+		appstate.NewTestService(t).Plugins(),
 		func(e LogEntry) { logs = append(logs, e) },
 		func(DevProcessStatus) {},
 		func(time.Duration, string) {},
@@ -412,6 +415,7 @@ func TestGoWatcherStart_InitialBuild_FailsGracefully(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: ""}, // Empty → build will fail
 		&mockPluginReloader{},
+		appstate.NewTestService(t).Plugins(),
 		func(e LogEntry) { logs = append(logs, e) },
 		func(s DevProcessStatus) { statuses = append(statuses, s) },
 		func(time.Duration, string) {},
@@ -454,6 +458,7 @@ func TestGoWatcherStart_InitialBuild_StatusProgression(t *testing.T) {
 		devPath,
 		BuildOpts{GoPath: "nonexistent-go-binary"},
 		&mockPluginReloader{},
+		appstate.NewTestService(t).Plugins(),
 		func(e LogEntry) {},
 		func(s DevProcessStatus) { statuses = append(statuses, s) },
 		func(time.Duration, string) {},
@@ -476,19 +481,19 @@ func TestTransferBinary_ReadOnlyDestDir(t *testing.T) {
 	require.NoError(t, os.MkdirAll(buildDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(buildDir, "plugin"), []byte("bin"), 0755))
 
-	fakeHome := t.TempDir()
-	t.Setenv("HOME", fakeHome)
+	svc := appstate.NewTestService(t)
 
 	// Create the dest dir as read-only so file creation fails.
-	dstDir := filepath.Join(fakeHome, ".omniview", "plugins", "readonly-test", "bin")
+	dstDir := filepath.Join(svc.Plugins().ResolvePath(""), "readonly-test", "bin")
 	require.NoError(t, os.MkdirAll(dstDir, 0755))
 	require.NoError(t, os.Chmod(dstDir, 0444))
 	t.Cleanup(func() { os.Chmod(dstDir, 0755) })
 
 	gw := &goWatcherProcess{
-		logger:   logging.NewNop(),
-		pluginID: "readonly-test",
-		devPath:  devPath,
+		logger:      logging.NewNop(),
+		pluginID:    "readonly-test",
+		devPath:     devPath,
+		pluginsRoot: svc.Plugins(),
 	}
 
 	err := gw.transferBinary()
@@ -621,6 +626,7 @@ func TestGoWatcherStart_WatchesGoWorkModules(t *testing.T) {
 		devPath,
 		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
 		&mockPluginReloader{},
+		appstate.NewTestService(t).Plugins(),
 		func(e LogEntry) { logs = append(logs, e) },
 		func(DevProcessStatus) {},
 		func(time.Duration, string) {},
@@ -662,6 +668,7 @@ func TestGoWatcherStart_NoGoWork_StillWorks(t *testing.T) {
 		devPath,
 		BuildOpts{},
 		&mockPluginReloader{},
+		appstate.NewTestService(t).Plugins(),
 		func(e LogEntry) { logs = append(logs, e) },
 		func(DevProcessStatus) {},
 		func(time.Duration, string) {},
@@ -692,6 +699,7 @@ func TestGoWatcherStart_GoWork_SkipsDotModule(t *testing.T) {
 		devPath,
 		BuildOpts{},
 		&mockPluginReloader{},
+		appstate.NewTestService(t).Plugins(),
 		func(e LogEntry) { logs = append(logs, e) },
 		func(DevProcessStatus) {},
 		func(time.Duration, string) {},
@@ -722,6 +730,7 @@ func TestGoWatcherStart_GoWork_NonExistentModule(t *testing.T) {
 		devPath,
 		BuildOpts{},
 		&mockPluginReloader{},
+		appstate.NewTestService(t).Plugins(),
 		func(e LogEntry) { logs = append(logs, e) },
 		func(DevProcessStatus) {},
 		func(time.Duration, string) {},

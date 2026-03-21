@@ -61,4 +61,6 @@ e2e/playwright-report/
 
 # Task runner
 .task
-omniview
+/omniview
+docs/superpowers/
+cmd/omniview-plugin-dev/omniview-plugin-dev

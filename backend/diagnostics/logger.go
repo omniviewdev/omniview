@@ -40,19 +40,15 @@ func (b *BackendLogger) ServiceShutdown() error {
 }
 
 // NewBackendLogger creates (and binds) a Zap SugaredLogger writing to `<name>.log`.
-func NewBackendLogger(name string, dev bool) (*BackendLogger, error) {
+// logDir is the directory where log files are stored (e.g. from appstate.Service.Logs().ResolvePath("")).
+func NewBackendLogger(name string, dev bool, logDir string) (*BackendLogger, error) {
 	// determine level
 	lvl := zapcore.ErrorLevel
 	if dev {
 		lvl = zapcore.DebugLevel
 	}
 
-	// prepare log directory
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = os.TempDir()
-	}
-	baseDir := path.Join(home, ".omniview", "logs")
+	baseDir := logDir
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return nil, err
 	}
