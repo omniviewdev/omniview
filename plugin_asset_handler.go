@@ -26,15 +26,14 @@ func NewPluginAssetHandler(logger logging.Logger) *PluginAssetHandler {
 	}
 }
 
-func isAllowed(path string) bool {
-	// only allow the following patterns:
-	// - /plugins/<pluginname>/(assets|dist)/*.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|html)
-	// - /assets/*.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|html)
+// allowedPathRegex is compiled once at init — regexp.MustCompile is expensive
+// and should not be called on every HTTP request.
+var allowedPathRegex = regexp.MustCompile(
+	`^/plugins/[^/]+/(assets|dist)/.*\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|html|js\.map)$`,
+)
 
-	tester := regexp.MustCompile(
-		`^/plugins/[^/]+/(assets|dist)/.*\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|html|js\.map)$`,
-	)
-	return tester.MatchString(path)
+func isAllowed(path string) bool {
+	return allowedPathRegex.MatchString(path)
 }
 
 func forceMimeType(path string) string {
@@ -99,7 +98,9 @@ func (h *PluginAssetHandler) ServeHTTP(res http.ResponseWriter, req *http.Reques
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		panic(err)
+		h.logger.Errorw(ctx, "failed to get home directory", "error", err)
+		res.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	toFetch := filepath.Join(homeDir, ".omniview", requestedFilename)

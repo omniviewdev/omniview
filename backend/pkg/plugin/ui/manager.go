@@ -17,15 +17,36 @@ type componentManager struct {
 	resourceComponentStore ResourceComponentStore
 }
 
-// ServiceWrapper is an exported wrapper around componentManager
-// so it can be registered as a Wails v3 service from outside this package.
+// ServiceWrapper exposes only frontend-safe methods of componentManager.
+// Internal plugin lifecycle methods (OnPluginInit, OnPluginStart, etc.)
+// are excluded to prevent frontend invocation.
 type ServiceWrapper struct {
-	*componentManager
+	cm *componentManager
 }
 
 // NewServiceWrapper creates a ServiceWrapper around a componentManager.
 func NewServiceWrapper(cm *componentManager) *ServiceWrapper {
-	return &ServiceWrapper{componentManager: cm}
+	return &ServiceWrapper{cm: cm}
+}
+
+func (s *ServiceWrapper) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	return s.cm.ServiceStartup(ctx, options)
+}
+
+func (s *ServiceWrapper) ServiceShutdown() error {
+	return s.cm.ServiceShutdown()
+}
+
+func (s *ServiceWrapper) GetPluginComponents(params GetPluginComponentsInput) map[string][]ResourceComponent {
+	return s.cm.GetPluginComponents(params)
+}
+
+func (s *ServiceWrapper) GetResourceComponents(params GetResourceComponentsInput) []ResourceComponent {
+	return s.cm.GetResourceComponents(params)
+}
+
+func (s *ServiceWrapper) GetResourceAreaComponent(params GetResourceAreaComponentInput) *ResourceComponent {
+	return s.cm.GetResourceAreaComponent(params)
 }
 
 func NewComponentManager(logger logging.Logger) *componentManager {

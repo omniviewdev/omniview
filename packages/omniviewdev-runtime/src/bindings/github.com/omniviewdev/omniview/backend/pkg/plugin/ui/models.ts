@@ -133,9 +133,3 @@ export enum ResourceComponentArea {
     ResourceComponentAreaSidebar = "SIDEBAR",
     ResourceComponentAreaTable = "TABLE",
 };
-
-/**
- * ResourceComponentStore keeps a nested map of plugin->resourceID->Components
- * so the UI knows what is available to render.
- */
-export type ResourceComponentStore = { [_ in string]?: { [_ in string]?: ResourceComponent[] } };

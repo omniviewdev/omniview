@@ -13,7 +13,3 @@ export {
     ResourceComponent,
     ResourceComponentArea
 } from "./models.js";
-
-export type {
-    ResourceComponentStore
-} from "./models.js";

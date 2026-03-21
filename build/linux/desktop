@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Omniview
+Comment=A unified infrastructure management platform
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/Omniview %u
+Terminal=false
+Type=Application
+Icon=Omniview
+Categories=Utility;
+StartupWMClass=Omniview
+
+ 

@@ -1081,6 +1081,7 @@ func main() {
 		MinHeight: MinWebviewHeight,
 		//nolint:gomnd // #0D1117 dark theme background
 		BackgroundColour: application.NewRGBA(13, 17, 23, 255),
+		UseApplicationMenu: true,
 		Mac: application.MacWindow{
 			TitleBar:   application.MacTitleBarHiddenInset,
 			Appearance: application.NSAppearanceNameDarkAqua,
@@ -1088,8 +1089,10 @@ func main() {
 		},
 	})
 
-	// Set up menus
+	// Set up menus, keybindings, and context menus
 	menus.SetupAppMenu(app, mainWindow)
+	menus.SetupKeyBindings(app)
+	menus.SetupContextMenus(app)
 
 	// Set up window manager (registers hide-on-close hook, etc.)
 	_ = window.NewManager(app, mainWindow)
