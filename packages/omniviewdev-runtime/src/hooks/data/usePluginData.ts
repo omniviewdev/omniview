@@ -15,8 +15,9 @@ type UsePluginDataResult<T> = {
  * was stored but the caller expects an array).
  */
 function matchesShape<T>(value: unknown, defaultValue: T): value is T {
+  if (defaultValue === null) return value === null;
   if (Array.isArray(defaultValue)) return Array.isArray(value);
-  if (defaultValue !== null && typeof defaultValue === 'object') {
+  if (typeof defaultValue === 'object') {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
   return typeof value === typeof defaultValue;
