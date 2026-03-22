@@ -95,8 +95,14 @@ type controller struct {
 func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	c.app = application.Get()
 	c.ctx = ctx
-	go c.runMux()      // plugin mux
-	go c.runLocalMux() // local terminal should be muxed separately to avoid latency
+
+	// Initialize the terminal manager synchronously so c.terminalManager is
+	// safe to read before any goroutine starts.
+	manager, inMux, outMux, resizeMux := terminal.NewManager(ctx, c.logger)
+	c.terminalManager = manager
+
+	go c.runMux()                                // plugin mux
+	go c.runLocalMux(inMux, outMux, resizeMux)   // local terminal should be muxed separately to avoid latency
 	return nil
 }
 
@@ -117,30 +123,17 @@ func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) 
 	return nil
 }
 
-func listenOnOut(
-	cancel chan struct{},
-	source chan exec.StreamOutput,
-	target chan exec.StreamOutput,
+func (c *controller) runLocalMux(
+	inMux chan exec.StreamInput,
+	outMux chan exec.StreamOutput,
+	resizeMux chan exec.StreamResize,
 ) {
-	for {
-		select {
-		case <-cancel:
-			return
-		case output := <-source:
-			target <- output
-		}
-	}
-}
-
-func (c *controller) runLocalMux() {
-	manager, inMux, outMux, resizeMux := terminal.NewManager(c.logger)
-	c.terminalManager = manager
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
 		case input := <-inMux:
-			if err := manager.WriteSession(input.SessionID, input.Data); err != nil {
+			if err := c.terminalManager.WriteSession(input.SessionID, input.Data); err != nil {
 				c.logger.Errorw(context.Background(), "error writing to session", "error", err)
 			}
 		case output := <-outMux:
@@ -181,7 +174,7 @@ func (c *controller) runLocalMux() {
 
 			c.app.Event.Emit(eventkey, output.Data)
 		case resize := <-resizeMux:
-			if err := manager.ResizeSession(resize.SessionID, resize.Rows, resize.Cols); err != nil {
+			if err := c.terminalManager.ResizeSession(resize.SessionID, resize.Rows, resize.Cols); err != nil {
 				c.logger.Errorw(context.Background(), "error resizing session", "error", err)
 			}
 		}
@@ -194,7 +187,6 @@ func (c *controller) runMux() {
 		case <-c.ctx.Done():
 			return
 		case input := <-c.inputMux:
-			c.logger.Debugw(context.Background(), "got input", "sessionID", input.SessionID, "payloadSize", len(input.Data))
 			// Capture the channel under lock, then send outside it to avoid
 			// holding RLock during a potentially blocking send.
 			var ch chan exec.StreamInput
