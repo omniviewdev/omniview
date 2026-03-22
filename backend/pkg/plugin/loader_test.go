@@ -12,6 +12,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -20,43 +21,27 @@ import (
 // a backendFactory seam and a temp plugin directory.
 func newTestManager(t *testing.T) *pluginManager {
 	t.Helper()
-	dir := t.TempDir()
-	old := pluginDirOverride
-	pluginDirOverride = dir
-	t.Cleanup(func() { pluginDirOverride = old })
+	svc := appstate.NewTestService(t)
 
 	return &pluginManager{
 		logger:              testLogger(t),
+		stateRoot:           svc.RootDir(),
+		pluginsRoot:         svc.Plugins(),
 		records:             make(map[string]*plugintypes.PluginRecord),
 		connlessControllers: make(map[sdktypes.Capability]plugintypes.Controller),
 		connfullControllers: make(map[sdktypes.Capability]plugintypes.ConnectedController),
 		managers:            make(map[string]plugintypes.PluginManager),
-		pidTracker:          NewPluginPIDTracker(),
+		pidTracker:          NewPluginPIDTracker(svc.RootDir()),
 		pluginOpsLocks:      make(map[string]*sync.Mutex),
 		emitter:             testNoopEmitter{},
 	}
 }
 
 // installPluginFixture creates a plugin directory with plugin.yaml and optional binary.
-func installPluginFixture(t *testing.T, id string, caps []string, withBinary bool) {
+func installPluginFixture(t *testing.T, pm *pluginManager, id string, caps []string, withBinary bool) {
 	t.Helper()
-	dir := filepath.Join(getPluginDir(), id)
-	require.NoError(t, os.MkdirAll(dir, 0755))
-
-	content := "id: " + id + "\nname: " + id + "\nversion: 1.0.0\n"
-	if len(caps) > 0 {
-		content += "capabilities:\n"
-		for _, c := range caps {
-			content += "  - " + c + "\n"
-		}
-	}
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.yaml"), []byte(content), 0644))
-
-	if withBinary {
-		binDir := filepath.Join(dir, "bin")
-		require.NoError(t, os.MkdirAll(binDir, 0755))
-		require.NoError(t, os.WriteFile(filepath.Join(binDir, "plugin"), []byte("#!/bin/sh\n"), 0755))
-	}
+	pluginsDir := pm.pluginsRoot.ResolvePath("")
+	installPluginFixtureAt(t, pluginsDir, id, caps, withBinary)
 }
 
 func TestLoadPlugin_NotFound(t *testing.T) {
@@ -69,8 +54,7 @@ func TestLoadPlugin_NotFound(t *testing.T) {
 
 func TestLoadPlugin_MetadataMissing(t *testing.T) {
 	pm := newTestManager(t)
-	dir := filepath.Join(getPluginDir(), "no-meta")
-	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, pm.pluginsRoot.MkdirAll("no-meta", 0755))
 
 	_, err := pm.LoadPlugin("no-meta", nil)
 	assert.Error(t, err)
@@ -79,7 +63,7 @@ func TestLoadPlugin_MetadataMissing(t *testing.T) {
 
 func TestLoadPlugin_AlreadyRunning_Idempotent(t *testing.T) {
 	pm := newTestManager(t)
-	installPluginFixture(t, "running-plugin", []string{"ui"}, false)
+	installPluginFixture(t, pm, "running-plugin", []string{"ui"}, false)
 
 	// Pre-populate a running record.
 	pm.records["running-plugin"] = &plugintypes.PluginRecord{
@@ -100,7 +84,7 @@ func TestLoadPlugin_AlreadyRunning_Idempotent(t *testing.T) {
 
 func TestLoadPlugin_AlreadyStarting_Returns409(t *testing.T) {
 	pm := newTestManager(t)
-	installPluginFixture(t, "starting-plugin", []string{"ui"}, false)
+	installPluginFixture(t, pm, "starting-plugin", []string{"ui"}, false)
 
 	pm.records["starting-plugin"] = &plugintypes.PluginRecord{
 		ID:    "starting-plugin",
@@ -114,10 +98,10 @@ func TestLoadPlugin_AlreadyStarting_Returns409(t *testing.T) {
 
 func TestLoadPlugin_UIOnly_Succeeds(t *testing.T) {
 	pm := newTestManager(t)
-	installPluginFixture(t, "ui-plugin", []string{"ui"}, false)
+	installPluginFixture(t, pm, "ui-plugin", []string{"ui"}, false)
 
 	// UI plugins need assets directory.
-	require.NoError(t, os.MkdirAll(filepath.Join(getPluginDir(), "ui-plugin", "assets"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(pm.pluginsRoot.ResolvePath("ui-plugin"), "assets"), 0755))
 
 	info, err := pm.LoadPlugin("ui-plugin", nil)
 	require.NoError(t, err)
@@ -128,7 +112,7 @@ func TestLoadPlugin_UIOnly_Succeeds(t *testing.T) {
 
 func TestLoadPlugin_BackendPlugin_ViaFactory(t *testing.T) {
 	pm := newTestManager(t)
-	installPluginFixture(t, "backend-plugin", []string{"resource"}, true)
+	installPluginFixture(t, pm, "backend-plugin", []string{"resource"}, true)
 
 	factoryCalled := false
 	pm.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
@@ -147,7 +131,7 @@ func TestLoadPlugin_BackendPlugin_ViaFactory(t *testing.T) {
 
 func TestLoadPlugin_NoBinary_FailsValidation(t *testing.T) {
 	pm := newTestManager(t)
-	installPluginFixture(t, "no-binary", []string{"resource"}, false)
+	installPluginFixture(t, pm, "no-binary", []string{"resource"}, false)
 
 	_, err := pm.LoadPlugin("no-binary", nil)
 	assert.Error(t, err)
@@ -156,7 +140,7 @@ func TestLoadPlugin_NoBinary_FailsValidation(t *testing.T) {
 
 func TestLoadPlugin_DevMode_SkipsUIValidation(t *testing.T) {
 	pm := newTestManager(t)
-	installPluginFixture(t, "dev-plugin", []string{"resource", "ui"}, true)
+	installPluginFixture(t, pm, "dev-plugin", []string{"resource", "ui"}, true)
 
 	pm.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
 		return plugintypes.NewInProcessBackend(nil), nil
@@ -206,7 +190,7 @@ func TestUnloadPlugin_Running_Stops(t *testing.T) {
 func TestLoadPlugin_ExistingState_Applied(t *testing.T) {
 	pm := newTestManager(t)
 	// Dev mode with backend caps requires a binary.
-	installPluginFixture(t, "state-plugin", []string{"resource"}, true)
+	installPluginFixture(t, pm, "state-plugin", []string{"resource"}, true)
 
 	pm.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
 		return plugintypes.NewInProcessBackend(nil), nil
@@ -227,8 +211,8 @@ func TestLoadPlugin_ExistingState_Applied(t *testing.T) {
 
 func TestLoadPlugin_PreviousFailedRecord_Removed(t *testing.T) {
 	pm := newTestManager(t)
-	installPluginFixture(t, "failed-plugin", []string{"ui"}, false)
-	require.NoError(t, os.MkdirAll(filepath.Join(getPluginDir(), "failed-plugin", "assets"), 0755))
+	installPluginFixture(t, pm, "failed-plugin", []string{"ui"}, false)
+	require.NoError(t, os.MkdirAll(filepath.Join(pm.pluginsRoot.ResolvePath("failed-plugin"), "assets"), 0755))
 
 	// Pre-populate a failed record.
 	pm.records["failed-plugin"] = &plugintypes.PluginRecord{
@@ -243,8 +227,8 @@ func TestLoadPlugin_PreviousFailedRecord_Removed(t *testing.T) {
 
 func TestReloadPlugin_ReloadsSuccessfully(t *testing.T) {
 	pm := newTestManager(t)
-	installPluginFixture(t, "reload-test", []string{"ui"}, false)
-	require.NoError(t, os.MkdirAll(filepath.Join(getPluginDir(), "reload-test", "assets"), 0755))
+	installPluginFixture(t, pm, "reload-test", []string{"ui"}, false)
+	require.NoError(t, os.MkdirAll(filepath.Join(pm.pluginsRoot.ResolvePath("reload-test"), "assets"), 0755))
 
 	// First load.
 	_, err := pm.LoadPlugin("reload-test", nil)
@@ -312,10 +296,7 @@ func TestShutdownPlugin_NilRecord(t *testing.T) {
 
 func TestDevInstall_StatePersistsDevModeFields(t *testing.T) {
 	pm := newTestManager(t)
-	cleanup := withTempStateFile(t)
-	defer cleanup()
-
-	installPluginFixture(t, "dev-persist", []string{"resource", "ui"}, true)
+	installPluginFixture(t, pm, "dev-persist", []string{"resource", "ui"}, true)
 
 	pm.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
 		return plugintypes.NewInProcessBackend(nil), nil
@@ -332,7 +313,7 @@ func TestDevInstall_StatePersistsDevModeFields(t *testing.T) {
 	require.NoError(t, pm.writePluginStateJSON())
 
 	// Read it back and verify dev fields survived serialization.
-	records, err := readPluginStateJSON()
+	records, err := pm.readPluginStateJSON()
 	require.NoError(t, err)
 	require.Len(t, records, 1)
 
@@ -344,12 +325,22 @@ func TestDevInstall_StatePersistsDevModeFields(t *testing.T) {
 }
 
 func TestDevPlugin_SurvivesRestart(t *testing.T) {
-	cleanup := withTempStateFile(t)
-	defer cleanup()
+	svc := appstate.NewTestService(t)
 
 	// --- Session 1: install a dev plugin and persist state ---
-	pm1 := newTestManager(t)
-	installPluginFixture(t, "dev-restart", []string{"resource", "ui"}, true)
+	pm1 := &pluginManager{
+		logger:              testLogger(t),
+		stateRoot:           svc.RootDir(),
+		pluginsRoot:         svc.Plugins(),
+		records:             make(map[string]*plugintypes.PluginRecord),
+		connlessControllers: make(map[sdktypes.Capability]plugintypes.Controller),
+		connfullControllers: make(map[sdktypes.Capability]plugintypes.ConnectedController),
+		managers:            make(map[string]plugintypes.PluginManager),
+		pidTracker:          NewPluginPIDTracker(svc.RootDir()),
+		pluginOpsLocks:      make(map[string]*sync.Mutex),
+	}
+
+	installPluginFixtureAt(t, svc.Plugins().ResolvePath(""), "dev-restart", []string{"resource", "ui"}, true)
 
 	pm1.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
 		return plugintypes.NewInProcessBackend(nil), nil
@@ -365,21 +356,22 @@ func TestDevPlugin_SurvivesRestart(t *testing.T) {
 	// --- Session 2: simulate restart with a new manager ---
 	pm2 := &pluginManager{
 		logger:              testLogger(t),
+		stateRoot:           svc.RootDir(),
+		pluginsRoot:         svc.Plugins(),
 		records:             make(map[string]*plugintypes.PluginRecord),
 		connlessControllers: make(map[sdktypes.Capability]plugintypes.Controller),
 		connfullControllers: make(map[sdktypes.Capability]plugintypes.ConnectedController),
 		managers:            make(map[string]plugintypes.PluginManager),
-		pidTracker:          NewPluginPIDTracker(),
+		pidTracker:          NewPluginPIDTracker(svc.RootDir()),
 		pluginOpsLocks:      make(map[string]*sync.Mutex),
 		emitter:             testNoopEmitter{},
 	}
-	// Use the same plugin dir as pm1.
 	pm2.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
 		return plugintypes.NewInProcessBackend(nil), nil
 	}
 
 	// Replay what Initialize does: read state, build lookup, load with ExistingState.
-	states, err := readPluginStateJSON()
+	states, err := pm2.readPluginStateJSON()
 	require.NoError(t, err)
 	require.Len(t, states, 1)
 
@@ -403,9 +395,6 @@ func TestDevPlugin_SurvivesRestart(t *testing.T) {
 }
 
 func TestInitialize_DoesNotLoseFailedPluginState(t *testing.T) {
-	cleanup := withTempStateFile(t)
-	defer cleanup()
-
 	pm := newTestManager(t)
 	pm.ctx = context.Background()
 
@@ -422,7 +411,7 @@ func TestInitialize_DoesNotLoseFailedPluginState(t *testing.T) {
 
 	// Create the plugin directory with metadata but NO binary.
 	// This causes LoadPlugin to fail validation for dev mode.
-	installPluginFixture(t, "dev-lost", []string{"resource", "ui"}, false)
+	installPluginFixture(t, pm, "dev-lost", []string{"resource", "ui"}, false)
 
 	// Replay what Initialize does: read state, build lookup, attempt load.
 	stateByID := make(map[string]plugintypes.PluginStateRecord)
@@ -434,12 +423,12 @@ func TestInitialize_DoesNotLoseFailedPluginState(t *testing.T) {
 	_, err := pm.LoadPlugin("dev-lost", &LoadPluginOptions{ExistingState: &state})
 	assert.Error(t, err, "LoadPlugin should fail (missing binary)")
 
-	// Now call mergeAndWritePluginState — this is what Initialize does.
+	// Now call mergeAndWritePluginState -- this is what Initialize does.
 	// It should preserve the failed plugin's state.
 	require.NoError(t, pm.mergeAndWritePluginState(persistedStates))
 
 	// Read state file after merge.
-	records, err := readPluginStateJSON()
+	records, err := pm.readPluginStateJSON()
 	require.NoError(t, err)
 
 	// The dev-lost plugin failed to load, but its state should still be preserved.
@@ -588,8 +577,8 @@ func TestShutdownPlugin_SettingsNotCalledTwice(t *testing.T) {
 func TestConcurrentReloads_Serialized(t *testing.T) {
 	pm := newTestManager(t)
 	pm.ctx = context.Background()
-	installPluginFixture(t, "concurrent-test", []string{"ui"}, false)
-	require.NoError(t, os.MkdirAll(filepath.Join(getPluginDir(), "concurrent-test", "assets"), 0755))
+	installPluginFixture(t, pm, "concurrent-test", []string{"ui"}, false)
+	require.NoError(t, os.MkdirAll(filepath.Join(pm.pluginsRoot.ResolvePath("concurrent-test"), "assets"), 0755))
 
 	// Initial load.
 	_, err := pm.LoadPlugin("concurrent-test", nil)

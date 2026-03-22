@@ -4,34 +4,39 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"os"
-	"path/filepath"
 	"sync"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
 const (
 	PortRangeStart = 15173
 	PortRangeEnd   = 15273
+
+	devserverPIDFileName = "devserver_pids.json"
 )
 
 // PortAllocator manages port allocation for Vite dev servers.
 // It tracks which ports are currently in use and finds free ones.
 type PortAllocator struct {
-	mu       sync.Mutex
-	assigned map[int]string // port -> pluginID
-	pids     map[int]int    // port -> process group ID (for cleanup)
+	mu        sync.Mutex
+	assigned  map[int]string // port -> pluginID
+	pids      map[int]int    // port -> process group ID (for cleanup)
+	stateRoot *appstate.ScopedRoot
 }
 
 // NewPortAllocator creates a new PortAllocator.
-func NewPortAllocator() *PortAllocator {
+func NewPortAllocator(stateRoot *appstate.ScopedRoot) *PortAllocator {
 	return &PortAllocator{
-		assigned: make(map[int]string),
-		pids:     make(map[int]int),
+		assigned:  make(map[int]string),
+		pids:      make(map[int]int),
+		stateRoot: stateRoot,
 	}
 }
 
@@ -101,13 +106,7 @@ func (pa *PortAllocator) GetPort(pluginID string) int {
 	return 0
 }
 
-// pidFilePath returns the path to the PID tracking file.
-func pidFilePath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".omniview", "devserver_pids.json")
-}
-
-// SavePIDs persists the current port→PGID map to disk so stale processes
+// SavePIDs persists the current port->PGID map to disk so stale processes
 // can be cleaned up after an unclean shutdown.
 func (pa *PortAllocator) SavePIDs() {
 	pa.mu.Lock()
@@ -121,20 +120,25 @@ func (pa *PortAllocator) SavePIDs() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(pidFilePath(), b, 0644)
+	if err := pa.stateRoot.WriteFile(devserverPIDFileName, b, 0644); err != nil {
+		log.Printf("devserver: failed to save PID file: %v", err)
+	}
 }
 
 // CleanupStaleProcesses kills zombie Vite dev server process groups left over
 // from a previous unclean shutdown. It reads the PID file written by SavePIDs,
 // kills each recorded process group, and removes the file.
 func (pa *PortAllocator) CleanupStaleProcesses(ctx context.Context, logger logging.Logger) {
-	pidFile := pidFilePath()
-	b, err := os.ReadFile(pidFile)
+	b, err := pa.stateRoot.ReadFile(devserverPIDFileName)
 	if err != nil {
-		// No PID file — nothing to clean up.
+		if os.IsNotExist(err) {
+			// No PID file -- nothing to clean up.
+			return
+		}
+		logger.Warnw(ctx, "failed to read devserver PID file", "error", err)
 		return
 	}
-	_ = os.Remove(pidFile)
+	_ = pa.stateRoot.Remove(devserverPIDFileName)
 
 	var data map[string]int
 	if err := json.Unmarshal(b, &data); err != nil {
@@ -150,7 +154,7 @@ func (pa *PortAllocator) CleanupStaleProcesses(ctx context.Context, logger loggi
 
 		// Kill the entire process group.
 		if err := killProcessGroup(pgid); err != nil {
-			// Process already dead — that's fine.
+			// Process already dead -- that's fine.
 			if !isProcessNotFound(err) {
 				logger.Warnw(ctx, "failed to kill stale dev server process group",
 					"port", portStr,

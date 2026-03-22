@@ -13,6 +13,7 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/appstate"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -59,7 +60,8 @@ func (m *mockSettingsProvider) GetBool(string) (bool, error)           { return 
 
 func newTestManager(t *testing.T) *DevServerManager {
 	t.Helper()
-	return NewDevServerManager(logging.NewNop(), nil, nil, &mockSettingsProvider{})
+	svc := appstate.NewTestService(t)
+	return NewDevServerManager(logging.NewNop(), svc.RootDir(), svc.Plugins(), nil, nil, &mockSettingsProvider{})
 }
 
 func TestNewDevServerManager(t *testing.T) {
@@ -167,7 +169,7 @@ func TestManager_ListDevServerStates_WithInstances(t *testing.T) {
 	noopLogs := func(string, []LogEntry) {}
 	noopErrors := func(string, []BuildError) {}
 
-	inst := NewDevServerInstance(ctx, logging.NewNop(), "plugin-a", "/dev/path", 15173, BuildOpts{}, nil, noop, noopLogs, noopErrors)
+	inst := NewDevServerInstance(ctx, logging.NewNop(), "plugin-a", "/dev/path", 15173, BuildOpts{}, nil, nil, noop, noopLogs, noopErrors)
 
 	mgr.mu.Lock()
 	mgr.instances["plugin-a"] = inst
@@ -238,7 +240,7 @@ func TestManager_GetDevServerLogs_WithInstance(t *testing.T) {
 	noopLogs := func(string, []LogEntry) {}
 	noopErrors := func(string, []BuildError) {}
 
-	inst := NewDevServerInstance(ctx, logging.NewNop(), "plugin-a", "/dev/path", 15173, BuildOpts{}, nil, noop, noopLogs, noopErrors)
+	inst := NewDevServerInstance(ctx, logging.NewNop(), "plugin-a", "/dev/path", 15173, BuildOpts{}, nil, nil, noop, noopLogs, noopErrors)
 	inst.appendLog(LogEntry{Message: "build started", Source: "go-build", Level: "info", Timestamp: time.Now().Format(time.RFC3339)})
 	inst.appendLog(LogEntry{Message: "build complete", Source: "go-build", Level: "info", Timestamp: time.Now().Format(time.RFC3339)})
 
@@ -304,7 +306,7 @@ func TestManager_StartDevServer_AlreadyRunning(t *testing.T) {
 	noopErrors := func(string, []BuildError) {}
 	inst := NewDevServerInstance(
 		context.Background(), logging.NewNop(),
-		"dup-plugin", "/dev/path", 15173, BuildOpts{}, nil,
+		"dup-plugin", "/dev/path", 15173, BuildOpts{}, nil, nil,
 		noop, noopLogs, noopErrors,
 	)
 
@@ -369,12 +371,12 @@ func TestManager_ServiceShutdown_WithInstances(t *testing.T) {
 
 	inst1 := NewDevServerInstance(
 		context.Background(), logging.NewNop(),
-		"plugin-1", "/p1", 15173, BuildOpts{}, nil,
+		"plugin-1", "/p1", 15173, BuildOpts{}, nil, nil,
 		noop, noopLogs, noopErrors,
 	)
 	inst2 := NewDevServerInstance(
 		context.Background(), logging.NewNop(),
-		"plugin-2", "/p2", 15174, BuildOpts{}, nil,
+		"plugin-2", "/p2", 15174, BuildOpts{}, nil, nil,
 		noop, noopLogs, noopErrors,
 	)
 
@@ -424,7 +426,7 @@ func TestManager_GetDevServerState_WithInstance(t *testing.T) {
 
 	inst := NewDevServerInstance(
 		context.Background(), logging.NewNop(),
-		"state-plug", "/dev/path", 15180, BuildOpts{}, nil,
+		"state-plug", "/dev/path", 15180, BuildOpts{}, nil, nil,
 		noop, noopLogs, noopErrors,
 	)
 	// Simulate the instance being in a running state.
@@ -547,7 +549,7 @@ func TestManager_RebuildPlugin_WithInstance(t *testing.T) {
 	noopErrors := func(string, []BuildError) {}
 	inst := NewDevServerInstance(
 		context.Background(), logging.NewNop(),
-		"rebuild-plugin", "/dev/path", 15173, BuildOpts{}, nil,
+		"rebuild-plugin", "/dev/path", 15173, BuildOpts{}, nil, nil,
 		noop, noopLogs, noopErrors,
 	)
 
@@ -585,7 +587,7 @@ func TestManager_StartDevServerForPath_AlreadyRunning(t *testing.T) {
 	noopErrors := func(string, []BuildError) {}
 	inst := NewDevServerInstance(
 		context.Background(), logging.NewNop(),
-		"dup-plugin", "/dev/path", 15173, BuildOpts{}, nil,
+		"dup-plugin", "/dev/path", 15173, BuildOpts{}, nil, nil,
 		noop, noopLogs, noopErrors,
 	)
 

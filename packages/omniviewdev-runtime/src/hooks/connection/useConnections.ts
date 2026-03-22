@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { ListConnections, StartConnectionWatch, StopConnectionWatch } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { ListConnections, StartConnectionWatch, StopConnectionWatch } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
@@ -45,16 +45,16 @@ export const useConnections = ({ plugin: explicitPlugin }: UseConnectionsOptions
     const connections = ev.data as Connection[];
     console.log("got update to connections", connections)
     queryClient.setQueryData(queryKey, connections)
-  }, []);
+  }, [queryClient, queryKey]);
 
-  // *Only on mount*, we want subscribe to new resources, updates and deletes
+  // Subscribe to connection sync events from the backend.
   React.useEffect(() => {
     const syncCloser = Events.On(`${plugin}/connection/sync`, onConnectionSync);
 
     return () => {
       syncCloser()
     };
-  }, []);
+  }, [plugin, onConnectionSync]);
 
   // === Queries === //
 

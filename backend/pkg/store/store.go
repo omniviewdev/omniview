@@ -4,19 +4,13 @@ import (
 	"encoding/gob"
 	"errors"
 	"os"
-	"path/filepath"
+
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
-// InitStore initializes the local store.
-func InitStore() error {
-	basePath := getBasePath()
-
-	// make sure the base directory exists
-	err := os.MkdirAll(filepath.Join(basePath, "plugins"), 0755)
-	if err != nil {
-		return err
-	}
-	return nil
+// InitStore initializes the local store by ensuring the plugins subdirectory exists.
+func InitStore(root *appstate.ScopedRoot) error {
+	return root.MkdirAll("plugins", 0755)
 }
 
 // RegisterTypes registers the types that are going to be stored in the local store.
@@ -26,9 +20,9 @@ func RegisterTypes(impls ...interface{}) {
 	}
 }
 
-// WriteDataToGlobalStore writes the data to the global store.
-func WriteToGlobalStore[T any](store string, data T) error {
-	storeFile, err := getStoreFile(store)
+// WriteToGlobalStore writes the data to the global store.
+func WriteToGlobalStore[T any](root *appstate.ScopedRoot, store string, data T) error {
+	storeFile, err := getStoreFile(root, store)
 	if err != nil {
 		return err
 	}
@@ -39,13 +33,15 @@ func WriteToGlobalStore[T any](store string, data T) error {
 	return encoder.Encode(data)
 }
 
-// ReadDataFromGlobalStore reads the data from the global store.
-func ReadFromGlobalStore[T any](store string, data *T) error {
+// ReadFromGlobalStore reads the data from the global store.
+// Unlike WriteToGlobalStore, this opens the file read-only and does not create
+// it if it does not exist.
+func ReadFromGlobalStore[T any](root *appstate.ScopedRoot, store string, data *T) error {
 	if data == nil {
 		return errors.New("data cannot be nil")
 	}
 
-	storeFile, err := getStoreFile(store)
+	storeFile, err := root.OpenFile(store, os.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}

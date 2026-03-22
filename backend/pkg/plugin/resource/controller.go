@@ -27,6 +27,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/internal/appstate"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
@@ -98,6 +99,7 @@ type controller struct {
 	graph         *graph.RelationshipGraph
 
 	onCrashCallback func(pluginID string)
+	pluginStoreFn   func(pluginID string) (*appstate.ScopedRoot, error)
 }
 
 // compile-time assertions
@@ -107,7 +109,8 @@ var (
 )
 
 // NewController creates a new resource Controller.
-func NewController(logger logging.Logger, sp pkgsettings.Provider) Controller {
+// pluginStoreFn returns a ScopedRoot for the given plugin's store directory.
+func NewController(logger logging.Logger, sp pkgsettings.Provider, pluginStoreFn func(string) (*appstate.ScopedRoot, error)) Controller {
 	store := registry.NewMemoryStore()
 	g := graph.NewRelationshipGraph()
 	graphIndexer := graph.NewGraphIndexer(g, store)
@@ -123,6 +126,7 @@ func NewController(logger logging.Logger, sp pkgsettings.Provider) Controller {
 		registryStore:       store,
 		dispatcher:          dispatcher,
 		graph:               g,
+		pluginStoreFn:       pluginStoreFn,
 	}
 }
 
@@ -192,8 +196,11 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	logger.Debugw(context.Background(), "OnPluginInit")
 
 	// Load persisted connections from disk.
-	state, err := loadFromLocalStore(pluginID)
-	if err != nil {
+	var state map[string][]types.Connection
+	if storeRoot, err := c.pluginStoreFn(pluginID); err != nil {
+		logger.Errorw(context.Background(), "failed to resolve plugin store root", "error", err)
+		state = make(map[string][]types.Connection)
+	} else if state, err = loadFromLocalStore(storeRoot); err != nil {
 		logger.Errorw(context.Background(), "failed to load connections from local store", "error", err)
 		state = make(map[string][]types.Connection)
 	}
@@ -293,11 +300,16 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStop")
 
-	// Persist connections.
+	// Persist only this plugin's connections.
 	c.connsMu.RLock()
-	conns := c.connections
+	pluginConnsForPersist := make(map[string][]types.Connection, 1)
+	if pcs, ok := c.connections[pluginID]; ok {
+		pluginConnsForPersist[pluginID] = pcs
+	}
 	c.connsMu.RUnlock()
-	if err := saveToLocalStore(pluginID, conns); err != nil {
+	if storeRoot, err := c.pluginStoreFn(pluginID); err != nil {
+		logger.Errorw(context.Background(), "failed to resolve plugin store root", "error", err)
+	} else if err := saveToLocalStore(storeRoot, pluginConnsForPersist); err != nil {
 		logger.Errorw(context.Background(), "failed to save connections to local store", "error", err)
 	}
 
@@ -351,7 +363,9 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginDestroy")
-	if err := removeLocalStore(pluginID); err != nil {
+	if storeRoot, err := c.pluginStoreFn(pluginID); err != nil {
+		logger.Errorw(context.Background(), "failed to resolve plugin store root", "error", err)
+	} else if err := removeLocalStore(storeRoot); err != nil {
 		logger.Errorw(context.Background(), "failed to remove local store", "error", err)
 	}
 	return nil
@@ -666,10 +680,16 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 	c.connections[pluginID] = mergeConnections(c.connections[pluginID], conns)
 	c.connsMu.Unlock()
 
-	// Best-effort persist.
-	c.connsMu.RLock()
-	_ = saveToLocalStore(pluginID, c.connections)
-	c.connsMu.RUnlock()
+	// Best-effort persist — only this plugin's connections.
+	if storeRoot, err := c.pluginStoreFn(pluginID); err == nil {
+		c.connsMu.RLock()
+		pluginConns := make(map[string][]types.Connection, 1)
+		if pcs, ok := c.connections[pluginID]; ok {
+			pluginConns[pluginID] = pcs
+		}
+		c.connsMu.RUnlock()
+		_ = saveToLocalStore(storeRoot, pluginConns)
+	}
 
 	return conns, nil
 }

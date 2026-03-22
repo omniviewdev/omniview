@@ -6,23 +6,18 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
-// ensurePluginPIDDir creates the ~/.omniview directory if it doesn't exist.
-// CI runners may not have this directory pre-created.
-func ensurePluginPIDDir(t *testing.T) {
-	t.Helper()
-	require.NoError(t, os.MkdirAll(filepath.Dir(pluginPIDFilePath()), 0755))
-}
-
 func TestPluginPIDTracker_RecordAndRemove(t *testing.T) {
-	tracker := NewPluginPIDTracker()
+	svc := appstate.NewTestService(t)
+	tracker := NewPluginPIDTracker(svc.RootDir())
 
 	tracker.Record("aws", 1234)
 	tracker.Record("kubernetes", 5678)
@@ -51,18 +46,16 @@ func TestPluginPIDTracker_RecordAndRemove(t *testing.T) {
 }
 
 func TestPluginPIDTracker_SaveAndLoad(t *testing.T) {
-	ensurePluginPIDDir(t)
-
-	tracker := NewPluginPIDTracker()
+	svc := appstate.NewTestService(t)
+	tracker := NewPluginPIDTracker(svc.RootDir())
 	tracker.Record("aws", 12345)
 	tracker.Record("kubernetes", 67890)
 
 	// Save via the real method
 	require.NoError(t, tracker.Save())
-	defer os.Remove(pluginPIDFilePath())
 
 	// Read the file back and verify contents
-	raw, err := os.ReadFile(pluginPIDFilePath())
+	raw, err := svc.RootDir().ReadFile(pluginPIDFileName)
 	require.NoError(t, err)
 
 	var loaded map[string]int
@@ -73,7 +66,7 @@ func TestPluginPIDTracker_SaveAndLoad(t *testing.T) {
 }
 
 func TestPluginPIDTracker_CleanupStale_KillsProcesses(t *testing.T) {
-	ensurePluginPIDDir(t)
+	svc := appstate.NewTestService(t)
 
 	// Spawn a real sleep process to kill
 	cmd := exec.Command("sleep", "300")
@@ -83,18 +76,17 @@ func TestPluginPIDTracker_CleanupStale_KillsProcesses(t *testing.T) {
 	// Verify it's alive
 	require.NoError(t, syscall.Kill(pid, 0))
 
-	// Write a PID file pointing at this process to the real path.
-	realPidFile := pluginPIDFilePath()
+	// Write a PID file pointing at this process.
 	data := map[string]int{"test-plugin": pid}
 	b, err := json.Marshal(data)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(realPidFile, b, 0644))
+	require.NoError(t, svc.RootDir().WriteFile(pluginPIDFileName, b, 0644))
 
 	logger := testLogger(t)
-	tracker := NewPluginPIDTracker()
+	tracker := NewPluginPIDTracker(svc.RootDir())
 	tracker.CleanupStale(logger)
 
-	// Reap the zombie — our test process is the parent, so we must Wait()
+	// Reap the zombie -- our test process is the parent, so we must Wait()
 	// before the kernel removes the process table entry.
 	_ = cmd.Wait()
 
@@ -103,23 +95,22 @@ func TestPluginPIDTracker_CleanupStale_KillsProcesses(t *testing.T) {
 	assert.ErrorIs(t, err, syscall.ESRCH, "process should be dead after cleanup")
 
 	// Verify the PID file was removed
-	_, err = os.Stat(realPidFile)
+	_, err = svc.RootDir().Stat(pluginPIDFileName)
 	assert.True(t, os.IsNotExist(err), "PID file should be removed after cleanup")
 }
 
 func TestPluginPIDTracker_CleanupStale_NoFile(t *testing.T) {
-	// Ensure no PID file exists
-	_ = os.Remove(pluginPIDFilePath())
+	svc := appstate.NewTestService(t)
 
 	logger := testLogger(t)
-	tracker := NewPluginPIDTracker()
+	tracker := NewPluginPIDTracker(svc.RootDir())
 
 	// Should not panic or error
 	tracker.CleanupStale(logger)
 }
 
 func TestPluginPIDTracker_CleanupStale_DeadProcess(t *testing.T) {
-	ensurePluginPIDDir(t)
+	svc := appstate.NewTestService(t)
 
 	// Spawn a process and kill it immediately so the PID is dead
 	cmd := exec.Command("sleep", "300")
@@ -136,17 +127,15 @@ func TestPluginPIDTracker_CleanupStale_DeadProcess(t *testing.T) {
 	data := map[string]int{"dead-plugin": pid}
 	b, marshalErr := json.Marshal(data)
 	require.NoError(t, marshalErr)
-
-	realPidFile := pluginPIDFilePath()
-	require.NoError(t, os.WriteFile(realPidFile, b, 0644))
+	require.NoError(t, svc.RootDir().WriteFile(pluginPIDFileName, b, 0644))
 
 	logger := testLogger(t)
-	tracker := NewPluginPIDTracker()
+	tracker := NewPluginPIDTracker(svc.RootDir())
 
 	// Should handle ESRCH gracefully
 	tracker.CleanupStale(logger)
 
 	// Verify the PID file was removed
-	_, err = os.Stat(realPidFile)
+	_, err = svc.RootDir().Stat(pluginPIDFileName)
 	assert.True(t, os.IsNotExist(err), "PID file should be removed after cleanup")
 }

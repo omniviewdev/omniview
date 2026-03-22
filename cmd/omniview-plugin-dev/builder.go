@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -68,14 +69,20 @@ func (b *Builder) BinaryPath() string {
 	return filepath.Join(b.pluginDir, "build", "bin", "plugin")
 }
 
-// TransferToInstall copies the built artifacts to ~/.omniview/plugins/<id>/.
+// TransferToInstall copies the built artifacts to the plugins install directory.
 func (b *Builder) TransferToInstall() error {
-	homeDir, err := os.UserHomeDir()
+	// Validate plugin ID to prevent path traversal.
+	if b.meta.ID == "" || b.meta.ID == "." || b.meta.ID == ".." ||
+		strings.ContainsAny(b.meta.ID, "/\\") {
+		return fmt.Errorf("invalid plugin ID %q: must not be empty or contain path separators", b.meta.ID)
+	}
+
+	stateDir, err := resolveStateDir()
 	if err != nil {
 		return err
 	}
 
-	installDir := filepath.Join(homeDir, ".omniview", "plugins", b.meta.ID)
+	installDir := filepath.Join(stateDir, "plugins", b.meta.ID)
 	binDir := filepath.Join(installDir, "bin")
 
 	if err := os.MkdirAll(binDir, 0755); err != nil {

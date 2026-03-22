@@ -19,6 +19,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
@@ -33,10 +34,11 @@ type goWatcherProcess struct {
 	cancel context.CancelFunc
 	logger logging.Logger
 
-	pluginID  string
-	devPath   string
-	buildOpts BuildOpts
-	reloader  PluginReloader
+	pluginID    string
+	devPath     string
+	buildOpts   BuildOpts
+	reloader    PluginReloader
+	pluginsRoot *appstate.ScopedRoot
 
 	appendLog  func(LogEntry)
 	setStatus  func(DevProcessStatus)
@@ -55,6 +57,7 @@ func newGoWatcherProcess(
 	devPath string,
 	buildOpts BuildOpts,
 	reloader PluginReloader,
+	pluginsRoot *appstate.ScopedRoot,
 	appendLog func(LogEntry),
 	setStatus func(DevProcessStatus),
 	setBuild func(duration time.Duration, buildErr string),
@@ -62,18 +65,19 @@ func newGoWatcherProcess(
 ) *goWatcherProcess {
 	ctx, cancel := context.WithCancel(parentCtx)
 	return &goWatcherProcess{
-		ctx:        ctx,
-		cancel:     cancel,
-		logger:     logger.Named("gowatch"),
-		pluginID:   pluginID,
-		devPath:    devPath,
-		buildOpts:  buildOpts,
-		reloader:   reloader,
-		appendLog:  appendLog,
-		setStatus:  setStatus,
-		setBuild:   setBuild,
-		emitErrors: emitErrors,
-		done:       make(chan struct{}),
+		ctx:         ctx,
+		cancel:      cancel,
+		logger:      logger.Named("gowatch"),
+		pluginID:    pluginID,
+		devPath:     devPath,
+		buildOpts:   buildOpts,
+		reloader:    reloader,
+		pluginsRoot: pluginsRoot,
+		appendLog:   appendLog,
+		setStatus:   setStatus,
+		setBuild:    setBuild,
+		emitErrors:  emitErrors,
+		done:        make(chan struct{}),
 	}
 }
 
@@ -370,7 +374,7 @@ func (gw *goWatcherProcess) handleRebuild(changedFile string) {
 		l.Warnw(context.Background(), "failed to sync plugin.yaml", "error", err)
 	}
 
-	// Transfer the binary to ~/.omniview/plugins/<id>/bin/plugin.
+	// Transfer the binary to <pluginsRoot>/<pluginID>/bin/plugin.
 	if err := gw.transferBinary(); err != nil {
 		l.Errorw(context.Background(), "failed to transfer binary", "error", err)
 		gw.appendLog(LogEntry{
@@ -459,17 +463,12 @@ func (gw *goWatcherProcess) runGoBuild() error {
 }
 
 // transferBinary copies the built binary from <devPath>/build/bin/plugin to
-// ~/.omniview/plugins/<pluginID>/bin/plugin.
+// <pluginsRoot>/<pluginID>/bin/plugin.
 func (gw *goWatcherProcess) transferBinary() error {
 	srcPath := filepath.Join(gw.devPath, "build", "bin", "plugin")
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return apperror.Internal(err, "Failed to get home directory")
-	}
-	dstDir := filepath.Join(homeDir, ".omniview", "plugins", gw.pluginID, "bin")
-	dstPath := filepath.Join(dstDir, "plugin")
+	binDir := filepath.Join(gw.pluginID, "bin")
 
-	if err := os.MkdirAll(dstDir, 0755); err != nil {
+	if err := gw.pluginsRoot.MkdirAll(binDir, 0755); err != nil {
 		return apperror.Internal(err, "Failed to create plugin bin directory")
 	}
 
@@ -485,10 +484,12 @@ func (gw *goWatcherProcess) transferBinary() error {
 		return apperror.Internal(err, "Failed to stat built binary")
 	}
 
-	// Remove existing binary first (in case it's being held open).
-	_ = os.Remove(dstPath)
+	dstRelPath := filepath.Join(binDir, "plugin")
 
-	dstFile, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
+	// Remove existing binary first (in case it's being held open).
+	_ = gw.pluginsRoot.Remove(dstRelPath)
+
+	dstFile, err := gw.pluginsRoot.OpenFile(dstRelPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
 	if err != nil {
 		return apperror.Internal(err, "Failed to create destination binary")
 	}
@@ -506,11 +507,6 @@ func (gw *goWatcherProcess) transferBinary() error {
 // the next reload without requiring a full reinstall.
 func (gw *goWatcherProcess) syncPluginYaml() error {
 	srcPath := filepath.Join(gw.devPath, "plugin.yaml")
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return apperror.Internal(err, "Failed to get home directory")
-	}
-	dstPath := filepath.Join(homeDir, ".omniview", "plugins", gw.pluginID, "plugin.yaml")
 
 	src, err := os.Open(srcPath)
 	if err != nil {
@@ -518,7 +514,13 @@ func (gw *goWatcherProcess) syncPluginYaml() error {
 	}
 	defer src.Close()
 
-	dst, err := os.Create(dstPath)
+	pluginDir := gw.pluginID
+	if err := gw.pluginsRoot.MkdirAll(pluginDir, 0755); err != nil {
+		return apperror.Internal(err, "Failed to create plugin directory")
+	}
+
+	dstRelPath := filepath.Join(gw.pluginID, "plugin.yaml")
+	dst, err := gw.pluginsRoot.OpenFile(dstRelPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return apperror.Internal(err, "Failed to create destination plugin.yaml")
 	}

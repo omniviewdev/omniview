@@ -1,9 +1,9 @@
 import React from 'react';
 
 import { PluginContext } from './PluginContext';
-import { PluginValues } from '../../bindings/github.com/omniviewdev/omniview/settingscontrollerservice';
+import { PluginValues } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/settings/servicewrapper';
 import { PluginMeta } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/config/models';
-import { GetPluginMeta } from '../../bindings/github.com/omniviewdev/omniview/pluginmanagerservice';
+import { GetPluginMeta } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 import { parseAppError } from '../../errors/parseAppError';
 
 export type PluginContextProviderProps = {

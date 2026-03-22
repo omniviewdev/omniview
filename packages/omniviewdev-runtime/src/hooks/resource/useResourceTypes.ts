@@ -1,13 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 
 // Underlying client
-import { GetResourceTypes } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { GetResourceTypes } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceTypesOptions = {
   /**
-   * The ID of the category responsible for this resource
-   * @example "appearance"
+   * The ID of the plugin
    */
   pluginID?: string;
   /**
@@ -17,12 +16,11 @@ type UseResourceTypesOptions = {
 };
 
 /**
- * Interact with a category of settings from the global settings provider. Intended for use in the settings UI - if
- * you need to read or write settings from a specific plugin, use the `@hooks/settings/useSettings` hook instead.
+ * Fetch the resource types for a given plugin and connection.
  */
 export const useResourceTypes = ({ pluginID: explicitPluginID, connectionID }: UseResourceTypesOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
-  const queryKey = [pluginID, 'resources', 'list'];
+  const queryKey = [pluginID, 'resources', 'list', connectionID];
 
   const types = useQuery({
     queryKey,
@@ -32,7 +30,7 @@ export const useResourceTypes = ({ pluginID: explicitPluginID, connectionID }: U
 
   return {
     /**
-     * The current settings from the provider.
+     * The resource types for the given plugin and connection.
      */
     types,
   };

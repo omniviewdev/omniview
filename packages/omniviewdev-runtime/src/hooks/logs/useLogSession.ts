@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useSnackbar } from '../snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
-import { CreateSession, CloseSession } from '../../bindings/github.com/omniviewdev/omniview/logscontrollerservice';
+import { CreateSession, CloseSession } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/logs/servicewrapper';
 import { CreateSessionOptions, LogSessionOptions } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/logs/models';
 import { useBottomDrawer } from '../drawer';
 import { useResolvedPluginId } from '../useResolvedPluginId';

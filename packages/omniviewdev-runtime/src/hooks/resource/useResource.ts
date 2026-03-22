@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
 import { UpdateInput, DeleteInput, GetInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
-import { Get, Update, Delete } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { Get, Update, Delete } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceOptions = {

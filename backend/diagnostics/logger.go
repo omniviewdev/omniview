@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -40,25 +40,21 @@ func (b *BackendLogger) ServiceShutdown() error {
 }
 
 // NewBackendLogger creates (and binds) a Zap SugaredLogger writing to `<name>.log`.
-func NewBackendLogger(name string, dev bool) (*BackendLogger, error) {
+// logDir is the directory where log files are stored (e.g. from appstate.Service.Logs().ResolvePath("")).
+func NewBackendLogger(name string, dev bool, logDir string) (*BackendLogger, error) {
 	// determine level
 	lvl := zapcore.ErrorLevel
 	if dev {
 		lvl = zapcore.DebugLevel
 	}
 
-	// prepare log directory
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = os.TempDir()
-	}
-	baseDir := path.Join(home, ".omniview", "logs")
+	baseDir := logDir
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return nil, err
 	}
 
 	// file rotate
-	logFile := path.Join(baseDir, name+".log")
+	logFile := filepath.Join(baseDir, name+".log")
 	log.Println(("set logger to app.log"))
 
 	lj := &lumberjack.Logger{
@@ -180,7 +176,7 @@ func (b *BackendLogger) ListLogFiles(ctx context.Context) ([]string, error) {
 }
 
 func (b *BackendLogger) ReadLog(ctx context.Context, name string) (string, error) {
-	data, err := os.ReadFile(path.Join(b.logDir, name+".log"))
+	data, err := os.ReadFile(filepath.Join(b.logDir, name+".log"))
 	if err != nil {
 		return "", err
 	}
@@ -188,7 +184,7 @@ func (b *BackendLogger) ReadLog(ctx context.Context, name string) (string, error
 }
 
 func (b *BackendLogger) SearchLog(ctx context.Context, name, pattern string) ([]string, error) {
-	f, err := os.Open(path.Join(b.logDir, name+".log"))
+	f, err := os.Open(filepath.Join(b.logDir, name+".log"))
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +210,7 @@ func (b *BackendLogger) StartTail(ctx context.Context, name string) error {
 	if _, ok := b.watchers[name]; ok {
 		return nil // already tailing
 	}
-	t, err := tail.TailFile(path.Join(b.logDir, name+".log"), tail.Config{
+	t, err := tail.TailFile(filepath.Join(b.logDir, name+".log"), tail.Config{
 		Follow: true, ReOpen: true, MustExist: true,
 	})
 	if err != nil {

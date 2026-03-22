@@ -4,17 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // Controller provides a JSON key-value store for plugins to persist arbitrary data.
-// Each key is stored as a separate JSON file under ~/.omniview/plugins/{pluginID}/data/.
+// Each key is stored as a separate JSON file under <stateRoot>/plugins/{pluginID}/data/.
 type Controller interface {
 	ServiceStartup(ctx context.Context, options application.ServiceOptions) error
 	ServiceShutdown() error
@@ -27,13 +27,16 @@ type Controller interface {
 var _ Controller = (*controller)(nil)
 
 type controller struct {
-	logger logging.Logger
+	logger       logging.Logger
+	pluginDataFn func(pluginID string) (*appstate.ScopedRoot, error)
 }
 
 // NewController creates a new data store controller.
-func NewController(logger logging.Logger) Controller {
+// pluginDataFn returns a ScopedRoot for the given plugin's data directory.
+func NewController(logger logging.Logger, pluginDataFn func(string) (*appstate.ScopedRoot, error)) Controller {
 	return &controller{
-		logger: logger.Named("DataController"),
+		logger:       logger.Named("DataController"),
+		pluginDataFn: pluginDataFn,
 	}
 }
 
@@ -45,48 +48,15 @@ func (c *controller) ServiceShutdown() error {
 	return nil
 }
 
-// dataDir returns the data directory for a plugin, creating it if necessary.
-func (c *controller) dataDir(pluginID string) (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(homeDir, ".omniview", "plugins", filepath.Clean(pluginID), "data")
-	// Containment check: ensure the resolved path stays under .omniview/plugins.
-	pluginsRoot := filepath.Join(homeDir, ".omniview", "plugins")
-	if !strings.HasPrefix(dir, pluginsRoot+string(filepath.Separator)) {
-		return "", fmt.Errorf("invalid plugin ID %q: path escapes plugins directory", pluginID)
-	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
-
-// keyPath returns the full file path for a given plugin/key combination.
-func (c *controller) keyPath(pluginID, key string) (string, error) {
-	dir, err := c.dataDir(pluginID)
-	if err != nil {
-		return "", err
-	}
-	full := filepath.Join(dir, filepath.Clean(key)+".json")
-	// Containment check: ensure the key doesn't escape the data directory.
-	if !strings.HasPrefix(full, dir+string(filepath.Separator)) {
-		return "", fmt.Errorf("invalid key %q: path escapes data directory", key)
-	}
-	return full, nil
-}
 
 func (c *controller) Get(pluginID, key string) (any, error) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID), logging.Any("key", key))
 
-	path, err := c.keyPath(pluginID, key)
+	root, err := c.pluginDataFn(pluginID)
 	if err != nil {
-		logger.Errorw(context.Background(), "failed to resolve key path", "error", err)
 		return nil, err
 	}
-
-	data, err := os.ReadFile(path)
+	data, err := root.ReadFile(key + ".json")
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
@@ -107,19 +77,17 @@ func (c *controller) Get(pluginID, key string) (any, error) {
 func (c *controller) Set(pluginID, key string, value any) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID), logging.Any("key", key))
 
-	path, err := c.keyPath(pluginID, key)
+	root, err := c.pluginDataFn(pluginID)
 	if err != nil {
-		logger.Errorw(context.Background(), "failed to resolve key path", "error", err)
 		return err
 	}
-
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		logger.Errorw(context.Background(), "failed to marshal data", "error", err)
 		return err
 	}
 
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	if err := root.WriteFile(key+".json", data, 0600); err != nil {
 		logger.Errorw(context.Background(), "failed to write data file", "error", err)
 		return err
 	}
@@ -130,13 +98,11 @@ func (c *controller) Set(pluginID, key string, value any) error {
 func (c *controller) Delete(pluginID, key string) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID), logging.Any("key", key))
 
-	path, err := c.keyPath(pluginID, key)
+	root, err := c.pluginDataFn(pluginID)
 	if err != nil {
-		logger.Errorw(context.Background(), "failed to resolve key path", "error", err)
 		return err
 	}
-
-	if err := os.Remove(path); err != nil {
+	if err := root.Remove(key + ".json"); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
@@ -150,13 +116,11 @@ func (c *controller) Delete(pluginID, key string) error {
 func (c *controller) Keys(pluginID string) ([]string, error) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 
-	dir, err := c.dataDir(pluginID)
+	root, err := c.pluginDataFn(pluginID)
 	if err != nil {
-		logger.Errorw(context.Background(), "failed to resolve data dir", "error", err)
 		return nil, err
 	}
-
-	entries, err := os.ReadDir(dir)
+	entries, err := root.ReadDir(".")
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return []string{}, nil

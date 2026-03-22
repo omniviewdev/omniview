@@ -33,6 +33,7 @@ type Service struct {
 	commit  string
 	date    string
 	isDev   bool
+	logDir  string
 
 	resource       *resource.Resource
 	tracerProvider *sdktrace.TracerProvider
@@ -50,13 +51,15 @@ type Service struct {
 }
 
 // New creates a telemetry Service. Call Init to start it.
-func New(cfg TelemetryConfig, version, commit, date string, isDev bool) *Service {
+// logDir is the directory where log files are stored.
+func New(cfg TelemetryConfig, version, commit, date string, isDev bool, logDir string) *Service {
 	return &Service{
 		cfg:     cfg,
 		version: version,
 		commit:  commit,
 		date:    date,
 		isDev:   isDev,
+		logDir:  logDir,
 	}
 }
 
@@ -125,7 +128,7 @@ func (s *Service) Init(ctx context.Context) error {
 	s.loggerProvider = NewLoggerProvider(s.resource, s.switchableLogExp)
 
 	var otelLevel *zap.AtomicLevel
-	s.zapLogger, otelLevel, err = buildZapLogger(s.isDev, s.loggerProvider, s.cfg.LogsShipLevel)
+	s.zapLogger, otelLevel, err = buildZapLogger(s.isDev, s.loggerProvider, s.cfg.LogsShipLevel, s.logDir)
 	s.otelLevel = otelLevel
 	if err != nil {
 		return err
@@ -427,12 +430,7 @@ func (c *levelFilterCore) With(fields []zapcore.Field) zapcore.Core {
 //
 // The returned *zap.AtomicLevel (nil when loggerProvider is nil) controls the
 // OTel core and can be used for hot-toggling the ship level at runtime.
-func buildZapLogger(isDev bool, loggerProvider *sdklog.LoggerProvider, shipLevel string) (*zap.Logger, *zap.AtomicLevel, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, nil, fmt.Errorf("cannot determine home directory: %w", err)
-	}
-	logDir := filepath.Join(home, ".omniview", "logs")
+func buildZapLogger(isDev bool, loggerProvider *sdklog.LoggerProvider, shipLevel string, logDir string) (*zap.Logger, *zap.AtomicLevel, error) {
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return nil, nil, err
 	}

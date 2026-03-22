@@ -3,12 +3,16 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
+	"errors"
+	"io/fs"
 	"sync"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
+
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
+
+const pluginPIDFileName = "plugin_pids.json"
 
 // PluginPIDTracker tracks PIDs of running plugin binary processes so that
 // orphaned processes from a previous unclean shutdown (force-quit, crash,
@@ -18,14 +22,16 @@ import (
 // saved PID file will typically be empty. The file only matters when shutdown
 // was interrupted.
 type PluginPIDTracker struct {
-	mu   sync.Mutex
-	pids map[string]int // pluginID -> PID
+	mu        sync.Mutex
+	pids      map[string]int // pluginID -> PID
+	stateRoot *appstate.ScopedRoot
 }
 
 // NewPluginPIDTracker creates a new tracker with an empty PID map.
-func NewPluginPIDTracker() *PluginPIDTracker {
+func NewPluginPIDTracker(stateRoot *appstate.ScopedRoot) *PluginPIDTracker {
 	return &PluginPIDTracker{
-		pids: make(map[string]int),
+		pids:      make(map[string]int),
+		stateRoot: stateRoot,
 	}
 }
 
@@ -45,14 +51,8 @@ func (t *PluginPIDTracker) Remove(pluginID string) {
 	delete(t.pids, pluginID)
 }
 
-// pidFilePath returns the path to the plugin PID tracking file.
-func pluginPIDFilePath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".omniview", "plugin_pids.json")
-}
-
-// Save persists the current pluginID→PID map to disk. This is called during
-// Shutdown as a safety net — if all plugins were stopped cleanly the map is
+// Save persists the current pluginID->PID map to disk. This is called during
+// Shutdown as a safety net -- if all plugins were stopped cleanly the map is
 // empty, but if shutdownPlugin failed for any plugin its PID will be saved
 // for cleanup on the next startup.
 func (t *PluginPIDTracker) Save() error {
@@ -67,20 +67,23 @@ func (t *PluginPIDTracker) Save() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(pluginPIDFilePath(), b, 0644)
+	return t.stateRoot.WriteFile(pluginPIDFileName, b, 0644)
 }
 
 // CleanupStale reads the PID file from a previous session, kills any processes
 // that are still alive, and removes the file. This should be called early in
 // Initialize(), before any new plugins are started.
 func (t *PluginPIDTracker) CleanupStale(logger logging.Logger) {
-	pidFile := pluginPIDFilePath()
-	b, err := os.ReadFile(pidFile)
+	b, err := t.stateRoot.ReadFile(pluginPIDFileName)
 	if err != nil {
-		// No PID file — nothing to clean up (normal case after clean shutdown).
+		if errors.Is(err, fs.ErrNotExist) {
+			// No PID file -- nothing to clean up (normal case after clean shutdown).
+			return
+		}
+		logger.Warnw(context.Background(), "failed to read plugin PID file", "error", err)
 		return
 	}
-	_ = os.Remove(pidFile)
+	_ = t.stateRoot.Remove(pluginPIDFileName)
 
 	var data map[string]int
 	if err := json.Unmarshal(b, &data); err != nil {
@@ -95,7 +98,7 @@ func (t *PluginPIDTracker) CleanupStale(logger logging.Logger) {
 		}
 
 		if err := killProcess(pid); err != nil {
-			// Process already dead — that's fine.
+			// Process already dead -- that's fine.
 			if !isProcessNotFound(err) {
 				logger.Warnw(context.Background(), "failed to kill stale plugin process",
 					"pluginID", pluginID,

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path"
+	"path/filepath"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -19,7 +19,8 @@ func (lumberjackSink) Sync() error {
 	return nil
 }
 
-func CreateLogger(dev bool) *zap.SugaredLogger {
+// CreateLogger creates a zap SugaredLogger that writes to a log file in logDir.
+func CreateLogger(dev bool, logDir string) *zap.SugaredLogger {
 	var level zapcore.Level
 	if dev {
 		level = zap.DebugLevel
@@ -27,19 +28,12 @@ func CreateLogger(dev bool) *zap.SugaredLogger {
 		level = zap.ErrorLevel
 	}
 
-	// store the logs in the dot directory
-	baseDir, err := os.UserHomeDir()
-	if err != nil {
-		baseDir = os.TempDir()
-	} else {
-		baseDir = path.Join(baseDir, ".omniview", "logs")
-	}
-
-	if err := os.MkdirAll(baseDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create log directory %s: %v\n", logDir, err)
 		return zap.L().Sugar()
 	}
 
-	logFile := path.Join(baseDir, "app.log")
+	logFile := filepath.Join(logDir, "app.log")
 
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:        "ts",

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { GetConnection, UpdateConnection, RemoveConnection, StartConnection, StopConnection } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { GetConnection, UpdateConnection, RemoveConnection, StartConnection, StopConnection } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { useSnackbar } from '../../hooks/snackbar/useSnackbar';
 import { createErrorHandler } from '../../errors/parseAppError';
@@ -55,7 +55,7 @@ export const useConnection = ({ pluginID: explicitPluginID, connectionID }: UseC
     onSuccess(data, { name }) {
       showSnackbar({ message: `Connection ${name} successfully updated`, status: 'success' });
       // Update the list and detail
-      queryClient.setQueryData(queryKey, connection);
+      queryClient.setQueryData(queryKey, data);
       queryClient.setQueriesData(
         { queryKey: [pluginID, 'connection', 'list'] },
         (previous: Connection[] | undefined) => previous?.map(conn => conn.id === connectionID ? data : conn),

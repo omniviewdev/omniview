@@ -6,19 +6,20 @@ require (
 	github.com/creack/pty v1.1.21
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-enry/go-enry/v2 v2.8.7
+	github.com/gofrs/flock v0.13.0
 	github.com/google/uuid v1.6.0
 	github.com/grafana/otel-profiling-go v0.5.1
 	github.com/grafana/pyroscope-go v1.2.7
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.7.0
 	github.com/nxadm/tail v1.4.11
-	github.com/omniviewdev/plugin-sdk v0.4.1
+	github.com/omniviewdev/plugin-sdk v0.5.0
 	github.com/omniviewdev/registry v0.2.1
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
-	github.com/vrischmann/userdir v0.0.0-20151206171402-20f291cebd68
 	github.com/wailsapp/mimetype v1.4.1
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.74
+	go.etcd.io/bbolt v1.4.3
 	go.opentelemetry.io/contrib/bridges/otelzap v0.17.0
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.67.0
 	go.opentelemetry.io/otel v1.42.0

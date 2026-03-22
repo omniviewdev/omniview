@@ -7,6 +7,8 @@ import (
 	"time"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
+
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
 // emitStatusFunc is the callback type for emitting status updates.
@@ -22,14 +24,15 @@ type emitErrorsFunc func(pluginID string, errors []BuildError)
 // It coordinates the Vite process and Go file watcher.
 type DevServerInstance struct {
 	// Immutable fields (set at construction, never change)
-	ctx       context.Context
-	cancel    context.CancelFunc
-	logger    logging.Logger
-	pluginID  string
-	devPath   string // absolute path to the plugin source directory
-	vitePort  int
-	buildOpts BuildOpts
-	reloader  PluginReloader
+	ctx         context.Context
+	cancel      context.CancelFunc
+	logger      logging.Logger
+	pluginID    string
+	devPath     string // absolute path to the plugin source directory
+	vitePort    int
+	buildOpts   BuildOpts
+	reloader    PluginReloader
+	pluginsRoot *appstate.ScopedRoot
 
 	// Event emission callbacks (bound to DevServerManager methods)
 	onStatus emitStatusFunc
@@ -61,6 +64,7 @@ func NewDevServerInstance(
 	vitePort int,
 	buildOpts BuildOpts,
 	reloader PluginReloader,
+	pluginsRoot *appstate.ScopedRoot,
 	onStatus emitStatusFunc,
 	onLogs emitLogsFunc,
 	onErrors emitErrorsFunc,
@@ -68,21 +72,22 @@ func NewDevServerInstance(
 	ctx, cancel := context.WithCancel(parentCtx)
 
 	return &DevServerInstance{
-		ctx:        ctx,
-		cancel:     cancel,
-		logger:     logger.Named("instance").With(logging.Any("pluginID", pluginID)),
-		pluginID:   pluginID,
-		devPath:    devPath,
-		vitePort:   vitePort,
-		buildOpts:  buildOpts,
-		reloader:   reloader,
-		onStatus:   onStatus,
-		onLogs:     onLogs,
-		onErrors:   onErrors,
-		mode:       DevServerModeManaged,
-		viteStatus: DevProcessStatusIdle,
-		goStatus:   DevProcessStatusIdle,
-		logBuffer:  NewLogRingBuffer(DefaultLogBufferSize),
+		ctx:         ctx,
+		cancel:      cancel,
+		logger:      logger.Named("instance").With(logging.Any("pluginID", pluginID)),
+		pluginID:    pluginID,
+		devPath:     devPath,
+		vitePort:    vitePort,
+		buildOpts:   buildOpts,
+		reloader:    reloader,
+		pluginsRoot: pluginsRoot,
+		onStatus:    onStatus,
+		onLogs:      onLogs,
+		onErrors:    onErrors,
+		mode:        DevServerModeManaged,
+		viteStatus:  DevProcessStatusIdle,
+		goStatus:    DevProcessStatusIdle,
+		logBuffer:   NewLogRingBuffer(DefaultLogBufferSize),
 	}
 }
 
@@ -115,6 +120,7 @@ func (inst *DevServerInstance) Start() error {
 		inst.devPath,
 		inst.buildOpts,
 		inst.reloader,
+		inst.pluginsRoot,
 		inst.appendLog,
 		inst.setGoStatus,
 		inst.setBuildResult,

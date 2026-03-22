@@ -10,6 +10,7 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/appstate"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
@@ -17,7 +18,12 @@ import (
 // newTestController creates a controller with a no-op logger and no settings
 // provider, then calls Run so the context is initialised.
 func newTestController() *controller {
-	ctrl := NewController(logging.NewNop(), nil).(*controller)
+	// Provide a pluginStoreFn that panics if called — these tests never exercise
+	// the local store path, so the function should never be invoked.
+	storeFn := func(pluginID string) (*appstate.ScopedRoot, error) {
+		panic("unexpected call to pluginStoreFn in test for plugin " + pluginID)
+	}
+	ctrl := NewController(logging.NewNop(), nil, storeFn).(*controller)
 	ctrl.Run(context.Background())
 	return ctrl
 }

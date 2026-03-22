@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { produce } from 'immer';
 
-import { GetWatchState } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { GetWatchState } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import type {

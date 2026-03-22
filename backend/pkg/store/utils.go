@@ -5,32 +5,26 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
-// getBasePath returns the base path for the omniview store.
-func getBasePath() string {
-	baseDir, err := os.UserHomeDir()
-	if err != nil {
-		// if we can't get a home directory, we can't continue
-		panic("failed to get or create a home directory")
-	}
-	return filepath.Join(baseDir, ".omniview")
-}
-
-func getStoreFile(store string) (*os.File, error) {
-	storePath := filepath.Join(getBasePath(), store)
-	if _, err := os.Stat(storePath); os.IsNotExist(err) {
-		// make sure the parent directory exists
-		if err = os.MkdirAll(filepath.Dir(storePath), 0755); err != nil {
+// getStoreFile opens (or creates) a store file relative to the given ScopedRoot.
+func getStoreFile(root *appstate.ScopedRoot, store string) (*os.File, error) {
+	// Ensure parent directories exist within the scope.
+	dir := filepath.Dir(store)
+	if dir != "." && dir != "" {
+		if err := root.MkdirAll(dir, 0755); err != nil {
 			return nil, err
 		}
 	}
-	return os.OpenFile(storePath, os.O_RDWR|os.O_CREATE, 0755)
+	return root.OpenFile(store, os.O_RDWR|os.O_CREATE, 0644)
 }
 
 // ExpandTilde takes a path and if it starts with a ~, it will replace it with the home directory.
 func ExpandTilde(path string) (string, error) {
-	if path[:2] == "~/" {
+	if len(path) >= 2 && path[:2] == "~/" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("failed to get home directory: %w", err)
@@ -47,7 +41,7 @@ func DeexpandTilde(path string) string {
 		// fallback to the original path
 		return path
 	}
-	if home != "" {
+	if home != "" && strings.HasPrefix(path, home) {
 		path = filepath.Join("~", path[len(home):])
 	}
 	return path

@@ -5,8 +5,8 @@ import {
   GetAllConnectionStates,
   StopConnection,
   StartConnectionWatch,
-} from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
-import { RetryFailedPlugin } from '../../bindings/github.com/omniviewdev/omniview/pluginmanagerservice';
+} from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
+import { RetryFailedPlugin } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 import type { Connection } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
 import { WatchState } from '../../types/watch';
 import type { WatchStateEvent } from '../../types/watch';

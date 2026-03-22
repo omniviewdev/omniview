@@ -12,41 +12,39 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
-func withTempStateFile(t *testing.T) func() {
+func newTestManagerWithAppstate(t *testing.T) *pluginManager {
 	t.Helper()
-	dir := t.TempDir()
-	old := stateFilePathOverride
-	stateFilePathOverride = filepath.Join(dir, "plugin_state.json")
-	return func() {
-		stateFilePathOverride = old
+	svc := appstate.NewTestService(t)
+	return &pluginManager{
+		logger:      testLogger(t),
+		stateRoot:   svc.RootDir(),
+		pluginsRoot: svc.Plugins(),
+		records:     make(map[string]*types.PluginRecord),
+		pidTracker:  NewPluginPIDTracker(svc.RootDir()),
 	}
 }
 
 func TestWriteAndReadJSON_RoundTrip(t *testing.T) {
-	cleanup := withTempStateFile(t)
-	defer cleanup()
-
-	pm := &pluginManager{
-		logger: testLogger(t),
-		records: map[string]*types.PluginRecord{
-			"test-plugin": {
-				ID:          "test-plugin",
-				Phase:       lifecycle.PhaseRunning,
-				Metadata:    config.PluginMeta{ID: "test-plugin", Name: "Test", Version: "1.0"},
-				Enabled:     true,
-				DevMode:     true,
-				DevPath:     "/dev/path",
-				InstalledAt: time.Now().Truncate(time.Second),
-			},
+	pm := newTestManagerWithAppstate(t)
+	pm.records = map[string]*types.PluginRecord{
+		"test-plugin": {
+			ID:          "test-plugin",
+			Phase:       lifecycle.PhaseRunning,
+			Metadata:    config.PluginMeta{ID: "test-plugin", Name: "Test", Version: "1.0"},
+			Enabled:     true,
+			DevMode:     true,
+			DevPath:     "/dev/path",
+			InstalledAt: time.Now().Truncate(time.Second),
 		},
 	}
 
 	require.NoError(t, pm.writePluginStateJSON())
 
-	records, err := readPluginStateJSON()
+	records, err := pm.readPluginStateJSON()
 	require.NoError(t, err)
 	require.Len(t, records, 1)
 
@@ -59,52 +57,42 @@ func TestWriteAndReadJSON_RoundTrip(t *testing.T) {
 }
 
 func TestReadJSON_EmptyFile(t *testing.T) {
-	cleanup := withTempStateFile(t)
-	defer cleanup()
+	pm := newTestManagerWithAppstate(t)
 
 	// Write empty JSON array.
-	require.NoError(t, os.MkdirAll(filepath.Dir(stateFilePathOverride), 0755))
-	require.NoError(t, os.WriteFile(stateFilePathOverride, []byte("[]"), 0644))
+	require.NoError(t, pm.stateRoot.WriteFile(stateFileName, []byte("[]"), 0644))
 
-	records, err := readPluginStateJSON()
+	records, err := pm.readPluginStateJSON()
 	require.NoError(t, err)
 	assert.Empty(t, records)
 }
 
 func TestReadJSON_NonexistentFile(t *testing.T) {
-	cleanup := withTempStateFile(t)
-	defer cleanup()
+	pm := newTestManagerWithAppstate(t)
 
-	records, err := readPluginStateJSON()
+	records, err := pm.readPluginStateJSON()
 	require.NoError(t, err)
 	assert.Nil(t, records)
 }
 
 func TestReadJSON_CorruptJSON(t *testing.T) {
-	cleanup := withTempStateFile(t)
-	defer cleanup()
+	pm := newTestManagerWithAppstate(t)
 
-	require.NoError(t, os.MkdirAll(filepath.Dir(stateFilePathOverride), 0755))
-	require.NoError(t, os.WriteFile(stateFilePathOverride, []byte("{invalid json"), 0644))
+	require.NoError(t, pm.stateRoot.WriteFile(stateFileName, []byte("{invalid json"), 0644))
 
-	_, err := readPluginStateJSON()
+	_, err := pm.readPluginStateJSON()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "parsing state file")
 }
 
 func TestWriteJSON_AtomicDoesNotCorrupt(t *testing.T) {
-	cleanup := withTempStateFile(t)
-	defer cleanup()
-
-	pm := &pluginManager{
-		logger: testLogger(t),
-		records: map[string]*types.PluginRecord{
-			"plugin-a": {
-				ID:       "plugin-a",
-				Phase:    lifecycle.PhaseRunning,
-				Metadata: config.PluginMeta{ID: "plugin-a"},
-				Enabled:  true,
-			},
+	pm := newTestManagerWithAppstate(t)
+	pm.records = map[string]*types.PluginRecord{
+		"plugin-a": {
+			ID:       "plugin-a",
+			Phase:    lifecycle.PhaseRunning,
+			Metadata: config.PluginMeta{ID: "plugin-a"},
+			Enabled:  true,
 		},
 	}
 
@@ -112,31 +100,20 @@ func TestWriteJSON_AtomicDoesNotCorrupt(t *testing.T) {
 	require.NoError(t, pm.writePluginStateJSON())
 
 	// Verify the temp file was cleaned up.
-	_, err := os.Stat(stateFilePathOverride + ".tmp")
+	_, err := pm.stateRoot.Stat(stateFileName + ".tmp")
 	assert.True(t, os.IsNotExist(err))
 
 	// Read and verify the file is valid JSON.
-	data, err := os.ReadFile(stateFilePathOverride)
+	data, err := pm.stateRoot.ReadFile(stateFileName)
 	require.NoError(t, err)
 	assert.True(t, json.Valid(data))
 }
 
 func TestMergeAndWrite_DropsGhostEntries(t *testing.T) {
-	cleanup := withTempStateFile(t)
-	defer cleanup()
+	pm := newTestManagerWithAppstate(t)
 
-	// Create a plugin directory for "alive-plugin" only — "ghost-plugin" has no directory.
-	pluginDir := t.TempDir()
-	old := pluginDirOverride
-	pluginDirOverride = pluginDir
-	defer func() { pluginDirOverride = old }()
-
-	require.NoError(t, os.MkdirAll(filepath.Join(pluginDir, "alive-plugin"), 0755))
-
-	pm := &pluginManager{
-		logger:  testLogger(t),
-		records: make(map[string]*types.PluginRecord),
-	}
+	// Create a plugin directory for "alive-plugin" only -- "ghost-plugin" has no directory.
+	require.NoError(t, pm.pluginsRoot.MkdirAll("alive-plugin", 0755))
 
 	persisted := []types.PluginStateRecord{
 		{ID: "ghost-plugin", Phase: lifecycle.PhaseRunning, Enabled: true},
@@ -145,34 +122,25 @@ func TestMergeAndWrite_DropsGhostEntries(t *testing.T) {
 
 	require.NoError(t, pm.mergeAndWritePluginState(persisted))
 
-	records, err := readPluginStateJSON()
+	records, err := pm.readPluginStateJSON()
 	require.NoError(t, err)
 	require.Len(t, records, 1, "ghost entry should have been dropped")
 	assert.Equal(t, "alive-plugin", records[0].ID)
 }
 
 func TestMergeAndWrite_PreservesNotLoadedWithDirectory(t *testing.T) {
-	cleanup := withTempStateFile(t)
-	defer cleanup()
-
-	pluginDir := t.TempDir()
-	old := pluginDirOverride
-	pluginDirOverride = pluginDir
-	defer func() { pluginDirOverride = old }()
+	pm := newTestManagerWithAppstate(t)
 
 	// Both plugins have directories on disk.
-	require.NoError(t, os.MkdirAll(filepath.Join(pluginDir, "loaded-plugin"), 0755))
-	require.NoError(t, os.MkdirAll(filepath.Join(pluginDir, "unloaded-plugin"), 0755))
+	require.NoError(t, pm.pluginsRoot.MkdirAll("loaded-plugin", 0755))
+	require.NoError(t, pm.pluginsRoot.MkdirAll("unloaded-plugin", 0755))
 
-	pm := &pluginManager{
-		logger: testLogger(t),
-		records: map[string]*types.PluginRecord{
-			"loaded-plugin": {
-				ID:       "loaded-plugin",
-				Phase:    lifecycle.PhaseRunning,
-				Metadata: config.PluginMeta{ID: "loaded-plugin"},
-				Enabled:  true,
-			},
+	pm.records = map[string]*types.PluginRecord{
+		"loaded-plugin": {
+			ID:       "loaded-plugin",
+			Phase:    lifecycle.PhaseRunning,
+			Metadata: config.PluginMeta{ID: "loaded-plugin"},
+			Enabled:  true,
 		},
 	}
 
@@ -183,7 +151,7 @@ func TestMergeAndWrite_PreservesNotLoadedWithDirectory(t *testing.T) {
 
 	require.NoError(t, pm.mergeAndWritePluginState(persisted))
 
-	records, err := readPluginStateJSON()
+	records, err := pm.readPluginStateJSON()
 	require.NoError(t, err)
 	require.Len(t, records, 2, "not-loaded entry with directory should be preserved")
 
@@ -196,20 +164,15 @@ func TestMergeAndWrite_PreservesNotLoadedWithDirectory(t *testing.T) {
 }
 
 func TestWriteJSON_MultipleRecords(t *testing.T) {
-	cleanup := withTempStateFile(t)
-	defer cleanup()
-
-	pm := &pluginManager{
-		logger: testLogger(t),
-		records: map[string]*types.PluginRecord{
-			"a": {ID: "a", Phase: lifecycle.PhaseRunning, Metadata: config.PluginMeta{ID: "a"}, Enabled: true},
-			"b": {ID: "b", Phase: lifecycle.PhaseStopped, Metadata: config.PluginMeta{ID: "b"}, Enabled: false},
-		},
+	pm := newTestManagerWithAppstate(t)
+	pm.records = map[string]*types.PluginRecord{
+		"a": {ID: "a", Phase: lifecycle.PhaseRunning, Metadata: config.PluginMeta{ID: "a"}, Enabled: true},
+		"b": {ID: "b", Phase: lifecycle.PhaseStopped, Metadata: config.PluginMeta{ID: "b"}, Enabled: false},
 	}
 
 	require.NoError(t, pm.writePluginStateJSON())
 
-	records, err := readPluginStateJSON()
+	records, err := pm.readPluginStateJSON()
 	require.NoError(t, err)
 	assert.Len(t, records, 2)
 
@@ -220,4 +183,27 @@ func TestWriteJSON_MultipleRecords(t *testing.T) {
 	assert.True(t, byID["a"].Enabled)
 	assert.False(t, byID["b"].Enabled)
 	assert.Equal(t, lifecycle.PhaseStopped, byID["b"].Phase)
+}
+
+// installPluginFixtureAt creates a plugin directory with plugin.yaml and optional binary
+// at the given pluginsRoot directory.
+func installPluginFixtureAt(t *testing.T, pluginsDir string, id string, caps []string, withBinary bool) {
+	t.Helper()
+	dir := filepath.Join(pluginsDir, id)
+	require.NoError(t, os.MkdirAll(dir, 0755))
+
+	content := "id: " + id + "\nname: " + id + "\nversion: 1.0.0\n"
+	if len(caps) > 0 {
+		content += "capabilities:\n"
+		for _, c := range caps {
+			content += "  - " + c + "\n"
+		}
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.yaml"), []byte(content), 0644))
+
+	if withBinary {
+		binDir := filepath.Join(dir, "bin")
+		require.NoError(t, os.MkdirAll(binDir, 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(binDir, "plugin"), []byte("#!/bin/sh\n"), 0755))
+	}
 }

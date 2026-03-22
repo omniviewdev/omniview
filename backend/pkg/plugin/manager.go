@@ -16,6 +16,7 @@ import (
 	pluginmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog"
+	"github.com/omniviewdev/omniview/internal/appstate"
 	regclient "github.com/omniviewdev/registry"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
@@ -95,6 +96,8 @@ type Manager interface {
 // NewManager returns a new plugin manager.
 func NewManager(
 	logger logging.Logger,
+	stateRoot *appstate.ScopedRoot,
+	pluginsRoot *appstate.ScopedRoot,
 	resourceController resource.Controller,
 	settingsController settings.Controller,
 	execController pluginexec.Controller,
@@ -107,8 +110,10 @@ func NewManager(
 	telemetryConfigFn func() TelemetryEnvConfig,
 ) Manager {
 	return &pluginManager{
-		logger:  logger,
-		records: make(map[string]*plugintypes.PluginRecord),
+		logger:      logger,
+		stateRoot:   stateRoot,
+		pluginsRoot: pluginsRoot,
+		records:     make(map[string]*plugintypes.PluginRecord),
 		connlessControllers: map[sdktypes.Capability]plugintypes.Controller{
 			sdktypes.CapabilitySettings:  settingsController,
 			sdktypes.CapabilityExec:      execController,
@@ -124,7 +129,7 @@ func NewManager(
 		registryClient:    registryClient,
 		telemetryConfigFn: telemetryConfigFn,
 		emitter:           resource.NoopEmitter{},
-		pidTracker:        NewPluginPIDTracker(),
+		pidTracker:        NewPluginPIDTracker(stateRoot),
 		pluginOpsLocks:    make(map[string]*sync.Mutex),
 	}
 }
@@ -139,6 +144,8 @@ type DevServerChecker interface {
 type pluginManager struct {
 	ctx                 context.Context
 	logger              logging.Logger
+	stateRoot           *appstate.ScopedRoot // scoped to ~/.omniview (for state files)
+	pluginsRoot         *appstate.ScopedRoot // scoped to ~/.omniview/plugins
 	recordsMu           sync.RWMutex
 	records             map[string]*plugintypes.PluginRecord
 	connlessControllers map[sdktypes.Capability]plugintypes.Controller
@@ -332,15 +339,13 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// Kill any orphaned plugin processes from a previous unclean shutdown.
 	pm.pidTracker.CleanupStale(pm.logger)
 
-	if err := auditPluginDir(); err != nil {
-		return err
-	}
+	pluginDir := pm.pluginsRoot.ResolvePath("")
 
-	states, err := readPluginStateJSON()
+	states, err := pm.readPluginStateJSON()
 	if err != nil {
 		pm.logger.Warnw(pm.ctx, "failed to read plugin state file, reconciling from filesystem", "error", err)
 		reconciler := NewReconciler(pm.logger)
-		result, reconErr := reconciler.ReconcileFromFilesystem(pm.ctx, getPluginDir())
+		result, reconErr := reconciler.ReconcileFromFilesystem(pm.ctx, pluginDir)
 		if reconErr != nil {
 			pm.logger.Errorw(pm.ctx, "filesystem reconciliation failed", "error", reconErr)
 		} else {
@@ -354,34 +359,38 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 
 	pm.logger.Debugw(pm.ctx, "Loading plugins states from disk", "states", states)
 
-	files, err := os.ReadDir(getPluginDir())
+	files, err := os.ReadDir(pluginDir)
 	if err != nil {
 		return fmt.Errorf("error reading plugin directory: %w", err)
 	}
 
 	// Reverse migration: rename <id>-dev → <id> if needed.
-	pluginDir := getPluginDir()
 	for _, state := range states {
-		devDir := filepath.Join(pluginDir, state.ID+"-dev")
-		canonDir := filepath.Join(pluginDir, state.ID)
+		devName := state.ID + "-dev"
 
 		devExists := false
-		if info, statErr := os.Stat(devDir); statErr == nil && info.IsDir() {
+		if info, statErr := pm.pluginsRoot.Stat(devName); statErr == nil && info.IsDir() {
 			devExists = true
 		}
 		canonExists := false
-		if info, statErr := os.Stat(canonDir); statErr == nil && info.IsDir() {
+		if info, statErr := pm.pluginsRoot.Stat(state.ID); statErr == nil && info.IsDir() {
 			canonExists = true
 		}
 
 		if devExists && !canonExists {
 			pm.logger.Infow(pm.ctx, "migrating dev plugin directory to canonical ID",
-				"from", devDir, "to", canonDir)
-			if renameErr := os.Rename(devDir, canonDir); renameErr != nil {
+				"from", devName, "to", state.ID)
+			if renameErr := pm.pluginsRoot.Rename(devName, state.ID); renameErr != nil {
 				pm.logger.Errorw(pm.ctx, "failed to rename dev plugin directory",
-					"from", devDir, "to", canonDir, "error", renameErr)
+					"from", devName, "to", state.ID, "error", renameErr)
 			}
 		}
+	}
+
+	// Re-read directory after potential renames so subsequent code sees migrated names.
+	files, err = os.ReadDir(pluginDir)
+	if err != nil {
+		return fmt.Errorf("error re-reading plugin directory after migration: %w", err)
 	}
 
 	// Build a lookup for persisted state.
@@ -424,9 +433,10 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 				// If the dev binary doesn't exist, create a stub record
 				// and skip LoadPlugin. Phase 2 will start the dev server,
 				// build the binary, and call ReloadPlugin.
-				binPath := filepath.Join(getPluginLocation(file.Name()), "bin", "plugin")
+				pluginLocation := pm.pluginsRoot.ResolvePath(file.Name())
+				binPath := filepath.Join(pluginLocation, "bin", "plugin")
 				if _, statErr := os.Stat(binPath); os.IsNotExist(statErr) {
-					meta, metaErr := sdktypes.LoadPluginMetadata(getPluginLocation(file.Name()))
+					meta, metaErr := sdktypes.LoadPluginMetadata(pluginLocation)
 					if metaErr == nil {
 						record := plugintypes.NewPluginRecord(file.Name(), meta, lifecycle.PhaseBuildFailed)
 						record.Enabled = state.Enabled

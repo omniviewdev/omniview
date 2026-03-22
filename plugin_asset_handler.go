@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
+	"path"
 	"regexp"
 	"strings"
 
+	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/wailsapp/mimetype"
 )
@@ -16,13 +16,15 @@ import (
 // It is used as middleware in the Wails v3 AssetOptions to handle
 // requests for plugin-specific static files (JS, CSS, images, fonts).
 type PluginAssetHandler struct {
-	logger logging.Logger
+	logger    logging.Logger
+	stateRoot *appstate.ScopedRoot
 }
 
 // NewPluginAssetHandler creates a new PluginAssetHandler.
-func NewPluginAssetHandler(logger logging.Logger) *PluginAssetHandler {
+func NewPluginAssetHandler(logger logging.Logger, stateRoot *appstate.ScopedRoot) *PluginAssetHandler {
 	return &PluginAssetHandler{
-		logger: logger,
+		logger:    logger,
+		stateRoot: stateRoot,
 	}
 }
 
@@ -85,37 +87,23 @@ func (h *PluginAssetHandler) ServeHTTP(res http.ResponseWriter, req *http.Reques
 		respondUnauthorized()
 		return
 	}
-	requestedFilename = strings.TrimPrefix(requestedFilename, "/_")
+	requestedFilename = strings.TrimPrefix(requestedFilename, "/_/")
 
-	requestedFilename = filepath.Clean(requestedFilename)
+	// Normalize the path to prevent traversal via sequences like "foo/../bar".
+	requestedFilename = path.Clean(requestedFilename)
 
 	h.logger.Debugw(ctx, "requested file", "path", requestedFilename)
 
-	if !isAllowed(requestedFilename) {
+	if !isAllowed("/"+requestedFilename) {
 		respondUnauthorized()
 		return
 	}
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		h.logger.Errorw(ctx, "failed to get home directory", "error", err)
-		res.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	toFetch := filepath.Join(homeDir, ".omniview", requestedFilename)
-	// Containment check: ensure resolved path stays under ~/.omniview
-	omniviewRoot := filepath.Join(homeDir, ".omniview")
-	if !strings.HasPrefix(toFetch, omniviewRoot+string(filepath.Separator)) {
-		respondUnauthorized()
-		return
-	}
-	h.logger.Infow(ctx, "fetching file", "path", toFetch)
-
-	fileData, err := os.ReadFile(toFetch)
+	// ScopedRoot enforces containment — no manual checks needed.
+	fileData, err := h.stateRoot.ReadFile(requestedFilename)
 	if err != nil {
 		res.WriteHeader(http.StatusBadRequest)
-		if _, err = fmt.Fprintf(res, "Could not load file %s", toFetch); err != nil {
+		if _, err = fmt.Fprintf(res, "Could not load file %s", requestedFilename); err != nil {
 			h.logger.Errorw(ctx, "error serving file", "error", err)
 		}
 		return

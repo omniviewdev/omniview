@@ -2,7 +2,7 @@ import { useQueries } from '@tanstack/react-query';
 
 // Types
 import { ListInput } from '../../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
-import { List } from '../../bindings/github.com/omniviewdev/omniview/resourcecontrollerservice';
+import { List } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceSearchOptions = {
