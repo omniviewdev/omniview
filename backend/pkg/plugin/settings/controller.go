@@ -431,8 +431,9 @@ func (c *controller) bboltFallbackSettings(pluginID string) map[string]pkgsettin
 	result := make(map[string]pkgsettings.Setting, len(vals))
 	for k, v := range vals {
 		if cached, ok := schema[k]; ok {
-			cached.Value = v
-			result[k] = cached
+			copy := cached
+			copy.Value = v
+			result[k] = copy
 		} else {
 			result[k] = pkgsettings.Setting{
 				ID:    k,

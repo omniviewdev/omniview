@@ -300,13 +300,16 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStop")
 
-	// Persist connections.
+	// Persist only this plugin's connections.
 	c.connsMu.RLock()
-	conns := c.connections
+	pluginConnsForPersist := make(map[string][]types.Connection, 1)
+	if pcs, ok := c.connections[pluginID]; ok {
+		pluginConnsForPersist[pluginID] = pcs
+	}
 	c.connsMu.RUnlock()
 	if storeRoot, err := c.pluginStoreFn(pluginID); err != nil {
 		logger.Errorw(context.Background(), "failed to resolve plugin store root", "error", err)
-	} else if err := saveToLocalStore(storeRoot, conns); err != nil {
+	} else if err := saveToLocalStore(storeRoot, pluginConnsForPersist); err != nil {
 		logger.Errorw(context.Background(), "failed to save connections to local store", "error", err)
 	}
 
@@ -677,11 +680,15 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 	c.connections[pluginID] = mergeConnections(c.connections[pluginID], conns)
 	c.connsMu.Unlock()
 
-	// Best-effort persist.
+	// Best-effort persist — only this plugin's connections.
 	if storeRoot, err := c.pluginStoreFn(pluginID); err == nil {
 		c.connsMu.RLock()
-		_ = saveToLocalStore(storeRoot, c.connections)
+		pluginConns := make(map[string][]types.Connection, 1)
+		if pcs, ok := c.connections[pluginID]; ok {
+			pluginConns[pluginID] = pcs
+		}
 		c.connsMu.RUnlock()
+		_ = saveToLocalStore(storeRoot, pluginConns)
 	}
 
 	return conns, nil

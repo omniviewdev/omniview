@@ -123,7 +123,7 @@ func (s *ServiceWrapper) GetCategories() []pkgsettings.Category {
 			cat.Icon = meta.Icon
 		}
 		cats = append(cats, pkgsettings.Category{
-			ID:          cat.ID,
+			ID:          id,
 			Label:       cat.Label,
 			Description: cat.Description,
 			Icon:        cat.Icon,

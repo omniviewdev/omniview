@@ -3,6 +3,7 @@ package appstate
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/gofrs/flock"
 )
@@ -24,6 +25,8 @@ func acquireLock(path string) (*flock.Flock, error) {
 // releaseLock releases the flock. Safe to call with nil.
 func releaseLock(fl *flock.Flock) {
 	if fl != nil {
-		_ = fl.Unlock()
+		if err := fl.Unlock(); err != nil {
+			log.Printf("appstate: failed to release lock: %v", err)
+		}
 	}
 }

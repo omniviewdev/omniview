@@ -27,6 +27,10 @@ func isCorruptionError(err error) bool {
 		return false
 	}
 	// bbolt surfaces corruption as string-based errors; match common patterns.
+	// NOTE: This substring-based detection is fragile and tightly coupled to
+	// bbolt's internal error messages. If bbolt changes its error wording,
+	// these checks may silently stop matching. Revisit if bbolt exposes
+	// typed error sentinels in a future release.
 	msg := err.Error()
 	for _, substr := range []string{
 		"invalid database",

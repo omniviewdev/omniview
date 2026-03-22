@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/omniviewdev/omniview/internal/appstate"
 )
@@ -40,7 +41,7 @@ func DeexpandTilde(path string) string {
 		// fallback to the original path
 		return path
 	}
-	if home != "" {
+	if home != "" && strings.HasPrefix(path, home) {
 		path = filepath.Join("~", path[len(home):])
 	}
 	return path

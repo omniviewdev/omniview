@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/gob"
 	"errors"
+	"os"
 
 	"github.com/omniviewdev/omniview/internal/appstate"
 )
@@ -33,12 +34,14 @@ func WriteToGlobalStore[T any](root *appstate.ScopedRoot, store string, data T) 
 }
 
 // ReadFromGlobalStore reads the data from the global store.
+// Unlike WriteToGlobalStore, this opens the file read-only and does not create
+// it if it does not exist.
 func ReadFromGlobalStore[T any](root *appstate.ScopedRoot, store string, data *T) error {
 	if data == nil {
 		return errors.New("data cannot be nil")
 	}
 
-	storeFile, err := getStoreFile(root, store)
+	storeFile, err := root.OpenFile(store, os.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}

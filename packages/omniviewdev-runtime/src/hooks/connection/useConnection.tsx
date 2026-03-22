@@ -55,7 +55,7 @@ export const useConnection = ({ pluginID: explicitPluginID, connectionID }: UseC
     onSuccess(data, { name }) {
       showSnackbar({ message: `Connection ${name} successfully updated`, status: 'success' });
       // Update the list and detail
-      queryClient.setQueryData(queryKey, connection);
+      queryClient.setQueryData(queryKey, data);
       queryClient.setQueriesData(
         { queryKey: [pluginID, 'connection', 'list'] },
         (previous: Connection[] | undefined) => previous?.map(conn => conn.id === connectionID ? data : conn),

@@ -2,6 +2,7 @@ package logs
 
 import (
 	"context"
+	"fmt"
 
 	logssdk "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -16,6 +17,9 @@ type ServiceWrapper struct {
 }
 
 func (s *ServiceWrapper) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	if s.Ctrl == nil {
+		return fmt.Errorf("logs: ServiceWrapper.Ctrl is nil")
+	}
 	if ss, ok := s.Ctrl.(interface {
 		ServiceStartup(context.Context, application.ServiceOptions) error
 	}); ok {

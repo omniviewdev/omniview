@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
+
+	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
 // ============================================================================
@@ -170,7 +172,7 @@ func newTestInstance(t *testing.T, pluginID string) (*DevServerInstance, *status
 		15173,
 		BuildOpts{},
 		nil,
-		nil,
+		appstate.NewTestService(t).Plugins(),
 		sr.record,
 		lr.record,
 		er.record,

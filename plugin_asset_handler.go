@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"path"
 	"regexp"
 	"strings"
 
@@ -87,6 +88,9 @@ func (h *PluginAssetHandler) ServeHTTP(res http.ResponseWriter, req *http.Reques
 		return
 	}
 	requestedFilename = strings.TrimPrefix(requestedFilename, "/_/")
+
+	// Normalize the path to prevent traversal via sequences like "foo/../bar".
+	requestedFilename = path.Clean(requestedFilename)
 
 	h.logger.Debugw(ctx, "requested file", "path", requestedFilename)
 

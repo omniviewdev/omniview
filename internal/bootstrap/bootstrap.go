@@ -151,6 +151,8 @@ func (b *Service) ServiceShutdown() error {
 	// DevServerManager and controllers have their own ServiceShutdown
 	// called by Wails v3 automatically.
 	b.PluginManager.Shutdown()
-	_ = b.TelemetrySvc.Shutdown(context.Background())
+	if err := b.TelemetrySvc.Shutdown(context.Background()); err != nil {
+		b.Log.Errorw(context.Background(), "failed to shut down telemetry", "error", err)
+	}
 	return nil
 }

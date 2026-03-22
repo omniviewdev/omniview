@@ -73,40 +73,6 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
     }
   });
 
-  // const forward: PortForwardResourceFunction = React.useCallback(async (opts) => {
-  //   const sessionOpts = PortForwardSessionOptions.createFrom({
-  //     local_port: opts.localPort || 0,
-  //     remote_port: opts.remotePort,
-  //     protocol: opts.protocol || 'TCP',
-  //     connection_type: 'RESOURCE',
-  //     connection: {
-  //       resource_data: opts.resource,
-  //       connection_id: connectionID,
-  //       plugin_id: pluginID,
-  //       resource_id: opts.resourceId,
-  //       resource_key: opts.resourceKey,
-  //     },
-  //     labels: opts.labels ?? {},
-  //     params: opts.parameters ?? {},
-  //   });
-  //
-  //   try {
-  //     const session = await StartResourcePortForwardingSession(pluginID, connectionID, sessionOpts);
-  //     setSessions([...sessions, session]);
-  //     if (opts.openInBrowser) {
-  //       BrowserOpenURL(`http://localhost:${session.local_port}`);
-  //     }
-  //
-  //     return session;
-  //   } catch (e) {
-  //     if (e instanceof Error) {
-  //       showSnackbar(`Failed to start port forwarding sessions: ${e.message}`, 'error');
-  //     }
-  //
-  //     throw e;
-  //   }
-  // }, [pluginID, connectionID, sessions]);
-
   const closeMutation = useMutation({
     mutationFn: async ({ opts }: { opts: { sessionID: string } }) => ClosePortForwardSession(opts.sessionID),
     onError: createErrorHandler(showSnackbar, 'Failed to close port forwarding session'),
@@ -117,19 +83,6 @@ export function useResourcePortForwarder({ pluginID: explicitPluginID, connectio
       ]);
     }
   });
-
-  // const close = React.useCallback(async (sessionId: string) => {
-  //   try {
-  //     await ClosePortForwardSession(sessionId);
-  //     setSessions(sessions.filter((s) => s.id !== sessionId));
-  //   } catch (e) {
-  //     if (e instanceof Error) {
-  //       showSnackbar(`Failed to close port forwarding sessions: ${e.message}`, 'error');
-  //     }
-  //
-  //     throw e;
-  //   }
-  // }, [sessions]);
 
   return {
     sessions,

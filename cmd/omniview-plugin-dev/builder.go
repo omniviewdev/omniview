@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -70,6 +71,12 @@ func (b *Builder) BinaryPath() string {
 
 // TransferToInstall copies the built artifacts to the plugins install directory.
 func (b *Builder) TransferToInstall() error {
+	// Validate plugin ID to prevent path traversal.
+	if b.meta.ID == "" || b.meta.ID == "." || b.meta.ID == ".." ||
+		strings.ContainsAny(b.meta.ID, "/\\") {
+		return fmt.Errorf("invalid plugin ID %q: must not be empty or contain path separators", b.meta.ID)
+	}
+
 	stateDir, err := resolveStateDir()
 	if err != nil {
 		return err

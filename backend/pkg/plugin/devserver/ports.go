@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"sync"
@@ -119,7 +120,9 @@ func (pa *PortAllocator) SavePIDs() {
 	if err != nil {
 		return
 	}
-	_ = pa.stateRoot.WriteFile(devserverPIDFileName, b, 0644)
+	if err := pa.stateRoot.WriteFile(devserverPIDFileName, b, 0644); err != nil {
+		log.Printf("devserver: failed to save PID file: %v", err)
+	}
 }
 
 // CleanupStaleProcesses kills zombie Vite dev server process groups left over

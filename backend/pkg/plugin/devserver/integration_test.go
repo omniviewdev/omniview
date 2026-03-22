@@ -163,6 +163,13 @@ func (r *goWatcherErrorRecorder) waitForErrors(timeout time.Duration) ([]BuildEr
 	}
 }
 
+// newTestPluginsRoot creates a temporary appstate.ScopedRoot for the plugins
+// directory, cleaned up when the test finishes.
+func newTestPluginsRoot(t *testing.T) *appstate.ScopedRoot {
+	t.Helper()
+	return appstate.NewTestService(t).Plugins()
+}
+
 // ============================================================================
 // Go Watcher Integration Tests
 // ============================================================================

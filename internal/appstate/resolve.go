@@ -34,7 +34,7 @@ func ResolveRoot() (string, error) {
 // expandAndValidate expands ~ to the user's home directory and ensures the
 // resulting path is absolute.
 func expandAndValidate(dir string) (string, error) {
-	if strings.HasPrefix(dir, "~/") {
+	if strings.HasPrefix(dir, "~/") || strings.HasPrefix(dir, `~\`) {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("appstate: cannot expand ~: %w", err)

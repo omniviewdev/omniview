@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -117,7 +118,7 @@ func TestOnPluginStart_HydratesFromBbolt(t *testing.T) {
 		pendingChanges: make(map[string][]pendingChange),
 	}
 
-	ctrl.hydratePlugin(nil, "testplugin", mock, ctrl.logger)
+	ctrl.hydratePlugin(context.Background(), "testplugin", mock, ctrl.logger)
 
 	// Verify hydration: persisted values should override defaults
 	assert.True(t, ctrl.hydrated["testplugin"])
@@ -151,7 +152,7 @@ func TestOnPluginStart_NoPersisted(t *testing.T) {
 		pendingChanges: make(map[string][]pendingChange),
 	}
 
-	ctrl.hydratePlugin(nil, "testplugin", mock, ctrl.logger)
+	ctrl.hydratePlugin(context.Background(), "testplugin", mock, ctrl.logger)
 
 	assert.True(t, ctrl.hydrated["testplugin"])
 	assert.Equal(t, "light", mock.settings["theme"].Value) // from Value field

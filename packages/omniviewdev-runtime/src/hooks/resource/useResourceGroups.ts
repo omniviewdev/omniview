@@ -6,8 +6,7 @@ import { useResolvedPluginId } from '../useResolvedPluginId';
 
 type UseResourceGroupsOptions = {
   /**
-   * The ID of the category responsible for this resource
-   * @example "appearance"
+   * The ID of the plugin
    */
   pluginID?: string;
   /**
@@ -17,8 +16,7 @@ type UseResourceGroupsOptions = {
 };
 
 /**
- * Interact with a category of settings from the global settings provider. Intended for use in the settings UI - if
- * you need to read or write settings from a specific plugin, use the `@hooks/settings/useSettings` hook instead.
+ * Fetch the resource groups for a given plugin and connection.
  */
 export const useResourceGroups = ({ pluginID: explicitPluginID, connectionID }: UseResourceGroupsOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
@@ -32,7 +30,7 @@ export const useResourceGroups = ({ pluginID: explicitPluginID, connectionID }: 
 
   return {
     /**
-     * The current settings from the provider.
+     * The resource groups for the given plugin and connection.
      */
     groups,
   };

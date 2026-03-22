@@ -514,6 +514,11 @@ func (gw *goWatcherProcess) syncPluginYaml() error {
 	}
 	defer src.Close()
 
+	pluginDir := gw.pluginID
+	if err := gw.pluginsRoot.MkdirAll(pluginDir, 0755); err != nil {
+		return apperror.Internal(err, "Failed to create plugin directory")
+	}
+
 	dstRelPath := filepath.Join(gw.pluginID, "plugin.yaml")
 	dst, err := gw.pluginsRoot.OpenFile(dstRelPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
