@@ -108,8 +108,8 @@ func (m *Manager) StartSession(
 	logger := m.log.With(logging.Any("action", "StartSession"))
 	logger.Debugw(context.Background(), "starting session", "command", opts.Command, "tty", opts.TTY)
 
-	// Set up the command to run in a new pseudo-terminal.
-	ctx, cancel := context.WithCancel(context.Background())
+	// Derive from manager context so shutdown cascades to all sessions.
+	ctx, cancel := context.WithCancel(m.ctx)
 
 	// determine the default shell from the commands passed in, since we may want to add flags
 	shell := DefaultLocalShell
