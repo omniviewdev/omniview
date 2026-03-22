@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"regexp"
 	"sync"
 	"syscall"
 	"time"
@@ -33,9 +32,11 @@ const (
 
 // Manager manages terminal sessions, allowing creation, attachment, and more.
 type Manager struct {
+	ctx      context.Context
 	log      logging.Logger
 	sessions map[string]*sdkexec.Session
 	ptys     map[string]*os.File
+	cmds     map[string]*exec.Cmd
 	cancels  map[string]context.CancelFunc
 	buffers  map[string]*sdkexec.OutputBuffer
 
@@ -49,22 +50,29 @@ type Manager struct {
 // latency sensitive with the local manager, we're going to directly return
 // the channels for in and out that the exec controller will use.
 func NewManager(
+	ctx context.Context,
 	log logging.Logger,
 ) (*Manager, chan sdkexec.StreamInput, chan sdkexec.StreamOutput, chan sdkexec.StreamResize) {
 	inMux := make(chan sdkexec.StreamInput)
 	outMux := make(chan sdkexec.StreamOutput)
 	resizeMux := make(chan sdkexec.StreamResize)
 
-	return &Manager{
+	mgr := &Manager{
+		ctx:       ctx,
 		log:       log.Named("TerminalManager"),
 		sessions:  make(map[string]*sdkexec.Session),
 		ptys:      make(map[string]*os.File),
+		cmds:      make(map[string]*exec.Cmd),
 		cancels:   make(map[string]context.CancelFunc),
 		buffers:   make(map[string]*sdkexec.OutputBuffer),
 		inMux:     inMux,
 		outMux:    outMux,
 		resizeMux: resizeMux,
-	}, inMux, outMux, resizeMux
+	}
+
+	go mgr.forwardSignals()
+
+	return mgr, inMux, outMux, resizeMux
 }
 
 // GetSession returns a session by its ID.
@@ -80,8 +88,8 @@ func (m *Manager) GetSession(sessionID string) (*sdkexec.Session, error) {
 
 // ListSessions returns a list of details for all active sessions.
 func (m *Manager) ListSessions(_ *types.PluginContext) []*sdkexec.Session {
-	m.mux.Lock()
-	defer m.mux.Unlock()
+	m.mux.RLock()
+	defer m.mux.RUnlock()
 	sessions := make([]*sdkexec.Session, 0, len(m.sessions))
 
 	for _, session := range m.sessions {
@@ -176,6 +184,7 @@ func (m *Manager) StartSession(
 	m.mux.Lock()
 	m.sessions[opts.ID] = session
 	m.ptys[opts.ID] = ptyFile
+	m.cmds[opts.ID] = cmd
 	m.cancels[opts.ID] = cancel
 	m.buffers[opts.ID] = sdkexec.NewDefaultOutputBuffer()
 	m.mux.Unlock()
@@ -187,7 +196,7 @@ func (m *Manager) StartSession(
 
 	// Start handling terminal output in a separate goroutine.
 	go m.handleOutStream(ctx, opts.ID, ptyFile)
-	go m.handleSignals(ctx, opts.ID, cmd)
+	go m.handleSessionClose(ctx, opts.ID)
 	go m.handleWaitForCompletion(ctx, opts.ID, cmd)
 
 	return session, nil
@@ -216,44 +225,41 @@ func (m *Manager) handleWaitForCompletion(_ context.Context, sessionID string, c
 	m.terminateSession(sessionID)
 }
 
-func (m *Manager) handleSignals(ctx context.Context, sessionID string, cmd *exec.Cmd) {
+// forwardSignals listens for host-process signals once and forwards them to
+// all active terminal child processes. Runs for the lifetime of the Manager.
+func (m *Manager) forwardSignals() {
 	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGTERM)
-	signal.Notify(ch, syscall.SIGINT)
-	signal.Notify(ch, syscall.SIGQUIT)
-
-	defer func() { signal.Stop(ch); close(ch) }()
+	signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	defer signal.Stop(ch)
 
 	for {
 		select {
 		case sig := <-ch:
-			switch sig {
-			case syscall.SIGTERM:
-				m.log.Debugw(ctx, "SIGTERM received")
-				cmd.Process.Signal(syscall.SIGTERM)
-			case syscall.SIGINT:
-				m.log.Debugw(ctx, "SIGINT received")
-				cmd.Process.Signal(syscall.SIGINT)
-			case syscall.SIGQUIT:
-				m.log.Debugw(ctx, "SIGQUIT received")
-				cmd.Process.Signal(syscall.SIGQUIT)
+			m.mux.RLock()
+			for sid, cmd := range m.cmds {
+				if cmd.Process != nil {
+					if err := cmd.Process.Signal(sig); err != nil {
+						m.log.Debugw(context.Background(), "failed to forward signal",
+							"signal", sig, "session", sid, "error", err)
+					}
+				}
 			}
-		case <-ctx.Done():
-			m.log.Debugw(ctx,
-				"context cancelled, stopping signal handling",
-				"session", sessionID,
-			)
-
-			// signal to ide we're done
-			m.outMux <- sdkexec.StreamOutput{
-				SessionID: sessionID,
-				Target:    sdkexec.StreamTargetStdOut,
-				Data:      []byte("Session terminated"),
-				Signal:    sdkexec.StreamSignalClose,
-			}
-
+			m.mux.RUnlock()
+		case <-m.ctx.Done():
 			return
 		}
+	}
+}
+
+// handleSessionClose waits for a session's context to be cancelled and emits
+// a CLOSE signal to the frontend.
+func (m *Manager) handleSessionClose(ctx context.Context, sessionID string) {
+	<-ctx.Done()
+	m.outMux <- sdkexec.StreamOutput{
+		SessionID: sessionID,
+		Target:    sdkexec.StreamTargetStdOut,
+		Data:      []byte("Session terminated"),
+		Signal:    sdkexec.StreamSignalClose,
 	}
 }
 
@@ -323,14 +329,6 @@ func (m *Manager) writeToSession(sessionID string, bytes []byte) error {
 	}
 
 	return nil
-}
-
-// cleanPTYOutput removes the `%` symbol and its associated escape sequences.
-func cleanPTYOutput(output string) string {
-	// Define a regex pattern to match the escape sequence for `%`
-	pattern := `\x1b\[1m\x1b\[7m%\x1b\[27m\x1b\[1m\x1b\[0m`
-	re := regexp.MustCompile(pattern)
-	return re.ReplaceAllString(output, "")
 }
 
 // WriteSession writes data to the session's input.
@@ -421,6 +419,7 @@ func (m *Manager) terminateSessionLocked(sessionID string) {
 	}
 	delete(m.sessions, sessionID)
 	delete(m.ptys, sessionID)
+	delete(m.cmds, sessionID)
 	delete(m.cancels, sessionID)
 	delete(m.buffers, sessionID)
 	m.log.Debugw(context.Background(), "session terminated", "session", sessionID)

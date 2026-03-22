@@ -3,6 +3,7 @@
 package terminal
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -28,6 +29,7 @@ type Manager struct {
 }
 
 func NewManager(
+	_ context.Context,
 	log logging.Logger,
 ) (*Manager, chan sdkexec.StreamInput, chan sdkexec.StreamOutput, chan sdkexec.StreamResize) {
 	inMux := make(chan sdkexec.StreamInput)

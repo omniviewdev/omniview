@@ -117,23 +117,8 @@ func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) 
 	return nil
 }
 
-func listenOnOut(
-	cancel chan struct{},
-	source chan exec.StreamOutput,
-	target chan exec.StreamOutput,
-) {
-	for {
-		select {
-		case <-cancel:
-			return
-		case output := <-source:
-			target <- output
-		}
-	}
-}
-
 func (c *controller) runLocalMux() {
-	manager, inMux, outMux, resizeMux := terminal.NewManager(c.logger)
+	manager, inMux, outMux, resizeMux := terminal.NewManager(c.ctx, c.logger)
 	c.terminalManager = manager
 	for {
 		select {
