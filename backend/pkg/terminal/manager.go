@@ -88,7 +88,7 @@ func (m *Manager) ListSessions(_ *types.PluginContext) []*sdkexec.Session {
 		sessions = append(sessions, session)
 	}
 
-	m.log.Debugw(context.Background(), "listed sessions", "sessions", sessions)
+	m.log.Debugw(context.Background(), "listed sessions", "count", len(sessions))
 	return sessions
 }
 
@@ -98,7 +98,7 @@ func (m *Manager) StartSession(
 	opts sdkexec.SessionOptions,
 ) (*sdkexec.Session, error) {
 	logger := m.log.With(logging.Any("action", "StartSession"))
-	logger.Debugw(context.Background(), "starting session", "options", opts, "context", pCtx)
+	logger.Debugw(context.Background(), "starting session", "command", opts.Command, "tty", opts.TTY)
 
 	// Set up the command to run in a new pseudo-terminal.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -174,7 +174,6 @@ func (m *Manager) StartSession(
 	}
 
 	m.mux.Lock()
-	logger.Debugw(ctx, "past lock")
 	m.sessions[opts.ID] = session
 	m.ptys[opts.ID] = ptyFile
 	m.cancels[opts.ID] = cancel
@@ -356,7 +355,7 @@ func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, err
 	if buffer != nil {
 		data = buffer.GetAll()
 	}
-	m.log.Debugw(context.Background(), fmt.Sprintf("session buffer data: %q", data))
+	m.log.Debugw(context.Background(), "session buffer loaded", "session", sessionID, "bufferSize", len(data))
 
 	// pointer, no need to reassign
 	session.Attached = true

@@ -194,7 +194,6 @@ func (c *controller) runMux() {
 		case <-c.ctx.Done():
 			return
 		case input := <-c.inputMux:
-			c.logger.Debugw(context.Background(), "got input", "sessionID", input.SessionID, "payloadSize", len(input.Data))
 			// Capture the channel under lock, then send outside it to avoid
 			// holding RLock during a potentially blocking send.
 			var ch chan exec.StreamInput
