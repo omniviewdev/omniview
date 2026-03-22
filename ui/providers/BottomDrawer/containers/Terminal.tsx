@@ -319,7 +319,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       attachedRef.current = true;
       fitAddon.fit()
       terminal.onData(data => {
-        ExecClient.WriteSession(sessionId, data)
+        ExecClient.WriteSession(sessionId, Base64.encode(data))
           .catch((err: unknown) => {
             log.error(new Error(parseAppError(err).detail), { event: 'write_session', sessionId });
           });
