@@ -53,7 +53,7 @@ export const useWatchState = ({
         if (state === WatchState.WatchStateError || state === WatchState.WatchStateFailed) errors++;
       }
 
-      return { ...old, resources, resourceCounts, syncedCount: synced, errorCount: errors };
+      return { ...old, resources, resourceCounts, totalResources: Object.keys(resources).length, syncedCount: synced, errorCount: errors };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient, pluginID, connectionID]);
