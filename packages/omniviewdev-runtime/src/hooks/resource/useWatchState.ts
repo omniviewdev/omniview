@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { produce } from 'immer';
-
-import { GetWatchState } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
+import { GetWatchState} from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
 import { Events } from '@wailsio/runtime';
 import { useResolvedPluginId } from '../useResolvedPluginId';
 import type {
@@ -43,20 +41,19 @@ export const useWatchState = ({
   const applyEvent = useCallback((event: WatchStateEvent) => {
     queryClient.setQueryData<WatchConnectionSummary>(queryKey, (old) => {
       if (!old) return old;
-      return produce(old, (draft) => {
-        draft.resources[event.resourceKey] = event.state;
-        draft.resourceCounts[event.resourceKey] = event.resourceCount;
 
-        // Recompute aggregates
-        let synced = 0;
-        let errors = 0;
-        for (const state of Object.values(draft.resources)) {
-          if (state === WatchState.WatchStateSynced) synced++;
-          if (state === WatchState.WatchStateError || state === WatchState.WatchStateFailed) errors++;
-        }
-        draft.syncedCount = synced;
-        draft.errorCount = errors;
-      });
+      const resources = { ...old.resources, [event.resourceKey]: event.state };
+      const resourceCounts = { ...old.resourceCounts, [event.resourceKey]: event.resourceCount };
+
+      // Recompute aggregates
+      let synced = 0;
+      let errors = 0;
+      for (const state of Object.values(resources)) {
+        if (state === WatchState.WatchStateSynced) synced++;
+        if (state === WatchState.WatchStateError || state === WatchState.WatchStateFailed) errors++;
+      }
+
+      return { ...old, resources, resourceCounts, syncedCount: synced, errorCount: errors };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient, pluginID, connectionID]);

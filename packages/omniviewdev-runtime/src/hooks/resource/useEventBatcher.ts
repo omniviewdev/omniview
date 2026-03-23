@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
-import { produce } from 'immer';
 import get from 'lodash.get';
 import type { WatchState } from '../../types/watch';
 
@@ -37,6 +36,9 @@ export type ResourceEvent =
 /**
  * Apply a batch of resource events to a list query cache entry.
  * Extracted for testability — this is the core batching logic.
+ *
+ * Returns a new plain object (immutable-style) without relying on Immer,
+ * avoiding issues with Wails binding class instances that Immer cannot draft.
  */
 export function applyBatch(
   oldData: any,
@@ -44,39 +46,38 @@ export function applyBatch(
   idAccessor: string,
 ): any {
   const base = oldData ?? { result: [], success: true, totalCount: 0 };
-  return produce(base, (draft: any) => {
-    for (const event of events) {
-      switch (event.type) {
-        case 'ADD': {
-          const idx = draft.result.findIndex(
-            (item: any) => get(event.payload.data, idAccessor) === get(item, idAccessor),
-          );
-          if (idx === -1) {
-            draft.result.push(event.payload.data);
-          }
-          break;
+  // Shallow-copy the result array so we never mutate the cached version.
+  const result = [...(base.result ?? [])];
+
+  for (const event of events) {
+    const eventId = get(event.payload.data, idAccessor);
+
+    switch (event.type) {
+      case 'ADD': {
+        const idx = result.findIndex((item: any) => get(item, idAccessor) === eventId);
+        if (idx === -1) {
+          result.push(event.payload.data);
         }
-        case 'UPDATE': {
-          const idx = draft.result.findIndex(
-            (item: any) => get(event.payload.data, idAccessor) === get(item, idAccessor),
-          );
-          if (idx !== -1) {
-            draft.result[idx] = event.payload.data;
-          }
-          break;
+        break;
+      }
+      case 'UPDATE': {
+        const idx = result.findIndex((item: any) => get(item, idAccessor) === eventId);
+        if (idx !== -1) {
+          result[idx] = event.payload.data;
         }
-        case 'DELETE': {
-          const idx = draft.result.findIndex(
-            (item: any) => get(event.payload.data, idAccessor) === get(item, idAccessor),
-          );
-          if (idx !== -1) {
-            draft.result.splice(idx, 1);
-          }
-          break;
+        break;
+      }
+      case 'DELETE': {
+        const idx = result.findIndex((item: any) => get(item, idAccessor) === eventId);
+        if (idx !== -1) {
+          result.splice(idx, 1);
         }
+        break;
       }
     }
-  });
+  }
+
+  return { ...base, result };
 }
 
 /**
