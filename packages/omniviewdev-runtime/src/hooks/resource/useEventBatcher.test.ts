@@ -126,6 +126,25 @@ describe('applyBatch', () => {
     expect(result.success).toBe(true);
   });
 
+  it('handles class instances (non-plain objects) as oldData', () => {
+    class ListResult {
+      result: any[];
+      success: boolean;
+      totalCount: number;
+      constructor() {
+        this.result = [makeItem('pod-1')];
+        this.success = true;
+        this.totalCount = 1;
+      }
+    }
+    const classData = new ListResult();
+    const events: ResourceEvent[] = [
+      { type: 'ADD', payload: { data: makeItem('pod-2'), key: 'k', connection: 'c', id: 'pod-2', namespace: 'default' } },
+    ];
+    const result = applyBatch(classData, events, idAccessor);
+    expect(result.result).toHaveLength(2);
+  });
+
   it('supports nested id accessor paths', () => {
     const deepAccessor = 'spec.id';
     const data = {
