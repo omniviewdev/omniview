@@ -153,6 +153,63 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
     }
   }, [follow, filteredLineCount, version]);
 
+  // Keep refs in sync for use inside ResizeObserver (avoids re-subscribing)
+  const followRef = useRef(follow);
+  followRef.current = follow;
+  const filteredLineCountRef = useRef(filteredLineCount);
+  filteredLineCountRef.current = filteredLineCount;
+
+  // Re-pin to bottom (or restore position) when the scroll container resizes.
+  // This covers drawer drag-resize, minimize/re-expand, and fullscreen toggle.
+  const savedFirstVisibleRef = useRef<number | null>(null);
+  const lastContainerHeightRef = useRef(0);
+
+  React.useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      const newHeight = rect.height;
+      const prevHeight = lastContainerHeightRef.current;
+
+      if (newHeight > 0 && filteredLineCountRef.current > 0) {
+        if (followRef.current) {
+          // Follow mode: always pin to bottom
+          isAutoScrolling.current = true;
+          rowVirtualizer.scrollToIndex(filteredLineCountRef.current - 1, { align: 'end' });
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              isAutoScrolling.current = false;
+            });
+          });
+        } else if (prevHeight === 0 && savedFirstVisibleRef.current !== null) {
+          // Restoring from minimized without follow: jump back to saved position
+          isAutoScrolling.current = true;
+          rowVirtualizer.scrollToIndex(savedFirstVisibleRef.current, { align: 'start' });
+          requestAnimationFrame(() => {
+            isAutoScrolling.current = false;
+          });
+          savedFirstVisibleRef.current = null;
+        }
+      }
+
+      // Save the first visible index before the container collapses
+      if (prevHeight > 0 && newHeight === 0 && !followRef.current) {
+        const range = rowVirtualizer.range;
+        if (range) {
+          savedFirstVisibleRef.current = range.startIndex;
+        }
+      }
+
+      lastContainerHeightRef.current = newHeight;
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [rowVirtualizer]);
+
   // Detect scroll position to engage/disengage follow
   const handleScroll = useCallback(() => {
     if (!parentRef.current || isAutoScrolling.current) return;
