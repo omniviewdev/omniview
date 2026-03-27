@@ -40,6 +40,11 @@ interface Props {
 
 const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix, toolbarActions }) => {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
+  const scrollRefCallback = useCallback((node: HTMLDivElement | null) => {
+    parentRef.current = node;
+    setScrollElement(node);
+  }, []);
   const [showTimestamps, setShowTimestamps] = useState(false);
   const [showSources, setShowSources] = useState(false);
   const [showLineNumbers, setShowLineNumbers] = useState(false);
@@ -165,8 +170,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   const lastContainerHeightRef = useRef(0);
 
   React.useEffect(() => {
-    const el = parentRef.current;
-    if (!el) return;
+    if (!scrollElement) return;
 
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
@@ -208,9 +212,9 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
       lastContainerHeightRef.current = newHeight;
     });
 
-    observer.observe(el);
+    observer.observe(scrollElement);
     return () => observer.disconnect();
-  }, [rowVirtualizer]);
+  }, [scrollElement, rowVirtualizer]);
 
   // Detect scroll position to engage/disengage follow
   const handleScroll = useCallback(() => {
@@ -659,7 +663,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
       ) : (
         /* Virtual log list */
         <Box
-          ref={parentRef}
+          ref={scrollRefCallback}
           onScroll={handleScroll}
           onKeyDown={handleLogKeyDown}
           onMouseDown={handleLogMouseDown}
