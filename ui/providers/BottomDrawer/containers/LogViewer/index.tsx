@@ -188,10 +188,12 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
           // Restoring from minimized without follow: jump back to saved position
           isAutoScrolling.current = true;
           rowVirtualizer.scrollToIndex(savedFirstVisibleRef.current, { align: 'start' });
-          requestAnimationFrame(() => {
-            isAutoScrolling.current = false;
-          });
           savedFirstVisibleRef.current = null;
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              isAutoScrolling.current = false;
+            });
+          });
         }
       }
 
