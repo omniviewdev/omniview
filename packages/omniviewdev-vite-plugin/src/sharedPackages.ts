@@ -75,6 +75,14 @@ export const SHARED_PACKAGES: readonly string[] = [
   '@omniviewdev/runtime/runtime',
   '@omniviewdev/runtime/models',
 
+  // @omniviewdev npm packages (base-ui, ai-ui, editors)
+  '@omniviewdev/base-ui',
+  '@omniviewdev/base-ui/styles.css',
+  '@omniviewdev/ai-ui',
+  '@omniviewdev/ai-ui/styles.css',
+  '@omniviewdev/editors',
+  '@omniviewdev/editors/styles.css',
+
   // DND Kit
   '@dnd-kit/core',
   '@dnd-kit/modifiers',

@@ -80,6 +80,14 @@ export const shared = {
   '@omniviewdev/runtime/runtime': () => import('@omniviewdev/runtime/runtime'),
   '@omniviewdev/runtime/models': () => import('@omniviewdev/runtime/models'),
 
+  // @omniviewdev npm packages (base-ui, ai-ui, editors)
+  '@omniviewdev/base-ui': () => import('@omniviewdev/base-ui'),
+  '@omniviewdev/base-ui/styles.css': () => import('@omniviewdev/base-ui/styles.css'),
+  '@omniviewdev/ai-ui': () => import('@omniviewdev/ai-ui'),
+  '@omniviewdev/ai-ui/styles.css': () => import('@omniviewdev/ai-ui/styles.css'),
+  '@omniviewdev/editors': () => import('@omniviewdev/editors'),
+  '@omniviewdev/editors/styles.css': () => import('@omniviewdev/editors/styles.css'),
+
   // DND Kit
   '@dnd-kit/core': () => import('@dnd-kit/core'),
   '@dnd-kit/modifiers': () => import('@dnd-kit/modifiers'),
