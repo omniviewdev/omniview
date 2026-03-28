@@ -163,10 +163,13 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   followRef.current = follow;
   const filteredLineCountRef = useRef(filteredLineCount);
   filteredLineCountRef.current = filteredLineCount;
+  const filteredEntriesRef = useRef(filteredEntries);
+  filteredEntriesRef.current = filteredEntries;
 
   // Re-pin to bottom (or restore position) when the scroll container resizes.
   // This covers drawer drag-resize, minimize/re-expand, and fullscreen toggle.
-  const savedFirstVisibleRef = useRef<number | null>(null);
+  // We store a timestamp (not an index) so the anchor survives buffer eviction.
+  const savedVisibleTimestampRef = useRef<string | null>(null);
   const lastContainerHeightRef = useRef(0);
 
   React.useEffect(() => {
@@ -188,24 +191,33 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
               isAutoScrolling.current = false;
             });
           });
-        } else if (prevHeight === 0 && savedFirstVisibleRef.current !== null) {
-          // Restoring from minimized without follow: jump back to saved position
-          isAutoScrolling.current = true;
-          rowVirtualizer.scrollToIndex(savedFirstVisibleRef.current, { align: 'start' });
-          savedFirstVisibleRef.current = null;
-          requestAnimationFrame(() => {
+        } else if (prevHeight === 0 && savedVisibleTimestampRef.current !== null) {
+          // Restoring from minimized without follow: resolve saved timestamp to current index
+          const idx = findEntryIndexByTime(
+            filteredEntriesRef.current,
+            new Date(savedVisibleTimestampRef.current),
+          );
+          savedVisibleTimestampRef.current = null;
+          if (idx >= 0) {
+            isAutoScrolling.current = true;
+            rowVirtualizer.scrollToIndex(idx, { align: 'start' });
             requestAnimationFrame(() => {
-              isAutoScrolling.current = false;
+              requestAnimationFrame(() => {
+                isAutoScrolling.current = false;
+              });
             });
-          });
+          }
         }
       }
 
-      // Save the first visible index before the container collapses
+      // Save the first visible entry's timestamp before the container collapses
       if (prevHeight > 0 && newHeight === 0 && !followRef.current) {
         const range = rowVirtualizer.range;
         if (range) {
-          savedFirstVisibleRef.current = range.startIndex;
+          const entry = filteredEntriesRef.current[range.startIndex];
+          if (entry?.timestamp) {
+            savedVisibleTimestampRef.current = entry.timestamp;
+          }
         }
       }
 
