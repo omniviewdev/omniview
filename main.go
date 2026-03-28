@@ -155,6 +155,7 @@ func main() {
 
 	// Setup the plugin systems
 	resourceController := resource.NewController(log, settingsProvider, stateDir.PluginStore)
+	graphService := resource.NewGraphService(resourceController.Graph())
 
 	settingsController := settings.NewController(log, settingsProvider, settingsStore)
 
@@ -256,6 +257,7 @@ func main() {
 	services := []application.Service{
 		// 1. Controllers — need ctx before plugin loading
 		application.NewService(&resource.ServiceWrapper{Ctrl: resourceController}),
+		application.NewService(graphService),
 		application.NewService(&settings.ServiceWrapper{Ctrl: settingsController}),
 		application.NewService(&exec.ServiceWrapper{Ctrl: execController}),
 		application.NewService(&networker.ServiceWrapper{Ctrl: networkerController}),
