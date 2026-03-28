@@ -309,7 +309,11 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       });
 
       try {
-        await ExecClient.AttachSession(sessionId);
+        const [, buffer] = await ExecClient.AttachSession(sessionId);
+        if (buffer) {
+          const decoded = textDecoder.decode(Base64.toUint8Array(buffer));
+          terminal.write(decoded);
+        }
       } catch (e) {
         log.error(new Error(parseAppError(e).detail), { event: 'attach_session', sessionId });
       }
