@@ -40,6 +40,11 @@ interface Props {
 
 const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix, toolbarActions }) => {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
+  const scrollRefCallback = useCallback((node: HTMLDivElement | null) => {
+    parentRef.current = node;
+    setScrollElement(node);
+  }, []);
   const [showTimestamps, setShowTimestamps] = useState(false);
   const [showSources, setShowSources] = useState(false);
   const [showLineNumbers, setShowLineNumbers] = useState(false);
@@ -152,6 +157,76 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
       });
     }
   }, [follow, filteredLineCount, version]);
+
+  // Keep refs in sync for use inside ResizeObserver (avoids re-subscribing)
+  const followRef = useRef(follow);
+  followRef.current = follow;
+  const filteredLineCountRef = useRef(filteredLineCount);
+  filteredLineCountRef.current = filteredLineCount;
+  const filteredEntriesRef = useRef(filteredEntries);
+  filteredEntriesRef.current = filteredEntries;
+
+  // Re-pin to bottom (or restore position) when the scroll container resizes.
+  // This covers drawer drag-resize, minimize/re-expand, and fullscreen toggle.
+  // We store a timestamp (not an index) so the anchor survives buffer eviction.
+  const savedVisibleTimestampRef = useRef<string | null>(null);
+  const lastContainerHeightRef = useRef(0);
+
+  React.useEffect(() => {
+    if (!scrollElement) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      const newHeight = rect.height;
+      const prevHeight = lastContainerHeightRef.current;
+
+      if (newHeight > 0 && filteredLineCountRef.current > 0) {
+        if (followRef.current) {
+          // Follow mode: always pin to bottom
+          isAutoScrolling.current = true;
+          rowVirtualizer.scrollToIndex(filteredLineCountRef.current - 1, { align: 'end' });
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              isAutoScrolling.current = false;
+            });
+          });
+        } else if (prevHeight === 0 && savedVisibleTimestampRef.current !== null) {
+          // Restoring from minimized without follow: resolve saved timestamp to current index
+          const idx = findEntryIndexByTime(
+            filteredEntriesRef.current,
+            new Date(savedVisibleTimestampRef.current),
+          );
+          savedVisibleTimestampRef.current = null;
+          if (idx >= 0) {
+            isAutoScrolling.current = true;
+            rowVirtualizer.scrollToIndex(idx, { align: 'start' });
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                isAutoScrolling.current = false;
+              });
+            });
+          }
+        }
+      }
+
+      // Save the first visible entry's timestamp before the container collapses
+      if (prevHeight > 0 && newHeight === 0 && !followRef.current) {
+        const range = rowVirtualizer.range;
+        if (range) {
+          const entry = filteredEntriesRef.current[range.startIndex];
+          if (entry?.timestamp) {
+            savedVisibleTimestampRef.current = entry.timestamp;
+          }
+        }
+      }
+
+      lastContainerHeightRef.current = newHeight;
+    });
+
+    observer.observe(scrollElement);
+    return () => observer.disconnect();
+  }, [scrollElement, rowVirtualizer]);
 
   // Detect scroll position to engage/disengage follow
   const handleScroll = useCallback(() => {
@@ -600,7 +675,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
       ) : (
         /* Virtual log list */
         <Box
-          ref={parentRef}
+          ref={scrollRefCallback}
           onScroll={handleScroll}
           onKeyDown={handleLogKeyDown}
           onMouseDown={handleLogMouseDown}
