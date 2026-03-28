@@ -309,9 +309,9 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       });
 
       try {
-        const result = await ExecClient.AttachSession(sessionId);
-        if (result.buffer) {
-          const decoded = textDecoder.decode(Base64.toUint8Array(result.buffer));
+        const [, buffer] = await ExecClient.AttachSession(sessionId);
+        if (buffer) {
+          const decoded = textDecoder.decode(Base64.toUint8Array(buffer));
           terminal.write(decoded);
         }
       } catch (e) {
