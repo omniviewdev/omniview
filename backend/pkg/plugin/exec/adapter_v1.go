@@ -50,7 +50,7 @@ func (a *AdapterV1) CloseSession(ctx *types.PluginContext, sessionID string) err
 }
 
 func (a *AdapterV1) ResizeSession(ctx *types.PluginContext, sessionID string, cols, rows int32) error {
-	return a.inner.ResizeSession(ctx, sessionID, cols, rows)
+	return a.inner.ResizeSession(ctx, sessionID, rows, cols)
 }
 
 func (a *AdapterV1) Stream(ctx context.Context, in chan exec.StreamInput) (chan exec.StreamOutput, error) {
