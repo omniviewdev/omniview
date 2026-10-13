@@ -78,7 +78,7 @@ func (hc *HealthChecker) checkAll() {
 			continue
 		}
 		// UI-only plugins have no process to check.
-		if !record.Metadata.HasBackendCapabilities() {
+		if record.Backend == nil && !record.Metadata.HasBackendCapabilities() {
 			continue
 		}
 		// Skip if recovery is already in progress for this plugin.
