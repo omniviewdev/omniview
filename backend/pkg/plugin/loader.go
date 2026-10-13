@@ -96,9 +96,12 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 		(opts != nil && opts.ExistingState != nil && opts.ExistingState.DevMode)
 
 	if isDevMode {
-		if err = validateHasBinary(location); err != nil {
-			return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
-				fmt.Sprintf("Plugin '%s' failed dev validation", id)).WithInstance(id)
+		// UI-only plugins have no binary; their UI is served by the Vite dev server.
+		if metadata.HasBackendCapabilities() {
+			if err = validateHasBinary(location); err != nil {
+				return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
+					fmt.Sprintf("Plugin '%s' failed dev validation", id)).WithInstance(id)
+			}
 		}
 	} else {
 		if err = validateForStart(metadata, location); err != nil {
