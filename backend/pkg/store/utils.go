@@ -15,11 +15,11 @@ func getStoreFile(root *appstate.ScopedRoot, store string) (*os.File, error) {
 	// Ensure parent directories exist within the scope.
 	dir := filepath.Dir(store)
 	if dir != "." && dir != "" {
-		if err := root.MkdirAll(dir, 0755); err != nil {
+		if err := root.MkdirAll(dir, storeDirPerm); err != nil {
 			return nil, err
 		}
 	}
-	return root.OpenFile(store, os.O_RDWR|os.O_CREATE, 0644)
+	return root.OpenFile(store, os.O_RDWR|os.O_CREATE, storeFilePerm)
 }
 
 // ExpandTilde takes a path and if it starts with a ~, it will replace it with the home directory.

@@ -4,8 +4,8 @@ package terminal
 
 import (
 	"context"
-	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -27,6 +27,8 @@ const (
 	DefaultReadBufferSize = 20480
 	InitialRows           = 27
 	InitialCols           = 72
+
+	loginFlag = "--login"
 )
 
 // Manager manages terminal sessions, allowing creation, attachment, and more.
@@ -57,6 +59,7 @@ func NewManager(
 	resizeMux := make(chan sdkexec.StreamResize)
 
 	mgr := &Manager{
+		mux:       sync.RWMutex{},
 		ctx:       ctx,
 		log:       log.Named("TerminalManager"),
 		sessions:  make(map[string]*sdkexec.Session),
@@ -99,9 +102,34 @@ func (m *Manager) ListSessions(_ *types.PluginContext) []*sdkexec.Session {
 	return sessions
 }
 
+// resolveShell determines the shell to run from the requested command, adding login flags
+// for shells that support them. Unknown commands fall back to DefaultLocalShell with no args.
+func resolveShell(command []string) (string, []string) {
+	shell := DefaultLocalShell
+	newopts := []string{}
+
+	if len(command) > 0 {
+		switch command[0] {
+		// test for active shells
+		case "zsh", "/bin/zsh":
+			shell = command[0]
+			newopts = []string{loginFlag, "-i"}
+			newopts = append(newopts, command[1:]...)
+		case "bash", "/bin/bash":
+			shell = command[0]
+			newopts = []string{loginFlag}
+			newopts = append(newopts, command[1:]...)
+		case "sh", "/bin/sh":
+			shell = command[0]
+		}
+	}
+
+	return shell, newopts
+}
+
 // StartSession creates a new terminal session with a given command.
 func (m *Manager) StartSession(
-	pCtx *types.PluginContext,
+	_ *types.PluginContext,
 	opts sdkexec.SessionOptions,
 ) (*sdkexec.Session, error) {
 	logger := m.log.With(logging.Any("action", "StartSession"))
@@ -110,43 +138,14 @@ func (m *Manager) StartSession(
 	// Derive from manager context so shutdown cascades to all sessions.
 	ctx, cancel := context.WithCancel(m.ctx)
 
-	// determine the default shell from the commands passed in, since we may want to add flags
-	shell := DefaultLocalShell
-	newopts := []string{}
+	shell, newopts := resolveShell(opts.Command)
 
-	if len(opts.Command) > 0 {
-		switch opts.Command[0] {
-		// test for active shells
-		case "zsh":
-			shell = "zsh"
-			newopts = []string{"--login", "-i"}
-			newopts = append(newopts, opts.Command[1:]...)
-		case "/bin/zsh":
-			shell = "/bin/zsh"
-			newopts = []string{"--login", "-i"}
-			newopts = append(newopts, opts.Command[1:]...)
-		case "bash":
-			shell = "bash"
-			newopts = []string{"--login"}
-			newopts = append(newopts, opts.Command[1:]...)
-		case "/bin/bash":
-			shell = "/bin/bash"
-			newopts = []string{"--login"}
-			newopts = append(newopts, opts.Command[1:]...)
-		case "sh":
-			shell = "sh"
-		case "/bin/sh":
-			shell = "/bin/sh"
-		}
-	}
-
-	// start default shell with commands appended to it
-	//nolint:gosec // whole point is to get a local shell from the local IDE, so this is just
-	// going to be exactly what the user wants
+	// start default shell with commands appended to it. The whole point is to get a local
+	// shell from the local IDE, so this is going to be exactly what the user wants.
 	cmd := exec.CommandContext(ctx, shell, newopts...)
 
 	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, fmt.Sprintf("SHELL=%s", shell), "TERM=xterm-256color")
+	cmd.Env = append(cmd.Env, "SHELL="+shell, "TERM=xterm-256color")
 
 	if opts.Labels == nil {
 		opts.Labels = make(map[string]string)
@@ -154,14 +153,16 @@ func (m *Manager) StartSession(
 
 	ptyFile, err := pty.Start(cmd)
 	if err != nil {
-		err = apperror.Wrap(err, apperror.TypeSessionFailed, 500, "Failed to start terminal")
+		err = apperror.Wrap(err, apperror.TypeSessionFailed, http.StatusInternalServerError, "Failed to start terminal")
 		logger.Errorw(ctx, "failed to start terminal", "error", err)
 		cancel()
 		return nil, err
 	}
 	// set an initial size for the pty, otherwise we get really weird behavior
-	if err = pty.Setsize(ptyFile, &pty.Winsize{Rows: InitialRows, Cols: InitialCols}); err != nil {
-		err = apperror.Wrap(err, apperror.TypeSessionFailed, 500, "Failed to configure terminal size")
+	if err = pty.Setsize(ptyFile, &pty.Winsize{Rows: InitialRows, Cols: InitialCols, X: 0, Y: 0}); err != nil {
+		err = apperror.Wrap(
+			err, apperror.TypeSessionFailed, http.StatusInternalServerError, "Failed to configure terminal size",
+		)
 		cancel()
 		return nil, err
 	}
@@ -210,7 +211,7 @@ func (m *Manager) ResizeSession(sessionID string, rows, cols uint16) error {
 		m.log.Errorw(context.Background(), "session not found", "error", err)
 		return err
 	}
-	if err := pty.Setsize(ptyFile, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
+	if err := pty.Setsize(ptyFile, &pty.Winsize{Rows: rows, Cols: cols, X: 0, Y: 0}); err != nil {
 		m.log.Errorw(context.Background(), "error resizing pty", "session", sessionID, "error", err)
 		return err
 	}
@@ -259,6 +260,7 @@ func (m *Manager) handleSessionClose(ctx context.Context, sessionID string) {
 		Target:    sdkexec.StreamTargetStdOut,
 		Data:      []byte("Session terminated"),
 		Signal:    sdkexec.StreamSignalClose,
+		Error:     nil,
 	}
 }
 
@@ -294,6 +296,8 @@ func (m *Manager) handleOutStream(
 				SessionID: sessionID,
 				Target:    sdkexec.StreamTargetStdOut,
 				Data:      buf[:read],
+				Signal:    sdkexec.StreamSignalNone,
+				Error:     nil,
 			}
 
 			m.mux.RLock()
@@ -360,6 +364,8 @@ func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, err
 		SessionID: sessionID,
 		Target:    sdkexec.StreamTargetStdOut,
 		Data:      data,
+		Signal:    sdkexec.StreamSignalNone,
+		Error:     nil,
 	}
 
 	m.log.Debugw(context.Background(), "session attached", "session", sessionID)
