@@ -15,9 +15,14 @@ import (
 func init() {
 	// Register types that may appear inside GOB-encoded settings files.
 	gob.Register(settings.Store{})
-	gob.Register(settings.Category{})
-	gob.Register(settings.Setting{})
-	gob.Register(settings.SettingOption{})
+	var (
+		category settings.Category
+		setting  settings.Setting
+		option   settings.SettingOption
+	)
+	gob.Register(category)
+	gob.Register(setting)
+	gob.Register(option)
 	gob.Register([]any{})
 	gob.Register(map[string]any{})
 }
@@ -58,8 +63,8 @@ func MigrateFromGOB(stateRoot string, s *Store) error {
 		}
 		pluginID := entry.Name()
 		pluginSettingsPath := filepath.Join(pluginsDir, pluginID, "settings")
-		if err := migratePlugin(pluginSettingsPath, pluginID, s, &skipped); err != nil {
-			log.Printf("[settings/migrate] warning: plugin %q migration failed: %v", pluginID, err)
+		if migrateErr := migratePlugin(pluginSettingsPath, pluginID, s, &skipped); migrateErr != nil {
+			log.Printf("[settings/migrate] warning: plugin %q migration failed: %v", pluginID, migrateErr)
 		}
 	}
 
@@ -91,8 +96,8 @@ func migrateCore(path string, s *Store, skipped *[]string) error {
 		if len(values) == 0 {
 			continue
 		}
-		if err := s.SaveCategory(catID, values); err != nil {
-			return fmt.Errorf("save category %q: %w", catID, err)
+		if saveErr := s.SaveCategory(catID, values); saveErr != nil {
+			return fmt.Errorf("save category %q: %w", catID, saveErr)
 		}
 	}
 
@@ -116,24 +121,19 @@ func migratePlugin(path, pluginID string, s *Store, skipped *[]string) error {
 		return nil
 	}
 
-	cat, ok := store["plugin"]
-	if !ok {
+	var values map[string]any
+	if cat, ok := store["plugin"]; ok {
+		values = extractValues(cat)
+	} else {
 		// No "plugin" category key — try migrating all categories into a flat map.
-		values := make(map[string]any)
+		values = make(map[string]any)
 		for _, c := range store {
 			maps.Copy(values, extractValues(c))
 		}
-		if len(values) > 0 {
-			if err := s.SavePluginSettings(pluginID, values); err != nil {
-				return fmt.Errorf("save plugin settings %q: %w", pluginID, err)
-			}
-		}
-	} else {
-		values := extractValues(cat)
-		if len(values) > 0 {
-			if err := s.SavePluginSettings(pluginID, values); err != nil {
-				return fmt.Errorf("save plugin settings %q: %w", pluginID, err)
-			}
+	}
+	if len(values) > 0 {
+		if saveErr := s.SavePluginSettings(pluginID, values); saveErr != nil {
+			return fmt.Errorf("save plugin settings %q: %w", pluginID, saveErr)
 		}
 	}
 
@@ -170,7 +170,7 @@ func renameToBackup(path string) error {
 		found := false
 		for i := 1; i <= 100; i++ {
 			candidate := fmt.Sprintf("%s.gob.bak.%d", path, i)
-			if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			if _, statErr := os.Stat(candidate); os.IsNotExist(statErr) {
 				backup = candidate
 				found = true
 				break

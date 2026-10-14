@@ -224,8 +224,8 @@ func TestConcurrentWrites(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			cat := fmt.Sprintf("category-%d", i)
-			err := s.SaveCategory(cat, map[string]any{"index": float64(i)})
-			assert.NoError(t, err)
+			saveErr := s.SaveCategory(cat, map[string]any{"index": float64(i)})
+			assert.NoError(t, saveErr)
 		}(i)
 	}
 	wg.Wait()
@@ -233,9 +233,9 @@ func TestConcurrentWrites(t *testing.T) {
 	// Verify all writes landed.
 	for i := 0; i < 10; i++ {
 		cat := fmt.Sprintf("category-%d", i)
-		got, err := s.LoadCategory(cat)
-		require.NoError(t, err)
-		assert.Equal(t, float64(i), got["index"])
+		got, loadErr := s.LoadCategory(cat)
+		require.NoError(t, loadErr)
+		assert.InDelta(t, float64(i), got["index"], 0)
 	}
 }
 
@@ -255,8 +255,8 @@ func TestConcurrentReadWrite(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			err := s.SaveCategory("shared", map[string]any{"counter": float64(i)})
-			assert.NoError(t, err)
+			saveErr := s.SaveCategory("shared", map[string]any{"counter": float64(i)})
+			assert.NoError(t, saveErr)
 		}(i)
 	}
 	// Readers.
@@ -264,8 +264,8 @@ func TestConcurrentReadWrite(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			got, err := s.LoadCategory("shared")
-			assert.NoError(t, err)
+			got, loadErr := s.LoadCategory("shared")
+			assert.NoError(t, loadErr)
 			assert.NotNil(t, got)
 		}()
 	}
@@ -285,8 +285,8 @@ func TestConcurrentPluginWrites(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			id := fmt.Sprintf("plugin-%d", i)
-			err := s.SavePluginSettings(id, map[string]any{"id": float64(i)})
-			assert.NoError(t, err)
+			saveErr := s.SavePluginSettings(id, map[string]any{"id": float64(i)})
+			assert.NoError(t, saveErr)
 		}(i)
 	}
 	wg.Wait()
@@ -314,8 +314,8 @@ func TestSaveCategory_SpecialCharacters(t *testing.T) {
 	}
 	for id, vals := range cases {
 		require.NoError(t, s.SaveCategory(id, vals), "save %q", id)
-		got, err := s.LoadCategory(id)
-		require.NoError(t, err, "load %q", id)
+		got, loadErr := s.LoadCategory(id)
+		require.NoError(t, loadErr, "load %q", id)
 		assert.Equal(t, vals, got, "round-trip %q", id)
 	}
 }
@@ -424,8 +424,8 @@ func TestOpen_CorruptFile_BackupPreserved(t *testing.T) {
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), "settings.db.corrupt.") {
 			backupFound = true
-			data, err := os.ReadFile(filepath.Join(dir, e.Name()))
-			require.NoError(t, err)
+			data, readErr := os.ReadFile(filepath.Join(dir, e.Name()))
+			require.NoError(t, readErr)
 			assert.Equal(t, garbage, data, "backup should contain original corrupt data")
 		}
 	}
