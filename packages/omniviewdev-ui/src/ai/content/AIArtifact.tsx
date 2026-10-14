@@ -61,7 +61,7 @@ export default function AIArtifact({
             sx={{
               fontSize: 'var(--ov-text-xs)',
               color: 'var(--ov-fg-faint)',
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
             }}
           >
             {type}

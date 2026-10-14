@@ -93,8 +93,8 @@ const spacingScale = [
   { token: '--ov-space-0', label: '0', px: '0px' },
   { token: '--ov-space-1', label: '1', px: '4px' },
   { token: '--ov-space-2', label: '2', px: '8px' },
-  { token: '--ov-space-3', label: '3', px: '12px' },
-  { token: '--ov-space-4', label: '4', px: '16px' },
+  { token: '--ovl-space-3', label: '3', px: '12px' },
+  { token: '--ovl-space-4', label: '4', px: '16px' },
   { token: '--ov-space-5', label: '5', px: '20px' },
   { token: '--ov-space-6', label: '6', px: '24px' },
   { token: '--ov-space-8', label: '8', px: '32px' },
@@ -111,11 +111,11 @@ const shadowLevels = [
 
 const radiusLevels = [
   { token: '--ov-radius-none', label: 'none' },
-  { token: '--ov-radius-sm', label: 'sm' },
-  { token: '--ov-radius-md', label: 'md' },
-  { token: '--ov-radius-lg', label: 'lg' },
-  { token: '--ov-radius-xl', label: 'xl' },
-  { token: '--ov-radius-full', label: 'full' },
+  { token: '--ovl-radius-sm', label: 'sm' },
+  { token: '--ovl-radius-md', label: 'md' },
+  { token: '--ovl-radius-lg', label: 'lg' },
+  { token: '--ovl-radius-xl', label: 'xl' },
+  { token: '--ovl-radius-full', label: 'full' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -123,7 +123,7 @@ const radiusLevels = [
 // ---------------------------------------------------------------------------
 
 const swatchLabelStyle: React.CSSProperties = {
-  fontFamily: 'var(--ov-font-mono)',
+  fontFamily: 'var(--ovl-font-mono)',
   fontSize: 'var(--ov-text-xs)',
   color: 'var(--ov-fg-muted)',
   marginTop: 4,
@@ -300,7 +300,7 @@ export default function ThemePage() {
               <div key={token} style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
                 <span
                   style={{
-                    fontFamily: 'var(--ov-font-mono)',
+                    fontFamily: 'var(--ovl-font-mono)',
                     fontSize: 'var(--ov-text-xs)',
                     color: 'var(--ov-fg-faint)',
                     minWidth: 120,
@@ -311,7 +311,7 @@ export default function ThemePage() {
                 </span>
                 <span
                   style={{
-                    fontFamily: 'var(--ov-font-mono)',
+                    fontFamily: 'var(--ovl-font-mono)',
                     fontSize: 'var(--ov-text-xs)',
                     color: 'var(--ov-fg-disabled)',
                     minWidth: 40,
@@ -348,7 +348,7 @@ export default function ThemePage() {
               <div key={token} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span
                   style={{
-                    fontFamily: 'var(--ov-font-mono)',
+                    fontFamily: 'var(--ovl-font-mono)',
                     fontSize: 'var(--ov-text-xs)',
                     color: 'var(--ov-fg-faint)',
                     minWidth: 120,
@@ -359,7 +359,7 @@ export default function ThemePage() {
                 </span>
                 <span
                   style={{
-                    fontFamily: 'var(--ov-font-mono)',
+                    fontFamily: 'var(--ovl-font-mono)',
                     fontSize: 'var(--ov-text-xs)',
                     color: 'var(--ov-fg-disabled)',
                     minWidth: 36,
@@ -403,7 +403,7 @@ export default function ThemePage() {
                     width: 120,
                     height: 80,
                     backgroundColor: 'var(--ov-bg-surface-raised)',
-                    borderRadius: 'var(--ov-radius-md)',
+                    borderRadius: 'var(--ovl-radius-md)',
                     boxShadow: `var(${token})`,
                     display: 'flex',
                     alignItems: 'center',
@@ -412,7 +412,7 @@ export default function ThemePage() {
                 >
                   <span
                     style={{
-                      fontFamily: 'var(--ov-font-mono)',
+                      fontFamily: 'var(--ovl-font-mono)',
                       fontSize: 'var(--ov-text-sm)',
                       color: 'var(--ov-fg-muted)',
                     }}
@@ -461,7 +461,7 @@ export default function ThemePage() {
        * -------------------------------------------------------------- */}
       <Section
         title="Theme Toggle"
-        description="Switch between built-in themes at runtime. The dark and light buttons call resetTheme() which removes all inline overrides. High-contrast sets the data-ov-theme attribute directly."
+        description="Switch between built-in themes at runtime. The dark and light buttons call resetTheme() which removes all inline overrides. High-contrast sets the data-ovl-theme attribute directly."
       >
         <Example title="Switch Theme">
           <ButtonGroup variant="outlined" size="medium">
@@ -469,7 +469,7 @@ export default function ThemePage() {
             <Button onClick={() => resetTheme('light')}>Light</Button>
             <Button
               onClick={() => {
-                document.documentElement.setAttribute('data-ov-theme', 'high-contrast');
+                document.documentElement.setAttribute('data-ovl-theme', 'high-contrast');
                 document.documentElement.removeAttribute('style');
               }}
             >

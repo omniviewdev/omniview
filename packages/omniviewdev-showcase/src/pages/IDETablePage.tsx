@@ -47,7 +47,7 @@ const columns: ColumnDef<Pod, any>[] = [
     header: 'Name',
     size: 240,
     cell: ({ getValue }) => (
-      <Box component="span" sx={{ fontFamily: 'var(--ov-font-mono)', fontWeight: 500 }}>
+      <Box component="span" sx={{ fontFamily: 'var(--ovl-font-mono)', fontWeight: 500 }}>
         {getValue() as string}
       </Box>
     ),

@@ -361,7 +361,7 @@ function StatusTimer({ time, icon, running, tooltip }: StatusTimerProps) {
         gap: '3px',
         px: '6px',
         fontSize: '0.625rem',
-        fontFamily: 'var(--ov-font-mono)',
+        fontFamily: 'var(--ovl-font-mono)',
         fontFeatureSettings: '"tnum"',
         color: 'var(--ov-fg-muted)',
         whiteSpace: 'nowrap',

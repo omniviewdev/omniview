@@ -40,7 +40,7 @@ export default function ImportStatement({ code }: ImportStatementProps) {
       >
         <code
           style={{
-            fontFamily: 'var(--ov-font-mono)',
+            fontFamily: 'var(--ovl-font-mono)',
             fontSize: '13px',
             lineHeight: 1.5,
             color: 'var(--ov-fg-default)',

@@ -2,6 +2,7 @@
 import './features/perf/startup';
 
 import '@omniviewdev/ui/theme/tokens.css';
+import './theme/base-ui.css';
 
 import 'systemjs/dist/system.js';
 import 'systemjs/dist/extras/amd.js';

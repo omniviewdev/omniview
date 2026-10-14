@@ -70,7 +70,7 @@ export default function VariantMatrix<R extends string, C extends string>({
                 component="td"
                 sx={{
                   textAlign: 'left',
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                   fontSize: 'var(--ov-text-xs)',
                   color: 'var(--ov-fg-muted)',
                   whiteSpace: 'nowrap',

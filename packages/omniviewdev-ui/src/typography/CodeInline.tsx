@@ -11,7 +11,7 @@ export default function CodeInline({ children, sx }: CodeInlineProps) {
     <Box
       component="code"
       sx={{
-        fontFamily: 'var(--ov-font-mono)',
+        fontFamily: 'var(--ovl-font-mono)',
         fontSize: '0.85em',
         backgroundColor: 'var(--ov-bg-surface-inset)',
         color: 'var(--ov-fg-default)',

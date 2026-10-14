@@ -126,7 +126,7 @@ export default function ThinkingBlock({
               color: 'var(--ov-fg-muted)',
               lineHeight: 1.6,
               whiteSpace: 'pre-wrap',
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
               maxHeight: 300,
               overflow: 'auto',
             }}

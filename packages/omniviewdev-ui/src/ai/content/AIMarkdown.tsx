@@ -26,7 +26,7 @@ export default function AIMarkdown({
           lineHeight: 1.6,
         },
         '& .wmde-markdown code': {
-          fontFamily: 'var(--ov-font-mono)',
+          fontFamily: 'var(--ovl-font-mono)',
           fontSize: '0.85em',
           bgcolor: 'var(--ov-bg-surface-inset)',
           px: 0.5,

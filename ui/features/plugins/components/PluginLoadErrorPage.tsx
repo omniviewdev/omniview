@@ -92,7 +92,7 @@ export default function PluginLoadErrorPage({ pluginId, error }: PluginLoadError
         <Typography
           variant="body2"
           sx={{
-            fontFamily: 'var(--ov-font-mono, monospace)',
+            fontFamily: 'var(--ovl-font-mono, monospace)',
             fontSize: '0.75rem',
             color: '#f85149',
             wordBreak: 'break-word',
