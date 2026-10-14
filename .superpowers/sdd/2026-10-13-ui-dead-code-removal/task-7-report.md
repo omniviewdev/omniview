@@ -55,3 +55,10 @@ No source files, package-manager configuration, or `pnpm-workspace.yaml` were ch
 - Checked `package.json` for direct declarations of all removed packages: no matches.
 - Checked the root importer in `pnpm-lock.yaml`: no direct ownership remains for the removed packages.
 - Ran `pnpm install --frozen-lockfile` once: passed; pnpm reported `Lockfile is up to date, resolution step is skipped`, and the existing postinstall YAML worker bundle completed successfully.
+
+## Review fix: CI-compatible lockfile regeneration
+
+- Restored the pre-Task-7 lockfile baseline and regenerated it from the Task-7 `package.json` with pnpm `10.34.7`, matching CI's pinned pnpm major version.
+- Regeneration preserved the active root `pnpm.overrides`: the lockfile contains `@types/react-dom@19.2.3` and no `@types/react-dom@18.3.7`.
+- Re-ran `COREPACK_ENABLE_PROJECT_SPEC=0 corepack pnpm@10 install --frozen-lockfile`: passed with `Lockfile is up to date, resolution step is skipped`; the postinstall YAML worker bundle completed successfully. Final output reported `Done in 16.3s using pnpm v10.34.7`.
+- No `packageManager` field or other package-manager/workspace configuration was added.
