@@ -654,18 +654,6 @@ importers:
 
   plugins/containers/ui:
     dependencies:
-      '@emotion/react':
-        specifier: ^11.11.4
-        version: 11.14.0(@types/react@19.2.14)(react@19.2.4)
-      '@emotion/styled':
-        specifier: ^11.11.0
-        version: 11.14.0(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(react@19.2.4)
-      '@fontsource/material-icons':
-        specifier: ^5.0.16
-        version: 5.2.5
-      '@fontsource/roboto':
-        specifier: ^5.0.12
-        version: 5.2.5
       '@monaco-editor/react':
         specifier: ^4.6.0
         version: 4.7.0(monaco-editor@0.47.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -675,9 +663,6 @@ importers:
       '@omniviewdev/runtime':
         specifier: workspace:*
         version: link:../../../packages/omniviewdev-runtime
-      '@omniviewdev/ui':
-        specifier: workspace:*
-        version: link:../../../packages/omniviewdev-ui
       date-fns:
         specifier: ^3.6.0
         version: 3.6.0
