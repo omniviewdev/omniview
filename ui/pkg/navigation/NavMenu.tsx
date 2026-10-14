@@ -1,18 +1,16 @@
 import React from 'react';
 
-// Material-ui
-import { Avatar, Chip, List, ListItem, ListItemButton, ListItemDecorator, ListItemContent, ListSubheader } from '@omniviewdev/ui';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
+// ui
+import { Avatar, Chip, IconButton, Text } from '@omniviewdev/base-ui';
 
 // Icons import
-import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
+import { LuChevronDown } from 'react-icons/lu';
 
 // Custom
 import { type SidebarListItemProps, type SidebarProps } from './types';
 import { IsImage } from '@/utils/url';
 import Icon from '@/components/icons/Icon';
+import styles from './NavMenu.module.css';
 
 /**
  * Render a navigation menu in a sidebar layout
@@ -25,22 +23,6 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
   if (Boolean(items?.length) && Boolean(sections?.length)) {
     throw new Error('You can only pass items or sections, not both');
   }
-
-  // memoize the scrollable styles to prevent rerenders
-  const scrollableSx = {
-    overflow: 'auto',
-    maxHeight: '100%',
-    scrollbarWidth: 'none',
-    '&::-webkit-scrollbar': {
-      display: 'none',
-    },
-    '&-ms-overflow-style:': {
-      display: 'none',
-    },
-  };
-
-  // memoize the scrollable styles to prevent rerenders
-  const scrollStyle = React.useMemo(() => scrollableSx, [scrollable]);
 
   const [open, setOpen] = React.useState<Record<string, boolean>>({});
 
@@ -63,37 +45,21 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
   };
 
   return (
-    <Stack
-      direction='column'
-      sx={scrollStyle}
-    >
+    <div className={styles.Root} data-scrollable={scrollable ? 'true' : undefined}>
       {header}
-      <List
-        size={size ?? 'md'}
-        sx={{
-          py: 0,
-          userSelect: 'none',
-          '--ListItem-radius': '8px',
-          '--List-nestedInsetStart': '0px',
-        }}
-      >
+      <ul className={styles.List} data-size={size ?? 'md'}>
         {/** Sections */}
         {sections?.map(section => (
-          <ListItem key={section.id} nested>
+          <li key={section.id} className={styles.Section}>
             {section.title && (
-              <ListSubheader sx={{ minBlockSize: 0, pt: 1.5 }}>
+              <div className={styles.Subheader}>
                 {section.title}
-              </ListSubheader>
+              </div>
             )}
-            <List
+            <ul
               aria-labelledby='nav-list-browse'
-              size={size ?? 'md'}
-              sx={{
-                py: 0,
-                '--List-nestedInsetStart': '13px',
-                '--ListItem-paddingLeft': '8px',
-                '& .JoyListItemButton-root': { p: '8px' },
-              }}
+              className={`${styles.List} ${styles.SectionList}`}
+              data-size={size ?? 'md'}
             >
               {section.items.map(item => (
                 <SidebarListItem
@@ -105,8 +71,8 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
                   onSelect={handleSelect}
                 />
               ))}
-            </List>
-          </ListItem>
+            </ul>
+          </li>
         ))}
 
         {/** Direct mapped items */}
@@ -120,8 +86,8 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
             onSelect={handleSelect}
           />
         ))}
-      </List>
-    </Stack>
+      </ul>
+    </div>
   );
 };
 
@@ -151,85 +117,88 @@ const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, open
   };
 
   const MemoizedIcon = React.useMemo(() => (
-    <KeyboardArrowDownRoundedIcon sx={{ transform: openState[id] ? 'initial' : 'rotate(-90deg)' }} />
+    <LuChevronDown size={16} className={styles.Chevron} data-open={openState[id] ? 'true' : undefined} />
   ), [openState[id]]);
 
+  const hasChildren = Boolean(item.children?.length);
+
   return (
-    <>
-      <ListItem
-        key={id}
-        sx={{
-          userSelect: 'none',
-        }}
-        nested={Boolean(item.children?.length)}
-        endAction={Boolean(item.children?.length) ? (
-          <IconButton
-            emphasis='ghost'
-            size='sm'
-            color='neutral'
-            onClick={handleClick}
-          >
-            {MemoizedIcon}
-          </IconButton>
-        ) : (
-          typeof item.decorator === 'string'
-            ? (
-              <Chip size='sm' emphasis='outline' color='neutral' sx={{ borderRadius: 'sm' }} label={
-                <Text size="xs" sx={{ fontSize: 10 }}>{item.decorator}</Text>
-              } />
-            ) : item.decorator
-        )}
-      >
-        <ListItemButton
+    <li key={id} className={styles.Item}>
+      <div className={styles.Row}>
+        <button
+          type='button'
+          className={styles.ItemButton}
           // Should not be selectable if it has children
-          selected={selected === id}
+          data-selected={selected === id ? 'true' : undefined}
+          aria-current={selected === id ? 'page' : undefined}
           onClick={handleClick}
         >
           {item.icon && (
-            <ListItemDecorator>
+            <span className={styles.Decorator}>
               {typeof item.icon === 'string' ? (
                 IsImage(item.icon)
-                  ? <Avatar size='sm' src={item.icon} sx={{ borderRadius: 'sm', maxHeight: 20, maxWidth: 20 }} />
+                  ? <Avatar size='sm' shape='rounded' src={item.icon} className={styles.ImageAvatar} />
                   : <Icon name={item.icon} size={16} />
               ) : (
                 item.icon
               )}
-            </ListItemDecorator>
+            </span>
           )}
-          <ListItemContent>
+          <span className={styles.Content}>
             <Text
-              weight={item.children?.length ? 'semibold' : undefined}
-              size={item.children?.length ? 'sm' : 'xs'}
+              weight={hasChildren ? 'semibold' : undefined}
+              size={hasChildren ? 'sm' : 'xs'}
             >
               {item.label}
             </Text>
-          </ListItemContent>
-        </ListItemButton>
-        {Boolean(item.children?.length) && Boolean(openState[id]) && (
-          <List
-            aria-labelledby={`nav-list-${id}`}
-            size='sm'
-            sx={{
-              '--ListItem-radius': '8px',
-              '--List-gap': '0px',
-            }}
-          >
-            {item.children?.map(child => (
-              <SidebarListItem
-                level={level + 1}
-                key={child.id}
-                item={child}
-                parentID={id}
-                openState={openState}
-                onToggleOpen={onToggleOpen}
-                selected={selected}
-                onSelect={onSelect}
-              />
-            ))}
-          </List>
+          </span>
+        </button>
+        {hasChildren ? (
+          <span className={styles.EndAction}>
+            <IconButton
+              variant='ghost'
+              size='sm'
+              color='neutral'
+              aria-label={openState[id] ? 'Collapse' : 'Expand'}
+              onClick={handleClick}
+            >
+              {MemoizedIcon}
+            </IconButton>
+          </span>
+        ) : (
+          item.decorator !== undefined && item.decorator !== null && (
+            <span className={styles.EndAction}>
+              {typeof item.decorator === 'string'
+                ? (
+                  <Chip size='sm' variant='outline' color='neutral'>
+                    <Text size='xs' className={styles.DecoratorText}>{item.decorator}</Text>
+                  </Chip>
+                ) : item.decorator}
+            </span>
+          )
         )}
-      </ListItem>
-    </>
+      </div>
+      {hasChildren && Boolean(openState[id]) && (
+        <ul
+          aria-labelledby={`nav-list-${id}`}
+          className={`${styles.List} ${styles.Nested}`}
+          data-size='sm'
+        >
+          {item.children?.map(child => (
+            <SidebarListItem
+              level={level + 1}
+              key={child.id}
+              item={child}
+              parentID={id}
+              openState={openState}
+              onToggleOpen={onToggleOpen}
+              selected={selected}
+              onSelect={onSelect}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 };
 

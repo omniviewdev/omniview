@@ -1,0 +1,14 @@
+.Root {
+  padding: var(--ov-space-3);
+  border: 1px dashed var(--ov-color-warning);
+  border-radius: var(--ov-radius-sm);
+  background: var(--ov-color-warning-soft);
+}
+
+.Line {
+  display: block;
+}
+
+.Action {
+  margin-top: var(--ov-space-2);
+}

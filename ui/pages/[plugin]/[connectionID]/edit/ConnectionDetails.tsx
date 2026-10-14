@@ -1,14 +1,12 @@
 import React from 'react';
 
-// Material-ui
-import Grid from '@mui/material/Grid';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Avatar } from '@omniviewdev/ui';
-import { TextField, TextArea } from '@omniviewdev/ui/inputs';
+// ui
+import { Avatar, Grid, Stack, TextArea, TextField } from '@omniviewdev/base-ui';
 
 // Project imports
 import { useConnection } from '@omniviewdev/runtime';
 import { useParams } from 'react-router-dom';
+import styles from './ConnectionDetails.module.css';
 
 export default function ConnectionDetails(): React.ReactElement {
   const { pluginID = '', connectionID = '' } = useParams<{ pluginID: string; connectionID: string }>();
@@ -27,19 +25,23 @@ export default function ConnectionDetails(): React.ReactElement {
   }
 
   return (
-    <Grid container spacing={4}>
-      <Grid size={12}>
-        <Stack direction='row' spacing={2} alignItems='center' justifyContent={'stretch'}>
-          <Avatar size='lg' src={connection.data.avatar} />
-          <TextField defaultValue={connection.data.name} />
+    <Grid columns={12} spacing={4}>
+      <Grid.Item span={12}>
+        <Stack direction='row' spacing={2} align='center'>
+          <Avatar size='lg' src={connection.data.avatar} name={connection.data.name} />
+          <TextField.Root className={styles.Field}>
+            <TextField.Control defaultValue={connection.data.name} />
+          </TextField.Root>
         </Stack>
-      </Grid>
-      <Grid size={12}>
-        <TextArea minRows={3} defaultValue={connection.data.description} />
-      </Grid>
-      <Grid size={12}>
+      </Grid.Item>
+      <Grid.Item span={12}>
+        <TextArea.Root>
+          <TextArea.Control rows={3} defaultValue={connection.data.description} />
+        </TextArea.Root>
+      </Grid.Item>
+      <Grid.Item span={12}>
 
-      </Grid>
+      </Grid.Item>
     </Grid>
   );
 }

@@ -1,12 +1,7 @@
 import React from 'react';
 
-// Material-ui
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
-import { Text } from '@omniviewdev/ui/typography';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { Avatar, Badge, Chip } from '@omniviewdev/ui';
-import { DropdownMenu } from '@omniviewdev/ui/menus';
+// ui
+import { Avatar, Badge, Chip, IconButton, Spinner, Text } from '@omniviewdev/base-ui';
 
 // Project imports
 import { usePluginContext } from '@/contexts/PluginContext';
@@ -20,35 +15,23 @@ import { stringToColor } from '@/utils/color';
 import { Connection, ConnectionStatus, ConnectionStatusCode } from '@omniviewdev/runtime/models';
 
 // Icons
-import { MoreVert } from '@mui/icons-material';
-import { LuPencil, LuTrash } from 'react-icons/lu';
+import { LuEllipsisVertical } from 'react-icons/lu';
 
 // Third-party
 import { Link, usePluginRouter } from '@infraview/router';
+import styles from './ConnectionTableItem.module.css';
 
 type Props = Omit<Connection, 'createFrom' | 'convertValues'>;
 
 const truncate = (input: string) => input.length > 60 ? `${input.substring(0, 60)}...` : input;
 
-function stringAvatar(name: string) {
+function stringAvatar(name: string): { color: string; initials: string } {
   if (!name) {
-    return {
-      sx: {
-        bgcolor: 'grey.500',
-        borderRadius: 6,
-      },
-      children: 'NA',
-    };
+    return { color: 'var(--ov-color-fg-subtle)', initials: 'NA' };
   }
 
   if (name.length === 1) {
-    return {
-      sx: {
-        bgcolor: stringToColor(name),
-        borderRadius: 6,
-      },
-      children: name.toUpperCase(),
-    };
+    return { color: stringToColor(name), initials: name.toUpperCase() };
   }
 
   // Try splitting on space
@@ -59,26 +42,27 @@ function stringAvatar(name: string) {
   }
 
   if (nameArr.length === 1) {
-    return {
-      sx: {
-        maxHeight: 28,
-        maxWidth: 28,
-        bgcolor: stringToColor(name),
-        borderRadius: 6,
-      },
-      children: `${name[0].toUpperCase()}${name[1].toUpperCase()}`,
-    };
+    return { color: stringToColor(name), initials: `${name[0].toUpperCase()}${name[1].toUpperCase()}` };
   }
 
   return {
-    sx: {
-      maxHeight: 28,
-      maxWidth: 28,
-      bgcolor: stringToColor(name),
-      borderRadius: 6,
-    },
-    children: `${nameArr[0][0].toUpperCase()}${nameArr[1][0].toUpperCase()}`,
+    color: stringToColor(name),
+    initials: `${nameArr[0][0].toUpperCase()}${nameArr[1][0].toUpperCase()}`,
   };
+}
+
+function TextAvatar({ name }: { name: string }) {
+  const { color, initials } = stringAvatar(name);
+  return (
+    <Avatar
+      size='sm'
+      shape='rounded'
+      deterministic={false}
+      className={styles.Avatar}
+      fallback={initials}
+      fallbackProps={{ style: { backgroundColor: color, color: '#fff' } }}
+    />
+  );
 }
 
 const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, labels, last_refresh, expiry_time }) => {
@@ -156,71 +140,59 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
     <tr
       id={`connection-${id}`}
       onClick={handleClick}
-      style={{
-        cursor: 'pointer',
-      }}
+      className={styles.Row}
     >
       {/* Name */}
-      <td style={{ display: 'flex', flex: 1, gap: 14, justifyContent: 'flex-start', alignItems: 'center' }} >
+      <td className={styles.NameCell}>
         <Badge
-          color="success"
+          color='success'
           invisible={!isConnected()}
           variant='dot'
-          anchorOrigin={{
-            vertical: 'top',
-            horizontal: 'right',
-          }}
+          position='top-right'
         >
           {avatar
             ? <Avatar
               size='sm'
+              shape='rounded'
               src={avatar}
-              sx={{
-                borderRadius: 6,
-                backgroundColor: 'transparent',
-                objectFit: 'contain',
-                border: 0,
-                maxHeight: 28,
-                maxWidth: 28,
-              }}
+              alt={name}
+              className={styles.ImageAvatar}
             />
-            : <Avatar
-              size='sm'
-              {...stringAvatar(id || '')}
-            />
+            : <TextAvatar name={id} />
           }
         </Badge>
-        <Text weight='semibold' size='sm' noWrap>{name}</Text>
-        {Boolean(description) && <Text size='sm' noWrap>{description}</Text>}
-        {connecting && <CircularProgress size='small' />}
+        <Text weight='semibold' size='sm' truncate>{name}</Text>
+        {Boolean(description) && <Text size='sm' truncate>{description}</Text>}
+        {connecting && <Spinner size='sm' />}
       </td>
 
       {/* Labels */}
       {labels && Object.entries(labels).sort().map(([key, value]) => (
         <td key={`${id}-${key}`}>
           <Chip
-            variant='outlined'
-            color='default'
+            variant='outline'
+            color='neutral'
             size='sm'
-            sx={{ pointerEvents: 'none', borderRadius: 1 }}
-            label={truncate(value)}
-          />
+            className={styles.LabelChip}
+          >
+            {truncate(value)}
+          </Chip>
         </td>
       ))}
 
 
       {/* Actions */}
       <td>
-        <Box sx={{ display: 'inline-flex' }}>
+        <div className={styles.Actions}>
           <IconButton
             aria-label='More'
             size='sm'
-            emphasis='ghost'
+            variant='ghost'
             color='neutral'
           >
-            <MoreVert />
+            <LuEllipsisVertical />
           </IconButton>
-        </Box>
+        </div>
       </td>
     </tr>
   );

@@ -1,16 +1,8 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
-// Material-ui
-import Box from '@mui/material/Box';
-import Alert from '@mui/material/Alert';
-import AlertTitle from '@mui/material/AlertTitle';
-import Button from '@mui/material/Button';
-import { useTheme } from '@mui/material/styles';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { Avatar } from '@omniviewdev/ui';
+// ui
+import { Avatar, Banner, Button, IconButton, Stack, Text } from '@omniviewdev/base-ui';
 
 // Hooks
 import {
@@ -37,16 +29,32 @@ import { stringAvatar } from '@/utils/color';
 import { Link } from '@infraview/router';
 
 // Icons
-import { LuCog } from 'react-icons/lu';
+import { LuCircleAlert, LuCog } from 'react-icons/lu';
+import styles from './ResourceTableView.module.css';
 
 /**
  * Get the ID from the meta object
  */
 const toID = (meta: ResourceMeta) => `${meta.group}::${meta.version}::${meta.kind}`;
 
-export default function ResourceTableView(): React.ReactElement {
-  const theme = useTheme();
+/**
+ * Initials avatar for a connection without an image avatar.
+ */
+function TextAvatar({ name }: { name: string }) {
+  const { sx, children } = stringAvatar(name);
+  return (
+    <Avatar
+      size='sm'
+      shape='rounded'
+      deterministic={false}
+      className={styles.Avatar}
+      fallback={children}
+      fallbackProps={{ style: { backgroundColor: sx.bgcolor, color: '#fff' } }}
+    />
+  );
+}
 
+export default function ResourceTableView(): React.ReactElement {
   const { pluginID = '', connectionID = '' } = useParams<{ pluginID: string; connectionID: string }>();
   const [selected, setSelected] = React.useState<string | undefined>(undefined);
 
@@ -73,20 +81,23 @@ export default function ResourceTableView(): React.ReactElement {
   if (groups.isError) {
     const appErr = parseAppError(groups.error);
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2, p: 4 }}>
-        <Alert severity='error' sx={{ maxWidth: 560, width: '100%' }}>
-          <AlertTitle>{appErr.title}</AlertTitle>
-          {appErr.detail}
-          {appErr.suggestions && appErr.suggestions.length > 0 && (
-            <Box component='ul' sx={{ pl: 2, mt: 1, mb: 0 }}>
-              {appErr.suggestions.map((s, i) => (
-                <li key={`${i}-${s}`}>{s}</li>
-              ))}
-            </Box>
-          )}
-        </Alert>
-        <Button variant='outlined' size='small' onClick={() => navigate(-1)}>Go Back</Button>
-      </Box>
+      <div className={styles.ErrorRoot}>
+        <Banner color='danger' className={styles.ErrorBanner}>
+          <Banner.Icon><LuCircleAlert /></Banner.Icon>
+          <Banner.Content>
+            <Banner.Title>{appErr.title}</Banner.Title>
+            {appErr.detail}
+            {appErr.suggestions && appErr.suggestions.length > 0 && (
+              <ul className={styles.Suggestions}>
+                {appErr.suggestions.map((s, i) => (
+                  <li key={`${i}-${s}`}>{s}</li>
+                ))}
+              </ul>
+            )}
+          </Banner.Content>
+        </Banner>
+        <Button variant='outline' color='neutral' size='sm' onClick={() => { navigate(-1); }}>Go Back</Button>
+      </div>
     );
   }
 
@@ -148,47 +159,29 @@ export default function ResourceTableView(): React.ReactElement {
         message={`${plugin.metadata.name} plugin is reloading`}
       />
       <Layout.SideNav type='bordered' padding={0.5} width={300} >
-        <Stack direction='column' maxHeight='100%' gap={0.5}>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              p: 1,
-              borderRadius: 1,
-              border: '1px solid',
-              borderColor: 'divider',
-            }}
-          >
-            <Stack direction='row' alignItems='center' gap={1}>
+        <Stack direction='column' spacing={1} className={styles.SideNavContent}>
+          <div className={styles.ConnectionHeader}>
+            <Stack direction='row' align='center' spacing={2}>
               {connection.data?.avatar
                 ? <Avatar
                   size='sm'
+                  shape='rounded'
                   src={connection.data?.avatar}
-                  sx={{
-                    borderRadius: 6,
-                    backgroundColor: 'transparent',
-                    objectFit: 'contain',
-                    border: 0,
-                    maxHeight: 28,
-                    maxWidth: 28,
-                  }}
+                  alt={connection.data?.name}
+                  className={styles.ImageAvatar}
                 />
-                : <Avatar
-                  size='sm'
-                  {...stringAvatar(connection.data?.name || '')}
-                />
+                : <TextAvatar name={connection.data?.name ?? ''} />
               }
-              <Text weight='semibold' size='sm' sx={{ textOverflow: 'ellipsis' }}>{connection.data?.name}</Text>
+              <Text weight='semibold' size='sm' className={styles.ConnectionName}>{connection.data?.name}</Text>
             </Stack>
-            <Stack direction='row' alignItems='center' gap={1}>
+            <Stack direction='row' align='center' spacing={2}>
               <Link to={`/connection/${connectionID}/edit`}>
-                <IconButton emphasis='soft' size='sm' color='neutral'>
-                  <LuCog size={20} color={theme.palette.grey[400]} />
+                <IconButton variant='soft' size='sm' color='neutral' aria-label='Edit connection'>
+                  <LuCog size={20} className={styles.SettingsIcon} />
                 </IconButton>
               </Link>
             </Stack>
-          </Box>
+          </div>
           <NavMenu selected={selected} onSelect={setSelected} size='sm' sections={getSections()} scrollable />
         </Stack>
       </Layout.SideNav>
@@ -196,11 +189,11 @@ export default function ResourceTableView(): React.ReactElement {
         {/** Purposely double nesting this inside a non-padded container as not doing so doesn't allow the bottom drawer to
          fully epand up to the top of the container (since the padding get's accounted for in the sizing, which essentially
          just end up creating a gutter at the top equal to the top and bottom padding combined) */}
-        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <div className={styles.MainInner}>
           {selected &&
             <ResourceTable resourceKey={selected} pluginID={pluginID} connectionID={connectionID} />
           }
-        </Box>
+        </div>
       </Layout.Main>
     </Layout.Root>
   );

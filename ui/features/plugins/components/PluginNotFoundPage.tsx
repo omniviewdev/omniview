@@ -1,7 +1,7 @@
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
+import { Button, Heading, Text } from '@omniviewdev/base-ui';
 import { LuArrowLeft, LuFileQuestion } from 'react-icons/lu';
 import { useLocation, useNavigate } from 'react-router-dom';
+import styles from './PluginNotFoundPage.module.css';
 
 /**
  * Rendered when no route matches within a plugin. Shows a clean "page not found"
@@ -12,89 +12,34 @@ export default function PluginNotFoundPage() {
   const navigate = useNavigate();
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        textAlign: 'center',
-        minHeight: '60vh',
-        py: 8,
-        px: 3,
-      }}
-    >
-      <LuFileQuestion
-        size={56}
-        style={{ color: 'var(--ov-fg-muted)', marginBottom: 16, opacity: 0.6 }}
-      />
+    <div className={styles.Root}>
+      <LuFileQuestion size={56} className={styles.Icon} />
 
-      <Typography
-        variant="h5"
-        sx={{ color: 'var(--ov-fg-default)', fontWeight: 600, mb: 0.5 }}
-      >
+      <Heading level={4} as='h5' className={styles.Title}>
         Page not found
-      </Typography>
+      </Heading>
 
-      <Typography
-        variant="body1"
-        sx={{ color: 'var(--ov-fg-muted)', mb: 2, maxWidth: 460 }}
-      >
+      <Text as='p' size='md' tone='muted' className={styles.Subtitle}>
         The route you navigated to doesn't exist within this plugin.
-      </Typography>
+      </Text>
 
       {/* Path detail */}
-      <Box
-        sx={{
-          maxWidth: 560,
-          width: '100%',
-          mb: 3,
-          p: 1.5,
-          borderRadius: '6px',
-          bgcolor: 'action.hover',
-          border: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
-        <Typography
-          variant="body2"
-          sx={{
-            fontFamily: 'var(--ovl-font-mono, monospace)',
-            fontSize: '0.75rem',
-            color: 'var(--ov-fg-muted)',
-            wordBreak: 'break-word',
-          }}
-        >
-          {location.pathname}
-        </Typography>
-      </Box>
+      <div className={styles.PathBox}>
+        <p className={styles.PathText}>{location.pathname}</p>
+      </div>
 
       {/* Actions */}
-      <Box sx={{ display: 'flex', gap: 1.5 }}>
-        <Box
-          component="button"
-          onClick={() => navigate(-1)}
-          sx={{
-            all: 'unset',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            px: 2,
-            py: 1,
-            fontSize: '0.8125rem',
-            fontWeight: 500,
-            fontFamily: 'var(--ov-font-ui)',
-            color: '#fff',
-            bgcolor: 'var(--ov-accent-default)',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            '&:hover': { filter: 'brightness(1.1)' },
-          }}
+      <div className={styles.Actions}>
+        <Button
+          variant='solid'
+          color='brand'
+          size='sm'
+          onClick={() => { navigate(-1); }}
+          startDecorator={<LuArrowLeft size={14} />}
         >
-          <LuArrowLeft size={14} />
           Go Back
-        </Box>
-      </Box>
-    </Box>
+        </Button>
+      </div>
+    </div>
   );
 }

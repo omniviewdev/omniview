@@ -1,0 +1,47 @@
+.Root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 60vh;
+  padding: 64px 24px;
+}
+
+.Icon {
+  color: var(--ov-color-fg-muted);
+  margin-bottom: var(--ov-space-4);
+  opacity: 0.6;
+}
+
+.Title {
+  margin-bottom: var(--ov-space-1);
+}
+
+.Subtitle {
+  margin-bottom: var(--ov-space-4);
+  max-width: 460px;
+}
+
+.PathBox {
+  max-width: 560px;
+  width: 100%;
+  margin-bottom: 24px;
+  padding: var(--ov-space-3);
+  border-radius: var(--ov-radius-md);
+  background: var(--ov-color-state-hover);
+  border: 1px solid var(--ov-color-border-default);
+}
+
+.PathText {
+  font-family: var(--ov-font-mono);
+  font-size: 0.75rem;
+  color: var(--ov-color-fg-muted);
+  word-break: break-word;
+  margin: 0;
+}
+
+.Actions {
+  display: flex;
+  gap: var(--ov-space-3);
+}

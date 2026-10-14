@@ -1,0 +1,38 @@
+.Row {
+  cursor: pointer;
+}
+
+.NameCell {
+  display: flex;
+  flex: 1;
+  gap: 14px;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.Avatar {
+  max-height: 28px;
+  max-width: 28px;
+  border-radius: 6px;
+}
+
+.ImageAvatar {
+  max-height: 28px;
+  max-width: 28px;
+  border-radius: 6px;
+  border: 0;
+  background-color: transparent;
+}
+
+.ImageAvatar img {
+  object-fit: contain;
+}
+
+.LabelChip {
+  pointer-events: none;
+  border-radius: var(--ov-radius-sm);
+}
+
+.Actions {
+  display: inline-flex;
+}

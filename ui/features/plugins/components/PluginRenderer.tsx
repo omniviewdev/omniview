@@ -1,5 +1,4 @@
 import React from 'react';
-import Box from '@mui/material/Box';
 import { ErrorBoundary } from 'react-error-boundary';
 
 import { PluginContextProvider } from '@omniviewdev/runtime';
@@ -7,6 +6,7 @@ import { Outlet, useLoaderData } from 'react-router-dom';
 import PluginDevOverlay from '@/features/devtools/components/PluginDevOverlay';
 import { PanelErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
 import { usePluginService } from '@/features/plugins';
+import styles from './PluginRenderer.module.css';
 
 export type PluginRendererProps = {}
 
@@ -38,7 +38,7 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
   }
 
   return (
-    <Box sx={{ position: 'relative', flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div className={styles.Root}>
       <PluginDevOverlay pluginId={data.pluginID} />
       <ErrorBoundary
         FallbackComponent={(props) => <PanelErrorFallback {...props} label={`Plugin: ${data.pluginID}`} boundary="Plugin Renderer" />}
@@ -49,7 +49,7 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
           <Outlet />
         </PluginContextProvider>
       </ErrorBoundary>
-    </Box>
+    </div>
   );
 };
 

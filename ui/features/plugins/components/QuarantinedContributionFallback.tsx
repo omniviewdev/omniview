@@ -1,7 +1,6 @@
 import React from 'react';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
+import { Button, Text } from '@omniviewdev/base-ui';
+import styles from './QuarantinedContributionFallback.module.css';
 
 export interface QuarantinedContributionFallbackProps {
   readonly pluginId: string;
@@ -24,40 +23,31 @@ export function QuarantinedContributionFallback({
   onReEnable,
 }: QuarantinedContributionFallbackProps): React.ReactElement {
   return (
-    <Box
-      role="alert"
-      sx={{
-        p: 1.5,
-        border: '1px dashed',
-        borderColor: 'warning.main',
-        borderRadius: 1,
-        bgcolor: 'warning.light',
-      }}
-    >
-      <Typography variant="caption" color="warning.main" fontWeight="bold">
+    <div role="alert" className={styles.Root}>
+      <Text size="xs" tone="warning" weight="semibold">
         Quarantined Extension
-      </Typography>
-      <Typography variant="caption" display="block" color="text.secondary">
+      </Text>
+      <Text size="xs" tone="muted" className={styles.Line}>
         Plugin: {pluginId}
-      </Typography>
-      <Typography variant="caption" display="block" color="text.secondary">
+      </Text>
+      <Text size="xs" tone="muted" className={styles.Line}>
         Extension Point: {extensionPointId}
-      </Typography>
-      <Typography variant="caption" display="block" color="text.secondary">
+      </Text>
+      <Text size="xs" tone="muted" className={styles.Line}>
         Contribution: {contributionId}
-      </Typography>
-      <Typography variant="caption" display="block" color="text.secondary">
+      </Text>
+      <Text size="xs" tone="muted" className={styles.Line}>
         Crashes: {crashCount}
-      </Typography>
+      </Text>
       <Button
-        size="small"
-        variant="outlined"
+        size="sm"
+        variant="outline"
         color="warning"
         onClick={onReEnable}
-        sx={{ mt: 1 }}
+        className={styles.Action}
       >
         Re-enable
       </Button>
-    </Box>
+    </div>
   );
 }
