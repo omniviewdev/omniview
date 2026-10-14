@@ -42,8 +42,8 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	b.persistOnChange(coreCategories)
 
 	// Wire telemetry settings hot-toggle: when any setting in the
-	// "telemetry" category changes, rebuild TelemetryConfig and apply.
-	telemetryFromSettings := func(vals map[string]any) telemetry.TelemetryConfig {
+	// "telemetry" category changes, rebuild the telemetry Config and apply.
+	telemetryFromSettings := func(vals map[string]any) telemetry.Config {
 		return telemetryConfigFromSettings(b.TelemetrySvc.Config(), vals)
 	}
 
@@ -125,7 +125,7 @@ func (b *Service) persistOnChange(coreCategories []pkgsettings.Category) {
 
 // telemetryConfigFromSettings overlays the values of the "telemetry" settings
 // category onto cfg.
-func telemetryConfigFromSettings(cfg telemetry.TelemetryConfig, vals map[string]any) telemetry.TelemetryConfig {
+func telemetryConfigFromSettings(cfg telemetry.Config, vals map[string]any) telemetry.Config {
 	if v, ok := vals["enabled"].(bool); ok {
 		cfg.Enabled = v
 	}

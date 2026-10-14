@@ -24,7 +24,7 @@ func resetGlobalOTel() {
 func TestServiceDisabled(t *testing.T) {
 	t.Cleanup(resetGlobalOTel)
 
-	cfg := TelemetryConfig{Enabled: false}
+	cfg := Config{Enabled: false}
 	svc := New(cfg, "1.0.0", "abc", "2026-03-11", true, t.TempDir())
 
 	err := svc.Init(context.Background())
@@ -44,7 +44,7 @@ func TestServiceDisabled(t *testing.T) {
 func TestServiceEnabledTracesOnly(t *testing.T) {
 	t.Cleanup(resetGlobalOTel)
 
-	cfg := TelemetryConfig{
+	cfg := Config{
 		Enabled:      true,
 		Traces:       true,
 		Metrics:      false,
@@ -73,14 +73,14 @@ func TestApplyConfig_ToggleTracesOnOff(t *testing.T) {
 
 	recorder := tracetest.NewInMemoryExporter()
 
-	svc := New(TelemetryConfig{
+	svc := New(Config{
 		Enabled:      true,
 		Traces:       true,
 		OTLPEndpoint: "localhost:4318",
 	}, "test", "abc", "2026-01-01", true, t.TempDir())
 
 	require.NoError(t, svc.Init(context.Background()))
-	defer svc.Shutdown(context.Background())
+	defer func() { _ = svc.Shutdown(context.Background()) }()
 
 	// Swap in our in-memory recorder so we can observe
 	svc.switchableTraceExp.Swap(recorder)
@@ -94,7 +94,7 @@ func TestApplyConfig_ToggleTracesOnOff(t *testing.T) {
 
 	// Toggle traces OFF
 	recorder.Reset()
-	require.NoError(t, svc.ApplyConfig(context.Background(), TelemetryConfig{
+	require.NoError(t, svc.ApplyConfig(context.Background(), Config{
 		Enabled:      true,
 		Traces:       false,
 		OTLPEndpoint: "localhost:4318",
@@ -107,7 +107,7 @@ func TestApplyConfig_ToggleTracesOnOff(t *testing.T) {
 	assert.Empty(t, recorder.GetSpans())
 
 	// Toggle traces back ON — swap in recorder again
-	require.NoError(t, svc.ApplyConfig(context.Background(), TelemetryConfig{
+	require.NoError(t, svc.ApplyConfig(context.Background(), Config{
 		Enabled:      true,
 		Traces:       true,
 		OTLPEndpoint: "localhost:4318",
@@ -125,7 +125,7 @@ func TestApplyConfig_MasterSwitchOff(t *testing.T) {
 
 	recorder := tracetest.NewInMemoryExporter()
 
-	svc := New(TelemetryConfig{
+	svc := New(Config{
 		Enabled:      true,
 		Traces:       true,
 		Metrics:      true,
@@ -134,13 +134,13 @@ func TestApplyConfig_MasterSwitchOff(t *testing.T) {
 	}, "test", "abc", "2026-01-01", true, t.TempDir())
 
 	require.NoError(t, svc.Init(context.Background()))
-	defer svc.Shutdown(context.Background())
+	defer func() { _ = svc.Shutdown(context.Background()) }()
 
 	// Swap in recorder so we can observe
 	svc.switchableTraceExp.Swap(recorder)
 
 	// Turn everything off
-	require.NoError(t, svc.ApplyConfig(context.Background(), TelemetryConfig{
+	require.NoError(t, svc.ApplyConfig(context.Background(), Config{
 		Enabled: false,
 	}))
 

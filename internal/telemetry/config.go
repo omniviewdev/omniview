@@ -1,29 +1,28 @@
 package telemetry
 
-// validLogLevelList is the single canonical, ordered list of accepted log levels.
-var validLogLevelList = []string{"debug", "info", "warn", "error"}
+import "slices"
 
-// validLogLevelSet is derived from validLogLevelList for O(1) lookups.
-var validLogLevelSet map[string]struct{}
+// Accepted log level names.
+const (
+	levelDebug = "debug"
+	levelInfo  = "info"
+	levelWarn  = "warn"
+	levelError = "error"
+)
 
-func init() {
-	validLogLevelSet = make(map[string]struct{}, len(validLogLevelList))
-	for _, l := range validLogLevelList {
-		validLogLevelSet[l] = struct{}{}
-	}
+// validLogLevels returns the single canonical, ordered list of accepted log levels.
+func validLogLevels() []string {
+	return []string{levelDebug, levelInfo, levelWarn, levelError}
 }
 
 // GetValidLogLevels returns a copy of the accepted log level strings.
 func GetValidLogLevels() []string {
-	out := make([]string, len(validLogLevelList))
-	copy(out, validLogLevelList)
-	return out
+	return validLogLevels()
 }
 
 // IsValidLogLevel reports whether s is a recognized log level.
 func IsValidLogLevel(s string) bool {
-	_, ok := validLogLevelSet[s]
-	return ok
+	return slices.Contains(validLogLevels(), s)
 }
 
 // Build-time defaults injected via ldflags (e.g. -X ...buildOTLPEndpoint=...).
@@ -32,9 +31,9 @@ var (
 	buildPyroscopeEndpoint string // e.g. "https://profiles-prod-001.grafana.net"
 )
 
-// TelemetryConfig holds all telemetry-related configuration.
+// Config holds all telemetry-related configuration.
 // AuthHeader/AuthValue are set at runtime via the settings UI, never at build time.
-type TelemetryConfig struct {
+type Config struct {
 	Enabled           bool
 	Traces            bool
 	Metrics           bool
@@ -47,8 +46,6 @@ type TelemetryConfig struct {
 	AuthValue         string
 }
 
-// DefaultConfig returns sensible defaults based on whether the app is running
-// in development mode or production mode.
 // orDefault returns s if non-empty, otherwise fallback.
 func orDefault(s, fallback string) string {
 	if s != "" {
@@ -57,27 +54,33 @@ func orDefault(s, fallback string) string {
 	return fallback
 }
 
-func DefaultConfig(isDev bool) TelemetryConfig {
+// DefaultConfig returns sensible defaults based on whether the app is running
+// in development mode or production mode.
+func DefaultConfig(isDev bool) Config {
 	if isDev {
-		return TelemetryConfig{
+		return Config{
 			Enabled:           false,
 			Traces:            true,
 			Metrics:           true,
 			LogsShip:          true,
-			LogsShipLevel:     "debug",
+			LogsShipLevel:     levelDebug,
 			Profiling:         true,
 			OTLPEndpoint:      orDefault(buildOTLPEndpoint, "localhost:4318"),
 			PyroscopeEndpoint: orDefault(buildPyroscopeEndpoint, "localhost:4040"),
+			AuthHeader:        "",
+			AuthValue:         "",
 		}
 	}
-	return TelemetryConfig{
+	return Config{
 		Enabled:           false,
 		Traces:            true,
 		Metrics:           true,
 		LogsShip:          true,
-		LogsShipLevel:     "warn",
+		LogsShipLevel:     levelWarn,
 		Profiling:         false,
 		OTLPEndpoint:      buildOTLPEndpoint,
 		PyroscopeEndpoint: buildPyroscopeEndpoint,
+		AuthHeader:        "",
+		AuthValue:         "",
 	}
 }

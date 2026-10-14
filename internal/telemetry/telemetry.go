@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	otelpyroscope "github.com/grafana/otel-profiling-go"
@@ -25,10 +26,20 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
+// Rotation limits for the omniview.log file.
+const (
+	logMaxSizeMB  = 50
+	logMaxBackups = 3
+	logMaxAgeDays = 14
+
+	// runtimeMetricsInterval is the minimum interval between runtime MemStats reads.
+	runtimeMetricsInterval = 15 * time.Second
+)
+
 // Service is the top-level telemetry orchestrator. It initialises tracing,
 // metrics, log shipping, profiling and a triple-core Zap logger.
 type Service struct {
-	cfg     TelemetryConfig
+	cfg     Config
 	version string
 	commit  string
 	date    string
@@ -52,7 +63,7 @@ type Service struct {
 
 // New creates a telemetry Service. Call Init to start it.
 // logDir is the directory where log files are stored.
-func New(cfg TelemetryConfig, version, commit, date string, isDev bool, logDir string) *Service {
+func New(cfg Config, version, commit, date string, isDev bool, logDir string) *Service {
 	return &Service{
 		cfg:     cfg,
 		version: version,
@@ -60,6 +71,18 @@ func New(cfg TelemetryConfig, version, commit, date string, isDev bool, logDir s
 		date:    date,
 		isDev:   isDev,
 		logDir:  logDir,
+
+		resource:            nil,
+		tracerProvider:      nil,
+		meterProvider:       nil,
+		loggerProvider:      nil,
+		profiler:            nil,
+		zapLogger:           nil,
+		otelLevel:           nil,
+		switchableTraceExp:  nil,
+		switchableMetricExp: nil,
+		switchableLogExp:    nil,
+		mu:                  sync.RWMutex{},
 	}
 }
 
@@ -78,32 +101,14 @@ func (s *Service) Init(ctx context.Context) error {
 
 	// Always initialize switchable exporters and providers so ApplyConfig can
 	// hot-swap exporters even when telemetry starts disabled.
-	s.switchableTraceExp = &SwitchableSpanExporter{}
-	s.switchableMetricExp = &SwitchableMetricExporter{}
-	s.switchableLogExp = &SwitchableLogExporter{}
+	s.switchableTraceExp = &SwitchableSpanExporter{inner: atomic.Value{}}
+	s.switchableMetricExp = &SwitchableMetricExporter{inner: atomic.Value{}}
+	s.switchableLogExp = &SwitchableLogExporter{inner: atomic.Value{}}
 
 	// When enabled with a valid endpoint, swap in real exporters before creating providers.
 	if s.cfg.Enabled && s.cfg.OTLPEndpoint != "" {
-		if s.cfg.Traces {
-			exp, err := NewTraceExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
-			if err != nil {
-				return err
-			}
-			s.switchableTraceExp.Swap(exp)
-		}
-		if s.cfg.Metrics {
-			exp, err := NewMetricExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
-			if err != nil {
-				return err
-			}
-			s.switchableMetricExp.Swap(exp)
-		}
-		if s.cfg.LogsShip {
-			exp, err := NewLogExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
-			if err != nil {
-				return err
-			}
-			s.switchableLogExp.Swap(exp)
+		if err = s.swapInInitialExporters(ctx); err != nil {
+			return err
 		}
 	}
 
@@ -118,7 +123,7 @@ func (s *Service) Init(ctx context.Context) error {
 
 	s.meterProvider = NewMeterProvider(s.resource, s.switchableMetricExp)
 	otel.SetMeterProvider(s.meterProvider)
-	if err := otelruntime.Start(otelruntime.WithMinimumReadMemStatsInterval(15 * time.Second)); err != nil {
+	if err = otelruntime.Start(otelruntime.WithMinimumReadMemStatsInterval(runtimeMetricsInterval)); err != nil {
 		otel.SetMeterProvider(noopmeter.NewMeterProvider())
 		_ = s.meterProvider.Shutdown(context.Background())
 		s.meterProvider = nil
@@ -136,13 +141,40 @@ func (s *Service) Init(ctx context.Context) error {
 
 	// Start profiling if enabled at boot.
 	if s.cfg.Enabled && s.cfg.Profiling && s.cfg.PyroscopeEndpoint != "" {
-		profiler, err := startProfiling(s.version, s.cfg.PyroscopeEndpoint)
-		if err != nil {
-			return err
+		profiler, profErr := startProfiling(s.version, s.cfg.PyroscopeEndpoint)
+		if profErr != nil {
+			return profErr
 		}
 		s.profiler = profiler
 	}
 
+	return nil
+}
+
+// swapInInitialExporters creates the real exporters enabled in s.cfg and swaps
+// them into the switchable exporters. Callers must hold s.mu.
+func (s *Service) swapInInitialExporters(ctx context.Context) error {
+	if s.cfg.Traces {
+		exp, err := NewTraceExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
+		if err != nil {
+			return err
+		}
+		s.switchableTraceExp.Swap(exp)
+	}
+	if s.cfg.Metrics {
+		exp, err := NewMetricExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
+		if err != nil {
+			return err
+		}
+		s.switchableMetricExp.Swap(exp)
+	}
+	if s.cfg.LogsShip {
+		exp, err := NewLogExporter(ctx, s.cfg.OTLPEndpoint, s.cfg.AuthHeader, s.cfg.AuthValue)
+		if err != nil {
+			return err
+		}
+		s.switchableLogExp.Swap(exp)
+	}
 	return nil
 }
 
@@ -212,13 +244,13 @@ func (s *Service) SetLogShipLevel(level string) {
 	}
 	var zapLvl zapcore.Level
 	switch level {
-	case "debug":
+	case levelDebug:
 		zapLvl = zapcore.DebugLevel
-	case "info":
+	case levelInfo:
 		zapLvl = zapcore.InfoLevel
-	case "warn":
+	case levelWarn:
 		zapLvl = zapcore.WarnLevel
-	case "error":
+	case levelError:
 		zapLvl = zapcore.ErrorLevel
 	default:
 		return
@@ -229,19 +261,13 @@ func (s *Service) SetLogShipLevel(level string) {
 // ApplyConfig applies new telemetry settings at runtime by swapping exporters.
 // This is the primary hot-toggle mechanism — called when the user changes
 // telemetry settings via the UI. The context is used for exporter creation.
-func (s *Service) ApplyConfig(ctx context.Context, cfg TelemetryConfig) error {
+func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Master switch OFF — swap all to noop.
 	if !cfg.Enabled {
-		s.swapTraceExporter(noopSpanExporter{})
-		s.swapMetricExporter(noopMetricExporter{})
-		s.swapLogExporter(noopLogExporter{})
-		if s.profiler != nil {
-			_ = s.profiler.Stop()
-			s.profiler = nil
-		}
+		s.disableAll()
 		s.cfg = cfg
 		return nil
 	}
@@ -260,42 +286,29 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg TelemetryConfig) error {
 	var newLogExp sdklog.Exporter
 	var newProfiler *pyroscope.Profiler
 
+	var err error
+
 	needTraceSwap := cfg.Traces != s.cfg.Traces || configChanged
 	if needTraceSwap {
-		if cfg.Traces && hasEndpoint {
-			exp, err := NewTraceExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
-			if err != nil {
-				return err
-			}
-			newTraceExp = exp
-		} else {
-			newTraceExp = noopSpanExporter{}
+		newTraceExp, err = traceExporterFor(ctx, cfg, cfg.Traces && hasEndpoint)
+		if err != nil {
+			return err
 		}
 	}
 
 	needMetricSwap := cfg.Metrics != s.cfg.Metrics || configChanged
 	if needMetricSwap {
-		if cfg.Metrics && hasEndpoint {
-			exp, err := NewMetricExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
-			if err != nil {
-				return err
-			}
-			newMetricExp = exp
-		} else {
-			newMetricExp = noopMetricExporter{}
+		newMetricExp, err = metricExporterFor(ctx, cfg, cfg.Metrics && hasEndpoint)
+		if err != nil {
+			return err
 		}
 	}
 
 	needLogSwap := cfg.LogsShip != s.cfg.LogsShip || configChanged
 	if needLogSwap {
-		if cfg.LogsShip && hasEndpoint {
-			exp, err := NewLogExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
-			if err != nil {
-				return err
-			}
-			newLogExp = exp
-		} else {
-			newLogExp = noopLogExporter{}
+		newLogExp, err = logExporterFor(ctx, cfg, cfg.LogsShip && hasEndpoint)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -303,11 +316,10 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg TelemetryConfig) error {
 	needProfilerEndpointChange := cfg.Profiling && s.profiler != nil &&
 		cfg.PyroscopeEndpoint != s.cfg.PyroscopeEndpoint && cfg.PyroscopeEndpoint != ""
 	if needProfilerStart || needProfilerEndpointChange {
-		profiler, err := startProfiling(s.version, cfg.PyroscopeEndpoint)
+		newProfiler, err = startProfiling(s.version, cfg.PyroscopeEndpoint)
 		if err != nil {
 			return err
 		}
-		newProfiler = profiler
 	}
 
 	// Stage 2: All allocations succeeded — apply atomically.
@@ -325,6 +337,28 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg TelemetryConfig) error {
 		s.SetLogShipLevel(cfg.LogsShipLevel)
 	}
 
+	s.applyProfiling(cfg, newProfiler)
+
+	s.cfg = cfg
+	return nil
+}
+
+// disableAll swaps every exporter to noop and stops the profiler.
+// Callers must hold s.mu.
+func (s *Service) disableAll() {
+	s.swapTraceExporter(noopSpanExporter{})
+	s.swapMetricExporter(noopMetricExporter{})
+	s.swapLogExporter(noopLogExporter{})
+	if s.profiler != nil {
+		_ = s.profiler.Stop()
+		s.profiler = nil
+	}
+}
+
+// applyProfiling updates the tracer provider wrapper and the running profiler
+// for cfg, using newProfiler if one was started. It must run before s.cfg is
+// replaced by cfg. Callers must hold s.mu.
+func (s *Service) applyProfiling(cfg Config, newProfiler *pyroscope.Profiler) {
 	// Update tracer provider wrapper when profiling changes.
 	if (cfg.Profiling != s.cfg.Profiling || cfg.PyroscopeEndpoint != s.cfg.PyroscopeEndpoint) && s.tracerProvider != nil {
 		if cfg.Profiling && cfg.PyroscopeEndpoint != "" {
@@ -344,13 +378,46 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg TelemetryConfig) error {
 		_ = s.profiler.Stop()
 		s.profiler = nil
 	}
+}
 
-	s.cfg = cfg
-	return nil
+// traceExporterFor returns a real OTLP trace exporter when enabled, otherwise a noop one.
+func traceExporterFor(ctx context.Context, cfg Config, enabled bool) (sdktrace.SpanExporter, error) {
+	if !enabled {
+		return noopSpanExporter{}, nil
+	}
+	exp, err := NewTraceExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+	if err != nil {
+		return nil, err
+	}
+	return exp, nil
+}
+
+// metricExporterFor returns a real OTLP metric exporter when enabled, otherwise a noop one.
+func metricExporterFor(ctx context.Context, cfg Config, enabled bool) (sdkmetric.Exporter, error) {
+	if !enabled {
+		return noopMetricExporter{}, nil
+	}
+	exp, err := NewMetricExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+	if err != nil {
+		return nil, err
+	}
+	return exp, nil
+}
+
+// logExporterFor returns a real OTLP log exporter when enabled, otherwise a noop one.
+func logExporterFor(ctx context.Context, cfg Config, enabled bool) (sdklog.Exporter, error) {
+	if !enabled {
+		return noopLogExporter{}, nil
+	}
+	exp, err := NewLogExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+	if err != nil {
+		return nil, err
+	}
+	return exp, nil
 }
 
 // Config returns the current telemetry configuration.
-func (s *Service) Config() TelemetryConfig {
+func (s *Service) Config() Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.cfg
@@ -430,16 +497,23 @@ func (c *levelFilterCore) With(fields []zapcore.Field) zapcore.Core {
 //
 // The returned *zap.AtomicLevel (nil when loggerProvider is nil) controls the
 // OTel core and can be used for hot-toggling the ship level at runtime.
-func buildZapLogger(isDev bool, loggerProvider *sdklog.LoggerProvider, shipLevel string, logDir string) (*zap.Logger, *zap.AtomicLevel, error) {
+func buildZapLogger(
+	isDev bool,
+	loggerProvider *sdklog.LoggerProvider,
+	shipLevel string,
+	logDir string,
+) (*zap.Logger, *zap.AtomicLevel, error) {
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return nil, nil, err
 	}
 
 	fileWriter := &lumberjack.Logger{
 		Filename:   filepath.Join(logDir, "omniview.log"),
-		MaxSize:    50,
-		MaxBackups: 3,
-		MaxAge:     14,
+		MaxSize:    logMaxSizeMB,
+		MaxBackups: logMaxBackups,
+		MaxAge:     logMaxAgeDays,
+		LocalTime:  false,
+		Compress:   false,
 	}
 	fileEncoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
 	fileCore := zapcore.NewCore(fileEncoder, zapcore.AddSync(fileWriter), zapcore.DebugLevel)

@@ -4,10 +4,11 @@ import (
 	"context"
 	"strings"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // ZapBackend implements the plugin-sdk logging.Backend interface, bridging
@@ -15,6 +16,9 @@ import (
 type ZapBackend struct {
 	logger *zap.Logger
 }
+
+// traceFieldCount is the number of trace correlation fields (trace_id, span_id).
+const traceFieldCount = 2
 
 // NewZapBackend creates a ZapBackend that writes plugin-sdk log records to the
 // given Zap logger.
@@ -26,7 +30,7 @@ func NewZapBackend(logger *zap.Logger) *ZapBackend {
 // If the context carries an active OTel span, trace_id and span_id are
 // extracted and added as structured fields for log↔trace correlation.
 func (b *ZapBackend) Write(ctx context.Context, r logging.Record) error {
-	fields := make([]zap.Field, 0, len(r.Fields)+2)
+	fields := make([]zap.Field, 0, len(r.Fields)+traceFieldCount)
 	if ctx != nil {
 		if sc := trace.SpanFromContext(ctx).SpanContext(); sc.IsValid() {
 			fields = append(fields,

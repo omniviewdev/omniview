@@ -11,7 +11,7 @@ import (
 
 func TestNewMetrics(t *testing.T) {
 	mp := sdkmetric.NewMeterProvider()
-	defer mp.Shutdown(context.Background())
+	defer func() { _ = mp.Shutdown(context.Background()) }()
 
 	m, err := NewMetrics(mp)
 	require.NoError(t, err)
