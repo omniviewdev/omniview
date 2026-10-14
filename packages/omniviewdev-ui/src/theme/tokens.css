@@ -84,7 +84,7 @@
   /* --- Typography --- */
   --ov-font-ui:   -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
                   Helvetica, Arial, sans-serif;
-  --ov-font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", "Fira Code",
+  --ovl-font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", "Fira Code",
                   Menlo, Consolas, "Liberation Mono", monospace;
 
   --ov-text-xs:   0.6875rem;   /* 11px */
@@ -107,8 +107,8 @@
   --ov-space-0:  0px;
   --ov-space-1:  4px;
   --ov-space-2:  8px;
-  --ov-space-3:  12px;
-  --ov-space-4:  16px;
+  --ovl-space-3:  12px;
+  --ovl-space-4:  16px;
   --ov-space-5:  20px;
   --ov-space-6:  24px;
   --ov-space-8:  32px;
@@ -135,15 +135,15 @@
 
   /* --- Elevation: Radius --- */
   --ov-radius-none: 0;
-  --ov-radius-sm:   4px;
-  --ov-radius-md:   6px;
-  --ov-radius-lg:   8px;
-  --ov-radius-xl:   12px;
-  --ov-radius-full: 9999px;
+  --ovl-radius-sm:   4px;
+  --ovl-radius-md:   6px;
+  --ovl-radius-lg:   8px;
+  --ovl-radius-xl:   12px;
+  --ovl-radius-full: 9999px;
 
   /* --- Motion: Durations --- */
   --ov-duration-instant: 0ms;
-  --ov-duration-fast:    100ms;
+  --ovl-duration-fast:    100ms;
   --ov-duration-normal:  200ms;
   --ov-duration-slow:    300ms;
 
@@ -165,7 +165,7 @@
 /* ================================================================
  * LIGHT THEME OVERRIDES
  * ================================================================ */
-[data-ov-theme="light"] {
+[data-ovl-theme="light"] {
   --ov-bg-base:             #FFFFFF;
   --ov-bg-surface:          #F6F8FA;
   --ov-bg-surface-raised:   #FFFFFF;
@@ -218,7 +218,7 @@
 /* ================================================================
  * HIGH CONTRAST THEME OVERRIDES
  * ================================================================ */
-[data-ov-theme="high-contrast"] {
+[data-ovl-theme="high-contrast"] {
   --ov-bg-base:             #010409;
   --ov-bg-surface:          #0D1117;
   --ov-bg-surface-raised:   #161B22;
@@ -248,7 +248,7 @@
  * Overrides the gray-scale primitives so that var()-based semantic
  * tokens (backgrounds, borders) resolve automatically.
  * ================================================================ */
-[data-ov-theme="solarized-dark"] {
+[data-ovl-theme="solarized-dark"] {
   /* Neutral scale: base03 → base02 → base01 → base00 → base0 → base1 → base2 */
   --ov-scale-gray-0:  #002B36;
   --ov-scale-gray-1:  #04313C;
@@ -308,7 +308,7 @@
  * SOLARIZED LIGHT
  * Ethan Schoonover's Solarized palette — light variant.
  * ================================================================ */
-[data-ov-theme="solarized-light"] {
+[data-ovl-theme="solarized-light"] {
   --ov-bg-base:             #FDF6E3;
   --ov-bg-surface:          #EEE8D5;
   --ov-bg-surface-raised:   #FDF6E3;
@@ -364,7 +364,7 @@
 @media (prefers-reduced-motion: reduce) {
   :root {
     --ov-duration-instant: 0ms;
-    --ov-duration-fast:    0ms;
+    --ovl-duration-fast:    0ms;
     --ov-duration-normal:  0ms;
     --ov-duration-slow:    0ms;
   }

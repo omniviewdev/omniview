@@ -43,7 +43,7 @@ export default function ClipboardText({
           sx={{
             fontSize: '0.8125rem',
             color: 'var(--ov-fg-default)',
-            fontFamily: 'var(--ov-font-mono)',
+            fontFamily: 'var(--ovl-font-mono)',
             minWidth: 0,
             maxWidth: '100%',
             ...(truncate && {

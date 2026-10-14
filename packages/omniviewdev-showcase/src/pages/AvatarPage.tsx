@@ -240,7 +240,7 @@ export default function AvatarPage() {
                   py: 0.75,
                   minWidth: 160,
                   maxWidth: 220,
-                  borderRadius: 'var(--ov-radius-md)',
+                  borderRadius: 'var(--ovl-radius-md)',
                   border: '1px solid var(--ov-border-default)',
                   bgcolor: 'var(--ov-bg-surface)',
                   cursor: 'pointer',

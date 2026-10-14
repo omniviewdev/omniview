@@ -10,6 +10,7 @@ import Avatar from '@mui/material/Avatar';
 // Icons
 import Icon from '@/components/icons/Icon';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
+import { usePluginService } from '@/features/plugins';
 
 // Project imports
 import { IsImage } from '@/utils/url';
@@ -17,6 +18,12 @@ import { IsImage } from '@/utils/url';
 export default function CoreLayoutSidebar() {
   const { pathname } = useLocation();
   const { plugins } = usePluginManager();
+  const { registrations } = usePluginService();
+
+  // A plugin that loaded without any pages only contributes to other plugins'
+  // extension points, so it has nothing to navigate to. Plugins that have not
+  // loaded yet (or failed to) keep their entry.
+  const navigable = plugins.data?.filter(({ id }) => registrations.get(id)?.routes.length !== 0);
   var matched = pathname.match(/^\/_plugin\/([A-Za-z0-9-]+).*/)?.[1] || '';
 
   return (
@@ -66,7 +73,7 @@ export default function CoreLayoutSidebar() {
           },
         }}
       >
-        {!plugins.isLoading && plugins.data?.map(({ id, metadata }) => (
+        {!plugins.isLoading && navigable?.map(({ id, metadata }) => (
           <MuiTab
             key={id}
             value={id}

@@ -83,7 +83,7 @@ export default function CodeEditor({
           wordWrap: wordWrap ? 'on' : 'off',
           scrollBeyondLastLine: false,
           fontSize: 13,
-          fontFamily: 'var(--ov-font-mono)',
+          fontFamily: 'var(--ovl-font-mono)',
           tabSize: 2,
           renderLineHighlight: 'line',
           automaticLayout: true,

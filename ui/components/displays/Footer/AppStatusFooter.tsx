@@ -214,7 +214,7 @@ function DevServerPopover({ pluginId, state, anchorEl, onClose }: DevServerPopov
               bgcolor: 'rgba(248,81,73,0.1)',
               border: '1px solid rgba(248,81,73,0.2)',
               fontSize: '0.6875rem',
-              fontFamily: 'var(--ov-font-mono, monospace)',
+              fontFamily: 'var(--ovl-font-mono, monospace)',
               color: '#f85149',
               wordBreak: 'break-word',
               maxHeight: 60,
@@ -290,7 +290,7 @@ function DetailRow({
       <Box
         sx={{
           fontSize: '0.6875rem',
-          fontFamily: mono ? 'var(--ov-font-mono, monospace)' : 'inherit',
+          fontFamily: mono ? 'var(--ovl-font-mono, monospace)' : 'inherit',
           color: valueColor ?? 'var(--ov-fg-muted, #8b949e)',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -693,7 +693,7 @@ function FailedPluginPopover({
                 bgcolor: 'rgba(248,81,73,0.1)',
                 border: '1px solid rgba(248,81,73,0.2)',
                 fontSize: '0.6875rem',
-                fontFamily: 'var(--ov-font-mono, monospace)',
+                fontFamily: 'var(--ovl-font-mono, monospace)',
                 color: '#f85149',
                 wordBreak: 'break-word',
                 maxHeight: 48,
@@ -833,7 +833,7 @@ function PortForwardPopover({
                     sx={{
                       fontSize: '0.75rem',
                       fontWeight: 600,
-                      fontFamily: 'var(--ov-font-mono, monospace)',
+                      fontFamily: 'var(--ovl-font-mono, monospace)',
                       color: 'var(--ov-fg-base, #e6edf3)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -1032,7 +1032,7 @@ function OperationsPopover({
                     sx={{
                       fontSize: '0.625rem',
                       color: 'var(--ov-fg-faint, #8b949e)',
-                      fontFamily: 'var(--ov-font-mono, monospace)',
+                      fontFamily: 'var(--ovl-font-mono, monospace)',
                     }}
                   >
                     {elapsed}s

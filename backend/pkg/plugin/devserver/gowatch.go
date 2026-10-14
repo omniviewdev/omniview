@@ -415,6 +415,20 @@ func (gw *goWatcherProcess) handleRebuild(changedFile string) {
 	gw.setStatus(DevProcessStatusReady)
 }
 
+// goBuildEnv drops GOROOT from the inherited environment. The app may have been
+// launched by one Go toolchain while the configured go binary (often a version
+// manager shim that picks a version per directory) is another; an inherited
+// GOROOT then makes go fail with "does not match go tool version".
+func goBuildEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "GOROOT=") {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
 // runGoBuild runs `go build -o build/bin/plugin ./pkg` in the plugin's dev directory.
 // Returns nil on success, or an error containing the compiler output.
 func (gw *goWatcherProcess) runGoBuild() error {
@@ -434,6 +448,7 @@ func (gw *goWatcherProcess) runGoBuild() error {
 
 	cmd := exec.CommandContext(gw.ctx, goPath, "build", "-o", "build/bin/plugin", "./pkg")
 	cmd.Dir = gw.devPath
+	cmd.Env = goBuildEnv(os.Environ())
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 

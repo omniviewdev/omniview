@@ -53,7 +53,7 @@ export default function LogsViewer({
     <Box
       ref={containerRef}
       sx={{
-        fontFamily: 'var(--ov-font-mono)',
+        fontFamily: 'var(--ovl-font-mono)',
         fontSize: '0.75rem',
         lineHeight: `${ROW_HEIGHT}px`,
         bgcolor: '#0d1117',

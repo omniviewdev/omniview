@@ -84,7 +84,7 @@ export default function TagInput({
             gap: 0.5,
             alignItems: 'center',
             border: '1px solid var(--ov-border-default)',
-            borderRadius: 'var(--ov-radius-md, 6px)',
+            borderRadius: 'var(--ovl-radius-md, 6px)',
             padding: '4px 8px',
             bgcolor: 'var(--ov-bg-surface)',
             minHeight: muiSize === 'small' ? 36 : 40,

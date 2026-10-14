@@ -131,7 +131,7 @@ export default function MCPServerConfig({
               sx={{
                 fontSize: 'var(--ov-text-xs)',
                 color: 'var(--ov-fg-faint)',
-                fontFamily: 'var(--ov-font-mono)',
+                fontFamily: 'var(--ovl-font-mono)',
                 mb: server.capabilities?.length ? 0.75 : 0,
               }}
             >

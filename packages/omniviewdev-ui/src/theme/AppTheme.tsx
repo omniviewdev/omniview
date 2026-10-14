@@ -68,7 +68,7 @@ function ColorModeSync({ mode }: { mode: ColorMode }) {
 }
 
 /**
- * OvThemeSync — keeps the `data-ov-theme` attribute on <html> in sync with
+ * OvThemeSync — keeps the `data-ovl-theme` attribute on <html> in sync with
  * the chosen variant + MUI's *actual* resolved color mode so that CSS
  * custom-property themes update when the user toggles light/dark or when
  * the OS preference changes.
@@ -86,7 +86,7 @@ function OvThemeSync({ variant }: { variant: ThemeVariant }) {
       ? resolvedMode
       : `${variant}-${resolvedMode}`;
 
-    document.documentElement.setAttribute('data-ov-theme', attr);
+    document.documentElement.setAttribute('data-ovl-theme', attr);
   }, [variant, mode, systemMode]);
 
   return null;

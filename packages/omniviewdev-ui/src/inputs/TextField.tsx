@@ -127,7 +127,7 @@ export default function TextField({
           endAdornment: endAdornment ? (
             <InputAdornment position="end">{endAdornment}</InputAdornment>
           ) : undefined,
-          sx: monospace ? { fontFamily: 'var(--ov-font-mono)' } : undefined,
+          sx: monospace ? { fontFamily: 'var(--ovl-font-mono)' } : undefined,
         },
         htmlInput: inputProps,
       }}

@@ -59,7 +59,7 @@ export default function PluginNotFoundPage() {
         <Typography
           variant="body2"
           sx={{
-            fontFamily: 'var(--ov-font-mono, monospace)',
+            fontFamily: 'var(--ovl-font-mono, monospace)',
             fontSize: '0.75rem',
             color: 'var(--ov-fg-muted)',
             wordBreak: 'break-word',

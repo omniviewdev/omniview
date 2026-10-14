@@ -744,3 +744,8 @@ func TestGoWatcherStart_GoWork_NonExistentModule(t *testing.T) {
 	require.GreaterOrEqual(t, len(logs), 1)
 	assert.Contains(t, logs[0].Message, "Watching 2 directories")
 }
+
+func TestGoBuildEnvDropsGOROOT(t *testing.T) {
+	got := goBuildEnv([]string{"PATH=/bin", "GOROOT=/old/go", "GOPATH=/gopath"})
+	assert.Equal(t, []string{"PATH=/bin", "GOPATH=/gopath"}, got)
+}
