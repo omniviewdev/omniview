@@ -34,7 +34,7 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 	return nil
 }
 
-// CRUD
+// CRUD.
 func (s *ServiceWrapper) Get(
 	pluginID, connectionID, key string,
 	input sdkresource.GetInput,
@@ -72,7 +72,7 @@ func (s *ServiceWrapper) Delete(
 	return s.Ctrl.Delete(pluginID, connectionID, key, input)
 }
 
-// Connection lifecycle
+// Connection lifecycle.
 func (s *ServiceWrapper) StartConnection(pluginID, connectionID string) (sdktypes.ConnectionStatus, error) {
 	return s.Ctrl.StartConnection(pluginID, connectionID)
 }
@@ -113,7 +113,7 @@ func (s *ServiceWrapper) RemoveConnection(pluginID, connectionID string) error {
 	return s.Ctrl.RemoveConnection(pluginID, connectionID)
 }
 
-// Watch lifecycle
+// Watch lifecycle.
 func (s *ServiceWrapper) StartConnectionWatch(pluginID, connectionID string) error {
 	return s.Ctrl.StartConnectionWatch(pluginID, connectionID)
 }
@@ -136,7 +136,7 @@ func (s *ServiceWrapper) IsResourceWatchRunning(pluginID, connectionID, resource
 	return s.Ctrl.IsResourceWatchRunning(pluginID, connectionID, resourceKey)
 }
 
-// Subscriptions
+// Subscriptions.
 func (s *ServiceWrapper) SubscribeResource(pluginID, connectionID, resourceKey string) error {
 	return s.Ctrl.SubscribeResource(pluginID, connectionID, resourceKey)
 }
@@ -144,7 +144,7 @@ func (s *ServiceWrapper) UnsubscribeResource(pluginID, connectionID, resourceKey
 	return s.Ctrl.UnsubscribeResource(pluginID, connectionID, resourceKey)
 }
 
-// Type metadata
+// Type metadata.
 func (s *ServiceWrapper) GetResourceGroups(pluginID, connectionID string) map[string]sdkresource.ResourceGroup {
 	return s.Ctrl.GetResourceGroups(pluginID, connectionID)
 }
@@ -173,7 +173,7 @@ func (s *ServiceWrapper) GetResourceSchema(pluginID, connectionID, key string) (
 	return s.Ctrl.GetResourceSchema(pluginID, connectionID, key)
 }
 
-// Actions
+// Actions.
 func (s *ServiceWrapper) GetActions(pluginID, connectionID, key string) ([]sdkresource.ActionDescriptor, error) {
 	return s.Ctrl.GetActions(pluginID, connectionID, key)
 }
@@ -190,12 +190,12 @@ func (s *ServiceWrapper) StreamAction(
 	return s.Ctrl.StreamAction(pluginID, connectionID, key, actionID, input)
 }
 
-// Editor schemas
+// Editor schemas.
 func (s *ServiceWrapper) GetEditorSchemas(pluginID, connectionID string) ([]sdkresource.EditorSchema, error) {
 	return s.Ctrl.GetEditorSchemas(pluginID, connectionID)
 }
 
-// Relationships
+// Relationships.
 func (s *ServiceWrapper) GetRelationships(pluginID, key string) ([]sdkresource.RelationshipDescriptor, error) {
 	return s.Ctrl.GetRelationships(pluginID, key)
 }
@@ -205,7 +205,7 @@ func (s *ServiceWrapper) ResolveRelationships(
 	return s.Ctrl.ResolveRelationships(pluginID, connectionID, key, id, namespace)
 }
 
-// Health
+// Health.
 func (s *ServiceWrapper) GetHealth(
 	pluginID, connectionID, key string,
 	data json.RawMessage,
@@ -219,12 +219,12 @@ func (s *ServiceWrapper) GetResourceEvents(
 	return s.Ctrl.GetResourceEvents(pluginID, connectionID, key, id, namespace, limit)
 }
 
-// ListPlugins
+// ListPlugins.
 func (s *ServiceWrapper) ListPlugins() ([]string, error) {
 	return s.Ctrl.ListPlugins()
 }
 
-// HasPlugin
+// HasPlugin.
 func (s *ServiceWrapper) HasPlugin(pluginID string) bool {
 	return s.Ctrl.HasPlugin(pluginID)
 }

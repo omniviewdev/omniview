@@ -49,7 +49,7 @@ func TestGetActions_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.GetActions("p1", "conn-1", "pods")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "actions unavailable")
 }
 
@@ -68,7 +68,11 @@ func TestGetActions_PluginNotFound(t *testing.T) {
 func TestExecuteAction_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		ExecuteActionFunc: func(_ context.Context, key, actionID string, _ resource.ActionInput) (*resource.ActionResult, error) {
+		ExecuteActionFunc: func(
+			_ context.Context,
+			key, actionID string,
+			_ resource.ActionInput,
+		) (*resource.ActionResult, error) {
 			assert.Equal(t, "pods", key)
 			assert.Equal(t, "restart", actionID)
 			return &resource.ActionResult{Success: true}, nil
@@ -91,7 +95,7 @@ func TestExecuteAction_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.ExecuteAction("p1", "conn-1", "pods", "restart", resource.ActionInput{})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "action failed")
 }
 
@@ -110,7 +114,12 @@ func TestExecuteAction_PluginNotFound(t *testing.T) {
 func TestStreamAction_ReturnsOperationID(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		StreamActionFunc: func(_ context.Context, _, _ string, _ resource.ActionInput, stream chan<- resource.ActionEvent) error {
+		StreamActionFunc: func(
+			_ context.Context,
+			_, _ string,
+			_ resource.ActionInput,
+			stream chan<- resource.ActionEvent,
+		) error {
 			close(stream)
 			return nil
 		},
@@ -127,7 +136,12 @@ func TestStreamAction_ReturnsOperationID(t *testing.T) {
 func TestStreamAction_EmitsEvents(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		StreamActionFunc: func(_ context.Context, _, _ string, _ resource.ActionInput, stream chan<- resource.ActionEvent) error {
+		StreamActionFunc: func(
+			_ context.Context,
+			_, _ string,
+			_ resource.ActionInput,
+			stream chan<- resource.ActionEvent,
+		) error {
 			stream <- resource.ActionEvent{Type: "progress", Data: map[string]interface{}{"pct": 50}}
 			stream <- resource.ActionEvent{Type: "complete", Data: map[string]interface{}{"pct": 100}}
 			close(stream)
@@ -156,7 +170,12 @@ func TestStreamAction_EmitsEvents(t *testing.T) {
 func TestStreamAction_EmitsError(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		StreamActionFunc: func(_ context.Context, _, _ string, _ resource.ActionInput, stream chan<- resource.ActionEvent) error {
+		StreamActionFunc: func(
+			_ context.Context,
+			_, _ string,
+			_ resource.ActionInput,
+			stream chan<- resource.ActionEvent,
+		) error {
 			close(stream)
 			return errors.New("stream broke")
 		},
@@ -186,7 +205,12 @@ func TestStreamAction_ChannelDrained(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	eventCount := 5
 	mock := &mockProvider{
-		StreamActionFunc: func(_ context.Context, _, _ string, _ resource.ActionInput, stream chan<- resource.ActionEvent) error {
+		StreamActionFunc: func(
+			_ context.Context,
+			_, _ string,
+			_ resource.ActionInput,
+			stream chan<- resource.ActionEvent,
+		) error {
 			for i := 0; i < eventCount; i++ {
 				stream <- resource.ActionEvent{Type: "progress", Data: map[string]interface{}{"i": i}}
 			}
@@ -206,7 +230,12 @@ func TestStreamAction_ChannelDrained(t *testing.T) {
 func TestStreamAction_OperationIDFormat(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		StreamActionFunc: func(_ context.Context, _, _ string, _ resource.ActionInput, stream chan<- resource.ActionEvent) error {
+		StreamActionFunc: func(
+			_ context.Context,
+			_, _ string,
+			_ resource.ActionInput,
+			stream chan<- resource.ActionEvent,
+		) error {
 			close(stream)
 			return nil
 		},

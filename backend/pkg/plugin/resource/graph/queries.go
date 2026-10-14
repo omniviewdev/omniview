@@ -78,11 +78,14 @@ func (g *RelationshipGraph) GetRelationshipChain(
 	return result, nil
 }
 
+// maxDependencyTreeDepth caps GetDependencyTree's maxDepth to prevent explosion.
+const maxDependencyTreeDepth = 5
+
 // GetDependencyTree follows ALL outgoing edge types recursively from root.
 // maxDepth is capped at 5 to prevent explosion.
 func (g *RelationshipGraph) GetDependencyTree(ref GraphNode, maxDepth int) (*DependencyTree, error) {
-	if maxDepth > 5 {
-		maxDepth = 5
+	if maxDepth > maxDependencyTreeDepth {
+		maxDepth = maxDependencyTreeDepth
 	}
 
 	g.mu.RLock()

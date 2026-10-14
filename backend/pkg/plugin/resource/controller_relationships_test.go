@@ -57,7 +57,7 @@ func TestGetRelationships_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.GetRelationships("p1", "core::v1::Pod")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "relationships unavailable")
 }
 
@@ -76,7 +76,10 @@ func TestGetRelationships_PluginNotFound(t *testing.T) {
 func TestResolveRelationships_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		ResolveRelationshipsFunc: func(_ context.Context, connID, key, id, ns string) ([]resource.ResolvedRelationship, error) {
+		ResolveRelationshipsFunc: func(
+			_ context.Context,
+			connID, key, id, ns string,
+		) ([]resource.ResolvedRelationship, error) {
 			assert.Equal(t, "conn-1", connID)
 			assert.Equal(t, "core::v1::Pod", key)
 			assert.Equal(t, "my-pod", id)
@@ -117,7 +120,7 @@ func TestResolveRelationships_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.ResolveRelationships("p1", "conn-1", "pods", "pod-1", "default")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "resolve failed")
 }
 

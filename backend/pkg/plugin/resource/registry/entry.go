@@ -15,7 +15,7 @@ type ResourceEntry struct {
 }
 
 // EntryKey returns the unique key for this entry within the registry.
-// Format: "pluginID/connectionID/resourceKey/namespace/id"
+// Format: "pluginID/connectionID/resourceKey/namespace/id".
 func (e ResourceEntry) EntryKey() string {
 	return e.PluginID + "/" + e.ConnectionID + "/" + e.ResourceKey + "/" + e.Namespace + "/" + e.ID
 }

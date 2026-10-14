@@ -43,7 +43,7 @@ func TestGetEditorSchemas_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.GetEditorSchemas("p1", "conn-1")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "schemas unavailable")
 }
 

@@ -188,6 +188,6 @@ func TestIsResourceWatchRunning_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	running, err := ctrl.IsResourceWatchRunning("p1", "conn-1", "pods")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.False(t, running)
 }

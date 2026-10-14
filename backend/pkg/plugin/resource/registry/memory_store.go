@@ -3,6 +3,7 @@ package registry
 import (
 	"maps"
 	"sync"
+	"time"
 )
 
 // MemoryStore is the in-memory implementation of Store.
@@ -17,6 +18,7 @@ type MemoryStore struct {
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
+		mu:      sync.RWMutex{},
 		entries: make(map[string]ResourceEntry),
 		byConn:  make(map[string]map[string]struct{}),
 		byLabel: make(map[string]map[string]struct{}),
@@ -27,9 +29,12 @@ func connKey(pluginID, connectionID string) string {
 	return pluginID + "/" + connectionID
 }
 
-func (s *MemoryStore) Put(entry ResourceEntry) (old *ResourceEntry, existed bool) {
+func (s *MemoryStore) Put(entry ResourceEntry) (*ResourceEntry, bool) {
 	key := entry.EntryKey()
 	ck := connKey(entry.PluginID, entry.ConnectionID)
+
+	var old *ResourceEntry
+	var existed bool
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -54,7 +59,7 @@ func (s *MemoryStore) Put(entry ResourceEntry) (old *ResourceEntry, existed bool
 	return old, existed
 }
 
-func (s *MemoryStore) PutIfAbsent(entry ResourceEntry) (existing *ResourceEntry, loaded bool) {
+func (s *MemoryStore) PutIfAbsent(entry ResourceEntry) (*ResourceEntry, bool) {
 	key := entry.EntryKey()
 
 	s.mu.Lock()
@@ -82,6 +87,7 @@ func (s *MemoryStore) Get(pluginID, connectionID, resourceKey, namespace, id str
 	key := (ResourceEntry{
 		PluginID: pluginID, ConnectionID: connectionID,
 		ResourceKey: resourceKey, Namespace: namespace, ID: id,
+		UID: "", Labels: nil, CreatedAt: time.Time{},
 	}).EntryKey()
 
 	s.mu.RLock()
@@ -99,6 +105,7 @@ func (s *MemoryStore) Delete(pluginID, connectionID, resourceKey, namespace, id 
 	key := (ResourceEntry{
 		PluginID: pluginID, ConnectionID: connectionID,
 		ResourceKey: resourceKey, Namespace: namespace, ID: id,
+		UID: "", Labels: nil, CreatedAt: time.Time{},
 	}).EntryKey()
 
 	s.mu.Lock()
@@ -113,7 +120,7 @@ func (s *MemoryStore) Delete(pluginID, connectionID, resourceKey, namespace, id 
 	s.removeLabelIndex(key, entry.Labels)
 
 	ck := connKey(pluginID, connectionID)
-	if set, ok := s.byConn[ck]; ok {
+	if set, found := s.byConn[ck]; found {
 		delete(set, key)
 		if len(set) == 0 {
 			delete(s.byConn, ck)
@@ -137,7 +144,7 @@ func (s *MemoryStore) DeleteByConnection(pluginID, connectionID string) []Resour
 
 	removed := make([]ResourceEntry, 0, len(keys))
 	for key := range keys {
-		if entry, ok := s.entries[key]; ok {
+		if entry, found := s.entries[key]; found {
 			s.removeLabelIndex(key, entry.Labels)
 			delete(s.entries, key)
 			entry.Labels = maps.Clone(entry.Labels)
@@ -195,11 +202,7 @@ func (s *MemoryStore) ScanByLabel(
 				candidates[key] = struct{}{}
 			}
 		} else {
-			for key := range candidates {
-				if _, ok := set[key]; !ok {
-					delete(candidates, key)
-				}
-			}
+			intersectKeys(candidates, set)
 		}
 		if len(candidates) == 0 {
 			return nil
@@ -217,6 +220,15 @@ func (s *MemoryStore) ScanByLabel(
 		}
 	}
 	return result
+}
+
+// intersectKeys removes from candidates every key that is not in set.
+func intersectKeys(candidates, set map[string]struct{}) {
+	for key := range candidates {
+		if _, ok := set[key]; !ok {
+			delete(candidates, key)
+		}
+	}
 }
 
 func (s *MemoryStore) ScanByResourceKey(pluginID, connectionID, resourceKey string) []ResourceEntry {

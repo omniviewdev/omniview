@@ -10,7 +10,7 @@ import (
 type ResourceIndexer interface {
 	Name() string
 	OnAdd(entry registry.ResourceEntry, raw json.RawMessage)
-	OnUpdate(old registry.ResourceEntry, new_ registry.ResourceEntry, raw json.RawMessage)
+	OnUpdate(old registry.ResourceEntry, updated registry.ResourceEntry, raw json.RawMessage)
 	OnDelete(entry registry.ResourceEntry)
 }
 

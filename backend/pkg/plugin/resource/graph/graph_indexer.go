@@ -26,10 +26,14 @@ func (gi *Indexer) OnAdd(entry registry.ResourceEntry, raw json.RawMessage) {
 	gi.CheckLabelSelectorsForEntry(entry)
 }
 
-func (gi *Indexer) OnUpdate(old, new_ registry.ResourceEntry, raw json.RawMessage) {
+// entryKeyParts is the number of "/"-separated parts in a registry entry key:
+// pluginID/connectionID/resourceKey/namespace/id.
+const entryKeyParts = 5
+
+func (gi *Indexer) OnUpdate(old, updated registry.ResourceEntry, raw json.RawMessage) {
 	gi.graph.RemoveEdgesForNode(old.EntryKey())
-	gi.extractEdges(new_, raw)
-	gi.CheckLabelSelectorsForEntry(new_)
+	gi.extractEdges(updated, raw)
+	gi.CheckLabelSelectorsForEntry(updated)
 }
 
 func (gi *Indexer) OnDelete(entry registry.ResourceEntry) {
@@ -205,8 +209,8 @@ func (gi *Indexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
 			continue
 		}
 
-		parts := strings.SplitN(selectorNodeKey, "/", 5)
-		if len(parts) < 5 {
+		parts := strings.SplitN(selectorNodeKey, "/", entryKeyParts)
+		if len(parts) < entryKeyParts {
 			continue
 		}
 

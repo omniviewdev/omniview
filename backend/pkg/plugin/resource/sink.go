@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
@@ -33,6 +34,7 @@ func (s *engineWatchSink) entryFromAddPayload(p resource.WatchAddPayload) regist
 		Namespace:    p.Namespace,
 		UID:          p.Metadata.UID,
 		Labels:       maps.Clone(p.Metadata.Labels),
+		CreatedAt:    time.Time{},
 	}
 	if p.Metadata.CreatedAt != nil {
 		entry.CreatedAt = *p.Metadata.CreatedAt
@@ -49,6 +51,7 @@ func (s *engineWatchSink) entryFromUpdatePayload(p resource.WatchUpdatePayload) 
 		Namespace:    p.Namespace,
 		UID:          p.Metadata.UID,
 		Labels:       maps.Clone(p.Metadata.Labels),
+		CreatedAt:    time.Time{},
 	}
 	if p.Metadata.CreatedAt != nil {
 		entry.CreatedAt = *p.Metadata.CreatedAt
@@ -79,7 +82,7 @@ func (s *engineWatchSink) OnAdd(p resource.WatchAddPayload) {
 		})
 	} else {
 		s.dispatcher.Enqueue(indexer.Event{
-			Type: indexer.EventAdd, Entry: entry, Raw: rawCopy,
+			Type: indexer.EventAdd, Entry: entry, Old: nil, Raw: rawCopy,
 		})
 	}
 }
@@ -115,7 +118,7 @@ func (s *engineWatchSink) OnDelete(p resource.WatchDeletePayload) {
 
 	if existed && old != nil {
 		s.dispatcher.Enqueue(indexer.Event{
-			Type: indexer.EventDelete, Entry: *old,
+			Type: indexer.EventDelete, Entry: *old, Old: nil, Raw: nil,
 		})
 	}
 }

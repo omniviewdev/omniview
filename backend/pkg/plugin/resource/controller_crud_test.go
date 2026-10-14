@@ -47,7 +47,7 @@ func TestGet_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
 
@@ -63,7 +63,7 @@ func TestGet_ConnectionError_TriggersCrash(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }

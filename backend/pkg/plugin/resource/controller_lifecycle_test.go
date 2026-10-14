@@ -215,7 +215,7 @@ func TestListenForWatchEvents_ContextCancel(t *testing.T) {
 	done := make(chan struct{})
 	ready := make(chan struct{})
 	go func() {
-		ctrl.listenForWatchEvents("p1", mock, ctx, sink, ready)
+		ctrl.listenForWatchEvents(ctx, "p1", mock, sink, ready)
 		close(done)
 	}()
 
@@ -247,7 +247,7 @@ func TestListenForWatchEvents_ProviderError_CrashRecovery(t *testing.T) {
 	ready2 := make(chan struct{})
 	go func() {
 		defer wg.Done()
-		ctrl.listenForWatchEvents("p1", errorProvider, ctx, sink, ready2)
+		ctrl.listenForWatchEvents(ctx, "p1", errorProvider, sink, ready2)
 	}()
 	wg.Wait()
 
@@ -269,7 +269,7 @@ func TestListenForWatchEvents_ProviderError_ContextDone_NoCrash(t *testing.T) {
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	ready3 := make(chan struct{})
 
-	ctrl.listenForWatchEvents("p1", errorProvider, ctx, sink, ready3)
+	ctrl.listenForWatchEvents(ctx, "p1", errorProvider, sink, ready3)
 
 	events := emitter.EventsWithKey("plugin/crash")
 	assert.Empty(t, events, "should not crash if context already done")
@@ -292,7 +292,7 @@ func TestListenForConnectionEvents_NewConnsMerged(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go ctrl.listenForConnectionEvents("p1", provider, ctx)
+	go ctrl.listenForConnectionEvents(ctx, "p1", provider)
 
 	// Wait for merge.
 	assert.Eventually(t, func() bool {
@@ -317,7 +317,7 @@ func TestListenForConnectionEvents_EmitsSync(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go ctrl.listenForConnectionEvents("p1", provider, ctx)
+	go ctrl.listenForConnectionEvents(ctx, "p1", provider)
 
 	emitter.WaitForEvent(t, "p1/connection/sync", 2*time.Second)
 	cancel()

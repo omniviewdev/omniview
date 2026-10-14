@@ -30,10 +30,10 @@ func (r *recordingIndexer) OnAdd(entry registry.ResourceEntry, _ json.RawMessage
 	r.adds = append(r.adds, entry)
 }
 
-func (r *recordingIndexer) OnUpdate(old registry.ResourceEntry, new_ registry.ResourceEntry, _ json.RawMessage) {
+func (r *recordingIndexer) OnUpdate(_ registry.ResourceEntry, updated registry.ResourceEntry, _ json.RawMessage) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.updates = append(r.updates, new_)
+	r.updates = append(r.updates, updated)
 }
 
 func (r *recordingIndexer) OnDelete(entry registry.ResourceEntry) {
@@ -77,9 +77,9 @@ func (c *callbackIndexer) OnAdd(entry registry.ResourceEntry, raw json.RawMessag
 	}
 }
 
-func (c *callbackIndexer) OnUpdate(old registry.ResourceEntry, new_ registry.ResourceEntry, raw json.RawMessage) {
+func (c *callbackIndexer) OnUpdate(old registry.ResourceEntry, updated registry.ResourceEntry, raw json.RawMessage) {
 	if c.onUpdate != nil {
-		c.onUpdate(old, new_, raw)
+		c.onUpdate(old, updated, raw)
 	}
 }
 
@@ -163,10 +163,10 @@ func TestDispatcher_DeliverUpdateEvent(t *testing.T) {
 	d.Start()
 
 	old := testEntry("pod-1")
-	new_ := testEntry("pod-1")
-	new_.Labels = map[string]string{"version": "2"}
+	updated := testEntry("pod-1")
+	updated.Labels = map[string]string{"version": "2"}
 
-	d.Enqueue(Event{Type: EventUpdate, Entry: new_, Old: &old, Raw: json.RawMessage(`{}`)})
+	d.Enqueue(Event{Type: EventUpdate, Entry: updated, Old: &old, Raw: json.RawMessage(`{}`)})
 
 	waitFor(t, func() bool { return rec.updateCount() == 1 }, 2*time.Second, "update event delivered")
 	d.Stop()

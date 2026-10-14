@@ -11,7 +11,13 @@ func TestGraphService_GetRelated(t *testing.T) {
 	g := graph.NewRelationshipGraph()
 	svc := NewGraphService(g)
 
-	src := graph.GraphNode{PluginID: "k8s", ConnectionID: "c1", ResourceKey: "core::v1::Pod", ID: "nginx", Namespace: "default"}
+	src := graph.GraphNode{
+		PluginID:     "k8s",
+		ConnectionID: "c1",
+		ResourceKey:  "core::v1::Pod",
+		ID:           "nginx",
+		Namespace:    "default",
+	}
 	tgt := graph.GraphNode{PluginID: "k8s", ConnectionID: "c1", ResourceKey: "core::v1::Node", ID: "worker-1"}
 	g.AddEdge(graph.GraphEdge{Source: src, Target: tgt, Type: sdkresource.RelRunsOn, Label: "runs on"})
 
@@ -28,7 +34,13 @@ func TestGraphService_GetRelated_Incoming(t *testing.T) {
 	g := graph.NewRelationshipGraph()
 	svc := NewGraphService(g)
 
-	src := graph.GraphNode{PluginID: "k8s", ConnectionID: "c1", ResourceKey: "core::v1::Pod", ID: "nginx", Namespace: "default"}
+	src := graph.GraphNode{
+		PluginID:     "k8s",
+		ConnectionID: "c1",
+		ResourceKey:  "core::v1::Pod",
+		ID:           "nginx",
+		Namespace:    "default",
+	}
 	tgt := graph.GraphNode{PluginID: "k8s", ConnectionID: "c1", ResourceKey: "core::v1::Node", ID: "worker-1"}
 	g.AddEdge(graph.GraphEdge{Source: src, Target: tgt, Type: sdkresource.RelRunsOn, Label: "runs on"})
 
@@ -46,9 +58,21 @@ func TestGraphService_GetRelated_FilterByType(t *testing.T) {
 	g := graph.NewRelationshipGraph()
 	svc := NewGraphService(g)
 
-	src := graph.GraphNode{PluginID: "k8s", ConnectionID: "c1", ResourceKey: "core::v1::Pod", ID: "nginx", Namespace: "default"}
+	src := graph.GraphNode{
+		PluginID:     "k8s",
+		ConnectionID: "c1",
+		ResourceKey:  "core::v1::Pod",
+		ID:           "nginx",
+		Namespace:    "default",
+	}
 	tgt1 := graph.GraphNode{PluginID: "k8s", ConnectionID: "c1", ResourceKey: "core::v1::Node", ID: "worker-1"}
-	tgt2 := graph.GraphNode{PluginID: "k8s", ConnectionID: "c1", ResourceKey: "core::v1::Service", ID: "svc-1", Namespace: "default"}
+	tgt2 := graph.GraphNode{
+		PluginID:     "k8s",
+		ConnectionID: "c1",
+		ResourceKey:  "core::v1::Service",
+		ID:           "svc-1",
+		Namespace:    "default",
+	}
 	g.AddEdge(graph.GraphEdge{Source: src, Target: tgt1, Type: sdkresource.RelRunsOn, Label: "runs on"})
 	g.AddEdge(graph.GraphEdge{Source: src, Target: tgt2, Type: sdkresource.RelExposes, Label: "exposed by"})
 
@@ -69,7 +93,13 @@ func TestGraphService_GetDependencyTree(t *testing.T) {
 	g := graph.NewRelationshipGraph()
 	svc := NewGraphService(g)
 
-	pod := graph.GraphNode{PluginID: "k8s", ConnectionID: "c1", ResourceKey: "core::v1::Pod", ID: "nginx", Namespace: "default"}
+	pod := graph.GraphNode{
+		PluginID:     "k8s",
+		ConnectionID: "c1",
+		ResourceKey:  "core::v1::Pod",
+		ID:           "nginx",
+		Namespace:    "default",
+	}
 	node := graph.GraphNode{PluginID: "k8s", ConnectionID: "c1", ResourceKey: "core::v1::Node", ID: "worker-1"}
 	g.AddEdge(graph.GraphEdge{Source: pod, Target: node, Type: sdkresource.RelRunsOn, Label: "runs on"})
 

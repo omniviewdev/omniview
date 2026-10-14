@@ -138,7 +138,7 @@ func TestL3_03_WatchEventsFlowThroughGRPC(t *testing.T) {
 	defer cancel()
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	watchReady := make(chan struct{})
-	go ctrl.listenForWatchEvents("p1", grpcProvider, watchCtx, sink, watchReady)
+	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
 
 	// Wait for the SDK provider to receive the sink.
 	select {
@@ -190,7 +190,7 @@ func TestL3_04_SubscriptionGatingViaGRPC(t *testing.T) {
 	defer cancel()
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	watchReady := make(chan struct{})
-	go ctrl.listenForWatchEvents("p1", grpcProvider, watchCtx, sink, watchReady)
+	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
 
 	select {
 	case sdkSink := <-ready:
@@ -240,7 +240,7 @@ func TestL3_05_StateEventKeyFormatViaGRPC(t *testing.T) {
 	defer cancel()
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	watchReady := make(chan struct{})
-	go ctrl.listenForWatchEvents("p1", grpcProvider, watchCtx, sink, watchReady)
+	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
 
 	select {
 	case sdkSink := <-ready:
@@ -319,7 +319,7 @@ func TestL3_07_MixedEventsViaGRPC(t *testing.T) {
 	defer cancel()
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 	watchReady := make(chan struct{})
-	go ctrl.listenForWatchEvents("p1", grpcProvider, watchCtx, sink, watchReady)
+	go ctrl.listenForWatchEvents(watchCtx, "p1", grpcProvider, sink, watchReady)
 
 	select {
 	case sdkSink := <-ready:

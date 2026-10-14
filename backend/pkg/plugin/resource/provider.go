@@ -60,16 +60,32 @@ type ResourceProvider interface {
 	// Actions
 	GetActions(ctx context.Context, key string) ([]resource.ActionDescriptor, error)
 	ExecuteAction(ctx context.Context, key, actionID string, input resource.ActionInput) (*resource.ActionResult, error)
-	StreamAction(ctx context.Context, key, actionID string, input resource.ActionInput, stream chan<- resource.ActionEvent) error
+	StreamAction(
+		ctx context.Context,
+		key, actionID string,
+		input resource.ActionInput,
+		stream chan<- resource.ActionEvent,
+	) error
 
 	// Editor schemas
 	GetEditorSchemas(ctx context.Context, connectionID string) ([]resource.EditorSchema, error)
 
 	// Relationships
 	GetRelationships(ctx context.Context, resourceKey string) ([]resource.RelationshipDescriptor, error)
-	ResolveRelationships(ctx context.Context, connectionID, resourceKey, id, namespace string) ([]resource.ResolvedRelationship, error)
+	ResolveRelationships(
+		ctx context.Context,
+		connectionID, resourceKey, id, namespace string,
+	) ([]resource.ResolvedRelationship, error)
 
 	// Health
-	GetHealth(ctx context.Context, connectionID, resourceKey string, data json.RawMessage) (*resource.ResourceHealth, error)
-	GetResourceEvents(ctx context.Context, connectionID, resourceKey, id, namespace string, limit int32) ([]resource.ResourceEvent, error)
+	GetHealth(
+		ctx context.Context,
+		connectionID, resourceKey string,
+		data json.RawMessage,
+	) (*resource.ResourceHealth, error)
+	GetResourceEvents(
+		ctx context.Context,
+		connectionID, resourceKey, id, namespace string,
+		limit int32,
+	) ([]resource.ResourceEvent, error)
 }

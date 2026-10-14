@@ -135,12 +135,32 @@ func (e *recordingEmitter) Reset() {
 // ============================================================================
 
 type mockProvider struct {
-	GetFunc                     func(ctx context.Context, key string, input resource.GetInput) (*resource.GetResult, error)
-	ListFunc                    func(ctx context.Context, key string, input resource.ListInput) (*resource.ListResult, error)
-	FindFunc                    func(ctx context.Context, key string, input resource.FindInput) (*resource.FindResult, error)
-	CreateFunc                  func(ctx context.Context, key string, input resource.CreateInput) (*resource.CreateResult, error)
-	UpdateFunc                  func(ctx context.Context, key string, input resource.UpdateInput) (*resource.UpdateResult, error)
-	DeleteFunc                  func(ctx context.Context, key string, input resource.DeleteInput) (*resource.DeleteResult, error)
+	GetFunc  func(ctx context.Context, key string, input resource.GetInput) (*resource.GetResult, error)
+	ListFunc func(
+		ctx context.Context,
+		key string,
+		input resource.ListInput,
+	) (*resource.ListResult, error)
+	FindFunc func(
+		ctx context.Context,
+		key string,
+		input resource.FindInput,
+	) (*resource.FindResult, error)
+	CreateFunc func(
+		ctx context.Context,
+		key string,
+		input resource.CreateInput,
+	) (*resource.CreateResult, error)
+	UpdateFunc func(
+		ctx context.Context,
+		key string,
+		input resource.UpdateInput,
+	) (*resource.UpdateResult, error)
+	DeleteFunc func(
+		ctx context.Context,
+		key string,
+		input resource.DeleteInput,
+	) (*resource.DeleteResult, error)
 	StartConnectionFunc         func(ctx context.Context, connectionID string) (types.ConnectionStatus, error)
 	StopConnectionFunc          func(ctx context.Context, connectionID string) (types.Connection, error)
 	CheckConnectionFunc         func(ctx context.Context, connectionID string) (types.ConnectionStatus, error)
@@ -170,16 +190,36 @@ type mockProvider struct {
 	GetResourceSchemaFunc       func(ctx context.Context, connectionID, resourceKey string) (json.RawMessage, error)
 	GetFilterFieldsFunc         func(ctx context.Context, connectionID, resourceKey string) ([]resource.FilterField, error)
 	GetActionsFunc              func(ctx context.Context, key string) ([]resource.ActionDescriptor, error)
-	ExecuteActionFunc           func(ctx context.Context, key, actionID string, input resource.ActionInput) (*resource.ActionResult, error)
-	StreamActionFunc            func(ctx context.Context, key, actionID string, input resource.ActionInput, stream chan<- resource.ActionEvent) error
-	GetEditorSchemasFunc        func(ctx context.Context, connectionID string) ([]resource.EditorSchema, error)
-	GetRelationshipsFunc        func(ctx context.Context, resourceKey string) ([]resource.RelationshipDescriptor, error)
-	ResolveRelationshipsFunc    func(ctx context.Context, connectionID, resourceKey, id, namespace string) ([]resource.ResolvedRelationship, error)
-	GetHealthFunc               func(ctx context.Context, connectionID, resourceKey string, data json.RawMessage) (*resource.ResourceHealth, error)
-	GetResourceEventsFunc       func(ctx context.Context, connectionID, resourceKey, id, namespace string, limit int32) ([]resource.ResourceEvent, error)
+	ExecuteActionFunc           func(
+		ctx context.Context,
+		key, actionID string,
+		input resource.ActionInput,
+	) (*resource.ActionResult, error)
+	StreamActionFunc func(
+		ctx context.Context,
+		key, actionID string,
+		input resource.ActionInput,
+		stream chan<- resource.ActionEvent,
+	) error
+	GetEditorSchemasFunc     func(ctx context.Context, connectionID string) ([]resource.EditorSchema, error)
+	GetRelationshipsFunc     func(ctx context.Context, resourceKey string) ([]resource.RelationshipDescriptor, error)
+	ResolveRelationshipsFunc func(
+		ctx context.Context,
+		connectionID, resourceKey, id, namespace string,
+	) ([]resource.ResolvedRelationship, error)
+	GetHealthFunc func(
+		ctx context.Context,
+		connectionID, resourceKey string,
+		data json.RawMessage,
+	) (*resource.ResourceHealth, error)
+	GetResourceEventsFunc func(
+		ctx context.Context,
+		connectionID, resourceKey, id, namespace string,
+		limit int32,
+	) ([]resource.ResourceEvent, error)
 }
 
-// compile-time check
+// compile-time check.
 var _ ResourceProvider = (*mockProvider)(nil)
 
 func (m *mockProvider) Get(ctx context.Context, key string, input resource.GetInput) (*resource.GetResult, error) {

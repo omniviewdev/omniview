@@ -73,7 +73,7 @@ func TestGetResourceGroup_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.GetResourceGroup("p1", "nonexistent")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "group not found")
 }
 
@@ -136,7 +136,7 @@ func TestGetResourceType_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	meta, err := ctrl.GetResourceType("p1", "nonexistent")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, meta)
 }
 
@@ -203,7 +203,7 @@ func TestGetResourceDefinition_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.GetResourceDefinition("p1", "x")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "def not found")
 }
 
@@ -241,7 +241,7 @@ func TestGetResourceCapabilities_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	caps, err := ctrl.GetResourceCapabilities("p1", "pods")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, caps)
 }
 
