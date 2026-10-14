@@ -113,7 +113,7 @@ export default function AIContextBar({
         sx={{
           borderColor: 'var(--ov-border-muted)',
           color: 'var(--ov-fg-default)',
-          fontFamily: 'var(--ov-font-mono)',
+          fontFamily: 'var(--ovl-font-mono)',
           fontSize: 'var(--ov-text-xs)',
           height: 24,
           '& .MuiChip-icon': { ml: 0.5, mr: 0 },

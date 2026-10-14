@@ -192,7 +192,7 @@ export default function ChipPage() {
               flexWrap: 'wrap',
               p: 1,
               bgcolor: 'var(--ov-bg-surface-inset)',
-              borderRadius: 'var(--ov-radius-md)',
+              borderRadius: 'var(--ovl-radius-md)',
               border: '1px solid var(--ov-border-default)',
             }}
           >

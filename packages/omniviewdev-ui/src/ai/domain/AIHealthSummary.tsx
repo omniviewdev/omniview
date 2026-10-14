@@ -159,7 +159,7 @@ export default function AIHealthSummary({
                 sx={{
                   fontSize: 'var(--ov-text-xs)',
                   color: 'var(--ov-fg-muted)',
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                 }}
               >
                 {bd.total} total
@@ -189,7 +189,7 @@ export default function AIHealthSummary({
                         sx={{
                           fontSize: '10px',
                           color: 'var(--ov-fg-muted)',
-                          fontFamily: 'var(--ov-font-mono)',
+                          fontFamily: 'var(--ovl-font-mono)',
                         }}
                       >
                         {count}

@@ -84,7 +84,7 @@ export default function ColorPicker({
             placeholder="#000000"
             slotProps={{
               input: {
-                sx: { fontFamily: 'var(--ov-font-mono)', fontSize: '0.8125rem' },
+                sx: { fontFamily: 'var(--ovl-font-mono)', fontSize: '0.8125rem' },
               },
             }}
             sx={{ flex: 1, maxWidth: 120 }}

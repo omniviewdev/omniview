@@ -80,7 +80,7 @@ export default function AIStructuredDataViewer({
             sx={{
               fontSize: 'var(--ov-text-xs)',
               color: 'var(--ov-fg-muted)',
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
             }}
           >
             {title || format}
@@ -121,7 +121,7 @@ export default function AIStructuredDataViewer({
           <pre style={{ margin: 0, overflow: 'visible' }}>
             <code
               style={{
-                fontFamily: 'var(--ov-font-mono)',
+                fontFamily: 'var(--ovl-font-mono)',
                 fontSize: '12px',
                 lineHeight: 1.6,
                 color: 'var(--ov-fg-default)',

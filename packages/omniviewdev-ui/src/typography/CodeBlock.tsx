@@ -48,7 +48,7 @@ export default function CodeBlock({
           pr: copy ? 5 : 1.5,
           overflow: 'auto',
           maxHeight: maxHeight,
-          fontFamily: 'var(--ov-font-mono)',
+          fontFamily: 'var(--ovl-font-mono)',
           fontSize: '13px',
           lineHeight: 1.6,
           color: 'var(--ov-fg-default)',

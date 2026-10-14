@@ -72,7 +72,7 @@ export default function ChatHeader({
             color: maxTokens && tokenCount > maxTokens * 0.8
               ? 'var(--ov-warning-default)'
               : 'var(--ov-fg-faint)',
-            fontFamily: 'var(--ov-font-mono)',
+            fontFamily: 'var(--ovl-font-mono)',
           }}
         >
           {tokenCount.toLocaleString()}

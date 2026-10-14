@@ -117,7 +117,7 @@ export default function NotificationStackPage() {
                 borderRadius: '6px',
                 bgcolor: 'var(--ov-bg-surface-inset)',
                 fontSize: '0.75rem',
-                fontFamily: 'var(--ov-font-mono)',
+                fontFamily: 'var(--ovl-font-mono)',
                 color: 'var(--ov-fg-default)',
                 overflow: 'auto',
               }}

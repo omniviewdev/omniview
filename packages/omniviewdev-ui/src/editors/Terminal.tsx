@@ -50,7 +50,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
 
     const term = new XTerm({
       fontSize,
-      fontFamily: fontFamily ?? 'var(--ov-font-mono)',
+      fontFamily: fontFamily ?? 'var(--ovl-font-mono)',
       cursorStyle,
       cursorBlink,
       scrollback,

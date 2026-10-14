@@ -97,7 +97,7 @@ export default function ErrorOverlay({
                 alignItems: 'center',
                 gap: 0.5,
                 mb: 1.5,
-                fontFamily: 'var(--ov-font-mono)',
+                fontFamily: 'var(--ovl-font-mono)',
                 fontSize: 'var(--ov-text-xs)',
                 color: 'var(--ov-fg-muted)',
               }}
@@ -116,7 +116,7 @@ export default function ErrorOverlay({
                 borderRadius: '4px',
                 p: 1.5,
                 fontSize: 'var(--ov-text-xs)',
-                fontFamily: 'var(--ov-font-mono)',
+                fontFamily: 'var(--ovl-font-mono)',
                 color: 'var(--ov-fg-muted)',
                 overflow: 'auto',
                 maxHeight: 200,
