@@ -217,7 +217,10 @@ function PluginLoadingSpinner() {
     const cancelDevInstallStart = Events.On(
       'plugin/dev_install_start',
       (ev) => {
-        const meta = ev.data as PluginMeta;
+        const meta = ev.data;
+        if (!meta) {
+          return;
+        }
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Installing plugin '${meta.name}' in development mode`,
@@ -239,7 +242,10 @@ function PluginLoadingSpinner() {
     const cancelInstallStart = Events.On(
       'plugin/install_started',
       (ev) => {
-        const meta = ev.data as PluginMeta;
+        const meta = ev.data;
+        if (!meta) {
+          return;
+        }
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Installing plugin '${meta.name}'`,
@@ -250,7 +256,10 @@ function PluginLoadingSpinner() {
     const cancelReloadStart = Events.On(
       'plugin/dev_reload_start',
       (ev) => {
-        const meta = ev.data as PluginMeta;
+        const meta = ev.data;
+        if (!meta) {
+          return;
+        }
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Reloading plugin '${meta.name}'`,
@@ -258,38 +267,39 @@ function PluginLoadingSpinner() {
       },
     );
 
-    const clearLoading = (meta: PluginMeta) => {
+    const clearLoading = (meta: PluginMeta | null) => {
+      if (!meta) {
+        return;
+      }
       setLoading((prev) => ({ ...prev, [meta.id]: '' }));
     };
 
-    const clearLoadingByEv = (ev: Events.WailsEvent) => {
-      clearLoading(ev.data as PluginMeta);
+    const clearLoadingByEv = (ev: { data: PluginMeta | null }) => {
+      clearLoading(ev.data);
     };
 
     const clearLoadingById = (id: string) => {
       setLoading((prev) => ({ ...prev, [id]: '' }));
     };
 
-    const cancelReloadError = Events.On('plugin/dev_reload_error', clearLoadingByEv);
+    const cancelReloadError = Events.On('plugin/dev_reload_error', (ev) => {
+      clearLoading(ev.data[0] as PluginMeta | null);
+    });
     const cancelReloadComplete = Events.On('plugin/dev_reload_complete', clearLoadingByEv);
     const cancelDevInstallError = Events.On('plugin/dev_install_error', clearLoadingByEv);
     const cancelDevInstallComplete = Events.On('plugin/dev_install_complete', clearLoadingByEv);
     const cancelInstallComplete = Events.On('plugin/install_complete', clearLoadingByEv);
     const cancelInstallFinished = Events.On('plugin/install_finished', (ev) => {
-      const meta = ev.data as PluginMeta;
-      clearLoading(meta);
-      clearLoadingById(meta.id);
+      clearLoading(ev.data);
     });
     const cancelInstallError = Events.On('plugin/install_error', (ev) => {
-      const meta = ev.data as PluginMeta;
-      clearLoading(meta);
-      clearLoadingById(meta.id);
+      clearLoading(ev.data);
     });
     const cancelUpdateError = Events.On('plugin/update_error', (ev) => {
-      clearLoadingById(ev.data as string);
+      clearLoadingById(ev.data.pluginID);
     });
     const cancelUpdateComplete = Events.On('plugin/update_complete', (ev) => {
-      clearLoadingById(ev.data as string);
+      clearLoadingById(ev.data.pluginID);
     });
 
     return () => {

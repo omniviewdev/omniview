@@ -33,7 +33,10 @@ export const usePluginManager = () => {
   React.useEffect(() => {
     // Set up watchers for plugin reload and install events
     const closer1 = Events.On('plugin/dev_reload_start', (ev) => {
-      const meta = ev.data as PluginMeta;
+      const meta = ev.data;
+      if (!meta) {
+        return;
+      }
       queryClient.setQueryData([Entity.PLUGINS], (oldData: PluginInfo[] | undefined) =>
         oldData?.map(plugin =>
           plugin.id === meta.id ? { ...plugin, phase: 'Starting', lastError: '' } : plugin,
@@ -82,6 +85,9 @@ export const usePluginManager = () => {
   const installFromPath = useMutation({
     mutationFn: PluginManager.InstallFromPathPrompt,
     onSuccess(data) {
+      if (!data) {
+        return;
+      }
       showSnackbar({
         message: `${data.name} plugin successfully installed`,
         status: 'success',
@@ -99,6 +105,9 @@ export const usePluginManager = () => {
   const installDev = useMutation({
     mutationFn: PluginManager.InstallInDevMode,
     onSuccess(data) {
+      if (!data) {
+        return;
+      }
       showSnackbar({
         message: `${data.name} plugin successfully installed in development mode`,
         status: 'success',
@@ -263,6 +272,9 @@ export const usePlugin = ({ id }: { id: string }) => {
       return resp
     },
     onSuccess(meta) {
+      if (!meta) {
+        return;
+      }
       showSnackbar({
         message: `Plugin '${meta.name}' updated to v${meta.version}`,
         status: 'success',

@@ -8,19 +8,20 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
 func init() {
 	application.RegisterEvent[StateChangePayload](EventStateChange)
-	application.RegisterEvent[application.Void](EventInstallStarted)
-	application.RegisterEvent[application.Void](EventInstallFinished)
-	application.RegisterEvent[application.Void](EventInstallError)
-	application.RegisterEvent[application.Void](EventDevInstallStart)
-	application.RegisterEvent[application.Void](EventDevInstallError)
-	application.RegisterEvent[application.Void](EventDevInstallComplete)
-	application.RegisterEvent[application.Void](EventReloadStart)
-	application.RegisterEvent[application.Void](EventReloadError)
-	application.RegisterEvent[application.Void](EventReloadComplete)
+	application.RegisterEvent[*config.PluginMeta](EventInstallStarted)
+	application.RegisterEvent[*config.PluginMeta](EventInstallFinished)
+	application.RegisterEvent[*config.PluginMeta](EventInstallError)
+	application.RegisterEvent[*config.PluginMeta](EventDevInstallStart)
+	application.RegisterEvent[*config.PluginMeta](EventDevInstallError)
+	application.RegisterEvent[*config.PluginMeta](EventDevInstallComplete)
+	application.RegisterEvent[*config.PluginMeta](EventReloadStart)
+	application.RegisterEvent[[]any](EventReloadError) // (meta *config.PluginMeta, err string)
+	application.RegisterEvent[*config.PluginMeta](EventReloadComplete)
 	application.RegisterEvent[UpdatePayload](EventUpdateStarted)
 	application.RegisterEvent[UpdateErrorPayload](EventUpdateError)
 	application.RegisterEvent[UpdatePayload](EventUpdateComplete)
