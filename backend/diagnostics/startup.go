@@ -45,8 +45,8 @@ func (c *DiagnosticsClient) ReportStartupReady(marks map[string]float64) {
 		fmt.Fprintf(os.Stderr, "startup.ready %s\n", data)
 
 		if path := os.Getenv(StartupReportEnv); path != "" {
-			if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // perf report, not sensitive
-				fmt.Fprintf(os.Stderr, "startup.ready: write %s: %v\n", path, err)
+			if writeErr := os.WriteFile(path, data, 0o644); writeErr != nil { //nolint:gosec // perf report, not sensitive
+				fmt.Fprintf(os.Stderr, "startup.ready: write %s: %v\n", path, writeErr)
 			}
 		}
 

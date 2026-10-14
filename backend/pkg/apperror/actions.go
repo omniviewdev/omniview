@@ -21,7 +21,7 @@ func OpenURLAction(label, url string) Action {
 
 // RetryAction creates an action that signals the frontend to retry the operation.
 func RetryAction(label string) Action {
-	return Action{Type: "retry", Label: label}
+	return Action{Type: "retry", Label: label, Target: ""}
 }
 
 // CopyAction creates an action that copies text to the clipboard.
