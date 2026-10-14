@@ -10,7 +10,7 @@ import DevBuildViewer from '@/providers/BottomDrawer/containers/DevBuildViewer';
 import PluginLogViewer from '@/providers/BottomDrawer/containers/PluginLogViewer';
 import EditorDebugPanel from '@/providers/BottomDrawer/containers/EditorDebugPanel';
 import { useBottomDrawer } from '@omniviewdev/runtime';
-import { bottomDrawerChannel, restoredSessionIds } from '@/providers/BottomDrawer/events';
+import { bottomDrawerChannel, restoredSessionIds, setBottomDrawerHeight } from '@/providers/BottomDrawer/events';
 import { Events } from '@omniviewdev/runtime/runtime';
 import handleStyles from '@/components/base/ResizeHandle.module.css';
 import styles from './BottomDrawer.module.css';
@@ -75,8 +75,10 @@ const BottomDrawerContainer: React.FC = () => {
   }, []);
 
   // Other panels (the right drawer) size themselves against the drawer height.
+  // They set it as a CSS variable on themselves: on <html> every change would
+  // restyle the whole document, which made each toggle ~20 ms slower.
   React.useEffect(() => {
-    document.documentElement.style.setProperty('--BottomDrawer-height', `${height}px`);
+    setBottomDrawerHeight(height);
   }, [height]);
 
   const persistDrawerState = React.useCallback((mode: DrawerStartupMode, expandedHeight?: number) => {

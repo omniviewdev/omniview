@@ -18,7 +18,7 @@ import {
 import { ResourceClient } from '@omniviewdev/runtime/api';
 import { UpdateInput, GetInput } from '@omniviewdev/runtime/models';
 import RightDrawer from '@/components/displays/RightDrawer';
-import { bottomDrawerChannel } from './BottomDrawer/events';
+import { bottomDrawerChannel, getBottomDrawerHeight } from './BottomDrawer/events';
 import { createLinkedResourceDrawer } from '@/federation/LinkedResourceDrawer';
 import { useExtensionPoint } from '@omniviewdev/runtime';
 import { RESOURCE_DRAWER_EXTENSION_POINT_ID } from '@/features/extensions/drawer/extensionPoint';
@@ -63,6 +63,17 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dragHandleRef = useRef<HTMLDivElement>(null);
 
+
+  // The drawer's height rule reads --BottomDrawer-height; keep it on this element
+  // rather than <html> so a bottom drawer toggle only restyles this subtree.
+  React.useEffect(() => {
+    const setHeightVar = (height: number) => {
+      sidebarRef.current?.style.setProperty('--BottomDrawer-height', `${height}px`);
+    };
+
+    setHeightVar(getBottomDrawerHeight());
+    return bottomDrawerChannel.on('onHeightChange', setHeightVar);
+  }, []);
 
   React.useEffect(() => {
     const sizeReset = () => {
