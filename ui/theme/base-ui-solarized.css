@@ -1,0 +1,51 @@
+/*
+ * base-ui has no Solarized theme. While the legacy AppTheme owns the theme
+ * setting (appearance.theme), map base-ui's semantic tokens onto the legacy
+ * Solarized tokens so base-ui chrome follows the same palette. The legacy
+ * tokens are resolved per variant by data-ovl-theme on <html> (tokens.css).
+ *
+ * Component tokens in base-ui (tabs, editor, terminal, ...) are derived from
+ * these semantic tokens with var(), so they follow automatically.
+ * Remove once Solarized is a real base-ui theme (omn-bus4).
+ */
+:root[data-ovl-theme='solarized-dark'],
+:root[data-ovl-theme='solarized-light'] {
+  --ov-color-bg-base: var(--ov-bg-base);
+  --ov-color-bg-surface: var(--ov-bg-surface);
+  --ov-color-bg-surface-raised: var(--ov-bg-surface-raised);
+  --ov-color-bg-surface-overlay: var(--ov-bg-surface-overlay);
+  --ov-color-bg-inset: var(--ov-bg-surface-inset);
+  --ov-color-bg-elevated: var(--ov-bg-surface-overlay);
+
+  --ov-color-fg-default: var(--ov-fg-default);
+  --ov-color-fg-muted: var(--ov-fg-muted);
+  --ov-color-fg-subtle: var(--ov-fg-faint);
+  --ov-color-fg-disabled: var(--ov-fg-disabled);
+  --ov-color-fg-inverse: var(--ov-bg-base);
+
+  --ov-color-border-default: var(--ov-border-default);
+  --ov-color-border-muted: var(--ov-border-muted);
+  --ov-color-border-strong: var(--ov-border-emphasis);
+  --ov-color-border-focus: var(--ov-accent);
+
+  --ov-color-accent-soft: var(--ov-accent-muted);
+  --ov-color-accent-strong: var(--ov-accent);
+  --ov-color-brand-300: var(--ov-accent);
+  --ov-color-brand-400: var(--ov-accent);
+
+  --ov-color-success: var(--ov-success-default);
+  --ov-color-success-soft: var(--ov-success-muted);
+  --ov-color-warning: var(--ov-warning-default);
+  --ov-color-warning-soft: var(--ov-warning-muted);
+  --ov-color-danger: var(--ov-danger-default);
+  --ov-color-danger-soft: var(--ov-danger-muted);
+  --ov-color-info: var(--ov-info-default);
+  --ov-color-info-soft: var(--ov-info-muted);
+
+  --ov-color-state-hover: var(--ov-state-hover);
+  --ov-color-state-pressed: var(--ov-state-active);
+  --ov-color-state-selected: var(--ov-state-selected);
+  --ov-color-state-focus-ring: var(--ov-accent);
+
+  --ov-shadow-surface: var(--ov-shadow-md);
+}
