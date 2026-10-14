@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Work only on branch `feat/ui-migration` in `/Users/joshuapare/Repos/omniview.git/ui-migration`.
+- Work only on branch `feat/ui-migration` in an isolated worktree.
 - Do not migrate live UI to another component library.
 - Prioritize deletion of unreachable MUI and `@omniviewdev/ui` consumers.
 - Exclude generated `ui/providers/monaco/yaml.worker.bundle.js` and declaration bootstrap `ui/vite-env.d.ts`.
