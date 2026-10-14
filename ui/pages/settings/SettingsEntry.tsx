@@ -84,28 +84,26 @@ const SettingSelect: React.FC<SettingSelectProps> = ({ value, options, isChanged
  * Renders a single setting entry based on the type of setting.
  */
 const SettingsEntry: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
-  const settingType = setting.type as unknown as string;
-
-  switch (settingType) {
+  switch (setting.type) {
     case SettingType.Text:
-      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <TextSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    case 'select':
-      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    case SettingType.Select:
       return <SelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    case 'multiselect':
-      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    case SettingType.MultiSelect:
       return <MultiSelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
     case SettingType.Toggle:
-      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <ToggleSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
     case SettingType.Integer:
     case SettingType.Float:
-      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <NumberSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    default:
-      return null;
+    case SettingType.$zero:
+    case SettingType.Color:
+    case SettingType.DateTime:
+    case SettingType.Password:
+      break;
   }
+
+  return null;
 };
 
 const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {

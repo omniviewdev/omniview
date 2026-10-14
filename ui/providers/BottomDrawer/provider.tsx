@@ -61,7 +61,8 @@ const findTabIndex = (tabs: BottomDrawerTab[], opts: FindTabOpts): number => {
         return tabs.indexOf(matches[matches.length - 1]);
       case 'oldest':
         return tabs.indexOf(matches[0]);
-      default:
+      case 'none':
+      case undefined:
         return -1;
     }
   }

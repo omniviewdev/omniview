@@ -71,6 +71,8 @@ export function useDevServers() {
       case 'stopped':
         summary.stopped++;
         break;
+      case 'connecting':
+        break;
     }
   });
 

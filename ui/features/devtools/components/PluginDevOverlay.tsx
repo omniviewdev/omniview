@@ -4,6 +4,7 @@ import { LuTriangleAlert, LuX, LuRefreshCw } from 'react-icons/lu';
 
 import { devToolsChannel } from '@/features/devtools/events';
 import type { DevBuildError, DevServerState } from '@/features/devtools/types';
+import { DevProcessStatus } from '@omniviewdev/runtime/models';
 import styles from './PluginDevOverlay.module.css';
 
 type Props = {
@@ -36,7 +37,7 @@ const PluginDevOverlay: React.FC<Props> = ({ pluginId, dismissable = true }) => 
         return;
       }
 
-      if (state.goStatus === 'ready' && !state.lastError) {
+      if (state.goStatus === DevProcessStatus.DevProcessStatusReady && !state.lastError) {
         setErrors([]);
         setHasError(false);
       }

@@ -11,7 +11,7 @@ export const validateSettingValue = (setting: Setting, value: any) => {
         return 'Attempted to set a text setting with a value that is not a string.';
       }
 
-      break;
+      return '';
     }
 
     case 'integer': {
@@ -19,7 +19,7 @@ export const validateSettingValue = (setting: Setting, value: any) => {
         return 'Attempted to set an integer setting with a value that is not an integer.';
       }
 
-      break;
+      return '';
     }
 
     case 'float': {
@@ -27,7 +27,7 @@ export const validateSettingValue = (setting: Setting, value: any) => {
         return 'Attempted to set a float setting with a value that is not a float.';
       }
 
-      break;
+      return '';
     }
 
     case 'select': {
@@ -35,7 +35,7 @@ export const validateSettingValue = (setting: Setting, value: any) => {
         return 'Attempted to set a select setting with a value that is not an available option.';
       }
 
-      break;
+      return '';
     }
 
     case 'toggle': {
@@ -43,7 +43,7 @@ export const validateSettingValue = (setting: Setting, value: any) => {
         return 'Attempted to set a toggle setting with a value that is not a boolean.';
       }
 
-      break;
+      return '';
     }
 
     case 'color': {
@@ -51,15 +51,14 @@ export const validateSettingValue = (setting: Setting, value: any) => {
         return 'Attempted to set a color setting with a value that is not a valid hex color.';
       }
 
-      break;
+      return '';
     }
 
-    default: {
-      return 'Attempted to set a setting with an unknown type.';
-    }
+    case 'datetime':
+      break;
   }
 
-  return '';
+  return 'Attempted to set a setting with an unknown type.';
 };
 
 /**

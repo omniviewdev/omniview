@@ -177,6 +177,7 @@ const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorat
         case 'primary':
           resolved = 'primary';
           break;
+        case undefined:
         default:
           resolved = undefined;
       }
@@ -189,6 +190,7 @@ const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorat
         return resolved;
       case 'primary':
         return 'brand';
+      case undefined:
       default:
         return undefined;
     }
@@ -226,6 +228,7 @@ const TextCell: React.FC<Props> = ({ formatter, ...props }) => {
   switch (formatter?.toLowerCase()) {
     case 'age':
       return <AgeCell {...props} />;
+    case undefined:
     default:
       return <CellBase {...props} formatter={formatter?.toLowerCase()} />;
   }

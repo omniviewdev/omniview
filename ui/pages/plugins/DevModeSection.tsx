@@ -8,6 +8,7 @@ import { devToolsChannel } from '@/features/devtools/events';
 import { getAggregateStatus, STATUS_COLORS } from '@/features/devtools/types';
 import type { DevServerAggregateStatus } from '@/features/devtools/types';
 import { useDevServer } from '@/hooks/plugin/useDevServer';
+import { DevServerMode } from '@omniviewdev/runtime/models';
 import styles from './DevModeSection.module.css';
 
 type Props = {
@@ -64,7 +65,7 @@ const DevModeSection: React.FC<Props> = ({ pluginId, devPath }) => {
           >
             {STATUS_LABELS[aggStatus]}
           </Chip>
-          {state.data?.mode === 'external' && (
+          {state.data?.mode === DevServerMode.DevServerModeExternal && (
             <Chip
               size='xs'
               color='neutral'

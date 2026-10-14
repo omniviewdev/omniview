@@ -96,7 +96,12 @@ const idAccessorResolver = (data: any, accessor: IdAccessor): string => {
       return accessor(data);
     case 'string':
       return get(data, accessor);
-    default:
+    case 'number':
+    case 'bigint':
+    case 'boolean':
+    case 'symbol':
+    case 'undefined':
+    case 'object':
       throw new Error('Invalid ID accessor');
   }
 };

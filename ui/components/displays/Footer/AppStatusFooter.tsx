@@ -14,6 +14,7 @@ import {
 } from 'react-icons/lu';
 import { Events } from '@omniviewdev/runtime/runtime';
 import type { PluginMeta } from '@omniviewdev/runtime/models';
+import { DevServerMode } from '@omniviewdev/runtime/models';
 
 import { useDevServers } from '@/features/devtools/useDevServers';
 import { devToolsChannel } from '@/features/devtools/events';
@@ -96,7 +97,7 @@ function DevServerPopoverBody({ pluginId, state, onClose }: { pluginId: string; 
         title={
           <>
             {pluginId}
-            {state.mode === 'external' && <span className={styles.Badge}>External</span>}
+            {state.mode === DevServerMode.DevServerModeExternal && <span className={styles.Badge}>External</span>}
           </>
         }
       >
@@ -172,7 +173,7 @@ function DetailRow({
 function DevServerChip({ pluginId, state }: { pluginId: string; state: DevServerState }) {
   const aggStatus = getAggregateStatus(state);
   const tone = STATUS_TONE[aggStatus];
-  const tooltipText = `${STATUS_LABELS[aggStatus]}${state.mode === 'external' ? ' (external)' : ''}${state.vitePort > 0 ? ` \u2022 Vite: :${state.vitePort}` : ''}`;
+  const tooltipText = `${STATUS_LABELS[aggStatus]}${state.mode === DevServerMode.DevServerModeExternal ? ' (external)' : ''}${state.vitePort > 0 ? ` \u2022 Vite: :${state.vitePort}` : ''}`;
 
   return (
     <FooterPopover
@@ -466,13 +467,17 @@ function PortForwardList({ onClose }: { onClose: () => void }) {
                   <PopoverAction
                     icon={<LuExternalLink size={11} />}
                     label='Open'
-                    onClick={() => openInBrowser(session.local_port)}
+                    onClick={() => {
+                      void openInBrowser(session.local_port);
+                    }}
                   />
                   <PopoverAction
                     icon={<LuX size={11} />}
                     label='Close'
                     tone='danger'
-                    onClick={() => void handleClose(session.id)}
+                    onClick={() => {
+                      void handleClose(session.id);
+                    }}
                   />
                 </div>
               </div>

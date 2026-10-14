@@ -59,9 +59,9 @@ function StateIcon({ state }: { state: WatchState }) {
       return <LuCircleSlash size={14} className={styles.IconMuted} />;
     case WatchState.WatchStateSkipped:
       return <LuCircleSlash size={14} className={styles.IconMuted} />;
-    default:
-      return <LuCircleSlash size={14} className={styles.IconMuted} />;
   }
+
+  return <LuCircleSlash size={14} className={styles.IconMuted} />;
 }
 
 /** Per-group progress summary — excludes SKIPPED from totals */

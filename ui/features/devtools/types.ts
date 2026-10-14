@@ -4,6 +4,7 @@
  * Wails-generated bindings so there is a single source of truth.
  */
 import type { DevServerState as DevServerStateModel, DevServerLogEntry } from '@omniviewdev/runtime/models';
+import { DevProcessStatus } from '@omniviewdev/runtime/models';
 
 /** Dev server state, re-exported from the Wails binding models. */
 export type DevServerState = DevServerStateModel;
@@ -34,15 +35,15 @@ export type DevServerAggregateStatus = 'ready' | 'building' | 'error' | 'stopped
 
 /** Derive the aggregate status from a DevServerState. */
 export function getAggregateStatus(state: DevServerState): DevServerAggregateStatus {
-  if (state.goStatus === 'error' || state.viteStatus === 'error') {
+  if (state.goStatus === DevProcessStatus.DevProcessStatusError || state.viteStatus === DevProcessStatus.DevProcessStatusError) {
     return 'error';
   }
 
-  if (state.goStatus === 'building' || state.viteStatus === 'starting') {
+  if (state.goStatus === DevProcessStatus.DevProcessStatusBuilding || state.viteStatus === DevProcessStatus.DevProcessStatusStarting) {
     return 'building';
   }
 
-  if (state.viteStatus === 'stopped' && !state.grpcConnected) {
+  if (state.viteStatus === DevProcessStatus.DevProcessStatusStopped && !state.grpcConnected) {
     return 'stopped';
   }
 
