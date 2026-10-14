@@ -71,6 +71,13 @@ import BottomDrawerContainer from '../../BottomDrawer/index';
 const drawerModeStorageKey = 'omniview.bottomDrawer.mode';
 const drawerExpandedHeightStorageKey = 'omniview.bottomDrawer.expandedHeight';
 
+/** Signal that BottomDrawerTabs finished restoring terminal sessions. */
+const finishRestore = () => {
+  act(() => {
+    mocks.eventBusHandlers['onSessionsRestored']?.();
+  });
+};
+
 describe('BottomDrawerContainer', () => {
   const defaultDrawerState = {
     tabs: [] as any[],
@@ -135,6 +142,7 @@ describe('BottomDrawerContainer', () => {
   it('expands to defaultHeight when tabs appear', () => {
     // Start with no tabs
     const { container, rerender } = render(<BottomDrawerContainer />);
+    finishRestore();
 
     // Now simulate tabs appearing
     mocks.mockUseBottomDrawer.mockReturnValue({
@@ -167,6 +175,7 @@ describe('BottomDrawerContainer', () => {
   it('expand restores last expanded height', () => {
     // Start with no tabs so drawer is at minHeight
     const { container, getByTestId, rerender } = render(<BottomDrawerContainer />);
+    finishRestore();
 
     // Simulate tabs appearing — triggers expansion to 550px
     mocks.mockUseBottomDrawer.mockReturnValue({
@@ -232,6 +241,7 @@ describe('BottomDrawerContainer', () => {
   it('passes correct isMinimized and isFullscreen props to tabs', () => {
     // Start with no tabs, then add tabs to trigger expansion
     const { getByTestId, rerender } = render(<BottomDrawerContainer />);
+    finishRestore();
 
     mocks.mockUseBottomDrawer.mockReturnValue({
       tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
@@ -249,6 +259,7 @@ describe('BottomDrawerContainer', () => {
   it('double-click drag handle toggles min/default', () => {
     // Start with no tabs, then add tabs to get inline style set
     const { container, rerender } = render(<BottomDrawerContainer />);
+    finishRestore();
 
     mocks.mockUseBottomDrawer.mockReturnValue({
       tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
@@ -353,6 +364,7 @@ describe('BottomDrawerContainer', () => {
 
   it('minHeight stays at 32px floor when expanded', () => {
     const { container, rerender } = render(<BottomDrawerContainer />);
+    finishRestore();
 
     mocks.mockUseBottomDrawer.mockReturnValue({
       tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
@@ -422,5 +434,38 @@ describe('BottomDrawerContainer', () => {
 
     const { getByTestId } = render(<BottomDrawerContainer />);
     expect(getByTestId('logviewer-log-1')).toBeTruthy();
+  });
+
+  it('applies the saved expanded height to tabs restored after mount', () => {
+    localStorage.setItem(drawerModeStorageKey, 'expanded');
+    localStorage.setItem(drawerExpandedHeightStorageKey, '300');
+
+    const { container, rerender } = render(<BottomDrawerContainer />);
+
+    // The restored session shows up after the first render.
+    mocks.mockUseBottomDrawer.mockReturnValue({
+      tabs: [{ id: 'sess-1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
+      focused: 0,
+    });
+    rerender(<BottomDrawerContainer />);
+    finishRestore();
+
+    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    expect(drawer.style.height).toBe('300px');
+  });
+
+  it('keeps a saved minimized drawer minimized when tabs are restored after mount', () => {
+    localStorage.setItem(drawerModeStorageKey, 'minimized');
+    localStorage.setItem(drawerExpandedHeightStorageKey, '300');
+
+    const { container, rerender } = render(<BottomDrawerContainer />);
+    mocks.mockUseBottomDrawer.mockReturnValue({
+      tabs: [{ id: 'sess-1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
+      focused: 0,
+    });
+    rerender(<BottomDrawerContainer />);
+
+    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    expect(drawer.style.height).toBe('32px');
   });
 });

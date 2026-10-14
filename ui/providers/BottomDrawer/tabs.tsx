@@ -332,6 +332,8 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
         }
       }).catch((err: unknown) => {
         console.error(err);
+      }).finally(() => {
+        bottomDrawerChannel.emit('onSessionsRestored');
       });
 
     const closerTerminal = Events.On("menu/view/terminal/create", () => handleCreate('terminal'))

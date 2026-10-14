@@ -35,6 +35,8 @@ type BottomDrawerEvents = {
   onMinimize: () => void;
   /** Fired when a new tab is created so the drawer can auto-expand. */
   onTabCreated: () => void;
+  /** Fired once terminal sessions that survived a reload have been restored as tabs (or the lookup failed). */
+  onSessionsRestored: () => void;
   onCreateSession: (opts: OnCreateSessionOpts) => void;
   onCreateLogSession: (opts: OnCreateLogSessionOpts) => void;
   onSessionClosed: (opts: OnSessionClosedOpts) => void;
