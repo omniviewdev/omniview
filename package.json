@@ -13,7 +13,8 @@
     "preview": "nx preview",
     "test": "vitest run",
     "bench": "vitest bench --config vitest.bench.config.ts",
-    "bench:render": "vitest bench --config vitest.render.config.ts --run"
+    "bench:render": "vitest bench --config vitest.render.config.ts --run",
+    "bench:app": "node bench/app/run.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

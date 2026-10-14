@@ -181,6 +181,11 @@ tasks:
     cmds:
       - scripts/perf/coldstart.sh {{.CLI_ARGS}}
 
+  perf:app:
+    summary: "Profile the whole frontend in Chromium with a faked backend (bench/app). Args after --, e.g. task perf:app -- --runs 3 --only pods"
+    cmds:
+      - node bench/app/run.mjs {{.CLI_ARGS}}
+
   # ──────────────────────────────────────────────
   # E2E tests
   # ──────────────────────────────────────────────
