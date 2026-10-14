@@ -1,0 +1,71 @@
+name: Render Benchmarks
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: render-bench-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "10"
+
+jobs:
+  render-bench:
+    name: Render benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The kubernetes Pod table bench renders plugin source from the submodule.
+          submodules: true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build workspace packages
+        run: task packages
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run render benchmarks
+        run: pnpm bench:render
+
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f bench/render/results/latest.json ]; then
+            node bench/render/report.mjs --title "Render benchmarks (${{ github.sha }}, ubuntu-latest)"
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-bench-results
+          path: bench/render/results/
+          if-no-files-found: ignore
+          retention-days: 30
