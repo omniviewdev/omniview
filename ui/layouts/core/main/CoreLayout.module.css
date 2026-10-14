@@ -10,6 +10,11 @@
 
 .Shell {
   height: 100dvh;
+  /*
+   * Contain the frame's own z-indexes (header, bottom drawer) so base-ui
+   * popups, which portal to <body> with low z-indexes, always paint above it.
+   */
+  isolation: isolate;
   background: var(--ov-color-bg-base);
 }
 

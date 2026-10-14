@@ -42,7 +42,7 @@
   width: max-content;
   height: 100%;
   padding: var(--ov-space-4);
-  box-shadow: var(--ov-shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.4));
+  box-shadow: var(--ov-shadow-surface);
   background: var(--ov-color-bg-surface);
 }
 

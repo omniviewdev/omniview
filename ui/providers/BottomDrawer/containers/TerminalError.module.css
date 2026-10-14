@@ -11,12 +11,12 @@
 }
 
 .Icon {
-  color: var(--ov-color-danger-fg);
+  color: var(--ov-color-danger);
 }
 
 .Title {
   font-size: 16px;
-  color: var(--ov-color-danger-fg);
+  color: var(--ov-color-danger);
 }
 
 .Suggestion {

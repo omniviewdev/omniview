@@ -1,8 +1,10 @@
+/* Fixed, so the off-screen (closed) drawer never widens the page's scroll area. */
 .Drawer {
-  position: absolute;
+  position: fixed;
   top: calc(var(--CoreLayoutHeader-height) - 1px);
   right: 0;
-  z-index: 999;
+  /* Above the (isolated) app shell, below portaled popups and MUI modals. */
+  z-index: 10;
   width: 800px;
   height: calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height));
   min-height: calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height));

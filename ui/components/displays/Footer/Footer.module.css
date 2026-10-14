@@ -26,10 +26,10 @@
   background: var(--_chip-bg, transparent);
 }
 
-.Chip[data-tone='success'] { --_chip-bg: var(--ov-color-success-fg); }
-.Chip[data-tone='warning'] { --_chip-bg: var(--ov-color-warning-fg); }
-.Chip[data-tone='danger'] { --_chip-bg: var(--ov-color-danger-fg); }
-.Chip[data-tone='info'] { --_chip-bg: var(--ov-color-info-fg); }
+.Chip[data-tone='success'] { --_chip-bg: var(--ov-color-success); }
+.Chip[data-tone='warning'] { --_chip-bg: var(--ov-color-warning); }
+.Chip[data-tone='danger'] { --_chip-bg: var(--ov-color-danger); }
+.Chip[data-tone='info'] { --_chip-bg: var(--ov-color-info); }
 .Chip[data-tone='neutral'] { --_chip-bg: var(--ov-color-fg-subtle); }
 
 button.Chip {
@@ -252,8 +252,8 @@ button.Chip:hover {
   color: var(--ov-color-fg-muted);
 }
 
-.DetailValue[data-tone='success'] { color: var(--ov-color-success-fg); }
-.DetailValue[data-tone='danger'] { color: var(--ov-color-danger-fg); }
+.DetailValue[data-tone='success'] { color: var(--ov-color-success); }
+.DetailValue[data-tone='danger'] { color: var(--ov-color-danger); }
 
 .ErrorBox {
   max-height: 60px;
@@ -263,9 +263,9 @@ button.Chip:hover {
   font-family: var(--ovl-font-mono, monospace);
   font-size: 0.6875rem;
   word-break: break-word;
-  color: var(--ov-color-danger-fg);
+  color: var(--ov-color-danger);
   background: var(--ov-color-danger-soft);
-  border: 1px solid color-mix(in srgb, var(--ov-color-danger-fg) 25%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ov-color-danger) 25%, transparent);
   border-radius: 4px;
 }
 
@@ -306,9 +306,9 @@ button.Chip:hover {
   background: var(--ov-color-state-pressed);
 }
 
-.Action[data-tone='success'] { color: var(--ov-color-success-fg); }
-.Action[data-tone='danger'] { color: var(--ov-color-danger-fg); }
-.Action[data-tone='info'] { color: var(--ov-color-info-fg); }
+.Action[data-tone='success'] { color: var(--ov-color-success); }
+.Action[data-tone='danger'] { color: var(--ov-color-danger); }
+.Action[data-tone='info'] { color: var(--ov-color-info); }
 
 .Action:disabled {
   cursor: default;
@@ -317,7 +317,7 @@ button.Chip:hover {
   background: none;
 }
 
-.SuccessIcon { color: var(--ov-color-success-fg); }
-.DangerIcon { color: var(--ov-color-danger-fg); }
-.InfoIcon { color: var(--ov-color-info-fg); }
+.SuccessIcon { color: var(--ov-color-success); }
+.DangerIcon { color: var(--ov-color-danger); }
+.InfoIcon { color: var(--ov-color-info); }
 .MutedIcon { color: var(--ov-color-fg-muted); }
