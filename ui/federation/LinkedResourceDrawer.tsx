@@ -1,9 +1,8 @@
 import React from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 
-// material-ui
-import { Stack } from '@omniviewdev/ui/layout';
-import { Button } from '@omniviewdev/ui/buttons';
+// ui
+import { Button, Stack } from '@omniviewdev/base-ui';
 import { InlineErrorFallback } from '@/components/errors/ErrorFallback';
 
 // types
@@ -75,7 +74,7 @@ const LinkedResourceEditor: React.FC<{
   };
 
   return (
-    <Stack direction="column" gap={1} sx={{ display: 'flex', flex: 1 }}>
+    <Stack direction="column" spacing={2} style={{ flex: 1 }}>
       {viewDiff ? (
         <DiffEditor
           height='100%'
@@ -97,20 +96,21 @@ const LinkedResourceEditor: React.FC<{
           onChange={handleChange}
         />
       )}
-      <Stack direction="row" justify="between" gap={1}>
-        <Stack direction="row" gap={1}>
-          <Button emphasis='soft' color='primary' disabled={!changed} onClick={handleSubmit}>
+      <Stack direction="row" justify="between" spacing={2}>
+        <Stack direction="row" spacing={2}>
+          <Button size='sm' variant='soft' color='brand' disabled={!changed} onClick={handleSubmit}>
             Submit
           </Button>
-          <Button emphasis='outline' color='neutral' onClick={onClose}>
+          <Button size='sm' variant='outline' color='neutral' onClick={onClose}>
             Cancel
           </Button>
         </Stack>
-        <Stack direction="row" gap={1}>
+        <Stack direction="row" spacing={2}>
           <Button
-            emphasis='outline'
+            size='sm'
+            variant='outline'
             color='warning'
-            startAdornment={<LuRotateCw size={16} />}
+            startDecorator={<LuRotateCw size={16} />}
             onClick={() => {
               setValue(originalData);
               setChanged(false);
@@ -119,8 +119,10 @@ const LinkedResourceEditor: React.FC<{
             Reset Changes
           </Button>
           <Button
-            emphasis='outline'
-            startAdornment={viewDiff ? <LuFileCode size={18} /> : <LuFileDiff size={16} />}
+            size='sm'
+            variant='outline'
+            color='neutral'
+            startDecorator={viewDiff ? <LuFileCode size={18} /> : <LuFileDiff size={16} />}
             onClick={() => setViewDiff(!viewDiff)}
           >
             {viewDiff ? 'Return to Code Editor' : 'View in Diff Editor'}

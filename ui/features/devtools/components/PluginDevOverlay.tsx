@@ -1,14 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import { Button } from '@omniviewdev/ui/buttons';
-import { Card } from '@omniviewdev/ui';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
+import { Button, Card, IconButton, Separator, Stack, Text } from '@omniviewdev/base-ui';
 import { LuTriangleAlert, LuX, LuRefreshCw } from 'react-icons/lu';
 
 import { devToolsChannel } from '@/features/devtools/events';
 import type { DevBuildError, DevServerState } from '@/features/devtools/types';
+import styles from './PluginDevOverlay.module.css';
 
 interface Props {
   pluginId: string;
@@ -49,109 +45,73 @@ const PluginDevOverlay: React.FC<Props> = ({ pluginId, dismissable = true }) => 
   if (!hasError || dismissed || errors.length === 0) return null;
 
   return (
-    <Box
-      sx={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'rgba(0, 0, 0, 0.7)',
-        backdropFilter: 'blur(2px)',
-      }}
-    >
-      <Card
-        sx={{
-          maxWidth: 600,
-          maxHeight: '80%',
-          overflow: 'auto',
-          bgcolor: 'background.paper',
-          border: '1px solid',
-          borderColor: 'error.main',
-        }}
-      >
+    <div className={styles.Overlay}>
+      <Card className={styles.Card}>
         <Stack direction="row" align="center" justify="between">
-          <Stack direction="row" align="center" gap={1}>
-            <LuTriangleAlert size={18} color="var(--joy-palette-danger-400)" />
-            <Text weight="semibold" sx={{ color: 'error.main' }}>
+          <Stack direction="row" align="center" spacing={2}>
+            <LuTriangleAlert size={18} className={styles.AlertIcon} />
+            <Text weight="semibold" tone="danger">
               Build Error
             </Text>
-            <Text size="xs" sx={{ color: 'text.secondary' }}>
+            <Text size="xs" tone="muted">
               {pluginId}
             </Text>
           </Stack>
           {dismissable && (
-            <Button
+            <IconButton
               size="sm"
-              emphasis="ghost"
+              variant="ghost"
               color="neutral"
-              onClick={() => setDismissed(true)}
-              sx={{ minWidth: 0, minHeight: 0, p: 0.5 }}
+              aria-label="Dismiss"
+              onClick={() => { setDismissed(true); }}
             >
               <LuX size={16} />
-            </Button>
+            </IconButton>
           )}
         </Stack>
 
-        <Divider sx={{ my: 1 }} />
+        <Separator className={styles.Divider} />
 
-        <Stack gap={1}>
+        <Stack spacing={2}>
           {errors.map((err, i) => (
-            <Box
-              key={i}
-              sx={{
-                p: 1,
-                borderRadius: 1,
-                bgcolor: 'action.hover',
-                fontFamily: 'monospace',
-                fontSize: '12px',
-              }}
-            >
-              <Text
-                size="xs"
-                sx={{ color: 'text.secondary', mb: 0.5, fontFamily: 'inherit' }}
-              >
+            <div key={i} className={styles.ErrorItem}>
+              <Text size="xs" tone="muted" className={styles.ErrorLocation}>
                 {err.file}:{err.line}:{err.column}
               </Text>
               <Text
                 size="sm"
-                sx={{
-                  color: err.severity === 'error' ? 'error.main' : 'warning.main',
-                  fontFamily: 'inherit',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
+                tone={err.severity === 'error' ? 'danger' : 'warning'}
+                className={styles.ErrorMessage}
               >
                 {err.message}
               </Text>
-            </Box>
+            </div>
           ))}
         </Stack>
 
-        <Divider sx={{ my: 1 }} />
+        <Separator className={styles.Divider} />
 
-        <Stack direction="row" gap={1} justify="end">
+        <Stack direction="row" spacing={2} justify="end">
           <Button
             size="sm"
-            emphasis="ghost"
+            variant="ghost"
             color="neutral"
-            onClick={() => devToolsChannel.emit('onOpenBuildOutput', pluginId)}
+            onClick={() => { devToolsChannel.emit('onOpenBuildOutput', pluginId); }}
           >
             View Full Logs
           </Button>
           <Button
             size="sm"
-            emphasis="soft"
-            color="primary"
-            startAdornment={<LuRefreshCw size={14} />}
-            onClick={() => devToolsChannel.emit('onRestartDevServer', pluginId)}
+            variant="soft"
+            color="brand"
+            startDecorator={<LuRefreshCw size={14} />}
+            onClick={() => { devToolsChannel.emit('onRestartDevServer', pluginId); }}
           >
             Restart
           </Button>
         </Stack>
       </Card>
-    </Box>
+    </div>
   );
 };
 

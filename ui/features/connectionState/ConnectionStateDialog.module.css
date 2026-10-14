@@ -1,0 +1,138 @@
+.Surface {
+  border: 1px solid var(--ov-color-border-default);
+  background: var(--ov-color-bg-elevated);
+  overflow: hidden;
+}
+
+.Header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ov-space-3) var(--ov-space-4);
+  border-bottom: 1px solid var(--ov-color-border-default);
+}
+
+.Header .HeaderTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-2);
+  padding: 0;
+  font-size: var(--ov-font-size-sm);
+  font-weight: var(--ov-font-weight-title);
+}
+
+.ProgressSection {
+  padding: var(--ov-space-2) var(--ov-space-4);
+  border-bottom: 1px solid var(--ov-color-border-default);
+}
+
+.ProgressRow {
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-2);
+  margin-bottom: var(--ov-space-1);
+}
+
+.ProgressBar {
+  flex: 1;
+}
+
+.ProgressLabel {
+  min-width: 64px;
+  text-align: right;
+}
+
+.SkippedNote {
+  display: block;
+  margin-top: 2px;
+}
+
+.Content {
+  padding: 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.GroupHeader {
+  display: flex;
+  align-items: center;
+  padding: 6px var(--ov-space-4);
+  background: var(--ov-color-state-hover);
+  border-bottom: 1px solid var(--ov-color-border-default);
+}
+
+.GroupLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.GroupProgress {
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-2);
+  margin-left: auto;
+}
+
+.GroupProgressBar {
+  width: 48px;
+}
+
+.GroupProgressLabel {
+  min-width: 28px;
+  text-align: right;
+}
+
+.Row {
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-3);
+  padding: var(--ov-space-1) var(--ov-space-4);
+  border-bottom: 1px solid var(--ov-color-border-muted);
+}
+
+.Row:last-child {
+  border-bottom: none;
+}
+
+.Row[data-dimmed='true'] {
+  opacity: 0.4;
+}
+
+.Kind {
+  flex: 1;
+}
+
+.Note {
+  font-style: italic;
+}
+
+.RetryButton {
+  font-size: 0.625rem;
+}
+
+.Footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--ov-space-2) var(--ov-space-4);
+  border-top: 1px solid var(--ov-color-border-default);
+}
+
+.IconMuted {
+  color: var(--ov-color-fg-subtle);
+  flex-shrink: 0;
+}
+
+.IconSuccess {
+  color: var(--ov-color-success);
+  flex-shrink: 0;
+}
+
+.IconDanger {
+  color: var(--ov-color-danger);
+  flex-shrink: 0;
+}
+
+.IconWarning {
+  color: var(--ov-color-warning);
+  flex-shrink: 0;
+}

@@ -1,9 +1,6 @@
 import React from 'react';
 
-// material ui
-import { Chip } from '@omniviewdev/ui';
-import { Text } from '@omniviewdev/ui/typography';
-import { Tooltip } from '@omniviewdev/ui/overlays';
+import { Chip } from '@omniviewdev/base-ui';
 
 // third party
 import get from 'lodash.get';
@@ -12,6 +9,8 @@ import get from 'lodash.get';
 import type { ResourceLink } from '@omniviewdev/runtime/models';
 import useRightDrawer from '@/hooks/useRightDrawer';
 import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
+import HintTooltip from '@/components/base/HintTooltip';
+import styles from './cells.module.css';
 
 type Props = ResourceLink & {
   value: any;
@@ -81,30 +80,30 @@ const ResourceLinkCell: React.FC<Props> = ({
     return (
       <Chip
         size='sm'
-        emphasis='soft'
-        color={typeof value === 'string' ? 'neutral' : 'primary'}
-        sx={{
-          borderRadius: 'sm',
-        }}
+        variant='soft'
+        color={typeof value === 'string' ? 'neutral' : 'brand'}
+        clickable
+        className={styles.LinkChip}
         onClick={handleClick}
-        label={resourceID}
-      />
+      >
+        {resourceID}
+      </Chip>
     );
   }
 
   return (
-    <Tooltip size='sm' emphasis='ghost' content={resourceID}>
+    <HintTooltip content={resourceID}>
       <Chip
         size='sm'
-        emphasis='soft'
-        color={typeof value === 'string' ? 'neutral' : 'primary'}
-        sx={{
-          borderRadius: 'sm',
-        }}
+        variant='soft'
+        color={typeof value === 'string' ? 'neutral' : 'brand'}
+        clickable
+        className={styles.LinkChip}
         onClick={handleClick}
-        label={typeof value === 'string' ? value : resourceKey}
-      />
-    </Tooltip>
+      >
+        {typeof value === 'string' ? value : resourceKey}
+      </Chip>
+    </HintTooltip>
   );
 };
 

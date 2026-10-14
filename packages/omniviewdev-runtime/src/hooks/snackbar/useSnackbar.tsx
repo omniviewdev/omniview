@@ -1,5 +1,5 @@
 import React, { createContext, useContext, type ReactNode } from 'react';
-import { useNotificationStack, type NotificationSeverity } from '@omniviewdev/ui/feedback';
+import { useToast, type ToastSeverity } from '@omniviewdev/base-ui';
 
 type VariantType = 'default' | 'success' | 'error' | 'warning' | 'info';
 
@@ -24,16 +24,16 @@ type ShowSnackbarOptions = {
   actions?: Array<{ label: string; onClick: () => void }>;
 };
 
-const variantToSeverity: Record<VariantType, NotificationSeverity> = {
+const variantToSeverity: Record<VariantType, ToastSeverity> = {
   default: 'info',
   info: 'info',
   success: 'success',
   warning: 'warning',
-  error: 'error',
+  error: 'danger',
 };
 
 export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) => {
-  const { push } = useNotificationStack();
+  const { toast } = useToast();
 
   const [singleShowNotices, setSingleShowNotices] = React.useState<string[]>([]);
 
@@ -69,12 +69,12 @@ export const SnackbarProvider: React.FC<SnackbarProviderProps> = ({ children }) 
       _details = details;
     }
 
-    push({
+    // base-ui toasts take a single action; app errors carry one in practice.
+    toast(_details ?? _message, {
       severity: variantToSeverity[_status] ?? 'info',
-      title: _message,
-      message: _details,
-      timeout: _autoHideDuration,
-      actions: _actions,
+      title: _details ? _message : undefined,
+      duration: _autoHideDuration,
+      action: _actions?.[0],
     });
   };
 

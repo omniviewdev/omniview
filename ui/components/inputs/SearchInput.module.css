@@ -1,0 +1,22 @@
+.Root {
+  flex-basis: 500px;
+  display: flex;
+  box-shadow: none;
+  --wails-draggable: no-drag;
+}
+
+.SearchIcon {
+  color: var(--ov-color-brand-500);
+}
+
+@media (min-width: 900px) {
+  .Root {
+    min-width: 400px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .Root {
+    min-width: 500px;
+  }
+}

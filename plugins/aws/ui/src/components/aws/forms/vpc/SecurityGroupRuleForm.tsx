@@ -1,13 +1,10 @@
 import React, { useState } from 'react';
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { Button, IconButton } from '@omniviewdev/ui/buttons';
-import { TextField, Select } from '@omniviewdev/ui/inputs';
-import { Chip } from '@omniviewdev/ui';
+import { Button, Chip, IconButton, Separator, Stack, Text } from '@omniviewdev/base-ui';
 import { LuPlus, LuShield, LuTrash2 } from 'react-icons/lu';
+import TextInput from '../../../shared/ui/TextInput';
+import SelectInput from '../../../shared/ui/SelectInput';
 import FormSection from '../../../shared/forms/FormSection';
+import styles from './SecurityGroupRuleForm.module.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -118,22 +115,22 @@ const RuleRowDisplay: React.FC<{
 }> = ({ rule, onRemove, readOnly }) => (
   <Stack
     direction='row'
-    spacing={1}
-    alignItems='center'
-    sx={{ px: 1.5, py: 0.5, '&:hover': { bgcolor: 'action.hover' } }}
+    spacing={2}
+    align='center'
+    className={styles.ruleRow}
   >
-    <Chip size='sm' variant='outlined' label={protocolLabel(rule.protocol)} sx={{ borderRadius: 1, minWidth: 70, justifyContent: 'center' }} />
-    <Text size="xs" sx={{ fontFamily: 'monospace', minWidth: 80, textAlign: 'center' }}>
+    <Chip size='sm' variant='outline' style={{ borderRadius: 4, minWidth: 70, justifyContent: 'center' }}>{protocolLabel(rule.protocol)}</Chip>
+    <Text as="div" size="xs" style={{ fontFamily: 'monospace', minWidth: 80, textAlign: 'center' }}>
       {portDisplay(rule)}
     </Text>
-    <Text size="xs" sx={{ fontFamily: 'monospace', flex: 1, minWidth: 0 }}>
+    <Text size="xs" style={{ fontFamily: 'monospace', flex: 1, minWidth: 0 }}>
       {rule.source || 'Any'}
     </Text>
-    <Text size="xs" color="neutral" sx={{ flex: 0.7, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+    <Text size="xs" tone='muted' style={{ flex: 0.7, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
       {rule.description}
     </Text>
     {!readOnly && (
-      <IconButton size='sm' emphasis='ghost' color='error' onClick={onRemove}>
+      <IconButton size='sm' variant='ghost' color='danger' aria-label='Remove' onClick={onRemove}>
         <LuTrash2 size={14} />
       </IconButton>
     )}
@@ -161,65 +158,65 @@ const AddRuleForm: React.FC<{
   };
 
   return (
-    <Stack spacing={1} sx={{ p: 1.5 }}>
-      <Stack direction='row' spacing={1} flexWrap='wrap'>
-        <Box sx={{ minWidth: 130 }}>
-          <Text size="xs" sx={{ mb: 0.5 }}>Protocol</Text>
-          <Select
+    <Stack spacing={2} style={{ padding: 12 }}>
+      <Stack direction='row' spacing={2} wrap>
+        <div style={{ minWidth: 130 }}>
+          <Text as="div" size="xs" style={{ marginBottom: 4 }}>Protocol</Text>
+          <SelectInput
             size='sm'
             value={protocol}
-            onChange={(value) => setProtocol((value as string) || '-1')}
+            onChange={(value) => setProtocol(value || '-1')}
             options={PROTOCOL_OPTIONS}
           />
-        </Box>
+        </div>
         {needsPorts && (
           <>
-            <Box sx={{ width: 80 }}>
-              <Text size="xs" sx={{ mb: 0.5 }}>From Port</Text>
-              <TextField
+            <div style={{ width: 80 }}>
+              <Text as="div" size="xs" style={{ marginBottom: 4 }}>From Port</Text>
+              <TextInput
                 size='sm'
                 type='number'
                 value={String(fromPort)}
                 inputProps={{ min: 0, max: 65535 }}
                 onChange={(value) => setFromPort(value === '' ? '' : Number(value))}
               />
-            </Box>
-            <Box sx={{ width: 80 }}>
-              <Text size="xs" sx={{ mb: 0.5 }}>To Port</Text>
-              <TextField
+            </div>
+            <div style={{ width: 80 }}>
+              <Text as="div" size="xs" style={{ marginBottom: 4 }}>To Port</Text>
+              <TextInput
                 size='sm'
                 type='number'
                 value={String(toPort)}
                 inputProps={{ min: 0, max: 65535 }}
                 onChange={(value) => setToPort(value === '' ? '' : Number(value))}
               />
-            </Box>
+            </div>
           </>
         )}
-        <Box sx={{ flex: 1, minWidth: 150 }}>
-          <Text size="xs" sx={{ mb: 0.5 }}>Source / CIDR</Text>
-          <TextField
+        <div style={{ flex: 1, minWidth: 150 }}>
+          <Text as="div" size="xs" style={{ marginBottom: 4 }}>Source / CIDR</Text>
+          <TextInput
             size='sm'
             value={source}
             placeholder='0.0.0.0/0 or sg-xxx'
             onChange={(value) => setSource(value)}
           />
-        </Box>
-        <Box sx={{ flex: 0.7, minWidth: 120 }}>
-          <Text size="xs" sx={{ mb: 0.5 }}>Description</Text>
-          <TextField
+        </div>
+        <div style={{ flex: 0.7, minWidth: 120 }}>
+          <Text as="div" size="xs" style={{ marginBottom: 4 }}>Description</Text>
+          <TextInput
             size='sm'
             value={description}
             placeholder='Optional'
             onChange={(value) => setDescription(value)}
           />
-        </Box>
+        </div>
       </Stack>
-      <Box>
-        <Button size='sm' emphasis='soft' color='primary' startAdornment={<LuPlus size={14} />} onClick={handleAdd}>
+      <div>
+        <Button size='sm' variant='soft' color='brand' startDecorator={<LuPlus size={14} />} onClick={handleAdd}>
           Add Rule
         </Button>
-      </Box>
+      </div>
     </Stack>
   );
 };
@@ -308,14 +305,14 @@ const SecurityGroupRuleForm: React.FC<Props> = ({
         {/* Header */}
         <Stack
           direction='row'
-          spacing={1}
-          sx={{ px: 1.5, py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}
+          spacing={2}
+          style={{ paddingLeft: 12, paddingRight: 12, paddingTop: 4, paddingBottom: 4, borderBottom: '1px solid var(--ov-color-border-default)' }}
         >
-          <Text size="xs" sx={{ fontWeight: 700, minWidth: 70 }}>Protocol</Text>
-          <Text size="xs" sx={{ fontWeight: 700, minWidth: 80, textAlign: 'center' }}>Port Range</Text>
-          <Text size="xs" sx={{ fontWeight: 700, flex: 1 }}>Source</Text>
-          <Text size="xs" sx={{ fontWeight: 700, flex: 0.7 }}>Description</Text>
-          {!readOnly && <Box sx={{ width: 32 }} />}
+          <Text size="xs" style={{ fontWeight: 700, minWidth: 70 }}>Protocol</Text>
+          <Text as="div" size="xs" style={{ fontWeight: 700, minWidth: 80, textAlign: 'center' }}>Port Range</Text>
+          <Text size="xs" style={{ fontWeight: 700, flex: 1 }}>Source</Text>
+          <Text size="xs" style={{ fontWeight: 700, flex: 0.7 }}>Description</Text>
+          {!readOnly && <div style={{ width: 32 }} />}
         </Stack>
 
         {/* Rules */}
@@ -324,29 +321,29 @@ const SecurityGroupRuleForm: React.FC<Props> = ({
         ))}
 
         {rows.length === 0 && (
-          <Box sx={{ px: 1.5, py: 1.5 }}>
-            <Text size="xs" color="neutral" sx={{ textAlign: 'center' }}>No rules</Text>
-          </Box>
+          <div style={{ paddingLeft: 12, paddingRight: 12, paddingTop: 12, paddingBottom: 12 }}>
+            <Text as="div" size="xs" tone='muted' style={{ textAlign: 'center' }}>No rules</Text>
+          </div>
         )}
 
         {/* Add section */}
         {!readOnly && (
           <>
-            <Divider />
+            <Separator />
             {showAddForm ? (
               <AddRuleForm onAdd={handleAddRule} />
             ) : (
-              <Box sx={{ px: 1.5, py: 0.75 }}>
+              <div style={{ paddingLeft: 12, paddingRight: 12, paddingTop: 6, paddingBottom: 6 }}>
                 <Button
                   size='sm'
-                  emphasis='ghost'
-                  color='primary'
-                  startAdornment={<LuPlus size={14} />}
+                  variant='ghost'
+                  color='brand'
+                  startDecorator={<LuPlus size={14} />}
                   onClick={() => setShowAddForm(true)}
                 >
                   Add rule
                 </Button>
-              </Box>
+              </div>
             )}
           </>
         )}

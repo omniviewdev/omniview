@@ -1,8 +1,9 @@
 import * as React from 'react';
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
-import { Modal } from '@omniviewdev/ui/overlays';
-import { Text } from '@omniviewdev/ui/typography';
+import { Dialog, Spinner, Text } from '@omniviewdev/base-ui';
+import styles from './PluginBackdrop.module.css';
+
+// The backdrop is not dismissable by the user.
+const noop = (): void => undefined;
 
 type Props = {
   ref?: React.RefObject<HTMLDivElement>;
@@ -14,23 +15,17 @@ export default function PluginBackdrop({ ref, open, message }: Props): React.Rea
   console.log('PluginBackdrop', open, message);
 
   return (
-    <Modal
+    <Dialog
+      ref={ref}
       open={open}
-      onClose={() => {}}
+      onClose={noop}
+      size='sm'
+      aria-label={message}
     >
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 2,
-          p: 3,
-        }}
-      >
-        <CircularProgress size={40} thickness={6} />
+      <div className={styles.Content}>
+        <Spinner size='xl' color='brand' />
         <Text size='sm'>{message}</Text>
-      </Box>
-    </Modal>
+      </div>
+    </Dialog>
   );
 }

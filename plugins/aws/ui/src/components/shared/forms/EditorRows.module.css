@@ -1,0 +1,33 @@
+.headerRow {
+  display: flex;
+  gap: 8px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--ov-color-border-default);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 12px;
+}
+
+.row:hover {
+  background-color: var(--ov-color-state-hover);
+}
+
+.row + .row {
+  border-top: 1px solid var(--ov-color-border-default);
+}
+
+.addRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+}
+
+.empty {
+  padding: 12px;
+  text-align: center;
+}

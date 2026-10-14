@@ -1,0 +1,58 @@
+/* One log line. Kept to static classes: thousands of these render at once. */
+.Row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ov-space-1);
+  padding: 1px var(--ov-space-2);
+  font-family: var(--ov-font-mono, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  border-left: 3px solid transparent;
+}
+
+.Row:hover {
+  background: var(--ov-color-state-hover);
+}
+
+.Row[data-system] {
+  font-style: italic;
+  color: var(--ov-color-fg-subtle);
+  background: var(--ov-color-bg-surface-raised);
+}
+
+.LineNumber {
+  flex-shrink: 0;
+  min-width: 4ch;
+  text-align: right;
+  color: var(--ov-color-fg-disabled);
+  user-select: none;
+}
+
+.Timestamp {
+  flex-shrink: 0;
+  color: var(--ov-color-fg-muted);
+  user-select: none;
+}
+
+.Source {
+  flex-shrink: 0;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.Content {
+  flex: 1;
+  white-space: pre;
+  word-break: normal;
+  overflow: visible;
+}
+
+.Content[data-wrap] {
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow: hidden;
+}

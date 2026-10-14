@@ -1,6 +1,4 @@
-
-// Material-ui
-import Box from '@mui/material/Box';
+import styles from './PluginsPage.module.css';
 
 // Layout
 import Layout from '@/layouts/core/sidenav';
@@ -26,22 +24,11 @@ const PluginsPage = () => {
   }
 
   return (
-    <Layout.Root
-      sx={{
-        p: 0,
-        gap: 0,
-      }}
-    >
+    <Layout.Root style={{ padding: 0, gap: 0 }}>
       <Layout.SideNav type='transparent' width={340}>
-        <Box sx={{
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          backgroundColor: 'rgba(255,255,255,0.015)',
-        }}>
+        <div className={styles.NavPane}>
           <PluginsNav />
-        </Box>
+        </div>
       </Layout.SideNav>
       <Layout.Main>
         <Outlet />

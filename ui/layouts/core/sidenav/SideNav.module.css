@@ -1,0 +1,104 @@
+.Root {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ov-color-bg-base);
+}
+
+.Main {
+  width: 100%;
+  min-height: 0;
+}
+
+.SidePane {
+  background: var(--ov-color-bg-surface);
+  border-right: 1px solid var(--ov-color-border-muted);
+}
+
+@media (max-width: 899px) {
+  .SidePane {
+    display: none;
+  }
+}
+
+.SideDrawer {
+  position: fixed;
+  z-index: 1200;
+  width: 100%;
+  height: 100%;
+}
+
+.SideDrawerBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.SideDrawerPanel {
+  position: relative;
+  min-width: 256px;
+  width: max-content;
+  height: 100%;
+  padding: var(--ov-space-4);
+  box-shadow: var(--ov-shadow-surface);
+  background: var(--ov-color-bg-surface);
+}
+
+/* Width defaults step up with the window unless an explicit width is set. */
+.Nav {
+  min-height: 100%;
+  max-height: 100%;
+  min-width: var(--_nav-width, 240px);
+  max-width: var(--_nav-width, 240px);
+}
+
+@media (min-width: 900px) {
+  .Nav {
+    min-width: var(--_nav-width, 280px);
+    max-width: var(--_nav-width, 280px);
+  }
+}
+
+@media (min-width: 1200px) {
+  .Nav {
+    min-width: var(--_nav-width, 300px);
+    max-width: var(--_nav-width, 300px);
+  }
+}
+
+@media (max-width: 599px) {
+  .Nav {
+    display: none;
+  }
+}
+
+.Nav[data-type='bordered'] {
+  background: var(--ov-color-bg-surface);
+  border-right: 1px solid var(--ov-color-border-muted);
+}
+
+.Nav[data-type='inset'] {
+  background: transparent;
+}
+
+.Nav[data-type='transparent'] {
+  background: transparent;
+  border-right: 1px solid var(--ov-color-border-muted);
+}
+
+.Nav[data-type='bordered-inset'] {
+  background: transparent;
+  border: 1px solid var(--ov-color-border-muted);
+  border-radius: var(--ov-radius-md);
+}
+
+.Nav[data-scrollable] {
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.Nav[data-scrollable]::-webkit-scrollbar {
+  display: none;
+}

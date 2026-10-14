@@ -1,6 +1,5 @@
 import React from "react";
-import { Stack } from "@omniviewdev/ui/layout";
-import { Text } from "@omniviewdev/ui/typography";
+import { Stack, Text } from '@omniviewdev/base-ui';
 import MetadataSection from "../../../shared/sidebar/pages/overview/sections/MetadataSection";
 import DetailsCard from "../../../shared/DetailsCard";
 import ExpandableSection from "../../../shared/ExpandableSection";
@@ -26,7 +25,7 @@ const VPCSidebar: React.FC<Props> = ({ ctx }) => {
     : [];
 
   return (
-    <Stack direction="column" width="100%" spacing={1}>
+    <Stack direction="column" spacing={2} style={{ width: "100%" }}>
       <MetadataSection data={data} />
 
       <DetailsCard
@@ -62,7 +61,7 @@ const VPCSidebar: React.FC<Props> = ({ ctx }) => {
               count: cidrAssociations.length,
               defaultExpanded: false,
               content: (
-                <Stack spacing={0.5}>
+                <Stack spacing={1}>
                   {cidrAssociations.map((assoc, i) => (
                     <Text key={i} size="sm">
                       {assoc.CidrBlock || "\u2014"}{" "}

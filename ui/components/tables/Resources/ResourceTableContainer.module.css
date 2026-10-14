@@ -1,0 +1,56 @@
+.Root {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 6px;
+  gap: 6px;
+  min-height: 0;
+}
+
+.Toolbar {
+  width: 100%;
+}
+
+.TableContainer {
+  background-color: inherit;
+  width: 100%;
+  border-radius: 4px;
+  flex: 1;
+  overflow: scroll;
+  min-height: 0;
+  border: 1px solid var(--ov-color-border-default);
+  /* Hide the scrollbars */
+  scrollbar-width: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.TableContainer::-webkit-scrollbar {
+  display: none;
+}
+
+.SortButton {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: bold;
+  color: var(--ov-color-brand-500);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.SortButton:focus-visible {
+  outline: 2px solid var(--ov-color-border-focus);
+  outline-offset: 1px;
+}
+
+.SortIcon {
+  transition: 0.2s;
+}
+
+.SortIcon[data-desc='true'] {
+  transform: rotate(180deg);
+}

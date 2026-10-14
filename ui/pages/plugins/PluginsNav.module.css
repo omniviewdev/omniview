@@ -1,0 +1,201 @@
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.Loading {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.Root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ─── Toolbar ─── */
+
+.Toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--ov-color-border-muted);
+  flex-shrink: 0;
+}
+
+.ToolbarTitle {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ov-color-fg-subtle);
+}
+
+.ToolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ToolbarButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: none;
+  background: none;
+  color: var(--ov-color-fg-subtle);
+  cursor: pointer;
+  padding: 0;
+}
+
+.ToolbarButton:hover,
+.ToolbarButton[data-popup-open] {
+  background-color: var(--ov-color-state-hover);
+  color: var(--ov-color-fg-default);
+}
+
+.RefreshIcon {
+  display: flex;
+  align-items: center;
+}
+
+.RefreshIcon[data-spinning='true'] {
+  animation: spin 1s linear infinite;
+}
+
+.MenuPopup {
+  min-width: 200px;
+}
+
+/* ─── Search ─── */
+
+.Search {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--ov-color-border-muted);
+  flex-shrink: 0;
+}
+
+.SearchInput {
+  width: 100%;
+}
+
+/* ─── Sections ─── */
+
+.Scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.SectionHeader {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.SectionHeader:hover {
+  background-color: var(--ov-color-state-hover);
+}
+
+.SectionHeader:focus-visible {
+  outline: 2px solid var(--ov-color-border-focus);
+  outline-offset: -2px;
+}
+
+.SectionHeaderInner {
+  display: flex;
+  align-items: center;
+}
+
+.SectionLabel {
+  margin-left: 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ov-color-fg-subtle);
+}
+
+.CountBadge {
+  font-size: 0.625rem;
+  font-weight: 600;
+  background-color: color-mix(in srgb, var(--ov-color-brand-500) 20%, transparent);
+  color: var(--ov-color-brand-500);
+  border-radius: 10px;
+  padding: 0 6px;
+  margin-left: 6px;
+  line-height: 16px;
+}
+
+.SectionBody {
+  padding-bottom: 4px;
+}
+
+.EmptyMessage {
+  padding: 12px;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--ov-color-fg-subtle);
+}
+
+.EmptyMessageLarge {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+.ErrorState {
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.ErrorText {
+  font-size: 0.75rem;
+  color: var(--ov-color-fg-subtle);
+  text-align: center;
+}
+
+.LinkButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.6875rem;
+  color: var(--ov-color-brand-500);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.9;
+}
+
+.LinkButton:hover {
+  opacity: 1;
+}
+
+.SectionLoading {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}

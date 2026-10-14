@@ -1,0 +1,26 @@
+.Popup {
+  min-width: 200px;
+  padding: var(--ov-space-4);
+}
+
+.Body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ov-space-3);
+}
+
+.Sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ov-space-1);
+}
+
+.SectionList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ov-space-1);
+}
+
+.Field {
+  width: 100%;
+}

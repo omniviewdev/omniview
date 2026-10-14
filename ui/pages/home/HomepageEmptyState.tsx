@@ -1,35 +1,25 @@
 import React from 'react';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import { Text } from '@omniviewdev/ui/typography';
-import { Stack } from '@omniviewdev/ui/layout';
+import { Button, Text } from '@omniviewdev/base-ui';
 import { useNavigate } from 'react-router-dom';
+import styles from './HomepageEmptyState.module.css';
 
 const HomepageEmptyState: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-      }}
-    >
-      <Stack direction="column" alignItems="center" gap={2}>
-        <Text size="lg" weight="semibold">
+    <div className={styles.Root}>
+      <div className={styles.Content}>
+        <Text size='lg' weight='semibold'>
           No cards installed
         </Text>
-        <Text sx={{ color: 'text.secondary', textAlign: 'center' }}>
+        <Text tone='muted' className={styles.Description}>
           Install a plugin to see actionable content here.
         </Text>
-        <Button variant="contained" onClick={() => navigate('/plugins')}>
+        <Button variant='solid' color='brand' onClick={() => navigate('/plugins')}>
           Browse Plugins
         </Button>
-      </Stack>
-    </Box>
+      </div>
+    </div>
   );
 };
 

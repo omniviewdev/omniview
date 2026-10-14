@@ -1,23 +1,22 @@
 import { type Table } from '@tanstack/react-table';
 
-import Box from '@mui/material/Box';
-import { Checkbox } from '@omniviewdev/ui/inputs';
+import { Checkbox } from '@omniviewdev/base-ui';
+import styles from './cells.module.css';
 
 /**
  * Render a selectbox for the header of the generic resource table.
  */
 export const SelectBoxHeader = ({ table }: { table: Table<any> }) => (
-  <Box sx={{
-    display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', maxWidth: 24 }}>
+  <div className={styles.SelectBox}>
     <Checkbox
       size='sm'
       checked={table.getIsAllPageRowsSelected()}
-      onChange={event => {
-        table.toggleAllPageRowsSelected(event.target.checked); 
+      onCheckedChange={checked => {
+        table.toggleAllPageRowsSelected(checked);
       }}
       aria-label='Select all nodes'
     />
-  </Box>
+  </div>
 );
 
 SelectBoxHeader.displayName = 'SelectBoxHeader';

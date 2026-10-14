@@ -1,23 +1,9 @@
 import * as React from 'react';
 
-// material ui
-import { Alert } from '@omniviewdev/ui/feedback';
-import Box from '@mui/material/Box';
-import { Button } from '@omniviewdev/ui/buttons';
-import Divider from '@mui/material/Divider';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { ListItem } from '@omniviewdev/ui';
-import { Modal } from '@omniviewdev/ui/overlays';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import CircularProgress from '@mui/material/CircularProgress';
+import { Banner, Button, Dialog, Menu, Spinner, Stack, Text } from '@omniviewdev/base-ui';
 
 // icons
-import WarningRoundedIcon from '@mui/icons-material/WarningRounded';
-import { LuCircleAlert, LuTrash } from 'react-icons/lu';
+import { LuCircleAlert, LuTrash, LuTriangleAlert } from 'react-icons/lu';
 import { useResource, parseAppError } from '@omniviewdev/runtime';
 
 type Props = {
@@ -31,6 +17,10 @@ type Props = {
   handleDismiss: () => void;
 };
 
+/**
+ * "Delete" menu item plus its confirmation dialog. Must be rendered inside a `Menu.Popup`;
+ * the parent menu should keep its popup mounted so the dialog survives the menu closing.
+ */
 export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection, namespace, handleSelect, handleDeselect, handleDismiss }) => {
   const [open, setOpen] = React.useState<boolean>(false);
   const [pending, setPending] = React.useState<boolean>(false);
@@ -40,92 +30,67 @@ export const DeleteAction: React.FC<Props> = ({ id, resource, plugin, connection
 
   return (
     <React.Fragment>
-      <ListItem>
-        <IconButton
-          emphasis='ghost'
-          color='neutral'
-          onMouseEnter={handleSelect}
-          onMouseLeave={handleDeselect}
-          onClick={() => {
-            setOpen(true);
-          }}
-          sx={{
-            display: 'flex',
-            borderRadius: '2px',
-            flex: 1,
-            width: '100%',
-            bgcolor: open ? 'neutral.plainHoverBg' : undefined,
-            '&:focus-visible': {
-              bgcolor: 'neutral.plainHoverBg',
-            },
-          }}
-        >
-          <Stack
-            direction='row'
-            spacing={1}
-            flex={1}
-            px={1}
-            alignItems={'center'}
-            justifyContent='flex-start'
-          >
-            <LuTrash />
-            <Text sx={{ pl: 0.5 }} size='sm'>Delete</Text>
-          </Stack>
-        </IconButton>
-      </ListItem>
-      <Modal open={open} onClose={() => {
-        setOpen(false);
-      }}>
-        <Box role="alertdialog" sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 2, bgcolor: 'background.paper' }}>
-          <DialogTitle>
-            <WarningRoundedIcon />
-            Confirmation
-          </DialogTitle>
-          <Divider />
-          <DialogContent sx={{ gap: 2 }}>
+      <Menu.Item
+        startDecorator={<LuTrash />}
+        onMouseEnter={handleSelect}
+        onMouseLeave={handleDeselect}
+        onClick={() => {
+          setOpen(true);
+        }}
+      >
+        Delete
+      </Menu.Item>
+      <Dialog
+        open={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+        size="sm"
+        role="alertdialog"
+      >
+        <Dialog.Title icon={<LuTriangleAlert />}>Confirmation</Dialog.Title>
+        <Dialog.Body>
+          <Stack direction="column" spacing={4}>
             <Text size='sm'>
               Are you sure you want to delete {resource} '{id}'?
             </Text>
-            {alert && <Box sx={{ display: 'flex', gap: 2, width: '100%', flexDirection: 'column' }}>
-              <Alert
-                sx={{ alignItems: 'flex-start' }}
-                icon={<LuCircleAlert />}
-                emphasis="soft"
-                severity='error'
-              >
-                <div>
-                  <div>Error</div>
-                  <Text size="sm" color='danger'>
+            {alert && (
+              <Banner color="danger" variant="soft">
+                <Banner.Icon>
+                  <LuCircleAlert />
+                </Banner.Icon>
+                <Banner.Content>
+                  <Banner.Title>Error</Banner.Title>
+                  <Text size="sm" tone="danger">
                     {alert}
                   </Text>
-                </div>
-              </Alert>
-            </Box>
-            }
-          </DialogContent>
-          <DialogActions>
-            <Button emphasis="solid" color="danger" onClick={() => {
-              setPending(true);
-              remove({}).then(() => {
-                setOpen(false);
-                handleDismiss();
-              }).catch((e: unknown) => {
-                setAlert(parseAppError(e).detail);
-              }).finally(() => {
-                setPending(false);
-              });
-            }}>
-              {pending ? <CircularProgress size={20} /> : 'Delete'}
-            </Button>
-            <Button emphasis="ghost" color="neutral" onClick={() => {
+                </Banner.Content>
+              </Banner>
+            )}
+          </Stack>
+        </Dialog.Body>
+        <Dialog.Footer>
+          <Button variant="solid" color="danger" disabled={pending} onClick={() => {
+            setPending(true);
+            remove({}).then(() => {
               setOpen(false);
               handleDismiss();
-            }}>
-              Cancel
-            </Button>
-          </DialogActions>
-        </Box>
-      </Modal>
+            }).catch((e: unknown) => {
+              setAlert(parseAppError(e).detail);
+            }).finally(() => {
+              setPending(false);
+            });
+          }}>
+            {pending ? <Spinner size="sm" /> : 'Delete'}
+          </Button>
+          <Button variant="ghost" color="neutral" onClick={() => {
+            setOpen(false);
+            handleDismiss();
+          }}>
+            Cancel
+          </Button>
+        </Dialog.Footer>
+      </Dialog>
     </React.Fragment>
   );
 };

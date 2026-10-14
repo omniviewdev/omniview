@@ -61,6 +61,10 @@ To begin transforming your DevOps experience with Omniview, follow these steps:
 3. **Connect Your Infrastructure**: Easily connect Omniview to your cloud and hosting platforms, setting up your unified workspace.
 4. **Enjoy Unified DevOps**: Start managing and visualizing your infrastructure like never before.
 
+### Plugin compatibility
+
+This build's UI runs on `@omniviewdev/base-ui` and no longer ships MUI, Emotion or the legacy `@omniviewdev/ui` design system to plugins. Plugins whose UI still imports those packages (older releases from the upstream marketplace) will not load; use plugin releases built against base-ui.
+
 ## Documentation
 
 For detailed instructions, tutorials, and API documentation, visit our [official documentation](https://docs.omniview.dev/docs/introduction).

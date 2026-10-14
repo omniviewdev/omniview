@@ -1,0 +1,29 @@
+.Root {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  line-height: 0;
+}
+
+.Star {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.Empty {
+  color: var(--ov-color-fg-disabled);
+}
+
+.Fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.Filled {
+  color: #e3b341;
+  fill: #e3b341;
+}

@@ -36,12 +36,7 @@ export default function SettingsPage() {
       <Layout.SideNav type='bordered'>
         <SettingsNav selected={selected} onChange={setSelected} />
       </Layout.SideNav>
-      <Layout.Main
-        sx={{
-          p: 3,
-          pl: 4,
-        }}
-      >
+      <Layout.Main style={{ padding: 24, paddingLeft: 32 }}>
         {GetSettingsPage(selected.section, selected.id)}
       </Layout.Main>
     </Layout.Root>

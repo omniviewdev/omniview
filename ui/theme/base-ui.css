@@ -1,0 +1,6 @@
+/*
+ * @omniviewdev/base-ui styles, loaded in a cascade layer so the app's own
+ * (unlayered) styles win over base-ui's global html/body and `*` rules and
+ * over its component styles without needing extra specificity.
+ */
+@import '@omniviewdev/base-ui/styles.css' layer(base-ui);

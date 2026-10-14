@@ -1,10 +1,6 @@
 import React from 'react';
 
-// Material-ui
-import Box from '@mui/material/Box';
-import { Button } from '@omniviewdev/ui/buttons';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
+import { Button, Text } from '@omniviewdev/base-ui';
 
 // Project imports
 import Icon from '@/components/icons/Icon';
@@ -13,6 +9,7 @@ import Icon from '@/components/icons/Icon';
 import { useCategorySettings } from '@/hooks/settings/useCategorySettings';
 import SettingsEntries from './SettingsEntries';
 import { Section } from '.';
+import styles from './SettingsPage.module.css';
 import { useSettings } from '@omniviewdev/runtime';
 
 type Props = {
@@ -55,34 +52,18 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
   }
 
   return (
-    <Stack
-      direction='column'
-      gap={0}
-      sx={{
-        width: '100%',
-        height: '100%',
-      }}
-    >
+    <div className={styles.Root}>
       {/* Header */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          pb: 2,
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
+      <div className={styles.Header}>
         <Icon name={settings.data.icon} size={22} />
-        <Stack direction='column' gap={0.25}>
+        <div className={styles.HeaderText}>
           <Text weight='semibold' size='lg'>{settings.data.label}</Text>
-          <Text size='xs' sx={{ color: 'text.secondary' }}>{settings.data.description}</Text>
-        </Stack>
-      </Box>
+          <Text size='xs' tone='muted'>{settings.data.description}</Text>
+        </div>
+      </div>
 
       {/* Settings form */}
-      <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <div className={styles.Form}>
         <SettingsEntries
           section={Section.Core}
           id={categoryID}
@@ -90,37 +71,28 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
           draftValues={draftValues}
           setDraftValues={setDraftValues}
         />
-      </Box>
+      </div>
 
       {/* Action bar */}
       {hasDrafts && (
-        <Box
-          sx={{
-            display: 'flex',
-            gap: 1,
-            pt: 2,
-            mt: 1,
-            borderTop: '1px solid',
-            borderColor: 'divider',
-          }}
-        >
+        <div className={styles.ActionBar}>
           <Button
-            color='primary'
-            emphasis='soft'
+            color='brand'
+            variant='soft'
             onClick={commitDraftValues}
           >
             Save Changes
           </Button>
           <Button
             color='neutral'
-            emphasis='ghost'
+            variant='ghost'
             onClick={clearDraftValues}
           >
             Discard
           </Button>
-        </Box>
+        </div>
       )}
-    </Stack>
+    </div>
   );
 };
 

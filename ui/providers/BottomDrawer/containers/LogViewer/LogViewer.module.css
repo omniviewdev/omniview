@@ -1,0 +1,129 @@
+.Root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  outline: none;
+  user-select: none;
+}
+
+.Root:focus-visible,
+.List:focus-visible {
+  outline: 2px solid var(--ov-color-state-focus-ring);
+  outline-offset: -2px;
+}
+
+.Banner {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--ov-space-2);
+  padding: var(--ov-space-1) var(--ov-space-3);
+  border-bottom: 1px solid;
+}
+
+.Banner[data-tall] {
+  padding-block: 6px;
+}
+
+.Banner[data-color='warning'] {
+  color: var(--ov-color-warning);
+  background: var(--ov-color-warning-soft, color-mix(in srgb, var(--ov-color-warning) 12%, transparent));
+  border-color: color-mix(in srgb, var(--ov-color-warning) 35%, transparent);
+}
+
+.Banner[data-color='danger'] {
+  color: var(--ov-color-danger);
+  background: var(--ov-color-danger-soft, color-mix(in srgb, var(--ov-color-danger) 12%, transparent));
+  border-color: color-mix(in srgb, var(--ov-color-danger) 35%, transparent);
+}
+
+.BannerText {
+  flex: 1;
+  color: inherit;
+}
+
+.NoShrink {
+  flex-shrink: 0;
+}
+
+.Placeholder {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ov-space-3);
+  padding: 32px;
+  background: black;
+}
+
+.PlaceholderText,
+.PlaceholderError {
+  max-width: 600px;
+  text-align: center;
+}
+
+.PlaceholderError {
+  font-size: 12px;
+}
+
+.PlaceholderAction {
+  margin-top: var(--ov-space-2);
+}
+
+.WarningIcon {
+  color: var(--ov-color-warning);
+}
+
+.DangerIcon {
+  color: var(--ov-color-danger);
+}
+
+.List {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: black;
+  white-space: pre;
+  user-select: text;
+  outline: none;
+}
+
+.List[data-wrap] {
+  white-space: normal;
+}
+
+.VirtualRow {
+  min-width: 100%;
+  width: max-content;
+}
+
+.List[data-wrap] .VirtualRow {
+  width: 100%;
+}
+
+.VirtualRow[data-copied] {
+  animation: copyFlash 350ms ease-out;
+}
+
+@keyframes copyFlash {
+  0%,
+  30% {
+    background-color: rgba(76, 175, 80, 0.4);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
+.JumpToBottom {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 10;
+}

@@ -34,41 +34,19 @@ vi.mock('@omniviewdev/runtime/api', () => ({
   },
 }));
 
-// Minimal MUI stubs
-vi.mock('@mui/material/Dialog', () => ({
-  __esModule: true,
-  default: ({ open, children }: any) => open ? <div data-testid="dialog">{children}</div> : null,
-}));
-vi.mock('@mui/material/DialogContent', () => ({
-  __esModule: true,
-  default: ({ children }: any) => <div>{children}</div>,
-}));
-vi.mock('@mui/material/DialogActions', () => ({
-  __esModule: true,
-  default: ({ children }: any) => <div>{children}</div>,
-}));
-vi.mock('@mui/material/CircularProgress', () => ({
-  __esModule: true,
-  default: () => <span />,
-}));
-vi.mock('@mui/material/LinearProgress', () => ({
-  __esModule: true,
-  default: () => <div />,
-}));
-vi.mock('@mui/material/IconButton', () => ({
-  __esModule: true,
-  default: ({ children, onClick }: any) => <button onClick={onClick}>{children}</button>,
-}));
-vi.mock('@mui/material/Box', () => ({
-  __esModule: true,
-  default: ({ children }: any) => <div>{children}</div>,
-}));
-vi.mock('@omniviewdev/ui/buttons', () => ({
-  Button: ({ children, onClick }: any) => <button onClick={onClick}>{children}</button>,
-}));
-vi.mock('@omniviewdev/ui/typography', () => ({
-  Text: ({ children }: any) => <span>{children}</span>,
-}));
+// Minimal base-ui stubs — Dialog renders children inline (no portal) when open
+vi.mock('@omniviewdev/base-ui', () => {
+  const Dialog = ({ open, children }: any) => open ? <div data-testid="dialog">{children}</div> : null;
+  Dialog.Title = ({ children }: any) => <h2>{children}</h2>;
+  return {
+    Dialog,
+    Spinner: () => <span />,
+    Progress: () => <div />,
+    IconButton: ({ children, onClick }: any) => <button onClick={onClick}>{children}</button>,
+    Button: ({ children, onClick }: any) => <button onClick={onClick}>{children}</button>,
+    Text: ({ children }: any) => <span>{children}</span>,
+  };
+});
 vi.mock('react-icons/lu', () => ({
   LuCircleCheck: () => <span />,
   LuCircleAlert: () => <span />,

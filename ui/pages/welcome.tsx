@@ -1,11 +1,10 @@
 import React from 'react';
 
-// Material-ui
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
 import GradientBackground from '@/components/backgrounds/GradientBackground';
 
 import { motion } from 'framer-motion';
+
+import styles from './welcome.module.css';
 
 // Logos
 import Terraform from '@/assets/logos/terraform/horizontal/TerraformHorizontalColorWhite';
@@ -13,7 +12,6 @@ import Kubernetes from '@/assets/logos/kubernetes/horizontal/KubernetesHorizonta
 import AWS from '@/assets/logos/aws/horizontal/AWSHorizontalColorWhite';
 import GCP from '@/assets/logos/gcp/horizontal/GCPHorizontal';
 import Docker from '@/assets/logos/docker/horizontal/DockerHorizontal';
-// import Box from '@mui/material/Box';
 
 const logos = [
   <Kubernetes height={50} />,
@@ -68,21 +66,15 @@ const Welcome = () => {
 
   return (
     <GradientBackground>
-      <Stack direction='column' gap={8} alignItems='center' justifyContent={'center'} height={'100%'}>
-        <Stack direction='column' alignItems='center' width={'100%'}>
-          <Text
-            sx={{
-              fontSize: 72,
-              fontWeight: 800,
-              textShadow: theme => `10px 10px 25px ${theme.palette.grey[900]}, -10px 10px 25px ${theme.palette.grey[900]}, -10px -10px 25px ${theme.palette.grey[900]}, 10px -10px 25px ${theme.palette.grey[900]};`,
-            }}
-          >
+      <div className={styles.Root}>
+        <div className={styles.Hero}>
+          <div className={styles.Title}>
             Omniview
-          </Text>
-          <Stack direction='row' spacing={2} minHeight={70} alignItems='center'>
-            <Text sx={{ fontSize: 30, fontWeight: 700, letterSpacing: '0.05rem', color: 'text.secondary' }}>
+          </div>
+          <div className={styles.Tagline}>
+            <span className={styles.TaglineText}>
               The IDE for
-            </Text>
+            </span>
             <motion.span
               key={toolIndex}
               variants={variants}
@@ -93,7 +85,7 @@ const Welcome = () => {
             >
               {logos[toolIndex]}
             </motion.span>
-          </Stack>
+          </div>
 
           {/* <AnimatePresence mode='wait'> */}
           {/*   <MotionBox */}
@@ -133,8 +125,8 @@ const Welcome = () => {
           {/*     /> */}
           {/*   </MotionBox> */}
           {/* </AnimatePresence> */}
-        </Stack>
-      </Stack>
+        </div>
+      </div>
     </GradientBackground >
   );
 };

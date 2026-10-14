@@ -1,23 +1,22 @@
 import { type Row } from '@tanstack/react-table';
 
-import Box from '@mui/material/Box';
-import { Checkbox } from '@omniviewdev/ui/inputs';
+import { Checkbox } from '@omniviewdev/base-ui';
+import styles from './cells.module.css';
 
 /**
  * Render a selectbox for a row of the generic resource table.
  */
 export const SelectBoxRow = ({ row }: { row: Row<any> }) => (
-  <Box sx={{
-    display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', maxWidth: 24 }}>
+  <div className={styles.SelectBox}>
     <Checkbox
       size='sm'
       checked={row.getIsSelected()}
-      onChange={event => {
-        row.toggleSelected(event.target.checked); 
+      onCheckedChange={checked => {
+        row.toggleSelected(checked);
       }}
       aria-label='Select node'
     />
-  </Box>
+  </div>
 );
 
 SelectBoxRow.displayName = 'SelectBoxRow';

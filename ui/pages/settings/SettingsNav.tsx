@@ -1,23 +1,34 @@
 import React from 'react';
 
-import { NavMenu, type NavSection } from '@omniviewdev/ui/sidebars';
-import { Avatar } from '@omniviewdev/ui';
+import { Avatar, NavList } from '@omniviewdev/base-ui';
 
 import Icon from '@/components/icons/Icon';
 import { type SectionSelection, Section } from '.';
 import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { IsImage } from '@/utils/url';
+import styles from './SettingsNav.module.css';
+
+type NavItem = {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+};
+
+type NavSection = {
+  title: string;
+  items: NavItem[];
+};
 
 type Props = {
   selected: SectionSelection;
   onChange: (selection: { section: Section; id: string }) => void;
 };
 
-/** Encode section + id into a single NavMenu selection key */
+/** Encode section + id into a single NavList selection key */
 const encodeKey = (section: Section, id: string) => `${section}:${id}`;
 
-/** Decode a NavMenu selection key back into section + id */
+/** Decode a NavList selection key back into section + id */
 const decodeKey = (key: string): { section: Section; id: string } => {
   const idx = key.indexOf(':');
   return {
@@ -64,30 +75,48 @@ const SettingsNav: React.FC<Props> = ({ selected, onChange }) => {
         label: plugin.metadata.name,
         icon: IsImage(plugin.metadata?.icon) ? (
           <Avatar
-            size='sm'
+            size='xs'
+            shape='rounded'
             src={plugin.metadata.icon}
-            sx={{
-              borderRadius: '4px',
-              backgroundColor: 'transparent',
-              objectFit: 'contain',
-              border: 0,
-              width: 16,
-              height: 16,
-            }}
+            alt={plugin.metadata.name}
+            className={styles.PluginAvatar}
           />
         ) : <Icon name={plugin.metadata.icon} size={16} />,
       })),
     });
   }
 
+  const selectedKey = encodeKey(selected.section, selected.id);
+
   return (
-    <NavMenu
+    <NavList
       size='sm'
-      sections={sections}
-      selected={encodeKey(selected.section, selected.id)}
-      onSelect={(key) => onChange(decodeKey(key))}
-      sx={{ py: 1 }}
-    />
+      selectionMode='single'
+      selectedKeys={new Set([selectedKey])}
+      onSelectedKeysChange={(keys) => {
+        const [key] = Array.from(keys);
+        if (key !== undefined) {
+          onChange(decodeKey(String(key)));
+        }
+      }}
+      className={styles.Root}
+    >
+      <NavList.Viewport>
+        {sections.map(section => (
+          <NavList.Group key={section.title}>
+            <NavList.GroupHeader>{section.title}</NavList.GroupHeader>
+            <NavList.GroupItems>
+              {section.items.map(item => (
+                <NavList.Item key={item.id} itemKey={item.id} textValue={item.label}>
+                  <NavList.ItemIcon>{item.icon}</NavList.ItemIcon>
+                  <NavList.ItemLabel>{item.label}</NavList.ItemLabel>
+                </NavList.Item>
+              ))}
+            </NavList.GroupItems>
+          </NavList.Group>
+        ))}
+      </NavList.Viewport>
+    </NavList>
   );
 };
 

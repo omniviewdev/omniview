@@ -1,0 +1,47 @@
+.Root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
+  padding: var(--ov-space-4);
+  gap: var(--ov-space-4);
+}
+
+.Header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.Grid {
+  align-items: stretch;
+}
+
+.SortableItem {
+  display: flex;
+}
+
+.SortableItem[data-dragging='true'] {
+  opacity: 0.3;
+  z-index: 0;
+}
+
+.DragHandle {
+  width: 100%;
+}
+
+.DragHandle[data-edit-mode='true'] {
+  cursor: grab;
+}
+
+.DragHandle[data-edit-mode='true']:active {
+  cursor: grabbing;
+}
+
+.DragOverlay {
+  opacity: 0.85;
+  pointer-events: none;
+  box-shadow: var(--ov-shadow-surface);
+  border-radius: var(--ov-radius-lg);
+}

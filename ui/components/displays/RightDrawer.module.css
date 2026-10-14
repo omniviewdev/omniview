@@ -1,0 +1,100 @@
+.Root {
+  border-radius: var(--ov-radius-md);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
+  padding: 0;
+  background-color: var(--ov-color-bg-surface);
+  border: 1px solid var(--ov-color-border-default);
+}
+
+.Header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background-color: var(--ov-color-bg-surface);
+}
+
+.HeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ResourceName {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ov-color-fg-default);
+  min-width: 0;
+}
+
+.TitleChip {
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--ov-radius-sm);
+  font-weight: 600;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.TitleNode {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.HeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.Content {
+  flex: 1 1 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  min-height: 0;
+}
+
+.TabList {
+  display: flex;
+  border-bottom: 1px solid var(--ov-color-border-default);
+  flex-shrink: 0;
+}
+
+.Tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ov-color-fg-muted);
+  background: transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.Tab[aria-selected='true'] {
+  font-weight: 600;
+  border-bottom-color: var(--ov-color-brand-500);
+  color: var(--ov-color-fg-default);
+}
+
+.ViewBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 8px;
+  overflow: auto;
+  min-height: 0;
+}

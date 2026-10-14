@@ -1,13 +1,12 @@
 import React from 'react';
 
-// material ui
-import Box from '@mui/material/Box';
-import { Text } from '@omniviewdev/ui/typography';
+import { Text, type TypographyTone } from '@omniviewdev/base-ui';
 import { formatTimeDifference } from '@/utils/time';
 import { convertByteUnits } from '@/utils/units';
 import type { ResourceLink } from '@omniviewdev/runtime/models';
 import { type ResourceMetadata } from '@/hooks/resource/useResourceDefinition';
 import ResourceLinkCell from './ResourceLinkCell';
+import styles from './cells.module.css';
 
 type Props = {
   /** The text value to render */
@@ -157,71 +156,58 @@ const AgeCell: React.FC<Props> = ({ value, ...rest }) => {
 
 /** Render a standard text row for the generic resource table. */
 const CellBase: React.FC<Props> = ({ align, value, color, colorMap, startDecorator, endDecorator, formatter, children }) => {
-  const getColor = () => {
+  const getTone = (): TypographyTone | undefined => {
+    let resolved: string | undefined = color;
     if (colorMap) {
-      let val = colorMap[value] ?? colorMap['*'] ?? undefined;
+      const val = colorMap[value] ?? colorMap['*'] ?? undefined;
 
       switch (val) {
         case 'healthy':
         case 'good':
         case 'success':
-          return 'success';
+          resolved = 'success';
+          break;
         case 'warning':
-          return 'warning';
+          resolved = 'warning';
+          break;
         case 'error':
         case 'danger':
-          return 'danger';
+          resolved = 'danger';
+          break;
         case 'primary':
-          return 'primary';
+          resolved = 'primary';
+          break;
         default:
-          return undefined;
+          resolved = undefined;
       }
     }
 
-    return color ?? undefined;
-  };
-
-  const getAlignment = () => {
-    if (align) {
-      switch (align) {
-        case 'left':
-          return 'flex-start';
-        case 'right':
-          return 'flex-end';
-        case 'center':
-          return 'center';
-      }
+    switch (resolved) {
+      case 'success':
+      case 'warning':
+      case 'danger':
+        return resolved;
+      case 'primary':
+        return 'brand';
+      default:
+        return undefined;
     }
-
-    return 'flex-start';
   };
 
   return (
-    <Box
-      display='flex'
-      flex={1}
-      justifyContent={getAlignment()}
-      alignItems='center'
-      sx={{
-        // allow vertical scrolling, but hide scrollbar
-        overflowY: 'hidden',
-        overflowX: 'scroll',
-        scrollbarWidth: 'none',
-        '&::-webkit-scrollbar': { display: 'none' },
-      }}
-    >
+    <div className={`${styles.Cell} ${styles.TextCell}`} data-align={align ?? 'left'}>
       {children ??
         <Text
           size='xs'
-          color={getColor()}
-          noWrap
+          tone={getTone()}
+          className={styles.TextCellText}
         >
           {startDecorator}
           {formatter && formatters[formatter] ? formatters[formatter](value) : `${value}`}
           {endDecorator}
         </Text>
       }
-    </Box>
+    </div>
   );
 };
 

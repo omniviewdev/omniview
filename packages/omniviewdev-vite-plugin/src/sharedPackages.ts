@@ -10,43 +10,6 @@
  *   pnpm --filter @omniviewdev/vite-plugin generate-shims
  */
 export const SHARED_PACKAGES: readonly string[] = [
-  // Emotion
-  '@emotion/react',
-  '@emotion/styled',
-
-  // MUI Material
-  '@mui/material',
-  '@mui/material/utils',
-  '@mui/material/styles',
-  '@mui/material/Box',
-  '@mui/material/Grid',
-  '@mui/material/GlobalStyles',
-  '@mui/material/CssBaseline',
-  '@mui/material/CircularProgress',
-  '@mui/material/LinearProgress',
-  '@mui/material/Divider',
-  '@mui/icons-material',
-  '@mui/x-charts',
-
-  // @omniviewdev/ui design system
-  '@omniviewdev/ui',
-  '@omniviewdev/ui/buttons',
-  '@omniviewdev/ui/inputs',
-  '@omniviewdev/ui/feedback',
-  '@omniviewdev/ui/typography',
-  '@omniviewdev/ui/overlays',
-  '@omniviewdev/ui/navigation',
-  '@omniviewdev/ui/table',
-  '@omniviewdev/ui/layout',
-  '@omniviewdev/ui/domain',
-  '@omniviewdev/ui/charts',
-  '@omniviewdev/ui/editors',
-  '@omniviewdev/ui/types',
-  '@omniviewdev/ui/theme',
-  '@omniviewdev/ui/menus',
-  '@omniviewdev/ui/sidebars',
-  '@omniviewdev/ui/cells',
-
   // React
   'react',
   'react/jsx-runtime',

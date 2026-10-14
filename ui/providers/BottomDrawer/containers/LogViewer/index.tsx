@@ -1,10 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { keyframes } from '@emotion/react';
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Button } from '@omniviewdev/ui/buttons';
-import { Text } from '@omniviewdev/ui/typography';
+import { Button, Spinner, Text } from '@omniviewdev/base-ui';
 import { LuArrowDown, LuTriangleAlert, LuUnplug, LuX } from 'react-icons/lu';
 
 import LogEntryComponent from './LogEntry';
@@ -21,11 +17,7 @@ import { findEntryIndexByTime } from './utils/binarySearchTimestamp';
 import { bottomDrawerChannel } from '../../events';
 import type { LogEntry, LogDataSource, LogStreamEvent, SearchMatch } from './types';
 import { StreamEventType } from './types';
-
-const copyFlash = keyframes`
-  0%, 30% { background-color: rgba(76, 175, 80, 0.4); }
-  100% { background-color: transparent; }
-`;
+import styles from './LogViewer.module.css';
 
 interface Props {
   /** SDK log session ID. Used when no `source` is provided. */
@@ -143,20 +135,27 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
     estimateSize: () => 18,
     overscan: 30,
   });
+  // When a row above the viewport is measured, the virtualizer scrolls by the
+  // size difference from its last known offset. While following, that offset
+  // is stale (the view was just pinned to the bottom) and the adjustment would
+  // pull the view back up; pinToBottom handles size changes instead.
+  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = follow ? () => false : undefined;
 
-  // Auto-scroll when following
-  React.useEffect(() => {
-    if (follow && filteredLineCount > 0) {
-      isAutoScrolling.current = true;
-      rowVirtualizer.scrollToIndex(filteredLineCount - 1, { align: 'end' });
-      // Allow the scroll event to settle before re-enabling detection
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          isAutoScrolling.current = false;
-        });
-      });
-    }
-  }, [follow, filteredLineCount, version]);
+  // Follow mode pins the scroll container to its bottom edge directly rather
+  // than via rowVirtualizer.scrollToIndex: scrollToIndex keeps retrying its
+  // index for several frames, and once more lines have arrived a late retry
+  // scrolls back up to what is no longer the last line, which handleScroll
+  // then reads as the user scrolling away (and turns follow off).
+  const pinToBottom = useCallback(() => {
+    const el = parentRef.current;
+    if (el) el.scrollTop = el.scrollHeight - el.clientHeight;
+  }, []);
+
+  // Auto-scroll when following. A layout effect, so the new lines are never
+  // painted (or seen by a scroll event) before the view is back at the bottom.
+  React.useLayoutEffect(() => {
+    if (follow && filteredLineCount > 0) pinToBottom();
+  }, [follow, filteredLineCount, version, scrollElement, pinToBottom]);
 
   // Keep refs in sync for use inside ResizeObserver (avoids re-subscribing)
   const followRef = useRef(follow);
@@ -175,6 +174,14 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   React.useEffect(() => {
     if (!scrollElement) return;
 
+    // Rows measured taller or shorter than estimated change the content height
+    // without a scroll; stay on the newest line when following.
+    const content = scrollElement.firstElementChild;
+    const contentObserver = new ResizeObserver(() => {
+      if (followRef.current) pinToBottom();
+    });
+    if (content) contentObserver.observe(content);
+
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
       if (!rect) return;
@@ -184,13 +191,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
       if (newHeight > 0 && filteredLineCountRef.current > 0) {
         if (followRef.current) {
           // Follow mode: always pin to bottom
-          isAutoScrolling.current = true;
-          rowVirtualizer.scrollToIndex(filteredLineCountRef.current - 1, { align: 'end' });
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              isAutoScrolling.current = false;
-            });
-          });
+          pinToBottom();
         } else if (prevHeight === 0 && savedVisibleTimestampRef.current !== null) {
           // Restoring from minimized without follow: resolve saved timestamp to current index
           const idx = findEntryIndexByTime(
@@ -225,8 +226,11 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
     });
 
     observer.observe(scrollElement);
-    return () => observer.disconnect();
-  }, [scrollElement, rowVirtualizer]);
+    return () => {
+      observer.disconnect();
+      contentObserver.disconnect();
+    };
+  }, [scrollElement, rowVirtualizer, pinToBottom]);
 
   // Detect scroll position to engage/disengage follow
   const handleScroll = useCallback(() => {
@@ -240,14 +244,20 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
     }
   }, [follow]);
 
+  // Scrolling up with the wheel leaves follow mode at once. Waiting for the
+  // scroll event is not enough while lines stream in: the next batch can pin
+  // the view back to the bottom before that event is dispatched.
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.deltaY < 0 && followRef.current) {
+      followRef.current = false;
+      setFollow(false);
+    }
+  }, []);
+
   const jumpToBottom = useCallback(() => {
     setFollow(true);
-    isAutoScrolling.current = true;
-    rowVirtualizer.scrollToIndex(filteredLineCount - 1, { align: 'end' });
-    requestAnimationFrame(() => {
-      isAutoScrolling.current = false;
-    });
-  }, [filteredLineCount, rowVirtualizer]);
+    pinToBottom();
+  }, [pinToBottom]);
 
   const jumpToTime = useCallback((target: Date) => {
     const idx = findEntryIndexByTime(filteredEntries, target);
@@ -439,25 +449,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   }, []);
 
   return (
-    <Box
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        minHeight: 0,
-        overflow: 'hidden',
-        position: 'relative',
-        outline: 'none',
-        userSelect: 'none',
-        '&:focus-visible': {
-          outline: '2px solid',
-          outlineColor: 'primary.outlinedBorder',
-          outlineOffset: -2,
-        },
-      }}
-    >
+    <div tabIndex={0} onKeyDown={handleKeyDown} className={styles.Root}>
       <LogViewerToolbar
         searchQuery={search.query}
         onSearchChange={search.setQuery}
@@ -514,97 +506,61 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
 
       {/* Error banner when logs are flowing but errors occurred */}
       {hasErrors && filteredLineCount > 0 && !streamDead && (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            px: 1.5,
-            py: 0.5,
-            bgcolor: 'warning.softBg',
-            borderBottom: '1px solid',
-            borderColor: 'warning.outlinedBorder',
-            flexShrink: 0,
-          }}
-        >
+        <div className={styles.Banner} data-color='warning'>
           <LuTriangleAlert size={14} />
-          <Text variant="caption" size="xs" sx={{ color: 'warning.main' }}>
+          <Text size='xs' className={styles.BannerText}>
             {latestError?.message}
             {streamErrors.length > 1 && ` (+${streamErrors.length - 1} more)`}
           </Text>
-        </Box>
+        </div>
       )}
 
       {/* Dead stream banner — resource deleted or connection lost */}
       {streamDead && filteredLineCount > 0 && (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            px: 1.5,
-            py: 0.75,
-            bgcolor: hasSourcesRemoved ? 'danger.softBg' : 'warning.softBg',
-            borderBottom: '1px solid',
-            borderColor: hasSourcesRemoved ? 'danger.outlinedBorder' : 'warning.outlinedBorder',
-            flexShrink: 0,
-          }}
-        >
+        <div className={styles.Banner} data-color={hasSourcesRemoved ? 'danger' : 'warning'} data-tall>
           <LuUnplug size={14} />
-          <Text variant="caption" size="xs" sx={{ color: hasSourcesRemoved ? 'danger.plainColor' : 'warning.plainColor', flex: 1 }}>
+          <Text size='xs' className={styles.BannerText}>
             {hasSourcesRemoved
               ? `Resource removed — ${sourcesRemoved.length} source${sourcesRemoved.length !== 1 ? 's' : ''} no longer available`
               : 'Log stream ended — connection lost'}
           </Text>
           {sessionId && (
             <Button
-              size="sm"
-              emphasis="soft"
-              color="neutral"
-              startAdornment={<LuX size={12} />}
+              size='sm'
+              variant='soft'
+              color='neutral'
+              startDecorator={<LuX size={12} />}
               onClick={handleCloseTab}
-              sx={{ flexShrink: 0 }}
+              className={styles.NoShrink}
             >
               Close tab
             </Button>
           )}
-        </Box>
+        </div>
       )}
 
       {/* Empty error state -- no logs and errors present */}
       {(hasErrors || streamDead) && filteredLineCount === 0 ? (
-        <Box
-          sx={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 1.5,
-            p: 4,
-            bgcolor: 'black',
-            minHeight: 0,
-          }}
-        >
+        <div className={styles.Placeholder}>
           {streamDead && !hasErrors ? (
             <>
-              <LuUnplug size={32} color="var(--palette-warning-main)" />
-              <Text weight="semibold" sx={{ color: 'warning.main' }}>
+              <LuUnplug size={32} className={styles.WarningIcon} />
+              <Text weight='semibold' tone='warning'>
                 {hasSourcesRemoved ? 'Resource no longer available' : 'Log stream ended'}
               </Text>
-              <Text size="sm" sx={{ color: 'text.secondary', maxWidth: 600, textAlign: 'center' }}>
+              <Text size='sm' tone='muted' className={styles.PlaceholderText}>
                 {hasSourcesRemoved
                   ? 'The resource was deleted or is no longer accessible.'
                   : 'The connection to the log stream was lost.'}
               </Text>
               {sessionId && (
                 <Button
-                  size="sm"
-                  emphasis="soft"
-                  color="neutral"
-                  startAdornment={<LuX size={14} />}
+                  size='sm'
+                  variant='soft'
+                  color='neutral'
+                  startDecorator={<LuX size={14} />}
                   onClick={handleCloseTab}
-                  sx={{ mt: 1 }}
+                  className={styles.PlaceholderAction}
                 >
                   Close tab
                 </Button>
@@ -612,106 +568,68 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
             </>
           ) : (
             <>
-              <LuTriangleAlert size={32} color="var(--palette-error-main)" />
-              <Text weight="semibold" sx={{ color: 'error.main' }}>
+              <LuTriangleAlert size={32} className={styles.DangerIcon} />
+              <Text weight='semibold' tone='danger'>
                 Failed to stream logs
               </Text>
               {streamErrors.map((err, i) => (
-                <Text
-                  key={i}
-                  size="sm"
-                  sx={{
-                    color: 'text.secondary',
-                    fontFamily: 'monospace',
-                    fontSize: '12px',
-                    maxWidth: 600,
-                    textAlign: 'center',
-                  }}
-                >
+                <Text key={i} size='sm' tone='muted' mono className={styles.PlaceholderError}>
                   {err.source_id && <><strong>{err.source_id}:</strong>{' '}</>}
                   {err.message}
                 </Text>
               ))}
               {sessionId && (
                 <Button
-                  size="sm"
-                  emphasis="soft"
-                  color="neutral"
-                  startAdornment={<LuX size={14} />}
+                  size='sm'
+                  variant='soft'
+                  color='neutral'
+                  startDecorator={<LuX size={14} />}
                   onClick={handleCloseTab}
-                  sx={{ mt: 1 }}
+                  className={styles.PlaceholderAction}
                 >
                   Close tab
                 </Button>
               )}
             </>
           )}
-        </Box>
+        </div>
       ) : !(hasErrors || streamDead) && filteredLineCount === 0 ? (
         /* Loading state — waiting for log data */
-        <Box
-          sx={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 1.5,
-            p: 4,
-            bgcolor: 'black',
-            minHeight: 0,
-          }}
-        >
-          <CircularProgress size={32} color="inherit" />
-          <Text size="sm" sx={{ color: 'text.disabled' }}>
+        <div className={styles.Placeholder}>
+          <Spinner size='lg' />
+          <Text size='sm' tone='subtle'>
             Connecting to log sources...
           </Text>
           {sourceState.sources.length > 0 && (
-            <Text variant="caption" size="xs" sx={{ color: 'text.disabled' }}>
+            <Text size='xs' tone='subtle'>
               {sourceState.sources.length} source{sourceState.sources.length !== 1 ? 's' : ''} found, waiting for data
             </Text>
           )}
-        </Box>
+        </div>
       ) : (
         /* Virtual log list */
-        <Box
+        <div
           ref={scrollRefCallback}
           onScroll={handleScroll}
+          onWheel={handleWheel}
           onKeyDown={handleLogKeyDown}
           onMouseDown={handleLogMouseDown}
           tabIndex={0}
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            overflow: 'auto',
-            bgcolor: 'black',
-            whiteSpace: wrap ? 'normal' : 'pre',
-            userSelect: 'text',
-            outline: 'none',
-            '&:focus-visible': {
-              outline: '2px solid',
-              outlineColor: 'primary.outlinedBorder',
-              outlineOffset: -2,
-            },
-          }}
+          className={styles.List}
+          data-wrap={wrap || undefined}
         >
-          <Box sx={{ paddingTop: `${paddingTop}px`, paddingBottom: `${paddingBottom}px` }}>
+          <div style={{ paddingTop: `${paddingTop}px`, paddingBottom: `${paddingBottom}px` }}>
             {virtualItems.map((virtualRow) => {
               const entry = filteredEntries[virtualRow.index];
               if (!entry) return null;
 
               return (
-                <Box
+                <div
                   key={virtualRow.key}
                   data-index={virtualRow.index}
                   ref={rowVirtualizer.measureElement}
-                  sx={{
-                    minWidth: '100%',
-                    width: wrap ? '100%' : 'max-content',
-                    ...(virtualRow.index === copiedLineIndex && {
-                      animation: `${copyFlash} 350ms ease-out`,
-                    }),
-                  }}
+                  className={styles.VirtualRow}
+                  data-copied={virtualRow.index === copiedLineIndex || undefined}
                 >
                   <LogEntryComponent
                     entry={entry}
@@ -723,32 +641,27 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
                     searchMatches={matchesByLine.get(virtualRow.index)}
                     currentMatchOffset={virtualRow.index === currentMatchLine ? currentMatchOffset : -1}
                   />
-                </Box>
+                </div>
               );
             })}
-          </Box>
-        </Box>
+          </div>
+        </div>
       )}
 
       {/* Jump to bottom FAB */}
       {!follow && filteredLineCount > 0 && (
         <Button
-          size="sm"
-          emphasis="soft"
-          color="neutral"
-          startAdornment={<LuArrowDown size={14} />}
+          size='sm'
+          variant='soft'
+          color='neutral'
+          startDecorator={<LuArrowDown size={14} />}
           onClick={jumpToBottom}
-          sx={{
-            position: 'absolute',
-            bottom: 16,
-            right: 16,
-            zIndex: 10,
-          }}
+          className={styles.JumpToBottom}
         >
           Jump to bottom
         </Button>
       )}
-    </Box>
+    </div>
   );
 };
 

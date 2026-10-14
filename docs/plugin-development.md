@@ -445,7 +445,8 @@ omniview-plugin-dev --dir ./plugins/my-plugin --no-vite
 1. Ensure `@omniviewdev/vite-plugin` is installed: `pnpm list @omniviewdev/vite-plugin`
 2. Check that `omniviewExternals(external)` is in your Vite plugins array
 3. Verify the shared deps bridge is initialized (check for `window.__OMNIVIEW_SHARED__` in browser console)
-4. If you import `@mui/joy/Chip`, ensure `'@mui/joy/Chip'` is in your `external` array (exact match, not prefix)
+4. If you import a subpath of a shared package (for example `@omniviewdev/runtime/api`), ensure that exact subpath is in your `external` array (exact match, not prefix)
+5. The host no longer shares MUI, Emotion or the legacy `@omniviewdev/ui` design system. Build plugin UI with `@omniviewdev/base-ui` (plus `@omniviewdev/ai-ui` and `@omniviewdev/editors`); a plugin that still imports MUI or `@omniviewdev/ui` fails to load
 
 ### 5.10 CSS Not Updating with HMR
 

@@ -1,21 +1,17 @@
 import React from 'react';
 
-// material-ui
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { List } from '@omniviewdev/ui';
-import { Popover } from '@omniviewdev/ui/overlays';
-import ClickAwayListener from '@mui/material/ClickAwayListener';
-import { styled } from '@mui/material/styles';
+import { IconButton, Menu } from '@omniviewdev/base-ui';
 
 // project imports
 import ExecAction from './ExecAction';
 
 // icons
-import MoreHorizRoundedIcon from '@mui/icons-material/MoreHorizRounded';
+import { LuEllipsis } from 'react-icons/lu';
 
 // types
 import { type Actions } from './types';
 import DeleteAction from './DeleteAction';
+import styles from './ActionMenu.module.css';
 
 type Props = {
   plugin: string;
@@ -31,80 +27,60 @@ type ActionMenuListProps = Props & {
   dismissMenu: () => void;
 };
 
-const PopupBody = styled('div')(
-  ({ theme }) => `
-  width: max-content;
-  border-radius: 8px;
-  border: 1px solid ${theme.palette.divider};
-  background-color: ${theme.palette.background.popup};
-  box-shadow: ${
-  theme.palette.mode === 'dark'
-    ? '0px 4px 8px rgb(0 0 0 / 0.7)'
-    : '0px 4px 8px rgb(0 0 0 / 0.1)'
-};
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-size: 0.875rem;
-  z-index: 1;
-`,
-);
-
 const ActionMenu: React.FC<Props> = (props) => {
-  // run our tooltip from the parent so we only render one of them
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  const [selected, setSelected] = React.useState<HTMLElement | null>(null);
+  const [open, setOpen] = React.useState(false);
+  // Once opened, keep the popup mounted so a confirmation dialog launched from one of
+  // its items survives the menu closing. Rows that were never opened render no popup.
+  const [everOpened, setEverOpened] = React.useState(false);
 
-  const handleClick = React.useCallback((event: React.MouseEvent<HTMLElement>) => {
-    setSelected(selected ? null : event.currentTarget);
-  }, [selected, setSelected]);
-
-  const open = Boolean(selected);
+  const handleOpenChange = React.useCallback((next: boolean) => {
+    setOpen(next);
+    if (next) {
+      setEverOpened(true);
+    }
+  }, []);
 
   // dismiss the menu when the user scrolls
   React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+
     const handleScroll = () => {
-      setSelected(null);
+      setOpen(false);
     };
 
     window.addEventListener('scroll', handleScroll, true);
     return () => {
       window.removeEventListener('scroll', handleScroll, true);
     };
-  }, []);
+  }, [open]);
 
   return (
-    <>
-      <IconButton
-        size="sm"
-        emphasis="ghost"
-        sx={{
-          flex: 'none',
-          minHeight: 28,
-          minWidth: 28,
-        }}
-        onClick={handleClick}
-      >
-        <MoreHorizRoundedIcon />
-      </IconButton>
-      <Popover
-        style={{ zIndex: 9999 }}
-        id={'resource-context-menu'}
-        open={open}
-        anchor={selected}
-        placement={'bottom-end'}
-      >
-        <ClickAwayListener 
-          onClickAway={() => {
-            setSelected(null);
-          }}
-        >
-          <PopupBody>
+    <Menu.Root open={open} onOpenChange={handleOpenChange}>
+      <Menu.Trigger
+        render={
+          <IconButton
+            size="sm"
+            variant="ghost"
+            color="neutral"
+            aria-label="Resource actions"
+            className={styles.Trigger}
+          >
+            <LuEllipsis />
+          </IconButton>
+        }
+      />
+      <Menu.Portal keepMounted={everOpened}>
+        <Menu.Positioner side="bottom" align="end" sideOffset={4} className={styles.Positioner}>
+          <Menu.Popup id={'resource-context-menu'} size="sm" className={styles.Popup}>
             <ActionsMenuList {...props} dismissMenu={() => {
-              setSelected(null); 
+              setOpen(false);
             }}/>
-          </PopupBody>
-        </ClickAwayListener>
-      </Popover>
-    </>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
 };
 
@@ -122,7 +98,7 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
 
   const itemProps = {
     onClick: () => {
-      setMenuSelected(undefined); 
+      setMenuSelected(undefined);
     },
   };
 
@@ -141,25 +117,9 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
         }
       }, 200);
     };
- 
+
   return (
-    <List
-      size='sm'
-      emphasis="outline"
-      sx={{
-        maxWidth: 400,
-        minWidth: 110,
-        borderRadius: 'sm',
-        backgroundColor: 'background.body',
-        paddingBlock: 0,
-        paddingX: '2px',
-        '--IconButton-size': '28px',
-        '--ListItem-paddingRight': '0px',
-        '--ListItem-paddingLeft': '0px',
-        '--ListItem-paddingY': '0px',
-        '--ListItem-gap': '0px',
-      }}
-    >
+    <>
       {actions.exec && <ExecAction
         selected={menuSelected === 'exec'}
         handleSelect={() => {
@@ -177,7 +137,7 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
         resource={resource}
         data={data}
       />}
-      <DeleteAction 
+      <DeleteAction
         plugin={plugin}
         connection={connection}
         resource={resource}
@@ -191,7 +151,7 @@ const ActionsMenuList: React.FC<ActionMenuListProps> = ({
         }}
         handleDismiss={dismissMenu}
       />
-    </List>
+    </>
   );
 };
 

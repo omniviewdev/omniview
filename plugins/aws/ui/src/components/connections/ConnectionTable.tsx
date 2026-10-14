@@ -1,5 +1,4 @@
 import React from 'react';
-import Box from '@mui/material/Box';
 import {
   usePluginContext,
   useConnection,
@@ -174,19 +173,19 @@ const GridCardWrapper: React.FC<{
   );
 };
 
+const gridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+  gap: 12,
+};
+
 const ConnectionTable: React.FC<Props> = ({
   connections,
   onToggleFavorite,
   onRecordAccess,
 }) => {
   return (
-    <Box
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-        gap: 1.5,
-      }}
-    >
+    <div style={gridStyle}>
       {connections.map(enriched => (
         <GridCardWrapper
           key={enriched.connection.id}
@@ -195,7 +194,7 @@ const ConnectionTable: React.FC<Props> = ({
           onRecordAccess={() => onRecordAccess(enriched.connection.id)}
         />
       ))}
-    </Box>
+    </div>
   );
 };
 

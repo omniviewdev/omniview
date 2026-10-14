@@ -1,0 +1,18 @@
+.Root {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.Content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ov-space-4);
+}
+
+.Description {
+  text-align: center;
+}

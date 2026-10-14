@@ -1,0 +1,52 @@
+/*
+ * Invisible drag strip on the edge of a resizable panel. Shows an accent line
+ * on hover and while dragging.
+ */
+.Handle {
+  position: absolute;
+  z-index: 1;
+  opacity: 0;
+  border-color: var(--ov-color-accent-strong);
+  border-style: solid;
+  border-width: 0;
+  transition: opacity var(--ov-duration-fast, 120ms), border-width var(--ov-duration-fast, 120ms);
+}
+
+.Handle:hover {
+  opacity: 0.4;
+}
+
+.Handle[data-dragging] {
+  opacity: 0.7;
+}
+
+/* Along the top edge, resizing vertically. */
+.Top {
+  composes: Handle;
+  inset: 0 0 auto 0;
+  height: 10px;
+  border-top-width: 2px;
+  cursor: row-resize;
+}
+
+.Top[data-dragging] {
+  border-top-width: 4px;
+}
+
+.Top[data-disabled] {
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Along the left edge, resizing horizontally. */
+.Left {
+  composes: Handle;
+  inset: 0 auto 0 0;
+  width: 10px;
+  border-left-width: 2px;
+  cursor: col-resize;
+}
+
+.Left[data-dragging] {
+  border-left-width: 4px;
+}

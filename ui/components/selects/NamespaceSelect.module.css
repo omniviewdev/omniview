@@ -1,0 +1,8 @@
+.Root {
+  min-width: 20rem;
+}
+
+.Popup {
+  width: 20rem;
+  max-width: 20rem;
+}

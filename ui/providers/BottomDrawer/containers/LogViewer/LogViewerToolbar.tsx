@@ -1,10 +1,7 @@
 import React, { useCallback, useRef } from 'react';
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { TextField } from '@omniviewdev/ui/inputs';
-import { Tooltip } from '@omniviewdev/ui/overlays';
-import { Text } from '@omniviewdev/ui/typography';
+import { IconButton, SearchInput, Separator, Text, type ComponentColor } from '@omniviewdev/base-ui';
+import HintTooltip from '@/components/base/HintTooltip';
+import styles from './LogViewerToolbar.module.css';
 import {
   LuSearch,
   LuCaseSensitive,
@@ -140,59 +137,32 @@ const LogViewerToolbar: React.FC<Props> = ({
   const nextHold = useHoldRepeat(onNextMatch);
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 0.25,
-        px: 0.75,
-        py: 0.25,
-        borderBottom: '1px solid',
-        borderColor: 'divider',
-        bgcolor: 'background.surface',
-        minHeight: 28,
-        flexShrink: 0,
-      }}
-    >
+    <div className={styles.Toolbar}>
       {/* Prefix slot (e.g., status chip for dev build) */}
       {toolbarPrefix}
-      {toolbarPrefix && <Divider orientation="vertical" sx={{ mx: 0.5 }} />}
+      {toolbarPrefix && <Separator orientation='vertical' className={styles.Separator} />}
 
       {/* Search */}
-      <TextField
-        size="xs"
-        placeholder="Search in logs"
+      <SearchInput
+        size='sm'
+        placeholder='Search in logs'
         autoFocus
-        autoComplete="off"
-        inputProps={{ 'data-search-input': true }}
+        autoComplete='off'
+        data-search-input
+        className={styles.Search}
         value={searchQuery}
-        onChange={(value) => onSearchChange(value)}
-        startAdornment={<LuSearch size={12} />}
-        endAdornment={
-          <>
-            {matchCount > 0 ? (
-              <Text variant="caption" size="xs" sx={{ color: 'text.disabled' }}>
-                {currentMatch + 1}/{matchCount.toLocaleString()}{matchCapped ? '+' : ''}
-              </Text>
-            ) : searchQuery ? (
-              <Text variant="caption" size="xs" sx={{ color: 'text.disabled' }}>
-                0/0
-              </Text>
-            ) : null}
-            {searchQuery && (
-              <IconButton
-                size="xs"
-                emphasis="ghost"
-                color="neutral"
-                onClick={() => onSearchChange('')}
-                sx={{ minWidth: 24, minHeight: 24, width: 24, height: 24 }}
-              >
-                <LuX size={10} />
-              </IconButton>
-            )}
-          </>
+        onValueChange={onSearchChange}
+        startDecorator={<LuSearch size={12} />}
+        clearDecorator={<LuX size={10} />}
+        endDecorator={
+          matchCount > 0 ? (
+            <Text size='xs' tone='subtle'>
+              {currentMatch + 1}/{matchCount.toLocaleString()}{matchCapped ? '+' : ''}
+            </Text>
+          ) : searchQuery ? (
+            <Text size='xs' tone='subtle'>0/0</Text>
+          ) : undefined
         }
-        sx={{ minWidth: 200, maxWidth: 300, fontSize: '12px' }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.shiftKey ? onPrevMatch() : onNextMatch();
@@ -203,170 +173,128 @@ const LogViewerToolbar: React.FC<Props> = ({
         }}
       />
 
-      <Tooltip content="Case sensitive">
-        <IconButton
-          size="xs"
-          emphasis={caseSensitive ? 'soft' : 'ghost'}
-          color={caseSensitive ? 'primary' : 'neutral'}
-          onClick={onToggleCaseSensitive}
-        >
-          <LuCaseSensitive size={12} />
-        </IconButton>
-      </Tooltip>
+      <ToggleButton label='Case sensitive' active={caseSensitive} onClick={onToggleCaseSensitive}>
+        <LuCaseSensitive size={12} />
+      </ToggleButton>
 
-      <Tooltip content="Regex">
-        <IconButton
-          size="xs"
-          emphasis={isRegex ? 'soft' : 'ghost'}
-          color={isRegex ? 'primary' : 'neutral'}
-          onClick={onToggleRegex}
-        >
-          <LuRegex size={12} />
-        </IconButton>
-      </Tooltip>
+      <ToggleButton label='Regex' active={isRegex} onClick={onToggleRegex}>
+        <LuRegex size={12} />
+      </ToggleButton>
 
-      <IconButton size="xs" emphasis="ghost" disabled={matchCount === 0} {...prevHold}>
+      <IconButton size='xs' variant='ghost' color='neutral' aria-label='Previous match' disabled={matchCount === 0} {...prevHold}>
         <LuChevronUp size={12} />
       </IconButton>
-      <IconButton size="xs" emphasis="ghost" disabled={matchCount === 0} {...nextHold}>
+      <IconButton size='xs' variant='ghost' color='neutral' aria-label='Next match' disabled={matchCount === 0} {...nextHold}>
         <LuChevronDown size={12} />
       </IconButton>
 
-      <Divider orientation="vertical" sx={{ mx: 0.5 }} />
+      <Separator orientation='vertical' className={styles.Separator} />
 
       {/* Filter selectors */}
       {filterSelectors}
 
       {/* Controls */}
-      <Tooltip content="Timestamps">
-        <IconButton
-          size="xs"
-          emphasis={showTimestamps ? 'soft' : 'ghost'}
-          color={showTimestamps ? 'primary' : 'neutral'}
-          onClick={onToggleTimestamps}
-        >
-          <LuClock size={12} />
-        </IconButton>
-      </Tooltip>
+      <ToggleButton label='Timestamps' active={showTimestamps} onClick={onToggleTimestamps}>
+        <LuClock size={12} />
+      </ToggleButton>
 
-      <Tooltip content="Source badges">
-        <IconButton
-          size="xs"
-          emphasis={showSources ? 'soft' : 'ghost'}
-          color={showSources ? 'primary' : 'neutral'}
-          onClick={onToggleSources}
-        >
-          <LuTag size={12} />
-        </IconButton>
-      </Tooltip>
+      <ToggleButton label='Source badges' active={showSources} onClick={onToggleSources}>
+        <LuTag size={12} />
+      </ToggleButton>
 
-      <Tooltip content="Line numbers">
-        <IconButton
-          size="xs"
-          emphasis={showLineNumbers ? 'soft' : 'ghost'}
-          color={showLineNumbers ? 'primary' : 'neutral'}
-          onClick={onToggleLineNumbers}
-        >
-          <LuHash size={12} />
-        </IconButton>
-      </Tooltip>
+      <ToggleButton label='Line numbers' active={showLineNumbers} onClick={onToggleLineNumbers}>
+        <LuHash size={12} />
+      </ToggleButton>
 
-      <Tooltip content="Word wrap">
-        <IconButton
-          size="xs"
-          emphasis={wrap ? 'soft' : 'ghost'}
-          color={wrap ? 'primary' : 'neutral'}
-          onClick={onToggleWrap}
-        >
-          <LuWrapText size={12} />
-        </IconButton>
-      </Tooltip>
+      <ToggleButton label='Word wrap' active={wrap} onClick={onToggleWrap}>
+        <LuWrapText size={12} />
+      </ToggleButton>
 
-      <Tooltip content={colorize ? 'ANSI colors on' : 'ANSI colors off'}>
-        <IconButton
-          size="xs"
-          emphasis={colorize ? 'soft' : 'ghost'}
-          color={colorize ? 'primary' : 'neutral'}
-          onClick={onToggleColorize}
-          aria-label="Toggle ANSI colors"
-          aria-pressed={colorize}
-        >
-          <LuPalette size={12} />
-        </IconButton>
-      </Tooltip>
+      <ToggleButton
+        label={colorize ? 'ANSI colors on' : 'ANSI colors off'}
+        ariaLabel='Toggle ANSI colors'
+        pressed
+        active={colorize}
+        onClick={onToggleColorize}
+      >
+        <LuPalette size={12} />
+      </ToggleButton>
 
-      <Tooltip content={follow ? 'Following' : 'Follow output'}>
-        <IconButton
-          size="xs"
-          emphasis={follow ? 'soft' : 'ghost'}
-          color={follow ? 'primary' : 'neutral'}
-          onClick={onToggleFollow}
-        >
-          <LuArrowDownToLine size={12} />
-        </IconButton>
-      </Tooltip>
+      <ToggleButton label={follow ? 'Following' : 'Follow output'} active={follow} onClick={onToggleFollow}>
+        <LuArrowDownToLine size={12} />
+      </ToggleButton>
 
       {jumpToTime}
 
       {/* Custom actions slot (e.g., restart/rebuild for dev build) */}
       {toolbarActions}
 
-      <Tooltip content={paused ? 'Resume' : 'Pause'}>
-        <IconButton
-          size="xs"
-          emphasis={paused ? 'soft' : 'ghost'}
-          color={paused ? 'warning' : 'neutral'}
-          onClick={onTogglePaused}
-        >
-          {paused ? <LuPlay size={12} /> : <LuPause size={12} />}
-        </IconButton>
-      </Tooltip>
+      <ToggleButton label={paused ? 'Resume' : 'Pause'} active={paused} activeColor='warning' onClick={onTogglePaused}>
+        {paused ? <LuPlay size={12} /> : <LuPause size={12} />}
+      </ToggleButton>
 
-      <Divider orientation="vertical" sx={{ mx: 0.5 }} />
+      <Separator orientation='vertical' className={styles.Separator} />
 
-      <Tooltip content={copyFeedback === 'visible' ? 'Copied!' : `Copy visible lines (${isMac ? '⌘⇧V' : 'Ctrl+Shift+V'})`}>
-        <IconButton
-          size="xs"
-          emphasis={copyFeedback === 'visible' ? 'soft' : 'ghost'}
-          color={copyFeedback === 'visible' ? 'success' : 'neutral'}
-          onClick={onCopyVisible}
-          aria-label="Copy visible lines"
-        >
-          {copyFeedback === 'visible' ? <LuClipboardCheck size={12} /> : <LuCopy size={12} />}
-        </IconButton>
-      </Tooltip>
+      <ToggleButton
+        label={copyFeedback === 'visible' ? 'Copied!' : `Copy visible lines (${isMac ? '⌘⇧V' : 'Ctrl+Shift+V'})`}
+        ariaLabel='Copy visible lines'
+        active={copyFeedback === 'visible'}
+        activeColor='success'
+        onClick={onCopyVisible}
+      >
+        {copyFeedback === 'visible' ? <LuClipboardCheck size={12} /> : <LuCopy size={12} />}
+      </ToggleButton>
 
-      <Tooltip content={copyFeedback === 'all' ? 'Copied!' : `Copy all lines (${isMac ? '⌘⇧C' : 'Ctrl+Shift+C'})`}>
-        <IconButton
-          size="xs"
-          emphasis={copyFeedback === 'all' ? 'soft' : 'ghost'}
-          color={copyFeedback === 'all' ? 'success' : 'neutral'}
-          onClick={onCopyAll}
-          aria-label="Copy all lines"
-        >
-          {copyFeedback === 'all' ? <LuClipboardCheck size={12} /> : <LuClipboard size={12} />}
-        </IconButton>
-      </Tooltip>
+      <ToggleButton
+        label={copyFeedback === 'all' ? 'Copied!' : `Copy all lines (${isMac ? '⌘⇧C' : 'Ctrl+Shift+C'})`}
+        ariaLabel='Copy all lines'
+        active={copyFeedback === 'all'}
+        activeColor='success'
+        onClick={onCopyAll}
+      >
+        {copyFeedback === 'all' ? <LuClipboardCheck size={12} /> : <LuClipboard size={12} />}
+      </ToggleButton>
 
-      <Tooltip content="Download">
-        <IconButton size="xs" emphasis="ghost" onClick={onDownload}>
-          <LuDownload size={12} />
-        </IconButton>
-      </Tooltip>
+      <ToggleButton label='Download' onClick={onDownload}>
+        <LuDownload size={12} />
+      </ToggleButton>
 
-      <Tooltip content="Clear">
-        <IconButton size="xs" emphasis="ghost" onClick={onClear}>
-          <LuTrash2 size={12} />
-        </IconButton>
-      </Tooltip>
+      <ToggleButton label='Clear' onClick={onClear}>
+        <LuTrash2 size={12} />
+      </ToggleButton>
 
       {/* Status */}
-      <Box sx={{ flex: 1 }} />
-      <Text variant="caption" size="xs" sx={{ color: 'text.disabled', mr: 1 }}>
+      <span className={styles.Spacer} />
+      <Text size='xs' tone='subtle' className={styles.LineCount}>
         {lineCount.toLocaleString()} lines
       </Text>
-    </Box>
+    </div>
   );
 };
+
+/** Toolbar icon button with a tooltip; soft and colored while `active`. */
+const ToggleButton: React.FC<{
+  label: string;
+  ariaLabel?: string;
+  /** Expose `active` as aria-pressed. */
+  pressed?: boolean;
+  active?: boolean;
+  activeColor?: ComponentColor;
+  onClick: () => void;
+  children: React.ReactNode;
+}> = ({ label, ariaLabel, pressed = false, active = false, activeColor = 'brand', onClick, children }) => (
+  <HintTooltip content={label}>
+    <IconButton
+      size='xs'
+      variant={active ? 'soft' : 'ghost'}
+      color={active ? activeColor : 'neutral'}
+      aria-label={ariaLabel ?? label}
+      aria-pressed={pressed ? active : undefined}
+      onClick={onClick}
+    >
+      {children}
+    </IconButton>
+  </HintTooltip>
+);
 
 export default React.memo(LogViewerToolbar);

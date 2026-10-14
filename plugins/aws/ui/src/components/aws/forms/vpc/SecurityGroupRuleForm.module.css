@@ -1,0 +1,7 @@
+.ruleRow {
+  padding: 4px 12px;
+}
+
+.ruleRow:hover {
+  background-color: var(--ov-color-state-hover);
+}

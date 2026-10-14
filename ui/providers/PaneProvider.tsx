@@ -3,7 +3,6 @@ import React, { useMemo } from 'react';
 import {
   createHashRouter, createMemoryRouter, Outlet, RouterProvider, UNSAFE_LocationContext, useLocation,
 } from 'react-router-dom';
-import Box from '@mui/material/Box';
 import PaneProviderContext, { PaneContext, type PaneProviderContextType, type Pane } from '@/contexts/PaneContext';
 import usePanes from '@/hooks/usePanes';
 import BottomDrawerProvider from './BottomDrawer/provider';
@@ -72,15 +71,16 @@ export default function PaneRenderer() {
    */
   if (pathname === '/') {
     return (
-      <Box sx={{ width: 1 }}>
-        <Box display='grid' gridTemplateColumns='repeat(12, 1fr)' gap={0}>
+      <div style={{ width: '100%' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 0 }}>
           {panes.map((pane, index) => {
-            console.log("rendering pane")
             const addRightBorder = index !== panes.length - 1;
             return (
-              <Box
-                sx={{ borderRight: theme => addRightBorder ? `2px solid ${theme.palette.neutral[700]}` : 'none' }}
-                gridColumn={`span ${panes.length == 0 ? 12 : 12 / panes.length}`}
+              <div
+                style={{
+                  borderRight: addRightBorder ? '2px solid var(--ov-color-border-default)' : 'none',
+                  gridColumn: `span ${panes.length == 0 ? 12 : 12 / panes.length}`,
+                }}
                 key={index}
               >
                 <PaneContext.Provider value={{ id: pane.id }}>
@@ -91,11 +91,11 @@ export default function PaneRenderer() {
                     </BottomDrawerProvider>
                   </UNSAFE_LocationContext.Provider>
                 </PaneContext.Provider>
-              </Box>
+              </div>
             );
           })}
-        </Box>
-      </Box>
+        </div>
+      </div>
     );
   }
 

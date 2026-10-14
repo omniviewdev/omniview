@@ -1,0 +1,15 @@
+.Root {
+  padding: var(--ov-space-2) 0;
+}
+
+.PluginAvatar {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.PluginAvatar img {
+  object-fit: contain;
+}

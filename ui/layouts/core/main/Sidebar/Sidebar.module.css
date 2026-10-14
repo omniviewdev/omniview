@@ -1,0 +1,59 @@
+.Rail {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* Scrolls when there are many plugins, without showing a scrollbar. */
+  scrollbar-width: none;
+}
+
+.Rail::-webkit-scrollbar {
+  display: none;
+}
+
+.Item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: var(--CoreLayoutSidebar-width);
+  flex-shrink: 0;
+  color: var(--ov-color-fg-muted);
+  text-decoration: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color var(--ov-duration-fast, 120ms) var(--ov-ease-standard, ease);
+}
+
+.Item:hover {
+  color: var(--ov-color-fg-default);
+  background: var(--ov-color-state-hover, transparent);
+}
+
+.Item:focus-visible {
+  outline: 2px solid var(--ov-color-state-focus-ring);
+  outline-offset: -2px;
+}
+
+.Item[aria-current='page'] {
+  color: var(--ov-color-fg-default);
+}
+
+.Item[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  inset-block: 6px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--ov-color-accent-strong);
+}
+
+.Image {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  border-radius: var(--ov-radius-sm);
+}

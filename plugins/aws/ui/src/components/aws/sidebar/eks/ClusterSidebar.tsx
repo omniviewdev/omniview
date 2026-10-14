@@ -1,7 +1,5 @@
 import React from "react";
-import { Stack } from "@omniviewdev/ui/layout";
-import { Text } from "@omniviewdev/ui/typography";
-import { Chip } from "@omniviewdev/ui";
+import { Chip, Stack, Text } from '@omniviewdev/base-ui';
 import MetadataSection from "../../../shared/sidebar/pages/overview/sections/MetadataSection";
 import DetailsCard from "../../../shared/DetailsCard";
 import ExpandableSection from "../../../shared/ExpandableSection";
@@ -34,7 +32,7 @@ const ClusterSidebar: React.FC<Props> = ({ ctx }) => {
   const hasLogging = Array.isArray(clusterLogging) && clusterLogging.length > 0;
 
   return (
-    <Stack direction="column" width="100%" spacing={1}>
+    <Stack direction="column" spacing={2} style={{ width: "100%" }}>
       <MetadataSection data={data} />
 
       <DetailsCard
@@ -132,25 +130,26 @@ const ClusterSidebar: React.FC<Props> = ({ ctx }) => {
               title: "Logging",
               defaultExpanded: false,
               content: (
-                <Stack spacing={0.5}>
+                <Stack spacing={1}>
                   {clusterLogging.map(
                     (
                       entry: { Types?: string[]; Enabled?: boolean },
                       i: number
                     ) => (
-                      <Stack key={i} direction="row" spacing={1} alignItems="center">
-                        <Text size="xs" sx={{ fontFamily: "monospace" }}>
+                      <Stack key={i} direction="row" spacing={2} align='center'>
+                        <Text size="xs" style={{ fontFamily: "monospace" }}>
                           {Array.isArray(entry?.Types)
                             ? entry.Types.join(", ")
                             : "Unknown"}
                         </Text>
                         <Chip
                           size="sm"
-                          variant="filled"
-                          color={entry?.Enabled ? "success" : "default"}
-                          label={entry?.Enabled ? "Enabled" : "Disabled"}
-                          sx={{ borderRadius: 1 }}
-                        />
+                          variant="solid"
+                          color={entry?.Enabled ? "success" : "neutral"}
+                          style={{ borderRadius: 4 }}
+                        >
+                          {entry?.Enabled ? "Enabled" : "Disabled"}
+                        </Chip>
                       </Stack>
                     )
                   )}

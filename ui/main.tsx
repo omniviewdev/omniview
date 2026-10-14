@@ -1,4 +1,7 @@
-import '@omniviewdev/ui/theme/tokens.css';
+// Imported first so its timestamp marks the start of frontend evaluation.
+import './features/perf/startup';
+
+import './theme/base-ui.css';
 
 import 'systemjs/dist/system.js';
 import 'systemjs/dist/extras/amd.js';

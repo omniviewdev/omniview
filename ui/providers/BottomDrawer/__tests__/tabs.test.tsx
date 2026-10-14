@@ -1,5 +1,4 @@
 import { render, cleanup, act, fireEvent } from '@testing-library/react';
-import type { ReactNode } from 'react';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────────
 const mocks = vi.hoisted(() => ({
@@ -82,10 +81,6 @@ vi.mock('@/features/devtools/events', () => ({
 vi.mock('@/components/icons/Icon', () => {
   return { __esModule: true, default: ({ name }: { name: string }) => <span data-testid={`icon-${name}`} /> };
 });
-
-vi.mock('@omniviewdev/ui/menus', () => ({
-  ContextMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
 
 // DnD mocks - minimal stubs
 vi.mock('@dnd-kit/core', () => ({

@@ -1,11 +1,11 @@
 import React from 'react';
 
-// Material-ui
-import { TextField } from '@omniviewdev/ui/inputs';
+import { SearchInput as BaseSearchInput } from '@omniviewdev/base-ui';
 
 // Icons
-import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
-import ClearIcon from '@mui/icons-material/Clear';
+import { LuSearch } from 'react-icons/lu';
+
+import styles from './SearchInput.module.css';
 
 type Props = {
   /** Placeholder for the search input. */
@@ -20,48 +20,20 @@ type Props = {
  * Search input component.
  */
 const SearchInput: React.FC<Props> = ({ placeholder, value, onChange }) => {
-  const handleClear = () => {
-    onChange('');
-  };
-
-  // Recompute only if the value changes
-  const hasValue = React.useMemo(() => value !== '', [value]);
-  const endDecorator = React.useMemo(() => hasValue ? <ClearIcon onClick={handleClear} /> : null, [hasValue]);
-
   return (
-    <TextField
+    <BaseSearchInput
       size='sm'
-      emphasis='outline'
+      variant='outline'
       autoComplete='off'
-      type='text'
+      autoCorrect='off'
       placeholder={placeholder ?? 'Search'}
-      startAdornment={<SearchRoundedIcon color='primary' />}
-      endAdornment={endDecorator}
+      aria-label={placeholder ?? 'Search'}
+      startDecorator={<LuSearch className={styles.SearchIcon} />}
+      clearable
       value={value}
-      onChange={e => {
-        onChange(e.target.value);
-      }}
-      sx={{
-        flexBasis: '500px',
-        display: 'flex',
-        boxShadow: 'none',
-        minWidth: {
-          md: 400,
-          lg: 400,
-          xl: 500,
-        },
-        '--wails-draggable': 'no-drag',
-      }}
-      slotProps={{
-        input: {
-          // Keep the input from auto capitalizing and autocorrecting, doesn't work
-          // without both the input and the inputProps
-          autoCorrect: 'off',
-          autoComplete: 'off',
-        },
-      }}
+      onValueChange={onChange}
+      className={styles.Root}
     />
-
   );
 };
 

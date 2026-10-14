@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
-import Box from '@mui/material/Box';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { Chip } from '@omniviewdev/ui';
-import { Tabs, TabPanel } from '@omniviewdev/ui/navigation';
+import { Chip, IconButton, Stack, Tabs, Text } from '@omniviewdev/base-ui';
 import { LuArrowLeft } from 'react-icons/lu';
 import { usePluginRouter } from '@omniviewdev/runtime';
+import { chipStyle, toColor } from '../ui/colors';
+
+const truncateStyle: React.CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+const headerStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  borderBottom: '1px solid var(--ov-color-border-default)',
+  backgroundColor: 'var(--ov-color-bg-surface)',
+  flexShrink: 0,
+};
+const panelStyle: React.CSSProperties = { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' };
 
 type TabDef = {
   label: string;
@@ -43,86 +48,79 @@ const ResourceDetailPage: React.FC<Props> = ({
   const { navigate } = usePluginRouter();
 
   const [activeTab, setActiveTab] = useState("0");
-  const chipColor = statusColor === 'neutral' ? 'default' : statusColor === 'danger' ? 'error' : statusColor;
-  const headerChipColor = 'default';
-
-  const tabItems = tabs.map((tab, i) => ({
-    key: String(i),
-    label: tab.label,
-    icon: tab.icon ? (
-      <Box sx={{ display: 'flex', alignItems: 'center', mr: 0.5, fontSize: 14 }}>
-        {tab.icon}
-      </Box>
-    ) : undefined,
-  }));
-
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       {/* Header */}
       <Stack
         direction='row'
-        alignItems='center'
-        spacing={1.5}
-        sx={{
-          px: 1.5,
-          py: 1,
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          bgcolor: 'background.paper',
-          flexShrink: 0,
-        }}
+        align='center'
+        spacing={3}
+        style={headerStyle}
       >
         <IconButton
           size='sm'
-          emphasis='ghost'
+          variant='ghost'
           color='neutral'
+          aria-label='Back'
           onClick={() => navigate(backPath)}
         >
           <LuArrowLeft size={18} />
         </IconButton>
 
         {icon && (
-          <Box sx={{ display: 'flex', alignItems: 'center', color: 'text.secondary', fontSize: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', color: 'var(--ov-color-fg-muted)', fontSize: 20 }}>
             {icon}
-          </Box>
+          </div>
         )}
 
-        <Stack spacing={0} sx={{ minWidth: 0 }}>
-          <Text weight="semibold" size="sm" sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</Text>
-          {subtitle && <Text size="xs" color="neutral" sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</Text>}
+        <Stack spacing={0} style={{ minWidth: 0 }}>
+          <Text weight="semibold" size="sm" style={truncateStyle}>{title}</Text>
+          {subtitle && <Text size="xs" tone="muted" style={truncateStyle}>{subtitle}</Text>}
         </Stack>
 
         {status && (
-          <Chip size='sm' label={status} color={chipColor} variant='filled' sx={{ borderRadius: 1 }} />
+          <Chip size='sm' color={toColor(statusColor)} variant='solid' style={chipStyle}>{status}</Chip>
         )}
 
         {headerDetails && headerDetails.length > 0 && (
-          <Stack direction='row' spacing={1} sx={{ ml: 'auto' }}>
+          <Stack direction='row' spacing={2} style={{ marginLeft: 'auto' }}>
             {headerDetails.map((detail) => (
-              <Chip key={detail.label} size='sm' label={`${detail.label}: ${detail.value}`} color={headerChipColor} variant='outlined' sx={{ borderRadius: 1 }} />
+              <Chip key={detail.label} size='sm' color='neutral' variant='outline' style={chipStyle}>
+                {`${detail.label}: ${detail.value}`}
+              </Chip>
             ))}
           </Stack>
         )}
       </Stack>
 
       {/* Tabs */}
-      <Tabs
+      <Tabs.Root
         value={activeTab}
-        onChange={setActiveTab}
-        tabs={tabItems}
+        onValueChange={(value) => setActiveTab(String(value))}
         size="sm"
-        sx={{ flexShrink: 0 }}
-      />
-      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+      >
+        <Tabs.List style={{ flexShrink: 0 }}>
+          {tabs.map((tab, i) => (
+            <Tabs.Tab
+              key={i}
+              value={String(i)}
+              startDecorator={tab.icon ? (
+                <span style={{ display: 'flex', alignItems: 'center', fontSize: 14 }}>{tab.icon}</span>
+              ) : undefined}
+            >
+              {tab.label}
+            </Tabs.Tab>
+          ))}
+          <Tabs.Indicator />
+        </Tabs.List>
         {tabs.map((tab, i) => (
-          <TabPanel key={i} value={String(i)} activeValue={activeTab}>
-            <Box sx={{ flex: 1, minHeight: 0, p: 0, display: 'flex', flexDirection: 'column' }}>
-              {tab.content}
-            </Box>
-          </TabPanel>
+          <Tabs.Panel key={i} value={String(i)} style={panelStyle}>
+            {tab.content}
+          </Tabs.Panel>
         ))}
-      </Box>
-    </Box>
+      </Tabs.Root>
+    </div>
   );
 };
 

@@ -1,37 +1,29 @@
-import CssBaseline from '@mui/material/CssBaseline';
-import Box from '@mui/material/Box';
+import { AppShell } from '@omniviewdev/base-ui';
 import Layout from '@/layouts/core/main';
-import Container from './Container';
 import AppStatusFooter from '@/components/displays/Footer/AppStatusFooter';
+import styles from './CoreLayout.module.css';
 
 /**
- * The core layout for the application. This layout wraps the entire application
- * and hacks the react router to provide a nested memory router within the scope
+ * The core layout for the application: header across the top, the plugin rail
+ * on the left, routed content with the bottom drawer, and the status footer.
  */
 export default function CoreLayout() {
   return (
-    <>
-      <CssBaseline />
-      <Box data-testid="app-shell" sx={{ display: 'flex', minHeight: '100dvh', flexDirection: 'column' }}>
-        <Layout.Header />
-        <Box
-          component='main'
-          data-testid='app-main-content'
-          className='MainContent'
-          sx={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            minWidth: 0,
-            height: 'calc(100dvh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height))',
-            maxHeight: 'calc(100dvh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height))',
-            overflow: 'hidden',
-          }}
-        >
-          <Container />
-        </Box>
+    <AppShell
+      data-testid='app-shell'
+      className={styles.Shell}
+      headerHeight={38}
+      footerHeight={24}
+      sidebarWidth={48}
+    >
+      <Layout.Header />
+      <Layout.Sidebar />
+      <AppShell.Content data-testid='app-main-content' className={`MainContent ${styles.Main}`}>
+        <Layout.Container />
+      </AppShell.Content>
+      <AppShell.Footer>
         <AppStatusFooter />
-      </Box>
-    </>
+      </AppShell.Footer>
+    </AppShell>
   );
 }

@@ -1,10 +1,12 @@
 import React from 'react';
-import { Text } from '@omniviewdev/ui/typography';
-import { Tooltip } from '@omniviewdev/ui/overlays';
+import { Text } from '@omniviewdev/base-ui';
+import { SimpleTooltip } from '../../../../shared/ui/SimpleTooltip';
 
 type Props = {
   value: string | undefined;
 };
+
+const textStyle: React.CSSProperties = { maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
 
 const ArnCell: React.FC<Props> = ({ value }) => {
   if (!value) return null;
@@ -14,11 +16,11 @@ const ArnCell: React.FC<Props> = ({ value }) => {
   const short = parts.length > 5 ? parts.slice(5).join(':') : value;
 
   return (
-    <Tooltip title={value}>
-      <Text size="xs" sx={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+    <SimpleTooltip title={value}>
+      <Text size="xs" style={textStyle}>
         {short}
       </Text>
-    </Tooltip>
+    </SimpleTooltip>
   );
 };
 

@@ -1,0 +1,124 @@
+.Root {
+  margin-top: 4px;
+  border-radius: 6px;
+  border: 1px solid var(--ov-color-border-default);
+  background-color: var(--ov-color-bg-inset);
+  overflow: hidden;
+}
+
+.Header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ov-color-border-default);
+}
+
+.HeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.Title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ov-color-fg-default);
+  white-space: nowrap;
+}
+
+.StatusChip {
+  text-transform: uppercase;
+}
+
+.Actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.Details {
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.DetailRow {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.DetailLabel {
+  font-size: 0.6875rem;
+  color: var(--ov-color-fg-subtle);
+  min-width: 44px;
+  flex-shrink: 0;
+}
+
+.DetailValue {
+  font-size: 0.6875rem;
+  font-family: inherit;
+  color: var(--ov-color-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.DetailValue[data-mono='true'] {
+  font-family: var(--ov-font-mono);
+}
+
+.Error {
+  margin-top: 2px;
+  padding: 4px;
+  border-radius: 4px;
+  background-color: var(--ov-color-danger-soft);
+  border: 1px solid color-mix(in srgb, var(--ov-color-danger) 15%, transparent);
+  font-size: 0.6875rem;
+  font-family: var(--ov-font-mono);
+  color: var(--ov-color-danger);
+  word-break: break-word;
+  max-height: 48px;
+  overflow: auto;
+}
+
+.ActionBtn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  font-family: var(--ov-font-sans);
+  color: var(--ov-color-fg-default);
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.ActionBtn:hover {
+  background-color: var(--ov-color-state-hover);
+}
+
+.ActionBtn[data-disabled='true'] {
+  color: var(--ov-color-fg-disabled);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.ActionBtn[data-disabled='true']:hover {
+  background-color: transparent;
+}
+
+.ActionBtn:focus-visible {
+  outline: 2px solid var(--ov-color-border-focus);
+  outline-offset: 1px;
+}

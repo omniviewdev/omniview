@@ -1,15 +1,11 @@
 import React from 'react';
 
-// Material-ui
-import Box from '@mui/material/Box';
-import { Button } from '@omniviewdev/ui/buttons';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { Avatar } from '@omniviewdev/ui';
+import { Avatar, Button, Text } from '@omniviewdev/base-ui';
 
 // Types
 import SettingsEntries from './SettingsEntries';
 import { Section } from '.';
+import styles from './SettingsPage.module.css';
 import { usePluginSettings } from '@/hooks/settings/usePluginSettings';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
 
@@ -53,34 +49,18 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
   }
 
   return (
-    <Stack
-      direction='column'
-      gap={0}
-      sx={{
-        width: '100%',
-        height: '100%',
-      }}
-    >
+    <div className={styles.Root}>
       {/* Header */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          pb: 2,
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
-        <Avatar size='sm' src={plugin.data.metadata.icon} sx={{ borderRadius: '4px', height: 22, width: 22 }} />
-        <Stack direction='column' gap={0.25}>
+      <div className={styles.Header}>
+        <Avatar size='sm' shape='rounded' src={plugin.data.metadata.icon} alt={plugin.data.metadata.name} className={styles.HeaderAvatar} />
+        <div className={styles.HeaderText}>
           <Text weight='semibold' size='lg'>{plugin.data.metadata.name}</Text>
-          <Text size='xs' sx={{ color: 'text.secondary' }}>{plugin.data.metadata.description}</Text>
-        </Stack>
-      </Box>
+          <Text size='xs' tone='muted'>{plugin.data.metadata.description}</Text>
+        </div>
+      </div>
 
       {/* Settings form */}
-      <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <div className={styles.Form}>
         <SettingsEntries
           section={Section.Plugins}
           id={id}
@@ -88,37 +68,28 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
           draftValues={draftValues}
           setDraftValues={setDraftValues}
         />
-      </Box>
+      </div>
 
       {/* Action bar */}
       {hasDrafts && (
-        <Box
-          sx={{
-            display: 'flex',
-            gap: 1,
-            pt: 2,
-            mt: 1,
-            borderTop: '1px solid',
-            borderColor: 'divider',
-          }}
-        >
+        <div className={styles.ActionBar}>
           <Button
-            color='primary'
-            emphasis='soft'
+            color='brand'
+            variant='soft'
             onClick={commitDraftValues}
           >
             Save Changes
           </Button>
           <Button
             color='neutral'
-            emphasis='ghost'
+            variant='ghost'
             onClick={clearDraftValues}
           >
             Discard
           </Button>
-        </Box>
+        </div>
       )}
-    </Stack>
+    </div>
   );
 };
 

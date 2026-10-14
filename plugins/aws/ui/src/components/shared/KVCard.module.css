@@ -1,0 +1,44 @@
+.root {
+  border: 1px solid var(--ov-color-border-default);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.header:hover {
+  background-color: var(--ov-color-state-hover);
+}
+
+.header[data-disabled] {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.header[data-disabled]:hover {
+  background-color: transparent;
+}
+
+.chevron {
+  display: flex;
+  align-items: center;
+  margin-right: 8px;
+}
+
+.body {
+  padding: 6px 12px;
+  border-top: 1px solid var(--ov-color-border-default);
+  background-color: var(--ov-color-bg-surface);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 2px;
+  align-items: center;
+}

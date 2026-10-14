@@ -1,13 +1,13 @@
 import React from 'react';
-import Box from '@mui/material/Box';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { Card, Avatar } from '@omniviewdev/ui';
+import { Avatar, Card, Stack, Text } from '@omniviewdev/base-ui';
+import styles from './ConnectionCard.module.css';
 import type { EnrichedConnection } from '../../types/accounts';
 import FavoriteButton from './FavoriteButton';
 import ConnectionStatusBadge from './ConnectionStatusBadge';
 import ConnectionContextMenu from './ConnectionContextMenu';
 import NamedAvatar from '../shared/NamedAvatar';
+
+const truncate: React.CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
 
 type Props = {
   enriched: EnrichedConnection;
@@ -30,32 +30,30 @@ const ConnectionCard: React.FC<Props> = ({
 
   return (
     <Card
-      variant='outlined'
-      sx={{
-        cursor: 'pointer',
-        '&:hover': { borderColor: 'primary.main', boxShadow: 1 },
-        transition: 'border-color 0.15s, box-shadow 0.15s',
-      }}
+      variant='outline'
+      className={styles.card}
       onClick={onClick}
     >
-      <Box sx={{ p: 1.5 }}>
-        <Stack gap={1.5}>
-          <Stack direction='row' alignItems='center' gap={1}>
+      <div style={{ padding: 12 }}>
+        <Stack spacing={3}>
+          <Stack direction='row' align='center' spacing={2}>
             <ConnectionStatusBadge isConnected={isConnected}>
               {connection.avatar ? (
                 <Avatar
                   size='sm'
+                  shape='rounded'
                   src={connection.avatar}
-                  sx={{ borderRadius: 6, backgroundColor: 'transparent', maxHeight: 28, maxWidth: 28 }}
+                  name={displayName}
+                  style={{ borderRadius: 6, backgroundColor: 'transparent', maxHeight: 28, maxWidth: 28 }}
                 />
               ) : (
                 <NamedAvatar value={connection.name} />
               )}
             </ConnectionStatusBadge>
-            <Stack sx={{ flex: 1, minWidth: 0 }}>
-              <Text weight="semibold" size="sm" sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName}</Text>
+            <Stack spacing={0} style={{ flex: 1, minWidth: 0 }}>
+              <Text weight="semibold" size="sm" style={truncate}>{displayName}</Text>
               {displayDescription && (
-                <Text size="xs" sx={{ opacity: 0.7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <Text size="xs" style={{ opacity: 0.7, ...truncate }}>
                   {displayDescription}
                 </Text>
               )}
@@ -63,20 +61,20 @@ const ConnectionCard: React.FC<Props> = ({
             <FavoriteButton isFavorite={isFavorite} onToggle={onToggleFavorite} />
           </Stack>
 
-          <Stack gap={0.5}>
+          <Stack spacing={1}>
             {connection.labels?.region && (
-              <Text size="xs" sx={{ opacity: 0.6 }}>
+              <Text size="xs" style={{ opacity: 0.6 }}>
                 Region: {String(connection.labels.region)}
               </Text>
             )}
             {connection.labels?.profile && (
-              <Text size="xs" sx={{ opacity: 0.6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <Text size="xs" style={{ opacity: 0.6, ...truncate }}>
                 Profile: {String(connection.labels.profile)}
               </Text>
             )}
           </Stack>
 
-          <Stack direction='row' justifyContent='flex-end' onClick={e => e.stopPropagation()}>
+          <Stack direction='row' justify='end' onClick={e => e.stopPropagation()}>
             <ConnectionContextMenu
               connectionId={connection.id}
               connectionName={displayName}
@@ -89,7 +87,7 @@ const ConnectionCard: React.FC<Props> = ({
             />
           </Stack>
         </Stack>
-      </Box>
+      </div>
     </Card>
   );
 };

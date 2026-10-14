@@ -170,8 +170,21 @@ tasks:
     cmds:
       - pnpm --filter @omniviewdev/providers run build
       - pnpm --filter @omniviewdev/vite-plugin run build
-      - pnpm --filter @omniviewdev/ui run build
       - pnpm --filter @omniviewdev/runtime run build
+
+  # ──────────────────────────────────────────────
+  # Performance
+  # ──────────────────────────────────────────────
+
+  perf:coldstart:
+    summary: "Build the production bundle and measure cold start (macOS). Args after --, e.g. task perf:coldstart -- -n 10"
+    cmds:
+      - scripts/perf/coldstart.sh {{.CLI_ARGS}}
+
+  perf:app:
+    summary: "Profile the whole frontend in Chromium with a faked backend (bench/app). Args after --, e.g. task perf:app -- --runs 3 --only pods"
+    cmds:
+      - node bench/app/run.mjs {{.CLI_ARGS}}
 
   # ──────────────────────────────────────────────
   # E2E tests

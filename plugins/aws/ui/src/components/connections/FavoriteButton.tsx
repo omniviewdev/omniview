@@ -1,5 +1,5 @@
 import React from 'react';
-import { IconButton } from '@omniviewdev/ui/buttons';
+import { IconButton } from '@omniviewdev/base-ui';
 import { LuStar } from 'react-icons/lu';
 
 type Props = {
@@ -16,10 +16,12 @@ const FavoriteButton: React.FC<Props> = ({ isFavorite, onToggle }) => {
   return (
     <IconButton
       size='sm'
-      emphasis='ghost'
+      variant='ghost'
       color={isFavorite ? 'warning' : 'neutral'}
+      aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+      aria-pressed={isFavorite}
       onClick={handleClick}
-      sx={{ minWidth: 28, minHeight: 28 }}
+      style={{ minWidth: 28, minHeight: 28 }}
     >
       <LuStar
         size={16}

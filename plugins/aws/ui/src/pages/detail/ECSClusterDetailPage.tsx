@@ -1,9 +1,6 @@
 import React from 'react';
+import { Spinner, Stack, Text } from '@omniviewdev/base-ui';
 import { useParams } from 'react-router-dom';
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
 import { LuCode, LuContainer, LuPencil, LuSquareChartGantt } from 'react-icons/lu';
 import { useResources, DrawerComponent } from '@omniviewdev/runtime';
 import get from 'lodash.get';
@@ -39,17 +36,17 @@ const ECSClusterDetailPage: React.FC = () => {
 
   if (resources.isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <CircularProgress size={32} />
-      </Box>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+        <Spinner size='lg' />
+      </div>
     );
   }
 
   if (!cluster) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
         <Text>Cluster not found: {resourceId}</Text>
-      </Box>
+      </div>
     );
   }
 
@@ -117,8 +114,8 @@ const ECSClusterDetailPage: React.FC = () => {
         {
           label: 'Overview',
           content: (
-            <Box sx={{ p: 1.5, overflow: 'auto' }}>
-              <Stack spacing={1}>
+            <div style={{ padding: 12, overflow: 'auto' }}>
+              <Stack spacing={2}>
                 <MetadataSection data={cluster} />
                 <DetailsCard
                   title='Cluster Info'
@@ -143,7 +140,7 @@ const ECSClusterDetailPage: React.FC = () => {
                 )}
                 <TagsSection data={cluster} />
               </Stack>
-            </Box>
+            </div>
           ),
         },
         {
@@ -186,9 +183,9 @@ const ECSClusterDetailPage: React.FC = () => {
         {
           label: 'Settings',
           content: (
-            <Box sx={{ p: 1.5, overflow: 'auto' }}>
+            <div style={{ padding: 12, overflow: 'auto' }}>
               <ClusterSettingsForm data={cluster} onSave={handleClusterSave} saving={clusterSaving} />
-            </Box>
+            </div>
           ),
         },
       ]}

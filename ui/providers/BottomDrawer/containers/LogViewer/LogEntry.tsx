@@ -1,8 +1,7 @@
 import React from 'react';
-import Box from '@mui/material/Box';
-import { Text } from '@omniviewdev/ui/typography';
 import type { AnsiSegment, LogEntry as LogEntryType, SearchMatch } from './types';
 import { LEVEL_COLORS } from './types';
+import styles from './LogEntry.module.css';
 
 interface Props {
   entry: LogEntryType;
@@ -257,73 +256,29 @@ const LogEntryComponent: React.FC<Props> = ({
   };
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 0.5,
-        px: 1,
-        py: '1px',
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        lineHeight: '18px',
-        borderLeft: levelColor ? `3px solid ${levelColor}` : '3px solid transparent',
-        '&:hover': { bgcolor: 'background.level1' },
-        ...(entry.origin === 'SYSTEM' && {
-          bgcolor: 'background.level2',
-          fontStyle: 'italic',
-          color: 'text.tertiary',
-        }),
-      }}
+    <div
+      className={styles.Row}
+      data-system={entry.origin === 'SYSTEM' || undefined}
+      style={levelColor ? { borderLeftColor: levelColor } : undefined}
     >
       {/* Line number */}
       {showLineNumbers && (
-        <Text
-          sx={{
-            minWidth: '4ch',
-            textAlign: 'right',
-            color: 'text.disabled',
-            userSelect: 'none',
-            flexShrink: 0,
-            fontSize: 'inherit',
-            fontFamily: 'inherit',
-            lineHeight: 'inherit',
-          }}
-        >
-          {entry.lineNumber}
-        </Text>
+        <span className={styles.LineNumber}>{entry.lineNumber}</span>
       )}
 
       {/* Timestamp */}
       {showTimestamps && entry.timestamp && (
-        <Text
-          sx={{
-            color: 'text.secondary',
-            userSelect: 'none',
-            flexShrink: 0,
-            fontSize: 'inherit',
-            fontFamily: 'inherit',
-            lineHeight: 'inherit',
-          }}
-        >
-          {formatTimestamp(entry.timestamp)}
-        </Text>
+        <span className={styles.Timestamp}>{formatTimestamp(entry.timestamp)}</span>
       )}
 
       {/* Source badge */}
       {showSources && entry.sourceId && (
         <span
           title={entry.sourceId}
+          className={styles.Source}
           style={{
-            fontSize: '10px',
-            lineHeight: '16px',
-            height: 16,
-            padding: '0 6px',
-            borderRadius: 4,
             backgroundColor: SOURCE_COLORS[sourceColorIndex(entry.sourceId)][0],
             color: SOURCE_COLORS[sourceColorIndex(entry.sourceId)][1],
-            flexShrink: 0,
-            whiteSpace: 'nowrap',
             userSelect: 'none',
             WebkitUserSelect: 'none',
           }}
@@ -333,21 +288,10 @@ const LogEntryComponent: React.FC<Props> = ({
       )}
 
       {/* Content */}
-      <Text
-        component="span"
-        sx={{
-          flex: 1,
-          fontSize: 'inherit',
-          fontFamily: 'inherit',
-          lineHeight: 'inherit',
-          whiteSpace: wrap ? 'pre-wrap' : 'pre',
-          wordBreak: wrap ? 'break-all' : 'normal',
-          overflow: wrap ? 'hidden' : 'visible',
-        }}
-      >
+      <span className={styles.Content} data-wrap={wrap || undefined}>
         {renderContent()}
-      </Text>
-    </Box>
+      </span>
+    </div>
   );
 };
 

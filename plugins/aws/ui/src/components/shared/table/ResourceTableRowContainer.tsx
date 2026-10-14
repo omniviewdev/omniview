@@ -5,7 +5,8 @@ import {
 } from '@tanstack/react-table';
 import { type Memoizer } from './types';
 import { type Virtualizer, type VirtualItem } from '@tanstack/react-virtual';
-import { getCommonPinningStyles } from './utils';
+import { getCellStyles } from './utils';
+import styles from './ResourceTable.module.css';
 
 export type Props<T = any> = {
   memoizer?: Memoizer;
@@ -20,6 +21,10 @@ export type Props<T = any> = {
   row: Row<T>;
 };
 
+/**
+ * A virtualized table row. Renders its own cells (rather than using base-ui's
+ * DataTable.VirtualBody) so live in-place data updates always re-render.
+ */
 export const RowContainer: React.FC<Props> = ({
   resourceID,
   virtualRow,
@@ -40,47 +45,18 @@ export const RowContainer: React.FC<Props> = ({
       ref={node => rowVirtualizer.measureElement(node)}
       key={row.id}
       data-state={isSelected ? 'selected' : undefined}
-      style={{
-        cursor: 'pointer',
-        WebkitUserSelect: 'text',
-        display: 'flex',
-        position: 'absolute',
-        transform: `translateY(${virtualRow.start}px)`,
-        width: '100%',
-        height: 30,
-        backgroundColor: isSelected ? 'var(--ov-accent-subtle)' : 'var(--ov-bg-base)',
-      }}
-      onMouseEnter={(e) => {
-        if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--ov-state-hover)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = isSelected ? 'var(--ov-accent-subtle)' : 'var(--ov-bg-base)';
-      }}
+      className={styles.row}
+      style={{ transform: `translateY(${virtualRow.start}px)` }}
     >
       {row.getVisibleCells().map(cell => (
         <td
           key={cell.id}
+          className={styles.cell}
+          data-pinned={cell.column.getIsPinned() || undefined}
           onClick={() => {
             handleRowClick(cell.column.id);
           }}
-          style={{
-            ...((cell.column.columnDef.meta as { flex?: number } | undefined)?.flex && {
-              minWidth: cell.column.getSize(),
-              flex: (cell.column.columnDef.meta as { flex?: number | undefined })?.flex
-            }),
-            width: cell.column.getSize(),
-            display: 'flex',
-            overflow: 'hidden',
-            alignItems: 'center',
-            whiteSpace: 'nowrap',
-            textOverflow: 'ellipsis',
-            padding: '0px 8px',
-            fontSize: '0.75rem',
-            color: 'var(--ov-fg-default)',
-            borderBottom: '1px solid var(--ov-border-muted)',
-            lineHeight: '30px',
-            ...getCommonPinningStyles(cell.column, false)
-          }}
+          style={getCellStyles(cell.column)}
         >
           {flexRender(cell.column.columnDef.cell, cell.getContext())}
         </td>

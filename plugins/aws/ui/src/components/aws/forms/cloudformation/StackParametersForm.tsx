@@ -1,6 +1,5 @@
 import React from 'react';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
+import { Stack, Text } from '@omniviewdev/base-ui';
 import FormCard, { type FormField } from '../../../shared/forms/FormCard';
 import TagEditor, { type Tag } from '../../../shared/forms/TagEditor';
 import FormSection from '../../../shared/forms/FormSection';
@@ -91,7 +90,7 @@ const StackParametersForm: React.FC<Props> = ({ data, onSave, saving }) => {
   const templateBody = data.TemplateBody || '';
 
   return (
-    <Stack spacing={1}>
+    <Stack spacing={2}>
       <FormCard
         title='Stack Info'
         fields={infoFields}
@@ -117,13 +116,13 @@ const StackParametersForm: React.FC<Props> = ({ data, onSave, saving }) => {
       />
       {outputs.length > 0 && (
         <FormSection title='Outputs' description='Stack output values'>
-          <Stack spacing={0.5}>
+          <Stack spacing={1}>
             {outputs.map((out) => (
-              <Stack key={out.OutputKey} direction='row' spacing={1}>
-                <Text size="xs" sx={{ minWidth: 150, fontWeight: 700 }}>{out.OutputKey}</Text>
-                <Text size="xs" sx={{ fontFamily: 'monospace' }}>{out.OutputValue}</Text>
+              <Stack key={out.OutputKey} direction='row' spacing={2}>
+                <Text size="xs" style={{ minWidth: 150, fontWeight: 700 }}>{out.OutputKey}</Text>
+                <Text size="xs" style={{ fontFamily: 'monospace' }}>{out.OutputValue}</Text>
                 {out.Description && (
-                  <Text size="xs" color="neutral">({out.Description})</Text>
+                  <Text size="xs" tone='muted'>({out.Description})</Text>
                 )}
               </Stack>
             ))}

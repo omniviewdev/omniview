@@ -228,6 +228,41 @@ describe('LogViewerContainer', () => {
     expect(queryByText('Jump to bottom')).toBeNull();
   });
 
+  it('scrolling up with the wheel leaves follow mode', () => {
+    mockEntries = Array.from({ length: 100 }, (_, i) => makeEntry(i));
+    mockVersion = 1;
+    mockLineCount = 100;
+
+    const { container, queryByText } = render(<LogViewerContainer sessionId="sess-1" />);
+    const list = container.querySelector('[data-index]')!.parentElement!.parentElement!;
+
+    fireEvent.wheel(list, { deltaY: 120 });
+    expect(queryByText('Jump to bottom')).toBeNull();
+
+    fireEvent.wheel(list, { deltaY: -120 });
+    expect(queryByText('Jump to bottom')).toBeTruthy();
+  });
+
+  it('keeps the newest line in view as lines arrive while following', () => {
+    mockEntries = Array.from({ length: 100 }, (_, i) => makeEntry(i));
+    mockVersion = 1;
+    mockLineCount = 100;
+
+    const { container, rerender } = render(<LogViewerContainer sessionId="sess-1" />);
+    const list = container.querySelector('[data-index]')!.parentElement!.parentElement! as HTMLDivElement;
+    let scrollHeight = 1800;
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, get: () => scrollHeight });
+    Object.defineProperty(list, 'clientHeight', { configurable: true, get: () => 300 });
+
+    mockEntries = Array.from({ length: 200 }, (_, i) => makeEntry(i));
+    mockVersion = 2;
+    mockLineCount = 200;
+    scrollHeight = 3600;
+    rerender(<LogViewerContainer sessionId="sess-2" />);
+
+    expect(list.scrollTop).toBe(3300);
+  });
+
   it('copy all copies every filtered entry to clipboard', async () => {
     mockEntries = [makeEntry(0), makeEntry(1), makeEntry(2)];
     mockVersion = 1;

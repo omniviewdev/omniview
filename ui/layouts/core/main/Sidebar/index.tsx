@@ -1,11 +1,5 @@
 import { useLocation, Link } from 'react-router-dom';
-
-// Material-ui
-import GlobalStyles from '@mui/material/GlobalStyles';
-import Box from '@mui/material/Box';
-import MuiTabs from '@mui/material/Tabs';
-import MuiTab from '@mui/material/Tab';
-import Avatar from '@mui/material/Avatar';
+import { AppShell } from '@omniviewdev/base-ui';
 
 // Icons
 import Icon from '@/components/icons/Icon';
@@ -14,7 +8,11 @@ import { usePluginService } from '@/features/plugins';
 
 // Project imports
 import { IsImage } from '@/utils/url';
+import styles from './Sidebar.module.css';
 
+/**
+ * The plugin rail on the left edge of the window.
+ */
 export default function CoreLayoutSidebar() {
   const { pathname } = useLocation();
   const { plugins } = usePluginManager();
@@ -24,90 +22,25 @@ export default function CoreLayoutSidebar() {
   // extension points, so it has nothing to navigate to. Plugins that have not
   // loaded yet (or failed to) keep their entry.
   const navigable = plugins.data?.filter(({ id }) => registrations.get(id)?.routes.length !== 0);
-  var matched = pathname.match(/^\/_plugin\/([A-Za-z0-9-]+).*/)?.[1] || '';
+  const matched = pathname.match(/^\/_plugin\/([A-Za-z0-9-]+).*/)?.[1] || '';
 
   return (
-    <Box
-      data-testid='app-sidebar'
-      className='CoreLayoutSidebar'
-      sx={{
-        position: 'fixed',
-        transform: {
-          xs: 'translateX(calc(100% * (var(--SideNavigation-slideIn, 0) - 1)))',
-          lg: 'none',
-        },
-        transition: 'transform 0.4s',
-        zIndex: 1,
-        height: 'calc(100dvh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height))',
-        width: 'var(--CoreLayoutSidebar-width)',
-        minWidth: 'var(--CoreLayoutSidebar-width)',
-        maxWidth: 'var(--CoreLayoutSidebar-width)',
-        flexShrink: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 0,
-        borderRight: '1px solid',
-        borderColor: 'divider',
-        bgcolor: 'background.paper',
-      }}
-    >
-      <GlobalStyles
-        styles={{
-          // eslint-disable-next-line @typescript-eslint/naming-convention
-          ':root': {
-            '--CoreLayoutSidebar-width': '48px',
-          },
-        }}
-      />
-
-      {/* Dynamic Plugins */}
-      <MuiTabs
-        aria-label="Sidebar Tabs"
-        orientation="vertical"
-        value={matched || false}
-        sx={{
-          '& .MuiTabs-indicator': {
-            left: 0,
-            width: '3px',
-          },
-        }}
-      >
+    <AppShell.Sidebar data-testid='app-sidebar' className={`CoreLayoutSidebar ${styles.Rail}`}>
+      <nav aria-label='Sidebar Tabs'>
         {!plugins.isLoading && navigable?.map(({ id, metadata }) => (
-          <MuiTab
+          <Link
             key={id}
-            value={id}
-            sx={{
-              px: 1,
-              py: 1.2,
-              minWidth: 'var(--CoreLayoutSidebar-width)',
-              width: 'var(--CoreLayoutSidebar-width)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              WebkitUserSelect: 'none',
-            }}
-            component={Link}
             to={`/_plugin/${id}`}
-            icon={
-              IsImage(metadata?.icon) ? (
-                <Avatar
-                  src={metadata.icon}
-                  variant='square'
-                  sx={{
-                    borderRadius: 1,
-                    backgroundColor: 'transparent',
-                    objectFit: 'contain',
-                    border: 0,
-                    width: '30px',
-                    height: '30px',
-                  }}
-                />
-              ) : <Icon name={metadata?.icon || ''} size={26} />
-            }
-          />
+            className={styles.Item}
+            aria-label={metadata?.name || id}
+            aria-current={matched === id ? 'page' : undefined}
+          >
+            {IsImage(metadata?.icon)
+              ? <img src={metadata.icon} alt='' className={styles.Image} />
+              : <Icon name={metadata?.icon || ''} size={26} />}
+          </Link>
         ))}
-      </MuiTabs>
-    </Box>
+      </nav>
+    </AppShell.Sidebar>
   );
 }
