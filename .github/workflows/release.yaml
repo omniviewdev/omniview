@@ -65,7 +65,7 @@ jobs:
 
       - name: Install Wails v3
         shell: bash
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
 
       - name: Build frontend
         shell: bash
@@ -179,11 +179,11 @@ jobs:
         with:
           submodules: recursive
 
+      # awalsh128/cache-apt-pkgs-action@latest restores an empty package set here, so install directly.
       - name: Install Linux dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: libgtk-3-dev libwebkit2gtk-4.1-dev libwayland-dev build-essential pkg-config
-          version: 1.0
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-3-dev libwebkit2gtk-4.1-dev libwayland-dev build-essential pkg-config
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -212,7 +212,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Wails v3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
 
       - name: Build frontend
         run: task common:build:frontend
@@ -288,7 +288,7 @@ jobs:
 
       - name: Install Wails v3
         shell: bash
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
 
       - name: Build frontend
         shell: bash
