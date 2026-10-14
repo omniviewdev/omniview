@@ -17,7 +17,7 @@
 .StatusError {
   font-size: 14px;
   font-weight: 600;
-  color: var(--ov-color-danger-fg);
+  color: var(--ov-color-danger);
 }
 
 .StatusDetail {

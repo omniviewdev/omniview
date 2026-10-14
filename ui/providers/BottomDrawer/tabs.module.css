@@ -86,7 +86,7 @@
 .Tab[data-selected] {
   color: var(--ov-color-tab-active-fg, var(--ov-color-fg-default));
   background: var(--ov-color-state-selected);
-  border-bottom-color: var(--ov-color-accent-strong, var(--ov-color-bg-brand));
+  border-bottom-color: var(--ov-color-accent-strong);
 }
 
 .TabLabel {

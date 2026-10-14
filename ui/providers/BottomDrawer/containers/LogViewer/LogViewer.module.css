@@ -29,15 +29,15 @@
 }
 
 .Banner[data-color='warning'] {
-  color: var(--ov-color-warning-fg);
-  background: var(--ov-color-warning-soft, color-mix(in srgb, var(--ov-color-warning-fg) 12%, transparent));
-  border-color: color-mix(in srgb, var(--ov-color-warning-fg) 35%, transparent);
+  color: var(--ov-color-warning);
+  background: var(--ov-color-warning-soft, color-mix(in srgb, var(--ov-color-warning) 12%, transparent));
+  border-color: color-mix(in srgb, var(--ov-color-warning) 35%, transparent);
 }
 
 .Banner[data-color='danger'] {
-  color: var(--ov-color-danger-fg);
-  background: var(--ov-color-danger-soft, color-mix(in srgb, var(--ov-color-danger-fg) 12%, transparent));
-  border-color: color-mix(in srgb, var(--ov-color-danger-fg) 35%, transparent);
+  color: var(--ov-color-danger);
+  background: var(--ov-color-danger-soft, color-mix(in srgb, var(--ov-color-danger) 12%, transparent));
+  border-color: color-mix(in srgb, var(--ov-color-danger) 35%, transparent);
 }
 
 .BannerText {
@@ -76,11 +76,11 @@
 }
 
 .WarningIcon {
-  color: var(--ov-color-warning-fg);
+  color: var(--ov-color-warning);
 }
 
 .DangerIcon {
-  color: var(--ov-color-danger-fg);
+  color: var(--ov-color-danger);
 }
 
 .List {

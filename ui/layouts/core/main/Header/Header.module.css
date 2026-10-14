@@ -67,5 +67,5 @@
 }
 
 .SearchIcon {
-  color: var(--ov-color-accent-fg, var(--ov-color-fg-muted));
+  color: var(--ov-color-accent-strong);
 }

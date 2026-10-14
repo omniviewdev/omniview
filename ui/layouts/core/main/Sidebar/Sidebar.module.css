@@ -42,7 +42,7 @@
   left: 0;
   width: 3px;
   border-radius: 0 2px 2px 0;
-  background: var(--ov-color-accent-strong, var(--ov-color-bg-brand));
+  background: var(--ov-color-accent-strong);
 }
 
 .Image {
