@@ -6,21 +6,11 @@ import {
 } from '@tanstack/react-query';
 import { Events } from '@omniviewdev/runtime/runtime';
 import { DevServerManager } from '@omniviewdev/runtime/api';
-import type { DevServerState as DevServerStateModel, DevServerLogEntry } from '@omniviewdev/runtime/models';
+import type { DevServerState as DevServerStateModel } from '@omniviewdev/runtime/models';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-// Re-export from the Wails binding models so consumers don't need to import
-// from two places.
-export type DevServerState = DevServerStateModel;
-export type DevLogEntry = DevServerLogEntry;
-
-export interface DevBuildError {
-  file: string;
-  line: number;
-  column: number;
-  message: string;
-}
+type DevServerState = DevServerStateModel;
 
 // ── Query Keys ─────────────────────────────────────────────────────────────
 
@@ -140,60 +130,4 @@ export function useDevServer(pluginID?: string) {
     stop,
     restart,
   };
-}
-
-// ── Build Log Stream Hook ──────────────────────────────────────────────────
-
-/**
- * Hook for streaming build logs from a specific plugin's dev server.
- * Maintains a ring buffer of log entries and subscribes to Wails events.
- */
-export function useDevBuildStream(
-  pluginID: string,
-  opts?: { maxLines?: number; sourceFilter?: string }
-) {
-  const maxLines = opts?.maxLines ?? 1000;
-  const sourceFilter = opts?.sourceFilter ?? 'all';
-
-  const [lines, setLines] = React.useState<DevLogEntry[]>([]);
-  const [errors, setErrors] = React.useState<DevBuildError[]>([]);
-
-  React.useEffect(() => {
-    const offLog = Events.On('plugin/devserver/log', (ev) => {
-      const entries = ev.data as DevLogEntry[];
-      const filtered = entries.filter((entry) => {
-        if (entry.pluginID !== pluginID) return false;
-        if (sourceFilter !== 'all' && entry.source !== sourceFilter) return false;
-        return true;
-      });
-
-      if (filtered.length === 0) return;
-
-      setLines((prev) => {
-        const next = [...prev, ...filtered];
-        return next.length > maxLines ? next.slice(-maxLines) : next;
-      });
-    });
-
-    const offError = Events.On(
-      'plugin/devserver/error',
-      (ev) => {
-        const payload = ev.data as { pluginID: string; errors: DevBuildError[] };
-        if (payload.pluginID !== pluginID) return;
-        setErrors((prev) => [...prev, ...payload.errors]);
-      }
-    );
-
-    return () => {
-      offLog();
-      offError();
-    };
-  }, [pluginID, sourceFilter, maxLines]);
-
-  const clear = React.useCallback(() => {
-    setLines([]);
-    setErrors([]);
-  }, []);
-
-  return { lines, errors, clear };
 }

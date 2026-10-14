@@ -1,6 +1,6 @@
 import type { ITheme } from '@xterm/xterm';
 
-export const terminalThemes: Record<string, ITheme> = {
+const terminalThemes: Record<string, ITheme> = {
   default: {
     background: '#1e1e1e',
     foreground: '#d4d4d4',
@@ -486,27 +486,3 @@ export const terminalThemes: Record<string, ITheme> = {
 export function getTerminalTheme(name: string): ITheme {
   return terminalThemes[name] ?? terminalThemes.default;
 }
-
-/** Options array suitable for a settings dropdown. */
-export const terminalThemeOptions = [
-  { value: 'default', label: 'Default' },
-  { value: 'dracula', label: 'Dracula' },
-  { value: 'solarized-dark', label: 'Solarized Dark' },
-  { value: 'solarized-light', label: 'Solarized Light' },
-  { value: 'one-dark-pro', label: 'One Dark Pro' },
-  { value: 'monokai', label: 'Monokai' },
-  { value: 'nord', label: 'Nord' },
-  { value: 'gruvbox-dark', label: 'Gruvbox Dark' },
-  { value: 'tokyo-night', label: 'Tokyo Night' },
-  { value: 'catppuccin-mocha', label: 'Catppuccin Mocha' },
-  { value: 'github-dark', label: 'GitHub Dark' },
-  { value: 'github-light', label: 'GitHub Light' },
-  { value: 'material-dark', label: 'Material Dark' },
-  { value: 'cobalt2', label: 'Cobalt2' },
-  { value: 'ayu-dark', label: 'Ayu Dark' },
-  { value: 'synthwave-84', label: "Synthwave '84" },
-  { value: 'rose-pine', label: 'Rose Pine' },
-  { value: 'kanagawa', label: 'Kanagawa' },
-  { value: 'everforest-dark', label: 'Everforest Dark' },
-  { value: 'one-light', label: 'One Light' },
-];

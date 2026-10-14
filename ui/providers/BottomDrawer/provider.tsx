@@ -69,7 +69,7 @@ const findTabIndex = (tabs: BottomDrawerTab[], opts: FindTabOpts): number => {
   return -1;
 };
 
-export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ children }) => {
+const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ children }) => {
   const defaultHeight = 32;
 
   const [focused, setFocused] = React.useState<number>(0);

@@ -18,7 +18,7 @@ const CATEGORIES = [
   { label: 'Development', value: 'development' },
 ] as const;
 
-export const SORT_OPTIONS = [
+const SORT_OPTIONS = [
   { label: 'Name', value: 'name' },
   { label: 'Downloads', value: 'downloads' },
   { label: 'Rating', value: 'rating' },

@@ -1,8 +1,8 @@
 import { SaveFileDialog, WriteFileContent } from '@omniviewdev/runtime/api';
 import type { LogEntry } from '../types';
 
-/** Format entries as plain text lines. Exported for clipboard use. */
-export function formatAsText(entries: LogEntry[]): string {
+/** Format entries as plain text lines. */
+function formatAsText(entries: LogEntry[]): string {
   return entries.map((e) => {
     const ts = e.timestamp ? `[${e.timestamp}] ` : '';
     const src = e.sourceId ? `[${e.sourceId}] ` : '';
@@ -64,23 +64,6 @@ export async function saveLogsNative(entries: LogEntry[]): Promise<void> {
   await WriteFileContent(path, content);
 }
 
-export function downloadAsText(entries: LogEntry[], filename?: string): void {
-  downloadBlob(formatAsText(entries), filename ?? buildDefaultFilename(entries, 'log'), 'text/plain');
-}
-
-export function downloadAsJson(entries: LogEntry[], filename?: string): void {
-  downloadBlob(formatAsJson(entries), filename ?? buildDefaultFilename(entries, 'json'), 'application/json');
-}
-
-function downloadBlob(content: string, filename: string, mimeType: string): void {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 /** Copy log entries as plain text to the system clipboard. Returns true on success. */
 export async function copyLogsToClipboard(entries: LogEntry[]): Promise<boolean> {

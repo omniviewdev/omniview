@@ -21,10 +21,3 @@ export async function ensureDevSharedDeps(): Promise<void> {
   }
   return _ready;
 }
-
-/**
- * Reset for testing purposes.
- */
-export function resetDevSharedDeps(): void {
-  _ready = null;
-}

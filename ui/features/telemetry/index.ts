@@ -1,22 +1,10 @@
-import type { Logger } from './logger';
-import { createLogger } from './logger';
+import type { LogSink } from './logger';
 import { patchConsole } from './patchConsole';
-import { setDefaultSink, getDefaultSink } from './sink';
+import { setDefaultSink } from './sink';
 
-export type { TelemetryContext, Fields } from './context';
-export type { Logger, LogSink } from './logger';
-export { createLogger } from './logger';
-export { createTelemetryContext, emptyContext } from './context';
-export { WailsTransport } from './transport';
-export { instrumentBinding } from './instrumentation';
-export { useLogger, useTelemetryContext } from './hooks';
-export { getDefaultSink } from './sink';
+export type { LogSink };
 
-export function getLogger(name: string): Logger {
-  return createLogger(name, getDefaultSink());
-}
-
-export function initTelemetry(sink: import('./logger').LogSink): void {
+export function initTelemetry(sink: LogSink): void {
   setDefaultSink(sink);
   patchConsole(sink);
 }
