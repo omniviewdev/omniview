@@ -26,6 +26,15 @@ vi.mock('@wailsio/runtime', () => ({
   Events: {
     get On() { return mockEventsOn; },
   },
+  // The generated bindings build field creators at module scope.
+  Create: {
+    Any: (v: any) => v,
+    Array: () => (v: any) => v,
+    ByteSlice: (v: any) => v,
+    Events: (v: any) => v,
+    Map: () => (v: any) => v,
+    Nullable: () => (v: any) => v,
+  },
 }));
 
 // Import after mocks
