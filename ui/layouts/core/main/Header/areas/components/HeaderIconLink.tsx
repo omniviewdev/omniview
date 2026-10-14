@@ -1,35 +1,35 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-
-// Material-ui
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { Tooltip } from '@omniviewdev/ui/overlays';
+import { useNavigate } from 'react-router-dom';
+import { IconButton } from '@omniviewdev/base-ui';
 
 // Project imports
 import { type HeaderIconLink as HeaderIconLinkProps } from '@/store/header/types';
 import { Icon } from '@/components/icons/Icon';
+import HintTooltip from '@/components/base/HintTooltip';
+import styles from '../../Header.module.css';
 
 type Props = HeaderIconLinkProps;
 
 /**
- * A button with a defined action in the header. Does not link to any other pages in the application.
+ * A header button that navigates to another page in the application.
  */
-const HeaderIconLink: React.FC<Props> = ({ id, helpText, icon, href }) => (
-  <WithConditionalTooltip helpText={helpText}>
-    <Link to={href}>
+const HeaderIconLink: React.FC<Props> = ({ id, helpText, icon, href }) => {
+  const navigate = useNavigate();
+
+  return (
+    <HintTooltip content={helpText}>
       <IconButton
         size='sm'
+        variant='ghost'
         color='neutral'
-        sx={{
-          '--wails-draggable': 'no-drag',
-        }}
+        className={styles.NoDrag}
+        aria-label={helpText || id}
+        onClick={() => navigate(href)}
       >
         <Icon name={icon} size={16} />
       </IconButton>
-    </Link>
-  </WithConditionalTooltip>
-);
-
-export const WithConditionalTooltip = ({ helpText, children }: { helpText?: string; children: React.ReactElement }) => helpText ? <Tooltip content={helpText} placement='bottom'>{children}</Tooltip> : <>{children}</>;
+    </HintTooltip>
+  );
+};
 
 export default HeaderIconLink;
