@@ -1,0 +1,323 @@
+/* ─── Bar ─────────────────────────────────────── */
+
+.Bar {
+  height: 100%;
+  overflow: hidden;
+  background: var(--ov-color-bg-surface);
+  /* Sections fill the AppShell footer row. */
+  --_ov-sb-height: 100%;
+}
+
+/* ─── Chip: solid, uppercase mode/status label ── */
+
+.Chip {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding-inline: 6px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ov-color-fg-inverse);
+  background: var(--_chip-bg, transparent);
+}
+
+.Chip[data-tone='success'] { --_chip-bg: var(--ov-color-success-fg); }
+.Chip[data-tone='warning'] { --_chip-bg: var(--ov-color-warning-fg); }
+.Chip[data-tone='danger'] { --_chip-bg: var(--ov-color-danger-fg); }
+.Chip[data-tone='info'] { --_chip-bg: var(--ov-color-info-fg); }
+.Chip[data-tone='neutral'] { --_chip-bg: var(--ov-color-fg-subtle); }
+
+button.Chip {
+  cursor: pointer;
+}
+
+button.Chip:hover {
+  filter: brightness(1.15);
+}
+
+/* ─── Trigger: plain text item that opens a popover ── */
+
+.Trigger {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 100%;
+  max-width: 160px;
+  padding-inline: 6px;
+  font-size: 0.625rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--ov-color-fg-default);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.Trigger:hover {
+  background: var(--ov-color-state-hover);
+}
+
+.Truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.InlineProgress {
+  width: 48px;
+}
+
+.Spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-inline: 6px;
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.IconButton {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding-inline: 5px;
+  color: var(--ov-color-fg-default);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.IconButton:hover {
+  background: var(--ov-color-state-hover);
+}
+
+/* ─── Popover ─────────────────────────────────── */
+
+.Popup {
+  padding: 0;
+  min-width: 300px;
+  max-width: 400px;
+  color: var(--ov-color-fg-default);
+}
+
+.Popup[data-width='narrow'] {
+  min-width: 260px;
+  max-width: 320px;
+}
+
+.Popup[data-width='wide'] {
+  min-width: 320px;
+}
+
+.Header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ov-space-2);
+  padding: var(--ov-space-2) var(--ov-space-3);
+  border-bottom: 1px solid var(--ov-color-border-muted);
+}
+
+.HeaderTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.List {
+  max-height: 280px;
+  overflow: auto;
+}
+
+.List[data-size='sm'] {
+  max-height: 240px;
+}
+
+.List[data-size='lg'] {
+  max-height: 360px;
+}
+
+.ListItem {
+  padding: 6px var(--ov-space-3);
+  border-bottom: 1px solid var(--ov-color-border-muted);
+}
+
+.ListItem:last-child {
+  border-bottom: none;
+}
+
+.Row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ov-space-2);
+}
+
+.Group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.Stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.Title {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.Mono {
+  font-family: var(--ovl-font-mono, monospace);
+}
+
+.Meta {
+  font-size: 0.625rem;
+  color: var(--ov-color-fg-subtle);
+}
+
+.Detail {
+  font-size: 0.6875rem;
+  color: var(--ov-color-fg-muted);
+}
+
+.Indent {
+  padding-left: 13px;
+}
+
+.Empty {
+  padding: var(--ov-space-3);
+  font-size: 0.75rem;
+  color: var(--ov-color-fg-subtle);
+}
+
+.Badge {
+  padding: 1px 5px;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ov-color-fg-muted);
+  border: 1px solid var(--ov-color-border-muted);
+  border-radius: 4px;
+}
+
+.GroupHeader {
+  padding: var(--ov-space-1) var(--ov-space-3);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ov-color-fg-subtle);
+  background: var(--ov-color-bg-surface-raised);
+  border-bottom: 1px solid var(--ov-color-border-muted);
+}
+
+.Details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ov-space-1);
+  padding: var(--ov-space-2) var(--ov-space-3);
+}
+
+.DetailRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ov-space-2);
+  font-size: 0.6875rem;
+}
+
+.DetailLabel {
+  flex-shrink: 0;
+  min-width: 44px;
+  color: var(--ov-color-fg-subtle);
+}
+
+.DetailValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ov-color-fg-muted);
+}
+
+.DetailValue[data-tone='success'] { color: var(--ov-color-success-fg); }
+.DetailValue[data-tone='danger'] { color: var(--ov-color-danger-fg); }
+
+.ErrorBox {
+  max-height: 60px;
+  margin-top: var(--ov-space-1);
+  padding: 6px;
+  overflow: auto;
+  font-family: var(--ovl-font-mono, monospace);
+  font-size: 0.6875rem;
+  word-break: break-word;
+  color: var(--ov-color-danger-fg);
+  background: var(--ov-color-danger-soft);
+  border: 1px solid color-mix(in srgb, var(--ov-color-danger-fg) 25%, transparent);
+  border-radius: 4px;
+}
+
+.Actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px var(--ov-space-2);
+  border-top: 1px solid var(--ov-color-border-muted);
+}
+
+.RowActions {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.Action {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--ov-color-fg-default);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.Action:hover {
+  background: var(--ov-color-state-hover);
+}
+
+.Action:active {
+  background: var(--ov-color-state-pressed);
+}
+
+.Action[data-tone='success'] { color: var(--ov-color-success-fg); }
+.Action[data-tone='danger'] { color: var(--ov-color-danger-fg); }
+.Action[data-tone='info'] { color: var(--ov-color-info-fg); }
+
+.Action:disabled {
+  cursor: default;
+  opacity: 0.5;
+  color: var(--ov-color-fg-disabled);
+  background: none;
+}
+
+.SuccessIcon { color: var(--ov-color-success-fg); }
+.DangerIcon { color: var(--ov-color-danger-fg); }
+.InfoIcon { color: var(--ov-color-info-fg); }
+.MutedIcon { color: var(--ov-color-fg-muted); }
