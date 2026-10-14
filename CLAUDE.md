@@ -24,6 +24,12 @@ Use `GOWORK=off` for all Go commands — the module is not in the parent `go.wor
 
 The frontend is built on `@omniviewdev/base-ui` (with `ai-ui` and `editors`), published from the `omniviewdev/ui` repo. MUI, Emotion and the legacy `@omniviewdev/ui` package are gone, and the host no longer shares them with plugins: a plugin built against them (for example older marketplace releases of upstream plugins such as `omniview-plugin-aws`) fails to load. The plugin shared-deps list lives in `ui/features/plugins/api/shared_dependencies.ts` and `packages/omniviewdev-vite-plugin/src/sharedPackages.ts`; keep them in sync.
 
+## Releases
+
+Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yaml`. The release publishes the desktop artifacts and stamps `@omniviewdev/providers`, `@omniviewdev/vite-plugin`, and `@omniviewdev/runtime` with the tag version before publishing them to npm.
+
+npm trusted publishers must target the calling workflow filename: `release.yaml` for stable releases and `nightly.yaml` for nightlies. Both call `.github/workflows/npm-publish.yml`, but npm validates the caller for reusable workflows. Merge publishing-workflow changes to `main` before pushing the release tag so the tagged commit contains the OIDC configuration.
+
 ## Commits
 
 - Do not add `Co-Authored-By` or any Claude attribution to commits or PRs.
