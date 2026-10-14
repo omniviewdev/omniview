@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,9 +21,11 @@ func writePluginYAML(t *testing.T, dir string, meta config.PluginMeta) {
 	content := "id: " + meta.ID + "\nname: " + meta.Name + "\nversion: " + meta.Version + "\n"
 	if len(meta.Capabilities) > 0 {
 		content += "capabilities:\n"
+		var capsList strings.Builder
 		for _, cap := range meta.Capabilities {
-			content += "  - " + cap + "\n"
+			capsList.WriteString("  - " + cap + "\n")
 		}
+		content += capsList.String()
 	}
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.yaml"), []byte(content), 0644))
 }
@@ -123,8 +126,8 @@ func TestReconciler_BothPersistedAndDirectory_MergedRecord(t *testing.T) {
 
 	assert.Len(t, result.Records, 1)
 	record := result.Records["my-plugin"]
-	assert.Equal(t, true, record.Enabled)
-	assert.Equal(t, true, record.DevMode)
+	assert.True(t, record.Enabled)
+	assert.True(t, record.DevMode)
 	assert.Equal(t, "/some/path", record.DevPath)
 	assert.Empty(t, result.Orphans)
 	assert.Empty(t, result.Ghosts)

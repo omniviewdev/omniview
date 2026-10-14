@@ -15,9 +15,9 @@ import (
 	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
-func TestPluginPIDTracker_RecordAndRemove(t *testing.T) {
+func TestPIDTracker_RecordAndRemove(t *testing.T) {
 	svc := appstate.NewTestService(t)
-	tracker := NewPluginPIDTracker(svc.RootDir())
+	tracker := NewPIDTracker(svc.RootDir())
 
 	tracker.Record("aws", 1234)
 	tracker.Record("kubernetes", 5678)
@@ -45,9 +45,9 @@ func TestPluginPIDTracker_RecordAndRemove(t *testing.T) {
 	tracker.Remove("nonexistent")
 }
 
-func TestPluginPIDTracker_SaveAndLoad(t *testing.T) {
+func TestPIDTracker_SaveAndLoad(t *testing.T) {
 	svc := appstate.NewTestService(t)
-	tracker := NewPluginPIDTracker(svc.RootDir())
+	tracker := NewPIDTracker(svc.RootDir())
 	tracker.Record("aws", 12345)
 	tracker.Record("kubernetes", 67890)
 
@@ -65,7 +65,7 @@ func TestPluginPIDTracker_SaveAndLoad(t *testing.T) {
 	assert.Equal(t, 67890, loaded["kubernetes"])
 }
 
-func TestPluginPIDTracker_CleanupStale_KillsProcesses(t *testing.T) {
+func TestPIDTracker_CleanupStale_KillsProcesses(t *testing.T) {
 	svc := appstate.NewTestService(t)
 
 	// Spawn a real sleep process to kill
@@ -83,7 +83,7 @@ func TestPluginPIDTracker_CleanupStale_KillsProcesses(t *testing.T) {
 	require.NoError(t, svc.RootDir().WriteFile(pluginPIDFileName, b, 0644))
 
 	logger := testLogger(t)
-	tracker := NewPluginPIDTracker(svc.RootDir())
+	tracker := NewPIDTracker(svc.RootDir())
 	tracker.CleanupStale(logger)
 
 	// Reap the zombie -- our test process is the parent, so we must Wait()
@@ -92,24 +92,24 @@ func TestPluginPIDTracker_CleanupStale_KillsProcesses(t *testing.T) {
 
 	// Verify the process is dead
 	err = syscall.Kill(pid, 0)
-	assert.ErrorIs(t, err, syscall.ESRCH, "process should be dead after cleanup")
+	require.ErrorIs(t, err, syscall.ESRCH, "process should be dead after cleanup")
 
 	// Verify the PID file was removed
 	_, err = svc.RootDir().Stat(pluginPIDFileName)
 	assert.True(t, os.IsNotExist(err), "PID file should be removed after cleanup")
 }
 
-func TestPluginPIDTracker_CleanupStale_NoFile(t *testing.T) {
+func TestPIDTracker_CleanupStale_NoFile(t *testing.T) {
 	svc := appstate.NewTestService(t)
 
 	logger := testLogger(t)
-	tracker := NewPluginPIDTracker(svc.RootDir())
+	tracker := NewPIDTracker(svc.RootDir())
 
 	// Should not panic or error
 	tracker.CleanupStale(logger)
 }
 
-func TestPluginPIDTracker_CleanupStale_DeadProcess(t *testing.T) {
+func TestPIDTracker_CleanupStale_DeadProcess(t *testing.T) {
 	svc := appstate.NewTestService(t)
 
 	// Spawn a process and kill it immediately so the PID is dead
@@ -130,7 +130,7 @@ func TestPluginPIDTracker_CleanupStale_DeadProcess(t *testing.T) {
 	require.NoError(t, svc.RootDir().WriteFile(pluginPIDFileName, b, 0644))
 
 	logger := testLogger(t)
-	tracker := NewPluginPIDTracker(svc.RootDir())
+	tracker := NewPIDTracker(svc.RootDir())
 
 	// Should handle ESRCH gracefully
 	tracker.CleanupStale(logger)

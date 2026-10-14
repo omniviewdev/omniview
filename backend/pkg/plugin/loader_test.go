@@ -31,7 +31,7 @@ func newTestManager(t *testing.T) *pluginManager {
 		connlessControllers: make(map[sdktypes.Capability]plugintypes.Controller),
 		connfullControllers: make(map[sdktypes.Capability]plugintypes.ConnectedController),
 		managers:            make(map[string]plugintypes.PluginManager),
-		pidTracker:          NewPluginPIDTracker(svc.RootDir()),
+		pidTracker:          NewPIDTracker(svc.RootDir()),
 		pluginOpsLocks:      make(map[string]*sync.Mutex),
 		emitter:             testNoopEmitter{},
 	}
@@ -48,7 +48,7 @@ func TestLoadPlugin_NotFound(t *testing.T) {
 	pm := newTestManager(t)
 
 	_, err := pm.LoadPlugin("nonexistent", nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
 
@@ -57,7 +57,7 @@ func TestLoadPlugin_MetadataMissing(t *testing.T) {
 	require.NoError(t, pm.pluginsRoot.MkdirAll("no-meta", 0755))
 
 	_, err := pm.LoadPlugin("no-meta", nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "metadata")
 }
 
@@ -92,7 +92,7 @@ func TestLoadPlugin_AlreadyStarting_Returns409(t *testing.T) {
 	}
 
 	_, err := pm.LoadPlugin("starting-plugin", nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "starting")
 }
 
@@ -115,7 +115,7 @@ func TestLoadPlugin_BackendPlugin_ViaFactory(t *testing.T) {
 	installPluginFixture(t, pm, "backend-plugin", []string{"resource"}, true)
 
 	factoryCalled := false
-	pm.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
+	pm.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
 		factoryCalled = true
 		return plugintypes.NewInProcessBackend(map[string]interface{}{
 			"resource": "mock",
@@ -134,7 +134,7 @@ func TestLoadPlugin_NoBinary_FailsValidation(t *testing.T) {
 	installPluginFixture(t, pm, "no-binary", []string{"resource"}, false)
 
 	_, err := pm.LoadPlugin("no-binary", nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "validation")
 }
 
@@ -142,7 +142,7 @@ func TestLoadPlugin_DevMode_SkipsUIValidation(t *testing.T) {
 	pm := newTestManager(t)
 	installPluginFixture(t, pm, "dev-plugin", []string{"resource", "ui"}, true)
 
-	pm.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
+	pm.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
 		return plugintypes.NewInProcessBackend(nil), nil
 	}
 
@@ -160,7 +160,7 @@ func TestReloadPlugin_NotLoaded_Error(t *testing.T) {
 	pm := newTestManager(t)
 
 	_, err := pm.ReloadPlugin("nonexistent")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not currently loaded")
 }
 
@@ -183,7 +183,7 @@ func TestUnloadPlugin_Running_Stops(t *testing.T) {
 	}
 
 	err := pm.UnloadPlugin("test")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotContains(t, pm.records, "test")
 }
 
@@ -192,7 +192,7 @@ func TestLoadPlugin_ExistingState_Applied(t *testing.T) {
 	// Dev mode with backend caps requires a binary.
 	installPluginFixture(t, pm, "state-plugin", []string{"resource"}, true)
 
-	pm.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
+	pm.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
 		return plugintypes.NewInProcessBackend(nil), nil
 	}
 
@@ -262,7 +262,7 @@ func TestInitPlugin_NilRecord(t *testing.T) {
 	pm := newTestManager(t)
 
 	err := pm.initPlugin(nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nil")
 }
 
@@ -270,7 +270,7 @@ func TestStartPlugin_NilRecord(t *testing.T) {
 	pm := newTestManager(t)
 
 	err := pm.startPlugin(nil, nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nil")
 }
 
@@ -278,7 +278,7 @@ func TestStopPlugin_NilRecord(t *testing.T) {
 	pm := newTestManager(t)
 
 	err := pm.stopPlugin(nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nil")
 }
 
@@ -286,7 +286,7 @@ func TestShutdownPlugin_NilRecord(t *testing.T) {
 	pm := newTestManager(t)
 
 	err := pm.shutdownPlugin("test", nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nil")
 }
 
@@ -298,7 +298,7 @@ func TestDevInstall_StatePersistsDevModeFields(t *testing.T) {
 	pm := newTestManager(t)
 	installPluginFixture(t, pm, "dev-persist", []string{"resource", "ui"}, true)
 
-	pm.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
+	pm.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
 		return plugintypes.NewInProcessBackend(nil), nil
 	}
 
@@ -336,13 +336,13 @@ func TestDevPlugin_SurvivesRestart(t *testing.T) {
 		connlessControllers: make(map[sdktypes.Capability]plugintypes.Controller),
 		connfullControllers: make(map[sdktypes.Capability]plugintypes.ConnectedController),
 		managers:            make(map[string]plugintypes.PluginManager),
-		pidTracker:          NewPluginPIDTracker(svc.RootDir()),
+		pidTracker:          NewPIDTracker(svc.RootDir()),
 		pluginOpsLocks:      make(map[string]*sync.Mutex),
 	}
 
 	installPluginFixtureAt(t, svc.Plugins().ResolvePath(""), "dev-restart", []string{"resource", "ui"}, true)
 
-	pm1.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
+	pm1.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
 		return plugintypes.NewInProcessBackend(nil), nil
 	}
 
@@ -362,11 +362,11 @@ func TestDevPlugin_SurvivesRestart(t *testing.T) {
 		connlessControllers: make(map[sdktypes.Capability]plugintypes.Controller),
 		connfullControllers: make(map[sdktypes.Capability]plugintypes.ConnectedController),
 		managers:            make(map[string]plugintypes.PluginManager),
-		pidTracker:          NewPluginPIDTracker(svc.RootDir()),
+		pidTracker:          NewPIDTracker(svc.RootDir()),
 		pluginOpsLocks:      make(map[string]*sync.Mutex),
 		emitter:             testNoopEmitter{},
 	}
-	pm2.backendFactory = func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
+	pm2.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
 		return plugintypes.NewInProcessBackend(nil), nil
 	}
 
@@ -421,7 +421,7 @@ func TestInitialize_DoesNotLoseFailedPluginState(t *testing.T) {
 
 	state := stateByID["dev-lost"]
 	_, err := pm.LoadPlugin("dev-lost", &LoadPluginOptions{ExistingState: &state})
-	assert.Error(t, err, "LoadPlugin should fail (missing binary)")
+	require.Error(t, err, "LoadPlugin should fail (missing binary)")
 
 	// Now call mergeAndWritePluginState -- this is what Initialize does.
 	// It should preserve the failed plugin's state.
@@ -586,16 +586,16 @@ func TestConcurrentReloads_Serialized(t *testing.T) {
 
 	// Launch multiple concurrent reloads. With serialization, none should
 	// panic with "concurrent map writes" or produce a race.
-	const N = 10
+	const reloads = 10
 	var wg sync.WaitGroup
-	errs := make(chan error, N)
-	wg.Add(N)
-	for range N {
+	errs := make(chan error, reloads)
+	wg.Add(reloads)
+	for range reloads {
 		go func() {
 			defer wg.Done()
-			_, err := pm.ReloadPlugin("concurrent-test")
-			if err != nil {
-				errs <- err
+			_, reloadErr := pm.ReloadPlugin("concurrent-test")
+			if reloadErr != nil {
+				errs <- reloadErr
 			}
 		}()
 	}
@@ -744,9 +744,16 @@ func TestCapStringsToCapabilities_TableDriven(t *testing.T) {
 			expected: nil,
 		},
 		{
-			name:     "all known",
-			input:    []string{"resource", "exec", "networker", "log", "metric", "ui"},
-			expected: []sdktypes.Capability{sdktypes.CapabilityResource, sdktypes.CapabilityExec, sdktypes.CapabilityNetworker, sdktypes.CapabilityLog, sdktypes.CapabilityMetric, sdktypes.CapabilityUI},
+			name:  "all known",
+			input: []string{"resource", "exec", "networker", "log", "metric", "ui"},
+			expected: []sdktypes.Capability{
+				sdktypes.CapabilityResource,
+				sdktypes.CapabilityExec,
+				sdktypes.CapabilityNetworker,
+				sdktypes.CapabilityLog,
+				sdktypes.CapabilityMetric,
+				sdktypes.CapabilityUI,
+			},
 		},
 	}
 
