@@ -430,12 +430,13 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 					devPath:  state.DevPath,
 				})
 
-				// If the dev binary doesn't exist, create a stub record
+				// If the dev binary doesn't exist (and the plugin has a backend;
+				// UI-only plugins never have one), create a stub record
 				// and skip LoadPlugin. Phase 2 will start the dev server,
 				// build the binary, and call ReloadPlugin.
 				pluginLocation := pm.pluginsRoot.ResolvePath(file.Name())
 				binPath := filepath.Join(pluginLocation, "bin", "plugin")
-				if _, statErr := os.Stat(binPath); os.IsNotExist(statErr) {
+				if _, statErr := os.Stat(binPath); os.IsNotExist(statErr) && state.Metadata.HasBackendCapabilities() {
 					meta, metaErr := sdktypes.LoadPluginMetadata(pluginLocation)
 					if metaErr == nil {
 						record := plugintypes.NewPluginRecord(file.Name(), meta, lifecycle.PhaseBuildFailed)
