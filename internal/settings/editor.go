@@ -2,6 +2,13 @@ package categories
 
 import "github.com/omniviewdev/plugin-sdk/settings"
 
+// Editor setting defaults.
+const (
+	defaultEditorFontSize      = 11
+	defaultEditorFontWeight    = 11
+	defaultLineNumbersMinChars = 5
+)
+
 //nolint:gochecknoglobals // we're providing this as a package level variable
 var Editor = settings.Category{
 	ID:          "editor",
@@ -23,18 +30,18 @@ var Editor = settings.Category{
 			Default:     true,
 			Description: "Enable highlight for folded regions. Defaults to true.",
 		},
-		"fontSize": {
-			ID:          "fontSize",
+		settingFontSize: {
+			ID:          settingFontSize,
 			Type:        settings.Integer,
 			Label:       "Font Size",
-			Default:     11,
+			Default:     defaultEditorFontSize,
 			Description: "The size of the font in the editor.",
 		},
 		"fontWeight": {
 			ID:          "fontWeight",
 			Type:        settings.Text,
 			Label:       "Font Weight",
-			Default:     11,
+			Default:     defaultEditorFontWeight,
 			Description: "The font weight.",
 		},
 		"formatOnPaste": {
@@ -62,21 +69,22 @@ var Editor = settings.Category{
 			ID:   "lineNumbers",
 			Type: settings.Text,
 			Options: []settings.SettingOption{
-				{Value: "on", Label: "On"},
-				{Value: "off", Label: "Off"},
-				{Value: "relative", Label: "Relative"},
-				{Value: "interval", Label: "Interval"},
+				{Value: "on", Label: "On", Description: ""},
+				{Value: "off", Label: "Off", Description: ""},
+				{Value: "relative", Label: "Relative", Description: ""},
+				{Value: "interval", Label: "Interval", Description: ""},
 			},
 			Label:       "Line Numbers",
 			Default:     "on",
 			Description: "Control the rendering of line numbers. Defaults to 'on'.",
 		},
 		"lineNumbersMinChars": {
-			ID:          "lineNumbersMinChars",
-			Type:        settings.Integer,
-			Label:       "Line Number Width",
-			Default:     5,
-			Description: "Control the width of line numbers, by reserving horizontal space for rendering at least an amount of digits. Defaults to 5.",
+			ID:      "lineNumbersMinChars",
+			Type:    settings.Integer,
+			Label:   "Line Number Width",
+			Default: defaultLineNumbersMinChars,
+			Description: "Control the width of line numbers, by reserving horizontal space for rendering " +
+				"at least an amount of digits. Defaults to 5.",
 		},
 		"minimapEnabled": {
 			ID:          "minimapEnabled",
@@ -97,8 +105,8 @@ var Editor = settings.Category{
 			Type:  settings.Text,
 			Label: "Minimap Slider",
 			Options: []settings.SettingOption{
-				{Value: "mouseover", Label: "Mouseover"},
-				{Value: "always", Label: "Always"},
+				{Value: "mouseover", Label: "Mouseover", Description: ""},
+				{Value: "always", Label: "Always", Description: ""},
 			},
 			Default:     "mouseover",
 			Description: "Control the rendering of the minimap slider. Defaults to 'mouseover'.",
@@ -109,8 +117,8 @@ var Editor = settings.Category{
 			Label:   "Minimap Side",
 			Default: "right",
 			Options: []settings.SettingOption{
-				{Value: "right", Label: "Right"},
-				{Value: "left", Label: "Left"},
+				{Value: "right", Label: "Right", Description: ""},
+				{Value: "left", Label: "Left", Description: ""},
 			},
 			Description: "Control the side of the minimap in editor. Defaults to 'right'",
 		},
@@ -120,10 +128,10 @@ var Editor = settings.Category{
 			Label:   "Minimap Size",
 			Default: "actual",
 			Options: []settings.SettingOption{
-				{Value: "actual", Label: "Actual"},
-				{Value: "proportional", Label: "Proportional"},
-				{Value: "fill", Label: "Fill"},
-				{Value: "fit", Label: "Fit"},
+				{Value: "actual", Label: "Actual", Description: ""},
+				{Value: "proportional", Label: "Proportional", Description: ""},
+				{Value: "fill", Label: "Fill", Description: ""},
+				{Value: "fit", Label: "Fit", Description: ""},
 			},
 			Description: "Control the minimap rendering mode. Defaults to 'actual'.",
 		},

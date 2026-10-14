@@ -17,11 +17,13 @@ var Developer = settings.Category{
 			Default:     "https://api.omniview.dev",
 		},
 		"registry_public_key": {
-			ID:          "registry_public_key",
-			Label:       "Marketplace Signing Key",
-			Description: "Hex-encoded Ed25519 public key used to verify plugin artifacts. Leave empty to use the built-in key; set it when the marketplace URL points to a staging or self-hosted instance that signs with its own key.",
-			Type:        settings.Text,
-			Default:     "",
+			ID:    "registry_public_key",
+			Label: "Marketplace Signing Key",
+			Description: "Hex-encoded Ed25519 public key used to verify plugin artifacts. Leave empty to use " +
+				"the built-in key; set it when the marketplace URL points to a staging or self-hosted instance " +
+				"that signs with its own key.",
+			Type:    settings.Text,
+			Default: "",
 		},
 		"gopath": {
 			ID:          "gopath",
@@ -33,6 +35,9 @@ var Developer = settings.Category{
 				Enabled:      true,
 				AllowFolders: false,
 				Multiple:     false,
+				Extensions:   nil,
+				Relative:     false,
+				DefaultPath:  "",
 			},
 		},
 		"pnpmpath": {
@@ -45,6 +50,9 @@ var Developer = settings.Category{
 				Enabled:      true,
 				AllowFolders: false,
 				Multiple:     false,
+				Extensions:   nil,
+				Relative:     false,
+				DefaultPath:  "",
 			},
 		},
 		"nodepath": {
@@ -57,6 +65,9 @@ var Developer = settings.Category{
 				Enabled:      true,
 				AllowFolders: false,
 				Multiple:     false,
+				Extensions:   nil,
+				Relative:     false,
+				DefaultPath:  "",
 			},
 		},
 	},
