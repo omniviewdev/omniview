@@ -1,13 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { Tooltip } from '@omniviewdev/ui/overlays';
-import { Text } from '@omniviewdev/ui/typography';
+import { IconButton, Separator, Text } from '@omniviewdev/base-ui';
 import { LuChevronDown, LuChevronRight, LuRefreshCw } from 'react-icons/lu';
 
 import { schemaRegistry, type EditorSchemaEntry } from '@/providers/monaco/schemaRegistry';
 import { monaco } from '@/providers/monaco/bootstrap';
+import HintTooltip from '@/components/base/HintTooltip';
+import styles from './EditorDebugPanel.module.css';
 
 type SchemaSnapshot = Record<string, EditorSchemaEntry[]>;
 
@@ -59,54 +57,29 @@ const EditorDebugPanel: React.FC = () => {
   const keys = Object.keys(snapshot);
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        minHeight: 0,
-        overflow: 'hidden',
-      }}
-    >
+    <div className={styles.Root}>
       {/* Toolbar */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 0.5,
-          px: 1,
-          py: 0.5,
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          bgcolor: 'background.surface',
-          minHeight: 32,
-          flexShrink: 0,
-        }}
-      >
-        <Text size="xs" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-          Editor Debug
-        </Text>
-        <Divider orientation="vertical" sx={{ mx: 0.5 }} />
-        <Text size="xs" sx={{ fontFamily: 'monospace', color: 'text.disabled' }}>
+      <div className={styles.Toolbar}>
+        <Text size='xs' mono tone='muted'>Editor Debug</Text>
+        <Separator orientation='vertical' className={styles.ToolbarSeparator} />
+        <Text size='xs' mono tone='subtle'>
           {totalSchemas} schemas | {keys.length} registrations | {models.length} models
         </Text>
-        <Box sx={{ flex: 1 }} />
-        <Tooltip content="Refresh">
-          <IconButton size="sm" emphasis="ghost" color="neutral" onClick={refresh}>
+        <span className={styles.Spacer} />
+        <HintTooltip content='Refresh'>
+          <IconButton size='sm' variant='ghost' color='neutral' aria-label='Refresh' onClick={refresh}>
             <LuRefreshCw size={14} />
           </IconButton>
-        </Tooltip>
-      </Box>
+        </HintTooltip>
+      </div>
 
       {/* Content */}
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', bgcolor: 'black' }}>
+      <div className={styles.Content}>
         {/* Schema Registry Section */}
-        <SectionHeader title="Schema Registry" count={totalSchemas} />
+        <SectionHeader title='Schema Registry' count={totalSchemas} />
         {keys.length === 0 && (
-          <Row>
-            <Text size="xs" sx={{ fontFamily: 'monospace', color: 'text.disabled', pl: 2 }}>
-              No schemas registered
-            </Text>
+          <Row indent={2}>
+            <Text size='xs' mono tone='subtle'>No schemas registered</Text>
           </Row>
         )}
         {keys.map((key) => {
@@ -114,24 +87,15 @@ const EditorDebugPanel: React.FC = () => {
           const isExpanded = expandedKeys.has(key);
           return (
             <React.Fragment key={key}>
-              <Row
-                onClick={() => toggleKey(key)}
-                sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'background.level1' } }}
-              >
+              <Row onClick={() => toggleKey(key)}>
                 {isExpanded ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
-                <Text size="xs" sx={{ fontFamily: 'monospace', color: 'primary.main', ml: 0.5 }}>
-                  {key}
-                </Text>
-                <Text size="xs" sx={{ fontFamily: 'monospace', color: 'text.disabled', ml: 1 }}>
-                  ({entries.length} schemas)
-                </Text>
+                <Text size='xs' mono tone='brand'>{key}</Text>
+                <Text size='xs' mono tone='subtle'>({entries.length} schemas)</Text>
               </Row>
               {isExpanded && entries.map((entry, i) => (
-                <Row key={i} sx={{ pl: 3 }}>
-                  <Text size="xs" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-                    {entry.resourceKey}
-                  </Text>
-                  <Text size="xs" sx={{ fontFamily: 'monospace', color: 'text.disabled', ml: 1 }}>
+                <Row key={i} indent={3}>
+                  <Text size='xs' mono tone='muted'>{entry.resourceKey}</Text>
+                  <Text size='xs' mono tone='subtle'>
                     match={entry.fileMatch} uri={entry.uri} lang={entry.language}
                     {entry.schema ? ` schema=${JSON.stringify(entry.schema).slice(0, 80)}...` : ''}
                   </Text>
@@ -142,107 +106,63 @@ const EditorDebugPanel: React.FC = () => {
         })}
 
         {/* Monaco Models Section */}
-        <SectionHeader title="Monaco Models" count={models.length} />
+        <SectionHeader title='Monaco Models' count={models.length} />
         {models.length === 0 && (
-          <Row>
-            <Text size="xs" sx={{ fontFamily: 'monospace', color: 'text.disabled', pl: 2 }}>
-              No models open
-            </Text>
+          <Row indent={2}>
+            <Text size='xs' mono tone='subtle'>No models open</Text>
           </Row>
         )}
         {models.map((m, i) => (
-          <Row key={i}>
-            <Text size="xs" sx={{ fontFamily: 'monospace', color: 'text.secondary', pl: 2 }}>
-              {m.uri}
-            </Text>
-            <Text size="xs" sx={{ fontFamily: 'monospace', color: 'text.disabled', ml: 1 }}>
+          <Row key={i} indent={2}>
+            <Text size='xs' mono tone='muted'>{m.uri}</Text>
+            <Text size='xs' mono tone='subtle'>
               lang={m.language} ver={m.version} len={m.contentLength}
             </Text>
           </Row>
         ))}
 
         {/* Last Flushed YAML Config Section */}
-        <Box>
-          <Row
-            onClick={() => setShowFlushed(!showFlushed)}
-            sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'background.level1' } }}
-          >
+        <div>
+          <Row onClick={() => setShowFlushed(!showFlushed)}>
             {showFlushed ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
-            <Text size="xs" weight="semibold" sx={{ fontFamily: 'monospace', color: 'text.primary', ml: 0.5 }}>
-              Last Flushed YAML Config
-            </Text>
-            <Text size="xs" sx={{ fontFamily: 'monospace', color: 'text.disabled', ml: 1 }}>
-              ({flushedSchemas.length} schemas)
-            </Text>
+            <Text size='xs' mono weight='semibold'>Last Flushed YAML Config</Text>
+            <Text size='xs' mono tone='subtle'>({flushedSchemas.length} schemas)</Text>
           </Row>
           {showFlushed && (
-            <Row sx={{ pl: 3 }}>
-              <Text
-                component="pre"
-                size="xs"
-                sx={{
-                  fontFamily: 'monospace',
-                  color: 'text.secondary',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all',
-                  m: 0,
-                }}
-              >
+            <Row indent={3}>
+              <pre className={styles.Pre}>
                 {JSON.stringify(flushedSchemas.map(({ uri, fileMatch }) => ({ uri, fileMatch })), null, 2)}
-              </Text>
+              </pre>
             </Row>
           )}
-        </Box>
-      </Box>
-    </Box>
+        </div>
+      </div>
+    </div>
   );
 };
 
-// Reusable row wrapper
+// Reusable row wrapper. `indent` is in 8px steps.
 const Row: React.FC<{
   children: React.ReactNode;
   onClick?: () => void;
-  sx?: Record<string, unknown>;
-}> = ({ children, onClick, sx }) => (
-  <Box
+  indent?: number;
+}> = ({ children, onClick, indent }) => (
+  <div
     onClick={onClick}
-    sx={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 0.5,
-      px: 1,
-      py: '2px',
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      lineHeight: '18px',
-      ...sx,
-    }}
+    className={styles.Row}
+    data-clickable={onClick ? true : undefined}
+    style={indent ? { paddingLeft: indent * 8 } : undefined}
   >
     {children}
-  </Box>
+  </div>
 );
 
 // Section header
 const SectionHeader: React.FC<{ title: string; count: number }> = ({ title, count }) => (
-  <Box
-    sx={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 1,
-      px: 1,
-      py: 0.5,
-      mt: 0.5,
-      borderBottom: '1px solid',
-      borderColor: 'divider',
-    }}
-  >
-    <Text size="xs" weight="semibold" sx={{ fontFamily: 'monospace', color: 'text.primary' }}>
-      {title}
-    </Text>
-    <Text size="xs" sx={{ fontFamily: 'monospace', color: 'text.disabled' }}>
-      ({count})
-    </Text>
-  </Box>
+  <div className={styles.SectionHeader}>
+    <Text size='xs' mono weight='semibold'>{title}</Text>
+    <Text size='xs' mono tone='subtle'>({count})</Text>
+  </div>
 );
 
 export default React.memo(EditorDebugPanel);

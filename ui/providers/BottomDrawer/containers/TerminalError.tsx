@@ -1,9 +1,7 @@
 import React from 'react';
-import Box from '@mui/material/Box';
-import Collapse from '@mui/material/Collapse';
 import { LuTriangleAlert, LuChevronDown, LuChevronUp } from 'react-icons/lu';
-import { Button } from '@omniviewdev/ui/buttons';
-import { Text } from '@omniviewdev/ui/typography';
+import { Button, Text } from '@omniviewdev/base-ui';
+import styles from './TerminalError.module.css';
 
 export type TerminalErrorInfo = {
   title: string;
@@ -23,108 +21,45 @@ export default function TerminalError({ error, onRetry, backgroundColor }: Props
   const [showRaw, setShowRaw] = React.useState(false);
 
   return (
-    <Box
-      sx={{
-        position: 'absolute',
-        inset: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 1.5,
-        p: 4,
-        bgcolor: backgroundColor ?? 'black',
-        zIndex: 10,
-      }}
-    >
-      <LuTriangleAlert size={32} color="var(--palette-error-main, #f44336)" />
+    <div className={styles.Root} style={{ backgroundColor: backgroundColor ?? 'black' }}>
+      <LuTriangleAlert size={32} className={styles.Icon} />
 
-      <Text weight="semibold" sx={{ color: 'error.main', fontSize: '16px' }}>
+      <Text weight='semibold' className={styles.Title}>
         {error.title}
       </Text>
 
-      <Text
-        size="sm"
-        sx={{
-          color: 'text.secondary',
-          maxWidth: 500,
-          textAlign: 'center',
-          lineHeight: 1.5,
-        }}
-      >
+      <Text size='sm' tone='muted' className={styles.Suggestion}>
         {error.suggestion}
       </Text>
 
       {/* Collapsible raw error */}
-      <Box sx={{ maxWidth: 600, width: '100%' }}>
-        <Box
-          onClick={() => setShowRaw(!showRaw)}
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.5,
-            cursor: 'pointer',
-            color: 'text.secondary',
-            justifyContent: 'center',
-            mb: 0.5,
-            '&:hover': { color: 'text.primary' },
-          }}
-        >
-          <Text size="xs">{showRaw ? 'Hide' : 'Show'} details</Text>
+      <div className={styles.Details}>
+        <button type='button' className={styles.DetailsToggle} onClick={() => setShowRaw(!showRaw)} aria-expanded={showRaw}>
+          <Text size='xs'>{showRaw ? 'Hide' : 'Show'} details</Text>
           {showRaw ? <LuChevronUp size={14} /> : <LuChevronDown size={14} />}
-        </Box>
-        <Collapse in={showRaw}>
-          <Box
-            sx={{
-              bgcolor: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 1,
-              p: 1.5,
-              fontFamily: 'monospace',
-              fontSize: '11px',
-              color: 'rgba(255,255,255,0.7)',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-              maxHeight: 120,
-              overflow: 'auto',
-            }}
-          >
-            {error.raw}
-          </Box>
-        </Collapse>
-      </Box>
+        </button>
+        {showRaw && <pre className={styles.Raw}>{error.raw}</pre>}
+      </div>
 
       {/* Retry buttons — only shown when error is retryable with commands */}
       {error.retryable !== false && error.retryCommands && error.retryCommands.length > 0 && (
-        <Box sx={{ mt: 1 }}>
-          <Text size="sm" sx={{ color: 'text.secondary', mb: 1, textAlign: 'center' }}>
-            Try a different shell:
-          </Text>
-          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', mt: 0.5 }}>
+        <div className={styles.Retry}>
+          <Text size='sm' tone='muted'>Try a different shell:</Text>
+          <div className={styles.RetryButtons}>
             {error.retryCommands.map((cmd) => (
               <Button
                 key={cmd}
-                emphasis="outline"
-                size="sm"
+                variant='outline'
+                size='sm'
+                className={styles.RetryButton}
                 onClick={() => onRetry([cmd])}
-                sx={{
-                  color: 'rgba(255,255,255,0.8)',
-                  borderColor: 'rgba(255,255,255,0.2)',
-                  fontFamily: 'monospace',
-                  fontSize: '12px',
-                  textTransform: 'none',
-                  '&:hover': {
-                    borderColor: 'rgba(255,255,255,0.5)',
-                    bgcolor: 'rgba(255,255,255,0.05)',
-                  },
-                }}
               >
                 {cmd}
               </Button>
             ))}
-          </Box>
-        </Box>
+          </div>
+        </div>
       )}
-    </Box>
+    </div>
   );
 }

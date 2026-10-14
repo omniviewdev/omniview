@@ -1,0 +1,70 @@
+.Root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.Toolbar {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--ov-space-1);
+  min-height: 32px;
+  padding: var(--ov-space-1) var(--ov-space-2);
+  background: var(--ov-color-bg-surface);
+  border-bottom: 1px solid var(--ov-color-border-muted);
+}
+
+.ToolbarSeparator {
+  align-self: stretch;
+  margin-inline: var(--ov-space-1);
+}
+
+.Spacer {
+  flex: 1;
+}
+
+.Content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: black;
+}
+
+.Row {
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-1);
+  padding: 2px var(--ov-space-2);
+  font-family: var(--ovl-font-mono, monospace);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.Row[data-clickable] {
+  cursor: pointer;
+}
+
+.Row[data-clickable]:hover {
+  background: var(--ov-color-state-hover);
+}
+
+.SectionHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-2);
+  margin-top: var(--ov-space-1);
+  padding: var(--ov-space-1) var(--ov-space-2);
+  border-bottom: 1px solid var(--ov-color-border-muted);
+}
+
+.Pre {
+  margin: 0;
+  font-family: var(--ovl-font-mono, monospace);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--ov-color-fg-muted);
+}
