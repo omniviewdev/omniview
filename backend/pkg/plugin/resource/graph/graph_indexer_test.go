@@ -455,3 +455,246 @@ func TestGraphIndexer_FieldPath_NamespacedTargetDefault(t *testing.T) {
 		t.Errorf("expected namespace 'production', got %q", edges[0].Target.Namespace)
 	}
 }
+
+// declareK8sSubset declares the Pod/ReplicaSet/Service relationships the
+// regression tests below rely on, mirroring the kubernetes plugin's table.
+func declareK8sSubset(g *RelationshipGraph) {
+	clusterScoped := false
+	g.SetDeclarations("k8s", "core::v1::Pod", []resource.RelationshipDescriptor{
+		{
+			Type: resource.RelOwns, TargetResourceKey: "apps::v1::ReplicaSet",
+			Label: "owned by", Direction: resource.EdgeIncoming,
+			Extractor: &resource.RelationshipExtractor{
+				Method: "fieldPath", FieldPath: `metadata.ownerReferences.#(kind=="ReplicaSet").name`,
+			},
+		},
+		{
+			Type: resource.RelRunsOn, TargetResourceKey: "core::v1::Node",
+			Label: "runs on", TargetNamespaced: &clusterScoped,
+			Extractor: &resource.RelationshipExtractor{Method: "fieldPath", FieldPath: "spec.nodeName"},
+		},
+	})
+	g.SetDeclarations("k8s", "apps::v1::ReplicaSet", []resource.RelationshipDescriptor{
+		{
+			Type: resource.RelOwns, TargetResourceKey: "apps::v1::Deployment",
+			Label: "owned by", Direction: resource.EdgeIncoming,
+			Extractor: &resource.RelationshipExtractor{
+				Method: "fieldPath", FieldPath: `metadata.ownerReferences.#(kind=="Deployment").name`,
+			},
+		},
+	})
+	g.SetDeclarations("k8s", "core::v1::Service", []resource.RelationshipDescriptor{
+		{
+			Type: resource.RelSelects, TargetResourceKey: "core::v1::Pod", Label: "selects",
+			Extractor: &resource.RelationshipExtractor{Method: "labelSelector", FieldPath: "spec.selector"},
+		},
+	})
+}
+
+const podOnWorker1 = `{"metadata":{"ownerReferences":[{"kind":"ReplicaSet","name":"web-abc"}]},"spec":{"nodeName":"worker-1"}}`
+
+// TestGraphIndexer_UpdateKeepsEdgesDeclaredByOthers — omn-8jr8: a Node status
+// update must not drop the Pods' "runs on" edges, and a ReplicaSet update must
+// not drop the ownership edges its Pods declared.
+func TestGraphIndexer_UpdateKeepsEdgesDeclaredByOthers(t *testing.T) {
+	g, store, idx := setupIndexer()
+	declareK8sSubset(g)
+
+	nodeEntry := makeEntry("core::v1::Node", "", "worker-1")
+	rs := makeEntry("apps::v1::ReplicaSet", "default", "web-abc")
+	pod := makeEntry("core::v1::Pod", "default", "web-abc-1")
+	rsRaw := json.RawMessage(`{"metadata":{"ownerReferences":[{"kind":"Deployment","name":"web"}]}}`)
+	for _, e := range []registry.ResourceEntry{nodeEntry, rs, pod} {
+		store.Put(e)
+	}
+	idx.OnAdd(nodeEntry, json.RawMessage(`{}`))
+	idx.OnAdd(rs, rsRaw)
+	idx.OnAdd(pod, json.RawMessage(podOnWorker1))
+
+	idx.OnUpdate(nodeEntry, nodeEntry, json.RawMessage(`{"status":{"conditions":[]}}`))
+	idx.OnUpdate(rs, rs, rsRaw)
+
+	if got := g.EdgesTo(nodeEntry.EntryKey()); len(got) != 1 || got[0].Source.ID != "web-abc-1" {
+		t.Errorf("after Node update: want pod->node edge, got %v", got)
+	}
+	if got := g.EdgesFrom(rs.EntryKey()); len(got) != 1 || got[0].Target.ID != "web-abc-1" {
+		t.Errorf("after ReplicaSet update: want rs->pod ownership edge, got %v", got)
+	}
+	if got := g.EdgesTo(rs.EntryKey()); len(got) != 1 || got[0].Source.ID != "web" {
+		t.Errorf("after ReplicaSet update: want deployment->rs edge re-derived once, got %v", got)
+	}
+}
+
+// TestGraphIndexer_UpdateReplacesOwnIncomingDeclaration — a Pod that changes
+// owner moves its incoming ownership edge instead of keeping the old one.
+func TestGraphIndexer_UpdateReplacesOwnIncomingDeclaration(t *testing.T) {
+	g, _, idx := setupIndexer()
+	declareK8sSubset(g)
+
+	pod := makeEntry("core::v1::Pod", "default", "p1")
+	idx.OnAdd(pod, json.RawMessage(podOnWorker1))
+	idx.OnUpdate(pod, pod, json.RawMessage(`{"metadata":{"ownerReferences":[{"kind":"ReplicaSet","name":"web-def"}]}}`))
+
+	got := g.EdgesTo(pod.EntryKey())
+	if len(got) != 1 || got[0].Source.ID != "web-def" {
+		t.Fatalf("want only web-def->pod, got %v", got)
+	}
+	if out := g.EdgesFrom(pod.EntryKey()); len(out) != 0 {
+		t.Fatalf("want runs-on edge gone after nodeName cleared, got %v", out)
+	}
+}
+
+// TestGraphIndexer_DeleteKeepsEdgesDeclaredByOthers — deleting a Node keeps
+// the Pods' references to it, so they resolve again if it comes back.
+// Deleting a Pod removes its own edges and the selector edges matching it.
+func TestGraphIndexer_DeleteKeepsEdgesDeclaredByOthers(t *testing.T) {
+	g, store, idx := setupIndexer()
+	declareK8sSubset(g)
+
+	nodeEntry := makeEntry("core::v1::Node", "", "worker-1")
+	pod := makeEntry("core::v1::Pod", "default", "web-abc-1")
+	pod.Labels = map[string]string{"app": "web"}
+	svc := makeEntry("core::v1::Service", "default", "web")
+	for _, e := range []registry.ResourceEntry{nodeEntry, pod, svc} {
+		store.Put(e)
+	}
+	idx.OnAdd(nodeEntry, json.RawMessage(`{}`))
+	idx.OnAdd(pod, json.RawMessage(podOnWorker1))
+	idx.OnAdd(svc, json.RawMessage(`{"spec":{"selector":{"app":"web"}}}`))
+
+	store.Delete("k8s", "c1", "core::v1::Node", "", "worker-1")
+	idx.OnDelete(nodeEntry)
+	if got := g.EdgesFrom(pod.EntryKey()); len(got) != 1 || got[0].Target.ID != "worker-1" {
+		t.Fatalf("after Node delete: want pod->node edge kept, got %v", got)
+	}
+
+	store.Delete("k8s", "c1", "core::v1::Pod", "default", "web-abc-1")
+	idx.OnDelete(pod)
+	if got := g.EdgesFrom(pod.EntryKey()); len(got) != 0 {
+		t.Errorf("after Pod delete: want no pod edges, got %v", got)
+	}
+	if got := g.EdgesTo(pod.EntryKey()); len(got) != 0 {
+		t.Errorf("after Pod delete: want no edges into pod, got %v", got)
+	}
+	if got := g.EdgesFrom(svc.EntryKey()); len(got) != 0 {
+		t.Errorf("after Pod delete: want service selects nothing, got %v", got)
+	}
+	if n := g.strings.Len(); n != 0 {
+		t.Errorf("after Pod delete: want all interned strings released, got %d", n)
+	}
+}
+
+// TestGraphIndexer_PodLabelChangeAloneUpdatesSelectorEdges — a Pod that stops
+// (and then starts again) matching a Service's selector is unlinked (and
+// relinked) without the Service being re-processed.
+func TestGraphIndexer_PodLabelChangeAloneUpdatesSelectorEdges(t *testing.T) {
+	g, store, idx := setupIndexer()
+	declareK8sSubset(g)
+
+	pod := makeEntry("core::v1::Pod", "default", "p1")
+	pod.Labels = map[string]string{"app": "web"}
+	svc := makeEntry("core::v1::Service", "default", "web")
+	store.Put(pod)
+	store.Put(svc)
+	idx.OnAdd(pod, json.RawMessage(`{}`))
+	idx.OnAdd(svc, json.RawMessage(`{"spec":{"selector":{"app":"web"}}}`))
+
+	relabeled := makeEntry("core::v1::Pod", "default", "p1")
+	relabeled.Labels = map[string]string{"app": "other"}
+	store.Put(relabeled)
+	idx.OnUpdate(pod, relabeled, json.RawMessage(`{}`))
+	if got := g.EdgesFrom(svc.EntryKey()); len(got) != 0 {
+		t.Fatalf("after relabel away: want 0 selector edges, got %v", got)
+	}
+
+	store.Put(pod)
+	idx.OnUpdate(relabeled, pod, json.RawMessage(`{}`))
+	if got := g.EdgesFrom(svc.EntryKey()); len(got) != 1 {
+		t.Fatalf("after relabel back: want 1 selector edge, got %v", got)
+	}
+}
+
+// TestGraphIndexer_ServiceSelectorRemoved — a Service whose selector is
+// removed stops matching Pods that appear later.
+func TestGraphIndexer_ServiceSelectorRemoved(t *testing.T) {
+	g, store, idx := setupIndexer()
+	declareK8sSubset(g)
+
+	svc := makeEntry("core::v1::Service", "default", "web")
+	store.Put(svc)
+	idx.OnAdd(svc, json.RawMessage(`{"spec":{"selector":{"app":"web"}}}`))
+	idx.OnUpdate(svc, svc, json.RawMessage(`{"spec":{}}`))
+
+	pod := makeEntry("core::v1::Pod", "default", "p1")
+	pod.Labels = map[string]string{"app": "web"}
+	store.Put(pod)
+	idx.OnAdd(pod, json.RawMessage(`{}`))
+
+	if got := g.EdgesFrom(svc.EntryKey()); len(got) != 0 {
+		t.Fatalf("want 0 selector edges, got %v", got)
+	}
+	if _, ok := g.GetSelectorCache(svc.EntryKey()); ok {
+		t.Fatal("want selector cache cleared")
+	}
+}
+
+// TestGraphIndexer_LabelSelector_SameNamespaceOnly — omn-odo8: a Service only
+// selects Pods in its own namespace, whichever of the two is seen first.
+func TestGraphIndexer_LabelSelector_SameNamespaceOnly(t *testing.T) {
+	for _, svcFirst := range []bool{true, false} {
+		g, store, idx := setupIndexer()
+		declareK8sSubset(g)
+
+		svc := makeEntry("core::v1::Service", "default", "web")
+		svcRaw := json.RawMessage(`{"spec":{"selector":{"app":"web"}}}`)
+		var pods []registry.ResourceEntry
+		for _, ns := range []string{"default", "other"} {
+			p := makeEntry("core::v1::Pod", ns, "web-1")
+			p.Labels = map[string]string{"app": "web"}
+			pods = append(pods, p)
+		}
+
+		if svcFirst {
+			store.Put(svc)
+			idx.OnAdd(svc, svcRaw)
+		}
+		for _, p := range pods {
+			store.Put(p)
+			idx.OnAdd(p, json.RawMessage(`{}`))
+		}
+		if !svcFirst {
+			store.Put(svc)
+			idx.OnAdd(svc, svcRaw)
+		}
+
+		got := g.EdgesFrom(svc.EntryKey())
+		if len(got) != 1 || got[0].Target.Namespace != "default" {
+			t.Errorf("svcFirst=%v: want only the default/web-1 pod selected, got %v", svcFirst, got)
+		}
+	}
+}
+
+// TestGraphIndexer_LabelSelector_SlashInConnectionID — omn-vsqj: connection
+// IDs are kube context names, and EKS contexts are ARNs containing "/". Pods
+// that appear after their Service must still be linked.
+func TestGraphIndexer_LabelSelector_SlashInConnectionID(t *testing.T) {
+	g, store, idx := setupIndexer()
+	declareK8sSubset(g)
+
+	const conn = "arn:aws:eks:us-east-1:123456789012:cluster/prod"
+	svc := makeEntry("core::v1::Service", "default", "web")
+	svc.ConnectionID = conn
+	store.Put(svc)
+	idx.OnAdd(svc, json.RawMessage(`{"spec":{"selector":{"app":"web"}}}`))
+
+	pod := makeEntry("core::v1::Pod", "default", "web-1")
+	pod.ConnectionID = conn
+	pod.Labels = map[string]string{"app": "web"}
+	store.Put(pod)
+	idx.OnAdd(pod, json.RawMessage(`{}`))
+
+	got := g.EdgesFrom(svc.EntryKey())
+	if len(got) != 1 || got[0].Target.ConnectionID != conn || got[0].Target.ID != "web-1" {
+		t.Fatalf("want 1 selector edge to %s/web-1, got %v", conn, got)
+	}
+}
