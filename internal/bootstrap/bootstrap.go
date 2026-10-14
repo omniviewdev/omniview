@@ -6,8 +6,6 @@ import (
 	"net/url"
 	"os"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin"
@@ -15,6 +13,8 @@ import (
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	"github.com/omniviewdev/omniview/internal/telemetry"
+	logging "github.com/omniviewdev/plugin-sdk/log"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 // Service wraps the startup/shutdown logic that was previously in the
@@ -36,64 +36,15 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 		coresettings.Terminal, coresettings.Editor,
 		coresettings.Developer, coresettings.Telemetry,
 	}
-	for _, category := range coreCategories {
-		for _, s := range category.Settings {
-			b.SettingsProvider.RegisterSetting(category.ID, s)
-		}
-		if b.SettingsStore != nil {
-			if vals, loadErr := b.SettingsStore.LoadCategory(category.ID); loadErr == nil && len(vals) > 0 {
-				hydrateCategory(b.SettingsProvider, category, vals)
-			}
-		}
-	}
+	b.registerCoreSettings(coreCategories)
 
 	// Wire persistence: save to bbolt whenever a category changes.
-	for _, category := range coreCategories {
-		catID := category.ID
-		b.SettingsProvider.RegisterChangeHandler(catID, func(vals map[string]any) {
-			if b.SettingsStore != nil {
-				if saveErr := b.SettingsStore.SaveCategory(catID, vals); saveErr != nil {
-					fmt.Fprintf(os.Stderr, "failed to persist settings category %s: %v\n", catID, saveErr)
-				}
-			}
-		})
-	}
+	b.persistOnChange(coreCategories)
 
 	// Wire telemetry settings hot-toggle: when any setting in the
 	// "telemetry" category changes, rebuild TelemetryConfig and apply.
 	telemetryFromSettings := func(vals map[string]any) telemetry.TelemetryConfig {
-		cfg := b.TelemetrySvc.Config()
-		if v, ok := vals["enabled"].(bool); ok {
-			cfg.Enabled = v
-		}
-		if v, ok := vals["traces"].(bool); ok {
-			cfg.Traces = v
-		}
-		if v, ok := vals["metrics"].(bool); ok {
-			cfg.Metrics = v
-		}
-		if v, ok := vals["logs_ship"].(bool); ok {
-			cfg.LogsShip = v
-		}
-		if v, ok := vals["logs_ship_level"].(string); ok {
-			cfg.LogsShipLevel = v
-		}
-		if v, ok := vals["profiling"].(bool); ok {
-			cfg.Profiling = v
-		}
-		if v, ok := vals["endpoint_otlp"].(string); ok {
-			cfg.OTLPEndpoint = v
-		}
-		if v, ok := vals["endpoint_pyroscope"].(string); ok {
-			cfg.PyroscopeEndpoint = v
-		}
-		if v, ok := vals["auth_header"].(string); ok {
-			cfg.AuthHeader = v
-		}
-		if v, ok := vals["auth_value"].(string); ok {
-			cfg.AuthValue = v
-		}
-		return cfg
+		return telemetryConfigFromSettings(b.TelemetrySvc.Config(), vals)
 	}
 
 	b.SettingsProvider.RegisterChangeHandler("telemetry", func(vals map[string]any) {
@@ -110,8 +61,8 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	if b.SettingsStore != nil {
 		if vals, err := b.SettingsStore.LoadCategory("telemetry"); err == nil && len(vals) > 0 {
 			cfg := telemetryFromSettings(vals)
-			if err := b.TelemetrySvc.ApplyConfig(ctx, cfg); err != nil {
-				b.Log.Errorw(ctx, "failed to apply initial telemetry config", "error", err)
+			if applyErr := b.TelemetrySvc.ApplyConfig(ctx, cfg); applyErr != nil {
+				b.Log.Errorw(ctx, "failed to apply initial telemetry config", "error", applyErr)
 			} else {
 				b.Log.Infow(ctx, "telemetry initialized from persisted settings", "enabled", cfg.Enabled)
 			}
@@ -119,7 +70,8 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	}
 
 	// Apply user-configured marketplace URL to the registry client.
-	if marketplaceURL, err := b.SettingsProvider.GetString("developer.marketplace_url"); err == nil && marketplaceURL != "" {
+	marketplaceURL, urlErr := b.SettingsProvider.GetString("developer.marketplace_url")
+	if urlErr == nil && marketplaceURL != "" {
 		b.PluginRegistryClient.SetBaseURL(marketplaceURL)
 		safeHost := marketplaceURL
 		if u, parseErr := url.Parse(marketplaceURL); parseErr == nil {
@@ -139,6 +91,72 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	b.PluginManager.Run(ctx)
 
 	return nil
+}
+
+// registerCoreSettings registers the core settings categories with the settings
+// provider and hydrates them from the persisted store.
+func (b *Service) registerCoreSettings(coreCategories []pkgsettings.Category) {
+	for _, category := range coreCategories {
+		for _, s := range category.Settings {
+			// Registration only fails on a type mismatch with an already-registered setting.
+			_ = b.SettingsProvider.RegisterSetting(category.ID, s)
+		}
+		if b.SettingsStore != nil {
+			if vals, loadErr := b.SettingsStore.LoadCategory(category.ID); loadErr == nil && len(vals) > 0 {
+				hydrateCategory(b.SettingsProvider, category, vals)
+			}
+		}
+	}
+}
+
+// persistOnChange registers change handlers that save each category to bbolt.
+func (b *Service) persistOnChange(coreCategories []pkgsettings.Category) {
+	for _, category := range coreCategories {
+		catID := category.ID
+		b.SettingsProvider.RegisterChangeHandler(catID, func(vals map[string]any) {
+			if b.SettingsStore != nil {
+				if saveErr := b.SettingsStore.SaveCategory(catID, vals); saveErr != nil {
+					fmt.Fprintf(os.Stderr, "failed to persist settings category %s: %v\n", catID, saveErr)
+				}
+			}
+		})
+	}
+}
+
+// telemetryConfigFromSettings overlays the values of the "telemetry" settings
+// category onto cfg.
+func telemetryConfigFromSettings(cfg telemetry.TelemetryConfig, vals map[string]any) telemetry.TelemetryConfig {
+	if v, ok := vals["enabled"].(bool); ok {
+		cfg.Enabled = v
+	}
+	if v, ok := vals["traces"].(bool); ok {
+		cfg.Traces = v
+	}
+	if v, ok := vals["metrics"].(bool); ok {
+		cfg.Metrics = v
+	}
+	if v, ok := vals["logs_ship"].(bool); ok {
+		cfg.LogsShip = v
+	}
+	if v, ok := vals["logs_ship_level"].(string); ok {
+		cfg.LogsShipLevel = v
+	}
+	if v, ok := vals["profiling"].(bool); ok {
+		cfg.Profiling = v
+	}
+	if v, ok := vals["endpoint_otlp"].(string); ok {
+		cfg.OTLPEndpoint = v
+	}
+	if v, ok := vals["endpoint_pyroscope"].(string); ok {
+		cfg.PyroscopeEndpoint = v
+	}
+	if v, ok := vals["auth_header"].(string); ok {
+		cfg.AuthHeader = v
+	}
+	if v, ok := vals["auth_value"].(string); ok {
+		cfg.AuthValue = v
+	}
+	return cfg
 }
 
 func (b *Service) ServiceShutdown() error {
