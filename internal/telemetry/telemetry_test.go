@@ -2,6 +2,8 @@ package telemetry
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,6 +11,9 @@ import (
 	"go.opentelemetry.io/otel"
 	noopmeter "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	nooptrace "go.opentelemetry.io/otel/trace/noop"
 )
@@ -153,4 +158,59 @@ func TestApplyConfig_MasterSwitchOff(t *testing.T) {
 	span.End()
 	svc.tracerProvider.ForceFlush(context.Background())
 	assert.Empty(t, recorder.GetSpans(), "no spans should be exported after master switch off")
+}
+
+type shutdownCountingSpanExporter struct {
+	noopSpanExporter
+	shutdowns atomic.Int32
+}
+
+func (e *shutdownCountingSpanExporter) Shutdown(context.Context) error {
+	e.shutdowns.Add(1)
+	return nil
+}
+
+type shutdownCountingMetricExporter struct {
+	noopMetricExporter
+	shutdowns atomic.Int32
+}
+
+func (e *shutdownCountingMetricExporter) Shutdown(context.Context) error {
+	e.shutdowns.Add(1)
+	return nil
+}
+
+func TestApplyConfig_FailureReleasesAllocatedExporters(t *testing.T) {
+	t.Cleanup(resetGlobalOTel)
+
+	traceExp := &shutdownCountingSpanExporter{}
+	metricExp := &shutdownCountingMetricExporter{}
+	origTrace, origMetric, origLog := newTraceExporter, newMetricExporter, newLogExporter
+	t.Cleanup(func() { newTraceExporter, newMetricExporter, newLogExporter = origTrace, origMetric, origLog })
+	newTraceExporter = func(context.Context, string, string, string) (sdktrace.SpanExporter, error) {
+		return traceExp, nil
+	}
+	newMetricExporter = func(context.Context, string, string, string) (sdkmetric.Exporter, error) {
+		return metricExp, nil
+	}
+	newLogExporter = func(context.Context, string, string, string) (sdklog.Exporter, error) {
+		return nil, errors.New("log exporter unavailable")
+	}
+
+	svc := New(Config{Enabled: false}, "test", "abc", "2026-01-01", true, t.TempDir())
+	require.NoError(t, svc.Init(context.Background()))
+	defer func() { _ = svc.Shutdown(context.Background()) }()
+
+	err := svc.ApplyConfig(context.Background(), Config{
+		Enabled:      true,
+		Traces:       true,
+		Metrics:      true,
+		LogsShip:     true,
+		OTLPEndpoint: "http://localhost:4318",
+	})
+	require.Error(t, err)
+
+	assert.Equal(t, int32(1), traceExp.shutdowns.Load(), "unused trace exporter must be shut down")
+	assert.Equal(t, int32(1), metricExp.shutdowns.Load(), "unused metric exporter must be shut down")
+	assert.False(t, svc.Config().Enabled, "a failed ApplyConfig must not change the config")
 }

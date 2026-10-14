@@ -288,6 +288,15 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 
 	var err error
 
+	// If a later allocation fails, release the ones that already succeeded:
+	// they hold HTTP clients (and the profiler a running goroutine).
+	applied := false
+	defer func() {
+		if !applied {
+			releaseUnapplied(ctx, newTraceExp, newMetricExp, newLogExp, newProfiler)
+		}
+	}()
+
 	needTraceSwap := cfg.Traces != s.cfg.Traces || configChanged
 	if needTraceSwap {
 		newTraceExp, err = traceExporterFor(ctx, cfg, cfg.Traces && hasEndpoint)
@@ -340,7 +349,31 @@ func (s *Service) ApplyConfig(ctx context.Context, cfg Config) error {
 	s.applyProfiling(cfg, newProfiler)
 
 	s.cfg = cfg
+	applied = true
 	return nil
+}
+
+// releaseUnapplied shuts down exporters and stops a profiler that ApplyConfig
+// allocated but did not install. Nil arguments are skipped.
+func releaseUnapplied(
+	ctx context.Context,
+	traceExp sdktrace.SpanExporter,
+	metricExp sdkmetric.Exporter,
+	logExp sdklog.Exporter,
+	profiler *pyroscope.Profiler,
+) {
+	if traceExp != nil {
+		_ = traceExp.Shutdown(ctx)
+	}
+	if metricExp != nil {
+		_ = metricExp.Shutdown(ctx)
+	}
+	if logExp != nil {
+		_ = logExp.Shutdown(ctx)
+	}
+	if profiler != nil {
+		_ = profiler.Stop()
+	}
 }
 
 // disableAll swaps every exporter to noop and stops the profiler.
@@ -380,12 +413,19 @@ func (s *Service) applyProfiling(cfg Config, newProfiler *pyroscope.Profiler) {
 	}
 }
 
+// Exporter constructors used by ApplyConfig; tests replace them.
+var (
+	newTraceExporter  = NewTraceExporter
+	newMetricExporter = NewMetricExporter
+	newLogExporter    = NewLogExporter
+)
+
 // traceExporterFor returns a real OTLP trace exporter when enabled, otherwise a noop one.
 func traceExporterFor(ctx context.Context, cfg Config, enabled bool) (sdktrace.SpanExporter, error) {
 	if !enabled {
 		return noopSpanExporter{}, nil
 	}
-	exp, err := NewTraceExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+	exp, err := newTraceExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 	if err != nil {
 		return nil, err
 	}
@@ -397,7 +437,7 @@ func metricExporterFor(ctx context.Context, cfg Config, enabled bool) (sdkmetric
 	if !enabled {
 		return noopMetricExporter{}, nil
 	}
-	exp, err := NewMetricExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+	exp, err := newMetricExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 	if err != nil {
 		return nil, err
 	}
@@ -409,7 +449,7 @@ func logExporterFor(ctx context.Context, cfg Config, enabled bool) (sdklog.Expor
 	if !enabled {
 		return noopLogExporter{}, nil
 	}
-	exp, err := NewLogExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
+	exp, err := newLogExporter(ctx, cfg.OTLPEndpoint, cfg.AuthHeader, cfg.AuthValue)
 	if err != nil {
 		return nil, err
 	}
