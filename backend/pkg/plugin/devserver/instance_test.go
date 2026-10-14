@@ -13,7 +13,7 @@ import (
 )
 
 func TestNewDevServerInstance(t *testing.T) {
-	inst, sr, _, _ := newTestInstance(t, "test-plugin")
+	inst, sr, _ := newTestInstance(t, "test-plugin")
 
 	assert.Equal(t, "test-plugin", inst.pluginID)
 	assert.Equal(t, 15173, inst.vitePort)
@@ -30,7 +30,7 @@ func TestNewDevServerInstance(t *testing.T) {
 }
 
 func TestInstance_State(t *testing.T) {
-	inst, _, _, _ := newTestInstance(t, "state-plugin")
+	inst, _, _ := newTestInstance(t, "state-plugin")
 
 	state := inst.State()
 	assert.Equal(t, "state-plugin", state.PluginID)
@@ -44,7 +44,7 @@ func TestInstance_State(t *testing.T) {
 }
 
 func TestInstance_State_ViteURLWhenReady(t *testing.T) {
-	inst, _, _, _ := newTestInstance(t, "url-plugin")
+	inst, _, _ := newTestInstance(t, "url-plugin")
 
 	// Manually set vite status to ready.
 	inst.mu.Lock()
@@ -56,7 +56,7 @@ func TestInstance_State_ViteURLWhenReady(t *testing.T) {
 }
 
 func TestInstance_SetViteStatus(t *testing.T) {
-	inst, sr, _, _ := newTestInstance(t, "vite-status")
+	inst, sr, _ := newTestInstance(t, "vite-status")
 
 	inst.setViteStatus(DevProcessStatusStarting)
 	assert.Equal(t, DevProcessStatusStarting, inst.State().ViteStatus)
@@ -66,7 +66,7 @@ func TestInstance_SetViteStatus(t *testing.T) {
 }
 
 func TestInstance_SetGoStatus(t *testing.T) {
-	inst, sr, _, _ := newTestInstance(t, "go-status")
+	inst, sr, _ := newTestInstance(t, "go-status")
 
 	inst.setGoStatus(DevProcessStatusBuilding)
 	assert.Equal(t, DevProcessStatusBuilding, inst.State().GoStatus)
@@ -76,7 +76,7 @@ func TestInstance_SetGoStatus(t *testing.T) {
 }
 
 func TestInstance_SetBuildResult_WithError(t *testing.T) {
-	inst, sr, _, _ := newTestInstance(t, "build-err")
+	inst, sr, _ := newTestInstance(t, "build-err")
 
 	dur := 2 * time.Second
 	inst.setBuildResult(dur, "compile error: undefined Foo")
@@ -90,7 +90,7 @@ func TestInstance_SetBuildResult_WithError(t *testing.T) {
 }
 
 func TestInstance_SetBuildResult_Success(t *testing.T) {
-	inst, sr, _, _ := newTestInstance(t, "build-ok")
+	inst, sr, _ := newTestInstance(t, "build-ok")
 
 	// Set an initial error to verify it gets cleared.
 	inst.setLastError("old error")
@@ -108,7 +108,7 @@ func TestInstance_SetBuildResult_Success(t *testing.T) {
 }
 
 func TestInstance_AppendLog(t *testing.T) {
-	inst, _, lr, _ := newTestInstance(t, "log-test")
+	inst, _, lr := newTestInstance(t, "log-test")
 
 	entry := LogEntry{
 		Source:  "vite",
@@ -127,7 +127,7 @@ func TestInstance_AppendLog(t *testing.T) {
 }
 
 func TestInstance_AppendLog_PreservesTimestamp(t *testing.T) {
-	inst, _, lr, _ := newTestInstance(t, "log-ts")
+	inst, _, lr := newTestInstance(t, "log-ts")
 
 	fixedTime := "2025-06-15T12:00:00Z"
 	inst.appendLog(LogEntry{
@@ -142,7 +142,7 @@ func TestInstance_AppendLog_PreservesTimestamp(t *testing.T) {
 }
 
 func TestInstance_GetLogs(t *testing.T) {
-	inst, _, _, _ := newTestInstance(t, "getlogs")
+	inst, _, _ := newTestInstance(t, "getlogs")
 
 	// Add multiple entries.
 	for i := 0; i < 5; i++ {
@@ -170,7 +170,7 @@ func TestInstance_GetLogs(t *testing.T) {
 }
 
 func TestInstance_GetLogs_Empty(t *testing.T) {
-	inst, _, _, _ := newTestInstance(t, "empty-logs")
+	inst, _, _ := newTestInstance(t, "empty-logs")
 
 	// Last(n) with 0 entries → empty slice.
 	logs := inst.GetLogs(10)
@@ -182,7 +182,7 @@ func TestInstance_GetLogs_Empty(t *testing.T) {
 }
 
 func TestInstance_Stop_NotRunning(t *testing.T) {
-	inst, sr, _, _ := newTestInstance(t, "stop-idle")
+	inst, sr, _ := newTestInstance(t, "stop-idle")
 
 	// Stop with no Vite/GoWatcher started should not panic.
 	inst.Stop()
@@ -195,7 +195,7 @@ func TestInstance_Stop_NotRunning(t *testing.T) {
 }
 
 func TestInstance_Stop_WithSubProcesses(t *testing.T) {
-	inst, sr, _, _ := newTestInstance(t, "stop-procs")
+	inst, sr, _ := newTestInstance(t, "stop-procs")
 
 	// Attach a viteProcess with nil cmd — viteProcess.Stop() returns early when cmd is nil.
 	inst.vite = &viteProcess{
@@ -229,7 +229,7 @@ func TestInstance_Stop_WithSubProcesses(t *testing.T) {
 // the instance context is still alive when Stop runs by having cmd=nil (no-op Stop)
 // and verifying cancel ordering via the wrapped cancel func.
 func TestDevServerInstance_Stop_Order(t *testing.T) {
-	inst, _, _, _ := newTestInstance(t, "stop-order")
+	inst, _, _ := newTestInstance(t, "stop-order")
 
 	var mu sync.Mutex
 	var order []string
@@ -296,13 +296,13 @@ func TestDevServerInstance_Stop_Order(t *testing.T) {
 }
 
 func TestInstance_TriggerRebuild_NilGoWatcher(t *testing.T) {
-	inst, _, _, _ := newTestInstance(t, "trigger-nil")
+	inst, _, _ := newTestInstance(t, "trigger-nil")
 	// goWatcher is nil — TriggerRebuild should be a no-op, not panic.
 	inst.TriggerRebuild()
 }
 
 func TestInstance_TriggerRebuild_CallsHandleRebuild(t *testing.T) {
-	inst, _, _, _ := newTestInstance(t, "trigger-rebuild")
+	inst, _, _ := newTestInstance(t, "trigger-rebuild")
 
 	// Attach a goWatcher that records handleRebuild calls via the reloader mock.
 	reloader := &mockPluginReloader{}
@@ -356,7 +356,7 @@ func TestInstance_StateTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			inst, _, _, _ := newTestInstance(t, "transitions")
+			inst, _, _ := newTestInstance(t, "transitions")
 			inst.setViteStatus(tt.viteStatus)
 			inst.setGoStatus(tt.goStatus)
 

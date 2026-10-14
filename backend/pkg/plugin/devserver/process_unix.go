@@ -3,6 +3,7 @@
 package devserver
 
 import (
+	"errors"
 	"os"
 	"syscall"
 )
@@ -44,5 +45,5 @@ func isPIDAlive(pid int) bool {
 
 // isProcessNotFound returns true if the error indicates the process no longer exists.
 func isProcessNotFound(err error) bool {
-	return err == syscall.ESRCH
+	return errors.Is(err, syscall.ESRCH)
 }

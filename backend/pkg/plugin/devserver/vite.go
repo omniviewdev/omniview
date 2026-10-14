@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +28,9 @@ const (
 
 	// viteStopGracePeriod is how long we wait after SIGTERM before sending SIGKILL.
 	viteStopGracePeriod = 5 * time.Second
+
+	// viteKillWaitPeriod is how long we wait for the process to exit after SIGKILL.
+	viteKillWaitPeriod = 3 * time.Second
 )
 
 // viteProcess manages a single Vite dev server child process.
@@ -65,6 +71,9 @@ func newViteProcess(
 		buildOpts: buildOpts,
 		appendLog: appendLog,
 		setStatus: setStatus,
+		mu:        sync.Mutex{},
+		cmd:       nil,
+		pgid:      0,
 		done:      make(chan struct{}),
 	}
 }
@@ -81,53 +90,26 @@ func (vp *viteProcess) Start() error {
 
 	uiDir := filepath.Join(vp.devPath, "ui")
 	if _, err := os.Stat(uiDir); os.IsNotExist(err) {
-		return apperror.New(apperror.TypeValidation, 422, "UI directory not found", fmt.Sprintf("Plugin UI directory does not exist: %s", uiDir))
+		return apperror.New(
+			apperror.TypeValidation,
+			http.StatusUnprocessableEntity,
+			"UI directory not found",
+			"Plugin UI directory does not exist: "+uiDir,
+		)
 	}
 
 	// Resolve pnpm path.
 	pnpmPath := vp.buildOpts.PnpmPath
 	if pnpmPath == "" {
-		return apperror.ConfigMissing("developer.pnpmpath", "pnpm path is not configured. Please set developer.pnpmpath in settings.")
+		return apperror.ConfigMissing(
+			"developer.pnpmpath",
+			"pnpm path is not configured. Please set developer.pnpmpath in settings.",
+		)
 	}
 
 	// Install dependencies if node_modules is missing.
-	nodeModules := filepath.Join(uiDir, "node_modules")
-	if _, err := os.Stat(nodeModules); os.IsNotExist(err) {
-		vp.appendLog(LogEntry{
-			Source:  "vite",
-			Level:   "info",
-			Message: "node_modules not found — running pnpm install",
-		})
-
-		installCmd := exec.CommandContext(vp.ctx, pnpmPath, "install")
-		installCmd.Dir = uiDir
-
-		// Set up environment with proper PATH.
-		installEnv := os.Environ()
-		installDirs := []string{}
-		if vp.buildOpts.PnpmPath != "" {
-			installDirs = append(installDirs, filepath.Dir(vp.buildOpts.PnpmPath))
-		}
-		if vp.buildOpts.NodePath != "" {
-			installDirs = append(installDirs, filepath.Dir(vp.buildOpts.NodePath))
-		}
-		installCmd.Env = prependToPath(installEnv, installDirs)
-
-		output, err := installCmd.CombinedOutput()
-		if err != nil {
-			vp.appendLog(LogEntry{
-				Source:  "vite",
-				Level:   "error",
-				Message: fmt.Sprintf("pnpm install failed: %v\n%s", err, string(output)),
-			})
-			return apperror.Wrap(err, apperror.TypePluginBuildFailed, 500, "Failed to install UI dependencies")
-		}
-
-		vp.appendLog(LogEntry{
-			Source:  "vite",
-			Level:   "info",
-			Message: "pnpm install completed successfully",
-		})
+	if err := vp.installDepsIfMissing(uiDir, pnpmPath); err != nil {
+		return err
 	}
 
 	// Build the command: pnpm run dev --port <port> --strictPort --host 127.0.0.1
@@ -137,7 +119,7 @@ func (vp *viteProcess) Start() error {
 	// unrecognized flags to the script automatically.
 	args := []string{
 		"run", "dev",
-		"--port", fmt.Sprintf("%d", vp.port),
+		"--port", strconv.Itoa(vp.port),
 		"--strictPort",
 		"--host", "127.0.0.1",
 	}
@@ -170,8 +152,10 @@ func (vp *viteProcess) Start() error {
 		return apperror.Internal(err, "Failed to create stderr pipe")
 	}
 
-	if err := cmd.Start(); err != nil {
-		return apperror.Wrap(err, apperror.TypePluginBuildFailed, 500, "Failed to start Vite dev server")
+	if err = cmd.Start(); err != nil {
+		return apperror.Wrap(
+			err, apperror.TypePluginBuildFailed, http.StatusInternalServerError, "Failed to start Vite dev server",
+		)
 	}
 
 	vp.cmd = cmd
@@ -191,104 +175,134 @@ func (vp *viteProcess) Start() error {
 
 	vp.logger.Infow(context.Background(), "vite process spawned", "pid", cmd.Process.Pid, "pgid", vp.pgid, "port", vp.port)
 
-	vp.appendLog(LogEntry{
-		Source:  "vite",
-		Level:   "info",
-		Message: fmt.Sprintf("Vite dev server starting on port %d (pid %d)", vp.port, cmd.Process.Pid),
-	})
+	vp.appendLog(newLogEntry(
+		logSourceVite, logLevelInfo,
+		fmt.Sprintf("Vite dev server starting on port %d (pid %d)", vp.port, cmd.Process.Pid),
+	))
 
 	// Channel to signal when the "ready" line is detected.
 	readyCh := make(chan struct{}, 1)
 
 	// Pipe stdout, scanning for the ready signal.
-	go func() {
-		scanner := bufio.NewScanner(stdoutPipe)
-		for scanner.Scan() {
-			line := ansiRegex.ReplaceAllString(scanner.Text(), "")
-			vp.appendLog(LogEntry{
-				Source:  "vite",
-				Level:   "info",
-				Message: line,
-			})
-
-			// Vite prints something like:
-			//   ➜  Local:   http://127.0.0.1:15173/
-			// We detect readiness by finding "Local:" in the output.
-			if strings.Contains(line, "Local:") && strings.Contains(line, fmt.Sprintf("%d", vp.port)) {
-				select {
-				case readyCh <- struct{}{}:
-				default:
-				}
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			vp.logger.Warnw(context.Background(), "vite stdout scanner error", "error", err)
-		}
-	}()
+	go vp.pipeStdout(stdoutPipe, readyCh)
 
 	// Pipe stderr.
-	go func() {
-		scanner := bufio.NewScanner(stderrPipe)
-		for scanner.Scan() {
-			line := ansiRegex.ReplaceAllString(scanner.Text(), "")
-			vp.appendLog(LogEntry{
-				Source:  "vite",
-				Level:   "error",
-				Message: line,
-			})
-		}
-	}()
+	go vp.pipeStderr(stderrPipe)
 
 	// Wait for the process to exit in a goroutine.
-	go func() {
-		err := cmd.Wait()
-		if err != nil {
-			vp.logger.Warnw(context.Background(), "vite process exited with error", "error", err)
-			vp.appendLog(LogEntry{
-				Source:  "vite",
-				Level:   "error",
-				Message: fmt.Sprintf("Vite process exited: %v", err),
-			})
-		} else {
-			vp.logger.Infow(context.Background(), "vite process exited cleanly")
-			vp.appendLog(LogEntry{
-				Source:  "vite",
-				Level:   "info",
-				Message: "Vite process exited",
-			})
-		}
-		close(vp.done)
-	}()
+	go vp.waitForExit(cmd)
 
 	// Wait for the "ready" signal or timeout.
-	go func() {
-		select {
-		case <-readyCh:
-			vp.setStatus(DevProcessStatusReady)
-			vp.logger.Infow(context.Background(), "vite dev server is ready", "port", vp.port)
-			vp.appendLog(LogEntry{
-				Source:  "vite",
-				Level:   "info",
-				Message: fmt.Sprintf("Vite dev server ready at http://127.0.0.1:%d", vp.port),
-			})
-		case <-time.After(viteReadyTimeout):
-			vp.setStatus(DevProcessStatusError)
-			vp.logger.Errorw(context.Background(), "vite dev server did not become ready in time", "timeout", viteReadyTimeout)
-			vp.appendLog(LogEntry{
-				Source:  "vite",
-				Level:   "error",
-				Message: fmt.Sprintf("Vite did not become ready within %s", viteReadyTimeout),
-			})
-		case <-vp.done:
-			// Process exited before ready.
-			vp.setStatus(DevProcessStatusError)
-		case <-vp.ctx.Done():
-			// Context cancelled.
-			return
-		}
-	}()
+	go vp.awaitReady(readyCh)
 
 	return nil
+}
+
+// installDepsIfMissing runs `pnpm install` in uiDir when node_modules is missing.
+func (vp *viteProcess) installDepsIfMissing(uiDir, pnpmPath string) error {
+	nodeModules := filepath.Join(uiDir, "node_modules")
+	if _, statErr := os.Stat(nodeModules); !os.IsNotExist(statErr) {
+		return nil
+	}
+	vp.appendLog(newLogEntry(logSourceVite, logLevelInfo, "node_modules not found — running pnpm install"))
+
+	installCmd := exec.CommandContext(vp.ctx, pnpmPath, "install")
+	installCmd.Dir = uiDir
+
+	// Set up environment with proper PATH.
+	installEnv := os.Environ()
+	installDirs := []string{}
+	if vp.buildOpts.PnpmPath != "" {
+		installDirs = append(installDirs, filepath.Dir(vp.buildOpts.PnpmPath))
+	}
+	if vp.buildOpts.NodePath != "" {
+		installDirs = append(installDirs, filepath.Dir(vp.buildOpts.NodePath))
+	}
+	installCmd.Env = prependToPath(installEnv, installDirs)
+
+	output, err := installCmd.CombinedOutput()
+	if err != nil {
+		vp.appendLog(newLogEntry(
+			logSourceVite, logLevelError, fmt.Sprintf("pnpm install failed: %v\n%s", err, string(output)),
+		))
+		return apperror.Wrap(
+			err, apperror.TypePluginBuildFailed, http.StatusInternalServerError, "Failed to install UI dependencies",
+		)
+	}
+
+	vp.appendLog(newLogEntry(logSourceVite, logLevelInfo, "pnpm install completed successfully"))
+	return nil
+}
+
+// pipeStdout forwards Vite's stdout to the log and signals readyCh once the
+// "Local:" URL line is seen.
+func (vp *viteProcess) pipeStdout(stdoutPipe io.Reader, readyCh chan<- struct{}) {
+	scanner := bufio.NewScanner(stdoutPipe)
+	for scanner.Scan() {
+		line := ansiRegex.ReplaceAllString(scanner.Text(), "")
+		vp.appendLog(newLogEntry(logSourceVite, logLevelInfo, line))
+
+		// Vite prints something like:
+		//   ➜  Local:   http://127.0.0.1:15173/
+		// We detect readiness by finding "Local:" in the output.
+		if strings.Contains(line, "Local:") && strings.Contains(line, strconv.Itoa(vp.port)) {
+			select {
+			case readyCh <- struct{}{}:
+			default:
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		vp.logger.Warnw(context.Background(), "vite stdout scanner error", "error", err)
+	}
+}
+
+// pipeStderr forwards Vite's stderr to the log.
+func (vp *viteProcess) pipeStderr(stderrPipe io.Reader) {
+	scanner := bufio.NewScanner(stderrPipe)
+	for scanner.Scan() {
+		line := ansiRegex.ReplaceAllString(scanner.Text(), "")
+		vp.appendLog(newLogEntry(logSourceVite, logLevelError, line))
+	}
+}
+
+// waitForExit waits for the Vite process to exit, logs the outcome and closes vp.done.
+func (vp *viteProcess) waitForExit(cmd *exec.Cmd) {
+	err := cmd.Wait()
+	if err != nil {
+		vp.logger.Warnw(context.Background(), "vite process exited with error", "error", err)
+		vp.appendLog(newLogEntry(logSourceVite, logLevelError, fmt.Sprintf("Vite process exited: %v", err)))
+	} else {
+		vp.logger.Infow(context.Background(), "vite process exited cleanly")
+		vp.appendLog(newLogEntry(logSourceVite, logLevelInfo, "Vite process exited"))
+	}
+	close(vp.done)
+}
+
+// awaitReady sets the status once Vite is ready, times out, exits or the context is cancelled.
+func (vp *viteProcess) awaitReady(readyCh <-chan struct{}) {
+	select {
+	case <-readyCh:
+		vp.setStatus(DevProcessStatusReady)
+		vp.logger.Infow(context.Background(), "vite dev server is ready", "port", vp.port)
+		vp.appendLog(newLogEntry(
+			logSourceVite, logLevelInfo, fmt.Sprintf("Vite dev server ready at http://127.0.0.1:%d", vp.port),
+		))
+	case <-time.After(viteReadyTimeout):
+		vp.setStatus(DevProcessStatusError)
+		vp.logger.Errorw(
+			context.Background(), "vite dev server did not become ready in time", "timeout", viteReadyTimeout,
+		)
+		vp.appendLog(newLogEntry(
+			logSourceVite, logLevelError, fmt.Sprintf("Vite did not become ready within %s", viteReadyTimeout),
+		))
+	case <-vp.done:
+		// Process exited before ready.
+		vp.setStatus(DevProcessStatusError)
+	case <-vp.ctx.Done():
+		// Context cancelled.
+		return
+	}
 }
 
 // PGID returns the cached process group ID of the Vite process, or 0 if not started.
@@ -338,7 +352,7 @@ func (vp *viteProcess) Stop() {
 	select {
 	case <-vp.done:
 		vp.logger.Infow(context.Background(), "vite process stopped after SIGKILL")
-	case <-time.After(3 * time.Second):
+	case <-time.After(viteKillWaitPeriod):
 		vp.logger.Errorw(context.Background(), "vite process did not exit after SIGKILL; giving up")
 	}
 }

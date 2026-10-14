@@ -8,9 +8,8 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // emitStatusFunc is the callback type for emitting status updates.
@@ -74,22 +73,29 @@ func NewDevServerInstance(
 	ctx, cancel := context.WithCancel(parentCtx)
 
 	return &DevServerInstance{
-		ctx:         ctx,
-		cancel:      cancel,
-		logger:      logger.Named("instance").With(logging.Any("pluginID", pluginID)),
-		pluginID:    pluginID,
-		devPath:     devPath,
-		vitePort:    vitePort,
-		buildOpts:   buildOpts,
-		reloader:    reloader,
-		pluginsRoot: pluginsRoot,
-		onStatus:    onStatus,
-		onLogs:      onLogs,
-		onErrors:    onErrors,
-		mode:        DevServerModeManaged,
-		viteStatus:  DevProcessStatusIdle,
-		goStatus:    DevProcessStatusIdle,
-		logBuffer:   NewLogRingBuffer(DefaultLogBufferSize),
+		ctx:               ctx,
+		cancel:            cancel,
+		logger:            logger.Named("instance").With(logging.Any("pluginID", pluginID)),
+		pluginID:          pluginID,
+		devPath:           devPath,
+		vitePort:          vitePort,
+		buildOpts:         buildOpts,
+		reloader:          reloader,
+		pluginsRoot:       pluginsRoot,
+		onStatus:          onStatus,
+		onLogs:            onLogs,
+		onErrors:          onErrors,
+		mu:                sync.RWMutex{},
+		mode:              DevServerModeManaged,
+		viteStatus:        DevProcessStatusIdle,
+		goStatus:          DevProcessStatusIdle,
+		lastBuildDuration: 0,
+		lastBuildTime:     time.Time{},
+		lastError:         "",
+		grpcConnected:     false,
+		logBuffer:         NewLogRingBuffer(DefaultLogBufferSize),
+		vite:              nil, // created by Start
+		goWatcher:         nil, // created by Start
 	}
 }
 
