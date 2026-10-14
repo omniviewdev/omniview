@@ -85,11 +85,13 @@ test.describe('Plugins page', () => {
     await fakeMarketplace(page, { installed: [fakePlugin(1)] });
     await page.goto('/#/plugins');
 
-    const installedEntry = nav(page).filter({ hasText: 'E2E Plugin 1' });
+    // A collapsed section stays mounted at zero height under aria-hidden, so
+    // query by role (which skips aria-hidden subtrees) rather than visibility.
+    const installedEntry = shell(page).main.getByRole('link', { name: /E2E Plugin 1/ });
     await expect(installedEntry).toBeVisible();
     const header = page.getByRole('navigation').getByText('Installed', { exact: true });
     await header.click();
-    await expect(installedEntry).toBeHidden();
+    await expect(installedEntry).toHaveCount(0);
     await header.click();
     await expect(installedEntry).toBeVisible();
   });
