@@ -17,6 +17,9 @@ export default defineConfig({
     baseURL: 'http://localhost:34115',
     screenshot: 'only-on-failure',
     video: 'on-first-retry',
+    // Playwright hides scrollbars in headless Chromium by default. Keep them, so
+    // tests can catch stray scrollbars the way a user would see them.
+    launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] },
     trace: 'on-first-retry',
   },
   // CI starts the server itself (see .github/workflows/pr.yml). Locally,
