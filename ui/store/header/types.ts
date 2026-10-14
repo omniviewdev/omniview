@@ -5,7 +5,6 @@ export type HeaderAreaType = 'items' | 'search' | 'tabs' | 'context';
  * Redux store for the header component and it's state.
  */
 export type HeaderState = {
-  visible: boolean;
   areas: Record<HeaderAreaLocation, HeaderArea>;
 };
 
