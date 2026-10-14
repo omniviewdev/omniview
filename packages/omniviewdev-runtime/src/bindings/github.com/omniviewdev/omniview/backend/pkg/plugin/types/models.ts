@@ -11,9 +11,6 @@ import * as lifecycle$0 from "../lifecycle/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as config$0 from "../../../../../plugin-sdk/pkg/config/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../../../../time/models.js";
 
 /**
  * PluginStateRecord is the subset of PluginRecord that gets persisted to disk.
@@ -27,7 +24,7 @@ export class PluginStateRecord {
     "devPath"?: string;
     "lastError"?: string;
     "errorCount": number;
-    "installedAt": time$0.Time;
+    "installedAt": string;
 
     /** Creates a new PluginStateRecord instance. */
     constructor($$source: Partial<PluginStateRecord> = {}) {
@@ -50,7 +47,7 @@ export class PluginStateRecord {
             this["errorCount"] = 0;
         }
         if (!("installedAt" in $$source)) {
-            this["installedAt"] = null;
+            this["installedAt"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);

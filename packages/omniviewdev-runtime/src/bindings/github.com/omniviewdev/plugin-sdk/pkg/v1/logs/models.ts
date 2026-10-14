@@ -5,10 +5,6 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../../../time/models.js";
-
 /**
  * ActionTargetBuilder builds a dynamic list of targets for an action.
  */
@@ -145,7 +141,7 @@ export class LogSession {
     "options": LogSessionOptions;
     "status": LogSessionStatus;
     "active_sources": LogSource[];
-    "created_at": time$0.Time;
+    "created_at": string;
 
     /** Creates a new LogSession instance. */
     constructor($$source: Partial<LogSession> = {}) {
@@ -174,7 +170,7 @@ export class LogSession {
             this["active_sources"] = [];
         }
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -207,7 +203,7 @@ export class LogSessionOptions {
     "include_timestamps": boolean;
     "tail_lines": number;
     "since_seconds": number;
-    "since_time"?: time$0.Time | null;
+    "since_time"?: string | null;
     "limit_bytes": number;
     "include_source_events": boolean;
     "params": { [_ in string]?: string };

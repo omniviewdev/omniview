@@ -102,8 +102,8 @@ export const useResourceMetrics = (
         resourceData as Record<string, any>,
         metricIDs,
         shape,
-        timeRange?.start ?? new Date(0),
-        timeRange?.end ?? new Date(0),
+        (timeRange?.start ?? new Date(0)).toISOString(),
+        (timeRange?.end ?? new Date(0)).toISOString(),
         stepNs,
       );
       const filtered: Record<string, QueryResponse> = {};

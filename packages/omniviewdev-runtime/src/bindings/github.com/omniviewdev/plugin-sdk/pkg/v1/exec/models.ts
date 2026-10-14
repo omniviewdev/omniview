@@ -5,10 +5,6 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../../../time/models.js";
-
 /**
  * ActionTargetBuilder builds a dynamic list of targets for an action.
  */
@@ -102,7 +98,7 @@ export class Handler {
  * the public API. It carries no mutable internal state.
  */
 export class Session {
-    "created_at": time$0.Time;
+    "created_at": string;
     "labels": { [_ in string]?: string };
     "params": { [_ in string]?: string };
     "id": string;
@@ -112,7 +108,7 @@ export class Session {
     /** Creates a new Session instance. */
     constructor($$source: Partial<Session> = {}) {
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("labels" in $$source)) {
             this["labels"] = {};

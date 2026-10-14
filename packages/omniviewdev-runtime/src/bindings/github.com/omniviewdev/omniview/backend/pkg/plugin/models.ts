@@ -11,9 +11,6 @@ import * as lifecycle$0 from "./lifecycle/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as types$0 from "./types/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../../../time/models.js";
 
 /**
  * DeprecatedProtocolPayload is sent with EventDeprecatedProtocol.
@@ -91,7 +88,7 @@ export class StateChangePayload {
     "from": lifecycle$0.PluginPhase;
     "to": lifecycle$0.PluginPhase;
     "reason": string;
-    "timestamp": time$0.Time;
+    "timestamp": string;
 
     /** Creates a new StateChangePayload instance. */
     constructor($$source: Partial<StateChangePayload> = {}) {
@@ -108,7 +105,7 @@ export class StateChangePayload {
             this["reason"] = "";
         }
         if (!("timestamp" in $$source)) {
-            this["timestamp"] = null;
+            this["timestamp"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
