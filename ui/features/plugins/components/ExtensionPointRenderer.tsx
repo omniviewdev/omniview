@@ -123,7 +123,7 @@ export function ExtensionPointRenderer<TContext extends ExtensionRenderContext =
 
   // Subscribe to service snapshot so quarantine state changes trigger re-render
   useSyncExternalStore(
-    service?.subscribe.bind(service) ?? (() => () => {}),
+    service?.subscribe.bind(service) ?? (() => () => undefined),
     service?.getSnapshot.bind(service) ?? (() => null),
   );
 

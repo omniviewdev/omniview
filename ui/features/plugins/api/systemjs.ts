@@ -3,4 +3,4 @@ import 'systemjs/dist/extras/amd.js';
 import 'systemjs/dist/extras/named-register.js';
 
 //@ts-ignore
-export const SystemJS = window.System;
+export const systemJs = window.System;

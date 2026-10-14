@@ -69,7 +69,6 @@ function createDefaultPluginState(
 // ─── PluginService ──────────────────────────────────────────────────
 
 export class PluginService {
-  private readonly deps: PluginServiceDeps;
   private readonly config: Readonly<PluginServiceConfig>;
 
   // ── Internal state ──────────────────────────────────────────────
@@ -100,8 +99,10 @@ export class PluginService {
   // Cancellation tokens for stale load detection
   private readonly loadGeneration = new Map<string, number>();
 
-  constructor(deps: PluginServiceDeps, config?: Partial<PluginServiceConfig>) {
-    this.deps = deps;
+  /** Track which plugins have already had their deprecation warning emitted. */
+  private readonly legacyWarningEmitted = new Set<string>();
+
+  constructor(private readonly deps: PluginServiceDeps, config?: Partial<PluginServiceConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.quarantineManager = new QuarantineManager({
       crashData: deps.crashData,
@@ -404,7 +405,7 @@ export class PluginService {
     try {
       this.deps.ensureBuiltinExtensionPoints();
 
-      if (opts?.dev || current.isDev) {
+      if (opts?.dev === true || current.isDev) {
         await this.deps.ensureDevSharedDeps();
       }
 
@@ -562,7 +563,7 @@ export class PluginService {
 
     for (const chunk of chunks) {
       const settled = await Promise.allSettled(
-        chunk.map((p) => this.prepareLoadCandidate(p.id, p)),
+        chunk.map(async (p) => this.prepareLoadCandidate(p.id, p)),
       );
 
       for (const result of settled) {
@@ -1427,9 +1428,6 @@ export class PluginService {
   }
 
   // ── Private: Deprecation warnings ──────────────────────────────
-
-  /** Track which plugins have already had their deprecation warning emitted. */
-  private readonly legacyWarningEmitted = new Set<string>();
 
   /**
    * Emit one-time deprecation warnings when a plugin uses legacy

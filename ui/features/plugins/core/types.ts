@@ -270,6 +270,14 @@ export const DEFAULT_CONFIG: Readonly<PluginServiceConfig> = {
 // ─── Plugin Service Dependencies ─────────────────────────────────────
 
 export type PluginServiceDeps = {
+  crashData: CrashDataStrategy;
+
+  log: {
+    debug(message: string, data?: Record<string, unknown>): void;
+    warn(message: string, data?: Record<string, unknown>): void;
+    error(message: string, data?: Record<string, unknown>): void;
+  };
+
   importPlugin(opts: PluginImportOpts): Promise<unknown>;
   clearPlugin(opts: { pluginId: string; dev?: boolean }): Promise<void>;
   onEvent(eventName: string, handler: (...args: any[]) => void): () => void;
@@ -294,11 +302,4 @@ export type PluginServiceDeps = {
   removeContributions(pluginId: string): void;
   ensureDevSharedDeps(): Promise<void>;
   validateExports(exports: unknown): ValidatedExports;
-  crashData: CrashDataStrategy;
-
-  log: {
-    debug(message: string, data?: Record<string, unknown>): void;
-    warn(message: string, data?: Record<string, unknown>): void;
-    error(message: string, data?: Record<string, unknown>): void;
-  };
 };

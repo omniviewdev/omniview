@@ -51,7 +51,6 @@ export function logPluginBoundaryError(event: PluginBoundaryLogEvent): void {
 
   // Use console.error for boundary crashes — this is the host's boundary logger,
   // not the service's structured logger (which operates on service lifecycle events).
-  // eslint-disable-next-line no-console
   console.error(`[PluginBoundary] ${event.boundary} crash — plugin "${event.pluginId}": ${event.message}`, context);
 }
 

@@ -1,20 +1,20 @@
 // import { SHARED_DEPENDENCY_PREFIX } from "./constants";
-import { SystemJS } from './systemjs';
+import { systemJs } from './systemjs';
 
 export function buildImportMap(importMap: Record<string, System.Module>) {
   return Object.keys(importMap).reduce<Record<string, string>>((acc, key) => {
-    const module_name = `shared://${key}`;
+    const moduleName = `shared://${key}`;
 
     // expose dependency to loaders
-    addPreload(module_name, importMap[key]);
+    addPreload(moduleName, importMap[key]);
 
-    acc[key] = module_name;
+    acc[key] = moduleName;
     return acc;
   }, {});
 }
 
 function addPreload(id: string, preload: (() => Promise<System.Module>) | System.Module) {
-  if (SystemJS.has(id)) {
+  if (systemJs.has(id)) {
     return;
   }
 
@@ -29,10 +29,10 @@ function addPreload(id: string, preload: (() => Promise<System.Module>) | System
     return;
   }
 
-  const moduleId = resolvedId || id;
+  const moduleId = resolvedId ?? id;
   if (typeof preload === 'function') {
     console.debug(`[PluginService] registering preload function for module ${id}`);
-    SystemJS.register(id, [], (_export: any) => {
+    systemJs.register(id, [], (_export: any) => {
       return {
         execute: async function () {
           const module = await preload();
@@ -42,6 +42,6 @@ function addPreload(id: string, preload: (() => Promise<System.Module>) | System
     });
   } else {
     console.debug(`[PluginService] registering preload for module ${moduleId}`);
-    SystemJS.set(moduleId, preload);
+    systemJs.set(moduleId, preload);
   }
 }

@@ -26,9 +26,7 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
   const serviceRef = useRef<PluginService | null>(null);
   const deps = useMemo(() => createProductionDeps(), []);
 
-  if (!serviceRef.current) {
-    serviceRef.current = new PluginService(deps);
-  }
+  serviceRef.current ??= new PluginService(deps);
 
   const service = serviceRef.current;
 
