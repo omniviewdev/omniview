@@ -1,12 +1,6 @@
 import React from 'react';
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import CircularProgress from '@mui/material/CircularProgress';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { Button } from '@omniviewdev/ui/buttons';
-import { TextField } from '@omniviewdev/ui/inputs';
-import { Modal } from '@omniviewdev/ui/overlays';
+import { Button, Dialog, Separator, Spinner, Stack, Text } from '@omniviewdev/base-ui';
+import TextInput from '../shared/ui/TextInput';
 
 type Props = {
   open: boolean;
@@ -70,71 +64,71 @@ const SSOLoginDialog: React.FC<Props> = ({
   };
 
   return (
-    <Modal open={open} onClose={onClose}>
-      <Box sx={{ maxWidth: 420, p: 3 }}>
-        <Text weight="semibold" size="lg" sx={{ mb: 0.5 }}>
+    <Dialog open={open} onClose={onClose} size="sm">
+      <div style={{ maxWidth: 420, padding: 24 }}>
+        <Text weight="semibold" size="lg" as="div" style={{ marginBottom: 4 }}>
           AWS SSO Login
         </Text>
-        <Text size="sm" sx={{ mb: 2, color: 'text.secondary' }}>
+        <Text size="sm" tone="muted" as="div" style={{ marginBottom: 16 }}>
           Complete the sign-in in your browser, then click the button below.
         </Text>
 
-        <Stack spacing={2}>
-          <Box>
-            <Text size="xs" sx={{ mb: 0.5, fontWeight: 600 }}>
+        <Stack spacing={4}>
+          <div>
+            <Text size="xs" as="div" style={{ marginBottom: 4, fontWeight: 600 }}>
               Verification Code
             </Text>
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              <TextField
+            <Stack direction="row" spacing={1} align="center">
+              <TextInput
                 value={userCode}
-                onChange={() => {}}
                 size="sm"
                 readOnly
-                monospace
-                sx={{ fontWeight: 700, letterSpacing: 2, flex: 1 }}
+                mono
+                inputProps={{ style: { fontWeight: 700, letterSpacing: 2 } }}
+                style={{ flex: 1 }}
               />
               <Button
-                emphasis="soft"
+                variant="soft"
                 size="sm"
                 onClick={handleCopyCode}
               >
                 Copy
               </Button>
             </Stack>
-          </Box>
+          </div>
 
-          <Text size="xs" sx={{ color: 'text.secondary', textAlign: 'center' }}>
+          <Text as="div" size="xs" tone="muted" style={{ textAlign: 'center' }}>
             {timeLeft === 'Expired' ? 'Code expired -- close and try again' : `Expires in ${timeLeft}`}
           </Text>
 
-          <Divider />
+          <Separator />
 
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={2}>
             <Button
-              emphasis="outline"
+              variant="outline"
               color="neutral"
               size="sm"
               onClick={handleReopenBrowser}
               disabled={timeLeft === 'Expired'}
-              sx={{ flex: 1 }}
+              style={{ flex: 1 }}
             >
               Reopen Browser
             </Button>
             <Button
-              emphasis="solid"
-              color="primary"
+              variant="solid"
+              color="brand"
               size="sm"
               onClick={onRetry}
               disabled={isRetrying || timeLeft === 'Expired'}
-              startAdornment={isRetrying ? <CircularProgress size={16} /> : undefined}
-              sx={{ flex: 1 }}
+              startDecorator={isRetrying ? <Spinner size="sm" /> : undefined}
+              style={{ flex: 1 }}
             >
               {isRetrying ? 'Checking...' : "I've Logged In"}
             </Button>
           </Stack>
 
           <Button
-            emphasis="ghost"
+            variant="ghost"
             color="neutral"
             size="sm"
             onClick={onClose}
@@ -142,8 +136,8 @@ const SSOLoginDialog: React.FC<Props> = ({
             Cancel
           </Button>
         </Stack>
-      </Box>
-    </Modal>
+      </div>
+    </Dialog>
   );
 };
 

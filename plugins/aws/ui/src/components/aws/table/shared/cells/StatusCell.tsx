@@ -1,5 +1,6 @@
 import React from 'react';
-import { Chip } from '@omniviewdev/ui';
+import { Chip } from '@omniviewdev/base-ui';
+import { chipStyle, toColor } from '../../../../shared/ui/colors';
 
 type Props = {
   value: string | undefined;
@@ -57,7 +58,7 @@ const StatusCell: React.FC<Props> = ({ value }) => {
   const color = statusColorMap[value] || 'default';
 
   return (
-    <Chip size='sm' variant='filled' color={color} label={value} sx={{ borderRadius: 1 }} />
+    <Chip size='sm' variant='solid' color={toColor(color)} style={chipStyle}>{value}</Chip>
   );
 };
 

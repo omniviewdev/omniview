@@ -1,9 +1,6 @@
 import React from 'react';
+import { Spinner, Stack, Text } from '@omniviewdev/base-ui';
 import { useParams } from 'react-router-dom';
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
 import { LuScale } from 'react-icons/lu';
 import { useResources } from '@omniviewdev/runtime';
 import get from 'lodash.get';
@@ -34,17 +31,17 @@ const ELBLoadBalancerDetailPage: React.FC = () => {
 
   if (resources.isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <CircularProgress size={32} />
-      </Box>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+        <Spinner size='lg' />
+      </div>
     );
   }
 
   if (!lb) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
         <Text>Load Balancer not found</Text>
-      </Box>
+      </div>
     );
   }
 
@@ -86,8 +83,8 @@ const ELBLoadBalancerDetailPage: React.FC = () => {
         {
           label: 'Overview',
           content: (
-            <Box sx={{ p: 1.5, overflow: 'auto' }}>
-              <Stack spacing={1}>
+            <div style={{ padding: 12, overflow: 'auto' }}>
+              <Stack spacing={2}>
                 <MetadataSection data={lb} />
                 <DetailsCard
                   title='Load Balancer Info'
@@ -110,7 +107,7 @@ const ELBLoadBalancerDetailPage: React.FC = () => {
                 />
                 <TagsSection data={lb} />
               </Stack>
-            </Box>
+            </div>
           ),
         },
         {

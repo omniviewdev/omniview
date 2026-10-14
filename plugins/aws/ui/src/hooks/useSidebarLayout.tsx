@@ -1,5 +1,5 @@
 import { useResourceGroups } from "@omniviewdev/runtime";
-import type { NavMenuItem, NavSection } from "@omniviewdev/ui/sidebars";
+import type { NavMenuItem, NavSection } from "../components/shared/ResourceNavTree";
 import React from "react";
 import { types } from "@omniviewdev/runtime/models";
 import {

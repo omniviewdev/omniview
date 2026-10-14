@@ -560,27 +560,15 @@ importers:
 
   plugins/aws/ui:
     dependencies:
-      '@emotion/react':
-        specifier: ^11.11.4
-        version: 11.14.0(@types/react@19.2.14)(react@19.2.4)
-      '@emotion/styled':
-        specifier: ^11.11.0
-        version: 11.14.0(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(react@19.2.4)
       '@monaco-editor/react':
         specifier: ^4.6.0
         version: 4.7.0(monaco-editor@0.47.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@mui/icons-material':
-        specifier: ^7.3.0
-        version: 7.3.8(@mui/material@7.3.8(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.4))(@emotion/styled@11.14.0(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react@19.2.4)
       '@omniviewdev/base-ui':
         specifier: ^0.2.1
         version: 0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/runtime':
         specifier: workspace:*
         version: link:../../../packages/omniviewdev-runtime
-      '@omniviewdev/ui':
-        specifier: workspace:*
-        version: link:../../../packages/omniviewdev-ui
       '@tanstack/react-query':
         specifier: ^5.76.1
         version: 5.76.1(react@19.2.4)

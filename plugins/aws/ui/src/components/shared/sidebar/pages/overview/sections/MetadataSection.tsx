@@ -1,11 +1,8 @@
 import React from "react";
-import Box from "@mui/material/Box";
-import Grid from "@mui/material/Grid";
-import Divider from "@mui/material/Divider";
-import { Stack } from "@omniviewdev/ui/layout";
-import { Text } from "@omniviewdev/ui/typography";
-import { Card, Chip } from "@omniviewdev/ui";
+import { Chip, Stack } from "@omniviewdev/base-ui";
 import KVCard from "../../../../../shared/KVCard";
+import SectionCard from "../../../../ui/SectionCard";
+import LabeledRow, { ValueText } from "../../../../ui/LabeledRow";
 
 interface Props {
   data?: Record<string, any>;
@@ -17,21 +14,12 @@ const MetaEntry: React.FC<{
 }> = ({ title, value }) => {
   if (!value) return null;
   return (
-    <Grid container spacing={0}>
-      <Grid size={3} sx={{ alignItems: "center" }}>
-        <Text size="xs" sx={{ color: "neutral.300" }}>
-          {title}
-        </Text>
-      </Grid>
-      <Grid size={9} sx={{ alignItems: "center" }}>
-        {typeof value === 'string'
-          ? <Text size="xs" sx={{ fontWeight: 600, fontSize: 12 }}>
-            {value}
-          </Text>
-          : value
-        }
-      </Grid>
-    </Grid>
+    <LabeledRow label={title} labelSpan={3}>
+      {typeof value === 'string'
+        ? <ValueText>{value}</ValueText>
+        : value
+      }
+    </LabeledRow>
   );
 };
 
@@ -62,50 +50,28 @@ const MetadataSection: React.FC<Props> = ({ data }) => {
   }
 
   return (
-    <Stack direction="column" spacing={1}>
-      <Card
-        sx={{
-          "--Card-padding": "0px",
-          "--Card-gap": "0px",
-          borderRadius: 1,
-          gap: "0px",
-        }}
-        variant="outlined"
-      >
-        <Box sx={{ py: 1, px: 1.25 }}>
-          <Text weight="semibold" size="sm">Resource Info</Text>
-        </Box>
-        <Divider />
-        <Box
-          sx={{
-            p: 1,
-            px: 1.5,
-            backgroundColor: "background.paper",
-            borderBottomRightRadius: 6,
-            borderBottomLeftRadius: 6,
-          }}
-        >
+    <Stack direction="column" spacing={2}>
+      <SectionCard title="Resource Info">
           <MetaEntry title="Name" value={name} />
           {region && <MetaEntry title="Region" value={region} />}
           {arn && <MetaEntry title="ARN" value={
-            <Text size="xs" sx={{ fontWeight: 600, fontSize: 11, wordBreak: 'break-all' }}>
+            <ValueText fontSize={11}>
               {arn}
-            </Text>
+            </ValueText>
           } />}
           {data.State?.Name && <MetaEntry title="State" value={
-            <Chip size='sm' label={data.State.Name} color={
+            <Chip size='sm' color={
               data.State.Name === 'running' ? 'success' :
-              data.State.Name === 'stopped' ? 'error' : 'warning'
-            } variant='filled' sx={{ borderRadius: 2 }} />
+              data.State.Name === 'stopped' ? 'danger' : 'warning'
+            } variant='solid' style={{ borderRadius: 8 }}>{data.State.Name}</Chip>
           } />}
           {data.Status && typeof data.Status === 'string' && <MetaEntry title="Status" value={
-            <Chip size='sm' label={data.Status} color={
+            <Chip size='sm' color={
               data.Status === 'available' || data.Status === 'ACTIVE' || data.Status === 'Active' ? 'success' :
-              data.Status === 'deleting' || data.Status === 'failed' ? 'error' : 'warning'
-            } variant='filled' sx={{ borderRadius: 2 }} />
+              data.Status === 'deleting' || data.Status === 'failed' ? 'danger' : 'warning'
+            } variant='solid' style={{ borderRadius: 8 }}>{data.Status}</Chip>
           } />}
-        </Box>
-      </Card>
+      </SectionCard>
       {Object.keys(tags).length > 0 && (
         <KVCard title="Tags" kvs={tags} defaultExpanded />
       )}

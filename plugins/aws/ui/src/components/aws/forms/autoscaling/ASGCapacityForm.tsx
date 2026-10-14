@@ -1,5 +1,5 @@
 import React from 'react';
-import { Stack } from '@omniviewdev/ui/layout';
+import { Stack } from '@omniviewdev/base-ui';
 import FormCard, { type FormField } from '../../../shared/forms/FormCard';
 import ArrayChipEditor from '../../../shared/forms/ArrayChipEditor';
 import TagEditor, { type Tag } from '../../../shared/forms/TagEditor';
@@ -80,7 +80,7 @@ const ASGCapacityForm: React.FC<Props> = ({ data, onSave, saving }) => {
   const lbTargetGroups = data.TargetGroupARNs || [];
 
   return (
-    <Stack spacing={1}>
+    <Stack spacing={2}>
       <FormCard
         title='ASG Info'
         fields={infoFields}

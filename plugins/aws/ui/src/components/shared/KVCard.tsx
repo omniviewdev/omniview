@@ -1,10 +1,7 @@
 import React, { useState } from "react";
-import Grid from "@mui/material/Grid";
-import Box from "@mui/material/Box";
-import { Text } from "@omniviewdev/ui/typography";
-import { Stack } from "@omniviewdev/ui/layout";
-import { Chip } from "@omniviewdev/ui";
+import { Chip, Stack, Text } from "@omniviewdev/base-ui";
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
+import styles from "./KVCard.module.css";
 
 interface Props {
   title: string;
@@ -17,54 +14,39 @@ const KVCard: React.FC<Props> = ({ title, kvs, defaultExpanded }) => {
   const disabled = !Object.keys(kvs).length;
 
   return (
-    <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
-      <Box
+    <div className={styles.root}>
+      <div
+        className={styles.header}
+        data-disabled={disabled || undefined}
         onClick={() => !disabled && setExpanded(!expanded)}
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          px: 1.5,
-          py: 0.75,
-          cursor: disabled ? 'default' : 'pointer',
-          opacity: disabled ? 0.5 : 1,
-          '&:hover': disabled ? {} : { bgcolor: 'action.hover' },
-        }}
       >
-        <Box sx={{ mr: 1, display: 'flex', alignItems: 'center' }}>
+        <span className={styles.chevron}>
           {expanded ? <LuChevronDown size={14} /> : <LuChevronRight size={14} />}
-        </Box>
-        <Stack direction="row" spacing={1} alignItems="center">
+        </span>
+        <Stack direction="row" spacing={2} align="center">
           <Text weight="semibold" size="sm">{title}</Text>
-          <Chip
-            size="sm"
-            variant="outlined"
-            color="primary"
-            label={Object.keys(kvs).length}
-            sx={{ borderRadius: 1 }}
-          />
+          <Chip size="sm" variant="outline" color="brand" style={{ borderRadius: 4 }}>
+            {Object.keys(kvs).length}
+          </Chip>
         </Stack>
-      </Box>
+      </div>
       {expanded && (
-        <Box sx={{ px: 1.5, py: 0.75, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
-          <Grid container spacing={0.25}>
+        <div className={styles.body}>
+          <div className={styles.grid}>
             {Object.entries(kvs).map(([key, value]) => (
               <React.Fragment key={key}>
-                <Grid size={6} sx={{ alignItems: "center" }}>
-                  <Text size="xs" sx={{ fontSize: 12, fontWeight: 400 }}>
-                    {key}
-                  </Text>
-                </Grid>
-                <Grid size={6} sx={{ alignItems: "center" }}>
-                  <Text size="xs" sx={{ fontSize: 12, fontWeight: 600 }}>
-                    {value}
-                  </Text>
-                </Grid>
+                <Text size="xs" style={{ fontSize: 12, fontWeight: 400 }}>
+                  {key}
+                </Text>
+                <Text size="xs" style={{ fontSize: 12, fontWeight: 600 }}>
+                  {value}
+                </Text>
               </React.Fragment>
             ))}
-          </Grid>
-        </Box>
+          </div>
+        </div>
       )}
-    </Box>
+    </div>
   );
 };
 

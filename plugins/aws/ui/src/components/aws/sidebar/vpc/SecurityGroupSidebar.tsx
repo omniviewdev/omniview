@@ -1,11 +1,5 @@
 import React from "react";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-import { Stack } from "@omniviewdev/ui/layout";
-import { Text } from "@omniviewdev/ui/typography";
+import { Stack, Table, Text } from '@omniviewdev/base-ui';
 import MetadataSection from "../../../shared/sidebar/pages/overview/sections/MetadataSection";
 import DetailsCard from "../../../shared/DetailsCard";
 import ExpandableSection from "../../../shared/ExpandableSection";
@@ -72,32 +66,32 @@ function collectDescription(rule: Record<string, any>): string {
 function RulesTable({ rules }: { rules: Array<Record<string, any>> }) {
   if (rules.length === 0) {
     return (
-      <Text size="sm" sx={{ color: "text.secondary" }}>
+      <Text size="sm" tone="muted">
         No rules configured
       </Text>
     );
   }
 
   return (
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell sx={{ width: "15%", py: 0.5 }}>Protocol</TableCell>
-          <TableCell sx={{ width: "20%", py: 0.5 }}>Port Range</TableCell>
-          <TableCell sx={{ width: "35%", py: 0.5 }}>Source</TableCell>
-          <TableCell sx={{ width: "30%", py: 0.5 }}>Description</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
+    <Table size="sm">
+      <Table.Head>
+        <Table.Row>
+          <Table.HeaderCell style={{ width: "15%", paddingTop: 4, paddingBottom: 4 }}>Protocol</Table.HeaderCell>
+          <Table.HeaderCell style={{ width: "20%", paddingTop: 4, paddingBottom: 4 }}>Port Range</Table.HeaderCell>
+          <Table.HeaderCell style={{ width: "35%", paddingTop: 4, paddingBottom: 4 }}>Source</Table.HeaderCell>
+          <Table.HeaderCell style={{ width: "30%", paddingTop: 4, paddingBottom: 4 }}>Description</Table.HeaderCell>
+        </Table.Row>
+      </Table.Head>
+      <Table.Body>
         {rules.map((rule, i) => (
-          <TableRow key={i}>
-            <TableCell sx={{ py: 0.5 }}>{formatProtocol(rule.IpProtocol)}</TableCell>
-            <TableCell sx={{ py: 0.5 }}>{formatPortRange(rule)}</TableCell>
-            <TableCell sx={{ py: 0.5, wordBreak: "break-all" }}>{collectSources(rule)}</TableCell>
-            <TableCell sx={{ py: 0.5 }}>{collectDescription(rule)}</TableCell>
-          </TableRow>
+          <Table.Row key={i}>
+            <Table.Cell style={{ paddingTop: 4, paddingBottom: 4 }}>{formatProtocol(rule.IpProtocol)}</Table.Cell>
+            <Table.Cell style={{ paddingTop: 4, paddingBottom: 4 }}>{formatPortRange(rule)}</Table.Cell>
+            <Table.Cell style={{ paddingTop: 4, paddingBottom: 4, wordBreak: "break-all" }}>{collectSources(rule)}</Table.Cell>
+            <Table.Cell style={{ paddingTop: 4, paddingBottom: 4 }}>{collectDescription(rule)}</Table.Cell>
+          </Table.Row>
         ))}
-      </TableBody>
+      </Table.Body>
     </Table>
   );
 }
@@ -113,7 +107,7 @@ const SecurityGroupSidebar: React.FC<Props> = ({ ctx }) => {
     : [];
 
   return (
-    <Stack direction="column" width="100%" spacing={1}>
+    <Stack direction="column" spacing={2} style={{ width: "100%" }}>
       <MetadataSection data={data} />
 
       <DetailsCard

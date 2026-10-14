@@ -10,13 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@emotion/react": "^11.11.4",
-    "@emotion/styled": "^11.11.0",
     "@monaco-editor/react": "^4.6.0",
-    "@mui/icons-material": "^7.3.0",
     "@omniviewdev/base-ui": "^0.2.1",
     "@omniviewdev/runtime": "workspace:*",
-    "@omniviewdev/ui": "workspace:*",
     "@tanstack/react-query": "^5.76.1",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.8",

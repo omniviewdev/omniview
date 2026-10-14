@@ -1,5 +1,5 @@
 import React from "react";
-import { Stack } from "@omniviewdev/ui/layout";
+import { Stack } from '@omniviewdev/base-ui';
 import MetadataSection from "../../../shared/sidebar/pages/overview/sections/MetadataSection";
 import DetailsCard from "../../../shared/DetailsCard";
 import TagsSection from "../sections/TagsSection";
@@ -12,7 +12,7 @@ const BucketSidebar: React.FC<Props> = ({ ctx }) => {
   const data = ctx.data || {};
 
   return (
-    <Stack direction="column" width="100%" spacing={1}>
+    <Stack direction="column" spacing={2} style={{ width: "100%" }}>
       <MetadataSection data={data} />
 
       <DetailsCard

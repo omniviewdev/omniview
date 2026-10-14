@@ -1,8 +1,5 @@
 import React from 'react';
-import Box from '@mui/material/Box';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { Button } from '@omniviewdev/ui/buttons';
+import { Button, Stack, Text } from '@omniviewdev/base-ui';
 import { LuSearch, LuServerOff } from 'react-icons/lu';
 
 type Props = {
@@ -10,44 +7,45 @@ type Props = {
   onClearFilters?: () => void;
 };
 
+const rootStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 48,
+  borderRadius: 4,
+  border: '1px solid var(--ov-color-border-default)',
+  gap: 16,
+  minHeight: 200,
+};
+
+const bodyStyle: React.CSSProperties = { textAlign: 'center', maxWidth: 360 };
+
 const EmptyState: React.FC<Props> = ({ variant, onClearFilters }) => (
-  <Box
-    sx={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      p: 6,
-      borderRadius: 1,
-      border: '1px solid',
-      borderColor: 'divider',
-      gap: 2,
-      minHeight: 200,
-    }}
-  >
+  <div style={rootStyle}>
     {variant === 'no-connections' ? (
-      <Stack alignItems='center' gap={1.5}>
+      <Stack align='center' spacing={3}>
         <LuServerOff size={40} opacity={0.4} />
         <Text weight="semibold" size="lg">No AWS Accounts Found</Text>
-        <Text size="sm" sx={{ textAlign: 'center', maxWidth: 360 }}>
+        <Text size="sm" style={bodyStyle}>
           No AWS profiles were detected. Configure AWS profiles in ~/.aws/config or plugin settings to get started.
         </Text>
       </Stack>
     ) : (
-      <Stack alignItems='center' gap={1.5}>
+      <Stack align='center' spacing={3}>
         <LuSearch size={40} opacity={0.4} />
         <Text weight="semibold" size="lg">No Results</Text>
-        <Text size="sm" sx={{ textAlign: 'center', maxWidth: 360 }}>
+        <Text size="sm" style={bodyStyle}>
           No accounts match your current search or filters.
         </Text>
         {onClearFilters && (
-          <Button emphasis='soft' color='neutral' size='sm' onClick={onClearFilters}>
+          <Button variant='soft' color='neutral' size='sm' onClick={onClearFilters}>
             Clear Filters
           </Button>
         )}
       </Stack>
     )}
-  </Box>
+  </div>
 );
 
 export default EmptyState;

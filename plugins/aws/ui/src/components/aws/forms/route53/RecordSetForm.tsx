@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
-import Box from '@mui/material/Box';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { Button, IconButton } from '@omniviewdev/ui/buttons';
-import { TextField, Select } from '@omniviewdev/ui/inputs';
+import { Button, IconButton, Stack, Text } from '@omniviewdev/base-ui';
 import { LuPlus, LuTrash2 } from 'react-icons/lu';
+import TextInput from '../../../shared/ui/TextInput';
+import SelectInput from '../../../shared/ui/SelectInput';
 import FormSection from '../../../shared/forms/FormSection';
 import useFormState from '../../../shared/forms/useFormState';
 
@@ -101,38 +99,38 @@ const RecordSetForm: React.FC<Props> = ({ data, onSave, saving, isNew }) => {
       dirty={allDirty}
       saving={saving}
     >
-      <Stack spacing={1.5}>
+      <Stack spacing={3}>
         {/* Record Name & Type */}
-        <Stack direction='row' spacing={1}>
-          <Box sx={{ flex: 2 }}>
-            <Text size="xs" sx={{ mb: 0.5 }}>Record Name</Text>
-            <TextField
+        <Stack direction='row' spacing={2}>
+          <div style={{ flex: 2 }}>
+            <Text as="div" size="xs" style={{ marginBottom: 4 }}>Record Name</Text>
+            <TextInput
               size='sm'
               value={values.Name}
               disabled={!isNew}
               placeholder='subdomain.example.com.'
               onChange={(value) => setField('Name', value)}
             />
-          </Box>
-          <Box sx={{ flex: 1 }}>
-            <Text size="xs" sx={{ mb: 0.5 }}>Type</Text>
-            <Select
+          </div>
+          <div style={{ flex: 1 }}>
+            <Text as="div" size="xs" style={{ marginBottom: 4 }}>Type</Text>
+            <SelectInput
               size='sm'
               value={values.Type}
               disabled={!isNew}
-              onChange={(value) => setField('Type', (value as string) || 'A')}
+              onChange={(value) => setField('Type', value || 'A')}
               options={RECORD_TYPES}
             />
-          </Box>
+          </div>
         </Stack>
 
         {/* Alias toggle */}
-        <Stack direction='row' spacing={1} alignItems='center'>
+        <Stack direction='row' spacing={2} align='center'>
           <Text size="xs">Alias Record</Text>
           <Button
             size='sm'
-            emphasis={values.UseAlias ? 'soft' : 'outline'}
-            color={values.UseAlias ? 'primary' : 'neutral'}
+            variant={values.UseAlias ? 'soft' : 'outline'}
+            color={values.UseAlias ? 'brand' : 'neutral'}
             onClick={() => setField('UseAlias', !values.UseAlias)}
           >
             {values.UseAlias ? 'Yes' : 'No'}
@@ -141,71 +139,71 @@ const RecordSetForm: React.FC<Props> = ({ data, onSave, saving, isNew }) => {
 
         {values.UseAlias ? (
           /* Alias configuration */
-          <Stack spacing={1}>
-            <Box>
-              <Text size="xs" sx={{ mb: 0.5 }}>Alias Target DNS Name</Text>
-              <TextField
+          <Stack spacing={2}>
+            <div>
+              <Text as="div" size="xs" style={{ marginBottom: 4 }}>Alias Target DNS Name</Text>
+              <TextInput
                 size='sm'
                 value={values.AliasTargetDNS}
                 placeholder='d111111abcdef8.cloudfront.net.'
                 onChange={(value) => setField('AliasTargetDNS', value)}
               />
-            </Box>
-            <Box>
-              <Text size="xs" sx={{ mb: 0.5 }}>Hosted Zone ID</Text>
-              <TextField
+            </div>
+            <div>
+              <Text as="div" size="xs" style={{ marginBottom: 4 }}>Hosted Zone ID</Text>
+              <TextInput
                 size='sm'
                 value={values.AliasTargetZoneId}
                 placeholder='Z2FDTNDATAQYW2'
                 onChange={(value) => setField('AliasTargetZoneId', value)}
               />
-            </Box>
+            </div>
           </Stack>
         ) : (
           /* Standard record values */
-          <Stack spacing={1}>
-            <Box>
-              <Text size="xs" sx={{ mb: 0.5 }}>TTL (seconds)</Text>
-              <TextField
+          <Stack spacing={2}>
+            <div>
+              <Text as="div" size="xs" style={{ marginBottom: 4 }}>TTL (seconds)</Text>
+              <TextInput
                 size='sm'
                 type='number'
                 value={String(values.TTL)}
                 inputProps={{ min: 0, max: 2147483647 }}
                 onChange={(value) => setField('TTL', Number(value))}
-                sx={{ maxWidth: 150 }}
+                style={{ maxWidth: 150 }}
               />
-            </Box>
+            </div>
 
             {/* Values list */}
-            <Box>
-              <Text size="sm" sx={{ fontWeight: 600, mb: 0.5 }}>Values</Text>
-              <Stack spacing={0.25}>
+            <div>
+              <Text as="div" size="sm" style={{ fontWeight: 600, marginBottom: 4 }}>Values</Text>
+              <Stack spacing={0} style={{ gap: 2 }}>
                 {records.map((val, i) => (
-                  <Stack key={i} direction='row' spacing={0.5} alignItems='center'>
-                    <Text size="xs" sx={{ fontFamily: 'monospace', flex: 1 }}>{val}</Text>
-                    <IconButton size='sm' emphasis='ghost' color='error' onClick={() => handleRemoveValue(i)}>
+                  <Stack key={i} direction='row' spacing={1} align='center'>
+                    <Text size="xs" style={{ fontFamily: 'monospace', flex: 1 }}>{val}</Text>
+                    <IconButton size='sm' variant='ghost' color='danger' aria-label='Remove' onClick={() => handleRemoveValue(i)}>
                       <LuTrash2 size={14} />
                     </IconButton>
                   </Stack>
                 ))}
                 {records.length === 0 && (
-                  <Text size="xs" color="neutral">No values</Text>
+                  <Text size="xs" tone='muted'>No values</Text>
                 )}
               </Stack>
-              <Stack direction='row' spacing={0.5} sx={{ mt: 0.5 }}>
-                <TextField
+              <Stack direction='row' spacing={1} style={{ marginTop: 4 }}>
+                <TextInput
                   size='sm'
                   placeholder={values.Type === 'A' ? '192.0.2.1' : values.Type === 'CNAME' ? 'target.example.com.' : 'value'}
                   value={newValue}
                   onChange={(value) => setNewValue(value)}
                   onKeyDown={handleKeyDown}
-                  sx={{ flex: 1, fontSize: 12 }}
+                  style={{ flex: 1 }}
                 />
-                <IconButton size='sm' emphasis='soft' color='primary' disabled={!newValue.trim()} onClick={handleAddValue}>
+                <IconButton size='sm' variant='soft' color='brand' aria-label='Add' disabled={!newValue.trim()} onClick={handleAddValue}>
                   <LuPlus size={14} />
                 </IconButton>
               </Stack>
-            </Box>
+            </div>
           </Stack>
         )}
       </Stack>

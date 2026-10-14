@@ -1,5 +1,5 @@
 import React from 'react';
-import { Stack } from '@omniviewdev/ui/layout';
+import { Stack } from '@omniviewdev/base-ui';
 import FormCard, { type FormField } from '../../../shared/forms/FormCard';
 import TagEditor, { type Tag } from '../../../shared/forms/TagEditor';
 import ArrayChipEditor from '../../../shared/forms/ArrayChipEditor';
@@ -128,7 +128,7 @@ const InstanceConfigForm: React.FC<Props> = ({ data, onSave, saving, onTerminate
   );
 
   return (
-    <Stack spacing={1}>
+    <Stack spacing={2}>
       <FormCard
         title='Instance Identity'
         fields={identityFields}
@@ -183,7 +183,7 @@ const InstanceConfigForm: React.FC<Props> = ({ data, onSave, saving, onTerminate
             loading: terminateLoading,
           } : undefined}
         >
-          <Stack direction='row' spacing={1}>
+          <Stack direction='row' spacing={2}>
             {onStop && data.State?.Name === 'running' && (
               <button onClick={onStop}>Stop Instance</button>
             )}

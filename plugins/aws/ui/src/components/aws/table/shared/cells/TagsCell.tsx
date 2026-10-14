@@ -1,7 +1,7 @@
 import React from 'react';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Chip } from '@omniviewdev/ui';
-import { Tooltip } from '@omniviewdev/ui/overlays';
+import { Chip, Stack } from '@omniviewdev/base-ui';
+import { SimpleTooltip } from '../../../../shared/ui/SimpleTooltip';
+import { chipStyle } from '../../../../shared/ui/colors';
 
 type Tag = { Key?: string; Value?: string };
 
@@ -10,6 +10,8 @@ type Props = {
   max?: number;
 };
 
+const tagChipStyle: React.CSSProperties = { ...chipStyle, maxWidth: 120 };
+
 const TagsCell: React.FC<Props> = ({ tags, max = 3 }) => {
   if (!tags || tags.length === 0) return null;
 
@@ -17,14 +19,14 @@ const TagsCell: React.FC<Props> = ({ tags, max = 3 }) => {
   const remaining = tags.length - max;
 
   return (
-    <Stack direction='row' gap={0.5} flexWrap='nowrap' overflow='hidden'>
+    <Stack direction='row' spacing={1} style={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
       {visible.map((tag, i) => (
-        <Tooltip key={i} title={`${tag.Key}=${tag.Value}`}>
-          <Chip size='sm' variant='filled' color='default' label={tag.Key} sx={{ borderRadius: 1, maxWidth: 120 }} />
-        </Tooltip>
+        <SimpleTooltip key={i} title={`${tag.Key}=${tag.Value}`}>
+          <Chip size='sm' variant='solid' color='neutral' style={tagChipStyle}>{tag.Key}</Chip>
+        </SimpleTooltip>
       ))}
       {remaining > 0 && (
-        <Chip size='sm' variant='outlined' color='default' label={`+${remaining}`} sx={{ borderRadius: 1 }} />
+        <Chip size='sm' variant='outline' color='neutral' style={chipStyle}>{`+${remaining}`}</Chip>
       )}
     </Stack>
   );

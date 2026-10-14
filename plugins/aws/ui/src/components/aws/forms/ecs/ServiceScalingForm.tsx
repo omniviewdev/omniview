@@ -1,5 +1,5 @@
 import React from 'react';
-import { Stack } from '@omniviewdev/ui/layout';
+import { Stack } from '@omniviewdev/base-ui';
 import FormCard, { type FormField } from '../../../shared/forms/FormCard';
 import useFormState from '../../../shared/forms/useFormState';
 
@@ -45,7 +45,7 @@ const ServiceScalingForm: React.FC<Props> = ({ data, onSave, saving }) => {
   ];
 
   return (
-    <Stack spacing={1}>
+    <Stack spacing={2}>
       <FormCard
         title='Service Configuration'
         fields={scalingFields}

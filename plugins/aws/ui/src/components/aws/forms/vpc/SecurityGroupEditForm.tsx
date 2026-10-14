@@ -1,5 +1,5 @@
 import React from 'react';
-import { Stack } from '@omniviewdev/ui/layout';
+import { Stack } from '@omniviewdev/base-ui';
 import FormCard, { type FormField } from '../../../shared/forms/FormCard';
 import TagEditor, { type Tag } from '../../../shared/forms/TagEditor';
 import SecurityGroupRuleForm, { type IpPermission } from './SecurityGroupRuleForm';
@@ -54,7 +54,7 @@ const SecurityGroupEditForm: React.FC<Props> = ({ data, onSave, saving }) => {
   ];
 
   return (
-    <Stack spacing={1}>
+    <Stack spacing={2}>
       <FormCard
         title='Security Group'
         fields={infoFields}

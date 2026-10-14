@@ -1,5 +1,5 @@
 import React from 'react';
-import { Badge } from '@omniviewdev/ui';
+import { Badge } from '@omniviewdev/base-ui';
 
 type Props = {
   isConnected: boolean;
@@ -8,13 +8,11 @@ type Props = {
 
 const ConnectionStatusBadge: React.FC<Props> = ({ isConnected, children }) => (
   <Badge
+    variant='dot'
     color='success'
     invisible={!isConnected}
     size='sm'
-    anchorOrigin={{
-      vertical: 'top',
-      horizontal: 'right',
-    }}
+    position='top-right'
   >
     {children}
   </Badge>

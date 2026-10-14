@@ -1,0 +1,107 @@
+.main {
+  width: 100%;
+  overflow: clip;
+  flex: 1;
+}
+
+.root {
+  background-color: var(--ov-color-bg-base);
+  display: flex;
+  flex-direction: row;
+  flex-grow: 1;
+  overflow: hidden;
+}
+
+.drawer {
+  position: fixed;
+  z-index: 1200;
+  width: 100%;
+  height: 100%;
+}
+
+.drawerBackdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+.drawerPanel {
+  min-width: 256px;
+  width: max-content;
+  height: 100%;
+  padding: 16px;
+  box-shadow: var(--ov-shadow-surface);
+  background-color: var(--ov-color-bg-surface);
+}
+
+/* SideNav: width falls back to the breakpoint defaults when --_nav-width is unset */
+.sideNav {
+  min-height: 100%;
+  max-height: 100%;
+  display: none;
+  min-width: var(--_nav-width, 0px);
+  max-width: var(--_nav-width, 0px);
+}
+
+@media (min-width: 600px) {
+  .sideNav {
+    display: initial;
+    min-width: var(--_nav-width, 220px);
+    max-width: var(--_nav-width, 220px);
+  }
+}
+
+@media (min-width: 900px) {
+  .sideNav {
+    min-width: var(--_nav-width, 260px);
+    max-width: var(--_nav-width, 260px);
+  }
+}
+
+@media (min-width: 1200px) {
+  .sideNav {
+    min-width: var(--_nav-width, 300px);
+    max-width: var(--_nav-width, 300px);
+  }
+}
+
+.sideNav[data-type='bordered'] {
+  background-color: var(--ov-color-bg-surface);
+  border-right: 1px solid var(--ov-color-border-default);
+}
+
+.sideNav[data-type='inset'] {
+  background-color: transparent;
+}
+
+.sideNav[data-type='transparent'] {
+  background-color: transparent;
+  border-right: 1px solid var(--ov-color-border-default);
+}
+
+.sideNav[data-type='bordered-inset'] {
+  background-color: transparent;
+  border: 1px solid var(--ov-color-border-default);
+  border-radius: 8px;
+}
+
+.sideNav[data-scrollable] {
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.sideNav[data-scrollable]::-webkit-scrollbar {
+  display: none;
+}
+
+.sidePane {
+  background-color: var(--ov-color-bg-surface);
+  border-right: 1px solid var(--ov-color-border-default);
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .sidePane {
+    display: initial;
+  }
+}

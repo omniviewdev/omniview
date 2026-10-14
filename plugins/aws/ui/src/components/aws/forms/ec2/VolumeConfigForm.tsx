@@ -1,5 +1,5 @@
 import React from 'react';
-import { Stack } from '@omniviewdev/ui/layout';
+import { Stack } from '@omniviewdev/base-ui';
 import FormCard, { type FormField } from '../../../shared/forms/FormCard';
 import TagEditor, { type Tag } from '../../../shared/forms/TagEditor';
 import useFormState from '../../../shared/forms/useFormState';
@@ -90,7 +90,7 @@ const VolumeConfigForm: React.FC<Props> = ({ data, onSave, saving }) => {
     : [{ key: 'no-attach', label: 'Attachments', type: 'readonly' as const, value: 'Not attached' }];
 
   return (
-    <Stack spacing={1}>
+    <Stack spacing={2}>
       <FormCard
         title='Volume Identity'
         fields={identityFields}
