@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     mockEventsOn: vi.fn(() => vi.fn()),
     mockChannelEmit: vi.fn(),
     mockChannelOn,
+    restoredSessionIds: new Set<string>(),
   };
 });
 
@@ -28,6 +29,7 @@ vi.mock('@omniviewdev/runtime/runtime', () => ({
 }));
 
 vi.mock('@/providers/BottomDrawer/events', () => ({
+  restoredSessionIds: mocks.restoredSessionIds,
   bottomDrawerChannel: {
     emit: (...args: [string, ...any[]]) => mocks.mockChannelEmit(...args),
     on: (event: string, handler: Function) => mocks.mockChannelOn(event, handler),
@@ -89,6 +91,7 @@ describe('BottomDrawerContainer', () => {
     Object.keys(mocks.eventBusHandlers).forEach(k => delete mocks.eventBusHandlers[k]);
     mocks.mockUseBottomDrawer.mockReturnValue(defaultDrawerState);
     localStorage.clear();
+    mocks.restoredSessionIds.clear();
     // Reset window.innerHeight
     Object.defineProperty(window, 'innerHeight', { value: 900, writable: true });
   });
@@ -457,6 +460,7 @@ describe('BottomDrawerContainer', () => {
   it('keeps a saved minimized drawer minimized when tabs are restored after mount', () => {
     localStorage.setItem(drawerModeStorageKey, 'minimized');
     localStorage.setItem(drawerExpandedHeightStorageKey, '300');
+    mocks.restoredSessionIds.add('sess-1');
 
     const { container, rerender } = render(<BottomDrawerContainer />);
     mocks.mockUseBottomDrawer.mockReturnValue({
@@ -467,5 +471,20 @@ describe('BottomDrawerContainer', () => {
 
     const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
     expect(drawer.style.height).toBe('32px');
+  });
+
+  it('expands a tab the user opens before the restore finishes', () => {
+    localStorage.setItem(drawerModeStorageKey, 'minimized');
+
+    const { container, rerender } = render(<BottomDrawerContainer />);
+    // Not a restored session: the user opened it while the restore was running.
+    mocks.mockUseBottomDrawer.mockReturnValue({
+      tabs: [{ id: 'pending-1', title: 'Connecting...', variant: 'terminal', icon: 'LuTerminal' }],
+      focused: 0,
+    });
+    rerender(<BottomDrawerContainer />);
+
+    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    expect(drawer.style.height).toBe('550px');
   });
 });

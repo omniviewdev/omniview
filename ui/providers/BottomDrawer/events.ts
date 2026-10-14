@@ -43,3 +43,10 @@ type BottomDrawerEvents = {
 };
 
 export const bottomDrawerChannel = eventbus<BottomDrawerEvents>();
+
+/**
+ * IDs of terminal sessions that survived a reload and were restored as tabs.
+ * Filled before the tabs are created, so the drawer can tell a restored tab
+ * from one the user opened while the restore was still running.
+ */
+export const restoredSessionIds = new Set<string>();

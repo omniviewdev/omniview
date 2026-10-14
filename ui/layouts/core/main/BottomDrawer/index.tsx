@@ -10,7 +10,7 @@ import DevBuildViewer from '@/providers/BottomDrawer/containers/DevBuildViewer';
 import PluginLogViewer from '@/providers/BottomDrawer/containers/PluginLogViewer';
 import EditorDebugPanel from '@/providers/BottomDrawer/containers/EditorDebugPanel';
 import { useBottomDrawer } from '@omniviewdev/runtime';
-import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
+import { bottomDrawerChannel, restoredSessionIds } from '@/providers/BottomDrawer/events';
 import { Events } from '@omniviewdev/runtime/runtime';
 import handleStyles from '@/components/base/ResizeHandle.module.css';
 import styles from './BottomDrawer.module.css';
@@ -54,6 +54,7 @@ const BottomDrawerContainer: React.FC = () => {
   const startupModeRef = React.useRef<DrawerStartupMode>('minimized');
   const startupResolvedRef = React.useRef(false);
   const prevTabCountRef = React.useRef(0);
+  const mountedRef = React.useRef(false);
   // Terminal sessions that survived a reload are restored as tabs after mount
   // (BottomDrawerTabs lists them asynchronously). Until that has finished, a tab
   // appearing is a restored one, not a new one, and must not auto-expand.
@@ -210,6 +211,9 @@ const BottomDrawerContainer: React.FC = () => {
       return;
     }
 
+    // Tabs already present on the first run were not opened just now.
+    const atMount = !mountedRef.current;
+    mountedRef.current = true;
     const nextTabCount = tabs.length;
     const prevTabCount = prevTabCountRef.current;
     const currentHeight = parseInt(drawerRef.current.style.height, 10);
@@ -223,11 +227,15 @@ const BottomDrawerContainer: React.FC = () => {
       }
 
       startupResolvedRef.current = true;
+      const userOpenedTab = tabs.some((tab) => !restoredSessionIds.has(tab.id));
 
       if (nextTabCount === 0) {
         expandDrawerToHeight(minHeight);
       } else if (startupModeRef.current === 'expanded') {
         expandDrawerToHeight(lastExpandedHeightRef.current);
+      } else if (userOpenedTab && !atMount) {
+        // A tab the user opened before the restore finished: expand as for any new tab.
+        expandDrawerToHeight(defaultHeight);
       } else {
         expandDrawerToHeight(minHeight);
       }
@@ -248,7 +256,7 @@ const BottomDrawerContainer: React.FC = () => {
     }
 
     prevTabCountRef.current = nextTabCount;
-  }, [tabs.length, sessionsRestored, expandDrawerToHeight]);
+  }, [tabs, sessionsRestored, expandDrawerToHeight]);
 
   const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!drawerRef.current || !hasTabs) {

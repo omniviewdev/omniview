@@ -26,7 +26,7 @@ import { useSettings } from '@omniviewdev/runtime';
 import { SessionOptions, CreateSessionOptions, LogSessionOptions } from '@omniviewdev/runtime/models';
 import { ExecClient, LogsClient } from '@omniviewdev/runtime/api';
 
-import { bottomDrawerChannel } from './events';
+import { bottomDrawerChannel, restoredSessionIds } from './events';
 import { devToolsChannel } from '@/features/devtools/events';
 import { pluginLogChannel } from '@/features/pluginlogs/events';
 import { Events } from '@omniviewdev/runtime/runtime';
@@ -328,6 +328,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
         });
 
         if (newTabs.length > 0) {
+          newTabs.forEach(tab => restoredSessionIds.add(tab.id));
           createTabs(newTabs);
         }
       }).catch((err: unknown) => {
