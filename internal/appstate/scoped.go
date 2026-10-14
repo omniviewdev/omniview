@@ -2,6 +2,7 @@
 package appstate
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -38,7 +39,7 @@ func (s *ScopedRoot) Close() error {
 // validate checks that name is a safe relative path.
 func validate(name string) error {
 	if name == "" {
-		return fmt.Errorf("appstate: empty path not allowed")
+		return errors.New("appstate: empty path not allowed")
 	}
 	if filepath.IsAbs(name) {
 		return fmt.Errorf("appstate: absolute path not allowed: %q", name)
