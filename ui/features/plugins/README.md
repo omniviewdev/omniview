@@ -55,7 +55,6 @@ ui/features/plugins/
 │   ├── ExtensionPointRenderer.tsx  # Renders all contributions for an extension point
 │   ├── PluginSurfaceBoundary.tsx   # Error boundary for plugin surfaces
 │   ├── PluginRenderer.tsx          # Route-level plugin layout + error boundary
-│   ├── PluginLoadErrorPage.tsx     # Error page shown when plugin fails to load
 │   └── PluginNotFoundPage.tsx      # 404 page for unknown plugin routes
 │
 ├── testing/                 # Test infrastructure
