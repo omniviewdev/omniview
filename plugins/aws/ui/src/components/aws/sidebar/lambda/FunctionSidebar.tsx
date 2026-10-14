@@ -1,6 +1,5 @@
 import React from "react";
-import { Stack } from "@omniviewdev/ui/layout";
-import { Text } from "@omniviewdev/ui/typography";
+import { Stack, Text } from '@omniviewdev/base-ui';
 import MetadataSection from "../../../shared/sidebar/pages/overview/sections/MetadataSection";
 import DetailsCard from "../../../shared/DetailsCard";
 import ExpandableSection from "../../../shared/ExpandableSection";
@@ -42,7 +41,7 @@ const FunctionSidebar: React.FC<Props> = ({ ctx }) => {
     : [];
 
   return (
-    <Stack direction="column" width="100%" spacing={1}>
+    <Stack direction="column" spacing={2} style={{ width: "100%" }}>
       <MetadataSection data={data} />
 
       <StatusSection value={data?.State} />
@@ -126,9 +125,9 @@ const FunctionSidebar: React.FC<Props> = ({ ctx }) => {
                   count: envKeys.length,
                   defaultExpanded: false,
                   content: (
-                    <Stack spacing={0.5}>
+                    <Stack spacing={1}>
                       {envKeys.map((key) => (
-                        <Text key={key} size="xs" sx={{ fontFamily: "monospace" }}>
+                        <Text key={key} size="xs" style={{ fontFamily: "monospace" }}>
                           {key}
                         </Text>
                       ))}
@@ -144,13 +143,13 @@ const FunctionSidebar: React.FC<Props> = ({ ctx }) => {
                   count: layers.length,
                   defaultExpanded: false,
                   content: (
-                    <Stack spacing={0.5}>
+                    <Stack spacing={1}>
                       {layers.map(
                         (layer: { Arn?: string }, i: number) => (
                           <Text
                             key={i}
                             size="xs"
-                            sx={{ fontFamily: "monospace", wordBreak: "break-all" }}
+                            style={{ fontFamily: "monospace", wordBreak: "break-all" }}
                           >
                             {layer?.Arn || `Layer ${i + 1}`}
                           </Text>
@@ -168,7 +167,7 @@ const FunctionSidebar: React.FC<Props> = ({ ctx }) => {
                   count: fileSystemConfigs.length,
                   defaultExpanded: false,
                   content: (
-                    <Stack spacing={0.5}>
+                    <Stack spacing={1}>
                       {fileSystemConfigs.map(
                         (
                           config: {
@@ -177,15 +176,15 @@ const FunctionSidebar: React.FC<Props> = ({ ctx }) => {
                           },
                           i: number
                         ) => (
-                          <Stack key={i} spacing={0.25}>
+                          <Stack key={i} spacing={0} style={{ gap: 2 }}>
                             <Text
                               size="xs"
-                              sx={{ fontFamily: "monospace", wordBreak: "break-all" }}
+                              style={{ fontFamily: "monospace", wordBreak: "break-all" }}
                             >
                               {config?.Arn || `EFS ${i + 1}`}
                             </Text>
                             {config?.LocalMountPath && (
-                              <Text size="xs" color="neutral">
+                              <Text size="xs" tone='muted'>
                                 Mount: {config.LocalMountPath}
                               </Text>
                             )}

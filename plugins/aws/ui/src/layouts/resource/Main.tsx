@@ -1,12 +1,10 @@
 import React from 'react';
-import Box, { type BoxProps } from '@mui/material/Box';
+import styles from './Layout.module.css';
 
-const Main: React.FC<BoxProps> = props => (
-  <Box
-    component='main'
-    className='Main'
+const Main: React.FC<React.HTMLAttributes<HTMLElement>> = ({ className, ...props }) => (
+  <main
     {...props}
-    sx={[{ width: '100%', overflow: 'clip', flex: 1 }, ...(Array.isArray(props.sx) ? props.sx : [props.sx])]}
+    className={['Main', styles.main, className].filter(Boolean).join(' ')}
   />
 );
 

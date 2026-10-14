@@ -4,6 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { type Props as ResourceTableProps } from './ResourceTable'
 import React from 'react'
 import ResourceTableRow from './ResourceTableRowContainer'
+import styles from './ResourceTable.module.css'
 
 type Props = Omit<ResourceTableProps, 'columns' | 'idAccessor'> & {
   table: Table<any>
@@ -48,11 +49,8 @@ const ResourceTableBody: React.FC<Props> = ({ table, tableContainerRef, drawer, 
 
   return (
     <tbody
-      style={{
-        display: 'grid',
-        height: `${virtualizer.getTotalSize()}px`,
-        position: 'relative',
-      }}
+      className={styles.body}
+      style={{ height: `${virtualizer.getTotalSize()}px` }}
     >
       {virtualizer.getVirtualItems().map(virtualRow => {
         const row = rows[virtualRow.index];

@@ -1,0 +1,86 @@
+/* Resource tables: DataTable.Root/Container/Header from base-ui plus a local
+ * virtualized body. The --_ov-dt-* custom properties are inherited from DataTable.Root. */
+
+.outer {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 6px;
+  min-height: 0;
+}
+
+.root {
+  flex: 1;
+  min-height: 0;
+  border-radius: 4px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--ov-color-border-default);
+  background-color: var(--ov-color-bg-surface);
+  flex-shrink: 0;
+}
+
+.container {
+  flex: 1;
+  min-height: 0;
+  overflow: scroll;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.container::-webkit-scrollbar {
+  display: none;
+}
+
+.container > table {
+  min-width: var(--_aws-table-min-width, 0px);
+}
+
+.body {
+  display: grid;
+  position: relative;
+}
+
+.row {
+  display: flex;
+  position: absolute;
+  width: 100%;
+  height: 30px;
+  cursor: pointer;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0 8px;
+  font-size: 0.75rem;
+  line-height: 30px;
+  color: var(--ov-color-fg-default);
+  background: var(--_ov-dt-bg);
+  border-bottom: 1px solid var(--_ov-dt-divider);
+  box-sizing: border-box;
+}
+
+.cell[data-pinned] {
+  background: var(--_ov-dt-pinned-bg);
+}
+
+.row:hover > .cell {
+  background: var(--_ov-dt-row-hover);
+}
+
+.row[data-state='selected'] > .cell {
+  background: var(--_ov-dt-row-selected);
+}

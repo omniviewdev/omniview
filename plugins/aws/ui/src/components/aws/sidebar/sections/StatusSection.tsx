@@ -1,5 +1,6 @@
 import React from "react";
-import { Chip } from "@omniviewdev/ui";
+import { Chip } from '@omniviewdev/base-ui';
+import { chipStyle, toColor } from "../../../shared/ui/colors";
 
 interface Props {
   value: string | undefined;
@@ -41,13 +42,9 @@ const StatusSection: React.FC<Props> = ({ value }) => {
   if (!value) return null;
 
   return (
-    <Chip
-      size="sm"
-      variant="filled"
-      color={getStatusColor(value)}
-      label={value}
-      sx={{ borderRadius: 1 }}
-    />
+    <Chip size="sm" variant="solid" color={toColor(getStatusColor(value))} style={chipStyle}>
+      {value}
+    </Chip>
   );
 };
 

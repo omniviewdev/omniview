@@ -1,0 +1,18 @@
+.remove {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+
+.remove:hover {
+  opacity: 1;
+}
+
+.remove:focus-visible {
+  outline: 2px solid var(--ov-color-brand-500);
+  outline-offset: 1px;
+}

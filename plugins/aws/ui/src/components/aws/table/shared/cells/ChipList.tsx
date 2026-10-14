@@ -1,6 +1,6 @@
 import React from 'react';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Chip } from '@omniviewdev/ui';
+import { Chip, Stack } from '@omniviewdev/base-ui';
+import { chipStyle, toColor } from '../../../../shared/ui/colors';
 
 type Props = {
   values: string[] | undefined;
@@ -14,15 +14,13 @@ const ChipList: React.FC<Props> = ({ values, max = 3, color = 'neutral' }) => {
   const visible = values.slice(0, max);
   const remaining = values.length - max;
 
-  const chipColor = color === 'neutral' ? 'default' : color === 'danger' ? 'error' : color;
-
   return (
-    <Stack direction='row' gap={0.5} flexWrap='nowrap' overflow='hidden'>
+    <Stack direction='row' spacing={1} style={{ flexWrap: 'nowrap', overflow: 'hidden' }}>
       {visible.map((val, i) => (
-        <Chip key={i} size='sm' variant='filled' color={chipColor} label={val} sx={{ borderRadius: 1 }} />
+        <Chip key={i} size='sm' variant='solid' color={toColor(color)} style={chipStyle}>{val}</Chip>
       ))}
       {remaining > 0 && (
-        <Chip size='sm' variant='outlined' color='default' label={`+${remaining}`} sx={{ borderRadius: 1 }} />
+        <Chip size='sm' variant='outline' color='neutral' style={chipStyle}>{`+${remaining}`}</Chip>
       )}
     </Stack>
   );

@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { Button } from '@omniviewdev/ui/buttons';
-import { TextField } from '@omniviewdev/ui/inputs';
-import { Card, Chip } from '@omniviewdev/ui';
+import { Button, Stack, Text } from '@omniviewdev/base-ui';
+import SectionCard from '../ui/SectionCard';
+import TextInput from '../ui/TextInput';
+import RemovableChip from '../ui/RemovableChip';
+import { toColor } from '../ui/colors';
 import { LuPlus } from 'react-icons/lu';
 
 type Props = {
@@ -69,100 +67,85 @@ const ArrayChipEditor: React.FC<Props> = ({
     }
   };
 
-  const muiChipColor = chipColor === 'neutral' ? 'default' : chipColor === 'danger' ? 'error' : chipColor;
 
   return (
-    <Card
-      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 1, gap: '0px' }}
-      variant='outlined'
+    <SectionCard
+      title={
+        <Stack direction='row' spacing={2} align='center'>
+          <Text weight="semibold" size="sm">{title}</Text>
+          <Text size="xs" tone="muted">({items.length})</Text>
+        </Stack>
+      }
+      actions={(onSave || onReset) ? (
+        <>
+          {onReset && (
+            <Button size='sm' variant='ghost' color='neutral' disabled={!dirty || saving} onClick={onReset}>
+              Reset
+            </Button>
+          )}
+          {onSave && (
+            <Button size='sm' variant='soft' color='brand' disabled={!dirty || saving} onClick={onSave}>
+              {saving ? 'Saving...' : 'Save'}
+            </Button>
+          )}
+        </>
+      ) : undefined}
+      bodyPadding={12}
     >
-      <Box sx={{ py: 1, px: 1.25 }}>
-        <Stack direction='row' spacing={1} alignItems='center' justifyContent='space-between'>
-          <Stack direction='row' spacing={1} alignItems='center'>
-            <Text weight="semibold" size="sm">{title}</Text>
-            <Text size="xs" color="neutral">({items.length})</Text>
-          </Stack>
-          {(onSave || onReset) && (
-            <Stack direction='row' spacing={0.5}>
-              {onReset && (
-                <Button size='sm' emphasis='ghost' color='neutral' disabled={!dirty || saving} onClick={onReset}>
-                  Reset
-                </Button>
-              )}
-              {onSave && (
-                <Button size='sm' emphasis='soft' color='primary' disabled={!dirty || saving} onClick={onSave}>
-                  {saving ? 'Saving...' : 'Save'}
-                </Button>
-              )}
-            </Stack>
+      <Stack spacing={2}>
+        {/* Chips */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {items.map((item, i) => (
+            <RemovableChip
+              key={i}
+              color={toColor(chipColor)}
+              variant='solid'
+              mono
+              style={{ fontSize: 11 }}
+              onRemove={!readOnly ? () => handleRemove(i) : undefined}
+            >
+              {item}
+            </RemovableChip>
+          ))}
+          {items.length === 0 && (
+            <Text size="xs" tone="muted">None</Text>
           )}
-        </Stack>
-      </Box>
-      <Divider />
-      <Box
-        sx={{
-          p: 1.5,
-          backgroundColor: 'background.paper',
-          borderBottomRightRadius: 6,
-          borderBottomLeftRadius: 6,
-        }}
-      >
-        <Stack spacing={1}>
-          {/* Chips */}
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-            {items.map((item, i) => (
-              <Chip
-                key={i}
-                size='sm'
-                label={item}
-                color={muiChipColor}
-                variant='filled'
-                sx={{ borderRadius: 1, fontFamily: 'monospace', fontSize: 11 }}
-                onDelete={
-                  !readOnly ? () => handleRemove(i) : undefined
-                }
-              />
-            ))}
-            {items.length === 0 && (
-              <Text size="xs" color="neutral">None</Text>
-            )}
-          </Box>
+        </div>
 
-          {/* Add input */}
-          {!readOnly && (
-            <Stack spacing={0.5}>
-              <Stack direction='row' spacing={0.5}>
-                <TextField
-                  size='sm'
-                  placeholder={placeholder}
-                  value={input}
-                  onChange={(value) => {
-                    setInput(value);
-                    setError(undefined);
-                  }}
-                  onKeyDown={handleKeyDown}
-                  error={!!error}
-                  sx={{ flex: 1, fontSize: 12 }}
-                />
-                <Button
-                  size='sm'
-                  emphasis='soft'
-                  color='primary'
-                  disabled={!input.trim()}
-                  onClick={handleAdd}
-                  startAdornment={<LuPlus size={14} />}
-                >
-                  Add
-                </Button>
-              </Stack>
-              {error && (
-                <Text size="xs" color="error">{error}</Text>
-              )}
+        {/* Add input */}
+        {!readOnly && (
+          <Stack spacing={1}>
+            <Stack direction='row' spacing={1}>
+              <TextInput
+                size='sm'
+                placeholder={placeholder}
+                value={input}
+                onChange={(value) => {
+                  setInput(value);
+                  setError(undefined);
+                }}
+                onKeyDown={handleKeyDown}
+                error={!!error}
+                style={{ flex: 1 }}
+              />
+              <Button
+                size='sm'
+                variant='soft'
+                color='brand'
+                disabled={!input.trim()}
+                onClick={handleAdd}
+                startDecorator={<LuPlus size={14} />}
+              >
+                Add
+              </Button>
             </Stack>
-          )}
-        </Stack>
-      </Box>
-    </Card>
+            {error && (
+              <Text size="xs" tone="danger">{error}</Text>
+            )}
+          </Stack>
+        )}
+      </Stack>
+    </SectionCard>
   );
 };
 

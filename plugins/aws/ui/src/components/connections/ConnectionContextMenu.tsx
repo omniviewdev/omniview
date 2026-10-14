@@ -1,18 +1,14 @@
 import React from 'react';
-import Divider from '@mui/material/Divider';
-import ListItemIcon from '@mui/material/ListItemIcon';
-import Menu from '@mui/material/Menu';
-import MenuItem from '@mui/material/MenuItem';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { MoreVert } from '@mui/icons-material';
+import { IconButton, Menu } from '@omniviewdev/base-ui';
 import {
+  LuEllipsisVertical,
   LuPencil,
   LuStar,
   LuPlug,
   LuUnplug,
   LuCopy,
 } from 'react-icons/lu';
-import { Link } from '@omniviewdev/runtime';
+import { usePluginRouter } from '@omniviewdev/runtime';
 
 const ICON_SIZE = 12;
 
@@ -27,6 +23,8 @@ type Props = {
   onCopyId: () => void;
 };
 
+const popupStyle: React.CSSProperties = { fontSize: '0.75rem', minWidth: 160 };
+
 const ConnectionContextMenu: React.FC<Props> = ({
   connectionId,
   connectionName: _connectionName,
@@ -37,76 +35,58 @@ const ConnectionContextMenu: React.FC<Props> = ({
   onToggleFavorite,
   onCopyId,
 }) => {
-  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
-  const open = Boolean(anchorEl);
-
-  const handleMenuClick = (e: React.MouseEvent<HTMLElement>) => {
-    e.stopPropagation();
-    setAnchorEl(e.currentTarget);
-  };
-
-  const handleClose = () => {
-    setAnchorEl(null);
-  };
+  const { navigate } = usePluginRouter();
 
   return (
-    <>
-      <IconButton
-        aria-label='More'
-        size='sm'
-        emphasis='ghost'
-        color='neutral'
-        onClick={handleMenuClick}
-      >
-        <MoreVert sx={{ fontSize: 18 }} />
-      </IconButton>
-      <Menu
-        anchorEl={anchorEl}
-        open={open}
-        onClose={handleClose}
-        slotProps={{
-          paper: {
-            sx: {
-              fontSize: '0.75rem',
-              minWidth: 160,
-            },
-          },
-        }}
-      >
-        {isConnected ? (
-          <MenuItem onClick={() => { onDisconnect(); handleClose(); }} sx={{ fontSize: '0.75rem' }}>
-            <ListItemIcon><LuUnplug size={ICON_SIZE} /></ListItemIcon>
-            Disconnect
-          </MenuItem>
-        ) : (
-          <MenuItem onClick={() => { onConnect(); handleClose(); }} sx={{ fontSize: '0.75rem' }}>
-            <ListItemIcon><LuPlug size={ICON_SIZE} /></ListItemIcon>
-            Connect
-          </MenuItem>
-        )}
+    <Menu.Root size='sm'>
+      <Menu.Trigger
+        render={
+          <IconButton
+            aria-label='More'
+            size='sm'
+            variant='ghost'
+            color='neutral'
+            onClick={(e) => e.stopPropagation()}
+          >
+            <LuEllipsisVertical size={18} />
+          </IconButton>
+        }
+      />
+      <Menu.Portal>
+        <Menu.Positioner align='start' sideOffset={4}>
+          <Menu.Popup style={popupStyle}>
+            {isConnected ? (
+              <Menu.Item startDecorator={<LuUnplug size={ICON_SIZE} />} onClick={onDisconnect}>
+                Disconnect
+              </Menu.Item>
+            ) : (
+              <Menu.Item startDecorator={<LuPlug size={ICON_SIZE} />} onClick={onConnect}>
+                Connect
+              </Menu.Item>
+            )}
 
-        <Divider />
+            <Menu.Separator />
 
-        <Link to={`/account/${encodeURIComponent(connectionId)}/edit`} style={{ textDecoration: 'none', color: 'inherit' }}>
-          <MenuItem onClick={handleClose} sx={{ fontSize: '0.75rem' }}>
-            <ListItemIcon><LuPencil size={ICON_SIZE} /></ListItemIcon>
-            Edit
-          </MenuItem>
-        </Link>
+            <Menu.Item
+              startDecorator={<LuPencil size={ICON_SIZE} />}
+              onClick={() => navigate(`/account/${encodeURIComponent(connectionId)}/edit`)}
+            >
+              Edit
+            </Menu.Item>
 
-        <MenuItem onClick={() => { onToggleFavorite(); handleClose(); }} sx={{ fontSize: '0.75rem' }}>
-          <ListItemIcon><LuStar size={ICON_SIZE} /></ListItemIcon>
-          {isFavorite ? 'Unfavorite' : 'Favorite'}
-        </MenuItem>
+            <Menu.Item startDecorator={<LuStar size={ICON_SIZE} />} onClick={onToggleFavorite}>
+              {isFavorite ? 'Unfavorite' : 'Favorite'}
+            </Menu.Item>
 
-        <Divider />
+            <Menu.Separator />
 
-        <MenuItem onClick={() => { onCopyId(); handleClose(); }} sx={{ fontSize: '0.75rem' }}>
-          <ListItemIcon><LuCopy size={ICON_SIZE} /></ListItemIcon>
-          Copy Connection ID
-        </MenuItem>
-      </Menu>
-    </>
+            <Menu.Item startDecorator={<LuCopy size={ICON_SIZE} />} onClick={onCopyId}>
+              Copy Connection ID
+            </Menu.Item>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
 };
 

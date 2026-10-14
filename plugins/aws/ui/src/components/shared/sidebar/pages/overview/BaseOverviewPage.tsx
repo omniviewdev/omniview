@@ -1,5 +1,5 @@
 import React from "react";
-import { Stack } from "@omniviewdev/ui/layout";
+import { Stack } from '@omniviewdev/base-ui';
 import MetadataSection from "./sections/MetadataSection";
 
 interface Props {
@@ -12,7 +12,7 @@ export const BaseOverviewPage: React.FC<Props> = ({ data, children }) => {
     return <React.Fragment />;
   }
   return (
-    <Stack direction="column" width={"100%"} spacing={1}>
+    <Stack direction="column" spacing={2} style={{ width: "100%" }}>
       <MetadataSection data={data} />
       {children}
     </Stack>

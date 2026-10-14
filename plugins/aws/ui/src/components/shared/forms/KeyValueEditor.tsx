@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { Button, IconButton } from '@omniviewdev/ui/buttons';
-import { TextField } from '@omniviewdev/ui/inputs';
-import { Card } from '@omniviewdev/ui';
+import { Button, IconButton, Separator, Stack, Text } from '@omniviewdev/base-ui';
+import SectionCard from '../ui/SectionCard';
+import TextInput from '../ui/TextInput';
+import styles from './EditorRows.module.css';
 import { LuPlus, LuTrash2 } from 'react-icons/lu';
+
+const flex1: React.CSSProperties = { flex: 1 };
+const boldFlex: React.CSSProperties = { fontWeight: 700, flex: 1 };
+const boldValue: React.CSSProperties = { fontWeight: 600, flex: 1 };
 
 type Props = {
   title: string;
@@ -80,134 +81,115 @@ const KeyValueEditor: React.FC<Props> = ({
   };
 
   return (
-    <Card
-      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 1, gap: '0px' }}
-      variant='outlined'
-    >
-      <Box sx={{ py: 1, px: 1.25 }}>
-        <Stack direction='row' spacing={1} alignItems='center' justifyContent='space-between'>
-          <Stack direction='row' spacing={1} alignItems='center'>
-            <Text weight="semibold" size="sm">{title}</Text>
-            <Text size="xs" color="neutral">({pairs.length})</Text>
-          </Stack>
-          {(onSave || onReset) && (
-            <Stack direction='row' spacing={0.5}>
-              {onReset && (
-                <Button size='sm' emphasis='ghost' color='neutral' disabled={!dirty || saving} onClick={onReset}>
-                  Reset
-                </Button>
-              )}
-              {onSave && (
-                <Button size='sm' emphasis='soft' color='primary' disabled={!dirty || saving} onClick={onSave}>
-                  {saving ? 'Saving...' : 'Save'}
-                </Button>
-              )}
-            </Stack>
+    <SectionCard
+      title={
+        <Stack direction='row' spacing={2} align='center'>
+          <Text weight="semibold" size="sm">{title}</Text>
+          <Text size="xs" tone="muted">({pairs.length})</Text>
+        </Stack>
+      }
+      actions={(onSave || onReset) ? (
+        <>
+          {onReset && (
+            <Button size='sm' variant='ghost' color='neutral' disabled={!dirty || saving} onClick={onReset}>
+              Reset
+            </Button>
           )}
-        </Stack>
-      </Box>
-      <Divider />
-      <Box
-        sx={{
-          p: 0,
-          backgroundColor: 'background.paper',
-          borderBottomRightRadius: 6,
-          borderBottomLeftRadius: 6,
-        }}
-      >
+          {onSave && (
+            <Button size='sm' variant='soft' color='brand' disabled={!dirty || saving} onClick={onSave}>
+              {saving ? 'Saving...' : 'Save'}
+            </Button>
+          )}
+        </>
+      ) : undefined}
+      bodyPadding={0}
+    >
         {/* Header */}
-        <Stack direction='row' spacing={1} sx={{ px: 1.5, py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Text size="xs" sx={{ fontWeight: 700, flex: 1 }}>{keyLabel}</Text>
-          <Text size="xs" sx={{ fontWeight: 700, flex: 1 }}>{valueLabel}</Text>
-          {!readOnly && <Box sx={{ width: 32 }} />}
-        </Stack>
+        <div className={styles.headerRow}>
+          <Text size="xs" style={boldFlex}>{keyLabel}</Text>
+          <Text size="xs" style={boldFlex}>{valueLabel}</Text>
+          {!readOnly && <div style={{ width: 32 }} />}
+        </div>
 
         {/* Rows */}
-        {pairs.map(([key, value], i) => (
-          <Stack
+        {pairs.map(([key, value]) => (
+          <div
             key={key}
-            direction='row'
-            spacing={1}
-            alignItems='center'
-            sx={{
-              px: 1.5,
-              py: 0.25,
-              '&:hover': { bgcolor: 'action.hover' },
-              borderBottom: i < pairs.length - 1 ? '1px solid' : undefined,
-              borderColor: 'divider',
-            }}
+            className={styles.row}
           >
             {readOnly || fixedKeys ? (
-              <Text size="xs" sx={{ flex: 1, fontFamily: 'monospace' }}>{key}</Text>
+              <Text size="xs" mono style={flex1}>{key}</Text>
             ) : (
-              <TextField
+              <TextInput
                 size='sm'
-                variant='standard'
+                variant='ghost'
+                mono
                 value={key}
                 onChange={(value) => handleKeyRename(key, value)}
-                sx={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}
+                style={flex1}
               />
             )}
             {readOnly ? (
-              <Text size="xs" sx={{ fontWeight: 600, flex: 1, fontFamily: 'monospace' }}>{value}</Text>
+              <Text size="xs" mono style={boldValue}>{value}</Text>
             ) : (
-              <TextField
+              <TextInput
                 size='sm'
-                variant='standard'
+                variant='ghost'
+                mono
                 value={value}
                 onChange={(value) => handleValueChange(key, value)}
-                sx={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}
+                style={flex1}
               />
             )}
             {!readOnly && (
-              <IconButton size='sm' emphasis='ghost' color='error' onClick={() => handleRemove(key)}>
+              <IconButton size='sm' variant='ghost' color='danger' aria-label='Remove' onClick={() => handleRemove(key)}>
                 <LuTrash2 size={14} />
               </IconButton>
             )}
-          </Stack>
+          </div>
         ))}
 
         {pairs.length === 0 && (
-          <Box sx={{ px: 1.5, py: 1.5 }}>
-            <Text size="xs" color="neutral" sx={{ textAlign: 'center' }}>No entries</Text>
-          </Box>
+          <div className={styles.empty}>
+            <Text size="xs" tone="muted">No entries</Text>
+          </div>
         )}
 
         {/* Add row */}
         {!readOnly && (
           <>
-            <Divider />
-            <Stack direction='row' spacing={1} alignItems='center' sx={{ px: 1.5, py: 0.5 }}>
-              <TextField
+            <Separator />
+            <div className={styles.addRow}>
+              <TextInput
                 size='sm'
                 placeholder={keyPlaceholder}
                 value={newKey}
                 onChange={(value) => setNewKey(value)}
                 onKeyDown={handleKeyDown}
-                sx={{ flex: 1, fontSize: 12 }}
+                style={flex1}
               />
-              <TextField
+              <TextInput
                 size='sm'
                 placeholder={valuePlaceholder}
                 value={newValue}
                 onChange={(value) => setNewValue(value)}
                 onKeyDown={handleKeyDown}
-                sx={{ flex: 1, fontSize: 12 }}
+                style={flex1}
               />
               <IconButton
                 size='sm'
-                emphasis='soft'
-                color='primary'
+                variant='soft'
+                color='brand'
+                aria-label='Add'
                 disabled={!newKey.trim()}
                 onClick={handleAdd}
               >
                 <LuPlus size={14} />
               </IconButton>
-            </Stack>
+            </div>
           </>
         )}
-      </Box>
-    </Card>
+    </SectionCard>
   );
 };
 

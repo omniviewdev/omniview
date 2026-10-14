@@ -1,9 +1,6 @@
 import React from 'react';
+import { Spinner, Stack, Text } from '@omniviewdev/base-ui';
 import { useParams } from 'react-router-dom';
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
 import { LuGlobe } from 'react-icons/lu';
 import { useResources } from '@omniviewdev/runtime';
 import get from 'lodash.get';
@@ -33,17 +30,17 @@ const Route53ZoneDetailPage: React.FC = () => {
 
   if (resources.isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <CircularProgress size={32} />
-      </Box>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+        <Spinner size='lg' />
+      </div>
     );
   }
 
   if (!zone) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
         <Text>Hosted Zone not found: {resourceId}</Text>
-      </Box>
+      </div>
     );
   }
 
@@ -76,8 +73,8 @@ const Route53ZoneDetailPage: React.FC = () => {
         {
           label: 'Overview',
           content: (
-            <Box sx={{ p: 1.5, overflow: 'auto' }}>
-              <Stack spacing={1}>
+            <div style={{ padding: 12, overflow: 'auto' }}>
+              <Stack spacing={2}>
                 <MetadataSection data={zone} />
                 <DetailsCard
                   title='Zone Info'
@@ -100,7 +97,7 @@ const Route53ZoneDetailPage: React.FC = () => {
                 )}
                 <TagsSection data={zone} />
               </Stack>
-            </Box>
+            </div>
           ),
         },
         {

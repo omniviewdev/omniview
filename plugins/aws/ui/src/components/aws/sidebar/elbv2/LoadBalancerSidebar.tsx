@@ -1,5 +1,5 @@
 import React from "react";
-import { Stack } from "@omniviewdev/ui/layout";
+import { Stack } from '@omniviewdev/base-ui';
 import MetadataSection from "../../../shared/sidebar/pages/overview/sections/MetadataSection";
 import DetailsCard from "../../../shared/DetailsCard";
 import ExpandableSection from "../../../shared/ExpandableSection";
@@ -49,7 +49,7 @@ const LoadBalancerSidebar: React.FC<Props> = ({ ctx }) => {
     );
 
   return (
-    <Stack direction="column" width="100%" spacing={1}>
+    <Stack direction="column" spacing={2} style={{ width: "100%" }}>
       <MetadataSection data={data} />
 
       <DetailsCard
@@ -88,7 +88,7 @@ const LoadBalancerSidebar: React.FC<Props> = ({ ctx }) => {
               count: availabilityZones.length,
               defaultExpanded: false,
               content: (
-                <Stack spacing={1}>
+                <Stack spacing={2}>
                   {availabilityZones.map(
                     (
                       az: {

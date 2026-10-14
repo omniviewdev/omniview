@@ -1,0 +1,10 @@
+.card {
+  cursor: pointer;
+  min-width: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.card:hover {
+  border-color: var(--ov-color-brand-500);
+  box-shadow: var(--ov-shadow-surface);
+}

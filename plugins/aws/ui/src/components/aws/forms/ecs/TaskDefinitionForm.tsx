@@ -1,9 +1,6 @@
 import React from 'react';
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { Card } from '@omniviewdev/ui';
+import { Stack, Text } from '@omniviewdev/base-ui';
+import SectionCard from '../../../shared/ui/SectionCard';
 import FormCard, { type FormField } from '../../../shared/forms/FormCard';
 import KeyValueEditor from '../../../shared/forms/KeyValueEditor';
 import ArrayChipEditor from '../../../shared/forms/ArrayChipEditor';
@@ -56,21 +53,18 @@ const ContainerCard: React.FC<{ container: Record<string, any>; index: number }>
   const logConfig = container.LogConfiguration;
 
   return (
-    <Card
-      sx={{ '--Card-padding': '0px', '--Card-gap': '0px', borderRadius: 1, gap: '0px' }}
-      variant='outlined'
-    >
-      <Box sx={{ py: 1, px: 1.25 }}>
-        <Stack direction='row' spacing={1} alignItems='center'>
+    <SectionCard
+      header={
+        <Stack direction='row' spacing={2} align='center'>
           <Text weight="semibold" size="sm">Container #{index + 1}: {container.Name}</Text>
           {container.Essential && (
-            <Text size="xs" color="primary" sx={{ fontWeight: 700 }}>Essential</Text>
+            <Text size="xs" tone='brand' style={{ fontWeight: 700 }}>Essential</Text>
           )}
         </Stack>
-      </Box>
-      <Divider />
-      <Box sx={{ p: 0, backgroundColor: 'background.paper', borderBottomRightRadius: 6, borderBottomLeftRadius: 6 }}>
-        <Stack spacing={1} sx={{ p: 1.5 }}>
+      }
+      bodyPadding={0}
+    >
+        <Stack spacing={2} style={{ padding: 12 }}>
           <FormCard
             title='Configuration'
             fields={fields}
@@ -122,8 +116,7 @@ const ContainerCard: React.FC<{ container: Record<string, any>; index: number }>
             />
           )}
         </Stack>
-      </Box>
-    </Card>
+    </SectionCard>
   );
 };
 
@@ -179,7 +172,7 @@ const TaskDefinitionForm: React.FC<Props> = ({ data, onSave, saving }) => {
   const containers = data.ContainerDefinitions || [];
 
   return (
-    <Stack spacing={1}>
+    <Stack spacing={2}>
       <FormCard
         title='Task Definition'
         fields={infoFields}

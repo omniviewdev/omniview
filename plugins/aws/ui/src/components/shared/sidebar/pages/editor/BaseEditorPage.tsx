@@ -1,6 +1,6 @@
 import React from "react";
 import CodeEditor from "../../../../shared/CodeEditor";
-import { Stack } from "@omniviewdev/ui/layout";
+import { Stack } from "@omniviewdev/base-ui";
 import { stringify } from 'yaml'
 
 interface Props {
@@ -16,7 +16,7 @@ export const BaseEditorPage: React.FC<Props> = ({ data }) => {
   }
 
   return (
-    <Stack flex={1} gap={1} direction={'column'}>
+    <Stack spacing={2} direction={'column'} style={{ flex: 1 }}>
       <CodeEditor
         value={value}
         language="yaml"

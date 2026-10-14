@@ -1,10 +1,6 @@
 import React from 'react';
+import { Chip, Spinner, Stack, Text } from '@omniviewdev/base-ui';
 import { useParams } from 'react-router-dom';
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { Chip } from '@omniviewdev/ui';
 import { LuCode, LuContainer, LuPencil, LuSquareChartGantt } from 'react-icons/lu';
 import { useResources, DrawerComponent } from '@omniviewdev/runtime';
 import get from 'lodash.get';
@@ -40,17 +36,17 @@ const EKSClusterDetailPage: React.FC = () => {
 
   if (resources.isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-        <CircularProgress size={32} />
-      </Box>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+        <Spinner size='lg' />
+      </div>
     );
   }
 
   if (!cluster) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
         <Text>Cluster not found: {resourceId}</Text>
-      </Box>
+      </div>
     );
   }
 
@@ -110,8 +106,8 @@ const EKSClusterDetailPage: React.FC = () => {
         {
           label: 'Overview',
           content: (
-            <Box sx={{ p: 1.5, overflow: 'auto' }}>
-              <Stack spacing={1}>
+            <div style={{ padding: 12, overflow: 'auto' }}>
+              <Stack spacing={2}>
                 <MetadataSection data={cluster} />
                 <DetailsCard
                   title='Cluster Info'
@@ -157,13 +153,13 @@ const EKSClusterDetailPage: React.FC = () => {
                       title: 'Logging',
                       defaultExpanded: false,
                       content: (
-                        <Stack spacing={0.5}>
+                        <Stack spacing={1}>
                           {clusterLogging.map((entry: { Types?: string[]; Enabled?: boolean }, i: number) => (
-                            <Stack key={i} direction='row' spacing={1} alignItems='center'>
-                              <Text size="xs" sx={{ fontFamily: 'monospace' }}>
+                            <Stack key={i} direction='row' spacing={2} align='center'>
+                              <Text size="xs" style={{ fontFamily: 'monospace' }}>
                                 {Array.isArray(entry.Types) ? entry.Types.join(', ') : 'Unknown'}
                               </Text>
-                              <Chip size='sm' label={entry.Enabled ? 'Enabled' : 'Disabled'} color={entry.Enabled ? 'success' : 'default'} variant='filled' sx={{ borderRadius: 'sm' }} />
+                              <Chip size='sm' color={entry.Enabled ? 'success' : 'neutral'} variant='solid' style={{ borderRadius: 4 }}>{entry.Enabled ? 'Enabled' : 'Disabled'}</Chip>
                             </Stack>
                           ))}
                         </Stack>
@@ -173,7 +169,7 @@ const EKSClusterDetailPage: React.FC = () => {
                 )}
                 <TagsSection data={cluster} />
               </Stack>
-            </Box>
+            </div>
           ),
         },
         {

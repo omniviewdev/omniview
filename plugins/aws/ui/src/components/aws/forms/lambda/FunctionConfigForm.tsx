@@ -1,5 +1,5 @@
 import React from 'react';
-import { Stack } from '@omniviewdev/ui/layout';
+import { Stack } from '@omniviewdev/base-ui';
 import FormCard, { type FormField } from '../../../shared/forms/FormCard';
 import KeyValueEditor from '../../../shared/forms/KeyValueEditor';
 import ArrayChipEditor from '../../../shared/forms/ArrayChipEditor';
@@ -90,7 +90,7 @@ const FunctionConfigForm: React.FC<Props> = ({ data, onSave, saving }) => {
   ];
 
   return (
-    <Stack spacing={1}>
+    <Stack spacing={2}>
       <FormCard
         title='General Configuration'
         fields={generalFields}

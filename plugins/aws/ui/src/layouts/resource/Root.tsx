@@ -1,19 +1,10 @@
 import React from 'react';
-import Box, { type BoxProps } from '@mui/material/Box';
+import styles from './Layout.module.css';
 
-const Root: React.FC<BoxProps> = (props: BoxProps) => (
-  <Box
+const Root: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ className, ...props }) => (
+  <div
     {...props}
-    sx={[
-      {
-        bgcolor: 'background.default',
-        display: 'flex',
-        flexDirection: 'row',
-        flexGrow: 1,
-        overflow: 'hidden',
-      },
-      ...(Array.isArray(props.sx) ? props.sx : [props.sx]),
-    ]}
+    className={[styles.root, className].filter(Boolean).join(' ')}
   />
 );
 
