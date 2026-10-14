@@ -306,11 +306,11 @@ func TestSaveCategory_SpecialCharacters(t *testing.T) {
 	defer s.Close()
 
 	cases := map[string]map[string]any{
-		"unicode.category":    {"name": "日本語テスト"},
-		"dots.in.name":        {"a.b": "c.d"},
-		"spaces in name":      {"empty-key-id": true},
-		"emoji-\U0001F680":    {"rocket": true},
-		"slashes/and\\back":   {"path": "/usr/bin"},
+		"unicode.category":  {"name": "日本語テスト"},
+		"dots.in.name":      {"a.b": "c.d"},
+		"spaces in name":    {"empty-key-id": true},
+		"emoji-\U0001F680":  {"rocket": true},
+		"slashes/and\\back": {"path": "/usr/bin"},
 	}
 	for id, vals := range cases {
 		require.NoError(t, s.SaveCategory(id, vals), "save %q", id)

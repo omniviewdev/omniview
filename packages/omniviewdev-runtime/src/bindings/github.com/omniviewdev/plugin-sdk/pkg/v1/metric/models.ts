@@ -115,7 +115,7 @@ export class ColorRange {
 export class CurrentValue {
     "metric_id": string;
     "value": number;
-    "timestamp": time$0.Time;
+    "timestamp": string;
     "labels": { [_ in string]?: string };
 
     /** Creates a new CurrentValue instance. */
@@ -127,7 +127,7 @@ export class CurrentValue {
             this["value"] = 0;
         }
         if (!("timestamp" in $$source)) {
-            this["timestamp"] = null;
+            this["timestamp"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("labels" in $$source)) {
             this["labels"] = {};
@@ -153,14 +153,14 @@ export class CurrentValue {
  * DataPoint represents a single data point in a time series.
  */
 export class DataPoint {
-    "timestamp": time$0.Time;
+    "timestamp": string;
     "value": number;
     "labels": { [_ in string]?: string };
 
     /** Creates a new DataPoint instance. */
     constructor($$source: Partial<DataPoint> = {}) {
         if (!("timestamp" in $$source)) {
-            this["timestamp"] = null;
+            this["timestamp"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("value" in $$source)) {
             this["value"] = 0;
@@ -360,8 +360,8 @@ export class QueryRequest {
     "resource_data": { [_ in string]?: any };
     "metric_ids": string[];
     "shape": MetricShape;
-    "start_time": time$0.Time;
-    "end_time": time$0.Time;
+    "start_time": string;
+    "end_time": string;
     "step": time$0.Duration;
     "params": { [_ in string]?: string };
 
@@ -386,10 +386,10 @@ export class QueryRequest {
             this["shape"] = MetricShape.$zero;
         }
         if (!("start_time" in $$source)) {
-            this["start_time"] = null;
+            this["start_time"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("end_time" in $$source)) {
-            this["end_time"] = null;
+            this["end_time"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("step" in $$source)) {
             this["step"] = time$0.Duration.$zero;

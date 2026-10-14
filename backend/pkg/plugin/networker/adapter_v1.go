@@ -1,8 +1,8 @@
 package networker
 
 import (
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 )
 
 // AdapterV1 wraps SDK v1 networker.Provider as the engine canonical NetworkerProvider.

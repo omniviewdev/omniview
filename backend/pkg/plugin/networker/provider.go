@@ -1,8 +1,8 @@
 package networker
 
 import (
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 )
 
 // NetworkerProvider is the engine's version-independent interface for networker plugins.

@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // ExternalConnection tracks a connection to an externally-managed plugin.
@@ -34,7 +34,7 @@ type ExternalWatcher struct {
 	connections map[string]*ExternalConnection // pluginID -> connection
 	mu          sync.RWMutex
 	pluginsRoot *appstate.ScopedRoot
-	pluginDir   string // resolved absolute path (for fsnotify)
+	pluginDir   string        // resolved absolute path (for fsnotify)
 	done        chan struct{} // closed when the run() goroutine exits
 
 	// onConnect is called when a new external plugin is detected.

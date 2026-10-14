@@ -3,8 +3,8 @@ package logs
 import (
 	"context"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 )
 
 // AdapterV1 wraps SDK v1 logs.Provider as the engine canonical LogsProvider.

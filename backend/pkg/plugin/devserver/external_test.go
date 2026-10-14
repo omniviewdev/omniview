@@ -13,10 +13,10 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 func TestReadDevInfoFile_Valid(t *testing.T) {

@@ -2,9 +2,12 @@
  * Re-export Wails-generated enums from Go source of truth.
  * These are generated from plugin-sdk/pkg/v1/resource via Wails v3 bindings.
  */
-import { WatchState } from '../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
+import { WatchState as GeneratedWatchState } from '../bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/resource/models';
+import { withLegacyNames } from '../compat/legacyEnum';
 
-export { WatchState };
+/** Carries both the v3 member names and the ones plugins were built against. */
+export const WatchState = withLegacyNames(GeneratedWatchState, 'WatchState');
+export type WatchState = GeneratedWatchState;
 
 /**
  * WatchStateEvent is emitted when a resource's watch state changes.

@@ -42,13 +42,7 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 		}
 		if b.SettingsStore != nil {
 			if vals, loadErr := b.SettingsStore.LoadCategory(category.ID); loadErr == nil && len(vals) > 0 {
-				prefixed := make(map[string]any, len(vals))
-				for k, v := range vals {
-					prefixed[category.ID+"."+k] = v
-				}
-				if setErr := b.SettingsProvider.SetSettings(prefixed); setErr != nil {
-					fmt.Fprintf(os.Stderr, "failed to hydrate settings category %s: %v\n", category.ID, setErr)
-				}
+				hydrateCategory(b.SettingsProvider, category, vals)
 			}
 		}
 	}
@@ -155,4 +149,32 @@ func (b *Service) ServiceShutdown() error {
 		b.Log.Errorw(context.Background(), "failed to shut down telemetry", "error", err)
 	}
 	return nil
+}
+
+// hydrateCategory applies persisted values to the registered settings of a
+// category. SetSettings is all-or-nothing, so a single stored key the current
+// build does not declare (written by a newer build, or since removed) or a
+// value that no longer validates would otherwise discard the whole category.
+// Unknown keys are skipped, and on a validation failure each value is applied
+// on its own so the rest still load.
+func hydrateCategory(provider pkgsettings.Provider, category pkgsettings.Category, vals map[string]any) {
+	prefixed := make(map[string]any, len(vals))
+	for k, v := range vals {
+		if _, ok := category.Settings[k]; !ok {
+			fmt.Fprintf(os.Stderr, "ignoring unknown persisted setting %s.%s\n", category.ID, k)
+			continue
+		}
+		prefixed[category.ID+"."+k] = v
+	}
+	if len(prefixed) == 0 {
+		return
+	}
+	if err := provider.SetSettings(prefixed); err == nil {
+		return
+	}
+	for id, v := range prefixed {
+		if err := provider.SetSetting(id, v); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to hydrate setting %s: %v\n", id, err)
+		}
+	}
 }

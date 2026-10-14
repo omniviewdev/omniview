@@ -446,8 +446,8 @@ func TestInitialize_DoesNotLoseFailedPluginState(t *testing.T) {
 
 // trackingController records each lifecycle call for assertions.
 type trackingController struct {
-	mu        sync.Mutex
-	initCalls []string
+	mu         sync.Mutex
+	initCalls  []string
 	startCalls []string
 	stopCalls  []string
 	shutCalls  []string
@@ -477,8 +477,8 @@ func (tc *trackingController) OnPluginShutdown(pluginID string, _ config.PluginM
 	return nil
 }
 func (tc *trackingController) OnPluginDestroy(_ string, _ config.PluginMeta) error { return nil }
-func (tc *trackingController) ListPlugins() ([]string, error)                       { return nil, nil }
-func (tc *trackingController) HasPlugin(_ string) bool                              { return false }
+func (tc *trackingController) ListPlugins() ([]string, error)                      { return nil, nil }
+func (tc *trackingController) HasPlugin(_ string) bool                             { return false }
 
 // capDetectingBackend is a mock backend that reports detected capabilities.
 type capDetectingBackend struct {

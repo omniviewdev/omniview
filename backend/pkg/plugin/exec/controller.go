@@ -10,15 +10,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/terminal"
-
-	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -101,8 +100,8 @@ func (c *controller) ServiceStartup(ctx context.Context, options application.Ser
 	manager, inMux, outMux, resizeMux := terminal.NewManager(ctx, c.logger)
 	c.terminalManager = manager
 
-	go c.runMux()                                // plugin mux
-	go c.runLocalMux(inMux, outMux, resizeMux)   // local terminal should be muxed separately to avoid latency
+	go c.runMux()                              // plugin mux
+	go c.runLocalMux(inMux, outMux, resizeMux) // local terminal should be muxed separately to avoid latency
 	return nil
 }
 

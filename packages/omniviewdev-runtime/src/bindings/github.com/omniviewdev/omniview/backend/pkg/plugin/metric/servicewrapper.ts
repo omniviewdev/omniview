@@ -52,7 +52,7 @@ export function Query(pluginID: string, connectionID: string, req: metric$0.Quer
     });
 }
 
-export function QueryAll(connectionID: string, resourceKey: string, resourceID: string, $namespace: string, resourceData: { [_ in string]?: any }, metricIDs: string[], shape: metric$0.MetricShape, startTime: time$0.Time, endTime: time$0.Time, step: time$0.Duration): $CancellablePromise<{ [_ in string]?: metric$0.QueryResponse | null }> {
+export function QueryAll(connectionID: string, resourceKey: string, resourceID: string, $namespace: string, resourceData: { [_ in string]?: any }, metricIDs: string[], shape: metric$0.MetricShape, startTime: string, endTime: string, step: time$0.Duration): $CancellablePromise<{ [_ in string]?: metric$0.QueryResponse | null }> {
     return $Call.ByID(2480040278, connectionID, resourceKey, resourceID, $namespace, resourceData, metricIDs, shape, startTime, endTime, step).then(($result: any) => {
         return $$createType5($result);
     });

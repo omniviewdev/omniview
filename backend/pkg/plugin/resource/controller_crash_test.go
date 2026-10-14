@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	logging "github.com/omniviewdev/plugin-sdk/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
@@ -88,7 +88,6 @@ func newCrashTestController() *controller {
 	}
 	return ctrl
 }
-
 
 // addPluginState is a test helper that sets up a pluginState entry for crash tests.
 func addPluginState(ctrl *controller, pluginID string) {

@@ -16,18 +16,16 @@ import (
 	pluginmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog"
-	"github.com/omniviewdev/omniview/internal/appstate"
-	regclient "github.com/omniviewdev/registry"
-
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-
+	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
-	logging "github.com/omniviewdev/plugin-sdk/log"
+	regclient "github.com/omniviewdev/registry"
 )
 
 const (
@@ -165,7 +163,7 @@ type pluginManager struct {
 	// pluginOpsMu serializes load/reload/unload operations per plugin to
 	// prevent concurrent lifecycle transitions for the same plugin (e.g.
 	// two file-change events triggering simultaneous reloads).
-	pluginOpsMu   sync.Mutex
+	pluginOpsMu    sync.Mutex
 	pluginOpsLocks map[string]*sync.Mutex
 }
 
@@ -430,12 +428,13 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 					devPath:  state.DevPath,
 				})
 
-				// If the dev binary doesn't exist, create a stub record
+				// If the dev binary doesn't exist (and the plugin has a backend;
+				// UI-only plugins never have one), create a stub record
 				// and skip LoadPlugin. Phase 2 will start the dev server,
 				// build the binary, and call ReloadPlugin.
 				pluginLocation := pm.pluginsRoot.ResolvePath(file.Name())
 				binPath := filepath.Join(pluginLocation, "bin", "plugin")
-				if _, statErr := os.Stat(binPath); os.IsNotExist(statErr) {
+				if _, statErr := os.Stat(binPath); os.IsNotExist(statErr) && state.Metadata.HasBackendCapabilities() {
 					meta, metaErr := sdktypes.LoadPluginMetadata(pluginLocation)
 					if metaErr == nil {
 						record := plugintypes.NewPluginRecord(file.Name(), meta, lifecycle.PhaseBuildFailed)

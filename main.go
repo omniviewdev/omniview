@@ -6,10 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/wailsapp/wails/v3/pkg/application"
-
 	"go.uber.org/zap"
 
 	"github.com/omniviewdev/omniview/backend/diagnostics"
@@ -35,6 +32,8 @@ import (
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	"github.com/omniviewdev/omniview/internal/version"
+	logging "github.com/omniviewdev/plugin-sdk/log"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 const (
@@ -324,7 +323,7 @@ func main() {
 		MinWidth:  MinWebviewWidth,
 		MinHeight: MinWebviewHeight,
 		//nolint:gomnd // #0D1117 dark theme background
-		BackgroundColour: application.NewRGBA(13, 17, 23, 255),
+		BackgroundColour:   application.NewRGBA(13, 17, 23, 255),
 		UseApplicationMenu: true,
 		Mac: application.MacWindow{
 			TitleBar:   application.MacTitleBarHiddenInset,

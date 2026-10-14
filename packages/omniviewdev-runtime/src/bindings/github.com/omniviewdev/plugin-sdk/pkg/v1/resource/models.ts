@@ -8,9 +8,6 @@ import { Create as $Create } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as json$0 from "../../../../../../encoding/json/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../../../time/models.js";
 
 /**
  * ActionDescriptor describes an available action on a resource type.
@@ -930,8 +927,8 @@ export class HealthCondition {
     "status": string;
     "reason"?: string;
     "message"?: string;
-    "lastProbeTime"?: time$0.Time | null;
-    "lastTransitionTime"?: time$0.Time | null;
+    "lastProbeTime"?: string | null;
+    "lastTransitionTime"?: string | null;
 
     /** Creates a new HealthCondition instance. */
     constructor($$source: Partial<HealthCondition> = {}) {
@@ -1450,8 +1447,8 @@ export class ResourceEvent {
     "message": string;
     "source"?: string;
     "count"?: number;
-    "firstSeen": time$0.Time;
-    "lastSeen": time$0.Time;
+    "firstSeen": string;
+    "lastSeen": string;
 
     /** Creates a new ResourceEvent instance. */
     constructor($$source: Partial<ResourceEvent> = {}) {
@@ -1465,10 +1462,10 @@ export class ResourceEvent {
             this["message"] = "";
         }
         if (!("firstSeen" in $$source)) {
-            this["firstSeen"] = null;
+            this["firstSeen"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("lastSeen" in $$source)) {
-            this["lastSeen"] = null;
+            this["lastSeen"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -1553,7 +1550,7 @@ export class ResourceHealth {
     "status": HealthStatus;
     "reason"?: string;
     "message"?: string;
-    "since"?: time$0.Time | null;
+    "since"?: string | null;
     "conditions"?: HealthCondition[];
 
     /** Creates a new ResourceHealth instance. */

@@ -3,8 +3,8 @@ package resource
 import (
 	"encoding/json"
 
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // Service is the Wails-bound public API for resource operations.

@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // ============================================================================

@@ -48,7 +48,6 @@ func (c *controller) ServiceShutdown() error {
 	return nil
 }
 
-
 func (c *controller) Get(pluginID, key string) (any, error) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID), logging.Any("key", key))
 

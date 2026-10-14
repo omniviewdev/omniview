@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -28,7 +27,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/appstate"
-
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
@@ -57,7 +56,6 @@ func init() {
 }
 
 var tracer = otel.Tracer("omniview.resource")
-
 
 // Controller is the lifecycle + service interface for the resource capability.
 type Controller interface {

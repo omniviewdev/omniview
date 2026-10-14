@@ -4,10 +4,9 @@ import (
 	"context"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 

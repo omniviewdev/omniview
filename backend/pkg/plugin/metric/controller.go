@@ -12,16 +12,14 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -30,12 +28,12 @@ var tracer = otel.Tracer("omniview.metric")
 // MetricProviderSummary is a lightweight summary of a metric provider,
 // exposed to the frontend.
 type MetricProviderSummary struct {
-	PluginID    string              `json:"plugin_id"`
-	ProviderID  string              `json:"provider_id"`
-	Name        string              `json:"name"`
-	Icon        string              `json:"icon"`
-	Description string              `json:"description"`
-	Handlers    []metric.Handler    `json:"handlers"`
+	PluginID    string           `json:"plugin_id"`
+	ProviderID  string           `json:"provider_id"`
+	Name        string           `json:"name"`
+	Icon        string           `json:"icon"`
+	Description string           `json:"description"`
+	Handlers    []metric.Handler `json:"handlers"`
 }
 
 // Controller manages metric providers across all plugins.

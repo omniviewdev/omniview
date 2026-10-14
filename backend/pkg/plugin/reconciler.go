@@ -5,10 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -193,5 +192,3 @@ func (r *Reconciler) ReconcileFromFilesystem(
 
 	return result, nil
 }
-
-

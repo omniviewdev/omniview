@@ -227,8 +227,8 @@ importers:
         specifier: ^4.0.18
         version: 4.0.18(vitest@4.0.18)
       '@wailsio/runtime':
-        specifier: 3.0.0-alpha.79
-        version: 3.0.0-alpha.79
+        specifier: 3.0.0-beta.29
+        version: 3.0.0-beta.29
       '@welldone-software/why-did-you-render':
         specifier: ^8.0.1
         version: 8.0.3(react@19.2.4)
@@ -287,8 +287,8 @@ importers:
   packages/omniviewdev-providers:
     dependencies:
       '@wailsio/runtime':
-        specifier: 3.0.0-alpha.79
-        version: 3.0.0-alpha.79
+        specifier: 3.0.0-beta.29
+        version: 3.0.0-beta.29
     devDependencies:
       '@types/node':
         specifier: ^25.5.0
@@ -315,8 +315,8 @@ importers:
   packages/omniviewdev-runtime:
     dependencies:
       '@wailsio/runtime':
-        specifier: 3.0.0-alpha.79
-        version: 3.0.0-alpha.79
+        specifier: 3.0.0-beta.29
+        version: 3.0.0-beta.29
       lodash.get:
         specifier: ^4.4.2
         version: 4.4.2
@@ -3505,8 +3505,8 @@ packages:
   '@vue/shared@3.5.13':
     resolution: {integrity: sha512-/hnE/qP5ZoGpol0a5mDi45bOd7t3tjYJBjsgCsivow7D48cJeV5l05RD82lPqi7gRiphZM37rnhW1l6ZoCNNnQ==}
 
-  '@wailsio/runtime@3.0.0-alpha.79':
-    resolution: {integrity: sha512-NITzxKmJsMEruc39L166lbPJVECxzcbdqpHVqOOF7Cu/7Zqk/e3B/gNpkUjhNyo5rVb3V1wpS8oEgLUmpu1cwA==}
+  '@wailsio/runtime@3.0.0-beta.29':
+    resolution: {integrity: sha512-ZrYvyb2vJ8rAn9mdBBbpNsNRk8Yg5+0DCWhfIQbfoNyI329Lwu8irPYqRneFuNlttA39qsQ0a5mG4mbgBF8g3g==}
 
   '@welldone-software/why-did-you-render@8.0.3':
     resolution: {integrity: sha512-bb5bKPMStYnocyTBVBu4UTegZdBqzV1mPhxc0UIV/S43KFUSRflux9gvzJfu2aM4EWLJ3egTvdjOi+viK+LKGA==}
@@ -9741,7 +9741,7 @@ snapshots:
 
   '@vue/shared@3.5.13': {}
 
-  '@wailsio/runtime@3.0.0-alpha.79': {}
+  '@wailsio/runtime@3.0.0-beta.29': {}
 
   '@welldone-software/why-did-you-render@8.0.3(react@19.2.4)':
     dependencies:

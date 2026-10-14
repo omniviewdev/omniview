@@ -3,8 +3,8 @@ package metric
 import (
 	"context"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
 // AdapterV1 wraps SDK v1 metric.Provider as the engine canonical MetricProvider.

@@ -7,9 +7,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/wailsapp/mimetype"
+
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
-	"github.com/wailsapp/mimetype"
 )
 
 // PluginAssetHandler serves plugin assets from the local filesystem.
@@ -94,7 +95,7 @@ func (h *PluginAssetHandler) ServeHTTP(res http.ResponseWriter, req *http.Reques
 
 	h.logger.Debugw(ctx, "requested file", "path", requestedFilename)
 
-	if !isAllowed("/"+requestedFilename) {
+	if !isAllowed("/" + requestedFilename) {
 		respondUnauthorized()
 		return
 	}

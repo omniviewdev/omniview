@@ -17,18 +17,17 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	ep "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	lc "github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
 	lp "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	mp "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	np "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	rpv1 "github.com/omniviewdev/plugin-sdk/pkg/v1/resource/plugin"
-	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sp "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // LoadPluginOptions configures how a plugin is loaded.
@@ -97,9 +96,12 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 		(opts != nil && opts.ExistingState != nil && opts.ExistingState.DevMode)
 
 	if isDevMode {
-		if err = validateHasBinary(location); err != nil {
-			return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
-				fmt.Sprintf("Plugin '%s' failed dev validation", id)).WithInstance(id)
+		// UI-only plugins have no binary; their UI is served by the Vite dev server.
+		if metadata.HasBackendCapabilities() {
+			if err = validateHasBinary(location); err != nil {
+				return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
+					fmt.Sprintf("Plugin '%s' failed dev validation", id)).WithInstance(id)
+			}
 		}
 	} else {
 		if err = validateForStart(metadata, location); err != nil {

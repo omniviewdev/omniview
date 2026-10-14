@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
@@ -122,7 +123,7 @@ func TestInstance_AppendLog(t *testing.T) {
 	require.Len(t, last.entries, 1)
 	assert.Equal(t, "server started", last.entries[0].Message)
 	assert.Equal(t, "log-test", last.entries[0].PluginID) // pluginID injected
-	assert.NotEmpty(t, last.entries[0].Timestamp)           // timestamp set
+	assert.NotEmpty(t, last.entries[0].Timestamp)         // timestamp set
 }
 
 func TestInstance_AppendLog_PreservesTimestamp(t *testing.T) {
@@ -315,18 +316,18 @@ func TestInstance_TriggerRebuild_CallsHandleRebuild(t *testing.T) {
 	doneCh := make(chan struct{})
 	close(doneCh)
 	inst.goWatcher = &goWatcherProcess{
-		ctx:      ctx,
-		cancel:   cancel,
-		logger:   logging.NewNop(),
-		pluginID: "trigger-rebuild",
-		devPath:  t.TempDir(),
-		buildOpts: BuildOpts{GoPath: ""}, // will cause build to fail
-		reloader: reloader,
-		appendLog: func(LogEntry) {},
-		setStatus: func(DevProcessStatus) {},
-		setBuild:  func(time.Duration, string) {},
+		ctx:        ctx,
+		cancel:     cancel,
+		logger:     logging.NewNop(),
+		pluginID:   "trigger-rebuild",
+		devPath:    t.TempDir(),
+		buildOpts:  BuildOpts{GoPath: ""}, // will cause build to fail
+		reloader:   reloader,
+		appendLog:  func(LogEntry) {},
+		setStatus:  func(DevProcessStatus) {},
+		setBuild:   func(time.Duration, string) {},
 		emitErrors: func(string, []BuildError) {},
-		done:     doneCh,
+		done:       doneCh,
 	}
 
 	// TriggerRebuild should call handleRebuild("manual-trigger").

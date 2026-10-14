@@ -45,7 +45,7 @@ export class Connection {
      * LastRefresh is the time when the auth context was last refreshed
      * +optional
      */
-    "last_refresh": time$0.Time;
+    "last_refresh": string;
 
     /**
      * Data is an optional map of arbitrary data that can be used to store additional information about the connection,
@@ -114,7 +114,7 @@ export class Connection {
     /** Creates a new Connection instance. */
     constructor($$source: Partial<Connection> = {}) {
         if (!("last_refresh" in $$source)) {
-            this["last_refresh"] = null;
+            this["last_refresh"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("data" in $$source)) {
             this["data"] = {};

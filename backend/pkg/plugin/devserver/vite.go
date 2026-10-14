@@ -12,9 +12,8 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // ansiRegex matches ANSI escape sequences (colors, cursor movement, etc.).
@@ -42,8 +41,8 @@ type viteProcess struct {
 
 	mu   sync.Mutex
 	cmd  *exec.Cmd
-	pgid int             // cached process group ID, set at start
-	done chan struct{}   // closed when the process exits
+	pgid int           // cached process group ID, set at start
+	done chan struct{} // closed when the process exits
 }
 
 // newViteProcess creates a viteProcess. Call Start() to spawn.

@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/resource/resourcetest"
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
 func TestAdapterV1_CompileTimeCheck(t *testing.T) {

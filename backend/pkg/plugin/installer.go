@@ -19,9 +19,9 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // InstallInDevMode installs a plugin from a directory selected via dialog.

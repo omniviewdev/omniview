@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // ============================================================================

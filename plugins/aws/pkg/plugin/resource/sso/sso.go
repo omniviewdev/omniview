@@ -16,29 +16,29 @@ import (
 // CachedToken represents an AWS SSO token stored in ~/.aws/sso/cache/.
 // The format is compatible with the AWS CLI's token cache.
 type CachedToken struct {
-	StartURL                string `json:"startUrl"`
-	Region                  string `json:"region"`
-	AccessToken             string `json:"accessToken"`
-	ExpiresAt               string `json:"expiresAt"`
-	ClientID                string `json:"clientId,omitempty"`
-	ClientSecret            string `json:"clientSecret,omitempty"`
-	RefreshToken            string `json:"refreshToken,omitempty"`
-	RegistrationExpiresAt   string `json:"registrationExpiresAt,omitempty"`
+	StartURL              string `json:"startUrl"`
+	Region                string `json:"region"`
+	AccessToken           string `json:"accessToken"`
+	ExpiresAt             string `json:"expiresAt"`
+	ClientID              string `json:"clientId,omitempty"`
+	ClientSecret          string `json:"clientSecret,omitempty"`
+	RefreshToken          string `json:"refreshToken,omitempty"`
+	RegistrationExpiresAt string `json:"registrationExpiresAt,omitempty"`
 }
 
 // DeviceAuth holds the state of an in-progress device authorization flow.
 type DeviceAuth struct {
-	ClientID     string
-	ClientSecret string
-	DeviceCode   string
-	UserCode     string
+	ClientID                string
+	ClientSecret            string
+	DeviceCode              string
+	UserCode                string
 	VerificationURI         string
 	VerificationURIComplete string
-	ExpiresAt    time.Time
-	Interval     int32
-	Region       string
-	StartURL     string
-	SessionName  string
+	ExpiresAt               time.Time
+	Interval                int32
+	Region                  string
+	StartURL                string
+	SessionName             string
 }
 
 // tokenCacheDir returns the path to ~/.aws/sso/cache/.
@@ -244,11 +244,11 @@ func PollForToken(ctx context.Context, auth *DeviceAuth) (*CachedToken, error) {
 	expiresAt := time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
 
 	token := &CachedToken{
-		StartURL:    auth.StartURL,
-		Region:      auth.Region,
-		AccessToken: *result.AccessToken,
-		ExpiresAt:   expiresAt.UTC().Format(time.RFC3339),
-		ClientID:    auth.ClientID,
+		StartURL:     auth.StartURL,
+		Region:       auth.Region,
+		AccessToken:  *result.AccessToken,
+		ExpiresAt:    expiresAt.UTC().Format(time.RFC3339),
+		ClientID:     auth.ClientID,
 		ClientSecret: auth.ClientSecret,
 	}
 	if result.RefreshToken != nil {

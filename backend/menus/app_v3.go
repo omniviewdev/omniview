@@ -8,12 +8,12 @@ import (
 
 // Menu event constants.
 const (
-	EventTerminalCreate       = "menu/view/terminal/create"
-	EventBottomDrawerMinimize = "menu/view/bottomdrawer/minimize"
+	EventTerminalCreate         = "menu/view/terminal/create"
+	EventBottomDrawerMinimize   = "menu/view/bottomdrawer/minimize"
 	EventBottomDrawerFullscreen = "menu/view/bottomdrawer/fullscreen"
-	EventSidebarMinimize      = "menu/view/sidebar/minimize"
-	EventContextTabClose      = "menu/context/drawer-tab/close"
-	EventContextTabCloseOthers = "menu/context/drawer-tab/close-others"
+	EventSidebarMinimize        = "menu/view/sidebar/minimize"
+	EventContextTabClose        = "menu/context/drawer-tab/close"
+	EventContextTabCloseOthers  = "menu/context/drawer-tab/close-others"
 )
 
 func init() {

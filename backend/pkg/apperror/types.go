@@ -3,23 +3,23 @@ package apperror
 // Error type URI constants used across Go and TypeScript.
 const (
 	// Plugin errors
-	TypePluginNotFound     = "omniview:plugin/not-found"
-	TypePluginNotLoaded    = "omniview:plugin/not-loaded"
+	TypePluginNotFound      = "omniview:plugin/not-found"
+	TypePluginNotLoaded     = "omniview:plugin/not-loaded"
 	TypePluginAlreadyLoaded = "omniview:plugin/already-loaded"
 	TypePluginInstallFailed = "omniview:plugin/install-failed"
-	TypePluginLoadFailed   = "omniview:plugin/load-failed"
-	TypePluginBuildFailed  = "omniview:plugin/build-failed"
+	TypePluginLoadFailed    = "omniview:plugin/load-failed"
+	TypePluginBuildFailed   = "omniview:plugin/build-failed"
 
 	// Settings errors
 	TypeSettingsMissingConfig = "omniview:settings/missing-config"
 	TypeSettingsInvalidConfig = "omniview:settings/invalid-config"
 
 	// Resource errors
-	TypeResourceNotFound    = "omniview:resource/not-found"
-	TypeResourceForbidden   = "omniview:resource/forbidden"
+	TypeResourceNotFound     = "omniview:resource/not-found"
+	TypeResourceForbidden    = "omniview:resource/forbidden"
 	TypeResourceUnauthorized = "omniview:resource/unauthorized"
-	TypeResourceConflict    = "omniview:resource/conflict"
-	TypeResourceTimeout     = "omniview:resource/timeout"
+	TypeResourceConflict     = "omniview:resource/conflict"
+	TypeResourceTimeout      = "omniview:resource/timeout"
 
 	// Connection errors
 	TypeConnectionNotFound = "omniview:connection/not-found"

@@ -11,11 +11,10 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
-	"github.com/omniviewdev/omniview/internal/appstate"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 func TestParseBuildErrors(t *testing.T) {
@@ -743,4 +742,9 @@ func TestGoWatcherStart_GoWork_NonExistentModule(t *testing.T) {
 	// Non-existent module is silently skipped. Only pkg/ (1) + root (1) = 2.
 	require.GreaterOrEqual(t, len(logs), 1)
 	assert.Contains(t, logs[0].Message, "Watching 2 directories")
+}
+
+func TestGoBuildEnvDropsGOROOT(t *testing.T) {
+	got := goBuildEnv([]string{"PATH=/bin", "GOROOT=/old/go", "GOPATH=/gopath"})
+	assert.Equal(t, []string{"PATH=/bin", "GOPATH=/gopath"}, got)
 }

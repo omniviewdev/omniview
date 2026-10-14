@@ -9,19 +9,19 @@ import (
 type PluginPhase string
 
 const (
-	PhaseUninstalled PluginPhase = "Uninstalled"
-	PhaseInstalling  PluginPhase = "Installing"
-	PhaseInstalled   PluginPhase = "Installed"
-	PhaseBuilding    PluginPhase = "Building"    // dev only: initial go build
-	PhaseBuildFailed PluginPhase = "BuildFailed" // dev only: build error
-	PhaseValidating  PluginPhase = "Validating"
-	PhaseStarting    PluginPhase = "Starting"
-	PhaseRunning     PluginPhase = "Running"
-	PhaseDegraded    PluginPhase = "Degraded"
-	PhaseRecovering  PluginPhase = "Recovering"
-	PhaseStopping    PluginPhase = "Stopping"
-	PhaseStopped     PluginPhase = "Stopped"
-	PhaseFailed      PluginPhase = "Failed"
+	PhaseUninstalled  PluginPhase = "Uninstalled"
+	PhaseInstalling   PluginPhase = "Installing"
+	PhaseInstalled    PluginPhase = "Installed"
+	PhaseBuilding     PluginPhase = "Building"    // dev only: initial go build
+	PhaseBuildFailed  PluginPhase = "BuildFailed" // dev only: build error
+	PhaseValidating   PluginPhase = "Validating"
+	PhaseStarting     PluginPhase = "Starting"
+	PhaseRunning      PluginPhase = "Running"
+	PhaseDegraded     PluginPhase = "Degraded"
+	PhaseRecovering   PluginPhase = "Recovering"
+	PhaseStopping     PluginPhase = "Stopping"
+	PhaseStopped      PluginPhase = "Stopped"
+	PhaseFailed       PluginPhase = "Failed"
 	PhaseUninstalling PluginPhase = "Uninstalling"
 )
 
@@ -35,19 +35,19 @@ type Transition struct {
 
 // validTransitions defines which phase changes are allowed.
 var validTransitions = map[PluginPhase][]PluginPhase{
-	PhaseUninstalled: {PhaseInstalling},
-	PhaseInstalling:  {PhaseInstalled, PhaseFailed},
-	PhaseInstalled:   {PhaseBuilding, PhaseValidating, PhaseUninstalling, PhaseStopped},
-	PhaseBuilding:    {PhaseValidating, PhaseBuildFailed, PhaseFailed},
-	PhaseBuildFailed: {PhaseBuilding, PhaseFailed, PhaseUninstalling},
-	PhaseValidating:  {PhaseStarting, PhaseFailed, PhaseInstalled},
-	PhaseStarting:    {PhaseRunning, PhaseFailed, PhaseDegraded},
-	PhaseRunning:     {PhaseStopping, PhaseDegraded, PhaseFailed, PhaseRecovering, PhaseValidating},
-	PhaseDegraded:    {PhaseRecovering, PhaseStopping, PhaseFailed},
-	PhaseRecovering:  {PhaseValidating, PhaseFailed},
-	PhaseStopping:    {PhaseStopped, PhaseFailed},
-	PhaseStopped:     {PhaseValidating, PhaseStarting, PhaseUninstalling, PhaseInstalled},
-	PhaseFailed:      {PhaseValidating, PhaseBuilding, PhaseUninstalling, PhaseInstalled},
+	PhaseUninstalled:  {PhaseInstalling},
+	PhaseInstalling:   {PhaseInstalled, PhaseFailed},
+	PhaseInstalled:    {PhaseBuilding, PhaseValidating, PhaseUninstalling, PhaseStopped},
+	PhaseBuilding:     {PhaseValidating, PhaseBuildFailed, PhaseFailed},
+	PhaseBuildFailed:  {PhaseBuilding, PhaseFailed, PhaseUninstalling},
+	PhaseValidating:   {PhaseStarting, PhaseFailed, PhaseInstalled},
+	PhaseStarting:     {PhaseRunning, PhaseFailed, PhaseDegraded},
+	PhaseRunning:      {PhaseStopping, PhaseDegraded, PhaseFailed, PhaseRecovering, PhaseValidating},
+	PhaseDegraded:     {PhaseRecovering, PhaseStopping, PhaseFailed},
+	PhaseRecovering:   {PhaseValidating, PhaseFailed},
+	PhaseStopping:     {PhaseStopped, PhaseFailed},
+	PhaseStopped:      {PhaseValidating, PhaseStarting, PhaseUninstalling, PhaseInstalled},
+	PhaseFailed:       {PhaseValidating, PhaseBuilding, PhaseUninstalling, PhaseInstalled},
 	PhaseUninstalling: {PhaseUninstalled, PhaseFailed},
 }
 

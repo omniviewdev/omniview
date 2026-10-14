@@ -6,9 +6,8 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 const (
@@ -27,7 +26,7 @@ const (
 // crashBudget tracks the total number of crash-recovery cycles for a plugin
 // within a sliding time window to prevent infinite recovery loops.
 type crashBudget struct {
-	count      int
+	count       int
 	windowStart time.Time
 }
 
@@ -75,6 +74,10 @@ func (hc *HealthChecker) checkAll() {
 
 	for id, record := range hc.pm.records {
 		if record.Phase != lifecycle.PhaseRunning {
+			continue
+		}
+		// UI-only plugins have no process to check.
+		if record.Backend == nil && !record.Metadata.HasBackendCapabilities() {
 			continue
 		}
 		// Skip if recovery is already in progress for this plugin.

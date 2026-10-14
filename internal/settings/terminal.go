@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 
 	"github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -19,7 +20,7 @@ var Terminal = settings.Category{
 			ID:          "defaultShell",
 			Type:        settings.Text,
 			Label:       "Default Shell",
-			Default:     "/bin/zsh",
+			Default:     defaultShell(),
 			Description: "The default shell to use when opening a terminal",
 			Validator: func(value interface{}) error {
 				val, ok := value.(string)
@@ -95,4 +96,23 @@ var Terminal = settings.Category{
 			Description: "Whether the cursor should blink in the terminal",
 		},
 	},
+}
+
+// defaultShell picks a shell that exists on this machine: the user's $SHELL,
+// else the first common one found. A fixed /bin/zsh fails validation on
+// systems without zsh, which rejects every save that includes the default.
+func defaultShell() string {
+	if runtime.GOOS == "windows" {
+		return "powershell.exe"
+	}
+	candidates := []string{os.Getenv("SHELL"), "/bin/zsh", "/bin/bash", "/bin/sh"}
+	for _, shell := range candidates {
+		if shell == "" {
+			continue
+		}
+		if _, err := exec.LookPath(shell); err == nil {
+			return shell
+		}
+	}
+	return "/bin/sh"
 }

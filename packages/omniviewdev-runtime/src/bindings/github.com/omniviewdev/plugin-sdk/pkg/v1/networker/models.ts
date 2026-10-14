@@ -5,10 +5,6 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../../../time/models.js";
-
 /**
  * Connection is implemented by PortForwardResourceConnection and
  * PortForwardStaticConnection. The unexported method seals the interface.
@@ -64,8 +60,8 @@ export enum PortForwardProtocol {
  * PortForwardSession represents a session between a forwarding target and the host.
  */
 export class PortForwardSession {
-    "created_at": time$0.Time;
-    "updated_at": time$0.Time;
+    "created_at": string;
+    "updated_at": string;
     "connection": Connection;
     "labels": { [_ in string]?: string };
     "id": string;
@@ -79,10 +75,10 @@ export class PortForwardSession {
     /** Creates a new PortForwardSession instance. */
     constructor($$source: Partial<PortForwardSession> = {}) {
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("updated_at" in $$source)) {
-            this["updated_at"] = null;
+            this["updated_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("connection" in $$source)) {
             this["connection"] = null;

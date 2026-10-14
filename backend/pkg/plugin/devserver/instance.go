@@ -3,6 +3,8 @@ package devserver
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -110,6 +112,17 @@ func (inst *DevServerInstance) Start() error {
 		inst.setViteStatus(DevProcessStatusError)
 		inst.setLastError(err.Error())
 		return err
+	}
+
+	// UI-only plugins have no pkg/ directory: there is nothing to build or
+	// watch, so report the backend side as ready and run Vite alone.
+	if _, err := os.Stat(filepath.Join(inst.devPath, "pkg")); os.IsNotExist(err) {
+		inst.logger.Infow(context.Background(), "no pkg/ directory, skipping Go watcher (UI-only plugin)")
+		inst.mu.Lock()
+		inst.grpcConnected = true
+		inst.mu.Unlock()
+		inst.setGoStatus(DevProcessStatusReady)
+		return nil
 	}
 
 	// Start Go watcher.

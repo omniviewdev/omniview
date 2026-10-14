@@ -12,16 +12,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
@@ -68,8 +66,8 @@ type controller struct {
 	handlerMap   map[string]map[string]logs.Handler
 
 	// batch flush state
-	batches   map[string]*logBatch
-	batchMux  sync.Mutex
+	batches  map[string]*logBatch
+	batchMux sync.Mutex
 }
 
 type logBatch struct {
