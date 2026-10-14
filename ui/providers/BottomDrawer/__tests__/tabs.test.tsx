@@ -1,5 +1,4 @@
 import { render, cleanup, act, fireEvent } from '@testing-library/react';
-import type { ReactNode } from 'react';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────────
 const mocks = vi.hoisted(() => ({
