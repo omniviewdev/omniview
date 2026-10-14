@@ -3,16 +3,17 @@ package bootstrap
 import (
 	"testing"
 
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
-
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 func newDeveloperProvider(t *testing.T) pkgsettings.Provider {
 	t.Helper()
 	provider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{})
 	for _, s := range coresettings.Developer.Settings {
-		provider.RegisterSetting(coresettings.Developer.ID, s)
+		if err := provider.RegisterSetting(coresettings.Developer.ID, s); err != nil {
+			t.Fatalf("register %s: %v", s.ID, err)
+		}
 	}
 	return provider
 }
