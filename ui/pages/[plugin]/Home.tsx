@@ -1,14 +1,12 @@
 import React from 'react';
 
-// material-ui
-import { Stack } from '@omniviewdev/ui/layout';
-
 // project imports
 import { usePluginContext } from '@/contexts/PluginContext';
 import { useConnections } from '@omniviewdev/runtime';
 import ConnectionTable from './ConnectionTable';
 import ConnectionListHeader from './ConnectionListHeader';
 import PluginBackdrop from './PluginBackdrop';
+import styles from './Home.module.css';
 
 // Third-party
 // import tinycolor from 'tinycolor2';
@@ -23,26 +21,20 @@ export default function PluginHome(): React.ReactElement {
   const { connections } = useConnections({ plugin: plugin.id });
 
   return (
-    <Stack
-      overflow={'auto'}
-      direction={'column'}
-      alignItems={'flex-start'}
-      minHeight={0}
-      flex={1}
-    >
+    <div className={styles.Root}>
       <PluginBackdrop
         open={plugin.phase === 'Starting' || plugin.phase === 'Validating'}
         message={`${plugin.metadata.name} plugin is reloading`}
       />
 
-      <Stack direction='column' gap={1} p={1}>
+      <div className={styles.Content}>
         <ConnectionListHeader plugin={plugin.id} search={search} onSearchChange={setSearch} />
 
         {/* List of connections */}
         {Boolean(connections.data?.length) && (
           <ConnectionTable connections={connections.data ?? []} />
         )}
-      </Stack>
-    </Stack>
+      </div>
+    </div>
   );
 }

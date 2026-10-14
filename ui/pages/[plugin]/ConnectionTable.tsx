@@ -1,14 +1,14 @@
 import * as React from 'react';
 
-// material ui
-import Box from '@mui/material/Box';
-import { Text } from '@omniviewdev/ui/typography';
+// ui
+import { Text } from '@omniviewdev/base-ui';
 
 // types
 import type { Connection } from '@omniviewdev/runtime/models';
 
 // icons
 import ConnectionTableItem from './ConnectionTableItem';
+import styles from './ConnectionTable.module.css';
 
 
 type Props = {
@@ -41,30 +41,16 @@ const getConnectionOrderedLabelCols = (connections: Connection[]) => {
  */
 const ConnectionTable: React.FC<Props> = ({ connections }) => {
   return (
-    <Box
-      sx={{
-        width: '100%',
-        borderRadius: 1,
-        border: '1px solid',
-        borderColor: 'divider',
-      }}
-    >
-      <table
-        aria-label='connections table'
-        style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          WebkitUserSelect: 'none',
-        }}
-      >
+    <div className={styles.Root}>
+      <table aria-label='connections table' className={styles.Table}>
         <thead>
           <tr>
             <th style={{ width: '40%', verticalAlign: 'middle' }}>
-              <Text sx={{ pl: 0.5 }}>Name</Text>
+              <Text className={styles.NameHeader}>Name</Text>
             </th>
             {Object.entries(getConnectionOrderedLabelCols(connections)).sort().map(([label, width]) => (
               <th key={label} style={{ width: width + 8, verticalAlign: 'middle', paddingLeft: 4 }}>
-                <Text sx={{ pl: 1 }}>{label.replace(/(\w)(\w*)/g,
+                <Text className={styles.LabelHeader}>{label.replace(/(\w)(\w*)/g,
                   function (_, g1?: string, g2?: string) {
                     return (g1?.toUpperCase() ?? '') + (g2?.toLowerCase() ?? '');
                   })}</Text>
@@ -79,7 +65,7 @@ const ConnectionTable: React.FC<Props> = ({ connections }) => {
           ))}
         </tbody>
       </table>
-    </Box>
+    </div>
   );
 };
 

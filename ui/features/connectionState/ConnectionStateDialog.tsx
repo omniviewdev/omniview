@@ -1,20 +1,12 @@
 import React from 'react';
 
-import Box from '@mui/material/Box';
-import Dialog from '@mui/material/Dialog';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
-import CircularProgress from '@mui/material/CircularProgress';
-import LinearProgress from '@mui/material/LinearProgress';
-import IconButton from '@mui/material/IconButton';
-
-import { Button } from '@omniviewdev/ui/buttons';
-import { Text } from '@omniviewdev/ui/typography';
+import { Button, Dialog, IconButton, Progress, Spinner, Text } from '@omniviewdev/base-ui';
 
 import { LuCircleCheck, LuCircleAlert, LuCircleSlash, LuShieldAlert, LuX } from 'react-icons/lu';
 import { WatchState, parseResourceKey, formatGroup } from '@omniviewdev/runtime';
 
 import type { ResourceStateItem } from './types';
+import styles from './ConnectionStateDialog.module.css';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -52,23 +44,23 @@ const isTerminal = (s: WatchState) =>
 function StateIcon({ state }: { state: WatchState }) {
   switch (state) {
     case WatchState.IDLE:
-      return <LuCircleSlash size={14} color="var(--ov-fg-faint)" />;
+      return <LuCircleSlash size={14} className={styles.IconMuted} />;
     case WatchState.SYNCING:
-      return <CircularProgress size={14} thickness={5} sx={{ color: 'var(--ov-accent-fg, #58a6ff)' }} />;
+      return <Spinner size="xs" color="brand" />;
     case WatchState.SYNCED:
-      return <LuCircleCheck size={14} color="#3fb950" />;
+      return <LuCircleCheck size={14} className={styles.IconSuccess} />;
     case WatchState.ERROR:
-      return <LuCircleAlert size={14} color="#f85149" />;
+      return <LuCircleAlert size={14} className={styles.IconDanger} />;
     case WatchState.FAILED:
-      return <LuCircleAlert size={14} color="#f85149" />;
+      return <LuCircleAlert size={14} className={styles.IconDanger} />;
     case WatchState.FORBIDDEN:
-      return <LuShieldAlert size={14} color="#d29922" />;
+      return <LuShieldAlert size={14} className={styles.IconWarning} />;
     case WatchState.STOPPED:
-      return <LuCircleSlash size={14} color="var(--ov-fg-faint)" />;
+      return <LuCircleSlash size={14} className={styles.IconMuted} />;
     case WatchState.SKIPPED:
-      return <LuCircleSlash size={14} color="var(--ov-fg-faint)" />;
+      return <LuCircleSlash size={14} className={styles.IconMuted} />;
     default:
-      return <LuCircleSlash size={14} color="var(--ov-fg-faint)" />;
+      return <LuCircleSlash size={14} className={styles.IconMuted} />;
   }
 }
 
@@ -84,25 +76,17 @@ function GroupProgress({ items }: { items: ResourceStateItem[] }) {
   const percent = total > 0 ? Math.round((done / total) * 100) : allSkipped ? 100 : 0;
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
-      <LinearProgress
-        variant="determinate"
+    <div className={styles.GroupProgress}>
+      <Progress
         value={percent}
-        sx={{
-          width: 48,
-          height: 3,
-          borderRadius: 1.5,
-          bgcolor: 'rgba(255,255,255,0.08)',
-          '& .MuiLinearProgress-bar': {
-            bgcolor: hasError ? '#f85149' : (allDone || allSkipped) ? '#3fb950' : 'var(--ov-accent-fg, #58a6ff)',
-            borderRadius: 1.5,
-          },
-        }}
+        size="sm"
+        color={hasError ? 'danger' : (allDone || allSkipped) ? 'success' : 'brand'}
+        className={styles.GroupProgressBar}
       />
-      <Text size="xs" sx={{ color: 'var(--ov-fg-faint)', minWidth: 28, textAlign: 'right', fontFamily: 'var(--ovl-font-mono, monospace)' }}>
+      <Text size="xs" tone="subtle" mono className={styles.GroupProgressLabel}>
         {allSkipped ? `${skipped} skipped` : `${done}/${total}`}
       </Text>
-    </Box>
+    </div>
   );
 }
 
@@ -160,160 +144,101 @@ export default function ConnectionStateDialog({
   const percent = watchedTotal > 0 ? Math.round((watchedDone / watchedTotal) * 100) : 0;
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-      slotProps={{
-        paper: {
-          sx: {
-            bgcolor: 'var(--ov-bg-elevated, #1c2128)',
-            border: '1px solid var(--ov-border-default, #30363d)',
-            borderRadius: '8px',
-            color: 'var(--ov-fg-default, #c9d1d9)',
-            backgroundImage: 'none',
-          },
-        },
-      }}
-    >
+    <Dialog open={open} onClose={onClose} size="md" className={styles.Surface}>
       {/* Header */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: 2,
-          py: 1.5,
-          borderBottom: '1px solid var(--ov-border-default, #30363d)',
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {!watchedAllDone && <CircularProgress size={16} thickness={5} sx={{ color: 'var(--ov-accent-fg, #58a6ff)' }} />}
-          {watchedAllDone && <LuCircleCheck size={16} color="#3fb950" />}
-          <Text weight="semibold" size="sm">
-            {watchedAllDone ? `Synced "${connectionName}"` : `Syncing "${connectionName}"`}
-          </Text>
-        </Box>
-        <IconButton size="small" onClick={onClose} sx={{ color: 'var(--ov-fg-muted)' }}>
+      <div className={styles.Header}>
+        <Dialog.Title className={styles.HeaderTitle}>
+          {!watchedAllDone && <Spinner size="sm" color="brand" />}
+          {watchedAllDone && <LuCircleCheck size={16} className={styles.IconSuccess} />}
+          {watchedAllDone ? `Synced "${connectionName}"` : `Syncing "${connectionName}"`}
+        </Dialog.Title>
+        <IconButton size="sm" variant="ghost" color="neutral" aria-label="Close" onClick={onClose}>
           <LuX size={16} />
         </IconButton>
-      </Box>
+      </div>
 
       {/* Progress bar */}
-      <Box sx={{ px: 2, py: 1, borderBottom: '1px solid var(--ov-border-default, #30363d)' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-          <LinearProgress
-            variant="determinate"
+      <div className={styles.ProgressSection}>
+        <div className={styles.ProgressRow}>
+          <Progress
             value={percent}
-            sx={{
-              flex: 1,
-              height: 6,
-              borderRadius: 3,
-              bgcolor: 'rgba(255,255,255,0.08)',
-              '& .MuiLinearProgress-bar': {
-                bgcolor: watchedAllDone ? '#3fb950' : 'var(--ov-accent-fg, #58a6ff)',
-                borderRadius: 3,
-                transition: 'transform 0.3s ease',
-              },
-            }}
+            size="lg"
+            color={watchedAllDone ? 'success' : 'brand'}
+            className={styles.ProgressBar}
           />
-          <Text size="xs" sx={{ color: 'var(--ov-fg-muted)', minWidth: 64, textAlign: 'right' }}>
+          <Text size="xs" tone="muted" className={styles.ProgressLabel}>
             {percent}%&ensp;{watchedDone}/{watchedTotal}
           </Text>
-        </Box>
+        </div>
         {skippedCount > 0 && (
-          <Text size="xs" sx={{ color: 'var(--ov-fg-faint)', mt: 0.25 }}>
+          <Text size="xs" tone="subtle" className={styles.SkippedNote}>
             {skippedCount} resource{skippedCount !== 1 ? 's' : ''} skipped (unavailable on this cluster)
           </Text>
         )}
-      </Box>
+      </div>
 
       {/* Resource list */}
-      <DialogContent sx={{ p: 0, maxHeight: 400 }}>
+      <div className={styles.Content}>
         {grouped.map(([groupLabel, items]) => (
-          <Box key={groupLabel}>
+          <div key={groupLabel}>
             {/* Group header with progress */}
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                px: 2,
-                py: 0.75,
-                bgcolor: 'rgba(255,255,255,0.03)',
-                borderBottom: '1px solid var(--ov-border-default, #30363d)',
-              }}
-            >
-              <Text size="xs" weight="semibold" sx={{ color: 'var(--ov-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <div className={styles.GroupHeader}>
+              <Text size="xs" weight="semibold" tone="muted" className={styles.GroupLabel}>
                 {groupLabel}
               </Text>
               <GroupProgress items={items} />
-            </Box>
+            </div>
             {items.sort((a, b) => a.kind.localeCompare(b.kind)).map(({ key, kind, state, count }) => (
-              <Box
+              <div
                 key={key}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1.5,
-                  px: 2,
-                  py: 0.5,
-                  borderBottom: '1px solid rgba(255,255,255,0.04)',
-                  '&:last-child': { borderBottom: 'none' },
-                  opacity: (state === WatchState.STOPPED || state === WatchState.SKIPPED || state === WatchState.IDLE) ? 0.4 : 1,
-                }}
+                className={styles.Row}
+                data-dimmed={(state === WatchState.STOPPED || state === WatchState.SKIPPED || state === WatchState.IDLE) ? 'true' : undefined}
               >
                 <StateIcon state={state} />
-                <Text size="xs" sx={{ flex: 1 }}>{kind}</Text>
+                <Text size="xs" className={styles.Kind}>{kind}</Text>
                 {state === WatchState.FORBIDDEN && (
-                  <Text size="xs" sx={{ color: '#d29922', fontStyle: 'italic' }}>
+                  <Text size="xs" tone="warning" className={styles.Note}>
                     No access
                   </Text>
                 )}
                 {state === WatchState.SKIPPED && (
-                  <Text size="xs" sx={{ color: 'var(--ov-fg-faint)', fontStyle: 'italic' }}>
+                  <Text size="xs" tone="subtle" className={styles.Note}>
                     Skipped
                   </Text>
                 )}
                 {state === WatchState.STOPPED && (
-                  <Text size="xs" sx={{ color: 'var(--ov-fg-faint)', fontStyle: 'italic' }}>
+                  <Text size="xs" tone="subtle" className={styles.Note}>
                     Stopped
                   </Text>
                 )}
                 {state === WatchState.SYNCED && count > 0 && (
-                  <Text size="xs" sx={{ color: 'var(--ov-fg-faint)', fontFamily: 'var(--ovl-font-mono, monospace)' }}>
+                  <Text size="xs" tone="subtle" mono>
                     {count}
                   </Text>
                 )}
                 {(state === WatchState.ERROR || state === WatchState.FAILED) && (
                   <Button
-                    emphasis="soft"
-                    size="sm"
+                    variant="soft"
+                    size="xs"
                     color="danger"
-                    onClick={() => onRetryResource(key)}
-                    sx={{ minWidth: 0, fontSize: '0.625rem', px: 1, py: 0.25 }}
+                    onClick={() => { onRetryResource(key); }}
+                    className={styles.RetryButton}
                   >
                     Retry
                   </Button>
                 )}
-              </Box>
+              </div>
             ))}
-          </Box>
+          </div>
         ))}
-      </DialogContent>
+      </div>
 
       {/* Footer */}
-      <DialogActions
-        sx={{
-          borderTop: '1px solid var(--ov-border-default, #30363d)',
-          px: 2,
-          py: 1,
-        }}
-      >
-        <Button emphasis="soft" size="sm" color="neutral" onClick={onClose}>
+      <div className={styles.Footer}>
+        <Button variant="soft" size="sm" color="neutral" onClick={onClose}>
           Dismiss
         </Button>
-      </DialogActions>
+      </div>
     </Dialog>
   );
 }

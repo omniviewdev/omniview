@@ -1,0 +1,27 @@
+.ExtensionRoot {
+  padding: var(--ov-space-3);
+  border: 1px solid var(--ov-color-danger);
+  border-radius: var(--ov-radius-sm);
+  background: var(--ov-color-danger-soft);
+}
+
+.PluginRoot {
+  padding: var(--ov-space-4);
+  border: 1px solid var(--ov-color-danger);
+  border-radius: var(--ov-radius-sm);
+  background: var(--ov-color-danger-soft);
+}
+
+.Line {
+  display: block;
+}
+
+.Message {
+  display: block;
+  margin-top: var(--ov-space-1);
+}
+
+.MessageLarge {
+  display: block;
+  margin-top: var(--ov-space-2);
+}

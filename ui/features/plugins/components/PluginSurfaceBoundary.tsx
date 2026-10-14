@@ -1,9 +1,9 @@
 import React, { useContext } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import type { FallbackProps } from 'react-error-boundary';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
+import { Text } from '@omniviewdev/base-ui';
 import { PluginServiceContext } from '../react/context';
+import styles from './PluginSurfaceBoundary.module.css';
 
 // ─── Boundary Log Event ─────────────────────────────────────────────
 
@@ -61,32 +61,23 @@ export function DefaultExtensionFallback({
   contributionId,
 }: DefaultExtensionFallbackProps): React.ReactElement {
   return (
-    <Box
-      role="alert"
-      sx={{
-        p: 1.5,
-        border: '1px solid',
-        borderColor: 'error.main',
-        borderRadius: 1,
-        bgcolor: 'error.light',
-      }}
-    >
-      <Typography variant="caption" color="error.main" fontWeight="bold">
+    <div role="alert" className={styles.ExtensionRoot}>
+      <Text size="xs" tone="danger" weight="semibold">
         Extension Error
-      </Typography>
-      <Typography variant="caption" display="block" color="text.secondary">
+      </Text>
+      <Text size="xs" tone="muted" className={styles.Line}>
         Plugin: {pluginId}
-      </Typography>
-      <Typography variant="caption" display="block" color="text.secondary">
+      </Text>
+      <Text size="xs" tone="muted" className={styles.Line}>
         Extension Point: {extensionPointId}
-      </Typography>
-      <Typography variant="caption" display="block" color="text.secondary">
+      </Text>
+      <Text size="xs" tone="muted" className={styles.Line}>
         Contribution: {contributionId}
-      </Typography>
-      <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+      </Text>
+      <Text size="xs" tone="muted" className={styles.Message}>
         {error.message}
-      </Typography>
-    </Box>
+      </Text>
+    </div>
   );
 }
 
@@ -108,34 +99,25 @@ export function DefaultPluginFallback({
   resourceKey,
 }: DefaultPluginFallbackProps): React.ReactElement {
   return (
-    <Box
-      role="alert"
-      sx={{
-        p: 2,
-        border: '1px solid',
-        borderColor: 'error.main',
-        borderRadius: 1,
-        bgcolor: 'error.light',
-      }}
-    >
-      <Typography variant="subtitle2" color="error.main" fontWeight="bold">
+    <div role="alert" className={styles.PluginRoot}>
+      <Text size="sm" tone="danger" weight="semibold" className={styles.Line}>
         Plugin Error
-      </Typography>
-      <Typography variant="body2" color="text.secondary">
+      </Text>
+      <Text size="sm" tone="muted" className={styles.Line}>
         Plugin: {pluginId}
-      </Typography>
-      <Typography variant="body2" color="text.secondary">
+      </Text>
+      <Text size="sm" tone="muted" className={styles.Line}>
         Surface: {boundary}
-      </Typography>
+      </Text>
       {resourceKey && (
-        <Typography variant="body2" color="text.secondary">
+        <Text size="sm" tone="muted" className={styles.Line}>
           Resource: {resourceKey}
-        </Typography>
+        </Text>
       )}
-      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+      <Text size="sm" tone="muted" className={styles.MessageLarge}>
         {error.message}
-      </Typography>
-    </Box>
+      </Text>
+    </div>
   );
 }
 

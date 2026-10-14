@@ -1,0 +1,128 @@
+.Root {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  max-height: 100%;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.Root::-webkit-scrollbar {
+  display: none;
+}
+
+.List {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.Section {
+  display: flex;
+  flex-direction: column;
+}
+
+.Subheader {
+  padding: var(--ov-space-3) var(--ov-space-2) var(--ov-space-1);
+  font-size: var(--ov-font-size-xs);
+  font-weight: var(--ov-font-weight-title);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ov-color-fg-subtle);
+}
+
+.SectionList {
+  padding-left: 13px;
+}
+
+.Item {
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.Row {
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-1);
+}
+
+.ItemButton {
+  all: unset;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--ov-space-2);
+  padding: var(--ov-space-2);
+  border-radius: var(--ov-radius-lg);
+  color: var(--ov-color-fg-default);
+  cursor: pointer;
+}
+
+.List[data-size='sm'] .ItemButton {
+  padding: var(--ov-space-1) var(--ov-space-2);
+}
+
+.List[data-size='lg'] .ItemButton {
+  padding: var(--ov-space-3);
+}
+
+.ItemButton:hover {
+  background: var(--ov-color-state-hover);
+}
+
+.ItemButton:focus-visible {
+  outline: 2px solid var(--ov-color-border-focus);
+  outline-offset: -2px;
+}
+
+.ItemButton[data-selected='true'] {
+  background: var(--ov-color-state-selected);
+}
+
+.Decorator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 20px;
+}
+
+.Content {
+  flex: 1;
+  min-width: 0;
+}
+
+.EndAction {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-right: var(--ov-space-1);
+}
+
+.ImageAvatar {
+  max-width: 20px;
+  max-height: 20px;
+}
+
+.DecoratorText {
+  font-size: 10px;
+}
+
+.Chevron {
+  transition: transform var(--ov-duration-fast) var(--ov-ease-standard);
+  transform: rotate(-90deg);
+}
+
+.Chevron[data-open='true'] {
+  transform: none;
+}
+
+.Nested {
+  padding-left: var(--ov-space-2);
+}

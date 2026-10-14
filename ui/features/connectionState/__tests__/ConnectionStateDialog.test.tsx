@@ -26,45 +26,21 @@ vi.mock('@omniviewdev/runtime', () => ({
   },
 }));
 
-// Minimal MUI stubs — Dialog renders children when open
-vi.mock('@mui/material/Dialog', () => ({
-  __esModule: true,
-  default: ({ open, children }: any) => open ? <div data-testid="dialog">{children}</div> : null,
-}));
-vi.mock('@mui/material/DialogContent', () => ({
-  __esModule: true,
-  default: ({ children }: any) => <div data-testid="dialog-content">{children}</div>,
-}));
-vi.mock('@mui/material/DialogActions', () => ({
-  __esModule: true,
-  default: ({ children }: any) => <div data-testid="dialog-actions">{children}</div>,
-}));
-vi.mock('@mui/material/CircularProgress', () => ({
-  __esModule: true,
-  default: () => <span data-testid="spinner" />,
-}));
-vi.mock('@mui/material/LinearProgress', () => ({
-  __esModule: true,
-  default: ({ value }: any) => <div data-testid="progress-bar" data-value={value} />,
-}));
-vi.mock('@mui/material/IconButton', () => ({
-  __esModule: true,
-  default: ({ children, onClick }: any) => <button data-testid="close-btn" onClick={onClick}>{children}</button>,
-}));
-vi.mock('@mui/material/Box', () => ({
-  __esModule: true,
-  default: ({ children, ...rest }: any) => <div {...rest}>{children}</div>,
-}));
-
-// Stub @omniviewdev/ui components
-vi.mock('@omniviewdev/ui/buttons', () => ({
-  Button: ({ children, onClick, ...rest }: any) => (
-    <button onClick={onClick} data-testid={`btn-${children}`} {...rest}>{children}</button>
-  ),
-}));
-vi.mock('@omniviewdev/ui/typography', () => ({
-  Text: ({ children, ...rest }: any) => <span {...rest}>{children}</span>,
-}));
+// Minimal base-ui stubs — Dialog renders children inline (no portal) when open
+vi.mock('@omniviewdev/base-ui', () => {
+  const Dialog = ({ open, children }: any) => open ? <div data-testid="dialog">{children}</div> : null;
+  Dialog.Title = ({ children }: any) => <h2>{children}</h2>;
+  return {
+    Dialog,
+    Spinner: () => <span data-testid="spinner" />,
+    Progress: ({ value }: any) => <div data-testid="progress-bar" data-value={value} />,
+    IconButton: ({ children, onClick }: any) => <button data-testid="close-btn" onClick={onClick}>{children}</button>,
+    Button: ({ children, onClick }: any) => (
+      <button onClick={onClick} data-testid={`btn-${children}`}>{children}</button>
+    ),
+    Text: ({ children }: any) => <span>{children}</span>,
+  };
+});
 
 // Stub react-icons
 vi.mock('react-icons/lu', () => ({

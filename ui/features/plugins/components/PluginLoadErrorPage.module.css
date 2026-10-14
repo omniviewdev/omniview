@@ -1,0 +1,47 @@
+.Root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 60vh;
+  padding: 64px 24px;
+}
+
+.Icon {
+  color: var(--ov-color-danger);
+  margin-bottom: var(--ov-space-4);
+}
+
+.Title {
+  margin-bottom: var(--ov-space-1);
+}
+
+.Subtitle {
+  margin-bottom: var(--ov-space-4);
+}
+
+.ErrorBox {
+  max-width: 560px;
+  width: 100%;
+  margin-bottom: 24px;
+  padding: var(--ov-space-3);
+  border-radius: var(--ov-radius-md);
+  background: var(--ov-color-danger-soft);
+  border: 1px solid color-mix(in srgb, var(--ov-color-danger) 25%, transparent);
+}
+
+.ErrorText {
+  font-family: var(--ov-font-mono);
+  font-size: 0.75rem;
+  color: var(--ov-color-danger);
+  word-break: break-word;
+  white-space: pre-wrap;
+  text-align: left;
+  margin: 0;
+}
+
+.Actions {
+  display: flex;
+  gap: var(--ov-space-3);
+}
