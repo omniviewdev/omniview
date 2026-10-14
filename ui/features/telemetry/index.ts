@@ -1,4 +1,4 @@
-import type { Logger } from './logger';
+import type { Logger, LogSink } from './logger';
 import { createLogger } from './logger';
 import { patchConsole } from './patchConsole';
 import { setDefaultSink, getDefaultSink } from './sink';
@@ -16,7 +16,7 @@ export function getLogger(name: string): Logger {
   return createLogger(name, getDefaultSink());
 }
 
-export function initTelemetry(sink: import('./logger').LogSink): void {
+export function initTelemetry(sink: LogSink): void {
   setDefaultSink(sink);
   patchConsole(sink);
 }

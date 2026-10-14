@@ -26,14 +26,20 @@ export const usePluginManager = () => {
       console.debug('[usePluginManager] plugin/init_complete received');
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
     });
-    return () => cleanup();
+    return () => {
+      cleanup(); 
+    };
   }, [queryClient]);
 
   // === Watchers === //
   React.useEffect(() => {
     // Set up watchers for plugin reload and install events
     const closer1 = Events.On('plugin/dev_reload_start', (ev) => {
-      const meta = ev.data as PluginMeta;
+      const meta = ev.data;
+      if (!meta) {
+        return;
+      }
+
       queryClient.setQueryData([Entity.PLUGINS], (oldData: PluginInfo[] | undefined) =>
         oldData?.map(plugin =>
           plugin.id === meta.id ? { ...plugin, phase: 'Starting', lastError: '' } : plugin,
@@ -68,10 +74,10 @@ export const usePluginManager = () => {
     // dev_reload_complete is handled by PluginService internally — no manual wiring needed
 
     return () => {
-      closer1()
-      closer2()
+      closer1();
+      closer2();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable refs from hooks; single-run effect
+    // Empty deps: stable refs from hooks; single-run effect.
   }, []);
 
   // === Mutations === //
@@ -82,6 +88,10 @@ export const usePluginManager = () => {
   const installFromPath = useMutation({
     mutationFn: PluginManager.InstallFromPathPrompt,
     onSuccess(data) {
+      if (!data) {
+        return;
+      }
+
       showSnackbar({
         message: `${data.name} plugin successfully installed`,
         status: 'success',
@@ -99,6 +109,10 @@ export const usePluginManager = () => {
   const installDev = useMutation({
     mutationFn: PluginManager.InstallInDevMode,
     onSuccess(data) {
+      if (!data) {
+        return;
+      }
+
       showSnackbar({
         message: `${data.name} plugin successfully installed in development mode`,
         status: 'success',
@@ -158,11 +172,11 @@ export const usePluginManager = () => {
         return [];
       }
 
-      return available
+      return available;
     },
     retry: 1,
     retryDelay: 3000,
-  })
+  });
 
   return {
     plugins,
@@ -191,31 +205,31 @@ export const usePlugin = ({ id }: { id: string }) => {
     queryKey: [Entity.PLUGINS, id, 'versions'],
     queryFn: async () => {
       const versions = await PluginManager.GetPluginVersions(id);
-      return versions
+      return versions;
     },
   });
 
   const readme = useQuery({
     queryKey: [Entity.PLUGINS, id, 'readme'],
-    queryFn: () => PluginManager.GetPluginReadme(id),
+    queryFn: async () => PluginManager.GetPluginReadme(id),
     enabled: !!id,
   });
 
   const reviews = useQuery({
     queryKey: [Entity.PLUGINS, id, 'reviews'],
-    queryFn: () => PluginManager.GetPluginReviews(id, 1),
+    queryFn: async () => PluginManager.GetPluginReviews(id, 1),
     enabled: !!id,
   });
 
   const downloadStats = useQuery({
     queryKey: [Entity.PLUGINS, id, 'download-stats'],
-    queryFn: () => PluginManager.GetPluginDownloadStats(id),
+    queryFn: async () => PluginManager.GetPluginDownloadStats(id),
     enabled: !!id,
   });
 
   const releaseHistory = useQuery({
     queryKey: [Entity.PLUGINS, id, 'release-history'],
-    queryFn: () => PluginManager.GetPluginReleaseHistory(id),
+    queryFn: async () => PluginManager.GetPluginReleaseHistory(id),
     enabled: !!id,
   });
 
@@ -259,10 +273,14 @@ export const usePlugin = ({ id }: { id: string }) => {
    */
   const { mutateAsync: update } = useMutation({
     mutationFn: async (version: string) => {
-      const resp = await PluginManager.InstallPluginVersion(id, version)
-      return resp
+      const resp = await PluginManager.InstallPluginVersion(id, version);
+      return resp;
     },
     onSuccess(meta) {
+      if (!meta) {
+        return;
+      }
+
       showSnackbar({
         message: `Plugin '${meta.name}' updated to v${meta.version}`,
         status: 'success',

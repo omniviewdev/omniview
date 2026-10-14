@@ -24,7 +24,7 @@ describe('23.1 usePluginManager hook (ui/hooks/plugin/usePluginManager.ts)', () 
 
   it('1. No EventsEmit(\'plugin/install_complete\') calls', () => {
     const source = getSource();
-    expect(source).not.toContain("EventsEmit('plugin/install_complete')");
+    expect(source).not.toContain('EventsEmit(\'plugin/install_complete\')');
     expect(source).not.toContain('EventsEmit("plugin/install_complete")');
   });
 

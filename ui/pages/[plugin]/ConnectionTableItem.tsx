@@ -12,13 +12,13 @@ import {
 
 // Types
 import { stringToColor } from '@/utils/color';
-import { Connection, ConnectionStatus, ConnectionStatusCode } from '@omniviewdev/runtime/models';
+import { type Connection, type ConnectionStatus, ConnectionStatusCode } from '@omniviewdev/runtime/models';
 
 // Icons
 import { LuEllipsisVertical } from 'react-icons/lu';
 
 // Third-party
-import { Link, usePluginRouter } from '@infraview/router';
+import { usePluginRouter } from '@infraview/router';
 import styles from './ConnectionTableItem.module.css';
 
 type Props = Omit<Connection, 'createFrom' | 'convertValues'>;
@@ -82,7 +82,7 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
           details: status.details,
           icon: 'LuShieldClose',
         });
-        break;
+        return;
       case ConnectionStatusCode.ConnectionStatusConnected:
         showSnackbar({
           status: 'success',
@@ -90,15 +90,28 @@ const ConnectionTableItem: React.FC<Props> = ({ id, name, description, avatar, l
           icon: 'LuCheckCircle',
         });
         navigate(`/connection/${encodeURIComponent(id)}/resources`);
+        return;
+      case ConnectionStatusCode.$zero:
+      case ConnectionStatusCode.ConnectionStatusUnknown:
+      case ConnectionStatusCode.ConnectionStatusDisconnected:
+      case ConnectionStatusCode.ConnectionStatusPending:
+      case ConnectionStatusCode.ConnectionStatusFailed:
+      case ConnectionStatusCode.ConnectionStatusError:
+      case ConnectionStatusCode.ConnectionStatusForbidden:
+      case ConnectionStatusCode.ConnectionStatusBadRequest:
+      case ConnectionStatusCode.ConnectionStatusNotFound:
+      case ConnectionStatusCode.ConnectionStatusTimeout:
+      case ConnectionStatusCode.ConnectionStatusUnavailable:
+      case ConnectionStatusCode.ConnectionStatusRequestEntityTooLarge:
         break;
-      default:
-        showSnackbar({
-          status: 'error',
-          message: `Failed to connect to '${name}'`,
-          details: status.details,
-          icon: 'LuCircleAlert',
-        });
     }
+
+    showSnackbar({
+      status: 'error',
+      message: `Failed to connect to '${name}'`,
+      details: status.details,
+      icon: 'LuCircleAlert',
+    });
   };
 
   const handleClick = () => {

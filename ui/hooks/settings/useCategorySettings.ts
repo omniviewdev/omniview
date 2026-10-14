@@ -33,8 +33,8 @@ export const useCategorySettings = ({ category }: UseCategorySettingsOptions) =>
       showSnackbar('Settings saved', 'success');
 
       // TODO - invalidate each one individually
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
-      queryClient.refetchQueries({ queryKey: ['settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['settings'] });
+      void queryClient.refetchQueries({ queryKey: ['settings'] });
     },
     onError: createErrorHandler(showSnackbar, 'Failed to save settings'),
   });

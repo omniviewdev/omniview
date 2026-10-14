@@ -15,7 +15,7 @@ import (
 func TestSwitchableSpanExporter_NilInner(t *testing.T) {
 	s := &SwitchableSpanExporter{}
 	err := s.ExportSpans(context.Background(), nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = s.Shutdown(context.Background())
 	assert.NoError(t, err)
 }
@@ -49,7 +49,7 @@ func TestSwitchableSpanExporter_SwapToNoop(t *testing.T) {
 	span.End()
 	require.NoError(t, tp.ForceFlush(context.Background()))
 
-	assert.Equal(t, initialCount, len(recorder.GetSpans()))
+	assert.Len(t, recorder.GetSpans(), initialCount)
 }
 
 func TestSwitchableSpanExporter_ConcurrentSafety(t *testing.T) {

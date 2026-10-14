@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,13 @@ import (
 )
 
 type PluginBuilder struct{}
+
+// GOOS values the binary lookups distinguish.
+const (
+	goosLinux   = "linux"
+	goosDarwin  = "darwin"
+	goosWindows = "windows"
+)
 
 // FindGoBinary looks for the Go binary in a number of well-known paths in case it's not available
 // in the PATH.
@@ -25,21 +33,21 @@ func FindGoBinary() (string, error) {
 	candidates := []string{}
 
 	switch runtime.GOOS {
-	case "linux":
+	case goosLinux:
 		candidates = []string{
 			"/usr/local/go/bin/go",
 			"/usr/bin/go",
 			"/snap/bin/go",
 			filepath.Join(os.Getenv("HOME"), "go/bin/go"),
 		}
-	case "darwin":
+	case goosDarwin:
 		candidates = []string{
 			"/usr/local/go/bin/go",
 			"/opt/homebrew/bin/go", // Apple Silicon Homebrew
 			"/usr/local/bin/go",    // Intel Homebrew
 			filepath.Join(os.Getenv("HOME"), "go/bin/go"),
 		}
-	case "windows":
+	case goosWindows:
 		programFiles := os.Getenv("ProgramFiles")
 		programFilesX86 := os.Getenv("ProgramFiles(x86)")
 		localAppData := os.Getenv("LocalAppData")
@@ -56,7 +64,10 @@ func FindGoBinary() (string, error) {
 		}
 	}
 
-	return "", apperror.ConfigMissing("developer.gopath", "Go binary not found in PATH or common locations. Please configure the Go binary path in settings.")
+	return "", apperror.ConfigMissing(
+		"developer.gopath",
+		"Go binary not found in PATH or common locations. Please configure the Go binary path in settings.",
+	)
 }
 
 // FindPnpmBinary looks for the Pnpm binary in a number of well-known paths in case it's not available
@@ -71,7 +82,7 @@ func FindPnpmBinary() (string, error) {
 	candidates := []string{}
 
 	switch runtime.GOOS {
-	case "linux", "darwin":
+	case goosLinux, goosDarwin:
 		home := os.Getenv("HOME")
 		candidates = []string{
 			filepath.Join(home, ".local/share/pnpm/pnpm"),
@@ -82,7 +93,7 @@ func FindPnpmBinary() (string, error) {
 			"/opt/homebrew/bin/pnpm", // M1 Mac
 			"/usr/bin/pnpm",
 		}
-	case "windows":
+	case goosWindows:
 		localAppData := os.Getenv("LocalAppData")
 		appData := os.Getenv("AppData")
 		candidates = []string{
@@ -106,7 +117,10 @@ func FindPnpmBinary() (string, error) {
 		}
 	}
 
-	return "", apperror.ConfigMissing("developer.pnpmpath", "pnpm binary not found in PATH or common locations. Please configure the pnpm binary path in settings.")
+	return "", apperror.ConfigMissing(
+		"developer.pnpmpath",
+		"pnpm binary not found in PATH or common locations. Please configure the pnpm binary path in settings.",
+	)
 }
 
 // FindNodeBinary tries to locate the Node.js binary across common install paths.
@@ -120,7 +134,7 @@ func FindNodeBinary() (string, error) {
 	home := os.Getenv("HOME")
 
 	switch runtime.GOOS {
-	case "linux", "darwin":
+	case goosLinux, goosDarwin:
 		candidates = []string{
 			filepath.Join(home, ".nvm/versions/node", "*/bin/node"),
 			filepath.Join(home, ".volta/bin/node"),
@@ -128,7 +142,7 @@ func FindNodeBinary() (string, error) {
 			"/opt/homebrew/bin/node", // Apple Silicon
 			"/usr/bin/node",
 		}
-	case "windows":
+	case goosWindows:
 		candidates = []string{
 			filepath.Join(os.Getenv("ProgramFiles"), "nodejs", "node.exe"),
 			filepath.Join(os.Getenv("ProgramFiles(x86)"), "nodejs", "node.exe"),
@@ -146,16 +160,20 @@ func FindNodeBinary() (string, error) {
 		}
 	}
 
-	return "", apperror.ConfigMissing("developer.nodepath", "Node.js binary not found in PATH or common locations. Please configure the Node.js binary path in settings.")
+	return "", apperror.ConfigMissing(
+		"developer.nodepath",
+		"Node.js binary not found in PATH or common locations. Please configure the Node.js binary path in settings.",
+	)
 }
 
-// PrepareCommandWithBinaries returns an exec.Cmd with extended PATH to include the directories of provided binary paths.
+// PrepareCommandWithBinaries returns an exec.Cmd with extended PATH to include the
+// directories of provided binary paths.
 func PrepareCommandWithBinaries(
 	command string,
 	args []string,
 	binaries ...string,
 ) (*exec.Cmd, error) {
-	cmd := exec.Command(command, args...)
+	cmd := exec.CommandContext(context.Background(), command, args...)
 
 	env := os.Environ()
 	var extraDirs []string
@@ -192,10 +210,16 @@ func PrepareCommandWithBinaries(
 	return cmd, nil
 }
 
-// HydrateBuildOpts adds the additional build options if they are not specified
+// HydrateBuildOpts adds the additional build options if they are not specified.
 func HydrateBuildOpts(opts *types.BuildOpts) error {
 	if opts == nil {
-		opts = &types.BuildOpts{}
+		opts = &types.BuildOpts{
+			ExcludeBackend: false,
+			ExcludeUI:      false,
+			GoPath:         "",
+			PnpmPath:       "",
+			NodePath:       "",
+		}
 	}
 
 	if opts.GoPath == "" {

@@ -34,7 +34,9 @@ export default function TerminalError({ error, onRetry, backgroundColor }: Props
 
       {/* Collapsible raw error */}
       <div className={styles.Details}>
-        <button type='button' className={styles.DetailsToggle} onClick={() => setShowRaw(!showRaw)} aria-expanded={showRaw}>
+        <button type='button' className={styles.DetailsToggle} onClick={() => {
+          setShowRaw(!showRaw); 
+        }} aria-expanded={showRaw}>
           <Text size='xs'>{showRaw ? 'Hide' : 'Show'} details</Text>
           {showRaw ? <LuChevronUp size={14} /> : <LuChevronDown size={14} />}
         </button>
@@ -52,7 +54,9 @@ export default function TerminalError({ error, onRetry, backgroundColor }: Props
                 variant='outline'
                 size='sm'
                 className={styles.RetryButton}
-                onClick={() => onRetry([cmd])}
+                onClick={() => {
+                  onRetry([cmd]); 
+                }}
               >
                 {cmd}
               </Button>

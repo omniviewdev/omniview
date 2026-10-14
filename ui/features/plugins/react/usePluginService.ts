@@ -3,7 +3,7 @@ import { PluginServiceContext } from './context';
 import type { PluginServiceSnapshot } from '../core/types';
 import type { PluginService } from '../core/PluginService';
 
-export interface UsePluginServiceResult extends PluginServiceSnapshot {
+export type UsePluginServiceResult = {
   readonly load: PluginService['load'];
   readonly unload: PluginService['unload'];
   readonly reload: PluginService['reload'];
@@ -15,7 +15,7 @@ export interface UsePluginServiceResult extends PluginServiceSnapshot {
   readonly listQuarantined: PluginService['listQuarantined'];
   readonly getDependencyGraph: PluginService['getDependencyGraph'];
   readonly getDependencyWarnings: PluginService['getDependencyWarnings'];
-}
+} & PluginServiceSnapshot;
 
 /**
  * Subscribe to the PluginService snapshot via useSyncExternalStore.

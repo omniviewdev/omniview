@@ -93,7 +93,9 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
             color='neutral'
             aria-label={actionTitle === '' ? undefined : actionTitle}
             disabled={checkIsDisabled()}
-            onClick={() => listItems[0].action(ctx)}
+            onClick={() => {
+              listItems[0].action(ctx); 
+            }}
           >
             {action.icon}
           </IconButton>

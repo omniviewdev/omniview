@@ -13,6 +13,8 @@
 import { shared } from './shared_dependencies';
 
 declare global {
+  // Augmenting Window needs interface declaration merging; a type alias cannot do it.
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Window {
     __OMNIVIEW_SHARED__: Record<string, unknown>;
     __OMNIVIEW_SHARED_READY__: boolean;

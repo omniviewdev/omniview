@@ -4,10 +4,10 @@ import { LuCircleAlert, LuRefreshCw, LuRotateCcw } from 'react-icons/lu';
 import { usePluginService } from '@/features/plugins';
 import styles from './PluginLoadErrorPage.module.css';
 
-interface PluginLoadErrorPageProps {
+type PluginLoadErrorPageProps = {
   pluginId: string;
   error: string;
-}
+};
 
 export default function PluginLoadErrorPage({ pluginId, error }: PluginLoadErrorPageProps) {
   const { plugins, retry, forceReset } = usePluginService();

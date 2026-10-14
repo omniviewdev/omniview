@@ -19,6 +19,9 @@ import type * as pluginlog$0 from "../../../../omniviewdev/omniview/backend/pkg/
 import type * as resource$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/resource/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as config$0 from "../../../../omniviewdev/plugin-sdk/pkg/config/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as networker$0 from "../../../../omniviewdev/plugin-sdk/pkg/v1/networker/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -38,19 +41,19 @@ declare module "@wailsio/runtime" {
             "menu/view/terminal/create": void;
             "plugin/crash_recovery_failed": void;
             "plugin/deprecated_protocol": plugin$0.DeprecatedProtocolPayload;
-            "plugin/dev_install_complete": void;
-            "plugin/dev_install_error": void;
-            "plugin/dev_install_start": void;
-            "plugin/dev_reload_complete": void;
-            "plugin/dev_reload_error": void;
-            "plugin/dev_reload_start": void;
+            "plugin/dev_install_complete": config$0.PluginMeta | null;
+            "plugin/dev_install_error": config$0.PluginMeta | null;
+            "plugin/dev_install_start": config$0.PluginMeta | null;
+            "plugin/dev_reload_complete": config$0.PluginMeta | null;
+            "plugin/dev_reload_error": any[];
+            "plugin/dev_reload_start": config$0.PluginMeta | null;
             "plugin/devserver/error": devserver$0.DevServerErrorPayload;
             "plugin/devserver/log": devserver$0.LogEntry[];
             "plugin/devserver/status": devserver$0.DevServerState;
             "plugin/init_complete": void;
-            "plugin/install_error": void;
-            "plugin/install_finished": void;
-            "plugin/install_started": void;
+            "plugin/install_error": config$0.PluginMeta | null;
+            "plugin/install_finished": config$0.PluginMeta | null;
+            "plugin/install_started": config$0.PluginMeta | null;
             "plugin/process/log": pluginlog$0.LogEntry;
             "plugin/recovered": void;
             "plugin/state_change": plugin$0.StateChangePayload;

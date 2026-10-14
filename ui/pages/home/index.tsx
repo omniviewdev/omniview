@@ -82,7 +82,7 @@ const Home: React.FC = () => {
 
   const regMap = React.useMemo(
     () => Object.fromEntries(registrations.map((r) => [r.id, r])),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on registrationIds, not registrations (see above).
     [registrationIds],
   );
 
@@ -94,7 +94,7 @@ const Home: React.FC = () => {
     if (newIds.length > 0 || pruned.length !== settings.order.length) {
       setOrder([...pruned, ...newIds]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on registrationIds, not registrations (see above).
   }, [registrationIds]);
 
   // Build ordered list — memoized; only recalculates when order or known IDs change
@@ -103,7 +103,7 @@ const Home: React.FC = () => {
       ...settings.order.filter((id) => regMap[id]),
       ...registrations.map((r) => r.id).filter((id) => !settings.order.includes(id)),
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on registrationIds, not registrations (see above).
     [settings.order, registrationIds],
   );
 
@@ -143,7 +143,10 @@ const Home: React.FC = () => {
 
   const renderCard = (id: string) => {
     const reg = regMap[id];
-    if (!reg) return null;
+    if (!reg) {
+      return null;
+    }
+
     const meta = reg.meta as HomepageCardMeta | undefined;
     const defaultConfig = meta?.defaultConfig ?? { sections: [], maxItems: 5 };
     const config = getCardConfig(id, defaultConfig);
@@ -153,8 +156,12 @@ const Home: React.FC = () => {
         config={config}
         isHidden={isHidden(id)}
         isEditMode={isEditMode}
-        onToggleHidden={() => toggleHidden(id)}
-        onConfigChange={(cfg) => updateCardConfig(id, cfg)}
+        onToggleHidden={() => {
+          toggleHidden(id); 
+        }}
+        onConfigChange={(cfg) => {
+          updateCardConfig(id, cfg); 
+        }}
       />
     );
   };
@@ -164,7 +171,7 @@ const Home: React.FC = () => {
     const width = meta?.defaultWidth ?? 'medium';
     return width === 'small' ? { xs: 12, sm: 6, lg: 3 }
       : width === 'large' ? { xs: 12 }
-      : { xs: 12, sm: 6, lg: 4 };
+        : { xs: 12, sm: 6, lg: 4 };
   };
 
   return (
@@ -177,7 +184,9 @@ const Home: React.FC = () => {
           variant={isEditMode ? 'solid' : 'outline'}
           color='brand'
           startDecorator={isEditMode ? <LuCheck size={16} /> : <LuPencil size={16} />}
-          onClick={() => setIsEditMode((v) => !v)}
+          onClick={() => {
+            setIsEditMode((v) => !v); 
+          }}
         >
           {isEditMode ? 'Done' : 'Edit Layout'}
         </Button>

@@ -12,6 +12,7 @@ type subscriptionManager struct {
 
 func newSubscriptionManager() *subscriptionManager {
 	return &subscriptionManager{
+		mu:            sync.RWMutex{},
 		subscriptions: make(map[string]int),
 	}
 }

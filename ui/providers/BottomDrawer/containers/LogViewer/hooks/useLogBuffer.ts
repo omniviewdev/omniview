@@ -3,11 +3,11 @@ import type { LogEntry } from '../types';
 
 const DEFAULT_MAX_LINES = 100_000;
 
-interface UseLogBufferOpts {
+type UseLogBufferOpts = {
   maxLines?: number;
-}
+};
 
-interface UseLogBufferResult {
+type UseLogBufferResult = {
   entries: LogEntry[];
   version: number;
   append: (newEntries: LogEntry[]) => void;
@@ -16,7 +16,7 @@ interface UseLogBufferResult {
   lineCount: number;
   /** Incremented on head eviction or clear; signals search indices are invalid. */
   evictionCount: number;
-}
+};
 
 export function useLogBuffer(opts: UseLogBufferOpts = {}): UseLogBufferResult {
   const maxLines = opts.maxLines ?? DEFAULT_MAX_LINES;
@@ -26,7 +26,10 @@ export function useLogBuffer(opts: UseLogBufferOpts = {}): UseLogBufferResult {
   const evictionCountRef = useRef(0);
 
   const scheduleRender = useCallback(() => {
-    if (rafRef.current !== null) return;
+    if (rafRef.current !== null) {
+      return;
+    }
+
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
       setVersion((v) => v + 1);

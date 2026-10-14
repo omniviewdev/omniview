@@ -43,13 +43,13 @@ func SetupAppMenu(app *application.App, window *application.WebviewWindow) {
 
 	viewMenu.Add("Reload").
 		SetAccelerator("CmdOrCtrl+R").
-		OnClick(func(ctx *application.Context) {
+		OnClick(func(_ *application.Context) {
 			window.Reload()
 		})
 
 	viewMenu.Add("Force Reload").
 		SetAccelerator("CmdOrCtrl+Shift+F").
-		OnClick(func(ctx *application.Context) {
+		OnClick(func(_ *application.Context) {
 			window.ForceReload()
 		})
 
@@ -57,19 +57,19 @@ func SetupAppMenu(app *application.App, window *application.WebviewWindow) {
 
 	viewMenu.Add("New Terminal Session").
 		SetAccelerator("CmdOrCtrl+Shift+T").
-		OnClick(func(ctx *application.Context) {
+		OnClick(func(_ *application.Context) {
 			app.Event.Emit(EventTerminalCreate)
 		})
 
 	viewMenu.Add("Minimize Bottom Menu").
 		SetAccelerator("CmdOrCtrl+Shift+B").
-		OnClick(func(ctx *application.Context) {
+		OnClick(func(_ *application.Context) {
 			app.Event.Emit(EventBottomDrawerMinimize)
 		})
 
 	viewMenu.Add("Maximize Bottom Menu").
 		SetAccelerator("CmdOrCtrl+Alt+B").
-		OnClick(func(ctx *application.Context) {
+		OnClick(func(_ *application.Context) {
 			app.Event.Emit(EventBottomDrawerFullscreen)
 		})
 
@@ -77,7 +77,7 @@ func SetupAppMenu(app *application.App, window *application.WebviewWindow) {
 
 	viewMenu.Add("Close Sidebar").
 		SetAccelerator("CmdOrCtrl+Shift+S").
-		OnClick(func(ctx *application.Context) {
+		OnClick(func(_ *application.Context) {
 			app.Event.Emit(EventSidebarMinimize)
 		})
 

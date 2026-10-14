@@ -31,6 +31,7 @@ import { devToolsChannel } from '@/features/devtools/events';
 import { pluginLogChannel } from '@/features/pluginlogs/events';
 import { Events } from '@omniviewdev/runtime/runtime';
 import styles from './tabs.module.css';
+import { orFallback } from '@/utils/orFallback';
 
 type TabMenuItem = { key: string; label: string; onClick: () => void };
 
@@ -41,7 +42,7 @@ type Props = {
   onMinimize: () => void;
   onExpand: () => void;
   onFullscreen: () => void;
-}
+};
 
 
 /**
@@ -55,27 +56,38 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
   const { settings } = useSettings();
 
   const getContextMenuItems = React.useCallback((index: number): TabMenuItem[] => [
-    { key: 'close', label: 'Close Tab', onClick: () => closeTab({ index }) },
+    { key: 'close', label: 'Close Tab', onClick: () => {
+      closeTab({ index }); 
+    } },
     { key: 'close-right', label: 'Close Tabs to Right', onClick: () => {
       const indices = [];
-      for (let i = index + 1; i < tabs.length; i++) indices.push(i);
+      for (let i = index + 1; i < tabs.length; i++) {
+        indices.push(i);
+      }
+
       closeTabs(indices.map(i => ({ index: i })));
-    }},
+    } },
     { key: 'close-left', label: 'Close Tabs to Left', onClick: () => {
       const indices = [];
-      for (let i = 0; i < index; i++) indices.push(i);
+      for (let i = 0; i < index; i++) {
+        indices.push(i);
+      }
+
       closeTabs(indices.map(i => ({ index: i })));
-    }},
+    } },
     { key: 'close-others', label: 'Close Other Tabs', onClick: () => {
       const indices = [];
       for (let i = 0; i < tabs.length; i++) {
-        if (i !== index) indices.push(i);
+        if (i !== index) {
+          indices.push(i);
+        }
       }
+
       closeTabs(indices.map(i => ({ index: i })));
-    }},
+    } },
   ], [tabs, closeTab, closeTabs]);
 
-  // eslint-disable-next-line @typescript-eslint/ban-types -- null is required by onChange
+  // null is required by onChange
   const handleChange = React.useCallback((_event: React.SyntheticEvent | null, newValue: string | number | null) => {
     if (typeof newValue === 'number') {
       focusTab({ index: newValue });
@@ -93,7 +105,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
           icon: 'LuSquareTerminal',
           properties: { status: 'connecting' },
         });
-        ExecClient.CreateTerminal(SessionOptions.createFrom({ command: [settings['terminal.defaultShell'] || '/bin/bash'] }))
+        ExecClient.CreateTerminal(SessionOptions.createFrom({ command: [orFallback(settings['terminal.defaultShell'], '/bin/bash')] }))
           .then((session: any) => {
             updateTab(
               { id: tempId },
@@ -113,6 +125,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
           });
         break;
       }
+
       case 'browser':
         break;
     }
@@ -266,6 +279,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
         devToolsChannel.emit('onOpenEditorDebug');
       }
     };
+
     document.addEventListener('keydown', handleEditorDebugShortcut);
 
     return () => {
@@ -337,11 +351,13 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
         bottomDrawerChannel.emit('onSessionsRestored');
       });
 
-    const closerTerminal = Events.On("menu/view/terminal/create", () => handleCreate('terminal'))
+    const closerTerminal = Events.On('menu/view/terminal/create', () => {
+      handleCreate('terminal'); 
+    });
 
     return () => {
-      closerTerminal()
-    }
+      closerTerminal();
+    };
 
   }, []);
 
@@ -429,10 +445,11 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
             if (!canResize) {
               return;
             }
+
             if (isMinimized) {
-              onExpand()
+              onExpand();
             } else {
-              onMinimize()
+              onMinimize();
             }
           }}
         >
@@ -471,8 +488,12 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, t
       className={styles.Tab}
       data-selected={selected || undefined}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      onClick={(e) => onChange(e, index)}
-      onContextMenu={() => onContextMenu(index)}
+      onClick={(e) => {
+        onChange(e, index); 
+      }}
+      onContextMenu={() => {
+        onContextMenu(index); 
+      }}
     >
       <span className={styles.TabLabel}>
         {properties?.status === 'connecting' ? (
@@ -489,7 +510,9 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, t
           e.stopPropagation();
           onRemove(index);
         }}
-        onKeyDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation(); 
+        }}
       >
         <LuX size={16} />
       </span>

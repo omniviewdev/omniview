@@ -7,9 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/omniviewdev/plugin-sdk/settings"
 )
 
 // encodeGOB is a test helper that GOB-encodes a settings.Store to bytes.
@@ -63,11 +64,11 @@ func TestMigrate_CoreSettings(t *testing.T) {
 	general, err := s.LoadCategory("general")
 	require.NoError(t, err)
 	assert.Equal(t, "dark", general["theme"])
-	assert.Equal(t, float64(14), general["fontSize"])
+	assert.InDelta(t, float64(14), general["fontSize"], 0)
 
 	editor, err := s.LoadCategory("editor")
 	require.NoError(t, err)
-	assert.Equal(t, float64(4), editor["tabSize"])
+	assert.InDelta(t, float64(4), editor["tabSize"], 0)
 
 	// Verify old file renamed.
 	_, err = os.Stat(filepath.Join(dir, "settings"))
@@ -97,7 +98,7 @@ func TestMigrate_PluginSettings(t *testing.T) {
 	got, err := s.LoadPluginSettings("my-plugin")
 	require.NoError(t, err)
 	assert.Equal(t, "secret123", got["apiKey"])
-	assert.Equal(t, float64(30), got["timeout"])
+	assert.InDelta(t, float64(30), got["timeout"], 0)
 
 	// Old file renamed.
 	_, err = os.Stat(filepath.Join(pluginDir, "settings"))
@@ -142,7 +143,7 @@ func TestMigrate_MultiplePlugins(t *testing.T) {
 
 	gotB, err := s.LoadPluginSettings("plugin-b")
 	require.NoError(t, err)
-	assert.Equal(t, float64(42), gotB["keyB"])
+	assert.InDelta(t, float64(42), gotB["keyB"], 0)
 
 	gotC, err := s.LoadPluginSettings("plugin-c")
 	require.NoError(t, err)
@@ -155,7 +156,7 @@ func TestMigrate_NoOldFiles(t *testing.T) {
 
 	s := openTestStore(t, dir)
 	err := MigrateFromGOB(dir, s)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Store should be empty.
 	general, err := s.LoadCategory("general")
@@ -177,7 +178,7 @@ func TestMigrate_CorruptGOB(t *testing.T) {
 
 	s := openTestStore(t, dir)
 	err := MigrateFromGOB(dir, s)
-	assert.NoError(t, err, "corrupt files should be skipped gracefully")
+	require.NoError(t, err, "corrupt files should be skipped gracefully")
 
 	// Store should be empty since nothing could be decoded.
 	general, err := s.LoadCategory("general")
@@ -207,7 +208,7 @@ func TestMigrate_Idempotent(t *testing.T) {
 
 	// Running migration again should be a no-op (no source file).
 	err = MigrateFromGOB(dir, s)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Data should still be there.
 	general, err := s.LoadCategory("general")

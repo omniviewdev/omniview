@@ -10,33 +10,37 @@ import (
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
-type GraphIndexer struct {
+type Indexer struct {
 	graph *RelationshipGraph
-	store registry.RegistryStore
+	store registry.Store
 }
 
-func NewGraphIndexer(graph *RelationshipGraph, store registry.RegistryStore) *GraphIndexer {
-	return &GraphIndexer{graph: graph, store: store}
+func NewGraphIndexer(graph *RelationshipGraph, store registry.Store) *Indexer {
+	return &Indexer{graph: graph, store: store}
 }
 
-func (gi *GraphIndexer) Name() string { return "relationship-graph" }
+func (gi *Indexer) Name() string { return "relationship-graph" }
 
-func (gi *GraphIndexer) OnAdd(entry registry.ResourceEntry, raw json.RawMessage) {
+func (gi *Indexer) OnAdd(entry registry.ResourceEntry, raw json.RawMessage) {
 	gi.extractEdges(entry, raw)
 	gi.CheckLabelSelectorsForEntry(entry)
 }
 
-func (gi *GraphIndexer) OnUpdate(old, new_ registry.ResourceEntry, raw json.RawMessage) {
+// entryKeyParts is the number of "/"-separated parts in a registry entry key:
+// pluginID/connectionID/resourceKey/namespace/id.
+const entryKeyParts = 5
+
+func (gi *Indexer) OnUpdate(old, updated registry.ResourceEntry, raw json.RawMessage) {
 	gi.graph.RemoveEdgesForNode(old.EntryKey())
-	gi.extractEdges(new_, raw)
-	gi.CheckLabelSelectorsForEntry(new_)
+	gi.extractEdges(updated, raw)
+	gi.CheckLabelSelectorsForEntry(updated)
 }
 
-func (gi *GraphIndexer) OnDelete(entry registry.ResourceEntry) {
+func (gi *Indexer) OnDelete(entry registry.ResourceEntry) {
 	gi.graph.RemoveEdgesForNode(entry.EntryKey())
 }
 
-func (gi *GraphIndexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessage) {
+func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessage) {
 	decls := gi.graph.GetDeclarations(entry.ResourceKey)
 	if len(decls) == 0 {
 		return
@@ -63,7 +67,12 @@ func (gi *GraphIndexer) extractEdges(entry registry.ResourceEntry, raw json.RawM
 	}
 }
 
-func (gi *GraphIndexer) extractFieldPath(source GraphNode, entry registry.ResourceEntry, raw json.RawMessage, decl resource.RelationshipDescriptor) {
+func (gi *Indexer) extractFieldPath(
+	source GraphNode,
+	entry registry.ResourceEntry,
+	raw json.RawMessage,
+	decl resource.RelationshipDescriptor,
+) {
 	path := decl.Extractor.FieldPath
 	if path == "" {
 		return
@@ -119,7 +128,12 @@ func (gi *GraphIndexer) extractFieldPath(source GraphNode, entry registry.Resour
 	}
 }
 
-func (gi *GraphIndexer) extractLabelSelector(source GraphNode, entry registry.ResourceEntry, raw json.RawMessage, decl resource.RelationshipDescriptor) {
+func (gi *Indexer) extractLabelSelector(
+	source GraphNode,
+	entry registry.ResourceEntry,
+	raw json.RawMessage,
+	decl resource.RelationshipDescriptor,
+) {
 	if gi.store == nil {
 		return
 	}
@@ -170,7 +184,7 @@ func (gi *GraphIndexer) extractLabelSelector(source GraphNode, entry registry.Re
 
 // CheckLabelSelectorsForEntry checks if any cached selectors match the labels
 // on a newly added/updated entry.
-func (gi *GraphIndexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
+func (gi *Indexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
 	if gi.store == nil || len(entry.Labels) == 0 {
 		return
 	}
@@ -195,8 +209,8 @@ func (gi *GraphIndexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry
 			continue
 		}
 
-		parts := strings.SplitN(selectorNodeKey, "/", 5)
-		if len(parts) < 5 {
+		parts := strings.SplitN(selectorNodeKey, "/", entryKeyParts)
+		if len(parts) < entryKeyParts {
 			continue
 		}
 
@@ -243,4 +257,4 @@ func matchesSelector(labels, selector map[string]string) bool {
 	return true
 }
 
-var _ interface{ Name() string } = (*GraphIndexer)(nil)
+var _ interface{ Name() string } = (*Indexer)(nil)

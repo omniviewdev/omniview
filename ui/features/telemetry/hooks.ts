@@ -16,9 +16,11 @@ export function useTelemetryContext(overrides?: Partial<TelemetryContext>): Tele
         if (prop === 'traceId') {
           return trace.getActiveSpan()?.spanContext().traceId;
         }
+
         if (prop === 'spanId') {
           return trace.getActiveSpan()?.spanContext().spanId;
         }
+
         return target[prop as keyof TelemetryContext];
       },
     },

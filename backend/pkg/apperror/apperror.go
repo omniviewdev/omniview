@@ -3,7 +3,11 @@ package apperror
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 )
+
+// statusClientClosedRequest is the non-standard 499 status used for user-cancelled operations.
+const statusClientClosedRequest = 499
 
 // AppError is a structured error type based on RFC 7807 Problem Details.
 // Its Error() method returns a JSON string so the structured fields survive
@@ -56,32 +60,42 @@ func (e *AppError) WithInstance(instance string) *AppError {
 // New creates a new AppError with the given fields.
 func New(errType string, status int, title, detail string) *AppError {
 	return &AppError{
-		Type:   errType,
-		Status: status,
-		Title:  title,
-		Detail: detail,
+		Type:        errType,
+		Status:      status,
+		Title:       title,
+		Detail:      detail,
+		Err:         nil,
+		Instance:    "",
+		Suggestions: nil,
+		Actions:     nil,
 	}
 }
 
 // Wrap wraps an existing error, using err.Error() as the detail.
 func Wrap(err error, errType string, status int, title string) *AppError {
 	return &AppError{
-		Err:    err,
-		Type:   errType,
-		Status: status,
-		Title:  title,
-		Detail: err.Error(),
+		Err:         err,
+		Type:        errType,
+		Status:      status,
+		Title:       title,
+		Detail:      err.Error(),
+		Instance:    "",
+		Suggestions: nil,
+		Actions:     nil,
 	}
 }
 
 // WrapWithDetail wraps an existing error with a custom detail message.
 func WrapWithDetail(err error, errType string, status int, title, detail string) *AppError {
 	return &AppError{
-		Err:    err,
-		Type:   errType,
-		Status: status,
-		Title:  title,
-		Detail: detail,
+		Err:         err,
+		Type:        errType,
+		Status:      status,
+		Title:       title,
+		Detail:      detail,
+		Instance:    "",
+		Suggestions: nil,
+		Actions:     nil,
 	}
 }
 
@@ -89,32 +103,36 @@ func WrapWithDetail(err error, errType string, status int, title, detail string)
 
 // NotFound creates a 404 error.
 func NotFound(title, detail string) *AppError {
-	return New(TypeResourceNotFound, 404, title, detail)
+	return New(TypeResourceNotFound, http.StatusNotFound, title, detail)
 }
 
 // Forbidden creates a 403 error.
 func Forbidden(title, detail string) *AppError {
-	return New(TypeResourceForbidden, 403, title, detail)
+	return New(TypeResourceForbidden, http.StatusForbidden, title, detail)
 }
 
 // Internal wraps an unexpected error as a 500.
 func Internal(err error, title string) *AppError {
-	return Wrap(err, TypeInternal, 500, title)
+	return Wrap(err, TypeInternal, http.StatusInternalServerError, title)
 }
 
 // Cancelled creates an error for user-cancelled operations.
 func Cancelled() *AppError {
 	return &AppError{
-		Type:   TypeCancelled,
-		Status: 499,
-		Title:  "Cancelled",
-		Detail: "The operation was cancelled by the user.",
+		Type:        TypeCancelled,
+		Status:      statusClientClosedRequest,
+		Title:       "Cancelled",
+		Detail:      "The operation was cancelled by the user.",
+		Err:         nil,
+		Instance:    "",
+		Suggestions: nil,
+		Actions:     nil,
 	}
 }
 
 // NotImplemented creates a 501 error for features not yet implemented.
 func NotImplemented(title, detail string) *AppError {
-	return New(TypeNotImplemented, 501, title, detail)
+	return New(TypeNotImplemented, http.StatusNotImplemented, title, detail)
 }
 
 // --- Domain-specific constructors ---
@@ -122,44 +140,56 @@ func NotImplemented(title, detail string) *AppError {
 // PluginNotFound creates a structured error for a missing plugin.
 func PluginNotFound(pluginID string) *AppError {
 	return &AppError{
-		Type:     TypePluginNotFound,
-		Status:   404,
-		Title:    "Plugin not found",
-		Detail:   fmt.Sprintf("No plugin with id '%s' was found.", pluginID),
-		Instance: pluginID,
+		Type:        TypePluginNotFound,
+		Status:      http.StatusNotFound,
+		Title:       "Plugin not found",
+		Detail:      fmt.Sprintf("No plugin with id '%s' was found.", pluginID),
+		Instance:    pluginID,
+		Err:         nil,
+		Suggestions: nil,
+		Actions:     nil,
 	}
 }
 
 // PluginAlreadyLoaded creates a 409 conflict error for a plugin that is already loaded.
 func PluginAlreadyLoaded(pluginID string) *AppError {
 	return &AppError{
-		Type:     TypePluginAlreadyLoaded,
-		Status:   409,
-		Title:    "Plugin already loaded",
-		Detail:   fmt.Sprintf("Plugin '%s' is already loaded.", pluginID),
-		Instance: pluginID,
+		Type:        TypePluginAlreadyLoaded,
+		Status:      http.StatusConflict,
+		Title:       "Plugin already loaded",
+		Detail:      fmt.Sprintf("Plugin '%s' is already loaded.", pluginID),
+		Instance:    pluginID,
+		Err:         nil,
+		Suggestions: nil,
+		Actions:     nil,
 	}
 }
 
 // ConnectionNotFound creates a structured error for a missing connection.
 func ConnectionNotFound(pluginID, connectionID string) *AppError {
 	return &AppError{
-		Type:     TypeConnectionNotFound,
-		Status:   404,
-		Title:    "Connection not found",
-		Detail:   fmt.Sprintf("Connection '%s' not found for plugin '%s'.", connectionID, pluginID),
-		Instance: pluginID + "/" + connectionID,
+		Type:        TypeConnectionNotFound,
+		Status:      http.StatusNotFound,
+		Title:       "Connection not found",
+		Detail:      fmt.Sprintf("Connection '%s' not found for plugin '%s'.", connectionID, pluginID),
+		Instance:    pluginID + "/" + connectionID,
+		Err:         nil,
+		Suggestions: nil,
+		Actions:     nil,
 	}
 }
 
 // SessionNotFound creates a structured error for a missing session.
 func SessionNotFound(sessionID string) *AppError {
 	return &AppError{
-		Type:     TypeSessionNotFound,
-		Status:   404,
-		Title:    "Session not found",
-		Detail:   fmt.Sprintf("Session '%s' was not found.", sessionID),
-		Instance: sessionID,
+		Type:        TypeSessionNotFound,
+		Status:      http.StatusNotFound,
+		Title:       "Session not found",
+		Detail:      fmt.Sprintf("Session '%s' was not found.", sessionID),
+		Instance:    sessionID,
+		Err:         nil,
+		Suggestions: nil,
+		Actions:     nil,
 	}
 }
 
@@ -167,11 +197,14 @@ func SessionNotFound(sessionID string) *AppError {
 // with an auto-attached "Open Settings" action.
 func ConfigMissing(setting, detail string) *AppError {
 	return &AppError{
-		Type:    TypeSettingsMissingConfig,
-		Status:  422,
-		Title:   fmt.Sprintf("Missing configuration: %s", setting),
-		Detail:  detail,
-		Actions: []Action{OpenSettingsAction("developer")},
+		Type:        TypeSettingsMissingConfig,
+		Status:      http.StatusUnprocessableEntity,
+		Title:       "Missing configuration: " + setting,
+		Detail:      detail,
+		Actions:     []Action{OpenSettingsAction("developer")},
+		Err:         nil,
+		Instance:    "",
+		Suggestions: nil,
 	}
 }
 
@@ -196,6 +229,8 @@ func FromResourceOperationError(jsonStr string, pluginID string) *AppError {
 		Detail:      raw.Message,
 		Instance:    pluginID,
 		Suggestions: raw.Suggestions,
+		Err:         nil,
+		Actions:     nil,
 	}
 }
 
@@ -203,22 +238,22 @@ func FromResourceOperationError(jsonStr string, pluginID string) *AppError {
 func mapResourceCode(code string) (string, int) {
 	switch code {
 	case "NOT_FOUND":
-		return TypeResourceNotFound, 404
+		return TypeResourceNotFound, http.StatusNotFound
 	case "FORBIDDEN":
-		return TypeResourceForbidden, 403
+		return TypeResourceForbidden, http.StatusForbidden
 	case "UNAUTHORIZED":
-		return TypeResourceUnauthorized, 401
+		return TypeResourceUnauthorized, http.StatusUnauthorized
 	case "CONFLICT":
-		return TypeResourceConflict, 409
+		return TypeResourceConflict, http.StatusConflict
 	case "ALREADY_EXISTS":
-		return TypeResourceConflict, 409
+		return TypeResourceConflict, http.StatusConflict
 	case "TIMEOUT":
-		return TypeResourceTimeout, 408
+		return TypeResourceTimeout, http.StatusRequestTimeout
 	case "CONNECTION_ERROR":
-		return TypeConnectionFailed, 503
+		return TypeConnectionFailed, http.StatusServiceUnavailable
 	case "CERTIFICATE_ERROR":
-		return TypeConnectionFailed, 502
+		return TypeConnectionFailed, http.StatusBadGateway
 	default:
-		return TypeInternal, 500
+		return TypeInternal, http.StatusInternalServerError
 	}
 }

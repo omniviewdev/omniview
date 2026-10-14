@@ -22,7 +22,7 @@ const CoreLayoutHeader: React.FC = () => {
 
   // Compensate for the window controls on MacOS
   const shouldIndent = platform === 'macos' && !isFullscreen;
-  const style = { '--CoreLayoutHeader-inset': shouldIndent ? '68px' : '0px' } as React.CSSProperties;
+  const style: React.CSSProperties & Record<`--${string}`, string> = { '--CoreLayoutHeader-inset': shouldIndent ? '68px' : '0px' };
 
   return (
     <AppShell.Header

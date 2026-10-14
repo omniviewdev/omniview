@@ -8,13 +8,19 @@ type IngestFn = (payload: string) => Promise<void>;
 const _originalConsoleError = console.error.bind(console);
 
 export class WailsTransport extends BaseTransport {
-  readonly name = 'wails';
-  readonly version = '1.0.0';
-  private ingest: IngestFn;
+  private readonly ingest: IngestFn;
 
   constructor(ingestFn: IngestFn) {
     super();
     this.ingest = ingestFn;
+  }
+
+  get name() {
+    return 'wails';
+  }
+
+  get version() {
+    return '1.0.0';
   }
 
   send(items: TransportItem | TransportItem[]): void {
@@ -25,8 +31,10 @@ export class WailsTransport extends BaseTransport {
       if (import.meta.env?.DEV) {
         _originalConsoleError('[WailsTransport] JSON.stringify failed:', err);
       }
+
       return;
     }
+
     this.ingest(data).catch((err) => {
       if (import.meta.env?.DEV) {
         _originalConsoleError('[WailsTransport] ingest failed:', err);

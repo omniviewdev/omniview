@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,7 +21,7 @@ func TestGetSetting_PluginNotFound(t *testing.T) {
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
 	assert.Contains(t, appErr.Detail, "nonexistent")
@@ -35,7 +34,7 @@ func TestSetSetting_PluginNotFound(t *testing.T) {
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
 	assert.Contains(t, appErr.Detail, "nonexistent")
@@ -48,7 +47,7 @@ func TestSetSettings_PluginNotFound(t *testing.T) {
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
 	assert.Contains(t, appErr.Detail, "nonexistent")

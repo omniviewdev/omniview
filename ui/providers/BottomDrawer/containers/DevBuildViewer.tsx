@@ -9,9 +9,9 @@ import type { DevServerState } from '@/features/devtools/types';
 import { getAggregateStatus, STATUS_COLORS } from '@/features/devtools/types';
 import HintTooltip from '@/components/base/HintTooltip';
 
-interface Props {
+type Props = {
   pluginId: string;
-}
+};
 
 const DevBuildViewer: React.FC<Props> = ({ pluginId }) => {
   const source = useMemo(() => createDevBuildSource(pluginId), [pluginId]);
@@ -19,7 +19,10 @@ const DevBuildViewer: React.FC<Props> = ({ pluginId }) => {
 
   useEffect(() => {
     const unsub = devToolsChannel.on('onStatusChange', (state) => {
-      if (state.pluginID !== pluginId) return;
+      if (state.pluginID !== pluginId) {
+        return;
+      }
+
       setServerState(state);
     });
     return unsub;
@@ -46,7 +49,9 @@ const DevBuildViewer: React.FC<Props> = ({ pluginId }) => {
           variant='ghost'
           color='neutral'
           aria-label='Rebuild plugin binary'
-          onClick={() => devToolsChannel.emit('onRebuildPlugin', pluginId)}
+          onClick={() => {
+            devToolsChannel.emit('onRebuildPlugin', pluginId); 
+          }}
         >
           <LuHammer size={14} />
         </IconButton>
@@ -57,7 +62,9 @@ const DevBuildViewer: React.FC<Props> = ({ pluginId }) => {
           variant='ghost'
           color='neutral'
           aria-label='Restart dev server'
-          onClick={() => devToolsChannel.emit('onRestartDevServer', pluginId)}
+          onClick={() => {
+            devToolsChannel.emit('onRestartDevServer', pluginId); 
+          }}
         >
           <LuRefreshCw size={14} />
         </IconButton>

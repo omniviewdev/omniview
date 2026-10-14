@@ -65,6 +65,9 @@ func (p PluginPhase) IsTerminal() bool {
 	switch p {
 	case PhaseRunning, PhaseStopped, PhaseFailed, PhaseBuildFailed, PhaseUninstalled:
 		return true
+	case PhaseInstalling, PhaseInstalled, PhaseBuilding, PhaseValidating, PhaseStarting,
+		PhaseDegraded, PhaseRecovering, PhaseStopping, PhaseUninstalling:
+		return false
 	default:
 		return false
 	}
@@ -75,6 +78,10 @@ func (p PluginPhase) IsActive() bool {
 	switch p {
 	case PhaseRunning, PhaseDegraded:
 		return true
+	case PhaseUninstalled, PhaseInstalling, PhaseInstalled, PhaseBuilding, PhaseBuildFailed,
+		PhaseValidating, PhaseStarting, PhaseRecovering, PhaseStopping, PhaseStopped,
+		PhaseFailed, PhaseUninstalling:
+		return false
 	default:
 		return false
 	}

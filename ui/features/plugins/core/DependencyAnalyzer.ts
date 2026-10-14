@@ -1,9 +1,9 @@
 import type { DeclaredDependencies, DependencyGraph } from './types';
 
-interface PluginDependencyEntry {
+type PluginDependencyEntry = {
   readonly plugins: readonly string[];
   readonly extensionPoints: readonly string[];
-}
+};
 
 export class DependencyAnalyzer {
   private readonly entries = new Map<string, PluginDependencyEntry>();
@@ -33,9 +33,15 @@ export class DependencyAnalyzer {
     // Build adjacency list (only plugin→plugin edges matter for cycles)
     const adj = new Map<string, string[]>();
     for (const [pluginId, entry] of this.entries) {
-      if (!adj.has(pluginId)) adj.set(pluginId, []);
+      if (!adj.has(pluginId)) {
+        adj.set(pluginId, []);
+      }
+
       for (const dep of entry.plugins) {
-        if (!adj.has(dep)) adj.set(dep, []);
+        if (!adj.has(dep)) {
+          adj.set(dep, []);
+        }
+
         adj.get(pluginId)!.push(dep);
       }
     }
@@ -72,6 +78,7 @@ export class DependencyAnalyzer {
           onStack.delete(w);
           scc.push(w);
         } while (w !== v);
+
         sccs.push(scc);
       }
     };
@@ -86,7 +93,10 @@ export class DependencyAnalyzer {
     // - SCCs with 2+ nodes are always cycles
     // - SCCs with 1 node are cycles only if there's a self-edge
     return sccs.filter((scc) => {
-      if (scc.length > 1) return true;
+      if (scc.length > 1) {
+        return true;
+      }
+
       const node = scc[0];
       return (adj.get(node) ?? []).includes(node);
     });
@@ -103,7 +113,9 @@ export class DependencyAnalyzer {
     registeredExtensionPoints: ReadonlySet<string>,
   ): string[] {
     const entry = this.entries.get(pluginId);
-    if (!entry) return [];
+    if (!entry) {
+      return [];
+    }
 
     const warnings: string[] = [];
 
@@ -132,7 +144,7 @@ export class DependencyAnalyzer {
    */
   getGraph(): DependencyGraph {
     const nodes = new Set<string>();
-    const edges: [string, string][] = [];
+    const edges: Array<[string, string]> = [];
 
     for (const [pluginId, entry] of this.entries) {
       nodes.add(pluginId);
@@ -140,6 +152,7 @@ export class DependencyAnalyzer {
         nodes.add(dep);
         edges.push([pluginId, dep]);
       }
+
       for (const ep of entry.extensionPoints) {
         nodes.add(ep);
         edges.push([pluginId, ep]);

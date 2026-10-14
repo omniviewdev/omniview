@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/naming-convention */
-
 export type ByteUnit =
   | 'E'
   | 'EB'
@@ -27,7 +25,7 @@ export type ByteConversionOptions = {
   round?: boolean | number;
 };
 
-const unitMultipliers: { [unit in ByteUnit]: bigint } = {
+const unitMultipliers: Record<ByteUnit, bigint> = {
   E: 10n ** 18n,
   EB: 10n ** 18n,
   P: 10n ** 15n,
@@ -85,7 +83,6 @@ export function convertByteUnits({
 
   const [, valueStr, unit] = match;
 
-  /* eslint-disable prefer-const */
   let [integerPart, fractionalPart = ''] = valueStr.split('.');
   fractionalPart = fractionalPart.padEnd(6, '0');
 

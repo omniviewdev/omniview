@@ -160,6 +160,7 @@ tasks:
   check:ui-typecheck:
     cmds:
       - pnpm exec tsc -p tsconfig.app.json --noEmit
+      - pnpm exec tsc -p tsconfig.test.json --noEmit
 
   # ──────────────────────────────────────────────
   # Workspace packages

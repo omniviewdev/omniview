@@ -134,4 +134,3 @@ jobs:
 
       - name: Typecheck
         run: task check:ui-typecheck
-        continue-on-error: true

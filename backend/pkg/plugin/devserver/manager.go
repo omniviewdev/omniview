@@ -3,6 +3,7 @@ package devserver
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -51,19 +52,23 @@ func NewDevServerManager(
 	settingsProvider pkgsettings.Provider,
 ) *DevServerManager {
 	return &DevServerManager{
+		app:              nil, // set by ServiceStartup
+		ctx:              nil, // set by ServiceStartup
 		logger:           logger.Named("DevServerManager"),
+		mu:               sync.RWMutex{},
 		instances:        make(map[string]*DevServerInstance),
 		ports:            NewPortAllocator(stateRoot),
 		pluginRef:        pluginRef,
 		pluginReloader:   pluginReloader,
 		settingsProvider: settingsProvider,
+		externalWatcher:  nil, // set by ServiceStartup
 		pluginsRoot:      pluginsRoot,
 	}
 }
 
 // ServiceStartup is called during Wails v3 service startup. It stores the
 // application reference and starts the external plugin watcher.
-func (m *DevServerManager) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+func (m *DevServerManager) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	m.app = application.Get()
 	m.ctx = ctx
 
@@ -84,8 +89,8 @@ func (m *DevServerManager) ServiceStartup(ctx context.Context, options applicati
 		m.logger.Errorw(ctx, "failed to create external watcher", "error", err)
 	} else {
 		m.externalWatcher = watcher
-		if err := watcher.Start(ctx); err != nil {
-			m.logger.Errorw(ctx, "failed to start external watcher", "error", err)
+		if startErr := watcher.Start(ctx); startErr != nil {
+			m.logger.Errorw(ctx, "failed to start external watcher", "error", startErr)
 		}
 	}
 
@@ -154,10 +159,20 @@ func (m *DevServerManager) StartDevServer(pluginID string) (DevServerState, erro
 		return DevServerState{}, apperror.PluginNotFound(pluginID)
 	}
 	if !devMode {
-		return DevServerState{}, apperror.New(apperror.TypeValidation, 422, "Not in dev mode", fmt.Sprintf("Plugin '%s' is not in dev mode.", pluginID))
+		return DevServerState{}, apperror.New(
+			apperror.TypeValidation,
+			http.StatusUnprocessableEntity,
+			"Not in dev mode",
+			fmt.Sprintf("Plugin '%s' is not in dev mode.", pluginID),
+		)
 	}
 	if devPath == "" {
-		return DevServerState{}, apperror.New(apperror.TypeValidation, 422, "Missing dev path", fmt.Sprintf("Plugin '%s' has no development path configured.", pluginID))
+		return DevServerState{}, apperror.New(
+			apperror.TypeValidation,
+			http.StatusUnprocessableEntity,
+			"Missing dev path",
+			fmt.Sprintf("Plugin '%s' has no development path configured.", pluginID),
+		)
 	}
 
 	return m.startDevServer(pluginID, devPath)
@@ -173,7 +188,12 @@ func (m *DevServerManager) StartDevServerForPath(pluginID, devPath string) (DevS
 	l.Debugw(context.Background(), "starting dev server for path", "devPath", devPath)
 
 	if devPath == "" {
-		return DevServerState{}, apperror.New(apperror.TypeValidation, 422, "Missing dev path", fmt.Sprintf("Plugin '%s' has no development path configured.", pluginID))
+		return DevServerState{}, apperror.New(
+			apperror.TypeValidation,
+			http.StatusUnprocessableEntity,
+			"Missing dev path",
+			fmt.Sprintf("Plugin '%s' has no development path configured.", pluginID),
+		)
 	}
 
 	return m.startDevServer(pluginID, devPath)
@@ -221,12 +241,14 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 	m.mu.Unlock()
 
 	// Start the instance (non-blocking; spawns goroutines).
-	if err := inst.Start(); err != nil {
+	if err = inst.Start(); err != nil {
 		m.mu.Lock()
 		delete(m.instances, pluginID)
 		m.mu.Unlock()
 		m.ports.Release(port)
-		return DevServerState{}, apperror.Wrap(err, apperror.TypePluginBuildFailed, 500, "Failed to start dev server")
+		return DevServerState{}, apperror.Wrap(
+			err, apperror.TypePluginBuildFailed, http.StatusInternalServerError, "Failed to start dev server",
+		)
 	}
 
 	// Record the Vite process group ID so we can kill zombies on next startup
@@ -252,7 +274,12 @@ func (m *DevServerManager) StopDevServer(pluginID string) error {
 	inst, exists := m.instances[pluginID]
 	if !exists {
 		m.mu.Unlock()
-		return apperror.New(apperror.TypeValidation, 422, "No dev server running", fmt.Sprintf("No dev server is running for plugin '%s'.", pluginID))
+		return apperror.New(
+			apperror.TypeValidation,
+			http.StatusUnprocessableEntity,
+			"No dev server running",
+			fmt.Sprintf("No dev server is running for plugin '%s'.", pluginID),
+		)
 	}
 	delete(m.instances, pluginID)
 	m.mu.Unlock()
@@ -262,10 +289,17 @@ func (m *DevServerManager) StopDevServer(pluginID string) error {
 	m.ports.SavePIDs()
 
 	state := DevServerState{
-		PluginID:   pluginID,
-		Mode:       DevServerModeIdle,
-		ViteStatus: DevProcessStatusStopped,
-		GoStatus:   DevProcessStatusStopped,
+		PluginID:          pluginID,
+		Mode:              DevServerModeIdle,
+		DevPath:           "",
+		VitePort:          0,
+		ViteURL:           "",
+		ViteStatus:        DevProcessStatusStopped,
+		GoStatus:          DevProcessStatusStopped,
+		LastBuildDuration: 0,
+		LastBuildTime:     "",
+		LastError:         "",
+		GRPCConnected:     false,
 	}
 	m.emitStatus(pluginID, state)
 
@@ -288,7 +322,7 @@ func (m *DevServerManager) RebuildPlugin(pluginID string) error {
 	m.mu.RUnlock()
 
 	if !exists {
-		return apperror.New(apperror.TypeValidation, 422,
+		return apperror.New(apperror.TypeValidation, http.StatusUnprocessableEntity,
 			"No dev server running",
 			fmt.Sprintf("No dev server is running for plugin '%s'.", pluginID))
 	}
@@ -304,10 +338,7 @@ func (m *DevServerManager) GetDevServerState(pluginID string) DevServerState {
 
 	inst, exists := m.instances[pluginID]
 	if !exists {
-		return DevServerState{
-			PluginID: pluginID,
-			Mode:     DevServerModeIdle,
-		}
+		return idleState(pluginID)
 	}
 	return inst.State()
 }
@@ -329,17 +360,7 @@ func (m *DevServerManager) ListDevServerStates() []DevServerState {
 			if !conn.Connected {
 				continue
 			}
-			state := DevServerState{
-				PluginID:      pluginID,
-				Mode:          DevServerModeExternal,
-				VitePort:      conn.DevInfo.VitePort,
-				GRPCConnected: true,
-			}
-			if conn.DevInfo.VitePort > 0 {
-				state.ViteStatus = DevProcessStatusReady
-				state.ViteURL = fmt.Sprintf("http://127.0.0.1:%d", conn.DevInfo.VitePort)
-			}
-			states = append(states, state)
+			states = append(states, externalState(pluginID, conn.DevInfo))
 		}
 		m.externalWatcher.mu.RUnlock()
 	}
@@ -399,48 +420,71 @@ func (m *DevServerManager) handleExternalConnect(pluginID string, info *DevInfoF
 		"pid", info.PID,
 	)
 
-	state := DevServerState{
-		PluginID:      pluginID,
-		Mode:          DevServerModeExternal,
-		VitePort:      info.VitePort,
-		GRPCConnected: true,
-	}
-	if info.VitePort > 0 {
-		state.ViteStatus = DevProcessStatusReady
-		state.ViteURL = fmt.Sprintf("http://127.0.0.1:%d", info.VitePort)
-	}
-
-	m.emitStatus(pluginID, state)
+	m.emitStatus(pluginID, externalState(pluginID, info))
 }
 
 // handleExternalDisconnect is called by ExternalWatcher when an external plugin disconnects.
 func (m *DevServerManager) handleExternalDisconnect(pluginID string) {
 	m.logger.Infow(context.Background(), "external plugin disconnected", "pluginID", pluginID)
 
-	state := DevServerState{
-		PluginID:      pluginID,
-		Mode:          DevServerModeIdle,
-		GRPCConnected: false,
+	m.emitStatus(pluginID, idleState(pluginID))
+}
+
+// idleState is the state of a plugin with no dev server.
+func idleState(pluginID string) DevServerState {
+	return DevServerState{
+		PluginID:          pluginID,
+		Mode:              DevServerModeIdle,
+		DevPath:           "",
+		VitePort:          0,
+		ViteURL:           "",
+		ViteStatus:        "",
+		GoStatus:          "",
+		LastBuildDuration: 0,
+		LastBuildTime:     "",
+		LastError:         "",
+		GRPCConnected:     false,
 	}
-	m.emitStatus(pluginID, state)
+}
+
+// externalState is the state of an externally-managed plugin described by info.
+func externalState(pluginID string, info *DevInfoFile) DevServerState {
+	state := DevServerState{
+		PluginID:          pluginID,
+		Mode:              DevServerModeExternal,
+		DevPath:           "",
+		VitePort:          info.VitePort,
+		ViteURL:           "",
+		ViteStatus:        "",
+		GoStatus:          "",
+		LastBuildDuration: 0,
+		LastBuildTime:     "",
+		LastError:         "",
+		GRPCConnected:     true,
+	}
+	if info.VitePort > 0 {
+		state.ViteStatus = DevProcessStatusReady
+		state.ViteURL = fmt.Sprintf("http://127.0.0.1:%d", info.VitePort)
+	}
+	return state
 }
 
 func (m *DevServerManager) resolveBuildOpts() BuildOpts {
-	opts := BuildOpts{}
+	opts := BuildOpts{GoPath: "", PnpmPath: "", NodePath: ""}
 	opts.GoPath, _ = m.settingsProvider.GetString("developer.gopath")
 	opts.PnpmPath, _ = m.settingsProvider.GetString("developer.pnpmpath")
 	opts.NodePath, _ = m.settingsProvider.GetString("developer.nodepath")
 	return opts
 }
 
-func (m *DevServerManager) emitStatus(pluginID string, state DevServerState) {
+func (m *DevServerManager) emitStatus(_ string, state DevServerState) {
 	if m.app == nil {
 		return
 	}
 	m.app.Event.Emit(EventDevServerStatus, state)
 }
 
-func (m *DevServerManager) emitLogs(pluginID string, entries []LogEntry) {
+func (m *DevServerManager) emitLogs(_ string, entries []LogEntry) {
 	if m.app == nil || len(entries) == 0 {
 		return
 	}

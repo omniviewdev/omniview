@@ -5,14 +5,14 @@ import (
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
-// AdapterV1 wraps SDK v1 settings.Provider as the engine canonical SettingsProvider.
+// AdapterV1 wraps SDK v1 settings.Provider as the engine canonical Provider.
 // For v1, all methods are direct delegation (types identical).
 // When v2 ships and canonical types diverge, AdapterV1 translates v1 → canonical.
 type AdapterV1 struct {
 	inner sdksettings.Provider
 }
 
-var _ SettingsProvider = (*AdapterV1)(nil)
+var _ Provider = (*AdapterV1)(nil)
 
 // NewAdapterV1 creates a new v1 adapter wrapping the given SDK settings provider.
 func NewAdapterV1(inner sdksettings.Provider) *AdapterV1 {

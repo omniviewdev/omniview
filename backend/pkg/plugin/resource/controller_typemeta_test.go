@@ -73,7 +73,7 @@ func TestGetResourceGroup_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.GetResourceGroup("p1", "nonexistent")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "group not found")
 }
 
@@ -136,7 +136,7 @@ func TestGetResourceType_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	meta, err := ctrl.GetResourceType("p1", "nonexistent")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, meta)
 }
 
@@ -180,7 +180,7 @@ func TestHasResourceType_PluginNotFound(t *testing.T) {
 func TestGetResourceDefinition_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetResourceDefinitionFunc: func(_ context.Context, id string) (resource.ResourceDefinition, error) {
+		GetResourceDefinitionFunc: func(_ context.Context, _ string) (resource.ResourceDefinition, error) {
 			return resource.ResourceDefinition{
 				IDAccessor: "metadata.name",
 			}, nil
@@ -203,7 +203,7 @@ func TestGetResourceDefinition_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.GetResourceDefinition("p1", "x")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "def not found")
 }
 
@@ -241,7 +241,7 @@ func TestGetResourceCapabilities_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	caps, err := ctrl.GetResourceCapabilities("p1", "pods")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, caps)
 }
 
@@ -312,7 +312,7 @@ func TestGetResourceGroup_PluginNotFound_TypeMeta(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.GetResourceGroup("nonexistent", "core")
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }
 
@@ -320,7 +320,7 @@ func TestGetResourceType_PluginNotFound_TypeMeta(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	meta, err := ctrl.GetResourceType("nonexistent", "x")
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Nil(t, meta)
 }
@@ -329,7 +329,7 @@ func TestGetResourceDefinition_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.GetResourceDefinition("nonexistent", "x")
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }
 
@@ -337,7 +337,7 @@ func TestGetResourceCapabilities_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	caps, err := ctrl.GetResourceCapabilities("nonexistent", "pods")
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Nil(t, caps)
 }
@@ -346,7 +346,7 @@ func TestGetResourceSchema_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.GetResourceSchema("nonexistent", "conn-1", "pods")
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }
 
@@ -354,6 +354,6 @@ func TestGetFilterFields_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.GetFilterFields("nonexistent", "conn-1", "pods")
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }

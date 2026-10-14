@@ -1,5 +1,5 @@
 import type { PluginImportOpts } from '../core/types';
-import { SystemJS } from '../api/systemjs';
+import { systemJs } from '../api/systemjs';
 
 /**
  * Production import adapter.
@@ -24,7 +24,7 @@ export async function importPlugin(opts: PluginImportOpts): Promise<unknown> {
     try {
       const RefreshRuntime = await import(/* @vite-ignore */ `${devBase}/@react-refresh`);
       RefreshRuntime.default.injectIntoGlobalHook(window);
-      (window as any).$RefreshReg$ = () => {};
+      (window as any).$RefreshReg$ = () => undefined;
       (window as any).$RefreshSig$ = () => (type: any) => type;
       (window as any).__vite_plugin_react_preamble_installed__ = true;
     } catch (e) {
@@ -47,16 +47,16 @@ export async function importPlugin(opts: PluginImportOpts): Promise<unknown> {
   // PRODUCTION: SystemJS import
   const modulePath = `${window.location.protocol}//${window.location.host}/_/plugins/${pluginId}/assets/entry.js`;
 
-  const resolvedModule = SystemJS.resolve(modulePath);
-  const integrityMap = SystemJS.getImportMap().integrity;
+  const resolvedModule = systemJs.resolve(modulePath);
+  const integrityMap = systemJs.getImportMap().integrity;
 
   if (moduleHash && integrityMap && !integrityMap[resolvedModule]) {
-    SystemJS.addImportMap({
+    systemJs.addImportMap({
       integrity: {
         [resolvedModule]: moduleHash,
       },
     });
   }
 
-  return SystemJS.import(modulePath);
+  return systemJs.import(modulePath);
 }

@@ -4,7 +4,7 @@ import { LuChevronDown, LuSearch } from 'react-icons/lu';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import styles from './FilterSelect.module.css';
 
-interface FilterSelectProps {
+type FilterSelectProps = {
   label: string;
   items: string[];
   selectedItems: Set<string>;
@@ -15,7 +15,7 @@ interface FilterSelectProps {
   /** Controlled open state — parent manages which dropdown is open. */
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-}
+};
 
 const VIRTUAL_THRESHOLD = 50;
 const ROW_HEIGHT = 28;
@@ -42,7 +42,10 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
     : `${selectedItems.size}/${items.length} ${label}`;
 
   const filteredItems = useMemo(() => {
-    if (!search) return items;
+    if (!search) {
+      return items;
+    }
+
     const lower = search.toLowerCase();
     return items.filter((item) => item.toLowerCase().includes(lower));
   }, [items, search]);
@@ -60,7 +63,9 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   const handleOpenChange = useCallback(
     (open: boolean) => {
       onOpenChange(open);
-      if (!open) setSearch('');
+      if (!open) {
+        setSearch('');
+      }
     },
     [onOpenChange],
   );
@@ -71,7 +76,9 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
         <Checkbox
           size='sm'
           checked={selectedItems.has(item)}
-          onCheckedChange={() => onToggleItem(item)}
+          onCheckedChange={() => {
+            onToggleItem(item); 
+          }}
           className={styles.Check}
         >
           <span className={styles.ItemLabel}>{item}</span>

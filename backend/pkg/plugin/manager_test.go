@@ -41,7 +41,7 @@ func TestGetPlugin_NotFound(t *testing.T) {
 	}
 
 	_, err := pm.GetPlugin("nonexistent")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
 
@@ -109,7 +109,7 @@ func TestGetPluginMeta_NotFound(t *testing.T) {
 	}
 
 	_, err := pm.GetPluginMeta("nonexistent")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
 
@@ -239,7 +239,7 @@ func TestShutdown_EmptyRecords(t *testing.T) {
 	pm := &pluginManager{
 		logger:     testLogger(t),
 		records:    make(map[string]*plugintypes.PluginRecord),
-		pidTracker: NewPluginPIDTracker(svc.RootDir()),
+		pidTracker: NewPIDTracker(svc.RootDir()),
 	}
 
 	// Should not panic with empty records.
@@ -276,7 +276,7 @@ func TestShutdown_StopsAllBackends(t *testing.T) {
 		connlessControllers: make(map[sdktypes.Capability]plugintypes.Controller),
 		connfullControllers: make(map[sdktypes.Capability]plugintypes.ConnectedController),
 		managers:            make(map[string]plugintypes.PluginManager),
-		pidTracker:          NewPluginPIDTracker(svc.RootDir()),
+		pidTracker:          NewPIDTracker(svc.RootDir()),
 	}
 
 	pm.Shutdown()

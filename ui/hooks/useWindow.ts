@@ -1,5 +1,5 @@
 import React from 'react';
-import { WindowIsFullscreen } from '@omniviewdev/runtime/runtime';
+import { Window } from '@omniviewdev/runtime/runtime';
 import { useDebounce } from 'react-use';
 import { GetOperatingSystem } from '@omniviewdev/runtime/api';
 
@@ -49,7 +49,7 @@ export const useWindow = () => {
   useDebounce(
     () => {
       async function checkFullscreen() {
-        setIsFullscreen(await WindowIsFullscreen());
+        setIsFullscreen(await Window.IsFullscreen());
       }
 
       checkFullscreen().catch(() => {

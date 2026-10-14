@@ -1,6 +1,7 @@
 import React, { useState, type ReactNode } from 'react';
 import { Button, Dialog, Spinner } from '@omniviewdev/base-ui';
 import { ConfirmationModalContext, type ConfirmationModalProps } from '@omniviewdev/runtime';
+import { orFallback } from '@/utils/orFallback';
 
 
 export const ConfirmationModalProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -35,16 +36,16 @@ export const ConfirmationModalProvider: React.FC<{ children: ReactNode }> = ({ c
       <Dialog open={open} onClose={() => {
         setOpen(false);
       }} size="sm">
-        <Dialog.Title>{config?.title || 'Confirm'}</Dialog.Title>
-        <Dialog.Body>{config?.body || 'Are you sure?'}</Dialog.Body>
+        <Dialog.Title>{orFallback(config?.title, 'Confirm')}</Dialog.Title>
+        <Dialog.Body>{orFallback(config?.body, 'Are you sure?')}</Dialog.Body>
         <Dialog.Footer>
           <Button variant="ghost" color="neutral" onClick={() => {
             setOpen(false);
           }}>
-            {config?.cancelLabel || 'Cancel'}
+            {orFallback(config?.cancelLabel, 'Cancel')}
           </Button>
           <Button variant="solid" color="danger" onClick={handleConfirm} disabled={pending}>
-            {pending ? <Spinner size="sm" /> : config?.confirmLabel || 'Confirm'}
+            {pending ? <Spinner size="sm" /> : orFallback(config?.confirmLabel, 'Confirm')}
           </Button>
         </Dialog.Footer>
       </Dialog>

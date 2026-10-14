@@ -3,8 +3,9 @@ package exec
 import (
 	"context"
 
-	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
 
 // ServiceWrapper is an explicit delegation wrapper around exec.Controller.
@@ -29,7 +30,10 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 	}
 	return nil
 }
-func (s *ServiceWrapper) CreateSession(plugin, connectionID string, opts execsdk.SessionOptions) (*execsdk.Session, error) {
+func (s *ServiceWrapper) CreateSession(
+	plugin, connectionID string,
+	opts execsdk.SessionOptions,
+) (*execsdk.Session, error) {
 	return s.Ctrl.CreateSession(plugin, connectionID, opts)
 }
 func (s *ServiceWrapper) CreateTerminal(opts execsdk.SessionOptions) (*execsdk.Session, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -81,7 +82,7 @@ type controller struct {
 	ctx              context.Context
 	logger           logging.Logger
 	settingsProvider pkgsettings.Provider
-	clients          map[string]MetricProvider
+	clients          map[string]Provider
 	providerInfos    map[string]*metric.ProviderInfo // pluginID -> provider info
 	handlerMap       map[string][]metric.Handler     // pluginID -> handlers
 	resourceIndex    map[string][]string             // resource key -> []pluginID
@@ -97,19 +98,22 @@ func NewController(
 	resourceClient resource.Service,
 ) Controller {
 	return &controller{
+		app:              nil,
+		ctx:              nil,
 		logger:           logger.Named("MetricController"),
 		settingsProvider: sp,
-		clients:          make(map[string]MetricProvider),
+		clients:          make(map[string]Provider),
 		providerInfos:    make(map[string]*metric.ProviderInfo),
 		handlerMap:       make(map[string][]metric.Handler),
 		resourceIndex:    make(map[string][]string),
 		subscriptions:    make(map[string]subscriptionIndex),
 		inChans:          make(map[string]chan metric.StreamInput),
 		resourceClient:   resourceClient,
+		mux:              sync.RWMutex{},
 	}
 }
 
-func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	c.app = application.Get()
 	c.ctx = ctx
 	return nil
@@ -121,13 +125,13 @@ func (c *controller) ServiceShutdown() error {
 
 // ================================ Controller Lifecycle ================================ //
 
-func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginInit")
 }
 
 // dispenseProvider extracts the metric provider from the backend,
 // wrapping it in the version-appropriate adapter.
-func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (MetricProvider, error) {
+func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Provider, error) {
 	raw, err := backend.Dispense("metric")
 	if err != nil {
 		return nil, err
@@ -139,7 +143,7 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Met
 		v1, ok := raw.(metric.Provider)
 		if !ok {
 			return nil, apperror.New(
-				apperror.TypePluginLoadFailed, 500,
+				apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 				"Plugin type mismatch",
 				fmt.Sprintf("Expected metric.Provider for v1, got %T", raw),
 			)
@@ -147,14 +151,14 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Met
 		return NewAdapterV1(v1), nil
 	default:
 		return nil, apperror.New(
-			apperror.TypePluginLoadFailed, 500,
+			apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			"Unsupported SDK protocol version",
 			fmt.Sprintf("Plugin '%s' negotiated v%d for metric, engine supports v1", pluginID, version),
 		)
 	}
 }
 
-func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
+func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend internaltypes.PluginBackend) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStart")
 
@@ -180,9 +184,9 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	c.mux.Unlock()
 
 	go func() {
-		stream, err := provider.StreamMetrics(c.ctx, inchan)
-		if err != nil {
-			logger.Errorw(context.Background(), "error starting metric stream", "error", err)
+		stream, streamErr := provider.StreamMetrics(c.ctx, inchan)
+		if streamErr != nil {
+			logger.Errorw(context.Background(), "error starting metric stream", "error", streamErr)
 			return
 		}
 
@@ -202,19 +206,19 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	return nil
 }
 
-func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginStop")
 	c.removePlugin(pluginID)
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginShutdown(pluginID string, _ config.PluginMeta) error {
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginShutdown")
 	c.removePlugin(pluginID)
 	return nil
 }
 
-func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginDestroy")
 	return nil
 }
@@ -429,6 +433,7 @@ func (c *controller) QueryAll(
 		StartTime:         startTime,
 		EndTime:           endTime,
 		Step:              step,
+		Params:            nil,
 	}
 
 	results := make(map[string]*metric.QueryResponse)
@@ -512,7 +517,12 @@ func (c *controller) Unsubscribe(subscriptionID string) error {
 	sub, ok := c.subscriptions[subscriptionID]
 	if !ok {
 		c.mux.Unlock()
-		err := apperror.New(apperror.TypeSessionNotFound, 404, "Subscription not found", fmt.Sprintf("Subscription '%s' was not found.", subscriptionID))
+		err := apperror.New(
+			apperror.TypeSessionNotFound,
+			http.StatusNotFound,
+			"Subscription not found",
+			fmt.Sprintf("Subscription '%s' was not found.", subscriptionID),
+		)
 		telemetryutil.RecordError(span, err)
 		return err
 	}
@@ -528,8 +538,14 @@ func (c *controller) Unsubscribe(subscriptionID string) error {
 	// Send while holding the lock to prevent removePlugin from closing
 	// the channel concurrently.
 	inchan <- metric.StreamInput{
-		SubscriptionID: subscriptionID,
-		Command:        metric.StreamCommandUnsubscribe,
+		SubscriptionID:    subscriptionID,
+		Command:           metric.StreamCommandUnsubscribe,
+		ResourceKey:       "",
+		ResourceID:        "",
+		ResourceNamespace: "",
+		ResourceData:      nil,
+		MetricIDs:         nil,
+		Interval:          0,
 	}
 	c.mux.Unlock()
 	return nil

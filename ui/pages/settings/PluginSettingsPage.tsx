@@ -30,6 +30,7 @@ const PluginSettingsPage: React.FC<Props> = ({ id }) => {
         id = id.split('.')[1];
         acc[id] = value;
       }
+
       return acc;
     }, {});
 

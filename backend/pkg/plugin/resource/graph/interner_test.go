@@ -48,7 +48,7 @@ func TestInterner_DifferentStrings(t *testing.T) {
 	}
 }
 
-func TestInterner_ReleaseNonExistent(t *testing.T) {
+func TestInterner_ReleaseNonExistent(_ *testing.T) {
 	si := newStringInterner()
 	si.Release("nonexistent") // Should not panic
 }

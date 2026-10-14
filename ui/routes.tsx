@@ -51,8 +51,8 @@ export const scoped: RouteObject[] = [
         Component: Plugins,
         children: [
           { path: '', index: true, Component: InstalledPlugins },
-          { path: ':id', Component: PluginDetails }
-        ]
+          { path: ':id', Component: PluginDetails },
+        ],
       },
       {
         path: 'settings',

@@ -34,14 +34,20 @@ describe('QuarantineManager', () => {
 
     it('quarantines at threshold', () => {
       const { crashData, manager } = createTestSetup(3);
-      for (let i = 0; i < 3; i++) crashData.recordCrash(makeCrashRecord());
+      for (let i = 0; i < 3; i++) {
+        crashData.recordCrash(makeCrashRecord());
+      }
+
       manager.checkAndQuarantine('plugin-a/sidebar/res', 'plugin-a', 'omniview/resource/sidebar/infopanel');
       expect(manager.isQuarantined('plugin-a/sidebar/res')).toBe(true);
     });
 
     it('emits onQuarantine callback when quarantine activates', () => {
       const { crashData, manager, onQuarantine } = createTestSetup(3);
-      for (let i = 0; i < 3; i++) crashData.recordCrash(makeCrashRecord());
+      for (let i = 0; i < 3; i++) {
+        crashData.recordCrash(makeCrashRecord());
+      }
+
       manager.checkAndQuarantine('plugin-a/sidebar/res', 'plugin-a', 'omniview/resource/sidebar/infopanel');
       expect(onQuarantine).toHaveBeenCalledTimes(1);
       expect(onQuarantine).toHaveBeenCalledWith(expect.objectContaining({
@@ -53,7 +59,10 @@ describe('QuarantineManager', () => {
 
     it('does not emit again if already quarantined', () => {
       const { crashData, manager, onQuarantine } = createTestSetup(3);
-      for (let i = 0; i < 4; i++) crashData.recordCrash(makeCrashRecord());
+      for (let i = 0; i < 4; i++) {
+        crashData.recordCrash(makeCrashRecord());
+      }
+
       manager.checkAndQuarantine('plugin-a/sidebar/res', 'plugin-a', 'omniview/resource/sidebar/infopanel');
       manager.checkAndQuarantine('plugin-a/sidebar/res', 'plugin-a', 'omniview/resource/sidebar/infopanel');
       expect(onQuarantine).toHaveBeenCalledTimes(1);
@@ -63,7 +72,10 @@ describe('QuarantineManager', () => {
   describe('unquarantine', () => {
     it('removes quarantine and resets crash count', () => {
       const { crashData, manager } = createTestSetup(3);
-      for (let i = 0; i < 3; i++) crashData.recordCrash(makeCrashRecord());
+      for (let i = 0; i < 3; i++) {
+        crashData.recordCrash(makeCrashRecord());
+      }
+
       manager.checkAndQuarantine('plugin-a/sidebar/res', 'plugin-a', 'omniview/resource/sidebar/infopanel');
       manager.unquarantine('plugin-a/sidebar/res');
       expect(manager.isQuarantined('plugin-a/sidebar/res')).toBe(false);
@@ -78,6 +90,7 @@ describe('QuarantineManager', () => {
         crashData.recordCrash(makeCrashRecord({ contributionId: 'c1', pluginId: 'plugin-a' }));
         crashData.recordCrash(makeCrashRecord({ contributionId: 'c2', pluginId: 'plugin-a' }));
       }
+
       manager.checkAndQuarantine('c1', 'plugin-a', 'ep1');
       manager.checkAndQuarantine('c2', 'plugin-a', 'ep1');
       manager.clearForPlugin('plugin-a');
@@ -93,6 +106,7 @@ describe('QuarantineManager', () => {
         crashData.recordCrash(makeCrashRecord({ contributionId: 'c1', pluginId: 'plugin-a' }));
         crashData.recordCrash(makeCrashRecord({ contributionId: 'c2', pluginId: 'plugin-b' }));
       }
+
       manager.checkAndQuarantine('c1', 'plugin-a', 'ep1');
       manager.checkAndQuarantine('c2', 'plugin-b', 'ep1');
       manager.clearForPlugin('plugin-a');
@@ -108,6 +122,7 @@ describe('QuarantineManager', () => {
         crashData.recordCrash(makeCrashRecord({ contributionId: 'c1' }));
         crashData.recordCrash(makeCrashRecord({ contributionId: 'c2' }));
       }
+
       manager.checkAndQuarantine('c1', 'plugin-a', 'ep1');
       manager.checkAndQuarantine('c2', 'plugin-a', 'ep1');
       manager.clearAll();
@@ -124,6 +139,7 @@ describe('QuarantineManager', () => {
       for (let i = 0; i < 3; i++) {
         crashData.recordCrash(makeCrashRecord({ contributionId: 'c1', pluginId: 'plugin-a' }));
       }
+
       manager.checkAndQuarantine('c1', 'plugin-a', 'ep1');
       const list = manager.listQuarantined();
       expect(list).toHaveLength(1);

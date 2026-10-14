@@ -14,7 +14,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/resource/resourcetest"
 )
 
-func TestAdapterV1_CompileTimeCheck(t *testing.T) {
+func TestAdapterV1_CompileTimeCheck(_ *testing.T) {
 	var _ ResourceProvider = (*AdapterV1)(nil)
 }
 
@@ -25,7 +25,7 @@ func TestAdapterV1_CRUD_Passthrough(t *testing.T) {
 		resourcetest.WithGetFunc(func(_ context.Context, key string, _ resource.GetInput) (*resource.GetResult, error) {
 			return &resource.GetResult{Success: true, Result: json.RawMessage(`{"key":"` + key + `"}`)}, nil
 		}),
-		resourcetest.WithListFunc(func(_ context.Context, key string, _ resource.ListInput) (*resource.ListResult, error) {
+		resourcetest.WithListFunc(func(_ context.Context, _ string, _ resource.ListInput) (*resource.ListResult, error) {
 			return &resource.ListResult{Success: true}, nil
 		}),
 	)

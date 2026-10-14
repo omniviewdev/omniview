@@ -21,7 +21,10 @@ export function createResourceDrawerExtensionPoint(): ExtensionPointSettings<
       contribution: ExtensionContributionRegistration<DrawerFactory>,
       context?: ResourceExtensionRenderContext,
     ) => {
-      if (!context) return false;
+      if (!context) {
+        return false;
+      }
+
       const meta = contribution.meta as { pluginId?: string; resourceKey?: string } | undefined;
       return meta?.resourceKey === context.resourceKey && meta?.pluginId === context.pluginId;
     },

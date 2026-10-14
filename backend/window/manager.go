@@ -41,6 +41,14 @@ func (m *Manager) registerMainWindowHideOnClose(w *application.WebviewWindow) {
 	})
 }
 
+// Default sizes for the secondary windows.
+const (
+	settingsWindowWidth  = 900
+	settingsWindowHeight = 700
+	devtoolsWindowWidth  = 1200
+	devtoolsWindowHeight = 800
+)
+
 // OpenSettings creates and shows a new settings window. The window uses
 // normal close behavior — it is destroyed when closed.
 func (m *Manager) OpenSettings() *application.WebviewWindow {
@@ -48,8 +56,8 @@ func (m *Manager) OpenSettings() *application.WebviewWindow {
 		Name:               "settings",
 		Title:              "Settings — Omniview",
 		URL:                "/#/settings",
-		Width:              900,
-		Height:             700,
+		Width:              settingsWindowWidth,
+		Height:             settingsWindowHeight,
 		UseApplicationMenu: true,
 	})
 	w.Show()
@@ -64,8 +72,8 @@ func (m *Manager) OpenDevtools() *application.WebviewWindow {
 		Name:               "devtools",
 		Title:              "DevTools — Omniview",
 		URL:                "/#/devtools",
-		Width:              1200,
-		Height:             800,
+		Width:              devtoolsWindowWidth,
+		Height:             devtoolsWindowHeight,
 		UseApplicationMenu: true,
 	})
 	w.Show()

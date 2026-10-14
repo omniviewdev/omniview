@@ -63,8 +63,14 @@ const LinkedResourceEditor: React.FC<{
   }
 
   const handleChange = (val: string | undefined) => {
-    if (!val) return;
-    if (!changed) setChanged(true);
+    if (!val) {
+      return;
+    }
+
+    if (!changed) {
+      setChanged(true);
+    }
+
     setValue(val);
   };
 
@@ -123,7 +129,9 @@ const LinkedResourceEditor: React.FC<{
             variant='outline'
             color='neutral'
             startDecorator={viewDiff ? <LuFileCode size={18} /> : <LuFileDiff size={16} />}
-            onClick={() => setViewDiff(!viewDiff)}
+            onClick={() => {
+              setViewDiff(!viewDiff); 
+            }}
           >
             {viewDiff ? 'Return to Code Editor' : 'View in Diff Editor'}
           </Button>

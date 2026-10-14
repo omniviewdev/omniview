@@ -18,15 +18,15 @@ func init() {
 
 const (
 	// EventDevServerStatus is emitted whenever any field in DevServerState changes.
-	// Payload: DevServerState
+	// Payload: DevServerState.
 	EventDevServerStatus = "plugin/devserver/status"
 
 	// EventDevServerLog is emitted for batched log lines from Vite or Go build.
-	// Payload: []LogEntry (each entry contains pluginID)
+	// Payload: []LogEntry (each entry contains pluginID).
 	EventDevServerLog = "plugin/devserver/log"
 
 	// EventDevServerError is emitted for structured build errors.
-	// Payload: (pluginID string, errors []BuildError)
+	// Payload: (pluginID string, errors []BuildError).
 	EventDevServerError = "plugin/devserver/error"
 )
 
@@ -91,6 +91,27 @@ type LogEntry struct {
 	PluginID  string `json:"pluginID"`
 }
 
+// LogEntry sources and levels.
+const (
+	logSourceVite    = "vite"
+	logSourceGoBuild = "go-build"
+	logSourceGoWatch = "go-watch"
+	logLevelInfo     = "info"
+	logLevelError    = "error"
+)
+
+// newLogEntry builds a LogEntry. Timestamp and PluginID are left empty; the
+// instance fills them in when the entry is appended.
+func newLogEntry(source, level, message string) LogEntry {
+	return LogEntry{
+		Timestamp: "",
+		Source:    source,
+		Level:     level,
+		Message:   message,
+		PluginID:  "",
+	}
+}
+
 // DevServerErrorPayload wraps a plugin ID and its build errors into a single
 // event payload so it can be registered with RegisterEvent[T].
 type DevServerErrorPayload struct {
@@ -144,6 +165,8 @@ type LogRingBuffer struct {
 func NewLogRingBuffer(capacity int) *LogRingBuffer {
 	return &LogRingBuffer{
 		entries: make([]LogEntry, capacity),
+		head:    0,
+		count:   0,
 		cap:     capacity,
 	}
 }

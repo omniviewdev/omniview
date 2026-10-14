@@ -23,6 +23,7 @@ function validModule(overrides?: {
   if (overrides?.routes) {
     pw.withRoutes(overrides.routes);
   }
+
   return {
     plugin: pw,
     extensionRegistrations: overrides?.extensionRegistrations ?? [],

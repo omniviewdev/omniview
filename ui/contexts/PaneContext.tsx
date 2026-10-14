@@ -24,9 +24,15 @@ export type PaneProviderContextType = {
 const defaultState: PaneProviderContextType = {
   panes: [],
   numPanes: 0,
-  setPanes() { },
-  addNewPane() { },
-  removePane() { },
+  setPanes() {
+    // No provider mounted.
+  },
+  addNewPane() {
+    // No provider mounted.
+  },
+  removePane() {
+    // No provider mounted.
+  },
 };
 
 export const PaneProviderContext = React.createContext<PaneProviderContextType>(defaultState);

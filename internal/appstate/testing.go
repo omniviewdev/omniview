@@ -12,8 +12,8 @@ func NewTestService(t testing.TB) *Service {
 		t.Fatalf("appstate.NewTestService: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := svc.Close(); err != nil {
-			t.Errorf("appstate.NewTestService cleanup: %v", err)
+		if closeErr := svc.Close(); closeErr != nil {
+			t.Errorf("appstate.NewTestService cleanup: %v", closeErr)
 		}
 	})
 	return svc

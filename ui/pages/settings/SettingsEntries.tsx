@@ -10,7 +10,7 @@ import { useDevMode } from '@/hooks/useDevMode';
 import styles from './SettingsEntries.module.css';
 
 type Props = SectionSelection & {
-  settings: Record<string, Setting>;
+  settings: Record<string, Setting | undefined>;
   draftValues: Record<string, any>;
   setDraftValues: (draftValues: Record<string, any>) => void;
 };
@@ -31,7 +31,7 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
   }
 
   const visibleSettings = Object.entries(settings).filter(
-    ([, setting]) => !setting.devOnly || devMode,
+    (entry): entry is [string, Setting] => entry[1] !== undefined && (!entry[1].devOnly || devMode),
   );
 
   return (

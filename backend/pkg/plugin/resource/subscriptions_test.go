@@ -95,7 +95,7 @@ func TestSubscriptionManager_DifferentKeys(t *testing.T) {
 	assert.False(t, m.IsSubscribed("p1", "c1", "svcs"))
 }
 
-func TestSubscriptionManager_Concurrent_SubscribeUnsubscribe(t *testing.T) {
+func TestSubscriptionManager_Concurrent_SubscribeUnsubscribe(_ *testing.T) {
 	m := newSubscriptionManager()
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
@@ -109,7 +109,7 @@ func TestSubscriptionManager_Concurrent_SubscribeUnsubscribe(t *testing.T) {
 	wg.Wait()
 }
 
-func TestSubscriptionManager_Concurrent_RemoveAll(t *testing.T) {
+func TestSubscriptionManager_Concurrent_RemoveAll(_ *testing.T) {
 	m := newSubscriptionManager()
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {

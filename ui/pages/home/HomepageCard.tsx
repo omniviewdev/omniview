@@ -25,7 +25,7 @@ function CardErrorFallback({ error, resetErrorBoundary, label }: FallbackProps &
           {label} failed to load
         </Text>
         <Text size='xs' tone='muted' className={styles.ErrorMessage}>
-          {error.message.length > 120 ? error.message.slice(0, 120) + '…' : error.message}
+          {error.message.length > 120 ? `${error.message.slice(0, 120)}…` : error.message}
         </Text>
       </div>
       <Button
@@ -101,7 +101,9 @@ const HomepageCard: React.FC<Props> = ({
                   variant='ghost'
                   color='neutral'
                   aria-label='Card settings'
-                  onClick={(e) => setConfigAnchor(e.currentTarget)}
+                  onClick={(e) => {
+                    setConfigAnchor(e.currentTarget); 
+                  }}
                 >
                   <LuSettings size={16} />
                 </IconButton>
@@ -143,7 +145,9 @@ const HomepageCard: React.FC<Props> = ({
       {meta && (
         <HomepageCardConfigPopover
           anchorEl={configAnchor}
-          onClose={() => setConfigAnchor(null)}
+          onClose={() => {
+            setConfigAnchor(null); 
+          }}
           meta={meta}
           config={config}
           onConfigChange={(next) => {

@@ -83,9 +83,8 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
   }
 
   if (isError || resources.isError) {
-    const errstring = typeof resources.error === 'string'
-      ? resources.error
-      : resources.error?.toString() ?? '';
+    // Wails may reject with a bare string; toString() covers both shapes.
+    const errstring = resources.error?.toString() ?? '';
     console.error('Failed loading resources', errstring);
 
     // Try to parse structured error JSON from the plugin (ResourceOperationError.Error()
@@ -138,7 +137,8 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
     );
   }
 
-  if (!resources.data || !data || !columns.defs.length) {
+  const listResult = resources.data;
+  if (!listResult || !data || !columns.defs.length) {
     return null;
   }
 
@@ -153,13 +153,13 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
     }
 
     // attempt to find a well known id accessor
-    return wellKnownIDAccessors(resources.data.result[0]);
+    return wellKnownIDAccessors(listResult.result[0]);
   };
 
   return (
     <ResourceTableContainer
       columns={columns.defs}
-      data={Object.values(resources.data.result)}
+      data={Object.values(listResult.result)}
       namespaces={namespaces.data ?? []}
       idAccessor={getIDAccessor()}
       namespaceAccessor={data.namespace_accessor}

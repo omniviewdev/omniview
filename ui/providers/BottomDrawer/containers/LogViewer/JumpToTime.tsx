@@ -4,9 +4,9 @@ import { LuCalendarClock } from 'react-icons/lu';
 import HintTooltip from '@/components/base/HintTooltip';
 import styles from './JumpToTime.module.css';
 
-interface Props {
+type Props = {
   onJumpToTime: (date: Date) => void;
-}
+};
 
 /** Calendar plus 24h time columns; "Jump" scrolls the log to that moment. */
 const JumpToTime: React.FC<Props> = ({ onJumpToTime }) => {

@@ -58,7 +58,7 @@ export default function ResourceTableView(): React.ReactElement {
   const { pluginID = '', connectionID = '' } = useParams<{ pluginID: string; connectionID: string }>();
   const [selected, setSelected] = React.useState<string | undefined>(undefined);
 
-  const { types } = useResourceTypes({ pluginID, connectionID });
+  useResourceTypes({ pluginID, connectionID });
   const { groups } = useResourceGroups({ pluginID, connectionID });
   const { connection } = useConnection({ pluginID, connectionID });
 
@@ -96,7 +96,9 @@ export default function ResourceTableView(): React.ReactElement {
             )}
           </Banner.Content>
         </Banner>
-        <Button variant='outline' color='neutral' size='sm' onClick={() => { navigate(-1); }}>Go Back</Button>
+        <Button variant='outline' color='neutral' size='sm' onClick={() => {
+          navigate(-1); 
+        }}>Go Back</Button>
       </div>
     );
   }
@@ -110,7 +112,11 @@ export default function ResourceTableView(): React.ReactElement {
 
     const crdSection: SidebarItem[] = [];
 
-    const grouped: SidebarItem[] = Object.values(groups.data).map((group) => {
+    const grouped: SidebarItem[] = Object.values(groups.data).flatMap((group) => {
+      if (!group) {
+        return [];
+      }
+
       const item: SidebarItem = {
         id: group.id,
         label: group.name,
@@ -119,7 +125,7 @@ export default function ResourceTableView(): React.ReactElement {
       };
 
       Object.entries(group.resources).forEach(([version, metas]) => {
-        metas.forEach((meta) => {
+        metas?.forEach((meta) => {
           item.children?.push({
             id: toID(meta),
             label: meta.kind,

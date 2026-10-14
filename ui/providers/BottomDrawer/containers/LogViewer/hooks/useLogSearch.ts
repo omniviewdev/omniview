@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LogEntry, SearchMatch } from '../types';
 import { compileSearchPattern, execSafeSearchRange, MAX_MATCH_COUNT } from '../utils/regexSafety';
 
-interface UseLogSearchOpts {
+type UseLogSearchOpts = {
   entries: LogEntry[];
   version: number;
   evictionCount: number;
-}
+};
 
-interface UseLogSearchResult {
+type UseLogSearchResult = {
   query: string;
   setQuery: (q: string) => void;
   isRegex: boolean;
@@ -22,12 +22,12 @@ interface UseLogSearchResult {
   totalMatches: number;
   /** True when results were truncated (match cap or time budget hit). */
   capped: boolean;
-}
+};
 
-interface SearchResult {
+type SearchResult = {
   matches: SearchMatch[];
   capped: boolean;
-}
+};
 
 const EMPTY_RESULT: SearchResult = { matches: [], capped: false };
 
@@ -147,12 +147,18 @@ export function useLogSearch({ entries, version, evictionCount }: UseLogSearchOp
   const { matches, capped } = searchResult;
 
   const nextMatch = useCallback(() => {
-    if (matches.length === 0) return;
+    if (matches.length === 0) {
+      return;
+    }
+
     setCurrentMatchIndex((i) => (i + 1) % matches.length);
   }, [matches.length]);
 
   const prevMatch = useCallback(() => {
-    if (matches.length === 0) return;
+    if (matches.length === 0) {
+      return;
+    }
+
     setCurrentMatchIndex((i) => (i - 1 + matches.length) % matches.length);
   }, [matches.length]);
 

@@ -51,6 +51,10 @@ const calcTargets = (action: Handler, data: Record<string, unknown>): ExecTarget
   datas.forEach((data) => {
     const params: Record<string, string> = {};
     Object.entries(action.target_builder.selectors).forEach(([key, selector]) => {
+      if (selector === undefined) {
+        return;
+      }
+
       params[key] = jsonpath.query(data, selector)[0] as string;
     });
 
@@ -82,7 +86,6 @@ const ExecAction: React.FC<Props> = ({
    * Perform the exec action on the resource target.
    */
   const handlePerformExec = (label: string, params: Record<string, string>) => {
-    /* eslint-disable @typescript-eslint/naming-convention */
     const opts = SessionOptions.createFrom({
       params,
       resource_plugin: plugin,

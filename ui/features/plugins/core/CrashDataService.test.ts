@@ -37,7 +37,10 @@ describe('InMemoryCrashDataStrategy', () => {
     it('evicts oldest records when cap is reached', () => {
       const strategy = new InMemoryCrashDataStrategy({ maxRecordsPerContribution: 3 });
       const records = [1, 2, 3, 4].map((t) => makeCrashRecord({ timestamp: t }));
-      for (const r of records) strategy.recordCrash(r);
+      for (const r of records) {
+        strategy.recordCrash(r);
+      }
+
       expect(strategy.getCrashCount(records[0].contributionId)).toBe(4);
       const history = strategy.getCrashHistory(records[0].contributionId);
       expect(history).toHaveLength(3);
@@ -137,6 +140,7 @@ describe('InMemoryCrashDataStrategy', () => {
       for (let i = 0; i < 5; i++) {
         strategy.recordCrash(makeCrashRecord({ timestamp: i }));
       }
+
       expect(strategy.getCrashCount(makeCrashRecord().contributionId)).toBe(5);
       expect(strategy.getCrashHistory(makeCrashRecord().contributionId)).toHaveLength(2);
     });

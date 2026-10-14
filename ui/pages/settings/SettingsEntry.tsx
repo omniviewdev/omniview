@@ -21,12 +21,14 @@ const toStringArray = (value: any): string[] => {
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === 'string');
   }
+
   if (typeof value === 'string') {
     return value
       .split(',')
       .map(part => part.trim())
       .filter(Boolean);
   }
+
   return [];
 };
 
@@ -82,55 +84,30 @@ const SettingSelect: React.FC<SettingSelectProps> = ({ value, options, isChanged
  * Renders a single setting entry based on the type of setting.
  */
 const SettingsEntry: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
-  const settingType = setting.type as unknown as string;
-
-  switch (settingType) {
+  switch (setting.type) {
     case SettingType.Text:
-      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <TextSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    case 'select':
-      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    case SettingType.Select:
       return <SelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    case 'multiselect':
-      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    case SettingType.MultiSelect:
       return <MultiSelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
     case SettingType.Toggle:
-      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <ToggleSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
     case SettingType.Integer:
     case SettingType.Float:
-      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
       return <NumberSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
-    default:
-      return null;
+    case SettingType.$zero:
+    case SettingType.Color:
+    case SettingType.DateTime:
+    case SettingType.Password:
+      break;
   }
+
+  return null;
 };
 
 const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
   const isChanged = draftValue !== undefined;
-
-  const handleFileSelection = async () => {
-    if (!setting.fileSelection?.enabled) {
-      return;
-    }
-
-    let newValue = isChanged ? draftValue as string[] : setting.value as string[];
-    if (!newValue) {
-      newValue = [];
-    }
-
-    OpenFileSelectionDialog(FileDialogOptions.createFrom({
-      showHiddenFiles: true,
-    })).then((result) => {
-      console.log('File selection dialog result:', result);
-      if (result) {
-        newValue.push(...result);
-        handleChange(id, newValue);
-      }
-    }).catch((err: unknown) => {
-      console.error('Error opening file selection dialog:', parseAppError(err).detail);
-    });
-  };
 
   if (Array.isArray(setting.value) || Array.isArray(setting.default)) {
     return <MultiSelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;

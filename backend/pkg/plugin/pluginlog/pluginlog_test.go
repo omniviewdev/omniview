@@ -60,7 +60,7 @@ func TestClose_FlushesData(t *testing.T) {
 	s := mgr.Stream("closable")
 	fmt.Fprintln(s, "before close")
 
-	if err := mgr.Close(); err != nil {
+	if err = mgr.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 
@@ -247,7 +247,7 @@ func TestOnEmit_NilDisablesEmission(t *testing.T) {
 	defer mgr.Close()
 
 	var count atomic.Int32
-	mgr.OnEmit(func(e LogEntry) {
+	mgr.OnEmit(func(_ LogEntry) {
 		count.Add(1)
 	})
 
@@ -272,13 +272,13 @@ func TestOnEmit_ReplacesCallback(t *testing.T) {
 	defer mgr.Close()
 
 	var first, second atomic.Int32
-	mgr.OnEmit(func(e LogEntry) { first.Add(1) })
+	mgr.OnEmit(func(_ LogEntry) { first.Add(1) })
 
 	mgr.Subscribe("replace-test")
 	s := mgr.Stream("replace-test")
 	fmt.Fprintln(s, "line for first")
 
-	mgr.OnEmit(func(e LogEntry) { second.Add(1) })
+	mgr.OnEmit(func(_ LogEntry) { second.Add(1) })
 	fmt.Fprintln(s, "line for second")
 
 	if first.Load() != 1 {
@@ -486,7 +486,7 @@ func TestStream_ConcurrentWrites(t *testing.T) {
 	defer mgr.Close()
 
 	var emitCount atomic.Int32
-	mgr.OnEmit(func(e LogEntry) { emitCount.Add(1) })
+	mgr.OnEmit(func(_ LogEntry) { emitCount.Add(1) })
 
 	mgr.Subscribe("concurrent")
 	s := mgr.Stream("concurrent")
@@ -520,7 +520,7 @@ func TestSubscribe_EmitsOnlyWhenSubscribed(t *testing.T) {
 	defer mgr.Close()
 
 	var count atomic.Int32
-	mgr.OnEmit(func(e LogEntry) { count.Add(1) })
+	mgr.OnEmit(func(_ LogEntry) { count.Add(1) })
 
 	s := mgr.Stream("gated")
 
@@ -560,7 +560,7 @@ func TestSubscribe_RefCounting(t *testing.T) {
 	defer mgr.Close()
 
 	var count atomic.Int32
-	mgr.OnEmit(func(e LogEntry) { count.Add(1) })
+	mgr.OnEmit(func(_ LogEntry) { count.Add(1) })
 
 	s := mgr.Stream("refcount")
 

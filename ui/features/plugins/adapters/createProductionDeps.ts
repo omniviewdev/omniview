@@ -39,7 +39,9 @@ export function createProductionDeps(config?: Partial<PluginServiceConfig>): Plu
 
     onEvent: (eventName, handler) => {
       // Events.On returns () => void — use it for proper cleanup.
-      return Events.On(eventName, (ev) => handler(ev.data));
+      return Events.On(eventName, (ev) => {
+        handler(ev.data); 
+      });
     },
 
     ensureBuiltinExtensionPoints: () => {
@@ -65,6 +67,7 @@ export function createProductionDeps(config?: Partial<PluginServiceConfig>): Plu
           },
         );
       }
+
       try {
         store.register(contribution);
       } catch (err) {
@@ -77,6 +80,7 @@ export function createProductionDeps(config?: Partial<PluginServiceConfig>): Plu
             cause: err,
           });
         }
+
         throw err;
       }
     },

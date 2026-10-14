@@ -7,7 +7,9 @@ describe('Logger', () => {
     const calls: Array<{ level: string; msg: string; fields: Record<string, unknown> }> = [];
     return {
       calls,
-      write(level, msg, fields) { calls.push({ level, msg, fields }); },
+      write(level, msg, fields) {
+        calls.push({ level, msg, fields }); 
+      },
     };
   };
 

@@ -1,4 +1,5 @@
 import { redistributeSpace } from '@/utils/math';
+import { orFallback } from '@/utils/orFallback';
 import { createSlice, nanoid } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
 import type { Tab, ContainerState, ReorderActionPayload } from './types';
@@ -44,8 +45,8 @@ export const slice = createSlice({
       // Construct the new tab object with the provided icon and label or defaults
       const newTab: Tab = {
         id: newTabId,
-        label: label || `Tab ${state.tabs.length + 1}`, // Use provided label or generate a default
-        icon: icon || '', // Use provided icon or leave as an empty string
+        label: orFallback(label, `Tab ${state.tabs.length + 1}`), // Use provided label or generate a default
+        icon: icon ?? '', // Use provided icon or leave as an empty string
         cluster,
       };
 
@@ -157,7 +158,7 @@ export const slice = createSlice({
         const itemToMove = state.tabs.splice(index1, 1)[0];
         state.tabs.splice(index2, 0, itemToMove);
       } else {
-        console.warn(`Unknown reorder strategy: ${strategy}`);
+        console.warn(`Unknown reorder strategy: ${String(strategy)}`);
       }
     },
 
@@ -275,7 +276,7 @@ export const slice = createSlice({
         : state.windows.findIndex(window => window.tabId === id);
 
       if (windowIndex === -1) {
-        console.warn(`Window with id ${window} not found.`);
+        console.warn(`Window with id ${id} not found.`);
         return;
       }
 

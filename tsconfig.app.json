@@ -59,11 +59,13 @@
     "build",
     "**/*.spec.ts",
     "**/*.spec.tsx",
-    "**/*.bench.ts"
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.bench.ts",
+    "packages/*/vite.config.ts"
   ],
   "include": [
     "ui",
     "packages",
-    "vite.config.ts",
   ],
 }

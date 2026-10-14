@@ -38,6 +38,7 @@ const getAlignment = (align?: string) => {
       return 'center';
     case 'RIGHT':
       return 'right';
+    case undefined:
     default:
       return 'left';
   }
@@ -111,6 +112,7 @@ const parseColumnDef = ({
           case 'LAST':
             prioritized = val[val.length - 1];
             break;
+          case undefined:
           default:
             break;
         }
@@ -120,6 +122,10 @@ const parseColumnDef = ({
           // and the value being the replacement
           Object.entries(def.valueMap).forEach(([key, val]) => {
             console.log('replacing', key, val);
+            if (val === undefined) {
+              return;
+            }
+
             prioritized = prioritized.replace(new RegExp(key), val);
           });
         }

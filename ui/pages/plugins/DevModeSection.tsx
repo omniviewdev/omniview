@@ -8,12 +8,13 @@ import { devToolsChannel } from '@/features/devtools/events';
 import { getAggregateStatus, STATUS_COLORS } from '@/features/devtools/types';
 import type { DevServerAggregateStatus } from '@/features/devtools/types';
 import { useDevServer } from '@/hooks/plugin/useDevServer';
+import { DevServerMode } from '@omniviewdev/runtime/models';
 import styles from './DevModeSection.module.css';
 
-interface Props {
+type Props = {
   pluginId: string;
   devPath: string;
-}
+};
 
 const STATUS_LABELS: Record<DevServerAggregateStatus, string> = {
   ready: 'Ready',
@@ -64,7 +65,7 @@ const DevModeSection: React.FC<Props> = ({ pluginId, devPath }) => {
           >
             {STATUS_LABELS[aggStatus]}
           </Chip>
-          {state.data?.mode === 'external' && (
+          {state.data?.mode === DevServerMode.DevServerModeExternal && (
             <Chip
               size='xs'
               color='neutral'
@@ -82,19 +83,27 @@ const DevModeSection: React.FC<Props> = ({ pluginId, devPath }) => {
 
         <div className={styles.Actions}>
           <HintTooltip content='View build output and compiler logs'>
-            <ActionBtn icon={<LuHammer size={12} />} label='Build Output' onClick={() => devToolsChannel.emit('onOpenBuildOutput', pluginId)} />
+            <ActionBtn icon={<LuHammer size={12} />} label='Build Output' onClick={() => {
+              devToolsChannel.emit('onOpenBuildOutput', pluginId); 
+            }} />
           </HintTooltip>
           {isRunning ? (
             <HintTooltip content='Stop the dev server'>
-              <ActionBtn icon={<LuSquare size={12} />} label='Stop' onClick={() => stop.mutate(pluginId)} color='var(--ov-color-danger)' />
+              <ActionBtn icon={<LuSquare size={12} />} label='Stop' onClick={() => {
+                stop.mutate(pluginId); 
+              }} color='var(--ov-color-danger)' />
             </HintTooltip>
           ) : (
             <HintTooltip content='Start the dev server'>
-              <ActionBtn icon={<LuPlay size={12} />} label='Start' onClick={() => start.mutate(pluginId)} color='var(--ov-color-success)' />
+              <ActionBtn icon={<LuPlay size={12} />} label='Start' onClick={() => {
+                start.mutate(pluginId); 
+              }} color='var(--ov-color-success)' />
             </HintTooltip>
           )}
           <HintTooltip content='Restart the dev server'>
-            <ActionBtn icon={<LuRefreshCw size={12} />} label='Restart' onClick={() => restart.mutate(pluginId)} disabled={!isRunning} />
+            <ActionBtn icon={<LuRefreshCw size={12} />} label='Restart' onClick={() => {
+              restart.mutate(pluginId); 
+            }} disabled={!isRunning} />
           </HintTooltip>
         </div>
       </div>

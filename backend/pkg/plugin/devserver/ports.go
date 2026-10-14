@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
+	"strconv"
 	"sync"
-
-	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 const (
@@ -34,6 +35,7 @@ type PortAllocator struct {
 // NewPortAllocator creates a new PortAllocator.
 func NewPortAllocator(stateRoot *appstate.ScopedRoot) *PortAllocator {
 	return &PortAllocator{
+		mu:        sync.Mutex{},
 		assigned:  make(map[int]string),
 		pids:      make(map[int]int),
 		stateRoot: stateRoot,
@@ -60,7 +62,12 @@ func (pa *PortAllocator) Allocate(pluginID string) (int, error) {
 		return port, nil
 	}
 
-	return 0, apperror.New(apperror.TypeInternal, 500, "No free port available", fmt.Sprintf("No free port available in range %d-%d.", PortRangeStart, PortRangeEnd))
+	return 0, apperror.New(
+		apperror.TypeInternal,
+		http.StatusInternalServerError,
+		"No free port available",
+		fmt.Sprintf("No free port available in range %d-%d.", PortRangeStart, PortRangeEnd),
+	)
 }
 
 // RecordPID associates a process group ID with an allocated port so it can be
@@ -112,7 +119,7 @@ func (pa *PortAllocator) SavePIDs() {
 	pa.mu.Lock()
 	data := make(map[string]int, len(pa.pids))
 	for port, pgid := range pa.pids {
-		data[fmt.Sprintf("%d", port)] = pgid
+		data[strconv.Itoa(port)] = pgid
 	}
 	pa.mu.Unlock()
 
@@ -120,7 +127,7 @@ func (pa *PortAllocator) SavePIDs() {
 	if err != nil {
 		return
 	}
-	if err := pa.stateRoot.WriteFile(devserverPIDFileName, b, 0644); err != nil {
+	if err = pa.stateRoot.WriteFile(devserverPIDFileName, b, filePerm); err != nil {
 		log.Printf("devserver: failed to save PID file: %v", err)
 	}
 }
@@ -141,7 +148,7 @@ func (pa *PortAllocator) CleanupStaleProcesses(ctx context.Context, logger loggi
 	_ = pa.stateRoot.Remove(devserverPIDFileName)
 
 	var data map[string]int
-	if err := json.Unmarshal(b, &data); err != nil {
+	if err = json.Unmarshal(b, &data); err != nil {
 		logger.Warnw(ctx, "failed to parse devserver PID file", "error", err)
 		return
 	}
@@ -153,13 +160,13 @@ func (pa *PortAllocator) CleanupStaleProcesses(ctx context.Context, logger loggi
 		}
 
 		// Kill the entire process group.
-		if err := killProcessGroup(pgid); err != nil {
+		if killErr := killProcessGroup(pgid); killErr != nil {
 			// Process already dead -- that's fine.
-			if !isProcessNotFound(err) {
+			if !isProcessNotFound(killErr) {
 				logger.Warnw(ctx, "failed to kill stale dev server process group",
 					"port", portStr,
 					"pgid", pgid,
-					"error", err,
+					"error", killErr,
 				)
 			}
 			continue
@@ -180,7 +187,8 @@ func (pa *PortAllocator) CleanupStaleProcesses(ctx context.Context, logger loggi
 // isPortFree checks if a TCP port is available by attempting to listen on it.
 func isPortFree(port int) bool {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	ln, err := net.Listen("tcp", addr)
+	var lc net.ListenConfig
+	ln, err := lc.Listen(context.Background(), "tcp", addr)
 	if err != nil {
 		return false
 	}

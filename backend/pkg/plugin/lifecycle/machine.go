@@ -59,11 +59,15 @@ type PluginStateMachine struct {
 // NewPluginStateMachine creates a state machine starting at the given phase.
 func NewPluginStateMachine(pluginID string, initial PluginPhase) *PluginStateMachine {
 	return &PluginStateMachine{
-		pluginID: pluginID,
-		phase:    initial,
-		history:  make([]Transition, 0, maxHistory),
+		mu:        sync.RWMutex{},
+		pluginID:  pluginID,
+		phase:     initial,
+		history:   make([]Transition, 0, maxHistory),
+		observers: nil,
 		Retry: RetryState{
+			Attempts:    0,
 			NextBackoff: initialBackoff,
+			LastAttempt: time.Time{},
 		},
 	}
 }

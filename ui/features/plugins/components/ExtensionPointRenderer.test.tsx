@@ -7,6 +7,7 @@
  * - Group 18.11–18.13: Boundary logging observability
  */
 import React from 'react';
+import type { MockInstance } from 'vitest';
 import { render, screen, cleanup, act } from '@testing-library/react';
 import { ExtensionPointRegistry, ExtensionProvider } from '@omniviewdev/runtime';
 
@@ -91,10 +92,10 @@ function registerComponent(
 }
 
 // Suppress console.error from ErrorBoundary/React (expected in crash tests)
-let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+let consoleErrorSpy: MockInstance<typeof console.error>;
 
 beforeEach(() => {
-  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 
 afterEach(() => {
@@ -540,7 +541,7 @@ describe('Group 18: Boundary Logging', () => {
   test('logPluginBoundaryError emits structured console.error', () => {
     logPluginBoundaryError({
       pluginId: 'test-plugin',
-      boundary: 'test-boundary',
+      boundary: 'modal-surface',
       extensionPointId: 'test-ep',
       contributionId: 'test-contrib',
       resourceKey: 'core::v1::Service',
@@ -557,7 +558,7 @@ describe('Group 18: Boundary Logging', () => {
     expect(call).toBeDefined();
     const ctx = call![1] as Record<string, unknown>;
     expect(ctx.pluginId).toBe('test-plugin');
-    expect(ctx.boundary).toBe('test-boundary');
+    expect(ctx.boundary).toBe('modal-surface');
     expect(ctx.extensionPointId).toBe('test-ep');
     expect(ctx.contributionId).toBe('test-contrib');
     expect(ctx.resourceKey).toBe('core::v1::Service');
@@ -650,7 +651,10 @@ describe('PluginSurfaceBoundary', () => {
     let shouldCrash = true;
 
     function MaybeCrash() {
-      if (shouldCrash) throw new Error('crash');
+      if (shouldCrash) {
+        throw new Error('crash');
+      }
+
       return <div data-testid="ok">OK</div>;
     }
 

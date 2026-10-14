@@ -15,7 +15,9 @@ export function RouterErrorBoundary() {
   return (
     <FullPageErrorFallback
       error={resolvedError}
-      resetErrorBoundary={() => window.location.reload()}
+      resetErrorBoundary={() => {
+        window.location.reload(); 
+      }}
       boundary="Router"
     />
   );

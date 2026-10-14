@@ -1,9 +1,5 @@
 import React from 'react';
 
-export type DrawerContent = {
-  // You can extend this type based on the different kinds of content you expect
-};
-
 export type ShowResourceSidebarParams = {
   pluginID: string;
   connectionID: string;

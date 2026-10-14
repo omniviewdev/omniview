@@ -21,7 +21,7 @@ func TestError_ProducesValidJSON(t *testing.T) {
 
 	assert.Equal(t, TypePluginNotFound, parsed["type"])
 	assert.Equal(t, "Plugin not found", parsed["title"])
-	assert.Equal(t, float64(404), parsed["status"])
+	assert.InDelta(t, float64(404), parsed["status"], 0)
 	assert.Equal(t, "No plugin with id 'foo' was found.", parsed["detail"])
 	assert.Len(t, parsed["suggestions"], 1)
 	assert.Len(t, parsed["actions"], 1)
@@ -48,7 +48,7 @@ func TestUnwrap_ReturnsOriginalError(t *testing.T) {
 	appErr := Internal(original, "Write failed")
 
 	assert.Equal(t, original, appErr.Unwrap())
-	assert.True(t, errors.Is(appErr, original))
+	assert.ErrorIs(t, appErr, original)
 }
 
 func TestErrorsAs_WorksThroughChain(t *testing.T) {
@@ -56,7 +56,7 @@ func TestErrorsAs_WorksThroughChain(t *testing.T) {
 	appErr := Wrap(original, TypeConnectionFailed, 502, "Connection failed")
 
 	var target *AppError
-	require.True(t, errors.As(appErr, &target))
+	require.ErrorAs(t, appErr, &target)
 	assert.Equal(t, TypeConnectionFailed, target.Type)
 	assert.Equal(t, 502, target.Status)
 }

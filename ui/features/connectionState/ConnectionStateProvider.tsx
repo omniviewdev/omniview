@@ -10,15 +10,18 @@ import type { ConnectionStateTarget } from './types';
 // Context
 // ---------------------------------------------------------------------------
 
-interface ConnectionStateContextValue {
+type ConnectionStateContextValue = {
   show: (target: ConnectionStateTarget) => void;
-}
+};
 
 const ConnectionStateContext = createContext<ConnectionStateContextValue | undefined>(undefined);
 
 export const useConnectionStateDialog = (): ConnectionStateContextValue => {
   const ctx = useContext(ConnectionStateContext);
-  if (!ctx) throw new Error('useConnectionStateDialog must be used within a ConnectionStateProvider');
+  if (!ctx) {
+    throw new Error('useConnectionStateDialog must be used within a ConnectionStateProvider');
+  }
+
   return ctx;
 };
 
@@ -59,7 +62,9 @@ function ActiveConnectionStateDialog({
   useEffect(() => {
     if (isFullySynced && open && !manualOpenRef.current) {
       const timer = setTimeout(onClose, 1500);
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer); 
+      };
     }
   }, [isFullySynced, open, onClose, manualOpenRef]);
 
@@ -110,8 +115,11 @@ export const ConnectionStateProvider: React.FC<{ children: React.ReactNode }> = 
         setOpen(true);
       }
     };
+
     window.addEventListener('ov:show-connection-state', handler);
-    return () => window.removeEventListener('ov:show-connection-state', handler);
+    return () => {
+      window.removeEventListener('ov:show-connection-state', handler); 
+    };
   }, []);
 
   return (

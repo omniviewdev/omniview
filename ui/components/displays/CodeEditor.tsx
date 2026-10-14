@@ -4,6 +4,7 @@ import Editor, { DiffEditor, useMonaco, loader } from '@monaco-editor/react';
 // Themes
 import GithubDark from './themes/GithubDark';
 import BrillianceBlack from './themes/BrillianceBlack';
+import { orFallback } from '@/utils/orFallback';
 
 type Props = {
   height?: string | number;
@@ -43,7 +44,7 @@ const CodeEditor: FC<Props> = ({ language, value, onChange, readOnly, diff, orig
 
   useEffect(() => {
     if (monaco) {
-      loader.init().then(monacoInstance => {
+      void loader.init().then(monacoInstance => {
         monacoInstance.languages.typescript.javascriptDefaults.setEagerModelSync(true);
       });
     }
@@ -53,7 +54,7 @@ const CodeEditor: FC<Props> = ({ language, value, onChange, readOnly, diff, orig
     return (
       <DiffEditor
         original={original}
-        modified={value || controlledValue}
+        modified={orFallback(value, controlledValue)}
         language={language}
         options={{ readOnly }}
       />
@@ -63,9 +64,9 @@ const CodeEditor: FC<Props> = ({ language, value, onChange, readOnly, diff, orig
   return (
     <Editor
       language={language}
-      value={value || controlledValue}
+      value={orFallback(value, controlledValue)}
       onChange={value => {
-        handleChange(value || '');
+        handleChange(value ?? '');
       }}
       options={{ readOnly }}
     />

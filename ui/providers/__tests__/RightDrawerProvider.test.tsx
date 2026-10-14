@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RightDrawerContext } from '@omniviewdev/runtime';
+import type * as Runtime from '@omniviewdev/runtime';
 
 import RightDrawerProvider from '../RightDrawerProvider';
 
@@ -9,13 +10,13 @@ const mocks = vi.hoisted(() => ({
   mockUpdate: vi.fn(),
   mockShowSnackbar: vi.fn(),
   mockShowAppError: vi.fn(),
-  mockBottomDrawerOn: vi.fn(() => vi.fn()),
-  mockGetDrawerFactory: vi.fn(() => undefined),
-  mockGetSidebarComponent: vi.fn(() => undefined),
+  mockBottomDrawerOn: vi.fn<(...args: unknown[]) => () => void>(() => vi.fn()),
+  mockGetDrawerFactory: vi.fn<(...args: unknown[]) => undefined>(() => undefined),
+  mockGetSidebarComponent: vi.fn<(...args: unknown[]) => undefined>(() => undefined),
 }));
 
 vi.mock('@omniviewdev/runtime', async () => {
-  const actual = await vi.importActual<typeof import('@omniviewdev/runtime')>('@omniviewdev/runtime');
+  const actual = await vi.importActual<typeof Runtime>('@omniviewdev/runtime');
   return {
     ...actual,
     useSnackbar: () => ({ showSnackbar: mocks.mockShowSnackbar }),
@@ -37,8 +38,12 @@ vi.mock('@/providers/BottomDrawer/events', () => ({
 }));
 
 vi.mock('@/features/plugins/PluginManager', () => ({
-  getDrawerFactory: (...args: unknown[]) => mocks.mockGetDrawerFactory(...args),
-  getSidebarComponent: (...args: unknown[]) => mocks.mockGetSidebarComponent(...args),
+  getDrawerFactory: (...args: unknown[]) => {
+    mocks.mockGetDrawerFactory(...args); 
+  },
+  getSidebarComponent: (...args: unknown[]) => {
+    mocks.mockGetSidebarComponent(...args); 
+  },
 }));
 
 vi.mock('@/components/displays/RightDrawer', () => ({
@@ -54,13 +59,15 @@ function Trigger() {
 
   return (
     <button
-      onClick={() => drawer.showResourceSidebar({
-        pluginID: 'kubernetes',
-        connectionID: 'conn-1',
-        resourceKey: 'core::v1::Pod',
-        resourceID: 'pod-1',
-        namespace: 'kube-system',
-      })}
+      onClick={() => {
+        drawer.showResourceSidebar({
+          pluginID: 'kubernetes',
+          connectionID: 'conn-1',
+          resourceKey: 'core::v1::Pod',
+          resourceID: 'pod-1',
+          namespace: 'kube-system',
+        }); 
+      }}
       type="button"
     >
       open

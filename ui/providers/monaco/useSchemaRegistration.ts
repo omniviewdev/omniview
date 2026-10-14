@@ -28,7 +28,9 @@ export const useSchemaRegistration = ({
   });
 
   useEffect(() => {
-    if (!schemas.length || !pluginID || !connectionID) return;
+    if (!schemas.length || !pluginID || !connectionID) {
+      return;
+    }
 
     schemaRegistry.register(pluginID, connectionID, schemas);
 

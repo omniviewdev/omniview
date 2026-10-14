@@ -127,6 +127,7 @@ func (s *ServiceWrapper) GetCategories() []pkgsettings.Category {
 			Label:       cat.Label,
 			Description: cat.Description,
 			Icon:        cat.Icon,
+			Settings:    nil,
 		})
 	}
 	return cats

@@ -14,6 +14,7 @@ func NewOutputBuffer(capacity int) *OutputBuffer {
 	return &OutputBuffer{
 		buf:      make([]byte, 0, capacity),
 		capacity: capacity,
+		lock:     sync.Mutex{},
 	}
 }
 

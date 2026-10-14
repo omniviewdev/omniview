@@ -169,7 +169,9 @@ func TestManager_ListDevServerStates_WithInstances(t *testing.T) {
 	noopLogs := func(string, []LogEntry) {}
 	noopErrors := func(string, []BuildError) {}
 
-	inst := NewDevServerInstance(ctx, logging.NewNop(), "plugin-a", "/dev/path", 15173, BuildOpts{}, nil, nil, noop, noopLogs, noopErrors)
+	inst := NewDevServerInstance(
+		ctx, logging.NewNop(), "plugin-a", "/dev/path", 15173, BuildOpts{}, nil, nil, noop, noopLogs, noopErrors,
+	)
 
 	mgr.mu.Lock()
 	mgr.instances["plugin-a"] = inst
@@ -223,7 +225,7 @@ func TestManager_ListDevServerStates_ExternalNoVitePort(t *testing.T) {
 	states := mgr.ListDevServerStates()
 	require.Len(t, states, 1)
 	assert.Equal(t, DevProcessStatus(""), states[0].ViteStatus)
-	assert.Equal(t, "", states[0].ViteURL)
+	assert.Empty(t, states[0].ViteURL)
 }
 
 func TestManager_GetDevServerLogs_NoInstance(t *testing.T) {
@@ -240,9 +242,15 @@ func TestManager_GetDevServerLogs_WithInstance(t *testing.T) {
 	noopLogs := func(string, []LogEntry) {}
 	noopErrors := func(string, []BuildError) {}
 
-	inst := NewDevServerInstance(ctx, logging.NewNop(), "plugin-a", "/dev/path", 15173, BuildOpts{}, nil, nil, noop, noopLogs, noopErrors)
-	inst.appendLog(LogEntry{Message: "build started", Source: "go-build", Level: "info", Timestamp: time.Now().Format(time.RFC3339)})
-	inst.appendLog(LogEntry{Message: "build complete", Source: "go-build", Level: "info", Timestamp: time.Now().Format(time.RFC3339)})
+	inst := NewDevServerInstance(
+		ctx, logging.NewNop(), "plugin-a", "/dev/path", 15173, BuildOpts{}, nil, nil, noop, noopLogs, noopErrors,
+	)
+	inst.appendLog(LogEntry{
+		Message: "build started", Source: "go-build", Level: "info", Timestamp: time.Now().Format(time.RFC3339),
+	})
+	inst.appendLog(LogEntry{
+		Message: "build complete", Source: "go-build", Level: "info", Timestamp: time.Now().Format(time.RFC3339),
+	})
 
 	mgr.mu.Lock()
 	mgr.instances["plugin-a"] = inst
@@ -291,7 +299,7 @@ func TestManager_StopDevServer_NotRunning(t *testing.T) {
 	err := mgr.StopDevServer("nonexistent-plugin")
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeValidation, appErr.Type)
 	assert.Equal(t, 422, appErr.Status)
 	assert.Contains(t, appErr.Title, "No dev server running")
@@ -324,12 +332,12 @@ func TestManager_StartDevServer_AlreadyRunning(t *testing.T) {
 
 func TestManager_StartDevServer_PluginNotFound(t *testing.T) {
 	mgr := newTestManager(t)
-	mgr.pluginRef = &mockPluginRef{err: fmt.Errorf("not found")}
+	mgr.pluginRef = &mockPluginRef{err: errors.New("not found")}
 
 	_, err := mgr.StartDevServer("missing")
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
 	assert.Contains(t, appErr.Detail, "missing")
@@ -342,7 +350,7 @@ func TestManager_StartDevServer_NotDevMode(t *testing.T) {
 	_, err := mgr.StartDevServer("non-dev")
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeValidation, appErr.Type)
 	assert.Equal(t, 422, appErr.Status)
 }
@@ -354,7 +362,7 @@ func TestManager_StartDevServer_EmptyDevPath(t *testing.T) {
 	_, err := mgr.StartDevServer("empty-path")
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeValidation, appErr.Type)
 	assert.Equal(t, 422, appErr.Status)
 	assert.Contains(t, appErr.Title, "Missing dev path")
@@ -505,7 +513,7 @@ func TestManager_StartDevServer_PortExhaustion(t *testing.T) {
 	_, err := mgr.StartDevServer("new-plugin")
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeInternal, appErr.Type)
 	assert.Equal(t, 500, appErr.Status)
 	assert.Contains(t, appErr.Title, "Port allocation failed")
@@ -513,13 +521,13 @@ func TestManager_StartDevServer_PortExhaustion(t *testing.T) {
 
 func TestManager_RestartDevServer_NotRunning(t *testing.T) {
 	mgr := newTestManager(t)
-	mgr.pluginRef = &mockPluginRef{err: fmt.Errorf("not found")}
+	mgr.pluginRef = &mockPluginRef{err: errors.New("not found")}
 
 	// Restart when not running: Stop returns error (ignored), Start returns error.
 	_, err := mgr.RestartDevServer("missing")
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
 }
@@ -534,7 +542,7 @@ func TestManager_RebuildPlugin_NotRunning(t *testing.T) {
 	err := mgr.RebuildPlugin("nonexistent-plugin")
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeValidation, appErr.Type)
 	assert.Equal(t, 422, appErr.Status)
 	assert.Contains(t, appErr.Title, "No dev server running")
@@ -572,7 +580,7 @@ func TestManager_StartDevServerForPath_EmptyPath(t *testing.T) {
 	_, err := mgr.StartDevServerForPath("test-plugin", "")
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeValidation, appErr.Type)
 	assert.Equal(t, 422, appErr.Status)
 	assert.Contains(t, appErr.Title, "Missing dev path")
@@ -614,7 +622,7 @@ func TestManager_StartDevServerForPath_PortExhaustion(t *testing.T) {
 	_, err := mgr.StartDevServerForPath("new-plugin", "/some/path")
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeInternal, appErr.Type)
 	assert.Equal(t, 500, appErr.Status)
 	assert.Contains(t, appErr.Title, "Port allocation failed")

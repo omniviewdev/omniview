@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -65,6 +66,9 @@ type Controller interface {
 // runtime assertion to make sure we satisfy both internal and external interfaces.
 var _ Controller = (*controller)(nil)
 
+// pendingChangeTimeout bounds how long a queued settings change waits for the plugin to hydrate.
+const pendingChangeTimeout = 30 * time.Second
+
 // pendingChange represents a queued settings change for a plugin that is not yet hydrated.
 type pendingChange struct {
 	settings map[string]any
@@ -76,7 +80,7 @@ type controller struct {
 	settingsProvider pkgsettings.Provider
 	store            *settingsstore.Store
 	mu               sync.RWMutex
-	clients          map[string]SettingsProvider
+	clients          map[string]Provider
 	hydrated         map[string]bool
 	schemaCache      map[string]map[string]pkgsettings.Setting
 	pendingMu        sync.Mutex
@@ -91,10 +95,13 @@ func NewController(logger logging.Logger, sp pkgsettings.Provider, store *settin
 		logger:           logger.Named("SettingsController"),
 		settingsProvider: sp,
 		store:            store,
-		clients:          make(map[string]SettingsProvider),
+		mu:               sync.RWMutex{},
+		clients:          make(map[string]Provider),
 		hydrated:         make(map[string]bool),
 		schemaCache:      make(map[string]map[string]pkgsettings.Setting),
+		pendingMu:        sync.Mutex{},
 		pendingChanges:   make(map[string][]pendingChange),
+		hydratingMu:      sync.Mutex{},
 		hydrating:        make(map[string]bool),
 	}
 }
@@ -107,20 +114,20 @@ func (c *controller) ServiceShutdown() error {
 	return nil
 }
 
-func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginInit")
 
 	c.mu.Lock()
 	if c.clients == nil {
-		c.clients = make(map[string]SettingsProvider)
+		c.clients = make(map[string]Provider)
 	}
 	c.mu.Unlock()
 }
 
 // dispenseProvider extracts the settings provider from the backend,
 // wrapping it in the version-appropriate adapter.
-func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (SettingsProvider, error) {
+func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Provider, error) {
 	raw, err := backend.Dispense(PluginName)
 	if err != nil {
 		return nil, err
@@ -132,7 +139,7 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Set
 		v1, ok := raw.(sdksettings.Provider)
 		if !ok {
 			return nil, apperror.New(
-				apperror.TypePluginLoadFailed, 500,
+				apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 				"Plugin type mismatch",
 				fmt.Sprintf("Expected settings.Provider for v1, got %T", raw),
 			)
@@ -140,7 +147,7 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Set
 		return NewAdapterV1(v1), nil
 	default:
 		return nil, apperror.New(
-			apperror.TypePluginLoadFailed, 500,
+			apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			"Unsupported SDK protocol version",
 			fmt.Sprintf("Plugin '%s' negotiated v%d for settings, engine supports v1", pluginID, version),
 		)
@@ -149,7 +156,7 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Set
 
 func (c *controller) OnPluginStart(
 	pluginID string,
-	meta config.PluginMeta,
+	_ config.PluginMeta,
 	backend internaltypes.PluginBackend,
 ) error {
 	ctx := context.Background()
@@ -184,7 +191,12 @@ func (c *controller) OnPluginStart(
 
 // hydratePlugin reads the plugin's declared schema, merges with persisted values from bbolt,
 // pushes the merged values to the plugin, and persists the result.
-func (c *controller) hydratePlugin(ctx context.Context, pluginID string, client SettingsProvider, logger logging.Logger) {
+func (c *controller) hydratePlugin(
+	ctx context.Context,
+	pluginID string,
+	client Provider,
+	logger logging.Logger,
+) {
 	// 1. Get the plugin's declared schema
 	schema := client.ListSettings()
 	if schema == nil {
@@ -263,7 +275,12 @@ func (c *controller) failPendingChanges(pluginID string, err error) {
 }
 
 // drainPendingChanges applies any queued settings changes for a plugin.
-func (c *controller) drainPendingChanges(ctx context.Context, pluginID string, client SettingsProvider, logger logging.Logger) {
+func (c *controller) drainPendingChanges(
+	ctx context.Context,
+	pluginID string,
+	client Provider,
+	logger logging.Logger,
+) {
 	c.pendingMu.Lock()
 	pending := c.pendingChanges[pluginID]
 	delete(c.pendingChanges, pluginID)
@@ -287,7 +304,12 @@ func (c *controller) drainPendingChanges(ctx context.Context, pluginID string, c
 }
 
 // persistCurrentSettings reads the current settings from the plugin and persists them.
-func (c *controller) persistCurrentSettings(ctx context.Context, pluginID string, client SettingsProvider, logger logging.Logger) {
+func (c *controller) persistCurrentSettings(
+	ctx context.Context,
+	pluginID string,
+	client Provider,
+	logger logging.Logger,
+) {
 	if c.store == nil {
 		return
 	}
@@ -305,23 +327,22 @@ func (c *controller) persistCurrentSettings(ctx context.Context, pluginID string
 }
 
 // tryHydrate attempts hydration if the plugin is not yet hydrated.
-// Returns true if the plugin is hydrated (or became so).
 // It guards against concurrent hydration of the same plugin.
-func (c *controller) tryHydrate(ctx context.Context, pluginID string) bool {
+func (c *controller) tryHydrate(ctx context.Context, pluginID string) {
 	c.mu.RLock()
 	isHydrated := c.hydrated[pluginID]
 	client, hasClient := c.clients[pluginID]
 	c.mu.RUnlock()
 
 	if isHydrated || !hasClient {
-		return isHydrated
+		return
 	}
 
 	// Prevent redundant concurrent hydrations for the same plugin.
 	c.hydratingMu.Lock()
 	if c.hydrating[pluginID] {
 		c.hydratingMu.Unlock()
-		return false
+		return
 	}
 	c.hydrating[pluginID] = true
 	c.hydratingMu.Unlock()
@@ -334,14 +355,9 @@ func (c *controller) tryHydrate(ctx context.Context, pluginID string) bool {
 
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	c.hydratePlugin(ctx, pluginID, client, logger)
-
-	c.mu.RLock()
-	result := c.hydrated[pluginID]
-	c.mu.RUnlock()
-	return result
 }
 
-func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStop")
 
@@ -363,7 +379,7 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 	return c.OnPluginStop(pluginID, meta)
 }
 
-func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
 	ctx := context.Background()
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(ctx, "OnPluginDestroy")
@@ -430,22 +446,29 @@ func (c *controller) bboltFallbackSettings(pluginID string) map[string]pkgsettin
 	result := make(map[string]pkgsettings.Setting, len(vals))
 	for k, v := range vals {
 		if cached, ok := schema[k]; ok {
-			copy := cached
-			copy.Value = v
-			result[k] = copy
+			merged := cached
+			merged.Value = v
+			result[k] = merged
 		} else {
 			result[k] = pkgsettings.Setting{
-				ID:    k,
-				Label: k,
-				Type:  pkgsettings.Text,
-				Value: v,
+				ID:            k,
+				Label:         k,
+				Description:   "",
+				Type:          pkgsettings.Text,
+				Value:         v,
+				Default:       nil,
+				Validator:     nil,
+				Options:       nil,
+				FileSelection: nil,
+				Sensitive:     false,
+				DevOnly:       false,
 			}
 		}
 	}
 	return result
 }
 
-// Values returns all of the values for all of the plugins
+// Values returns all of the values for all of the plugins.
 func (c *controller) Values() map[string]any {
 	ctx, span := tracer.Start(context.Background(), "settings.Values")
 	defer span.End()
@@ -453,7 +476,7 @@ func (c *controller) Values() map[string]any {
 	logger.Debugw(ctx, "Listing all settings values")
 
 	c.mu.RLock()
-	snapshot := make(map[string]SettingsProvider, len(c.clients))
+	snapshot := make(map[string]Provider, len(c.clients))
 	for k, v := range c.clients {
 		snapshot[k] = v
 	}
@@ -560,7 +583,7 @@ func (c *controller) ListSettings(plugin string) map[string]pkgsettings.Setting 
 
 // GetSetting returns the setting by ID. This ID should be in the form of a dot separated string
 // that represents the path to the setting. For example, "appearance.theme".
-func (c *controller) GetSetting(plugin, id string) (result pkgsettings.Setting, retErr error) {
+func (c *controller) GetSetting(plugin, id string) (_ pkgsettings.Setting, retErr error) {
 	ctx, span := tracer.Start(context.Background(), "settings.GetSetting")
 	defer span.End()
 	defer func() {
@@ -637,7 +660,7 @@ func (c *controller) SetSetting(plugin, id string, value any) (retErr error) {
 		select {
 		case err := <-errCh:
 			return err
-		case <-time.After(30 * time.Second):
+		case <-time.After(pendingChangeTimeout):
 			c.pendingMu.Lock()
 			pending := c.pendingChanges[plugin]
 			for i, p := range pending {
@@ -675,7 +698,11 @@ func (c *controller) SetSettings(plugin string, settings map[string]any) (retErr
 	for k := range settings {
 		settingKeys = append(settingKeys, k)
 	}
-	logger := c.logger.With(logging.Any("plugin", plugin), logging.Any("method", "SetSettings"), logging.Any("keys", settingKeys))
+	logger := c.logger.With(
+		logging.Any("plugin", plugin),
+		logging.Any("method", "SetSettings"),
+		logging.Any("keys", settingKeys),
+	)
 
 	c.mu.RLock()
 	client, ok := c.clients[plugin]
@@ -704,7 +731,7 @@ func (c *controller) SetSettings(plugin string, settings map[string]any) (retErr
 		select {
 		case err := <-errCh:
 			return err
-		case <-time.After(30 * time.Second):
+		case <-time.After(pendingChangeTimeout):
 			c.pendingMu.Lock()
 			pending := c.pendingChanges[plugin]
 			for i, p := range pending {

@@ -1,7 +1,11 @@
 package graph
 
 // GetRelated returns edges connected to the given node, filtered by direction and type.
-func (g *RelationshipGraph) GetRelated(ref GraphNode, direction Direction, relType *RelationshipType) ([]GraphEdge, error) {
+func (g *RelationshipGraph) GetRelated(
+	ref GraphNode,
+	direction Direction,
+	relType *RelationshipType,
+) ([]GraphEdge, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
@@ -29,7 +33,11 @@ func (g *RelationshipGraph) GetRelated(ref GraphNode, direction Direction, relTy
 
 // GetRelationshipChain follows edges of a specific type up to maxDepth hops.
 // Returns edges organized by depth level. Uses BFS with visited-set cycle detection.
-func (g *RelationshipGraph) GetRelationshipChain(ref GraphNode, relType RelationshipType, maxDepth int) ([][]GraphEdge, error) {
+func (g *RelationshipGraph) GetRelationshipChain(
+	ref GraphNode,
+	relType RelationshipType,
+	maxDepth int,
+) ([][]GraphEdge, error) {
 	if maxDepth <= 0 {
 		return nil, nil
 	}
@@ -70,11 +78,14 @@ func (g *RelationshipGraph) GetRelationshipChain(ref GraphNode, relType Relation
 	return result, nil
 }
 
+// maxDependencyTreeDepth caps GetDependencyTree's maxDepth to prevent explosion.
+const maxDependencyTreeDepth = 5
+
 // GetDependencyTree follows ALL outgoing edge types recursively from root.
 // maxDepth is capped at 5 to prevent explosion.
 func (g *RelationshipGraph) GetDependencyTree(ref GraphNode, maxDepth int) (*DependencyTree, error) {
-	if maxDepth > 5 {
-		maxDepth = 5
+	if maxDepth > maxDependencyTreeDepth {
+		maxDepth = maxDependencyTreeDepth
 	}
 
 	g.mu.RLock()
@@ -89,7 +100,11 @@ func (g *RelationshipGraph) GetDependencyTree(ref GraphNode, maxDepth int) (*Dep
 	}, nil
 }
 
-func (g *RelationshipGraph) buildChildren(nodeKey string, maxDepth, currentDepth int, visited map[string]bool) []DependencyNode {
+func (g *RelationshipGraph) buildChildren(
+	nodeKey string,
+	maxDepth, currentDepth int,
+	visited map[string]bool,
+) []DependencyNode {
 	if currentDepth >= maxDepth {
 		return nil
 	}

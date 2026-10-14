@@ -99,6 +99,16 @@ linters:
         - ^golang.org/x/tools/go/analysis.Analyzer$
         - ^google.golang.org/protobuf/.+Options$
         - ^gopkg.in/yaml.v3.Node$
+        # Third-party and plugin-sdk structs with many optional fields.
+        - ^github.com/grafana/pyroscope-go.Config$
+        - ^github.com/hashicorp/go-hclog.LoggerOptions$
+        - ^github.com/hashicorp/go-plugin.ClientConfig$
+        - ^github.com/omniviewdev/plugin-sdk/pkg/config.PluginMeta$
+        - ^github.com/omniviewdev/plugin-sdk/pkg/types.Connection$
+        - ^github.com/omniviewdev/plugin-sdk/settings.Setting$
+        - ^github.com/wailsapp/wails/v3/pkg/application\..+$
+        - ^go.etcd.io/bbolt.Options$
+        - ^syscall.SysProcAttr$
     funlen:
       lines: 100
       statements: 50
@@ -175,10 +185,14 @@ linters:
       - linters:
           - bodyclose
           - dupl
+          - exhaustruct
           - funlen
           - goconst
           - gosec
+          - nilnil
           - noctx
+          - testpackage
+          - unparam
         path: _test\.go
     paths:
       - third_party$

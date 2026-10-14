@@ -16,8 +16,9 @@ func buildTelemetrySettings() map[string]settings.Setting {
 	logLevelOptions := make([]settings.SettingOption, 0, len(validLevels))
 	for _, lvl := range validLevels {
 		logLevelOptions = append(logLevelOptions, settings.SettingOption{
-			Value: lvl,
-			Label: lvl,
+			Value:       lvl,
+			Label:       lvl,
+			Description: "",
 		})
 	}
 

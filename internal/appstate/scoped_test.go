@@ -106,7 +106,7 @@ func TestScopedRoot_FS(t *testing.T) {
 	assert.Equal(t, "hello", string(data))
 }
 
-// Containment tests
+// Containment tests.
 func TestScopedRoot_RejectsAbsolutePath(t *testing.T) {
 	t.Parallel()
 	r := newTestScopedRoot(t)
@@ -166,11 +166,11 @@ func TestScopedRoot_RemoveAll_SymlinkEscape(t *testing.T) {
 
 	// RemoveAll on the symlink path should fail containment check.
 	err := r.RemoveAll("escape-link")
-	assert.Error(t, err, "RemoveAll should reject symlink that escapes the scope")
+	require.Error(t, err, "RemoveAll should reject symlink that escapes the scope")
 
 	// The external directory and its contents must still exist.
 	_, err = os.Stat(externalDir)
-	assert.NoError(t, err, "external directory should still exist after blocked RemoveAll")
+	require.NoError(t, err, "external directory should still exist after blocked RemoveAll")
 	_, err = os.Stat(externalFile)
-	assert.NoError(t, err, "external file should still exist after blocked RemoveAll")
+	require.NoError(t, err, "external file should still exist after blocked RemoveAll")
 }

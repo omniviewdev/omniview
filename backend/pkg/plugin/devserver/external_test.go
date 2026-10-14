@@ -3,7 +3,6 @@ package devserver
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -84,7 +83,7 @@ func TestReadDevInfoFile_Invalid(t *testing.T) {
 			_, err := readDevInfoFile(path)
 			require.Error(t, err)
 			var appErr *apperror.AppError
-			require.True(t, errors.As(err, &appErr))
+			require.ErrorAs(t, err, &appErr)
 			assert.Equal(t, tt.wantType, appErr.Type)
 			assert.Equal(t, 422, appErr.Status)
 			assert.Equal(t, tt.wantTitle, appErr.Title)

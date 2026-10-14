@@ -14,7 +14,7 @@ import (
 // validatePluginID rejects empty, traversal, or path-separator-containing IDs.
 func validatePluginID(id string) error {
 	if id == "" {
-		return fmt.Errorf("appstate: empty plugin ID")
+		return errors.New("appstate: empty plugin ID")
 	}
 	if strings.ContainsAny(id, "/\\") {
 		return fmt.Errorf("appstate: plugin ID contains path separator: %q", id)
@@ -66,7 +66,7 @@ func WithFlock(enabled bool) Option {
 
 // New creates a new Service with the given options.
 func New(opts ...Option) (*Service, error) {
-	cfg := config{flockOn: true}
+	cfg := config{root: "", flockOn: true}
 	for _, o := range opts {
 		o(&cfg)
 	}
@@ -88,6 +88,14 @@ func New(opts ...Option) (*Service, error) {
 		root:             root,
 		pluginDataRoots:  make(map[string]*ScopedRoot),
 		pluginStoreRoots: make(map[string]*ScopedRoot),
+		lock:             nil,
+		osRoot:           nil,
+		plugins:          nil,
+		logs:             nil,
+		rootDir:          nil,
+		pluginRootsMu:    sync.Mutex{},
+		closeOnce:        sync.Once{},
+		closeErr:         nil,
 	}
 
 	if cfg.flockOn {
@@ -146,22 +154,7 @@ func (s *Service) closePartial() {
 // Close is idempotent; subsequent calls return the result of the first call.
 func (s *Service) Close() error {
 	s.closeOnce.Do(func() {
-		var allErrors []error
-
-		s.pluginRootsMu.Lock()
-		for id, r := range s.pluginDataRoots {
-			if err := r.Close(); err != nil {
-				allErrors = append(allErrors, fmt.Errorf("close plugin data root %q: %w", id, err))
-			}
-		}
-		for id, r := range s.pluginStoreRoots {
-			if err := r.Close(); err != nil {
-				allErrors = append(allErrors, fmt.Errorf("close plugin store root %q: %w", id, err))
-			}
-		}
-		s.pluginDataRoots = nil
-		s.pluginStoreRoots = nil
-		s.pluginRootsMu.Unlock()
+		allErrors := s.closePluginRoots()
 
 		if err := s.plugins.Close(); err != nil {
 			allErrors = append(allErrors, fmt.Errorf("close plugins root: %w", err))
@@ -182,6 +175,29 @@ func (s *Service) Close() error {
 		s.closeErr = errors.Join(allErrors...)
 	})
 	return s.closeErr
+}
+
+// closePluginRoots closes and forgets all cached per-plugin scoped roots,
+// returning any close errors.
+func (s *Service) closePluginRoots() []error {
+	var allErrors []error
+
+	s.pluginRootsMu.Lock()
+	for id, r := range s.pluginDataRoots {
+		if err := r.Close(); err != nil {
+			allErrors = append(allErrors, fmt.Errorf("close plugin data root %q: %w", id, err))
+		}
+	}
+	for id, r := range s.pluginStoreRoots {
+		if err := r.Close(); err != nil {
+			allErrors = append(allErrors, fmt.Errorf("close plugin store root %q: %w", id, err))
+		}
+	}
+	s.pluginDataRoots = nil
+	s.pluginStoreRoots = nil
+	s.pluginRootsMu.Unlock()
+
+	return allErrors
 }
 
 // Root returns the absolute path to the state directory.

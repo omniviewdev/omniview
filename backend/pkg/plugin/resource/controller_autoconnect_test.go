@@ -173,7 +173,7 @@ func TestListenForConnectionEvents_AutoConnectsOnDiscoveredTrigger(t *testing.T)
 
 	done := make(chan struct{})
 	go func() {
-		ctrl.listenForConnectionEvents("p1", mock, ctx)
+		ctrl.listenForConnectionEvents(ctx, "p1", mock)
 		close(done)
 	}()
 

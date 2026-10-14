@@ -2,13 +2,13 @@ import React from 'react';
 import { Button, Text } from '@omniviewdev/base-ui';
 import styles from './QuarantinedContributionFallback.module.css';
 
-export interface QuarantinedContributionFallbackProps {
+export type QuarantinedContributionFallbackProps = {
   readonly pluginId: string;
   readonly extensionPointId: string;
   readonly contributionId: string;
   readonly crashCount: number;
   readonly onReEnable: () => void;
-}
+};
 
 /**
  * Dev-mode inline fallback for quarantined contributions.

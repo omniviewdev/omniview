@@ -61,7 +61,8 @@ const findTabIndex = (tabs: BottomDrawerTab[], opts: FindTabOpts): number => {
         return tabs.indexOf(matches[matches.length - 1]);
       case 'oldest':
         return tabs.indexOf(matches[0]);
-      default:
+      case 'none':
+      case undefined:
         return -1;
     }
   }
@@ -120,7 +121,10 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
   const updateTab: UpdateTab = (find: FindTabOpts, updates: UpdateTabOpts) => {
     setTabs(prev => {
       const idx = findTabIndex(prev, find);
-      if (idx === -1) return prev;
+      if (idx === -1) {
+        return prev;
+      }
+
       const tab = prev[idx];
       const updated: BottomDrawerTab = {
         ...tab,

@@ -18,9 +18,11 @@ function validModule(overrides?: {
   if (overrides?.routes) {
     pw.withRoutes(overrides.routes);
   }
+
   if (overrides?.extensionPoints) {
     pw.registerExtensionPoints(overrides.extensionPoints);
   }
+
   return {
     plugin: pw,
     extensionRegistrations: overrides?.extensionRegistrations ?? [],
@@ -68,7 +70,9 @@ describe('Group 9: Event System', () => {
 
     it('9.1.4 — stop without start is no-op', () => {
       const s = setup();
-      expect(() => s.service.stopEventListeners()).not.toThrow();
+      expect(() => {
+        s.service.stopEventListeners(); 
+      }).not.toThrow();
       expect(s.eventBus.listenerCount()).toBe(0);
     });
   });
@@ -112,14 +116,18 @@ describe('Group 9: Event System', () => {
       s.service.startEventListeners();
 
       // Should not crash
-      expect(() => s.eventBus.emit('plugin/install_finished', {})).not.toThrow();
+      expect(() => {
+        s.eventBus.emit('plugin/install_finished', {}); 
+      }).not.toThrow();
     });
 
     it('9.2.8 — null payload', () => {
       const s = setup();
       s.service.startEventListeners();
 
-      expect(() => s.eventBus.emit('plugin/install_finished', null)).not.toThrow();
+      expect(() => {
+        s.eventBus.emit('plugin/install_finished', null); 
+      }).not.toThrow();
     });
   });
 
@@ -403,7 +411,7 @@ describe('Group 20: Lifecycle Operations', () => {
 
   it('20.7 — reset() clears inflightLoads and discards stale results', async () => {
     const deferred = createDeferred<unknown>();
-    s.importer.register('A', () => deferred.promise);
+    s.importer.register('A', async () => deferred.promise);
 
     // Start load (will hang on import until deferred resolves)
     const loadPromise = s.service.load('A');
@@ -413,7 +421,7 @@ describe('Group 20: Lifecycle Operations', () => {
 
     // Debug snapshot should show inflight
     const debug1 = s.service.getDebugSnapshot();
-    expect(debug1.plugins['A']?.inflightLoad).toBe(true);
+    expect(debug1.plugins.A?.inflightLoad).toBe(true);
 
     // Reset clears everything
     s.service.reset();

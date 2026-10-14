@@ -7,7 +7,7 @@ function texts(result: ParsedAnsi): string[] {
 }
 
 /** Helper: extract fg colors from segments. */
-function fgs(result: ParsedAnsi): (string | undefined)[] {
+function fgs(result: ParsedAnsi): Array<string | undefined> {
   return result.segments.map(s => s.fg);
 }
 
@@ -322,6 +322,7 @@ describe('parseAnsi', () => {
     for (let i = 0; i < 100; i++) {
       input += `\x1b[${30 + (i % 8)}mword${i} `;
     }
+
     input += '\x1b[0m';
 
     const result = parseAnsi(input);

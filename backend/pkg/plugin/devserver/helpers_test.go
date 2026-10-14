@@ -5,9 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // ============================================================================
@@ -33,12 +32,6 @@ func (m *mockPluginReloader) getCallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.callCount
-}
-
-func (m *mockPluginReloader) getLastPluginID() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.lastPluginID
 }
 
 // ============================================================================
@@ -87,14 +80,6 @@ func (r *statusRecorder) last() statusCall {
 	return r.calls[len(r.calls)-1]
 }
 
-func (r *statusRecorder) all() []statusCall {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	cp := make([]statusCall, len(r.calls))
-	copy(cp, r.calls)
-	return cp
-}
-
 type logRecorder struct {
 	mu    sync.Mutex
 	calls []logCall
@@ -139,25 +124,13 @@ func (r *errorRecorder) record(pluginID string, errors []BuildError) {
 	r.calls = append(r.calls, errorCall{pluginID: pluginID, errors: errors})
 }
 
-func (r *errorRecorder) count() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return len(r.calls)
-}
-
-func (r *errorRecorder) last() errorCall {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.calls[len(r.calls)-1]
-}
-
 // ============================================================================
 // Test instance factory
 // ============================================================================
 
 // newTestInstance creates a DevServerInstance wired to callback recorders.
-// Returns (instance, statusRecorder, logRecorder, errorRecorder).
-func newTestInstance(t *testing.T, pluginID string) (*DevServerInstance, *statusRecorder, *logRecorder, *errorRecorder) {
+// Returns (instance, statusRecorder, logRecorder).
+func newTestInstance(t *testing.T, pluginID string) (*DevServerInstance, *statusRecorder, *logRecorder) {
 	t.Helper()
 
 	sr := &statusRecorder{}
@@ -178,5 +151,5 @@ func newTestInstance(t *testing.T, pluginID string) (*DevServerInstance, *status
 		er.record,
 	)
 
-	return inst, sr, lr, er
+	return inst, sr, lr
 }

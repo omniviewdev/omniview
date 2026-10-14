@@ -16,13 +16,13 @@ import { PluginServiceContext } from '../react/context';
 
 // ─── Props ──────────────────────────────────────────────────────────
 
-export interface ExtensionPointRendererProps<TContext extends ExtensionRenderContext = ExtensionRenderContext> {
+export type ExtensionPointRendererProps<TContext extends ExtensionRenderContext = ExtensionRenderContext> = {
   readonly extensionPointId: string;
   readonly context?: TContext;
   readonly fallback?: React.ComponentType<DefaultExtensionFallbackProps>;
   /** Extra props forwarded to each rendered component. */
   readonly componentProps?: Record<string, unknown>;
-}
+};
 
 // ─── ContributionWrapper ────────────────────────────────────────────
 
@@ -123,7 +123,7 @@ export function ExtensionPointRenderer<TContext extends ExtensionRenderContext =
 
   // Subscribe to service snapshot so quarantine state changes trigger re-render
   useSyncExternalStore(
-    service?.subscribe.bind(service) ?? (() => () => {}),
+    service?.subscribe.bind(service) ?? (() => () => undefined),
     service?.getSnapshot.bind(service) ?? (() => null),
   );
 
@@ -150,6 +150,7 @@ export function ExtensionPointRenderer<TContext extends ExtensionRenderContext =
               />
             );
           }
+
           return null;
         }
 

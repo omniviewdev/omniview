@@ -21,7 +21,7 @@ func makeEntry(key, ns, id string) registry.ResourceEntry {
 	}
 }
 
-func setupIndexer() (*RelationshipGraph, *registry.MemoryStore, *GraphIndexer) {
+func setupIndexer() (*RelationshipGraph, *registry.MemoryStore, *Indexer) {
 	g := NewRelationshipGraph()
 	s := registry.NewMemoryStore()
 	idx := NewGraphIndexer(g, s)
@@ -36,7 +36,7 @@ func TestGraphIndexer_Name(t *testing.T) {
 	}
 }
 
-// TestGraphIndexer_FieldPathExtraction — Pod runs_on Node via spec.nodeName
+// TestGraphIndexer_FieldPathExtraction — Pod runs_on Node via spec.nodeName.
 func TestGraphIndexer_FieldPathExtraction(t *testing.T) {
 	g, _, idx := setupIndexer()
 

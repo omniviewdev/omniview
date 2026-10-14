@@ -31,16 +31,24 @@ export function createDevBuildSource(pluginId: string): LogDataSource {
   return {
     connect(handlers) {
       const unsubLog = devToolsChannel.on('onBuildLog', (line) => {
-        if (line.pluginID !== pluginId) return;
+        if (line.pluginID !== pluginId) {
+          return;
+        }
+
         handlers.onLines([toLogEntry(line)]);
       });
 
-      return () => { unsubLog(); };
+      return () => {
+        unsubLog(); 
+      };
     },
 
     async loadHistory() {
       const entries = await DevServerManager.GetDevServerLogs(pluginId, 0);
-      if (!entries?.length) return [];
+      if (!entries?.length) {
+        return [];
+      }
+
       return entries.map(toLogEntry);
     },
 

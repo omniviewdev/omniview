@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -55,8 +56,12 @@ func NewController(
 	resourceClient resource.Service,
 ) Controller {
 	return &controller{
+		app:              nil,
+		ctx:              nil,
 		logger:           logger.Named("ExecController"),
 		settingsProvider: sp,
+		mu:               sync.RWMutex{},
+		clients:          nil,
 		sessionIndex:     make(map[string]sessionIndex),
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
@@ -64,10 +69,11 @@ func NewController(
 		resizeMux:        make(chan exec.StreamResize),
 		resourceClient:   resourceClient,
 		handlerMap:       make(map[string]map[string]exec.Handler),
+		terminalManager:  nil,
 	}
 }
 
-var _ Controller = &controller{}
+var _ Controller = (*controller)(nil)
 
 type controller struct {
 	// wails v3 application reference
@@ -77,7 +83,7 @@ type controller struct {
 	settingsProvider pkgsettings.Provider
 
 	mu           sync.RWMutex
-	clients      map[string]ExecProvider
+	clients      map[string]Provider
 	sessionIndex map[string]sessionIndex
 	inChans      map[string]chan exec.StreamInput
 	handlerMap   map[string]map[string]exec.Handler
@@ -91,7 +97,7 @@ type controller struct {
 	terminalManager *terminal.Manager
 }
 
-func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	c.app = application.Get()
 	c.ctx = ctx
 
@@ -136,48 +142,56 @@ func (c *controller) runLocalMux(
 				c.logger.Errorw(context.Background(), "error writing to session", "error", err)
 			}
 		case output := <-outMux:
-			// dispatch to ui
-			if c.app == nil {
-				c.logger.Errorw(context.Background(), "app is nil, cannot dispatch output")
-			}
-
-			var eventkey string
-
-			switch output.Signal {
-			case exec.StreamSignalNone:
-				eventkey = "core/exec/stream/" + output.Target.String() + "/" + output.SessionID
-			case exec.StreamSignalError:
-				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
-				if output.Error != nil {
-					c.app.Event.Emit(eventkey, output.Error)
-				} else {
-					c.app.Event.Emit(eventkey, map[string]interface{}{
-						"title":      "Session error",
-						"message":    string(output.Data),
-						"suggestion": "The session encountered an error.",
-						"retryable":  false,
-					})
-				}
-				continue
-			case exec.StreamSignalClose:
-				c.logger.Debugw(context.Background(), "closing session")
-				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
-				// session doesn't exist anymore, remove it from the index
-				c.mu.Lock()
-				delete(c.sessionIndex, output.SessionID)
-				c.mu.Unlock()
-			default:
-				c.logger.Debugw(context.Background(), "received signal", "signal", output.Signal.String())
-				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
-			}
-
-			c.app.Event.Emit(eventkey, output.Data)
+			c.dispatchOutput(output)
 		case resize := <-resizeMux:
 			if err := c.terminalManager.ResizeSession(resize.SessionID, resize.Rows, resize.Cols); err != nil {
 				c.logger.Errorw(context.Background(), "error resizing session", "error", err)
 			}
 		}
 	}
+}
+
+// dispatchOutput emits a session output or signal to the UI.
+func (c *controller) dispatchOutput(output exec.StreamOutput) {
+	if c.app == nil {
+		c.logger.Errorw(context.Background(), "app is nil, cannot dispatch output")
+	}
+
+	var eventkey string
+
+	switch output.Signal {
+	case exec.StreamSignalNone:
+		eventkey = "core/exec/stream/" + output.Target.String() + "/" + output.SessionID
+	case exec.StreamSignalError:
+		eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
+		if output.Error != nil {
+			c.app.Event.Emit(eventkey, output.Error)
+		} else {
+			c.app.Event.Emit(eventkey, map[string]interface{}{
+				"title":      "Session error",
+				"message":    string(output.Data),
+				"suggestion": "The session encountered an error.",
+				"retryable":  false,
+			})
+		}
+		return
+	case exec.StreamSignalClose:
+		c.logger.Debugw(context.Background(), "closing session")
+		eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
+		// session doesn't exist anymore, remove it from the index
+		c.mu.Lock()
+		delete(c.sessionIndex, output.SessionID)
+		c.mu.Unlock()
+	case exec.StreamSignalSigint, exec.StreamSignalSigquit, exec.StreamSignalSigterm,
+		exec.StreamSignalSigkill, exec.StreamSignalSighup, exec.StreamSignalSigusr1,
+		exec.StreamSignalSigusr2, exec.StreamSignalSigwinch:
+		fallthrough
+	default:
+		c.logger.Debugw(context.Background(), "received signal", "signal", output.Signal.String())
+		eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
+	}
+
+	c.app.Event.Emit(eventkey, output.Data)
 }
 
 func (c *controller) runMux() {
@@ -195,63 +209,29 @@ func (c *controller) runMux() {
 			}
 			c.mu.RUnlock()
 			if ch != nil {
-				c.safeSend(ch, input)
+				// safeSend logs the failure itself; nothing else to do here.
+				_ = c.safeSend(ch, input)
 			}
 		case output := <-c.outputMux:
-			// dispatch to ui
-			if c.app == nil {
-				c.logger.Errorw(context.Background(), "app is nil, cannot dispatch output")
-			}
-
-			var eventkey string
-
-			switch output.Signal {
-			case exec.StreamSignalNone:
-				eventkey = "core/exec/stream/" + output.Target.String() + "/" + output.SessionID
-			case exec.StreamSignalError:
-				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
-				if output.Error != nil {
-					c.app.Event.Emit(eventkey, output.Error)
-				} else {
-					c.app.Event.Emit(eventkey, map[string]interface{}{
-						"title":      "Session error",
-						"message":    string(output.Data),
-						"suggestion": "The session encountered an error.",
-						"retryable":  false,
-					})
-				}
-				continue
-			case exec.StreamSignalClose:
-				c.logger.Debugw(context.Background(), "closing session")
-				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
-				// session doesn't exist anymore, remove it from the index
-				c.mu.Lock()
-				delete(c.sessionIndex, output.SessionID)
-				c.mu.Unlock()
-			default:
-				c.logger.Debugw(context.Background(), "received signal", "signal", output.Signal.String())
-				eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
-			}
-
-			c.app.Event.Emit(eventkey, output.Data)
+			c.dispatchOutput(output)
 		}
 	}
 }
 
-func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginInit")
 
 	c.mu.Lock()
 	if c.clients == nil {
-		c.clients = make(map[string]ExecProvider)
+		c.clients = make(map[string]Provider)
 	}
 	c.mu.Unlock()
 }
 
 // dispenseProvider extracts the exec provider from the backend,
 // wrapping it in the version-appropriate adapter.
-func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (ExecProvider, error) {
+func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Provider, error) {
 	raw, err := backend.Dispense("exec")
 	if err != nil {
 		return nil, err
@@ -263,7 +243,7 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Exe
 		v1, ok := raw.(exec.Provider)
 		if !ok {
 			return nil, apperror.New(
-				apperror.TypePluginLoadFailed, 500,
+				apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 				"Plugin type mismatch",
 				fmt.Sprintf("Expected exec.Provider for v1, got %T", raw),
 			)
@@ -271,14 +251,14 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Exe
 		return NewAdapterV1(v1), nil
 	default:
 		return nil, apperror.New(
-			apperror.TypePluginLoadFailed, 500,
+			apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			"Unsupported SDK protocol version",
 			fmt.Sprintf("Plugin '%s' negotiated v%d for exec, engine supports v1", pluginID, version),
 		)
 	}
 }
 
-func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
+func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend internaltypes.PluginBackend) error {
 	ctx, span := tracer.Start(context.Background(), "exec.OnPluginStart")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID))
@@ -338,7 +318,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 
 // cleanupPluginLocked removes all state for a plugin and returns the provider if it existed.
 // Must NOT be called with c.mu held — it acquires the lock internally.
-func (c *controller) cleanupPluginLocked(pluginID string) (ExecProvider, bool) {
+func (c *controller) cleanupPluginLocked(pluginID string) (Provider, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -366,7 +346,7 @@ func (c *controller) cleanupPluginLocked(pluginID string) (ExecProvider, bool) {
 	return provider, ok
 }
 
-func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	ctx, span := tracer.Start(context.Background(), "exec.OnPluginStop")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID))
@@ -380,7 +360,7 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginShutdown(pluginID string, _ config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginShutdown")
 
@@ -388,7 +368,7 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 	return nil
 }
 
-func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginDestroy")
 
@@ -507,7 +487,7 @@ func (c *controller) CreateSession(
 	plugin string,
 	connectionID string,
 	opts exec.SessionOptions,
-) (session *exec.Session, err error) {
+) (_ *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.CreateSession")
 	defer span.End()
 	defer func() {
@@ -520,6 +500,7 @@ func (c *controller) CreateSession(
 		attribute.String("connection_id", connectionID),
 	)
 
+	var session *exec.Session
 	if plugin == "local" {
 		// start local terminal
 		session, err = c.terminalManager.StartSession(
@@ -530,7 +511,7 @@ func (c *controller) CreateSession(
 			return nil, err
 		}
 		c.mu.Lock()
-		c.sessionIndex[session.ID] = sessionIndex{local: true}
+		c.sessionIndex[session.ID] = sessionIndex{pluginID: "", connectionID: "", local: true}
 		c.mu.Unlock()
 		return session, nil
 	}
@@ -561,7 +542,7 @@ func (c *controller) CreateSession(
 	return session, nil
 }
 
-func (c *controller) ListSessions() (sessions []*exec.Session, err error) {
+func (c *controller) ListSessions() (_ []*exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.ListSessions")
 	defer span.End()
 	defer func() {
@@ -574,17 +555,17 @@ func (c *controller) ListSessions() (sessions []*exec.Session, err error) {
 	pctx := c.getUnconnectedCtx(ctx, "")
 
 	c.mu.RLock()
-	clients := make([]ExecProvider, 0, len(c.clients))
+	clients := make([]Provider, 0, len(c.clients))
 	for _, client := range c.clients {
 		clients = append(clients, client)
 	}
 	c.mu.RUnlock()
 
-	sessions = make([]*exec.Session, 0)
+	sessions := make([]*exec.Session, 0)
 	for _, client := range clients {
-		clientSessions, err := client.ListSessions(pctx)
-		if err != nil {
-			return nil, err
+		clientSessions, listErr := client.ListSessions(pctx)
+		if listErr != nil {
+			return nil, listErr
 		}
 		sessions = append(sessions, clientSessions...)
 	}
@@ -598,12 +579,13 @@ func (c *controller) ListSessions() (sessions []*exec.Session, err error) {
 // lookupSession reads sessionIndex and clients/inChans in a single RLock.
 // Returns the index, client (may be nil for WriteSession callers), and whether
 // the session was found at all. Callers must check local separately.
-func (c *controller) lookupSession(sessionID string) (sessionIndex, ExecProvider, bool) {
+func (c *controller) lookupSession(sessionID string) (sessionIndex, Provider, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	idx, ok := c.sessionIndex[sessionID]
 	if !ok {
-		return sessionIndex{}, nil, false
+		var zero sessionIndex
+		return zero, nil, false
 	}
 	client := c.clients[idx.pluginID]
 	return idx, client, true
@@ -611,7 +593,7 @@ func (c *controller) lookupSession(sessionID string) (sessionIndex, ExecProvider
 
 func (c *controller) GetSession(
 	sessionID string,
-) (session *exec.Session, err error) {
+) (_ *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.GetSession")
 	defer span.End()
 	defer func() {
@@ -638,7 +620,7 @@ func (c *controller) GetSession(
 	)
 }
 
-func (c *controller) AttachSession(sessionID string) (session *exec.Session, data []byte, err error) {
+func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.AttachSession")
 	defer span.End()
 	defer func() {
@@ -665,7 +647,7 @@ func (c *controller) AttachSession(sessionID string) (session *exec.Session, dat
 	)
 }
 
-func (c *controller) DetachSession(sessionID string) (session *exec.Session, err error) {
+func (c *controller) DetachSession(sessionID string) (_ *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.DetachSession")
 	defer span.End()
 	defer func() {

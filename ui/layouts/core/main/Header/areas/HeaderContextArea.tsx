@@ -28,7 +28,7 @@ type Props = {
  */
 const HeaderContextArea: React.FC<Props> = ({ icon, title, iconLink, onIconClick }) => (
   <div className={styles.ContextArea}>
-    {iconLink || onIconClick ? (
+    {Boolean(iconLink) || onIconClick ? (
       <IconButton size='sm' variant='soft'>
         {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       </IconButton>
@@ -44,7 +44,7 @@ const HeaderContextArea: React.FC<Props> = ({ icon, title, iconLink, onIconClick
 /**
  * Conditionally renders a link around the children if a link is provided.
  */
-export const WithConditionalLink = ({ link, children }: { link?: string; children: React.ReactNode }) => {
+export const WithConditionalLink = ({ link, children }: { link?: string; children: React.ReactNode }): React.ReactNode => {
   if (link) {
     return <Link to={link}>{children}</Link>;
   }

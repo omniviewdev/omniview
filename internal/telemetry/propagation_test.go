@@ -19,7 +19,7 @@ func TestInjectExtractRoundtrip(t *testing.T) {
 
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	tp := sdktrace.NewTracerProvider()
-	defer tp.Shutdown(context.Background())
+	defer func() { _ = tp.Shutdown(context.Background()) }()
 	tracer := tp.Tracer("test")
 
 	ctx, span := tracer.Start(context.Background(), "test-op")

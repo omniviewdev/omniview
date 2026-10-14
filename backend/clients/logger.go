@@ -11,6 +11,12 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
+const (
+	logMaxSizeMB  = 1024
+	logMaxBackups = 30
+	logMaxAgeDays = 90
+)
+
 type lumberjackSink struct {
 	*lumberjack.Logger
 }
@@ -36,40 +42,52 @@ func CreateLogger(dev bool, logDir string) *zap.SugaredLogger {
 	logFile := filepath.Join(logDir, "app.log")
 
 	encoderConfig := zapcore.EncoderConfig{
-		TimeKey:        "ts",
-		LevelKey:       "level",
-		NameKey:        "logger",
-		CallerKey:      "caller",
-		MessageKey:     "msg",
-		StacktraceKey:  "stacktrace",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.LowercaseLevelEncoder,
-		EncodeTime:     zapcore.ISO8601TimeEncoder,
-		EncodeDuration: zapcore.SecondsDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder,
+		TimeKey:             "ts",
+		LevelKey:            "level",
+		NameKey:             "logger",
+		CallerKey:           "caller",
+		MessageKey:          "msg",
+		StacktraceKey:       "stacktrace",
+		LineEnding:          zapcore.DefaultLineEnding,
+		EncodeLevel:         zapcore.LowercaseLevelEncoder,
+		EncodeTime:          zapcore.ISO8601TimeEncoder,
+		EncodeDuration:      zapcore.SecondsDurationEncoder,
+		EncodeCaller:        zapcore.ShortCallerEncoder,
+		FunctionKey:         "",
+		SkipLineEnding:      false,
+		EncodeName:          nil,
+		NewReflectedEncoder: nil,
+		ConsoleSeparator:    "",
 	}
 	ll := lumberjack.Logger{
 		Filename:   logFile,
-		MaxSize:    1024, // MB
-		MaxBackups: 30,
-		MaxAge:     90, // days
+		MaxSize:    logMaxSizeMB,
+		MaxBackups: logMaxBackups,
+		MaxAge:     logMaxAgeDays,
 		Compress:   true,
+		LocalTime:  false,
 	}
-	zap.RegisterSink("lumberjack", func(*url.URL) (zap.Sink, error) {
+	// RegisterSink fails if the scheme is already registered; the existing sink is kept in that case.
+	_ = zap.RegisterSink("lumberjack", func(*url.URL) (zap.Sink, error) {
 		return lumberjackSink{
 			Logger: &ll,
 		}, nil
 	})
-	outputPaths := []string{fmt.Sprintf("lumberjack:%s", logFile)}
+	outputPaths := []string{"lumberjack:" + logFile}
 	if dev {
 		outputPaths = append(outputPaths, "stderr")
 	}
 	loggerConfig := zap.Config{
-		Level:         zap.NewAtomicLevelAt(level),
-		Development:   dev,
-		Encoding:      "console",
-		EncoderConfig: encoderConfig,
-		OutputPaths:   outputPaths,
+		Level:             zap.NewAtomicLevelAt(level),
+		Development:       dev,
+		Encoding:          "console",
+		EncoderConfig:     encoderConfig,
+		OutputPaths:       outputPaths,
+		DisableCaller:     false,
+		DisableStacktrace: false,
+		Sampling:          nil,
+		ErrorOutputPaths:  nil,
+		InitialFields:     nil,
 	}
 	logger, err := loggerConfig.Build()
 	if err != nil {

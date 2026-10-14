@@ -26,7 +26,6 @@ import type {
   PluginDescriptor,
   PluginLoadOpts,
   ExtensionPointSettings,
-  DeclaredDependencies,
   QuarantineInfo,
   DependencyGraph,
   CrashRecord,
@@ -70,21 +69,20 @@ function createDefaultPluginState(
 // ─── PluginService ──────────────────────────────────────────────────
 
 export class PluginService {
-  private readonly deps: PluginServiceDeps;
   private readonly config: Readonly<PluginServiceConfig>;
 
   // ── Internal state ──────────────────────────────────────────────
 
-  private state = new Map<string, PluginState>();
-  private registrations = new Map<string, PluginRegistrations>();
-  private inflightLoads = new Map<string, Promise<void>>();
-  private listeners = new Set<() => void>();
+  private readonly state = new Map<string, PluginState>();
+  private readonly registrations = new Map<string, PluginRegistrations>();
+  private readonly inflightLoads = new Map<string, Promise<void>>();
+  private readonly listeners = new Set<() => void>();
   private eventCleanups: Array<() => void> = [];
 
   // Contribution replay storage
-  private normalizedContributionsByPlugin = new Map<string, NormalizedContribution[]>();
-  private definedExtensionPointIdsByPlugin = new Map<string, string[]>();
-  private pendingContributionsByExtensionPoint = new Map<string, NormalizedContribution[]>();
+  private readonly normalizedContributionsByPlugin = new Map<string, NormalizedContribution[]>();
+  private readonly definedExtensionPointIdsByPlugin = new Map<string, string[]>();
+  private readonly pendingContributionsByExtensionPoint = new Map<string, NormalizedContribution[]>();
 
   private readonly dependencyAnalyzer = new DependencyAnalyzer();
   private readonly quarantineManager: QuarantineManager;
@@ -99,10 +97,12 @@ export class PluginService {
   private routeVersion = 0;
 
   // Cancellation tokens for stale load detection
-  private loadGeneration = new Map<string, number>();
+  private readonly loadGeneration = new Map<string, number>();
 
-  constructor(deps: PluginServiceDeps, config?: Partial<PluginServiceConfig>) {
-    this.deps = deps;
+  /** Track which plugins have already had their deprecation warning emitted. */
+  private readonly legacyWarningEmitted = new Set<string>();
+
+  constructor(private readonly deps: PluginServiceDeps, config?: Partial<PluginServiceConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.quarantineManager = new QuarantineManager({
       crashData: deps.crashData,
@@ -129,7 +129,9 @@ export class PluginService {
   // ── Queries ─────────────────────────────────────────────────────
 
   getSnapshot(): PluginServiceSnapshot {
-    if (this.cachedSnapshot) return this.cachedSnapshot;
+    if (this.cachedSnapshot) {
+      return this.cachedSnapshot;
+    }
 
     this.cachedSnapshot = Object.freeze({
       plugins: new Map(this.state) as ReadonlyMap<string, PluginState>,
@@ -146,12 +148,15 @@ export class PluginService {
   }
 
   getAllRoutes(): RouteObject[] {
-    if (this.cachedRoutes) return this.cachedRoutes;
+    if (this.cachedRoutes) {
+      return this.cachedRoutes;
+    }
 
     const routes: RouteObject[] = [];
     for (const reg of this.registrations.values()) {
       routes.push(...reg.routes);
     }
+
     this.cachedRoutes = routes;
     return routes;
   }
@@ -169,6 +174,7 @@ export class PluginService {
     for (const [key, arr] of this.pendingContributionsByExtensionPoint) {
       result.set(key, [...arr]);
     }
+
     return result;
   }
 
@@ -189,7 +195,9 @@ export class PluginService {
 
   onQuarantineActivated(listener: (info: QuarantineInfo) => void): () => void {
     this.quarantineListeners.add(listener);
-    return () => { this.quarantineListeners.delete(listener); };
+    return () => {
+      this.quarantineListeners.delete(listener); 
+    };
   }
 
   // ── Dependency API ────────────────────────────────────────────────
@@ -202,10 +210,13 @@ export class PluginService {
         loadedPlugins.add(id);
         const epIds = this.definedExtensionPointIdsByPlugin.get(id);
         if (epIds) {
-          for (const epId of epIds) registeredEPs.add(epId);
+          for (const epId of epIds) {
+            registeredEPs.add(epId);
+          }
         }
       }
     }
+
     return this.dependencyAnalyzer.checkMissingDependencies(pluginId, loadedPlugins, registeredEPs);
   }
 
@@ -266,14 +277,20 @@ export class PluginService {
     const existing = this.state.get(pluginId);
 
     // Already loaded — no-op
-    if (existing?.phase === 'ready') return;
+    if (existing?.phase === 'ready') {
+      return;
+    }
 
     // In error or retrying — no-op (use retry())
-    if (existing?.phase === 'error' || existing?.phase === 'retrying') return;
+    if (existing?.phase === 'error' || existing?.phase === 'retrying') {
+      return;
+    }
 
     // Join inflight
     const inflight = this.inflightLoads.get(pluginId);
-    if (inflight) return inflight;
+    if (inflight) {
+      return inflight;
+    }
 
     this.deps.log.debug(`Loading plugin "${pluginId}"`, { plugin: pluginId });
 
@@ -290,12 +307,15 @@ export class PluginService {
   async reload(pluginId: string, opts?: PluginLoadOpts): Promise<void> {
     // Join inflight reload first (before phase check — the inflight may have changed phase)
     const inflight = this.inflightLoads.get(pluginId);
-    if (inflight) return inflight;
+    if (inflight) {
+      return inflight;
+    }
 
     const current = this.state.get(pluginId);
     if (!current) {
       throw new Error(`Cannot reload plugin "${pluginId}" — plugin not found`);
     }
+
     if (current.phase !== 'ready') {
       throw new Error(`Cannot reload plugin "${pluginId}" — not in ready state (current: ${current.phase})`);
     }
@@ -312,8 +332,13 @@ export class PluginService {
 
   async unload(pluginId: string): Promise<void> {
     const current = this.state.get(pluginId);
-    if (!current) return;
-    if (current.phase === 'idle') return;
+    if (!current) {
+      return;
+    }
+
+    if (current.phase === 'idle') {
+      return;
+    }
 
     this.deps.log.debug(`Unloading plugin "${pluginId}"`, { plugin: pluginId });
 
@@ -367,7 +392,9 @@ export class PluginService {
 
     // After delay, check if still retrying (could have been force-reset)
     const afterDelay = this.state.get(pluginId);
-    if (!afterDelay || afterDelay.phase !== 'retrying') return;
+    if (!afterDelay || afterDelay.phase !== 'retrying') {
+      return;
+    }
 
     const retryCount = current.retryCount + 1;
 
@@ -378,7 +405,7 @@ export class PluginService {
     try {
       this.deps.ensureBuiltinExtensionPoints();
 
-      if (opts?.dev || current.isDev) {
+      if (opts?.dev === true || current.isDev) {
         await this.deps.ensureDevSharedDeps();
       }
 
@@ -391,7 +418,9 @@ export class PluginService {
         moduleHash: opts?.moduleHash,
       }));
 
-      if (!this.isCurrentGeneration(pluginId, generation)) return;
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
 
       const validated = this.deps.validateExports(rawModule);
       const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
@@ -457,14 +486,19 @@ export class PluginService {
 
       this.bumpRouteVersion();
     } catch (err) {
-      if (!this.isCurrentGeneration(pluginId, generation)) return;
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
+
       this.handleLoadError(pluginId, err, retryCount);
     }
   }
 
   async forceReset(pluginId: string): Promise<void> {
     const current = this.state.get(pluginId);
-    if (!current) return;
+    if (!current) {
+      return;
+    }
 
     this.deps.log.warn(`Force-resetting plugin "${pluginId}"`, { plugin: pluginId });
 
@@ -501,6 +535,7 @@ export class PluginService {
     } else {
       this.state.set(pluginId, createDefaultPluginState(pluginId, { backendPhase: phase }));
     }
+
     this.notify();
   }
 
@@ -515,7 +550,9 @@ export class PluginService {
       return !existing || existing.phase === 'idle';
     });
 
-    if (toLoad.length === 0) return;
+    if (toLoad.length === 0) {
+      return;
+    }
 
     // Pass 1: Import + validate + normalize in bounded parallel chunks
     const prepared: PreparedPluginLoad[] = [];
@@ -526,7 +563,7 @@ export class PluginService {
 
     for (const chunk of chunks) {
       const settled = await Promise.allSettled(
-        chunk.map((p) => this.prepareLoadCandidate(p.id, p)),
+        chunk.map(async (p) => this.prepareLoadCandidate(p.id, p)),
       );
 
       for (const result of settled) {
@@ -582,6 +619,7 @@ export class PluginService {
         allNewEpIds.push(...p.extensionPoints.map((ep) => ep.id));
       }
     }
+
     if (allNewEpIds.length > 0) {
       this.replayContributionsForExtensionPoints(allNewEpIds);
     }
@@ -626,11 +664,16 @@ export class PluginService {
   // ── Event Listeners ─────────────────────────────────────────────
 
   startEventListeners(): void {
-    if (this.eventCleanups.length > 0) return; // idempotent
+    if (this.eventCleanups.length > 0) {
+      return;
+    } // idempotent
 
     this.eventCleanups.push(
       this.deps.onEvent('plugin/install_finished', (meta: { id?: string }) => {
-        if (!meta?.id) return;
+        if (!meta?.id) {
+          return;
+        }
+
         const existing = this.state.get(meta.id);
         if (existing?.phase === 'ready') {
           void this.reload(meta.id);
@@ -640,7 +683,10 @@ export class PluginService {
       }),
 
       this.deps.onEvent('plugin/update_complete', (meta: { id?: string }) => {
-        if (!meta?.id) return;
+        if (!meta?.id) {
+          return;
+        }
+
         const existing = this.state.get(meta.id);
         if (existing?.phase === 'ready') {
           void this.reload(meta.id);
@@ -650,7 +696,10 @@ export class PluginService {
       }),
 
       this.deps.onEvent('plugin/dev_reload_complete', (meta: { id?: string }) => {
-        if (!meta?.id) return;
+        if (!meta?.id) {
+          return;
+        }
+
         const existing = this.state.get(meta.id);
         if (!existing?.isDev) {
           this.deps.log.warn(`Ignoring dev reload for non-dev or unknown plugin "${meta.id}"`, {
@@ -658,11 +707,15 @@ export class PluginService {
           });
           return;
         }
+
         void this.reload(meta.id);
       }),
 
       this.deps.onEvent('plugin/state_change', (data: { pluginID?: string; phase?: string }) => {
-        if (!data?.pluginID) return;
+        if (!data?.pluginID) {
+          return;
+        }
+
         if (!data.phase || !isBackendPluginPhase(data.phase)) {
           this.deps.log.warn(`Ignoring invalid backend phase for plugin "${data.pluginID}"`, {
             plugin: data.pluginID,
@@ -670,11 +723,15 @@ export class PluginService {
           });
           return;
         }
+
         this.updateBackendPhase(data.pluginID, data.phase);
       }),
 
       this.deps.onEvent('plugin/crash', (data: { pluginID?: string; error?: string }) => {
-        if (!data?.pluginID) return;
+        if (!data?.pluginID) {
+          return;
+        }
+
         this.deps.log.warn(`Plugin "${data.pluginID}" crashed`, {
           plugin: data.pluginID,
           error: data.error,
@@ -682,14 +739,20 @@ export class PluginService {
       }),
 
       this.deps.onEvent('plugin/recovered', (data: { pluginID?: string }) => {
-        if (!data?.pluginID) return;
+        if (!data?.pluginID) {
+          return;
+        }
+
         this.deps.log.debug(`Plugin "${data.pluginID}" recovered`, {
           plugin: data.pluginID,
         });
       }),
 
       this.deps.onEvent('plugin/crash_recovery_failed', (data: { pluginID?: string; error?: string }) => {
-        if (!data?.pluginID) return;
+        if (!data?.pluginID) {
+          return;
+        }
+
         const current = this.state.get(data.pluginID);
         if (current && (current.phase === 'ready' || current.phase === 'loading')) {
           // Bypass normal transition assertion: ready→error is a backend-initiated
@@ -706,7 +769,10 @@ export class PluginService {
   }
 
   stopEventListeners(): void {
-    for (const cleanup of this.eventCleanups) cleanup();
+    for (const cleanup of this.eventCleanups) {
+      cleanup();
+    }
+
     this.eventCleanups = [];
   }
 
@@ -771,7 +837,9 @@ export class PluginService {
       }));
 
       // Stale check
-      if (!this.isCurrentGeneration(pluginId, generation)) return;
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
 
       const validated = this.deps.validateExports(rawModule);
       const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
@@ -838,7 +906,10 @@ export class PluginService {
 
       this.bumpRouteVersion();
     } catch (err) {
-      if (!this.isCurrentGeneration(pluginId, generation)) return;
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
+
       this.handleLoadError(pluginId, err, 0);
     }
   }
@@ -872,7 +943,9 @@ export class PluginService {
         moduleHash: opts?.moduleHash,
       }));
 
-      if (!this.isCurrentGeneration(pluginId, generation)) return;
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
 
       const validated = this.deps.validateExports(rawModule);
       const rawDeps = (rawModule as Record<string, unknown>)?.dependencies;
@@ -948,7 +1021,9 @@ export class PluginService {
 
       this.bumpRouteVersion();
     } catch (err) {
-      if (!this.isCurrentGeneration(pluginId, generation)) return;
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
 
       const message = err instanceof Error ? err.message : String(err);
       const validationErrors = err instanceof PluginValidationError ? err.errors : [];
@@ -1063,7 +1138,9 @@ export class PluginService {
     extensionPointIds: string[],
     opts?: { excludePluginId?: string },
   ): void {
-    if (extensionPointIds.length === 0) return;
+    if (extensionPointIds.length === 0) {
+      return;
+    }
 
     const epIdSet = new Set(extensionPointIds);
 
@@ -1073,7 +1150,9 @@ export class PluginService {
     const replayedKeys = new Set<string>();
     for (const epId of extensionPointIds) {
       const pending = this.pendingContributionsByExtensionPoint.get(epId);
-      if (!pending || pending.length === 0) continue;
+      if (!pending || pending.length === 0) {
+        continue;
+      }
 
       const remaining: NormalizedContribution[] = [];
       for (const c of pending) {
@@ -1115,10 +1194,14 @@ export class PluginService {
 
     // Replay from normalizedContributionsByPlugin (existing behavior)
     for (const [pid, contributions] of this.normalizedContributionsByPlugin) {
-      if (opts?.excludePluginId && pid === opts.excludePluginId) continue;
+      if (opts?.excludePluginId && pid === opts.excludePluginId) {
+        continue;
+      }
 
       const pluginState = this.state.get(pid);
-      if (!pluginState || pluginState.phase !== 'ready') continue;
+      if (!pluginState || pluginState.phase !== 'ready') {
+        continue;
+      }
 
       for (const c of contributions) {
         const dedupeKey = `${c.extensionPointId}:${c.contributionId}`;
@@ -1134,8 +1217,14 @@ export class PluginService {
           } catch (err) {
             // Tolerate MissingExtensionPointError (EP removed) and duplicate
             // registration (contribution already registered during applyContributions).
-            if (err instanceof MissingExtensionPointError) continue;
-            if (err instanceof DuplicateContributionError) continue;
+            if (err instanceof MissingExtensionPointError) {
+              continue;
+            }
+
+            if (err instanceof DuplicateContributionError) {
+              continue;
+            }
+
             throw err;
           }
         }
@@ -1171,23 +1260,28 @@ export class PluginService {
     let routes: RouteObject[] = [];
     try {
       if (pw && typeof pw === 'object' && '_routes' in pw) {
-        routes = (pw as any)._routes ?? [];
+        routes = (pw)._routes ?? [];
       } else if (pw && typeof pw === 'object' && 'Routes' in pw) {
-        routes = (pw as any).Routes ?? [];
+        routes = (pw).Routes ?? [];
       }
     } catch {
       // PluginWindow.Routes getter may throw if no routes set
       routes = [];
     }
+
     return { routes: Array.isArray(routes) ? routes : [] };
   }
 
   private extractExtensionPoints(validated: ValidatedExports): ExtensionPointSettings[] {
     const pw = validated.plugin;
-    if (!pw || typeof pw !== 'object') return [];
+    if (!pw || typeof pw !== 'object') {
+      return [];
+    }
 
-    const extensions = (pw as any)._extensions ?? (pw as any).extensions ?? [];
-    if (!Array.isArray(extensions)) return [];
+    const extensions = (pw)._extensions ?? (pw).extensions ?? [];
+    if (!Array.isArray(extensions)) {
+      return [];
+    }
 
     return extensions.filter(
       (ep: unknown): ep is ExtensionPointSettings =>
@@ -1225,6 +1319,8 @@ export class PluginService {
           if (!settled) {
             settled = true;
             clearTimeout(timer);
+            // Pass the original rejection through unchanged.
+            // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
             reject(err);
           }
         },
@@ -1335,9 +1431,6 @@ export class PluginService {
 
   // ── Private: Deprecation warnings ──────────────────────────────
 
-  /** Track which plugins have already had their deprecation warning emitted. */
-  private legacyWarningEmitted = new Set<string>();
-
   /**
    * Emit one-time deprecation warnings when a plugin uses legacy
    * `sidebars` or `drawers` exports instead of `extensionRegistrations`.
@@ -1346,19 +1439,26 @@ export class PluginService {
     pluginId: string,
     validated: ValidatedExports,
   ): void {
-    if (this.legacyWarningEmitted.has(pluginId)) return;
+    if (this.legacyWarningEmitted.has(pluginId)) {
+      return;
+    }
 
     const hasSidebars = Object.keys(validated.sidebars).length > 0;
     const hasDrawers = Object.keys(validated.drawers).length > 0;
 
     if (hasSidebars || hasDrawers) {
       const surfaces: string[] = [];
-      if (hasSidebars) surfaces.push('sidebars');
-      if (hasDrawers) surfaces.push('drawers');
+      if (hasSidebars) {
+        surfaces.push('sidebars');
+      }
+
+      if (hasDrawers) {
+        surfaces.push('drawers');
+      }
 
       this.deps.log.warn(
         `Plugin "${pluginId}" uses deprecated legacy ${surfaces.join(' and ')} exports. ` +
-        `Migrate to extensionRegistrations for forward compatibility.`,
+        'Migrate to extensionRegistrations for forward compatibility.',
         {
           plugin: pluginId,
           deprecatedExports: surfaces,
@@ -1375,13 +1475,19 @@ export class PluginService {
 
   private getContributedExtensionPointIds(pluginId: string): string[] {
     const contributions = this.normalizedContributionsByPlugin.get(pluginId);
-    if (!contributions) return [];
+    if (!contributions) {
+      return [];
+    }
+
     return [...new Set(contributions.map((c) => c.extensionPointId))];
   }
 
   private getContributionDebugRecords(pluginId: string): PluginDebugContributionRecord[] {
     const contributions = this.normalizedContributionsByPlugin.get(pluginId);
-    if (!contributions) return [];
+    if (!contributions) {
+      return [];
+    }
+
     return contributions.map((c) => {
       const pendingList = this.pendingContributionsByExtensionPoint.get(c.extensionPointId);
       const isPending = pendingList?.some((p) => p.contributionId === c.contributionId) ?? false;
@@ -1401,8 +1507,8 @@ export class PluginService {
     });
   }
 
-  private getPendingContributionsDebug(): Record<string, { pluginId: string; contributionId: string; extensionPointId: string }[]> {
-    const result: Record<string, { pluginId: string; contributionId: string; extensionPointId: string }[]> = {};
+  private getPendingContributionsDebug(): Record<string, Array<{ pluginId: string; contributionId: string; extensionPointId: string }>> {
+    const result: Record<string, Array<{ pluginId: string; contributionId: string; extensionPointId: string }>> = {};
     for (const [epId, contributions] of this.pendingContributionsByExtensionPoint) {
       result[epId] = contributions.map((c) => ({
         pluginId: c.pluginId,
@@ -1410,6 +1516,7 @@ export class PluginService {
         extensionPointId: c.extensionPointId,
       }));
     }
+
     return result;
   }
 
@@ -1419,6 +1526,7 @@ export class PluginService {
     for (const records of allHistory.values()) {
       all.push(...records);
     }
+
     all.sort((a, b) => b.timestamp - a.timestamp);
     return all.slice(0, 50);
   }

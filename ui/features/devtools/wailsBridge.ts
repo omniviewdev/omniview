@@ -36,17 +36,19 @@ export function initDevToolsBridge(): () => void {
   // Wire outgoing events from the frontend to the backend.
   cleanups.push(
     devToolsChannel.on('onRestartDevServer', (pluginId: string) => {
-      DevServerManager.RestartDevServer(pluginId);
+      void DevServerManager.RestartDevServer(pluginId);
     }),
   );
 
   cleanups.push(
     devToolsChannel.on('onRebuildPlugin', (pluginId: string) => {
-      DevServerManager.RebuildPlugin(pluginId);
+      void DevServerManager.RebuildPlugin(pluginId);
     }),
   );
 
   return () => {
-    cleanups.forEach((fn) => fn());
+    cleanups.forEach((fn) => {
+      fn(); 
+    });
   };
 }

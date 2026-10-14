@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func newTestManagerWithAppstate(t *testing.T) *pluginManager {
 		stateRoot:   svc.RootDir(),
 		pluginsRoot: svc.Plugins(),
 		records:     make(map[string]*types.PluginRecord),
-		pidTracker:  NewPluginPIDTracker(svc.RootDir()),
+		pidTracker:  NewPIDTracker(svc.RootDir()),
 	}
 }
 
@@ -51,8 +52,8 @@ func TestWriteAndReadJSON_RoundTrip(t *testing.T) {
 	r := records[0]
 	assert.Equal(t, "test-plugin", r.ID)
 	assert.Equal(t, lifecycle.PhaseRunning, r.Phase)
-	assert.Equal(t, true, r.Enabled)
-	assert.Equal(t, true, r.DevMode)
+	assert.True(t, r.Enabled)
+	assert.True(t, r.DevMode)
 	assert.Equal(t, "/dev/path", r.DevPath)
 }
 
@@ -81,7 +82,7 @@ func TestReadJSON_CorruptJSON(t *testing.T) {
 	require.NoError(t, pm.stateRoot.WriteFile(stateFileName, []byte("{invalid json"), 0644))
 
 	_, err := pm.readPluginStateJSON()
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parsing state file")
 }
 
@@ -195,9 +196,11 @@ func installPluginFixtureAt(t *testing.T, pluginsDir string, id string, caps []s
 	content := "id: " + id + "\nname: " + id + "\nversion: 1.0.0\n"
 	if len(caps) > 0 {
 		content += "capabilities:\n"
+		var capsList strings.Builder
 		for _, c := range caps {
-			content += "  - " + c + "\n"
+			capsList.WriteString("  - " + c + "\n")
 		}
+		content += capsList.String()
 	}
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.yaml"), []byte(content), 0644))
 

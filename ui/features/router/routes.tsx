@@ -31,8 +31,8 @@ export const coreRoutes: RouteObject[] = [
         Component: Plugins,
         children: [
           { path: '', index: true, Component: InstalledPlugins },
-          { path: ':id', Component: PluginDetails }
-        ]
+          { path: ':id', Component: PluginDetails },
+        ],
       },
       {
         path: 'settings',
@@ -45,7 +45,7 @@ export const coreRoutes: RouteObject[] = [
     Component: CoreLayout,
     ErrorBoundary: RouterErrorBoundary,
     children: [
-      { path: '*', Component: Outlet }
-    ]
-  }
+      { path: '*', Component: Outlet },
+    ],
+  },
 ];

@@ -26,7 +26,7 @@ func TestValidateHasBinary_Exists(t *testing.T) {
 func TestValidateHasBinary_Missing(t *testing.T) {
 	dir := t.TempDir()
 	err := validateHasBinary(dir)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
 
@@ -39,7 +39,7 @@ func TestValidateHasBinary_NotExecutable(t *testing.T) {
 	require.NoError(t, os.WriteFile(binPath, []byte("data"), 0644))
 
 	err := validateHasBinary(dir)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not executable")
 }
 
@@ -47,13 +47,13 @@ func TestValidateHasUiPackage_Exists(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "assets"), 0755))
 
-	assert.NoError(t, validateHasUiPackage(dir))
+	assert.NoError(t, validateHasUIPackage(dir))
 }
 
 func TestValidateHasUiPackage_Missing(t *testing.T) {
 	dir := t.TempDir()
-	err := validateHasUiPackage(dir)
-	assert.Error(t, err)
+	err := validateHasUIPackage(dir)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "none found")
 }
 
@@ -66,7 +66,7 @@ func TestValidateForStart_BackendOnly(t *testing.T) {
 
 	// No binary → fail.
 	err := validateForStart(meta, dir)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// Add binary → pass.
 	binDir := filepath.Join(dir, "bin")
@@ -85,7 +85,7 @@ func TestValidateForStart_UIOnly(t *testing.T) {
 
 	// No assets → fail.
 	err := validateForStart(meta, dir)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// Add assets → pass.
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "assets"), 0755))
@@ -98,7 +98,7 @@ func TestValidateForPhase_ValidatingPhase(t *testing.T) {
 
 	// No binary → fail.
 	err := ValidateForPhase(lifecycle.PhaseValidating, meta, dir)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// Add binary → pass.
 	binDir := filepath.Join(dir, "bin")
@@ -113,7 +113,7 @@ func TestValidateForPhase_StartingPhase(t *testing.T) {
 
 	// No assets → fail.
 	err := ValidateForPhase(lifecycle.PhaseStarting, meta, dir)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// Add assets → pass.
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "assets"), 0755))
@@ -144,14 +144,14 @@ func TestValidateForStart_BackendAndUI(t *testing.T) {
 
 	// Nothing → fail (binary missing).
 	err := validateForStart(meta, dir)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// Binary only → fail (UI missing).
 	binDir := filepath.Join(dir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(binDir, "plugin"), []byte("x"), 0755))
 	err = validateForStart(meta, dir)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// Both → pass.
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "assets"), 0755))

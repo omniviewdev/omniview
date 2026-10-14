@@ -1,4 +1,4 @@
-export interface AnsiSegment {
+export type AnsiSegment = {
   text: string;
   fg?: string;
   bg?: string;
@@ -7,9 +7,9 @@ export interface AnsiSegment {
   italic?: boolean;
   underline?: boolean;
   strikethrough?: boolean;
-}
+};
 
-export interface LogEntry {
+export type LogEntry = {
   lineNumber: number;
   sessionId: string;
   sourceId: string;
@@ -22,34 +22,34 @@ export interface LogEntry {
   isJson?: boolean;
   /** Styled segments for ANSI color rendering. Empty when no ANSI codes were present. */
   ansiSegments?: AnsiSegment[];
-}
+};
 
-export interface LogSource {
+export type LogSource = {
   id: string;
   labels: Record<string, string>;
-}
+};
 
-export interface LogStreamEvent {
+export type LogStreamEvent = {
   type: number;
   source_id: string;
   message: string;
   timestamp: string;
-}
+};
 
-export interface RawLogLine {
+export type RawLogLine = {
   session_id: string;
   source_id: string;
   labels: Record<string, string>;
   timestamp: string;
   content: string;
   origin: number;
-}
+};
 
-export interface SearchMatch {
+export type SearchMatch = {
   lineIndex: number;
   startOffset: number;
   endOffset: number;
-}
+};
 
 // LogStreamEvent type values (matches Go SDK LogStreamEventType iota)
 export const StreamEventType = {
@@ -77,23 +77,17 @@ export const LEVEL_COLORS: Record<LogLevel, string> = {
  * Handlers that a data source pushes data into.
  * LogViewerContainer provides these when it calls source.connect().
  */
-export interface LogDataSourceHandlers {
+export type LogDataSourceHandlers = {
   onLines: (entries: LogEntry[]) => void;
   onEvent: (event: LogStreamEvent) => void;
-}
+};
 
 /**
  * Abstraction over where log entries come from.
  * SDK log sessions, plugin process logs, and dev build logs
  * all implement this interface.
  */
-export interface LogDataSource {
-  /** Connect to the source. Returns a cleanup function. */
-  connect(handlers: LogDataSourceHandlers): () => void;
-
-  /** Load historical log entries (e.g. from ring buffer). */
-  loadHistory?(): Promise<LogEntry[]>;
-
+export type LogDataSource = {
   /**
    * Declared filter dimensions (e.g. [{key: "source"}, {key: "level"}]).
    * When provided, useLogSources uses these instead of fetching from
@@ -101,4 +95,10 @@ export interface LogDataSource {
    * from entry labels (auto-derive behavior).
    */
   declaredDimensions?: Array<{ key: string; displayName?: string }>;
-}
+
+  /** Connect to the source. Returns a cleanup function. */
+  connect(handlers: LogDataSourceHandlers): () => void;
+
+  /** Load historical log entries (e.g. from ring buffer). */
+  loadHistory?(): Promise<LogEntry[]>;
+};

@@ -49,7 +49,7 @@ func TestHealthChecker_UnhealthyBackend(t *testing.T) {
 	hc, pm := newTestHealthChecker(t)
 
 	backend := plugintypes.NewInProcessBackend(nil)
-	backend.Stop() // mark as stopped → unhealthy
+	_ = backend.Stop() // mark as stopped → unhealthy
 
 	pm.records["test-plugin"] = &plugintypes.PluginRecord{
 		ID:      "test-plugin",
@@ -260,7 +260,7 @@ func TestCheckAll_SkipsRecoveringPlugins(t *testing.T) {
 	hc, pm := newTestHealthChecker(t)
 
 	backend := plugintypes.NewInProcessBackend(nil)
-	backend.Stop() // mark as stopped → unhealthy
+	_ = backend.Stop() // mark as stopped → unhealthy
 
 	pm.records["recovering"] = &plugintypes.PluginRecord{
 		ID:      "recovering",
@@ -277,7 +277,7 @@ func TestCheckAll_SkipsAlreadyRecovering(t *testing.T) {
 	hc, pm := newTestHealthChecker(t)
 
 	backend := plugintypes.NewInProcessBackend(nil)
-	backend.Stop() // unhealthy
+	_ = backend.Stop() // unhealthy
 
 	pm.records["test-plugin"] = &plugintypes.PluginRecord{
 		ID:      "test-plugin",
@@ -310,7 +310,7 @@ func TestCheckAll_UnhealthyPlugin_TriggersRecovery(t *testing.T) {
 	hc, pm := newTestHealthChecker(t)
 
 	backend := plugintypes.NewInProcessBackend(nil)
-	backend.Stop() // unhealthy
+	_ = backend.Stop() // unhealthy
 
 	sm := lifecycle.NewPluginStateMachine("unhealthy-plugin", lifecycle.PhaseRunning)
 

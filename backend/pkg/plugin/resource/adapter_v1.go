@@ -37,15 +37,27 @@ func (a *AdapterV1) Find(ctx context.Context, key string, input resource.FindInp
 	return a.inner.Find(ctx, key, input)
 }
 
-func (a *AdapterV1) Create(ctx context.Context, key string, input resource.CreateInput) (*resource.CreateResult, error) {
+func (a *AdapterV1) Create(
+	ctx context.Context,
+	key string,
+	input resource.CreateInput,
+) (*resource.CreateResult, error) {
 	return a.inner.Create(ctx, key, input)
 }
 
-func (a *AdapterV1) Update(ctx context.Context, key string, input resource.UpdateInput) (*resource.UpdateResult, error) {
+func (a *AdapterV1) Update(
+	ctx context.Context,
+	key string,
+	input resource.UpdateInput,
+) (*resource.UpdateResult, error) {
 	return a.inner.Update(ctx, key, input)
 }
 
-func (a *AdapterV1) Delete(ctx context.Context, key string, input resource.DeleteInput) (*resource.DeleteResult, error) {
+func (a *AdapterV1) Delete(
+	ctx context.Context,
+	key string,
+	input resource.DeleteInput,
+) (*resource.DeleteResult, error) {
 	return a.inner.Delete(ctx, key, input)
 }
 
@@ -155,7 +167,10 @@ func (a *AdapterV1) GetResourceDefinition(ctx context.Context, id string) (resou
 	return a.inner.GetResourceDefinition(ctx, id)
 }
 
-func (a *AdapterV1) GetResourceCapabilities(ctx context.Context, resourceKey string) (*resource.ResourceCapabilities, error) {
+func (a *AdapterV1) GetResourceCapabilities(
+	ctx context.Context,
+	resourceKey string,
+) (*resource.ResourceCapabilities, error) {
 	return a.inner.GetResourceCapabilities(ctx, resourceKey)
 }
 
@@ -163,7 +178,10 @@ func (a *AdapterV1) GetResourceSchema(ctx context.Context, connectionID, resourc
 	return a.inner.GetResourceSchema(ctx, connectionID, resourceKey)
 }
 
-func (a *AdapterV1) GetFilterFields(ctx context.Context, connectionID, resourceKey string) ([]resource.FilterField, error) {
+func (a *AdapterV1) GetFilterFields(
+	ctx context.Context,
+	connectionID, resourceKey string,
+) ([]resource.FilterField, error) {
 	return a.inner.GetFilterFields(ctx, connectionID, resourceKey)
 }
 
@@ -173,11 +191,20 @@ func (a *AdapterV1) GetActions(ctx context.Context, key string) ([]resource.Acti
 	return a.inner.GetActions(ctx, key)
 }
 
-func (a *AdapterV1) ExecuteAction(ctx context.Context, key, actionID string, input resource.ActionInput) (*resource.ActionResult, error) {
+func (a *AdapterV1) ExecuteAction(
+	ctx context.Context,
+	key, actionID string,
+	input resource.ActionInput,
+) (*resource.ActionResult, error) {
 	return a.inner.ExecuteAction(ctx, key, actionID, input)
 }
 
-func (a *AdapterV1) StreamAction(ctx context.Context, key, actionID string, input resource.ActionInput, stream chan<- resource.ActionEvent) error {
+func (a *AdapterV1) StreamAction(
+	ctx context.Context,
+	key, actionID string,
+	input resource.ActionInput,
+	stream chan<- resource.ActionEvent,
+) error {
 	return a.inner.StreamAction(ctx, key, actionID, input, stream)
 }
 
@@ -189,20 +216,34 @@ func (a *AdapterV1) GetEditorSchemas(ctx context.Context, connectionID string) (
 
 // Relationships
 
-func (a *AdapterV1) GetRelationships(ctx context.Context, resourceKey string) ([]resource.RelationshipDescriptor, error) {
+func (a *AdapterV1) GetRelationships(
+	ctx context.Context,
+	resourceKey string,
+) ([]resource.RelationshipDescriptor, error) {
 	return a.inner.GetRelationships(ctx, resourceKey)
 }
 
-func (a *AdapterV1) ResolveRelationships(ctx context.Context, connectionID, resourceKey, id, namespace string) ([]resource.ResolvedRelationship, error) {
+func (a *AdapterV1) ResolveRelationships(
+	ctx context.Context,
+	connectionID, resourceKey, id, namespace string,
+) ([]resource.ResolvedRelationship, error) {
 	return a.inner.ResolveRelationships(ctx, connectionID, resourceKey, id, namespace)
 }
 
 // Health
 
-func (a *AdapterV1) GetHealth(ctx context.Context, connectionID, resourceKey string, data json.RawMessage) (*resource.ResourceHealth, error) {
+func (a *AdapterV1) GetHealth(
+	ctx context.Context,
+	connectionID, resourceKey string,
+	data json.RawMessage,
+) (*resource.ResourceHealth, error) {
 	return a.inner.GetHealth(ctx, connectionID, resourceKey, data)
 }
 
-func (a *AdapterV1) GetResourceEvents(ctx context.Context, connectionID, resourceKey, id, namespace string, limit int32) ([]resource.ResourceEvent, error) {
+func (a *AdapterV1) GetResourceEvents(
+	ctx context.Context,
+	connectionID, resourceKey, id, namespace string,
+	limit int32,
+) ([]resource.ResourceEvent, error) {
 	return a.inner.GetResourceEvents(ctx, connectionID, resourceKey, id, namespace, limit)
 }

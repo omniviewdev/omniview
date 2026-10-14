@@ -2,9 +2,9 @@ import React, { useMemo } from 'react';
 import LogViewerContainer from './LogViewer';
 import { createPluginLogSource } from './LogViewer/sources/pluginLogSource';
 
-interface Props {
+type Props = {
   pluginId: string;
-}
+};
 
 const PluginLogViewer: React.FC<Props> = ({ pluginId }) => {
   const source = useMemo(() => createPluginLogSource(pluginId), [pluginId]);

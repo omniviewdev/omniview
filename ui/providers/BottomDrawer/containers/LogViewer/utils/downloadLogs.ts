@@ -25,7 +25,9 @@ function formatAsJson(entries: LogEntry[]): string {
 function buildDefaultFilename(entries: LogEntry[], ext: string): string {
   const sources = new Set<string>();
   for (const e of entries) {
-    if (e.sourceId) sources.add(e.sourceId);
+    if (e.sourceId) {
+      sources.add(e.sourceId);
+    }
   }
 
   const now = new Date();
@@ -58,7 +60,9 @@ export async function saveLogsNative(entries: LogEntry[]): Promise<void> {
     ],
   } as any);
 
-  if (!path) return;
+  if (!path) {
+    return;
+  }
 
   const content = path.endsWith('.json') ? formatAsJson(entries) : formatAsText(entries);
   await WriteFileContent(path, content);
@@ -84,7 +88,10 @@ function downloadBlob(content: string, filename: string, mimeType: string): void
 
 /** Copy log entries as plain text to the system clipboard. Returns true on success. */
 export async function copyLogsToClipboard(entries: LogEntry[]): Promise<boolean> {
-  if (entries.length === 0) return false;
+  if (entries.length === 0) {
+    return false;
+  }
+
   try {
     await navigator.clipboard.writeText(formatAsText(entries));
     return true;

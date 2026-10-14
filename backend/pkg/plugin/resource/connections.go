@@ -59,7 +59,7 @@ func loadFromLocalStore(storeRoot *appstate.ScopedRoot) (map[string][]types.Conn
 	}
 
 	var state map[string][]types.Connection
-	if err := gob.NewDecoder(store).Decode(&state); err != nil {
+	if err = gob.NewDecoder(store).Decode(&state); err != nil {
 		return nil, err
 	}
 

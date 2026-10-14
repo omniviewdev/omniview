@@ -20,6 +20,7 @@ type RelationshipGraph struct {
 
 func NewRelationshipGraph() *RelationshipGraph {
 	return &RelationshipGraph{
+		mu:            sync.RWMutex{},
 		forward:       make(map[string][]GraphEdge),
 		reverse:       make(map[string][]GraphEdge),
 		declarations:  make(map[declMapKey][]resource.RelationshipDescriptor),

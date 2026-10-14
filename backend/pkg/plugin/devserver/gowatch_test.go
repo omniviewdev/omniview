@@ -2,7 +2,6 @@ package devserver
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -168,7 +167,7 @@ func TestTransferBinary_SourceMissing(t *testing.T) {
 	err := gw.transferBinary()
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeInternal, appErr.Type)
 	assert.Equal(t, 500, appErr.Status)
 	assert.Equal(t, "Failed to open built binary", appErr.Title)
@@ -273,7 +272,7 @@ func TestNewGoWatcherProcess(t *testing.T) {
 	assert.NotNil(t, gw.cancel)
 }
 
-func TestGoWatcherProcess_Stop_NilWatcher(t *testing.T) {
+func TestGoWatcherProcess_Stop_NilWatcher(_ *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	doneCh := make(chan struct{})
 	close(doneCh) // pre-close so Stop doesn't block
@@ -323,7 +322,7 @@ func TestRunGoBuild_EmptyGoPath(t *testing.T) {
 	err := gw.runGoBuild()
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeSettingsMissingConfig, appErr.Type)
 	assert.Equal(t, 422, appErr.Status)
 	assert.Contains(t, appErr.Title, "developer.gopath")
@@ -458,7 +457,7 @@ func TestGoWatcherStart_InitialBuild_StatusProgression(t *testing.T) {
 		BuildOpts{GoPath: "nonexistent-go-binary"},
 		&mockPluginReloader{},
 		appstate.NewTestService(t).Plugins(),
-		func(e LogEntry) {},
+		func(LogEntry) {},
 		func(s DevProcessStatus) { statuses = append(statuses, s) },
 		func(time.Duration, string) {},
 		func(string, []BuildError) {},
@@ -486,7 +485,7 @@ func TestTransferBinary_ReadOnlyDestDir(t *testing.T) {
 	dstDir := filepath.Join(svc.Plugins().ResolvePath(""), "readonly-test", "bin")
 	require.NoError(t, os.MkdirAll(dstDir, 0755))
 	require.NoError(t, os.Chmod(dstDir, 0444))
-	t.Cleanup(func() { os.Chmod(dstDir, 0755) })
+	t.Cleanup(func() { _ = os.Chmod(dstDir, 0755) })
 
 	gw := &goWatcherProcess{
 		logger:      logging.NewNop(),
@@ -498,7 +497,7 @@ func TestTransferBinary_ReadOnlyDestDir(t *testing.T) {
 	err := gw.transferBinary()
 	require.Error(t, err)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeInternal, appErr.Type)
 	assert.Equal(t, 500, appErr.Status)
 	assert.Equal(t, "Failed to create destination binary", appErr.Title)

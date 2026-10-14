@@ -1,16 +1,16 @@
 import type { CrashDataStrategy, QuarantineInfo } from './types';
 
-interface QuarantineEntry {
+type QuarantineEntry = {
   readonly pluginId: string;
   readonly extensionPointId: string;
   readonly quarantinedAt: number;
-}
+};
 
-export interface QuarantineManagerConfig {
+export type QuarantineManagerConfig = {
   readonly crashData: CrashDataStrategy;
   readonly threshold: number;
   readonly onQuarantine: (info: QuarantineInfo) => void;
-}
+};
 
 export class QuarantineManager {
   private readonly crashData: CrashDataStrategy;
@@ -22,15 +22,22 @@ export class QuarantineManager {
     if (!Number.isInteger(config.threshold) || config.threshold < 1) {
       throw new Error(`QuarantineManager threshold must be a positive integer, got ${config.threshold}`);
     }
+
     this.crashData = config.crashData;
     this.threshold = config.threshold;
     this.onQuarantine = config.onQuarantine;
   }
 
   checkAndQuarantine(contributionId: string, pluginId: string, extensionPointId: string): void {
-    if (this.quarantined.has(contributionId)) return;
+    if (this.quarantined.has(contributionId)) {
+      return;
+    }
+
     const count = this.crashData.getCrashCount(contributionId);
-    if (count < this.threshold) return;
+    if (count < this.threshold) {
+      return;
+    }
+
     const entry: QuarantineEntry = { pluginId, extensionPointId, quarantinedAt: Date.now() };
     this.quarantined.set(contributionId, entry);
     this.onQuarantine({ contributionId, pluginId, extensionPointId, crashCount: count, quarantinedAt: entry.quarantinedAt });
@@ -71,6 +78,7 @@ export class QuarantineManager {
         quarantinedAt: entry.quarantinedAt,
       });
     }
+
     return result;
   }
 }

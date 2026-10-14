@@ -36,11 +36,11 @@ func (b *TelemetryBinding) IngestFrontendSignals(payload string) error {
 				fields = append(fields, zap.String(k, v))
 			}
 			switch l.Level {
-			case "error":
+			case levelError:
 				b.svc.zapLogger.Error(l.Message, fields...)
-			case "warn":
+			case levelWarn:
 				b.svc.zapLogger.Warn(l.Message, fields...)
-			case "info":
+			case levelInfo:
 				b.svc.zapLogger.Info(l.Message, fields...)
 			default:
 				b.svc.zapLogger.Debug(l.Message, fields...)

@@ -3,6 +3,8 @@ package indexer
 import (
 	"log"
 	"sync/atomic"
+
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 )
 
 const defaultBufferSize = 10_000
@@ -21,6 +23,7 @@ func NewDispatcher(indexers []ResourceIndexer) *Dispatcher {
 		events:   make(chan Event, defaultBufferSize),
 		done:     make(chan struct{}),
 		stopping: make(chan struct{}),
+		stopped:  atomic.Bool{},
 	}
 }
 
@@ -46,7 +49,8 @@ func (d *Dispatcher) Enqueue(event Event) {
 // Useful for deterministic testing without time.Sleep.
 func (d *Dispatcher) Flush() {
 	barrier := make(chan struct{})
-	if !d.safeSend(Event{Type: eventFlush, flush: barrier}) {
+	var noEntry registry.ResourceEntry
+	if !d.safeSend(Event{Type: eventFlush, Entry: noEntry, Old: nil, Raw: nil, flush: barrier}) {
 		return
 	}
 	<-barrier
@@ -100,6 +104,9 @@ func (d *Dispatcher) dispatch(idx ResourceIndexer, event Event) {
 		}
 	case EventDelete:
 		idx.OnDelete(event.Entry)
+	case eventFlush:
+		// Flush barriers are consumed by loop and never dispatched.
+		fallthrough
 	default:
 		log.Printf("indexer dispatcher: unknown event type %d", event.Type)
 	}

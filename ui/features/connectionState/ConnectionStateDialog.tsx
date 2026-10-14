@@ -12,7 +12,7 @@ import styles from './ConnectionStateDialog.module.css';
 // Props
 // ---------------------------------------------------------------------------
 
-export interface ConnectionStateDialogProps {
+export type ConnectionStateDialogProps = {
   open: boolean;
   onClose: () => void;
   connectionName: string;
@@ -22,7 +22,7 @@ export interface ConnectionStateDialogProps {
   resourceCounts: Record<string, number>;
   /** Called when user clicks Retry on an errored resource */
   onRetryResource: (resourceKey: string) => void;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -30,12 +30,12 @@ export interface ConnectionStateDialogProps {
 
 /** Whether a state is terminal (done — won't change further) */
 const isTerminal = (s: WatchState) =>
-  s === WatchState.SYNCED ||
-  s === WatchState.ERROR ||
-  s === WatchState.STOPPED ||
-  s === WatchState.FAILED ||
-  s === WatchState.FORBIDDEN ||
-  s === WatchState.SKIPPED;
+  s === WatchState.WatchStateSynced ||
+  s === WatchState.WatchStateError ||
+  s === WatchState.WatchStateStopped ||
+  s === WatchState.WatchStateFailed ||
+  s === WatchState.WatchStateForbidden ||
+  s === WatchState.WatchStateSkipped;
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -43,36 +43,36 @@ const isTerminal = (s: WatchState) =>
 
 function StateIcon({ state }: { state: WatchState }) {
   switch (state) {
-    case WatchState.IDLE:
+    case WatchState.WatchStateIdle:
       return <LuCircleSlash size={14} className={styles.IconMuted} />;
-    case WatchState.SYNCING:
+    case WatchState.WatchStateSyncing:
       return <Spinner size="xs" color="brand" />;
-    case WatchState.SYNCED:
+    case WatchState.WatchStateSynced:
       return <LuCircleCheck size={14} className={styles.IconSuccess} />;
-    case WatchState.ERROR:
+    case WatchState.WatchStateError:
       return <LuCircleAlert size={14} className={styles.IconDanger} />;
-    case WatchState.FAILED:
+    case WatchState.WatchStateFailed:
       return <LuCircleAlert size={14} className={styles.IconDanger} />;
-    case WatchState.FORBIDDEN:
+    case WatchState.WatchStateForbidden:
       return <LuShieldAlert size={14} className={styles.IconWarning} />;
-    case WatchState.STOPPED:
+    case WatchState.WatchStateStopped:
       return <LuCircleSlash size={14} className={styles.IconMuted} />;
-    case WatchState.SKIPPED:
-      return <LuCircleSlash size={14} className={styles.IconMuted} />;
-    default:
+    case WatchState.WatchStateSkipped:
       return <LuCircleSlash size={14} className={styles.IconMuted} />;
   }
+
+  return <LuCircleSlash size={14} className={styles.IconMuted} />;
 }
 
 /** Per-group progress summary — excludes SKIPPED from totals */
 function GroupProgress({ items }: { items: ResourceStateItem[] }) {
-  const watched = items.filter(i => i.state !== WatchState.SKIPPED);
+  const watched = items.filter(i => i.state !== WatchState.WatchStateSkipped);
   const skipped = items.length - watched.length;
   const total = watched.length;
   const done = watched.filter(i => isTerminal(i.state)).length;
   const allDone = total > 0 && done === total;
   const allSkipped = total === 0 && skipped > 0;
-  const hasError = watched.some(i => i.state === WatchState.ERROR);
+  const hasError = watched.some(i => i.state === WatchState.WatchStateError);
   const percent = total > 0 ? Math.round((done / total) * 100) : allSkipped ? 100 : 0;
 
   return (
@@ -108,15 +108,17 @@ export default function ConnectionStateDialog({
     let done = 0;
     let skipped = 0;
     for (const state of Object.values(resources)) {
-      if (state === WatchState.SKIPPED) {
+      if (state === WatchState.WatchStateSkipped) {
         skipped++;
         continue;
       }
+
       watched++;
       if (isTerminal(state)) {
         done++;
       }
     }
+
     return { watchedTotal: watched, watchedDone: done, skippedCount: skipped };
   }, [resources]);
 
@@ -127,14 +129,23 @@ export default function ConnectionStateDialog({
     for (const [key, state] of Object.entries(resources)) {
       const { group, kind } = parseResourceKey(key);
       const label = formatGroup(group);
-      if (!groups[label]) groups[label] = [];
+      if (!groups[label]) {
+        groups[label] = [];
+      }
+
       groups[label].push({ key, kind, state, count: resourceCounts[key] ?? 0 });
     }
 
     // Sort groups alphabetically, but put "Core" first
     return Object.entries(groups).sort(([a], [b]) => {
-      if (a === 'Core') return -1;
-      if (b === 'Core') return 1;
+      if (a === 'Core') {
+        return -1;
+      }
+
+      if (b === 'Core') {
+        return 1;
+      }
+
       return a.localeCompare(b);
     });
   }, [resources, resourceCounts]);
@@ -192,36 +203,38 @@ export default function ConnectionStateDialog({
               <div
                 key={key}
                 className={styles.Row}
-                data-dimmed={(state === WatchState.STOPPED || state === WatchState.SKIPPED || state === WatchState.IDLE) ? 'true' : undefined}
+                data-dimmed={(state === WatchState.WatchStateStopped || state === WatchState.WatchStateSkipped || state === WatchState.WatchStateIdle) ? 'true' : undefined}
               >
                 <StateIcon state={state} />
                 <Text size="xs" className={styles.Kind}>{kind}</Text>
-                {state === WatchState.FORBIDDEN && (
+                {state === WatchState.WatchStateForbidden && (
                   <Text size="xs" tone="warning" className={styles.Note}>
                     No access
                   </Text>
                 )}
-                {state === WatchState.SKIPPED && (
+                {state === WatchState.WatchStateSkipped && (
                   <Text size="xs" tone="subtle" className={styles.Note}>
                     Skipped
                   </Text>
                 )}
-                {state === WatchState.STOPPED && (
+                {state === WatchState.WatchStateStopped && (
                   <Text size="xs" tone="subtle" className={styles.Note}>
                     Stopped
                   </Text>
                 )}
-                {state === WatchState.SYNCED && count > 0 && (
+                {state === WatchState.WatchStateSynced && count > 0 && (
                   <Text size="xs" tone="subtle" mono>
                     {count}
                   </Text>
                 )}
-                {(state === WatchState.ERROR || state === WatchState.FAILED) && (
+                {(state === WatchState.WatchStateError || state === WatchState.WatchStateFailed) && (
                   <Button
                     variant="soft"
                     size="xs"
                     color="danger"
-                    onClick={() => { onRetryResource(key); }}
+                    onClick={() => {
+                      onRetryResource(key); 
+                    }}
                     className={styles.RetryButton}
                   >
                     Retry

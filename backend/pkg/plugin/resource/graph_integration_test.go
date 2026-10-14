@@ -258,7 +258,9 @@ func TestIntegration_ConnectionTeardown(t *testing.T) {
 			Key: "core::v1::Pod", Connection: "c1",
 			ID: name, Namespace: "default",
 			Metadata: sdkresource.ResourceMetadata{UID: "uid-" + string(rune('0'+i))},
-			Data:     json.RawMessage(`{"metadata":{"name":"` + name + `","namespace":"default","uid":"uid-` + string(rune('0'+i)) + `"},"spec":{"nodeName":"worker-1"}}`),
+			Data: json.RawMessage(`{"metadata":{"name":"` + name +
+				`","namespace":"default","uid":"uid-` + string(rune('0'+i)) +
+				`"},"spec":{"nodeName":"worker-1"}}`),
 		})
 	}
 

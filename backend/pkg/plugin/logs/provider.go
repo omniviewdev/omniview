@@ -7,10 +7,10 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 )
 
-// LogsProvider is the engine's version-independent interface for log plugins.
+// Provider is the engine's version-independent interface for log plugins.
 // For v1, method signatures match SDK logs.Provider exactly (doc 20 §13.7).
 // When v2 redesigns logs (context.Context, interfaces), this diverges.
-type LogsProvider interface {
+type Provider interface {
 	GetSupportedResources(ctx *types.PluginContext) []logs.Handler
 	CreateSession(ctx *types.PluginContext, opts logs.CreateSessionOptions) (*logs.LogSession, error)
 	GetSession(ctx *types.PluginContext, sessionID string) (*logs.LogSession, error)

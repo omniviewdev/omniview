@@ -50,6 +50,7 @@ const PluginFilterPopover: React.FC<Props> = ({
     } else {
       next.add(value);
     }
+
     onFiltersChange({ ...filters, categories: next });
   };
 

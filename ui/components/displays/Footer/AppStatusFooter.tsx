@@ -14,6 +14,7 @@ import {
 } from 'react-icons/lu';
 import { Events } from '@omniviewdev/runtime/runtime';
 import type { PluginMeta } from '@omniviewdev/runtime/models';
+import { DevServerMode } from '@omniviewdev/runtime/models';
 
 import { useDevServers } from '@/features/devtools/useDevServers';
 import { devToolsChannel } from '@/features/devtools/events';
@@ -64,7 +65,10 @@ const STATUS_LABELS: Record<DevServerAggregateStatus, string> = {
 // ---------------------------------------------------------------------------
 
 function DevModeChip() {
-  if (!import.meta.env.DEV) return null;
+  if (!import.meta.env.DEV) {
+    return null;
+  }
+
   return (
     <HintTooltip content='Running in development mode' side='top'>
       <span className={styles.Chip} data-tone='warning' tabIndex={-1}>DEVELOPMENT MODE</span>
@@ -93,7 +97,7 @@ function DevServerPopoverBody({ pluginId, state, onClose }: { pluginId: string; 
         title={
           <>
             {pluginId}
-            {state.mode === 'external' && <span className={styles.Badge}>External</span>}
+            {state.mode === DevServerMode.DevServerModeExternal && <span className={styles.Badge}>External</span>}
           </>
         }
       >
@@ -117,18 +121,26 @@ function DevServerPopoverBody({ pluginId, state, onClose }: { pluginId: string; 
         <PopoverAction
           icon={<LuHammer size={12} />}
           label='Logs'
-          onClick={run(() => devToolsChannel.emit('onOpenBuildOutput', pluginId))}
+          onClick={run(() => {
+            devToolsChannel.emit('onOpenBuildOutput', pluginId); 
+          })}
         />
         {isRunning ? (
-          <PopoverAction icon={<LuSquare size={12} />} label='Stop' tone='danger' onClick={run(() => stop.mutate(pluginId))} />
+          <PopoverAction icon={<LuSquare size={12} />} label='Stop' tone='danger' onClick={run(() => {
+            stop.mutate(pluginId); 
+          })} />
         ) : (
-          <PopoverAction icon={<LuPlay size={12} />} label='Start' tone='success' onClick={run(() => start.mutate(pluginId))} />
+          <PopoverAction icon={<LuPlay size={12} />} label='Start' tone='success' onClick={run(() => {
+            start.mutate(pluginId); 
+          })} />
         )}
         <PopoverAction
           icon={<LuRefreshCw size={12} />}
           label='Restart'
           disabled={!isRunning}
-          onClick={run(() => restart.mutate(pluginId))}
+          onClick={run(() => {
+            restart.mutate(pluginId); 
+          })}
         />
       </div>
     </>
@@ -161,7 +173,7 @@ function DetailRow({
 function DevServerChip({ pluginId, state }: { pluginId: string; state: DevServerState }) {
   const aggStatus = getAggregateStatus(state);
   const tone = STATUS_TONE[aggStatus];
-  const tooltipText = `${STATUS_LABELS[aggStatus]}${state.mode === 'external' ? ' (external)' : ''}${state.vitePort > 0 ? ` \u2022 Vite: :${state.vitePort}` : ''}`;
+  const tooltipText = `${STATUS_LABELS[aggStatus]}${state.mode === DevServerMode.DevServerModeExternal ? ' (external)' : ''}${state.vitePort > 0 ? ` \u2022 Vite: :${state.vitePort}` : ''}`;
 
   return (
     <FooterPopover
@@ -186,7 +198,9 @@ function DevServerChip({ pluginId, state }: { pluginId: string; state: DevServer
 function DevServerIndicators() {
   const { servers, summary } = useDevServers();
 
-  if (summary.total === 0) return null;
+  if (summary.total === 0) {
+    return null;
+  }
 
   const tone: FooterTone = summary.error > 0 ? 'danger' : summary.building > 0 ? 'warning' : 'success';
   const entries = Array.from(servers.entries());
@@ -217,7 +231,11 @@ function PluginLoadingSpinner() {
     const cancelDevInstallStart = Events.On(
       'plugin/dev_install_start',
       (ev) => {
-        const meta = ev.data as PluginMeta;
+        const meta = ev.data;
+        if (!meta) {
+          return;
+        }
+
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Installing plugin '${meta.name}' in development mode`,
@@ -239,7 +257,11 @@ function PluginLoadingSpinner() {
     const cancelInstallStart = Events.On(
       'plugin/install_started',
       (ev) => {
-        const meta = ev.data as PluginMeta;
+        const meta = ev.data;
+        if (!meta) {
+          return;
+        }
+
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Installing plugin '${meta.name}'`,
@@ -250,7 +272,11 @@ function PluginLoadingSpinner() {
     const cancelReloadStart = Events.On(
       'plugin/dev_reload_start',
       (ev) => {
-        const meta = ev.data as PluginMeta;
+        const meta = ev.data;
+        if (!meta) {
+          return;
+        }
+
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Reloading plugin '${meta.name}'`,
@@ -258,38 +284,40 @@ function PluginLoadingSpinner() {
       },
     );
 
-    const clearLoading = (meta: PluginMeta) => {
+    const clearLoading = (meta: PluginMeta | null) => {
+      if (!meta) {
+        return;
+      }
+
       setLoading((prev) => ({ ...prev, [meta.id]: '' }));
     };
 
-    const clearLoadingByEv = (ev: Events.WailsEvent) => {
-      clearLoading(ev.data as PluginMeta);
+    const clearLoadingByEv = (ev: { data: PluginMeta | null }) => {
+      clearLoading(ev.data);
     };
 
     const clearLoadingById = (id: string) => {
       setLoading((prev) => ({ ...prev, [id]: '' }));
     };
 
-    const cancelReloadError = Events.On('plugin/dev_reload_error', clearLoadingByEv);
+    const cancelReloadError = Events.On('plugin/dev_reload_error', (ev) => {
+      clearLoading(ev.data[0] as PluginMeta | null);
+    });
     const cancelReloadComplete = Events.On('plugin/dev_reload_complete', clearLoadingByEv);
     const cancelDevInstallError = Events.On('plugin/dev_install_error', clearLoadingByEv);
     const cancelDevInstallComplete = Events.On('plugin/dev_install_complete', clearLoadingByEv);
     const cancelInstallComplete = Events.On('plugin/install_complete', clearLoadingByEv);
     const cancelInstallFinished = Events.On('plugin/install_finished', (ev) => {
-      const meta = ev.data as PluginMeta;
-      clearLoading(meta);
-      clearLoadingById(meta.id);
+      clearLoading(ev.data);
     });
     const cancelInstallError = Events.On('plugin/install_error', (ev) => {
-      const meta = ev.data as PluginMeta;
-      clearLoading(meta);
-      clearLoadingById(meta.id);
+      clearLoading(ev.data);
     });
     const cancelUpdateError = Events.On('plugin/update_error', (ev) => {
-      clearLoadingById(ev.data as string);
+      clearLoadingById(ev.data.pluginID);
     });
     const cancelUpdateComplete = Events.On('plugin/update_complete', (ev) => {
-      clearLoadingById(ev.data as string);
+      clearLoadingById(ev.data.pluginID);
     });
 
     return () => {
@@ -312,7 +340,9 @@ function PluginLoadingSpinner() {
   // Find the first active message
   const message = Object.values(loading).find(Boolean);
 
-  if (!message) return null;
+  if (!message) {
+    return null;
+  }
 
   return (
     <span className={styles.Spinner}>
@@ -351,7 +381,9 @@ function FailedPluginIndicator() {
     [plugins],
   );
 
-  if (failedPlugins.length === 0) return null;
+  if (failedPlugins.length === 0) {
+    return null;
+  }
 
   const label = `${failedPlugins.length} plugin${failedPlugins.length !== 1 ? 's' : ''} failed`;
 
@@ -399,7 +431,9 @@ function PortForwardList({ onClose }: { onClose: () => void }) {
 
   const handleClose = async (sessionID: string) => {
     await closeSession(sessionID);
-    if (activeSessions.length <= 1) onClose();
+    if (activeSessions.length <= 1) {
+      onClose();
+    }
   };
 
   return (
@@ -410,7 +444,10 @@ function PortForwardList({ onClose }: { onClose: () => void }) {
       />
       <div className={styles.List}>
         {activeSessions.map((session) => {
-          if (!session) return null;
+          if (!session) {
+            return null;
+          }
+
           const conn = session.connection as Record<string, any> | undefined;
           const resourceId = conn?.resource_id ?? '';
           return (
@@ -430,13 +467,17 @@ function PortForwardList({ onClose }: { onClose: () => void }) {
                   <PopoverAction
                     icon={<LuExternalLink size={11} />}
                     label='Open'
-                    onClick={() => openInBrowser(session.local_port)}
+                    onClick={() => {
+                      void openInBrowser(session.local_port);
+                    }}
                   />
                   <PopoverAction
                     icon={<LuX size={11} />}
                     label='Close'
                     tone='danger'
-                    onClick={() => void handleClose(session.id)}
+                    onClick={() => {
+                      void handleClose(session.id);
+                    }}
                   />
                 </div>
               </div>
@@ -451,7 +492,9 @@ function PortForwardList({ onClose }: { onClose: () => void }) {
 function PortForwardIndicator() {
   const { activeSessions } = usePortForwardSessions();
 
-  if (activeSessions.length === 0) return null;
+  if (activeSessions.length === 0) {
+    return null;
+  }
 
   const label = `${activeSessions.length} forward${activeSessions.length !== 1 ? 's' : ''}`;
 
@@ -493,7 +536,9 @@ function OperationsList({ operations, onRemove }: { operations: Operation[]; onR
                 <div className={styles.Group}>
                   <span className={cx(styles.Meta, styles.Mono)}>{elapsed}s</span>
                   {op.status !== 'running' && (
-                    <PopoverAction icon={<LuX size={10} />} label='' onClick={() => onRemove(op.id)} />
+                    <PopoverAction icon={<LuX size={10} />} label='' onClick={() => {
+                      onRemove(op.id); 
+                    }} />
                   )}
                 </div>
               </div>
@@ -521,7 +566,9 @@ function OperationsIndicator() {
 
   const running = operations.filter((o) => o.status === 'running');
 
-  if (operations.length === 0) return null;
+  if (operations.length === 0) {
+    return null;
+  }
 
   const label = running.length > 0
     ? `${running.length} operation${running.length !== 1 ? 's' : ''}`

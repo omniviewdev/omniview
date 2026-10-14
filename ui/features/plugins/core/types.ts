@@ -71,7 +71,7 @@ export type { PluginWindow } from '@omniviewdev/runtime';
 
 // ─── Plugin State ────────────────────────────────────────────────────
 
-export interface PluginState {
+export type PluginState = {
   readonly id: string;
   readonly phase: PluginPhase;
   readonly backendPhase: BackendPluginPhase | null;
@@ -84,26 +84,26 @@ export interface PluginState {
   readonly validationErrors: string[];
   readonly moduleHash: string | null;
   readonly declaredDependencies?: DeclaredDependencies;
-}
+};
 
 // ─── Validated Exports ───────────────────────────────────────────────
 
-export interface ValidatedExports {
+export type ValidatedExports = {
   readonly plugin: any; // PluginWindow at runtime
-  readonly extensionRegistrations: ExtensionRegistration<any>[];
+  readonly extensionRegistrations: Array<ExtensionRegistration<any>>;
   readonly sidebars: Record<string, SidebarComponent>;
   readonly drawers: Record<string, DrawerFactory>;
-}
+};
 
 // ─── Plugin Registrations ────────────────────────────────────────────
 
-export interface PluginRegistrations {
+export type PluginRegistrations = {
   readonly routes: RouteObject[];
-}
+};
 
 // ─── Normalized Contribution ─────────────────────────────────────────
 
-export interface NormalizedContribution<TValue = ExtensionPointValue> {
+export type NormalizedContribution<TValue = ExtensionPointValue> = {
   readonly source: 'extension-registration' | 'legacy-sidebar' | 'legacy-drawer';
   readonly pluginId: string;
   readonly extensionPointId: string;
@@ -111,7 +111,7 @@ export interface NormalizedContribution<TValue = ExtensionPointValue> {
   readonly value: TValue;
   readonly label: string;
   readonly meta?: unknown;
-}
+};
 
 // ─── Resource Extension Render Context ───────────────────────────────
 
@@ -122,7 +122,7 @@ export type ResourceExtensionRenderContext = ExtensionRenderContext & {
 
 // ─── Prepared Plugin Load ────────────────────────────────────────────
 
-export interface PreparedPluginLoad {
+export type PreparedPluginLoad = {
   readonly pluginId: string;
   readonly validated: ValidatedExports;
   readonly registrations: PluginRegistrations;
@@ -133,38 +133,38 @@ export interface PreparedPluginLoad {
   readonly devPort: number | null;
   readonly moduleHash: string | null;
   readonly declaredDependencies?: DeclaredDependencies;
-}
+};
 
 // ─── Plugin Service Snapshot ─────────────────────────────────────────
 
-export interface PluginServiceSnapshot {
+export type PluginServiceSnapshot = {
   readonly plugins: ReadonlyMap<string, PluginState>;
   readonly registrations: ReadonlyMap<string, PluginRegistrations>;
   readonly ready: boolean;
   readonly routeVersion: number;
-}
+};
 
 // ─── Debug Snapshots ─────────────────────────────────────────────────
 
-export interface PluginDebugContributionRecord {
+export type PluginDebugContributionRecord = {
   readonly id: string;
   readonly extensionPointId: string;
   readonly source: NormalizedContribution['source'];
   readonly resourceKey?: string;
   readonly status: 'applied' | 'pending' | 'quarantined';
   readonly crashCount: number;
-}
+};
 
 // ─── Declared Dependencies (F1) ─────────────────────────────────────
 
-export interface DeclaredDependencies {
+export type DeclaredDependencies = {
   readonly plugins: readonly string[];
   readonly extensionPoints: readonly string[];
-}
+};
 
 // ─── Crash Data (F3) ────────────────────────────────────────────────
 
-export interface CrashRecord {
+export type CrashRecord = {
   readonly contributionId: string;
   readonly pluginId: string;
   readonly extensionPointId: string;
@@ -174,9 +174,9 @@ export interface CrashRecord {
   readonly stack?: string;
   readonly componentStack?: string;
   readonly timestamp: number;
-}
+};
 
-export interface CrashDataStrategy {
+export type CrashDataStrategy = {
   recordCrash(record: CrashRecord): void;
   clearForContribution(contributionId: string): void;
   clearForPlugin(pluginId: string): void;
@@ -185,69 +185,69 @@ export interface CrashDataStrategy {
   getCrashHistory(contributionId: string): readonly CrashRecord[];
   getAllCrashHistory(): ReadonlyMap<string, readonly CrashRecord[]>;
   subscribe(listener: () => void): () => void;
-}
+};
 
 // ─── Quarantine (F2) ────────────────────────────────────────────────
 
-export interface QuarantineInfo {
+export type QuarantineInfo = {
   readonly contributionId: string;
   readonly pluginId: string;
   readonly extensionPointId: string;
   readonly crashCount: number;
   readonly quarantinedAt: number;
-}
+};
 
 // ─── Dependency Graph (F1) ──────────────────────────────────────────
 
-export interface DependencyGraph {
+export type DependencyGraph = {
   readonly nodes: readonly string[];
-  readonly edges: readonly [from: string, to: string][];
-}
+  readonly edges: ReadonlyArray<[from: string, to: string]>;
+};
 
-export interface PluginServiceDebugPluginState extends PluginState {
+export type PluginServiceDebugPluginState = {
   readonly inflightLoad: boolean;
   readonly contributedExtensionPoints: string[];
   readonly contributions: PluginDebugContributionRecord[];
   readonly definedExtensionPoints: string[];
   readonly dependencyWarnings: string[];
-}
+} & PluginState;
 
-export interface PluginServiceDebugSnapshot {
+export type PluginServiceDebugSnapshot = {
   readonly plugins: Record<string, PluginServiceDebugPluginState>;
   readonly config: PluginServiceConfig;
   readonly ready: boolean;
   readonly routeVersion: number;
   readonly eventListenersActive: boolean;
-  readonly pendingContributions: Record<string, { pluginId: string; contributionId: string; extensionPointId: string }[]>;
+  readonly pendingContributions: Record<string, Array<{ pluginId: string; contributionId: string; extensionPointId: string }>>;
   readonly quarantinedContributions: QuarantineInfo[];
   readonly recentCrashes: CrashRecord[];
-}
+};
 
 // ─── Plugin Import/Load Options ──────────────────────────────────────
 
-export interface PluginImportOpts {
+export type PluginImportOpts = {
   readonly pluginId: string;
   readonly moduleHash?: string;
   readonly dev?: boolean;
   readonly devPort?: number;
-}
+};
 
-export interface PluginLoadOpts {
+export type PluginLoadOpts = {
   readonly dev?: boolean;
   readonly devPort?: number;
   readonly moduleHash?: string;
-}
+};
 
-export interface PluginDescriptor {
+export type PluginDescriptor = {
   readonly id: string;
   readonly dev: boolean;
   readonly devPort?: number;
   readonly moduleHash?: string;
-}
+};
 
 // ─── Plugin Service Config ───────────────────────────────────────────
 
-export interface PluginServiceConfig {
+export type PluginServiceConfig = {
   readonly importTimeoutMs: number;
   readonly maxRetries: number;
   readonly retryBaseDelayMs: number;
@@ -255,7 +255,7 @@ export interface PluginServiceConfig {
   readonly maxConcurrentLoads: number;
   readonly quarantineCrashThreshold: number;
   readonly maxCrashRecordsPerContribution: number;
-}
+};
 
 export const DEFAULT_CONFIG: Readonly<PluginServiceConfig> = {
   importTimeoutMs: 30_000,
@@ -269,7 +269,15 @@ export const DEFAULT_CONFIG: Readonly<PluginServiceConfig> = {
 
 // ─── Plugin Service Dependencies ─────────────────────────────────────
 
-export interface PluginServiceDeps {
+export type PluginServiceDeps = {
+  crashData: CrashDataStrategy;
+
+  log: {
+    debug(message: string, data?: Record<string, unknown>): void;
+    warn(message: string, data?: Record<string, unknown>): void;
+    error(message: string, data?: Record<string, unknown>): void;
+  };
+
   importPlugin(opts: PluginImportOpts): Promise<unknown>;
   clearPlugin(opts: { pluginId: string; dev?: boolean }): Promise<void>;
   onEvent(eventName: string, handler: (...args: any[]) => void): () => void;
@@ -294,11 +302,4 @@ export interface PluginServiceDeps {
   removeContributions(pluginId: string): void;
   ensureDevSharedDeps(): Promise<void>;
   validateExports(exports: unknown): ValidatedExports;
-  crashData: CrashDataStrategy;
-
-  log: {
-    debug(message: string, data?: Record<string, unknown>): void;
-    warn(message: string, data?: Record<string, unknown>): void;
-    error(message: string, data?: Record<string, unknown>): void;
-  };
-}
+};

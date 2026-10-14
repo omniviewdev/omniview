@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -57,6 +58,15 @@ func init() {
 
 var tracer = otel.Tracer("omniview.resource")
 
+const (
+	// relationshipBootstrapTimeout bounds fetching relationship declarations on plugin start.
+	relationshipBootstrapTimeout = 30 * time.Second
+	// watchStreamReadyTimeout is how long OnPluginStart waits for the watch event stream.
+	watchStreamReadyTimeout = 10 * time.Second
+	// streamChannelBuffer is the buffer size of action event and connection streams.
+	streamChannelBuffer = 16
+)
+
 // Controller is the lifecycle + service interface for the resource capability.
 type Controller interface {
 	plugintypes.ConnectedController
@@ -92,7 +102,7 @@ type controller struct {
 	subs *subscriptionManager
 
 	// Resource registry and relationship graph
-	registryStore registry.RegistryStore
+	registryStore registry.Store
 	dispatcher    *indexer.Dispatcher
 	graph         *graph.RelationshipGraph
 
@@ -100,7 +110,7 @@ type controller struct {
 	pluginStoreFn   func(pluginID string) (*appstate.ScopedRoot, error)
 }
 
-// compile-time assertions
+// compile-time assertions.
 var (
 	_ Controller = (*controller)(nil)
 	_ Service    = (*controller)(nil)
@@ -108,22 +118,32 @@ var (
 
 // NewController creates a new resource Controller.
 // pluginStoreFn returns a ScopedRoot for the given plugin's store directory.
-func NewController(logger logging.Logger, sp pkgsettings.Provider, pluginStoreFn func(string) (*appstate.ScopedRoot, error)) Controller {
+func NewController(
+	logger logging.Logger,
+	sp pkgsettings.Provider,
+	pluginStoreFn func(string) (*appstate.ScopedRoot, error),
+) Controller {
 	store := registry.NewMemoryStore()
 	g := graph.NewRelationshipGraph()
 	graphIndexer := graph.NewGraphIndexer(g, store)
 	dispatcher := indexer.NewDispatcher([]indexer.ResourceIndexer{graphIndexer})
 
 	return &controller{
+		app:                 nil,
 		logger:              logger.Named("ResourceController"),
 		settingsProvider:    sp,
+		emitter:             nil,
+		pluginsMu:           sync.RWMutex{},
 		plugins:             make(map[string]*pluginState),
+		connsMu:             sync.RWMutex{},
 		connections:         make(map[string][]types.Connection),
+		autoConnectMu:       sync.Mutex{},
 		autoConnectAttempts: make(map[string]string),
 		subs:                newSubscriptionManager(),
 		registryStore:       store,
 		dispatcher:          dispatcher,
 		graph:               g,
+		onCrashCallback:     nil,
 		pluginStoreFn:       pluginStoreFn,
 	}
 }
@@ -144,7 +164,7 @@ func (c *controller) Graph() *graph.RelationshipGraph {
 
 // Run starts the controller's background tasks.
 // Satisfies the ConnectedController interface; prefer ServiceStartup for Wails v3.
-func (c *controller) Run(ctx context.Context) {
+func (c *controller) Run(_ context.Context) {
 	if c.emitter == nil {
 		c.emitter = NoopEmitter{}
 	}
@@ -152,7 +172,7 @@ func (c *controller) Run(ctx context.Context) {
 }
 
 // ServiceStartup is called by the Wails v3 runtime when the application starts.
-func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+func (c *controller) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
 	c.app = application.Get()
 	c.emitter = newAppEmitter(c.app)
 	c.dispatcher.Start()
@@ -177,19 +197,19 @@ func dispenseProvider(pluginID string, backend plugintypes.PluginBackend) (Resou
 	case 1:
 		v1, ok := raw.(resource.Provider)
 		if !ok {
-			return nil, 0, apperror.New(apperror.TypePluginLoadFailed, 500,
+			return nil, 0, apperror.New(apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 				"Plugin type mismatch",
 				fmt.Sprintf("Expected resource.Provider for v1, got %T", raw))
 		}
 		return NewAdapterV1(v1), version, nil
 	default:
-		return nil, 0, apperror.New(apperror.TypePluginLoadFailed, 500,
+		return nil, 0, apperror.New(apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			"Unsupported SDK protocol version",
 			fmt.Sprintf("Plugin '%s' negotiated v%d, engine supports v1", pluginID, version))
 	}
 }
 
-func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginInit")
 
@@ -213,7 +233,7 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	c.connsMu.Unlock()
 }
 
-func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend plugintypes.PluginBackend) error {
+func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend plugintypes.PluginBackend) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStart")
 
@@ -232,6 +252,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 		provider:    provider,
 		version:     version,
 		watchCancel: watchCancel,
+		crashOnce:   sync.Once{},
 	}
 	c.pluginsMu.Unlock()
 	c.clearAutoConnectAttempts(pluginID)
@@ -245,22 +266,22 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	}
 
 	// Load connections from the plugin.
-	if conns, err := c.LoadConnections(pluginID); err != nil {
-		logger.Errorw(context.Background(), "failed to load connections from plugin", "error", err)
+	if conns, loadErr := c.LoadConnections(pluginID); loadErr != nil {
+		logger.Errorw(context.Background(), "failed to load connections from plugin", "error", loadErr)
 	} else if len(conns) > 0 {
-		eventKey := fmt.Sprintf("%s/connection/sync", pluginID)
+		eventKey := pluginID + "/connection/sync"
 		c.emitter.Emit(eventKey, c.getConnections(pluginID))
 		c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerPluginStart)
 	}
 
 	// Bootstrap relationship declarations for the graph indexer.
-	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), relationshipBootstrapTimeout)
 	defer bootstrapCancel()
 	if resourceTypes := provider.GetResourceTypes(bootstrapCtx, ""); resourceTypes != nil {
 		for rk := range resourceTypes {
-			decls, err := provider.GetRelationships(bootstrapCtx, rk)
-			if err != nil {
-				logger.Warnw(bootstrapCtx, "failed to get relationships", "resourceKey", rk, "error", err)
+			decls, relErr := provider.GetRelationships(bootstrapCtx, rk)
+			if relErr != nil {
+				logger.Warnw(bootstrapCtx, "failed to get relationships", "resourceKey", rk, "error", relErr)
 				continue
 			}
 			if len(decls) > 0 {
@@ -278,23 +299,23 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 		dispatcher: c.dispatcher,
 	}
 	watchReady := make(chan struct{})
-	go c.listenForWatchEvents(pluginID, provider, watchCtx, sink, watchReady)
+	go c.listenForWatchEvents(watchCtx, pluginID, provider, sink, watchReady)
 
 	// Wait for the gRPC stream to be established (with timeout).
 	select {
 	case <-watchReady:
 		logger.Debugw(context.Background(), "watch event stream established")
-	case <-time.After(10 * time.Second):
+	case <-time.After(watchStreamReadyTimeout):
 		logger.Warnw(context.Background(), "watch event stream did not establish in time, continuing anyway")
 	}
 
 	// Start connection watcher.
-	go c.listenForConnectionEvents(pluginID, provider, watchCtx)
+	go c.listenForConnectionEvents(watchCtx, pluginID, provider)
 
 	return nil
 }
 
-func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStop")
 
@@ -307,7 +328,7 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	c.connsMu.RUnlock()
 	if storeRoot, err := c.pluginStoreFn(pluginID); err != nil {
 		logger.Errorw(context.Background(), "failed to resolve plugin store root", "error", err)
-	} else if err := saveToLocalStore(storeRoot, pluginConnsForPersist); err != nil {
+	} else if err = saveToLocalStore(storeRoot, pluginConnsForPersist); err != nil {
 		logger.Errorw(context.Background(), "failed to save connections to local store", "error", err)
 	}
 
@@ -347,6 +368,8 @@ func (c *controller) cleanupPluginGraphState(pluginID string, conns []types.Conn
 			c.dispatcher.Enqueue(indexer.Event{
 				Type:  indexer.EventDelete,
 				Entry: entry,
+				Old:   nil,
+				Raw:   nil,
 			})
 		}
 		c.graph.RemoveEdgesForConnection(pluginID, conn.ID)
@@ -358,12 +381,12 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 	return c.OnPluginStop(pluginID, meta)
 }
 
-func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginDestroy")
 	if storeRoot, err := c.pluginStoreFn(pluginID); err != nil {
 		logger.Errorw(context.Background(), "failed to resolve plugin store root", "error", err)
-	} else if err := removeLocalStore(storeRoot); err != nil {
+	} else if err = removeLocalStore(storeRoot); err != nil {
 		logger.Errorw(context.Background(), "failed to remove local store", "error", err)
 	}
 	return nil
@@ -402,13 +425,20 @@ func (c *controller) getProvider(pluginID string) (ResourceProvider, error) {
 
 // withSession returns the provider and a context with session info for connection-scoped calls.
 // The parent context is preserved so that span context propagates to gRPC calls.
-func (c *controller) withSession(ctx context.Context, pluginID, connectionID string) (ResourceProvider, context.Context, error) {
+func (c *controller) withSession(
+	ctx context.Context,
+	pluginID, connectionID string,
+) (ResourceProvider, context.Context, error) {
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
 		return nil, nil, err
 	}
 	ctx = resource.WithSession(ctx, &resource.Session{
-		Connection: &types.Connection{ID: connectionID},
+		Connection:   &types.Connection{ID: connectionID},
+		PluginConfig: nil,
+		GlobalConfig: nil,
+		RequestID:    "",
+		RequesterID:  "",
 	})
 	return provider, ctx, nil
 }
@@ -435,10 +465,30 @@ func toAppError(err error, pluginID string) error {
 // CRUD
 // ============================================================================
 
+// startResourceSpan starts a span for a resource-scoped call and tags it with
+// the plugin, connection and resource key.
+func startResourceSpan(name, pluginID, connectionID, key string) (context.Context, trace.Span) {
+	ctx, span := tracer.Start(context.Background(), name)
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+		attribute.String("resource_key", key),
+	)
+	return ctx, span
+}
+
+// rpcFailed records and logs a failed resource RPC, checks it for connection
+// errors, and returns it converted to an AppError.
+func (c *controller) rpcFailed(ctx context.Context, span trace.Span, op, pluginID, key string, err error) error {
+	telemetryutil.RecordError(span, err)
+	c.logger.Errorw(ctx, "RPC failed", "op", op, "pluginID", pluginID, "key", key, "error", err)
+	c.checkConnectionError(pluginID, err)
+	return toAppError(err, pluginID)
+}
+
 func (c *controller) Get(pluginID, connectionID, key string, input resource.GetInput) (*resource.GetResult, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.Get")
+	ctx, span := startResourceSpan("resource.Get", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -446,10 +496,7 @@ func (c *controller) Get(pluginID, connectionID, key string, input resource.GetI
 	}
 	result, err := provider.Get(ctx, key, input)
 	if err != nil {
-		telemetryutil.RecordError(span, err)
-		c.logger.Errorw(ctx, "RPC failed", "op", "Get", "pluginID", pluginID, "key", key, "error", err)
-		c.checkConnectionError(pluginID, err)
-		return nil, toAppError(err, pluginID)
+		return nil, c.rpcFailed(ctx, span, "Get", pluginID, key, err)
 	}
 	if result != nil && len(result.Result) > 0 {
 		c.observeResponse(pluginID, connectionID, key, input.ID, input.Namespace, result.Result)
@@ -458,9 +505,8 @@ func (c *controller) Get(pluginID, connectionID, key string, input resource.GetI
 }
 
 func (c *controller) List(pluginID, connectionID, key string, input resource.ListInput) (*resource.ListResult, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.List")
+	ctx, span := startResourceSpan("resource.List", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -468,18 +514,14 @@ func (c *controller) List(pluginID, connectionID, key string, input resource.Lis
 	}
 	result, err := provider.List(ctx, key, input)
 	if err != nil {
-		telemetryutil.RecordError(span, err)
-		c.logger.Errorw(ctx, "RPC failed", "op", "List", "pluginID", pluginID, "key", key, "error", err)
-		c.checkConnectionError(pluginID, err)
-		return nil, toAppError(err, pluginID)
+		return nil, c.rpcFailed(ctx, span, "List", pluginID, key, err)
 	}
 	return result, nil
 }
 
 func (c *controller) Find(pluginID, connectionID, key string, input resource.FindInput) (*resource.FindResult, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.Find")
+	ctx, span := startResourceSpan("resource.Find", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -487,18 +529,17 @@ func (c *controller) Find(pluginID, connectionID, key string, input resource.Fin
 	}
 	result, err := provider.Find(ctx, key, input)
 	if err != nil {
-		telemetryutil.RecordError(span, err)
-		c.logger.Errorw(ctx, "RPC failed", "op", "Find", "pluginID", pluginID, "key", key, "error", err)
-		c.checkConnectionError(pluginID, err)
-		return nil, toAppError(err, pluginID)
+		return nil, c.rpcFailed(ctx, span, "Find", pluginID, key, err)
 	}
 	return result, nil
 }
 
-func (c *controller) Create(pluginID, connectionID, key string, input resource.CreateInput) (*resource.CreateResult, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.Create")
+func (c *controller) Create(
+	pluginID, connectionID, key string,
+	input resource.CreateInput,
+) (*resource.CreateResult, error) {
+	ctx, span := startResourceSpan("resource.Create", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -506,18 +547,17 @@ func (c *controller) Create(pluginID, connectionID, key string, input resource.C
 	}
 	result, err := provider.Create(ctx, key, input)
 	if err != nil {
-		telemetryutil.RecordError(span, err)
-		c.logger.Errorw(ctx, "RPC failed", "op", "Create", "pluginID", pluginID, "key", key, "error", err)
-		c.checkConnectionError(pluginID, err)
-		return nil, toAppError(err, pluginID)
+		return nil, c.rpcFailed(ctx, span, "Create", pluginID, key, err)
 	}
 	return result, nil
 }
 
-func (c *controller) Update(pluginID, connectionID, key string, input resource.UpdateInput) (*resource.UpdateResult, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.Update")
+func (c *controller) Update(
+	pluginID, connectionID, key string,
+	input resource.UpdateInput,
+) (*resource.UpdateResult, error) {
+	ctx, span := startResourceSpan("resource.Update", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -525,10 +565,7 @@ func (c *controller) Update(pluginID, connectionID, key string, input resource.U
 	}
 	result, err := provider.Update(ctx, key, input)
 	if err != nil {
-		telemetryutil.RecordError(span, err)
-		c.logger.Errorw(ctx, "RPC failed", "op", "Update", "pluginID", pluginID, "key", key, "error", err)
-		c.checkConnectionError(pluginID, err)
-		return nil, toAppError(err, pluginID)
+		return nil, c.rpcFailed(ctx, span, "Update", pluginID, key, err)
 	}
 	if result != nil && len(result.Result) > 0 {
 		c.observeResponse(pluginID, connectionID, key, input.ID, input.Namespace, result.Result)
@@ -536,10 +573,12 @@ func (c *controller) Update(pluginID, connectionID, key string, input resource.U
 	return result, nil
 }
 
-func (c *controller) Delete(pluginID, connectionID, key string, input resource.DeleteInput) (*resource.DeleteResult, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.Delete")
+func (c *controller) Delete(
+	pluginID, connectionID, key string,
+	input resource.DeleteInput,
+) (*resource.DeleteResult, error) {
+	ctx, span := startResourceSpan("resource.Delete", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -547,10 +586,7 @@ func (c *controller) Delete(pluginID, connectionID, key string, input resource.D
 	}
 	result, err := provider.Delete(ctx, key, input)
 	if err != nil {
-		telemetryutil.RecordError(span, err)
-		c.logger.Errorw(ctx, "RPC failed", "op", "Delete", "pluginID", pluginID, "key", key, "error", err)
-		c.checkConnectionError(pluginID, err)
-		return nil, toAppError(err, pluginID)
+		return nil, c.rpcFailed(ctx, span, "Delete", pluginID, key, err)
 	}
 	return result, nil
 }
@@ -651,7 +687,18 @@ func (c *controller) CheckConnection(pluginID, connectionID string) (types.Conne
 	status, err := provider.CheckConnection(ctx, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
-		c.logger.Errorw(ctx, "RPC failed", "op", "CheckConnection", "pluginID", pluginID, "connectionID", connectionID, "error", err)
+		c.logger.Errorw(
+			ctx,
+			"RPC failed",
+			"op",
+			"CheckConnection",
+			"pluginID",
+			pluginID,
+			"connectionID",
+			connectionID,
+			"error",
+			err,
+		)
 		c.checkConnectionError(pluginID, err)
 		return types.ConnectionStatus{}, toAppError(err, pluginID)
 	}
@@ -679,7 +726,7 @@ func (c *controller) LoadConnections(pluginID string) ([]types.Connection, error
 	c.connsMu.Unlock()
 
 	// Best-effort persist — only this plugin's connections.
-	if storeRoot, err := c.pluginStoreFn(pluginID); err == nil {
+	if storeRoot, storeErr := c.pluginStoreFn(pluginID); storeErr == nil {
 		c.connsMu.RLock()
 		pluginConns := make(map[string][]types.Connection, 1)
 		if pcs, ok := c.connections[pluginID]; ok {
@@ -697,7 +744,7 @@ func (c *controller) ListConnections(pluginID string) ([]types.Connection, error
 	src, ok := c.connections[pluginID]
 	if !ok {
 		c.connsMu.RUnlock()
-		return nil, apperror.New(apperror.TypeConnectionNotFound, 404,
+		return nil, apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
 			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	conns := make([]types.Connection, len(src))
@@ -740,8 +787,13 @@ func (c *controller) GetAllConnectionStates() (map[string][]ConnectionState, err
 		for _, conn := range conns {
 			cs := ConnectionState{
 				Connection:     conn,
+				Started:        false,
 				Resources:      make(map[string]resource.WatchState),
 				ResourceCounts: make(map[string]int),
+				TotalResources: 0,
+				SyncedCount:    0,
+				ErrorCount:     0,
+				LastSyncTime:   "",
 			}
 
 			// Try to get watch state; if it succeeds the connection is active.
@@ -758,6 +810,9 @@ func (c *controller) GetAllConnectionStates() (map[string][]ConnectionState, err
 						cs.SyncedCount++
 					case resource.WatchStateError, resource.WatchStateFailed:
 						cs.ErrorCount++
+					case resource.WatchStateIdle, resource.WatchStateSyncing, resource.WatchStateStopped,
+						resource.WatchStateForbidden, resource.WatchStateSkipped:
+						// Neither synced nor failed; only counted in TotalResources.
 					}
 				}
 			}
@@ -776,7 +831,7 @@ func (c *controller) GetConnection(pluginID, connectionID string) (types.Connect
 	conns, ok := c.connections[pluginID]
 	c.connsMu.RUnlock()
 	if !ok {
-		return types.Connection{}, apperror.New(apperror.TypeConnectionNotFound, 404,
+		return types.Connection{}, apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
 			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	for _, conn := range conns {
@@ -816,7 +871,7 @@ func (c *controller) UpdateConnection(pluginID string, connection types.Connecti
 	defer c.connsMu.Unlock()
 	conns, ok := c.connections[pluginID]
 	if !ok {
-		return types.Connection{}, apperror.New(apperror.TypeConnectionNotFound, 404,
+		return types.Connection{}, apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
 			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	for i, conn := range conns {
@@ -833,7 +888,7 @@ func (c *controller) RemoveConnection(pluginID, connectionID string) error {
 	defer c.connsMu.Unlock()
 	conns, ok := c.connections[pluginID]
 	if !ok {
-		return apperror.New(apperror.TypeConnectionNotFound, 404,
+		return apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
 			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	for i, conn := range conns {
@@ -858,7 +913,7 @@ func (c *controller) StartConnectionWatch(pluginID, connectionID string) error {
 		telemetryutil.RecordError(span, err)
 		return err
 	}
-	if err := provider.StartConnectionWatch(ctx, connectionID); err != nil {
+	if err = provider.StartConnectionWatch(ctx, connectionID); err != nil {
 		telemetryutil.RecordError(span, err)
 		return err
 	}
@@ -874,7 +929,7 @@ func (c *controller) StopConnectionWatch(pluginID, connectionID string) error {
 		telemetryutil.RecordError(span, err)
 		return err
 	}
-	if err := provider.StopConnectionWatch(ctx, connectionID); err != nil {
+	if err = provider.StopConnectionWatch(ctx, connectionID); err != nil {
 		telemetryutil.RecordError(span, err)
 		return err
 	}
@@ -915,13 +970,17 @@ func (c *controller) GetWatchState(pluginID, connectionID string) (*resource.Wat
 func (c *controller) EnsureResourceWatch(pluginID, connectionID, resourceKey string) error {
 	ctx, span := tracer.Start(context.Background(), "resource.EnsureResourceWatch")
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", resourceKey))
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+		attribute.String("resource_key", resourceKey),
+	)
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
 		return err
 	}
-	if err := provider.EnsureResourceWatch(ctx, connectionID, resourceKey); err != nil {
+	if err = provider.EnsureResourceWatch(ctx, connectionID, resourceKey); err != nil {
 		telemetryutil.RecordError(span, err)
 		return err
 	}
@@ -931,13 +990,17 @@ func (c *controller) EnsureResourceWatch(pluginID, connectionID, resourceKey str
 func (c *controller) StopResourceWatch(pluginID, connectionID, resourceKey string) error {
 	ctx, span := tracer.Start(context.Background(), "resource.StopResourceWatch")
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", resourceKey))
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+		attribute.String("resource_key", resourceKey),
+	)
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
 		return err
 	}
-	if err := provider.StopResourceWatch(ctx, connectionID, resourceKey); err != nil {
+	if err = provider.StopResourceWatch(ctx, connectionID, resourceKey); err != nil {
 		telemetryutil.RecordError(span, err)
 		return err
 	}
@@ -947,13 +1010,17 @@ func (c *controller) StopResourceWatch(pluginID, connectionID, resourceKey strin
 func (c *controller) RestartResourceWatch(pluginID, connectionID, resourceKey string) error {
 	ctx, span := tracer.Start(context.Background(), "resource.RestartResourceWatch")
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", resourceKey))
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+		attribute.String("resource_key", resourceKey),
+	)
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
 		return err
 	}
-	if err := provider.RestartResourceWatch(ctx, connectionID, resourceKey); err != nil {
+	if err = provider.RestartResourceWatch(ctx, connectionID, resourceKey); err != nil {
 		telemetryutil.RecordError(span, err)
 		return err
 	}
@@ -963,7 +1030,11 @@ func (c *controller) RestartResourceWatch(pluginID, connectionID, resourceKey st
 func (c *controller) IsResourceWatchRunning(pluginID, connectionID, resourceKey string) (bool, error) {
 	ctx, span := tracer.Start(context.Background(), "resource.IsResourceWatchRunning")
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", resourceKey))
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+		attribute.String("resource_key", resourceKey),
+	)
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -1108,9 +1179,8 @@ func (c *controller) GetResourceCapabilities(pluginID, key string) (*resource.Re
 }
 
 func (c *controller) GetFilterFields(pluginID, connectionID, key string) ([]resource.FilterField, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.GetFilterFields")
+	ctx, span := startResourceSpan("resource.GetFilterFields", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -1125,9 +1195,8 @@ func (c *controller) GetFilterFields(pluginID, connectionID, key string) ([]reso
 }
 
 func (c *controller) GetResourceSchema(pluginID, connectionID, key string) (json.RawMessage, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.GetResourceSchema")
+	ctx, span := startResourceSpan("resource.GetResourceSchema", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -1146,9 +1215,8 @@ func (c *controller) GetResourceSchema(pluginID, connectionID, key string) (json
 // ============================================================================
 
 func (c *controller) GetActions(pluginID, connectionID, key string) ([]resource.ActionDescriptor, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.GetActions")
+	ctx, span := startResourceSpan("resource.GetActions", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -1162,10 +1230,18 @@ func (c *controller) GetActions(pluginID, connectionID, key string) ([]resource.
 	return result, nil
 }
 
-func (c *controller) ExecuteAction(pluginID, connectionID, key, actionID string, input resource.ActionInput) (*resource.ActionResult, error) {
+func (c *controller) ExecuteAction(
+	pluginID, connectionID, key, actionID string,
+	input resource.ActionInput,
+) (*resource.ActionResult, error) {
 	ctx, span := tracer.Start(context.Background(), "resource.ExecuteAction")
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key), attribute.String("action_id", actionID))
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+		attribute.String("resource_key", key),
+		attribute.String("action_id", actionID),
+	)
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -1181,10 +1257,18 @@ func (c *controller) ExecuteAction(pluginID, connectionID, key, actionID string,
 	return result, nil
 }
 
-func (c *controller) StreamAction(pluginID, connectionID, key, actionID string, input resource.ActionInput) (string, error) {
+func (c *controller) StreamAction(
+	pluginID, connectionID, key, actionID string,
+	input resource.ActionInput,
+) (string, error) {
 	ctx, span := tracer.Start(context.Background(), "resource.StreamAction")
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key), attribute.String("action_id", actionID))
+	span.SetAttributes(
+		attribute.String("plugin_id", pluginID),
+		attribute.String("connection_id", connectionID),
+		attribute.String("resource_key", key),
+		attribute.String("action_id", actionID),
+	)
 	provider, ctx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -1192,14 +1276,14 @@ func (c *controller) StreamAction(pluginID, connectionID, key, actionID string, 
 	}
 
 	operationID := fmt.Sprintf("op_%s_%s_%d", actionID, input.ID, time.Now().UnixNano())
-	eventStream := make(chan resource.ActionEvent, 16)
+	eventStream := make(chan resource.ActionEvent, streamChannelBuffer)
 
 	go func() {
 		streamErr := provider.StreamAction(ctx, key, actionID, input, eventStream)
 		if streamErr != nil {
 			c.logger.Errorw(ctx, "RPC failed", "op", "StreamAction", "pluginID", pluginID,
 				"key", key, "actionID", actionID, "error", streamErr)
-			eventKey := fmt.Sprintf("action/stream/%s", operationID)
+			eventKey := "action/stream/" + operationID
 			c.emitter.Emit(eventKey, resource.ActionEvent{
 				Type: "error",
 				Data: map[string]interface{}{"message": streamErr.Error()},
@@ -1208,7 +1292,7 @@ func (c *controller) StreamAction(pluginID, connectionID, key, actionID string, 
 	}()
 
 	go func() {
-		eventKey := fmt.Sprintf("action/stream/%s", operationID)
+		eventKey := "action/stream/" + operationID
 		for event := range eventStream {
 			c.emitter.Emit(eventKey, event)
 		}
@@ -1259,10 +1343,11 @@ func (c *controller) GetRelationships(pluginID, key string) ([]resource.Relation
 	return result, nil
 }
 
-func (c *controller) ResolveRelationships(pluginID, connectionID, key, id, namespace string) ([]resource.ResolvedRelationship, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.ResolveRelationships")
+func (c *controller) ResolveRelationships(
+	pluginID, connectionID, key, id, namespace string,
+) ([]resource.ResolvedRelationship, error) {
+	ctx, span := startResourceSpan("resource.ResolveRelationships", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -1280,10 +1365,12 @@ func (c *controller) ResolveRelationships(pluginID, connectionID, key, id, names
 // Health
 // ============================================================================
 
-func (c *controller) GetHealth(pluginID, connectionID, key string, data json.RawMessage) (*resource.ResourceHealth, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.GetHealth")
+func (c *controller) GetHealth(
+	pluginID, connectionID, key string,
+	data json.RawMessage,
+) (*resource.ResourceHealth, error) {
+	ctx, span := startResourceSpan("resource.GetHealth", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -1297,10 +1384,12 @@ func (c *controller) GetHealth(pluginID, connectionID, key string, data json.Raw
 	return result, nil
 }
 
-func (c *controller) GetResourceEvents(pluginID, connectionID, key, id, namespace string, limit int32) ([]resource.ResourceEvent, error) {
-	ctx, span := tracer.Start(context.Background(), "resource.GetResourceEvents")
+func (c *controller) GetResourceEvents(
+	pluginID, connectionID, key, id, namespace string,
+	limit int32,
+) ([]resource.ResourceEvent, error) {
+	ctx, span := startResourceSpan("resource.GetResourceEvents", pluginID, connectionID, key)
 	defer span.End()
-	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
@@ -1325,7 +1414,13 @@ func (c *controller) GetResourceEvents(pluginID, connectionID, key, id, namespac
 // NOTE: No span wraps this method — it runs for the entire plugin lifetime.
 // The underlying gRPC stream gets its own otelgrpc span; individual watch
 // events are too high-volume to trace individually.
-func (c *controller) listenForWatchEvents(pluginID string, provider ResourceProvider, ctx context.Context, sink resource.WatchEventSink, ready chan struct{}) {
+func (c *controller) listenForWatchEvents(
+	ctx context.Context,
+	pluginID string,
+	provider ResourceProvider,
+	sink resource.WatchEventSink,
+	ready chan struct{},
+) {
 	c.logger.Infow(ctx, "watch event listener starting", "pluginID", pluginID)
 	close(ready) // Signal that we're about to call ListenForEvents
 	err := provider.ListenForEvents(ctx, sink)
@@ -1340,9 +1435,9 @@ func (c *controller) listenForWatchEvents(pluginID string, provider ResourceProv
 // NOTE: No span wraps the entire stream — it runs for the plugin lifetime.
 // Instead, each batch of received connections gets a short-lived span so
 // that connection discovery is observable without bloating Tempo.
-func (c *controller) listenForConnectionEvents(pluginID string, provider ResourceProvider, ctx context.Context) {
+func (c *controller) listenForConnectionEvents(ctx context.Context, pluginID string, provider ResourceProvider) {
 	c.logger.Infow(ctx, "connection event listener started", "pluginID", pluginID)
-	connStream := make(chan []types.Connection, 16)
+	connStream := make(chan []types.Connection, streamChannelBuffer)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -1372,7 +1467,7 @@ func (c *controller) listenForConnectionEvents(pluginID string, provider Resourc
 			c.connections[pluginID] = mergeConnections(c.connections[pluginID], conns)
 			c.connsMu.Unlock()
 
-			eventKey := fmt.Sprintf("%s/connection/sync", pluginID)
+			eventKey := pluginID + "/connection/sync"
 			c.emitter.Emit(eventKey, conns)
 			c.scheduleAutoConnect(pluginID, conns, types.ConnectionAutoConnectTriggerConnectionDiscovered)
 			span.End()
@@ -1439,7 +1534,7 @@ func (c *controller) scheduleAutoConnect(
 
 			// Start watches for the newly connected connection so resource
 			// syncing begins automatically (especially important after crash recovery).
-			if err := c.StartConnectionWatch(pluginID, conn.ID); err != nil {
+			if err = c.StartConnectionWatch(pluginID, conn.ID); err != nil {
 				c.logger.Warnw(context.Background(), "auto-connect: failed to start connection watch",
 					"pluginID", pluginID,
 					"connectionID", conn.ID,
@@ -1471,6 +1566,8 @@ func (c *controller) shouldAttemptAutoConnect(
 		if ok && prevSig == signature {
 			return false
 		}
+	case types.ConnectionAutoConnectRetryNone:
+		fallthrough
 	default:
 		if ok {
 			return false
@@ -1596,6 +1693,9 @@ func (c *controller) observeResponse(pluginID, connectionID, resourceKey, id, na
 		ResourceKey:  resourceKey,
 		ID:           id,
 		Namespace:    namespace,
+		UID:          "",
+		Labels:       nil,
+		CreatedAt:    time.Time{},
 	}
 
 	// Atomically insert only if no entry exists yet. If a watch event already
@@ -1608,7 +1708,7 @@ func (c *controller) observeResponse(pluginID, connectionID, resourceKey, id, na
 		})
 	} else {
 		c.dispatcher.Enqueue(indexer.Event{
-			Type: indexer.EventAdd, Entry: entry, Raw: rawCopy,
+			Type: indexer.EventAdd, Entry: entry, Old: nil, Raw: rawCopy,
 		})
 	}
 }

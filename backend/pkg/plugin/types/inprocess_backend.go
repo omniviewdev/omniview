@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -24,7 +25,10 @@ func NewInProcessBackend(providers map[string]interface{}) *InProcessBackend {
 		providers = make(map[string]interface{})
 	}
 	return &InProcessBackend{
-		providers: providers,
+		mu:         sync.Mutex{},
+		providers:  providers,
+		stopped:    false,
+		HealthFunc: nil,
 	}
 }
 
@@ -34,7 +38,7 @@ func (b *InProcessBackend) Dispense(name string) (interface{}, error) {
 	defer b.mu.Unlock()
 
 	if b.stopped {
-		return nil, fmt.Errorf("backend is stopped")
+		return nil, errors.New("backend is stopped")
 	}
 
 	provider, ok := b.providers[name]
@@ -66,7 +70,7 @@ func (b *InProcessBackend) Stop() error {
 
 // Kill is equivalent to Stop for in-process backends.
 func (b *InProcessBackend) Kill() {
-	b.Stop()
+	_ = b.Stop()
 }
 
 // Exited returns true if the backend has been stopped.

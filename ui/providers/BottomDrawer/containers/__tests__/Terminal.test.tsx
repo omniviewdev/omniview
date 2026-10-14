@@ -13,8 +13,12 @@ const mocks = vi.hoisted(() => {
     mockLoadAddon: vi.fn(),
     mockFocus: vi.fn(),
     mockDispose: vi.fn(),
-    mockOnResize: vi.fn((cb) => { state.onResizeCallback = cb; }),
-    mockOnData: vi.fn((cb) => { state.onDataCallback = cb; }),
+    mockOnResize: vi.fn((cb) => {
+      state.onResizeCallback = cb; 
+    }),
+    mockOnData: vi.fn((cb) => {
+      state.onDataCallback = cb; 
+    }),
     mockFit: vi.fn(),
     mockEventsOn: vi.fn(() => vi.fn()),
     mockEventsOff: vi.fn(),
@@ -52,15 +56,21 @@ vi.mock('@xterm/addon-fit', () => ({
 }));
 
 vi.mock('@xterm/addon-canvas', () => ({
-  CanvasAddon: vi.fn(function (this: any) { return { dispose: vi.fn() }; }),
+  CanvasAddon: vi.fn(function (this: any) {
+    return { dispose: vi.fn() }; 
+  }),
 }));
 
 vi.mock('@xterm/addon-webgl', () => ({
-  WebglAddon: vi.fn(function (this: any) { return { dispose: vi.fn() }; }),
+  WebglAddon: vi.fn(function (this: any) {
+    return { dispose: vi.fn() }; 
+  }),
 }));
 
 vi.mock('@xterm/addon-web-links', () => ({
-  WebLinksAddon: vi.fn(function (this: any) { return { dispose: vi.fn() }; }),
+  WebLinksAddon: vi.fn(function (this: any) {
+    return { dispose: vi.fn() }; 
+  }),
 }));
 
 // ─── runtime mocks ─────────────────────────────────────────────────────────────
@@ -105,7 +115,7 @@ vi.mock('../../events', () => ({
 }));
 
 vi.mock('@/utils/debounce', () => ({
-  debounce: (fn: Function) => fn,
+  debounce: <T,>(fn: T) => fn,
 }));
 
 vi.mock('js-base64', () => ({
@@ -246,9 +256,9 @@ describe('TerminalContainer', () => {
     const divs = container.querySelectorAll('div');
     const terminalDiv = divs[1]; // inner div with ref + background
     expect(terminalDiv).toBeTruthy();
-    expect(terminalDiv!.style.backgroundColor).toBe('rgb(30, 30, 30)');
-    expect(terminalDiv!.style.height).toBe('100%');
-    expect(terminalDiv!.style.width).toBe('100%');
+    expect(terminalDiv.style.backgroundColor).toBe('rgb(30, 30, 30)');
+    expect(terminalDiv.style.height).toBe('100%');
+    expect(terminalDiv.style.width).toBe('100%');
   });
 
   it('ResizeObserver callback triggers fit', () => {

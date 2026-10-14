@@ -3,16 +3,16 @@ import { monaco, monacoYaml } from '@/providers/monaco/bootstrap';
 /**
  * EditorSchemaEntry represents a schema registered with the registry.
  */
-export interface EditorSchemaEntry {
+export type EditorSchemaEntry = {
   resourceKey: string;
   fileMatch: string;
   uri: string;
   /** URL to fetch schema from (mutually exclusive with schema) */
   url?: string;
   /** Inline JSON schema content */
-  schema?: object;
+  schema?: Record<string, unknown>;
   language: 'yaml' | 'json';
-}
+};
 
 /**
  * SchemaRegistry collects editor schemas from all plugins/connections
@@ -22,9 +22,9 @@ export interface EditorSchemaEntry {
  * add/remove/replace per plugin+connection pair.
  */
 class SchemaRegistry {
-  private schemas = new Map<string, EditorSchemaEntry[]>();
+  private readonly schemas = new Map<string, EditorSchemaEntry[]>();
   private flushScheduled = false;
-  private lastFlushedYamlSchemas: Array<{ uri: string; fileMatch: string[]; schema?: object }> = [];
+  private lastFlushedYamlSchemas: Array<{ uri: string; fileMatch: string[]; schema?: Record<string, unknown> }> = [];
 
   /**
    * Register schemas for a plugin + connection pair.
@@ -66,6 +66,7 @@ class SchemaRegistry {
             // number[] (raw bytes)
             text = new TextDecoder().decode(new Uint8Array(s.content));
           }
+
           entry.schema = JSON.parse(text);
         } catch {
           // skip invalid schema content
@@ -102,6 +103,7 @@ class SchemaRegistry {
         changed = true;
       }
     }
+
     if (changed) {
       this.scheduleFlush();
     }
@@ -115,6 +117,7 @@ class SchemaRegistry {
     for (const [key, entries] of this.schemas) {
       result[key] = [...entries];
     }
+
     return result;
   }
 
@@ -133,18 +136,22 @@ class SchemaRegistry {
     for (const entries of this.schemas.values()) {
       count += entries.length;
     }
+
     return count;
   }
 
   /**
    * Returns the schemas last sent to monacoYaml.update().
    */
-  getLastFlushedYamlSchemas(): Array<{ uri: string; fileMatch: string[]; schema?: object }> {
+  getLastFlushedYamlSchemas(): Array<{ uri: string; fileMatch: string[]; schema?: Record<string, unknown> }> {
     return this.lastFlushedYamlSchemas;
   }
 
   private scheduleFlush(): void {
-    if (this.flushScheduled) return;
+    if (this.flushScheduled) {
+      return;
+    }
+
     this.flushScheduled = true;
     // Batch updates to avoid thrashing Monaco on rapid schema registration
     queueMicrotask(() => {
@@ -157,19 +164,19 @@ class SchemaRegistry {
     const yamlSchemas: Array<{
       uri: string;
       fileMatch: string[];
-      schema?: object;
+      schema?: Record<string, unknown>;
     }> = [];
 
     const jsonSchemas: Array<{
       uri: string;
       fileMatch: string[];
-      schema?: object;
+      schema?: Record<string, unknown>;
     }> = [];
 
     for (const entries of this.schemas.values()) {
       for (const entry of entries) {
         const schemaConfig = {
-          uri: entry.url || entry.uri,
+          uri: entry.url ?? entry.uri,
           fileMatch: [entry.fileMatch],
           ...(entry.schema ? { schema: entry.schema } : {}),
         };
@@ -186,7 +193,7 @@ class SchemaRegistry {
     this.lastFlushedYamlSchemas = yamlSchemas;
 
     // Update YAML schemas via monaco-yaml
-    monacoYaml.update({
+    void monacoYaml.update({
       enableSchemaRequest: true,
       schemas: yamlSchemas,
     });
@@ -198,7 +205,7 @@ class SchemaRegistry {
       schemas: jsonSchemas.map((s) => ({
         uri: s.uri,
         fileMatch: s.fileMatch,
-        schema: s.schema as Record<string, unknown>,
+        schema: s.schema!,
       })),
     });
   }

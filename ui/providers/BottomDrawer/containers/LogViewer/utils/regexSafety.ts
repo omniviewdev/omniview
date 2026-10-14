@@ -22,10 +22,10 @@ export const SEARCH_TIME_BUDGET_MS = 100;
 // Pattern compilation + validation
 // ---------------------------------------------------------------------------
 
-interface CompileOpts {
+type CompileOpts = {
   isRegex: boolean;
   caseSensitive: boolean;
-}
+};
 
 /**
  * Compile a user-supplied search string into a safe global RegExp.
@@ -36,7 +36,9 @@ export function compileSearchPattern(
   query: string,
   { isRegex, caseSensitive }: CompileOpts,
 ): RegExp | null {
-  if (!query) return null;
+  if (!query) {
+    return null;
+  }
 
   const flags = caseSensitive ? 'g' : 'gi';
   let pattern: RegExp;
@@ -52,7 +54,9 @@ export function compileSearchPattern(
   // Patterns that match the empty string (e.g. "foo|", ".*", "a?") would
   // produce a match at every character position — useless results and an
   // infinite exec() loop if the zero-length guard somehow fails.
-  if (pattern.test('')) return null;
+  if (pattern.test('')) {
+    return null;
+  }
 
   return pattern;
 }
@@ -65,11 +69,11 @@ function escapeRegex(str: string): string {
 // Safe search execution
 // ---------------------------------------------------------------------------
 
-export interface SafeSearchResult<T> {
+export type SafeSearchResult<T> = {
   results: T[];
   /** True when search stopped early (match cap or time budget exceeded). */
   capped: boolean;
-}
+};
 
 /**
  * Run a global regex across lines `[startIndex, endIndex)` with built-in safety limits.
@@ -105,7 +109,9 @@ export function execSafeSearchRange<T>(
     let m: RegExpExecArray | null;
     while ((m = pattern.exec(line)) !== null) {
       // Zero-length match → break to prevent infinite loop
-      if (m[0].length === 0) break;
+      if (m[0].length === 0) {
+        break;
+      }
 
       results.push(onMatch(i, m.index, m.index + m[0].length));
 

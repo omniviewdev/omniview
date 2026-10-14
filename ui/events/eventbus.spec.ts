@@ -158,8 +158,8 @@ describe('eventbus', () => {
     const bus = eventbus<{
       'on-event-1': () => void;
     }>({
-          onError,
-        });
+      onError,
+    });
 
     const handler1 = vi.fn();
     const handler2 = vi.fn().mockImplementation(() => {

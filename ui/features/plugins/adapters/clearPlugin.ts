@@ -1,4 +1,4 @@
-import { SystemJS } from '../api/systemjs';
+import { systemJs } from '../api/systemjs';
 
 /**
  * Production clear adapter.
@@ -16,6 +16,7 @@ export async function clearPlugin(opts: {
     // Dev-mode modules loaded via native ESM; nothing to clear from SystemJS.
     return;
   }
+
   const modulePath = `${window.location.protocol}//${window.location.host}/_/plugins/${opts.pluginId}/assets/entry.js`;
-  SystemJS.delete(modulePath);
+  systemJs.delete(modulePath);
 }

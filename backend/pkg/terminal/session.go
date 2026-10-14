@@ -1,21 +1,8 @@
 package terminal
 
-import (
-	"context"
-	"os"
-	"os/exec"
-)
-
 // Session represents an individual terminal session.
 type Session struct {
-	cmd      *exec.Cmd          // The command being run in this session.
-	ptyFile  *os.File           // File descriptor for the pseudo-terminal device.
-	buffer   *OutputBuffer      // Stores session output for retrieval upon reattachment.
-	labels   map[string]string  // Labels for the session.
-	ctx      context.Context    // Context to control the lifetime of the session.
-	cancel   context.CancelFunc // Function to cancel the context, terminating the session.
-	ID       string
-	attached bool // Indicates if the session is currently broadcasting output.
+	ID string
 }
 
 // SessionOptions contains options for creating a new terminal session.

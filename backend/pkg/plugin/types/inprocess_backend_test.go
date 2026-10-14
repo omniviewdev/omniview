@@ -21,7 +21,7 @@ func TestInProcessBackend_Dispense_NotFound(t *testing.T) {
 	b := NewInProcessBackend(map[string]interface{}{})
 
 	_, err := b.Dispense("nonexistent")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no provider registered")
 }
 
@@ -32,7 +32,7 @@ func TestInProcessBackend_Dispense_Stopped(t *testing.T) {
 	require.NoError(t, b.Stop())
 
 	_, err := b.Dispense("resource")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "stopped")
 }
 
@@ -74,7 +74,7 @@ func TestInProcessBackend_Exited(t *testing.T) {
 	b := NewInProcessBackend(nil)
 	assert.False(t, b.Exited())
 
-	b.Stop()
+	require.NoError(t, b.Stop())
 	assert.True(t, b.Exited())
 }
 

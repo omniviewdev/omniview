@@ -52,7 +52,7 @@ func TestGetHealth_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	health, err := ctrl.GetHealth("p1", "conn-1", "core::v1::Pod", nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, health)
 	assert.Contains(t, err.Error(), "health check failed")
 }
@@ -61,7 +61,7 @@ func TestGetHealth_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	health, err := ctrl.GetHealth("nonexistent", "conn-1", "pods", nil)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Nil(t, health)
 }
@@ -73,7 +73,11 @@ func TestGetHealth_PluginNotFound(t *testing.T) {
 func TestGetResourceEvents_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetResourceEventsFunc: func(_ context.Context, connID, key, id, ns string, limit int32) ([]resource.ResourceEvent, error) {
+		GetResourceEventsFunc: func(
+			_ context.Context,
+			connID, key, id, ns string,
+			limit int32,
+		) ([]resource.ResourceEvent, error) {
 			assert.Equal(t, "conn-1", connID)
 			assert.Equal(t, "core::v1::Pod", key)
 			assert.Equal(t, "my-pod", id)
@@ -122,7 +126,7 @@ func TestGetResourceEvents_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.GetResourceEvents("p1", "conn-1", "core::v1::Pod", "my-pod", "default", 10)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "events unavailable")
 }
 
@@ -130,6 +134,6 @@ func TestGetResourceEvents_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.GetResourceEvents("nonexistent", "conn-1", "pods", "pod-1", "default", 10)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }

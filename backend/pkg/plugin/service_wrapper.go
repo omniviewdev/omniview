@@ -1,10 +1,9 @@
 package plugin
 
 import (
+	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 )
 
 // ServiceWrapper exposes only the frontend-safe methods of plugin.Manager.

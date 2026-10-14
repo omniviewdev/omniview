@@ -5,11 +5,11 @@ import PluginRenderer from '../components/PluginRenderer';
 import PluginNotFoundPage from '../components/PluginNotFoundPage';
 import { RouterErrorBoundary } from '@/features/router/components/ErrorBoundary';
 
-export interface UsePluginRoutesResult {
+export type UsePluginRoutesResult = {
   readonly ready: boolean;
   readonly routeVersion: number;
   readonly routes: RouteObject[];
-}
+};
 
 /**
  * Recursively normalizes a plugin's route tree so it can be safely nested
@@ -27,6 +27,7 @@ function normalizePluginRoutes(routes: RouteObject[]): RouteObject[] {
     if (route.children) {
       normalized.children = normalizePluginRoutes(route.children);
     }
+
     return normalized;
   });
 }
@@ -58,6 +59,7 @@ export function usePluginRoutes(): UsePluginRoutesResult {
         children: [...normalizePluginRoutes(reg.routes), notFoundRoute],
       });
     }
+
     return wrappedRoutes;
   }, [routeVersion]);
 

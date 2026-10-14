@@ -13,12 +13,11 @@
 let _ready: Promise<void> | null = null;
 
 export async function ensureDevSharedDeps(): Promise<void> {
-  if (!_ready) {
-    _ready = (async () => {
-      const { exportSharedDepsForDev } = await import('../api/devSharedExporter');
-      await exportSharedDepsForDev();
-    })();
-  }
+  _ready ??= (async () => {
+    const { exportSharedDepsForDev } = await import('../api/devSharedExporter');
+    await exportSharedDepsForDev();
+  })();
+
   return _ready;
 }
 

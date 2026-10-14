@@ -33,6 +33,15 @@ type ReconcileResult struct {
 	Ghosts []string
 }
 
+// newReconcileResult returns an empty result with no orphans or ghosts.
+func newReconcileResult() *ReconcileResult {
+	return &ReconcileResult{
+		Records: make(map[string]*plugintypes.PluginRecord),
+		Orphans: nil,
+		Ghosts:  nil,
+	}
+}
+
 // Reconcile compares the filesystem with persisted state and produces
 // a consistent set of plugin records.
 func (r *Reconciler) Reconcile(
@@ -40,9 +49,7 @@ func (r *Reconciler) Reconcile(
 	pluginDir string,
 	persistedStates []plugintypes.PluginStateRecord,
 ) (*ReconcileResult, error) {
-	result := &ReconcileResult{
-		Records: make(map[string]*plugintypes.PluginRecord),
-	}
+	result := newReconcileResult()
 
 	// Build a lookup from persisted state.
 	stateByID := make(map[string]plugintypes.PluginStateRecord)
@@ -89,8 +96,11 @@ func (r *Reconciler) Reconcile(
 				LastError:   state.LastError,
 				ErrorCount:  state.ErrorCount,
 				InstalledAt: state.InstalledAt,
+				Backend:     nil,
 				StateMachine: lifecycle.NewPluginStateMachine(id,
 					r.determineInitialPhase(state, location)),
+				Capabilities:    nil,
+				ProtocolVersion: 0,
 			}
 			result.Records[id] = record
 		} else {
@@ -150,16 +160,12 @@ func (r *Reconciler) ReconcileFromFilesystem(
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &ReconcileResult{
-				Records: make(map[string]*plugintypes.PluginRecord),
-			}, nil
+			return newReconcileResult(), nil
 		}
 		return nil, err
 	}
 
-	result := &ReconcileResult{
-		Records: make(map[string]*plugintypes.PluginRecord),
-	}
+	result := newReconcileResult()
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -178,7 +184,7 @@ func (r *Reconciler) ReconcileFromFilesystem(
 
 		phase := lifecycle.PhaseInstalled
 		if meta.HasBackendCapabilities() {
-			if err := validateHasBinary(location); err != nil {
+			if binErr := validateHasBinary(location); binErr != nil {
 				phase = lifecycle.PhaseFailed
 			}
 		}

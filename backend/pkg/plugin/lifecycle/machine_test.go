@@ -40,7 +40,7 @@ func TestTransitionTo_Invalid(t *testing.T) {
 	sm := NewPluginStateMachine("test-plugin", PhaseInstalled)
 
 	err := sm.TransitionTo(PhaseRunning, "skip ahead")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid transition")
 	// Phase should not have changed.
 	assert.Equal(t, PhaseInstalled, sm.Phase())

@@ -1,6 +1,15 @@
 'use strict';
 
-const getNamingConventionRule = ({ isTsx }) => ({
+// Names that are not plain identifiers have their shape set by something else:
+// HTTP headers (`Retry-After`), Monaco theme tokens (`editor.foreground`),
+// resource keys (`core::v1::Pod`), OTel attributes (`service.name`), module
+// specifiers (`@omniviewdev/runtime`), regex lookup tables. Skip them.
+const identifierOnly = {
+  regex: '[^A-Za-z0-9_$]|^[0-9]',
+  match: false,
+};
+
+const namingConventionRule = {
   '@typescript-eslint/naming-convention': [
     'error',
     {
@@ -11,23 +20,28 @@ const getNamingConventionRule = ({ isTsx }) => ({
         'variable',
         'function',
         'classProperty',
-        'objectLiteralProperty',
         'parameterProperty',
         'classMethod',
         'objectLiteralMethod',
         'typeMethod',
         'accessor',
       ],
-      format: ['camelCase', 'UPPER_CASE', isTsx && 'StrictPascalCase'].filter(Boolean),
+      // StrictPascalCase covers React components and contexts, which also
+      // live in .ts files.
+      format: ['camelCase', 'UPPER_CASE', 'StrictPascalCase'],
       // We allow double underscore because of GraphQL type names and some React names.
       leadingUnderscore: 'allowSingleOrDouble',
       trailingUnderscore: 'allow',
-      // Ignore `{'Retry-After': retryAfter}` type properties.
-      // also include things that are numbers
-      filter: {
-        regex: '[- ]|^[0-9]|^&|^:',
-        match: false,
-      },
+      filter: identifierOnly,
+    },
+    {
+      // Object literals also build wire payloads for the Go backend, whose
+      // JSON fields are snake_case (`resource_key`, `tail_lines`).
+      selector: 'objectLiteralProperty',
+      format: ['camelCase', 'UPPER_CASE', 'StrictPascalCase', 'snake_case'],
+      leadingUnderscore: 'allowSingleOrDouble',
+      trailingUnderscore: 'allow',
+      filter: identifierOnly,
     },
     {
       selector: 'typeLike',
@@ -46,26 +60,21 @@ const getNamingConventionRule = ({ isTsx }) => ({
       format: ['StrictPascalCase'],
     },
     {
-      // Type parameter name should either be `T` or a descriptive name.
+      // Type parameter name should either be `T` or a descriptive name
+      // (`TValue`, `TContext`).
       selector: 'typeParameter',
       filter: /^T$|^[A-Z][a-zA-Z]+$/.source,
-      format: ['StrictPascalCase'],
-    },
-    // Allow these in non-camel-case when quoted.
-    {
-      selector: ['classProperty', 'objectLiteralProperty'],
-      format: null,
-      modifiers: ['requiresQuotes'],
+      format: ['PascalCase'],
     },
   ],
-});
+};
 
 module.exports = {
   parser: require.resolve('@typescript-eslint/parser'),
   parserOptions: {
     warnOnUnsupportedTypeScriptVersion: false,
     sourceType: 'module',
-    project: 'tsconfig.app.json',
+    project: ['tsconfig.app.json', 'tsconfig.test.json'],
     ecmaFeatures: {
       jsx: true,
     },
@@ -347,7 +356,7 @@ module.exports = {
     // - https://github.com/typescript-eslint/typescript-eslint/issues/1485
     // - https://github.com/typescript-eslint/typescript-eslint/issues/1484
     // TODO: Prevent `_` prefix on private fields when TypeScript 3.8 is out.
-    ...getNamingConventionRule({ isTsx: false }),
+    ...namingConventionRule,
     '@typescript-eslint/no-base-to-string': 'error',
     'no-array-constructor': 'off',
     '@typescript-eslint/no-array-constructor': 'error',
@@ -718,12 +727,6 @@ module.exports = {
       rules: {
         '@typescript-eslint/no-unsafe-call': 'off',
         '@typescript-eslint/no-confusing-void-expression': 'off', // Conflicts with `expectError` assertion.
-      },
-    },
-    {
-      files: ['**/*.tsx'],
-      rules: {
-        ...getNamingConventionRule({ isTsx: true }),
       },
     },
   ],

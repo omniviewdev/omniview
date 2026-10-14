@@ -108,9 +108,11 @@ func NewManager(
 	telemetryConfigFn func() TelemetryEnvConfig,
 ) Manager {
 	return &pluginManager{
+		ctx:         nil, // set by Initialize or Run
 		logger:      logger,
 		stateRoot:   stateRoot,
 		pluginsRoot: pluginsRoot,
+		recordsMu:   sync.RWMutex{},
 		records:     make(map[string]*plugintypes.PluginRecord),
 		connlessControllers: map[sdktypes.Capability]plugintypes.Controller{
 			sdktypes.CapabilitySettings:  settingsController,
@@ -125,9 +127,15 @@ func NewManager(
 		managers:          managers,
 		settingsProvider:  settingsProvider,
 		registryClient:    registryClient,
+		devServerCheck:    nil, // set by SetDevServerChecker
+		devServerMgr:      nil, // set by SetDevServerManager
+		pidTracker:        NewPIDTracker(stateRoot),
+		healthChecker:     nil, // set by Run
+		pluginLogMgr:      nil, // set by SetPluginLogManager
+		backendFactory:    nil, // tests only
 		telemetryConfigFn: telemetryConfigFn,
 		emitter:           resource.NoopEmitter{},
-		pidTracker:        NewPluginPIDTracker(stateRoot),
+		pluginOpsMu:       sync.Mutex{},
 		pluginOpsLocks:    make(map[string]*sync.Mutex),
 	}
 }
@@ -153,7 +161,7 @@ type pluginManager struct {
 	managers            map[string]plugintypes.PluginManager
 	devServerCheck      DevServerChecker
 	devServerMgr        *devserver.DevServerManager
-	pidTracker          *PluginPIDTracker
+	pidTracker          *PIDTracker
 	healthChecker       *HealthChecker
 	pluginLogMgr        *pluginlog.Manager
 	backendFactory      func(meta config.PluginMeta, location string) (plugintypes.PluginBackend, error)
@@ -192,6 +200,9 @@ func (pm *pluginManager) Run(ctx context.Context) {
 	go pm.healthChecker.Start(ctx)
 }
 
+// crashContextLogLines is how many recent log lines are captured for crash diagnostics.
+const crashContextLogLines = 20
+
 // HandlePluginCrash handles a plugin process crash with exponential backoff recovery.
 func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	// Capture the last few log entries before the crash for diagnostics.
@@ -200,7 +211,7 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	var crashContext []string
 	var crashError string
 	if pm.pluginLogMgr != nil {
-		recent := pm.pluginLogMgr.GetLogs(pluginID, 20)
+		recent := pm.pluginLogMgr.GetLogs(pluginID, crashContextLogLines)
 		for _, entry := range recent {
 			sanitized := sanitizeLogMessage(entry.Message)
 			line := fmt.Sprintf("[%s] %s %s", entry.Level, entry.Timestamp, sanitized)
@@ -234,8 +245,8 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	inCrashCycle := pm.healthChecker != nil && pm.healthChecker.IsInCrashCycle(pluginID)
 	if !inCrashCycle {
 		pm.emitter.Emit("plugin/crash", map[string]interface{}{
-			"pluginID": pluginID,
-			"error":    crashError,
+			payloadKeyPluginID: pluginID,
+			payloadKeyError:    crashError,
 		})
 	}
 
@@ -267,13 +278,13 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	if _, err := pm.ReloadPlugin(pluginID); err != nil {
 		pm.logger.Errorw(pm.ctx, "plugin crash recovery failed", "pluginID", pluginID, "error", err)
 		pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
-			"pluginID": pluginID,
-			"error":    err.Error(),
+			payloadKeyPluginID: pluginID,
+			payloadKeyError:    err.Error(),
 		})
 		return
 	}
 	pm.logger.Infow(pm.ctx, "plugin recovered after crash", "pluginID", pluginID)
-	pm.emitter.Emit(EventRecovered, map[string]interface{}{"pluginID": pluginID})
+	pm.emitter.Emit(EventRecovered, map[string]interface{}{payloadKeyPluginID: pluginID})
 }
 
 // registerStateObserver adds an observer to a plugin's state machine that
@@ -294,7 +305,9 @@ func (pm *pluginManager) Shutdown() {
 	pm.recordsMu.RUnlock()
 
 	for id, record := range snapshot {
-		pm.shutdownPlugin(id, record)
+		if err := pm.shutdownPlugin(id, record); err != nil {
+			pm.logger.Warnw(pm.ctx, "failed to shut down plugin", "pluginID", id, "error", err)
+		}
 	}
 
 	if err := pm.pidTracker.Save(); err != nil {
@@ -342,27 +355,135 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	states, err := pm.readPluginStateJSON()
 	if err != nil {
 		pm.logger.Warnw(pm.ctx, "failed to read plugin state file, reconciling from filesystem", "error", err)
-		reconciler := NewReconciler(pm.logger)
-		result, reconErr := reconciler.ReconcileFromFilesystem(pm.ctx, pluginDir)
-		if reconErr != nil {
-			pm.logger.Errorw(pm.ctx, "filesystem reconciliation failed", "error", reconErr)
-		} else {
-			states = make([]plugintypes.PluginStateRecord, 0, len(result.Records))
-			for _, r := range result.Records {
-				states = append(states, r.ToStateRecord())
-			}
-			pm.logger.Infow(pm.ctx, "recovered plugin state from filesystem", "count", len(states))
-		}
+		states = pm.reconcileStatesFromFilesystem(pluginDir, states)
 	}
 
 	pm.logger.Debugw(pm.ctx, "Loading plugins states from disk", "states", states)
 
-	files, err := os.ReadDir(pluginDir)
-	if err != nil {
+	if _, err = os.ReadDir(pluginDir); err != nil {
 		return fmt.Errorf("error reading plugin directory: %w", err)
 	}
 
 	// Reverse migration: rename <id>-dev → <id> if needed.
+	pm.migrateDevPluginDirs(states)
+
+	// Re-read directory after potential renames so subsequent code sees migrated names.
+	files, err := os.ReadDir(pluginDir)
+	if err != nil {
+		return fmt.Errorf("error re-reading plugin directory after migration: %w", err)
+	}
+
+	// Phase 1: Load all plugins using existing binaries on disk.
+	toLoad, devPlugins := pm.planPluginLoads(files, states)
+
+	// Second pass: load plugins concurrently with a bounded worker pool.
+	pm.loadPluginsConcurrently(toLoad)
+
+	// Phase 2: Start dev servers in the background.
+	if len(devPlugins) > 0 && pm.devServerMgr != nil {
+		go pm.startDevServers(devPlugins)
+	}
+
+	// Merge loaded plugin state with persisted state so that plugins which
+	// failed to load this time (e.g. missing binary) are not lost.
+	if err = pm.mergeAndWritePluginState(states); err != nil {
+		pm.logger.Errorw(pm.ctx, "failed to merge and persist plugin state", "error", err)
+	}
+
+	pm.emitter.Emit(EventInitComplete)
+
+	return nil
+}
+
+// devPluginEntry is a dev-mode plugin whose dev server Initialize starts.
+type devPluginEntry struct {
+	pluginID string
+	devPath  string
+}
+
+// pluginLoadEntry is a plugin Initialize loads, with its load options.
+type pluginLoadEntry struct {
+	pluginID string
+	opts     *LoadPluginOptions
+}
+
+// planPluginLoads decides, for each plugin directory in files, whether and how
+// to load it, using the persisted states. It returns the plugins to load and
+// the dev-mode plugins whose dev servers should be started. Dev plugins whose
+// binary is missing get a stub record and are not loaded.
+func (pm *pluginManager) planPluginLoads(
+	files []os.DirEntry,
+	states []plugintypes.PluginStateRecord,
+) ([]pluginLoadEntry, []devPluginEntry) {
+	// Build a lookup for persisted state.
+	stateByID := make(map[string]plugintypes.PluginStateRecord)
+	for _, s := range states {
+		stateByID[s.ID] = s
+	}
+
+	var devPlugins []devPluginEntry
+
+	// First pass: collect dev plugin entries and stub records (lightweight, sequential).
+	// Also build a list of plugins that need LoadPlugin called.
+	var toLoad []pluginLoadEntry
+
+	for _, file := range files {
+		if !file.IsDir() {
+			continue
+		}
+
+		var opts *LoadPluginOptions
+		if state, ok := stateByID[file.Name()]; ok {
+			opts = &LoadPluginOptions{
+				DevMode:       false,
+				DevModePath:   "",
+				ExistingState: &state,
+			}
+			if state.DevMode && state.DevPath != "" {
+				devPlugins = append(devPlugins, devPluginEntry{
+					pluginID: state.ID,
+					devPath:  state.DevPath,
+				})
+
+				// If the dev binary doesn't exist (and the plugin has a backend;
+				// UI-only plugins never have one), create a stub record
+				// and skip LoadPlugin. Phase 2 will start the dev server,
+				// build the binary, and call ReloadPlugin.
+				if pm.stubMissingDevBinary(file.Name(), state) {
+					continue
+				}
+			}
+		}
+
+		toLoad = append(toLoad, pluginLoadEntry{pluginID: file.Name(), opts: opts})
+	}
+
+	return toLoad, devPlugins
+}
+
+// reconcileStatesFromFilesystem rebuilds plugin state records from the plugin
+// directory. If reconciliation fails, states is returned unchanged.
+func (pm *pluginManager) reconcileStatesFromFilesystem(
+	pluginDir string,
+	states []plugintypes.PluginStateRecord,
+) []plugintypes.PluginStateRecord {
+	reconciler := NewReconciler(pm.logger)
+	result, reconErr := reconciler.ReconcileFromFilesystem(pm.ctx, pluginDir)
+	if reconErr != nil {
+		pm.logger.Errorw(pm.ctx, "filesystem reconciliation failed", "error", reconErr)
+		return states
+	}
+	states = make([]plugintypes.PluginStateRecord, 0, len(result.Records))
+	for _, r := range result.Records {
+		states = append(states, r.ToStateRecord())
+	}
+	pm.logger.Infow(pm.ctx, "recovered plugin state from filesystem", "count", len(states))
+	return states
+}
+
+// migrateDevPluginDirs renames <id>-dev plugin directories to <id> when only
+// the dev directory exists.
+func (pm *pluginManager) migrateDevPluginDirs(states []plugintypes.PluginStateRecord) {
 	for _, state := range states {
 		devName := state.ID + "-dev"
 
@@ -384,81 +505,40 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 			}
 		}
 	}
+}
 
-	// Re-read directory after potential renames so subsequent code sees migrated names.
-	files, err = os.ReadDir(pluginDir)
-	if err != nil {
-		return fmt.Errorf("error re-reading plugin directory after migration: %w", err)
+// stubMissingDevBinary handles a dev-mode backend plugin whose binary has not
+// been built yet: it stores a build-failed stub record (when the metadata is
+// readable) and reports true so the caller skips LoadPlugin. It reports false
+// when the binary exists or the plugin has no backend.
+func (pm *pluginManager) stubMissingDevBinary(name string, state plugintypes.PluginStateRecord) bool {
+	pluginLocation := pm.pluginsRoot.ResolvePath(name)
+	binPath := filepath.Join(pluginLocation, "bin", "plugin")
+	if _, statErr := os.Stat(binPath); !os.IsNotExist(statErr) || !state.Metadata.HasBackendCapabilities() {
+		return false
 	}
 
-	// Build a lookup for persisted state.
-	stateByID := make(map[string]plugintypes.PluginStateRecord)
-	for _, s := range states {
-		stateByID[s.ID] = s
+	meta, metaErr := sdktypes.LoadPluginMetadata(pluginLocation)
+	if metaErr != nil {
+		pm.logger.Warnw(pm.ctx, "dev plugin binary missing and metadata unreadable",
+			"pluginID", name, "error", metaErr)
+		return true
 	}
+	record := plugintypes.NewPluginRecord(name, meta, lifecycle.PhaseBuildFailed)
+	record.Enabled = state.Enabled
+	record.DevMode = true
+	record.DevPath = state.DevPath
+	pm.recordsMu.Lock()
+	pm.records[name] = record
+	pm.recordsMu.Unlock()
+	pm.logger.Infow(pm.ctx, "dev plugin binary missing, deferring to dev server",
+		"pluginID", name)
+	return true
+}
 
-	// Phase 1: Load all plugins using existing binaries on disk.
-	type devEntry struct {
-		pluginID string
-		devPath  string
-	}
-	var devPlugins []devEntry
-
-	// First pass: collect dev plugin entries and stub records (lightweight, sequential).
-	// Also build a list of plugins that need LoadPlugin called.
-	type loadEntry struct {
-		pluginID string
-		opts     *LoadPluginOptions
-	}
-	var toLoad []loadEntry
-
-	for _, file := range files {
-		if !file.IsDir() {
-			continue
-		}
-
-		var opts *LoadPluginOptions
-		if state, ok := stateByID[file.Name()]; ok {
-			opts = &LoadPluginOptions{
-				ExistingState: &state,
-			}
-			if state.DevMode && state.DevPath != "" {
-				devPlugins = append(devPlugins, devEntry{
-					pluginID: state.ID,
-					devPath:  state.DevPath,
-				})
-
-				// If the dev binary doesn't exist (and the plugin has a backend;
-				// UI-only plugins never have one), create a stub record
-				// and skip LoadPlugin. Phase 2 will start the dev server,
-				// build the binary, and call ReloadPlugin.
-				pluginLocation := pm.pluginsRoot.ResolvePath(file.Name())
-				binPath := filepath.Join(pluginLocation, "bin", "plugin")
-				if _, statErr := os.Stat(binPath); os.IsNotExist(statErr) && state.Metadata.HasBackendCapabilities() {
-					meta, metaErr := sdktypes.LoadPluginMetadata(pluginLocation)
-					if metaErr == nil {
-						record := plugintypes.NewPluginRecord(file.Name(), meta, lifecycle.PhaseBuildFailed)
-						record.Enabled = state.Enabled
-						record.DevMode = true
-						record.DevPath = state.DevPath
-						pm.recordsMu.Lock()
-						pm.records[file.Name()] = record
-						pm.recordsMu.Unlock()
-						pm.logger.Infow(pm.ctx, "dev plugin binary missing, deferring to dev server",
-							"pluginID", file.Name())
-					} else {
-						pm.logger.Warnw(pm.ctx, "dev plugin binary missing and metadata unreadable",
-							"pluginID", file.Name(), "error", metaErr)
-					}
-					continue
-				}
-			}
-		}
-
-		toLoad = append(toLoad, loadEntry{pluginID: file.Name(), opts: opts})
-	}
-
-	// Second pass: load plugins concurrently with a bounded worker pool.
+// loadPluginsConcurrently loads the given plugins with a bounded worker pool
+// and waits for all of them.
+func (pm *pluginManager) loadPluginsConcurrently(toLoad []pluginLoadEntry) {
 	const maxConcurrentLoads = 4
 	sem := make(chan struct{}, maxConcurrentLoads)
 	var loadWg sync.WaitGroup
@@ -475,35 +555,23 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 		}(entry.pluginID, entry.opts)
 	}
 	loadWg.Wait()
+}
 
-	// Phase 2: Start dev servers in the background.
-	if len(devPlugins) > 0 && pm.devServerMgr != nil {
-		go func() {
-			var wg sync.WaitGroup
-			for _, dp := range devPlugins {
-				wg.Add(1)
-				go func(pluginID, devPath string) {
-					defer wg.Done()
-					pm.logger.Infow(pm.ctx, "starting dev server (background)", "pluginID", pluginID)
-					if _, startErr := pm.devServerMgr.StartDevServerForPath(pluginID, devPath); startErr != nil {
-						pm.logger.Warnw(pm.ctx, "failed to start dev server", "pluginID", pluginID, "error", startErr)
-					}
-				}(dp.pluginID, dp.devPath)
+// startDevServers starts the dev servers for devPlugins concurrently and waits for them.
+func (pm *pluginManager) startDevServers(devPlugins []devPluginEntry) {
+	var wg sync.WaitGroup
+	for _, dp := range devPlugins {
+		wg.Add(1)
+		go func(pluginID, devPath string) {
+			defer wg.Done()
+			pm.logger.Infow(pm.ctx, "starting dev server (background)", "pluginID", pluginID)
+			if _, startErr := pm.devServerMgr.StartDevServerForPath(pluginID, devPath); startErr != nil {
+				pm.logger.Warnw(pm.ctx, "failed to start dev server", "pluginID", pluginID, "error", startErr)
 			}
-			wg.Wait()
-			pm.logger.Infow(pm.ctx, "all dev servers started")
-		}()
+		}(dp.pluginID, dp.devPath)
 	}
-
-	// Merge loaded plugin state with persisted state so that plugins which
-	// failed to load this time (e.g. missing binary) are not lost.
-	if err = pm.mergeAndWritePluginState(states); err != nil {
-		pm.logger.Errorw(pm.ctx, "failed to merge and persist plugin state", "error", err)
-	}
-
-	pm.emitter.Emit(EventInitComplete)
-
-	return nil
+	wg.Wait()
+	pm.logger.Infow(pm.ctx, "all dev servers started")
 }
 
 // GetPlugin returns the plugin with the given ID.
@@ -564,9 +632,9 @@ func (pm *pluginManager) syncRegistryURL() {
 
 	// Allow overriding the default registry public key via settings.
 	// If the setting is empty, the compiled-in default is used.
-	if key, err := pm.settingsProvider.GetString("developer.registry_public_key"); err == nil && key != "" {
-		if err := regclient.SetPublicKey(key); err != nil {
-			pm.logger.Warnw(pm.ctx, "invalid registry public key in settings, using default", "error", err)
+	if key, keyErr := pm.settingsProvider.GetString("developer.registry_public_key"); keyErr == nil && key != "" {
+		if setErr := regclient.SetPublicKey(key); setErr != nil {
+			pm.logger.Warnw(pm.ctx, "invalid registry public key in settings, using default", "error", setErr)
 		}
 	}
 }

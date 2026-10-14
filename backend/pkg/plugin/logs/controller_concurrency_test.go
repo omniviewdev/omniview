@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -13,7 +14,7 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 )
 
-// stubLogsProvider is a minimal LogsProvider for concurrency tests.
+// stubLogsProvider is a minimal Provider for concurrency tests.
 type stubLogsProvider struct{}
 
 func (s *stubLogsProvider) GetSupportedResources(_ *sdktypes.PluginContext) []logs.Handler {
@@ -22,7 +23,10 @@ func (s *stubLogsProvider) GetSupportedResources(_ *sdktypes.PluginContext) []lo
 func (s *stubLogsProvider) Stream(_ context.Context, _ chan logs.StreamInput) (chan logs.StreamOutput, error) {
 	return make(chan logs.StreamOutput), nil
 }
-func (s *stubLogsProvider) CreateSession(_ *sdktypes.PluginContext, _ logs.CreateSessionOptions) (*logs.LogSession, error) {
+func (s *stubLogsProvider) CreateSession(
+	_ *sdktypes.PluginContext,
+	_ logs.CreateSessionOptions,
+) (*logs.LogSession, error) {
 	return &logs.LogSession{ID: "test"}, nil
 }
 func (s *stubLogsProvider) GetSession(_ *sdktypes.PluginContext, _ string) (*logs.LogSession, error) {
@@ -32,18 +36,22 @@ func (s *stubLogsProvider) ListSessions(_ *sdktypes.PluginContext) ([]*logs.LogS
 	return nil, nil
 }
 func (s *stubLogsProvider) CloseSession(_ *sdktypes.PluginContext, _ string) error { return nil }
-func (s *stubLogsProvider) UpdateSessionOptions(_ *sdktypes.PluginContext, _ string, _ logs.LogSessionOptions) (*logs.LogSession, error) {
+func (s *stubLogsProvider) UpdateSessionOptions(
+	_ *sdktypes.PluginContext,
+	_ string,
+	_ logs.LogSessionOptions,
+) (*logs.LogSession, error) {
 	return nil, nil
 }
 
 // TestController_ConcurrentMapAccess verifies that concurrent reads and writes
 // to the controller's internal maps do not cause a race or panic.
-// Run with: go test -race -run TestController_ConcurrentMapAccess
+// Run with: go test -race -run TestController_ConcurrentMapAccess.
 func TestController_ConcurrentMapAccess(t *testing.T) {
 	ctrl := &controller{
 		ctx:          context.Background(),
 		logger:       logging.NewNop(),
-		clients:      make(map[string]LogsProvider),
+		clients:      make(map[string]Provider),
 		sessionIndex: make(map[string]sessionIndex),
 		inChans:      make(map[string]chan logs.StreamInput),
 		outputMux:    make(chan logs.StreamOutput, 256),
@@ -51,11 +59,11 @@ func TestController_ConcurrentMapAccess(t *testing.T) {
 		batches:      make(map[string]*logBatch),
 	}
 
-	const N = 20
+	const n = 20
 	var wg sync.WaitGroup
 
 	// Concurrent writers: simulate OnPluginStart/Stop
-	for i := range N {
+	for i := range n {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -68,7 +76,7 @@ func TestController_ConcurrentMapAccess(t *testing.T) {
 			ctrl.mu.Unlock()
 
 			// Read
-			ctrl.ListPlugins()
+			_, _ = ctrl.ListPlugins()
 			ctrl.HasPlugin(pluginID)
 			ctrl.GetSupportedResources(pluginID)
 
@@ -84,11 +92,11 @@ func TestController_ConcurrentMapAccess(t *testing.T) {
 	}
 
 	// Concurrent readers
-	for range N {
+	for range n {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctrl.ListPlugins()
+			_, _ = ctrl.ListPlugins()
 			ctrl.HasPlugin("nonexistent")
 			ctrl.GetSupportedResources("nonexistent")
 		}()
@@ -98,17 +106,17 @@ func TestController_ConcurrentMapAccess(t *testing.T) {
 
 	// Verify the controller is still usable
 	plugins, err := ctrl.ListPlugins()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, plugins)
 }
 
 // TestController_ConcurrentSessionIndex verifies that concurrent writes to
 // sessionIndex do not race.
-func TestController_ConcurrentSessionIndex(t *testing.T) {
+func TestController_ConcurrentSessionIndex(_ *testing.T) {
 	ctrl := &controller{
 		ctx:          context.Background(),
 		logger:       logging.NewNop(),
-		clients:      make(map[string]LogsProvider),
+		clients:      make(map[string]Provider),
 		sessionIndex: make(map[string]sessionIndex),
 		inChans:      make(map[string]chan logs.StreamInput),
 		outputMux:    make(chan logs.StreamOutput, 256),
@@ -119,10 +127,10 @@ func TestController_ConcurrentSessionIndex(t *testing.T) {
 	meta := config.PluginMeta{ID: "test"}
 	_ = meta
 
-	const N = 20
+	const n = 20
 	var wg sync.WaitGroup
 
-	for i := range N {
+	for i := range n {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()

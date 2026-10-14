@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,6 +15,17 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+)
+
+const (
+	// externalWatcherStopTimeout bounds how long Stop waits for run() to exit.
+	externalWatcherStopTimeout = 5 * time.Second
+
+	// externalHealthCheckInterval is how often an external plugin's PID is checked.
+	externalHealthCheckInterval = 5 * time.Second
+
+	// devInfoSettleDelay gives an atomic rename of a .devinfo file time to complete.
+	devInfoSettleDelay = 50 * time.Millisecond
 )
 
 // ExternalConnection tracks a connection to an externally-managed plugin.
@@ -59,9 +71,11 @@ func NewExternalWatcher(
 	}
 
 	return &ExternalWatcher{
+		ctx:          nil, // set by Start
 		logger:       logger.Named("ExternalWatcher"),
 		watcher:      watcher,
 		connections:  make(map[string]*ExternalConnection),
+		mu:           sync.RWMutex{},
 		pluginsRoot:  pluginsRoot,
 		pluginDir:    pluginDir,
 		done:         make(chan struct{}),
@@ -76,7 +90,7 @@ func (ew *ExternalWatcher) Start(ctx context.Context) error {
 	ew.ctx = ctx
 
 	// Ensure the plugin directory exists.
-	if err := ew.pluginsRoot.MkdirAll(".", 0755); err != nil {
+	if err := ew.pluginsRoot.MkdirAll(".", dirPerm); err != nil {
 		return apperror.Internal(err, "Failed to create plugin directory")
 	}
 
@@ -89,17 +103,17 @@ func (ew *ExternalWatcher) Start(ctx context.Context) error {
 	for _, entry := range entries {
 		if entry.IsDir() {
 			pluginPath := filepath.Join(ew.pluginDir, entry.Name())
-			if err := ew.watcher.Add(pluginPath); err != nil {
+			if addErr := ew.watcher.Add(pluginPath); addErr != nil {
 				ew.logger.Warnw(ctx, "failed to watch plugin directory",
 					"path", pluginPath,
-					"error", err,
+					"error", addErr,
 				)
 			}
 		}
 	}
 
 	// Also watch the parent directory for new plugin directories.
-	if err := ew.watcher.Add(ew.pluginDir); err != nil {
+	if err = ew.watcher.Add(ew.pluginDir); err != nil {
 		return apperror.Internal(err, "Failed to watch plugin directory")
 	}
 
@@ -128,7 +142,7 @@ func (ew *ExternalWatcher) Stop() {
 	if ew.done != nil {
 		select {
 		case <-ew.done:
-		case <-time.After(5 * time.Second):
+		case <-time.After(externalWatcherStopTimeout):
 			ew.logger.Warnw(context.Background(), "external watcher event loop did not exit in time")
 		}
 	}
@@ -170,7 +184,7 @@ func (ew *ExternalWatcher) scanExistingDevInfoFiles() {
 		}
 
 		devInfoPath := filepath.Join(ew.pluginDir, entry.Name(), ".devinfo")
-		if _, err := os.Stat(devInfoPath); err == nil {
+		if _, statErr := os.Stat(devInfoPath); statErr == nil {
 			ew.logger.Infow(context.Background(), "found existing .devinfo file", "path", devInfoPath)
 			ew.handleDevInfoCreated(devInfoPath)
 		}
@@ -194,15 +208,7 @@ func (ew *ExternalWatcher) run() {
 			// If a new directory was created in the plugins dir, start watching it.
 			if filepath.Base(event.Name) != ".devinfo" {
 				if event.Has(fsnotify.Create) {
-					info, err := os.Stat(event.Name)
-					if err == nil && info.IsDir() && filepath.Dir(event.Name) == ew.pluginDir {
-						if err := ew.watcher.Add(event.Name); err != nil {
-							ew.logger.Warnw(context.Background(), "failed to watch new plugin directory",
-								"path", event.Name,
-								"error", err,
-							)
-						}
-					}
+					ew.watchNewPluginDir(event.Name)
 				}
 				continue
 			}
@@ -223,12 +229,26 @@ func (ew *ExternalWatcher) run() {
 	}
 }
 
+// watchNewPluginDir starts watching path if it is a new directory directly in
+// the plugins directory.
+func (ew *ExternalWatcher) watchNewPluginDir(path string) {
+	info, err := os.Stat(path)
+	if err == nil && info.IsDir() && filepath.Dir(path) == ew.pluginDir {
+		if addErr := ew.watcher.Add(path); addErr != nil {
+			ew.logger.Warnw(context.Background(), "failed to watch new plugin directory",
+				"path", path,
+				"error", addErr,
+			)
+		}
+	}
+}
+
 // handleDevInfoCreated processes a new or updated .devinfo file.
 func (ew *ExternalWatcher) handleDevInfoCreated(path string) {
 	ew.logger.Infow(context.Background(), "detected .devinfo file", "path", path)
 
 	// Small delay to ensure atomic rename is complete.
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(devInfoSettleDelay)
 
 	info, err := readDevInfoFile(path)
 	if err != nil {
@@ -329,7 +349,7 @@ func (ew *ExternalWatcher) disconnectLocked(pluginID string, conn *ExternalConne
 
 // healthCheckLoop periodically checks if the external plugin PID is still alive.
 func (ew *ExternalWatcher) healthCheckLoop(ctx context.Context, pluginID string, pid int) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(externalHealthCheckInterval)
 	defer ticker.Stop()
 
 	for {
@@ -372,16 +392,20 @@ func readDevInfoFile(path string) (*DevInfoFile, error) {
 	}
 
 	var info DevInfoFile
-	if err := json.Unmarshal(data, &info); err != nil {
-		return nil, apperror.Wrap(err, apperror.TypeValidation, 422, "Invalid dev info")
+	if err = json.Unmarshal(data, &info); err != nil {
+		return nil, apperror.Wrap(err, apperror.TypeValidation, http.StatusUnprocessableEntity, "Invalid dev info")
 	}
 
 	// Basic validation.
 	if info.PID <= 0 {
-		return nil, apperror.New(apperror.TypeValidation, 422, "Invalid PID", fmt.Sprintf("Invalid PID: %d", info.PID))
+		return nil, apperror.New(
+			apperror.TypeValidation, http.StatusUnprocessableEntity, "Invalid PID", fmt.Sprintf("Invalid PID: %d", info.PID),
+		)
 	}
 	if info.Addr == "" {
-		return nil, apperror.New(apperror.TypeValidation, 422, "Invalid dev info", "Missing addr field in dev info.")
+		return nil, apperror.New(
+			apperror.TypeValidation, http.StatusUnprocessableEntity, "Invalid dev info", "Missing addr field in dev info.",
+		)
 	}
 	if info.Protocol == "" {
 		info.Protocol = "grpc" // default

@@ -1,7 +1,7 @@
-// package storage informs the factory for creating storage. the kubernetes factory is responsible for setting up the necessary
-// storage for interacting with the API server.
-// The runtime storage package sets up and initializes global storage that is necessary for working against data used in the active
-// runtime environment, including live clients, informers, and other runtime-specific objects.
+// package storage informs the factory for creating storage. the kubernetes factory is responsible for setting up
+// the necessary storage for interacting with the API server.
+// The runtime storage package sets up and initializes global storage that is necessary for working against data
+// used in the active runtime environment, including live clients, informers, and other runtime-specific objects.
 package storage
 
 import (
@@ -12,8 +12,8 @@ import (
 )
 
 type RuntimeStorage struct {
-	// Clusters is a per-cluster storage object that contains all the necessary informers and clients for interacting with the
-	// API server for a given cluster.
+	// Clusters is a per-cluster storage object that contains all the necessary informers and clients for
+	// interacting with the API server for a given cluster.
 	Clusters map[string]*ClusterRuntimeStorage
 }
 
@@ -39,10 +39,14 @@ func NewRuntimeStorage() *RuntimeStorage {
 	}
 }
 
-// InitializeCluster initializes the cluster storage for a given cluster. It adds the client for the cluster, as well as the
-// informers for the cluster and all it's namespaces. This method should be called once for each cluster that the application is
-// working with.
-func (rs *RuntimeStorage) InitializeCluster(cluster string, client dynamic.Interface, clusterInformer dynamicinformer.DynamicSharedInformerFactory) error {
+// InitializeCluster initializes the cluster storage for a given cluster. It adds the client for the cluster, as
+// well as the informers for the cluster and all it's namespaces. This method should be called once for each
+// cluster that the application is working with.
+func (rs *RuntimeStorage) InitializeCluster(
+	cluster string,
+	client dynamic.Interface,
+	clusterInformer dynamicinformer.DynamicSharedInformerFactory,
+) error {
 	if rs.Clusters == nil {
 		return errors.New("runtime storage not initialized")
 	}
@@ -70,7 +74,10 @@ func (rs *RuntimeStorage) GetClusterInformer(cluster string) (dynamicinformer.Dy
 }
 
 // GetNamespaceInformer returns the namespace informer for a given namespace in a given cluster.
-func (rs *RuntimeStorage) GetNamespaceInformer(cluster string, namespace string) (dynamicinformer.DynamicSharedInformerFactory, error) {
+func (rs *RuntimeStorage) GetNamespaceInformer(
+	cluster string,
+	namespace string,
+) (dynamicinformer.DynamicSharedInformerFactory, error) {
 	if rs.Clusters == nil {
 		return nil, errors.New("runtime storage not initialized")
 	}

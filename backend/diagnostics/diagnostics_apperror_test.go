@@ -1,7 +1,6 @@
 package diagnostics
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,7 +20,7 @@ func TestReadLog_App_NotImplemented(t *testing.T) {
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeNotImplemented, appErr.Type)
 	assert.Equal(t, 501, appErr.Status)
 }
@@ -33,7 +32,7 @@ func TestReadLog_Unknown_Validation(t *testing.T) {
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeValidation, appErr.Type)
 	assert.Equal(t, 422, appErr.Status)
 	assert.Contains(t, appErr.Detail, "unknown")
@@ -46,7 +45,7 @@ func TestStartTail_App_NotImplemented(t *testing.T) {
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeNotImplemented, appErr.Type)
 	assert.Equal(t, 501, appErr.Status)
 }
@@ -58,7 +57,7 @@ func TestStartTail_Unknown_Validation(t *testing.T) {
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeValidation, appErr.Type)
 	assert.Equal(t, 422, appErr.Status)
 	assert.Contains(t, appErr.Detail, "unknown")
@@ -71,7 +70,7 @@ func TestStopTail_App_NotImplemented(t *testing.T) {
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeNotImplemented, appErr.Type)
 	assert.Equal(t, 501, appErr.Status)
 }
@@ -83,7 +82,7 @@ func TestStopTail_Unknown_Validation(t *testing.T) {
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypeValidation, appErr.Type)
 	assert.Equal(t, 422, appErr.Status)
 	assert.Contains(t, appErr.Detail, "unknown")

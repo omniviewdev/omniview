@@ -4,6 +4,7 @@ import { Stack, Text } from '@omniviewdev/base-ui';
 
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
 import PluginChangelogCard from './PluginChangelogCard';
+import { orFallback } from '@/utils/orFallback';
 import styles from './PluginChangelog.module.css';
 
 type Props = {
@@ -36,7 +37,7 @@ const PluginChangelog: React.FC<Props> = ({ id }) => {
           key={version.version}
           version={version.version}
           releaseDate={version.created_at ? new Date(version.created_at).toLocaleDateString() : ''}
-          changelog={version.changelog || ''}
+          changelog={orFallback(version.changelog, '')}
         />
       ))}
     </Stack>

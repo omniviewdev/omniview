@@ -19,7 +19,13 @@ import (
 )
 
 const (
-	LOG_UPDATE_FMT = "internal/log/update:%s"
+	// LogUpdateFmt is the event name format used to stream new lines of a tailed log.
+	LogUpdateFmt = "internal/log/update:%s"
+
+	logMaxSizeMB   = 1024
+	logMaxBackups  = 30
+	logMaxAgeDays  = 90
+	zapFieldsPerKV = 2
 )
 
 type BackendLogger struct {
@@ -59,23 +65,32 @@ func NewBackendLogger(name string, dev bool, logDir string) (*BackendLogger, err
 
 	lj := &lumberjack.Logger{
 		Filename:   logFile,
-		MaxSize:    1024,
-		MaxBackups: 30,
-		MaxAge:     90,
+		MaxSize:    logMaxSizeMB,
+		MaxBackups: logMaxBackups,
+		MaxAge:     logMaxAgeDays,
 		Compress:   true,
+		LocalTime:  false,
 	}
 
 	writer := zapcore.AddSync(lj)
 
 	encCfg := zapcore.EncoderConfig{
-		TimeKey:       "ts",
-		LevelKey:      "level",
-		CallerKey:     "caller",
-		MessageKey:    "msg",
-		StacktraceKey: "stacktrace",
-		EncodeLevel:   zapcore.LowercaseLevelEncoder,
-		EncodeTime:    zapcore.ISO8601TimeEncoder,
-		EncodeCaller:  zapcore.ShortCallerEncoder,
+		TimeKey:             "ts",
+		LevelKey:            "level",
+		CallerKey:           "caller",
+		MessageKey:          "msg",
+		StacktraceKey:       "stacktrace",
+		EncodeLevel:         zapcore.LowercaseLevelEncoder,
+		EncodeTime:          zapcore.ISO8601TimeEncoder,
+		EncodeCaller:        zapcore.ShortCallerEncoder,
+		NameKey:             "",
+		FunctionKey:         "",
+		SkipLineEnding:      false,
+		LineEnding:          "",
+		EncodeDuration:      nil,
+		EncodeName:          nil,
+		NewReflectedEncoder: nil,
+		ConsoleSeparator:    "",
 	}
 
 	// cfg := zap.Config{
@@ -95,15 +110,17 @@ func NewBackendLogger(name string, dev bool, logDir string) (*BackendLogger, err
 	logger := zap.New(core, zap.AddCaller(), zap.Development())
 
 	return &BackendLogger{
-		Sugared:  logger.Sugar(),
-		logDir:   baseDir,
-		watchers: make(map[string]*tail.Tail),
+		Sugared:   logger.Sugar(),
+		logDir:    baseDir,
+		watchers:  make(map[string]*tail.Tail),
+		app:       nil,
+		watchLock: sync.Mutex{},
 	}, nil
 }
 
-// zapFields converts a map into a slice of alternating key, value
+// zapFields converts a map into a slice of alternating key, value.
 func zapFields(fields map[string]any) []any {
-	kv := make([]any, 0, len(fields)*2)
+	kv := make([]any, 0, len(fields)*zapFieldsPerKV)
 	for k, v := range fields {
 		kv = append(kv, k, v)
 	}
@@ -112,7 +129,7 @@ func zapFields(fields map[string]any) []any {
 
 // Convenience methods
 
-func (b *BackendLogger) Debug(ctx context.Context, msg string, fields map[string]any) {
+func (b *BackendLogger) Debug(_ context.Context, msg string, fields map[string]any) {
 	if len(fields) > 0 {
 		b.Sugared.With(zapFields(fields)...).Debug(msg)
 	} else {
@@ -120,7 +137,7 @@ func (b *BackendLogger) Debug(ctx context.Context, msg string, fields map[string
 	}
 }
 
-func (b *BackendLogger) Info(ctx context.Context, msg string, fields map[string]any) {
+func (b *BackendLogger) Info(_ context.Context, msg string, fields map[string]any) {
 	if len(fields) > 0 {
 		b.Sugared.With(zapFields(fields)...).Info(msg)
 	} else {
@@ -128,7 +145,7 @@ func (b *BackendLogger) Info(ctx context.Context, msg string, fields map[string]
 	}
 }
 
-func (b *BackendLogger) Warn(ctx context.Context, msg string, fields map[string]any) {
+func (b *BackendLogger) Warn(_ context.Context, msg string, fields map[string]any) {
 	if len(fields) > 0 {
 		b.Sugared.With(zapFields(fields)...).Warn(msg)
 	} else {
@@ -136,7 +153,7 @@ func (b *BackendLogger) Warn(ctx context.Context, msg string, fields map[string]
 	}
 }
 
-func (b *BackendLogger) Error(ctx context.Context, msg string, fields map[string]any) {
+func (b *BackendLogger) Error(_ context.Context, msg string, fields map[string]any) {
 	if len(fields) > 0 {
 		b.Sugared.With(zapFields(fields)...).Error(msg)
 	} else {
@@ -161,7 +178,7 @@ func (b *BackendLogger) Log(ctx context.Context, level, msg string, fields map[s
 
 // Listing & searching
 
-func (b *BackendLogger) ListLogFiles(ctx context.Context) ([]string, error) {
+func (b *BackendLogger) ListLogFiles(_ context.Context) ([]string, error) {
 	entries, err := os.ReadDir(b.logDir)
 	if err != nil {
 		return nil, err
@@ -175,7 +192,7 @@ func (b *BackendLogger) ListLogFiles(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (b *BackendLogger) ReadLog(ctx context.Context, name string) (string, error) {
+func (b *BackendLogger) ReadLog(_ context.Context, name string) (string, error) {
 	data, err := os.ReadFile(filepath.Join(b.logDir, name+".log"))
 	if err != nil {
 		return "", err
@@ -183,7 +200,7 @@ func (b *BackendLogger) ReadLog(ctx context.Context, name string) (string, error
 	return string(data), nil
 }
 
-func (b *BackendLogger) SearchLog(ctx context.Context, name, pattern string) ([]string, error) {
+func (b *BackendLogger) SearchLog(_ context.Context, name, pattern string) ([]string, error) {
 	f, err := os.Open(filepath.Join(b.logDir, name+".log"))
 	if err != nil {
 		return nil, err
@@ -203,7 +220,7 @@ func (b *BackendLogger) SearchLog(ctx context.Context, name, pattern string) ([]
 
 // Tail / stream
 
-func (b *BackendLogger) StartTail(ctx context.Context, name string) error {
+func (b *BackendLogger) StartTail(_ context.Context, name string) error {
 	b.watchLock.Lock()
 	defer b.watchLock.Unlock()
 
@@ -211,7 +228,16 @@ func (b *BackendLogger) StartTail(ctx context.Context, name string) error {
 		return nil // already tailing
 	}
 	t, err := tail.TailFile(filepath.Join(b.logDir, name+".log"), tail.Config{
-		Follow: true, ReOpen: true, MustExist: true,
+		Follow:        true,
+		ReOpen:        true,
+		MustExist:     true,
+		Location:      nil,
+		Poll:          false,
+		Pipe:          false,
+		MaxLineSize:   0,
+		CompleteLines: false,
+		RateLimiter:   nil,
+		Logger:        nil,
 	})
 	if err != nil {
 		return err
@@ -221,14 +247,14 @@ func (b *BackendLogger) StartTail(ctx context.Context, name string) error {
 	go func() {
 		for line := range t.Lines {
 			if b.app != nil {
-				b.app.Event.Emit(fmt.Sprintf(LOG_UPDATE_FMT, name), line.Text)
+				b.app.Event.Emit(fmt.Sprintf(LogUpdateFmt, name), line.Text)
 			}
 		}
 	}()
 	return nil
 }
 
-func (b *BackendLogger) StopTail(ctx context.Context, name string) error {
+func (b *BackendLogger) StopTail(_ context.Context, name string) error {
 	b.watchLock.Lock()
 	defer b.watchLock.Unlock()
 	if t, ok := b.watchers[name]; ok {

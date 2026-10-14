@@ -92,7 +92,7 @@ func TestNewViteProcess(t *testing.T) {
 	assert.Nil(t, vp.cmd)
 }
 
-func TestViteProcess_Stop_NilCmd(t *testing.T) {
+func TestViteProcess_Stop_NilCmd(_ *testing.T) {
 	vp := &viteProcess{
 		logger: logging.NewNop(),
 		done:   make(chan struct{}),
@@ -101,7 +101,7 @@ func TestViteProcess_Stop_NilCmd(t *testing.T) {
 	vp.Stop()
 }
 
-func TestViteProcess_Stop_NilProcess(t *testing.T) {
+func TestViteProcess_Stop_NilProcess(_ *testing.T) {
 	vp := &viteProcess{
 		logger: logging.NewNop(),
 		done:   make(chan struct{}),
@@ -128,7 +128,7 @@ func processAlive(pid int) bool {
 // newTestViteProcessWithSleep creates a viteProcess that spawns a shell with
 // a child sleep process, simulating the Vite dev server process tree.
 // Returns the viteProcess and a cleanup function.
-func newTestViteProcessWithSleep(t *testing.T, ctx context.Context) *viteProcess {
+func newTestViteProcessWithSleep(ctx context.Context, t *testing.T) *viteProcess {
 	t.Helper()
 
 	vp := &viteProcess{
@@ -174,7 +174,7 @@ func TestViteProcess_Stop_KillsProcessGroup(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	vp := newTestViteProcessWithSleep(t, ctx)
+	vp := newTestViteProcessWithSleep(ctx, t)
 	parentPid := vp.cmd.Process.Pid
 	pgid := vp.pgid
 
@@ -196,7 +196,7 @@ func TestViteProcess_Stop_KillsProcessGroup(t *testing.T) {
 func TestViteProcess_ContextCancel_KillsProcessGroup(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	vp := newTestViteProcessWithSleep(t, ctx)
+	vp := newTestViteProcessWithSleep(ctx, t)
 	parentPid := vp.cmd.Process.Pid
 	pgid := vp.pgid
 
@@ -223,7 +223,7 @@ func TestViteProcess_PGID_CachedAfterStart(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	vp := newTestViteProcessWithSleep(t, ctx)
+	vp := newTestViteProcessWithSleep(ctx, t)
 	pgid := vp.PGID()
 
 	require.NotZero(t, pgid, "PGID should be non-zero after start")

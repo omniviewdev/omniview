@@ -30,14 +30,14 @@
 import type { AnsiSegment } from '../types';
 export type { AnsiSegment };
 
-export interface ParsedAnsi {
+export type ParsedAnsi = {
   /** Plain text with all escape sequences removed (for search, level detection). */
   plain: string;
   /** Styled segments for rendering. Empty array if input has no ANSI codes. */
   segments: AnsiSegment[];
   /** True if the input contained any ANSI escape sequences. */
   hasAnsi: boolean;
-}
+};
 
 // Standard 8 ANSI colors (SGR 30-37 / 40-47).
 const STANDARD_COLORS = [
@@ -90,14 +90,26 @@ function hex(n: number): string {
 
 /** Resolve a 256-color palette index to a CSS hex color. */
 function color256(n: number): string | undefined {
-  if (n < 0 || n > 255) return undefined;
-  if (n < 8) return STANDARD_COLORS[n];
-  if (n < 16) return BRIGHT_COLORS[n - 8];
-  if (n < 232) return COLOR_CUBE[n - 16];
+  if (n < 0 || n > 255) {
+    return undefined;
+  }
+
+  if (n < 8) {
+    return STANDARD_COLORS[n];
+  }
+
+  if (n < 16) {
+    return BRIGHT_COLORS[n - 8];
+  }
+
+  if (n < 232) {
+    return COLOR_CUBE[n - 16];
+  }
+
   return GRAYSCALE[n - 232];
 }
 
-interface Style {
+type Style = {
   fg: string | undefined;
   bg: string | undefined;
   bold: boolean;
@@ -105,7 +117,7 @@ interface Style {
   italic: boolean;
   underline: boolean;
   strikethrough: boolean;
-}
+};
 
 function resetStyle(): Style {
   return { fg: undefined, bg: undefined, bold: false, dim: false, italic: false, underline: false, strikethrough: false };
@@ -113,13 +125,34 @@ function resetStyle(): Style {
 
 function toSegment(text: string, style: Style): AnsiSegment {
   const seg: AnsiSegment = { text };
-  if (style.fg) seg.fg = style.fg;
-  if (style.bg) seg.bg = style.bg;
-  if (style.bold) seg.bold = true;
-  if (style.dim) seg.dim = true;
-  if (style.italic) seg.italic = true;
-  if (style.underline) seg.underline = true;
-  if (style.strikethrough) seg.strikethrough = true;
+  if (style.fg) {
+    seg.fg = style.fg;
+  }
+
+  if (style.bg) {
+    seg.bg = style.bg;
+  }
+
+  if (style.bold) {
+    seg.bold = true;
+  }
+
+  if (style.dim) {
+    seg.dim = true;
+  }
+
+  if (style.italic) {
+    seg.italic = true;
+  }
+
+  if (style.underline) {
+    seg.underline = true;
+  }
+
+  if (style.strikethrough) {
+    seg.strikethrough = true;
+  }
+
   return seg;
 }
 
@@ -155,21 +188,17 @@ function applySgr(params: number[], style: Style): void {
         // Standard foreground: 30-37
         if (code >= 30 && code <= 37) {
           style.fg = STANDARD_COLORS[code - 30];
-        }
-        // Standard background: 40-47
-        else if (code >= 40 && code <= 47) {
+        } else if (code >= 40 && code <= 47) {
+          // Standard background: 40-47
           style.bg = STANDARD_COLORS[code - 40];
-        }
-        // Bright foreground: 90-97
-        else if (code >= 90 && code <= 97) {
+        } else if (code >= 90 && code <= 97) {
+          // Bright foreground: 90-97
           style.fg = BRIGHT_COLORS[code - 90];
-        }
-        // Bright background: 100-107
-        else if (code >= 100 && code <= 107) {
+        } else if (code >= 100 && code <= 107) {
+          // Bright background: 100-107
           style.bg = BRIGHT_COLORS[code - 100];
-        }
-        // Extended foreground: 38;5;N or 38;2;R;G;B
-        else if (code === 38 && i + 1 < params.length) {
+        } else if (code === 38 && i + 1 < params.length) {
+          // Extended foreground: 38;5;N or 38;2;R;G;B
           if (params[i + 1] === 5 && i + 2 < params.length) {
             style.fg = color256(params[i + 2]);
             i += 2;
@@ -177,9 +206,8 @@ function applySgr(params: number[], style: Style): void {
             style.fg = `#${hex(params[i + 2] & 0xff)}${hex(params[i + 3] & 0xff)}${hex(params[i + 4] & 0xff)}`;
             i += 4;
           }
-        }
-        // Extended background: 48;5;N or 48;2;R;G;B
-        else if (code === 48 && i + 1 < params.length) {
+        } else if (code === 48 && i + 1 < params.length) {
+          // Extended background: 48;5;N or 48;2;R;G;B
           if (params[i + 1] === 5 && i + 2 < params.length) {
             style.bg = color256(params[i + 2]);
             i += 2;
@@ -188,8 +216,10 @@ function applySgr(params: number[], style: Style): void {
             i += 4;
           }
         }
+
         break;
     }
+
     i++;
   }
 }
@@ -204,7 +234,7 @@ export function parseAnsi(input: string): ParsedAnsi {
   const len = input.length;
 
   // Fast path: no ESC byte at all → return as-is, zero allocation beyond the result.
-  if (input.indexOf('\x1b') === -1) {
+  if (!input.includes('\x1b')) {
     return { plain: input, segments: [], hasAnsi: false };
   }
 
@@ -230,9 +260,15 @@ export function parseAnsi(input: string): ParsedAnsi {
         while (j < len) {
           const c = input.charCodeAt(j);
           // Parameter bytes: 0x30-0x3f  (digits 0-9, semicolon, etc.)
-          if (c >= 0x30 && c <= 0x3f) { j++; continue; }
+          if (c >= 0x30 && c <= 0x3f) {
+            j++; continue; 
+          }
+
           // Intermediate bytes: 0x20-0x2f
-          if (c >= 0x20 && c <= 0x2f) { j++; continue; }
+          if (c >= 0x20 && c <= 0x2f) {
+            j++; continue; 
+          }
+
           // Final byte: 0x40-0x7e
           break;
         }
@@ -250,12 +286,14 @@ export function parseAnsi(input: string): ParsedAnsi {
               applySgr(params, style);
             }
           }
+
           // Skip past the final byte regardless of whether we handled it.
           i = j + 1;
         } else {
           // Malformed: no final byte found. Skip the ESC[.
           i = j;
         }
+
         textStart = i;
         continue;
       }
@@ -265,11 +303,18 @@ export function parseAnsi(input: string): ParsedAnsi {
         let j = i + 2;
         while (j < len) {
           // BEL (0x07) terminates OSC
-          if (input.charCodeAt(j) === 0x07) { j++; break; }
+          if (input.charCodeAt(j) === 0x07) {
+            j++; break; 
+          }
+
           // ST (ESC \) terminates OSC
-          if (input.charCodeAt(j) === 0x1b && j + 1 < len && input.charCodeAt(j + 1) === 0x5c) { j += 2; break; }
+          if (input.charCodeAt(j) === 0x1b && j + 1 < len && input.charCodeAt(j + 1) === 0x5c) {
+            j += 2; break; 
+          }
+
           j++;
         }
+
         i = j;
         textStart = i;
         continue;
@@ -301,9 +346,11 @@ export function parseAnsi(input: string): ParsedAnsi {
   // Optimization: if all segments have default style, collapse to hasAnsi=true
   // but return empty segments to signal the caller can use plain text directly.
   let allDefault = true;
-  for (let s = 0; s < segments.length; s++) {
-    const seg = segments[s];
-    if (seg.fg || seg.bg || seg.bold || seg.dim || seg.italic || seg.underline || seg.strikethrough) {
+  for (const seg of segments) {
+    if (
+      Boolean(seg.fg) || Boolean(seg.bg) || seg.bold === true || seg.dim === true ||
+      seg.italic === true || seg.underline === true || seg.strikethrough === true
+    ) {
       allDefault = false;
       break;
     }

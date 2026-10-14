@@ -37,6 +37,7 @@ function registerIfAbsent(
         `Builtin extension point "${id}" has been claimed by non-core owner "${store.pluginId}"`,
       );
     }
+
     // Core-owned, already registered — idempotent no-op
     return;
   }

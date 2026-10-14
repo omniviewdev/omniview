@@ -43,7 +43,7 @@ func TestGetEditorSchemas_ProviderError(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock)
 
 	_, err := ctrl.GetEditorSchemas("p1", "conn-1")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "schemas unavailable")
 }
 
@@ -51,7 +51,7 @@ func TestGetEditorSchemas_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.GetEditorSchemas("nonexistent", "conn-1")
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }
 

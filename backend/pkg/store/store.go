@@ -8,9 +8,14 @@ import (
 	"github.com/omniviewdev/omniview/internal/appstate"
 )
 
+const (
+	storeDirPerm  = 0o755
+	storeFilePerm = 0o644
+)
+
 // InitStore initializes the local store by ensuring the plugins subdirectory exists.
 func InitStore(root *appstate.ScopedRoot) error {
-	return root.MkdirAll("plugins", 0755)
+	return root.MkdirAll("plugins", storeDirPerm)
 }
 
 // RegisterTypes registers the types that are going to be stored in the local store.

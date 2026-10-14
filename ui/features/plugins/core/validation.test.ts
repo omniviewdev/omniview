@@ -77,7 +77,7 @@ describe('validatePluginExports', () => {
       const result = validatePluginExports({
         plugin: pw(),
         utils: {},
-        helpers: () => {},
+        helpers: () => undefined,
         version: '1.0',
       });
       expect(result.plugin).toBeDefined();
@@ -136,7 +136,7 @@ describe('validatePluginExports', () => {
     });
 
     it('#18 plugin is function', () => {
-      expect(() => validatePluginExports({ plugin: () => {} })).toThrow(PluginValidationError);
+      expect(() => validatePluginExports({ plugin: () => undefined })).toThrow(PluginValidationError);
     });
 
     it('#19 plugin is array', () => {
@@ -225,7 +225,7 @@ describe('validatePluginExports', () => {
 
     it('#31 empty string key', () => {
       expect(() =>
-        validatePluginExports({ plugin: pw(), sidebars: { '': SidebarStub } }),
+        validatePluginExports({ plugin: pw(), sidebars: { ['']: SidebarStub } }),
       ).toThrow();
     });
 
@@ -421,22 +421,32 @@ describe('validatePluginExports', () => {
 
 describe('validateResourceKeyFormat', () => {
   it('accepts valid 3-part key', () => {
-    expect(() => validateResourceKeyFormat('core::v1::Pod', 'sidebar')).not.toThrow();
+    expect(() => {
+      validateResourceKeyFormat('core::v1::Pod', 'sidebar'); 
+    }).not.toThrow();
   });
 
   it('rejects 2-part key', () => {
-    expect(() => validateResourceKeyFormat('v1::Pod', 'sidebar')).toThrow(/malformed/);
+    expect(() => {
+      validateResourceKeyFormat('v1::Pod', 'sidebar'); 
+    }).toThrow(/malformed/);
   });
 
   it('rejects 1-part key', () => {
-    expect(() => validateResourceKeyFormat('Pod', 'drawer')).toThrow(/malformed/);
+    expect(() => {
+      validateResourceKeyFormat('Pod', 'drawer'); 
+    }).toThrow(/malformed/);
   });
 
   it('rejects empty string', () => {
-    expect(() => validateResourceKeyFormat('', 'sidebar')).toThrow();
+    expect(() => {
+      validateResourceKeyFormat('', 'sidebar'); 
+    }).toThrow();
   });
 
   it('rejects key with spaces', () => {
-    expect(() => validateResourceKeyFormat('core :: v1 :: Pod', 'drawer')).toThrow(/malformed/);
+    expect(() => {
+      validateResourceKeyFormat('core :: v1 :: Pod', 'drawer'); 
+    }).toThrow(/malformed/);
   });
 });

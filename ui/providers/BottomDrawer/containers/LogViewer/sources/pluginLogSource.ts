@@ -30,22 +30,28 @@ export function createPluginLogSource(pluginId: string): LogDataSource {
 
   return {
     connect(handlers) {
-      PluginLogManager.Subscribe(pluginId);
+      void PluginLogManager.Subscribe(pluginId);
 
       const unsub = pluginLogChannel.on('onPluginLog', (entry) => {
-        if (entry.pluginID !== pluginId) return;
+        if (entry.pluginID !== pluginId) {
+          return;
+        }
+
         handlers.onLines([toLogEntry(entry)]);
       });
 
       return () => {
         unsub();
-        PluginLogManager.Unsubscribe(pluginId);
+        void PluginLogManager.Unsubscribe(pluginId);
       };
     },
 
     async loadHistory() {
       const entries = await PluginLogManager.GetLogs(pluginId, 0);
-      if (!entries?.length) return [];
+      if (!entries?.length) {
+        return [];
+      }
+
       return entries.map(toLogEntry);
     },
 

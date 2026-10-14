@@ -173,7 +173,7 @@ describe('Group 26: Synchronous Render Guarantee', () => {
 
     const ctx = createResourceExtensionRenderContext('pluginA', 'core::v1::Pod');
     const factory = store.provide(ctx)[0] as (_close: () => void) => any;
-    const result = factory(() => {});
+    const result = factory(() => undefined);
 
     // Factory call returns immediately — not a Promise
     expect(result).not.toBeInstanceOf(Promise);

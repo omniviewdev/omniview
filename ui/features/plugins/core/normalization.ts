@@ -125,7 +125,10 @@ export function normalizeContributions(
 export function extractDeclaredDependencies(
   raw: unknown,
 ): DeclaredDependencies | undefined {
-  if (raw === undefined || raw === null) return undefined;
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+
   const deps = raw as Record<string, unknown>;
   return {
     plugins: Array.isArray(deps.plugins) ? [...(deps.plugins as string[])] : [],

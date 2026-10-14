@@ -118,7 +118,11 @@ func TestSink_OnStateChange_AlwaysEmits(t *testing.T) {
 	sink, _, emitter := newSinkTestSetup(t)
 	// No subscription — STATE should still flow.
 
-	sink.OnStateChange(resource.WatchStateEvent{Connection: "conn-1", ResourceKey: "pods", State: resource.WatchStateSynced})
+	sink.OnStateChange(resource.WatchStateEvent{
+		Connection:  "conn-1",
+		ResourceKey: "pods",
+		State:       resource.WatchStateSynced,
+	})
 
 	events := emitter.EventsWithKey("STATE")
 	assert.Len(t, events, 2) // per-plugin/connection + global
@@ -127,7 +131,11 @@ func TestSink_OnStateChange_AlwaysEmits(t *testing.T) {
 func TestSink_OnStateChange_EmitsPerPluginConnection(t *testing.T) {
 	sink, _, emitter := newSinkTestSetup(t)
 
-	sink.OnStateChange(resource.WatchStateEvent{Connection: "conn-1", ResourceKey: "pods", State: resource.WatchStateSynced})
+	sink.OnStateChange(resource.WatchStateEvent{
+		Connection:  "conn-1",
+		ResourceKey: "pods",
+		State:       resource.WatchStateSynced,
+	})
 
 	// Key format: ${pluginID}/${connectionID}/watch/STATE
 	events := emitter.EventsWithKey("plugin-a/conn-1/watch/STATE")
@@ -137,7 +145,11 @@ func TestSink_OnStateChange_EmitsPerPluginConnection(t *testing.T) {
 func TestSink_OnStateChange_EmitsGlobal(t *testing.T) {
 	sink, _, emitter := newSinkTestSetup(t)
 
-	sink.OnStateChange(resource.WatchStateEvent{Connection: "conn-1", ResourceKey: "pods", State: resource.WatchStateSynced})
+	sink.OnStateChange(resource.WatchStateEvent{
+		Connection:  "conn-1",
+		ResourceKey: "pods",
+		State:       resource.WatchStateSynced,
+	})
 
 	all := emitter.Events()
 	var found bool

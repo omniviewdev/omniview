@@ -25,7 +25,7 @@ describe('RouterErrorBoundary', () => {
   beforeEach(() => {
     mockLogError.mockClear();
     mockIsDev.mockReturnValue(true);
-    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
   afterEach(() => {

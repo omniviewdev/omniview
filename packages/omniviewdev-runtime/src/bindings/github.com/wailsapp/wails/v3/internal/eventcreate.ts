@@ -20,6 +20,9 @@ import * as pluginlog$0 from "../../../../omniviewdev/omniview/backend/pkg/plugi
 import * as resource$0 from "../../../../omniviewdev/omniview/backend/pkg/plugin/resource/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as config$0 from "../../../../omniviewdev/plugin-sdk/pkg/config/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as networker$0 from "../../../../omniviewdev/plugin-sdk/pkg/v1/networker/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -31,15 +34,24 @@ function configure() {
         "core/networker/portforward/closed": $$createType2,
         "core/networker/portforward/created": $$createType2,
         "plugin/deprecated_protocol": $$createType3,
-        "plugin/devserver/error": $$createType4,
-        "plugin/devserver/log": $$createType6,
-        "plugin/devserver/status": $$createType7,
-        "plugin/process/log": $$createType8,
-        "plugin/state_change": $$createType9,
-        "plugin/update_complete": $$createType10,
-        "plugin/update_error": $$createType11,
-        "plugin/update_started": $$createType10,
-        "watch/STATE": $$createType12,
+        "plugin/dev_install_complete": $$createType5,
+        "plugin/dev_install_error": $$createType5,
+        "plugin/dev_install_start": $$createType5,
+        "plugin/dev_reload_complete": $$createType5,
+        "plugin/dev_reload_error": $$createType6,
+        "plugin/dev_reload_start": $$createType5,
+        "plugin/devserver/error": $$createType7,
+        "plugin/devserver/log": $$createType9,
+        "plugin/devserver/status": $$createType10,
+        "plugin/install_error": $$createType5,
+        "plugin/install_finished": $$createType5,
+        "plugin/install_started": $$createType5,
+        "plugin/process/log": $$createType11,
+        "plugin/state_change": $$createType12,
+        "plugin/update_complete": $$createType13,
+        "plugin/update_error": $$createType14,
+        "plugin/update_started": $$createType13,
+        "watch/STATE": $$createType15,
     }));
 }
 
@@ -48,14 +60,17 @@ const $$createType0 = resource$0.ConnectionStatusPayload.createFrom;
 const $$createType1 = networker$0.PortForwardSession.createFrom;
 const $$createType2 = $Create.Nullable($$createType1);
 const $$createType3 = plugin$0.DeprecatedProtocolPayload.createFrom;
-const $$createType4 = devserver$0.DevServerErrorPayload.createFrom;
-const $$createType5 = devserver$0.LogEntry.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = devserver$0.DevServerState.createFrom;
-const $$createType8 = pluginlog$0.LogEntry.createFrom;
-const $$createType9 = plugin$0.StateChangePayload.createFrom;
-const $$createType10 = plugin$0.UpdatePayload.createFrom;
-const $$createType11 = plugin$0.UpdateErrorPayload.createFrom;
-const $$createType12 = resource$1.WatchStateEvent.createFrom;
+const $$createType4 = config$0.PluginMeta.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = $Create.Array($Create.Any);
+const $$createType7 = devserver$0.DevServerErrorPayload.createFrom;
+const $$createType8 = devserver$0.LogEntry.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = devserver$0.DevServerState.createFrom;
+const $$createType11 = pluginlog$0.LogEntry.createFrom;
+const $$createType12 = plugin$0.StateChangePayload.createFrom;
+const $$createType13 = plugin$0.UpdatePayload.createFrom;
+const $$createType14 = plugin$0.UpdateErrorPayload.createFrom;
+const $$createType15 = resource$1.WatchStateEvent.createFrom;
 
 configure();

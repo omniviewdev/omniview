@@ -2,6 +2,7 @@ package registry
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -237,7 +238,7 @@ func TestMemoryStore_ScanByResourceKey(t *testing.T) {
 	}
 }
 
-func TestMemoryStore_ConcurrentAccess(t *testing.T) {
+func TestMemoryStore_ConcurrentAccess(_ *testing.T) {
 	s := NewMemoryStore()
 	const goroutines = 20
 	const opsPerGoroutine = 50
@@ -254,12 +255,12 @@ func TestMemoryStore_ConcurrentAccess(t *testing.T) {
 				entry := makeEntry(
 					"plugin-a", fmt.Sprintf("conn-%d", g%3),
 					"core::v1::Pod", "default", id,
-					map[string]string{"worker": fmt.Sprintf("%d", g)},
+					map[string]string{"worker": strconv.Itoa(g)},
 				)
 				s.Put(entry)
 				s.Get("plugin-a", fmt.Sprintf("conn-%d", g%3), "core::v1::Pod", "default", id)
 				s.ScanByLabel("plugin-a", fmt.Sprintf("conn-%d", g%3), "core::v1::Pod",
-					map[string]string{"worker": fmt.Sprintf("%d", g)})
+					map[string]string{"worker": strconv.Itoa(g)})
 				s.ScanByResourceKey("plugin-a", fmt.Sprintf("conn-%d", g%3), "core::v1::Pod")
 				if i%10 == 0 {
 					s.Delete("plugin-a", fmt.Sprintf("conn-%d", g%3), "core::v1::Pod", "default", id)

@@ -17,8 +17,8 @@ var General = settings.Category{
 			Default:     "en",
 			Description: "The language to use when displaying text",
 			Options: []settings.SettingOption{
-				{Value: "en", Label: "English"},
-				{Value: "es", Label: "Spanish"},
+				{Value: "en", Label: "English", Description: ""},
+				{Value: "es", Label: "Spanish", Description: ""},
 			},
 		},
 	},

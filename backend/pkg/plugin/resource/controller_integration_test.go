@@ -93,7 +93,7 @@ func TestIntegration_OnPluginStart_FullWiring(t *testing.T) {
 func TestIntegration_CRUD_ThroughController(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetFunc: func(ctx context.Context, key string, input resource.GetInput) (*resource.GetResult, error) {
+		GetFunc: func(ctx context.Context, _ string, input resource.GetInput) (*resource.GetResult, error) {
 			session := resource.SessionFromContext(ctx)
 			require.NotNil(t, session)
 			assert.Equal(t, "conn-1", session.Connection.ID)
@@ -326,11 +326,12 @@ func TestIntegration_MultiPlugin_Isolation(t *testing.T) {
 	p1Events := 0
 	p2Events := 0
 	for _, e := range events {
-		p, ok := e.Data[0].(resource.WatchAddPayload)
-		require.True(t, ok)
-		if p.PluginID == "p1" {
+		p, isAdd := e.Data[0].(resource.WatchAddPayload)
+		require.True(t, isAdd)
+		switch p.PluginID {
+		case "p1":
 			p1Events++
-		} else if p.PluginID == "p2" {
+		case "p2":
 			p2Events++
 		}
 	}
@@ -377,7 +378,7 @@ func TestIntegration_SubscribeNonExistent(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
 	err := ctrl.SubscribeResource("p1", "conn-1", "nonexistent-resource-type")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, ctrl.isSubscribed("p1", "conn-1", "nonexistent-resource-type"))
 }
 
@@ -426,7 +427,7 @@ func TestIntegration_OutOfOrderEvents(t *testing.T) {
 		if e.Key == "p1/conn-1/pods/ADD" || e.Key == "p1/conn-1/pods/DELETE" {
 			if _, ok := e.Data[0].(resource.WatchAddPayload); ok {
 				eventTypes = append(eventTypes, "ADD")
-			} else if _, ok := e.Data[0].(resource.WatchDeletePayload); ok {
+			} else if _, isDelete := e.Data[0].(resource.WatchDeletePayload); isDelete {
 				eventTypes = append(eventTypes, "DELETE")
 			}
 		}
@@ -450,7 +451,7 @@ func TestIntegration_ErrorPropagation(t *testing.T) {
 	require.Error(t, err)
 
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr), "error should be an AppError")
+	require.ErrorAs(t, err, &appErr, "error should be an AppError")
 	assert.Contains(t, appErr.Detail, expectedMsg)
 }
 
@@ -638,6 +639,6 @@ func TestIntegration_ConcurrentCRUD(t *testing.T) {
 	var appErr *apperror.AppError
 	_, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
 	if err != nil {
-		require.False(t, errors.As(err, &appErr), "should not get PluginNotFound after concurrent CRUD")
+		require.NotErrorAs(t, err, &appErr, "should not get PluginNotFound after concurrent CRUD")
 	}
 }

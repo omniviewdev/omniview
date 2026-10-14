@@ -86,17 +86,17 @@ func Open(path string, opts ...Option) (*Store, error) {
 	}
 
 	// Pre-create buckets.
-	if err := db.Update(func(tx *bolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists(coreBucket); err != nil {
-			return fmt.Errorf("create core bucket: %w", err)
+	if updateErr := db.Update(func(tx *bolt.Tx) error {
+		if _, bucketErr := tx.CreateBucketIfNotExists(coreBucket); bucketErr != nil {
+			return fmt.Errorf("create core bucket: %w", bucketErr)
 		}
-		if _, err := tx.CreateBucketIfNotExists(pluginsBucket); err != nil {
-			return fmt.Errorf("create plugins bucket: %w", err)
+		if _, bucketErr := tx.CreateBucketIfNotExists(pluginsBucket); bucketErr != nil {
+			return fmt.Errorf("create plugins bucket: %w", bucketErr)
 		}
 		return nil
-	}); err != nil {
+	}); updateErr != nil {
 		db.Close()
-		return nil, fmt.Errorf("initialize buckets: %w", err)
+		return nil, fmt.Errorf("initialize buckets: %w", updateErr)
 	}
 
 	return &Store{db: db}, nil

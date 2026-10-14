@@ -16,7 +16,10 @@ export function useDevServers() {
   useEffect(() => {
     DevServerManager.ListDevServerStates()
       .then((states) => {
-        if (!states || states.length === 0) return;
+        if (!states || states.length === 0) {
+          return;
+        }
+
         setServers(new Map(
           states.map((s) => [s.pluginID, s]),
         ));
@@ -37,6 +40,7 @@ export function useDevServers() {
         } else {
           next.set(state.pluginID, state);
         }
+
         return next;
       });
     });
@@ -66,6 +70,8 @@ export function useDevServers() {
         break;
       case 'stopped':
         summary.stopped++;
+        break;
+      case 'connecting':
         break;
     }
   });

@@ -19,7 +19,10 @@ function readAllSourceFiles(dir: string): Array<{ file: string; content: string 
     for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
       const full = path.join(d, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'coverage' || entry.name === 'dist') continue;
+        if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'coverage' || entry.name === 'dist') {
+          continue;
+        }
+
         walk(full);
       } else if (/\.(ts|tsx)$/.test(entry.name)) {
         results.push({ file: full, content: fs.readFileSync(full, 'utf-8') });
@@ -83,7 +86,7 @@ describe('Group 24: Dead Code & Cleanup Verification', () => {
   // 24.6 No EventsEmit('plugin/install_complete')
   it('24.6 no EventsEmit plugin/install_complete', () => {
     const matches = sourceFiles.filter(
-      (f) => f.content.includes("EventsEmit('plugin/install_complete')")
+      (f) => f.content.includes('EventsEmit(\'plugin/install_complete\')')
         || f.content.includes('EventsEmit("plugin/install_complete")'),
     );
     expect(matches.map((f) => f.file)).toEqual([]);

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { LogEntry, LogStreamEvent, LogDataSource } from '../types';
 
-interface UseLogDataSourceOpts {
+type UseLogDataSourceOpts = {
   source: LogDataSource;
   onLines: (entries: LogEntry[]) => void;
   onEvent: (event: LogStreamEvent) => void;
   paused?: boolean;
-}
+};
 
 /**
  * Generic data source hook that replaces useLogStream when a LogDataSource
@@ -35,7 +35,9 @@ export function useLogDataSource({ source, onLines, onEvent, paused }: UseLogDat
     // Load historical entries
     if (source.loadHistory) {
       source.loadHistory().then((entries) => {
-        if (entries.length > 0) onLines(entries);
+        if (entries.length > 0) {
+          onLines(entries);
+        }
       }).catch(() => {/* swallow */});
     }
 
@@ -53,6 +55,5 @@ export function useLogDataSource({ source, onLines, onEvent, paused }: UseLogDat
 
     return cleanup;
   // source identity must be stable (useMemo in consumer)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 }

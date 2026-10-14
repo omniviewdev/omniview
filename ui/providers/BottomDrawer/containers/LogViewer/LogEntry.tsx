@@ -3,7 +3,7 @@ import type { AnsiSegment, LogEntry as LogEntryType, SearchMatch } from './types
 import { LEVEL_COLORS } from './types';
 import styles from './LogEntry.module.css';
 
-interface Props {
+type Props = {
   entry: LogEntryType;
   showTimestamps: boolean;
   showSources: boolean;
@@ -13,11 +13,11 @@ interface Props {
   searchMatches?: SearchMatch[];
   /** startOffset of the current match on this line, or -1 if current match is on another line */
   currentMatchOffset?: number;
-}
+};
 
 // Visually distinct colors for source badges (dark-theme-friendly, muted pastels).
 // Each entry is [background, text].
-const SOURCE_COLORS: [string, string][] = [
+const SOURCE_COLORS: Array<[string, string]> = [
   ['#1a3a4a', '#7ec8e3'], // teal
   ['#3a1a4a', '#c87ee3'], // purple
   ['#1a4a2a', '#7ee3a0'], // green
@@ -38,11 +38,15 @@ function sourceColorIndex(id: string): number {
   for (let i = 0; i < id.length; i++) {
     hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
   }
+
   return ((hash % SOURCE_COLORS.length) + SOURCE_COLORS.length) % SOURCE_COLORS.length;
 }
 
 function formatTimestamp(ts: string): string {
-  if (!ts) return '';
+  if (!ts) {
+    return '';
+  }
+
   try {
     const d = new Date(ts);
     return d.toLocaleTimeString(undefined, {
@@ -71,16 +75,41 @@ function ansiStyle(seg: AnsiSegment): React.CSSProperties | undefined {
   if (!seg.fg && !seg.bg && !seg.bold && !seg.dim && !seg.italic && !seg.underline && !seg.strikethrough) {
     return undefined;
   }
+
   const s: React.CSSProperties = {};
-  if (seg.fg) s.color = seg.fg;
-  if (seg.bg) s.backgroundColor = seg.bg;
-  if (seg.bold) s.fontWeight = 'bold';
-  if (seg.dim) s.opacity = 0.7;
-  if (seg.italic) s.fontStyle = 'italic';
+  if (seg.fg) {
+    s.color = seg.fg;
+  }
+
+  if (seg.bg) {
+    s.backgroundColor = seg.bg;
+  }
+
+  if (seg.bold) {
+    s.fontWeight = 'bold';
+  }
+
+  if (seg.dim) {
+    s.opacity = 0.7;
+  }
+
+  if (seg.italic) {
+    s.fontStyle = 'italic';
+  }
+
   const deco: string[] = [];
-  if (seg.underline) deco.push('underline');
-  if (seg.strikethrough) deco.push('line-through');
-  if (deco.length > 0) s.textDecoration = deco.join(' ');
+  if (seg.underline) {
+    deco.push('underline');
+  }
+
+  if (seg.strikethrough) {
+    deco.push('line-through');
+  }
+
+  if (deco.length > 0) {
+    s.textDecoration = deco.join(' ');
+  }
+
   return s;
 }
 
@@ -105,6 +134,7 @@ function renderSearchHighlights(
     if (match.startOffset > lastIndex) {
       parts.push(content.slice(lastIndex, match.startOffset));
     }
+
     const isCurrent = match.startOffset === currentMatchOffset;
     parts.push(
       <span
@@ -121,9 +151,11 @@ function renderSearchHighlights(
     );
     lastIndex = match.endOffset;
   }
+
   if (lastIndex < content.length) {
     parts.push(content.slice(lastIndex));
   }
+
   return parts;
 }
 
@@ -198,6 +230,7 @@ function renderAnsiWithSearch(
         if (globalOffset + segPos >= matchEnd) {
           matchIdx++;
         }
+
         continue;
       }
 
@@ -243,7 +276,7 @@ const LogEntryComponent: React.FC<Props> = ({
 
     // No ANSI segments → plain text with search highlights (original path).
     if (!segments && hasSearch) {
-      return renderSearchHighlights(entry.content, searchMatches!, currentMatchOffset, scrollToMatchRef);
+      return renderSearchHighlights(entry.content, searchMatches, currentMatchOffset, scrollToMatchRef);
     }
 
     // ANSI segments present, no search → styled spans.

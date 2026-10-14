@@ -20,9 +20,11 @@ function validModule(overrides?: {
   if (overrides?.routes) {
     pw.withRoutes(overrides.routes);
   }
+
   if (overrides?.extensionPoints) {
     (pw as any)._extensions = overrides.extensionPoints;
   }
+
   return {
     plugin: pw,
     extensionRegistrations: overrides?.extensionRegistrations ?? [],
@@ -106,7 +108,7 @@ describe('Group 18: Observability & Logging', () => {
     const deferred = createDeferred<unknown>();
 
     const t = setup({ importTimeoutMs: 10 });
-    t.importer.register('A', () => deferred.promise);
+    t.importer.register('A', async () => deferred.promise);
 
     await t.service.load('A');
 
@@ -364,7 +366,10 @@ describe('Group 21: Dev Mode Paths', () => {
   // 21.1 Dev load calls ensureDevSharedDeps
   it('21.1 dev load calls ensureDevSharedDeps', async () => {
     let called = false;
-    s.deps.ensureDevSharedDeps = async () => { called = true; };
+    s.deps.ensureDevSharedDeps = async () => {
+      called = true; 
+    };
+
     s.importer.register('A', validModule());
 
     await s.service.load('A', { dev: true, devPort: 5173 });
@@ -375,7 +380,10 @@ describe('Group 21: Dev Mode Paths', () => {
   // 21.2 Prod load does NOT call ensureDevSharedDeps
   it('21.2 prod load does NOT call ensureDevSharedDeps', async () => {
     let called = false;
-    s.deps.ensureDevSharedDeps = async () => { called = true; };
+    s.deps.ensureDevSharedDeps = async () => {
+      called = true; 
+    };
+
     s.importer.register('A', validModule());
 
     await s.service.load('A');
@@ -436,7 +444,10 @@ describe('Group 21: Dev Mode Paths', () => {
   // 21.6 clearPlugin skips dev plugin (adapter handles)
   it('21.6 clearPlugin called with dev=true for dev plugin unload', async () => {
     let clearOpts: any = null;
-    s.deps.clearPlugin = async (opts) => { clearOpts = opts; };
+    s.deps.clearPlugin = async (opts) => {
+      clearOpts = opts; 
+    };
+
     s.importer.register('A', validModule());
 
     await s.service.load('A', { dev: true, devPort: 5173 });
@@ -475,7 +486,7 @@ describe('Group 21: Dev Mode Paths', () => {
     expect(debug.config).toBeDefined();
 
     // Plugin A
-    const pluginA = debug.plugins['A'];
+    const pluginA = debug.plugins.A;
     expect(pluginA).toBeDefined();
     expect(pluginA.phase).toBe('ready');
     expect(pluginA.isDev).toBe(true);
@@ -497,7 +508,7 @@ describe('Group 21: Dev Mode Paths', () => {
     expect(pluginA.definedExtensionPoints).toContain('custom-ep-A');
 
     // Plugin B — minimal
-    const pluginB = debug.plugins['B'];
+    const pluginB = debug.plugins.B;
     expect(pluginB).toBeDefined();
     expect(pluginB.phase).toBe('ready');
     expect(pluginB.contributions).toEqual([]);

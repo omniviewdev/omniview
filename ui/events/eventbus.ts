@@ -26,9 +26,7 @@ export function eventbus<E extends EventMap>(
   const bus: Partial<Bus<E>> = {};
 
   const on: EventBus<E>['on'] = (key, handler) => {
-    if (bus[key] === undefined) {
-      bus[key] = [];
-    }
+    bus[key] ??= [];
 
     bus[key]?.push(handler);
 
