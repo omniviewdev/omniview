@@ -26,9 +26,10 @@ func init() {
 	application.RegisterEvent[UpdateErrorPayload](EventUpdateError)
 	application.RegisterEvent[UpdatePayload](EventUpdateComplete)
 	application.RegisterEvent[application.Void](EventInitComplete)
-	application.RegisterEvent[application.Void](EventCrashRecoveryFailed)
-	application.RegisterEvent[application.Void](EventRecovered)
-	application.RegisterEvent[application.Void](EventStateWriteError)
+	application.RegisterEvent[PluginErrorPayload](EventCrash)
+	application.RegisterEvent[PluginErrorPayload](EventCrashRecoveryFailed)
+	application.RegisterEvent[PluginErrorPayload](EventRecovered)
+	application.RegisterEvent[StateWriteErrorPayload](EventStateWriteError)
 	application.RegisterEvent[DeprecatedProtocolPayload](EventDeprecatedProtocol)
 	application.RegisterEvent[pluginlog.LogEntry](EventProcessLog)
 }
@@ -62,6 +63,7 @@ const (
 	EventInitComplete = "plugin/init_complete"
 
 	// Crash recovery.
+	EventCrash               = "plugin/crash"
 	EventCrashRecoveryFailed = "plugin/crash_recovery_failed"
 	EventRecovered           = "plugin/recovered"
 
@@ -75,12 +77,6 @@ const (
 	EventProcessLog = "plugin/process/log"
 )
 
-// Keys used in map payloads of plugin events.
-const (
-	payloadKeyPluginID = "pluginID"
-	payloadKeyError    = "error"
-)
-
 // StateChangePayload is sent with EventStateChange.
 type StateChangePayload struct {
 	PluginID  string                `json:"pluginID"`
@@ -88,6 +84,19 @@ type StateChangePayload struct {
 	To        lifecycle.PluginPhase `json:"to"`
 	Reason    string                `json:"reason"`
 	Timestamp time.Time             `json:"timestamp"`
+}
+
+// PluginErrorPayload is sent with EventCrash, EventCrashRecoveryFailed and
+// EventRecovered (which leaves Error empty).
+type PluginErrorPayload struct {
+	PluginID string `json:"pluginID"`
+	Error    string `json:"error,omitempty"`
+}
+
+// StateWriteErrorPayload is sent with EventStateWriteError.
+type StateWriteErrorPayload struct {
+	PluginID string `json:"pluginID"`
+	Detail   string `json:"detail"`
 }
 
 // UpdatePayload is sent with EventUpdateStarted and EventUpdateComplete.

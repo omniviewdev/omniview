@@ -81,6 +81,32 @@ export class LoadPluginOptions {
 }
 
 /**
+ * PluginErrorPayload is sent with EventCrash, EventCrashRecoveryFailed and
+ * EventRecovered (which leaves Error empty).
+ */
+export class PluginErrorPayload {
+    "pluginID": string;
+    "error"?: string;
+
+    /** Creates a new PluginErrorPayload instance. */
+    constructor($$source: Partial<PluginErrorPayload> = {}) {
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PluginErrorPayload instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PluginErrorPayload {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PluginErrorPayload($$parsedSource as Partial<PluginErrorPayload>);
+    }
+}
+
+/**
  * StateChangePayload is sent with EventStateChange.
  */
 export class StateChangePayload {
@@ -117,6 +143,34 @@ export class StateChangePayload {
     static createFrom($$source: any = {}): StateChangePayload {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new StateChangePayload($$parsedSource as Partial<StateChangePayload>);
+    }
+}
+
+/**
+ * StateWriteErrorPayload is sent with EventStateWriteError.
+ */
+export class StateWriteErrorPayload {
+    "pluginID": string;
+    "detail": string;
+
+    /** Creates a new StateWriteErrorPayload instance. */
+    constructor($$source: Partial<StateWriteErrorPayload> = {}) {
+        if (!("pluginID" in $$source)) {
+            this["pluginID"] = "";
+        }
+        if (!("detail" in $$source)) {
+            this["detail"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new StateWriteErrorPayload instance from a string or object.
+     */
+    static createFrom($$source: any = {}): StateWriteErrorPayload {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new StateWriteErrorPayload($$parsedSource as Partial<StateWriteErrorPayload>);
     }
 }
 

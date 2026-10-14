@@ -39,7 +39,8 @@ declare module "@wailsio/runtime" {
             "menu/view/bottomdrawer/minimize": void;
             "menu/view/sidebar/minimize": void;
             "menu/view/terminal/create": void;
-            "plugin/crash_recovery_failed": void;
+            "plugin/crash": plugin$0.PluginErrorPayload;
+            "plugin/crash_recovery_failed": plugin$0.PluginErrorPayload;
             "plugin/deprecated_protocol": plugin$0.DeprecatedProtocolPayload;
             "plugin/dev_install_complete": config$0.PluginMeta | null;
             "plugin/dev_install_error": config$0.PluginMeta | null;
@@ -55,9 +56,9 @@ declare module "@wailsio/runtime" {
             "plugin/install_finished": config$0.PluginMeta | null;
             "plugin/install_started": config$0.PluginMeta | null;
             "plugin/process/log": pluginlog$0.LogEntry;
-            "plugin/recovered": void;
+            "plugin/recovered": plugin$0.PluginErrorPayload;
             "plugin/state_change": plugin$0.StateChangePayload;
-            "plugin/state_write_error": void;
+            "plugin/state_write_error": plugin$0.StateWriteErrorPayload;
             "plugin/update_complete": plugin$0.UpdatePayload;
             "plugin/update_error": plugin$0.UpdateErrorPayload;
             "plugin/update_started": plugin$0.UpdatePayload;

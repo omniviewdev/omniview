@@ -33,25 +33,29 @@ function configure() {
         "connection/status": $$createType0,
         "core/networker/portforward/closed": $$createType2,
         "core/networker/portforward/created": $$createType2,
-        "plugin/deprecated_protocol": $$createType3,
-        "plugin/dev_install_complete": $$createType5,
-        "plugin/dev_install_error": $$createType5,
-        "plugin/dev_install_start": $$createType5,
-        "plugin/dev_reload_complete": $$createType5,
-        "plugin/dev_reload_error": $$createType6,
-        "plugin/dev_reload_start": $$createType5,
-        "plugin/devserver/error": $$createType7,
-        "plugin/devserver/log": $$createType9,
-        "plugin/devserver/status": $$createType10,
-        "plugin/install_error": $$createType5,
-        "plugin/install_finished": $$createType5,
-        "plugin/install_started": $$createType5,
-        "plugin/process/log": $$createType11,
-        "plugin/state_change": $$createType12,
-        "plugin/update_complete": $$createType13,
-        "plugin/update_error": $$createType14,
-        "plugin/update_started": $$createType13,
-        "watch/STATE": $$createType15,
+        "plugin/crash": $$createType3,
+        "plugin/crash_recovery_failed": $$createType3,
+        "plugin/deprecated_protocol": $$createType4,
+        "plugin/dev_install_complete": $$createType6,
+        "plugin/dev_install_error": $$createType6,
+        "plugin/dev_install_start": $$createType6,
+        "plugin/dev_reload_complete": $$createType6,
+        "plugin/dev_reload_error": $$createType7,
+        "plugin/dev_reload_start": $$createType6,
+        "plugin/devserver/error": $$createType8,
+        "plugin/devserver/log": $$createType10,
+        "plugin/devserver/status": $$createType11,
+        "plugin/install_error": $$createType6,
+        "plugin/install_finished": $$createType6,
+        "plugin/install_started": $$createType6,
+        "plugin/process/log": $$createType12,
+        "plugin/recovered": $$createType3,
+        "plugin/state_change": $$createType13,
+        "plugin/state_write_error": $$createType14,
+        "plugin/update_complete": $$createType15,
+        "plugin/update_error": $$createType16,
+        "plugin/update_started": $$createType15,
+        "watch/STATE": $$createType17,
     }));
 }
 
@@ -59,18 +63,20 @@ function configure() {
 const $$createType0 = resource$0.ConnectionStatusPayload.createFrom;
 const $$createType1 = networker$0.PortForwardSession.createFrom;
 const $$createType2 = $Create.Nullable($$createType1);
-const $$createType3 = plugin$0.DeprecatedProtocolPayload.createFrom;
-const $$createType4 = config$0.PluginMeta.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $Create.Array($Create.Any);
-const $$createType7 = devserver$0.DevServerErrorPayload.createFrom;
-const $$createType8 = devserver$0.LogEntry.createFrom;
-const $$createType9 = $Create.Array($$createType8);
-const $$createType10 = devserver$0.DevServerState.createFrom;
-const $$createType11 = pluginlog$0.LogEntry.createFrom;
-const $$createType12 = plugin$0.StateChangePayload.createFrom;
-const $$createType13 = plugin$0.UpdatePayload.createFrom;
-const $$createType14 = plugin$0.UpdateErrorPayload.createFrom;
-const $$createType15 = resource$1.WatchStateEvent.createFrom;
+const $$createType3 = plugin$0.PluginErrorPayload.createFrom;
+const $$createType4 = plugin$0.DeprecatedProtocolPayload.createFrom;
+const $$createType5 = config$0.PluginMeta.createFrom;
+const $$createType6 = $Create.Nullable($$createType5);
+const $$createType7 = $Create.Array($Create.Any);
+const $$createType8 = devserver$0.DevServerErrorPayload.createFrom;
+const $$createType9 = devserver$0.LogEntry.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = devserver$0.DevServerState.createFrom;
+const $$createType12 = pluginlog$0.LogEntry.createFrom;
+const $$createType13 = plugin$0.StateChangePayload.createFrom;
+const $$createType14 = plugin$0.StateWriteErrorPayload.createFrom;
+const $$createType15 = plugin$0.UpdatePayload.createFrom;
+const $$createType16 = plugin$0.UpdateErrorPayload.createFrom;
+const $$createType17 = resource$1.WatchStateEvent.createFrom;
 
 configure();

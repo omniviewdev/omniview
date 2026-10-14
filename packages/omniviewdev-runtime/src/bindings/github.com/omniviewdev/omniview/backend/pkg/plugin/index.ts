@@ -9,7 +9,9 @@ export {
 export {
     DeprecatedProtocolPayload,
     LoadPluginOptions,
+    PluginErrorPayload,
     StateChangePayload,
+    StateWriteErrorPayload,
     UpdateErrorPayload,
     UpdatePayload
 } from "./models.js";

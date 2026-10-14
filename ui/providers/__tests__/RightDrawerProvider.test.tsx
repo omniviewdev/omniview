@@ -35,6 +35,7 @@ vi.mock('@/providers/BottomDrawer/events', () => ({
   bottomDrawerChannel: {
     on: (...args: unknown[]) => mocks.mockBottomDrawerOn(...args),
   },
+  getBottomDrawerHeight: () => 32,
 }));
 
 vi.mock('@/features/plugins/PluginManager', () => ({
@@ -103,5 +104,26 @@ describe('RightDrawerProvider', () => {
     });
 
     expect(mocks.mockShowAppError).not.toHaveBeenCalled();
+  });
+
+  it('keeps --BottomDrawer-height on its own element, not on <html>', () => {
+    const { container } = render(
+      <RightDrawerProvider>
+        <Trigger />
+      </RightDrawerProvider>,
+    );
+
+    // The provider renders its children, then the drawer panel.
+    const panel = container.lastElementChild as HTMLElement;
+    expect(panel.style.getPropertyValue('--BottomDrawer-height')).toBe('32px');
+
+    const call = mocks.mockBottomDrawerOn.mock.calls.find(([event]) => event === 'onHeightChange');
+    expect(call).toBeDefined();
+    React.act(() => {
+      (call![1] as (height: number) => void)(550);
+    });
+
+    expect(panel.style.getPropertyValue('--BottomDrawer-height')).toBe('550px');
+    expect(document.documentElement.style.getPropertyValue('--BottomDrawer-height')).toBe('');
   });
 });

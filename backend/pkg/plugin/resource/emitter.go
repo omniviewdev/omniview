@@ -15,6 +15,11 @@ type appEmitter struct {
 	app *application.App
 }
 
+// NewAppEmitter returns an EventEmitter that emits through the given Wails app.
+func NewAppEmitter(app *application.App) EventEmitter {
+	return newAppEmitter(app)
+}
+
 func newAppEmitter(app *application.App) *appEmitter {
 	return &appEmitter{app: app}
 }

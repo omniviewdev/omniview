@@ -151,18 +151,12 @@ func (m *Manager) StartSession(
 		opts.Labels = make(map[string]string)
 	}
 
-	ptyFile, err := pty.Start(cmd)
+	// Start with an initial size so the pty never runs unsized (which renders badly)
+	// and there is no failure path between starting the process and tracking it.
+	ptyFile, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: InitialRows, Cols: InitialCols, X: 0, Y: 0})
 	if err != nil {
 		err = apperror.Wrap(err, apperror.TypeSessionFailed, http.StatusInternalServerError, "Failed to start terminal")
 		logger.Errorw(ctx, "failed to start terminal", "error", err)
-		cancel()
-		return nil, err
-	}
-	// set an initial size for the pty, otherwise we get really weird behavior
-	if err = pty.Setsize(ptyFile, &pty.Winsize{Rows: InitialRows, Cols: InitialCols, X: 0, Y: 0}); err != nil {
-		err = apperror.Wrap(
-			err, apperror.TypeSessionFailed, http.StatusInternalServerError, "Failed to configure terminal size",
-		)
 		cancel()
 		return nil, err
 	}

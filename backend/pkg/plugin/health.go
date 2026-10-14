@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
@@ -70,9 +71,10 @@ func (hc *HealthChecker) Start(ctx context.Context) {
 
 // checkAll iterates over all loaded plugins and checks their health.
 func (hc *HealthChecker) checkAll() {
-	hc.mu.Lock()
-	defer hc.mu.Unlock()
-
+	// Collect the running backend plugins under the records lock, then probe
+	// them without holding it: Healthy() can be an RPC to the plugin.
+	var ids []string
+	hc.pm.recordsMu.RLock()
 	for id, record := range hc.pm.records {
 		if record.Phase != lifecycle.PhaseRunning {
 			continue
@@ -81,8 +83,16 @@ func (hc *HealthChecker) checkAll() {
 		if record.Backend == nil && !record.Metadata.HasBackendCapabilities() {
 			continue
 		}
+		ids = append(ids, id)
+	}
+	hc.pm.recordsMu.RUnlock()
+
+	for _, id := range ids {
 		// Skip if recovery is already in progress for this plugin.
-		if _, recovering := hc.recoveryStates[id]; recovering {
+		hc.mu.Lock()
+		_, recovering := hc.recoveryStates[id]
+		hc.mu.Unlock()
+		if recovering {
 			continue
 		}
 
@@ -97,13 +107,20 @@ func (hc *HealthChecker) checkAll() {
 // checkPlugin checks the health of a single running plugin using its Backend.
 // Returns true if healthy, false if recovery should be triggered.
 func (hc *HealthChecker) checkPlugin(id string) bool {
+	hc.pm.recordsMu.RLock()
+	var backend plugintypes.PluginBackend
 	record, ok := hc.pm.records[id]
-	if !ok || record.Backend == nil {
+	if ok {
+		backend = record.Backend
+	}
+	hc.pm.recordsMu.RUnlock()
+
+	if backend == nil {
 		// No record or no backend — cannot verify health, assume unhealthy.
 		return false
 	}
 
-	return record.Backend.Healthy()
+	return backend.Healthy()
 }
 
 // CrashRecoveryState tracks exponential backoff for a single plugin.
@@ -172,9 +189,9 @@ func (hc *HealthChecker) beginRecoveryAttempt(
 		hc.markFailedLocked(pluginID, "max crash recovery attempts reached", "max retries exhausted")
 
 		hc.mu.Unlock()
-		hc.pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
-			payloadKeyPluginID: pluginID,
-			payloadKeyError:    "max crash recovery attempts reached",
+		hc.pm.emitter.Emit(EventCrashRecoveryFailed, PluginErrorPayload{
+			PluginID: pluginID,
+			Error:    "max crash recovery attempts reached",
 		})
 		return 0, 0, false
 	}
@@ -216,8 +233,11 @@ func (hc *HealthChecker) consumeCrashBudgetLocked(pluginID string) bool {
 }
 
 // markFailedLocked marks the plugin record (if any) as failed with lastError,
-// forcing its state machine to PhaseFailed with reason. Must be called with hc.mu held.
+// forcing its state machine to PhaseFailed with reason. Must be called with hc.mu
+// held; it takes pm.recordsMu itself (lock order: hc.mu, then pm.recordsMu).
 func (hc *HealthChecker) markFailedLocked(pluginID, lastError, reason string) {
+	hc.pm.recordsMu.Lock()
+	defer hc.pm.recordsMu.Unlock()
 	if record, ok := hc.pm.records[pluginID]; ok {
 		record.Phase = lifecycle.PhaseFailed
 		record.LastError = lastError
@@ -238,9 +258,9 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	// across all cycles within a time window.
 	if hc.consumeCrashBudgetLocked(pluginID) {
 		hc.mu.Unlock()
-		hc.pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
-			payloadKeyPluginID: pluginID,
-			payloadKeyError:    "crash budget exhausted — too many crashes in a short time",
+		hc.pm.emitter.Emit(EventCrashRecoveryFailed, PluginErrorPayload{
+			PluginID: pluginID,
+			Error:    "crash budget exhausted — too many crashes in a short time",
 		})
 		return
 	}
@@ -328,7 +348,7 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 		delete(hc.recoveryStates, pluginID)
 		hc.mu.Unlock()
 
-		hc.pm.emitter.Emit(EventRecovered, map[string]interface{}{payloadKeyPluginID: pluginID})
+		hc.pm.emitter.Emit(EventRecovered, PluginErrorPayload{PluginID: pluginID})
 		return
 	}
 }

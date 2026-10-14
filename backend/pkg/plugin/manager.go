@@ -26,6 +26,7 @@ import (
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	regclient "github.com/omniviewdev/registry"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 const (
@@ -244,9 +245,9 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	// "crash_recovery_failed" when it gives up.
 	inCrashCycle := pm.healthChecker != nil && pm.healthChecker.IsInCrashCycle(pluginID)
 	if !inCrashCycle {
-		pm.emitter.Emit("plugin/crash", map[string]interface{}{
-			payloadKeyPluginID: pluginID,
-			payloadKeyError:    crashError,
+		pm.emitter.Emit(EventCrash, PluginErrorPayload{
+			PluginID: pluginID,
+			Error:    crashError,
 		})
 	}
 
@@ -277,14 +278,14 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	}
 	if _, err := pm.ReloadPlugin(pluginID); err != nil {
 		pm.logger.Errorw(pm.ctx, "plugin crash recovery failed", "pluginID", pluginID, "error", err)
-		pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
-			payloadKeyPluginID: pluginID,
-			payloadKeyError:    err.Error(),
+		pm.emitter.Emit(EventCrashRecoveryFailed, PluginErrorPayload{
+			PluginID: pluginID,
+			Error:    err.Error(),
 		})
 		return
 	}
 	pm.logger.Infow(pm.ctx, "plugin recovered after crash", "pluginID", pluginID)
-	pm.emitter.Emit(EventRecovered, map[string]interface{}{payloadKeyPluginID: pluginID})
+	pm.emitter.Emit(EventRecovered, PluginErrorPayload{PluginID: pluginID})
 }
 
 // registerStateObserver adds an observer to a plugin's state machine that
@@ -339,6 +340,14 @@ func (pm *pluginManager) SetPluginLogManager(mgr *pluginlog.Manager) {
 // Initialize discovers and loads all installed plugins.
 func (pm *pluginManager) Initialize(ctx context.Context) error {
 	pm.ctx = ctx
+
+	// The Wails app does not exist yet when the manager is constructed. Initialize
+	// runs from the bootstrap service's ServiceStartup, so it is available now.
+	if _, isNoop := pm.emitter.(resource.NoopEmitter); isNoop {
+		if app := application.Get(); app != nil {
+			pm.emitter = resource.NewAppEmitter(app)
+		}
+	}
 
 	// Wire real-time emission via Wails events for the plugin log manager.
 	if pm.pluginLogMgr != nil {

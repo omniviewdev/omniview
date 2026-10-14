@@ -115,9 +115,9 @@ func (pm *pluginManager) InstallInDevMode() (metadata *config.PluginMeta, err er
 
 	if err = pm.writePluginStateJSON(); err != nil {
 		l.Errorw(pm.ctx, "failed to persist plugin state after dev install", "pluginID", metadata.ID, "error", err)
-		pm.emitter.Emit(EventStateWriteError, map[string]interface{}{
-			payloadKeyPluginID: metadata.ID,
-			"detail":           err.Error(),
+		pm.emitter.Emit(EventStateWriteError, StateWriteErrorPayload{
+			PluginID: metadata.ID,
+			Detail:   err.Error(),
 		})
 	}
 
@@ -312,9 +312,9 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 
 	if err = pm.writePluginStateJSON(); err != nil {
 		pm.logger.Errorw(pm.ctx, "failed to persist plugin state after install", "pluginID", metadata.ID, "error", err)
-		pm.emitter.Emit(EventStateWriteError, map[string]interface{}{
-			payloadKeyPluginID: metadata.ID,
-			"detail":           err.Error(),
+		pm.emitter.Emit(EventStateWriteError, StateWriteErrorPayload{
+			PluginID: metadata.ID,
+			Detail:   err.Error(),
 		})
 	}
 

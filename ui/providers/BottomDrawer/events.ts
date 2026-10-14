@@ -33,6 +33,8 @@ type BottomDrawerEvents = {
   onResizeReset: () => void;
   onFullscreen: () => void;
   onMinimize: () => void;
+  /** Fired when the drawer's committed height changes (not on every drag frame; see onResizeHandler). */
+  onHeightChange: (height: number) => void;
   /** Fired when a new tab is created so the drawer can auto-expand. */
   onTabCreated: () => void;
   /** Fired once terminal sessions that survived a reload have been restored as tabs (or the lookup failed). */
@@ -43,6 +45,23 @@ type BottomDrawerEvents = {
 };
 
 export const bottomDrawerChannel = eventbus<BottomDrawerEvents>();
+
+let bottomDrawerHeight = 32;
+
+/** The bottom drawer's last committed height, for panels that mount after it. */
+export function getBottomDrawerHeight(): number {
+  return bottomDrawerHeight;
+}
+
+/** Records the drawer's committed height and notifies panels that size against it. */
+export function setBottomDrawerHeight(height: number): void {
+  if (height === bottomDrawerHeight) {
+    return;
+  }
+
+  bottomDrawerHeight = height;
+  bottomDrawerChannel.emit('onHeightChange', height);
+}
 
 /**
  * IDs of terminal sessions that survived a reload and were restored as tabs.

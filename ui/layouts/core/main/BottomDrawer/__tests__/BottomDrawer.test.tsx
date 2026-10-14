@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     mockEventsOn: vi.fn(() => vi.fn()),
     mockChannelEmit: vi.fn(),
     mockChannelOn,
+    mockSetBottomDrawerHeight: vi.fn(),
     restoredSessionIds: new Set<string>(),
   };
 });
@@ -30,6 +31,7 @@ vi.mock('@omniviewdev/runtime/runtime', () => ({
 
 vi.mock('@/providers/BottomDrawer/events', () => ({
   restoredSessionIds: mocks.restoredSessionIds,
+  setBottomDrawerHeight: (height: number) => mocks.mockSetBottomDrawerHeight(height),
   bottomDrawerChannel: {
     emit: (...args: [string, ...any[]]) => mocks.mockChannelEmit(...args),
     on: (event: string, handler: (...args: unknown[]) => void) => mocks.mockChannelOn(event, handler),
@@ -173,6 +175,21 @@ describe('BottomDrawerContainer', () => {
 
     const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('32px');
+  });
+
+  it('publishes its height for other panels without touching <html>', () => {
+    mocks.mockUseBottomDrawer.mockReturnValue({
+      tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
+      focused: 0,
+    });
+
+    const { getByTestId } = render(<BottomDrawerContainer />);
+    act(() => {
+      fireEvent.click(getByTestId('btn-fullscreen'));
+    });
+
+    expect(mocks.mockSetBottomDrawerHeight).toHaveBeenLastCalledWith(window.innerHeight);
+    expect(document.documentElement.style.getPropertyValue('--BottomDrawer-height')).toBe('');
   });
 
   it('expand restores last expanded height', () => {
