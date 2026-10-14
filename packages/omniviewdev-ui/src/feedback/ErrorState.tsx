@@ -103,7 +103,7 @@ export default function ErrorState({
           <Typography
             variant="caption"
             sx={{
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
               color: 'var(--ov-fg-muted)',
               fontSize: 'var(--ov-text-xs)',
             }}

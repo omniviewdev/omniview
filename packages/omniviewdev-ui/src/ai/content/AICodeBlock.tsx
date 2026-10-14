@@ -62,7 +62,7 @@ export default function AICodeBlock({
           sx={{
             fontSize: 'var(--ov-text-xs)',
             color: 'var(--ov-fg-muted)',
-            fontFamily: 'var(--ov-font-mono)',
+            fontFamily: 'var(--ovl-font-mono)',
             textTransform: 'lowercase',
           }}
         >
@@ -97,7 +97,7 @@ export default function AICodeBlock({
         <pre style={{ margin: 0, overflow: 'visible' }}>
           <code
             style={{
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
               fontSize: '13px',
               lineHeight: 1.6,
               color: 'var(--ov-fg-default)',

@@ -22,6 +22,7 @@ import './providers/monaco/bootstrap';
 import { StyledEngineProvider } from '@mui/material/styles';
 import { AppTheme, initThemeRegistry } from '@omniviewdev/ui/theme';
 import type { ThemeVariant } from '@omniviewdev/ui/theme';
+import BaseUiTheme from './theme/BaseUiTheme';
 
 initThemeRegistry();
 
@@ -111,7 +112,7 @@ function AppWithTheme({ children }: { children: React.ReactNode }) {
 
   return (
     <AppTheme defaultMode="dark" variant={variant}>
-      {children}
+      <BaseUiTheme>{children}</BaseUiTheme>
     </AppTheme>
   );
 }

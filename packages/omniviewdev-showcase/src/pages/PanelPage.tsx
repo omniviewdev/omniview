@@ -51,7 +51,7 @@ export default function PanelPage() {
               </>
             }
           >
-            <Box sx={{ p: 2, fontFamily: 'var(--ov-font-mono)', fontSize: '0.75rem', color: 'var(--ov-fg-default)' }}>
+            <Box sx={{ p: 2, fontFamily: 'var(--ovl-font-mono)', fontSize: '0.75rem', color: 'var(--ov-fg-default)' }}>
               $ kubectl get pods
               <br />
               NAME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;READY&nbsp;&nbsp;STATUS

@@ -67,7 +67,7 @@ export default function ToolCall({
         <Typography
           sx={{
             fontSize: 'var(--ov-text-sm)',
-            fontFamily: 'var(--ov-font-mono)',
+            fontFamily: 'var(--ovl-font-mono)',
             fontWeight: 600,
             color: 'var(--ov-fg-default)',
             flex: 1,
@@ -81,7 +81,7 @@ export default function ToolCall({
             sx={{
               fontSize: 'var(--ov-text-xs)',
               color: 'var(--ov-fg-faint)',
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
             }}
           >
             {duration < 1000 ? `${duration}ms` : `${(duration / 1000).toFixed(1)}s`}
@@ -131,7 +131,7 @@ export default function ToolCall({
               <pre
                 style={{
                   margin: 0,
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                   fontSize: '12px',
                   lineHeight: 1.5,
                   color: 'var(--ov-fg-default)',
@@ -157,7 +157,7 @@ export default function ToolCall({
                 sx={{
                   fontSize: 'var(--ov-text-xs)',
                   color: 'var(--ov-danger-default)',
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                 }}
               >
                 {error}
@@ -180,7 +180,7 @@ export default function ToolCall({
               <pre
                 style={{
                   margin: 0,
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                   fontSize: '12px',
                   lineHeight: 1.5,
                   color: 'var(--ov-fg-default)',

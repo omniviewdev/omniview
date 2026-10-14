@@ -24,7 +24,7 @@ export default function ToolResult({ result, error, sx }: ToolResultProps) {
           sx={{
             fontSize: 'var(--ov-text-sm)',
             color: 'var(--ov-danger-default)',
-            fontFamily: 'var(--ov-font-mono)',
+            fontFamily: 'var(--ovl-font-mono)',
             whiteSpace: 'pre-wrap',
           }}
         >
@@ -72,7 +72,7 @@ export default function ToolResult({ result, error, sx }: ToolResultProps) {
       <pre
         style={{
           margin: 0,
-          fontFamily: 'var(--ov-font-mono)',
+          fontFamily: 'var(--ovl-font-mono)',
           fontSize: '12px',
           lineHeight: 1.5,
           color: 'var(--ov-fg-default)',

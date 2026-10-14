@@ -428,7 +428,7 @@ function MonospaceSection() {
         <Box sx={{ p: 2 }}>
           <Typography
             variant="body2"
-            sx={{ fontFamily: 'var(--ov-font-mono)', fontSize: 13, color: 'var(--ov-fg-default)', whiteSpace: 'pre' }}
+            sx={{ fontFamily: 'var(--ovl-font-mono)', fontSize: 13, color: 'var(--ov-fg-default)', whiteSpace: 'pre' }}
           >
             {'name: nginx\nimage: nginx:1.25\nports:\n  - containerPort: 80'}
           </Typography>
@@ -441,7 +441,7 @@ function MonospaceSection() {
         <Box sx={{ p: 2 }}>
           <Typography
             variant="body2"
-            sx={{ fontFamily: 'var(--ov-font-mono)', fontSize: 13, color: 'var(--ov-fg-default)', whiteSpace: 'pre' }}
+            sx={{ fontFamily: 'var(--ovl-font-mono)', fontSize: 13, color: 'var(--ov-fg-default)', whiteSpace: 'pre' }}
           >
             {'- name: config-volume\n  configMap:\n    name: nginx-config'}
           </Typography>
@@ -454,7 +454,7 @@ function MonospaceSection() {
         <Box sx={{ p: 2 }}>
           <Typography
             variant="body2"
-            sx={{ fontFamily: 'var(--ov-font-mono)', fontSize: 13, color: 'var(--ov-fg-default)', whiteSpace: 'pre' }}
+            sx={{ fontFamily: 'var(--ovl-font-mono)', fontSize: 13, color: 'var(--ov-fg-default)', whiteSpace: 'pre' }}
           >
             {'- type: Available\n  status: "True"\n  reason: MinimumReplicasAvailable'}
           </Typography>

@@ -2,6 +2,7 @@ import React from 'react';
 import Box from '@mui/material/Box';
 import { Chip } from '@omniviewdev/ui';
 import { Tooltip } from '@omniviewdev/ui/overlays';
+import { StatusDot } from '@omniviewdev/base-ui';
 import { LuCircle, LuExternalLink, LuHammer, LuPlay, LuRefreshCw, LuSquare } from 'react-icons/lu';
 
 import { devToolsChannel } from '@/features/devtools/events';
@@ -94,6 +95,10 @@ const DevModeSection: React.FC<Props> = ({ pluginId, devPath }) => {
               label="External"
             />
           )}
+          {/* Dev-only base-ui smoke test (omn-oiaq): checks base-ui renders inside the MUI tree. */}
+          {import.meta.env.DEV && (
+            <StatusDot status="info" size="sm" label="base-ui" data-testid="base-ui-smoke" />
+          )}
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
@@ -137,7 +142,7 @@ const DevModeSection: React.FC<Props> = ({ pluginId, devPath }) => {
               bgcolor: 'rgba(248,81,73,0.08)',
               border: '1px solid rgba(248,81,73,0.15)',
               fontSize: '0.6875rem',
-              fontFamily: 'var(--ov-font-mono, monospace)',
+              fontFamily: 'var(--ovl-font-mono, monospace)',
               color: '#f85149',
               wordBreak: 'break-word',
               maxHeight: 48,
@@ -170,7 +175,7 @@ function DetailRow({ label, value, mono, valueColor }: { label: string; value: s
         component="span"
         sx={{
           fontSize: '0.6875rem',
-          fontFamily: mono ? 'var(--ov-font-mono, monospace)' : 'inherit',
+          fontFamily: mono ? 'var(--ovl-font-mono, monospace)' : 'inherit',
           color: valueColor ?? 'var(--ov-fg-muted, #8b949e)',
           overflow: 'hidden',
           textOverflow: 'ellipsis',

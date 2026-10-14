@@ -51,7 +51,7 @@ export default function PropsTable({ props }: PropsTableProps) {
               <td
                 style={{
                   padding: '8px 12px',
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                   fontWeight: 600,
                   color: 'var(--ov-fg-base)',
                   borderBottom: '1px solid var(--ov-border-muted)',
@@ -63,7 +63,7 @@ export default function PropsTable({ props }: PropsTableProps) {
               <td
                 style={{
                   padding: '8px 12px',
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                   color: 'var(--ov-fg-muted)',
                   borderBottom: '1px solid var(--ov-border-muted)',
                   whiteSpace: 'nowrap',
@@ -74,7 +74,7 @@ export default function PropsTable({ props }: PropsTableProps) {
               <td
                 style={{
                   padding: '8px 12px',
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                   color: prop.default ? 'var(--ov-fg-default)' : 'var(--ov-fg-faint)',
                   borderBottom: '1px solid var(--ov-border-muted)',
                   whiteSpace: 'nowrap',

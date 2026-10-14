@@ -82,7 +82,7 @@ export default function PermissionScopeEditor({
               <td
                 style={{
                   padding: '6px 12px',
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                   fontWeight: 600,
                   color: 'var(--ov-fg-default)',
                   borderBottom: '1px solid var(--ov-border-muted)',

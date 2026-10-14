@@ -34,7 +34,7 @@ export default function SecretValueMask({
       <Typography
         variant="body2"
         sx={{
-          fontFamily: 'var(--ov-font-mono)',
+          fontFamily: 'var(--ovl-font-mono)',
           fontSize: '0.8125rem',
           color: isRevealed ? 'var(--ov-fg-base)' : 'var(--ov-fg-muted)',
           letterSpacing: isRevealed ? undefined : '0.15em',

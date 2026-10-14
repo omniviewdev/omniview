@@ -106,7 +106,7 @@ function PropertyRow({
               flexShrink: 0,
             }}
           />
-          <Typography variant="body2" sx={{ fontSize, color: 'inherit', fontFamily: 'var(--ov-font-mono)' }} noWrap>
+          <Typography variant="body2" sx={{ fontSize, color: 'inherit', fontFamily: 'var(--ovl-font-mono)' }} noWrap>
             {item.value}
           </Typography>
         </Box>
@@ -115,7 +115,7 @@ function PropertyRow({
 
     if (item.type === 'code') {
       return (
-        <Typography variant="body2" sx={{ fontSize, color: 'inherit', fontFamily: 'var(--ov-font-mono)' }} noWrap>
+        <Typography variant="body2" sx={{ fontSize, color: 'inherit', fontFamily: 'var(--ovl-font-mono)' }} noWrap>
           {item.value}
         </Typography>
       );

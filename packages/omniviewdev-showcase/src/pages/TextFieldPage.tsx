@@ -45,7 +45,7 @@ export default function TextFieldPage() {
         <Example title="Debounced" description="Fires onChange only after typing stops.">
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxWidth: 400 }}>
             <TextField value={debounced} onChange={setDebounced} debounced debounceMs={500} placeholder="Type and wait..." size={size} fullWidth />
-            <Typography variant="caption" sx={{ color: 'var(--ov-fg-muted)', fontFamily: 'var(--ov-font-mono)' }}>
+            <Typography variant="caption" sx={{ color: 'var(--ov-fg-muted)', fontFamily: 'var(--ovl-font-mono)' }}>
               Value: {debounced || '(empty)'}
             </Typography>
           </Box>
