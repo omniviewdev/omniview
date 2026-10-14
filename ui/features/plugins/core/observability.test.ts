@@ -108,7 +108,7 @@ describe('Group 18: Observability & Logging', () => {
     const deferred = createDeferred<unknown>();
 
     const t = setup({ importTimeoutMs: 10 });
-    t.importer.register('A', () => deferred.promise);
+    t.importer.register('A', async () => deferred.promise);
 
     await t.service.load('A');
 

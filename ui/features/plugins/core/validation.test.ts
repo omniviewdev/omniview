@@ -77,7 +77,7 @@ describe('validatePluginExports', () => {
       const result = validatePluginExports({
         plugin: pw(),
         utils: {},
-        helpers: () => {},
+        helpers: () => undefined,
         version: '1.0',
       });
       expect(result.plugin).toBeDefined();
@@ -136,7 +136,7 @@ describe('validatePluginExports', () => {
     });
 
     it('#18 plugin is function', () => {
-      expect(() => validatePluginExports({ plugin: () => {} })).toThrow(PluginValidationError);
+      expect(() => validatePluginExports({ plugin: () => undefined })).toThrow(PluginValidationError);
     });
 
     it('#19 plugin is array', () => {
@@ -225,7 +225,7 @@ describe('validatePluginExports', () => {
 
     it('#31 empty string key', () => {
       expect(() =>
-        validatePluginExports({ plugin: pw(), sidebars: { '': SidebarStub } }),
+        validatePluginExports({ plugin: pw(), sidebars: { ['']: SidebarStub } }),
       ).toThrow();
     });
 

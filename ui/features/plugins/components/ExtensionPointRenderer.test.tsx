@@ -95,7 +95,7 @@ function registerComponent(
 let consoleErrorSpy: MockInstance<typeof console.error>;
 
 beforeEach(() => {
-  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 
 afterEach(() => {

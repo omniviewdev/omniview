@@ -361,7 +361,7 @@ describe('InMemoryEventBus', () => {
     const bus = new InMemoryEventBus();
     expect(bus.hasHandlers('test')).toBe(false);
 
-    const unsub = bus.onEvent('test', () => {});
+    const unsub = bus.onEvent('test', () => undefined);
     expect(bus.hasHandlers('test')).toBe(true);
 
     unsub();

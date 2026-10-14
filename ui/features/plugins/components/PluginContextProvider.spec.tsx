@@ -10,9 +10,9 @@ let consoleDebugSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   mockGetPluginMeta.mockReset();
   mockPluginValues.mockReset().mockResolvedValue({});
-  consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-  consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+  consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
 
   // Wails JS bindings call window['go'][...] — set up the stubs.
   (window as any).go = {
@@ -39,8 +39,8 @@ afterEach(() => {
 describe('PluginContextProvider', () => {
   it('shows loading spinner initially', () => {
     // Never resolve so we stay in loading state
-    mockPluginValues.mockReturnValue(new Promise(() => {}));
-    mockGetPluginMeta.mockReturnValue(new Promise(() => {}));
+    mockPluginValues.mockReturnValue(new Promise(() => undefined));
+    mockGetPluginMeta.mockReturnValue(new Promise(() => undefined));
 
     const { container } = render(
       <PluginContextProvider pluginId="test-plugin">

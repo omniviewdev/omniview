@@ -411,7 +411,7 @@ describe('Group 20: Lifecycle Operations', () => {
 
   it('20.7 — reset() clears inflightLoads and discards stale results', async () => {
     const deferred = createDeferred<unknown>();
-    s.importer.register('A', () => deferred.promise);
+    s.importer.register('A', async () => deferred.promise);
 
     // Start load (will hang on import until deferred resolves)
     const loadPromise = s.service.load('A');

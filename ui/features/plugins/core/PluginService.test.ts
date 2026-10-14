@@ -182,7 +182,7 @@ describe('Group 3: Load Operations', () => {
 
     it('#15 load on loading plugin joins inflight', async () => {
       const d = createDeferred<unknown>();
-      s.importer.register('A', () => d.promise);
+      s.importer.register('A', async () => d.promise);
       const p1 = s.service.load('A');
       const p2 = s.service.load('A');
       d.resolve(validModule());
@@ -282,7 +282,7 @@ describe('Group 3: Load Operations', () => {
   describe('3.4 Timing & Timeout', () => {
     it('#27 import timeout', async () => {
       const s = setup({ importTimeoutMs: 50 });
-      s.importer.register('A', () => new Promise(() => {})); // never resolves
+      s.importer.register('A', async () => new Promise(() => undefined)); // never resolves
       await s.service.load('A');
       const state = s.service.getPluginState('A');
       expect(state?.phase).toBe('error');
@@ -298,7 +298,7 @@ describe('Group 3: Load Operations', () => {
 
     it('#30 timeout is PluginTimeoutError', async () => {
       const s = setup({ importTimeoutMs: 10 });
-      s.importer.register('A', () => new Promise(() => {}));
+      s.importer.register('A', async () => new Promise(() => undefined));
       await s.service.load('A');
       expect(s.service.getPluginState('A')?.error).toContain('timed out');
     });
@@ -400,7 +400,7 @@ describe('Group 5: Reload Operations', () => {
     const oldWindow = s.service.getPluginState('A')?.pluginWindow;
 
     const d = createDeferred<unknown>();
-    s.importer.register('A', () => d.promise);
+    s.importer.register('A', async () => d.promise);
 
     const reloadPromise = s.service.reload('A');
     // During reload, pluginWindow should still be old
@@ -624,7 +624,7 @@ describe('Group 7: Concurrency & Race Conditions', () => {
     it('#1 concurrent load() calls share one import', async () => {
       const s = setup();
       const d = createDeferred<unknown>();
-      s.importer.register('A', () => d.promise);
+      s.importer.register('A', async () => d.promise);
 
       const p1 = s.service.load('A');
       const p2 = s.service.load('A');
@@ -639,7 +639,7 @@ describe('Group 7: Concurrency & Race Conditions', () => {
       await s.service.load('A');
 
       const d = createDeferred<unknown>();
-      s.importer.register('A', () => d.promise);
+      s.importer.register('A', async () => d.promise);
 
       const p1 = s.service.reload('A');
       const p2 = s.service.reload('A');
@@ -654,7 +654,7 @@ describe('Group 7: Concurrency & Race Conditions', () => {
     it('#4 unload cancels inflight load', async () => {
       const s = setup();
       const d = createDeferred<unknown>();
-      s.importer.register('A', () => d.promise);
+      s.importer.register('A', async () => d.promise);
 
       const loadPromise = s.service.load('A');
       await s.service.unload('A');
@@ -667,7 +667,7 @@ describe('Group 7: Concurrency & Race Conditions', () => {
     it('#7 new load after cancel works', async () => {
       const s = setup();
       const d = createDeferred<unknown>();
-      s.importer.register('A', () => d.promise);
+      s.importer.register('A', async () => d.promise);
 
       const loadPromise = s.service.load('A');
       await s.service.unload('A');
@@ -685,7 +685,7 @@ describe('Group 7: Concurrency & Race Conditions', () => {
     it('#8 reload during initial load joins inflight', async () => {
       const s = setup();
       const d = createDeferred<unknown>();
-      s.importer.register('A', () => d.promise);
+      s.importer.register('A', async () => d.promise);
 
       const loadPromise = s.service.load('A');
       // reload() while loading joins the inflight promise (same dedup as load)
@@ -702,7 +702,7 @@ describe('Group 7: Concurrency & Race Conditions', () => {
     it('#11 forceReset during load', async () => {
       const s = setup();
       const d = createDeferred<unknown>();
-      s.importer.register('A', () => d.promise);
+      s.importer.register('A', async () => d.promise);
 
       const loadPromise = s.service.load('A');
       await s.service.forceReset('A');
@@ -718,7 +718,7 @@ describe('Group 7: Concurrency & Race Conditions', () => {
       await s.service.load('A');
 
       const d = createDeferred<unknown>();
-      s.importer.register('A', () => d.promise);
+      s.importer.register('A', async () => d.promise);
 
       const reloadPromise = s.service.reload('A');
       await s.service.forceReset('A');
@@ -937,18 +937,19 @@ describe('Group 11: Batch Operations (loadAll)', () => {
     let concurrent = 0;
     let peakConcurrent = 0;
     const deferreds: Array<ReturnType<typeof createDeferred<unknown>>> = [];
+    const trackedImport = async (d: ReturnType<typeof createDeferred<unknown>>) => {
+      concurrent++;
+      peakConcurrent = Math.max(peakConcurrent, concurrent);
+      return d.promise.then((v) => {
+        concurrent--;
+        return v;
+      });
+    };
 
     for (let i = 0; i < 6; i++) {
       const d = createDeferred<unknown>();
       deferreds.push(d);
-      s.importer.register(`p${i}`, () => {
-        concurrent++;
-        peakConcurrent = Math.max(peakConcurrent, concurrent);
-        return d.promise.then((v) => {
-          concurrent--;
-          return v;
-        });
-      });
+      s.importer.register(`p${i}`, async () => trackedImport(d));
     }
 
     const loadPromise = s.service.loadAll(
