@@ -2,14 +2,14 @@
 
 ## Scope completed
 
-Deleted all 41 brief-listed files, including both requested directory trees:
+Deleted the 40 confirmed unreachable brief-listed files, including both requested directory trees. The test-only Monaco bootstrap mock was initially deleted with the list, then restored during review after the Vite test alias proved it remains reachable:
 
 - Removed the obsolete provider stack (`AppContainerProvider`, `WindowProvider`, the legacy `RightDrawer`, header tab bar, plugin provider, legacy bottom-drawer types, and the unused log-stream hook).
-- Removed the legacy Monaco mock, schema-registration hook, model utilities, and the complete uncalled Nginx language registration tree.
+- Removed the unused Monaco schema-registration hook, model utilities, and the complete uncalled Nginx language registration tree. Preserved the test-only Monaco bootstrap mock used by Vite's Vitest alias.
 - Removed the five unreachable context modules and seven unreachable hook modules, including the complete `ui/hooks/header/` tree.
 - Removed the unused resource-definition hook, extension sidebar registration, logger helpers, telemetry setup modules, event barrel, utility modules/barrel, and WDYR setup.
 
-The resulting source diff is 41 deleted files and 10,526 removed lines, with no source additions or modifications.
+The resulting source cleanup is 40 deleted files and 10,508 removed lines, with no live source additions or modifications.
 
 ## Preserved active surfaces
 
@@ -26,7 +26,7 @@ No UI migration, redesign, replacement implementation, source-structure test, de
 
 ### Scope and retention check
 
-`git status --short` and `git diff --stat` reported exactly 41 source-file deletions, no modified source files, and no untracked files before this report was created. Explicit file checks confirmed `ui/App.tsx`, `ui/providers/monaco/bootstrap.ts`, `ui/providers/monaco/yaml.worker.bundle.js`, and `ui/vite-env.d.ts` remain.
+The initial `git status --short` and `git diff --stat` reported the 41 brief-listed source-file deletions, no modified source files, and no untracked files before this report was created. Explicit file checks confirmed `ui/App.tsx`, `ui/providers/monaco/bootstrap.ts`, `ui/providers/monaco/yaml.worker.bundle.js`, and `ui/vite-env.d.ts` remain. Review subsequently restored the reachable test-only bootstrap mock, leaving 40 source-file deletions.
 
 ### `pnpm build`
 
@@ -52,8 +52,35 @@ Knip could not load three plugin Vite configurations because their local `@omniv
 - `plugins/testui/ui/vite.config.ts`
 - `plugins/aws/ui/vite.config.ts`
 
-It then reported the repository's existing set of unused-file findings. None of the 41 deleted Task 3 paths appeared in the output.
+It then reported the repository's existing set of unused-file findings. None of the 40 deleted Task 3 paths appeared in the output.
+
+## Review fix: Vitest Monaco bootstrap alias
+
+### Root cause
+
+The initial reachability analysis omitted a test-only configuration edge. When `process.env.VITEST` is set, `vite.config.ts:58-60` resolves `@/providers/monaco/bootstrap` to `ui/providers/monaco/bootstrap.mock.ts`. Deleting the mock therefore caused Monaco schema-registry suites to fail during transform before tests could run.
+
+### Exact restoration
+
+Restored `ui/providers/monaco/bootstrap.mock.ts` byte-for-byte from cleanup base `94485ccebb6b589f548077df1bcaa3e4837fc870`. The mock has no local imports, so no other deleted Monaco helper or Nginx language file was restored. No source-structure test was added.
+
+### Targeted Vitest command
+
+Command:
+
+```text
+COREPACK_ENABLE_PROJECT_SPEC=0 corepack pnpm@10 exec vitest run ui/providers/monaco/schemaRegistry.spec.ts ui/providers/monaco/__tests__/schemaRegistry.test.ts
+```
+
+Result: **blocked before Vitest execution** (exit code 254).
+
+```text
+undefined
+ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "vitest" not found
+```
+
+The exact direct invocation was used, without the package script's duplicate `--run`. The current worktree does not have an executable Vitest dependency available, consistent with the earlier frozen-install blocker.
 
 ## Outcome
 
-The exact Task 3 dead provider/context/hook/utility surface and uncalled Nginx registration data are removed. The active App provider composition, Monaco bootstrap, generated YAML worker, and Vite declaration remain intact. Verification blockers are repository prerequisites outside this deletion-only task.
+The confirmed dead Task 3 provider/context/hook/utility surface and uncalled Nginx registration data are removed. The test-only Monaco bootstrap mock required by Vite, active App provider composition, active Monaco bootstrap, generated YAML worker, and Vite declaration remain intact. Verification blockers are repository prerequisites outside this deletion-only task.
