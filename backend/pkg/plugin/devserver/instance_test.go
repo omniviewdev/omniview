@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 func TestNewDevServerInstance(t *testing.T) {

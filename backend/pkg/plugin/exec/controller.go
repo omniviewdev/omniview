@@ -14,7 +14,6 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/terminal"
-
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"

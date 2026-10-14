@@ -17,7 +17,6 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"

@@ -6,9 +6,8 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 const (

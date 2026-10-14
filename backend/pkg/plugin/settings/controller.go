@@ -7,8 +7,6 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,9 +15,10 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
-
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdksettings "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 const (

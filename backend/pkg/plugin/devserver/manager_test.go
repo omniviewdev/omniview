@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 

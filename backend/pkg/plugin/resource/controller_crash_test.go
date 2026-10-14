@@ -6,11 +6,11 @@ import (
 	"sync/atomic"
 	"testing"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 

@@ -7,9 +7,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/wailsapp/mimetype"
+
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
-	"github.com/wailsapp/mimetype"
 )
 
 // PluginAssetHandler serves plugin assets from the local filesystem.

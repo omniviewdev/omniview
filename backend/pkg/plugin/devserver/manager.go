@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"sync"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 

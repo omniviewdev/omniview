@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 func TestIntegration_WatchEventToGraphQuery(t *testing.T) {

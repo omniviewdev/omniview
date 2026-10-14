@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
+
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // ServiceWrapper is an explicit delegation wrapper around resource.Controller.

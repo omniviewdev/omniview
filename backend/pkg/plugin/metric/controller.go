@@ -12,13 +12,11 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"

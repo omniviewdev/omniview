@@ -16,9 +16,8 @@ import (
 	"github.com/creack/pty"  // Import the pty package for creating pseudo-terminal devices.
 	"github.com/google/uuid" // UUID package for generating unique identifiers.
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )

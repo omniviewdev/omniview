@@ -12,9 +12,8 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
-
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // ansiRegex matches ANSI escape sequences (colors, cursor movement, etc.).

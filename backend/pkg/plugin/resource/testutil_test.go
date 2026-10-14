@@ -8,17 +8,16 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	logging "github.com/omniviewdev/plugin-sdk/log"
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // ============================================================================

@@ -16,18 +16,16 @@ import (
 	pluginmetric "github.com/omniviewdev/omniview/backend/pkg/plugin/metric"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/pluginlog"
-	"github.com/omniviewdev/omniview/internal/appstate"
-	regclient "github.com/omniviewdev/registry"
-
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/registry"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
-
+	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
+	regclient "github.com/omniviewdev/registry"
 )
 
 const (
