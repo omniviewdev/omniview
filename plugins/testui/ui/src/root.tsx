@@ -1,6 +1,5 @@
 import React from 'react'
-import { Stack } from '@omniviewdev/ui/layout'
-import { Text } from '@omniviewdev/ui/typography'
+import { Stack, Text } from '@omniviewdev/base-ui'
 import { useExtensionPointComponents } from '@omniviewdev/runtime';
 
 /**
@@ -10,7 +9,7 @@ const RootPage = () => {
   return (
     <Stack
       direction={'row'}
-      justifyContent={'space-around'}
+      justify={'around'}
     >
       <ExtensionPoint1Container />
       <ExtensionPoint2Container />

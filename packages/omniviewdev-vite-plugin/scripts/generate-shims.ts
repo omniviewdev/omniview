@@ -59,12 +59,6 @@ const KNOWN_EXPORTS: Record<string, string[]> = {
     'useRevalidator', 'useRouteError', 'useRouteLoaderData', 'useRoutes',
     'useSearchParams', 'useSubmit',
   ],
-  // Monaco-dependent — can't be imported in Node at generation time
-  '@omniviewdev/ui/editors': [
-    'CodeEditor', 'DiffViewer', 'Terminal', 'CommandPalette',
-    'MarkdownPreview',
-    'registerOmniviewThemes', 'omniviewDark', 'omniviewLight',
-  ],
 };
 
 /**

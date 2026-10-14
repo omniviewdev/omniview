@@ -170,7 +170,6 @@ tasks:
     cmds:
       - pnpm --filter @omniviewdev/providers run build
       - pnpm --filter @omniviewdev/vite-plugin run build
-      - pnpm --filter @omniviewdev/ui run build
       - pnpm --filter @omniviewdev/runtime run build
 
   # ──────────────────────────────────────────────
