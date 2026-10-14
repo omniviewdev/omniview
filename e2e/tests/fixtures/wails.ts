@@ -64,8 +64,10 @@ export async function callBinding<T = unknown>(
   if (!response.ok()) {
     throw new Error(`${method} failed: ${response.status()} ${await response.text()}`);
   }
+  // Strings come back as plain text, everything else as JSON.
   const text = await response.text();
-  return (text ? JSON.parse(text) : undefined) as T;
+  const isJson = response.headers()['content-type']?.includes('application/json');
+  return (isJson && text ? JSON.parse(text) : text || undefined) as T;
 }
 
 /**
