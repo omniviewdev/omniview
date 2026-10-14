@@ -54,6 +54,7 @@ const calcTargets = (action: Handler, data: Record<string, unknown>): ExecTarget
       if (selector === undefined) {
         return;
       }
+
       params[key] = jsonpath.query(data, selector)[0] as string;
     });
 

@@ -9,7 +9,7 @@ import styles from './PluginSurfaceBoundary.module.css';
 
 export type BoundaryKind = 'plugin-route' | 'drawer-surface' | 'modal-surface' | 'ExtensionPointRenderer';
 
-export interface PluginBoundaryLogEvent {
+export type PluginBoundaryLogEvent = {
   readonly pluginId: string;
   readonly boundary: BoundaryKind;
   readonly extensionPointId?: string;
@@ -18,7 +18,7 @@ export interface PluginBoundaryLogEvent {
   readonly message: string;
   readonly stack?: string;
   readonly componentStack?: string;
-}
+};
 
 /**
  * Emit a structured log for any plugin boundary crash.
@@ -29,11 +29,25 @@ export function logPluginBoundaryError(event: PluginBoundaryLogEvent): void {
     pluginId: event.pluginId,
     boundary: event.boundary,
   };
-  if (event.extensionPointId !== undefined) context.extensionPointId = event.extensionPointId;
-  if (event.contributionId !== undefined) context.contributionId = event.contributionId;
-  if (event.resourceKey !== undefined) context.resourceKey = event.resourceKey;
-  if (event.stack !== undefined) context.stack = event.stack;
-  if (event.componentStack !== undefined) context.componentStack = event.componentStack;
+  if (event.extensionPointId !== undefined) {
+    context.extensionPointId = event.extensionPointId;
+  }
+
+  if (event.contributionId !== undefined) {
+    context.contributionId = event.contributionId;
+  }
+
+  if (event.resourceKey !== undefined) {
+    context.resourceKey = event.resourceKey;
+  }
+
+  if (event.stack !== undefined) {
+    context.stack = event.stack;
+  }
+
+  if (event.componentStack !== undefined) {
+    context.componentStack = event.componentStack;
+  }
 
   // Use console.error for boundary crashes — this is the host's boundary logger,
   // not the service's structured logger (which operates on service lifecycle events).
@@ -43,12 +57,12 @@ export function logPluginBoundaryError(event: PluginBoundaryLogEvent): void {
 
 // ─── Default Fallback Components ────────────────────────────────────
 
-export interface DefaultExtensionFallbackProps {
+export type DefaultExtensionFallbackProps = {
   readonly error: Error;
   readonly pluginId: string;
   readonly extensionPointId: string;
   readonly contributionId: string;
-}
+};
 
 /**
  * Default fallback for extension point contribution crashes.
@@ -81,12 +95,12 @@ export function DefaultExtensionFallback({
   );
 }
 
-export interface DefaultPluginFallbackProps {
+export type DefaultPluginFallbackProps = {
   readonly error: Error;
   readonly pluginId: string;
   readonly boundary: BoundaryKind;
   readonly resourceKey?: string;
-}
+};
 
 /**
  * Default fallback for plugin surface crashes (drawer, modal, route).
@@ -123,7 +137,7 @@ export function DefaultPluginFallback({
 
 // ─── PluginSurfaceBoundary ──────────────────────────────────────────
 
-export interface PluginSurfaceBoundaryProps {
+export type PluginSurfaceBoundaryProps = {
   readonly pluginId: string;
   readonly boundary: BoundaryKind;
   readonly resourceKey?: string;
@@ -131,7 +145,7 @@ export interface PluginSurfaceBoundaryProps {
   readonly fallback?: React.ComponentType<DefaultPluginFallbackProps>;
   /** Optional reset keys — boundary resets when these change (e.g., loadedAt). */
   readonly resetKeys?: unknown[];
-}
+};
 
 /**
  * Local error boundary for non-extension-point plugin surfaces.

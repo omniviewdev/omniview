@@ -120,7 +120,10 @@ export const BottomDrawerProvider: React.FC<BottomDrawerProviderProps> = ({ chil
   const updateTab: UpdateTab = (find: FindTabOpts, updates: UpdateTabOpts) => {
     setTabs(prev => {
       const idx = findTabIndex(prev, find);
-      if (idx === -1) return prev;
+      if (idx === -1) {
+        return prev;
+      }
+
       const tab = prev[idx];
       const updated: BottomDrawerTab = {
         ...tab,

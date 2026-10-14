@@ -49,7 +49,9 @@ export function FullPageErrorFallback({ error, resetErrorBoundary, boundary }: F
     const text = `Error ID: ${meta.errorId}\n${error.message}\n\n${error.stack ?? ''}`;
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => {
+        setCopied(false); 
+      }, 2000);
     });
   };
 
@@ -152,7 +154,9 @@ export function PanelErrorFallback({ error, resetErrorBoundary, label, boundary 
     const text = `Error ID: ${meta.errorId}\n${error.message}\n\n${error.stack ?? ''}`;
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => {
+        setCopied(false); 
+      }, 2000);
     });
   };
 
@@ -316,7 +320,9 @@ export function RootErrorFallback({ error }: { error: Error }) {
           </pre>
         )}
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => {
+            window.location.reload(); 
+          }}
           style={{
             background: '#EF4444',
             color: '#fff',

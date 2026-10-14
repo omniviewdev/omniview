@@ -48,7 +48,7 @@ export const Renderer: React.FC = () => {
     removePane,
   }), [panes, setPanes, addNewPane, removePane]);
 
-  console.log("PANES: ", panes)
+  console.log('PANES: ', panes);
 
   return (
     <PaneProviderContext.Provider value={contextValue}>
@@ -61,8 +61,8 @@ export default function PaneRenderer() {
   const { pathname } = useLocation();
   const { panes } = usePanes();
 
-  console.log("IN PANE RENDERER, PATHNAME: %s", pathname)
-  console.log("IN PANE RENDERER, PANES", panes)
+  console.log('IN PANE RENDERER, PATHNAME: %s', pathname);
+  console.log('IN PANE RENDERER, PANES', panes);
 
   /**
    * If the pathname is the root, we're within the context

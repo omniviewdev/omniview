@@ -19,6 +19,7 @@ export async function ensureDevSharedDeps(): Promise<void> {
       await exportSharedDepsForDev();
     })();
   }
+
   return _ready;
 }
 

@@ -12,7 +12,7 @@ import {
 
 // Types
 import { stringToColor } from '@/utils/color';
-import { Connection, ConnectionStatus, ConnectionStatusCode } from '@omniviewdev/runtime/models';
+import { type Connection, type ConnectionStatus, ConnectionStatusCode } from '@omniviewdev/runtime/models';
 
 // Icons
 import { LuEllipsisVertical } from 'react-icons/lu';

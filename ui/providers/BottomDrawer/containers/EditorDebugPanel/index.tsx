@@ -9,19 +9,19 @@ import styles from './EditorDebugPanel.module.css';
 
 type SchemaSnapshot = Record<string, EditorSchemaEntry[]>;
 
-interface ModelInfo {
+type ModelInfo = {
   uri: string;
   language: string;
   version: number;
   contentLength: number;
-}
+};
 
 const AUTO_REFRESH_MS = 5000;
 
 const EditorDebugPanel: React.FC = () => {
   const [snapshot, setSnapshot] = useState<SchemaSnapshot>({});
   const [models, setModels] = useState<ModelInfo[]>([]);
-  const [flushedSchemas, setFlushedSchemas] = useState<Array<{ uri: string; fileMatch: string[]; schema?: object }>>([]);
+  const [flushedSchemas, setFlushedSchemas] = useState<Array<{ uri: string; fileMatch: string[]; schema?: Record<string, unknown> }>>([]);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [showFlushed, setShowFlushed] = useState(false);
 
@@ -41,14 +41,20 @@ const EditorDebugPanel: React.FC = () => {
   useEffect(() => {
     refresh();
     const id = setInterval(refresh, AUTO_REFRESH_MS);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id); 
+    };
   }, [refresh]);
 
   const toggleKey = useCallback((key: string) => {
     setExpandedKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+
       return next;
     });
   }, []);
@@ -87,7 +93,9 @@ const EditorDebugPanel: React.FC = () => {
           const isExpanded = expandedKeys.has(key);
           return (
             <React.Fragment key={key}>
-              <Row onClick={() => toggleKey(key)}>
+              <Row onClick={() => {
+                toggleKey(key); 
+              }}>
                 {isExpanded ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
                 <Text size='xs' mono tone='brand'>{key}</Text>
                 <Text size='xs' mono tone='subtle'>({entries.length} schemas)</Text>
@@ -123,7 +131,9 @@ const EditorDebugPanel: React.FC = () => {
 
         {/* Last Flushed YAML Config Section */}
         <div>
-          <Row onClick={() => setShowFlushed(!showFlushed)}>
+          <Row onClick={() => {
+            setShowFlushed(!showFlushed); 
+          }}>
             {showFlushed ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
             <Text size='xs' mono weight='semibold'>Last Flushed YAML Config</Text>
             <Text size='xs' mono tone='subtle'>({flushedSchemas.length} schemas)</Text>

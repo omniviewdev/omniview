@@ -9,11 +9,11 @@ import { PluginManager, DevServerManager } from '@omniviewdev/runtime/api';
  *
  * Returns minimal descriptor data for the provider to pass to loadAll().
  */
-export interface InstalledPluginDescriptor {
+export type InstalledPluginDescriptor = {
   readonly id: string;
   readonly dev: boolean;
   readonly devPort?: number;
-}
+};
 
 export function useInstalledPlugins(): {
   readonly plugins: InstalledPluginDescriptor[];
@@ -23,7 +23,9 @@ export function useInstalledPlugins(): {
     queryKey: ['installed-plugins'],
     queryFn: async () => {
       const plugins = await PluginManager.ListPlugins();
-      if (!plugins) return [];
+      if (!plugins) {
+        return [];
+      }
 
       // For dev plugins, fetch dev server states to get Vite ports
       const hasDevPlugins = plugins.some((p) => p.devMode);

@@ -10,7 +10,7 @@ const _originalConsoleError = console.error.bind(console);
 export class WailsTransport extends BaseTransport {
   readonly name = 'wails';
   readonly version = '1.0.0';
-  private ingest: IngestFn;
+  private readonly ingest: IngestFn;
 
   constructor(ingestFn: IngestFn) {
     super();
@@ -25,8 +25,10 @@ export class WailsTransport extends BaseTransport {
       if (import.meta.env?.DEV) {
         _originalConsoleError('[WailsTransport] JSON.stringify failed:', err);
       }
+
       return;
     }
+
     this.ingest(data).catch((err) => {
       if (import.meta.env?.DEV) {
         _originalConsoleError('[WailsTransport] ingest failed:', err);

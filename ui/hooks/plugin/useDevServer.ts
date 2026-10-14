@@ -15,12 +15,12 @@ import type { DevServerState as DevServerStateModel, DevServerLogEntry } from '@
 export type DevServerState = DevServerStateModel;
 export type DevLogEntry = DevServerLogEntry;
 
-export interface DevBuildError {
+export type DevBuildError = {
   file: string;
   line: number;
   column: number;
   message: string;
-}
+};
 
 // ── Query Keys ─────────────────────────────────────────────────────────────
 
@@ -39,13 +39,17 @@ function upsertState(
   existing: DevServerState[] | undefined,
   incoming: DevServerState
 ): DevServerState[] {
-  if (!existing) return [incoming];
+  if (!existing) {
+    return [incoming];
+  }
+
   const idx = existing.findIndex((s) => s.pluginID === incoming.pluginID);
   if (idx >= 0) {
     const next = [...existing];
     next[idx] = incoming;
     return next;
   }
+
   return [...existing, incoming];
 }
 
@@ -162,12 +166,20 @@ export function useDevBuildStream(
     const offLog = Events.On('plugin/devserver/log', (ev) => {
       const entries = ev.data as DevLogEntry[];
       const filtered = entries.filter((entry) => {
-        if (entry.pluginID !== pluginID) return false;
-        if (sourceFilter !== 'all' && entry.source !== sourceFilter) return false;
+        if (entry.pluginID !== pluginID) {
+          return false;
+        }
+
+        if (sourceFilter !== 'all' && entry.source !== sourceFilter) {
+          return false;
+        }
+
         return true;
       });
 
-      if (filtered.length === 0) return;
+      if (filtered.length === 0) {
+        return;
+      }
 
       setLines((prev) => {
         const next = [...prev, ...filtered];
@@ -179,7 +191,10 @@ export function useDevBuildStream(
       'plugin/devserver/error',
       (ev) => {
         const payload = ev.data as { pluginID: string; errors: DevBuildError[] };
-        if (payload.pluginID !== pluginID) return;
+        if (payload.pluginID !== pluginID) {
+          return;
+        }
+
         setErrors((prev) => [...prev, ...payload.errors]);
       }
     );

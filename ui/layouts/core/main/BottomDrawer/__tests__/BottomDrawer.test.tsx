@@ -76,7 +76,7 @@ const drawerExpandedHeightStorageKey = 'omniview.bottomDrawer.expandedHeight';
 /** Signal that BottomDrawerTabs finished restoring terminal sessions. */
 const finishRestore = () => {
   act(() => {
-    mocks.eventBusHandlers['onSessionsRestored']?.();
+    mocks.eventBusHandlers.onSessionsRestored?.();
   });
 };
 
@@ -102,7 +102,7 @@ describe('BottomDrawerContainer', () => {
 
   it('renders at minHeight (32px) when no tabs', () => {
     const { container } = render(<BottomDrawerContainer />);
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer).toBeTruthy();
     // Initial state — minHeight should be 32px
     expect(drawer.style.height).toBe('32px');
@@ -115,7 +115,7 @@ describe('BottomDrawerContainer', () => {
     });
 
     const { container } = render(<BottomDrawerContainer />);
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('32px');
   });
 
@@ -129,7 +129,7 @@ describe('BottomDrawerContainer', () => {
     });
 
     const { container } = render(<BottomDrawerContainer />);
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('520px');
   });
 
@@ -138,7 +138,7 @@ describe('BottomDrawerContainer', () => {
     localStorage.setItem(drawerExpandedHeightStorageKey, '520');
 
     const { container } = render(<BottomDrawerContainer />);
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('32px');
   });
 
@@ -154,7 +154,7 @@ describe('BottomDrawerContainer', () => {
     });
     rerender(<BottomDrawerContainer />);
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('550px');
   });
 
@@ -171,7 +171,7 @@ describe('BottomDrawerContainer', () => {
       fireEvent.click(getByTestId('btn-minimize'));
     });
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('32px');
   });
 
@@ -187,7 +187,7 @@ describe('BottomDrawerContainer', () => {
     });
     rerender(<BottomDrawerContainer />);
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('550px');
 
     // Minimize
@@ -215,7 +215,7 @@ describe('BottomDrawerContainer', () => {
       fireEvent.click(getByTestId('btn-fullscreen'));
     });
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('900px');
   });
 
@@ -226,7 +226,7 @@ describe('BottomDrawerContainer', () => {
     });
 
     const { container, getByTestId } = render(<BottomDrawerContainer />);
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
 
     // Go fullscreen
     act(() => {
@@ -270,8 +270,8 @@ describe('BottomDrawerContainer', () => {
     });
     rerender(<BottomDrawerContainer />);
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
-    const dragHandle = drawer.querySelector('[data-testid="bottom-drawer-drag-handle"]') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
+    const dragHandle = drawer.querySelector<HTMLElement>('[data-testid="bottom-drawer-drag-handle"]')!;
     expect(dragHandle).toBeTruthy();
 
     // Drawer starts at 550px from tab expansion
@@ -292,9 +292,9 @@ describe('BottomDrawerContainer', () => {
 
   it('does not expand when there are no tabs', () => {
     const { container, getByTestId } = render(<BottomDrawerContainer />);
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     const dragHandle = getByTestId('bottom-drawer-drag-handle');
-    const onResize = mocks.eventBusHandlers['onResize'];
+    const onResize = mocks.eventBusHandlers.onResize;
 
     expect(drawer.style.height).toBe('32px');
 
@@ -319,13 +319,13 @@ describe('BottomDrawerContainer', () => {
     const { container } = render(<BottomDrawerContainer />);
 
     // The on handler for 'onResize' should have been registered
-    expect(mocks.eventBusHandlers['onResize']).toBeDefined();
+    expect(mocks.eventBusHandlers.onResize).toBeDefined();
 
     act(() => {
-      mocks.eventBusHandlers['onResize'](600);
+      mocks.eventBusHandlers.onResize(600);
     });
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('600px');
   });
 
@@ -337,13 +337,13 @@ describe('BottomDrawerContainer', () => {
 
     const { container } = render(<BottomDrawerContainer />);
 
-    expect(mocks.eventBusHandlers['onFullscreen']).toBeDefined();
+    expect(mocks.eventBusHandlers.onFullscreen).toBeDefined();
 
     act(() => {
-      mocks.eventBusHandlers['onFullscreen']();
+      mocks.eventBusHandlers.onFullscreen();
     });
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('900px');
   });
 
@@ -355,13 +355,13 @@ describe('BottomDrawerContainer', () => {
 
     const { container } = render(<BottomDrawerContainer />);
 
-    expect(mocks.eventBusHandlers['onMinimize']).toBeDefined();
+    expect(mocks.eventBusHandlers.onMinimize).toBeDefined();
 
     act(() => {
-      mocks.eventBusHandlers['onMinimize']();
+      mocks.eventBusHandlers.onMinimize();
     });
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('32px');
   });
 
@@ -375,7 +375,7 @@ describe('BottomDrawerContainer', () => {
     });
     rerender(<BottomDrawerContainer />);
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
 
     // Expanded to 550px — minHeight should still be 32px (the floor)
     expect(drawer.style.height).toBe('550px');
@@ -395,7 +395,7 @@ describe('BottomDrawerContainer', () => {
       fireEvent.click(getByTestId('btn-fullscreen'));
     });
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('900px');
     expect(drawer.style.minHeight).toBe('32px');
     expect(drawer.style.maxHeight).toBe('900px');
@@ -413,7 +413,7 @@ describe('BottomDrawerContainer', () => {
       fireEvent.click(getByTestId('btn-minimize'));
     });
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('32px');
     expect(drawer.style.minHeight).toBe('32px');
     expect(drawer.style.maxHeight).toBe('32px');
@@ -453,7 +453,7 @@ describe('BottomDrawerContainer', () => {
     rerender(<BottomDrawerContainer />);
     finishRestore();
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('300px');
   });
 
@@ -469,7 +469,7 @@ describe('BottomDrawerContainer', () => {
     });
     rerender(<BottomDrawerContainer />);
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('32px');
   });
 
@@ -484,7 +484,7 @@ describe('BottomDrawerContainer', () => {
     });
     rerender(<BottomDrawerContainer />);
 
-    const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
+    const drawer = container.querySelector<HTMLElement>('.BottomDrawer')!;
     expect(drawer.style.height).toBe('550px');
   });
 });

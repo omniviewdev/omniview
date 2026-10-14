@@ -8,7 +8,7 @@ import { PanelErrorFallback, onBoundaryError } from '@/components/errors/ErrorFa
 import { usePluginService } from '@/features/plugins';
 import styles from './PluginRenderer.module.css';
 
-export type PluginRendererProps = {}
+export type PluginRendererProps = Record<string, unknown>;
 
 /**
  * PluginRenderer loads a plugin with a UI entrypoint, injecting the necessary

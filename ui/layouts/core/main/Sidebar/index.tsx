@@ -22,7 +22,7 @@ export default function CoreLayoutSidebar() {
   // extension points, so it has nothing to navigate to. Plugins that have not
   // loaded yet (or failed to) keep their entry.
   const navigable = plugins.data?.filter(({ id }) => registrations.get(id)?.routes.length !== 0);
-  const matched = pathname.match(/^\/_plugin\/([A-Za-z0-9-]+).*/)?.[1] || '';
+  const matched = (/^\/_plugin\/([A-Za-z0-9-]+).*/.exec(pathname))?.[1] || '';
 
   return (
     <AppShell.Sidebar data-testid='app-sidebar' className={`CoreLayoutSidebar ${styles.Rail}`}>

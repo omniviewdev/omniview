@@ -38,8 +38,14 @@ const HomepageCardConfigPopover: React.FC<Props> = ({
 
   const maxItemsError = (() => {
     const val = parseInt(maxItemsInput, 10);
-    if (isNaN(val) || val < 1) return 'Must be at least 1';
-    if (val > 20) return 'Must be at most 20';
+    if (isNaN(val) || val < 1) {
+      return 'Must be at least 1';
+    }
+
+    if (val > 20) {
+      return 'Must be at most 20';
+    }
+
     return null;
   })();
 
@@ -47,7 +53,9 @@ const HomepageCardConfigPopover: React.FC<Props> = ({
     <Popover.Root
       open={Boolean(anchorEl)}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) {
+          onClose();
+        }
       }}
     >
       <Popover.Portal>

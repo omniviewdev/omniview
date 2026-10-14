@@ -7,8 +7,8 @@ import React, {
 
 // context
 import {
-  DrawerComponent,
-  DrawerContext,
+  type DrawerComponent,
+  type DrawerContext,
   RightDrawerContext,
   type RightDrawerContextType,
   type ShowResourceSidebarParams,
@@ -37,7 +37,7 @@ type Props = {
 
 
 /** Length of the core layout sidebar */
-const innerWidthBuffer = 47
+const innerWidthBuffer = 47;
 
 const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   // TODO - calculate these based on window width
@@ -71,10 +71,10 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       }
 
       // reset back to state level since the other container has set it
-      sidebarRef.current.style.height = 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height, 32px))'
-      sidebarRef.current.style.minHeight = 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height, 32px))'
-      sidebarRef.current.style.maxHeight = 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height, 32px))'
-    }
+      sidebarRef.current.style.height = 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height, 32px))';
+      sidebarRef.current.style.minHeight = 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height, 32px))';
+      sidebarRef.current.style.maxHeight = 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height, 32px))';
+    };
 
     const unsubscribeOnResizeDrawer = bottomDrawerChannel.on('onResizeHandler', (height) => {
       if (!sidebarRef.current) {
@@ -82,14 +82,20 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       }
 
       // more performant resizing while the resize handler is actually doing it's thing, otherwise we get cascading rerenders
-      sidebarRef.current.style.height = `calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - ${height}px)`
-      sidebarRef.current.style.minHeight = `calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - ${height}px)`
-      sidebarRef.current.style.maxHeight = `calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - ${height}px)`
+      sidebarRef.current.style.height = `calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - ${height}px)`;
+      sidebarRef.current.style.minHeight = `calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - ${height}px)`;
+      sidebarRef.current.style.maxHeight = `calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - ${height}px)`;
     });
 
-    const unsubsribeOnResizeReset = bottomDrawerChannel.on('onResizeReset', () => sizeReset())
-    const unsubsribeOnFullscreen = bottomDrawerChannel.on('onFullscreen', () => sizeReset())
-    const unsubsribeOnMinimize = bottomDrawerChannel.on('onMinimize', () => sizeReset())
+    const unsubsribeOnResizeReset = bottomDrawerChannel.on('onResizeReset', () => {
+      sizeReset(); 
+    });
+    const unsubsribeOnFullscreen = bottomDrawerChannel.on('onFullscreen', () => {
+      sizeReset(); 
+    });
+    const unsubsribeOnMinimize = bottomDrawerChannel.on('onMinimize', () => {
+      sizeReset(); 
+    });
 
 
     return () => {
@@ -232,7 +238,9 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
           id: params.resourceID,
           namespace: params.namespace ?? '',
         }),
-      ).then(() => closeDrawer());
+      ).then(() => {
+        closeDrawer(); 
+      });
     };
 
     // Resolve drawer/sidebar via extension points — synchronous lookup
@@ -245,11 +253,11 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
     const drawer = factory
       ? factory(closeDrawer)
       : createLinkedResourceDrawer(
-          params.resourceKey,
-          onSubmit,
-          closeDrawer,
-          sidebarComponent,
-        );
+        params.resourceKey,
+        onSubmit,
+        closeDrawer,
+        sidebarComponent,
+      );
 
     // Fetch the resource, then open the drawer with data in ctx — same as row clicks
     ResourceClient.Get(

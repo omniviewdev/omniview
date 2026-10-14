@@ -13,7 +13,9 @@ describe('WailsTransport', () => {
   it('does not throw if binding fails', () => {
     const mockIngest = vi.fn().mockRejectedValue(new Error('binding error'));
     const transport = new WailsTransport(mockIngest);
-    expect(() => transport.send({ type: 1, payload: {}, meta: {} } as any)).not.toThrow();
+    expect(() => {
+      transport.send({ type: 1, payload: {}, meta: {} } as any); 
+    }).not.toThrow();
   });
 
   it('has correct name and version', () => {

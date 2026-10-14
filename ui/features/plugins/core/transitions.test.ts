@@ -32,7 +32,9 @@ describe('State Machine Transitions', () => {
     it.each(validCases)(
       '%s → %s does not throw (%s)',
       (from, to) => {
-        expect(() => assertValidTransition(from, to)).not.toThrow();
+        expect(() => {
+          assertValidTransition(from, to); 
+        }).not.toThrow();
       },
     );
   });
@@ -73,13 +75,19 @@ describe('State Machine Transitions', () => {
     it.each(invalidCases)(
       '%s → %s throws (%s)',
       (from, to) => {
-        expect(() => assertValidTransition(from, to)).toThrow();
+        expect(() => {
+          assertValidTransition(from, to); 
+        }).toThrow();
       },
     );
 
     it('error message contains both phase names', () => {
-      expect(() => assertValidTransition('idle', 'ready')).toThrow(/idle/);
-      expect(() => assertValidTransition('idle', 'ready')).toThrow(/ready/);
+      expect(() => {
+        assertValidTransition('idle', 'ready'); 
+      }).toThrow(/idle/);
+      expect(() => {
+        assertValidTransition('idle', 'ready'); 
+      }).toThrow(/ready/);
     });
   });
 

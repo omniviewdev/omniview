@@ -123,6 +123,7 @@ const parseColumnDef = ({
             if (val === undefined) {
               return;
             }
+
             prioritized = prioritized.replace(new RegExp(key), val);
           });
         }

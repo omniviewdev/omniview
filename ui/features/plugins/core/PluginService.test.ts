@@ -20,9 +20,11 @@ function validModule(overrides?: {
   if (overrides?.routes) {
     pw.withRoutes(overrides.routes);
   }
+
   if (overrides?.extensionPoints) {
     pw.registerExtensionPoints(overrides.extensionPoints);
   }
+
   return {
     plugin: pw,
     extensionRegistrations: overrides?.extensionRegistrations ?? [],
@@ -91,6 +93,7 @@ describe('Group 3: Load Operations', () => {
           });
         }
       };
+
       const SidebarStub = () => null;
       s.importer.register('A', validModule({ sidebars: { 'core::v1::Pod': SidebarStub } }));
       await s.service.load('A');
@@ -109,6 +112,7 @@ describe('Group 3: Load Operations', () => {
           });
         }
       };
+
       const DrawerFactory = () => ({ views: [] });
       s.importer.register('A', validModule({ drawers: { 'core::v1::Pod': DrawerFactory } }));
       await s.service.load('A');
@@ -187,7 +191,9 @@ describe('Group 3: Load Operations', () => {
     });
 
     it('#16 load on error plugin is no-op', async () => {
-      s.importer.register('A', () => { throw new Error('fail'); });
+      s.importer.register('A', () => {
+        throw new Error('fail'); 
+      });
       await s.service.load('A');
       expect(s.service.getPluginState('A')?.phase).toBe('error');
       s.importer.register('A', validModule());
@@ -199,7 +205,9 @@ describe('Group 3: Load Operations', () => {
   // 3.3 Error Paths
   describe('3.3 Error Paths', () => {
     it('#18 import rejects', async () => {
-      s.importer.register('A', () => { throw new Error('network'); });
+      s.importer.register('A', () => {
+        throw new Error('network'); 
+      });
       await s.service.load('A');
       const state = s.service.getPluginState('A');
       expect(state?.phase).toBe('error');
@@ -208,7 +216,9 @@ describe('Group 3: Load Operations', () => {
     });
 
     it('#19 import rejects with non-Error', async () => {
-      s.importer.register('A', () => { throw 'fail'; });
+      s.importer.register('A', () => {
+        throw 'fail'; 
+      });
       await s.service.load('A');
       expect(s.service.getPluginState('A')?.phase).toBe('error');
       expect(s.service.getPluginState('A')?.error).toBeDefined();
@@ -244,19 +254,25 @@ describe('Group 3: Load Operations', () => {
     });
 
     it('#24 error state has null pluginWindow', async () => {
-      s.importer.register('A', () => { throw new Error('fail'); });
+      s.importer.register('A', () => {
+        throw new Error('fail'); 
+      });
       await s.service.load('A');
       expect(s.service.getPluginState('A')?.pluginWindow).toBeNull();
     });
 
     it('#25 error state has null loadedAt', async () => {
-      s.importer.register('A', () => { throw new Error('fail'); });
+      s.importer.register('A', () => {
+        throw new Error('fail'); 
+      });
       await s.service.load('A');
       expect(s.service.getPluginState('A')?.loadedAt).toBeNull();
     });
 
     it('#26 error does not register routes or contributions', async () => {
-      s.importer.register('A', () => { throw new Error('fail'); });
+      s.importer.register('A', () => {
+        throw new Error('fail'); 
+      });
       await s.service.load('A');
       expect(s.service.getAllRoutes()).toHaveLength(0);
     });
@@ -319,6 +335,7 @@ describe('Group 4: Unload Operations', () => {
         });
       }
     };
+
     s.importer.register('A', validModule({ sidebars: { 'core::v1::Pod': () => null } }));
     await s.service.load('A');
     await s.service.unload('A');
@@ -327,7 +344,9 @@ describe('Group 4: Unload Operations', () => {
   });
 
   it('#5 unload from error', async () => {
-    s.importer.register('A', () => { throw new Error('fail'); });
+    s.importer.register('A', () => {
+      throw new Error('fail'); 
+    });
     await s.service.load('A');
     expect(s.service.getPluginState('A')?.phase).toBe('error');
     await s.service.unload('A');
@@ -412,7 +431,9 @@ describe('Group 5: Reload Operations', () => {
     await s.service.load('A');
     const oldWindow = s.service.getPluginState('A')?.pluginWindow;
 
-    s.importer.register('A', () => { throw new Error('reload fail'); });
+    s.importer.register('A', () => {
+      throw new Error('reload fail'); 
+    });
     await s.service.reload('A');
 
     expect(s.service.getPluginState('A')?.phase).toBe('error');
@@ -460,7 +481,9 @@ describe('Group 5: Reload Operations', () => {
 
   it('#9 reload on non-ready throws', async () => {
     // Plugin exists but not ready (in error state)
-    s.importer.register('A', () => { throw new Error('fail'); });
+    s.importer.register('A', () => {
+      throw new Error('fail'); 
+    });
     await s.service.load('A');
     expect(s.service.getPluginState('A')?.phase).toBe('error');
     await expect(s.service.reload('A')).rejects.toThrow(/not in ready state/);
@@ -494,7 +517,10 @@ describe('Group 6: Retry Operations', () => {
     let attempts = 0;
     s.importer.register('A', () => {
       attempts++;
-      if (attempts === 1) throw new Error('fail');
+      if (attempts === 1) {
+        throw new Error('fail');
+      }
+
       return validModule();
     });
     await s.service.load('A');
@@ -527,7 +553,10 @@ describe('Group 6: Retry Operations', () => {
     let attempts = 0;
     s.importer.register('A', () => {
       attempts++;
-      if (attempts <= 2) throw new Error('fail');
+      if (attempts <= 2) {
+        throw new Error('fail');
+      }
+
       return validModule();
     });
 
@@ -539,7 +568,9 @@ describe('Group 6: Retry Operations', () => {
 
   it('#6 maxRetries respected', async () => {
     const s = setup({ retryBaseDelayMs: 0, maxRetries: 2 });
-    s.importer.register('A', () => { throw new Error('fail'); });
+    s.importer.register('A', () => {
+      throw new Error('fail'); 
+    });
 
     await s.service.load('A');
     await s.service.retry('A'); // retryCount=1
@@ -550,7 +581,9 @@ describe('Group 6: Retry Operations', () => {
 
   it('#7 maxRetries logs warning', async () => {
     const s = setup({ retryBaseDelayMs: 0, maxRetries: 1 });
-    s.importer.register('A', () => { throw new Error('fail'); });
+    s.importer.register('A', () => {
+      throw new Error('fail'); 
+    });
 
     await s.service.load('A');
     await s.service.retry('A'); // retryCount=1
@@ -572,7 +605,9 @@ describe('Group 6: Retry Operations', () => {
 
   it('#10 forceReset resets retryCount', async () => {
     const s = setup({ retryBaseDelayMs: 0, maxRetries: 1 });
-    s.importer.register('A', () => { throw new Error('fail'); });
+    s.importer.register('A', () => {
+      throw new Error('fail'); 
+    });
 
     await s.service.load('A');
     await s.service.retry('A'); // retryCount=1
@@ -786,7 +821,9 @@ describe('Group 10: forceReset', () => {
   });
 
   it('#2 from error', async () => {
-    s.importer.register('A', () => { throw new Error('fail'); });
+    s.importer.register('A', () => {
+      throw new Error('fail'); 
+    });
     await s.service.load('A');
     await s.service.forceReset('A');
     const state = s.service.getPluginState('A');
@@ -886,6 +923,7 @@ describe('Group 11: Batch Operations (loadAll)', () => {
     for (let i = 0; i < 5; i++) {
       s.importer.register(`p${i}`, validModule());
     }
+
     await s.service.loadAll(
       Array.from({ length: 5 }, (_, i) => ({ id: `p${i}`, dev: false })),
     );
@@ -898,7 +936,7 @@ describe('Group 11: Batch Operations (loadAll)', () => {
     const s = setup({ maxConcurrentLoads: 2 });
     let concurrent = 0;
     let peakConcurrent = 0;
-    const deferreds: ReturnType<typeof createDeferred<unknown>>[] = [];
+    const deferreds: Array<ReturnType<typeof createDeferred<unknown>>> = [];
 
     for (let i = 0; i < 6; i++) {
       const d = createDeferred<unknown>();
@@ -937,7 +975,9 @@ describe('Group 11: Batch Operations (loadAll)', () => {
   it('#10 loadAll failure does not prevent markReady', async () => {
     const s = setup();
     s.importer.register('A', validModule());
-    s.importer.register('B', () => { throw new Error('fail'); });
+    s.importer.register('B', () => {
+      throw new Error('fail'); 
+    });
     await s.service.loadAll([{ id: 'A', dev: false }, { id: 'B', dev: false }]);
     s.service.markReady();
     expect(s.service.getSnapshot().ready).toBe(true);

@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
-import { DiagnosticsClient } from "@omniviewdev/runtime/api";
+import { useState, useEffect } from 'react';
+import { DiagnosticsClient } from '@omniviewdev/runtime/api';
 import { Events } from '@omniviewdev/runtime/runtime';
 
 export function useComponentLogs(
   component: string,
-  logType: "ui" | "app" = "ui",
+  logType: 'ui' | 'app' = 'ui',
 ) {
   const [logs, setLogs] = useState<string[]>([]);
 
@@ -13,9 +13,12 @@ export function useComponentLogs(
 
     // 1) load full file once
     DiagnosticsClient.ReadLog(logType).then((text) => {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
       const initial = text
-        .split("\n")
+        .split('\n')
         .filter(Boolean)
         .filter((line) => {
           try {
@@ -41,14 +44,16 @@ export function useComponentLogs(
     };
 
     // subscribe & start tail
-    const closer = Events.On(`internal/log/update:${logType}`, (ev) => handler(ev.data as string));
+    const closer = Events.On(`internal/log/update:${logType}`, (ev) => {
+      handler(ev.data as string); 
+    });
     DiagnosticsClient.StartTail(logType);
 
     return () => {
       mounted = false;
       // stop tail and unsubscribe
       DiagnosticsClient.StopTail(logType);
-      closer()
+      closer();
     };
   }, [component, logType]);
 

@@ -9,9 +9,9 @@ import type { PluginDescriptor } from '../core/types';
 // Stubbed here; wired to real backend in B8.
 import { useInstalledPlugins } from '@/hooks/plugin/useInstalledPlugins';
 
-export interface PluginServiceProviderProps {
+export type PluginServiceProviderProps = {
   readonly children: React.ReactNode;
-}
+};
 
 /**
  * Owns the single PluginService instance.
@@ -46,7 +46,10 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
   // Orchestrate initial load
   const loadStarted = useRef(false);
   useEffect(() => {
-    if (isLoading || loadStarted.current) return;
+    if (isLoading || loadStarted.current) {
+      return;
+    }
+
     loadStarted.current = true;
 
     // Exclude dev plugins whose dev server hasn't started yet (no port).
@@ -87,7 +90,9 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
         vitePort: number;
         viteStatus: string;
       };
-      if (state.viteStatus !== 'ready' || !state.vitePort || state.vitePort <= 0) return;
+      if (state.viteStatus !== 'ready' || !state.vitePort || state.vitePort <= 0) {
+        return;
+      }
 
       const ps = service.getPluginState(state.pluginID);
       const devOpts = { dev: true, devPort: state.vitePort };

@@ -88,7 +88,9 @@ function ConnectionRow({
           <PopoverAction
             icon={<LuRefreshCw size={11} />}
             label='Retry Plugin'
-            onClick={() => onRetryPlugin(pluginID)}
+            onClick={() => {
+              onRetryPlugin(pluginID); 
+            }}
             tone='info'
           />
         )}
@@ -96,13 +98,17 @@ function ConnectionRow({
           <PopoverAction
             icon={<LuRefreshCw size={11} />}
             label='Retry'
-            onClick={() => onRetry(pluginID, connectionID)}
+            onClick={() => {
+              onRetry(pluginID, connectionID); 
+            }}
           />
         )}
         <PopoverAction
           icon={<LuUnplug size={11} />}
           label='Disconnect'
-          onClick={() => onDisconnect(pluginID, connectionID)}
+          onClick={() => {
+            onDisconnect(pluginID, connectionID); 
+          }}
           tone='danger'
         />
       </div>
@@ -129,7 +135,9 @@ export default function ConnectionStatusIndicator() {
   } = useConnectionStatus();
 
   // Nothing to show
-  if (connectedCount === 0) return null;
+  if (connectedCount === 0) {
+    return null;
+  }
 
   let status: 'success' | 'danger' | 'info' = 'success';
   let label = `${connectedCount} connected`;
@@ -155,11 +163,13 @@ export default function ConnectionStatusIndicator() {
       console.error('Disconnect failed:', err);
     });
   };
+
   const onRetry = (p: string, c: string) => {
     void retryWatch(p, c).catch((err: unknown) => {
       console.error('Retry watch failed:', err);
     });
   };
+
   const onRetryPlugin = (p: string) => {
     void retryPlugin(p).catch((err: unknown) => {
       console.error('Retry plugin failed:', err);

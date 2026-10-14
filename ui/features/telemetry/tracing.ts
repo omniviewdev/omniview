@@ -6,7 +6,10 @@ import { W3CTraceContextPropagator } from '@opentelemetry/core';
 let provider: BasicTracerProvider | null = null;
 
 export function initTracing(appVersion: string): BasicTracerProvider {
-  if (provider) return provider;
+  if (provider) {
+    return provider;
+  }
+
   provider = new BasicTracerProvider({
     resource: resourceFromAttributes({
       'service.name': 'omniview-frontend',
@@ -18,10 +21,15 @@ export function initTracing(appVersion: string): BasicTracerProvider {
   return provider;
 }
 
-export function getTracerProvider(): BasicTracerProvider | null { return provider; }
+export function getTracerProvider(): BasicTracerProvider | null {
+  return provider; 
+}
 
 export async function shutdownTracing(): Promise<void> {
-  if (!provider) return;
+  if (!provider) {
+    return;
+  }
+
   try {
     await provider.shutdown();
   } finally {

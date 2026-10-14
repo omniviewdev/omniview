@@ -21,7 +21,9 @@ vi.mock('@/providers/monaco/bootstrap', () => ({
 import { schemaRegistry } from './schemaRegistry';
 
 // Helper: flush microtask queue (for queueMicrotask-based batching)
-const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(resolve));
+const flushMicrotasks = () => new Promise<void>((resolve) => {
+  queueMicrotask(resolve); 
+});
 
 function makeSchema(overrides: Record<string, any> = {}) {
   return {

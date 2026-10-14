@@ -17,11 +17,17 @@ vi.mock('@omniviewdev/runtime', () => ({
   },
   parseResourceKey: (key: string) => {
     const parts = key.split('::');
-    if (parts.length === 1) return { group: 'core', version: '', kind: parts[0] };
+    if (parts.length === 1) {
+      return { group: 'core', version: '', kind: parts[0] };
+    }
+
     return { group: parts[0] || 'core', version: parts[1] || '', kind: parts[2] || parts[0] };
   },
   formatGroup: (group: string) => {
-    if (!group || group === 'core') return 'Core';
+    if (!group || group === 'core') {
+      return 'Core';
+    }
+
     return group.charAt(0).toUpperCase() + group.slice(1);
   },
 }));

@@ -48,7 +48,9 @@ export const RouteProvider = () => {
 
   // The shell counts as interactive once the first router has rendered.
   useEffect(() => {
-    if (router) reportStartupReady();
+    if (router) {
+      reportStartupReady();
+    }
   }, [router]);
 
   if (!router) {

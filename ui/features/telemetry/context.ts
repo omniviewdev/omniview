@@ -1,10 +1,10 @@
-export interface TelemetryContext {
+export type TelemetryContext = {
   traceId?: string;
   spanId?: string;
   component?: string;
   pluginId?: string;
   [key: string]: unknown;
-}
+};
 
 export type Fields = Record<string, unknown>;
 

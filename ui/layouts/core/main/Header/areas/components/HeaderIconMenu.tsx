@@ -34,7 +34,9 @@ const HeaderIconMenu: React.FC<Props> = ({ id, icon, helpText, items }) => {
               <Menu.Item
                 key={label}
                 startDecorator={itemIcon ? <Icon name={itemIcon} /> : undefined}
-                onClick={link ? () => navigate(link) : undefined}
+                onClick={link ? () => {
+                  navigate(link); 
+                } : undefined}
               >
                 {label}
               </Menu.Item>

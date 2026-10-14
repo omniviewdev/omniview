@@ -192,13 +192,14 @@ describe('Adapter alignment: registerContribution', () => {
   });
 
   it('throws MissingExtensionPointError for non-existent extension point', () => {
-    expect(() =>
+    expect(() => {
       t.deps.registerContribution('nonexistent/ep', {
         id: 'c1',
         plugin: 'pluginA',
         label: 'C1',
         value: 'val',
-      }),
+      }); 
+    },
     ).toThrow(MissingExtensionPointError);
   });
 
@@ -226,13 +227,14 @@ describe('Adapter alignment: registerContribution', () => {
       mode: 'multiple',
     });
 
-    expect(() =>
+    expect(() => {
       t.deps.registerContribution('test/ep', {
         id: 'c1',
         plugin: 'pluginA',
         label: 'C1',
         value: 'val',
-      }),
+      }); 
+    },
     ).not.toThrow();
   });
 });
@@ -253,12 +255,13 @@ describe('Adapter alignment: addExtensionPoint', () => {
       mode: 'multiple',
     });
 
-    expect(() =>
+    expect(() => {
       t.deps.addExtensionPoint({
         id: 'test/ep',
         pluginId: 'pluginB',
         mode: 'multiple',
-      }),
+      }); 
+    },
     ).toThrow(/already exists/);
   });
 });

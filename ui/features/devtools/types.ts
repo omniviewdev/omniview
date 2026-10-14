@@ -12,32 +12,44 @@ export type DevServerState = DevServerStateModel;
 export type DevBuildLine = DevServerLogEntry;
 
 /** A structured build error from the Go compiler output. */
-export interface DevBuildError {
+export type DevBuildError = {
   file: string;
   line: number;
   column: number;
   message: string;
   severity: 'error' | 'warning';
-}
+};
 
 /** Summary of all dev server instances, used by the footer indicators. */
-export interface DevServerSummary {
+export type DevServerSummary = {
   total: number;
   ready: number;
   building: number;
   error: number;
   stopped: number;
-}
+};
 
 /** Aggregate status for display purposes. */
 export type DevServerAggregateStatus = 'ready' | 'building' | 'error' | 'stopped' | 'connecting';
 
 /** Derive the aggregate status from a DevServerState. */
 export function getAggregateStatus(state: DevServerState): DevServerAggregateStatus {
-  if (state.goStatus === 'error' || state.viteStatus === 'error') return 'error';
-  if (state.goStatus === 'building' || state.viteStatus === 'starting') return 'building';
-  if (state.viteStatus === 'stopped' && !state.grpcConnected) return 'stopped';
-  if (!state.grpcConnected) return 'connecting';
+  if (state.goStatus === 'error' || state.viteStatus === 'error') {
+    return 'error';
+  }
+
+  if (state.goStatus === 'building' || state.viteStatus === 'starting') {
+    return 'building';
+  }
+
+  if (state.viteStatus === 'stopped' && !state.grpcConnected) {
+    return 'stopped';
+  }
+
+  if (!state.grpcConnected) {
+    return 'connecting';
+  }
+
   return 'ready';
 }
 

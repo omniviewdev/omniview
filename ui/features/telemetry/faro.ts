@@ -4,7 +4,10 @@ import { WailsTransport } from './transport';
 let faro: Faro | null = null;
 
 export function initFaro(ingestFn: (payload: string) => Promise<void>, appVersion: string): Faro {
-  if (faro) return faro;
+  if (faro) {
+    return faro;
+  }
+
   faro = initializeFaro({
     app: { name: 'omniview', version: appVersion },
     transports: [new WailsTransport(ingestFn)],
@@ -13,4 +16,6 @@ export function initFaro(ingestFn: (payload: string) => Promise<void>, appVersio
   return faro;
 }
 
-export function getFaro(): Faro | null { return faro; }
+export function getFaro(): Faro | null {
+  return faro; 
+}

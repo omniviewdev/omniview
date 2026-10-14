@@ -35,11 +35,17 @@ export const register = (instance: typeof monaco) => {
       _token: monaco.CancellationToken
     ) => {
       const word = model.getWordAtPosition(position);
-      if (!word) return;
+      if (!word) {
+        return;
+      }
+
       const data = directives.find(
         (item) => item.n === word.word || item.n === `$${word.word}`
       );
-      if (!data) return;
+      if (!data) {
+        return;
+      }
+
       const range = {
         startLineNumber: position.lineNumber,
         endLineNumber: position.lineNumber,

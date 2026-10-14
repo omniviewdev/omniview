@@ -23,7 +23,9 @@ vi.mock('../bootstrap', () => ({
 const { schemaRegistry } = await import('../schemaRegistry');
 
 // Helper to flush microtasks so scheduleFlush() runs
-const flushMicrotasks = () => new Promise<void>((r) => queueMicrotask(r));
+const flushMicrotasks = () => new Promise<void>((r) => {
+  queueMicrotask(r); 
+});
 
 describe('SchemaRegistry', () => {
   beforeEach(() => {
@@ -32,6 +34,7 @@ describe('SchemaRegistry', () => {
       const [pluginID, connectionID] = key.split(':');
       schemaRegistry.unregister(pluginID, connectionID);
     }
+
     mockUpdate.mockClear();
     mockSetDiagnosticsOptions.mockClear();
   });

@@ -26,7 +26,7 @@ vi.mock('@opentelemetry/api', () => {
     },
     propagation: {
       inject: (_ctx: unknown, carrier: Record<string, string>) => {
-        carrier['traceparent'] = '00-abc123-def456-01';
+        carrier.traceparent = '00-abc123-def456-01';
       },
     },
     SpanStatusCode: { OK: 0, ERROR: 1 },

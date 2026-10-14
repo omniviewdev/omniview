@@ -12,7 +12,10 @@ let reported = false;
  * Only the first call does anything.
  */
 export function reportStartupReady(): void {
-  if (reported) return;
+  if (reported) {
+    return;
+  }
+
   reported = true;
 
   // WebKit pauses animation frames for hidden windows, so record the commit

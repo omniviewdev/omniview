@@ -6,10 +6,10 @@ import { devToolsChannel } from '@/features/devtools/events';
 import type { DevBuildError, DevServerState } from '@/features/devtools/types';
 import styles from './PluginDevOverlay.module.css';
 
-interface Props {
+type Props = {
   pluginId: string;
   dismissable?: boolean;
-}
+};
 
 /**
  * Error overlay displayed on top of a plugin's render area when build errors occur.
@@ -22,14 +22,20 @@ const PluginDevOverlay: React.FC<Props> = ({ pluginId, dismissable = true }) => 
 
   useEffect(() => {
     const unsubError = devToolsChannel.on('onBuildError', (payload) => {
-      if (payload.pluginId !== pluginId) return;
+      if (payload.pluginId !== pluginId) {
+        return;
+      }
+
       setErrors(payload.errors);
       setHasError(true);
       setDismissed(false);
     });
 
     const unsubStatus = devToolsChannel.on('onStatusChange', (state: DevServerState) => {
-      if (state.pluginID !== pluginId) return;
+      if (state.pluginID !== pluginId) {
+        return;
+      }
+
       if (state.goStatus === 'ready' && !state.lastError) {
         setErrors([]);
         setHasError(false);
@@ -42,7 +48,9 @@ const PluginDevOverlay: React.FC<Props> = ({ pluginId, dismissable = true }) => 
     };
   }, [pluginId]);
 
-  if (!hasError || dismissed || errors.length === 0) return null;
+  if (!hasError || dismissed || errors.length === 0) {
+    return null;
+  }
 
   return (
     <div className={styles.Overlay}>
@@ -63,7 +71,9 @@ const PluginDevOverlay: React.FC<Props> = ({ pluginId, dismissable = true }) => 
               variant="ghost"
               color="neutral"
               aria-label="Dismiss"
-              onClick={() => { setDismissed(true); }}
+              onClick={() => {
+                setDismissed(true); 
+              }}
             >
               <LuX size={16} />
             </IconButton>
@@ -96,7 +106,9 @@ const PluginDevOverlay: React.FC<Props> = ({ pluginId, dismissable = true }) => 
             size="sm"
             variant="ghost"
             color="neutral"
-            onClick={() => { devToolsChannel.emit('onOpenBuildOutput', pluginId); }}
+            onClick={() => {
+              devToolsChannel.emit('onOpenBuildOutput', pluginId); 
+            }}
           >
             View Full Logs
           </Button>
@@ -105,7 +117,9 @@ const PluginDevOverlay: React.FC<Props> = ({ pluginId, dismissable = true }) => 
             variant="soft"
             color="brand"
             startDecorator={<LuRefreshCw size={14} />}
-            onClick={() => { devToolsChannel.emit('onRestartDevServer', pluginId); }}
+            onClick={() => {
+              devToolsChannel.emit('onRestartDevServer', pluginId); 
+            }}
           >
             Restart
           </Button>

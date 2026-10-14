@@ -651,7 +651,10 @@ describe('PluginSurfaceBoundary', () => {
     let shouldCrash = true;
 
     function MaybeCrash() {
-      if (shouldCrash) throw new Error('crash');
+      if (shouldCrash) {
+        throw new Error('crash');
+      }
+
       return <div data-testid="ok">OK</div>;
     }
 

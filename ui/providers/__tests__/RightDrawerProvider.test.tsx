@@ -37,8 +37,12 @@ vi.mock('@/providers/BottomDrawer/events', () => ({
 }));
 
 vi.mock('@/features/plugins/PluginManager', () => ({
-  getDrawerFactory: (...args: unknown[]) => mocks.mockGetDrawerFactory(...args),
-  getSidebarComponent: (...args: unknown[]) => mocks.mockGetSidebarComponent(...args),
+  getDrawerFactory: (...args: unknown[]) => {
+    mocks.mockGetDrawerFactory(...args); 
+  },
+  getSidebarComponent: (...args: unknown[]) => {
+    mocks.mockGetSidebarComponent(...args); 
+  },
 }));
 
 vi.mock('@/components/displays/RightDrawer', () => ({
@@ -54,13 +58,15 @@ function Trigger() {
 
   return (
     <button
-      onClick={() => drawer.showResourceSidebar({
-        pluginID: 'kubernetes',
-        connectionID: 'conn-1',
-        resourceKey: 'core::v1::Pod',
-        resourceID: 'pod-1',
-        namespace: 'kube-system',
-      })}
+      onClick={() => {
+        drawer.showResourceSidebar({
+          pluginID: 'kubernetes',
+          connectionID: 'conn-1',
+          resourceKey: 'core::v1::Pod',
+          resourceID: 'pod-1',
+          namespace: 'kube-system',
+        }); 
+      }}
       type="button"
     >
       open

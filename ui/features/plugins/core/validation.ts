@@ -69,8 +69,8 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
   // --- plugin export ---
   if (!('plugin' in exp) || exp.plugin == null) {
     throw new PluginValidationError(
-      "Missing required 'plugin' export",
-      { errors: ["Missing required 'plugin' export"] },
+      'Missing required \'plugin\' export',
+      { errors: ['Missing required \'plugin\' export'] },
     );
   }
 
@@ -78,8 +78,8 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
 
   if (typeof plugin !== 'object' || Array.isArray(plugin)) {
     throw new PluginValidationError(
-      "'plugin' must be an object (PluginWindow instance)",
-      { errors: ["'plugin' must be an object"] },
+      '\'plugin\' must be an object (PluginWindow instance)',
+      { errors: ['\'plugin\' must be an object'] },
     );
   }
 
@@ -92,19 +92,20 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
     const routes = pw._routes;
     if (routes !== undefined && routes !== null && !Array.isArray(routes)) {
       throw new PluginValidationError(
-        "'plugin.Routes' must be an array",
-        { errors: ["'plugin.Routes' must be an array"] },
+        '\'plugin.Routes\' must be an array',
+        { errors: ['\'plugin.Routes\' must be an array'] },
       );
     }
   }
+
   // Also handle plain objects passed with a Routes property (non-PluginWindow)
   if (!('_routes' in pw) && 'Routes' in pw) {
     // For plain objects, Routes won't be a getter that throws
     const routes = pw.Routes;
     if (routes !== undefined && routes !== null && !Array.isArray(routes)) {
       throw new PluginValidationError(
-        "'plugin.Routes' must be an array",
-        { errors: ["'plugin.Routes' must be an array"] },
+        '\'plugin.Routes\' must be an array',
+        { errors: ['\'plugin.Routes\' must be an array'] },
       );
     }
   }
@@ -114,10 +115,11 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
   if ('extensionRegistrations' in exp && exp.extensionRegistrations !== undefined) {
     if (!Array.isArray(exp.extensionRegistrations)) {
       throw new PluginValidationError(
-        "'extensionRegistrations' must be an array",
-        { errors: ["'extensionRegistrations' must be an array"] },
+        '\'extensionRegistrations\' must be an array',
+        { errors: ['\'extensionRegistrations\' must be an array'] },
       );
     }
+
     extensionRegistrations = exp.extensionRegistrations;
   }
 
@@ -126,10 +128,11 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
   if ('sidebars' in exp && exp.sidebars !== undefined && exp.sidebars !== null) {
     if (typeof exp.sidebars !== 'object' || Array.isArray(exp.sidebars)) {
       throw new PluginValidationError(
-        "'sidebars' must be an object",
-        { errors: ["'sidebars' must be an object"] },
+        '\'sidebars\' must be an object',
+        { errors: ['\'sidebars\' must be an object'] },
       );
     }
+
     const sidebarMap = exp.sidebars as Record<string, unknown>;
     for (const [key, value] of Object.entries(sidebarMap)) {
       validateResourceKeyFormat(key, 'sidebar');
@@ -137,12 +140,14 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
         errors.push(`sidebar value for key '${key}' must be a component (function), got ${typeof value}`);
       }
     }
+
     if (errors.length > 0) {
       throw new PluginValidationError(
         `Sidebar validation failed: ${errors.join('; ')}`,
         { errors },
       );
     }
+
     sidebars = sidebarMap as Record<string, SidebarComponent>;
   }
 
@@ -151,10 +156,11 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
   if ('drawers' in exp && exp.drawers !== undefined && exp.drawers !== null) {
     if (typeof exp.drawers !== 'object' || Array.isArray(exp.drawers)) {
       throw new PluginValidationError(
-        "'drawers' must be an object",
-        { errors: ["'drawers' must be an object"] },
+        '\'drawers\' must be an object',
+        { errors: ['\'drawers\' must be an object'] },
       );
     }
+
     const drawerMap = exp.drawers as Record<string, unknown>;
     for (const [key, value] of Object.entries(drawerMap)) {
       validateResourceKeyFormat(key, 'drawer');
@@ -162,12 +168,14 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
         errors.push(`drawer value for key '${key}' must be a factory function, got ${typeof value}`);
       }
     }
+
     if (errors.length > 0) {
       throw new PluginValidationError(
         `Drawer validation failed: ${errors.join('; ')}`,
         { errors },
       );
     }
+
     drawers = drawerMap as Record<string, DrawerFactory>;
   }
 
@@ -175,10 +183,11 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
   const rawExtensions = pw._extensions ?? pw.extensions;
   if (rawExtensions != null && !Array.isArray(rawExtensions)) {
     throw new PluginValidationError(
-      "'_extensions' or 'extensions' must be an array if present",
-      { errors: ["'_extensions' or 'extensions' must be an array if present"] },
+      '\'_extensions\' or \'extensions\' must be an array if present',
+      { errors: ['\'_extensions\' or \'extensions\' must be an array if present'] },
     );
   }
+
   const extensions = (rawExtensions ?? []) as unknown[];
   if (extensions.length > 0) {
     const seenIds = new Set<string>();
@@ -189,6 +198,7 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
           { errors: ['Extension point definition must be an object'] },
         );
       }
+
       const epObj = ep as Record<string, unknown>;
       if (!epObj.id || typeof epObj.id !== 'string') {
         throw new PluginValidationError(
@@ -196,12 +206,14 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
           { errors: ['Extension point definition must have a string "id" field'] },
         );
       }
+
       if (seenIds.has(epObj.id)) {
         throw new PluginValidationError(
           `Duplicate extension point ID '${epObj.id}' within the same plugin`,
           { errors: [`Duplicate extension point ID '${epObj.id}'`] },
         );
       }
+
       seenIds.add(epObj.id);
     }
   }
@@ -210,24 +222,26 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
   if ('dependencies' in exp && exp.dependencies !== undefined && exp.dependencies !== null) {
     if (typeof exp.dependencies !== 'object' || Array.isArray(exp.dependencies)) {
       throw new PluginValidationError(
-        "'dependencies' must be an object",
-        { errors: ["'dependencies' must be an object"] },
+        '\'dependencies\' must be an object',
+        { errors: ['\'dependencies\' must be an object'] },
       );
     }
+
     const deps = exp.dependencies as Record<string, unknown>;
 
     if ('plugins' in deps && deps.plugins !== undefined) {
       if (!Array.isArray(deps.plugins)) {
         throw new PluginValidationError(
-          "'dependencies.plugins' must be an array",
-          { errors: ["'dependencies.plugins' must be an array"] },
+          '\'dependencies.plugins\' must be an array',
+          { errors: ['\'dependencies.plugins\' must be an array'] },
         );
       }
+
       for (const item of deps.plugins) {
         if (typeof item !== 'string') {
           throw new PluginValidationError(
-            "'dependencies.plugins' must contain only strings",
-            { errors: ["'dependencies.plugins' must contain only strings"] },
+            '\'dependencies.plugins\' must contain only strings',
+            { errors: ['\'dependencies.plugins\' must contain only strings'] },
           );
         }
       }
@@ -236,15 +250,16 @@ export function validatePluginExports(exports: unknown): ValidatedExports {
     if ('extensionPoints' in deps && deps.extensionPoints !== undefined) {
       if (!Array.isArray(deps.extensionPoints)) {
         throw new PluginValidationError(
-          "'dependencies.extensionPoints' must be an array",
-          { errors: ["'dependencies.extensionPoints' must be an array"] },
+          '\'dependencies.extensionPoints\' must be an array',
+          { errors: ['\'dependencies.extensionPoints\' must be an array'] },
         );
       }
+
       for (const item of deps.extensionPoints) {
         if (typeof item !== 'string') {
           throw new PluginValidationError(
-            "'dependencies.extensionPoints' must contain only strings",
-            { errors: ["'dependencies.extensionPoints' must contain only strings"] },
+            '\'dependencies.extensionPoints\' must contain only strings',
+            { errors: ['\'dependencies.extensionPoints\' must contain only strings'] },
           );
         }
       }

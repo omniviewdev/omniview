@@ -34,7 +34,9 @@ export default function PluginNotFoundPage() {
           variant='solid'
           color='brand'
           size='sm'
-          onClick={() => { navigate(-1); }}
+          onClick={() => {
+            navigate(-1); 
+          }}
           startDecorator={<LuArrowLeft size={14} />}
         >
           Go Back

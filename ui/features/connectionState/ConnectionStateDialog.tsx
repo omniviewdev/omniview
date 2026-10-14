@@ -12,7 +12,7 @@ import styles from './ConnectionStateDialog.module.css';
 // Props
 // ---------------------------------------------------------------------------
 
-export interface ConnectionStateDialogProps {
+export type ConnectionStateDialogProps = {
   open: boolean;
   onClose: () => void;
   connectionName: string;
@@ -22,7 +22,7 @@ export interface ConnectionStateDialogProps {
   resourceCounts: Record<string, number>;
   /** Called when user clicks Retry on an errored resource */
   onRetryResource: (resourceKey: string) => void;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -112,11 +112,13 @@ export default function ConnectionStateDialog({
         skipped++;
         continue;
       }
+
       watched++;
       if (isTerminal(state)) {
         done++;
       }
     }
+
     return { watchedTotal: watched, watchedDone: done, skippedCount: skipped };
   }, [resources]);
 
@@ -127,14 +129,23 @@ export default function ConnectionStateDialog({
     for (const [key, state] of Object.entries(resources)) {
       const { group, kind } = parseResourceKey(key);
       const label = formatGroup(group);
-      if (!groups[label]) groups[label] = [];
+      if (!groups[label]) {
+        groups[label] = [];
+      }
+
       groups[label].push({ key, kind, state, count: resourceCounts[key] ?? 0 });
     }
 
     // Sort groups alphabetically, but put "Core" first
     return Object.entries(groups).sort(([a], [b]) => {
-      if (a === 'Core') return -1;
-      if (b === 'Core') return 1;
+      if (a === 'Core') {
+        return -1;
+      }
+
+      if (b === 'Core') {
+        return 1;
+      }
+
       return a.localeCompare(b);
     });
   }, [resources, resourceCounts]);
@@ -221,7 +232,9 @@ export default function ConnectionStateDialog({
                     variant="soft"
                     size="xs"
                     color="danger"
-                    onClick={() => { onRetryResource(key); }}
+                    onClick={() => {
+                      onRetryResource(key); 
+                    }}
                     className={styles.RetryButton}
                   >
                     Retry

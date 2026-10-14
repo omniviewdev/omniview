@@ -10,7 +10,7 @@ import type {
 // ─── In-Memory Module Importer ──────────────────────────────────────
 
 export class InMemoryModuleImporter {
-  private _modules = new Map<string, unknown>();
+  private readonly _modules = new Map<string, unknown>();
   private _importCount = 0;
 
   /** Register a module that will be returned when imported by pluginId. */
@@ -35,11 +35,13 @@ export class InMemoryModuleImporter {
     if (mod === undefined) {
       throw new Error(`Module "${opts.pluginId}" not registered in InMemoryModuleImporter`);
     }
+
     // If the registered value is a function, call it to get the module
     // (allows deferred/dynamic module factories).
     if (typeof mod === 'function') {
       return (mod as () => unknown)();
     }
+
     return mod;
   };
 }
@@ -47,13 +49,14 @@ export class InMemoryModuleImporter {
 // ─── In-Memory Event Bus ────────────────────────────────────────────
 
 export class InMemoryEventBus {
-  private _handlers = new Map<string, Set<(...args: any[]) => void>>();
+  private readonly _handlers = new Map<string, Set<(...args: any[]) => void>>();
 
   /** Wire into deps.onEvent. */
   onEvent = (eventName: string, handler: (...args: any[]) => void): (() => void) => {
     if (!this._handlers.has(eventName)) {
       this._handlers.set(eventName, new Set());
     }
+
     this._handlers.get(eventName)!.add(handler);
     return () => {
       this._handlers.get(eventName)?.delete(handler);
@@ -81,17 +84,18 @@ export class InMemoryEventBus {
     for (const handlers of this._handlers.values()) {
       count += handlers.size;
     }
+
     return count;
   }
 }
 
 // ─── Log Capture ────────────────────────────────────────────────────
 
-export interface CapturedLog {
+export type CapturedLog = {
   level: 'debug' | 'warn' | 'error';
   message: string;
   data?: Record<string, unknown>;
-}
+};
 
 export class LogCapture {
   readonly logs: CapturedLog[] = [];
@@ -121,14 +125,14 @@ export class LogCapture {
 
 // ─── Test Deps Factory ──────────────────────────────────────────────
 
-export interface TestDeps {
+export type TestDeps = {
   deps: PluginServiceDeps;
   importer: InMemoryModuleImporter;
   eventBus: InMemoryEventBus;
   extensions: ExtensionPointRegistry;
   log: LogCapture;
   crashData: InMemoryCrashDataStrategy;
-}
+};
 
 /**
  * Create a full set of test dependencies that satisfy PluginServiceDeps.
@@ -188,6 +192,7 @@ export function createTestDeps(opts?: { maxCrashRecordsPerContribution?: number 
           },
         );
       }
+
       try {
         store.register(contribution);
       } catch (err) {
@@ -199,6 +204,7 @@ export function createTestDeps(opts?: { maxCrashRecordsPerContribution?: number 
             cause: err,
           });
         }
+
         throw err;
       }
     },
@@ -220,11 +226,11 @@ export function createTestDeps(opts?: { maxCrashRecordsPerContribution?: number 
 
 // ─── Deferred Promise ───────────────────────────────────────────────
 
-export interface Deferred<T> {
+export type Deferred<T> = {
   promise: Promise<T>;
   resolve: (value: T) => void;
   reject: (reason: unknown) => void;
-}
+};
 
 /**
  * Create a deferred promise for timing control in tests.

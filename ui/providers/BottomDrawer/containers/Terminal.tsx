@@ -120,7 +120,9 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
   // Apply settings changes to a live terminal without recreating it.
   useEffect(() => {
     const term = xtermRef.current;
-    if (!term) return;
+    if (!term) {
+      return;
+    }
 
     const themeName = (settings['terminal.theme'] as string) || 'default';
     term.options.theme = getTerminalTheme(themeName);
@@ -158,7 +160,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
       fontSize: s['terminal.fontSize'] || 12,
-      fontFamily: "Consolas,Liberation Mono,Menlo,Courier,monospace",
+      fontFamily: 'Consolas,Liberation Mono,Menlo,Courier,monospace',
       fontWeight: 'normal',
       theme,
     });
@@ -192,6 +194,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     const handleWindowResize = () => {
       handleFit();
     };
+
     window.addEventListener('resize', handleWindowResize);
 
     // Re-fit when the bottom drawer finishes a resize transition
@@ -226,7 +229,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     const setupSignalHandlers = () => {
       // ERROR signal: structured error from plugin layer
       Events.On(constructSignalHandler('ERROR', sessionId), (ev) => {
-        const errorInfo = ev.data as any;
+        const errorInfo = ev.data;
         if (errorInfo && typeof errorInfo === 'object') {
           const info: TerminalErrorInfo = {
             title: errorInfo.title || errorInfo.Title || 'Session error',
@@ -246,20 +249,37 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         if (errorRef.current) {
           return;
         }
+
         // Only auto-close the tab if the session was successfully attached
         if (attachedRef.current) {
           bottomDrawerChannel.emit('onSessionClosed', { id: sessionId });
         }
       });
 
-      Events.On(constructSignalHandler('SIGINT', sessionId), () => { console.log('SIGINT'); });
-      Events.On(constructSignalHandler('SIGQUIT', sessionId), () => { console.log('SIGQUIT'); });
-      Events.On(constructSignalHandler('SIGTERM', sessionId), () => { console.log('SIGTERM'); });
-      Events.On(constructSignalHandler('SIGKILL', sessionId), () => { console.log('SIGKILL'); });
-      Events.On(constructSignalHandler('SIGHUP', sessionId), () => { console.log('SIGHUP'); });
-      Events.On(constructSignalHandler('SIGUSR1', sessionId), () => { console.log('SIGUSR1'); });
-      Events.On(constructSignalHandler('SIGUSR2', sessionId), () => { console.log('SIGUSR2'); });
-      Events.On(constructSignalHandler('SIGWINCH', sessionId), () => { console.log('SIGWINCH'); });
+      Events.On(constructSignalHandler('SIGINT', sessionId), () => {
+        console.log('SIGINT'); 
+      });
+      Events.On(constructSignalHandler('SIGQUIT', sessionId), () => {
+        console.log('SIGQUIT'); 
+      });
+      Events.On(constructSignalHandler('SIGTERM', sessionId), () => {
+        console.log('SIGTERM'); 
+      });
+      Events.On(constructSignalHandler('SIGKILL', sessionId), () => {
+        console.log('SIGKILL'); 
+      });
+      Events.On(constructSignalHandler('SIGHUP', sessionId), () => {
+        console.log('SIGHUP'); 
+      });
+      Events.On(constructSignalHandler('SIGUSR1', sessionId), () => {
+        console.log('SIGUSR1'); 
+      });
+      Events.On(constructSignalHandler('SIGUSR2', sessionId), () => {
+        console.log('SIGUSR2'); 
+      });
+      Events.On(constructSignalHandler('SIGWINCH', sessionId), () => {
+        console.log('SIGWINCH'); 
+      });
     };
 
     setupSignalHandlers();
@@ -295,7 +315,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
     attachToSession().then(() => {
       attachedRef.current = true;
-      fitAddon.fit()
+      fitAddon.fit();
       terminal.onData(data => {
         ExecClient.WriteSession(sessionId, Base64.encode(data))
           .catch((err: unknown) => {
@@ -325,6 +345,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       } catch (e) {
         console.log(e);
       }
+
       canvasAddonRef.current = undefined;
       webglAddonRef.current = undefined;
 

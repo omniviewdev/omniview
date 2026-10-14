@@ -1,14 +1,14 @@
 import type { CrashRecord, CrashDataStrategy } from './types';
 
-interface CrashEntry {
+type CrashEntry = {
   records: CrashRecord[];
   count: number;
   pluginId: string;
-}
+};
 
-export interface InMemoryCrashDataStrategyConfig {
+export type InMemoryCrashDataStrategyConfig = {
   readonly maxRecordsPerContribution: number;
-}
+};
 
 export class InMemoryCrashDataStrategy implements CrashDataStrategy {
   private readonly maxRecords: number;
@@ -19,6 +19,7 @@ export class InMemoryCrashDataStrategy implements CrashDataStrategy {
     if (!Number.isInteger(config.maxRecordsPerContribution) || config.maxRecordsPerContribution < 1) {
       throw new Error(`maxRecordsPerContribution must be a positive integer, got ${config.maxRecordsPerContribution}`);
     }
+
     this.maxRecords = config.maxRecordsPerContribution;
   }
 
@@ -37,6 +38,7 @@ export class InMemoryCrashDataStrategy implements CrashDataStrategy {
         pluginId: record.pluginId,
       });
     }
+
     this.notify();
   }
 
@@ -54,7 +56,10 @@ export class InMemoryCrashDataStrategy implements CrashDataStrategy {
         changed = true;
       }
     }
-    if (changed) this.notify();
+
+    if (changed) {
+      this.notify();
+    }
   }
 
   clearAll(): void {
@@ -78,6 +83,7 @@ export class InMemoryCrashDataStrategy implements CrashDataStrategy {
     for (const [id, entry] of this.entries) {
       result.set(id, [...entry.records]);
     }
+
     return result;
   }
 

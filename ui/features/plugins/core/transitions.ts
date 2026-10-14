@@ -31,7 +31,7 @@ export const VALID_TRANSITIONS: Record<PluginPhase, readonly PluginPhase[]> = {
  */
 export function assertValidTransition(from: PluginPhase, to: PluginPhase): void {
   const allowed = VALID_TRANSITIONS[from];
-  if (!allowed || !allowed.includes(to)) {
+  if (!allowed?.includes(to)) {
     throw new Error(
       `Invalid plugin state transition: "${from}" → "${to}". ` +
         `Allowed transitions from "${from}": [${(allowed ?? []).map((p) => `"${p}"`).join(', ')}]`,

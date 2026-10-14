@@ -101,7 +101,9 @@ const HomepageCard: React.FC<Props> = ({
                   variant='ghost'
                   color='neutral'
                   aria-label='Card settings'
-                  onClick={(e) => setConfigAnchor(e.currentTarget)}
+                  onClick={(e) => {
+                    setConfigAnchor(e.currentTarget); 
+                  }}
                 >
                   <LuSettings size={16} />
                 </IconButton>
@@ -143,7 +145,9 @@ const HomepageCard: React.FC<Props> = ({
       {meta && (
         <HomepageCardConfigPopover
           anchorEl={configAnchor}
-          onClose={() => setConfigAnchor(null)}
+          onClose={() => {
+            setConfigAnchor(null); 
+          }}
           meta={meta}
           config={config}
           onConfigChange={(next) => {

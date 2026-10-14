@@ -17,6 +17,8 @@ export function initPluginLogBridge(): () => void {
   );
 
   return () => {
-    cleanups.forEach((fn) => fn());
+    cleanups.forEach((fn) => {
+      fn(); 
+    });
   };
 }

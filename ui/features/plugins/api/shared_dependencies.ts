@@ -13,7 +13,10 @@ export const shared = {
     // with the production jsx-runtime (no jsxDEV). Since dev-mode plugins
     // need jsxDEV, we construct it from the production jsx/jsxs + Fragment.
     const mod = await import('react/jsx-dev-runtime');
-    if (typeof mod.jsxDEV === 'function') return mod;
+    if (typeof mod.jsxDEV === 'function') {
+      return mod;
+    }
+
     const prodRuntime = await import('react/jsx-runtime');
     return {
       ...prodRuntime,
@@ -60,5 +63,5 @@ export const shared = {
 
   // Utilities
   'date-fns': () => import('date-fns'),
-  'yaml': () => import('yaml')
+  'yaml': () => import('yaml'),
 };

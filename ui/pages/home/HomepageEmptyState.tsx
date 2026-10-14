@@ -15,7 +15,9 @@ const HomepageEmptyState: React.FC = () => {
         <Text tone='muted' className={styles.Description}>
           Install a plugin to see actionable content here.
         </Text>
-        <Button variant='solid' color='brand' onClick={() => navigate('/plugins')}>
+        <Button variant='solid' color='brand' onClick={() => {
+          navigate('/plugins'); 
+        }}>
           Browse Plugins
         </Button>
       </div>

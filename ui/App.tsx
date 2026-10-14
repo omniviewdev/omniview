@@ -33,16 +33,16 @@ import {
 import { ExtensionProvider } from '@omniviewdev/runtime';
 import BottomDrawerProvider from './providers/BottomDrawer/provider';
 import { SettingsProvider } from '@omniviewdev/runtime';
-import { EXTENSION_REGISTRY } from './features/extensions/store'
+import { EXTENSION_REGISTRY } from './features/extensions/store';
 import { ConfirmationModalProvider } from './contexts/ConfirmationModalContext';
 import { ConnectionStateProvider } from './features/connectionState';
 import { OperationsProvider } from '@omniviewdev/runtime';
 import { PluginServiceProvider } from '@/features/plugins';
 import { RouteProvider } from './features/router/RouteProvider';
-import log from '@/features/logger'
+import log from '@/features/logger';
 
 // 2. Global handlers for uncaught errors + promise rejections
-window.addEventListener("error", event => {
+window.addEventListener('error', event => {
   // event.error may be undefined (e.g. script load failures)
   const err = event.error || new Error(String(event.message));
   log.error(err, {
@@ -52,7 +52,7 @@ window.addEventListener("error", event => {
   });
 });
 
-window.addEventListener("unhandledrejection", event => {
+window.addEventListener('unhandledrejection', event => {
   const reason = event.reason instanceof Error
     ? event.reason
     : new Error(JSON.stringify(event.reason));
@@ -68,7 +68,7 @@ const queryClient = new QueryClient({
   },
 });
 
-log.debug("starting up the application")
+log.debug('starting up the application');
 
 /**
  * Render out the core layout for the application
@@ -89,13 +89,13 @@ const App: React.FC = () => {
                     <OperationsProvider>
                       <ConfirmationModalProvider>
                         <ConnectionStateProvider>
-                        <RightDrawerProvider>
-                          <BottomDrawerProvider>
-                            <PluginServiceProvider>
-                              <RouteProvider />
-                            </PluginServiceProvider>
-                          </BottomDrawerProvider>
-                        </RightDrawerProvider>
+                          <RightDrawerProvider>
+                            <BottomDrawerProvider>
+                              <PluginServiceProvider>
+                                <RouteProvider />
+                              </PluginServiceProvider>
+                            </BottomDrawerProvider>
+                          </RightDrawerProvider>
                         </ConnectionStateProvider>
                       </ConfirmationModalProvider>
                     </OperationsProvider>

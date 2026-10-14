@@ -21,12 +21,14 @@ const toStringArray = (value: any): string[] => {
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === 'string');
   }
+
   if (typeof value === 'string') {
     return value
       .split(',')
       .map(part => part.trim())
       .filter(Boolean);
   }
+
   return [];
 };
 

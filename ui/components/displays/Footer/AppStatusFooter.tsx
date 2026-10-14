@@ -64,7 +64,10 @@ const STATUS_LABELS: Record<DevServerAggregateStatus, string> = {
 // ---------------------------------------------------------------------------
 
 function DevModeChip() {
-  if (!import.meta.env.DEV) return null;
+  if (!import.meta.env.DEV) {
+    return null;
+  }
+
   return (
     <HintTooltip content='Running in development mode' side='top'>
       <span className={styles.Chip} data-tone='warning' tabIndex={-1}>DEVELOPMENT MODE</span>
@@ -117,18 +120,26 @@ function DevServerPopoverBody({ pluginId, state, onClose }: { pluginId: string; 
         <PopoverAction
           icon={<LuHammer size={12} />}
           label='Logs'
-          onClick={run(() => devToolsChannel.emit('onOpenBuildOutput', pluginId))}
+          onClick={run(() => {
+            devToolsChannel.emit('onOpenBuildOutput', pluginId); 
+          })}
         />
         {isRunning ? (
-          <PopoverAction icon={<LuSquare size={12} />} label='Stop' tone='danger' onClick={run(() => stop.mutate(pluginId))} />
+          <PopoverAction icon={<LuSquare size={12} />} label='Stop' tone='danger' onClick={run(() => {
+            stop.mutate(pluginId); 
+          })} />
         ) : (
-          <PopoverAction icon={<LuPlay size={12} />} label='Start' tone='success' onClick={run(() => start.mutate(pluginId))} />
+          <PopoverAction icon={<LuPlay size={12} />} label='Start' tone='success' onClick={run(() => {
+            start.mutate(pluginId); 
+          })} />
         )}
         <PopoverAction
           icon={<LuRefreshCw size={12} />}
           label='Restart'
           disabled={!isRunning}
-          onClick={run(() => restart.mutate(pluginId))}
+          onClick={run(() => {
+            restart.mutate(pluginId); 
+          })}
         />
       </div>
     </>
@@ -186,7 +197,9 @@ function DevServerChip({ pluginId, state }: { pluginId: string; state: DevServer
 function DevServerIndicators() {
   const { servers, summary } = useDevServers();
 
-  if (summary.total === 0) return null;
+  if (summary.total === 0) {
+    return null;
+  }
 
   const tone: FooterTone = summary.error > 0 ? 'danger' : summary.building > 0 ? 'warning' : 'success';
   const entries = Array.from(servers.entries());
@@ -221,6 +234,7 @@ function PluginLoadingSpinner() {
         if (!meta) {
           return;
         }
+
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Installing plugin '${meta.name}' in development mode`,
@@ -246,6 +260,7 @@ function PluginLoadingSpinner() {
         if (!meta) {
           return;
         }
+
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Installing plugin '${meta.name}'`,
@@ -260,6 +275,7 @@ function PluginLoadingSpinner() {
         if (!meta) {
           return;
         }
+
         setLoading((prev) => ({
           ...prev,
           [meta.id]: `Reloading plugin '${meta.name}'`,
@@ -271,6 +287,7 @@ function PluginLoadingSpinner() {
       if (!meta) {
         return;
       }
+
       setLoading((prev) => ({ ...prev, [meta.id]: '' }));
     };
 
@@ -322,7 +339,9 @@ function PluginLoadingSpinner() {
   // Find the first active message
   const message = Object.values(loading).find(Boolean);
 
-  if (!message) return null;
+  if (!message) {
+    return null;
+  }
 
   return (
     <span className={styles.Spinner}>
@@ -361,7 +380,9 @@ function FailedPluginIndicator() {
     [plugins],
   );
 
-  if (failedPlugins.length === 0) return null;
+  if (failedPlugins.length === 0) {
+    return null;
+  }
 
   const label = `${failedPlugins.length} plugin${failedPlugins.length !== 1 ? 's' : ''} failed`;
 
@@ -409,7 +430,9 @@ function PortForwardList({ onClose }: { onClose: () => void }) {
 
   const handleClose = async (sessionID: string) => {
     await closeSession(sessionID);
-    if (activeSessions.length <= 1) onClose();
+    if (activeSessions.length <= 1) {
+      onClose();
+    }
   };
 
   return (
@@ -420,7 +443,10 @@ function PortForwardList({ onClose }: { onClose: () => void }) {
       />
       <div className={styles.List}>
         {activeSessions.map((session) => {
-          if (!session) return null;
+          if (!session) {
+            return null;
+          }
+
           const conn = session.connection as Record<string, any> | undefined;
           const resourceId = conn?.resource_id ?? '';
           return (
@@ -461,7 +487,9 @@ function PortForwardList({ onClose }: { onClose: () => void }) {
 function PortForwardIndicator() {
   const { activeSessions } = usePortForwardSessions();
 
-  if (activeSessions.length === 0) return null;
+  if (activeSessions.length === 0) {
+    return null;
+  }
 
   const label = `${activeSessions.length} forward${activeSessions.length !== 1 ? 's' : ''}`;
 
@@ -503,7 +531,9 @@ function OperationsList({ operations, onRemove }: { operations: Operation[]; onR
                 <div className={styles.Group}>
                   <span className={cx(styles.Meta, styles.Mono)}>{elapsed}s</span>
                   {op.status !== 'running' && (
-                    <PopoverAction icon={<LuX size={10} />} label='' onClick={() => onRemove(op.id)} />
+                    <PopoverAction icon={<LuX size={10} />} label='' onClick={() => {
+                      onRemove(op.id); 
+                    }} />
                   )}
                 </div>
               </div>
@@ -531,7 +561,9 @@ function OperationsIndicator() {
 
   const running = operations.filter((o) => o.status === 'running');
 
-  if (operations.length === 0) return null;
+  if (operations.length === 0) {
+    return null;
+  }
 
   const label = running.length > 0
     ? `${running.length} operation${running.length !== 1 ? 's' : ''}`

@@ -32,6 +32,7 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
       if (value !== undefined) {
         acc[id] = value;
       }
+
       return acc;
     }, {});
 

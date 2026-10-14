@@ -21,7 +21,9 @@ function TestHarness() {
       <div data-testid="tab-count">{drawer.tabs.length}</div>
       <button
         data-testid="create-empty"
-        onClick={() => drawer.createTabs([])}
+        onClick={() => {
+          drawer.createTabs([]); 
+        }}
       >
         create-empty
       </button>

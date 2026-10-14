@@ -20,6 +20,7 @@ function readSettings(): HomepageCardSettings {
   } catch {
     // ignore parse errors
   }
+
   return DEFAULT_SETTINGS;
 }
 

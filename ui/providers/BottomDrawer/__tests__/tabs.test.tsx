@@ -286,8 +286,8 @@ describe('BottomDrawerTabs', () => {
     );
 
     const buttons = container.querySelectorAll('button');
-    const fullscreenBtn = buttons[buttons.length - 2] as HTMLButtonElement;
-    const collapseBtn = buttons[buttons.length - 1] as HTMLButtonElement;
+    const fullscreenBtn = buttons[buttons.length - 2];
+    const collapseBtn = buttons[buttons.length - 1];
 
     expect(fullscreenBtn.disabled).toBe(true);
     expect(collapseBtn.disabled).toBe(true);

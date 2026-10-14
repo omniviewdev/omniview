@@ -74,15 +74,18 @@ const PluginsNav: React.FC = () => {
           installVersion = versions[0].version;
         }
       }
+
       if (!installVersion) {
         throw new Error('No versions available for this plugin');
       }
+
       return PluginManager.InstallPluginVersion(pluginId, installVersion);
     },
     onSuccess(meta) {
       if (!meta) {
         return;
       }
+
       showSnackbar({
         message: `${meta.name} installed successfully`,
         status: 'success',
@@ -115,8 +118,14 @@ const PluginsNav: React.FC = () => {
   const searchLower = search.toLowerCase();
 
   const filteredInstalled = React.useMemo(() => {
-    if (!plugins.data) return [];
-    if (!searchLower) return plugins.data;
+    if (!plugins.data) {
+      return [];
+    }
+
+    if (!searchLower) {
+      return plugins.data;
+    }
+
     return plugins.data.filter(p =>
       p.metadata?.name?.toLowerCase().includes(searchLower) ||
       p.metadata?.description?.toLowerCase().includes(searchLower) ||
@@ -125,7 +134,10 @@ const PluginsNav: React.FC = () => {
   }, [plugins.data, searchLower]);
 
   const filteredMarketplace = React.useMemo(() => {
-    if (!available.data) return [];
+    if (!available.data) {
+      return [];
+    }
+
     let items = available.data as any[];
 
     // Category filter
@@ -190,7 +202,9 @@ const PluginsNav: React.FC = () => {
             type='button'
             className={styles.ToolbarButton}
             title='Filter'
-            onClick={(e) => setFilterAnchor(e.currentTarget)}
+            onClick={(e) => {
+              setFilterAnchor(e.currentTarget); 
+            }}
           >
             <Badge
               content={activeFilterCount}
@@ -333,7 +347,9 @@ const PluginsNav: React.FC = () => {
                   onInstall={
                     installedIds.has(plugin.id)
                       ? undefined
-                      : () => handleInstall(plugin.id, plugin.latest_version)
+                      : () => {
+                        handleInstall(plugin.id, plugin.latest_version); 
+                      }
                   }
                   installing={installingIds.has(plugin.id)}
                 />
@@ -373,7 +389,9 @@ const PluginsNav: React.FC = () => {
       <PluginFilterPopover
         anchorEl={filterAnchor}
         open={Boolean(filterAnchor)}
-        onClose={() => setFilterAnchor(null)}
+        onClose={() => {
+          setFilterAnchor(null); 
+        }}
         filters={filters}
         onFiltersChange={setFilters}
       />

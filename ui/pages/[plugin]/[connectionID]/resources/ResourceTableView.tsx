@@ -96,7 +96,9 @@ export default function ResourceTableView(): React.ReactElement {
             )}
           </Banner.Content>
         </Banner>
-        <Button variant='outline' color='neutral' size='sm' onClick={() => { navigate(-1); }}>Go Back</Button>
+        <Button variant='outline' color='neutral' size='sm' onClick={() => {
+          navigate(-1); 
+        }}>Go Back</Button>
       </div>
     );
   }

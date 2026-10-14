@@ -139,7 +139,9 @@ const PluginDetails: FC = () => {
               variant='outline'
               color='danger'
               size='sm'
-              onClick={() => setUninstallModalOpen(true)}
+              onClick={() => {
+                setUninstallModalOpen(true); 
+              }}
             >
               Uninstall
             </Button>
@@ -149,7 +151,9 @@ const PluginDetails: FC = () => {
 
       <UninstallPluginModal
         open={uninstallModalOpen}
-        onClose={() => setUninstallModalOpen(false)}
+        onClose={() => {
+          setUninstallModalOpen(false); 
+        }}
         name={displayName}
         devMode={!!installed?.devMode}
         uninstall={() => {
@@ -274,8 +278,14 @@ const PluginDetails: FC = () => {
 };
 
 function formatDownloads(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+  if (count >= 1_000_000) {
+    return `${(count / 1_000_000).toFixed(1)}M`;
+  }
+
+  if (count >= 1_000) {
+    return `${(count / 1_000).toFixed(1)}k`;
+  }
+
   return count.toString();
 }
 

@@ -31,6 +31,7 @@ export default function PluginUpdateButton({ pluginID, currentVersion, installed
       } else if (v.version === latestVersion) {
         label = installed ? `Update to ${v.version}` : `Install ${v.version}`;
       }
+
       return {
         key: v.version,
         label,

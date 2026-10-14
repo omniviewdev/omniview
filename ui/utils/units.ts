@@ -27,7 +27,7 @@ export type ByteConversionOptions = {
   round?: boolean | number;
 };
 
-const unitMultipliers: { [unit in ByteUnit]: bigint } = {
+const unitMultipliers: Record<ByteUnit, bigint> = {
   E: 10n ** 18n,
   EB: 10n ** 18n,
   P: 10n ** 15n,

@@ -1,5 +1,5 @@
 // import { SHARED_DEPENDENCY_PREFIX } from "./constants";
-import { SystemJS } from "./systemjs";
+import { SystemJS } from './systemjs';
 
 export function buildImportMap(importMap: Record<string, System.Module>) {
   return Object.keys(importMap).reduce<Record<string, string>>((acc, key) => {

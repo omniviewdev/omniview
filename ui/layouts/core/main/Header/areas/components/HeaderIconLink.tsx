@@ -24,7 +24,9 @@ const HeaderIconLink: React.FC<Props> = ({ id, helpText, icon, href }) => {
         color='neutral'
         className={styles.NoDrag}
         aria-label={helpText || id}
-        onClick={() => navigate(href)}
+        onClick={() => {
+          navigate(href); 
+        }}
       >
         <Icon name={icon} size={16} />
       </IconButton>

@@ -504,7 +504,7 @@ export const terminalThemeOptions = [
   { value: 'material-dark', label: 'Material Dark' },
   { value: 'cobalt2', label: 'Cobalt2' },
   { value: 'ayu-dark', label: 'Ayu Dark' },
-  { value: 'synthwave-84', label: "Synthwave '84" },
+  { value: 'synthwave-84', label: 'Synthwave \'84' },
   { value: 'rose-pine', label: 'Rose Pine' },
   { value: 'kanagawa', label: 'Kanagawa' },
   { value: 'everforest-dark', label: 'Everforest Dark' },
