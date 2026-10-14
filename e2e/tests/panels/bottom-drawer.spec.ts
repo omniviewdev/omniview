@@ -109,10 +109,8 @@ test.describe('Bottom Drawer', () => {
     await expect.poll(d.height).toBeCloseTo(DEFAULT_EXPANDED, 0);
   });
 
-  // Known bug: tabs are restored from ListSessions after the drawer has already
-  // resolved its startup state with zero tabs, so the restored tab auto-expands
-  // it to the default height instead of the saved one (ticket omn-u6pg).
-  test.fixme('remembers its resized height across a reload', async ({ appPage }) => {
+  // Restored session tabs must keep the saved height (omn-u6pg, fixed in #28).
+  test('remembers its resized height across a reload', async ({ appPage }) => {
     const d = await openTerminal(appPage);
     await expect.poll(d.height).toBeCloseTo(DEFAULT_EXPANDED, 0);
     await dragDrawerTo(appPage, 300);
