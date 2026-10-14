@@ -4,7 +4,7 @@
     "esModuleInterop": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "types": ["vitest/globals", "node", "@testing-library/jest-dom", "vite/client"]
+    "types": ["vitest/globals", "node", "@testing-library/jest-dom", "vite/client", "systemjs"]
   },
   "include": ["ui/**/*.spec.ts", "ui/**/*.spec.tsx", "ui/**/*.bench.ts", "ui/**/*.test.ts", "ui/**/*.test.tsx", "packages/**/*.test.ts", "packages/**/*.test.tsx", "plugins/**/*.test.ts", "plugins/**/*.test.tsx"],
   "exclude": ["node_modules", "dist", "build"]

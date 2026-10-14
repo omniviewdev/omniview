@@ -276,7 +276,7 @@ export const slice = createSlice({
         : state.windows.findIndex(window => window.tabId === id);
 
       if (windowIndex === -1) {
-        console.warn(`Window with id ${window} not found.`);
+        console.warn(`Window with id ${id} not found.`);
         return;
       }
 
