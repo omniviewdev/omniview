@@ -120,6 +120,9 @@ export default defineConfig({
   },
   esbuild: { jsx: 'automatic' },
   optimizeDeps: {
+    // Discovering a dep mid-run makes Vite re-optimize and reload the page,
+    // which aborts the bench file. Pre-bundle the discovered list only.
+    noDiscovery: true,
     include: discoverDeps(
       [path.join(root, 'bench/render'), path.join(root, 'ui'), path.join(root, 'packages/omniviewdev-ui/src'), path.join(root, 'packages/omniviewdev-runtime/src'), k8sPluginSrc],
       [...appAliases, '@omniviewdev/runtime', '@omniviewdev/ui'],

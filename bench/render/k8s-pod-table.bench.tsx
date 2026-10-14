@@ -47,6 +47,17 @@ function findScrollableCached(root: HTMLElement) {
   return cachedScroller;
 }
 
+/** Guard against benching a no-op: a scroll step must bring different rows on screen. */
+function assertScrollRendersNewRows(m: Mounted) {
+  const scroller = findScrollableCached(m.container);
+  if (!scroller) throw new Error('no scrollable table body found');
+  const before = topRowName(m.container);
+  scrollStep(scroller, scroller.clientHeight * 5);
+  const after = topRowName(m.container);
+  scrollStep(scroller, 0);
+  if (!after || after === before) throw new Error(`scrolling did not change the visible rows (${before} -> ${after})`);
+}
+
 async function mountLoaded(): Promise<Mounted> {
   localStorage.clear();
   const m = mount(screen());
@@ -74,7 +85,11 @@ for (const count of [1_000, 5_000]) {
       for (let i = 1; i <= 30; i++) scrollStep(scroller, i * page);
       scrollStep(scroller, 0);
     }, {
-      setup: async () => { serve(); unmount(); m = await mountLoaded(); },
+      iterations: 6,
+      setup: async () => {
+        serve(); unmount(); m = await mountLoaded();
+        assertScrollRendersNewRows(m);
+      },
       teardown: unmount,
     });
 

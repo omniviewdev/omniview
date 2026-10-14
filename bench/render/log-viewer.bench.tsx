@@ -63,6 +63,9 @@ describe('log viewer', () => {
       const scroller = findScrollable(full.container)!;
       scrollStep(scroller, 0); // leaving the bottom turns follow off
       await waitFor(() => shows(full!, 0), { label: 'scrolled to top' });
+      scrollStep(scroller, scroller.clientHeight * 5);
+      if (shows(full, 0)) throw new Error('scrolling did not change the visible lines');
+      scrollStep(scroller, 0);
     },
     teardown: () => { full?.unmount(); full = null; },
   });
