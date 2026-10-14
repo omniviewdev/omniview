@@ -2,26 +2,26 @@
 
 ## Scope and method
 
-This audit compares base `94485ccebb6b589f548077df1bcaa3e4837fc870` with implementation head `2a0fbf38`. The production roots were `ui/main.tsx`, the active router, and the Vite/Vitest entries. Deletions were limited to closed, unreachable UI subgraphs and their orphaned dependencies; reachable MUI, Emotion, and `@omniviewdev/ui` code remains.
+This audit compares base `94485ccebb6b589f548077df1bcaa3e4837fc870` with implementation head `f7ee9423554d6cbe37e576f2da2a50bc0539e5b0`. The production roots were `ui/main.tsx`, the active router, and the Vite/Vitest entries. Deletions were limited to closed, unreachable UI subgraphs and their orphaned dependencies; reachable MUI, Emotion, and `@omniviewdev/ui` code remains.
 
 Reproduce the file inventory with:
 
 ```sh
-git diff --diff-filter=D --name-only 94485ccebb6b589f548077df1bcaa3e4837fc870..2a0fbf38 -- ui
+git diff --diff-filter=D --name-only 94485ccebb6b589f548077df1bcaa3e4837fc870..f7ee9423554d6cbe37e576f2da2a50bc0539e5b0 -- ui
 ```
 
 ## Metrics
 
 | Measure | Result |
 | --- | ---: |
-| Deleted UI files | 149 |
-| Deleted TypeScript/TSX source lines | 13,788 |
-| Deleted bytes (sum of deleted Git blobs) | 3,582,625 |
-| Deleted files importing MUI directly | 40 |
-| Lines in deleted direct-MUI files | 6,232 |
+| Deleted UI files | 148 |
+| Deleted TypeScript/TSX source lines | 13,635 |
+| Deleted bytes (sum of deleted Git blobs) | 3,577,834 |
+| Deleted files importing MUI directly | 41 |
+| Lines in deleted direct-MUI files | 6,271 |
 | Root manifest dependencies + devDependencies | 87 → 62 (25 removed) |
 
-The broader Git diff reports 21,815 deleted text lines because it also counts non-TypeScript data, notably the uncalled Nginx directives JSON. Metrics exclude modifications to reachable files and lockfile churn.
+The broader Git diff reports 21,785 deleted text lines because it also counts non-TypeScript data, notably the uncalled Nginx directives JSON. Metrics exclude modifications to reachable files and lockfile churn.
 
 ## Deletion inventory
 
@@ -36,7 +36,8 @@ The broader Git diff reports 21,815 deleted text lines because it also counts no
 - `ui/components/tables/Resources/` (21 files)
 - `ui/pkg/router/` (3 files)
 - `ui/pkg/navigation/` (2 files)
-- `ui/federation/` (3 files)
+- `ui/federation/ResourceSidebarComponent.tsx`
+- `ui/federation/index.tsx`
 
 ### Standalone components and assets
 
@@ -45,6 +46,7 @@ The broader Git diff reports 21,815 deleted text lines because it also counts no
 - `ui/components/displays/CodeEditor.tsx`
 - `ui/components/displays/Loading.tsx`
 - `ui/components/displays/Footer/index.tsx`
+- `ui/layouts/core/main/Footer/index.tsx`
 - `ui/components/displays/themes/BrillianceBlack.ts`
 - `ui/components/displays/themes/GithubDark.ts`
 - `ui/components/inputs/SearchInput.tsx`
@@ -77,7 +79,6 @@ The six `ui/assets/images/*` files were byte-identical, unreferenced duplicates 
 - `ui/providers/plugin/PluginProvider.tsx`
 - `ui/providers/BottomDrawer/types.ts`
 - `ui/providers/BottomDrawer/containers/LogViewer/hooks/useLogStream.ts`
-- `ui/providers/monaco/bootstrap.mock.ts`
 - `ui/providers/monaco/useSchemaRegistration.ts`
 - `ui/providers/monaco/utils.ts`
 - `ui/providers/monaco/languages/nginx/{conf.ts,directives.json,register.ts,suggestions.ts}`
@@ -118,13 +119,13 @@ The root manifest dropped 25 declarations: 16 runtime/type packages and 9 develo
 All commands used Corepack pnpm 10 (`pnpm 10.34.7`).
 
 - `COREPACK_ENABLE_PROJECT_SPEC=0 corepack pnpm@10 install --frozen-lockfile`: passed; lockfile was current and the YAML worker bundle regenerated.
-- `COREPACK_ENABLE_PROJECT_SPEC=0 corepack pnpm@10 build`: failed after TypeScript at Vite bundling. `ui/providers/RightDrawerProvider.tsx` still imports deleted `ui/federation/LinkedResourceDrawer`. This is a cleanup regression versus the passing baseline.
-- Knip (`--include files,dependencies,exports,types,duplicates`): no unused dependencies, but one unused file (`ui/layouts/core/main/Footer/index.tsx`), one unused export (`LOG_LEVELS`), 22 unused exported types, and duplicate `Icon|default` exports remain. These are retained pending caller/API review; they were not blindly deleted.
-- Targeted retained-path selection included plugin consumer migration, telemetry, bottom-drawer provider, and route-provider tests. Because the package script already invokes `vitest run`, the appended `-- --run …` was treated as passthrough and Vitest ran the whole suite. Result: 40 passed files, 6 failed files; 792 passed tests, 5 failed tests; 12 unhandled errors.
-- Full `COREPACK_ENABLE_PROJECT_SPEC=0 corepack pnpm@10 test -- --run`: same result. Baseline was 43 passed files, 4 failed files, 11 failed tests, and 12 unhandled errors. New failed suites are caused by unresolved imports of deleted `ui/federation/LinkedResourceDrawer` and the absent-at-transform-time Monaco bootstrap; existing plugin-context and terminal failures remain.
-- `COREPACK_ENABLE_PROJECT_SPEC=0 corepack pnpm@10 lint`: 1,308 errors, down from the 1,520-error baseline. The Task 8 prose-only line in `ui/App.tsx` introduced no diagnostic. Reachable files changed by earlier cleanup still have diagnostics (including logger, plugin dev dependencies, plugin consumer migration, `useDevServer`, plugin filtering, log download, bottom-drawer provider, and header configuration), so a no-new-diagnostics claim cannot be established from aggregate output alone.
-- `task dev` on the configured port could not start because `127.0.0.1:9245` was already in use. A second isolated attempt, `WAILS_VITE_PORT=9255 task dev`, failed during the Wails build because its internal plain `pnpm install` rejected the lockfile with `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` (lockfile overrides did not match `package.json`). No usable Wails surface was launched, so `/`, `/plugins`, `/plugins/:id`, `/settings`, and plugin routes were not visually exercised. The failed processes exited; no Task 8 service remained running.
+- `COREPACK_ENABLE_PROJECT_SPEC=0 corepack pnpm@10 build`: passed. TypeScript and Vite completed, transforming 17,213 modules. Vite retained its existing ineffective-dynamic-import warning for `devSharedDeps.ts`.
+- Knip (`--include files,dependencies,exports,types,duplicates`): the only finding is `ui/providers/monaco/bootstrap.mock.ts`. It is intentionally retained because `vite.config.ts` aliases `@/providers/monaco/bootstrap` to it whenever `process.env.VITEST` is set (lines 58–60), a configuration edge Knip does not recognize.
+- Targeted direct Vitest covered both Monaco schema-registry suites, plugin consumer migration, router, bottom-drawer provider, and telemetry: 9 passed files and 1 failed file; 67 passed tests and 1 failed test. The existing `schemaRegistry.test.ts` flush assertion did not observe `monacoYaml.update`.
+- Full `COREPACK_ENABLE_PROJECT_SPEC=0 corepack pnpm@10 test -- --run`: 42 passed files, 4 failed files; 827 passed tests, 11 failed tests; 12 unhandled errors. The failed suites are `PluginContextProvider.spec.tsx`, `schemaRegistry.test.ts`, `Terminal.test.tsx`, and `BottomDrawer.test.tsx`, matching the four-file/11-test/12-error baseline. The passed-file count is one below the 43-file baseline because the passing `stripAnsi.spec.ts` was intentionally deleted with its unused implementation.
+- `COREPACK_ENABLE_PROJECT_SPEC=0 corepack pnpm@10 lint`: 1,310 errors, down from the 1,520-error baseline. Diagnostics remain in 18 files modified by this cleanup: `App.tsx`, connection-state types, logger, plugin dev shared dependencies, plugin renderer and surface boundary, plugin consumer test and core types, `useDevServer`, header context area, plugin filter/list items, log-source hook/types/download/ANSI parser, bottom-drawer provider, and header configuration. The Task 8 prose-only line itself has no diagnostic; the red baseline prevents a whole-suite green claim.
+- Wails smoke used `task dev` with an external temporary `pnpm` shim that executed `COREPACK_ENABLE_PROJECT_SPEC=0 corepack pnpm@10`. The native build, Vite server, and Wails application started and connected. A real Chromium session visited `/`, `/plugins`, `/plugins/aws`, `/settings`, and `/_plugin/aws`; every URL loaded an `Omniview` document but remained on the `Omniview / The IDE for / DEVELOPMENT MODE` splash. Browser page-error capture was empty, while the console saturated with repeated `[bridgeSink] DiagnosticsClient.Log failed: [object Object]` messages. The Wails log also recorded the installed AWS plugin repeatedly crashing because `omniview.sdk.resource.v1.ResourcePlugin` was unimplemented and exhausting its crash budget. The browser and managed Wails service were stopped afterward.
 
 ## Retained candidates and limitations
 
-Knip findings are candidates, not deletion instructions. The remaining footer file, export, exported types, and duplicate icon export require confirmation against runtime/plugin API consumers. Dynamic plugin modules are externally loaded and cannot be proven unreachable from static local analysis. Generated `ui/providers/monaco/yaml.worker.bundle.js` and declaration bootstrap `ui/vite-env.d.ts` are intentionally preserved and excluded from deletion metrics.
+Knip's sole retained candidate, `ui/providers/monaco/bootstrap.mock.ts`, is active through the Vitest alias in `vite.config.ts`. Dynamic plugin modules are externally loaded and cannot be proven unreachable from static local analysis. Generated `ui/providers/monaco/yaml.worker.bundle.js` and declaration bootstrap `ui/vite-env.d.ts` are intentionally preserved and excluded from deletion metrics. `ui/federation/LinkedResourceDrawer.tsx` is also preserved because the active `RightDrawerProvider` imports it.
