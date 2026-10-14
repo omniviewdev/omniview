@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 
-// Material-ui
-import { TextField } from '@omniviewdev/ui/inputs';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import SearchIcon from '@mui/icons-material/Search';
-import CloseIcon from '@mui/icons-material/Close';
+import { SearchInput } from '@omniviewdev/base-ui';
+import { LuSearch } from 'react-icons/lu';
+
+import styles from './DebouncedInput.module.css';
 
 export type DebounceProps = {
   value: string;
@@ -24,10 +23,6 @@ export function DebouncedInput({
 }: DebounceProps & Record<string, any>) {
   const [value, setValue] = useState(initialValue);
 
-  const handleClear = () => {
-    onChange('');
-  };
-
   useEffect(() => {
     setValue(initialValue);
   }, [initialValue]);
@@ -43,38 +38,25 @@ export function DebouncedInput({
   }, [value]);
 
   return (
-    <TextField
+    <SearchInput
       {...rest}
       value={value}
       size='sm'
+      variant='outline'
       placeholder={placeholder}
+      aria-label={placeholder}
       name='pod-search'
-      type='text'
       autoFocus={autoFocus}
       autoComplete='off'
-      onChange={e => {
-        setValue(e.target.value);
-      }}
-      startAdornment={<SearchIcon fontSize='small' />}
+      autoCorrect='off'
+      onValueChange={setValue}
+      startDecorator={<LuSearch size={16} />}
       // Clearing should not be debounced
-      endAdornment={value ? (
-        <IconButton
-          sx={{ padding: 0 }}
-          onClick={handleClear}
-        >
-          <CloseIcon fontSize='small' />
-        </IconButton>
-
-      ) : undefined}
-      sx={{ flexGrow: 1, maxWidth: 500, minWidth: 300, minHeight: 36 }}
-      slotProps={{
-        input: {
-          // Keep the input from auto capitalizing and autocorrecting, doesn't work
-          // without both the input and the inputProps
-          autoCorrect: 'off',
-          autoComplete: 'off',
-        },
+      clearable
+      onClear={() => {
+        onChange('');
       }}
+      className={styles.Root}
     />
   );
 }

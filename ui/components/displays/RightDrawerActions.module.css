@@ -1,0 +1,31 @@
+.ActionsMenu {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+}
+
+.ActionWrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ActionWrapDivided {
+  margin-left: 6px;
+  padding-left: 6px;
+  position: relative;
+}
+
+.ActionWrapDivided::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 16px;
+  background-color: var(--ov-color-border-default);
+}
+
+.TriggerWrap {
+  display: inline-flex;
+}

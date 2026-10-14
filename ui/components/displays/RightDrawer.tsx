@@ -1,21 +1,17 @@
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import DialogContent from '@mui/material/DialogContent';
-import Typography from '@mui/material/Typography';
-import { Chip } from '@omniviewdev/ui';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { DrawerComponent, DrawerContext } from '@omniviewdev/runtime';
+import { Chip, IconButton, Separator, Text } from '@omniviewdev/base-ui';
+import { type DrawerComponent, type DrawerContext } from '@omniviewdev/runtime';
 import React from 'react';
 import { LuX } from 'react-icons/lu';
 import { ErrorBoundary } from 'react-error-boundary';
 import RightDrawerActions from './RightDrawerActions';
 import { PanelErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
+import styles from './RightDrawer.module.css';
 
 type Props = DrawerComponent & {
   ctx?: DrawerContext;
   open: boolean;
   onClose: () => void;
-}
+};
 
 /**
  * The primary right drawer container
@@ -24,137 +20,70 @@ const RightDrawer: React.FC<Props> = ({
   title, icon, views, actions, ctx,
   onClose,
 }) => {
-  const [currentView, setCurrentView] = React.useState<number>(0)
+  const [currentView, setCurrentView] = React.useState<number>(0);
 
   return (
-    <Box
-      sx={{
-        borderRadius: 'md',
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        overflow: 'auto',
-        p: 0,
-        bgcolor: 'background.surface',
-        border: 1,
-        borderColor: 'divider',
-      }}
-    >
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: 1,
-          py: 0.5,
-          bgcolor: 'background.surface',
-        }}
-      >
+    <div className={styles.Root}>
+      <div className={styles.Header}>
         {/** Left Side (title and information)*/}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+        <div className={styles.HeaderLeft}>
           {ctx?.resource?.name && (
-            <Typography
-              noWrap
-              sx={{
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                color: 'text.primary',
-                minWidth: 0,
-              }}
-            >
+            <Text truncate className={styles.ResourceName}>
               {ctx.resource.name}
-            </Typography>
+            </Text>
           )}
           {typeof title === 'string'
             ? <Chip
-              icon={React.isValidElement(icon) ? icon : undefined}
-              size={'sm'}
-              emphasis={'outline'}
+              startDecorator={React.isValidElement(icon) ? icon : undefined}
+              size='sm'
+              variant='outline'
               color='neutral'
-              label={title}
-              sx={{
-                gap: 0.5,
-                px: 0.75,
-                py: 0.25,
-                borderRadius: 'sm',
-                fontWeight: 600,
-                fontSize: '0.75rem',
-                flexShrink: 0,
-              }}
-            />
-            : <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+              className={styles.TitleChip}
+            >
+              {title}
+            </Chip>
+            : <div className={styles.TitleNode}>
               {icon}
               {title}
-            </Box>
+            </div>
           }
-        </Box>
+        </div>
 
         {/** Right Side (actions)*/}
-        <Box
-          id={'pages-actions-menus'}
-          sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-        >
+        <div id={'pages-actions-menus'} className={styles.HeaderActions}>
           {!!actions.length && <RightDrawerActions ctx={ctx || {}} actions={actions} />}
           <IconButton
-            emphasis='outline'
+            variant='outline'
             color='neutral'
-            size={'sm'}
+            size='sm'
+            aria-label='Close'
             onClick={onClose}
           >
             <LuX />
           </IconButton>
-        </Box>
-      </Box>
-      <Divider />
-      <DialogContent
-        sx={{
-          p: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'auto',
-        }}
-      >
-        {/* Lightweight tab bar — no MUI Tabs, no forced reflows */}
-        <div
-          role="tablist"
-          style={{
-            display: 'flex',
-            borderBottom: '1px solid var(--ov-border-default, rgba(255,255,255,0.12))',
-            flexShrink: 0,
-          }}
-        >
+        </div>
+      </div>
+      <Separator />
+      <div className={styles.Content}>
+        {/* Lightweight tab bar — no forced reflows */}
+        <div role="tablist" className={styles.TabList}>
           {views.map((view, idx) => (
             <button
               key={idx}
+              type="button"
               role="tab"
               aria-selected={currentView === idx}
-              onClick={() => setCurrentView(idx)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '6px 12px',
-                fontSize: '0.75rem',
-                fontWeight: currentView === idx ? 600 : 400,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                border: 'none',
-                borderBottom: currentView === idx
-                  ? '2px solid var(--ov-accent-fg, #58a6ff)'
-                  : '2px solid transparent',
-                color: currentView === idx
-                  ? 'var(--ov-fg-default, rgba(255,255,255,0.87))'
-                  : 'var(--ov-fg-muted, rgba(255,255,255,0.5))',
-                background: 'transparent',
-                transition: 'color 0.15s, border-color 0.15s',
+              onClick={() => {
+                setCurrentView(idx);
               }}
+              className={styles.Tab}
             >
               {view.icon}
               <span>{typeof view.title === 'string' ? view.title : 'View'}</span>
             </button>
           ))}
         </div>
-        <Box display={'flex'} flexDirection={'column'} flex={1} p={1} overflow={'auto'} minHeight={0}>
+        <div className={styles.ViewBody}>
           <ErrorBoundary
             FallbackComponent={(props) => <PanelErrorFallback {...props} label={typeof views[currentView]?.title === 'string' ? views[currentView].title : 'View'} boundary="RightDrawer" />}
             onError={onBoundaryError}
@@ -162,10 +91,10 @@ const RightDrawer: React.FC<Props> = ({
           >
             {views[currentView]?.component(ctx || {})}
           </ErrorBoundary>
-        </Box>
-      </DialogContent>
-    </Box>
-  )
-}
+        </div>
+      </div>
+    </div>
+  );
+};
 
-export default RightDrawer
+export default RightDrawer;

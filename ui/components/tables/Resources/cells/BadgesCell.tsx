@@ -1,9 +1,7 @@
 import React from 'react';
 
-// material ui
-import { Chip } from '@omniviewdev/ui';
-import Box from '@mui/material/Box';
-import { Tooltip } from '@omniviewdev/ui/overlays';
+import HintTooltip from '@/components/base/HintTooltip';
+import styles from './cells.module.css';
 
 type Props = {
   /** The values to use for calculating the badge colors */
@@ -22,79 +20,28 @@ type Props = {
 export const BadgesCell: React.FC<Props> = ({ align, values, colorMap, hoverMenu, hoverMenuDelay }) => {
   const getColor = (value: string) => colorMap[value] ?? 'neutral';
 
-  const getAlignment = () => {
-    if (align) {
-      switch (align) {
-        case 'left':
-          return 'flex-start';
-        case 'right':
-          return 'flex-end';
-        case 'center':
-          return 'center';
-        case 'justify':
-          return 'space-between';
-      }
-    }
-
-    return 'flex-start';
-  };
-
   const hoverMenuDelayValue = hoverMenuDelay ?? 200;
 
   return (
-    <Box 
-      display='flex' 
-      flex={1} 
-      justifyContent={getAlignment()}
-      alignItems='center'
-    >
+    <div className={styles.Cell} data-align={align ?? 'left'}>
       {values.map((value, idx) => (
         hoverMenu ? (
-          <Tooltip
+          <HintTooltip
             key={`badge-${idx}`}
             content={hoverMenu(value)}
-            size='sm'
-            emphasis='outline'
-            color='neutral'
-            enterDelay={hoverMenuDelayValue}
-            sx={{ p: 1 }}
+            delay={hoverMenuDelayValue}
           >
-            <Chip
-              size='sm'
-              emphasis='solid'
-              color={getColor(value)}
-              label=""
-              sx={{
-                borderRadius: 2,
-                width: 12,
-                height: 12,
-                maxWidth: 12,
-                maxHeight: 12,
-                minWidth: 12,
-                minHeight: 12,
-              }}
-            />
-          </Tooltip>
+            <span className={styles.Badge} data-color={getColor(value)} />
+          </HintTooltip>
         ) : (
-          <Chip
+          <span
             key={`badge-${idx}`}
-            size='sm'
-            emphasis='solid'
-            color={getColor(value)}
-            label=""
-            sx={{
-              borderRadius: 2,
-              width: 12,
-              height: 12,
-              wmaxWidth: 12,
-              maxHeight: 12,
-              minWidth: 12,
-              minHeight: 12,
-            }}
+            className={styles.Badge}
+            data-color={getColor(value)}
           />
         )
       ))}
-    </Box>
+    </div>
   );
 };
 

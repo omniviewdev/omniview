@@ -1,0 +1,60 @@
+@keyframes FadeIn {
+  0% {
+    opacity: 0;
+    scale: 0.3;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+.Loading {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+  user-select: none;
+  animation: FadeIn 0.2s ease-in-out;
+}
+
+.Error {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+  user-select: none;
+}
+
+.ErrorDetails {
+  max-width: 560px;
+  text-align: center;
+}
+
+.Suggestions {
+  text-align: left;
+  padding-left: 16px;
+  margin: 0;
+}
+
+.Suggestion {
+  padding-block: 2px;
+}
+
+.RawError {
+  display: block;
+  font-family: var(--ov-font-mono);
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: var(--ov-radius-sm);
+  background-color: var(--ov-color-state-hover);
+  word-break: break-all;
+  max-height: 80px;
+  overflow: auto;
+}

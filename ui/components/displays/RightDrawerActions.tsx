@@ -1,175 +1,153 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
-import { Tooltip } from '@omniviewdev/ui/overlays';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { DropdownMenu } from '@omniviewdev/ui/menus';
-import Box from '@mui/material/Box';
+import { IconButton, Menu } from '@omniviewdev/base-ui';
 
-import { DrawerComponentAction, DrawerContext, type DrawerComponentActionListItem } from '@omniviewdev/runtime';
+import { type DrawerComponentAction, type DrawerContext, type DrawerComponentActionListItem } from '@omniviewdev/runtime';
+import HintTooltip from '@/components/base/HintTooltip';
+import styles from './RightDrawerActions.module.css';
 
 type Props<T = any> = {
   ctx: DrawerContext;
-  actions: Array<DrawerComponentAction<T>>
-}
+  actions: Array<DrawerComponentAction<T>>;
+};
 
 /**
  * Displays the menu of actions available for the drawer component
  */
 const RightDrawerActions: React.FC<Props> = ({ ctx, actions }) => {
   if (!actions.length) {
-    return <></>
+    return <></>;
   }
 
   return (
-    <Box
-      id={'actions-menu'}
-      sx={{
-        display: 'flex',
-        flexDirection: 'row',
-        gap: 0,
-      }}
-    >
+    <div id={'actions-menu'} className={styles.ActionsMenu}>
       {actions.map((action, i) => <RightDrawerAction key={i} ctx={ctx} action={action} />)}
-    </Box>
-  )
-}
+    </div>
+  );
+};
 
 const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentAction }> = ({ ctx, action }) => {
   const [open, setOpen] = useState(false);
-  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkIsDisabled = () => {
     if (action.enabled === undefined) {
-      return false
+      return false;
     }
 
     if (typeof action.enabled === 'function') {
-      return !action.enabled((ctx))
+      return !action.enabled((ctx));
     }
-    return !action.enabled
-  }
 
-  const listItems = useMemo((): Array<DrawerComponentActionListItem> => {
-    if (!action.list) return [];
+    return !action.enabled;
+  };
+
+  const listItems = useMemo((): DrawerComponentActionListItem[] => {
+    if (!action.list) {
+      return [];
+    }
+
     if (typeof action.list === 'function') {
-      return action.list(ctx)
+      return action.list(ctx);
     }
-    return action.list || []
-  }, [action.list, ctx])
 
-  const handleMouseEnter = useCallback(() => {
-    if (closeTimeoutRef.current) {
-      clearTimeout(closeTimeoutRef.current);
-      closeTimeoutRef.current = null;
-    }
-    setOpen(true);
-  }, []);
-
-  const handleMouseLeave = useCallback(() => {
-    closeTimeoutRef.current = setTimeout(() => {
-      setOpen(false);
-      closeTimeoutRef.current = null;
-    }, 150);
-  }, []);
+    return action.list || [];
+  }, [action.list, ctx]);
 
   const actionTitle = typeof action.title === 'string' ? action.title : '';
   const dividerBefore = actionTitle === 'Start' || actionTitle === 'Delete';
 
   const wrapped = (node: React.ReactNode) => (
-    <Box
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        ...(dividerBefore
-          ? {
-              ml: 0.75,
-              pl: 0.75,
-              position: 'relative',
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                left: 0,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: '1px',
-                height: '16px',
-                backgroundColor: 'rgba(148, 163, 184, 0.45)',
-              },
-            }
-          : {}),
-      }}
-    >
+    <div className={dividerBefore ? `${styles.ActionWrap} ${styles.ActionWrapDivided}` : styles.ActionWrap}>
       {node}
-    </Box>
+    </div>
   );
 
   // Simple action button (no list)
   if (!!action.action && !action.list) {
     return wrapped(
-      <Tooltip arrow content={action.title} emphasis='soft'>
-        <span>
+      <HintTooltip content={action.title} side='top'>
+        <span className={styles.TriggerWrap}>
           <IconButton
+            size='sm'
+            variant='ghost'
+            color='neutral'
+            aria-label={actionTitle === '' ? undefined : actionTitle}
             disabled={checkIsDisabled()}
             onClick={() => action.action?.(ctx)}
           >
             {action.icon}
           </IconButton>
         </span>
-      </Tooltip>
-    )
+      </HintTooltip>
+    );
   }
 
   // List action with single item: click directly triggers the action
   if (!!action.list && listItems.length === 1) {
     return wrapped(
-      <Tooltip arrow content={action.title} emphasis='soft'>
-        <span>
+      <HintTooltip content={action.title} side='top'>
+        <span className={styles.TriggerWrap}>
           <IconButton
+            size='sm'
+            variant='ghost'
+            color='neutral'
+            aria-label={actionTitle === '' ? undefined : actionTitle}
             disabled={checkIsDisabled()}
             onClick={() => listItems[0].action(ctx)}
           >
             {action.icon}
           </IconButton>
         </span>
-      </Tooltip>
-    )
+      </HintTooltip>
+    );
   }
 
   // List action with multiple items: hover to show menu
   if (!!action.list && listItems.length > 1) {
     return wrapped(
-      <span
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        <DropdownMenu
-          trigger={
-            <Tooltip arrow content={action.title} emphasis='soft'>
-              <span>
-                <IconButton
-                  disabled={checkIsDisabled()}
+      <Menu.Root open={open} onOpenChange={setOpen}>
+        <HintTooltip content={action.title} side='top' disabled={open}>
+          <Menu.Trigger
+            openOnHover
+            delay={0}
+            closeDelay={150}
+            disabled={checkIsDisabled()}
+            render={
+              <IconButton
+                size='sm'
+                variant='ghost'
+                color='neutral'
+                aria-label={actionTitle === '' ? undefined : actionTitle}
+              >
+                {action.icon}
+              </IconButton>
+            }
+          />
+        </HintTooltip>
+        <Menu.Portal>
+          <Menu.Positioner align='end' sideOffset={4}>
+            <Menu.Popup size='sm'>
+              {listItems.map((item, i) => (
+                <Menu.Item
+                  key={i}
+                  startDecorator={item.icon}
+                  onClick={() => {
+                    item.action(ctx);
+                    setOpen(false);
+                  }}
                 >
-                  {action.icon}
-                </IconButton>
-              </span>
-            </Tooltip>
-          }
-          items={listItems.map((item, i) => ({
-            key: String(i),
-            label: item.title,
-            icon: item.icon,
-            onClick: () => {
-              item.action(ctx);
-              setOpen(false);
-            },
-          }))}
-        />
-      </span>
-    )
+                  {item.title}
+                </Menu.Item>
+              ))}
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
+    );
   }
 
-  return <></>
-}
+  return <></>;
+};
 
 
-export default RightDrawerActions
+export default RightDrawerActions;

@@ -1,0 +1,87 @@
+.SelectBox {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  max-width: 24px;
+}
+
+.Cell {
+  display: flex;
+  flex: 1;
+  align-items: center;
+}
+
+.Cell[data-align='left'] {
+  justify-content: flex-start;
+}
+
+.Cell[data-align='right'] {
+  justify-content: flex-end;
+}
+
+.Cell[data-align='center'] {
+  justify-content: center;
+}
+
+.Cell[data-align='justify'] {
+  justify-content: space-between;
+}
+
+.TextCell {
+  /* allow horizontal scrolling, but hide scrollbar */
+  overflow-y: hidden;
+  overflow-x: scroll;
+  scrollbar-width: none;
+}
+
+.TextCell::-webkit-scrollbar {
+  display: none;
+}
+
+.TextCellText {
+  white-space: nowrap;
+}
+
+.Chip {
+  border-radius: var(--ov-radius-sm);
+}
+
+.LinkChip {
+  border-radius: var(--ov-radius-sm);
+  cursor: pointer;
+}
+
+.Badge {
+  display: inline-block;
+  border-radius: 2px;
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  max-width: 12px;
+  max-height: 12px;
+  padding: 0;
+  margin-inline: 1px;
+  background-color: var(--ov-color-fg-subtle);
+}
+
+.Badge[data-color='success'] {
+  background-color: var(--ov-color-success);
+}
+
+.Badge[data-color='warning'] {
+  background-color: var(--ov-color-warning);
+}
+
+.Badge[data-color='danger'] {
+  background-color: var(--ov-color-danger);
+}
+
+.Badge[data-color='primary'] {
+  background-color: var(--ov-color-brand-500);
+}
+
+.HoverMenuTrigger {
+  display: inline-flex;
+}

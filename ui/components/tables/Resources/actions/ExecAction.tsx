@@ -1,9 +1,6 @@
 import React from 'react';
 
-// material-ui
-import { DropdownMenu } from '@omniviewdev/ui/menus';
-import { ListItem } from '@omniviewdev/ui';
-import { Text } from '@omniviewdev/ui/typography';
+import { Menu } from '@omniviewdev/base-ui';
 
 // third party
 import jsonpath from 'jsonpath';
@@ -12,7 +9,7 @@ import jsonpath from 'jsonpath';
 import { LuSquareTerminal } from 'react-icons/lu';
 
 // types
-import { Handler, SessionOptions } from '@omniviewdev/runtime/models';
+import { type Handler, SessionOptions } from '@omniviewdev/runtime/models';
 
 // project imports
 import ActionMenuListItem from './ActionMenuListItem';
@@ -99,34 +96,35 @@ const ExecAction: React.FC<Props> = ({
   };
 
   return (
-    <ListItem>
-      <ActionMenuListItem
-        label="Exec"
-        icon={<LuSquareTerminal />}
-        open={selected}
-        onOpen={handleSelect}
-        onLeaveMenu={handleLeaveMenu}
-        menu={
-          <DropdownMenu
-            trigger={<span />}
-            items={targets.map((target) => ({
-              key: target.label,
-              label: target.label,
-              onSelect: () => {
+    <ActionMenuListItem
+      label="Exec"
+      icon={<LuSquareTerminal />}
+      open={selected}
+      onOpen={handleSelect}
+      onLeaveMenu={handleLeaveMenu}
+      menu={
+        <>
+          {targets.map((target) => (
+            <Menu.Item
+              key={target.label}
+              onClick={() => {
                 handlePerformExec(target.label, target.params);
                 handleDeselect();
                 if (typeof itemProps.onClick == 'function') {
                   (itemProps.onClick as () => void)();
                 }
+
                 handleDismiss();
-              },
-            }))}
-          />
-        }
-      >
-        Exec
-      </ActionMenuListItem>
-    </ListItem>
+              }}
+            >
+              {target.label}
+            </Menu.Item>
+          ))}
+        </>
+      }
+    >
+      Exec
+    </ActionMenuListItem>
   );
 };
 

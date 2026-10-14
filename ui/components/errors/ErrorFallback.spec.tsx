@@ -33,7 +33,7 @@ Object.defineProperty(window, 'location', {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function renderWithJoy(ui: React.ReactElement) {
+function renderUi(ui: React.ReactElement) {
   return render(ui);
 }
 
@@ -94,28 +94,28 @@ describe('FullPageErrorFallback', () => {
     beforeEach(() => mockIsDev.mockReturnValue(true));
 
     it('renders error message and "Something went wrong"', () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError('bad thing')} resetErrorBoundary={resetMock} />);
+      renderUi(<FullPageErrorFallback error={makeError('bad thing')} resetErrorBoundary={resetMock} />);
       expect(screen.getByText('Something went wrong')).toBeInTheDocument();
       expect(screen.getByText('bad thing')).toBeInTheDocument();
     });
 
     it('renders error name badge', () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError('x', 'RangeError')} resetErrorBoundary={resetMock} />);
+      renderUi(<FullPageErrorFallback error={makeError('x', 'RangeError')} resetErrorBoundary={resetMock} />);
       expect(screen.getByText('RangeError')).toBeInTheDocument();
     });
 
     it('renders error ID chip', () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
+      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
       expect(screen.getByText('ERR-test')).toBeInTheDocument();
     });
 
     it('renders boundary label when provided', () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} boundary="Router" />);
+      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} boundary="Router" />);
       expect(screen.getByText('Caught by: Router')).toBeInTheDocument();
     });
 
     it('"Stack Trace" toggle reveals/hides stack', () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
+      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
       const toggle = screen.getByText('Stack Trace');
       expect(screen.queryByText(/at Object/)).not.toBeInTheDocument();
       fireEvent.click(toggle);
@@ -125,19 +125,19 @@ describe('FullPageErrorFallback', () => {
     });
 
     it('"Try Again" calls resetErrorBoundary', () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
+      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
       fireEvent.click(screen.getByText('Try Again'));
       expect(resetMock).toHaveBeenCalledTimes(1);
     });
 
     it('"Reload Application" calls window.location.reload', () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
+      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
       fireEvent.click(screen.getByText('Reload Application'));
       expect(reloadMock).toHaveBeenCalledTimes(1);
     });
 
     it('"Copy Error" writes to clipboard with errorId + stack', async () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError('boom')} resetErrorBoundary={resetMock} />);
+      renderUi(<FullPageErrorFallback error={makeError('boom')} resetErrorBoundary={resetMock} />);
       await act(async () => {
         fireEvent.click(screen.getByText('Copy Error'));
       });
@@ -153,22 +153,22 @@ describe('FullPageErrorFallback', () => {
     beforeEach(() => mockIsDev.mockReturnValue(false));
 
     it('does NOT render stack trace toggle', () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
+      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
       expect(screen.queryByText('Stack Trace')).not.toBeInTheDocument();
     });
 
     it('shows "An unexpected error occurred" prefix', () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError('bad')} resetErrorBoundary={resetMock} />);
+      renderUi(<FullPageErrorFallback error={makeError('bad')} resetErrorBoundary={resetMock} />);
       expect(screen.getByText(/An unexpected error occurred: bad/)).toBeInTheDocument();
     });
 
     it('does NOT show boundary label', () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} boundary="Router" />);
+      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} boundary="Router" />);
       expect(screen.queryByText(/Caught by/)).not.toBeInTheDocument();
     });
 
     it('still shows error ID, error message, and all buttons', () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError('oops')} resetErrorBoundary={resetMock} />);
+      renderUi(<FullPageErrorFallback error={makeError('oops')} resetErrorBoundary={resetMock} />);
       expect(screen.getByText('ERR-test')).toBeInTheDocument();
       expect(screen.getByText(/oops/)).toBeInTheDocument();
       expect(screen.getByText('Try Again')).toBeInTheDocument();
@@ -177,7 +177,7 @@ describe('FullPageErrorFallback', () => {
     });
 
     it('"Copy Error" still includes full stack', async () => {
-      renderWithJoy(<FullPageErrorFallback error={makeError('boom')} resetErrorBoundary={resetMock} />);
+      renderUi(<FullPageErrorFallback error={makeError('boom')} resetErrorBoundary={resetMock} />);
       await act(async () => {
         fireEvent.click(screen.getByText('Copy Error'));
       });
@@ -197,22 +197,22 @@ describe('PanelErrorFallback', () => {
     beforeEach(() => mockIsDev.mockReturnValue(true));
 
     it('renders "{label} crashed"', () => {
-      renderWithJoy(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} label="Sidebar" />);
+      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} label="Sidebar" />);
       expect(screen.getByText('Sidebar crashed')).toBeInTheDocument();
     });
 
     it('renders stack trace toggle', () => {
-      renderWithJoy(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
+      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
       expect(screen.getByText('Stack Trace')).toBeInTheDocument();
     });
 
     it('renders error ID', () => {
-      renderWithJoy(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
+      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
       expect(screen.getByText('ERR-test')).toBeInTheDocument();
     });
 
     it('"Retry" calls resetErrorBoundary', () => {
-      renderWithJoy(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
+      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
       fireEvent.click(screen.getByText('Retry'));
       expect(resetMock).toHaveBeenCalledTimes(1);
     });
@@ -222,12 +222,12 @@ describe('PanelErrorFallback', () => {
     beforeEach(() => mockIsDev.mockReturnValue(false));
 
     it('renders "{label} encountered an error"', () => {
-      renderWithJoy(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} label="Sidebar" />);
+      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} label="Sidebar" />);
       expect(screen.getByText('Sidebar encountered an error')).toBeInTheDocument();
     });
 
     it('does NOT render stack trace toggle', () => {
-      renderWithJoy(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
+      renderUi(<PanelErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
       expect(screen.queryByText('Stack Trace')).not.toBeInTheDocument();
     });
   });
@@ -240,13 +240,13 @@ describe('InlineErrorFallback', () => {
   beforeEach(() => resetMock.mockClear());
 
   it('renders "Failed to render {label}"', () => {
-    renderWithJoy(<InlineErrorFallback error={makeError()} resetErrorBoundary={resetMock} label="Widget" />);
+    renderUi(<InlineErrorFallback error={makeError()} resetErrorBoundary={resetMock} label="Widget" />);
     expect(screen.getByText('Failed to render Widget')).toBeInTheDocument();
   });
 
   it('"Retry" chip calls resetErrorBoundary', () => {
-    renderWithJoy(<InlineErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
-    // MUI Joy Chip uses an absolutely-positioned <button> overlay for click handling
+    renderUi(<InlineErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
+    // The clickable Chip renders as a <button>
     fireEvent.click(screen.getByRole('button'));
     expect(resetMock).toHaveBeenCalledTimes(1);
   });
