@@ -92,10 +92,8 @@ export const addHeaderAreaItems = (state: HeaderState, action: PayloadAction<{ a
     const existingItemIndex = state.areas[area].items?.findIndex(i => i.id === item.id) || -1;
 
     if (existingItemIndex === -1) {
-      /* @ts-expect-error */ // <-- typescript is being weird about this line since we check above
       state.areas[area].items.push(item);
     } else if (replace) {
-      /* @ts-expect-error */ // <-- typescript is being weird about this line since we check above
       state.areas[area].items[existingItemIndex] = item;
     } else {
       console.error(`Attempted to add an item to a header area that already exists. Area: ${area}, Item: ${item.id}`);

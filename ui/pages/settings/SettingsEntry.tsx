@@ -109,29 +109,6 @@ const SettingsEntry: React.FC<Props> = ({ setting, id, draftValue, handleChange 
 const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => {
   const isChanged = draftValue !== undefined;
 
-  const handleFileSelection = async () => {
-    if (!setting.fileSelection?.enabled) {
-      return;
-    }
-
-    let newValue = isChanged ? draftValue as string[] : setting.value as string[];
-    if (!newValue) {
-      newValue = [];
-    }
-
-    OpenFileSelectionDialog(FileDialogOptions.createFrom({
-      showHiddenFiles: true,
-    })).then((result) => {
-      console.log('File selection dialog result:', result);
-      if (result) {
-        newValue.push(...result);
-        handleChange(id, newValue);
-      }
-    }).catch((err: unknown) => {
-      console.error('Error opening file selection dialog:', parseAppError(err).detail);
-    });
-  };
-
   if (Array.isArray(setting.value) || Array.isArray(setting.default)) {
     return <MultiSelectSetting setting={setting} id={id} draftValue={draftValue} handleChange={handleChange} />;
   }

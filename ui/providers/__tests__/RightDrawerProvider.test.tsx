@@ -9,9 +9,9 @@ const mocks = vi.hoisted(() => ({
   mockUpdate: vi.fn(),
   mockShowSnackbar: vi.fn(),
   mockShowAppError: vi.fn(),
-  mockBottomDrawerOn: vi.fn(() => vi.fn()),
-  mockGetDrawerFactory: vi.fn(() => undefined),
-  mockGetSidebarComponent: vi.fn(() => undefined),
+  mockBottomDrawerOn: vi.fn<(...args: unknown[]) => () => void>(() => vi.fn()),
+  mockGetDrawerFactory: vi.fn<(...args: unknown[]) => undefined>(() => undefined),
+  mockGetSidebarComponent: vi.fn<(...args: unknown[]) => undefined>(() => undefined),
 }));
 
 vi.mock('@omniviewdev/runtime', async () => {

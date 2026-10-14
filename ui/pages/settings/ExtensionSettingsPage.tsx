@@ -1,6 +1,6 @@
 import Icon from '@/components/icons/Icon';
 import { Card, Chip, Text } from '@omniviewdev/base-ui';
-import { useExtensionRegistry, type ExtensionPointSettings, type ExtensionPointStore } from '@omniviewdev/runtime';
+import { useExtensionRegistry, type ExtensionPointStoreContract } from '@omniviewdev/runtime';
 import React from 'react';
 import styles from './ExtensionSettingsPage.module.css';
 
@@ -37,15 +37,13 @@ const ExtensionSettingsPage: React.FC = () => {
   // MUI `lg` breakpoint
   const isNormalScreenSize = useMediaQuery('(min-width: 1200px)');
 
-  const [selected, setSelected] = React.useState<ExtensionPointStore<any> | undefined>(undefined);
-  const [selectedSettings, setSelectedSettings] = React.useState<ExtensionPointSettings | undefined>(undefined);
+  const [selected, setSelected] = React.useState<ExtensionPointStoreContract | undefined>(undefined);
 
   const selectExtensionPoint = (id: string) => {
     const extension = extensions?.getExtensionPoint(id);
 
     if (extension) {
       setSelected(extension);
-      setSelectedSettings(extension.settings());
     }
   };
 
@@ -70,17 +68,17 @@ const ExtensionSettingsPage: React.FC = () => {
           <div className={styles.PointsCardInner}>
             <Text size='xl' weight='semibold' className={styles.PointsTitle}>Extension Points</Text>
             <div className={styles.PointsList} role='list'>
-              {extensions?.listExtensionPoints().map((extension) => (
-                <div key={extension.id} role='listitem'>
+              {extensions?.listExtensionPoints().map((extensionPointId) => (
+                <div key={extensionPointId} role='listitem'>
                   <button
                     type='button'
                     className={styles.PointItem}
-                    data-selected={selected?.settings().id === extension.id}
+                    data-selected={selected?.id === extensionPointId}
                     onClick={() => {
-                      selectExtensionPoint(extension.id);
+                      selectExtensionPoint(extensionPointId);
                     }}
                   >
-                    <Text size='sm'>{extension.id}</Text>
+                    <Text size='sm'>{extensionPointId}</Text>
                   </button>
                 </div>
               ))}
@@ -96,18 +94,15 @@ const ExtensionSettingsPage: React.FC = () => {
                 <div className={styles.DetailRow}>
                   <div className={styles.DetailTitle}>
                     <Text weight='semibold'>
-                      {selectedSettings?.name}
+                      {selected.id}
                     </Text>
                     <Chip variant='outline' color='neutral' size='sm' className={styles.ModeChip}>
-                      {`${selectedSettings?.mode} display`}
+                      {`${selected.mode} display`}
                     </Chip>
                   </div>
-                  {selectedSettings?.mode &&
-                    <Chip variant='soft' color='brand' size='sm'>{selectedSettings?.id ?? ''}</Chip>
+                  {selected.pluginId &&
+                    <Chip variant='soft' color='brand' size='sm'>{selected.pluginId}</Chip>
                   }
-                </div>
-                <div className={styles.DetailRow}>
-                  <Text>{selectedSettings?.description}</Text>
                 </div>
               </div>
             </Card>
@@ -120,7 +115,7 @@ const ExtensionSettingsPage: React.FC = () => {
 };
 
 type ExtensionPointDisplayProps = {
-  extensionPoint: ExtensionPointStore<any>;
+  extensionPoint: ExtensionPointStoreContract;
 };
 
 const ExtensionPointDisplay: React.FC<ExtensionPointDisplayProps> = ({ extensionPoint }) => {

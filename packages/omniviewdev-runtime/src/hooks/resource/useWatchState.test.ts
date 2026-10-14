@@ -1,6 +1,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
+import type { Mock } from 'vitest';
 
 // --- Mocks ---
 
@@ -13,7 +14,7 @@ vi.mock('../useResolvedPluginId', () => ({
 }));
 
 // Mock GetWatchState — controlled via mockGetWatchState.
-let mockGetWatchState: vi.Mock;
+let mockGetWatchState: Mock;
 vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper', () => ({
   get GetWatchState() { return mockGetWatchState; },
 }));
@@ -21,7 +22,7 @@ vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resou
 // Mock Events.On — captures the callback so tests can simulate events.
 type EventCallback = (...data: any[]) => void;
 let eventListeners: Map<string, EventCallback>;
-let mockEventsOn: vi.Mock;
+let mockEventsOn: Mock;
 vi.mock('@wailsio/runtime', () => ({
   Events: {
     get On() { return mockEventsOn; },

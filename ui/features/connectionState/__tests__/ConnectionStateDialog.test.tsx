@@ -6,14 +6,14 @@ import ConnectionStateDialog from '../ConnectionStateDialog';
 // Values must be defined inside the factory because vi.mock is hoisted.
 vi.mock('@omniviewdev/runtime', () => ({
   WatchState: {
-    IDLE: 0,
-    SYNCING: 1,
-    SYNCED: 2,
-    ERROR: 3,
-    FAILED: 4,
-    FORBIDDEN: 5,
-    STOPPED: 6,
-    SKIPPED: 7,
+    WatchStateIdle: 0,
+    WatchStateSyncing: 1,
+    WatchStateSynced: 2,
+    WatchStateError: 3,
+    WatchStateStopped: 4,
+    WatchStateFailed: 5,
+    WatchStateForbidden: 6,
+    WatchStateSkipped: 7,
   },
   parseResourceKey: (key: string) => {
     const parts = key.split('::');
@@ -77,8 +77,8 @@ describe('ConnectionStateDialog', () => {
       <ConnectionStateDialog
         {...defaultProps}
         resources={{
-          'core::v1::Pod': WatchState.SYNCING,
-          'core::v1::Service': WatchState.SYNCED,
+          'core::v1::Pod': WatchState.WatchStateSyncing,
+          'core::v1::Service': WatchState.WatchStateSynced,
         }}
       />,
     );
@@ -90,8 +90,8 @@ describe('ConnectionStateDialog', () => {
       <ConnectionStateDialog
         {...defaultProps}
         resources={{
-          'core::v1::Pod': WatchState.SYNCED,
-          'core::v1::Service': WatchState.SYNCED,
+          'core::v1::Pod': WatchState.WatchStateSynced,
+          'core::v1::Service': WatchState.WatchStateSynced,
         }}
       />,
     );
@@ -103,8 +103,8 @@ describe('ConnectionStateDialog', () => {
       <ConnectionStateDialog
         {...defaultProps}
         resources={{
-          'apps::v1::Deployment': WatchState.SYNCED,
-          'core::v1::Pod': WatchState.SYNCED,
+          'apps::v1::Deployment': WatchState.WatchStateSynced,
+          'core::v1::Pod': WatchState.WatchStateSynced,
         }}
       />,
     );
@@ -123,7 +123,7 @@ describe('ConnectionStateDialog', () => {
     render(
       <ConnectionStateDialog
         {...defaultProps}
-        resources={{ 'core::v1::Pod': WatchState.ERROR }}
+        resources={{ 'core::v1::Pod': WatchState.WatchStateError }}
         onRetryResource={defaultProps.onRetryResource}
       />,
     );
@@ -136,7 +136,7 @@ describe('ConnectionStateDialog', () => {
     render(
       <ConnectionStateDialog
         {...defaultProps}
-        resources={{ 'apps::v1::Deployment': WatchState.FAILED }}
+        resources={{ 'apps::v1::Deployment': WatchState.WatchStateFailed }}
       />,
     );
     expect(screen.getByTestId('btn-Retry')).toBeTruthy();
@@ -146,7 +146,7 @@ describe('ConnectionStateDialog', () => {
     render(
       <ConnectionStateDialog
         {...defaultProps}
-        resources={{ 'core::v1::Secret': WatchState.FORBIDDEN }}
+        resources={{ 'core::v1::Secret': WatchState.WatchStateForbidden }}
       />,
     );
     expect(screen.getByText('No access')).toBeTruthy();
@@ -156,7 +156,7 @@ describe('ConnectionStateDialog', () => {
     render(
       <ConnectionStateDialog
         {...defaultProps}
-        resources={{ 'core::v1::Pod': WatchState.SYNCED }}
+        resources={{ 'core::v1::Pod': WatchState.WatchStateSynced }}
         resourceCounts={{ 'core::v1::Pod': 42 }}
       />,
     );
@@ -168,9 +168,9 @@ describe('ConnectionStateDialog', () => {
       <ConnectionStateDialog
         {...defaultProps}
         resources={{
-          'core::v1::Pod': WatchState.SYNCED,
-          'core::v1::Secret': WatchState.SKIPPED,
-          'apps::v1::Deployment': WatchState.SYNCED,
+          'core::v1::Pod': WatchState.WatchStateSynced,
+          'core::v1::Secret': WatchState.WatchStateSkipped,
+          'apps::v1::Deployment': WatchState.WatchStateSynced,
         }}
       />,
     );
@@ -186,10 +186,10 @@ describe('ConnectionStateDialog', () => {
       <ConnectionStateDialog
         {...defaultProps}
         resources={{
-          'core::v1::Pod': WatchState.SYNCED,
-          'core::v1::Service': WatchState.SYNCING,
-          'apps::v1::Deployment': WatchState.SYNCED,
-          'apps::v1::StatefulSet': WatchState.SYNCING,
+          'core::v1::Pod': WatchState.WatchStateSynced,
+          'core::v1::Service': WatchState.WatchStateSyncing,
+          'apps::v1::Deployment': WatchState.WatchStateSynced,
+          'apps::v1::StatefulSet': WatchState.WatchStateSyncing,
         }}
       />,
     );

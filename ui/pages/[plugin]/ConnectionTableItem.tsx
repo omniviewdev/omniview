@@ -18,7 +18,7 @@ import { Connection, ConnectionStatus, ConnectionStatusCode } from '@omniviewdev
 import { LuEllipsisVertical } from 'react-icons/lu';
 
 // Third-party
-import { Link, usePluginRouter } from '@infraview/router';
+import { usePluginRouter } from '@infraview/router';
 import styles from './ConnectionTableItem.module.css';
 
 type Props = Omit<Connection, 'createFrom' | 'convertValues'>;

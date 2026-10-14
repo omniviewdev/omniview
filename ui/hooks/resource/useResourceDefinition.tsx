@@ -120,6 +120,9 @@ const parseColumnDef = ({
           // and the value being the replacement
           Object.entries(def.valueMap).forEach(([key, val]) => {
             console.log('replacing', key, val);
+            if (val === undefined) {
+              return;
+            }
             prioritized = prioritized.replace(new RegExp(key), val);
           });
         }

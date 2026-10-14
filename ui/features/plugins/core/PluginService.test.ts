@@ -481,7 +481,8 @@ describe('Group 5: Reload Operations', () => {
     await s.service.reload('A');
     const state2 = s.service.getPluginState('A');
     expect(state2).toBeDefined();
-    expect(state2!.loadedAt).toBeGreaterThan(loadedAt1);
+    expect(loadedAt1).not.toBeNull();
+    expect(state2!.loadedAt).toBeGreaterThan(loadedAt1!);
   });
 });
 

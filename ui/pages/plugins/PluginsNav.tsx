@@ -80,6 +80,9 @@ const PluginsNav: React.FC = () => {
       return PluginManager.InstallPluginVersion(pluginId, installVersion);
     },
     onSuccess(meta) {
+      if (!meta) {
+        return;
+      }
       showSnackbar({
         message: `${meta.name} installed successfully`,
         status: 'success',

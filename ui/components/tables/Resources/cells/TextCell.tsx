@@ -14,7 +14,7 @@ type Props = {
   /** The color of the text. Default is 'neutral' */
   color?: 'success' | 'warning' | 'danger' | 'primary' | 'neutral';
   /** Specify mapping of values to colors that will change with the input */
-  colorMap?: Record<string, string>;
+  colorMap?: Record<string, string | undefined>;
   /** A decorator to render before the text */
   startDecorator?: React.ReactNode;
   /** A decorator to render after the text */
@@ -24,7 +24,7 @@ type Props = {
   /** Formatter for the text */
   formatter?: string;
   /** Resource links to parse */
-  resourceLink?: ResourceLink;
+  resourceLink?: ResourceLink | null;
   /** Metadata for the resource */
   metadata?: ResourceMetadata;
   /** children */

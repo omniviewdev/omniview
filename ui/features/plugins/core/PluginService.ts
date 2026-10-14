@@ -26,7 +26,6 @@ import type {
   PluginDescriptor,
   PluginLoadOpts,
   ExtensionPointSettings,
-  DeclaredDependencies,
   QuarantineInfo,
   DependencyGraph,
   CrashRecord,
