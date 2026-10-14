@@ -144,7 +144,7 @@ describe('BottomDrawerContainer', () => {
     rerender(<BottomDrawerContainer />);
 
     const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
-    expect(drawer.style.height).toBe('400px');
+    expect(drawer.style.height).toBe('550px');
   });
 
   it('minimize collapses to minHeight', () => {
@@ -168,7 +168,7 @@ describe('BottomDrawerContainer', () => {
     // Start with no tabs so drawer is at minHeight
     const { container, getByTestId, rerender } = render(<BottomDrawerContainer />);
 
-    // Simulate tabs appearing — triggers expansion to 400px
+    // Simulate tabs appearing — triggers expansion to 550px
     mocks.mockUseBottomDrawer.mockReturnValue({
       tabs: [{ id: 'tab1', title: 'Term', variant: 'terminal', icon: 'LuTerminal' }],
       focused: 0,
@@ -176,7 +176,7 @@ describe('BottomDrawerContainer', () => {
     rerender(<BottomDrawerContainer />);
 
     const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
-    expect(drawer.style.height).toBe('400px');
+    expect(drawer.style.height).toBe('550px');
 
     // Minimize
     act(() => {
@@ -184,11 +184,11 @@ describe('BottomDrawerContainer', () => {
     });
     expect(drawer.style.height).toBe('32px');
 
-    // Expand should restore to 400px
+    // Expand should restore to 550px
     act(() => {
       fireEvent.click(getByTestId('btn-expand'));
     });
-    expect(drawer.style.height).toBe('400px');
+    expect(drawer.style.height).toBe('550px');
   });
 
   it('fullscreen sets height to window.innerHeight', () => {
@@ -222,11 +222,11 @@ describe('BottomDrawerContainer', () => {
     });
     expect(drawer.style.height).toBe('900px');
 
-    // Un-fullscreen should restore to previous height (400px default)
+    // Un-fullscreen should restore to previous height (550px default)
     act(() => {
       fireEvent.click(getByTestId('btn-fullscreen'));
     });
-    expect(drawer.style.height).toBe('400px');
+    expect(drawer.style.height).toBe('550px');
   });
 
   it('passes correct isMinimized and isFullscreen props to tabs', () => {
@@ -260,8 +260,8 @@ describe('BottomDrawerContainer', () => {
     const dragHandle = drawer.querySelector('[data-testid="bottom-drawer-drag-handle"]') as HTMLElement;
     expect(dragHandle).toBeTruthy();
 
-    // Drawer starts at 400px from tab expansion
-    expect(drawer.style.height).toBe('400px');
+    // Drawer starts at 550px from tab expansion
+    expect(drawer.style.height).toBe('550px');
 
     // Double-click to minimize
     act(() => {
@@ -273,7 +273,7 @@ describe('BottomDrawerContainer', () => {
     act(() => {
       fireEvent.click(dragHandle, { detail: 2 });
     });
-    expect(drawer.style.height).toBe('400px');
+    expect(drawer.style.height).toBe('550px');
   });
 
   it('does not expand when there are no tabs', () => {
@@ -362,10 +362,10 @@ describe('BottomDrawerContainer', () => {
 
     const drawer = container.querySelector('.BottomDrawer') as HTMLElement;
 
-    // Expanded to 400px — minHeight should still be 32px (the floor)
-    expect(drawer.style.height).toBe('400px');
+    // Expanded to 550px — minHeight should still be 32px (the floor)
+    expect(drawer.style.height).toBe('550px');
     expect(drawer.style.minHeight).toBe('32px');
-    expect(drawer.style.maxHeight).toBe('400px');
+    expect(drawer.style.maxHeight).toBe('550px');
   });
 
   it('minHeight stays at 32px floor when fullscreen', () => {

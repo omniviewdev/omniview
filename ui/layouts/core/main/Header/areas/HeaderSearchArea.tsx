@@ -9,7 +9,7 @@ import styles from '../Header.module.css';
 const HeaderSearchArea: React.FC = () => (
   <div className={styles.SearchArea}>
     <SearchInput
-      size='xs'
+      size='sm'
       placeholder='Search anything…'
       className={styles.Search}
       startDecorator={<LuSearch className={styles.SearchIcon} />}
