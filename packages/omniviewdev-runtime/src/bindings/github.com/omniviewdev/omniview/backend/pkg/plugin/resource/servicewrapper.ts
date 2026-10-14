@@ -66,7 +66,7 @@ export function Find(pluginID: string, connectionID: string, key: string, input:
 }
 
 /**
- * CRUD
+ * CRUD.
  */
 export function Get(pluginID: string, connectionID: string, key: string, input: resource$0.GetInput): $CancellablePromise<resource$0.GetResult | null> {
     return $Call.ByID(194970279, pluginID, connectionID, key, input).then(($result: any) => {
@@ -75,7 +75,7 @@ export function Get(pluginID: string, connectionID: string, key: string, input: 
 }
 
 /**
- * Actions
+ * Actions.
  */
 export function GetActions(pluginID: string, connectionID: string, key: string): $CancellablePromise<resource$0.ActionDescriptor[]> {
     return $Call.ByID(419011114, pluginID, connectionID, key).then(($result: any) => {
@@ -102,7 +102,7 @@ export function GetConnectionNamespaces(pluginID: string, connectionID: string):
 }
 
 /**
- * Editor schemas
+ * Editor schemas.
  */
 export function GetEditorSchemas(pluginID: string, connectionID: string): $CancellablePromise<resource$0.EditorSchema[]> {
     return $Call.ByID(1394342402, pluginID, connectionID).then(($result: any) => {
@@ -117,7 +117,7 @@ export function GetFilterFields(pluginID: string, connectionID: string, key: str
 }
 
 /**
- * Health
+ * Health.
  */
 export function GetHealth(pluginID: string, connectionID: string, key: string, data: json$0.RawMessage): $CancellablePromise<resource$0.ResourceHealth | null> {
     return $Call.ByID(1644192689, pluginID, connectionID, key, data).then(($result: any) => {
@@ -126,7 +126,7 @@ export function GetHealth(pluginID: string, connectionID: string, key: string, d
 }
 
 /**
- * Relationships
+ * Relationships.
  */
 export function GetRelationships(pluginID: string, key: string): $CancellablePromise<resource$0.RelationshipDescriptor[]> {
     return $Call.ByID(2699561690, pluginID, key).then(($result: any) => {
@@ -159,7 +159,7 @@ export function GetResourceGroup(pluginID: string, groupID: string): $Cancellabl
 }
 
 /**
- * Type metadata
+ * Type metadata.
  */
 export function GetResourceGroups(pluginID: string, connectionID: string): $CancellablePromise<{ [_ in string]?: resource$0.ResourceGroup }> {
     return $Call.ByID(4290498491, pluginID, connectionID).then(($result: any) => {
@@ -190,7 +190,7 @@ export function GetWatchState(pluginID: string, connectionID: string): $Cancella
 }
 
 /**
- * HasPlugin
+ * HasPlugin.
  */
 export function HasPlugin(pluginID: string): $CancellablePromise<boolean> {
     return $Call.ByID(854008408, pluginID);
@@ -223,7 +223,7 @@ export function ListConnections(pluginID: string): $CancellablePromise<types$0.C
 }
 
 /**
- * ListPlugins
+ * ListPlugins.
  */
 export function ListPlugins(): $CancellablePromise<string[]> {
     return $Call.ByID(3217612415).then(($result: any) => {
@@ -252,7 +252,7 @@ export function RestartResourceWatch(pluginID: string, connectionID: string, res
 }
 
 /**
- * Connection lifecycle
+ * Connection lifecycle.
  */
 export function StartConnection(pluginID: string, connectionID: string): $CancellablePromise<types$0.ConnectionStatus> {
     return $Call.ByID(3276991559, pluginID, connectionID).then(($result: any) => {
@@ -261,7 +261,7 @@ export function StartConnection(pluginID: string, connectionID: string): $Cancel
 }
 
 /**
- * Watch lifecycle
+ * Watch lifecycle.
  */
 export function StartConnectionWatch(pluginID: string, connectionID: string): $CancellablePromise<void> {
     return $Call.ByID(3389223006, pluginID, connectionID);
@@ -286,7 +286,7 @@ export function StreamAction(pluginID: string, connectionID: string, key: string
 }
 
 /**
- * Subscriptions
+ * Subscriptions.
  */
 export function SubscribeResource(pluginID: string, connectionID: string, resourceKey: string): $CancellablePromise<void> {
     return $Call.ByID(2856546527, pluginID, connectionID, resourceKey);
