@@ -1,16 +1,11 @@
 import React from 'react';
-import Box, { type BoxProps } from '@mui/material/Box';
+import styles from '../SideNav.module.css';
 
 /**
  * The main component for the sidenav layout.
  */
-const Main: React.FC<BoxProps> = props => (
-  <Box
-    component='main'
-    className='Main'
-    {...props}
-    sx={[{ width: '100%', minHeight: 0 }, ...(Array.isArray(props.sx) ? props.sx : [props.sx])]}
-  />
+const Main: React.FC<React.HTMLAttributes<HTMLElement>> = ({ className, ...props }) => (
+  <main {...props} className={`Main ${styles.Main}${className ? ` ${className}` : ''}`} />
 );
 
 export default Main;

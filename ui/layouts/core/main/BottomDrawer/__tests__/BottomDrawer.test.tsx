@@ -66,14 +66,6 @@ vi.mock('@/providers/BottomDrawer/containers/PluginLogViewer', () => {
   return { __esModule: true, default: ({ pluginId }: { pluginId: string }) => <div data-testid={`pluginlogs-${pluginId}`} /> };
 });
 
-// MUI needs theme
-vi.mock('@mui/material/styles', async () => ({
-  ...(await vi.importActual<typeof import('@mui/material/styles')>('@mui/material/styles')),
-  useTheme: () => ({
-    palette: { primary: { 400: '#aaa' } },
-  }),
-}));
-
 import BottomDrawerContainer from '../../BottomDrawer/index';
 
 const drawerModeStorageKey = 'omniview.bottomDrawer.mode';

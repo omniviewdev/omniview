@@ -141,12 +141,7 @@ export default function ResourceTableView(): React.ReactElement {
   };
 
   return (
-    <Layout.Root
-      sx={{
-        p: 0,
-        gap: 0,
-      }}
-    >
+    <Layout.Root style={{ padding: 0, gap: 0 }}>
 
       <PluginBackdrop
         open={plugin.phase === 'Starting' || plugin.phase === 'Validating'}
@@ -197,12 +192,7 @@ export default function ResourceTableView(): React.ReactElement {
           <NavMenu selected={selected} onSelect={setSelected} size='sm' sections={getSections()} scrollable />
         </Stack>
       </Layout.SideNav>
-      <Layout.Main
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
+      <Layout.Main style={{ display: 'flex', flexDirection: 'column' }}>
         {/** Purposely double nesting this inside a non-padded container as not doing so doesn't allow the bottom drawer to
          fully epand up to the top of the container (since the padding get's accounted for in the sizing, which essentially
          just end up creating a gutter at the top equal to the top and bottom padding combined) */}
