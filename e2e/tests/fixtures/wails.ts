@@ -70,6 +70,15 @@ export async function callBinding<T = unknown>(
   return (isJson && text ? JSON.parse(text) : text || undefined) as T;
 }
 
+/** Return this from a mocked binding to make the call fail in the page. */
+export class BindingError {
+  readonly message: string;
+
+  constructor(message: string) {
+    this.message = message;
+  }
+}
+
 /**
  * Answers the given binding calls from the page with canned results instead of
  * the backend. Every other runtime call goes through untouched.
@@ -97,6 +106,14 @@ export async function mockBindings(
 
     const result = byId.get(id);
     const body = typeof result === 'function' ? result(call?.args?.args ?? []) : result;
+    if (body instanceof BindingError) {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ kind: 'RuntimeError', message: body.message }),
+      });
+      return;
+    }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body ?? null) });
   });
 }

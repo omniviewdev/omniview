@@ -22,3 +22,29 @@ export function fakePlugin(n: number, overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+/** A marketplace listing as PluginManager.ListAvailablePlugins returns it. */
+export function fakeListing(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    name: id.replace(/(^|-)(\w)/g, (_, sep: string, c: string) => `${sep ? ' ' : ''}${c.toUpperCase()}`),
+    description: `Marketplace listing for ${id}`,
+    icon_url: '',
+    category: 'tools',
+    tags: [],
+    license: 'MIT',
+    official: false,
+    featured: false,
+    download_count: 0,
+    average_rating: 0,
+    review_count: 0,
+    repository: '',
+    url: '',
+    publisher_name: 'e2e',
+    installed: false,
+    installed_version: '',
+    latest_version: '1.2.3',
+    update_available: false,
+    ...overrides,
+  };
+}
