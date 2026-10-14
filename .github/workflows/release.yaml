@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref_name }}
@@ -328,8 +329,6 @@ jobs:
     with:
       version: ${{ github.ref_name }}
       dist-tag: latest
-    secrets:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Publish — download all artifacts, checksums, GitHub Release, Homebrew

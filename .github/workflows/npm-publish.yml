@@ -12,9 +12,10 @@ on:
         required: false
         type: string
         default: "latest"
-    secrets:
-      NPM_TOKEN:
-        required: true
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   publish:
@@ -27,8 +28,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
+
+      - name: Setup npm
+        run: npm install --global npm@11.6.2
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -70,8 +74,6 @@ jobs:
 
       - name: Publish packages
         shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG="${{ inputs.dist-tag }}"
@@ -86,8 +88,7 @@ jobs:
             fi
 
             echo "📦 Publishing ${PKG_NAME}@${VERSION} (tag: ${TAG})"
-            pnpm --filter "${PKG_NAME}" publish \
+            npm publish "./packages/omniviewdev-${pkg}" \
               --access public \
-              --tag "${TAG}" \
-              --no-git-checks
+              --tag "${TAG}"
           done
