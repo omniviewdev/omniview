@@ -1,21 +1,6 @@
 /*
- * @omniviewdev/base-ui styles, loaded in a cascade layer.
- *
- * Layered rules lose to every unlayered rule, so while the MUI/Emotion tree
- * and the legacy tokens.css are still mounted they keep winning wherever both
- * systems style the same thing (base-ui ships global html/body and `*` rules).
- * base-ui components themselves use hashed class names and are unaffected.
- * Drop the layer once the legacy theme is gone (omn-bus4).
+ * @omniviewdev/base-ui styles, loaded in a cascade layer so the app's own
+ * (unlayered) styles win over base-ui's global html/body and `*` rules and
+ * over its component styles without needing extra specificity.
  */
 @import '@omniviewdev/base-ui/styles.css' layer(base-ui);
-/* Unlayered: maps base-ui tokens onto the legacy Solarized palette. */
-@import './base-ui-solarized.css';
-
-/*
- * Plugins (kubernetes) still read var(--ov-font-mono) and expect the legacy
- * stack. Keep it until they move to base-ui (omn-9jpk). Unlayered, so it also
- * wins over base-ui's own --ov-font-mono.
- */
-:root {
-  --ov-font-mono: var(--ovl-font-mono);
-}

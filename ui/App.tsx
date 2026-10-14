@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
 // ensure we preload deps first before anything
 import { preloadSharedDeps } from './features/plugins/api/preloader';
@@ -19,12 +19,7 @@ import { store } from './store/store';
 import './utils/globalutils';
 import './providers/monaco/bootstrap';
 
-import { StyledEngineProvider } from '@mui/material/styles';
-import { AppTheme, initThemeRegistry } from '@omniviewdev/ui/theme';
-import type { ThemeVariant } from '@omniviewdev/ui/theme';
-import BaseUiTheme from './theme/BaseUiTheme';
-
-initThemeRegistry();
+import AppTheme from './theme/AppTheme';
 
 // Providers
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
@@ -35,7 +30,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query';
-import { ExtensionProvider, useSettings } from '@omniviewdev/runtime';
+import { ExtensionProvider } from '@omniviewdev/runtime';
 import BottomDrawerProvider from './providers/BottomDrawer/provider';
 import { SettingsProvider } from '@omniviewdev/runtime';
 import { EXTENSION_REGISTRY } from './features/extensions/store'
@@ -75,48 +70,6 @@ const queryClient = new QueryClient({
 
 log.debug("starting up the application")
 
-const THEME_VARIANT_KEY = 'ov-theme-variant';
-
-function safeGetThemeVariant(): ThemeVariant {
-  try {
-    const stored = localStorage.getItem(THEME_VARIANT_KEY);
-    return stored === 'solarized' ? 'solarized' : 'default';
-  } catch {
-    return 'default';
-  }
-}
-
-function safeSetThemeVariant(value: ThemeVariant): void {
-  try {
-    localStorage.setItem(THEME_VARIANT_KEY, value);
-  } catch {
-    // non-fatal in restricted storage environments
-  }
-}
-
-function AppWithTheme({ children }: { children: React.ReactNode }) {
-  const { settings } = useSettings();
-  const [variant, setVariant] = useState<ThemeVariant>(safeGetThemeVariant);
-
-  const appearanceTheme = settings?.['appearance.theme'];
-
-  useEffect(() => {
-    if (typeof appearanceTheme === 'string') {
-      const resolved: ThemeVariant = appearanceTheme === 'solarized' ? 'solarized' : 'default';
-      if (resolved !== variant) {
-        setVariant(resolved);
-        safeSetThemeVariant(resolved);
-      }
-    }
-  }, [appearanceTheme, variant]);
-
-  return (
-    <AppTheme defaultMode="dark" variant={variant}>
-      <BaseUiTheme>{children}</BaseUiTheme>
-    </AppTheme>
-  );
-}
-
 /**
  * Render out the core layout for the application
  */
@@ -127,30 +80,28 @@ const App: React.FC = () => {
         <SettingsProvider>
           <ExtensionProvider registry={EXTENSION_REGISTRY}>
             <AppSnackbarProvider>
-              <StyledEngineProvider injectFirst>
-                <Provider store={store}>
-                  <AppWithTheme>
-                    <ErrorBoundary
-                      FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
-                      onError={onBoundaryError}
-                    >
-                      <OperationsProvider>
-                        <ConfirmationModalProvider>
-                          <ConnectionStateProvider>
-                          <RightDrawerProvider>
-                            <BottomDrawerProvider>
-                              <PluginServiceProvider>
-                                <RouteProvider />
-                              </PluginServiceProvider>
-                            </BottomDrawerProvider>
-                          </RightDrawerProvider>
-                          </ConnectionStateProvider>
-                        </ConfirmationModalProvider>
-                      </OperationsProvider>
-                    </ErrorBoundary>
-                  </AppWithTheme>
-                </Provider>
-              </StyledEngineProvider>
+              <Provider store={store}>
+                <AppTheme>
+                  <ErrorBoundary
+                    FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
+                    onError={onBoundaryError}
+                  >
+                    <OperationsProvider>
+                      <ConfirmationModalProvider>
+                        <ConnectionStateProvider>
+                        <RightDrawerProvider>
+                          <BottomDrawerProvider>
+                            <PluginServiceProvider>
+                              <RouteProvider />
+                            </PluginServiceProvider>
+                          </BottomDrawerProvider>
+                        </RightDrawerProvider>
+                        </ConnectionStateProvider>
+                      </ConfirmationModalProvider>
+                    </OperationsProvider>
+                  </ErrorBoundary>
+                </AppTheme>
+              </Provider>
             </AppSnackbarProvider>
           </ExtensionProvider>
         </SettingsProvider>

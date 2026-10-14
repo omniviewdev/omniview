@@ -330,6 +330,9 @@ importers:
         specifier: ^0.10.3
         version: 0.10.3
     devDependencies:
+      '@omniviewdev/base-ui':
+        specifier: ^0.2.1
+        version: 0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tanstack/react-query':
         specifier: ^5.76.1
         version: 5.76.1(react@19.2.4)
@@ -342,9 +345,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^4.2.1
         version: 4.4.1(vite@5.4.18(@types/node@25.5.0)(lightningcss@1.32.0))
-      notistack:
-        specifier: ^3.0.1
-        version: 3.0.2(csstype@3.2.3)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       react:
         specifier: ^19.0.0
         version: 19.2.4
@@ -3884,10 +3884,6 @@ packages:
     resolution: {integrity: sha512-lHoacZqTxberxbsaT/bDkvUicTl6nVTqnM5X6PhCTCg6Y3uhd/lWqbtMvHwe0W0vGkPWCVw5NTUTi3SOlccaSA==}
     deprecated: Package no longer supported. Contact support@npmjs.com for more info.
 
-  clsx@1.2.1:
-    resolution: {integrity: sha512-EcR6r5a8bj6pu3ycsa/E/cKVGuTgZJZdsyUYHOksG/UHIiKfjxzRxYJpyVBwYaQeOvghal9fcc4PidlgzugAQg==}
-    engines: {node: '>=6'}
-
   clsx@2.1.1:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
@@ -4710,11 +4706,6 @@ packages:
   globby@11.1.0:
     resolution: {integrity: sha512-jhIXaOzy1sb8IyocaruWSn1TjmnBVs8Ayhcy83rmxNJ8q2uWKCAj3CnJY+KpGSXCueAPc0i05kVvVKtP1t9S3g==}
     engines: {node: '>=10'}
-
-  goober@2.1.14:
-    resolution: {integrity: sha512-4UpC0NdGyAFqLNPnhCT2iHpza2q+RAY3GV85a/mRPdzyPQMsj0KmMMuetdIkzWRbJ+Hgau1EZztq8ImmiMGhsg==}
-    peerDependencies:
-      csstype: ^3.0.10
 
   gopd@1.0.1:
     resolution: {integrity: sha512-d65bNlIadxvpb/A2abVdlqKqV563juRnZ1Wtk6s1sIR8uNsXR70xqIzVqxVf1eTqDunwT2MkczEeaezCKTZhwA==}
@@ -5647,13 +5638,6 @@ packages:
 
   not@0.1.0:
     resolution: {integrity: sha512-5PDmaAsVfnWUgTUbJ3ERwn7u79Z0dYxN9ErxCpVJJqe2RK0PJ3z+iFUxuqjwtlDDegXvtWoxD/3Fzxox7tFGWA==}
-
-  notistack@3.0.2:
-    resolution: {integrity: sha512-0R+/arLYbK5Hh7mEfR2adt0tyXJcCC9KkA2hc56FeWik2QN6Bm/S4uW+BjzDARsJth5u06nTjelSw/VSnB1YEA==}
-    engines: {node: '>=12.0.0', npm: '>=6.0.0'}
-    peerDependencies:
-      react: ^17.0.0 || ^18.0.0 || ^19.0.0
-      react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
 
   nth-check@2.1.1:
     resolution: {integrity: sha512-lqjrjmaOoAnWfMmBPL+XNnynZh2+swxiX3WUE0s4yEHI6m+AwrK2UZOimIRl3X/4QctVqS8AiZjFqyOGrMXb/w==}
@@ -10190,8 +10174,6 @@ snapshots:
       redis: 4.7.0
       underscore: 1.12.1
 
-  clsx@1.2.1: {}
-
   clsx@2.1.1: {}
 
   cluster-key-slot@1.1.2: {}
@@ -11356,10 +11338,6 @@ snapshots:
       ignore: 5.3.2
       merge2: 1.4.1
       slash: 3.0.0
-
-  goober@2.1.14(csstype@3.2.3):
-    dependencies:
-      csstype: 3.2.3
 
   gopd@1.0.1:
     dependencies:
@@ -12578,15 +12556,6 @@ snapshots:
   normalize-range@0.1.2: {}
 
   not@0.1.0: {}
-
-  notistack@3.0.2(csstype@3.2.3)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
-    dependencies:
-      clsx: 1.2.1
-      goober: 2.1.14(csstype@3.2.3)
-      react: 19.2.4
-      react-dom: 19.2.4(react@19.2.4)
-    transitivePeerDependencies:
-      - csstype
 
   nth-check@2.1.1:
     dependencies:

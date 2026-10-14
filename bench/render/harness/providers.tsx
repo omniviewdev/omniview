@@ -10,8 +10,6 @@ import React from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { StyledEngineProvider } from '@mui/material/styles';
-import { AppTheme, initThemeRegistry } from '@omniviewdev/ui/theme';
 import {
   ExtensionProvider,
   OperationsProvider,
@@ -20,15 +18,13 @@ import {
 } from '@omniviewdev/runtime';
 
 import { store } from '@/store/store';
-import BaseUiTheme from '@/theme/BaseUiTheme';
+import AppTheme from '@/theme/AppTheme';
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
 import RightDrawerProvider from '@/providers/RightDrawerProvider';
 import BottomDrawerProvider from '@/providers/BottomDrawer/provider';
 import { EXTENSION_REGISTRY } from '@/features/extensions/store';
 import { ConfirmationModalProvider } from '@/contexts/ConfirmationModalContext';
 import { ConnectionStateProvider } from '@/features/connectionState';
-
-initThemeRegistry();
 
 export function newQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, retry: false } } });
@@ -46,23 +42,19 @@ export function AppProviders({ children, queryClient }: AppProvidersProps) {
       <SettingsProvider>
         <ExtensionProvider registry={EXTENSION_REGISTRY}>
           <AppSnackbarProvider>
-            <StyledEngineProvider injectFirst>
-              <Provider store={store}>
-                <AppTheme defaultMode="dark" variant="default">
-                  <BaseUiTheme>
-                    <OperationsProvider>
-                      <ConfirmationModalProvider>
-                        <ConnectionStateProvider>
-                          <RightDrawerProvider>
-                            <BottomDrawerProvider>{children}</BottomDrawerProvider>
-                          </RightDrawerProvider>
-                        </ConnectionStateProvider>
-                      </ConfirmationModalProvider>
-                    </OperationsProvider>
-                  </BaseUiTheme>
-                </AppTheme>
-              </Provider>
-            </StyledEngineProvider>
+            <Provider store={store}>
+              <AppTheme>
+                <OperationsProvider>
+                  <ConfirmationModalProvider>
+                    <ConnectionStateProvider>
+                      <RightDrawerProvider>
+                        <BottomDrawerProvider>{children}</BottomDrawerProvider>
+                      </RightDrawerProvider>
+                    </ConnectionStateProvider>
+                  </ConfirmationModalProvider>
+                </OperationsProvider>
+              </AppTheme>
+            </Provider>
           </AppSnackbarProvider>
         </ExtensionProvider>
       </SettingsProvider>

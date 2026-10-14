@@ -1,4 +1,3 @@
-import '@omniviewdev/ui/theme/tokens.css';
 import '@/theme/base-ui.css';
 
 import { installFakeBackend } from './harness/backend';

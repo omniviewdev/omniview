@@ -42,8 +42,8 @@ type SettingSelectProps = {
 };
 
 /**
- * Single-value select over an `options` array (the call shape of the old
- * `@omniviewdev/ui/inputs` Select), built on the base-ui Select compound.
+ * Single-value select over an `options` array (the call shape of the legacy
+ * design system's Select), built on the base-ui Select compound.
  */
 const SettingSelect: React.FC<SettingSelectProps> = ({ value, options, isChanged, onChange }) => (
   <Select.Root

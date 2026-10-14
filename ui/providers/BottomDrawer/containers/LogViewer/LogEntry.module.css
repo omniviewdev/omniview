@@ -4,7 +4,7 @@
   align-items: flex-start;
   gap: var(--ov-space-1);
   padding: 1px var(--ov-space-2);
-  font-family: var(--ovl-font-mono, monospace);
+  font-family: var(--ov-font-mono, monospace);
   font-size: 12px;
   line-height: 18px;
   border-left: 3px solid transparent;
