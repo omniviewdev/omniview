@@ -142,7 +142,7 @@ describe('Group 9: Event System', () => {
 
       s.service.startEventListeners();
       s.importer.register('A', validModule());
-      s.eventBus.emit('plugin/update_complete', { id: 'A' });
+      s.eventBus.emit('plugin/update_complete', { pluginID: 'A', version: '1.0.0' });
 
       await vi.waitFor(() => {
         expect(s.service.getPluginState('A')?.phase).toBe('ready');
@@ -155,7 +155,7 @@ describe('Group 9: Event System', () => {
       s.importer.register('A', validModule());
       s.service.startEventListeners();
 
-      s.eventBus.emit('plugin/update_complete', { id: 'A' });
+      s.eventBus.emit('plugin/update_complete', { pluginID: 'A', version: '1.0.0' });
 
       await vi.waitFor(() => {
         expect(s.service.getPluginState('A')?.phase).toBe('ready');
@@ -212,7 +212,7 @@ describe('Group 9: Event System', () => {
       await s.service.load('A');
 
       s.service.startEventListeners();
-      s.eventBus.emit('plugin/state_change', { pluginID: 'A', phase: 'Building' });
+      s.eventBus.emit('plugin/state_change', { pluginID: 'A', to: 'Building' });
 
       expect(s.service.getPluginState('A')?.backendPhase).toBe('Building');
     });
@@ -221,7 +221,7 @@ describe('Group 9: Event System', () => {
       const s = setup();
       s.service.startEventListeners();
 
-      s.eventBus.emit('plugin/state_change', { pluginID: 'X', phase: 'Installing' });
+      s.eventBus.emit('plugin/state_change', { pluginID: 'X', to: 'Installing' });
 
       const state = s.service.getPluginState('X');
       expect(state?.phase).toBe('idle');
@@ -235,7 +235,7 @@ describe('Group 9: Event System', () => {
       expect(s.service.getPluginState('A')?.phase).toBe('ready');
 
       s.service.startEventListeners();
-      s.eventBus.emit('plugin/state_change', { pluginID: 'A', phase: 'Degraded' });
+      s.eventBus.emit('plugin/state_change', { pluginID: 'A', to: 'Degraded' });
 
       expect(s.service.getPluginState('A')?.phase).toBe('ready');
       expect(s.service.getPluginState('A')?.backendPhase).toBe('Degraded');
@@ -245,10 +245,10 @@ describe('Group 9: Event System', () => {
       const s = setup();
       s.service.startEventListeners();
 
-      s.eventBus.emit('plugin/state_change', { pluginID: 'A', phase: 'Building' });
+      s.eventBus.emit('plugin/state_change', { pluginID: 'A', to: 'Building' });
       expect(s.service.getPluginState('A')?.backendPhase).toBe('Building');
 
-      s.eventBus.emit('plugin/state_change', { pluginID: 'A', phase: 'Running' });
+      s.eventBus.emit('plugin/state_change', { pluginID: 'A', to: 'Running' });
       expect(s.service.getPluginState('A')?.backendPhase).toBe('Running');
     });
 
@@ -256,7 +256,7 @@ describe('Group 9: Event System', () => {
       const s = setup();
       s.service.startEventListeners();
 
-      s.eventBus.emit('plugin/state_change', { pluginID: 'A', phase: 'BadPhase' });
+      s.eventBus.emit('plugin/state_change', { pluginID: 'A', to: 'BadPhase' });
 
       expect(s.log.byLevel('warn').some((l) =>
         l.message.includes('invalid backend phase'),

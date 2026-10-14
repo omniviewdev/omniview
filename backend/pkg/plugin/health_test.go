@@ -207,12 +207,25 @@ func TestCrashRecoveryState_MaxRetriesReached(t *testing.T) {
 		NextBackoff: maxCrashBackoff,
 	}
 
+	rec := &testRecordingEmitter{}
+	pm.emitter = rec
+
 	// This should mark as failed and NOT retry.
 	hc.HandleCrashWithBackoff("test-plugin")
 
 	record := pm.records["test-plugin"]
 	assert.Equal(t, lifecycle.PhaseFailed, record.Phase)
 	assert.Equal(t, "max crash recovery attempts reached", record.LastError)
+
+	// The payload must be the type registered for the event, or Wails drops it.
+	events := rec.getEvents()
+	require.Len(t, events, 1)
+	assert.Equal(t, EventCrashRecoveryFailed, events[0].event)
+	require.Len(t, events[0].data, 1)
+	assert.Equal(t, PluginErrorPayload{
+		PluginID: "test-plugin",
+		Error:    "max crash recovery attempts reached",
+	}, events[0].data[0])
 }
 
 func TestNewHealthChecker(t *testing.T) {

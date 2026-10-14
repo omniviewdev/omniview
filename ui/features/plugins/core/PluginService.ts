@@ -682,16 +682,16 @@ export class PluginService {
         }
       }),
 
-      this.deps.onEvent('plugin/update_complete', (meta: { id?: string }) => {
-        if (!meta?.id) {
+      this.deps.onEvent('plugin/update_complete', (data: { pluginID?: string }) => {
+        if (!data?.pluginID) {
           return;
         }
 
-        const existing = this.state.get(meta.id);
+        const existing = this.state.get(data.pluginID);
         if (existing?.phase === 'ready') {
-          void this.reload(meta.id);
+          void this.reload(data.pluginID);
         } else {
-          void this.load(meta.id);
+          void this.load(data.pluginID);
         }
       }),
 
@@ -711,20 +711,21 @@ export class PluginService {
         void this.reload(meta.id);
       }),
 
-      this.deps.onEvent('plugin/state_change', (data: { pluginID?: string; phase?: string }) => {
+      // Payload is StateChangePayload: the new phase is `to`.
+      this.deps.onEvent('plugin/state_change', (data: { pluginID?: string; to?: string }) => {
         if (!data?.pluginID) {
           return;
         }
 
-        if (!data.phase || !isBackendPluginPhase(data.phase)) {
+        if (!data.to || !isBackendPluginPhase(data.to)) {
           this.deps.log.warn(`Ignoring invalid backend phase for plugin "${data.pluginID}"`, {
             plugin: data.pluginID,
-            phase: data.phase,
+            phase: data.to,
           });
           return;
         }
 
-        this.updateBackendPhase(data.pluginID, data.phase);
+        this.updateBackendPhase(data.pluginID, data.to);
       }),
 
       this.deps.onEvent('plugin/crash', (data: { pluginID?: string; error?: string }) => {

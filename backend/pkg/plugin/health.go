@@ -172,9 +172,9 @@ func (hc *HealthChecker) beginRecoveryAttempt(
 		hc.markFailedLocked(pluginID, "max crash recovery attempts reached", "max retries exhausted")
 
 		hc.mu.Unlock()
-		hc.pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
-			payloadKeyPluginID: pluginID,
-			payloadKeyError:    "max crash recovery attempts reached",
+		hc.pm.emitter.Emit(EventCrashRecoveryFailed, PluginErrorPayload{
+			PluginID: pluginID,
+			Error:    "max crash recovery attempts reached",
 		})
 		return 0, 0, false
 	}
@@ -238,9 +238,9 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	// across all cycles within a time window.
 	if hc.consumeCrashBudgetLocked(pluginID) {
 		hc.mu.Unlock()
-		hc.pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
-			payloadKeyPluginID: pluginID,
-			payloadKeyError:    "crash budget exhausted — too many crashes in a short time",
+		hc.pm.emitter.Emit(EventCrashRecoveryFailed, PluginErrorPayload{
+			PluginID: pluginID,
+			Error:    "crash budget exhausted — too many crashes in a short time",
 		})
 		return
 	}
@@ -328,7 +328,7 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 		delete(hc.recoveryStates, pluginID)
 		hc.mu.Unlock()
 
-		hc.pm.emitter.Emit(EventRecovered, map[string]interface{}{payloadKeyPluginID: pluginID})
+		hc.pm.emitter.Emit(EventRecovered, PluginErrorPayload{PluginID: pluginID})
 		return
 	}
 }
