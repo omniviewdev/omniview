@@ -1,27 +1,22 @@
 import React from 'react';
-import Box, { type BoxProps } from '@mui/material/Box';
+
+type Props = React.HTMLAttributes<HTMLDivElement>;
+
+const paneStyle: React.CSSProperties = {
+  backgroundColor: 'var(--ov-color-bg-surface)',
+  borderRight: '1px solid var(--ov-color-border-default)',
+  display: 'initial',
+};
 
 /**
  * An optional side pane component for the sidenav layout.
  */
-const SidePane: React.FC<BoxProps> = props => (
-  <Box
+const SidePane: React.FC<Props> = ({ style, ...props }) => (
+  <div
     className='Inbox'
     {...props}
-    sx={[
-      {
-        bgcolor: 'background.surface',
-        borderRight: '1px solid',
-        borderColor: 'divider',
-        display: {
-          xs: 'none',
-          md: 'initial',
-        },
-      },
-      ...(Array.isArray(props.sx) ? props.sx : [props.sx]),
-    ]}
+    style={{ ...paneStyle, ...style }}
   />
 );
 
 export default SidePane;
-

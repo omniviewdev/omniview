@@ -1,28 +1,16 @@
 import React from 'react';
 
 // UI
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { Chip } from '@omniviewdev/ui';
-import { Text } from '@omniviewdev/ui/typography';
-import { Stack } from '@omniviewdev/ui/layout';
-import List from '@mui/material/List';
-import ListSubheader from '@mui/material/ListSubheader';
-import ListItem from '@mui/material/ListItem';
-import ListItemButton from '@mui/material/ListItemButton';
-import ListItemText from '@mui/material/ListItemText';
-
-// Icons import
-import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
+import { Chip, NavList, Stack } from '@omniviewdev/base-ui';
 
 // Custom
 import { type SidebarListItemProps, type SidebarProps } from './types';
-// import { IsImage } from '@/utils/url';
-// import Icon from '@/components/icons/Icon';
+import styles from './NavMenu.module.css';
 
 /**
  * Render a navigation menu in a sidebar layout
  */
-const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scrollable, selected, onSelect }) => {
+const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, selected, onSelect }) => {
   if (items == null && sections == null) {
     throw new Error('You must pass either items or sections');
   }
@@ -31,29 +19,21 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
     throw new Error('You can only pass items or sections, not both');
   }
 
-  // memoize the scrollable styles to prevent rerenders
-  const scrollableSx = {
-    overflow: 'auto',
-    maxHeight: '100%',
-    scrollbarWidth: 'none',
-    '&::-webkit-scrollbar': {
-      display: 'none',
-    },
-    '&-ms-overflow-style:': {
-      display: 'none',
-    },
-  };
-
-  // memoize the scrollable styles to prevent rerenders
-  const scrollStyle = React.useMemo(() => scrollableSx, [scrollable]);
-
   const [open, setOpen] = React.useState<Record<string, boolean>>({});
+
+  const selectedKeys = React.useMemo(
+    () => new Set<string>(selected ? [selected] : []),
+    [selected],
+  );
 
   /**
    * Handle the selection of a sidebar item
    */
-  const handleSelect = (id: string) => {
-    onSelect(id);
+  const handleSelectedKeysChange = (keys: ReadonlySet<string | number>) => {
+    const [first] = Array.from(keys);
+    if (first != null) {
+      onSelect(String(first));
+    }
   };
 
   /**
@@ -67,37 +47,23 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
   };
 
   return (
-    <Stack
-      direction='column'
-      sx={scrollStyle}
-    >
+    <Stack direction='column' spacing={2} className={styles.Scrollable}>
       {header}
-      <List
-        dense={size === 'sm'}
-        sx={{
-          userSelect: 'none',
-          p: '4px',
-        }}
+      <NavList
+        className={styles.List}
+        size={size ?? 'md'}
+        density={size === 'sm' ? 'compact' : 'default'}
+        selectionMode='single'
+        selectedKeys={selectedKeys}
+        onSelectedKeysChange={handleSelectedKeysChange}
       >
         {/** Sections */}
         {sections?.map(section => (
-          <li key={section.id}>
+          <NavList.Group key={section.id}>
             {section.title && (
-              <ListSubheader
-                sx={{ bgcolor: 'background.paper' }}
-              >
-                {section.title}
-              </ListSubheader>
+              <NavList.GroupHeader>{section.title}</NavList.GroupHeader>
             )}
-            <List
-              aria-labelledby='nav-list-browse'
-              dense={size === 'sm'}
-              sx={{
-                py: 1,
-                pl: '13px',
-                '& .MuiListItemButton-root': { p: '8px' },
-              }}
-            >
+            <div className={styles.SectionItems} aria-labelledby='nav-list-browse'>
               {section.items.map(item => (
                 <SidebarListItem
                   key={item.id}
@@ -105,11 +71,11 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
                   openState={open}
                   onToggleOpen={toggleOpenState}
                   selected={selected}
-                  onSelect={handleSelect}
+                  onSelect={onSelect}
                 />
               ))}
-            </List>
-          </li>
+            </div>
+          </NavList.Group>
         ))}
 
         {/** Direct mapped items */}
@@ -120,10 +86,10 @@ const NavMenu: React.FC<SidebarProps> = ({ header, size, items, sections, scroll
             openState={open}
             onToggleOpen={toggleOpenState}
             selected={selected}
-            onSelect={handleSelect}
+            onSelect={onSelect}
           />
         ))}
-      </List>
+      </NavList>
     </Stack>
   );
 };
@@ -138,86 +104,46 @@ NavMenu.displayName = 'NavMenu';
 const SidebarListItem: React.FC<SidebarListItemProps> = ({ level = 0, item, openState, onToggleOpen, selected, onSelect }) => {
   const { id } = item;
 
-  const handleClick = (e: React.SyntheticEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (item.children?.length) {
-      onToggleOpen(id);
-    } else {
-      onSelect(id);
-    }
-  };
-
-  const MemoizedIcon = React.useMemo(() => (
-    <KeyboardArrowDownRoundedIcon sx={{ transform: openState[id] ? 'initial' : 'rotate(-90deg)' }} />
-  ), [openState[id]]);
+  if (item.children?.length) {
+    return (
+      <NavList.Group
+        collapsible
+        expanded={Boolean(openState[id])}
+        onExpandedChange={() => onToggleOpen(id)}
+      >
+        <NavList.GroupHeader>{item.label}</NavList.GroupHeader>
+        <NavList.GroupItems aria-labelledby={`nav-list-${id}`}>
+          {item.children.map(child => (
+            <SidebarListItem
+              level={level + 1}
+              key={child.id}
+              item={child}
+              parentID={id}
+              openState={openState}
+              onToggleOpen={onToggleOpen}
+              selected={selected}
+              onSelect={onSelect}
+            />
+          ))}
+        </NavList.GroupItems>
+      </NavList.Group>
+    );
+  }
 
   return (
-    <>
-      <ListItem
-        key={id}
-        sx={{
-          userSelect: 'none',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'stretch',
-        }}
-        disablePadding
-        secondaryAction={Boolean(item.children?.length) ? (
-          <IconButton
-            emphasis='ghost'
-            size='sm'
-            onClick={handleClick}
-          >
-            {MemoizedIcon}
-          </IconButton>
-        ) : (
-          typeof item.decorator === 'string'
+    <NavList.Item itemKey={id} textValue={item.label}>
+      <NavList.ItemLabel>{item.label}</NavList.ItemLabel>
+      {item.decorator != null && (
+        <NavList.ItemMeta>
+          {typeof item.decorator === 'string'
             ? (
-              <Chip size='sm' emphasis='outline' sx={{ borderRadius: 1 }}>
-                <Text size="xs" style={{ fontSize: 10 }}>{item.decorator}</Text>
+              <Chip size='xs' variant='outline' className={styles.DecoratorChip}>
+                {item.decorator}
               </Chip>
-            ) : item.decorator
-        )}
-      >
-        <ListItemButton
-          selected={selected === id}
-          onClick={handleClick}
-          sx={{ borderRadius: '8px' }}
-        >
-          <ListItemText
-            primary={
-              <Text size="sm">
-                {item.label}
-              </Text>
-            }
-          />
-        </ListItemButton>
-        {Boolean(item.children?.length) && Boolean(openState[id]) && (
-          <List
-            aria-labelledby={`nav-list-${id}`}
-            dense
-            sx={{
-              borderRadius: '8px',
-            }}
-          >
-            {item.children?.map(child => (
-              <SidebarListItem
-                level={level + 1}
-                key={child.id}
-                item={child}
-                parentID={id}
-                openState={openState}
-                onToggleOpen={onToggleOpen}
-                selected={selected}
-                onSelect={onSelect}
-              />
-            ))}
-          </List>
-        )}
-      </ListItem>
-    </>
+            ) : item.decorator}
+        </NavList.ItemMeta>
+      )}
+    </NavList.Item>
   );
 };
 

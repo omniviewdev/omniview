@@ -1,0 +1,25 @@
+.Scrollable {
+  overflow: auto;
+  max-height: 100%;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.Scrollable::-webkit-scrollbar {
+  display: none;
+}
+
+.List {
+  user-select: none;
+  padding: 4px;
+}
+
+.SectionItems {
+  padding-block: 8px;
+  padding-left: 13px;
+}
+
+.DecoratorChip {
+  border-radius: 4px;
+  font-size: 10px;
+}

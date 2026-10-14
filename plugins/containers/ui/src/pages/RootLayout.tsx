@@ -2,10 +2,7 @@ import React from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 // UI
-import { Divider } from '@omniviewdev/ui';
-import { Text } from '@omniviewdev/ui/typography';
-import { Stack } from '@omniviewdev/ui/layout';
-import Box from '@mui/material/Box';
+import { Separator, Stack, Text } from '@omniviewdev/base-ui';
 
 
 // Layout
@@ -24,6 +21,18 @@ const sections: SidebarSection[] = [
   }
 ];
 
+const headerStyle: React.CSSProperties = {
+  paddingBlock: 8,
+  paddingInline: 8,
+  width: '100%',
+  display: 'flex',
+  gap: 12,
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  backgroundColor: 'var(--ov-color-state-hover)',
+  boxSizing: 'border-box',
+};
+
 export default function RootLayout(): React.ReactElement {
   const location = useLocation();
   const navigate = useNavigate();
@@ -36,32 +45,20 @@ export default function RootLayout(): React.ReactElement {
 
   return (
     <Stack
-      overflow={'auto'}
-      direction={'column'}
-      alignItems={'flex-start'}
-      minHeight={300}
-      flex={1}
+      direction='column'
+      align='start'
+      spacing={2}
+      style={{ overflow: 'auto', minHeight: 300, flex: 1 }}
     >
-      <Box
-        sx={{
-          py: 1,
-          px: 1,
-          width: '100%',
-          display: 'flex',
-          gap: 1.5,
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          bgcolor: 'action.hover',
-        }}
-      >
-        <Stack direction='row' alignItems='center' gap={2}>
+      <div style={headerStyle}>
+        <Stack direction='row' align='center' spacing={4}>
           <Text weight="semibold" size="md">{'Container Explorer'}</Text>
         </Stack>
-      </Box>
-      <Divider />
+      </div>
+      <Separator style={{ alignSelf: 'stretch' }} />
       <Layout.Root
-        sx={{
-          p: 0,
+        style={{
+          padding: 0,
           gap: 0,
           width: '100%',
         }}
