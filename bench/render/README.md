@@ -7,7 +7,7 @@ They exist to put a number on each step of the MUI → `@omniviewdev/base-ui` mi
 pnpm bench:render                      # all benches (~2 min)
 pnpm bench:render bench/render/log-viewer.bench.tsx
 BENCH_QUICK=1 pnpm bench:render        # 3 iterations each, for checking a bench works
-BENCH_REACT_DEV=1 pnpm bench:render    # React/MUI dev builds (readable errors; slow numbers)
+BENCH_REACT_DEV=1 pnpm bench:render    # React dev builds (readable errors; slow numbers)
 BENCH_VERBOSE=1 pnpm bench:render      # keep app console output, log unhandled backend calls
 node bench/render/report.mjs           # Markdown table from results/latest.json
 ```
@@ -28,12 +28,12 @@ First run locally: `pnpm exec playwright install chromium` and `task packages`.
   text, the scrollable area, a header label. Nothing depends on MUI or base-ui class
   names, so the same bench keeps running while a screen is migrated. When the app
   shell's providers change, update `AppProviders` to match `App.tsx`.
-- **Production React.** React, MUI and emotion run their production builds and the app's
+- **Production React.** React and the base-ui libraries run their production builds and the app's
   React Compiler setting is kept, so numbers resemble the shipped app.
 - **Fixtures** (`fixtures/`) are deterministic: seeded pods with realistic specs/status and
   metrics, and log lines with JSON and ANSI-coloured content.
 - The kubernetes Pod table is rendered from the `plugins/kubernetes` submodule source
-  against the app's own `@omniviewdev/runtime` / `@omniviewdev/ui` (as plugins get them
+  against the app's own `@omniviewdev/runtime` / `@omniviewdev/base-ui` (as plugins get them
   at runtime through the shared-deps import map). Run `git submodule update --init
   plugins/kubernetes` first. The bench uses whatever commit is checked out there.
 

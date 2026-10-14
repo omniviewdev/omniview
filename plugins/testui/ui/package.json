@@ -12,13 +12,11 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
-    "@emotion/react": "^11.11.4",
-    "@emotion/styled": "^11.11.0",
     "@fontsource/material-icons": "^5.0.16",
     "@fontsource/roboto": "^5.0.12",
     "@monaco-editor/react": "^4.6.0",
+    "@omniviewdev/base-ui": "^0.2.1",
     "@omniviewdev/runtime": "workspace:*",
-    "@omniviewdev/ui": "workspace:*",
     "date-fns": "^3.6.0",
     "language-detect": "^1.1.0",
     "language-map": "^1.5.0",

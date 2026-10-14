@@ -124,8 +124,8 @@ export default defineConfig({
     // which aborts the bench file. Pre-bundle the discovered list only.
     noDiscovery: true,
     include: discoverDeps(
-      [path.join(root, 'bench/render'), path.join(root, 'ui'), path.join(root, 'packages/omniviewdev-ui/src'), path.join(root, 'packages/omniviewdev-runtime/src'), k8sPluginSrc],
-      [...appAliases, '@omniviewdev/runtime', '@omniviewdev/ui'],
+      [path.join(root, 'bench/render'), path.join(root, 'ui'), path.join(root, 'packages/omniviewdev-runtime/src'), k8sPluginSrc],
+      [...appAliases, '@omniviewdev/runtime'],
     ),
     esbuildOptions: { define: { 'process.env.NODE_ENV': nodeEnv } },
   },

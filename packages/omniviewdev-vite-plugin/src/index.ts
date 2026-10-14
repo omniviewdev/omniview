@@ -112,7 +112,7 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
             name: 'omniview-redirect-shared-to-shims',
             setup(build: any) {
               // When the dep optimizer pre-bundles a non-shared package (like
-              // @mui/material/Tabs), and that package imports a shared package
+              // react-markdown), and that package imports a shared package
               // (like react), redirect it to the shim file instead of bundling
               // from node_modules. The shim reads from window.__OMNIVIEW_SHARED__
               // at runtime, ensuring a single React instance across host + plugins.
