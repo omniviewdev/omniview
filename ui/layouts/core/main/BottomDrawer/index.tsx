@@ -27,6 +27,8 @@ const LogViewerContainerMemo = React.memo(LogViewerContainer, (prev, next) => {
 type DrawerStartupMode = 'minimized' | 'expanded';
 
 const drawerModeStorageKey = 'omniview.bottomDrawer.mode';
+// Upper bound on waiting for the terminal session restore (see onSessionsRestored).
+const sessionRestoreTimeoutMs = 3000;
 const drawerExpandedHeightStorageKey = 'omniview.bottomDrawer.expandedHeight';
 
 /**
@@ -52,6 +54,24 @@ const BottomDrawerContainer: React.FC = () => {
   const startupModeRef = React.useRef<DrawerStartupMode>('minimized');
   const startupResolvedRef = React.useRef(false);
   const prevTabCountRef = React.useRef(0);
+  // Terminal sessions that survived a reload are restored as tabs after mount
+  // (BottomDrawerTabs lists them asynchronously). Until that has finished, a tab
+  // appearing is a restored one, not a new one, and must not auto-expand.
+  const [sessionsRestored, setSessionsRestored] = React.useState(false);
+
+  React.useEffect(() => {
+    const unsubscribe = bottomDrawerChannel.on('onSessionsRestored', () => {
+      setSessionsRestored(true);
+    });
+    const timer = window.setTimeout(() => {
+      setSessionsRestored(true);
+    }, sessionRestoreTimeoutMs);
+
+    return () => {
+      unsubscribe();
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   // Other panels (the right drawer) size themselves against the drawer height.
   React.useEffect(() => {
@@ -195,6 +215,13 @@ const BottomDrawerContainer: React.FC = () => {
     const currentHeight = parseInt(drawerRef.current.style.height, 10);
 
     if (!startupResolvedRef.current) {
+      // No tabs yet and the restore may still bring some back: stay minimized
+      // and resolve the startup state once tabs arrive or the restore is done.
+      if (nextTabCount === 0 && !sessionsRestored) {
+        expandDrawerToHeight(minHeight);
+        return;
+      }
+
       startupResolvedRef.current = true;
 
       if (nextTabCount === 0) {
@@ -221,7 +248,7 @@ const BottomDrawerContainer: React.FC = () => {
     }
 
     prevTabCountRef.current = nextTabCount;
-  }, [tabs.length, expandDrawerToHeight]);
+  }, [tabs.length, sessionsRestored, expandDrawerToHeight]);
 
   const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!drawerRef.current || !hasTabs) {
