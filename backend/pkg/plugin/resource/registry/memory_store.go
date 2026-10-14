@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// MemoryStore is the in-memory implementation of RegistryStore.
+// MemoryStore is the in-memory implementation of Store.
 // Uses a two-level map: entryKey → ResourceEntry for O(1) lookups,
 // plus a connection index for O(entries-in-connection) bulk deletes.
 type MemoryStore struct {
@@ -171,7 +171,10 @@ func (s *MemoryStore) removeLabelIndex(entryKey string, labels map[string]string
 	}
 }
 
-func (s *MemoryStore) ScanByLabel(pluginID, connectionID, resourceKey string, selector map[string]string) []ResourceEntry {
+func (s *MemoryStore) ScanByLabel(
+	pluginID, connectionID, resourceKey string,
+	selector map[string]string,
+) []ResourceEntry {
 	if len(selector) == 0 {
 		return nil
 	}

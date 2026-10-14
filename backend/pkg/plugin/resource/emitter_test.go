@@ -2,14 +2,14 @@ package resource
 
 import "testing"
 
-func TestAppEmitter_ImplementsInterface(t *testing.T) {
+func TestAppEmitter_ImplementsInterface(_ *testing.T) {
 	var _ EventEmitter = (*appEmitter)(nil)
 }
 
-func TestRecordingEmitter_ImplementsInterface(t *testing.T) {
+func TestRecordingEmitter_ImplementsInterface(_ *testing.T) {
 	var _ EventEmitter = (*recordingEmitter)(nil)
 }
 
-func TestNoopEmitter_ImplementsInterface(t *testing.T) {
+func TestNoopEmitter_ImplementsInterface(_ *testing.T) {
 	var _ EventEmitter = NoopEmitter{}
 }

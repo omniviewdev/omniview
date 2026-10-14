@@ -18,7 +18,7 @@ import (
 type engineWatchSink struct {
 	pluginID   string
 	ctrl       *controller
-	store      registry.RegistryStore
+	store      registry.Store
 	dispatcher *indexer.Dispatcher
 }
 

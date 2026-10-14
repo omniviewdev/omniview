@@ -21,7 +21,7 @@ func makeEntry(key, ns, id string) registry.ResourceEntry {
 	}
 }
 
-func setupIndexer() (*RelationshipGraph, *registry.MemoryStore, *GraphIndexer) {
+func setupIndexer() (*RelationshipGraph, *registry.MemoryStore, *Indexer) {
 	g := NewRelationshipGraph()
 	s := registry.NewMemoryStore()
 	idx := NewGraphIndexer(g, s)

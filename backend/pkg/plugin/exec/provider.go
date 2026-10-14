@@ -7,10 +7,10 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
 
-// ExecProvider is the engine's version-independent interface for exec plugins.
+// Provider is the engine's version-independent interface for exec plugins.
 // For v1, method signatures match SDK exec.Provider exactly (doc 20 §13.7).
 // When v2 redesigns exec (context.Context, interfaces), this diverges.
-type ExecProvider interface {
+type Provider interface {
 	GetSupportedResources(ctx *types.PluginContext) []exec.Handler
 	GetSession(ctx *types.PluginContext, sessionID string) (*exec.Session, error)
 	ListSessions(ctx *types.PluginContext) ([]*exec.Session, error)

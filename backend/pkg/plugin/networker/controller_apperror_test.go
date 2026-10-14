@@ -1,7 +1,6 @@
 package networker
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,7 +25,7 @@ func TestGetPortForwardSession_SessionNotFound(t *testing.T) {
 
 	require.Error(t, err)
 	var target *apperror.AppError
-	require.True(t, errors.As(err, &target))
+	require.ErrorAs(t, err, &target)
 	assert.Equal(t, apperror.TypeSessionNotFound, target.Type)
 	assert.Equal(t, 404, target.Status)
 	assert.Contains(t, target.Detail, "nonexistent-session")
@@ -40,7 +39,7 @@ func TestListPortForwardSessions_PluginNotFound(t *testing.T) {
 
 	require.Error(t, err)
 	var target *apperror.AppError
-	require.True(t, errors.As(err, &target))
+	require.ErrorAs(t, err, &target)
 	assert.Equal(t, apperror.TypePluginNotFound, target.Type)
 	assert.Equal(t, 404, target.Status)
 	assert.Contains(t, target.Detail, "nonexistent")
@@ -54,7 +53,7 @@ func TestFindPortForwardSessions_PluginNotFound(t *testing.T) {
 
 	require.Error(t, err)
 	var target *apperror.AppError
-	require.True(t, errors.As(err, &target))
+	require.ErrorAs(t, err, &target)
 	assert.Equal(t, apperror.TypePluginNotFound, target.Type)
 	assert.Equal(t, 404, target.Status)
 	assert.Contains(t, target.Detail, "nonexistent")
@@ -68,7 +67,7 @@ func TestStartResourcePortForwardingSession_PluginNotFound(t *testing.T) {
 
 	require.Error(t, err)
 	var target *apperror.AppError
-	require.True(t, errors.As(err, &target))
+	require.ErrorAs(t, err, &target)
 	assert.Equal(t, apperror.TypePluginNotFound, target.Type)
 	assert.Equal(t, 404, target.Status)
 	assert.Contains(t, target.Detail, "nonexistent")
@@ -82,7 +81,7 @@ func TestClosePortForwardSession_SessionNotFound(t *testing.T) {
 
 	require.Error(t, err)
 	var target *apperror.AppError
-	require.True(t, errors.As(err, &target))
+	require.ErrorAs(t, err, &target)
 	assert.Equal(t, apperror.TypeSessionNotFound, target.Type)
 	assert.Equal(t, 404, target.Status)
 	assert.Contains(t, target.Detail, "nonexistent-session")

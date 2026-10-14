@@ -3,6 +3,7 @@ package networker
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -82,15 +83,19 @@ func NewController(
 	resourceClient resource.Service,
 ) Controller {
 	return &controller{
+		app:              nil,
+		ctx:              nil,
 		logger:           logger.Named("NetworkerController"),
 		settingsProvider: sp,
+		resourceClient:   resourceClient,
+		mu:               sync.RWMutex{},
+		clients:          nil,
 		sessionIndex:     make(map[string]sessionIndex),
 		stops:            make(map[string]chan struct{}),
-		resourceClient:   resourceClient,
 	}
 }
 
-var _ Controller = &controller{}
+var _ Controller = (*controller)(nil)
 
 type controller struct {
 	app              *application.App
@@ -100,13 +105,13 @@ type controller struct {
 	resourceClient   resource.Service
 
 	mu           sync.RWMutex
-	clients      map[string]NetworkerProvider
+	clients      map[string]Provider
 	sessionIndex map[string]sessionIndex
 	stops        map[string]chan struct{}
 }
 
 // ServiceStartup initialises the controller during application startup.
-func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	c.app = application.Get()
 	c.ctx = ctx
 	return nil
@@ -119,13 +124,13 @@ func (c *controller) ServiceShutdown() error {
 
 // ====================================== Controller Implementation ====================================== //
 
-func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginInit")
 
 	c.mu.Lock()
 	if c.clients == nil {
-		c.clients = make(map[string]NetworkerProvider)
+		c.clients = make(map[string]Provider)
 	}
 	if c.stops == nil {
 		c.stops = make(map[string]chan struct{})
@@ -135,7 +140,7 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 
 // dispenseProvider extracts the networker provider from the backend,
 // wrapping it in the version-appropriate adapter.
-func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (NetworkerProvider, error) {
+func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Provider, error) {
 	raw, err := backend.Dispense("networker")
 	if err != nil {
 		return nil, err
@@ -147,7 +152,7 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Net
 		v1, ok := raw.(networker.Provider)
 		if !ok {
 			return nil, apperror.New(
-				apperror.TypePluginLoadFailed, 500,
+				apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 				"Plugin type mismatch",
 				fmt.Sprintf("Expected networker.Provider for v1, got %T", raw),
 			)
@@ -155,14 +160,14 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Net
 		return NewAdapterV1(v1), nil
 	default:
 		return nil, apperror.New(
-			apperror.TypePluginLoadFailed, 500,
+			apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			"Unsupported SDK protocol version",
 			fmt.Sprintf("Plugin '%s' negotiated v%d for networker, engine supports v1", pluginID, version),
 		)
 	}
 }
 
-func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
+func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend internaltypes.PluginBackend) error {
 	ctx, span := tracer.Start(context.Background(), "networker.OnPluginStart")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID))
@@ -183,7 +188,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	return nil
 }
 
-func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	ctx, span := tracer.Start(context.Background(), "networker.OnPluginStop")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID))
@@ -201,7 +206,7 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginShutdown(pluginID string, _ config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginShutdown")
 
@@ -211,7 +216,7 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 	return nil
 }
 
-func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginDestroy")
 
@@ -277,12 +282,6 @@ func mapKeys(m map[string]any) []string {
 		keys = append(keys, k)
 	}
 	return keys
-}
-
-func (c *controller) getUnconnectedCtx(
-	ctx context.Context,
-) *sdktypes.PluginContext {
-	return sdktypes.NewPluginContextWithConnection(ctx, "networker", nil, nil, nil)
 }
 
 func (c *controller) GetSupportedPortForwardTargets(plugin string) ([]string, error) {
@@ -375,12 +374,12 @@ func (c *controller) ListAllPortForwardSessions() ([]*networker.PortForwardSessi
 	type pair struct{ pluginID, connectionID string }
 	seen := make(map[pair]struct{})
 	for _, idx := range c.sessionIndex {
-		seen[pair{idx.pluginID, idx.connectionID}] = struct{}{}
+		seen[pair(idx)] = struct{}{}
 	}
 	// Snapshot clients we need
 	type providerPair struct {
 		pair
-		provider NetworkerProvider
+		provider Provider
 	}
 	var pairs []providerPair
 	for p := range seen {
@@ -437,7 +436,7 @@ func (c *controller) FindPortForwardSessions(
 	)
 }
 
-// StartResourcePortForwardingSession starts a port forwarding session
+// StartResourcePortForwardingSession starts a port forwarding session.
 func (c *controller) StartResourcePortForwardingSession(
 	pluginID, connectionID string,
 	opts networker.PortForwardSessionOptions,
@@ -480,7 +479,7 @@ func (c *controller) StartResourcePortForwardingSession(
 			"pluginID", pluginID,
 			"connectionID", connectionID,
 		)
-		err := apperror.New(apperror.TypeConnectionNotFound, 404,
+		err := apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
 			"Connection lookup failed",
 			fmt.Sprintf("Could not resolve connection '%s' for plugin '%s'", connectionID, pluginID),
 		)
@@ -525,7 +524,7 @@ func (c *controller) StartResourcePortForwardingSession(
 	return session, nil
 }
 
-// ClosePortForwardSession closes a port forward session
+// ClosePortForwardSession closes a port forward session.
 func (c *controller) ClosePortForwardSession(
 	sessionID string,
 ) (*networker.PortForwardSession, error) {

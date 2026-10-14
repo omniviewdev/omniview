@@ -35,22 +35,40 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 }
 
 // CRUD
-func (s *ServiceWrapper) Get(pluginID, connectionID, key string, input sdkresource.GetInput) (*sdkresource.GetResult, error) {
+func (s *ServiceWrapper) Get(
+	pluginID, connectionID, key string,
+	input sdkresource.GetInput,
+) (*sdkresource.GetResult, error) {
 	return s.Ctrl.Get(pluginID, connectionID, key, input)
 }
-func (s *ServiceWrapper) List(pluginID, connectionID, key string, input sdkresource.ListInput) (*sdkresource.ListResult, error) {
+func (s *ServiceWrapper) List(
+	pluginID, connectionID, key string,
+	input sdkresource.ListInput,
+) (*sdkresource.ListResult, error) {
 	return s.Ctrl.List(pluginID, connectionID, key, input)
 }
-func (s *ServiceWrapper) Find(pluginID, connectionID, key string, input sdkresource.FindInput) (*sdkresource.FindResult, error) {
+func (s *ServiceWrapper) Find(
+	pluginID, connectionID, key string,
+	input sdkresource.FindInput,
+) (*sdkresource.FindResult, error) {
 	return s.Ctrl.Find(pluginID, connectionID, key, input)
 }
-func (s *ServiceWrapper) Create(pluginID, connectionID, key string, input sdkresource.CreateInput) (*sdkresource.CreateResult, error) {
+func (s *ServiceWrapper) Create(
+	pluginID, connectionID, key string,
+	input sdkresource.CreateInput,
+) (*sdkresource.CreateResult, error) {
 	return s.Ctrl.Create(pluginID, connectionID, key, input)
 }
-func (s *ServiceWrapper) Update(pluginID, connectionID, key string, input sdkresource.UpdateInput) (*sdkresource.UpdateResult, error) {
+func (s *ServiceWrapper) Update(
+	pluginID, connectionID, key string,
+	input sdkresource.UpdateInput,
+) (*sdkresource.UpdateResult, error) {
 	return s.Ctrl.Update(pluginID, connectionID, key, input)
 }
-func (s *ServiceWrapper) Delete(pluginID, connectionID, key string, input sdkresource.DeleteInput) (*sdkresource.DeleteResult, error) {
+func (s *ServiceWrapper) Delete(
+	pluginID, connectionID, key string,
+	input sdkresource.DeleteInput,
+) (*sdkresource.DeleteResult, error) {
 	return s.Ctrl.Delete(pluginID, connectionID, key, input)
 }
 
@@ -85,7 +103,10 @@ func (s *ServiceWrapper) GetConnectionNamespaces(pluginID, connectionID string) 
 func (s *ServiceWrapper) AddConnection(pluginID string, connection sdktypes.Connection) error {
 	return s.Ctrl.AddConnection(pluginID, connection)
 }
-func (s *ServiceWrapper) UpdateConnection(pluginID string, connection sdktypes.Connection) (sdktypes.Connection, error) {
+func (s *ServiceWrapper) UpdateConnection(
+	pluginID string,
+	connection sdktypes.Connection,
+) (sdktypes.Connection, error) {
 	return s.Ctrl.UpdateConnection(pluginID, connection)
 }
 func (s *ServiceWrapper) RemoveConnection(pluginID, connectionID string) error {
@@ -156,10 +177,16 @@ func (s *ServiceWrapper) GetResourceSchema(pluginID, connectionID, key string) (
 func (s *ServiceWrapper) GetActions(pluginID, connectionID, key string) ([]sdkresource.ActionDescriptor, error) {
 	return s.Ctrl.GetActions(pluginID, connectionID, key)
 }
-func (s *ServiceWrapper) ExecuteAction(pluginID, connectionID, key, actionID string, input sdkresource.ActionInput) (*sdkresource.ActionResult, error) {
+func (s *ServiceWrapper) ExecuteAction(
+	pluginID, connectionID, key, actionID string,
+	input sdkresource.ActionInput,
+) (*sdkresource.ActionResult, error) {
 	return s.Ctrl.ExecuteAction(pluginID, connectionID, key, actionID, input)
 }
-func (s *ServiceWrapper) StreamAction(pluginID, connectionID, key, actionID string, input sdkresource.ActionInput) (string, error) {
+func (s *ServiceWrapper) StreamAction(
+	pluginID, connectionID, key, actionID string,
+	input sdkresource.ActionInput,
+) (string, error) {
 	return s.Ctrl.StreamAction(pluginID, connectionID, key, actionID, input)
 }
 
@@ -172,15 +199,23 @@ func (s *ServiceWrapper) GetEditorSchemas(pluginID, connectionID string) ([]sdkr
 func (s *ServiceWrapper) GetRelationships(pluginID, key string) ([]sdkresource.RelationshipDescriptor, error) {
 	return s.Ctrl.GetRelationships(pluginID, key)
 }
-func (s *ServiceWrapper) ResolveRelationships(pluginID, connectionID, key, id, namespace string) ([]sdkresource.ResolvedRelationship, error) {
+func (s *ServiceWrapper) ResolveRelationships(
+	pluginID, connectionID, key, id, namespace string,
+) ([]sdkresource.ResolvedRelationship, error) {
 	return s.Ctrl.ResolveRelationships(pluginID, connectionID, key, id, namespace)
 }
 
 // Health
-func (s *ServiceWrapper) GetHealth(pluginID, connectionID, key string, data json.RawMessage) (*sdkresource.ResourceHealth, error) {
+func (s *ServiceWrapper) GetHealth(
+	pluginID, connectionID, key string,
+	data json.RawMessage,
+) (*sdkresource.ResourceHealth, error) {
 	return s.Ctrl.GetHealth(pluginID, connectionID, key, data)
 }
-func (s *ServiceWrapper) GetResourceEvents(pluginID, connectionID, key, id, namespace string, limit int32) ([]sdkresource.ResourceEvent, error) {
+func (s *ServiceWrapper) GetResourceEvents(
+	pluginID, connectionID, key, id, namespace string,
+	limit int32,
+) ([]sdkresource.ResourceEvent, error) {
 	return s.Ctrl.GetResourceEvents(pluginID, connectionID, key, id, namespace, limit)
 }
 

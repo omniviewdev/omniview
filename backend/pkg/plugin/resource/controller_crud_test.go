@@ -352,7 +352,7 @@ func TestCRUD_PluginNotFound(t *testing.T) {
 		t.Run(op.name, func(t *testing.T) {
 			err := op.fn()
 			var appErr *apperror.AppError
-			require.True(t, errors.As(err, &appErr))
+			require.ErrorAs(t, err, &appErr)
 			assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 		})
 	}
@@ -361,7 +361,7 @@ func TestCRUD_PluginNotFound(t *testing.T) {
 func TestCRUD_EmptyKey(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetFunc: func(_ context.Context, key string, _ resource.GetInput) (*resource.GetResult, error) {
+		GetFunc: func(_ context.Context, _ string, _ resource.GetInput) (*resource.GetResult, error) {
 			return &resource.GetResult{Success: true}, nil
 		},
 	}
@@ -461,6 +461,6 @@ func TestCRUD_AfterPluginStop_Fails(t *testing.T) {
 
 	_, err := ctrl.Get("p1", "c1", "k", resource.GetInput{})
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }

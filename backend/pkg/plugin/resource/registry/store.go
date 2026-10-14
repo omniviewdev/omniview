@@ -1,7 +1,7 @@
 package registry
 
-// RegistryStore abstracts the storage backend for resource entries.
-type RegistryStore interface {
+// Store abstracts the storage backend for resource entries.
+type Store interface {
 	Put(entry ResourceEntry) (old *ResourceEntry, existed bool)
 	// PutIfAbsent inserts the entry only if no entry with the same key exists.
 	// Returns the existing entry and true if one was already present.

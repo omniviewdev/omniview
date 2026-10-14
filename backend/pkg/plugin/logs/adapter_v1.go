@@ -7,14 +7,14 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 )
 
-// AdapterV1 wraps SDK v1 logs.Provider as the engine canonical LogsProvider.
+// AdapterV1 wraps SDK v1 logs.Provider as the engine canonical Provider.
 // For v1, all methods are direct delegation (types identical).
 // When v2 ships and canonical types diverge, AdapterV1 translates v1 → canonical.
 type AdapterV1 struct {
 	inner logs.Provider
 }
 
-var _ LogsProvider = (*AdapterV1)(nil)
+var _ Provider = (*AdapterV1)(nil)
 
 // NewAdapterV1 creates a new v1 adapter wrapping the given SDK logs provider.
 func NewAdapterV1(inner logs.Provider) *AdapterV1 {
@@ -41,7 +41,11 @@ func (a *AdapterV1) CloseSession(ctx *types.PluginContext, sessionID string) err
 	return a.inner.CloseSession(ctx, sessionID)
 }
 
-func (a *AdapterV1) UpdateSessionOptions(ctx *types.PluginContext, sessionID string, opts logs.LogSessionOptions) (*logs.LogSession, error) {
+func (a *AdapterV1) UpdateSessionOptions(
+	ctx *types.PluginContext,
+	sessionID string,
+	opts logs.LogSessionOptions,
+) (*logs.LogSession, error) {
 	return a.inner.UpdateSessionOptions(ctx, sessionID, opts)
 }
 

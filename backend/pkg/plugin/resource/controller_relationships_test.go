@@ -65,7 +65,7 @@ func TestGetRelationships_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.GetRelationships("nonexistent", "pods")
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }
 
@@ -125,6 +125,6 @@ func TestResolveRelationships_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.ResolveRelationships("nonexistent", "conn-1", "pods", "pod-1", "default")
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }

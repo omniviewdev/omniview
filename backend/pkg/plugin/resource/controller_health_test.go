@@ -61,7 +61,7 @@ func TestGetHealth_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	health, err := ctrl.GetHealth("nonexistent", "conn-1", "pods", nil)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Nil(t, health)
 }
@@ -130,6 +130,6 @@ func TestGetResourceEvents_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.GetResourceEvents("nonexistent", "conn-1", "pods", "pod-1", "default", 10)
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }

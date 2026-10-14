@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -28,6 +29,9 @@ var tracer = otel.Tracer("omniview.logs")
 const (
 	BatchFlushInterval = 50 * time.Millisecond
 	BatchMaxSize       = 100
+
+	// outputMuxBuffer is the buffer size of the plugin output multiplexer channel.
+	outputMuxBuffer = 256
 )
 
 // Controller manages log sessions across all plugins.
@@ -60,7 +64,7 @@ type controller struct {
 	outputMux        chan logs.StreamOutput
 
 	mu           sync.RWMutex
-	clients      map[string]LogsProvider
+	clients      map[string]Provider
 	sessionIndex map[string]sessionIndex
 	inChans      map[string]chan logs.StreamInput
 	handlerMap   map[string]map[string]logs.Handler
@@ -81,19 +85,23 @@ func NewController(
 	resourceClient resource.Service,
 ) Controller {
 	return &controller{
+		app:              nil,
+		ctx:              nil,
 		logger:           logger.Named("LogController"),
 		settingsProvider: sp,
-		clients:          make(map[string]LogsProvider),
+		mu:               sync.RWMutex{},
+		clients:          make(map[string]Provider),
 		sessionIndex:     make(map[string]sessionIndex),
 		inChans:          make(map[string]chan logs.StreamInput),
-		outputMux:        make(chan logs.StreamOutput, 256),
+		outputMux:        make(chan logs.StreamOutput, outputMuxBuffer),
 		resourceClient:   resourceClient,
 		handlerMap:       make(map[string]map[string]logs.Handler),
 		batches:          make(map[string]*logBatch),
+		batchMux:         sync.Mutex{},
 	}
 }
 
-func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	c.app = application.Get()
 	c.ctx = ctx
 	go c.runMux()
@@ -138,6 +146,7 @@ func (c *controller) bufferLine(sessionID string, line logs.LogLine) {
 	if !ok {
 		batch = &logBatch{
 			lines: make([]logs.LogLine, 0, BatchMaxSize),
+			timer: nil,
 		}
 		c.batches[sessionID] = batch
 	}
@@ -154,7 +163,7 @@ func (c *controller) bufferLine(sessionID string, line logs.LogLine) {
 			c.batchMux.Lock()
 			defer c.batchMux.Unlock()
 
-			if b, ok := c.batches[sessionID]; ok && len(b.lines) > 0 {
+			if b, found := c.batches[sessionID]; found && len(b.lines) > 0 {
 				c.flushBatchLocked(sessionID, b)
 			}
 		})
@@ -180,20 +189,20 @@ func (c *controller) flushBatchLocked(sessionID string, batch *logBatch) {
 
 // ================================ Controller Lifecycle ================================ //
 
-func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginInit")
 
 	c.mu.Lock()
 	if c.clients == nil {
-		c.clients = make(map[string]LogsProvider)
+		c.clients = make(map[string]Provider)
 	}
 	c.mu.Unlock()
 }
 
 // dispenseProvider extracts the logs provider from the backend,
 // wrapping it in the version-appropriate adapter.
-func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (LogsProvider, error) {
+func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Provider, error) {
 	raw, err := backend.Dispense("log")
 	if err != nil {
 		return nil, err
@@ -205,7 +214,7 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Log
 		v1, ok := raw.(logs.Provider)
 		if !ok {
 			return nil, apperror.New(
-				apperror.TypePluginLoadFailed, 500,
+				apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 				"Plugin type mismatch",
 				fmt.Sprintf("Expected logs.Provider for v1, got %T", raw),
 			)
@@ -213,14 +222,14 @@ func dispenseProvider(pluginID string, backend internaltypes.PluginBackend) (Log
 		return NewAdapterV1(v1), nil
 	default:
 		return nil, apperror.New(
-			apperror.TypePluginLoadFailed, 500,
+			apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			"Unsupported SDK protocol version",
 			fmt.Sprintf("Plugin '%s' negotiated v%d for log, engine supports v1", pluginID, version),
 		)
 	}
 }
 
-func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend internaltypes.PluginBackend) error {
+func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend internaltypes.PluginBackend) error {
 	ctx, span := tracer.Start(context.Background(), "logs.OnPluginStart")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID))
@@ -257,9 +266,9 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	// OnPluginStart trace, while still respecting the controller's lifecycle.
 	streamCtx := trace.ContextWithSpan(c.ctx, span)
 	go func() {
-		stream, err := provider.Stream(streamCtx, inchan)
-		if err != nil {
-			logger.Errorw(streamCtx, "error starting log stream", "error", err)
+		stream, streamErr := provider.Stream(streamCtx, inchan)
+		if streamErr != nil {
+			logger.Errorw(streamCtx, "error starting log stream", "error", streamErr)
 			return
 		}
 
@@ -279,7 +288,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	return nil
 }
 
-func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginStop")
 	c.mu.Lock()
 	if ch, ok := c.inChans[pluginID]; ok {
@@ -302,7 +311,7 @@ func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error
 	return nil
 }
 
-func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginShutdown(pluginID string, _ config.PluginMeta) error {
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginShutdown")
 	c.mu.Lock()
 	if ch, ok := c.inChans[pluginID]; ok {
@@ -324,7 +333,7 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 	return nil
 }
 
-func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
 	c.logger.With(logging.Any("pluginID", pluginID)).Debugw(context.Background(), "OnPluginDestroy")
 	return nil
 }
@@ -470,7 +479,7 @@ func (c *controller) ListSessions() ([]*logs.LogSession, error) {
 	ctx := c.getUnconnectedCtx(bgCtx)
 
 	c.mu.RLock()
-	clients := make([]LogsProvider, 0, len(c.clients))
+	clients := make([]Provider, 0, len(c.clients))
 	for _, client := range c.clients {
 		clients = append(clients, client)
 	}
@@ -521,7 +530,7 @@ func (c *controller) CloseSession(sessionID string) error {
 
 	// Clean up batch state
 	c.batchMux.Lock()
-	if batch, ok := c.batches[sessionID]; ok {
+	if batch, found := c.batches[sessionID]; found {
 		if batch.timer != nil {
 			batch.timer.Stop()
 		}

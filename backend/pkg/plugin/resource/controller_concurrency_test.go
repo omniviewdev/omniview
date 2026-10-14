@@ -25,10 +25,10 @@ func TestConcurrent_CRUD_20Goroutines(t *testing.T) {
 		GetFunc: func(_ context.Context, key string, _ resource.GetInput) (*resource.GetResult, error) {
 			return &resource.GetResult{Result: json.RawMessage(`{"key":"` + key + `"}`), Success: true}, nil
 		},
-		ListFunc: func(_ context.Context, key string, _ resource.ListInput) (*resource.ListResult, error) {
+		ListFunc: func(_ context.Context, _ string, _ resource.ListInput) (*resource.ListResult, error) {
 			return &resource.ListResult{}, nil
 		},
-		CreateFunc: func(_ context.Context, key string, _ resource.CreateInput) (*resource.CreateResult, error) {
+		CreateFunc: func(_ context.Context, _ string, _ resource.CreateInput) (*resource.CreateResult, error) {
 			return &resource.CreateResult{}, nil
 		},
 	}

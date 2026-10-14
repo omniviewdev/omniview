@@ -39,7 +39,7 @@ func setupGRPCProvider(t *testing.T, sdkProvider resource.Provider) ResourceProv
 	resourcepb.RegisterResourcePluginServer(s, grpcplugin.NewServer(sdkProvider, nil))
 	go func() { _ = s.Serve(lis) }()
 
-	dialer := func(ctx context.Context, addr string) (net.Conn, error) {
+	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
 		return lis.DialContext(ctx)
 	}
 	//nolint:staticcheck // grpc.DialContext needed for grpc v1.61
@@ -66,7 +66,7 @@ func TestL3_01_ListRoundTrip(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 
 	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithListFunc(func(_ context.Context, key string, _ resource.ListInput) (*resource.ListResult, error) {
+		resourcetest.WithListFunc(func(_ context.Context, _ string, _ resource.ListInput) (*resource.ListResult, error) {
 			return &resource.ListResult{
 				Success: true,
 				Result:  []json.RawMessage{json.RawMessage(`{"name":"pod-1"}`)},
@@ -92,7 +92,7 @@ func TestL3_02_GetRoundTrip(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 
 	sdkProvider := resourcetest.NewTestProvider(t,
-		resourcetest.WithGetFunc(func(_ context.Context, key string, input resource.GetInput) (*resource.GetResult, error) {
+		resourcetest.WithGetFunc(func(_ context.Context, _ string, input resource.GetInput) (*resource.GetResult, error) {
 			return &resource.GetResult{
 				Success: true,
 				Result:  json.RawMessage(`{"name":"` + input.ID + `"}`),

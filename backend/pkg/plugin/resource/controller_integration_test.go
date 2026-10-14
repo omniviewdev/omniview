@@ -93,7 +93,7 @@ func TestIntegration_OnPluginStart_FullWiring(t *testing.T) {
 func TestIntegration_CRUD_ThroughController(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		GetFunc: func(ctx context.Context, key string, input resource.GetInput) (*resource.GetResult, error) {
+		GetFunc: func(ctx context.Context, _ string, input resource.GetInput) (*resource.GetResult, error) {
 			session := resource.SessionFromContext(ctx)
 			require.NotNil(t, session)
 			assert.Equal(t, "conn-1", session.Connection.ID)

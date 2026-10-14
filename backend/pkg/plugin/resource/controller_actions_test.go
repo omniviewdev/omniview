@@ -57,7 +57,7 @@ func TestGetActions_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.GetActions("nonexistent", "conn-1", "pods")
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }
 
@@ -68,7 +68,7 @@ func TestGetActions_PluginNotFound(t *testing.T) {
 func TestExecuteAction_Success(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	mock := &mockProvider{
-		ExecuteActionFunc: func(_ context.Context, key, actionID string, input resource.ActionInput) (*resource.ActionResult, error) {
+		ExecuteActionFunc: func(_ context.Context, key, actionID string, _ resource.ActionInput) (*resource.ActionResult, error) {
 			assert.Equal(t, "pods", key)
 			assert.Equal(t, "restart", actionID)
 			return &resource.ActionResult{Success: true}, nil
@@ -99,7 +99,7 @@ func TestExecuteAction_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.ExecuteAction("nonexistent", "conn-1", "pods", "restart", resource.ActionInput{})
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }
 
@@ -178,7 +178,7 @@ func TestStreamAction_PluginNotFound(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	_, err := ctrl.StreamAction("nonexistent", "conn-1", "pods", "restart", resource.ActionInput{})
 	var appErr *apperror.AppError
-	require.True(t, errors.As(err, &appErr))
+	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 }
 

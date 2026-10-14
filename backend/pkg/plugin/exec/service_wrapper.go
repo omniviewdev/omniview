@@ -30,7 +30,10 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 	}
 	return nil
 }
-func (s *ServiceWrapper) CreateSession(plugin, connectionID string, opts execsdk.SessionOptions) (*execsdk.Session, error) {
+func (s *ServiceWrapper) CreateSession(
+	plugin, connectionID string,
+	opts execsdk.SessionOptions,
+) (*execsdk.Session, error) {
 	return s.Ctrl.CreateSession(plugin, connectionID, opts)
 }
 func (s *ServiceWrapper) CreateTerminal(opts execsdk.SessionOptions) (*execsdk.Session, error) {

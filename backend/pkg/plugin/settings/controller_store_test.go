@@ -19,7 +19,7 @@ func pluginMeta(id string) config.PluginMeta {
 	return config.PluginMeta{ID: id}
 }
 
-// mockSettingsProvider implements SettingsProvider for testing.
+// mockSettingsProvider implements Provider for testing.
 type mockSettingsProvider struct {
 	settings   map[string]pkgsettings.Setting
 	setErr     error
@@ -111,7 +111,7 @@ func TestOnPluginStart_HydratesFromBbolt(t *testing.T) {
 	ctrl := &controller{
 		logger:         logging.NewNop().Named("test"),
 		store:          store,
-		clients:        map[string]SettingsProvider{"testplugin": mock},
+		clients:        map[string]Provider{"testplugin": mock},
 		hydrated:       make(map[string]bool),
 		schemaCache:    make(map[string]map[string]pkgsettings.Setting),
 		pendingChanges: make(map[string][]pendingChange),
@@ -145,7 +145,7 @@ func TestOnPluginStart_NoPersisted(t *testing.T) {
 	ctrl := &controller{
 		logger:         logging.NewNop().Named("test"),
 		store:          store,
-		clients:        map[string]SettingsProvider{"testplugin": mock},
+		clients:        map[string]Provider{"testplugin": mock},
 		hydrated:       make(map[string]bool),
 		schemaCache:    make(map[string]map[string]pkgsettings.Setting),
 		pendingChanges: make(map[string][]pendingChange),
@@ -174,7 +174,7 @@ func TestSetSetting_PersistsToBbolt(t *testing.T) {
 	ctrl := &controller{
 		logger:         logging.NewNop().Named("test"),
 		store:          store,
-		clients:        map[string]SettingsProvider{"testplugin": mock},
+		clients:        map[string]Provider{"testplugin": mock},
 		hydrated:       map[string]bool{"testplugin": true},
 		schemaCache:    make(map[string]map[string]pkgsettings.Setting),
 		pendingChanges: make(map[string][]pendingChange),
@@ -200,7 +200,7 @@ func TestSetSetting_GRPCFails_NoPersistence(t *testing.T) {
 	ctrl := &controller{
 		logger:         logging.NewNop().Named("test"),
 		store:          store,
-		clients:        map[string]SettingsProvider{"testplugin": mock},
+		clients:        map[string]Provider{"testplugin": mock},
 		hydrated:       map[string]bool{"testplugin": true},
 		schemaCache:    make(map[string]map[string]pkgsettings.Setting),
 		pendingChanges: make(map[string][]pendingChange),
@@ -227,7 +227,7 @@ func TestPluginCrash_SettingsPreserved(t *testing.T) {
 	ctrl := &controller{
 		logger:         logging.NewNop().Named("test"),
 		store:          store,
-		clients:        make(map[string]SettingsProvider),
+		clients:        make(map[string]Provider),
 		hydrated:       make(map[string]bool),
 		schemaCache:    make(map[string]map[string]pkgsettings.Setting),
 		pendingChanges: make(map[string][]pendingChange),
@@ -258,7 +258,7 @@ func TestUninstall_DeletesFromBbolt(t *testing.T) {
 	ctrl := &controller{
 		logger:         logging.NewNop().Named("test"),
 		store:          store,
-		clients:        make(map[string]SettingsProvider),
+		clients:        make(map[string]Provider),
 		hydrated:       make(map[string]bool),
 		schemaCache:    make(map[string]map[string]pkgsettings.Setting),
 		pendingChanges: make(map[string][]pendingChange),
@@ -289,7 +289,7 @@ func TestStaleClient_ReturnsBboltFallback(t *testing.T) {
 	ctrl := &controller{
 		logger:         logging.NewNop().Named("test"),
 		store:          store,
-		clients:        map[string]SettingsProvider{"testplugin": mock},
+		clients:        map[string]Provider{"testplugin": mock},
 		hydrated:       map[string]bool{"testplugin": true},
 		schemaCache:    make(map[string]map[string]pkgsettings.Setting),
 		pendingChanges: make(map[string][]pendingChange),

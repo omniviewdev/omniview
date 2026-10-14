@@ -95,7 +95,7 @@ type Manager struct {
 	bufferSize int
 
 	mu      sync.Mutex
-	streams map[string]*PluginLogStream
+	streams map[string]*Stream
 
 	emitMu sync.RWMutex
 	emit   EmitFunc
@@ -115,7 +115,7 @@ func NewManager(dir string, opts RotationOptions) (*Manager, error) {
 		opts:          opts,
 		bufferSize:    DefaultBufferSize,
 		mu:            sync.Mutex{},
-		streams:       make(map[string]*PluginLogStream),
+		streams:       make(map[string]*Stream),
 		emitMu:        sync.RWMutex{},
 		emit:          nil,
 		subMu:         sync.RWMutex{},
@@ -176,10 +176,10 @@ func (m *Manager) isSubscribed(pluginID string) bool {
 	return m.subscriptions[pluginID] > 0
 }
 
-// Stream returns the PluginLogStream for the named plugin, creating it
+// Stream returns the Stream for the named plugin, creating it
 // on first call. The returned stream implements io.Writer for use as an
 // hclog Output target.
-func (m *Manager) Stream(pluginID string) *PluginLogStream {
+func (m *Manager) Stream(pluginID string) *Stream {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -196,7 +196,7 @@ func (m *Manager) Stream(pluginID string) *PluginLogStream {
 		LocalTime:  false,
 	}
 
-	s := &PluginLogStream{
+	s := &Stream{
 		pluginID: pluginID,
 		file:     lj,
 		buffer:   newRingBuffer(m.bufferSize),
@@ -295,13 +295,13 @@ func (m *Manager) Close() error {
 	return firstErr
 }
 
-// PluginLogStream captures log output for a single plugin process.
+// Stream captures log output for a single plugin process.
 // It implements [io.Writer] so it can be used as the hclog Output target.
 //
 // Each write is simultaneously persisted to a rotated log file, parsed
 // into a [LogEntry], buffered in a ring buffer, and optionally emitted
 // via the Manager's callback.
-type PluginLogStream struct {
+type Stream struct {
 	pluginID string
 	file     *lumberjack.Logger
 	buffer   *ringBuffer
@@ -315,7 +315,7 @@ type PluginLogStream struct {
 //
 // hclog output may contain multiple lines per Write call, so we split
 // on newlines and process each independently.
-func (s *PluginLogStream) Write(p []byte) (int, error) {
+func (s *Stream) Write(p []byte) (int, error) {
 	// Always persist the raw bytes to file.
 	n, err := s.file.Write(p)
 
@@ -431,4 +431,4 @@ func (rb *ringBuffer) Clear() {
 }
 
 // Compile-time interface check.
-var _ io.Writer = (*PluginLogStream)(nil)
+var _ io.Writer = (*Stream)(nil)

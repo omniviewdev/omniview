@@ -237,7 +237,7 @@ func TestMemoryStore_ScanByResourceKey(t *testing.T) {
 	}
 }
 
-func TestMemoryStore_ConcurrentAccess(t *testing.T) {
+func TestMemoryStore_ConcurrentAccess(_ *testing.T) {
 	s := NewMemoryStore()
 	const goroutines = 20
 	const opsPerGoroutine = 50

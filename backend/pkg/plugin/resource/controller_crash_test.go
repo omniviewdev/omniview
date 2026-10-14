@@ -121,7 +121,7 @@ func TestTriggerCrashRecovery_OnceSemantics(t *testing.T) {
 	addPluginState(ctrl, "plugin-a")
 
 	var callCount atomic.Int32
-	ctrl.onCrashCallback = func(pluginID string) {
+	ctrl.onCrashCallback = func(_ string) {
 		callCount.Add(1)
 	}
 
@@ -154,7 +154,7 @@ func TestTriggerCrashRecovery_NilCallback_NoPanic(t *testing.T) {
 func TestTriggerCrashRecovery_MissingPluginState_NoPanic(t *testing.T) {
 	ctrl := newCrashTestController()
 	// No plugin state for "unknown-plugin".
-	ctrl.onCrashCallback = func(pluginID string) {
+	ctrl.onCrashCallback = func(_ string) {
 		t.Fatal("callback should not be invoked when there is no plugin state")
 	}
 
@@ -236,7 +236,7 @@ func TestSetCrashCallback(t *testing.T) {
 	assert.Nil(t, ctrl.onCrashCallback, "callback should initially be nil")
 
 	var invoked bool
-	ctrl.SetCrashCallback(func(pluginID string) {
+	ctrl.SetCrashCallback(func(_ string) {
 		invoked = true
 	})
 

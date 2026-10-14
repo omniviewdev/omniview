@@ -5,14 +5,14 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 )
 
-// AdapterV1 wraps SDK v1 networker.Provider as the engine canonical NetworkerProvider.
+// AdapterV1 wraps SDK v1 networker.Provider as the engine canonical Provider.
 // For v1, all methods are direct delegation (types identical).
 // When v2 ships and canonical types diverge, AdapterV1 translates v1 → canonical.
 type AdapterV1 struct {
 	inner networker.Provider
 }
 
-var _ NetworkerProvider = (*AdapterV1)(nil)
+var _ Provider = (*AdapterV1)(nil)
 
 // NewAdapterV1 creates a new v1 adapter wrapping the given SDK networker provider.
 func NewAdapterV1(inner networker.Provider) *AdapterV1 {
@@ -23,7 +23,10 @@ func (a *AdapterV1) GetSupportedPortForwardTargets(ctx *types.PluginContext) ([]
 	return a.inner.GetSupportedPortForwardTargets(ctx)
 }
 
-func (a *AdapterV1) GetPortForwardSession(ctx *types.PluginContext, sessionID string) (*networker.PortForwardSession, error) {
+func (a *AdapterV1) GetPortForwardSession(
+	ctx *types.PluginContext,
+	sessionID string,
+) (*networker.PortForwardSession, error) {
 	return a.inner.GetPortForwardSession(ctx, sessionID)
 }
 
@@ -31,15 +34,24 @@ func (a *AdapterV1) ListPortForwardSessions(ctx *types.PluginContext) ([]*networ
 	return a.inner.ListPortForwardSessions(ctx)
 }
 
-func (a *AdapterV1) FindPortForwardSessions(ctx *types.PluginContext, req networker.FindPortForwardSessionRequest) ([]*networker.PortForwardSession, error) {
+func (a *AdapterV1) FindPortForwardSessions(
+	ctx *types.PluginContext,
+	req networker.FindPortForwardSessionRequest,
+) ([]*networker.PortForwardSession, error) {
 	return a.inner.FindPortForwardSessions(ctx, req)
 }
 
-func (a *AdapterV1) StartPortForwardSession(ctx *types.PluginContext, opts networker.PortForwardSessionOptions) (*networker.PortForwardSession, error) {
+func (a *AdapterV1) StartPortForwardSession(
+	ctx *types.PluginContext,
+	opts networker.PortForwardSessionOptions,
+) (*networker.PortForwardSession, error) {
 	return a.inner.StartPortForwardSession(ctx, opts)
 }
 
-func (a *AdapterV1) ClosePortForwardSession(ctx *types.PluginContext, sessionID string) (*networker.PortForwardSession, error) {
+func (a *AdapterV1) ClosePortForwardSession(
+	ctx *types.PluginContext,
+	sessionID string,
+) (*networker.PortForwardSession, error) {
 	return a.inner.ClosePortForwardSession(ctx, sessionID)
 }
 

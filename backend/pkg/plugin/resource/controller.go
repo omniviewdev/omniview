@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -92,7 +93,7 @@ type controller struct {
 	subs *subscriptionManager
 
 	// Resource registry and relationship graph
-	registryStore registry.RegistryStore
+	registryStore registry.Store
 	dispatcher    *indexer.Dispatcher
 	graph         *graph.RelationshipGraph
 
@@ -108,7 +109,11 @@ var (
 
 // NewController creates a new resource Controller.
 // pluginStoreFn returns a ScopedRoot for the given plugin's store directory.
-func NewController(logger logging.Logger, sp pkgsettings.Provider, pluginStoreFn func(string) (*appstate.ScopedRoot, error)) Controller {
+func NewController(
+	logger logging.Logger,
+	sp pkgsettings.Provider,
+	pluginStoreFn func(string) (*appstate.ScopedRoot, error),
+) Controller {
 	store := registry.NewMemoryStore()
 	g := graph.NewRelationshipGraph()
 	graphIndexer := graph.NewGraphIndexer(g, store)
@@ -144,7 +149,7 @@ func (c *controller) Graph() *graph.RelationshipGraph {
 
 // Run starts the controller's background tasks.
 // Satisfies the ConnectedController interface; prefer ServiceStartup for Wails v3.
-func (c *controller) Run(ctx context.Context) {
+func (c *controller) Run(_ context.Context) {
 	if c.emitter == nil {
 		c.emitter = NoopEmitter{}
 	}
@@ -152,7 +157,7 @@ func (c *controller) Run(ctx context.Context) {
 }
 
 // ServiceStartup is called by the Wails v3 runtime when the application starts.
-func (c *controller) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+func (c *controller) ServiceStartup(_ context.Context, options application.ServiceOptions) error {
 	c.app = application.Get()
 	c.emitter = newAppEmitter(c.app)
 	c.dispatcher.Start()
@@ -177,19 +182,19 @@ func dispenseProvider(pluginID string, backend plugintypes.PluginBackend) (Resou
 	case 1:
 		v1, ok := raw.(resource.Provider)
 		if !ok {
-			return nil, 0, apperror.New(apperror.TypePluginLoadFailed, 500,
+			return nil, 0, apperror.New(apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 				"Plugin type mismatch",
 				fmt.Sprintf("Expected resource.Provider for v1, got %T", raw))
 		}
 		return NewAdapterV1(v1), version, nil
 	default:
-		return nil, 0, apperror.New(apperror.TypePluginLoadFailed, 500,
+		return nil, 0, apperror.New(apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			"Unsupported SDK protocol version",
 			fmt.Sprintf("Plugin '%s' negotiated v%d, engine supports v1", pluginID, version))
 	}
 }
 
-func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
+func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginInit")
 
@@ -213,7 +218,7 @@ func (c *controller) OnPluginInit(pluginID string, meta config.PluginMeta) {
 	c.connsMu.Unlock()
 }
 
-func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, backend plugintypes.PluginBackend) error {
+func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend plugintypes.PluginBackend) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStart")
 
@@ -294,7 +299,7 @@ func (c *controller) OnPluginStart(pluginID string, meta config.PluginMeta, back
 	return nil
 }
 
-func (c *controller) OnPluginStop(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStop")
 
@@ -358,7 +363,7 @@ func (c *controller) OnPluginShutdown(pluginID string, meta config.PluginMeta) e
 	return c.OnPluginStop(pluginID, meta)
 }
 
-func (c *controller) OnPluginDestroy(pluginID string, meta config.PluginMeta) error {
+func (c *controller) OnPluginDestroy(pluginID string, _ config.PluginMeta) error {
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginDestroy")
 	if storeRoot, err := c.pluginStoreFn(pluginID); err != nil {
@@ -402,7 +407,10 @@ func (c *controller) getProvider(pluginID string) (ResourceProvider, error) {
 
 // withSession returns the provider and a context with session info for connection-scoped calls.
 // The parent context is preserved so that span context propagates to gRPC calls.
-func (c *controller) withSession(ctx context.Context, pluginID, connectionID string) (ResourceProvider, context.Context, error) {
+func (c *controller) withSession(
+	ctx context.Context,
+	pluginID, connectionID string,
+) (ResourceProvider, context.Context, error) {
 	provider, err := c.getProvider(pluginID)
 	if err != nil {
 		return nil, nil, err
@@ -495,7 +503,10 @@ func (c *controller) Find(pluginID, connectionID, key string, input resource.Fin
 	return result, nil
 }
 
-func (c *controller) Create(pluginID, connectionID, key string, input resource.CreateInput) (*resource.CreateResult, error) {
+func (c *controller) Create(
+	pluginID, connectionID, key string,
+	input resource.CreateInput,
+) (*resource.CreateResult, error) {
 	ctx, span := tracer.Start(context.Background(), "resource.Create")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
@@ -514,7 +525,10 @@ func (c *controller) Create(pluginID, connectionID, key string, input resource.C
 	return result, nil
 }
 
-func (c *controller) Update(pluginID, connectionID, key string, input resource.UpdateInput) (*resource.UpdateResult, error) {
+func (c *controller) Update(
+	pluginID, connectionID, key string,
+	input resource.UpdateInput,
+) (*resource.UpdateResult, error) {
 	ctx, span := tracer.Start(context.Background(), "resource.Update")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
@@ -536,7 +550,10 @@ func (c *controller) Update(pluginID, connectionID, key string, input resource.U
 	return result, nil
 }
 
-func (c *controller) Delete(pluginID, connectionID, key string, input resource.DeleteInput) (*resource.DeleteResult, error) {
+func (c *controller) Delete(
+	pluginID, connectionID, key string,
+	input resource.DeleteInput,
+) (*resource.DeleteResult, error) {
 	ctx, span := tracer.Start(context.Background(), "resource.Delete")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
@@ -697,7 +714,7 @@ func (c *controller) ListConnections(pluginID string) ([]types.Connection, error
 	src, ok := c.connections[pluginID]
 	if !ok {
 		c.connsMu.RUnlock()
-		return nil, apperror.New(apperror.TypeConnectionNotFound, 404,
+		return nil, apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
 			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	conns := make([]types.Connection, len(src))
@@ -776,7 +793,7 @@ func (c *controller) GetConnection(pluginID, connectionID string) (types.Connect
 	conns, ok := c.connections[pluginID]
 	c.connsMu.RUnlock()
 	if !ok {
-		return types.Connection{}, apperror.New(apperror.TypeConnectionNotFound, 404,
+		return types.Connection{}, apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
 			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	for _, conn := range conns {
@@ -816,7 +833,7 @@ func (c *controller) UpdateConnection(pluginID string, connection types.Connecti
 	defer c.connsMu.Unlock()
 	conns, ok := c.connections[pluginID]
 	if !ok {
-		return types.Connection{}, apperror.New(apperror.TypeConnectionNotFound, 404,
+		return types.Connection{}, apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
 			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	for i, conn := range conns {
@@ -833,7 +850,7 @@ func (c *controller) RemoveConnection(pluginID, connectionID string) error {
 	defer c.connsMu.Unlock()
 	conns, ok := c.connections[pluginID]
 	if !ok {
-		return apperror.New(apperror.TypeConnectionNotFound, 404,
+		return apperror.New(apperror.TypeConnectionNotFound, http.StatusNotFound,
 			"No connections", fmt.Sprintf("Plugin '%s' has no connections configured.", pluginID))
 	}
 	for i, conn := range conns {
@@ -1162,7 +1179,10 @@ func (c *controller) GetActions(pluginID, connectionID, key string) ([]resource.
 	return result, nil
 }
 
-func (c *controller) ExecuteAction(pluginID, connectionID, key, actionID string, input resource.ActionInput) (*resource.ActionResult, error) {
+func (c *controller) ExecuteAction(
+	pluginID, connectionID, key, actionID string,
+	input resource.ActionInput,
+) (*resource.ActionResult, error) {
 	ctx, span := tracer.Start(context.Background(), "resource.ExecuteAction")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key), attribute.String("action_id", actionID))
@@ -1181,7 +1201,10 @@ func (c *controller) ExecuteAction(pluginID, connectionID, key, actionID string,
 	return result, nil
 }
 
-func (c *controller) StreamAction(pluginID, connectionID, key, actionID string, input resource.ActionInput) (string, error) {
+func (c *controller) StreamAction(
+	pluginID, connectionID, key, actionID string,
+	input resource.ActionInput,
+) (string, error) {
 	ctx, span := tracer.Start(context.Background(), "resource.StreamAction")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key), attribute.String("action_id", actionID))
@@ -1259,7 +1282,9 @@ func (c *controller) GetRelationships(pluginID, key string) ([]resource.Relation
 	return result, nil
 }
 
-func (c *controller) ResolveRelationships(pluginID, connectionID, key, id, namespace string) ([]resource.ResolvedRelationship, error) {
+func (c *controller) ResolveRelationships(
+	pluginID, connectionID, key, id, namespace string,
+) ([]resource.ResolvedRelationship, error) {
 	ctx, span := tracer.Start(context.Background(), "resource.ResolveRelationships")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
@@ -1280,7 +1305,10 @@ func (c *controller) ResolveRelationships(pluginID, connectionID, key, id, names
 // Health
 // ============================================================================
 
-func (c *controller) GetHealth(pluginID, connectionID, key string, data json.RawMessage) (*resource.ResourceHealth, error) {
+func (c *controller) GetHealth(
+	pluginID, connectionID, key string,
+	data json.RawMessage,
+) (*resource.ResourceHealth, error) {
 	ctx, span := tracer.Start(context.Background(), "resource.GetHealth")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
@@ -1297,7 +1325,10 @@ func (c *controller) GetHealth(pluginID, connectionID, key string, data json.Raw
 	return result, nil
 }
 
-func (c *controller) GetResourceEvents(pluginID, connectionID, key, id, namespace string, limit int32) ([]resource.ResourceEvent, error) {
+func (c *controller) GetResourceEvents(
+	pluginID, connectionID, key, id, namespace string,
+	limit int32,
+) ([]resource.ResourceEvent, error) {
 	ctx, span := tracer.Start(context.Background(), "resource.GetResourceEvents")
 	defer span.End()
 	span.SetAttributes(attribute.String("plugin_id", pluginID), attribute.String("connection_id", connectionID), attribute.String("resource_key", key))
@@ -1325,7 +1356,13 @@ func (c *controller) GetResourceEvents(pluginID, connectionID, key, id, namespac
 // NOTE: No span wraps this method — it runs for the entire plugin lifetime.
 // The underlying gRPC stream gets its own otelgrpc span; individual watch
 // events are too high-volume to trace individually.
-func (c *controller) listenForWatchEvents(pluginID string, provider ResourceProvider, ctx context.Context, sink resource.WatchEventSink, ready chan struct{}) {
+func (c *controller) listenForWatchEvents(
+	pluginID string,
+	provider ResourceProvider,
+	ctx context.Context,
+	sink resource.WatchEventSink,
+	ready chan struct{},
+) {
 	c.logger.Infow(ctx, "watch event listener starting", "pluginID", pluginID)
 	close(ready) // Signal that we're about to call ListenForEvents
 	err := provider.ListenForEvents(ctx, sink)

@@ -7,14 +7,14 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
 
-// AdapterV1 wraps SDK v1 exec.Provider as the engine canonical ExecProvider.
+// AdapterV1 wraps SDK v1 exec.Provider as the engine canonical Provider.
 // For v1, all methods are direct delegation (types identical).
 // When v2 ships and canonical types diverge, AdapterV1 translates v1 → canonical.
 type AdapterV1 struct {
 	inner exec.Provider
 }
 
-var _ ExecProvider = (*AdapterV1)(nil)
+var _ Provider = (*AdapterV1)(nil)
 
 // NewAdapterV1 creates a new v1 adapter wrapping the given SDK exec provider.
 func NewAdapterV1(inner exec.Provider) *AdapterV1 {

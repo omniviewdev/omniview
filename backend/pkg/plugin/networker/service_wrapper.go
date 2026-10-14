@@ -36,16 +36,24 @@ func (s *ServiceWrapper) GetSupportedPortForwardTargets(pluginID string) ([]stri
 func (s *ServiceWrapper) GetPortForwardSession(sessionID string) (*networkersdk.PortForwardSession, error) {
 	return s.Ctrl.GetPortForwardSession(sessionID)
 }
-func (s *ServiceWrapper) ListPortForwardSessions(pluginID, connectionID string) ([]*networkersdk.PortForwardSession, error) {
+func (s *ServiceWrapper) ListPortForwardSessions(
+	pluginID, connectionID string,
+) ([]*networkersdk.PortForwardSession, error) {
 	return s.Ctrl.ListPortForwardSessions(pluginID, connectionID)
 }
 func (s *ServiceWrapper) ListAllPortForwardSessions() ([]*networkersdk.PortForwardSession, error) {
 	return s.Ctrl.ListAllPortForwardSessions()
 }
-func (s *ServiceWrapper) FindPortForwardSessions(pluginID, connectionID string, request networkersdk.FindPortForwardSessionRequest) ([]*networkersdk.PortForwardSession, error) {
+func (s *ServiceWrapper) FindPortForwardSessions(
+	pluginID, connectionID string,
+	request networkersdk.FindPortForwardSessionRequest,
+) ([]*networkersdk.PortForwardSession, error) {
 	return s.Ctrl.FindPortForwardSessions(pluginID, connectionID, request)
 }
-func (s *ServiceWrapper) StartResourcePortForwardingSession(pluginID, connectionID string, opts networkersdk.PortForwardSessionOptions) (*networkersdk.PortForwardSession, error) {
+func (s *ServiceWrapper) StartResourcePortForwardingSession(
+	pluginID, connectionID string,
+	opts networkersdk.PortForwardSessionOptions,
+) (*networkersdk.PortForwardSession, error) {
 	return s.Ctrl.StartResourcePortForwardingSession(pluginID, connectionID, opts)
 }
 func (s *ServiceWrapper) ClosePortForwardSession(sessionID string) (*networkersdk.PortForwardSession, error) {
