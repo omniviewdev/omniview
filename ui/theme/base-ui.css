@@ -8,6 +8,8 @@
  * Drop the layer once the legacy theme is gone (omn-bus4).
  */
 @import '@omniviewdev/base-ui/styles.css' layer(base-ui);
+/* Unlayered: maps base-ui tokens onto the legacy Solarized palette. */
+@import './base-ui-solarized.css';
 
 /*
  * Plugins (kubernetes) still read var(--ov-font-mono) and expect the legacy

@@ -6,9 +6,9 @@
   /* Above the (isolated) app shell, below portaled popups and MUI modals. */
   z-index: 10;
   width: 800px;
-  height: calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height));
-  min-height: calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height));
-  max-height: calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height));
+  height: calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height, 32px));
+  min-height: calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height, 32px));
+  max-height: calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height, 32px));
   padding: 0;
   overflow: hidden;
   background: var(--ov-color-bg-surface);
