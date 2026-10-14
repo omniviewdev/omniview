@@ -16,12 +16,9 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # E2E Tests — Playwright against server mode
-  # Disabled: Wails v3 alpha.74 server mode is broken (BrowserWindow missing
-  # AttachModal method). Re-enable when upstream fixes this.
+  # E2E Tests — Playwright against server mode (-tags server, no native window)
   # ─────────────────────────────────────────────────────────────────────────────
   e2e-tests:
-    if: false # TODO: re-enable when Wails v3 server mode is fixed
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -34,7 +31,7 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgtk-3-dev libwebkit2gtk-4.1-dev libwayland-dev build-essential pkg-config xvfb
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev build-essential pkg-config
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -74,17 +71,19 @@ jobs:
 
       - name: Build and start server mode
         run: |
-          task common:build:frontend
-          go build -tags server -o bin/Omniview-server .
-          bin/Omniview-server &
+          task build:server
+          OMNIVIEW_STATE_DIR="$RUNNER_TEMP/omniview-state" bin/Omniview-server > "$RUNNER_TEMP/server.log" 2>&1 &
           echo "Waiting for server to be ready..."
           for i in $(seq 1 60); do
             if curl -sf http://localhost:34115/health > /dev/null 2>&1; then
               echo "Server ready"
-              break
+              exit 0
             fi
             sleep 2
           done
+          echo "::error::Server did not become ready"
+          cat "$RUNNER_TEMP/server.log"
+          exit 1
 
       - name: Run Playwright tests
         working-directory: e2e
@@ -116,7 +115,7 @@ jobs:
           - os: ubuntu-latest
             platform: linux/amd64
             artifact-name: pr-build-linux
-            build-tags: "production,webkit2_41"
+            build-tags: "production"
             extra-ldflags: ""
           - os: windows-latest
             platform: windows/amd64
@@ -136,7 +135,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgtk-3-dev libwebkit2gtk-4.1-dev libwayland-dev build-essential pkg-config
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev build-essential pkg-config
 
       - name: Setup Node
         uses: actions/setup-node@v4
