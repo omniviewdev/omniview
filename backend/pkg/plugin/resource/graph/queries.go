@@ -15,7 +15,7 @@ func (g *RelationshipGraph) GetRelated(
 	if direction == Outgoing || direction == Both {
 		for _, e := range g.forward[nodeKey] {
 			if relType == nil || e.Type == *relType {
-				edges = append(edges, e)
+				edges = append(edges, e.GraphEdge)
 			}
 		}
 	}
@@ -23,7 +23,7 @@ func (g *RelationshipGraph) GetRelated(
 	if direction == Incoming || direction == Both {
 		for _, e := range g.reverse[nodeKey] {
 			if relType == nil || e.Type == *relType {
-				edges = append(edges, e)
+				edges = append(edges, e.GraphEdge)
 			}
 		}
 	}
@@ -63,7 +63,7 @@ func (g *RelationshipGraph) GetRelationshipChain(
 					continue
 				}
 				visited[tgtKey] = true
-				depthEdges = append(depthEdges, e)
+				depthEdges = append(depthEdges, e.GraphEdge)
 				nextFrontier = append(nextFrontier, tgtKey)
 			}
 		}
@@ -118,7 +118,7 @@ func (g *RelationshipGraph) buildChildren(
 		visited[tgtKey] = true
 
 		child := DependencyNode{
-			Edge:     e,
+			Edge:     e.GraphEdge,
 			Children: g.buildChildren(tgtKey, maxDepth, currentDepth+1, visited),
 		}
 		children = append(children, child)

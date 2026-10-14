@@ -85,3 +85,54 @@ func TestGraph_DuplicateEdge(t *testing.T) {
 		t.Fatalf("expected dedup to 1 edge, got %d", len(fwd))
 	}
 }
+
+// TestGraph_RemoveEdgesForConnection_SlashInID — omn-vsqj: tearing down
+// connection "a" must not touch connection "a/b", whose keys share the prefix.
+func TestGraph_RemoveEdgesForConnection_SlashInID(t *testing.T) {
+	g := NewRelationshipGraph()
+	for _, conn := range []string{"a", "a/b"} {
+		g.AddEdge(GraphEdge{
+			Source: node("k8s", conn, "core::v1::Pod", "default", "p1"),
+			Target: node("k8s", conn, "core::v1::Node", "", "n1"),
+			Type:   RelRunsOn,
+		})
+		g.SetSelectorCache(node("k8s", conn, "core::v1::Service", "default", "s1"), map[string]string{"app": "web"})
+	}
+
+	g.RemoveEdgesForConnection("k8s", "a")
+
+	kept := node("k8s", "a/b", "core::v1::Pod", "default", "p1")
+	if len(g.EdgesFrom(kept.Key())) != 1 {
+		t.Error("edges of connection a/b were removed")
+	}
+	if len(g.EdgesTo(node("k8s", "a/b", "core::v1::Node", "", "n1").Key())) != 1 {
+		t.Error("reverse index of connection a/b was removed")
+	}
+	if _, ok := g.GetSelectorCache(node("k8s", "a/b", "core::v1::Service", "default", "s1").Key()); !ok {
+		t.Error("selector cache of connection a/b was removed")
+	}
+	if len(g.EdgesFrom(node("k8s", "a", "core::v1::Pod", "default", "p1").Key())) != 0 {
+		t.Error("edges of connection a were kept")
+	}
+	if _, ok := g.GetSelectorCache(node("k8s", "a", "core::v1::Service", "default", "s1").Key()); ok {
+		t.Error("selector cache of connection a was kept")
+	}
+}
+
+// TestGraph_RemoveDerivedEdges_ReleasesStrings — withdrawing every edge frees
+// the interned strings.
+func TestGraph_RemoveDerivedEdges_ReleasesStrings(t *testing.T) {
+	g := NewRelationshipGraph()
+	pod := node("k8s", "c1", "core::v1::Pod", "default", "p1")
+	g.AddDeclaredEdge(GraphEdge{Source: pod, Target: node("k8s", "c1", "core::v1::Node", "", "n1"), Type: RelRunsOn}, pod.Key(), false)
+	g.AddDeclaredEdge(GraphEdge{Source: node("k8s", "c1", "apps::v1::ReplicaSet", "default", "rs"), Target: pod, Type: RelOwns}, pod.Key(), false)
+
+	g.RemoveDerivedEdges(pod.Key())
+
+	if n := g.strings.Len(); n != 0 {
+		t.Fatalf("want 0 interned strings, got %d", n)
+	}
+	if len(g.forward) != 0 || len(g.reverse) != 0 {
+		t.Fatalf("want empty indexes, got forward=%v reverse=%v", g.forward, g.reverse)
+	}
+}

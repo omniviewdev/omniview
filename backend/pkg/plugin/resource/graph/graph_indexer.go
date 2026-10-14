@@ -2,7 +2,6 @@ package graph
 
 import (
 	"encoding/json"
-	"strings"
 
 	"github.com/tidwall/gjson"
 
@@ -26,18 +25,37 @@ func (gi *Indexer) OnAdd(entry registry.ResourceEntry, raw json.RawMessage) {
 	gi.CheckLabelSelectorsForEntry(entry)
 }
 
-// entryKeyParts is the number of "/"-separated parts in a registry entry key:
-// pluginID/connectionID/resourceKey/namespace/id.
-const entryKeyParts = 5
-
+// OnUpdate re-derives the edges that come from this resource's data. Edges
+// other resources declared about it (a Pod's "runs on" edge to an updated
+// Node, a Pod's ownership edge from an updated ReplicaSet) are left alone.
 func (gi *Indexer) OnUpdate(old, updated registry.ResourceEntry, raw json.RawMessage) {
-	gi.graph.RemoveEdgesForNode(old.EntryKey())
+	gi.graph.RemoveDerivedEdges(old.EntryKey())
 	gi.extractEdges(updated, raw)
 	gi.CheckLabelSelectorsForEntry(updated)
 }
 
+// OnDelete withdraws the edges derived from this resource's data. Field-path
+// edges other resources declared to it stay, like references to resources
+// that do not exist yet, and resolve again if it is recreated.
 func (gi *Indexer) OnDelete(entry registry.ResourceEntry) {
-	gi.graph.RemoveEdgesForNode(entry.EntryKey())
+	gi.graph.RemoveDerivedEdges(entry.EntryKey())
+}
+
+func nodeFromEntry(entry registry.ResourceEntry) GraphNode {
+	return GraphNode{
+		PluginID:     entry.PluginID,
+		ConnectionID: entry.ConnectionID,
+		ResourceKey:  entry.ResourceKey,
+		ID:           entry.ID,
+		Namespace:    entry.Namespace,
+	}
+}
+
+// selectorReaches reports whether a selector declared in selectorNS may match
+// a resource in targetNS. Kubernetes selectors (Service, NetworkPolicy) only
+// match within their own namespace; a cluster-scoped declarer is unrestricted.
+func selectorReaches(selectorNS, targetNS string) bool {
+	return selectorNS == "" || selectorNS == targetNS
 }
 
 func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessage) {
@@ -46,13 +64,7 @@ func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessag
 		return
 	}
 
-	sourceNode := GraphNode{
-		PluginID:     entry.PluginID,
-		ConnectionID: entry.ConnectionID,
-		ResourceKey:  entry.ResourceKey,
-		ID:           entry.ID,
-		Namespace:    entry.Namespace,
-	}
+	sourceNode := nodeFromEntry(entry)
 
 	for _, decl := range decls {
 		if decl.Extractor == nil {
@@ -109,21 +121,22 @@ func (gi *Indexer) extractFieldPath(
 			Namespace:    targetNS,
 		}
 
-		// EdgeIncoming reverses edge direction (used for ownership)
+		// EdgeIncoming reverses edge direction (used for ownership). Either
+		// way the declaring resource is the source node.
 		if decl.Direction == resource.EdgeIncoming {
-			gi.graph.AddEdge(GraphEdge{
+			gi.graph.AddDeclaredEdge(GraphEdge{
 				Source: target,
 				Target: source,
 				Type:   decl.Type,
 				Label:  decl.Label,
-			})
+			}, source.Key(), false)
 		} else {
-			gi.graph.AddEdge(GraphEdge{
+			gi.graph.AddDeclaredEdge(GraphEdge{
 				Source: source,
 				Target: target,
 				Type:   decl.Type,
 				Label:  decl.Label,
-			})
+			}, source.Key(), false)
 		}
 	}
 }
@@ -158,7 +171,7 @@ func (gi *Indexer) extractLabelSelector(
 		return
 	}
 
-	gi.graph.SetSelectorCache(source.Key(), selector)
+	gi.graph.SetSelectorCache(source, selector)
 
 	matches := gi.store.ScanByLabel(
 		entry.PluginID, entry.ConnectionID,
@@ -166,19 +179,15 @@ func (gi *Indexer) extractLabelSelector(
 	)
 
 	for _, match := range matches {
-		target := GraphNode{
-			PluginID:     match.PluginID,
-			ConnectionID: match.ConnectionID,
-			ResourceKey:  match.ResourceKey,
-			ID:           match.ID,
-			Namespace:    match.Namespace,
+		if !selectorReaches(source.Namespace, match.Namespace) {
+			continue
 		}
-		gi.graph.AddEdge(GraphEdge{
+		gi.graph.AddDeclaredEdge(GraphEdge{
 			Source: source,
-			Target: target,
+			Target: nodeFromEntry(match),
 			Type:   decl.Type,
 			Label:  decl.Label,
-		})
+		}, source.Key(), true)
 	}
 }
 
@@ -189,39 +198,23 @@ func (gi *Indexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
 		return
 	}
 
-	entryNode := GraphNode{
-		PluginID:     entry.PluginID,
-		ConnectionID: entry.ConnectionID,
-		ResourceKey:  entry.ResourceKey,
-		ID:           entry.ID,
-		Namespace:    entry.Namespace,
-	}
+	entryNode := nodeFromEntry(entry)
 
-	gi.graph.mu.RLock()
-	cache := make(map[string]map[string]string, len(gi.graph.selectorCache))
-	for k, v := range gi.graph.selectorCache {
-		cache[k] = v
-	}
-	gi.graph.mu.RUnlock()
+	for _, cached := range gi.graph.selectorSnapshot() {
+		selectorNode := cached.node
 
-	for selectorNodeKey, selector := range cache {
-		if !matchesSelector(entry.Labels, selector) {
+		// Only match selectors within the same plugin, connection and namespace.
+		if selectorNode.PluginID != entry.PluginID || selectorNode.ConnectionID != entry.ConnectionID {
+			continue
+		}
+		if !selectorReaches(selectorNode.Namespace, entry.Namespace) {
+			continue
+		}
+		if !matchesSelector(entry.Labels, cached.selector) {
 			continue
 		}
 
-		parts := strings.SplitN(selectorNodeKey, "/", entryKeyParts)
-		if len(parts) < entryKeyParts {
-			continue
-		}
-
-		// Only match selectors within the same plugin and connection.
-		if parts[0] != entry.PluginID || parts[1] != entry.ConnectionID {
-			continue
-		}
-
-		selectorResourceKey := parts[2]
-
-		decls := gi.graph.GetDeclarations(selectorResourceKey)
+		decls := gi.graph.GetDeclarations(selectorNode.ResourceKey)
 		for _, decl := range decls {
 			if decl.Extractor == nil || decl.Extractor.Method != "labelSelector" {
 				continue
@@ -230,20 +223,12 @@ func (gi *Indexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
 				continue
 			}
 
-			selectorNode := GraphNode{
-				PluginID:     parts[0],
-				ConnectionID: parts[1],
-				ResourceKey:  parts[2],
-				Namespace:    parts[3],
-				ID:           parts[4],
-			}
-
-			gi.graph.AddEdge(GraphEdge{
+			gi.graph.AddDeclaredEdge(GraphEdge{
 				Source: selectorNode,
 				Target: entryNode,
 				Type:   decl.Type,
 				Label:  decl.Label,
-			})
+			}, selectorNode.Key(), true)
 		}
 	}
 }
