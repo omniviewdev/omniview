@@ -1,4 +1,4 @@
-/// <reference types="@welldone-software/why-did-you-render" />
+import type {} from '@welldone-software/why-did-you-render';
 
 // import React from 'react';
 //

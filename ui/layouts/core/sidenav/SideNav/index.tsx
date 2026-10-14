@@ -15,10 +15,10 @@ type Props = {
  * The side navigation component for the sidenav layout
  */
 const SideNav: React.FC<Props> = ({ type = 'inset', scrollable = false, children, width, padding }) => {
-  const style = {
+  const style: React.CSSProperties & Record<`--${string}`, string> = {
     padding: padding ? `${padding * 8}px` : 0,
     ...(width !== undefined && { '--_nav-width': `${width}px` }),
-  } as React.CSSProperties;
+  };
 
   return (
     <nav

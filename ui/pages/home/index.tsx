@@ -82,7 +82,7 @@ const Home: React.FC = () => {
 
   const regMap = React.useMemo(
     () => Object.fromEntries(registrations.map((r) => [r.id, r])),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on registrationIds, not registrations (see above).
     [registrationIds],
   );
 
@@ -94,7 +94,7 @@ const Home: React.FC = () => {
     if (newIds.length > 0 || pruned.length !== settings.order.length) {
       setOrder([...pruned, ...newIds]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on registrationIds, not registrations (see above).
   }, [registrationIds]);
 
   // Build ordered list — memoized; only recalculates when order or known IDs change
@@ -103,7 +103,7 @@ const Home: React.FC = () => {
       ...settings.order.filter((id) => regMap[id]),
       ...registrations.map((r) => r.id).filter((id) => !settings.order.includes(id)),
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on registrationIds, not registrations (see above).
     [settings.order, registrationIds],
   );
 

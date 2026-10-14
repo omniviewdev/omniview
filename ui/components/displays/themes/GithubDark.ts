@@ -1,6 +1,6 @@
 import { type editor } from 'monaco-editor';
 
-export default {
+const theme: editor.IStandaloneThemeData = {
   base: 'vs-dark',
   inherit: true,
   rules: [
@@ -347,4 +347,6 @@ export default {
     'editorIndentGuide.activeBackground': '#f6f8fa',
     'editor.selectionHighlightBorder': '#444d56',
   },
-} as editor.IStandaloneThemeData;
+};
+
+export default theme;

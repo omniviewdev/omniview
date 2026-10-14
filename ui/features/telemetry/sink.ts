@@ -1,6 +1,10 @@
 import type { LogSink } from './logger';
 
-const noopSink: LogSink = { write: () => {} };
+const noopSink: LogSink = {
+  write: () => {
+    // Discard everything.
+  },
+};
 
 let defaultSink: LogSink | null = null;
 

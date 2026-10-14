@@ -25,7 +25,7 @@ function CardErrorFallback({ error, resetErrorBoundary, label }: FallbackProps &
           {label} failed to load
         </Text>
         <Text size='xs' tone='muted' className={styles.ErrorMessage}>
-          {error.message.length > 120 ? error.message.slice(0, 120) + '…' : error.message}
+          {error.message.length > 120 ? `${error.message.slice(0, 120)}…` : error.message}
         </Text>
       </div>
       <Button

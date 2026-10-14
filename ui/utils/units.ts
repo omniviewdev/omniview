@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/naming-convention */
-
 export type ByteUnit =
   | 'E'
   | 'EB'
@@ -85,7 +83,6 @@ export function convertByteUnits({
 
   const [, valueStr, unit] = match;
 
-  /* eslint-disable prefer-const */
   let [integerPart, fractionalPart = ''] = valueStr.split('.');
   fractionalPart = fractionalPart.padEnd(6, '0');
 

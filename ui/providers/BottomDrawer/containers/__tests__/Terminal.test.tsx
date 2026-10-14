@@ -115,7 +115,7 @@ vi.mock('../../events', () => ({
 }));
 
 vi.mock('@/utils/debounce', () => ({
-  debounce: (fn: Function) => fn,
+  debounce: <T,>(fn: T) => fn,
 }));
 
 vi.mock('js-base64', () => ({

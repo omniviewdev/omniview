@@ -151,7 +151,7 @@ describe('ConnectionStateProvider', () => {
   });
 
   it('throws when useConnectionStateDialog is used outside provider', () => {
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(() => render(<TestConsumer />)).toThrow(
       'useConnectionStateDialog must be used within a ConnectionStateProvider',
     );

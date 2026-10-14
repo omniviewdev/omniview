@@ -57,12 +57,15 @@ vi.mock('react-icons/lu', () => ({
   LuX: () => <span data-testid="icon-x" />,
 }));
 
+const resources: Record<string, number> = {};
+const resourceCounts: Record<string, number> = {};
+
 const defaultProps = {
   open: true,
   onClose: vi.fn(),
   connectionName: 'my-cluster',
-  resources: {} as Record<string, number>,
-  resourceCounts: {} as Record<string, number>,
+  resources,
+  resourceCounts,
   onRetryResource: vi.fn(),
 };
 

@@ -1,6 +1,6 @@
 import { type SVGProps, memo } from 'react';
 
-const KubernetesColorWhiteBG = (props: SVGProps<SVGSVGElement>) => (
+const KubernetesColorWhiteBg = (props: SVGProps<SVGSVGElement>) => (
   <svg
     xmlns='http://www.w3.org/2000/svg'
     viewBox='-6.09 -6.09 446.94 115.94'
@@ -82,6 +82,6 @@ const KubernetesColorWhiteBG = (props: SVGProps<SVGSVGElement>) => (
     />
   </svg>
 );
-const Memo = memo(KubernetesColorWhiteBG);
+const Memo = memo(KubernetesColorWhiteBg);
 export default Memo;
 

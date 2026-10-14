@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RightDrawerContext } from '@omniviewdev/runtime';
+import type * as Runtime from '@omniviewdev/runtime';
 
 import RightDrawerProvider from '../RightDrawerProvider';
 
@@ -15,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@omniviewdev/runtime', async () => {
-  const actual = await vi.importActual<typeof import('@omniviewdev/runtime')>('@omniviewdev/runtime');
+  const actual = await vi.importActual<typeof Runtime>('@omniviewdev/runtime');
   return {
     ...actual,
     useSnackbar: () => ({ showSnackbar: mocks.mockShowSnackbar }),

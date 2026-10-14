@@ -1,9 +1,9 @@
 export type TelemetryContext = {
+  [key: string]: unknown;
   traceId?: string;
   spanId?: string;
   component?: string;
   pluginId?: string;
-  [key: string]: unknown;
 };
 
 export type Fields = Record<string, unknown>;

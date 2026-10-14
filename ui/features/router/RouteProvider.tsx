@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { createHashRouter, RouterProvider, type RouteObject } from 'react-router-dom';
+import { createHashRouter, RouterProvider, type NonIndexRouteObject, type RouteObject } from 'react-router-dom';
 import { usePluginRoutes } from '@/features/plugins';
 import { coreRoutes } from './routes';
 import PrimaryLoading from '@/components/util/PrimaryLoading';
@@ -23,9 +23,11 @@ const buildPluginRouteWrapper = (pluginRoutes: RouteObject[]) => {
     children: pluginRoutes,
   });
 
+  const root: RouteObject = { ...(coreRoutes[0] as NonIndexRouteObject), children: coreChildren };
+
   // Preserve any additional top-level routes (e.g., catch-all)
   return [
-    { ...coreRoutes[0], children: coreChildren } as RouteObject,
+    root,
     ...coreRoutes.slice(1),
   ];
 };

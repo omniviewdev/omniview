@@ -2,8 +2,8 @@ import { render, cleanup, act, fireEvent } from '@testing-library/react';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────────
 const mocks = vi.hoisted(() => {
-  const eventBusHandlers: Record<string, Function> = {};
-  const mockChannelOn = vi.fn((event: string, handler: Function) => {
+  const eventBusHandlers: Record<string, (...args: unknown[]) => void> = {};
+  const mockChannelOn = vi.fn((event: string, handler: (...args: unknown[]) => void) => {
     eventBusHandlers[event] = handler;
     return vi.fn(); // unsubscribe
   });
@@ -32,7 +32,7 @@ vi.mock('@/providers/BottomDrawer/events', () => ({
   restoredSessionIds: mocks.restoredSessionIds,
   bottomDrawerChannel: {
     emit: (...args: [string, ...any[]]) => mocks.mockChannelEmit(...args),
-    on: (event: string, handler: Function) => mocks.mockChannelOn(event, handler),
+    on: (event: string, handler: (...args: unknown[]) => void) => mocks.mockChannelOn(event, handler),
   },
 }));
 
@@ -88,7 +88,7 @@ describe('BottomDrawerContainer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    Object.keys(mocks.eventBusHandlers).forEach(k => delete mocks.eventBusHandlers[k]);
+    Object.keys(mocks.eventBusHandlers).forEach(k => Reflect.deleteProperty(mocks.eventBusHandlers, k));
     mocks.mockUseBottomDrawer.mockReturnValue(defaultDrawerState);
     localStorage.clear();
     mocks.restoredSessionIds.clear();
