@@ -14,13 +14,14 @@
     "@emotion/styled": "^11.11.0",
     "@monaco-editor/react": "^4.6.0",
     "@mui/icons-material": "^7.3.0",
+    "@omniviewdev/base-ui": "^0.2.1",
     "@omniviewdev/runtime": "workspace:*",
     "@omniviewdev/ui": "workspace:*",
-    "lodash.get": "^4.4.2",
     "@tanstack/react-query": "^5.76.1",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.8",
     "date-fns": "^3.6.0",
+    "lodash.get": "^4.4.2",
     "monaco-editor": "^0.47.0",
     "monaco-yaml": "^5.1.1",
     "react": "^19.0.0",
@@ -29,6 +30,7 @@
     "yaml": "^2.4.1"
   },
   "devDependencies": {
+    "@omniviewdev/vite-plugin": "workspace:*",
     "@types/lodash.get": "^4.4.9",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -38,7 +40,6 @@
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.6",
-    "@omniviewdev/vite-plugin": "workspace:*",
     "typescript": "^5.2.2",
     "vite": "^5.2.0"
   }
