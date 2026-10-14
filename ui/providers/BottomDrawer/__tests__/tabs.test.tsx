@@ -83,10 +83,6 @@ vi.mock('@/components/icons/Icon', () => {
   return { __esModule: true, default: ({ name }: { name: string }) => <span data-testid={`icon-${name}`} /> };
 });
 
-vi.mock('@omniviewdev/ui/menus', () => ({
-  ContextMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
-
 // DnD mocks - minimal stubs
 vi.mock('@dnd-kit/core', () => ({
   DndContext: ({ children }: any) => <div>{children}</div>,
