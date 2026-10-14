@@ -41,6 +41,17 @@ const (
 	DefaultWebviewHeight = 1080
 	MinWebviewWidth      = 1280
 	MinWebviewHeight     = 800
+
+	appName = "Omniview"
+
+	// serverModePort is the port used when built with -tags server.
+	serverModePort = 34115
+
+	// Main window background colour #0D1117 (dark theme), fully opaque.
+	backgroundRed   = 13
+	backgroundGreen = 17
+	backgroundBlue  = 23
+	backgroundAlpha = 255
 )
 
 //go:embed all:dist
@@ -78,36 +89,7 @@ func main() {
 	telemetryCfg := telemetry.DefaultConfig(version.IsDevelopment())
 	if settingsStore != nil {
 		if telVals, loadErr := settingsStore.LoadCategory("telemetry"); loadErr == nil && len(telVals) > 0 {
-			if v, ok := telVals["enabled"].(bool); ok {
-				telemetryCfg.Enabled = v
-			}
-			if v, ok := telVals["traces"].(bool); ok {
-				telemetryCfg.Traces = v
-			}
-			if v, ok := telVals["metrics"].(bool); ok {
-				telemetryCfg.Metrics = v
-			}
-			if v, ok := telVals["logs_ship"].(bool); ok {
-				telemetryCfg.LogsShip = v
-			}
-			if v, ok := telVals["logs_ship_level"].(string); ok {
-				telemetryCfg.LogsShipLevel = v
-			}
-			if v, ok := telVals["profiling"].(bool); ok {
-				telemetryCfg.Profiling = v
-			}
-			if v, ok := telVals["endpoint_otlp"].(string); ok {
-				telemetryCfg.OTLPEndpoint = v
-			}
-			if v, ok := telVals["endpoint_pyroscope"].(string); ok {
-				telemetryCfg.PyroscopeEndpoint = v
-			}
-			if v, ok := telVals["auth_header"].(string); ok {
-				telemetryCfg.AuthHeader = v
-			}
-			if v, ok := telVals["auth_value"].(string); ok {
-				telemetryCfg.AuthValue = v
-			}
+			telemetryCfg = telemetryCfg.WithSettings(telVals)
 		}
 	}
 
@@ -120,8 +102,8 @@ func main() {
 		version.IsDevelopment(),
 		logDir,
 	)
-	if err := telemetrySvc.Init(context.Background()); err != nil {
-		fmt.Fprintf(os.Stderr, "telemetry init failed, continuing without telemetry: %v\n", err)
+	if initErr := telemetrySvc.Init(context.Background()); initErr != nil {
+		fmt.Fprintf(os.Stderr, "telemetry init failed, continuing without telemetry: %v\n", initErr)
 	}
 	zapLogger := telemetrySvc.ZapLogger()
 	if zapLogger == nil {
@@ -131,6 +113,8 @@ func main() {
 		Name:    "omniview",
 		Backend: telemetry.NewZapBackend(zapLogger),
 		Level:   logging.NewLevelController(logging.LevelDebug),
+		Fields:  nil,
+		Now:     nil,
 	})
 
 	if settingsStore == nil {
@@ -140,7 +124,9 @@ func main() {
 	diagnosticsClient := diagnostics.NewDiagnosticsClient(version.IsDevelopment(), logDir)
 
 	settingsProvider := pkgsettings.NewProvider(pkgsettings.ProviderOpts{
-		Logger: zapLogger.Sugar(),
+		Logger:         zapLogger.Sugar(),
+		PluginID:       "",
+		PluginSettings: nil,
 	})
 
 	// Create our plugin system managers
@@ -292,8 +278,8 @@ func main() {
 
 	// Create the Wails v3 application
 	app := application.New(application.Options{
-		Name:        "Omniview",
-		Description: fmt.Sprintf("Omniview %s", version.Version),
+		Name:        appName,
+		Description: appName + " " + version.Version,
 		Icon:        icon,
 		Services:    services,
 		Assets: application.AssetOptions{
@@ -304,26 +290,25 @@ func main() {
 		// headless/CI testing (e.g. Playwright E2E).
 		Server: application.ServerOptions{
 			Host: "localhost",
-			Port: 34115,
+			Port: serverModePort,
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 		Linux: application.LinuxOptions{
-			ProgramName: "Omniview",
+			ProgramName: appName,
 		},
 	})
 
 	// Create the main window
 	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:      "main",
-		Title:     "Omniview",
-		Width:     DefaultWebviewWidth,
-		Height:    DefaultWebviewHeight,
-		MinWidth:  MinWebviewWidth,
-		MinHeight: MinWebviewHeight,
-		//nolint:gomnd // #0D1117 dark theme background
-		BackgroundColour:   application.NewRGBA(13, 17, 23, 255),
+		Name:               "main",
+		Title:              appName,
+		Width:              DefaultWebviewWidth,
+		Height:             DefaultWebviewHeight,
+		MinWidth:           MinWebviewWidth,
+		MinHeight:          MinWebviewHeight,
+		BackgroundColour:   application.NewRGBA(backgroundRed, backgroundGreen, backgroundBlue, backgroundAlpha),
 		UseApplicationMenu: true,
 		Mac: application.MacWindow{
 			TitleBar:   application.MacTitleBarHiddenInset,
@@ -341,7 +326,7 @@ func main() {
 	_ = window.NewManager(app, mainWindow)
 
 	// Run the application
-	if err := app.Run(); err != nil {
-		log.Fatalw(context.Background(), "wails app exited with error", "error", err)
+	if runErr := app.Run(); runErr != nil {
+		log.Fatalw(context.Background(), "wails app exited with error", "error", runErr)
 	}
 }

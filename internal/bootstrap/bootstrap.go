@@ -44,7 +44,7 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	// Wire telemetry settings hot-toggle: when any setting in the
 	// "telemetry" category changes, rebuild the telemetry Config and apply.
 	telemetryFromSettings := func(vals map[string]any) telemetry.Config {
-		return telemetryConfigFromSettings(b.TelemetrySvc.Config(), vals)
+		return b.TelemetrySvc.Config().WithSettings(vals)
 	}
 
 	b.SettingsProvider.RegisterChangeHandler("telemetry", func(vals map[string]any) {
@@ -121,42 +121,6 @@ func (b *Service) persistOnChange(coreCategories []pkgsettings.Category) {
 			}
 		})
 	}
-}
-
-// telemetryConfigFromSettings overlays the values of the "telemetry" settings
-// category onto cfg.
-func telemetryConfigFromSettings(cfg telemetry.Config, vals map[string]any) telemetry.Config {
-	if v, ok := vals["enabled"].(bool); ok {
-		cfg.Enabled = v
-	}
-	if v, ok := vals["traces"].(bool); ok {
-		cfg.Traces = v
-	}
-	if v, ok := vals["metrics"].(bool); ok {
-		cfg.Metrics = v
-	}
-	if v, ok := vals["logs_ship"].(bool); ok {
-		cfg.LogsShip = v
-	}
-	if v, ok := vals["logs_ship_level"].(string); ok {
-		cfg.LogsShipLevel = v
-	}
-	if v, ok := vals["profiling"].(bool); ok {
-		cfg.Profiling = v
-	}
-	if v, ok := vals["endpoint_otlp"].(string); ok {
-		cfg.OTLPEndpoint = v
-	}
-	if v, ok := vals["endpoint_pyroscope"].(string); ok {
-		cfg.PyroscopeEndpoint = v
-	}
-	if v, ok := vals["auth_header"].(string); ok {
-		cfg.AuthHeader = v
-	}
-	if v, ok := vals["auth_value"].(string); ok {
-		cfg.AuthValue = v
-	}
-	return cfg
 }
 
 func (b *Service) ServiceShutdown() error {

@@ -84,3 +84,39 @@ func DefaultConfig(isDev bool) Config {
 		AuthValue:         "",
 	}
 }
+
+// WithSettings returns a copy of c with the values of the "telemetry" settings
+// category overlaid. Keys that are missing or have the wrong type are ignored.
+func (c Config) WithSettings(vals map[string]any) Config {
+	if v, ok := vals["enabled"].(bool); ok {
+		c.Enabled = v
+	}
+	if v, ok := vals["traces"].(bool); ok {
+		c.Traces = v
+	}
+	if v, ok := vals["metrics"].(bool); ok {
+		c.Metrics = v
+	}
+	if v, ok := vals["logs_ship"].(bool); ok {
+		c.LogsShip = v
+	}
+	if v, ok := vals["logs_ship_level"].(string); ok {
+		c.LogsShipLevel = v
+	}
+	if v, ok := vals["profiling"].(bool); ok {
+		c.Profiling = v
+	}
+	if v, ok := vals["endpoint_otlp"].(string); ok {
+		c.OTLPEndpoint = v
+	}
+	if v, ok := vals["endpoint_pyroscope"].(string); ok {
+		c.PyroscopeEndpoint = v
+	}
+	if v, ok := vals["auth_header"].(string); ok {
+		c.AuthHeader = v
+	}
+	if v, ok := vals["auth_value"].(string); ok {
+		c.AuthValue = v
+	}
+	return c
+}
