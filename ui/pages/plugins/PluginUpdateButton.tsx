@@ -1,12 +1,17 @@
-import { useMemo } from 'react';
-import { SplitButton } from '@omniviewdev/ui/menus';
-import { Button } from '@omniviewdev/ui/buttons';
+import { useMemo, useState } from 'react';
+import { Button, Menu, SplitButton } from '@omniviewdev/base-ui';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';
 
 type Props = {
   pluginID: string;
   currentVersion?: string;
   installed?: boolean;
+};
+
+type VersionOption = {
+  key: string;
+  label: string;
+  disabled: boolean;
 };
 
 export default function PluginUpdateButton({ pluginID, currentVersion, installed }: Props) {
@@ -18,7 +23,7 @@ export default function PluginUpdateButton({ pluginID, currentVersion, installed
   const latestVersion = hasVersions ? versionList[0].version : '';
   const isLatest = installed && hasVersions && currentVersion === latestVersion;
 
-  const options = useMemo(() => {
+  const options = useMemo<VersionOption[]>(() => {
     return [...versionList].reverse().map((v) => {
       let label = v.version;
       if (v.version === currentVersion) {
@@ -37,7 +42,7 @@ export default function PluginUpdateButton({ pluginID, currentVersion, installed
   // No versions or still loading — show a simple disabled button
   if (isLoading || !hasVersions) {
     return (
-      <Button emphasis='soft' color='primary' size='sm' disabled>
+      <Button variant='soft' color='brand' size='sm' disabled>
         {isLoading ? 'Loading...' : 'Install'}
       </Button>
     );
@@ -46,20 +51,64 @@ export default function PluginUpdateButton({ pluginID, currentVersion, installed
   // Already on latest — show a disabled "Updated" button (no dropdown needed)
   if (isLatest) {
     return (
-      <Button emphasis='soft' color='primary' size='sm' disabled>
+      <Button variant='soft' color='brand' size='sm' disabled>
         Updated
       </Button>
     );
   }
 
   return (
-    <SplitButton
+    <VersionSplitButton
       options={options}
       defaultIndex={options.findIndex((o) => o.key === latestVersion)}
-      color='primary'
-      emphasis='soft'
-      size='sm'
-      onSelect={(option) => update(option.key)}
+      onSelect={(option) => {
+        void update(option.key);
+      }}
     />
+  );
+}
+
+type VersionSplitButtonProps = {
+  options: VersionOption[];
+  defaultIndex: number;
+  onSelect: (option: VersionOption) => void;
+};
+
+/**
+ * Split button: the main action runs the selected version; the menu picks
+ * (and immediately runs) another version.
+ */
+function VersionSplitButton({ options, defaultIndex, onSelect }: VersionSplitButtonProps) {
+  const [selectedIndex, setSelectedIndex] = useState(defaultIndex);
+  const selected = options[selectedIndex];
+
+  return (
+    <SplitButton variant='soft' color='brand' size='sm'>
+      <SplitButton.Action
+        disabled={!selected || selected.disabled}
+        onClick={() => {
+          if (selected && !selected.disabled) {
+            onSelect(selected);
+          }
+        }}
+      >
+        {selected?.label}
+      </SplitButton.Action>
+      <SplitButton.Menu menuAriaLabel='Select option'>
+        {options.map((option, index) => (
+          <Menu.Item
+            key={option.key}
+            disabled={option.disabled}
+            data-selected={index === selectedIndex ? 'true' : undefined}
+            onClick={() => {
+              setSelectedIndex(index);
+              onSelect(option);
+            }}
+          >
+            {option.label}
+          </Menu.Item>
+        ))}
+      </SplitButton.Menu>
+    </SplitButton>
   );
 }

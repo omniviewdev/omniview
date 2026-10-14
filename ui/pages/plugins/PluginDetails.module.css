@@ -1,0 +1,110 @@
+.NotFound {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.Root {
+  max-height: calc(100vh - 60px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
+
+.Header {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.IconBox {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.Avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+.AvatarImage {
+  background-color: transparent;
+  border: 0;
+}
+
+.Info {
+  flex: 1;
+  min-width: 0;
+}
+
+.HeaderChip {
+  max-height: 22px;
+}
+
+.Description {
+  margin: 4px 0 0;
+}
+
+.MetaRow {
+  margin-top: 8px;
+}
+
+.RepoLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.RepoLink:hover {
+  opacity: 0.8;
+}
+
+.HeaderActions {
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.Tabs {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.TabContent {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin-top: 8px;
+}
+
+.PaddedText {
+  margin: 0;
+  padding: 16px;
+}
+
+.Card {
+  padding: 16px;
+  border-radius: var(--ov-radius-md);
+  border: 1px solid var(--ov-color-border-default);
+}
+
+.CardRow {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.RatingSummary {
+  margin-bottom: 16px;
+}
+
+.RatingValue {
+  font-weight: 700;
+}

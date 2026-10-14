@@ -1,0 +1,179 @@
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.Item {
+  display: flex;
+  gap: 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  background-color: transparent;
+  border-left: 2px solid transparent;
+}
+
+.Item:hover {
+  background-color: var(--ov-color-state-hover);
+}
+
+.Item[data-active='true'],
+.Item[data-active='true']:hover {
+  background-color: color-mix(in srgb, var(--ov-color-brand-500) 15%, transparent);
+  border-left-color: color-mix(in srgb, var(--ov-color-brand-500) 80%, transparent);
+}
+
+.Item:hover .Gear {
+  opacity: 1;
+}
+
+.IconBox {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.IconImage {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background-color: transparent;
+  border: 0;
+}
+
+.IconFallback {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background-color: var(--ov-color-state-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ov-color-fg-subtle);
+}
+
+.Content {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 0;
+}
+
+.TitleRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+}
+
+.NameGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.Name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ActionArea {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.Version {
+  font-size: 0.625rem;
+  font-family: var(--ov-font-mono);
+  color: var(--ov-color-fg-subtle);
+  line-height: 1;
+}
+
+.Gear {
+  opacity: 0;
+  transition: opacity 0.15s;
+  display: flex;
+  align-items: center;
+}
+
+.InstallButton {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--ov-color-brand-500);
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--ov-color-brand-500) 40%, transparent);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 1px 8px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.InstallButton:hover {
+  background-color: color-mix(in srgb, var(--ov-color-brand-500) 10%, transparent);
+  border-color: color-mix(in srgb, var(--ov-color-brand-500) 60%, transparent);
+}
+
+.Description {
+  font-size: 0.6875rem;
+  color: var(--ov-color-fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+  margin-top: 1px;
+}
+
+.Meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 0.625rem;
+  color: var(--ov-color-fg-subtle);
+}
+
+.Author {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.Stat {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.PhaseDot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.PhaseDot[data-transient='true'] {
+  animation: pulse 1.5s ease-in-out infinite;
+}

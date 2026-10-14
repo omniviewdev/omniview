@@ -1,11 +1,6 @@
 import * as React from 'react';
 
-// Material-ui
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
-import { Button } from '@omniviewdev/ui/buttons';
-import { Modal } from '@omniviewdev/ui/overlays';
-import { Text } from '@omniviewdev/ui/typography';
+import { Button, Dialog, Spinner, Text } from '@omniviewdev/base-ui';
 
 type Props = {
   open: boolean;
@@ -25,25 +20,20 @@ const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose,
   };
 
   return (
-    <Modal open={open} onClose={onClose} size="sm" sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-      <Text weight="semibold" size="lg">
+    <Dialog open={open} onClose={onClose} size='sm'>
+      <Dialog.Title>
         Uninstall {name}?
-      </Text>
-      <Text size="sm" sx={{ color: 'text.tertiary' }}>
-        {devMode
-          ? 'This will stop the dev server and remove the plugin metadata.'
-          : 'This will remove the plugin and all associated data.'}
-      </Text>
-      <Box
-        sx={{
-          mt: 2,
-          display: 'flex',
-          gap: 1,
-          justifyContent: 'flex-end',
-        }}
-      >
+      </Dialog.Title>
+      <Dialog.Body>
+        <Text size='sm' tone='muted'>
+          {devMode
+            ? 'This will stop the dev server and remove the plugin metadata.'
+            : 'This will remove the plugin and all associated data.'}
+        </Text>
+      </Dialog.Body>
+      <Dialog.Footer>
         <Button
-          emphasis='outline'
+          variant='outline'
           color='neutral'
           size='sm'
           onClick={onClose}
@@ -52,16 +42,16 @@ const UninstallPluginModal: React.FC<Props> = ({ open, name, uninstall, onClose,
           Cancel
         </Button>
         <Button
-          emphasis='solid'
+          variant='solid'
           color='danger'
           size='sm'
           onClick={handleUninstall}
           disabled={uninstalling}
         >
-          {uninstalling ? <CircularProgress size={16} /> : 'Uninstall'}
+          {uninstalling ? <Spinner size='sm' /> : 'Uninstall'}
         </Button>
-      </Box>
-    </Modal>
+      </Dialog.Footer>
+    </Dialog>
   );
 };
 

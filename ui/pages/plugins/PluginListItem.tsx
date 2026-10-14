@@ -1,20 +1,12 @@
 import React from 'react';
 
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
-import { styled, keyframes } from '@mui/material/styles';
-import { Avatar } from '@omniviewdev/ui';
+import { Avatar, Spinner } from '@omniviewdev/base-ui';
 
 import { LuAtom, LuBadgeCheck, LuCheck, LuDownload, LuStar, LuSettings } from 'react-icons/lu';
 import { Link } from 'react-router-dom';
 import { IsImage } from '@/utils/url';
 import Icon from '@/components/icons/Icon';
-
-// Phase dot pulse animation
-const pulse = keyframes`
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-`;
+import styles from './PluginListItem.module.css';
 
 type PhaseStatus = 'Running' | 'Failed' | 'Starting' | 'Building' | 'Recovering' | 'Stopped' | 'Validating' | string;
 
@@ -30,36 +22,15 @@ const PHASE_COLORS: Record<string, string> = {
 
 const TRANSIENT_PHASES = new Set(['Starting', 'Building', 'Recovering', 'Validating']);
 
-const ItemRoot = styled(Box, {
-  shouldForwardProp: (prop) => prop !== 'active',
-})<{ active?: boolean }>(({ active }) => ({
-  display: 'flex',
-  gap: 10,
-  padding: '6px 12px',
-  cursor: 'pointer',
-  textDecoration: 'none',
-  color: 'inherit',
-  backgroundColor: active ? 'rgba(56,139,253,0.15)' : 'transparent',
-  borderLeft: active ? '2px solid rgba(56,139,253,0.8)' : '2px solid transparent',
-  '&:hover': {
-    backgroundColor: active ? 'rgba(56,139,253,0.15)' : 'rgba(255,255,255,0.04)',
-  },
-  '&:hover .plugin-item-gear': {
-    opacity: 1,
-  },
-}));
-
-const PhaseDot = styled('span')<{ phase: PhaseStatus }>(({ phase }) => ({
-  display: 'inline-block',
-  width: 7,
-  height: 7,
-  borderRadius: '50%',
-  backgroundColor: PHASE_COLORS[phase] || '#8b949e',
-  flexShrink: 0,
-  ...(TRANSIENT_PHASES.has(phase) && {
-    animation: `${pulse} 1.5s ease-in-out infinite`,
-  }),
-}));
+function PhaseDot({ phase }: { phase: PhaseStatus }) {
+  return (
+    <span
+      className={styles.PhaseDot}
+      data-transient={TRANSIENT_PHASES.has(phase) ? 'true' : undefined}
+      style={{ backgroundColor: PHASE_COLORS[phase] || '#8b949e' }}
+    />
+  );
+}
 
 export type PluginListItemProps = {
   id: string;
@@ -108,192 +79,115 @@ const PluginListItem: React.FC<PluginListItemProps> = ({
 }) => {
   const displayAuthor = author || publisherName || '';
   const showPhase = installed && phase;
+  let imageSrc: string | undefined;
+
+  if (iconUrl) {
+    imageSrc = iconUrl;
+  } else if (icon && IsImage(icon)) {
+    imageSrc = icon;
+  }
 
   return (
     <Link to={`/plugins/${id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-      <ItemRoot active={active}>
+      <div className={styles.Item} data-active={active ? 'true' : undefined}>
         {/* Icon */}
-        <Box sx={{
-          width: 36,
-          height: 36,
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          mt: '1px',
-        }}>
-          {iconUrl ? (
+        <div className={styles.IconBox}>
+          {imageSrc ? (
             <Avatar
               size='xs'
-              src={iconUrl}
-              sx={{ borderRadius: '6px', backgroundColor: 'transparent', border: 0, width: 36, height: 36 }}
-            />
-          ) : icon && IsImage(icon) ? (
-            <Avatar
-              size='xs'
-              src={icon}
-              sx={{ borderRadius: '6px', backgroundColor: 'transparent', border: 0, width: 36, height: 36 }}
+              shape='rounded'
+              src={imageSrc}
+              alt={name}
+              className={styles.IconImage}
             />
           ) : icon ? (
             <Icon name={icon} size={36} />
           ) : (
-            <Box sx={{
-              width: 36,
-              height: 36,
-              borderRadius: '6px',
-              backgroundColor: 'rgba(255,255,255,0.06)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              color: 'var(--ov-fg-faint, #8b949e)',
-            }}>
+            <div className={styles.IconFallback}>
               {name?.[0]?.toUpperCase() || '?'}
-            </Box>
+            </div>
           )}
-        </Box>
+        </div>
 
         {/* Content */}
-        <Box sx={{ flex: 1, minWidth: 0, py: '1px' }}>
+        <div className={styles.Content}>
           {/* Row 1: Name + Action */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 18 }}>
-            <Box sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              flex: 1,
-              minWidth: 0,
-              overflow: 'hidden',
-            }}>
-              <Box component='span' sx={{
-                fontSize: '0.8125rem',
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}>
+          <div className={styles.TitleRow}>
+            <div className={styles.NameGroup}>
+              <span className={styles.Name}>
                 {name}
-              </Box>
+              </span>
               {official && (
-                <LuBadgeCheck size={13} color='rgba(56,139,253,0.9)' style={{ flexShrink: 0 }} />
+                <LuBadgeCheck size={13} color='var(--ov-color-brand-500)' style={{ flexShrink: 0 }} />
               )}
-            </Box>
+            </div>
 
             {/* Action area */}
-            <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <div className={styles.ActionArea}>
               {installed ? (
                 <>
                   {devMode && (
-                    <LuAtom size={11} color="var(--ov-warning-default, #d29922)" />
+                    <LuAtom size={11} color='var(--ov-color-warning)' />
                   )}
                   {version && (
-                    <Box component='span' sx={{
-                      fontSize: '0.625rem',
-                      fontFamily: 'monospace',
-                      color: 'var(--ov-fg-faint, #8b949e)',
-                      lineHeight: 1,
-                    }}>
+                    <span className={styles.Version}>
                       {version}
-                    </Box>
+                    </span>
                   )}
-                  <Box
-                    className='plugin-item-gear'
-                    sx={{
-                      opacity: 0,
-                      transition: 'opacity 0.15s',
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <LuSettings size={12} color='var(--ov-fg-faint, #8b949e)' />
-                  </Box>
+                  <span className={styles.Gear}>
+                    <LuSettings size={12} color='var(--ov-color-fg-subtle)' />
+                  </span>
                 </>
               ) : installing ? (
-                <CircularProgress size={14} sx={{ color: 'rgba(56,139,253,0.9)' }} />
+                <Spinner size='xs' color='brand' />
               ) : onInstall ? (
                 installed ? (
-                  <LuCheck size={14} color='var(--ov-success-default, #3fb950)' />
+                  <LuCheck size={14} color='var(--ov-color-success)' />
                 ) : (
-                  <Box
-                    component='button'
+                  <button
+                    type='button'
+                    className={styles.InstallButton}
                     onClick={(e: React.MouseEvent) => {
                       e.preventDefault();
                       e.stopPropagation();
                       onInstall();
                     }}
-                    sx={{
-                      fontSize: '0.6875rem',
-                      fontWeight: 600,
-                      color: 'rgba(56,139,253,0.9)',
-                      background: 'none',
-                      border: '1px solid rgba(56,139,253,0.4)',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      padding: '1px 8px',
-                      lineHeight: '18px',
-                      whiteSpace: 'nowrap',
-                      '&:hover': {
-                        backgroundColor: 'rgba(56,139,253,0.1)',
-                        borderColor: 'rgba(56,139,253,0.6)',
-                      },
-                    }}
                   >
                     Install
-                  </Box>
+                  </button>
                 )
               ) : null}
-            </Box>
-          </Box>
+            </div>
+          </div>
 
           {/* Row 2: Description */}
-          <Box sx={{
-            fontSize: '0.6875rem',
-            color: 'var(--ov-fg-faint, #8b949e)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            lineHeight: 1.4,
-            mt: '1px',
-          }}>
+          <div className={styles.Description}>
             {description || '\u00A0'}
-          </Box>
+          </div>
 
           {/* Row 3: Author + Stats */}
-          <Box sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.75,
-            mt: '2px',
-            fontSize: '0.625rem',
-            color: 'var(--ov-fg-faint, #8b949e)',
-          }}>
+          <div className={styles.Meta}>
             {showPhase && <PhaseDot phase={phase} />}
             {displayAuthor && (
-              <Box component='span' sx={{
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                maxWidth: 120,
-              }}>
+              <span className={styles.Author}>
                 {displayAuthor}
-              </Box>
+              </span>
             )}
             {typeof downloadCount === 'number' && downloadCount > 0 && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+              <span className={styles.Stat}>
                 <LuDownload size={9} />
                 <span>{formatDownloads(downloadCount)}</span>
-              </Box>
+              </span>
             )}
             {typeof averageRating === 'number' && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+              <span className={styles.Stat}>
                 <LuStar size={9} style={{ color: averageRating > 0 ? '#e3b341' : undefined }} />
                 <span>{averageRating > 0 ? averageRating.toFixed(1) : '0'}</span>
-              </Box>
+              </span>
             )}
-          </Box>
-        </Box>
-      </ItemRoot>
+          </div>
+        </div>
+      </div>
     </Link>
   );
 };

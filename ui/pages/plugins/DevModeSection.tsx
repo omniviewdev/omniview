@@ -1,14 +1,14 @@
 import React from 'react';
-import Box from '@mui/material/Box';
-import { Chip } from '@omniviewdev/ui';
-import { Tooltip } from '@omniviewdev/ui/overlays';
-import { StatusDot } from '@omniviewdev/base-ui';
+import { Chip, StatusDot } from '@omniviewdev/base-ui';
+import type { ComponentColor } from '@omniviewdev/base-ui';
 import { LuCircle, LuExternalLink, LuHammer, LuPlay, LuRefreshCw, LuSquare } from 'react-icons/lu';
 
+import HintTooltip from '@/components/base/HintTooltip';
 import { devToolsChannel } from '@/features/devtools/events';
 import { getAggregateStatus, STATUS_COLORS } from '@/features/devtools/types';
 import type { DevServerAggregateStatus } from '@/features/devtools/types';
 import { useDevServer } from '@/hooks/plugin/useDevServer';
+import styles from './DevModeSection.module.css';
 
 interface Props {
   pluginId: string;
@@ -31,6 +31,11 @@ const DOT_CSS: Record<DevServerAggregateStatus, string> = {
   connecting: '#58a6ff',
 };
 
+/** Maps the legacy semantic colour names in STATUS_COLORS onto base-ui colours. */
+function toChipColor(color: (typeof STATUS_COLORS)[DevServerAggregateStatus]): ComponentColor {
+  return color === 'primary' ? 'brand' : color;
+}
+
 /**
  * Dev mode section displayed inside InstalledPluginCard when the plugin is in dev mode.
  * Shows dev server status, controls, and build information.
@@ -43,180 +48,111 @@ const DevModeSection: React.FC<Props> = ({ pluginId, devPath }) => {
   const dotColor = DOT_CSS[aggStatus];
 
   return (
-    <Box
-      sx={{
-        mt: 0.5,
-        borderRadius: '6px',
-        border: '1px solid var(--ov-border-default, rgba(255,255,255,0.08))',
-        bgcolor: 'var(--ov-bg-surface-inset, rgba(0,0,0,0.15))',
-        overflow: 'hidden',
-      }}
-    >
+    <div className={styles.Root}>
       {/* Header row */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 1,
-          px: 1.25,
-          py: 0.75,
-          borderBottom: '1px solid var(--ov-border-default, rgba(255,255,255,0.08))',
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
-          <Box
-            component="span"
-            sx={{
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              color: 'var(--ov-fg-base)',
-              whiteSpace: 'nowrap',
-            }}
-          >
+      <div className={styles.Header}>
+        <div className={styles.HeaderLeft}>
+          <span className={styles.Title}>
             Dev Server
-          </Box>
+          </span>
           <Chip
-            size="xs"
-            color={STATUS_COLORS[aggStatus]}
-            emphasis="soft"
-            shape="rounded"
-            textTransform="uppercase"
-            icon={<LuCircle size={6} fill={dotColor} color={dotColor} />}
-            label={STATUS_LABELS[aggStatus]}
-          />
+            size='xs'
+            color={toChipColor(STATUS_COLORS[aggStatus])}
+            variant='soft'
+            className={styles.StatusChip}
+            startDecorator={<LuCircle size={6} fill={dotColor} color={dotColor} />}
+          >
+            {STATUS_LABELS[aggStatus]}
+          </Chip>
           {state.data?.mode === 'external' && (
             <Chip
-              size="xs"
-              color="neutral"
-              emphasis="outline"
-              shape="rounded"
-              icon={<LuExternalLink size={10} />}
-              label="External"
-            />
+              size='xs'
+              color='neutral'
+              variant='outline'
+              startDecorator={<LuExternalLink size={10} />}
+            >
+              External
+            </Chip>
           )}
           {/* Dev-only base-ui smoke test (omn-oiaq): checks base-ui renders inside the MUI tree. */}
           {import.meta.env.DEV && (
             <StatusDot status="info" size="sm" label="base-ui" data-testid="base-ui-smoke" />
           )}
-        </Box>
+        </div>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
-          <Tooltip content="View build output and compiler logs" placement="bottom">
-            <ActionBtn icon={<LuHammer size={12} />} label="Build Output" onClick={() => devToolsChannel.emit('onOpenBuildOutput', pluginId)} />
-          </Tooltip>
+        <div className={styles.Actions}>
+          <HintTooltip content='View build output and compiler logs'>
+            <ActionBtn icon={<LuHammer size={12} />} label='Build Output' onClick={() => devToolsChannel.emit('onOpenBuildOutput', pluginId)} />
+          </HintTooltip>
           {isRunning ? (
-            <Tooltip content="Stop the dev server" placement="bottom">
-              <ActionBtn icon={<LuSquare size={12} />} label="Stop" onClick={() => stop.mutate(pluginId)} color="var(--ov-danger-default, #f85149)" />
-            </Tooltip>
+            <HintTooltip content='Stop the dev server'>
+              <ActionBtn icon={<LuSquare size={12} />} label='Stop' onClick={() => stop.mutate(pluginId)} color='var(--ov-color-danger)' />
+            </HintTooltip>
           ) : (
-            <Tooltip content="Start the dev server" placement="bottom">
-              <ActionBtn icon={<LuPlay size={12} />} label="Start" onClick={() => start.mutate(pluginId)} color="var(--ov-success-default, #3fb950)" />
-            </Tooltip>
+            <HintTooltip content='Start the dev server'>
+              <ActionBtn icon={<LuPlay size={12} />} label='Start' onClick={() => start.mutate(pluginId)} color='var(--ov-color-success)' />
+            </HintTooltip>
           )}
-          <Tooltip content="Restart the dev server" placement="bottom">
-            <ActionBtn icon={<LuRefreshCw size={12} />} label="Restart" onClick={() => restart.mutate(pluginId)} disabled={!isRunning} />
-          </Tooltip>
-        </Box>
-      </Box>
+          <HintTooltip content='Restart the dev server'>
+            <ActionBtn icon={<LuRefreshCw size={12} />} label='Restart' onClick={() => restart.mutate(pluginId)} disabled={!isRunning} />
+          </HintTooltip>
+        </div>
+      </div>
 
       {/* Details */}
-      <Box sx={{ px: 1.25, py: 0.75, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-        <DetailRow label="Source" value={devPath} mono />
+      <div className={styles.Details}>
+        <DetailRow label='Source' value={devPath} mono />
         {state.data?.vitePort != null && state.data.vitePort > 0 && (
-          <DetailRow label="Vite" value={`http://127.0.0.1:${state.data.vitePort}`} mono />
+          <DetailRow label='Vite' value={`http://127.0.0.1:${state.data.vitePort}`} mono />
         )}
         {state.data && (
           <DetailRow
-            label="gRPC"
+            label='gRPC'
             value={state.data.grpcConnected ? 'Connected' : 'Disconnected'}
-            valueColor={state.data.grpcConnected ? 'var(--ov-success-default, #3fb950)' : 'var(--ov-danger-default, #f85149)'}
+            valueColor={state.data.grpcConnected ? 'var(--ov-color-success)' : 'var(--ov-color-danger)'}
           />
         )}
         {state.data?.lastError && (
-          <Box
-            sx={{
-              mt: '2px',
-              p: 0.5,
-              borderRadius: '4px',
-              bgcolor: 'rgba(248,81,73,0.08)',
-              border: '1px solid rgba(248,81,73,0.15)',
-              fontSize: '0.6875rem',
-              fontFamily: 'var(--ovl-font-mono, monospace)',
-              color: '#f85149',
-              wordBreak: 'break-word',
-              maxHeight: 48,
-              overflow: 'auto',
-            }}
-          >
+          <div className={styles.Error}>
             {state.data.lastError}
-          </Box>
+          </div>
         )}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
 
 function DetailRow({ label, value, mono, valueColor }: { label: string; value: string; mono?: boolean; valueColor?: string }) {
   return (
-    <Box sx={{ display: 'flex', gap: 1, alignItems: 'baseline', minWidth: 0 }}>
-      <Box
-        component="span"
-        sx={{
-          fontSize: '0.6875rem',
-          color: 'var(--ov-fg-faint, #8b949e)',
-          minWidth: 44,
-          flexShrink: 0,
-        }}
-      >
+    <div className={styles.DetailRow}>
+      <span className={styles.DetailLabel}>
         {label}:
-      </Box>
-      <Box
-        component="span"
-        sx={{
-          fontSize: '0.6875rem',
-          fontFamily: mono ? 'var(--ovl-font-mono, monospace)' : 'inherit',
-          color: valueColor ?? 'var(--ov-fg-muted, #8b949e)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          minWidth: 0,
-        }}
+      </span>
+      <span
+        className={styles.DetailValue}
+        data-mono={mono ? 'true' : undefined}
+        style={valueColor ? { color: valueColor } : undefined}
       >
         {value}
-      </Box>
-    </Box>
+      </span>
+    </div>
   );
 }
 
 const ActionBtn = React.forwardRef<HTMLButtonElement, { icon: React.ReactNode; label: string; onClick: () => void; color?: string; disabled?: boolean } & React.HTMLAttributes<HTMLButtonElement>>(
-  ({ icon, label, onClick, color, disabled, ...rest }, ref) => (
-    <Box
+  ({ icon, label, onClick, color, disabled, style, ...rest }, ref) => (
+    <button
       {...rest}
       ref={ref}
-      component="button"
+      type='button'
+      className={styles.ActionBtn}
+      data-disabled={disabled ? 'true' : undefined}
       onClick={disabled ? undefined : onClick}
-      sx={{
-        all: 'unset',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '4px',
-        px: '6px',
-        py: '3px',
-        fontSize: '0.6875rem',
-        fontWeight: 500,
-        fontFamily: 'var(--ov-font-ui)',
-        color: disabled ? 'var(--ov-fg-faint, #484f58)' : color ?? 'var(--ov-fg-default, #c9d1d9)',
-        cursor: disabled ? 'default' : 'pointer',
-        borderRadius: '4px',
-        whiteSpace: 'nowrap',
-        opacity: disabled ? 0.5 : 1,
-        '&:hover': disabled ? {} : { bgcolor: 'rgba(255,255,255,0.06)' },
-      }}
+      style={color && !disabled ? { ...style, color } : style}
     >
       {icon}
       {label}
-    </Box>
+    </button>
   ),
 );
 

@@ -1,0 +1,45 @@
+/* Compact typography for rendered plugin READMEs and changelogs. */
+.Markdown :global(.wmde-markdown) {
+  background-color: transparent !important;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+}
+
+.Markdown :global(.wmde-markdown) h1 {
+  font-size: 1.35rem;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.Markdown :global(.wmde-markdown) h2 {
+  font-size: 1.1rem;
+  margin-top: 16px;
+  margin-bottom: 6px;
+}
+
+.Markdown :global(.wmde-markdown) h3 {
+  font-size: 0.95rem;
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+
+.Markdown :global(.wmde-markdown) h4 {
+  font-size: 0.875rem;
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+
+.Markdown :global(.wmde-markdown) p {
+  font-size: 0.8125rem;
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+.Markdown :global(.wmde-markdown) li,
+.Markdown :global(.wmde-markdown) table {
+  font-size: 0.8125rem;
+}
+
+.Markdown :global(.wmde-markdown) code {
+  font-size: 0.75rem;
+}

@@ -1,0 +1,26 @@
+.Field {
+  width: 100%;
+}
+
+/* Highlight a control whose value differs from the saved setting (draft). */
+.Changed {
+  outline: 2px solid var(--ov-color-border-focus);
+  outline-offset: 2px;
+}
+
+.SelectTrigger {
+  width: 100%;
+}
+
+.MultiRow {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--ov-space-2);
+  width: 100%;
+}
+
+.MultiInput {
+  flex: 1;
+  min-width: 0;
+}
