@@ -11,6 +11,7 @@ import { CanvasAddon } from '@xterm/addon-canvas';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { debounce } from '@/utils/debounce';
+import { orFallback } from '@/utils/orFallback';
 
 // project import
 import { ExecClient } from '@omniviewdev/runtime/api';
@@ -159,7 +160,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       allowTransparency: true,
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
-      fontSize: s['terminal.fontSize'] || 12,
+      fontSize: orFallback(s['terminal.fontSize'], 12),
       fontFamily: 'Consolas,Liberation Mono,Menlo,Courier,monospace',
       fontWeight: 'normal',
       theme,
@@ -232,11 +233,11 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         const errorInfo = ev.data;
         if (errorInfo && typeof errorInfo === 'object') {
           const info: TerminalErrorInfo = {
-            title: errorInfo.title || errorInfo.Title || 'Session error',
-            suggestion: errorInfo.suggestion || errorInfo.Suggestion || 'The session encountered an error.',
-            raw: errorInfo.message || errorInfo.Message || '',
+            title: orFallback(orFallback(errorInfo.title, errorInfo.Title), 'Session error'),
+            suggestion: orFallback(orFallback(errorInfo.suggestion, errorInfo.Suggestion), 'The session encountered an error.'),
+            raw: orFallback(orFallback(errorInfo.message, errorInfo.Message), ''),
             retryable: errorInfo.retryable ?? errorInfo.Retryable ?? false,
-            retryCommands: errorInfo.retry_commands || errorInfo.RetryCommands || errorInfo.retry_Commands,
+            retryCommands: orFallback(orFallback(errorInfo.retry_commands, errorInfo.RetryCommands), errorInfo.retry_Commands),
           };
           errorRef.current = info;
           setError(info);
@@ -358,6 +359,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         Events.Off(constructSignalHandler(signal, sessionId));
       });
       ExecClient.DetachSession(sessionId).then(() => {
+        // Nothing to do once detached.
       }).catch((err: unknown) => {
         log.error(new Error(parseAppError(err).detail), { event: 'detach_session', sessionId });
       });

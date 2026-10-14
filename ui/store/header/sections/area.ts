@@ -83,9 +83,7 @@ export const addHeaderAreaItems = (state: HeaderState, action: PayloadAction<{ a
   }
 
   // Ensure items array exists
-  if (state.areas[area].items === undefined) {
-    state.areas[area].items = [];
-  }
+  state.areas[area].items ??= [];
 
   // Now that TypeScript is assured `items` is defined, proceed with your logic
   for (const item of items) {

@@ -93,14 +93,14 @@ export function useDevServer(pluginID?: string) {
 
   const allStates = useQuery({
     queryKey: KEYS.all,
-    queryFn: () => DevServerManager.ListDevServerStates(),
+    queryFn: async () => DevServerManager.ListDevServerStates(),
     refetchOnWindowFocus: true,
     staleTime: 30_000,
   });
 
   const state = useQuery({
     queryKey: KEYS.one(pluginID ?? ''),
-    queryFn: () => DevServerManager.GetDevServerState(pluginID!),
+    queryFn: async () => DevServerManager.GetDevServerState(pluginID!),
     enabled: !!pluginID,
     staleTime: 30_000,
   });
@@ -108,7 +108,7 @@ export function useDevServer(pluginID?: string) {
   // ── Mutations ──────────────────────────────────────────────────────────
 
   const start = useMutation({
-    mutationFn: (id: string) => DevServerManager.StartDevServer(id),
+    mutationFn: async (id: string) => DevServerManager.StartDevServer(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: KEYS.all });
       if (pluginID) {
@@ -118,7 +118,7 @@ export function useDevServer(pluginID?: string) {
   });
 
   const stop = useMutation({
-    mutationFn: (id: string) => DevServerManager.StopDevServer(id),
+    mutationFn: async (id: string) => DevServerManager.StopDevServer(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: KEYS.all });
       if (pluginID) {
@@ -128,7 +128,7 @@ export function useDevServer(pluginID?: string) {
   });
 
   const restart = useMutation({
-    mutationFn: (id: string) => DevServerManager.RestartDevServer(id),
+    mutationFn: async (id: string) => DevServerManager.RestartDevServer(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: KEYS.all });
       if (pluginID) {

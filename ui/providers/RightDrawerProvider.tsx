@@ -228,7 +228,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
    */
   const showResourceSidebar = useCallback((params: ShowResourceSidebarParams) => {
     const onSubmit = (_ctx: DrawerContext, value: Record<string, any>) => {
-      ResourceClient.Update(
+      void ResourceClient.Update(
         params.pluginID,
         params.connectionID,
         params.resourceKey,

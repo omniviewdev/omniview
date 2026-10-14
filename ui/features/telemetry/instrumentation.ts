@@ -11,7 +11,7 @@ export function instrumentBinding(name: string, fn: WailsBinding): WailsBinding 
     const carrier: Record<string, string> = {};
     propagation.inject(spanCtx, carrier);
     try {
-      const result = await context.with(spanCtx, () => fn(carrier, ...args));
+      const result = await context.with(spanCtx, async () => fn(carrier, ...args));
       span.setStatus({ code: SpanStatusCode.OK });
       return result;
     } catch (err) {

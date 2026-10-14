@@ -12,7 +12,7 @@ export function useComponentLogs(
     let mounted = true;
 
     // 1) load full file once
-    DiagnosticsClient.ReadLog(logType).then((text) => {
+    void DiagnosticsClient.ReadLog(logType).then((text) => {
       if (!mounted) {
         return;
       }
@@ -47,12 +47,12 @@ export function useComponentLogs(
     const closer = Events.On(`internal/log/update:${logType}`, (ev) => {
       handler(ev.data as string); 
     });
-    DiagnosticsClient.StartTail(logType);
+    void DiagnosticsClient.StartTail(logType);
 
     return () => {
       mounted = false;
       // stop tail and unsubscribe
-      DiagnosticsClient.StopTail(logType);
+      void DiagnosticsClient.StopTail(logType);
       closer();
     };
   }, [component, logType]);

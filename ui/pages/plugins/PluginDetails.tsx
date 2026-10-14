@@ -16,6 +16,7 @@ import Icon from '@/components/icons/Icon';
 import StarRating from './StarRating';
 import markdownStyles from './PluginMarkdown.module.css';
 import styles from './PluginDetails.module.css';
+import { orFallback } from '@/utils/orFallback';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -37,13 +38,13 @@ const PluginDetails: FC = () => {
   const marketplace: any = available.data?.find((p: any) => p.id === id);
 
   // Derive display values from marketplace data or installed metadata
-  const displayName = marketplace?.name || installed?.metadata?.name || id;
-  const displayDescription = marketplace?.description || installed?.metadata?.description || '';
-  const displayIcon = marketplace?.icon_url || installed?.metadata?.icon || '';
-  const displayVersion = installed?.metadata?.version || marketplace?.latest_version || '';
-  const displayCategory = marketplace?.category || (installed?.metadata as any)?.category || '';
-  const displayLicense = marketplace?.license || (installed?.metadata as any)?.license || '';
-  const displayRepository = marketplace?.repository || installed?.metadata?.repository || '';
+  const displayName = orFallback(orFallback(marketplace?.name, installed?.metadata?.name), id);
+  const displayDescription = orFallback(orFallback(marketplace?.description, installed?.metadata?.description), '');
+  const displayIcon = orFallback(orFallback(marketplace?.icon_url, installed?.metadata?.icon), '');
+  const displayVersion = orFallback(orFallback(installed?.metadata?.version, marketplace?.latest_version), '');
+  const displayCategory = orFallback(orFallback(marketplace?.category, (installed?.metadata as any)?.category), '');
+  const displayLicense = orFallback(orFallback(marketplace?.license, (installed?.metadata as any)?.license), '');
+  const displayRepository = orFallback(orFallback(marketplace?.repository, installed?.metadata?.repository), '');
 
   if (!marketplace && !installed) {
     return (
@@ -118,7 +119,9 @@ const PluginDetails: FC = () => {
             {displayRepository && (
               <span
                 className={styles.RepoLink}
-                onClick={() => Browser.OpenURL(displayRepository)}
+                onClick={() => {
+                  void Browser.OpenURL(displayRepository);
+                }}
               >
                 <LuExternalLink size={12} />
                 <Text size='xs' tone='muted'>Repository</Text>
@@ -132,7 +135,7 @@ const PluginDetails: FC = () => {
           <PluginUpdateButton
             pluginID={id}
             installed={!!installed}
-            currentVersion={installed?.metadata?.version || ''}
+            currentVersion={installed?.metadata?.version ?? ''}
           />
           {!!installed && (
             <Button
@@ -157,7 +160,7 @@ const PluginDetails: FC = () => {
         name={displayName}
         devMode={!!installed?.devMode}
         uninstall={() => {
-          uninstall().then(() => {
+          void uninstall().then(() => {
             navigate('/plugins');
           });
         }}

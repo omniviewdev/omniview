@@ -77,7 +77,7 @@ export const usePluginManager = () => {
       closer1();
       closer2();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable refs from hooks; single-run effect
+    // Empty deps: stable refs from hooks; single-run effect.
   }, []);
 
   // === Mutations === //
@@ -211,25 +211,25 @@ export const usePlugin = ({ id }: { id: string }) => {
 
   const readme = useQuery({
     queryKey: [Entity.PLUGINS, id, 'readme'],
-    queryFn: () => PluginManager.GetPluginReadme(id),
+    queryFn: async () => PluginManager.GetPluginReadme(id),
     enabled: !!id,
   });
 
   const reviews = useQuery({
     queryKey: [Entity.PLUGINS, id, 'reviews'],
-    queryFn: () => PluginManager.GetPluginReviews(id, 1),
+    queryFn: async () => PluginManager.GetPluginReviews(id, 1),
     enabled: !!id,
   });
 
   const downloadStats = useQuery({
     queryKey: [Entity.PLUGINS, id, 'download-stats'],
-    queryFn: () => PluginManager.GetPluginDownloadStats(id),
+    queryFn: async () => PluginManager.GetPluginDownloadStats(id),
     enabled: !!id,
   });
 
   const releaseHistory = useQuery({
     queryKey: [Entity.PLUGINS, id, 'release-history'],
-    queryFn: () => PluginManager.GetPluginReleaseHistory(id),
+    queryFn: async () => PluginManager.GetPluginReleaseHistory(id),
     enabled: !!id,
   });
 

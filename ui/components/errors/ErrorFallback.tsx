@@ -47,7 +47,7 @@ export function FullPageErrorFallback({ error, resetErrorBoundary, boundary }: F
 
   const copyError = () => {
     const text = `Error ID: ${meta.errorId}\n${error.message}\n\n${error.stack ?? ''}`;
-    navigator.clipboard.writeText(text).then(() => {
+    void navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => {
         setCopied(false); 
@@ -152,7 +152,7 @@ export function PanelErrorFallback({ error, resetErrorBoundary, label, boundary 
 
   const copyError = () => {
     const text = `Error ID: ${meta.errorId}\n${error.message}\n\n${error.stack ?? ''}`;
-    navigator.clipboard.writeText(text).then(() => {
+    void navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => {
         setCopied(false); 

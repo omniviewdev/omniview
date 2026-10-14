@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { IsImage } from '@/utils/url';
 import Icon from '@/components/icons/Icon';
 import styles from './PluginListItem.module.css';
+import { orFallback } from '@/utils/orFallback';
 
 type PhaseStatus = 'Running' | 'Failed' | 'Starting' | 'Building' | 'Recovering' | 'Stopped' | 'Validating' | string;
 
@@ -77,7 +78,7 @@ const PluginListItem: React.FC<PluginListItemProps> = ({
   onInstall,
   installing,
 }) => {
-  const displayAuthor = author || publisherName || '';
+  const displayAuthor = orFallback(author, publisherName) ?? '';
   const showPhase = installed && phase;
   let imageSrc: string | undefined;
 
@@ -162,7 +163,7 @@ const PluginListItem: React.FC<PluginListItemProps> = ({
 
           {/* Row 2: Description */}
           <div className={styles.Description}>
-            {description || '\u00A0'}
+            {orFallback(description, '\u00A0')}
           </div>
 
           {/* Row 3: Author + Stats */}

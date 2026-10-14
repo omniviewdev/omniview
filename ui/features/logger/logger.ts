@@ -7,6 +7,41 @@ export type LogFields = Record<string, any>;
 export class OmniviewLogger {
   constructor(private readonly componentName?: string) { }
 
+  debug(msg: string, fields?: LogFields) {
+    void this.ship('debug', msg, fields);
+  }
+
+  info(msg: string, fields?: LogFields) {
+    void this.ship('info', msg, fields);
+  }
+
+  warn(msg: string, fields?: LogFields) {
+    void this.ship('warn', msg, fields);
+  }
+
+  error(msg: string | Error, fields?: LogFields) {
+    // support passing an Error directly
+    if (msg instanceof Error) {
+      const err = msg;
+      fields = { ...fields, stack: err.stack };
+      msg = err.message;
+    }
+
+    void this.ship('error', msg, fields);
+  }
+
+  /** 
+   * Generic log level 
+   */
+  log(level: 'debug' | 'info' | 'warn' | 'error', msg: string, fields?: LogFields) {
+    switch (level) {
+      case 'debug': { this.debug(msg, fields); return; }
+      case 'info': { this.info(msg, fields); return; }
+      case 'warn': { this.warn(msg, fields); return; }
+      case 'error': { this.error(msg, fields); return; }
+    }
+  }
+
   /** 
    * Envelope the payload with a timestamp and optional component name 
    */
@@ -26,41 +61,6 @@ export class OmniviewLogger {
       await DiagnosticsClient.Log(level, msg, this.envelope(fields));
     } catch {
       // swallow any error
-    }
-  }
-
-  debug(msg: string, fields?: LogFields) {
-    this.ship('debug', msg, fields);
-  }
-
-  info(msg: string, fields?: LogFields) {
-    this.ship('info', msg, fields);
-  }
-
-  warn(msg: string, fields?: LogFields) {
-    this.ship('warn', msg, fields);
-  }
-
-  error(msg: string | Error, fields?: LogFields) {
-    // support passing an Error directly
-    if (msg instanceof Error) {
-      const err = msg;
-      fields = { ...fields, stack: err.stack };
-      msg = err.message;
-    }
-
-    this.ship('error', msg, fields);
-  }
-
-  /** 
-   * Generic log level 
-   */
-  log(level: 'debug' | 'info' | 'warn' | 'error', msg: string, fields?: LogFields) {
-    switch (level) {
-      case 'debug': { this.debug(msg, fields); return; }
-      case 'info': { this.info(msg, fields); return; }
-      case 'warn': { this.warn(msg, fields); return; }
-      case 'error': { this.error(msg, fields); return; }
     }
   }
 }

@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 const mocks = vi.hoisted(() => ({
   mockYamlUpdate: vi.fn(),
   mockSetDiagnosticsOptions: vi.fn(),
@@ -21,7 +19,7 @@ vi.mock('@/providers/monaco/bootstrap', () => ({
 import { schemaRegistry } from './schemaRegistry';
 
 // Helper: flush microtask queue (for queueMicrotask-based batching)
-const flushMicrotasks = () => new Promise<void>((resolve) => {
+const flushMicrotasks = async () => new Promise<void>((resolve) => {
   queueMicrotask(resolve); 
 });
 

@@ -19,8 +19,8 @@ export const useSettingsProvider = () => {
     mutationFn: async () => SettingsProvider.LoadSettings(),
     onSuccess() {
       showSnackbar('Settings reloaded', 'success');
-      queryClient.invalidateQueries({ queryKey });
-      queryClient.refetchQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey });
+      void queryClient.refetchQueries({ queryKey });
     },
     onError: createErrorHandler(showSnackbar, 'Failed to reload settings'),
   });
@@ -30,8 +30,8 @@ export const useSettingsProvider = () => {
     onSuccess(_, _vars) {
       showSnackbar('Settings saved', 'success');
       // TODO - invalidate each one individually
-      queryClient.invalidateQueries({ queryKey });
-      queryClient.refetchQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey });
+      void queryClient.refetchQueries({ queryKey });
     },
     onError: createErrorHandler(showSnackbar, 'Failed to save settings'),
   });

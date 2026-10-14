@@ -51,7 +51,7 @@ const RightDrawer: React.FC<Props> = ({
 
         {/** Right Side (actions)*/}
         <div id={'pages-actions-menus'} className={styles.HeaderActions}>
-          {!!actions.length && <RightDrawerActions ctx={ctx || {}} actions={actions} />}
+          {!!actions.length && <RightDrawerActions ctx={ctx ?? {}} actions={actions} />}
           <IconButton
             variant='outline'
             color='neutral'
@@ -89,7 +89,7 @@ const RightDrawer: React.FC<Props> = ({
             onError={onBoundaryError}
             resetKeys={[currentView]}
           >
-            {views[currentView]?.component(ctx || {})}
+            {views[currentView]?.component(ctx ?? {})}
           </ErrorBoundary>
         </div>
       </div>

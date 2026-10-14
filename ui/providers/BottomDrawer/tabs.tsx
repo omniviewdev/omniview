@@ -31,6 +31,7 @@ import { devToolsChannel } from '@/features/devtools/events';
 import { pluginLogChannel } from '@/features/pluginlogs/events';
 import { Events } from '@omniviewdev/runtime/runtime';
 import styles from './tabs.module.css';
+import { orFallback } from '@/utils/orFallback';
 
 type TabMenuItem = { key: string; label: string; onClick: () => void };
 
@@ -86,7 +87,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
     } },
   ], [tabs, closeTab, closeTabs]);
 
-  // eslint-disable-next-line @typescript-eslint/ban-types -- null is required by onChange
+  // null is required by onChange
   const handleChange = React.useCallback((_event: React.SyntheticEvent | null, newValue: string | number | null) => {
     if (typeof newValue === 'number') {
       focusTab({ index: newValue });
@@ -104,7 +105,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
           icon: 'LuSquareTerminal',
           properties: { status: 'connecting' },
         });
-        ExecClient.CreateTerminal(SessionOptions.createFrom({ command: [settings['terminal.defaultShell'] || '/bin/bash'] }))
+        ExecClient.CreateTerminal(SessionOptions.createFrom({ command: [orFallback(settings['terminal.defaultShell'], '/bin/bash')] }))
           .then((session: any) => {
             updateTab(
               { id: tempId },

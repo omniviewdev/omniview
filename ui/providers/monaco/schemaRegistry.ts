@@ -176,7 +176,7 @@ class SchemaRegistry {
     for (const entries of this.schemas.values()) {
       for (const entry of entries) {
         const schemaConfig = {
-          uri: entry.url || entry.uri,
+          uri: entry.url ?? entry.uri,
           fileMatch: [entry.fileMatch],
           ...(entry.schema ? { schema: entry.schema } : {}),
         };
@@ -193,7 +193,7 @@ class SchemaRegistry {
     this.lastFlushedYamlSchemas = yamlSchemas;
 
     // Update YAML schemas via monaco-yaml
-    monacoYaml.update({
+    void monacoYaml.update({
       enableSchemaRequest: true,
       schemas: yamlSchemas,
     });

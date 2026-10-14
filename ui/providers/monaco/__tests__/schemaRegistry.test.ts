@@ -23,7 +23,7 @@ vi.mock('../bootstrap', () => ({
 const { schemaRegistry } = await import('../schemaRegistry');
 
 // Helper to flush microtasks so scheduleFlush() runs
-const flushMicrotasks = () => new Promise<void>((r) => {
+const flushMicrotasks = async () => new Promise<void>((r) => {
   queueMicrotask(r); 
 });
 

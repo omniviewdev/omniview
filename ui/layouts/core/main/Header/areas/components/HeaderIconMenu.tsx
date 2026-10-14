@@ -6,6 +6,7 @@ import { IconButton, Menu } from '@omniviewdev/base-ui';
 import Icon from '@/components/icons/Icon';
 import { type HeaderIconMenu as HeaderIconMenuProps } from '@/store/header/types';
 import HintTooltip from '@/components/base/HintTooltip';
+import { orFallback } from '@/utils/orFallback';
 import styles from '../../Header.module.css';
 
 type Props = HeaderIconMenuProps;
@@ -21,7 +22,7 @@ const HeaderIconMenu: React.FC<Props> = ({ id, icon, helpText, items }) => {
       <HintTooltip content={helpText}>
         <Menu.Trigger
           render={
-            <IconButton size='sm' variant='soft' color='neutral' aria-label={helpText || 'Apps'} className={styles.NoDrag}>
+            <IconButton size='sm' variant='soft' color='neutral' aria-label={orFallback(helpText, 'Apps')} className={styles.NoDrag}>
               <Icon name={icon} />
             </IconButton>
           }

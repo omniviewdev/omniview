@@ -40,11 +40,12 @@ import { OperationsProvider } from '@omniviewdev/runtime';
 import { PluginServiceProvider } from '@/features/plugins';
 import { RouteProvider } from './features/router/RouteProvider';
 import log from '@/features/logger';
+import { orFallback } from '@/utils/orFallback';
 
 // 2. Global handlers for uncaught errors + promise rejections
 window.addEventListener('error', event => {
   // event.error may be undefined (e.g. script load failures)
-  const err = event.error || new Error(String(event.message));
+  const err = orFallback(event.error, new Error(String(event.message)));
   log.error(err, {
     filename: event.filename,
     lineno: event.lineno,

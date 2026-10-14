@@ -148,9 +148,9 @@ const PluginsNav: React.FC = () => {
     // Search filter
     if (searchLower) {
       items = items.filter(p =>
-        p.name?.toLowerCase().includes(searchLower) ||
-        p.description?.toLowerCase().includes(searchLower) ||
-        p.id?.toLowerCase().includes(searchLower)
+        p.name?.toLowerCase().includes(searchLower) === true ||
+        p.description?.toLowerCase().includes(searchLower) === true ||
+        p.id?.toLowerCase().includes(searchLower) === true
       );
     }
 
@@ -164,9 +164,10 @@ const PluginsNav: React.FC = () => {
         case 'updated':
           return (b.updated_at ?? '').localeCompare(a.updated_at ?? '');
         case 'name':
-        default:
-          return (a.name ?? '').localeCompare(b.name ?? '');
+          break;
       }
+
+      return (a.name ?? '').localeCompare(b.name ?? '');
     });
 
     return items;
@@ -192,7 +193,9 @@ const PluginsNav: React.FC = () => {
             type='button'
             className={styles.ToolbarButton}
             title='Refresh marketplace'
-            onClick={() => available.refetch()}
+            onClick={() => {
+              void available.refetch();
+            }}
           >
             <span className={styles.RefreshIcon} data-spinning={available.isFetching ? 'true' : undefined}>
               <LuRefreshCw size={14} />
@@ -229,7 +232,7 @@ const PluginsNav: React.FC = () => {
                   <Menu.Item
                     startDecorator={<LuFolderOpen size={15} />}
                     onClick={() => {
-                      installFromPath.mutateAsync();
+                      void installFromPath.mutateAsync();
                     }}
                     disabled={installFromPath.isPending}
                   >
@@ -238,7 +241,7 @@ const PluginsNav: React.FC = () => {
                   <Menu.Item
                     startDecorator={<LuAtom size={15} />}
                     onClick={() => {
-                      installDev.mutateAsync();
+                      void installDev.mutateAsync();
                     }}
                     disabled={installDev.isPending}
                   >
@@ -368,7 +371,9 @@ const PluginsNav: React.FC = () => {
                   <button
                     type='button'
                     className={styles.LinkButton}
-                    onClick={() => available.refetch()}
+                    onClick={() => {
+                      void available.refetch();
+                    }}
                   >
                     <LuRefreshCw size={11} />
                     Retry

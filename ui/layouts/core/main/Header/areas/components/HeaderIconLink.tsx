@@ -6,6 +6,7 @@ import { IconButton } from '@omniviewdev/base-ui';
 import { type HeaderIconLink as HeaderIconLinkProps } from '@/store/header/types';
 import { Icon } from '@/components/icons/Icon';
 import HintTooltip from '@/components/base/HintTooltip';
+import { orFallback } from '@/utils/orFallback';
 import styles from '../../Header.module.css';
 
 type Props = HeaderIconLinkProps;
@@ -23,7 +24,7 @@ const HeaderIconLink: React.FC<Props> = ({ id, helpText, icon, href }) => {
         variant='ghost'
         color='neutral'
         className={styles.NoDrag}
-        aria-label={helpText || id}
+        aria-label={orFallback(helpText, id)}
         onClick={() => {
           navigate(href); 
         }}
