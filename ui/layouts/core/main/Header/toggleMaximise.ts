@@ -12,9 +12,9 @@ export const toggleMaximiseOnDoubleClick: React.MouseEventHandler = (e) => {
 
   Window.IsMaximised().then((isMaximized) => {
     if (isMaximized) {
-      Window.UnMaximise();
+      void Window.UnMaximise();
     } else {
-      Window.Maximise();
+      void Window.Maximise();
     }
   }).catch((err) => {
     console.error(err);
