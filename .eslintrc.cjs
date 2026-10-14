@@ -65,7 +65,7 @@ module.exports = {
   parserOptions: {
     warnOnUnsupportedTypeScriptVersion: false,
     sourceType: 'module',
-    project: 'tsconfig.app.json',
+    project: ['tsconfig.app.json', 'tsconfig.test.json'],
     ecmaFeatures: {
       jsx: true,
     },

@@ -6,6 +6,6 @@
     "noUnusedParameters": false,
     "types": ["vitest/globals", "node", "@testing-library/jest-dom", "vite/client"]
   },
-  "include": ["ui/**/*.spec.ts", "ui/**/*.spec.tsx", "ui/**/*.test.ts", "ui/**/*.test.tsx", "packages/**/*.test.ts", "packages/**/*.test.tsx", "plugins/**/*.test.ts", "plugins/**/*.test.tsx"],
+  "include": ["ui/**/*.spec.ts", "ui/**/*.spec.tsx", "ui/**/*.bench.ts", "ui/**/*.test.ts", "ui/**/*.test.tsx", "packages/**/*.test.ts", "packages/**/*.test.tsx", "plugins/**/*.test.ts", "plugins/**/*.test.tsx"],
   "exclude": ["node_modules", "dist", "build"]
 }
