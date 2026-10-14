@@ -25,16 +25,16 @@ export default defineConfig({
     sourcemap: false,
   },
   server: {
-    // Wails' dev asset proxy dials localhost over IPv4, but Node resolves
-    // localhost to ::1 on macOS, so bind to 127.0.0.1 explicitly.
+    // Wails' development asset proxy deliberately dials localhost over IPv4.
+    // Bind Vite to the same address instead of letting Node resolve localhost
+    // to IPv6-only ::1 on macOS.
     host: '127.0.0.1',
     // Port is set via WAILS_VITE_PORT env var (wails3 dev sets it automatically).
     // Fallback to 9245 to match the default in Taskfile.yml.
     port: parseInt(process.env.WAILS_VITE_PORT || '9245'),
     strictPort: true,
-    // Wails webview loads from wails://localhost — force HMR to connect
-    // via ws:// to the IPv4 loopback the server is bound to.
-    // See: https://github.com/wailsapp/wails/issues/3064
+    // Wails webview loads from wails://localhost. Point HMR at the same IPv4
+    // listener used by the asset proxy.
     hmr: {
       host: '127.0.0.1',
       protocol: 'ws',
