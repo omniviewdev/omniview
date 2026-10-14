@@ -271,7 +271,7 @@ const navSections: NavSection[] = [
 // --- Theme toggle ---
 
 function setTheme(mode: 'dark' | 'light' | 'high-contrast') {
-  document.documentElement.setAttribute('data-ov-theme', mode);
+  document.documentElement.setAttribute('data-ovl-theme', mode);
   document.documentElement.removeAttribute('style');
 }
 

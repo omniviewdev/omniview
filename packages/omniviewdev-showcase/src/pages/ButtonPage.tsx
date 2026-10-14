@@ -136,7 +136,7 @@ export default function ButtonPage() {
 
         <Example title="Default">
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2" sx={{ fontFamily: 'var(--ov-font-mono)', color: 'var(--ov-fg-default)' }}>
+            <Typography variant="body2" sx={{ fontFamily: 'var(--ovl-font-mono)', color: 'var(--ov-fg-default)' }}>
               kubectl get pods
             </Typography>
             <CopyButton value="kubectl get pods" />

@@ -77,7 +77,7 @@ export default function Text({
         ...(size && { fontSize: sizeMap[size] }),
         ...(weight && { fontWeight: weightMap[weight] }),
         ...(isMono && {
-          fontFamily: 'var(--ov-font-mono)',
+          fontFamily: 'var(--ovl-font-mono)',
           fontSize: size ? sizeMap[size] : (variant === 'code' ? '0.85em' : undefined),
         }),
         ...(variant === 'code' && {

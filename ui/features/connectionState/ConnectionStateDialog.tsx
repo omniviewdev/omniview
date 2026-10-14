@@ -99,7 +99,7 @@ function GroupProgress({ items }: { items: ResourceStateItem[] }) {
           },
         }}
       />
-      <Text size="xs" sx={{ color: 'var(--ov-fg-faint)', minWidth: 28, textAlign: 'right', fontFamily: 'var(--ov-font-mono, monospace)' }}>
+      <Text size="xs" sx={{ color: 'var(--ov-fg-faint)', minWidth: 28, textAlign: 'right', fontFamily: 'var(--ovl-font-mono, monospace)' }}>
         {allSkipped ? `${skipped} skipped` : `${done}/${total}`}
       </Text>
     </Box>
@@ -281,7 +281,7 @@ export default function ConnectionStateDialog({
                   </Text>
                 )}
                 {state === WatchState.SYNCED && count > 0 && (
-                  <Text size="xs" sx={{ color: 'var(--ov-fg-faint)', fontFamily: 'var(--ov-font-mono, monospace)' }}>
+                  <Text size="xs" sx={{ color: 'var(--ov-fg-faint)', fontFamily: 'var(--ovl-font-mono, monospace)' }}>
                     {count}
                   </Text>
                 )}

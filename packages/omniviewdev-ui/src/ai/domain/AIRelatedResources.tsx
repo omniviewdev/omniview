@@ -65,7 +65,7 @@ export default function AIRelatedResources({
         />
         <Typography
           sx={{
-            fontFamily: 'var(--ov-font-mono)',
+            fontFamily: 'var(--ovl-font-mono)',
             fontSize: 'var(--ov-text-sm)',
             fontWeight: 'var(--ov-weight-medium)',
             color: 'var(--ov-fg-default)',
@@ -145,7 +145,7 @@ export default function AIRelatedResources({
             />
             <Typography
               sx={{
-                fontFamily: 'var(--ov-font-mono)',
+                fontFamily: 'var(--ovl-font-mono)',
                 fontSize: 'var(--ov-text-xs)',
                 color: 'var(--ov-fg-default)',
                 overflow: 'hidden',

@@ -112,7 +112,7 @@ export default function AIDiffView({
             sx={{
               fontSize: 'var(--ov-text-xs)',
               color: 'var(--ov-fg-muted)',
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
             }}
           >
             {title || (language ? `diff (${language})` : 'diff')}
@@ -122,7 +122,7 @@ export default function AIDiffView({
             sx={{
               fontSize: 'var(--ov-text-xs)',
               color: 'var(--ov-success-default)',
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
             }}
           >
             +{addCount}
@@ -132,7 +132,7 @@ export default function AIDiffView({
             sx={{
               fontSize: 'var(--ov-text-xs)',
               color: 'var(--ov-danger-default)',
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
             }}
           >
             -{removeCount}
@@ -181,7 +181,7 @@ export default function AIDiffView({
                 sx={{
                   display: 'block',
                   px: 1.5,
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                   fontSize: '12px',
                   lineHeight: '20px',
                   bgcolor: bgMap[line.type],

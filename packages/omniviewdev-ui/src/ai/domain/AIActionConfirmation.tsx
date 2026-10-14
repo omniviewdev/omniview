@@ -153,7 +153,7 @@ export default function AIActionConfirmation({
                 label={`${res.kind}/${res.name}`}
                 variant="outlined"
                 sx={{
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                   fontSize: 'var(--ov-text-xs)',
                   borderColor: 'var(--ov-border-default)',
                   color: 'var(--ov-fg-default)',

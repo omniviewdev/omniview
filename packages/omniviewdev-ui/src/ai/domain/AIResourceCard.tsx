@@ -89,7 +89,7 @@ export default function AIResourceCard({
         label={`${kind}/${name}`}
         onClick={onNavigate}
         sx={{
-          fontFamily: 'var(--ov-font-mono)',
+          fontFamily: 'var(--ovl-font-mono)',
           fontSize: 'var(--ov-text-xs)',
           fontWeight: 'var(--ov-weight-medium)',
           bgcolor: 'var(--ov-bg-surface)',
@@ -139,7 +139,7 @@ export default function AIResourceCard({
 
         <Typography
           sx={{
-            fontFamily: 'var(--ov-font-mono)',
+            fontFamily: 'var(--ovl-font-mono)',
             fontSize: 'var(--ov-text-sm)',
             fontWeight: 'var(--ov-weight-medium)',
             color: 'var(--ov-fg-default)',
@@ -196,7 +196,7 @@ export default function AIResourceCard({
                 sx={{
                   fontSize: 'var(--ov-text-xs)',
                   color: 'var(--ov-fg-muted)',
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                 }}
               >
                 {scope}
@@ -217,7 +217,7 @@ export default function AIResourceCard({
                 sx={{
                   fontSize: 'var(--ov-text-xs)',
                   color: 'var(--ov-fg-muted)',
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                 }}
               >
                 {m.value}

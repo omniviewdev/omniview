@@ -25,7 +25,7 @@ export default function Tooltip({
     variant === 'code' ? (
       <Box
         sx={{
-          fontFamily: 'var(--ov-font-mono)',
+          fontFamily: 'var(--ovl-font-mono)',
           fontSize: 'var(--ov-text-xs)',
           bgcolor: 'var(--ov-bg-surface-inset)',
           px: 1,

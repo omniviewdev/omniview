@@ -77,7 +77,7 @@ export default function AILogViewer({
           sx={{
             fontSize: 'var(--ov-text-xs)',
             color: 'var(--ov-fg-muted)',
-            fontFamily: 'var(--ov-font-mono)',
+            fontFamily: 'var(--ovl-font-mono)',
           }}
         >
           {title || 'logs'}
@@ -135,7 +135,7 @@ export default function AILogViewer({
                 bgcolor: isHighlighted
                   ? 'color-mix(in srgb, var(--ov-accent) 12%, transparent)'
                   : 'transparent',
-                fontFamily: 'var(--ov-font-mono)',
+                fontFamily: 'var(--ovl-font-mono)',
                 fontSize: '12px',
                 lineHeight: '20px',
               }}

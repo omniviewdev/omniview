@@ -53,7 +53,7 @@ export default defineConfig({
     },
   ],
   resolve: {
-    dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled', '@mui/material', '@mui/x-charts', '@omniviewdev/runtime'],
+    dedupe: ['react', 'react-dom', '@emotion/react', '@emotion/styled', '@mui/material', '@mui/x-charts', '@omniviewdev/runtime', '@omniviewdev/base-ui', '@omniviewdev/ai-ui', '@omniviewdev/editors'],
     alias: {
       '@/providers/monaco/bootstrap': process.env.VITEST
         ? path.resolve(__dirname, './ui/providers/monaco/bootstrap.mock.ts')

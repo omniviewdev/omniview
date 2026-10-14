@@ -111,7 +111,7 @@ export default function AIResourceTable({
                       py: 0.5,
                       fontSize: 'var(--ov-text-xs)',
                       color: 'var(--ov-fg-default)',
-                      fontFamily: 'var(--ov-font-mono)',
+                      fontFamily: 'var(--ovl-font-mono)',
                       verticalAlign: 'middle',
                     }}
                   >

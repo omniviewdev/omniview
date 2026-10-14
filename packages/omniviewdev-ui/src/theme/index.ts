@@ -74,7 +74,7 @@ export interface OmniviewTheme {
  */
 export function applyTheme(theme: OmniviewTheme): void {
   const root = document.documentElement;
-  root.setAttribute("data-ov-theme", theme.type);
+  root.setAttribute("data-ovl-theme", theme.type);
 
   for (const [key, value] of Object.entries(theme.colors)) {
     const prop = `--ov-${key.replace(/\./g, "-")}`;
@@ -85,7 +85,7 @@ export function applyTheme(theme: OmniviewTheme): void {
     root.style.setProperty("--ov-font-ui", theme.typography.fontFamily);
   }
   if (theme.typography?.monoFontFamily) {
-    root.style.setProperty("--ov-font-mono", theme.typography.monoFontFamily);
+    root.style.setProperty("--ovl-font-mono", theme.typography.monoFontFamily);
   }
   if (theme.typography?.fontSize) {
     root.style.setProperty(
@@ -101,6 +101,6 @@ export function applyTheme(theme: OmniviewTheme): void {
  */
 export function resetTheme(type: "dark" | "light" = "dark"): void {
   const root = document.documentElement;
-  root.setAttribute("data-ov-theme", type);
+  root.setAttribute("data-ovl-theme", type);
   root.removeAttribute("style");
 }

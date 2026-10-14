@@ -71,7 +71,7 @@ export default function SettingsPanel({
           <Typography sx={{ fontSize: 'var(--ov-text-sm)', fontWeight: 600, color: 'var(--ov-fg-default)' }}>
             Temperature
           </Typography>
-          <Typography sx={{ fontSize: 'var(--ov-text-sm)', color: 'var(--ov-fg-muted)', fontFamily: 'var(--ov-font-mono)' }}>
+          <Typography sx={{ fontSize: 'var(--ov-text-sm)', color: 'var(--ov-fg-muted)', fontFamily: 'var(--ovl-font-mono)' }}>
             {values.temperature.toFixed(2)}
           </Typography>
         </Box>
@@ -92,7 +92,7 @@ export default function SettingsPanel({
           <Typography sx={{ fontSize: 'var(--ov-text-sm)', fontWeight: 600, color: 'var(--ov-fg-default)' }}>
             Top P
           </Typography>
-          <Typography sx={{ fontSize: 'var(--ov-text-sm)', color: 'var(--ov-fg-muted)', fontFamily: 'var(--ov-font-mono)' }}>
+          <Typography sx={{ fontSize: 'var(--ov-text-sm)', color: 'var(--ov-fg-muted)', fontFamily: 'var(--ovl-font-mono)' }}>
             {values.topP.toFixed(2)}
           </Typography>
         </Box>
@@ -158,7 +158,7 @@ export default function SettingsPanel({
           sx={{
             '& .MuiOutlinedInput-root': {
               bgcolor: 'var(--ov-bg-surface)',
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
               fontSize: 'var(--ov-text-sm)',
               '& fieldset': { borderColor: 'var(--ov-border-default)' },
             },

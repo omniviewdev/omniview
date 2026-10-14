@@ -221,7 +221,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
         sx={{
           fontSize: 'var(--ov-text-xs)',
           color: 'var(--ov-fg-default)',
-          fontFamily: 'var(--ov-font-mono)',
+          fontFamily: 'var(--ovl-font-mono)',
         }}
       >
         {value}
