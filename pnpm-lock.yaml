@@ -38,13 +38,13 @@ importers:
         version: 4.7.0(monaco-editor@0.47.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/ai-ui':
         specifier: ^1.0.1
-        version: 1.0.1(@omniviewdev/base-ui@0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react-icons@5.5.0(react@19.2.4))(react@19.2.4)
+        version: 1.0.1(@omniviewdev/base-ui@0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react-icons@5.5.0(react@19.2.4))(react@19.2.4)
       '@omniviewdev/base-ui':
-        specifier: ^0.2.1
-        version: 0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: ^0.2.2
+        version: 0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/editors':
         specifier: ^1.0.1
-        version: 1.0.1(@omniviewdev/base-ui@0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.0.1(@omniviewdev/base-ui@0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/providers':
         specifier: workspace:*
         version: link:packages/omniviewdev-providers
@@ -310,8 +310,8 @@ importers:
         version: 0.10.3
     devDependencies:
       '@omniviewdev/base-ui':
-        specifier: ^0.2.1
-        version: 0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: ^0.2.2
+        version: 0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tanstack/react-query':
         specifier: ^5.76.1
         version: 5.76.1(react@19.2.4)
@@ -367,8 +367,8 @@ importers:
         specifier: ^4.6.0
         version: 4.7.0(monaco-editor@0.47.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/base-ui':
-        specifier: ^0.2.1
-        version: 0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: ^0.2.2
+        version: 0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/runtime':
         specifier: workspace:*
         version: link:../../../packages/omniviewdev-runtime
@@ -449,8 +449,8 @@ importers:
         specifier: ^4.6.0
         version: 4.7.0(monaco-editor@0.47.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/base-ui':
-        specifier: ^0.2.1
-        version: 0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: ^0.2.2
+        version: 0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/runtime':
         specifier: workspace:*
         version: link:../../../packages/omniviewdev-runtime
@@ -573,8 +573,8 @@ importers:
         specifier: ^4.6.0
         version: 4.7.0(monaco-editor@0.47.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/base-ui':
-        specifier: ^0.2.1
-        version: 0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: ^0.2.2
+        version: 0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/runtime':
         specifier: workspace:*
         version: link:../../../packages/omniviewdev-runtime
@@ -1645,8 +1645,8 @@ packages:
       react-dom: ^19.0.0
       react-icons: ^5.6.0
 
-  '@omniviewdev/base-ui@0.2.1':
-    resolution: {integrity: sha512-jNUw8+RSS0y4yWinMEhHG+rAko+cpAL6LIWhDtP/qrTQnWaDMbHqGsWz7LbMoEh+JxVtMkxszkWkKHZOnC+9yg==}
+  '@omniviewdev/base-ui@0.2.2':
+    resolution: {integrity: sha512-RbUYeKiEMMNxr+R9ZgeaBYMBFdUPIpNncCFs3OcNevsqCpHlBh5DQHu+ys6UwJB0YK4v5z84qI+R9I6UhTMkAg==}
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
@@ -7309,9 +7309,9 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.19.1
 
-  '@omniviewdev/ai-ui@1.0.1(@omniviewdev/base-ui@0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react-icons@5.5.0(react@19.2.4))(react@19.2.4)':
+  '@omniviewdev/ai-ui@1.0.1(@omniviewdev/base-ui@0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react-icons@5.5.0(react@19.2.4))(react@19.2.4)':
     dependencies:
-      '@omniviewdev/base-ui': 0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@omniviewdev/base-ui': 0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tanstack/react-virtual': 3.13.23(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
@@ -7322,7 +7322,7 @@ snapshots:
       - '@types/react'
       - supports-color
 
-  '@omniviewdev/base-ui@0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@omniviewdev/base-ui@0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
       '@base-ui/react': 1.3.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@dnd-kit/core': 6.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -7337,9 +7337,9 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@omniviewdev/editors@1.0.1(@omniviewdev/base-ui@0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@omniviewdev/editors@1.0.1(@omniviewdev/base-ui@0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
-      '@omniviewdev/base-ui': 0.2.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@omniviewdev/base-ui': 0.2.2(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@xterm/addon-fit': 0.11.0
       '@xterm/addon-search': 0.16.0
       '@xterm/addon-serialize': 0.14.0

@@ -25,7 +25,7 @@
     "@grafana/faro-web-tracing": "^2.2.4",
     "@monaco-editor/react": "^4.7.0",
     "@omniviewdev/ai-ui": "^1.0.1",
-    "@omniviewdev/base-ui": "^0.2.1",
+    "@omniviewdev/base-ui": "^0.2.2",
     "@omniviewdev/editors": "^1.0.1",
     "@omniviewdev/providers": "workspace:*",
     "@omniviewdev/runtime": "workspace:*",
