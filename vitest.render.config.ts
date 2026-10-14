@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import appConfig from './vite.config';
+import { wailsBindingIndex } from './bench/vite/wails-binding-index';
 
 const root = import.meta.dirname;
 const bindingsRoot = path.join(root, 'packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview');
@@ -19,39 +20,6 @@ const k8sPluginSrc = path.join(root, 'plugins/kubernetes/ui/src');
 // builds unless BENCH_REACT_DEV=1 (useful for readable errors while writing a bench).
 const reactDev = process.env.BENCH_REACT_DEV === '1';
 const nodeEnv = JSON.stringify(reactDev ? 'development' : 'production');
-
-/**
- * Exposes `virtual:wails-binding-index`: generated binding method IDs mapped to
- * "<path under the omniview module>.<Method>", e.g.
- * 3093409425 -> "backend/pkg/plugin/resource/servicewrapper.List".
- * The fake backend uses it to route `Call.ByID` to fixture handlers by name.
- */
-function wailsBindingIndex(): Plugin {
-  const id = 'virtual:wails-binding-index';
-  const resolved = '\0' + id;
-  return {
-    name: 'wails-binding-index',
-    resolveId: (source) => (source === id ? resolved : undefined),
-    load(source) {
-      if (source !== resolved) return;
-      const index: Record<string, string> = {};
-      const walk = (dir: string) => {
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-          const full = path.join(dir, entry.name);
-          if (entry.isDirectory()) { walk(full); continue; }
-          if (!entry.name.endsWith('.ts')) continue;
-          const module = path.relative(bindingsRoot, full).replace(/\.ts$/, '');
-          const src = fs.readFileSync(full, 'utf8');
-          for (const m of src.matchAll(/export function (\w+)\([^)]*\)[^{]*\{\s*return \$Call\.ByID\((\d+)/g)) {
-            index[m[2]] = `${module}.${m[1]}`;
-          }
-        }
-      };
-      walk(bindingsRoot);
-      return `export default ${JSON.stringify(index)};`;
-    },
-  };
-}
 
 /**
  * Resolution for kubernetes plugin source: its own `@/` alias (its ui/src) must
@@ -108,7 +76,7 @@ const app = appConfig as UserConfig;
 const appAliases = Object.keys((app.resolve?.alias ?? {}) as Record<string, string>);
 
 export default defineConfig({
-  plugins: [k8sPluginAlias(), wailsBindingIndex(), ...(app.plugins ?? [])],
+  plugins: [k8sPluginAlias(), wailsBindingIndex(bindingsRoot), ...(app.plugins ?? [])],
   resolve: {
     ...app.resolve,
     dedupe: [...(app.resolve?.dedupe ?? []), '@wailsio/runtime', '@tanstack/react-query', 'react-router-dom', 'react-router'],
