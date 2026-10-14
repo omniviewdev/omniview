@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -495,4 +496,34 @@ func TestStart_StopsOnContextCancel(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("Start did not return after context cancellation")
 	}
+}
+
+// checkAll and the crash-recovery paths run concurrently with the loader,
+// which writes pm.records under pm.recordsMu. The health checker must take the
+// same lock, or -race reports the map access (and Go can fault on it).
+func TestHealthChecker_ConcurrentWithRecordWrites(t *testing.T) {
+	hc, pm := newTestHealthChecker(t)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 200 {
+			id := fmt.Sprintf("plugin-%d", i%5)
+			pm.recordsMu.Lock()
+			pm.records[id] = &plugintypes.PluginRecord{
+				ID:      id,
+				Phase:   lifecycle.PhaseRunning,
+				Backend: &mockBackend{},
+			}
+			pm.recordsMu.Unlock()
+		}
+	}()
+
+	for range 200 {
+		hc.checkAll()
+		hc.mu.Lock()
+		hc.markFailedLocked("plugin-0", "boom", "test")
+		hc.mu.Unlock()
+	}
+	<-done
 }
