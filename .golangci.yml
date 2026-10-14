@@ -175,10 +175,12 @@ linters:
       - linters:
           - bodyclose
           - dupl
+          - exhaustruct
           - funlen
           - goconst
           - gosec
           - noctx
+          - testpackage
         path: _test\.go
     paths:
       - third_party$
