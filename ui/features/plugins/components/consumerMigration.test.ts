@@ -116,34 +116,6 @@ describe('23.3 PluginRenderer (ui/features/plugins/components/PluginRenderer.tsx
   });
 });
 
-// ---------------------------------------------------------------------------
-// 23.4 — PluginLoadErrorPage
-// ---------------------------------------------------------------------------
-describe('23.4 PluginLoadErrorPage (ui/features/plugins/components/PluginLoadErrorPage.tsx)', () => {
-  const rel = 'ui/features/plugins/components/PluginLoadErrorPage.tsx';
-  const getSource = () => readSource(rel);
-
-  it('15. Uses usePluginService from barrel (not old usePluginRegistry)', () => {
-    const source = getSource();
-    expect(source).toContain('usePluginService');
-    expect(source).not.toContain('usePluginRegistry');
-  });
-
-  it('16. Has retry action (calls retry)', () => {
-    const source = getSource();
-    expect(source).toMatch(/retry/i);
-  });
-
-  it('17. Has reset/forceReset action', () => {
-    const source = getSource();
-    expect(source).toMatch(/reset|forceReset/i);
-  });
-
-  it('18. References validationErrors', () => {
-    const source = getSource();
-    expect(source).toContain('validationErrors');
-  });
-});
 
 // ---------------------------------------------------------------------------
 // 23.5 — AppStatusFooter

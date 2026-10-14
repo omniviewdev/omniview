@@ -19,6 +19,12 @@ The active plugin list/detail files and active `parseAnsi` implementation/tests 
 - Base-relative diff check for `parseAnsi.ts`, `parseAnsi.spec.ts`, `InstalledPlugins.tsx`, `PluginListItem.tsx`, and `PluginDetails.tsx`: passed; no changes.
 - `pnpm exec vitest run ui/providers/BottomDrawer/containers/LogViewer/utils/parseAnsi.spec.ts`: blocked before test execution because pnpm reported `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` (the current overrides configuration differs from the lockfile). The lockfile was not changed because dependency repair is outside this task.
 
+## Review fix
+
+- Deleted the obsolete `23.4 PluginLoadErrorPage` block (four source-structure tests) from `ui/features/plugins/components/consumerMigration.test.ts`; shared imports and `readSource` remain in use by unrelated tests.
+- Focused command: `pnpm exec vitest run ui/features/plugins/components/consumerMigration.test.ts`.
+- Output: not executed because the already-observed pnpm dependency preflight blocker applies before Vitest starts: `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` (current overrides configuration differs from the lockfile).
+
 ## Concerns
 
-The repository still contains prose/source-structure references to deleted plugin components in `ui/App.tsx`, `ui/features/plugins/README.md`, and `ui/features/plugins/consumerMigration.test.ts`. They are not production module references and were left unchanged to honor the brief's six-path-only scope and prohibition on source-structure test work.
+The deferred prose references to deleted plugin components remain in `ui/App.tsx` and `ui/features/plugins/README.md`; they are intentionally outside this review fix.
