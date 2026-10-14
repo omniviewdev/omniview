@@ -1,14 +1,6 @@
 import { useState, type FC } from 'react';
 
-// Material-ui
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import Rating from '@mui/material/Rating';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text, Heading } from '@omniviewdev/ui/typography';
-import { Avatar, Chip } from '@omniviewdev/ui';
-import { Button } from '@omniviewdev/ui/buttons';
-import { Tabs, TabPanel } from '@omniviewdev/ui/navigation';
+import { Avatar, Button, Chip, Heading, Separator, Stack, Tabs, Text } from '@omniviewdev/base-ui';
 
 // Third party
 import MarkdownPreview from '@uiw/react-markdown-preview';
@@ -21,6 +13,9 @@ import UninstallPluginModal from './UninstallPluginModal';
 import PluginChangelog from './sections/PluginChangelog';
 import { IsImage } from '@/utils/url';
 import Icon from '@/components/icons/Icon';
+import StarRating from './StarRating';
+import markdownStyles from './PluginMarkdown.module.css';
+import styles from './PluginDetails.module.css';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -52,89 +47,88 @@ const PluginDetails: FC = () => {
 
   if (!marketplace && !installed) {
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-        <Text size='sm' sx={{ color: 'text.secondary' }}>Plugin not found</Text>
-      </Box>
+      <div className={styles.NotFound}>
+        <Text size='sm' tone='muted'>Plugin not found</Text>
+      </div>
     );
   }
 
   return (
-    <Box sx={{ maxHeight: 'calc(100vh - 60px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', p: 2.5 }}>
+    <div className={styles.Root}>
       {/* Plugin header */}
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', mb: 2 }}>
+      <div className={styles.Header}>
         {/* Icon */}
-        <Box sx={{ width: 48, height: 48, flexShrink: 0 }}>
+        <div className={styles.IconBox}>
           {displayIcon && IsImage(displayIcon) ? (
             <Avatar
               src={displayIcon}
-              sx={{ height: 48, width: 48, borderRadius: 1.5, backgroundColor: 'transparent', border: 0 }}
+              alt={displayName}
+              shape='rounded'
+              className={`${styles.Avatar} ${styles.AvatarImage}`}
             />
           ) : displayIcon ? (
             <Icon name={displayIcon} size={48} />
           ) : (
-            <Avatar sx={{ height: 48, width: 48, borderRadius: 1.5 }}>{displayName[0]}</Avatar>
+            <Avatar shape='rounded' className={styles.Avatar} fallback={displayName[0]} />
           )}
-        </Box>
+        </div>
 
         {/* Info */}
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Stack direction='row' spacing={1.5} alignItems='center'>
+        <div className={styles.Info}>
+          <Stack direction='row' spacing={3} align='center'>
             <Heading level={3}>{displayName}</Heading>
             {displayVersion && (
-              <Chip size='sm' color='primary' label={displayVersion} sx={{ borderRadius: 1, maxHeight: 22 }} />
+              <Chip size='sm' color='brand' variant='soft' className={styles.HeaderChip}>{displayVersion}</Chip>
             )}
             {marketplace?.official && (
-              <Chip size='sm' color='success' emphasis='soft' label='Official' sx={{ maxHeight: 22 }} />
+              <Chip size='sm' color='success' variant='soft' className={styles.HeaderChip}>Official</Chip>
             )}
           </Stack>
 
-          <Text size='sm' sx={{ color: 'text.secondary', mt: 0.5 }}>
+          <Text as='p' size='sm' tone='muted' className={styles.Description}>
             {displayDescription}
           </Text>
 
           {/* Metadata row */}
-          <Stack direction='row' spacing={2} alignItems='center' sx={{ mt: 1 }} flexWrap='wrap'>
+          <Stack direction='row' spacing={4} align='center' wrap className={styles.MetaRow}>
             {displayCategory && (
-              <Chip size='xs' color='neutral' emphasis='outline' label={displayCategory} />
+              <Chip size='xs' color='neutral' variant='outline'>{displayCategory}</Chip>
             )}
             {displayLicense && (
-              <Text size='xs' sx={{ color: 'text.secondary' }}>{displayLicense}</Text>
+              <Text size='xs' tone='muted'>{displayLicense}</Text>
             )}
-            <Stack direction='row' spacing={0.5} alignItems='center'>
-              <Rating
+            <Stack direction='row' spacing={1} align='center'>
+              <StarRating
                 value={marketplace?.average_rating ?? 0}
                 precision={0.5}
-                readOnly
-                size='small'
-                sx={{ fontSize: '0.85rem' }}
+                size={13}
               />
-              <Text size='xs' sx={{ color: 'text.secondary' }}>
+              <Text size='xs' tone='muted'>
                 ({marketplace?.review_count ?? 0})
               </Text>
             </Stack>
             {marketplace?.download_count > 0 && (
-              <Stack direction='row' spacing={0.5} alignItems='center'>
+              <Stack direction='row' spacing={1} align='center'>
                 <LuDownload size={12} />
-                <Text size='xs' sx={{ color: 'text.secondary' }}>
+                <Text size='xs' tone='muted'>
                   {formatDownloads(marketplace.download_count)}
                 </Text>
               </Stack>
             )}
             {displayRepository && (
-              <Box
-                component='span'
+              <span
+                className={styles.RepoLink}
                 onClick={() => Browser.OpenURL(displayRepository)}
-                sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:hover': { opacity: 0.8 } }}
               >
                 <LuExternalLink size={12} />
-                <Text size='xs' sx={{ color: 'text.secondary' }}>Repository</Text>
-              </Box>
+                <Text size='xs' tone='muted'>Repository</Text>
+              </span>
             )}
           </Stack>
-        </Box>
+        </div>
 
         {/* Install/Update/Uninstall buttons */}
-        <Stack direction='row' spacing={1} sx={{ flexShrink: 0, pt: 0.5 }}>
+        <Stack direction='row' spacing={2} className={styles.HeaderActions}>
           <PluginUpdateButton
             pluginID={id}
             installed={!!installed}
@@ -142,7 +136,7 @@ const PluginDetails: FC = () => {
           />
           {!!installed && (
             <Button
-              emphasis='outline'
+              variant='outline'
               color='danger'
               size='sm'
               onClick={() => setUninstallModalOpen(true)}
@@ -151,7 +145,7 @@ const PluginDetails: FC = () => {
             </Button>
           )}
         </Stack>
-      </Box>
+      </div>
 
       <UninstallPluginModal
         open={uninstallModalOpen}
@@ -165,134 +159,117 @@ const PluginDetails: FC = () => {
         }}
       />
 
-      <Divider />
+      <Separator />
 
       {/* Tabs */}
-      <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <Tabs
-          tabs={[...TABS]}
-          value={activeTab}
-          onChange={setActiveTab}
-          size='sm'
-        />
-        <Box sx={{ flex: 1, overflow: 'auto', mt: 1 }}>
-          <TabPanel value='overview' activeValue={activeTab}>
+      <Tabs.Root
+        value={activeTab}
+        onValueChange={(value) => {
+          setActiveTab(String(value));
+        }}
+        size='sm'
+        className={styles.Tabs}
+      >
+        <Tabs.List>
+          {TABS.map(tab => (
+            <Tabs.Tab key={tab.key} value={tab.key}>{tab.label}</Tabs.Tab>
+          ))}
+          <Tabs.Indicator />
+        </Tabs.List>
+        <div className={styles.TabContent}>
+          <Tabs.Panel value='overview'>
             {readme.isLoading ? (
-              <Text size='sm' sx={{ color: 'text.secondary', p: 2 }}>Loading readme...</Text>
+              <Text as='p' size='sm' tone='muted' className={styles.PaddedText}>Loading readme...</Text>
             ) : readme.data ? (
-              <Box
-                data-color-mode="dark"
-                sx={{
-                  '& .wmde-markdown': {
-                    backgroundColor: 'transparent !important',
-                    fontSize: '0.8125rem',
-                    lineHeight: 1.65,
-                  },
-                  '& .wmde-markdown h1': { fontSize: '1.35rem', mt: 2, mb: 1 },
-                  '& .wmde-markdown h2': { fontSize: '1.1rem', mt: 2, mb: 0.75 },
-                  '& .wmde-markdown h3': { fontSize: '0.95rem', mt: 1.5, mb: 0.5 },
-                  '& .wmde-markdown h4': { fontSize: '0.875rem', mt: 1.5, mb: 0.5 },
-                  '& .wmde-markdown p': { fontSize: '0.8125rem', my: 0.75 },
-                  '& .wmde-markdown li': { fontSize: '0.8125rem' },
-                  '& .wmde-markdown code': { fontSize: '0.75rem' },
-                  '& .wmde-markdown table': { fontSize: '0.8125rem' },
-                }}
-              >
+              <div data-color-mode='dark' className={markdownStyles.Markdown}>
                 <MarkdownPreview
                   source={readme.data}
                   style={{ backgroundColor: 'transparent', overflow: 'auto' }}
                 />
-              </Box>
+              </div>
             ) : (
-              <Text size='sm' sx={{ color: 'text.secondary', p: 2 }}>No details available</Text>
+              <Text as='p' size='sm' tone='muted' className={styles.PaddedText}>No details available</Text>
             )}
-          </TabPanel>
+          </Tabs.Panel>
 
-          <TabPanel value='versions' activeValue={activeTab}>
+          <Tabs.Panel value='versions'>
             {releaseHistory.isLoading ? (
-              <Text size='sm' sx={{ color: 'text.secondary' }}>Loading versions...</Text>
+              <Text size='sm' tone='muted'>Loading versions...</Text>
             ) : releaseHistory.data?.length ? (
-              <Stack direction='column' gap={2}>
+              <Stack direction='column' spacing={4}>
                 {releaseHistory.data.map((v: any) => (
-                  <Box
-                    key={v.version}
-                    sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
-                  >
-                    <Stack direction='row' spacing={1.5} alignItems='center'>
+                  <div key={v.version} className={styles.Card}>
+                    <Stack direction='row' spacing={3} align='center'>
                       <Text weight='semibold'>{v.version}</Text>
                       {v.created_at && (
-                        <Text size='xs' sx={{ color: 'text.secondary' }}>
+                        <Text size='xs' tone='muted'>
                           {new Date(v.created_at).toLocaleDateString()}
                         </Text>
                       )}
                     </Stack>
                     {v.capabilities?.length > 0 && (
-                      <Stack direction='row' spacing={0.5} sx={{ mt: 1 }}>
+                      <Stack direction='row' spacing={1} className={styles.CardRow}>
                         {v.capabilities.map((cap: string) => (
-                          <Chip key={cap} size='xs' color='neutral' emphasis='outline' label={cap} />
+                          <Chip key={cap} size='xs' color='neutral' variant='outline'>{cap}</Chip>
                         ))}
                       </Stack>
                     )}
-                  </Box>
+                  </div>
                 ))}
               </Stack>
             ) : (
-              <Text size='sm' sx={{ color: 'text.secondary' }}>No version history available</Text>
+              <Text size='sm' tone='muted'>No version history available</Text>
             )}
-          </TabPanel>
+          </Tabs.Panel>
 
-          <TabPanel value='reviews' activeValue={activeTab}>
+          <Tabs.Panel value='reviews'>
             {/* Rating summary */}
-            <Box sx={{ mb: 2, p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-              <Stack direction='row' spacing={2} alignItems='center'>
-                <Text size='xl' weight='bold'>{(marketplace?.average_rating ?? 0).toFixed(1)}</Text>
-                <Rating
+            <div className={`${styles.Card} ${styles.RatingSummary}`}>
+              <Stack direction='row' spacing={4} align='center'>
+                <Text size='xl' weight='semibold' className={styles.RatingValue}>{(marketplace?.average_rating ?? 0).toFixed(1)}</Text>
+                <StarRating
                   value={marketplace?.average_rating ?? 0}
                   precision={0.5}
-                  readOnly
-                  sx={{ fontSize: '1.25rem' }}
+                  size={20}
                 />
-                <Text size='sm' sx={{ color: 'text.secondary' }}>
+                <Text size='sm' tone='muted'>
                   {marketplace?.review_count ?? 0} {(marketplace?.review_count ?? 0) === 1 ? 'review' : 'reviews'}
                 </Text>
               </Stack>
-            </Box>
+            </div>
 
             {reviews.isLoading ? (
-              <Text size='sm' sx={{ color: 'text.secondary' }}>Loading reviews...</Text>
+              <Text size='sm' tone='muted'>Loading reviews...</Text>
             ) : reviews.data?.length ? (
-              <Stack direction='column' gap={2}>
+              <Stack direction='column' spacing={4}>
                 {reviews.data.map((review: any) => (
-                  <Box
-                    key={review.id}
-                    sx={{ p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
-                  >
-                    <Stack direction='row' spacing={1} alignItems='center'>
-                      <Rating value={review.rating} readOnly size='small' sx={{ fontSize: '0.9rem' }} />
+                  <div key={review.id} className={styles.Card}>
+                    <Stack direction='row' spacing={2} align='center'>
+                      <StarRating value={review.rating} size={14} />
                       {review.title && <Text size='sm' weight='semibold'>{review.title}</Text>}
                       {review.created_at && (
-                        <Text size='xs' sx={{ color: 'text.secondary' }}>
+                        <Text size='xs' tone='muted'>
                           {new Date(review.created_at).toLocaleDateString()}
                         </Text>
                       )}
                     </Stack>
                     {review.body && (
-                      <Text size='sm' sx={{ mt: 1 }}>{review.body}</Text>
+                      <Text as='p' size='sm' className={styles.CardRow}>{review.body}</Text>
                     )}
-                  </Box>
+                  </div>
                 ))}
               </Stack>
             ) : (
-              <Text size='sm' sx={{ color: 'text.secondary' }}>No reviews yet</Text>
+              <Text size='sm' tone='muted'>No reviews yet</Text>
             )}
-          </TabPanel>
+          </Tabs.Panel>
 
-          <TabPanel value='changelog' activeValue={activeTab}>
+          <Tabs.Panel value='changelog'>
             <PluginChangelog id={id} />
-          </TabPanel>
-        </Box>
-      </Box>
-    </Box>
+          </Tabs.Panel>
+        </div>
+      </Tabs.Root>
+    </div>
   );
 };
 

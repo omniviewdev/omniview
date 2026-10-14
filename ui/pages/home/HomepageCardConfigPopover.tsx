@@ -1,13 +1,7 @@
 import React from 'react';
-import Popover from '@mui/material/Popover';
-import Box from '@mui/material/Box';
-import Checkbox from '@mui/material/Checkbox';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import FormGroup from '@mui/material/FormGroup';
-import TextField from '@mui/material/TextField';
-import { Text } from '@omniviewdev/ui/typography';
-import { Stack } from '@omniviewdev/ui/layout';
+import { Checkbox, Popover, Text, TextField } from '@omniviewdev/base-ui';
 import type { HomepageCardConfig, HomepageCardMeta } from '@/features/extensions/homepage/types';
+import styles from './HomepageCardConfigPopover.module.css';
 
 type Props = {
   anchorEl: HTMLElement | null;
@@ -50,53 +44,58 @@ const HomepageCardConfigPopover: React.FC<Props> = ({
   })();
 
   return (
-    <Popover
+    <Popover.Root
       open={Boolean(anchorEl)}
-      anchorEl={anchorEl}
-      onClose={onClose}
-      anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <Box sx={{ p: 2, minWidth: 200 }}>
-        <Stack direction="column" gap={1.5}>
-          <Text size="sm" weight="semibold">
-            Card Settings
-          </Text>
+      <Popover.Portal>
+        <Popover.Positioner anchor={anchorEl} side='bottom' align='end' sideOffset={4}>
+          <Popover.Popup className={styles.Popup}>
+            <div className={styles.Body}>
+              <Text size='sm' weight='semibold'>
+                Card Settings
+              </Text>
 
-          <Box>
-            <Text size="xs" sx={{ color: 'text.secondary', mb: 0.5 }}>
-              Sections
-            </Text>
-            <FormGroup>
-              {allSections.map((section) => (
-                <FormControlLabel
-                  key={section}
-                  control={
+              <div className={styles.Sections}>
+                <Text size='xs' tone='muted'>
+                  Sections
+                </Text>
+                <div className={styles.SectionList}>
+                  {allSections.map((section) => (
                     <Checkbox
-                      size="small"
+                      key={section}
+                      size='sm'
                       checked={config.sections.includes(section)}
-                      onChange={() => toggleSection(section)}
-                    />
-                  }
-                  label={<Text size="sm">{section}</Text>}
-                />
-              ))}
-            </FormGroup>
-          </Box>
+                      onCheckedChange={() => {
+                        toggleSection(section);
+                      }}
+                    >
+                      <Text size='sm'>{section}</Text>
+                    </Checkbox>
+                  ))}
+                </div>
+              </div>
 
-          <TextField
-            label="Max items per section"
-            type="number"
-            size="small"
-            value={maxItemsInput}
-            onChange={handleMaxItems}
-            inputProps={{ min: 1, max: 20 }}
-            error={Boolean(maxItemsError)}
-            helperText={maxItemsError ?? undefined}
-          />
-        </Stack>
-      </Box>
-    </Popover>
+              <TextField.Root size='sm' invalid={Boolean(maxItemsError)} className={styles.Field}>
+                <TextField.Label>Max items per section</TextField.Label>
+                <TextField.Control
+                  type='number'
+                  value={maxItemsInput}
+                  onChange={handleMaxItems}
+                  min={1}
+                  max={20}
+                />
+                {maxItemsError && (
+                  <Text size='xs' tone='danger'>{maxItemsError}</Text>
+                )}
+              </TextField.Root>
+            </div>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 };
 

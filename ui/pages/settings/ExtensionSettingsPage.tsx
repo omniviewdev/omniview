@@ -1,17 +1,41 @@
 import Icon from '@/components/icons/Icon';
-import Box from '@mui/material/Box';
-import { useTheme } from '@mui/material/styles';
-import { useMediaQuery } from '@mui/material';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
-import { Card, Chip, List, ListItem } from '@omniviewdev/ui';
+import { Card, Chip, Text } from '@omniviewdev/base-ui';
 import { useExtensionRegistry, type ExtensionPointSettings, type ExtensionPointStore } from '@omniviewdev/runtime';
 import React from 'react';
+import styles from './ExtensionSettingsPage.module.css';
+
+/** Subscribe to a CSS media query (replacement for MUI's `useMediaQuery`). */
+const useMediaQuery = (query: string): boolean => {
+  const getMatches = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia(query).matches
+    : false;
+  const [matches, setMatches] = React.useState(getMatches);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+
+    const mql = window.matchMedia(query);
+    const onChange = () => {
+      setMatches(mql.matches);
+    };
+
+    onChange();
+    mql.addEventListener('change', onChange);
+
+    return () => {
+      mql.removeEventListener('change', onChange);
+    };
+  }, [query]);
+
+  return matches;
+};
 
 const ExtensionSettingsPage: React.FC = () => {
-  const theme = useTheme();
   const extensions = useExtensionRegistry();
-  const isNormalScreenSize = useMediaQuery(theme.breakpoints.up('lg'));
+  // MUI `lg` breakpoint
+  const isNormalScreenSize = useMediaQuery('(min-width: 1200px)');
 
   const [selected, setSelected] = React.useState<ExtensionPointStore<any> | undefined>(undefined);
   const [selectedSettings, setSelectedSettings] = React.useState<ExtensionPointSettings | undefined>(undefined);
@@ -26,138 +50,72 @@ const ExtensionSettingsPage: React.FC = () => {
   };
 
   return (
-    <Stack
-      direction={'column'}
-      gap={2}
-      sx={{
-        width: '100%',
-        maxWidth: '100%',
-        height: '100%',
-        maxHeight: '100%',
-      }}
-    >
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'center',
-          borderRadius: 2,
-          width: '100%',
-          py: 1,
-          px: 2,
-          gap: 1.5,
-          border: '1px solid',
-          borderColor: 'divider',
-        }}
-      >
+    <div className={styles.Root}>
+      <div className={styles.Header}>
         <Icon name={'LuBrainCircuit'} size={isNormalScreenSize ? 20 : 30} />
-        <Stack
-          sx={{
-            display: 'flex',
-            flexDirection: {
-              xs: 'column',
-              lg: 'row',
-            },
-            justifyContent: {
-              xs: 'flex-start',
-              lg: 'space-between',
-            },
-            alignItems: {
-              xs: 'flex-start',
-              lg: 'center',
-            },
-            borderRadius: 12,
-            width: '100%',
-          }}
-        >
+        <div className={styles.HeaderText}>
           <Text weight='semibold' size={isNormalScreenSize ? 'lg' : 'md'}>
             Extension
           </Text>
           <Text size='xs'>
             View and manage the installed extensions in the IDE
           </Text>
-        </Stack>
-      </Box>
+        </div>
+      </div>
 
       {/* Render the settings section here */}
-      <Box
-        sx={{
-          width: '100%',
-          overflow: 'auto',
-          display: 'flex',
-          flexGrow: 1,
-          gap: 2,
-        }}
-      >
+      <div className={styles.Body}>
 
-        <Card
-          sx={{ p: 0.5, border: '1px solid', borderColor: 'divider' }}
-        >
-          <Box sx={{ p: 2 }}>
-            <Stack spacing={0} direction={'column'}>
-              <Text sx={{ p: 1, fontWeight: 700, fontSize: '1.25rem' }}>Extension Points</Text>
-              <List
-                size={'sm'}
-                sx={{ width: 350, borderRadius: 2, bgcolor: 'action.hover' }}
-              >
-                {extensions?.listExtensionPoints().map((extension) => (
-                  <ListItem key={extension.id}>
-                    <Box
-                      sx={{
-                        cursor: 'pointer',
-                        p: 1,
-                        borderRadius: 1,
-                        width: '100%',
-                        bgcolor: selected?.settings().id === extension.id ? 'action.selected' : 'transparent',
-                      }}
-                      onClick={() => {
-                        selectExtensionPoint(extension.id);
-                      }}
-                    >
-                      {extension.id}
-                    </Box>
-                  </ListItem>
-                ))}
-              </List>
-            </Stack>
-          </Box>
+        <Card className={styles.PointsCard}>
+          <div className={styles.PointsCardInner}>
+            <Text size='xl' weight='semibold' className={styles.PointsTitle}>Extension Points</Text>
+            <div className={styles.PointsList} role='list'>
+              {extensions?.listExtensionPoints().map((extension) => (
+                <div key={extension.id} role='listitem'>
+                  <button
+                    type='button'
+                    className={styles.PointItem}
+                    data-selected={selected?.settings().id === extension.id}
+                    onClick={() => {
+                      selectExtensionPoint(extension.id);
+                    }}
+                  >
+                    <Text size='sm'>{extension.id}</Text>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </Card>
 
         {selected && (
-          <Box
-            sx={{
-              backgroundColor: theme.palette.background.paper,
-              width: '100%',
-              overflow: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              flexGrow: 1,
-            }}
-          >
+          <div className={styles.Detail}>
 
-            <Card sx={{ border: '1px solid', borderColor: 'divider' }}>
-              <Box sx={{ p: 2 }}>
-                <Stack direction="row" gap={2} justifyContent={'space-between'}>
-                  <Stack direction='row' alignItems='center' gap={1}>
+            <Card className={styles.DetailCard}>
+              <div className={styles.DetailCardInner}>
+                <div className={styles.DetailRow}>
+                  <div className={styles.DetailTitle}>
                     <Text weight='semibold'>
                       {selectedSettings?.name}
                     </Text>
-                    <Chip variant='outlined' sx={{ borderRadius: 1, ml: 1 }} label={`${selectedSettings?.mode} display`} />
-                  </Stack>
+                    <Chip variant='outline' color='neutral' size='sm' className={styles.ModeChip}>
+                      {`${selectedSettings?.mode} display`}
+                    </Chip>
+                  </div>
                   {selectedSettings?.mode &&
-                    <Chip color='primary' sx={{ borderRadius: 1 }} label={selectedSettings?.id ?? ''} />
+                    <Chip variant='soft' color='brand' size='sm'>{selectedSettings?.id ?? ''}</Chip>
                   }
-                </Stack>
-                <Stack direction="row" gap={2} justifyContent={'space-between'}>
+                </div>
+                <div className={styles.DetailRow}>
                   <Text>{selectedSettings?.description}</Text>
-                </Stack>
-              </Box>
+                </div>
+              </div>
             </Card>
             <ExtensionPointDisplay extensionPoint={selected} />
-          </Box>
+          </div>
         )}
-      </Box>
-    </Stack>
+      </div>
+    </div>
   );
 };
 
@@ -170,24 +128,15 @@ const ExtensionPointDisplay: React.FC<ExtensionPointDisplayProps> = ({ extension
 
   if (!registrations?.length) {
     return (
-      <Box sx={{ height: '100%', width: '100%', textAlign: 'center', alignContent: 'center' }}>
+      <div className={styles.Empty}>
         <Text>No extensions have been registered for this extension point</Text>
-      </Box>
+      </div>
     );
   }
 
   return (
-    <Box
-      sx={{
-        width: '100%',
-        overflow: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-        flexGrow: 1,
-        gap: 2,
-      }}
-    >
-    </Box>
+    <div className={styles.Registrations}>
+    </div>
   );
 
 };

@@ -1,9 +1,4 @@
 import React from 'react';
-import Box from '@mui/material/Box';
-import Grid from '@mui/material/Grid';
-import Button from '@mui/material/Button';
-import EditIcon from '@mui/icons-material/Edit';
-import CheckIcon from '@mui/icons-material/Check';
 import {
   DndContext,
   DragOverlay,
@@ -24,20 +19,22 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useExtensionPoint } from '@omniviewdev/runtime';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Text } from '@omniviewdev/ui/typography';
+import { Button, Grid, Text } from '@omniviewdev/base-ui';
+import type { GridItemProps } from '@omniviewdev/base-ui';
+import { LuCheck, LuPencil } from 'react-icons/lu';
 import type { HomepageCardProps, HomepageCardMeta } from '@/features/extensions/homepage/types';
 import { useHomepageCardSettings } from '@/hooks/homepage/useHomepageCardSettings';
 import HomepageCard from './HomepageCard';
 import HomepageEmptyState from './HomepageEmptyState';
 import Welcome from '../welcome';
+import styles from './index.module.css';
 
 // ── Sortable card wrapper ─────────────────────────────────────────────────────
 
 type SortableCardProps = {
   id: string;
   children: React.ReactNode;
-  gridSize: Record<string, number>;
+  gridSize: GridItemProps['span'];
   isDragging: boolean;
   isEditMode: boolean;
 };
@@ -46,28 +43,25 @@ const SortableCard: React.FC<SortableCardProps> = ({ id, children, gridSize, isD
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id, disabled: !isEditMode });
 
   return (
-    <Grid
+    <Grid.Item
       ref={setNodeRef}
-      size={gridSize}
-      sx={{
-        display: 'flex',
+      span={gridSize}
+      className={styles.SortableItem}
+      data-dragging={isDragging}
+      style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        opacity: isDragging ? 0.3 : 1,
-        zIndex: isDragging ? 0 : 'auto',
       }}
     >
-      <Box
-        sx={{
-          width: '100%',
-          ...(isEditMode && { cursor: 'grab', '&:active': { cursor: 'grabbing' } }),
-        }}
+      <div
+        className={styles.DragHandle}
+        data-edit-mode={isEditMode}
         {...(isEditMode && attributes)}
         {...(isEditMode && listeners)}
       >
         {children}
-      </Box>
-    </Grid>
+      </div>
+    </Grid.Item>
   );
 };
 
@@ -165,7 +159,7 @@ const Home: React.FC = () => {
     );
   };
 
-  const getGridSize = (id: string) => {
+  const getGridSize = (id: string): GridItemProps['span'] => {
     const meta = (regMap[id]?.meta as HomepageCardMeta | undefined);
     const width = meta?.defaultWidth ?? 'medium';
     return width === 'small' ? { xs: 12, sm: 6, lg: 3 }
@@ -174,19 +168,20 @@ const Home: React.FC = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', p: 2, gap: 2 }}>
+    <div className={styles.Root}>
       {/* Page header */}
-      <Stack direction="row" alignItems="center" justifyContent="space-between">
-        <Text size="lg" weight="semibold">Home</Text>
+      <div className={styles.Header}>
+        <Text size='lg' weight='semibold'>Home</Text>
         <Button
-          size="small"
-          variant={isEditMode ? 'contained' : 'outlined'}
-          startIcon={isEditMode ? <CheckIcon /> : <EditIcon />}
+          size='sm'
+          variant={isEditMode ? 'solid' : 'outline'}
+          color='brand'
+          startDecorator={isEditMode ? <LuCheck size={16} /> : <LuPencil size={16} />}
           onClick={() => setIsEditMode((v) => !v)}
         >
           {isEditMode ? 'Done' : 'Edit Layout'}
         </Button>
-      </Stack>
+      </div>
 
       {/* Cards grid */}
       {visibleCount === 0 && !isEditMode ? (
@@ -200,7 +195,7 @@ const Home: React.FC = () => {
           onDragCancel={handleDragCancel}
         >
           <SortableContext items={idsToRender} strategy={rectSortingStrategy}>
-            <Grid container spacing={2} alignItems="stretch">
+            <Grid columns={12} spacing={4} className={styles.Grid}>
               {idsToRender.map((id) => (
                 <SortableCard
                   key={id}
@@ -217,14 +212,14 @@ const Home: React.FC = () => {
 
           <DragOverlay>
             {activeId && (
-              <Box sx={{ opacity: 0.85, pointerEvents: 'none', boxShadow: 6, borderRadius: 2 }}>
+              <div className={styles.DragOverlay}>
                 {renderCard(activeId)}
-              </Box>
+              </div>
             )}
           </DragOverlay>
         </DndContext>
       )}
-    </Box>
+    </div>
   );
 };
 

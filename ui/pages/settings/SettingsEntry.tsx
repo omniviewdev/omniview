@@ -1,20 +1,14 @@
 import React from 'react';
 
-// Material-ui
-import Autocomplete from '@mui/material/Autocomplete';
-import MuiTextField from '@mui/material/TextField';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { Checkbox } from '@omniviewdev/ui/inputs';
-import { TextField } from '@omniviewdev/ui/inputs';
-import { Select } from '@omniviewdev/ui/inputs';
-import { Stack } from '@omniviewdev/ui/layout';
+import { Checkbox, IconButton, MultiSelect, Select, TagInput, TextField } from '@omniviewdev/base-ui';
 
 // Hooks
 import { FileDialogOptions, SettingType } from '@omniviewdev/runtime/models';
 import type { Setting } from '@omniviewdev/runtime/models';
 import { parseAppError } from '@omniviewdev/runtime';
-import { LuFile } from 'react-icons/lu';
+import { LuChevronDown, LuFile } from 'react-icons/lu';
 import { OpenFileSelectionDialog } from '@omniviewdev/runtime/api';
+import styles from './SettingsEntry.module.css';
 
 type Props = {
   setting: Setting;
@@ -35,6 +29,54 @@ const toStringArray = (value: any): string[] => {
   }
   return [];
 };
+
+const cx = (...classes: Array<string | false | undefined>) => classes.filter(Boolean).join(' ');
+
+type SelectOption = { value: string; label: string };
+
+type SettingSelectProps = {
+  value: string;
+  options: SelectOption[];
+  isChanged: boolean;
+  onChange: (value: string) => void;
+};
+
+/**
+ * Single-value select over an `options` array (the call shape of the old
+ * `@omniviewdev/ui/inputs` Select), built on the base-ui Select compound.
+ */
+const SettingSelect: React.FC<SettingSelectProps> = ({ value, options, isChanged, onChange }) => (
+  <Select.Root
+    size='sm'
+    value={value}
+    items={options}
+    onValueChange={(next) => {
+      if (next !== null) {
+        onChange(next);
+      }
+    }}
+  >
+    <Select.Trigger className={cx(styles.SelectTrigger, isChanged && styles.Changed)}>
+      <Select.Value />
+      <Select.Icon>
+        <LuChevronDown aria-hidden />
+      </Select.Icon>
+    </Select.Trigger>
+    <Select.Portal>
+      <Select.Positioner sideOffset={4}>
+        <Select.Popup>
+          <Select.List>
+            {options.map(option => (
+              <Select.Item key={String(option.value)} value={option.value}>
+                <Select.ItemText>{option.label}</Select.ItemText>
+              </Select.Item>
+            ))}
+          </Select.List>
+        </Select.Popup>
+      </Select.Positioner>
+    </Select.Portal>
+  </Select.Root>
+);
 
 /**
  * Renders a single setting entry based on the type of setting.
@@ -100,27 +142,15 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
 
   // Normal single input
   return (
-    <TextField
-      size='sm'
-      fullWidth
-      value={isChanged ? draftValue as string : setting.value as string}
-      onChange={value => {
-        handleChange(id, value);
-      }}
-      sx={{
-        '&::before': {
-          display: 'none',
-        },
-        '&:focus-within': {
-          outline: '2px solid var(--Input-focusedHighlight)',
-          outlineOffset: '2px',
-        },
-        ...(isChanged && {
-          outline: '2px solid var(--Input-focusedHighlight)',
-          outlineOffset: '2px',
-        }),
-      }}
-    />
+    <TextField.Root size='sm' className={styles.Field}>
+      <TextField.Control
+        className={cx(isChanged && styles.Changed)}
+        value={isChanged ? draftValue as string : setting.value as string}
+        onChange={e => {
+          handleChange(id, e.target.value);
+        }}
+      />
+    </TextField.Root>
   );
 };
 
@@ -128,10 +158,9 @@ const SelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
   const isChanged = draftValue !== undefined;
 
   return (
-    <Select
-      size='sm'
-      fullWidth
+    <SettingSelect
       value={isChanged ? draftValue as string : setting.value as string}
+      isChanged={isChanged}
       onChange={(value) => {
         handleChange(id, value);
       }}
@@ -139,19 +168,6 @@ const SelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
         value: option.value as string,
         label: option.label,
       }))}
-      sx={{
-        '&::before': {
-          display: 'none',
-        },
-        '&:focus-within': {
-          outline: '2px solid var(--Select-focusedHighlight)',
-          outlineOffset: '2px',
-        },
-        ...(isChanged && {
-          outline: '2px solid var(--Select-focusedHighlight)',
-          outlineOffset: '2px',
-        }),
-      }}
     />
   );
 };
@@ -161,57 +177,34 @@ const MultiSelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleCh
   const selectedValues = toStringArray(isChanged ? draftValue : setting.value);
 
   return (
-    <Stack direction='row' spacing={1} width={'100%'}>
+    <div className={styles.MultiRow}>
       {setting.options?.length ? (
-        <Select
+        <MultiSelect
           size='sm'
-          fullWidth
-          multiple
+          className={cx(styles.MultiInput, isChanged && styles.Changed)}
           value={selectedValues}
-          onChange={(value) => {
+          onValueChange={(value) => {
             handleChange(id, value);
           }}
-          options={setting.options.map(option => ({
-            value: option.value as string,
-            label: option.label,
-          }))}
-          sx={{
-            '&::before': {
-              display: 'none',
-            },
-            '&:focus-within': {
-              outline: '2px solid var(--Select-focusedHighlight)',
-              outlineOffset: '2px',
-            },
-            ...(isChanged && {
-              outline: '2px solid var(--Select-focusedHighlight)',
-              outlineOffset: '2px',
-            }),
+          items={setting.options.map(option => option.value as string)}
+          getItemLabel={(value) => {
+            const option = setting.options.find((o: { value: unknown }) => o.value === value);
+            return option ? option.label : String(value);
           }}
         />
       ) : (
-        <Autocomplete
-          size='small'
-          multiple
-          freeSolo
+        <TagInput
+          size='sm'
+          className={cx(styles.MultiInput, isChanged && styles.Changed)}
           value={selectedValues}
-          onChange={(_, val) => {
+          onChange={(val) => {
             handleChange(id, val);
           }}
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          options={setting.options.map(option => ({ label: option.label, id: option.value }))}
-          sx={{
-            width: '100%',
-            ...(isChanged && {
-              outline: '2px solid var(--Select-focusedHighlight)',
-              outlineOffset: '2px',
-            }),
-          }}
-          renderInput={(params) => <MuiTextField {...params} placeholder={selectedValues.length > 0 ? undefined : 'Values'} />}
+          placeholder={selectedValues.length > 0 ? undefined : 'Values'}
         />
       )}
       {setting.fileSelection?.enabled ? (
-        <IconButton size='sm' emphasis='soft' onClick={async () => {
+        <IconButton size='sm' variant='soft' color='neutral' aria-label='Select files' onClick={async () => {
           if (!setting.fileSelection?.enabled) {
             return;
           }
@@ -232,14 +225,14 @@ const MultiSelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleCh
           <LuFile />
         </IconButton>
       ) : undefined}
-    </Stack>
+    </div>
   );
 };
 
 const ToggleSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange }) => (
   <Checkbox
     checked={draftValue !== undefined ? !!draftValue : !!setting.value}
-    onChange={checked => {
+    onCheckedChange={checked => {
       handleChange(id, checked);
     }}
   />
@@ -250,36 +243,23 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
 
   if (!setting.options?.length) {
     return (
-      <TextField
-        size='sm'
-        fullWidth
-        type='number'
-        value={isChanged ? String(+draftValue) : String(+setting.value)}
-        onChange={value => {
-          handleChange(id, +value);
-        }}
-        sx={{
-          '&::before': {
-            display: 'none',
-          },
-          '&:focus-within': {
-            outline: '2px solid var(--Input-focusedHighlight)',
-            outlineOffset: '2px',
-          },
-          ...(isChanged && {
-            outline: '2px solid var(--Input-focusedHighlight)',
-            outlineOffset: '2px',
-          }),
-        }}
-      />
+      <TextField.Root size='sm' className={styles.Field}>
+        <TextField.Control
+          type='number'
+          className={cx(isChanged && styles.Changed)}
+          value={isChanged ? String(+draftValue) : String(+setting.value)}
+          onChange={e => {
+            handleChange(id, +e.target.value);
+          }}
+        />
+      </TextField.Root>
     );
   }
 
   return (
-    <Select
-      size='sm'
-      fullWidth
+    <SettingSelect
       value={isChanged ? String(!!draftValue) : String(!!setting.value)}
+      isChanged={isChanged}
       onChange={(value) => {
         handleChange(id, value);
       }}
@@ -287,19 +267,6 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
         value: option.value as string,
         label: option.label,
       }))}
-      sx={{
-        '&::before': {
-          display: 'none',
-        },
-        '&:focus-within': {
-          outline: '2px solid var(--Select-focusedHighlight)',
-          outlineOffset: '2px',
-        },
-        ...(isChanged && {
-          outline: '2px solid var(--Select-focusedHighlight)',
-          outlineOffset: '2px',
-        }),
-      }}
     />
   );
 };

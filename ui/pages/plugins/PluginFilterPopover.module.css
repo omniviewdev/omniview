@@ -1,0 +1,56 @@
+.Popup {
+  width: 200px;
+  padding: 0;
+  background-color: var(--ov-color-bg-surface);
+  border: 1px solid var(--ov-color-border-default);
+  border-radius: 8px;
+}
+
+.SectionTitle {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ov-color-fg-subtle);
+  padding: 8px 12px 4px;
+}
+
+.SortTitle {
+  margin-top: 4px;
+}
+
+.Options {
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.SortOptions {
+  padding: 0 8px 8px;
+}
+
+.Option {
+  padding: 4px;
+  font-size: 0.75rem;
+}
+
+.Footer {
+  border-top: 1px solid var(--ov-color-border-muted);
+  padding: 8px 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.ClearButton {
+  font-size: 0.6875rem;
+  color: var(--ov-color-brand-500);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.9;
+}
+
+.ClearButton:hover {
+  opacity: 1;
+}
