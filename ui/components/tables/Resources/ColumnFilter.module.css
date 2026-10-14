@@ -1,0 +1,25 @@
+.Popup {
+  z-index: 1000;
+  min-width: 300px;
+  max-width: 100%;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.Heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ColumnList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ColumnRow {
+  font-size: 0.75rem;
+}

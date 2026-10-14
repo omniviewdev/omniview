@@ -1,10 +1,7 @@
 import React, { useState } from 'react';
 
-// Material-ui
-import Box from '@mui/material/Box';
-import Link from '@mui/material/Link';
-import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
-import { Stack } from '@omniviewdev/ui/layout';
+import { Stack } from '@omniviewdev/base-ui';
+import { LuChevronDown } from 'react-icons/lu';
 
 // Tanstack/react-table
 import {
@@ -24,6 +21,7 @@ import get from 'lodash.get';
 
 // Project imports
 // import NamespaceSelect from '@/components/selects/NamespaceSelect';
+import styles from './ResourceTableContainer.module.css';
 import { DebouncedInput } from './DebouncedInput';
 import { RowContainer } from './RowContainer';
 import { plural } from '@/utils/language';
@@ -252,8 +250,8 @@ const ResourceTableContainer: React.FC<Props> = ({
   };
 
   return (
-    <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', p: 0.75, gap: 0.75, minHeight: 0 }} >
-      <Stack direction='row' justifyContent={'space-between'} className='NamespaceAndSearch' sx={{ width: '100%' }}>
+    <div className={styles.Root}>
+      <Stack direction='row' justify='between' className={`NamespaceAndSearch ${styles.Toolbar}`}>
         <DebouncedInput
           value={search ?? ''}
           onChange={value => {
@@ -261,7 +259,7 @@ const ResourceTableContainer: React.FC<Props> = ({
           }}
           placeholder={placeHolderText()}
         />
-        <Stack direction='row' gap={1}>
+        <Stack direction='row' spacing={2}>
           {namespaced &&
             <NamespaceSelect
               available={namespaces ?? []}
@@ -277,26 +275,9 @@ const ResourceTableContainer: React.FC<Props> = ({
           />
         </Stack>
       </Stack>
-      <Box
-        className={'table-container'}
+      <div
+        className={`table-container ${styles.TableContainer}`}
         ref={parentRef}
-        sx={{
-          backgroundColor: 'inherit',
-          width: '100%',
-          borderRadius: '4px',
-          flex: 1,
-          overflow: 'scroll',
-          minHeight: 0,
-          border: 1,
-          borderColor: 'divider',
-          // TODO: make this a prop
-          // Hide the scrollbars
-          '&::-webkit-scrollbar': {
-            display: 'none',
-          },
-          scrollbarWidth: 'none',
-          WebkitUserSelect: 'none',
-        }}
       >
         <table
           aria-labelledby={'table-title'}
@@ -336,25 +317,19 @@ const ResourceTableContainer: React.FC<Props> = ({
                     }}
                   >
                     {header.column.getCanSort()
-                      ? <Link
-                        underline='none'
-                        color='primary'
-                        component='button'
+                      ? <button
+                        type='button'
+                        className={styles.SortButton}
                         onClick={header.column.getToggleSortingHandler()}
-                        sx={{
-                          fontWeight: 'bold',
-                          display: 'flex',
-                          alignItems: 'center',
-                          '& svg': {
-                            transition: '0.2s',
-                            transform:
-                              header.column.getIsSorted() as string === 'desc' ? 'rotate(180deg)' : 'rotate(0deg)',
-                          },
-                        }}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
-                        {header.column.getIsSorted() && <ArrowDropDownIcon />}
-                      </Link>
+                        {header.column.getIsSorted() && (
+                          <LuChevronDown
+                            className={styles.SortIcon}
+                            data-desc={header.column.getIsSorted() as string === 'desc' ? 'true' : undefined}
+                          />
+                        )}
+                      </button>
                       : flexRender(header.column.columnDef.header, header.getContext())
                     }
                   </th>
@@ -390,8 +365,8 @@ const ResourceTableContainer: React.FC<Props> = ({
             })}
           </tbody>
         </table>
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
 

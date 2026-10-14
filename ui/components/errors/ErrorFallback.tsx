@@ -1,17 +1,12 @@
 import React from 'react';
 import type { FallbackProps } from 'react-error-boundary';
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import { Card } from '@omniviewdev/ui';
-import { Text } from '@omniviewdev/ui/typography';
-import { Button } from '@omniviewdev/ui/buttons';
-import { Stack } from '@omniviewdev/ui/layout';
-import { Chip } from '@omniviewdev/ui';
-import { Tooltip } from '@omniviewdev/ui/overlays';
+import { Button, Card, Chip, Separator, Stack, Text } from '@omniviewdev/base-ui';
 import { LuCircleAlert, LuCopy, LuRefreshCw, LuRotateCcw, LuChevronDown, LuChevronRight } from 'react-icons/lu';
 import log from '@/features/logger';
 import { isDev } from '@/utils/env';
 import { generateErrorId } from '@/utils/errorId';
+import HintTooltip from '@/components/base/HintTooltip';
+import styles from './ErrorFallback.module.css';
 
 // ─── Error Metadata ──────────────────────────────────────────────────────────
 
@@ -59,113 +54,84 @@ export function FullPageErrorFallback({ error, resetErrorBoundary, boundary }: F
   };
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-        flex: 1,
-        p: 4,
-        bgcolor: 'background.body',
-      }}
-    >
-      <Card
-        emphasis="outline"
-        sx={{
-          maxWidth: 600,
-          width: '100%',
-          borderColor: 'danger.outlinedBorder',
-          bgcolor: 'background.surface',
-        }}
-      >
-        <Stack direction="row" spacing={1.5} alignItems="center">
-          <LuCircleAlert size={22} color="var(--joy-palette-danger-500)" />
+    <div className={styles.FullPageRoot}>
+      <Card variant="outline" className={`${styles.Card} ${styles.FullPageCard}`}>
+        <Stack direction="row" spacing={3} align="center">
+          <LuCircleAlert size={22} className={styles.DangerIcon} />
           <Text weight="semibold" size="lg">Something went wrong</Text>
-          <Chip emphasis="soft" color="danger" size="sm" label={error.name} />
+          <Chip variant="soft" color="danger" size="sm">{error.name}</Chip>
         </Stack>
 
-        <Text size="sm" sx={{ color: 'danger.plainColor', mt: 1 }}>
+        <Text size="sm" tone="danger" className={styles.FullPageMessage}>
           {dev ? error.message : `An unexpected error occurred: ${error.message}`}
         </Text>
 
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-          <Chip emphasis="outline" color="neutral" size="sm" label={meta.errorId} />
-          <Text size="xs" sx={{ color: 'text.tertiary' }}>{meta.timestamp}</Text>
+        <Stack direction="row" spacing={2} align="center" className={styles.MetaRow}>
+          <Chip variant="outline" color="neutral" size="sm">{meta.errorId}</Chip>
+          <Text size="xs" tone="subtle">{meta.timestamp}</Text>
           {dev && meta.boundary && (
-            <Chip emphasis="soft" color="neutral" size="sm" label={`Caught by: ${meta.boundary}`} />
+            <Chip variant="soft" color="neutral" size="sm">{`Caught by: ${meta.boundary}`}</Chip>
           )}
         </Stack>
 
-        <Divider sx={{ my: 1.5 }} />
+        <Separator className={styles.FullPageSeparator} />
 
         {dev && (
           <>
             <Button
-              emphasis="ghost"
+              variant="ghost"
               color="neutral"
               size="sm"
-              icon={showStack ? <LuChevronDown size={14} /> : <LuChevronRight size={14} />}
-              onClick={() => setShowStack(!showStack)}
-              sx={{ alignSelf: 'flex-start', px: 0.5 }}
+              startDecorator={showStack ? <LuChevronDown size={14} /> : <LuChevronRight size={14} />}
+              onClick={() => {
+                setShowStack(!showStack);
+              }}
+              className={styles.StackToggle}
             >
               Stack Trace
             </Button>
 
             {showStack && (
-              <Box
-                component="pre"
-                sx={{
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  color: 'text.secondary',
-                  bgcolor: 'background.level1',
-                  borderRadius: 'sm',
-                  p: 1.5,
-                  maxHeight: 300,
-                  overflow: 'auto',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all',
-                  m: 0,
-                }}
-              >
+              <pre className={styles.Stack}>
                 {error.stack ?? 'No stack trace available'}
-              </Box>
+              </pre>
             )}
           </>
         )}
 
-        <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+        <Stack direction="row" spacing={2} className={styles.FullPageActions}>
           <Button
-            emphasis="solid"
+            variant="solid"
             color="danger"
             size="sm"
-            icon={<LuRotateCcw size={14} />}
+            startDecorator={<LuRotateCcw size={14} />}
             onClick={resetErrorBoundary}
           >
             Try Again
           </Button>
           <Button
-            emphasis="outline"
+            variant="outline"
             color="neutral"
             size="sm"
-            icon={<LuRefreshCw size={14} />}
-            onClick={() => window.location.reload()}
+            startDecorator={<LuRefreshCw size={14} />}
+            onClick={() => {
+              window.location.reload();
+            }}
           >
             Reload Application
           </Button>
           <Button
-            emphasis="ghost"
+            variant="ghost"
             color="neutral"
             size="sm"
-            icon={<LuCopy size={14} />}
+            startDecorator={<LuCopy size={14} />}
             onClick={copyError}
           >
             {copied ? 'Copied!' : 'Copy Error'}
           </Button>
         </Stack>
       </Card>
-    </Box>
+    </div>
   );
 }
 
@@ -195,97 +161,68 @@ export function PanelErrorFallback({ error, resetErrorBoundary, label, boundary 
     : (dev ? 'Component crashed' : 'Component encountered an error');
 
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        p: 3,
-      }}
-    >
-      <Card
-        emphasis="outline"
-        sx={{
-          maxWidth: 480,
-          width: '100%',
-          borderColor: 'danger.outlinedBorder',
-          bgcolor: 'background.surface',
-        }}
-      >
-        <Stack direction="row" spacing={1} alignItems="center">
-          <LuCircleAlert size={18} color="var(--joy-palette-danger-500)" />
+    <div className={styles.PanelRoot}>
+      <Card variant="outline" className={`${styles.Card} ${styles.PanelCard}`}>
+        <Stack direction="row" spacing={2} align="center">
+          <LuCircleAlert size={18} className={styles.DangerIcon} />
           <Text weight="semibold" size="sm">{title}</Text>
-          <Chip emphasis="soft" color="danger" size="sm" label={error.name} />
+          <Chip variant="soft" color="danger" size="sm">{error.name}</Chip>
         </Stack>
 
-        <Text size="xs" sx={{ color: 'danger.plainColor', mt: 0.5 }}>
+        <Text size="xs" tone="danger" className={styles.PanelMessage}>
           {error.message}
         </Text>
 
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
-          <Chip emphasis="outline" color="neutral" size="sm" label={meta.errorId} />
-          <Text size="xs" sx={{ color: 'text.tertiary' }}>{meta.timestamp}</Text>
+        <Stack direction="row" spacing={2} align="center" className={styles.PanelMetaRow}>
+          <Chip variant="outline" color="neutral" size="sm">{meta.errorId}</Chip>
+          <Text size="xs" tone="subtle">{meta.timestamp}</Text>
         </Stack>
 
         {dev && (
           <>
-            <Divider sx={{ my: 1 }} />
+            <Separator className={styles.PanelSeparator} />
             <Button
-              emphasis="ghost"
+              variant="ghost"
               color="neutral"
               size="sm"
-              icon={showStack ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
-              onClick={() => setShowStack(!showStack)}
-              sx={{ alignSelf: 'flex-start', px: 0.5 }}
+              startDecorator={showStack ? <LuChevronDown size={12} /> : <LuChevronRight size={12} />}
+              onClick={() => {
+                setShowStack(!showStack);
+              }}
+              className={styles.StackToggle}
             >
               Stack Trace
             </Button>
             {showStack && (
-              <Box
-                component="pre"
-                sx={{
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  color: 'text.secondary',
-                  bgcolor: 'background.level1',
-                  borderRadius: 'sm',
-                  p: 1,
-                  maxHeight: 200,
-                  overflow: 'auto',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all',
-                  m: 0,
-                }}
-              >
+              <pre className={`${styles.Stack} ${styles.PanelStack}`}>
                 {error.stack ?? 'No stack trace available'}
-              </Box>
+              </pre>
             )}
           </>
         )}
 
-        <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+        <Stack direction="row" spacing={2} className={styles.PanelActions}>
           <Button
-            emphasis="solid"
+            variant="solid"
             color="danger"
             size="sm"
-            icon={<LuRotateCcw size={14} />}
+            startDecorator={<LuRotateCcw size={14} />}
             onClick={resetErrorBoundary}
           >
             Retry
           </Button>
           <Button
-            emphasis="ghost"
+            variant="ghost"
             color="neutral"
             size="sm"
-            icon={<LuCopy size={14} />}
+            startDecorator={<LuCopy size={14} />}
             onClick={copyError}
           >
             {copied ? 'Copied!' : 'Copy Error'}
           </Button>
         </Stack>
       </Card>
-    </Box>
+    </div>
   );
 }
 
@@ -299,28 +236,29 @@ export function InlineErrorFallback({ error, resetErrorBoundary, label }: Inline
   const meta = React.useMemo(() => createErrorMeta(), [error]);
 
   return (
-    <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1 }}>
-      <Tooltip content={meta.errorId} placement="top">
-        <span style={{ display: 'inline-flex' }}>
-          <LuCircleAlert size={14} color="var(--joy-palette-danger-500)" />
+    <Stack direction="row" spacing={2} align="center" className={styles.InlineRoot}>
+      <HintTooltip content={meta.errorId} side="top">
+        <span className={styles.InlineIconWrap}>
+          <LuCircleAlert size={14} className={styles.DangerIcon} />
         </span>
-      </Tooltip>
-      <Text size="sm" color="danger">
+      </HintTooltip>
+      <Text size="sm" tone="danger">
         Failed to render {label ?? 'component'}
       </Text>
       <Chip
-        emphasis="soft"
+        variant="soft"
         color="danger"
         size="sm"
+        clickable
         onClick={resetErrorBoundary}
-        sx={{ cursor: 'pointer' }}
-        label="Retry"
-      />
+      >
+        Retry
+      </Chip>
     </Stack>
   );
 }
 
-// ─── Unstyled Root Fallback (outside MUI providers) ─────────────────────────
+// ─── Unstyled Root Fallback (outside theme providers) ─────────────────────────
 
 export function RootErrorFallback({ error }: { error: Error }) {
   const meta = React.useMemo(() => createErrorMeta(), [error]);

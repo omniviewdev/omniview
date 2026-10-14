@@ -1,0 +1,14 @@
+.Trigger {
+  flex: none;
+  min-height: 28px;
+  min-width: 28px;
+}
+
+.Positioner {
+  z-index: 9999;
+}
+
+.Popup {
+  max-width: 400px;
+  min-width: 110px;
+}

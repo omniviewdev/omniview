@@ -1,0 +1,103 @@
+.FullPageRoot {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px;
+  background-color: var(--ov-color-bg-base);
+}
+
+.PanelRoot {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.Card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 16px;
+  border-color: color-mix(in srgb, var(--ov-color-danger) 45%, transparent);
+  background-color: var(--ov-color-bg-surface);
+}
+
+.FullPageCard {
+  max-width: 600px;
+}
+
+.PanelCard {
+  max-width: 480px;
+}
+
+.DangerIcon {
+  color: var(--ov-color-danger);
+  flex-shrink: 0;
+}
+
+.FullPageMessage {
+  margin-top: 8px;
+}
+
+.PanelMessage {
+  margin-top: 4px;
+}
+
+.MetaRow {
+  margin-top: 8px;
+}
+
+.PanelMetaRow {
+  margin-top: 4px;
+}
+
+.FullPageSeparator {
+  margin-block: 12px;
+}
+
+.PanelSeparator {
+  margin-block: 8px;
+}
+
+.StackToggle {
+  align-self: flex-start;
+  padding-inline: 4px;
+}
+
+.Stack {
+  font-size: 11px;
+  font-family: var(--ov-font-mono);
+  color: var(--ov-color-fg-muted);
+  background-color: var(--ov-color-bg-inset);
+  border-radius: var(--ov-radius-sm);
+  padding: 12px;
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.PanelStack {
+  padding: 8px;
+  max-height: 200px;
+}
+
+.FullPageActions {
+  margin-top: 16px;
+}
+
+.PanelActions {
+  margin-top: 12px;
+}
+
+.InlineRoot {
+  padding: 8px;
+}
+
+.InlineIconWrap {
+  display: inline-flex;
+}

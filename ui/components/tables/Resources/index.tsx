@@ -1,11 +1,6 @@
 import { type FC } from 'react';
 
-// material-ui
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
-import { Text, Heading } from '@omniviewdev/ui/typography';
-import { Alert } from '@omniviewdev/ui/feedback';
-import { Stack } from '@omniviewdev/ui/layout';
+import { Banner, Heading, Spinner, Stack, Text } from '@omniviewdev/base-ui';
 
 // icons
 import { LuCircleAlert } from 'react-icons/lu';
@@ -14,6 +9,7 @@ import { LuCircleAlert } from 'react-icons/lu';
 import useResourceDefinition from '@/hooks/resource/useResourceDefinition';
 import { useResources } from '@omniviewdev/runtime';
 import ResourceTableContainer from './ResourceTableContainer';
+import styles from './index.module.css';
 
 
 type Props = {
@@ -77,32 +73,12 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
   if (isLoading || resources.isLoading || namespaces.isLoading) {
     console.log('Loading resources...');
     return (
-      <Box sx={{
-        display: 'flex',
-        gap: 4,
-        justifyContent: 'center',
-        flexDirection: 'column',
-        alignItems: 'center',
-        height: '100%',
-        width: '100%',
-        userSelect: 'none',
-        animation: 'fadeIn 0.2s ease-in-out',
-        '@keyframes fadeIn': {
-          '0%': {
-            opacity: 0,
-            scale: 0.3,
-          },
-          '100%': {
-            opacity: 1,
-            scale: 1,
-          },
-        },
-      }}>
-        <CircularProgress size={40} thickness={8} />
+      <div className={styles.Loading}>
+        <Spinner size='xl' />
         <Text weight="semibold" size="lg">
           Loading {resourceKey} resources...
         </Text>
-      </Box>
+      </div>
     );
   }
 
@@ -130,57 +106,35 @@ const ResourceTable: FC<Props> = ({ pluginID, connectionID, resourceKey }) => {
     }
 
     return (
-      <Box sx={{
-        display: 'flex',
-        gap: 2,
-        justifyContent: 'center',
-        flexDirection: 'column',
-        alignItems: 'center',
-        height: '100%',
-        width: '100%',
-        userSelect: 'none',
-      }}>
-        <Alert
-          emphasis='soft'
-          size='lg'
-          startAdornment={<LuCircleAlert size={20} />}
-          color='danger'
-        >
-          <Heading level="h4" sx={{ color: 'danger.main' }}>
-            {title}
-          </Heading>
-        </Alert>
-        <Stack direction="column" spacing={1} sx={{ maxWidth: 560, textAlign: 'center' }}>
-          <Text size='sm' sx={{ color: 'text.secondary' }}>
+      <div className={styles.Error}>
+        <Banner variant='soft' size='lg' color='danger'>
+          <Banner.Icon>
+            <LuCircleAlert size={20} />
+          </Banner.Icon>
+          <Banner.Content>
+            <Heading level={4} tone='danger'>
+              {title}
+            </Heading>
+          </Banner.Content>
+        </Banner>
+        <Stack direction="column" spacing={2} className={styles.ErrorDetails}>
+          <Text size='sm' tone='muted'>
             {detail}
           </Text>
           {suggestions.length > 0 && (
-            <Box component="ul" sx={{ textAlign: 'left', pl: 2, m: 0 }}>
+            <ul className={styles.Suggestions}>
               {suggestions.map((s) => (
-                <Box component="li" key={s} sx={{ py: 0.25 }}>
-                  <Text size='xs' sx={{ color: 'text.secondary' }}>{s}</Text>
-                </Box>
+                <li key={s} className={styles.Suggestion}>
+                  <Text size='xs' tone='muted'>{s}</Text>
+                </li>
               ))}
-            </Box>
+            </ul>
           )}
-          <Text
-            size='xs'
-            sx={{
-              color: 'text.disabled',
-              fontFamily: 'monospace',
-              mt: 1,
-              p: 1,
-              borderRadius: 1,
-              bgcolor: 'action.hover',
-              wordBreak: 'break-all',
-              maxHeight: 80,
-              overflow: 'auto',
-            }}
-          >
+          <Text size='xs' tone='subtle' className={styles.RawError}>
             {resourceKey}: {errstring || 'Unknown error'}
           </Text>
         </Stack>
-      </Box>
+      </div>
     );
   }
 
