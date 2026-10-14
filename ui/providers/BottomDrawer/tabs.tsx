@@ -1,14 +1,6 @@
 import React from 'react';
 
-// material-ui
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
-import Divider from '@mui/material/Divider';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { ContextMenu } from '@omniviewdev/ui/menus';
-import type { ContextMenuItem } from '@omniviewdev/ui/menus';
-import { Text } from '@omniviewdev/ui/typography';
-import { Stack } from '@omniviewdev/ui/layout';
+import { ContextMenu, IconButton, Separator, Spinner } from '@omniviewdev/base-ui';
 
 // third-party
 import {
@@ -38,6 +30,9 @@ import { bottomDrawerChannel } from './events';
 import { devToolsChannel } from '@/features/devtools/events';
 import { pluginLogChannel } from '@/features/pluginlogs/events';
 import { Events } from '@omniviewdev/runtime/runtime';
+import styles from './tabs.module.css';
+
+type TabMenuItem = { key: string; label: string; onClick: () => void };
 
 type Props = {
   hasTabs: boolean;
@@ -55,9 +50,11 @@ type Props = {
 const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen, onMinimize, onExpand, onFullscreen }) => {
   const { tabs, focused, focusTab, closeTab, closeTabs, createTab, createTabs, updateTab, reorderTab } = useBottomDrawer();
   const canResize = hasTabs;
+  // One context menu serves the whole strip; right-clicking a tab records which.
+  const [menuIndex, setMenuIndex] = React.useState(0);
   const { settings } = useSettings();
 
-  const getContextMenuItems = React.useCallback((index: number): ContextMenuItem[] => [
+  const getContextMenuItems = React.useCallback((index: number): TabMenuItem[] => [
     { key: 'close', label: 'Close Tab', onClick: () => closeTab({ index }) },
     { key: 'close-right', label: 'Close Tabs to Right', onClick: () => {
       const indices = [];
@@ -346,45 +343,21 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
   }, []);
 
   return (
-    <Stack
-      direction={'row'}
-      alignItems={'center'}
-      justifyContent={'space-between'}
-    >
-      <Stack
-        direction="row"
-        alignItems={'center'}
-        height={33}
-        maxHeight={33}
-        minHeight={33}
-        gap={0.25}
-        px={0.25}
-        sx={{
-          borderBottom: '1px solid',
-          borderBottomColor: 'divider',
-        }}
-      >
+    <div className={styles.Bar}>
+      <div className={styles.Strip}>
         <IconButton
-          size="sm"
-          emphasis='soft'
+          size='sm'
+          variant='ghost'
           color='neutral'
-          sx={{
-            flex: 'none',
-            minHeight: 28,
-            minWidth: 28,
-          }}
+          aria-label='New terminal'
+          className={styles.Button}
           onClick={() => {
             handleCreate('terminal');
           }}
         >
           <LuPlus size={16} />
         </IconButton>
-        <Divider
-          orientation='vertical'
-          sx={{
-            my: 0.5,
-          }}
-        />
+        <Separator orientation='vertical' className={styles.StripSeparator} />
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -393,23 +366,10 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
         >
           <SortableContext items={tabs.map((_, index) => index)} strategy={horizontalListSortingStrategy}>
             {tabs.length !== 0 &&
-              <Box
-                sx={{
-                  flex: 1,
-                  overflow: 'hidden',
-                  display: 'flex',
-                }}
-              >
-                <Box
-                  sx={{
-                    display: 'flex',
-                    overflow: 'auto',
-                    scrollSnapType: 'x mandatory',
-                    '&::-webkit-scrollbar': { display: 'none' },
-                  }}
-                >
-                  {tabs.map((tab, index) => (
-                    <ContextMenu key={`bottom-drawer-tab-ctx-${index}`} items={getContextMenuItems(index)}>
+              <ContextMenu.Root>
+                <ContextMenu.Trigger render={<div className={styles.TabsViewport} />}>
+                  <div className={styles.TabsScroller} role='tablist' aria-label='Bottom drawer tabs'>
+                    {tabs.map((tab, index) => (
                       <MemoizedBottomDrawerTabComponent
                         key={`bottom-drawer-tab-${index}`}
                         {...tab}
@@ -417,37 +377,36 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
                         selected={focused === index}
                         onRemove={handleRemove}
                         onChange={handleChange}
+                        onContextMenu={setMenuIndex}
                       />
-                    </ContextMenu>
-                  ))}
-                </Box>
-              </Box>
+                    ))}
+                  </div>
+                </ContextMenu.Trigger>
+                <ContextMenu.Portal>
+                  <ContextMenu.Positioner>
+                    <ContextMenu.Popup>
+                      {getContextMenuItems(menuIndex).map(item => (
+                        <ContextMenu.Item key={item.key} onClick={item.onClick}>
+                          {item.label}
+                        </ContextMenu.Item>
+                      ))}
+                    </ContextMenu.Popup>
+                  </ContextMenu.Positioner>
+                </ContextMenu.Portal>
+              </ContextMenu.Root>
             }
-
           </SortableContext>
         </DndContext>
-      </Stack>
+      </div>
 
-      <Stack
-        direction="row"
-        alignItems={'center'}
-        height={33}
-        maxHeight={33}
-        minHeight={33}
-        gap={0.25}
-        px={1}
-        pb={'1px'}
-      >
+      <div className={styles.Actions}>
         <IconButton
-          size="sm"
-          emphasis='soft'
+          size='sm'
+          variant='ghost'
           color='neutral'
+          aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+          className={styles.Button}
           disabled={!canResize}
-          sx={{
-            flex: 'none',
-            minHeight: 28,
-            minWidth: 28,
-          }}
           onClick={() => {
             if (canResize) {
               onFullscreen();
@@ -457,15 +416,12 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
           {isFullscreen ? <LuMinimize size={14} /> : <LuMaximize size={14} />}
         </IconButton>
         <IconButton
-          size="sm"
-          emphasis='soft'
+          size='sm'
+          variant='ghost'
           color='neutral'
+          aria-label={isMinimized ? 'Expand' : 'Minimize'}
+          className={styles.Button}
           disabled={!canResize}
-          sx={{
-            flex: 'none',
-            minHeight: 28,
-            minWidth: 28,
-          }}
           onClick={() => {
             if (!canResize) {
               return;
@@ -479,8 +435,8 @@ const BottomDrawerTabs: React.FC<Props> = ({ hasTabs, isMinimized, isFullscreen,
         >
           {isMinimized ? <LuChevronUp size={14} /> : <LuChevronDown size={14} />}
         </IconButton>
-      </Stack>
-    </Stack>
+      </div>
+    </div>
   );
 };
 
@@ -489,9 +445,10 @@ type BottomDrawerTabProps = BottomDrawerTab & {
   selected: boolean;
   onRemove: (index: number) => void;
   onChange: (event: React.SyntheticEvent, newValue: string | number) => void;
+  onContextMenu: (index: number) => void;
 };
 
-const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, title, icon, properties, selected, onRemove, onChange }) => {
+const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, title, icon, properties, selected, onRemove, onChange, onContextMenu }) => {
   const {
     attributes,
     listeners,
@@ -501,76 +458,39 @@ const BottomDrawerTabComponent: React.FC<BottomDrawerTabProps> = ({ id, index, t
   } = useSortable({ id: index });
 
   return (
-    <Box
+    <div
       key={`bottom-drawer-tab-${id}`}
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      sx={{
-        height: 33,
-        px: 1,
-        display: 'flex',
-        alignItems: 'center',
-        minWidth: 150,
-        flex: 'none',
-        scrollSnapAlign: 'start',
-        borderRight: '1px solid',
-        borderRightColor: 'divider',
-        borderLeft: index === 0 ? '1px solid' : '1px solid transparent',
-        borderLeftColor: index === 0 ? 'divider' : 'transparent',
-        cursor: 'pointer',
-        bgcolor: selected ? 'action.selected' : 'transparent',
-        borderBottom: '2px solid',
-        borderBottomColor: selected ? 'primary.main' : 'transparent',
-        transform: CSS.Translate.toString(transform),
-        transition,
-      }}
+      role='tab'
+      aria-selected={selected}
+      className={styles.Tab}
+      data-selected={selected || undefined}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
       onClick={(e) => onChange(e, index)}
+      onContextMenu={() => onContextMenu(index)}
     >
-      <Stack
-        direction="row"
-        justifyContent={'space-between'}
-        alignItems={'center'}
-        gap={2}
-        sx={{ width: '100%' }}
+      <span className={styles.TabLabel}>
+        {properties?.status === 'connecting' ? (
+          <Spinner size='xs' />
+        ) : icon !== undefined ? (
+          typeof icon === 'string' ? <Icon name={icon} size={14} /> : icon
+        ) : null}
+        <span className={styles.TabTitle}>{title}</span>
+      </span>
+      <span
+        className={styles.TabClose}
+        aria-label='Close tab'
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(index);
+        }}
+        onKeyDown={(e) => e.stopPropagation()}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          {properties?.status === 'connecting' ? (
-            <CircularProgress size={14} sx={{ color: 'text.secondary' }} />
-          ) : icon !== undefined ? (
-            typeof icon === 'string' ? <Icon name={icon} size={14} /> : icon
-          ) : null}
-          <Text
-            size="sm"
-            sx={{
-              fontSize: 13,
-              color: selected ? 'neutral.50' : 'text.primary',
-              fontWeight: selected ? 500 : 400,
-              userSelect: 'none',
-              WebkitUserSelect: 'none',
-            }}
-          >
-            {title}
-          </Text>
-        </Box>
-        <Box
-          component="span"
-          sx={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            borderRadius: '4px',
-            '&:hover': { bgcolor: 'action.hover' },
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove(index);
-          }}
-          onKeyDown={(e) => e.stopPropagation()}
-        >
-          <LuX size={16} />
-        </Box>
-      </Stack>
-    </Box>
+        <LuX size={16} />
+      </span>
+    </div>
   );
 };
 
@@ -580,7 +500,8 @@ const MemoizedBottomDrawerTabComponent = React.memo(BottomDrawerTabComponent, (p
     && prev.title === next.title
     && prev.icon === next.icon
     && prev.selected === next.selected
-    && prev.properties?.status === next.properties?.status;
+    && prev.properties?.status === next.properties?.status
+    && prev.onContextMenu === next.onContextMenu;
 });
 
 export default BottomDrawerTabs;

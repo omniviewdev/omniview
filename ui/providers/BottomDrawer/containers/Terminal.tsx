@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 // material-ui
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
+import { Spinner } from '@omniviewdev/base-ui';
+import styles from './Terminal.module.css';
 
 // xterm
 import { Terminal } from '@xterm/xterm';
@@ -49,21 +49,10 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
   // Show loading state while session is being created
   if (tabStatus === 'connecting') {
     return (
-      <Box sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        width: '100%',
-        bgcolor: settingsThemeBg,
-        gap: 1.5,
-      }}>
-        <CircularProgress size={24} sx={{ color: 'grey.500' }} />
-        <Box sx={{ color: 'grey.500', fontSize: 13, fontFamily: 'monospace' }}>
-          Connecting...
-        </Box>
-      </Box>
+      <div className={styles.Status} style={{ backgroundColor: settingsThemeBg }}>
+        <Spinner size='md' />
+        <div className={styles.StatusText}>Connecting...</div>
+      </div>
     );
   }
 
@@ -71,25 +60,10 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
   if (tabStatus === 'error') {
     const errorMsg = tab?.properties?.error as string | undefined;
     return (
-      <Box sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        width: '100%',
-        bgcolor: settingsThemeBg,
-        gap: 1,
-      }}>
-        <Box sx={{ color: 'error.main', fontSize: 14, fontFamily: 'monospace', fontWeight: 600 }}>
-          Connection Failed
-        </Box>
-        {errorMsg && (
-          <Box sx={{ color: 'grey.500', fontSize: 12, fontFamily: 'monospace', maxWidth: 500, textAlign: 'center', px: 2 }}>
-            {errorMsg}
-          </Box>
-        )}
-      </Box>
+      <div className={styles.Status} style={{ backgroundColor: settingsThemeBg }}>
+        <div className={styles.StatusError}>Connection Failed</div>
+        {errorMsg && <div className={styles.StatusDetail}>{errorMsg}</div>}
+      </div>
     );
   }
 
