@@ -47,6 +47,15 @@ export function ReadLog(logType: string): $CancellablePromise<string> {
 }
 
 /**
+ * ReportStartupReady is called once by the frontend when the shell is first
+ * interactive. marks carries frontend timings (milliseconds). The report is
+ * printed to stderr, and written to $OMNIVIEW_STARTUP_REPORT when set.
+ */
+export function ReportStartupReady(marks: { [_ in string]?: number }): $CancellablePromise<void> {
+    return $Call.ByID(3423289677, marks);
+}
+
+/**
  * StartTail starts tailing the log to the event stream
  */
 export function StartTail(logType: string): $CancellablePromise<void> {
