@@ -10,5 +10,18 @@ if (!mod) {
   );
 }
 
-// Default export: prefer mod.default, fall back to the module namespace itself.
+export const CodeEditor = mod.CodeEditor;
+export const CommandPalette = mod.CommandPalette;
+export const DiffViewer = mod.DiffViewer;
+export const MarkdownPreview = mod.MarkdownPreview;
+export const OV_MONACO_THEME = mod.OV_MONACO_THEME;
+export const ObjectInspector = mod.ObjectInspector;
+export const Terminal = mod.Terminal;
+export const buildMonacoTheme = mod.buildMonacoTheme;
+export const buildXtermTheme = mod.buildXtermTheme;
+export const editorSchemas = mod.editorSchemas;
+export const getComputedToken = mod.getComputedToken;
+export const setupMonacoWorkers = mod.setupMonacoWorkers;
+export const useEditorTheme = mod.useEditorTheme;
+
 export default mod.default !== undefined ? mod.default : mod;

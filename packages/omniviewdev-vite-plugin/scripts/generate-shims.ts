@@ -137,9 +137,38 @@ async function discoverExports(packageName: string): Promise<string[]> {
     );
     return keys;
   } catch {
-    // Package can't be imported at generation time (e.g. native module, missing peer dep)
+    // Package can't be imported at generation time (e.g. it imports CSS, or
+    // needs a DOM). Fall back to reading the export list from its ESM entry.
+    return parseStaticExports(packageName);
+  }
+}
+
+/**
+ * Read the named exports of a package's ESM entry without evaluating it, by
+ * parsing its `export { a as b, c }` statements. Bundled libraries such as
+ * @omniviewdev/base-ui end with exactly one of these.
+ */
+function parseStaticExports(packageName: string): string[] {
+  let entry: string;
+  try {
+    entry = fileURLToPath(import.meta.resolve(packageName));
+  } catch {
     return [];
   }
+  if (!/\.m?js$/.test(entry) || !fs.existsSync(entry)) return [];
+
+  const source = fs.readFileSync(entry, 'utf-8');
+  const names = new Set<string>();
+  for (const block of source.matchAll(/export\s*\{([^}]*)\}/g)) {
+    for (const spec of block[1].split(',')) {
+      const parts = spec.trim().split(/\s+as\s+/);
+      const name = (parts[1] ?? parts[0]).trim();
+      if (name && name !== 'default' && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) {
+        names.add(name);
+      }
+    }
+  }
+  return [...names].sort();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
