@@ -1,0 +1,21 @@
+.Popup {
+  padding: 0;
+  overflow: hidden;
+}
+
+.Body {
+  display: flex;
+}
+
+.Time {
+  display: flex;
+  max-height: 280px;
+  border-left: 1px solid var(--ov-color-border-muted);
+}
+
+.Footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px var(--ov-space-3);
+  border-top: 1px solid var(--ov-color-border-muted);
+}

@@ -1,11 +1,8 @@
 import React, { useRef, useMemo, useCallback } from 'react';
-import Box from '@mui/material/Box';
-import Popover from '@mui/material/Popover';
-import { Button } from '@omniviewdev/ui/buttons';
-import { Checkbox, TextField } from '@omniviewdev/ui/inputs';
-import { Text } from '@omniviewdev/ui/typography';
+import { Button, Checkbox, Popover, SearchInput } from '@omniviewdev/base-ui';
 import { LuChevronDown, LuSearch } from 'react-icons/lu';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import styles from './FilterSelect.module.css';
 
 interface FilterSelectProps {
   label: string;
@@ -22,7 +19,6 @@ interface FilterSelectProps {
 
 const VIRTUAL_THRESHOLD = 50;
 const ROW_HEIGHT = 28;
-const MAX_HEIGHT = 300;
 
 const FilterSelect: React.FC<FilterSelectProps> = ({
   label,
@@ -36,7 +32,6 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   onOpenChange,
 }) => {
   const [search, setSearch] = React.useState('');
-  const anchorRef = useRef<HTMLSpanElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const showSearch = items.length >= searchThreshold;
@@ -62,172 +57,96 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
     enabled: useVirtual,
   });
 
-  const handleToggle = useCallback(
-    (event: React.MouseEvent) => {
-      event.stopPropagation();
-      onOpenChange(!isOpen);
-      if (isOpen) setSearch('');
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      onOpenChange(open);
+      if (!open) setSearch('');
     },
-    [isOpen, onOpenChange],
+    [onOpenChange],
   );
-
-  const handleClose = useCallback(() => {
-    onOpenChange(false);
-    setSearch('');
-  }, [onOpenChange]);
 
   const renderRow = useCallback(
     (item: string, style?: React.CSSProperties) => (
-      <Box
-        key={item}
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          height: ROW_HEIGHT,
-          px: 1,
-          cursor: 'pointer',
-          '&:hover': { bgcolor: 'action.hover' },
-          ...style,
-        }}
-        onClick={() => onToggleItem(item)}
-      >
+      <div key={item} className={styles.Row} style={style}>
         <Checkbox
-          size="sm"
+          size='sm'
           checked={selectedItems.has(item)}
-          onChange={() => {}}
-          sx={{ pointerEvents: 'none' }}
-        />
-        <Text
-          variant="caption"
-          size="xs"
-          sx={{
-            ml: 1,
-            fontFamily: 'monospace',
-            fontSize: '11px',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
+          onCheckedChange={() => onToggleItem(item)}
+          className={styles.Check}
         >
-          {item}
-        </Text>
-      </Box>
+          <span className={styles.ItemLabel}>{item}</span>
+        </Checkbox>
+      </div>
     ),
     [selectedItems, onToggleItem],
   );
 
   return (
-    <>
-      <span ref={anchorRef} style={{ display: 'inline-flex' }}>
-        <Button
-          size="sm"
-          emphasis={allSelected ? 'ghost' : 'soft'}
-          color={allSelected ? 'neutral' : 'primary'}
-          endAdornment={<LuChevronDown size={12} />}
-          onClick={handleToggle}
-          sx={{
-            fontSize: '11px',
-            fontWeight: 500,
-            minHeight: 24,
-            px: 1,
-            py: 0,
-            gap: 0.5,
-          }}
-        >
-          {triggerLabel}
-        </Button>
-      </span>
-      <Popover
-        open={isOpen}
-        anchorEl={anchorRef.current}
-        onClose={handleClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        disableAutoFocus
-        disableEnforceFocus
-        slotProps={{
-          paper: {
-            sx: {
-              borderRadius: 1,
-              bgcolor: 'background.paper',
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: 3,
-              minWidth: 180,
-              maxWidth: 300,
-              overflow: 'hidden',
-              mt: 0.5,
-            },
-          },
-        }}
-      >
-        {showSearch && (
-          <Box sx={{ p: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-            <TextField
-              size="sm"
-              placeholder={`Search ${label.toLowerCase()}...`}
-              autoFocus
-              value={search}
-              onChange={(value) => setSearch(value)}
-              startAdornment={<LuSearch size={12} />}
-              sx={{ fontSize: '11px' }}
-            />
-          </Box>
-        )}
+    <Popover.Root open={isOpen} onOpenChange={handleOpenChange}>
+      <Popover.Trigger
+        render={
+          <Button
+            size='sm'
+            variant={allSelected ? 'ghost' : 'soft'}
+            color={allSelected ? 'neutral' : 'brand'}
+            endDecorator={<LuChevronDown size={12} />}
+            className={styles.Trigger}
+          >
+            {triggerLabel}
+          </Button>
+        }
+      />
+      <Popover.Portal>
+        <Popover.Positioner align='start' sideOffset={4}>
+          <Popover.Popup className={styles.Popup} initialFocus={showSearch}>
+            {showSearch && (
+              <div className={styles.SearchBox}>
+                <SearchInput
+                  size='sm'
+                  placeholder={`Search ${label.toLowerCase()}...`}
+                  value={search}
+                  onValueChange={setSearch}
+                  startDecorator={<LuSearch size={12} />}
+                />
+              </div>
+            )}
 
-        {/* All toggle */}
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            height: ROW_HEIGHT,
-            px: 1,
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-            cursor: 'pointer',
-            '&:hover': { bgcolor: 'action.hover' },
-          }}
-          onClick={onToggleAll}
-        >
-          <Checkbox
-            size="sm"
-            checked={allSelected}
-            indeterminate={indeterminate}
-            onChange={() => {}}
-            sx={{ pointerEvents: 'none' }}
-          />
-          <Text variant="caption" size="xs" sx={{ ml: 1, fontWeight: 600, fontSize: '11px' }}>
-            All {label}
-          </Text>
-        </Box>
+            {/* All toggle */}
+            <div className={`${styles.Row} ${styles.AllRow}`}>
+              <Checkbox
+                size='sm'
+                checked={allSelected}
+                indeterminate={indeterminate}
+                onCheckedChange={onToggleAll}
+                className={styles.Check}
+              >
+                <span className={styles.AllLabel}>All {label}</span>
+              </Checkbox>
+            </div>
 
-        {/* Item list */}
-        <Box
-          ref={listRef}
-          sx={{
-            maxHeight: MAX_HEIGHT,
-            overflow: 'auto',
-          }}
-        >
-          {useVirtual ? (
-            <Box sx={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-              {virtualizer.getVirtualItems().map((virtualRow) => {
-                const item = filteredItems[virtualRow.index];
-                return renderRow(item, {
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  transform: `translateY(${virtualRow.start}px)`,
-                });
-              })}
-            </Box>
-          ) : (
-            filteredItems.map((item) => renderRow(item))
-          )}
-        </Box>
-      </Popover>
-    </>
+            {/* Item list */}
+            <div ref={listRef} className={styles.List}>
+              {useVirtual ? (
+                <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+                  {virtualizer.getVirtualItems().map((virtualRow) => {
+                    const item = filteredItems[virtualRow.index];
+                    return renderRow(item, {
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      transform: `translateY(${virtualRow.start}px)`,
+                    });
+                  })}
+                </div>
+              ) : (
+                filteredItems.map((item) => renderRow(item))
+              )}
+            </div>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 };
 
