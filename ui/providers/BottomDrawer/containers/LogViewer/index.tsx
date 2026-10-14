@@ -135,20 +135,27 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
     estimateSize: () => 18,
     overscan: 30,
   });
+  // When a row above the viewport is measured, the virtualizer scrolls by the
+  // size difference from its last known offset. While following, that offset
+  // is stale (the view was just pinned to the bottom) and the adjustment would
+  // pull the view back up; pinToBottom handles size changes instead.
+  rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = follow ? () => false : undefined;
 
-  // Auto-scroll when following
-  React.useEffect(() => {
-    if (follow && filteredLineCount > 0) {
-      isAutoScrolling.current = true;
-      rowVirtualizer.scrollToIndex(filteredLineCount - 1, { align: 'end' });
-      // Allow the scroll event to settle before re-enabling detection
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          isAutoScrolling.current = false;
-        });
-      });
-    }
-  }, [follow, filteredLineCount, version]);
+  // Follow mode pins the scroll container to its bottom edge directly rather
+  // than via rowVirtualizer.scrollToIndex: scrollToIndex keeps retrying its
+  // index for several frames, and once more lines have arrived a late retry
+  // scrolls back up to what is no longer the last line, which handleScroll
+  // then reads as the user scrolling away (and turns follow off).
+  const pinToBottom = useCallback(() => {
+    const el = parentRef.current;
+    if (el) el.scrollTop = el.scrollHeight - el.clientHeight;
+  }, []);
+
+  // Auto-scroll when following. A layout effect, so the new lines are never
+  // painted (or seen by a scroll event) before the view is back at the bottom.
+  React.useLayoutEffect(() => {
+    if (follow && filteredLineCount > 0) pinToBottom();
+  }, [follow, filteredLineCount, version, scrollElement, pinToBottom]);
 
   // Keep refs in sync for use inside ResizeObserver (avoids re-subscribing)
   const followRef = useRef(follow);
@@ -167,6 +174,14 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
   React.useEffect(() => {
     if (!scrollElement) return;
 
+    // Rows measured taller or shorter than estimated change the content height
+    // without a scroll; stay on the newest line when following.
+    const content = scrollElement.firstElementChild;
+    const contentObserver = new ResizeObserver(() => {
+      if (followRef.current) pinToBottom();
+    });
+    if (content) contentObserver.observe(content);
+
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
       if (!rect) return;
@@ -176,13 +191,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
       if (newHeight > 0 && filteredLineCountRef.current > 0) {
         if (followRef.current) {
           // Follow mode: always pin to bottom
-          isAutoScrolling.current = true;
-          rowVirtualizer.scrollToIndex(filteredLineCountRef.current - 1, { align: 'end' });
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              isAutoScrolling.current = false;
-            });
-          });
+          pinToBottom();
         } else if (prevHeight === 0 && savedVisibleTimestampRef.current !== null) {
           // Restoring from minimized without follow: resolve saved timestamp to current index
           const idx = findEntryIndexByTime(
@@ -217,8 +226,11 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
     });
 
     observer.observe(scrollElement);
-    return () => observer.disconnect();
-  }, [scrollElement, rowVirtualizer]);
+    return () => {
+      observer.disconnect();
+      contentObserver.disconnect();
+    };
+  }, [scrollElement, rowVirtualizer, pinToBottom]);
 
   // Detect scroll position to engage/disengage follow
   const handleScroll = useCallback(() => {
@@ -232,14 +244,20 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
     }
   }, [follow]);
 
+  // Scrolling up with the wheel leaves follow mode at once. Waiting for the
+  // scroll event is not enough while lines stream in: the next batch can pin
+  // the view back to the bottom before that event is dispatched.
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.deltaY < 0 && followRef.current) {
+      followRef.current = false;
+      setFollow(false);
+    }
+  }, []);
+
   const jumpToBottom = useCallback(() => {
     setFollow(true);
-    isAutoScrolling.current = true;
-    rowVirtualizer.scrollToIndex(filteredLineCount - 1, { align: 'end' });
-    requestAnimationFrame(() => {
-      isAutoScrolling.current = false;
-    });
-  }, [filteredLineCount, rowVirtualizer]);
+    pinToBottom();
+  }, [pinToBottom]);
 
   const jumpToTime = useCallback((target: Date) => {
     const idx = findEntryIndexByTime(filteredEntries, target);
@@ -593,6 +611,7 @@ const LogViewerContainer: React.FC<Props> = ({ sessionId, source, toolbarPrefix,
         <div
           ref={scrollRefCallback}
           onScroll={handleScroll}
+          onWheel={handleWheel}
           onKeyDown={handleLogKeyDown}
           onMouseDown={handleLogMouseDown}
           tabIndex={0}
