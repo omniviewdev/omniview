@@ -180,7 +180,7 @@ button.Chip:hover {
 }
 
 .Mono {
-  font-family: var(--ovl-font-mono, monospace);
+  font-family: var(--ov-font-mono, monospace);
 }
 
 .Meta {
@@ -260,7 +260,7 @@ button.Chip:hover {
   margin-top: var(--ov-space-1);
   padding: 6px;
   overflow: auto;
-  font-family: var(--ovl-font-mono, monospace);
+  font-family: var(--ov-font-mono, monospace);
   font-size: 0.6875rem;
   word-break: break-word;
   color: var(--ov-color-danger);

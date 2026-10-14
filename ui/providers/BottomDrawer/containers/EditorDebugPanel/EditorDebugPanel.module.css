@@ -38,7 +38,7 @@
   align-items: center;
   gap: var(--ov-space-1);
   padding: 2px var(--ov-space-2);
-  font-family: var(--ovl-font-mono, monospace);
+  font-family: var(--ov-font-mono, monospace);
   font-size: 12px;
   line-height: 18px;
 }
@@ -62,7 +62,7 @@
 
 .Pre {
   margin: 0;
-  font-family: var(--ovl-font-mono, monospace);
+  font-family: var(--ov-font-mono, monospace);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-all;

@@ -6,7 +6,7 @@
   gap: var(--ov-space-3);
   width: 100%;
   height: 100%;
-  font-family: var(--ovl-font-mono, monospace);
+  font-family: var(--ov-font-mono, monospace);
   color: var(--ov-color-fg-subtle);
 }
 

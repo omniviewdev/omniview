@@ -42,7 +42,7 @@
 }
 
 .ItemLabel {
-  font-family: var(--ovl-font-mono, monospace);
+  font-family: var(--ov-font-mono, monospace);
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
