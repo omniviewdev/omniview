@@ -62,7 +62,9 @@ type FooterPopoverProps = {
 /** A footer item with an upward popover anchored to it. */
 export function FooterPopover({ trigger, tooltip, width = 'default', children }: FooterPopoverProps) {
   const [open, setOpen] = React.useState(false);
-  const close = React.useCallback(() => setOpen(false), []);
+  const close = React.useCallback(() => {
+    setOpen(false);
+  }, []);
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
