@@ -33,7 +33,7 @@ func checkTarball(filePath string) error {
 	tarReader := tar.NewReader(gzipReader)
 
 	hasBinPlugin := false
-	hasPluginYaml := false
+	var metadata *config.PluginMeta
 
 	for {
 		var header *tar.Header
@@ -48,31 +48,28 @@ func checkTarball(filePath string) error {
 		}
 		// check for required files and executable
 		switch header.Name {
-		case "./bin/plugin":
+		case "./bin/plugin", "bin/plugin":
 			hasBinPlugin = true
 			if header.FileInfo().Mode()&0111 == 0 {
 				return errors.New("bin/plugin is not executable")
 			}
-		case "bin/plugin":
-			hasBinPlugin = true
-			if header.FileInfo().Mode()&0111 == 0 {
-				return errors.New("bin/plugin is not executable")
+		case "./plugin.yaml", "plugin.yaml":
+			var meta config.PluginMeta
+			if err = yaml.NewDecoder(tarReader).Decode(&meta); err != nil {
+				return fmt.Errorf("invalid plugin.yaml: %w", err)
 			}
-		case "./plugin.yaml":
-			hasPluginYaml = true
-		case "plugin.yaml":
-			hasPluginYaml = true
+			metadata = &meta
 		}
 	}
 
-	// Ensure required files were found
-	if !hasBinPlugin || !hasPluginYaml {
-		if !hasBinPlugin {
-			return errors.New("missing required binary")
-		}
-		if !hasPluginYaml {
-			return errors.New("missing required plugin.yaml")
-		}
+	if metadata == nil {
+		return errors.New("missing required plugin.yaml")
+	}
+
+	// Only plugins with backend capabilities ship a binary; UI-only plugins
+	// consist of plugin.yaml and their compiled assets.
+	if metadata.HasBackendCapabilities() && !hasBinPlugin {
+		return errors.New("missing required binary")
 	}
 
 	return nil
