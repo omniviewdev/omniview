@@ -8,7 +8,7 @@ import PluginDevOverlay from '@/features/devtools/components/PluginDevOverlay';
 import { PanelErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
 import { usePluginService } from '@/features/plugins';
 
-export type PluginRendererProps = {}
+type PluginRendererProps = {}
 
 /**
  * PluginRenderer loads a plugin with a UI entrypoint, injecting the necessary

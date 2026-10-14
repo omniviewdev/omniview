@@ -28,7 +28,6 @@
  */
 
 import type { AnsiSegment } from '../types';
-export type { AnsiSegment };
 
 export interface ParsedAnsi {
   /** Plain text with all escape sequences removed (for search, level detection). */

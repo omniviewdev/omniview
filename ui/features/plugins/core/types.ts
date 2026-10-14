@@ -3,7 +3,6 @@ import type {
   ExtensionPointSettings,
   ExtensionRegistration,
   ExtensionRenderContext,
-  ExtensionContributionRegistration,
 } from '@omniviewdev/runtime';
 
 // ─── Re-export runtime types needed by host code ─────────────────────
@@ -11,8 +10,6 @@ import type {
 export type {
   ExtensionPointSettings,
   ExtensionRegistration,
-  ExtensionRenderContext,
-  ExtensionContributionRegistration,
 };
 
 // ─── Plugin Phases ───────────────────────────────────────────────────
@@ -59,15 +56,8 @@ export type DrawerFactory = (...args: any[]) => any;
 /**
  * Union type for values that can be contributed to extension points.
  */
-export type ExtensionPointValue = React.ComponentType<any> | DrawerFactory | unknown;
+type ExtensionPointValue = React.ComponentType<any> | DrawerFactory | unknown;
 
-// ─── Plugin Window ───────────────────────────────────────────────────
-
-/**
- * PluginWindow is the runtime's PluginWindow class, re-exported for convenience.
- * Import it from @omniviewdev/runtime directly when constructing.
- */
-export type { PluginWindow } from '@omniviewdev/runtime';
 
 // ─── Plugin State ────────────────────────────────────────────────────
 

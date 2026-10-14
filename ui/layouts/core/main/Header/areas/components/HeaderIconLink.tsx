@@ -7,7 +7,7 @@ import { Tooltip } from '@omniviewdev/ui/overlays';
 
 // Project imports
 import { type HeaderIconLink as HeaderIconLinkProps } from '@/store/header/types';
-import { Icon } from '@/components/icons/Icon';
+import Icon from '@/components/icons/Icon';
 
 type Props = HeaderIconLinkProps;
 

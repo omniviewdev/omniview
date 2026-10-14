@@ -7,7 +7,7 @@ import { IconButton } from '@omniviewdev/ui/buttons';
 import { Text } from '@omniviewdev/ui/typography';
 
 // Project imports
-import { Icon } from '@/components/icons/Icon';
+import Icon from '@/components/icons/Icon';
 
 type Props = {
   /** A title for the context area. */

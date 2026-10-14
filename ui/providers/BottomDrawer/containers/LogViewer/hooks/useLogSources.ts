@@ -8,7 +8,7 @@ interface LogSourceInfo {
   labels: Record<string, string>;
 }
 
-export interface FilterDimension {
+interface FilterDimension {
   key: string;
   displayName: string;
   values: string[];

@@ -7,7 +7,7 @@ import { PluginServiceContext } from '../react/context';
 
 // ─── Boundary Log Event ─────────────────────────────────────────────
 
-export type BoundaryKind = 'plugin-route' | 'drawer-surface' | 'modal-surface';
+type BoundaryKind = 'plugin-route' | 'drawer-surface' | 'modal-surface';
 
 export interface PluginBoundaryLogEvent {
   readonly pluginId: string;

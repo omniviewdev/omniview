@@ -14,6 +14,3 @@ export interface ResourceStateItem {
   state: WatchState;
   count: number;
 }
-
-/** Grouped resources: [groupLabel, items] */
-export type ResourceStateGroup = [groupLabel: string, items: ResourceStateItem[]];

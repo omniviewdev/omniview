@@ -61,7 +61,7 @@ const PhaseDot = styled('span')<{ phase: PhaseStatus }>(({ phase }) => ({
   }),
 }));
 
-export type PluginListItemProps = {
+type PluginListItemProps = {
   id: string;
   name: string;
   description?: string;

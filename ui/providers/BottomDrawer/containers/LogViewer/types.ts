@@ -63,7 +63,6 @@ export const StreamEventType = {
 
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace';
 
-export const LOG_LEVELS: LogLevel[] = ['error', 'warn', 'info', 'debug', 'trace'];
 
 export const LEVEL_COLORS: Record<LogLevel, string> = {
   error: '#d32f2f',
@@ -77,7 +76,7 @@ export const LEVEL_COLORS: Record<LogLevel, string> = {
  * Handlers that a data source pushes data into.
  * LogViewerContainer provides these when it calls source.connect().
  */
-export interface LogDataSourceHandlers {
+interface LogDataSourceHandlers {
   onLines: (entries: LogEntry[]) => void;
   onEvent: (event: LogStreamEvent) => void;
 }

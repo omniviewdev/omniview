@@ -1,5 +1,5 @@
-export type HeaderAreaLocation = 'left' | 'center' | 'right';
-export type HeaderAreaType = 'items' | 'search' | 'tabs' | 'context';
+type HeaderAreaLocation = 'left' | 'center' | 'right';
+type HeaderAreaType = 'items' | 'search' | 'tabs' | 'context';
 
 /**
  * Redux store for the header component and it's state.
@@ -26,7 +26,7 @@ export enum HeaderAreaItemType {
 export type HeaderAreaItemListType = HeaderIconButton | HeaderIconLink | HeaderIconMenu | HeaderIconModal;
 export type HeaderAreaItemList = HeaderAreaItemListType[];
 
-export type HeaderAreaItem = {
+type HeaderAreaItem = {
   /**
    * Unique identifier for the item.
    */
@@ -62,7 +62,7 @@ export type HeaderIconLink = {
   href: string;
 } & HeaderAreaItem;
 
-export type HeaderIconModal = {
+type HeaderIconModal = {
   type: HeaderAreaItemType.MODAL;
   icon: string;
   // The modal should be a lazy loadable component, as we really shouldn't be

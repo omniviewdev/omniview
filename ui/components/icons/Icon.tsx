@@ -31,7 +31,7 @@ const loadIconComponent = (name: string) => {
   return Icons[iconName as keyof typeof Icons];
 };
 
-export const Icon: React.FC<NamedIconProps> = ({ name, ...props }) => {
+const Icon: React.FC<NamedIconProps> = ({ name, ...props }) => {
   let DynamicIcon;
 
   const prefix = name.substring(0, 2);
