@@ -13,6 +13,9 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
+// dataFilePerm is the permission for plugin data files.
+const dataFilePerm os.FileMode = 0o600
+
 // Controller provides a JSON key-value store for plugins to persist arbitrary data.
 // Each key is stored as a separate JSON file under <stateRoot>/plugins/{pluginID}/data/.
 type Controller interface {
@@ -65,7 +68,7 @@ func (c *controller) Get(pluginID, key string) (any, error) {
 	}
 
 	var value any
-	if err := json.Unmarshal(data, &value); err != nil {
+	if err = json.Unmarshal(data, &value); err != nil {
 		logger.Errorw(context.Background(), "failed to unmarshal data", "error", err)
 		return nil, err
 	}
@@ -86,7 +89,7 @@ func (c *controller) Set(pluginID, key string, value any) error {
 		return err
 	}
 
-	if err := root.WriteFile(key+".json", data, 0600); err != nil {
+	if err = root.WriteFile(key+".json", data, dataFilePerm); err != nil {
 		logger.Errorw(context.Background(), "failed to write data file", "error", err)
 		return err
 	}
@@ -101,7 +104,7 @@ func (c *controller) Delete(pluginID, key string) error {
 	if err != nil {
 		return err
 	}
-	if err := root.Remove(key + ".json"); err != nil {
+	if err = root.Remove(key + ".json"); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}

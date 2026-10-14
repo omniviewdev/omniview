@@ -50,12 +50,19 @@ func (r *PluginRecord) ToInfo() sdktypes.PluginInfo {
 // NewPluginRecord creates a new PluginRecord with a state machine.
 func NewPluginRecord(id string, meta config.PluginMeta, initialPhase lifecycle.PluginPhase) *PluginRecord {
 	return &PluginRecord{
-		ID:           id,
-		Phase:        initialPhase,
-		Metadata:     meta,
-		Enabled:      true,
-		InstalledAt:  time.Now(),
-		StateMachine: lifecycle.NewPluginStateMachine(id, initialPhase),
+		ID:              id,
+		Phase:           initialPhase,
+		Metadata:        meta,
+		Enabled:         true,
+		DevMode:         false,
+		DevPath:         "",
+		LastError:       "",
+		ErrorCount:      0,
+		InstalledAt:     time.Now(),
+		StateMachine:    lifecycle.NewPluginStateMachine(id, initialPhase),
+		Backend:         nil,
+		Capabilities:    nil,
+		ProtocolVersion: 0,
 	}
 }
 

@@ -103,6 +103,15 @@ func (c *Client) BaseURL() string {
 	return c.baseURL
 }
 
+const (
+	// pluginsPageSize is the page size used when listing or searching plugins and versions.
+	pluginsPageSize = 50
+	// reviewsPageSize is the page size used when listing plugin reviews.
+	reviewsPageSize = 20
+	// downloadStatsDays is the number of days of daily download counts fetched.
+	downloadStatsDays = 30
+)
+
 // toAvailablePlugin converts a registry Plugin to the frontend-facing AvailablePlugin.
 func toAvailablePlugin(p regclient.Plugin) AvailablePlugin {
 	return AvailablePlugin{
@@ -122,13 +131,24 @@ func toAvailablePlugin(p regclient.Plugin) AvailablePlugin {
 		URL:           p.URL,
 		PublisherName: p.PublisherName,
 		LatestVer:     p.LatestVersion,
+		Installed:     false,
+		InstalledVer:  "",
+		UpdateAvail:   false,
 	}
 }
 
 // ListPlugins fetches all available plugins from the marketplace, paginating
 // through results automatically.
 func (c *Client) ListPlugins(ctx context.Context) ([]AvailablePlugin, error) {
-	return c.fetchAllPlugins(ctx, &regclient.ListOptions{PerPage: 50})
+	return c.fetchAllPlugins(ctx, &regclient.ListOptions{
+		Page:           0,
+		PerPage:        pluginsPageSize,
+		OrderField:     "",
+		OrderDirection: "",
+		Search:         "",
+		Category:       "",
+		Featured:       false,
+	})
 }
 
 // fetchAllPlugins walks through all pages and collects every plugin.
@@ -159,9 +179,13 @@ func (c *Client) fetchAllPlugins(ctx context.Context, opts *regclient.ListOption
 // SearchPlugins searches plugins with filters, paginating through all results.
 func (c *Client) SearchPlugins(ctx context.Context, query, category, sort string) ([]AvailablePlugin, error) {
 	opts := &regclient.ListOptions{
-		PerPage:  50,
-		Search:   query,
-		Category: category,
+		Page:           0,
+		PerPage:        pluginsPageSize,
+		OrderField:     "",
+		OrderDirection: "",
+		Search:         query,
+		Category:       category,
+		Featured:       false,
 	}
 	if sort != "" {
 		opts.OrderField = sort
@@ -181,7 +205,15 @@ func (c *Client) GetPluginReadme(ctx context.Context, pluginID string) (string, 
 
 // GetPluginVersions fetches version history for a plugin.
 func (c *Client) GetPluginVersions(ctx context.Context, pluginID string) ([]VersionInfo, error) {
-	result, err := c.inner.ListVersions(ctx, pluginID, &regclient.ListOptions{PerPage: 50})
+	result, err := c.inner.ListVersions(ctx, pluginID, &regclient.ListOptions{
+		Page:           0,
+		PerPage:        pluginsPageSize,
+		OrderField:     "",
+		OrderDirection: "",
+		Search:         "",
+		Category:       "",
+		Featured:       false,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("listing plugin versions: %w", err)
 	}
@@ -204,8 +236,13 @@ func (c *Client) GetPluginVersions(ctx context.Context, pluginID string) ([]Vers
 // GetPluginReviews fetches reviews for a plugin.
 func (c *Client) GetPluginReviews(ctx context.Context, pluginID string, page int) ([]Review, error) {
 	result, err := c.inner.ListReviews(ctx, pluginID, &regclient.ListOptions{
-		Page:    page,
-		PerPage: 20,
+		Page:           page,
+		PerPage:        reviewsPageSize,
+		OrderField:     "",
+		OrderDirection: "",
+		Search:         "",
+		Category:       "",
+		Featured:       false,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing plugin reviews: %w", err)
@@ -227,12 +264,15 @@ func (c *Client) GetPluginReviews(ctx context.Context, pluginID string, page int
 
 // GetPluginDownloadStats fetches download statistics.
 func (c *Client) GetPluginDownloadStats(ctx context.Context, pluginID string) (*DownloadStats, error) {
-	daily, err := c.inner.GetDailyDownloads(ctx, pluginID, 30)
+	daily, err := c.inner.GetDailyDownloads(ctx, pluginID, downloadStatsDays)
 	if err != nil {
 		return nil, fmt.Errorf("getting download stats: %w", err)
 	}
 
 	stats := &DownloadStats{
+		Total:      0,
+		LastMonth:  0,
+		LastWeek:   0,
 		DailyStats: make([]DailyStat, len(daily)),
 	}
 	for i, d := range daily {

@@ -14,6 +14,9 @@ import (
 	lifecyclepb "github.com/omniviewdev/plugin-sdk/proto/v1/lifecycle"
 )
 
+// rpcTimeout bounds each lifecycle and probe RPC made to an external plugin.
+const rpcTimeout = 5 * time.Second
+
 // ExternalBackend wraps a go-plugin Client and ClientProtocol pair.
 // All go-plugin concrete types are confined to this file.
 type ExternalBackend struct {
@@ -41,11 +44,11 @@ func (b *ExternalBackend) Healthy() bool {
 	raw, err := b.rpcClient.Dispense("lifecycle")
 	if err == nil {
 		if lcClient, ok := raw.(*lc.Client); ok {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 			defer cancel()
 			resp, rpcErr := lcClient.HealthCheck(ctx)
 			if rpcErr == nil {
-				return resp.Status == lifecyclepb.ServingStatus_SERVING_STATUS_SERVING
+				return resp.GetStatus() == lifecyclepb.ServingStatus_SERVING_STATUS_SERVING
 			}
 		}
 	}
@@ -92,7 +95,7 @@ func (b *ExternalBackend) detectViaLifecycle() ([]string, error) {
 		return nil, fmt.Errorf("dispensed lifecycle client has wrong type: %T", raw)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
 
 	resp, err := lcClient.GetCapabilities(ctx)
@@ -100,7 +103,7 @@ func (b *ExternalBackend) detectViaLifecycle() ([]string, error) {
 		return nil, fmt.Errorf("GetCapabilities RPC failed: %w", err)
 	}
 
-	return resp.Capabilities, nil
+	return resp.GetCapabilities(), nil
 }
 
 func (b *ExternalBackend) detectViaProbing() ([]string, error) {
@@ -123,7 +126,7 @@ func (b *ExternalBackend) detectViaProbing() ([]string, error) {
 
 	var caps []string
 	for _, pm := range probeMethods {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 		err := conn.Invoke(ctx, pm.method, &emptypb.Empty{}, &emptypb.Empty{})
 		cancel()
 		if grpcstatus.Code(err) == grpccodes.Unimplemented {

@@ -29,14 +29,32 @@ type GetLanguageInput struct {
 	Contents string `json:"contents"`
 }
 
+// Editor language identifiers returned by DetectLanguage.
+const (
+	langABAP       = "abap"
+	langCPP        = "cpp"
+	langClojure    = "clojure"
+	langCSS        = "css"
+	langINI        = "ini"
+	langJava       = "java"
+	langJavaScript = "javascript"
+	langHTML       = "html"
+	langLua        = "lua"
+	langMarkdown   = "markdown"
+	langRuby       = "ruby"
+	langXML        = "xml"
+	langYAML       = "yaml"
+	langPlainText  = "text"
+)
+
 //nolint:gochecknoglobals // helper map
 var langMap = map[string]string{
-	"ABAP":              "abap",
+	"ABAP":              langABAP,
 	"Apex":              "apex",
-	"C":                 "cpp",
-	"Clojure":           "clojure",
-	"C++":               "cpp",
-	"CSS":               "css",
+	"C":                 langCPP,
+	"Clojure":           langClojure,
+	"C++":               langCPP,
+	"CSS":               langCSS,
 	"Dart":              "dart",
 	"Dockerfile":        "dockerfile",
 	"Elixir":            "elixir",
@@ -45,17 +63,17 @@ var langMap = map[string]string{
 	"Go":                "go",
 	"GraphQL":           "graphql",
 	"Handlebars":        "handlebars",
-	"INI":               "ini",
-	"Java":              "java",
+	"INI":               langINI,
+	"Java":              langJava,
 	"Java Properties":   "properties",
-	"JavaScript":        "javascript",
+	"JavaScript":        langJavaScript,
 	"Julia":             "julia",
 	"HCL":               "hcl",
-	"HTML":              "html",
+	"HTML":              langHTML,
 	"Kotlin":            "kotlin",
 	"Less":              "less",
-	"Lua":               "lua",
-	"Markdown":          "markdown",
+	"Lua":               langLua,
+	"Markdown":          langMarkdown,
 	"MDX":               "mdx",
 	"Nginx":             "nginx",
 	"SQL":               "sql",
@@ -65,7 +83,7 @@ var langMap = map[string]string{
 	"PHP":               "php",
 	"PowerShell":        "powershell",
 	"Protocol Buffer":   "protobuf",
-	"Ruby":              "ruby",
+	"Ruby":              langRuby,
 	"Rust":              "rust",
 	"Scala":             "scala",
 	"SCSS":              "scss",
@@ -74,28 +92,28 @@ var langMap = map[string]string{
 	"TypeScript":        "typescript",
 	"Visual Basic .NET": "vb",
 	"Visual Basic 6.0":  "vb",
-	"XML":               "xml",
-	"YAML":              "yaml",
+	"XML":               langXML,
+	"YAML":              langYAML,
 }
 
 var aceModeMap = map[string]string{
-	"abap":       "abap",
-	"c_cpp":      "cpp",
-	"ini":        "ini",
-	"sh":         "shell",
-	"markdown":   "markdown",
-	"xml":        "xml",
-	"java":       "java",
-	"html":       "html",
-	"css":        "css",
-	"javascript": "javascript",
-	"csharp":     "csharp",
-	"ruby":       "ruby",
-	"lua":        "lua",
-	"clojure":    "clojure",
-	"yaml":       "yaml",
-	"json":       "json",
-	"pascal":     "pascal",
+	langABAP:       langABAP,
+	"c_cpp":        langCPP,
+	langINI:        langINI,
+	"sh":           "shell",
+	langMarkdown:   langMarkdown,
+	langXML:        langXML,
+	langJava:       langJava,
+	langHTML:       langHTML,
+	langCSS:        langCSS,
+	langJavaScript: langJavaScript,
+	"csharp":       "csharp",
+	langRuby:       langRuby,
+	langLua:        langLua,
+	langClojure:    langClojure,
+	langYAML:       langYAML,
+	"json":         "json",
+	"pascal":       "pascal",
 }
 
 // DetectLanguage detects the language of a file based on its filename and contents.
@@ -109,7 +127,7 @@ func (c *Client) DetectLanguage(params GetLanguageInput) string {
 		lang, _ = enry.GetLanguageByExtension(params.Filename)
 		log.Println("lang detected from only extension: ", lang)
 	default:
-		lang = "text"
+		lang = langPlainText
 	}
 
 	// try some others
@@ -122,12 +140,12 @@ func (c *Client) DetectLanguage(params GetLanguageInput) string {
 	}
 
 	if lang == "" {
-		lang = "text"
+		lang = langPlainText
 	}
 
 	info, err := enry.GetLanguageInfo(lang)
 	if err != nil {
-		return "text"
+		return langPlainText
 	}
 	var ok bool
 	lang, ok = langMap[info.Name]
@@ -138,7 +156,7 @@ func (c *Client) DetectLanguage(params GetLanguageInput) string {
 	if ok {
 		return lang
 	}
-	return "text"
+	return langPlainText
 }
 
 func attemptYamlDetection(contents []byte) bool {

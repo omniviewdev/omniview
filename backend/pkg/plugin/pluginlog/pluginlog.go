@@ -46,12 +46,18 @@ type RotationOptions struct {
 	Compress   bool // compress rotated files with gzip
 }
 
+const (
+	defaultMaxSizeMB  = 256
+	defaultMaxBackups = 5
+	defaultMaxAgeDays = 30
+)
+
 // DefaultRotation returns rotation settings suitable for plugin logs.
 func DefaultRotation() RotationOptions {
 	return RotationOptions{
-		MaxSizeMB:  256,
-		MaxBackups: 5,
-		MaxAgeDays: 30,
+		MaxSizeMB:  defaultMaxSizeMB,
+		MaxBackups: defaultMaxBackups,
+		MaxAgeDays: defaultMaxAgeDays,
 		Compress:   true,
 	}
 }
@@ -108,7 +114,11 @@ func NewManager(dir string, opts RotationOptions) (*Manager, error) {
 		dir:           dir,
 		opts:          opts,
 		bufferSize:    DefaultBufferSize,
+		mu:            sync.Mutex{},
 		streams:       make(map[string]*PluginLogStream),
+		emitMu:        sync.RWMutex{},
+		emit:          nil,
+		subMu:         sync.RWMutex{},
 		subscriptions: make(map[string]int),
 	}, nil
 }
@@ -183,6 +193,7 @@ func (m *Manager) Stream(pluginID string) *PluginLogStream {
 		MaxBackups: m.opts.MaxBackups,
 		MaxAge:     m.opts.MaxAgeDays,
 		Compress:   m.opts.Compress,
+		LocalTime:  false,
 	}
 
 	s := &PluginLogStream{
@@ -190,6 +201,7 @@ func (m *Manager) Stream(pluginID string) *PluginLogStream {
 		file:     lj,
 		buffer:   newRingBuffer(m.bufferSize),
 		mgr:      m,
+		mu:       sync.Mutex{},
 	}
 	m.streams[pluginID] = s
 	return s
@@ -373,6 +385,8 @@ type ringBuffer struct {
 func newRingBuffer(capacity int) *ringBuffer {
 	return &ringBuffer{
 		entries: make([]LogEntry, capacity),
+		head:    0,
+		count:   0,
 		cap:     capacity,
 	}
 }
