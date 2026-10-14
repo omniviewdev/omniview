@@ -16,6 +16,9 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
+// pluginMetaFile is the name of a plugin's metadata file.
+const pluginMetaFile = "plugin.yaml"
+
 func checkTarball(filePath string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -53,7 +56,7 @@ func checkTarball(filePath string) error {
 			if header.FileInfo().Mode()&0111 == 0 {
 				return errors.New("bin/plugin is not executable")
 			}
-		case "./plugin.yaml", "plugin.yaml":
+		case "./" + pluginMetaFile, pluginMetaFile:
 			var meta config.PluginMeta
 			if err = yaml.NewDecoder(tarReader).Decode(&meta); err != nil {
 				return fmt.Errorf("invalid plugin.yaml: %w", err)
@@ -119,13 +122,8 @@ func unpackPluginArchive(source string, destination string) error {
 		}
 
 		// Check file size against MaxPluginSize before extraction
-		if header.Size > MaxPluginSize {
-			return errors.New("file size exceeds maximum allowed size")
-		}
-
-		totalBytes += header.Size
-		if totalBytes > MaxPluginSize {
-			return errors.New("cumulative extraction size exceeds maximum allowed size")
+		if totalBytes, err = addExtractedSize(totalBytes, header.Size); err != nil {
+			return err
 		}
 
 		// sanitize the file path
@@ -140,38 +138,59 @@ func unpackPluginArchive(source string, destination string) error {
 				return err
 			}
 		case tar.TypeReg: // If it's a file, create it
-			var outFile *os.File
-
-			if err = os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-				return fmt.Errorf("error creating plugin directory: %w", err)
-			}
-
-			// if the file already exists, remove it
-			if _, err = os.Stat(path); err == nil {
-				if err = os.Remove(path); err != nil {
-					return err
-				}
-			}
-
-			outFile, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
-			if err != nil {
+			if err = extractRegularFile(path, header, tarReader); err != nil {
 				return err
-			}
-
-			// prevent DoS from huge files
-			if _, err = io.CopyN(outFile, tarReader, MaxPluginSize); err != nil {
-				if !errors.Is(err, io.EOF) {
-					err = fmt.Errorf("error copying file: %w", err)
-					outFile.Close()
-					return err
-				}
-			}
-			if closeErr := outFile.Close(); closeErr != nil {
-				return fmt.Errorf("error closing extracted file: %w", closeErr)
 			}
 		}
 	}
 
+	return nil
+}
+
+// addExtractedSize adds an archive entry's size to the running total, failing
+// if the entry or the total exceeds MaxPluginSize.
+func addExtractedSize(totalBytes, size int64) (int64, error) {
+	if size > MaxPluginSize {
+		return totalBytes, errors.New("file size exceeds maximum allowed size")
+	}
+
+	totalBytes += size
+	if totalBytes > MaxPluginSize {
+		return totalBytes, errors.New("cumulative extraction size exceeds maximum allowed size")
+	}
+	return totalBytes, nil
+}
+
+// extractRegularFile writes the current tar entry (header) from tarReader to path,
+// replacing any existing file.
+func extractRegularFile(path string, header *tar.Header, tarReader io.Reader) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("error creating plugin directory: %w", err)
+	}
+
+	// if the file already exists, remove it
+	if _, err := os.Stat(path); err == nil {
+		if err = os.Remove(path); err != nil {
+			return err
+		}
+	}
+
+	outFile, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
+	if err != nil {
+		return err
+	}
+
+	// prevent DoS from huge files
+	if _, err = io.CopyN(outFile, tarReader, MaxPluginSize); err != nil {
+		if !errors.Is(err, io.EOF) {
+			err = fmt.Errorf("error copying file: %w", err)
+			outFile.Close()
+			return err
+		}
+	}
+	if closeErr := outFile.Close(); closeErr != nil {
+		return fmt.Errorf("error closing extracted file: %w", closeErr)
+	}
 	return nil
 }
 
@@ -202,7 +221,7 @@ func parseMetadataFromArchive(path string) (*config.PluginMeta, error) {
 			return nil, err
 		}
 
-		if header.Name == "./plugin.yaml" || header.Name == "plugin.yaml" {
+		if header.Name == "./"+pluginMetaFile || header.Name == pluginMetaFile {
 			var metadata config.PluginMeta
 			if err = yaml.NewDecoder(tr).Decode(&metadata); err != nil {
 				return nil, err
@@ -216,7 +235,7 @@ func parseMetadataFromArchive(path string) (*config.PluginMeta, error) {
 
 func parseMetadataFromPluginPath(path string) (*config.PluginMeta, error) {
 	// Open the plugin.yaml file
-	file, err := os.Open(filepath.Join(path, "plugin.yaml"))
+	file, err := os.Open(filepath.Join(path, pluginMetaFile))
 	if err != nil {
 		return nil, err
 	}
@@ -276,29 +295,14 @@ func CopyDir(dst, src string) error {
 		outpath := filepath.Join(dst, strings.TrimPrefix(path, src))
 
 		if info.IsDir() {
-			os.MkdirAll(outpath, info.Mode())
+			_ = os.MkdirAll(outpath, info.Mode())
 			return nil // means recursive
 		}
 
 		// handle irregular files
 		if !info.Mode().IsRegular() {
-			switch info.Mode().Type() & os.ModeType {
-			case os.ModeSymlink:
-				link, err := os.Readlink(path)
-				if err != nil {
-					return err
-				}
-				// Resolve symlink target and verify it stays within the source tree.
-				resolvedTarget := link
-				if !filepath.IsAbs(link) {
-					resolvedTarget = filepath.Join(filepath.Dir(path), link)
-				}
-				resolvedTarget = filepath.Clean(resolvedTarget)
-				cleanSrc := filepath.Clean(src)
-				if !strings.HasPrefix(resolvedTarget, cleanSrc+string(os.PathSeparator)) && resolvedTarget != cleanSrc {
-					return fmt.Errorf("symlink %s points outside source tree: %s", path, link)
-				}
-				return os.Symlink(link, outpath)
+			if info.Mode().Type()&os.ModeType == os.ModeSymlink {
+				return copySymlinkWithinTree(src, path, outpath)
 			}
 			return nil
 		}
@@ -320,10 +324,30 @@ func CopyDir(dst, src string) error {
 		defer fh.Close()
 
 		// make it the same
-		fh.Chmod(info.Mode())
+		_ = fh.Chmod(info.Mode())
 
 		// copy content
 		_, err = io.Copy(fh, in)
 		return err
 	})
+}
+
+// copySymlinkWithinTree recreates the symlink at path as outpath, refusing
+// links whose target resolves outside the source tree src.
+func copySymlinkWithinTree(src, path, outpath string) error {
+	link, err := os.Readlink(path)
+	if err != nil {
+		return err
+	}
+	// Resolve symlink target and verify it stays within the source tree.
+	resolvedTarget := link
+	if !filepath.IsAbs(link) {
+		resolvedTarget = filepath.Join(filepath.Dir(path), link)
+	}
+	resolvedTarget = filepath.Clean(resolvedTarget)
+	cleanSrc := filepath.Clean(src)
+	if !strings.HasPrefix(resolvedTarget, cleanSrc+string(os.PathSeparator)) && resolvedTarget != cleanSrc {
+		return fmt.Errorf("symlink %s points outside source tree: %s", path, link)
+	}
+	return os.Symlink(link, outpath)
 }

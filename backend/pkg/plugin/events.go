@@ -75,6 +75,12 @@ const (
 	EventProcessLog = "plugin/process/log"
 )
 
+// Keys used in map payloads of plugin events.
+const (
+	payloadKeyPluginID = "pluginID"
+	payloadKeyError    = "error"
+)
+
 // StateChangePayload is sent with EventStateChange.
 type StateChangePayload struct {
 	PluginID  string                `json:"pluginID"`

@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 )
 
+// copiedDirPerm is the permission CopyDirectory creates directories with.
+const copiedDirPerm os.FileMode = 0o755
+
 func CopyDirectory(scrDir, dest string) error {
 	entries, err := os.ReadDir(scrDir)
 	if err != nil {
@@ -16,42 +19,44 @@ func CopyDirectory(scrDir, dest string) error {
 		sourcePath := filepath.Join(scrDir, entry.Name())
 		destPath := filepath.Join(dest, entry.Name())
 
-		fileInfo, err := os.Stat(sourcePath)
-		if err != nil {
+		if err = copyEntry(sourcePath, destPath); err != nil {
 			return err
 		}
 
-		switch fileInfo.Mode() & os.ModeType {
-		case os.ModeDir:
-			if err := CreateIfNotExists(destPath, 0755); err != nil {
-				return err
-			}
-			if err := CopyDirectory(sourcePath, destPath); err != nil {
-				return err
-			}
-		case os.ModeSymlink:
-			if err := CopySymLink(sourcePath, destPath); err != nil {
-				return err
-			}
-		default:
-			if err := Copy(sourcePath, destPath); err != nil {
-				return err
-			}
-		}
-
-		fInfo, err := entry.Info()
-		if err != nil {
-			return err
+		fInfo, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
 		}
 
 		isSymlink := fInfo.Mode()&os.ModeSymlink != 0
 		if !isSymlink {
-			if err := os.Chmod(destPath, fInfo.Mode()); err != nil {
+			if err = os.Chmod(destPath, fInfo.Mode()); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// copyEntry copies a single directory entry (recursively for directories,
+// as a link for symlinks, by content otherwise) from sourcePath to destPath.
+func copyEntry(sourcePath, destPath string) error {
+	fileInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return err
+	}
+
+	mode := fileInfo.Mode() & os.ModeType
+	if mode == os.ModeDir {
+		if err = CreateIfNotExists(destPath, copiedDirPerm); err != nil {
+			return err
+		}
+		return CopyDirectory(sourcePath, destPath)
+	}
+	if mode == os.ModeSymlink {
+		return CopySymLink(sourcePath, destPath)
+	}
+	return Copy(sourcePath, destPath)
 }
 
 func Copy(srcFile, dstFile string) error {

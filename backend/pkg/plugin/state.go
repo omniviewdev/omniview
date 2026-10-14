@@ -13,6 +13,9 @@ var stateMu sync.RWMutex
 
 const stateFileName = "plugin_state.json"
 
+// stateFilePerm is the permission of the state files the manager writes.
+const stateFilePerm os.FileMode = 0o644
+
 // writePluginStateJSON atomically persists plugin records as JSON.
 // Write to .tmp file then rename for POSIX atomicity.
 func (pm *pluginManager) writePluginStateJSON() error {
@@ -36,7 +39,7 @@ func (pm *pluginManager) writePluginStateJSON() error {
 
 	tmpName := stateFileName + ".tmp"
 
-	if err = pm.stateRoot.WriteFile(tmpName, data, 0644); err != nil {
+	if err = pm.stateRoot.WriteFile(tmpName, data, stateFilePerm); err != nil {
 		return fmt.Errorf("error writing temp state file: %w", err)
 	}
 
@@ -91,7 +94,7 @@ func (pm *pluginManager) mergeAndWritePluginState(persisted []types.PluginStateR
 
 	tmpName := stateFileName + ".tmp"
 
-	if err = pm.stateRoot.WriteFile(tmpName, data, 0644); err != nil {
+	if err = pm.stateRoot.WriteFile(tmpName, data, stateFilePerm); err != nil {
 		return fmt.Errorf("error writing temp state file: %w", err)
 	}
 

@@ -46,6 +46,7 @@ func NewHealthChecker(logger logging.Logger, pm *pluginManager) *HealthChecker {
 	return &HealthChecker{
 		logger:          logger.Named("HealthChecker"),
 		pm:              pm,
+		mu:              sync.Mutex{},
 		recoveryStates:  make(map[string]*CrashRecoveryState),
 		recoveryCancels: make(map[string]context.CancelFunc),
 		crashBudgets:    make(map[string]*crashBudget),
@@ -154,6 +155,78 @@ func (hc *HealthChecker) IsInCrashCycle(pluginID string) bool {
 	return cb.count > 0
 }
 
+// beginRecoveryAttempt records a new recovery attempt in state and returns the
+// backoff to wait and the attempt number. When the maximum number of attempts
+// has been reached it marks the plugin as failed, emits EventCrashRecoveryFailed
+// and reports false.
+func (hc *HealthChecker) beginRecoveryAttempt(
+	pluginID string,
+	state *CrashRecoveryState,
+) (time.Duration, int, bool) {
+	hc.mu.Lock()
+	if state.Attempts >= maxCrashRetries {
+		hc.logger.Errorw(hc.pm.ctx, "max crash recovery attempts reached",
+			"pluginID", pluginID, "attempts", state.Attempts)
+
+		// Mark the plugin record as failed if we have one.
+		hc.markFailedLocked(pluginID, "max crash recovery attempts reached", "max retries exhausted")
+
+		hc.mu.Unlock()
+		hc.pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
+			payloadKeyPluginID: pluginID,
+			payloadKeyError:    "max crash recovery attempts reached",
+		})
+		return 0, 0, false
+	}
+
+	backoff := state.NextBackoff
+	state.Attempts++
+	state.LastAttempt = time.Now()
+	state.NextBackoff *= 2
+	if state.NextBackoff > maxCrashBackoff {
+		state.NextBackoff = maxCrashBackoff
+	}
+	attempt := state.Attempts
+	hc.mu.Unlock()
+	return backoff, attempt, true
+}
+
+// consumeCrashBudgetLocked counts a crash against the plugin's crash budget and
+// reports whether the budget is now exhausted, in which case the plugin record
+// is marked as failed. Must be called with hc.mu held.
+func (hc *HealthChecker) consumeCrashBudgetLocked(pluginID string) bool {
+	cb := hc.crashBudgets[pluginID]
+	if cb == nil {
+		cb = &crashBudget{count: 0, windowStart: time.Now()}
+		hc.crashBudgets[pluginID] = cb
+	}
+	// Reset the window if enough time has passed since first crash.
+	if time.Since(cb.windowStart) > crashBudgetWindow {
+		cb.count = 0
+		cb.windowStart = time.Now()
+	}
+	cb.count++
+	if cb.count <= maxTotalCrashes {
+		return false
+	}
+	hc.logger.Errorw(hc.pm.ctx, "crash budget exhausted — plugin keeps crashing, giving up",
+		"pluginID", pluginID, "totalCrashes", cb.count, "window", crashBudgetWindow)
+	hc.markFailedLocked(pluginID, "plugin keeps crashing (crash budget exhausted)", "crash budget exhausted")
+	return true
+}
+
+// markFailedLocked marks the plugin record (if any) as failed with lastError,
+// forcing its state machine to PhaseFailed with reason. Must be called with hc.mu held.
+func (hc *HealthChecker) markFailedLocked(pluginID, lastError, reason string) {
+	if record, ok := hc.pm.records[pluginID]; ok {
+		record.Phase = lifecycle.PhaseFailed
+		record.LastError = lastError
+		if record.StateMachine != nil {
+			record.StateMachine.ForcePhase(lifecycle.PhaseFailed, reason)
+		}
+	}
+}
+
 // HandleCrashWithBackoff handles a plugin crash with exponential backoff.
 // Uses an iterative loop instead of recursion to avoid stack growth.
 func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
@@ -163,31 +236,11 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	// If a plugin keeps crashing immediately after recovery, the per-cycle
 	// maxCrashRetries would reset each time. The budget tracks total crashes
 	// across all cycles within a time window.
-	cb := hc.crashBudgets[pluginID]
-	if cb == nil {
-		cb = &crashBudget{windowStart: time.Now()}
-		hc.crashBudgets[pluginID] = cb
-	}
-	// Reset the window if enough time has passed since first crash.
-	if time.Since(cb.windowStart) > crashBudgetWindow {
-		cb.count = 0
-		cb.windowStart = time.Now()
-	}
-	cb.count++
-	if cb.count > maxTotalCrashes {
-		hc.logger.Errorw(hc.pm.ctx, "crash budget exhausted — plugin keeps crashing, giving up",
-			"pluginID", pluginID, "totalCrashes", cb.count, "window", crashBudgetWindow)
-		if record, ok := hc.pm.records[pluginID]; ok {
-			record.Phase = lifecycle.PhaseFailed
-			record.LastError = "plugin keeps crashing (crash budget exhausted)"
-			if record.StateMachine != nil {
-				record.StateMachine.ForcePhase(lifecycle.PhaseFailed, "crash budget exhausted")
-			}
-		}
+	if hc.consumeCrashBudgetLocked(pluginID) {
 		hc.mu.Unlock()
 		hc.pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
-			"pluginID": pluginID,
-			"error":    "crash budget exhausted — too many crashes in a short time",
+			payloadKeyPluginID: pluginID,
+			payloadKeyError:    "crash budget exhausted — too many crashes in a short time",
 		})
 		return
 	}
@@ -195,6 +248,8 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	state, ok := hc.recoveryStates[pluginID]
 	if !ok {
 		state = &CrashRecoveryState{
+			Attempts:    0,
+			LastAttempt: time.Time{},
 			NextBackoff: initialCrashBackoff,
 		}
 		hc.recoveryStates[pluginID] = state
@@ -220,7 +275,8 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 	defer func() {
 		hc.mu.Lock()
 		// Only clean up if we're still the active cancel (not replaced by a newer goroutine).
-		if currentCancel, ok := hc.recoveryCancels[pluginID]; ok && fmt.Sprintf("%p", currentCancel) == fmt.Sprintf("%p", cancel) {
+		currentCancel, active := hc.recoveryCancels[pluginID]
+		if active && fmt.Sprintf("%p", currentCancel) == fmt.Sprintf("%p", cancel) {
 			delete(hc.recoveryCancels, pluginID)
 		}
 		hc.mu.Unlock()
@@ -236,37 +292,10 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 		default:
 		}
 
-		hc.mu.Lock()
-		if state.Attempts >= maxCrashRetries {
-			hc.logger.Errorw(hc.pm.ctx, "max crash recovery attempts reached",
-				"pluginID", pluginID, "attempts", state.Attempts)
-
-			// Mark the plugin record as failed if we have one.
-			if record, ok := hc.pm.records[pluginID]; ok {
-				record.Phase = lifecycle.PhaseFailed
-				record.LastError = "max crash recovery attempts reached"
-				if record.StateMachine != nil {
-					record.StateMachine.ForcePhase(lifecycle.PhaseFailed, "max retries exhausted")
-				}
-			}
-
-			hc.mu.Unlock()
-			hc.pm.emitter.Emit(EventCrashRecoveryFailed, map[string]interface{}{
-				"pluginID": pluginID,
-				"error":    "max crash recovery attempts reached",
-			})
+		backoff, attempt, proceed := hc.beginRecoveryAttempt(pluginID, state)
+		if !proceed {
 			return
 		}
-
-		backoff := state.NextBackoff
-		state.Attempts++
-		state.LastAttempt = time.Now()
-		state.NextBackoff *= 2
-		if state.NextBackoff > maxCrashBackoff {
-			state.NextBackoff = maxCrashBackoff
-		}
-		attempt := state.Attempts
-		hc.mu.Unlock()
 
 		hc.logger.Infow(hc.pm.ctx, "waiting before crash recovery attempt",
 			"pluginID", pluginID,
@@ -299,7 +328,7 @@ func (hc *HealthChecker) HandleCrashWithBackoff(pluginID string) {
 		delete(hc.recoveryStates, pluginID)
 		hc.mu.Unlock()
 
-		hc.pm.emitter.Emit(EventRecovered, map[string]interface{}{"pluginID": pluginID})
+		hc.pm.emitter.Emit(EventRecovered, map[string]interface{}{payloadKeyPluginID: pluginID})
 		return
 	}
 }

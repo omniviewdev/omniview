@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +30,10 @@ import (
 	rpv1 "github.com/omniviewdev/plugin-sdk/pkg/v1/resource/plugin"
 	sp "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
 )
+
+// pluginStartTimeout bounds how long a plugin process may take to start, so
+// broken plugins don't block startup (go-plugin's default is 60s).
+const pluginStartTimeout = 15 * time.Second
 
 // LoadPluginOptions configures how a plugin is loaded.
 type LoadPluginOptions struct {
@@ -60,7 +65,7 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 		}
 		if existing.Phase == lifecycle.PhaseStarting {
 			pm.recordsMu.RUnlock()
-			return sdktypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, 409,
+			return sdktypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, http.StatusConflict,
 				"Plugin is starting", fmt.Sprintf("Plugin '%s' is currently starting.", id)).WithInstance(id)
 		}
 	}
@@ -81,12 +86,12 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	metadata, err := sdktypes.LoadPluginMetadata(location)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return sdktypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, 404,
+			return sdktypes.PluginInfo{}, apperror.New(apperror.TypePluginLoadFailed, http.StatusNotFound,
 				"Plugin metadata missing",
 				fmt.Sprintf("Plugin '%s' is missing its metadata file (plugin.yaml).", id)).
 				WithInstance(id)
 		}
-		return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
+		return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			fmt.Sprintf("Failed to load metadata for plugin '%s'", id)).
 			WithInstance(id)
 	}
@@ -95,36 +100,12 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	isDevMode := (opts != nil && opts.DevMode) ||
 		(opts != nil && opts.ExistingState != nil && opts.ExistingState.DevMode)
 
-	if isDevMode {
-		// UI-only plugins have no binary; their UI is served by the Vite dev server.
-		if metadata.HasBackendCapabilities() {
-			if err = validateHasBinary(location); err != nil {
-				return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
-					fmt.Sprintf("Plugin '%s' failed dev validation", id)).WithInstance(id)
-			}
-		}
-	} else {
-		if err = validateForStart(metadata, location); err != nil {
-			return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
-				fmt.Sprintf("Plugin '%s' failed validation during loading", id)).WithInstance(id)
-		}
+	if err = validateForLoad(id, metadata, location, isDevMode); err != nil {
+		return sdktypes.PluginInfo{}, err
 	}
 
 	// Build the record directly.
-	record := plugintypes.NewPluginRecord(id, metadata, lifecycle.PhaseStarting)
-	record.Enabled = true
-
-	// Apply existing state if present.
-	if opts != nil && opts.ExistingState != nil {
-		record.Enabled = opts.ExistingState.Enabled
-		record.DevMode = opts.ExistingState.DevMode
-		record.DevPath = opts.ExistingState.DevPath
-	}
-
-	if opts != nil && opts.DevMode {
-		record.DevMode = true
-		record.DevPath = opts.DevModePath
-	}
+	record := newLoadRecord(id, metadata, opts)
 
 	pm.logger.Debugw(pm.ctx, "found metadata",
 		"metadata", metadata,
@@ -135,50 +116,9 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	var backend plugintypes.PluginBackend
 
 	if metadata.HasBackendCapabilities() {
-		var createErr error
-		backend, createErr = pm.createBackend(id, metadata, location)
-		if createErr != nil {
-			record.LastError = createErr.Error()
-			record.Phase = lifecycle.PhaseFailed
-			if record.StateMachine != nil {
-				record.StateMachine.ForcePhase(lifecycle.PhaseFailed, createErr.Error())
-			}
-			pm.recordsMu.Lock()
-			pm.records[id] = record
-			pm.recordsMu.Unlock()
-			return sdktypes.PluginInfo{}, apperror.Wrap(createErr, apperror.TypePluginLoadFailed, 500,
-				"Failed to initialize plugin RPC").WithInstance(id)
-		}
-
-		// Track the plugin process PID for orphan cleanup on next startup.
-		if eb, ok := backend.(*plugintypes.ExternalBackend); ok {
-			if rc := eb.ReattachConfig(); rc != nil {
-				pm.pidTracker.Record(id, rc.Pid)
-			}
-		}
-
-		if err = pm.initPlugin(record); err != nil {
-			record.LastError = err.Error()
-			record.Phase = lifecycle.PhaseFailed
-			if record.StateMachine != nil {
-				record.StateMachine.ForcePhase(lifecycle.PhaseFailed, err.Error())
-			}
-			pm.recordsMu.Lock()
-			pm.records[id] = record
-			pm.recordsMu.Unlock()
-			return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500, "Failed to initialize plugin").WithInstance(id)
-		}
-
-		if err = pm.startPlugin(record, backend); err != nil {
-			record.LastError = err.Error()
-			record.Phase = lifecycle.PhaseFailed
-			if record.StateMachine != nil {
-				record.StateMachine.ForcePhase(lifecycle.PhaseFailed, err.Error())
-			}
-			pm.recordsMu.Lock()
-			pm.records[id] = record
-			pm.recordsMu.Unlock()
-			return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500, "Failed to start plugin").WithInstance(id)
+		backend, err = pm.startBackend(id, record, metadata, location)
+		if err != nil {
+			return sdktypes.PluginInfo{}, err
 		}
 	}
 
@@ -197,9 +137,112 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	return record.ToInfo(), nil
 }
 
+// newLoadRecord builds the record for a plugin being loaded, applying the
+// existing persisted state and dev-mode options from opts.
+func newLoadRecord(id string, metadata config.PluginMeta, opts *LoadPluginOptions) *plugintypes.PluginRecord {
+	record := plugintypes.NewPluginRecord(id, metadata, lifecycle.PhaseStarting)
+	record.Enabled = true
+
+	// Apply existing state if present.
+	if opts != nil && opts.ExistingState != nil {
+		record.Enabled = opts.ExistingState.Enabled
+		record.DevMode = opts.ExistingState.DevMode
+		record.DevPath = opts.ExistingState.DevPath
+	}
+
+	if opts != nil && opts.DevMode {
+		record.DevMode = true
+		record.DevPath = opts.DevModePath
+	}
+	return record
+}
+
+// startBackend creates the plugin's backend process and initializes and starts
+// its controllers. On failure the record is stored as failed and an AppError
+// is returned.
+func (pm *pluginManager) startBackend(
+	id string,
+	record *plugintypes.PluginRecord,
+	metadata config.PluginMeta,
+	location string,
+) (plugintypes.PluginBackend, error) {
+	backend, createErr := pm.createBackend(id, metadata, location)
+	if createErr != nil {
+		pm.storeFailedRecord(id, record, createErr)
+		return nil, apperror.Wrap(
+			createErr, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Failed to initialize plugin RPC",
+		).WithInstance(id)
+	}
+
+	// Track the plugin process PID for orphan cleanup on next startup.
+	pm.trackBackendPID(id, backend)
+
+	if err := pm.initPlugin(record); err != nil {
+		pm.storeFailedRecord(id, record, err)
+		return nil, apperror.Wrap(
+			err, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Failed to initialize plugin",
+		).WithInstance(id)
+	}
+
+	if err := pm.startPlugin(record, backend); err != nil {
+		pm.storeFailedRecord(id, record, err)
+		return nil, apperror.Wrap(
+			err, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Failed to start plugin",
+		).WithInstance(id)
+	}
+	return backend, nil
+}
+
+// validateForLoad validates the installed plugin at location before it is loaded.
+// In dev mode only backend plugins need a binary (UI-only plugins are served by
+// the Vite dev server); otherwise the full start validation runs.
+func validateForLoad(id string, metadata config.PluginMeta, location string, isDevMode bool) error {
+	if isDevMode {
+		if !metadata.HasBackendCapabilities() {
+			return nil
+		}
+		if err := validateHasBinary(location); err != nil {
+			return apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError,
+				fmt.Sprintf("Plugin '%s' failed dev validation", id)).WithInstance(id)
+		}
+		return nil
+	}
+	if err := validateForStart(metadata, location); err != nil {
+		return apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError,
+			fmt.Sprintf("Plugin '%s' failed validation during loading", id)).WithInstance(id)
+	}
+	return nil
+}
+
+// storeFailedRecord marks record as failed with cause and stores it under id.
+func (pm *pluginManager) storeFailedRecord(id string, record *plugintypes.PluginRecord, cause error) {
+	record.LastError = cause.Error()
+	record.Phase = lifecycle.PhaseFailed
+	if record.StateMachine != nil {
+		record.StateMachine.ForcePhase(lifecycle.PhaseFailed, cause.Error())
+	}
+	pm.recordsMu.Lock()
+	pm.records[id] = record
+	pm.recordsMu.Unlock()
+}
+
+// trackBackendPID records the PID of an external plugin process so it can be
+// cleaned up as an orphan on next startup.
+func (pm *pluginManager) trackBackendPID(id string, backend plugintypes.PluginBackend) {
+	if eb, ok := backend.(*plugintypes.ExternalBackend); ok {
+		if rc := eb.ReattachConfig(); rc != nil {
+			pm.pidTracker.Record(id, rc.Pid)
+		}
+	}
+}
+
 // createBackend creates a PluginBackend for the given plugin.
 // Uses backendFactory if set (for testing), otherwise creates a real go-plugin client.
-func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, location string) (plugintypes.PluginBackend, error) {
+func (pm *pluginManager) createBackend(
+	id string,
+	metadata config.PluginMeta,
+	location string,
+) (plugintypes.PluginBackend, error) {
 	if pm.backendFactory != nil {
 		return pm.backendFactory(metadata, location)
 	}
@@ -212,7 +255,7 @@ func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, lo
 	}
 
 	//nolint:gosec // this is completely software controlled
-	cmd := exec.Command(filepath.Join(location, "bin", "plugin"))
+	cmd := exec.CommandContext(context.Background(), filepath.Join(location, "bin", "plugin"))
 
 	// Inject telemetry env vars if config function is available.
 	if pm.telemetryConfigFn != nil {
@@ -230,18 +273,18 @@ func (pm *pluginManager) createBackend(id string, metadata config.PluginMeta, lo
 		HandshakeConfig: metadata.GenerateHandshakeConfig(),
 		VersionedPlugins: map[int]goplugin.PluginSet{
 			1: {
-				"resource":  &rpv1.GRPCPlugin{},
-				"exec":      &ep.Plugin{},
-				"networker": &np.Plugin{},
-				"log":       &lp.Plugin{},
-				"metric":    &mp.Plugin{},
-				"settings":  &sp.SettingsPlugin{},
-				"lifecycle": &lc.Plugin{},
+				"resource":  &rpv1.GRPCPlugin{Plugin: nil, Impl: nil, SettingsProvider: nil},
+				"exec":      &ep.Plugin{Plugin: nil, Impl: nil},
+				"networker": &np.Plugin{Plugin: nil, Impl: nil},
+				"log":       &lp.Plugin{Plugin: nil, Impl: nil},
+				"metric":    &mp.Plugin{Plugin: nil, Impl: nil},
+				"settings":  &sp.SettingsPlugin{Plugin: nil, Impl: nil},
+				"lifecycle": &lc.Plugin{Plugin: nil, Impl: nil},
 			},
 		},
 		GRPCDialOptions:  sdk.GRPCDialOptions(),
 		Cmd:              cmd,
-		StartTimeout:     15 * time.Second, // Don't block startup for broken plugins (default is 60s)
+		StartTimeout:     pluginStartTimeout,
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{
 			Name:   id,
@@ -268,23 +311,26 @@ func (pm *pluginManager) ReloadPlugin(id string) (sdktypes.PluginInfo, error) {
 	record, ok := pm.records[id]
 	pm.recordsMu.RUnlock()
 	if !ok {
-		return sdktypes.PluginInfo{}, apperror.New(apperror.TypePluginNotLoaded, 404,
+		return sdktypes.PluginInfo{}, apperror.New(apperror.TypePluginNotLoaded, http.StatusNotFound,
 			"Plugin not loaded",
 			fmt.Sprintf("Plugin '%s' is not currently loaded.", id)).WithInstance(id)
 	}
 
 	// Build reload opts from the current record state.
+	// Only ID, Enabled, DevMode and DevPath carry over; the rest stays zero.
+	var existing plugintypes.PluginStateRecord
+	existing.ID = record.ID
+	existing.Enabled = record.Enabled
+	existing.DevMode = record.DevMode
+	existing.DevPath = record.DevPath
 	opts := &LoadPluginOptions{
-		ExistingState: &plugintypes.PluginStateRecord{
-			ID:      record.ID,
-			Enabled: record.Enabled,
-			DevMode: record.DevMode,
-			DevPath: record.DevPath,
-		},
+		DevMode:       false,
+		DevModePath:   "",
+		ExistingState: &existing,
 	}
 
 	if err := pm.unloadPluginLocked(id); err != nil {
-		return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, 500,
+		return sdktypes.PluginInfo{}, apperror.Wrap(err, apperror.TypePluginLoadFailed, http.StatusInternalServerError,
 			"Failed to unload plugin during reload").WithInstance(id)
 	}
 	return pm.loadPluginLocked(id, opts)
@@ -424,13 +470,7 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 		if cap == sdktypes.CapabilitySettings {
 			continue // already handled above
 		}
-		var ctrl plugintypes.Controller
-		switch cap {
-		case sdktypes.CapabilityResource:
-			ctrl = pm.connfullControllers[cap]
-		default:
-			ctrl = pm.connlessControllers[cap]
-		}
+		ctrl := pm.controllerFor(cap)
 		if ctrl == nil {
 			continue
 		}
@@ -453,12 +493,12 @@ func (pm *pluginManager) startPlugin(record *plugintypes.PluginRecord, backend p
 func capStringsToCapabilities(caps []string) []sdktypes.Capability {
 	var result []sdktypes.Capability
 	for _, capStr := range caps {
-		cap, ok := sdktypes.ParseCapability(capStr)
-		if !ok || cap == sdktypes.CapabilitySettings {
+		c, ok := sdktypes.ParseCapability(capStr)
+		if !ok || c == sdktypes.CapabilitySettings {
 			// settings is always registered separately, skip
 			continue
 		}
-		result = append(result, cap)
+		result = append(result, c)
 	}
 	return result
 }
@@ -489,13 +529,7 @@ func (pm *pluginManager) stopPlugin(record *plugintypes.PluginRecord) error {
 		if cap == sdktypes.CapabilitySettings {
 			continue // already handled above
 		}
-		var ctrl plugintypes.Controller
-		switch cap {
-		case sdktypes.CapabilityResource:
-			ctrl = pm.connfullControllers[cap]
-		default:
-			ctrl = pm.connlessControllers[cap]
-		}
+		ctrl := pm.controllerFor(cap)
 		if ctrl == nil {
 			continue
 		}
@@ -523,18 +557,8 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 	}
 
 	if record.Metadata.HasBackendCapabilities() {
-		if record.Backend != nil {
-			if err := record.Backend.Stop(); err != nil {
-				pm.logger.Warnw(ctx, "error closing plugin backend", "pluginID", pluginID, "error", err)
-			}
-			record.Backend.Kill()
-		}
-		pm.pidTracker.Remove(pluginID)
-
-		if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
-			if err := ctrl.OnPluginShutdown(pluginID, record.Metadata); err != nil {
-				return fmt.Errorf("error shutting down settings plugin: %w", err)
-			}
+		if err := pm.shutdownBackend(ctx, pluginID, record); err != nil {
+			return err
 		}
 	}
 
@@ -542,13 +566,7 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 		if cap == sdktypes.CapabilitySettings {
 			continue // already handled above
 		}
-		var ctrl plugintypes.Controller
-		switch cap {
-		case sdktypes.CapabilityResource:
-			ctrl = pm.connfullControllers[cap]
-		default:
-			ctrl = pm.connlessControllers[cap]
-		}
+		ctrl := pm.controllerFor(cap)
 		if ctrl == nil {
 			continue
 		}
@@ -557,4 +575,32 @@ func (pm *pluginManager) shutdownPlugin(pluginID string, record *plugintypes.Plu
 		}
 	}
 	return nil
+}
+
+// shutdownBackend stops and kills the plugin's backend process, forgets its PID
+// and shuts down its settings controller.
+func (pm *pluginManager) shutdownBackend(ctx context.Context, pluginID string, record *plugintypes.PluginRecord) error {
+	if record.Backend != nil {
+		if err := record.Backend.Stop(); err != nil {
+			pm.logger.Warnw(ctx, "error closing plugin backend", "pluginID", pluginID, "error", err)
+		}
+		record.Backend.Kill()
+	}
+	pm.pidTracker.Remove(pluginID)
+
+	if ctrl := pm.connlessControllers[sdktypes.CapabilitySettings]; ctrl != nil {
+		if err := ctrl.OnPluginShutdown(pluginID, record.Metadata); err != nil {
+			return fmt.Errorf("error shutting down settings plugin: %w", err)
+		}
+	}
+	return nil
+}
+
+// controllerFor returns the controller registered for capability c, or nil.
+// Resource controllers are connection-full; all others are connection-less.
+func (pm *pluginManager) controllerFor(c sdktypes.Capability) plugintypes.Controller {
+	if c == sdktypes.CapabilityResource {
+		return pm.connfullControllers[c]
+	}
+	return pm.connlessControllers[c]
 }

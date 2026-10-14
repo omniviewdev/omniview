@@ -11,12 +11,10 @@ import (
 
 // ValidateForPhase checks that a plugin meets the requirements for the given phase.
 func ValidateForPhase(phase lifecycle.PluginPhase, meta config.PluginMeta, location string) error {
-	switch phase {
-	case lifecycle.PhaseValidating, lifecycle.PhaseStarting:
+	if phase == lifecycle.PhaseValidating || phase == lifecycle.PhaseStarting {
 		return validateForStart(meta, location)
-	default:
-		return nil
 	}
+	return nil
 }
 
 // validateForStart checks that a plugin is ready to start.
@@ -27,7 +25,7 @@ func validateForStart(meta config.PluginMeta, location string) error {
 		}
 	}
 	if meta.HasUICapabilities() {
-		if err := validateHasUiPackage(location); err != nil {
+		if err := validateHasUIPackage(location); err != nil {
 			return err
 		}
 	}
@@ -49,8 +47,8 @@ func validateHasBinary(path string) error {
 	return nil
 }
 
-// validateHasUiPackage checks if the plugin has compiled UI assets.
-func validateHasUiPackage(path string) error {
+// validateHasUIPackage checks if the plugin has compiled UI assets.
+func validateHasUIPackage(path string) error {
 	_, err := os.Stat(filepath.Join(path, "assets"))
 	if os.IsNotExist(err) {
 		return fmt.Errorf("expected compiled ui at path but none found: %s", path)
