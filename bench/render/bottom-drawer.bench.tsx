@@ -21,17 +21,33 @@ handle('logs/servicewrapper.CreateSession', () => {
   return { id: lastSessionId, labels: {}, sources: [] };
 });
 handle('logs/servicewrapper.GetSession', (id: string) => ({ id, labels: {}, sources: [] }));
+// No terminal sessions survive from a previous run.
+handle('exec/servicewrapper.ListSessions', () => []);
 
 const lines1k = makeLogLines('_', 1_000);
 
-function mountDrawer(): Mounted {
+async function mountDrawer(): Promise<Mounted> {
   localStorage.clear();
-  return mount(
+  // Until the terminal session restore settles and the drawer has rendered it,
+  // the drawer treats arriving tabs as restored and keeps them at the saved
+  // (minimized) height, so a logs tab opened earlier would never show its
+  // lines. Wait for it like a user would.
+  let restored = false;
+  const unsubscribe = bottomDrawerChannel.on('onSessionsRestored', () => { restored = true; });
+  const m = mount(
     <AppProviders>
       <div style={{ flex: 1 }} />
       <BottomDrawerContainer />
     </AppProviders>,
   );
+  try {
+    await waitFor(() => restored, { label: 'terminal sessions restored' });
+  } finally {
+    unsubscribe();
+  }
+  // Let the drawer commit the restored state before anything adds a tab.
+  await nextFrame();
+  return m;
 }
 
 /** Ask for a logs tab the way resource actions do, stream 1k lines, wait until the newest is visible. */
@@ -64,7 +80,7 @@ function dragHandle(root: HTMLElement): HTMLElement {
 
 describe('bottom drawer', () => {
   screenBench('mount drawer + open logs tab (1k lines)', async () => {
-    const m = mountDrawer();
+    const m = await mountDrawer();
     await openLogsTab(m);
     m.unmount();
   });
@@ -89,7 +105,7 @@ describe('bottom drawer', () => {
   }, {
     setup: async () => {
       m?.unmount();
-      m = mountDrawer();
+      m = await mountDrawer();
       await openLogsTab(m);
       // Guard against benching a no-op: a drag must change the drawer height.
       const handleEl = dragHandle(m.container);
