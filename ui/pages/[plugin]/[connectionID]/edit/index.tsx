@@ -92,12 +92,7 @@ export default function EditConnectionPage(): React.ReactElement {
         </IconButton>
       </Stack>
 
-      <Layout.Root
-        sx={{
-          p: 8,
-          gap: 8,
-        }}
-      >
+      <Layout.Root style={{ padding: 64, gap: 64 }}>
         <Layout.SideNav>
           <NavMenu items={items} selected={selected} onSelect={useSelected} />
         </Layout.SideNav>

@@ -1,10 +1,6 @@
 import React from 'react';
 
-// material-ui
-import Box from '@mui/material/Box';
-import Divider from '@mui/material/Divider';
-import GlobalStyles from '@mui/material/GlobalStyles';
-import { useTheme } from '@mui/material/styles';
+import { Separator } from '@omniviewdev/base-ui';
 
 // project imports
 import BottomDrawerTabs from '@/providers/BottomDrawer/tabs';
@@ -16,6 +12,8 @@ import EditorDebugPanel from '@/providers/BottomDrawer/containers/EditorDebugPan
 import { useBottomDrawer } from '@omniviewdev/runtime';
 import { bottomDrawerChannel } from '@/providers/BottomDrawer/events';
 import { Events } from '@omniviewdev/runtime/runtime';
+import handleStyles from '@/components/base/ResizeHandle.module.css';
+import styles from './BottomDrawer.module.css';
 
 const TerminalContainerMemo = React.memo(TerminalContainer, (prev, next) => {
   return prev.sessionId === next.sessionId
@@ -44,11 +42,9 @@ const BottomDrawerContainer: React.FC = () => {
 
   const [height, setDrawerHeight] = React.useState<number>(minHeight);
   const lastExpandedHeightRef = React.useRef<number>(defaultHeight);
-  const theme = useTheme();
 
   // State for drag operation
   const [isDragging, setIsDragging] = React.useState(false);
-  const [isHovering, setIsHovering] = React.useState(false);
 
   // Ref for the sidebar to calculate changes in width
   const drawerRef = React.useRef<HTMLDivElement>(null);
@@ -56,6 +52,11 @@ const BottomDrawerContainer: React.FC = () => {
   const startupModeRef = React.useRef<DrawerStartupMode>('minimized');
   const startupResolvedRef = React.useRef(false);
   const prevTabCountRef = React.useRef(0);
+
+  // Other panels (the right drawer) size themselves against the drawer height.
+  React.useEffect(() => {
+    document.documentElement.style.setProperty('--BottomDrawer-height', `${height}px`);
+  }, [height]);
 
   const persistDrawerState = React.useCallback((mode: DrawerStartupMode, expandedHeight?: number) => {
     startupModeRef.current = mode;
@@ -320,125 +321,56 @@ const BottomDrawerContainer: React.FC = () => {
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
   return (
-    <>
-      <GlobalStyles
-        styles={{
-          ':root': {
-            '--BottomDrawer-height': `${height}px`,
-          },
-        }}
+    <div
+      className={`BottomDrawer ${styles.Drawer}`}
+      ref={drawerRef}
+      style={{ height: minHeight, minHeight, maxHeight: minHeight }}
+    >
+      <div
+        ref={dragHandleRef}
+        data-testid="bottom-drawer-drag-handle"
+        className={handleStyles.Top}
+        data-dragging={(hasTabs && isDragging) || undefined}
+        data-disabled={!hasTabs || undefined}
+        onClick={handleClick}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
       />
-      <Box
-        className='BottomDrawer'
-        ref={drawerRef}
-        sx={{
-          zIndex: 1290,
-          flexGrow: 0,
-          flexShrink: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          height: minHeight,
-          minHeight: minHeight,
-          maxHeight: minHeight,
-          overflow: 'hidden',
-          position: 'relative',
-          backgroundColor: 'background.default',
-          maxWidth: 'calc(100vw - var(--CoreLayoutSidebar-width))',
-          minWidth: 'calc(100vw - var(--CoreLayoutSidebar-width))',
-          right: 0,
-        }}
-      >
-        <div
-          ref={dragHandleRef}
-          data-testid="bottom-drawer-drag-handle"
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            height: '10px',
-            width: '100%',
-            cursor: hasTabs ? 'row-resize' : 'default',
-            zIndex: 1291,
-            borderTop: `${isDragging ? 4 : 2}px solid ${theme.palette.primary.main}`,
-            borderRadius: '0px 0px 0px 0px',
-            opacity: hasTabs ? (isDragging ? 0.5 : isHovering ? 0.2 : 0) : 0,
-            pointerEvents: hasTabs ? 'auto' : 'none',
-            transition: 'opacity 0.2s, border 0.2s',
-          }}
-          onClick={handleClick}
-          onMouseEnter={() => {
-            setIsHovering(true);
-          }}
-          onMouseLeave={() => {
-            setIsHovering(false);
-          }}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
+      <div className={`BottomDrawerContainer ${styles.Container}`}>
+        <Separator />
+        <BottomDrawerTabs
+          hasTabs={hasTabs}
+          isMinimized={height === minHeight}
+          isFullscreen={height >= window.innerHeight}
+          onMinimize={minimize}
+          onExpand={expand}
+          onFullscreen={fullscreen}
         />
-        <Box
-          className='BottomDrawerContainer'
-          sx={{
-            display: { xs: 'none', sm: 'flex' },
-            flexDirection: 'column',
-            bgcolor: 'background.paper',
-            flex: 1,
-            overflow: 'hidden',
-            minHeight: 0,
-          }}
-        >
-          <Divider />
-          <BottomDrawerTabs
-            hasTabs={hasTabs}
-            isMinimized={height === minHeight}
-            isFullscreen={height >= window.innerHeight}
-            onMinimize={minimize}
-            onExpand={expand}
-            onFullscreen={fullscreen}
-          />
-          <Box
-            sx={{
-              flex: 1,
-              overflow: 'hidden',
-              minHeight: 0,
-              maxWidth: 'calc(100vw - var(--CoreLayoutSidebar-width))',
-              minWidth: 'calc(100vw - var(--CoreLayoutSidebar-width))',
-              position: 'relative',
-            }}
-          >
-            {tabs.map((tab) => (
-              <Box
-                key={tab.id}
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  position: 'absolute',
-                  inset: 0,
-                  overflow: 'hidden',
-                  // Use visibility instead of display:none so xterm always has
-                  // real dimensions and stays fitted. This prevents the brief
-                  // flash of doubled lines when switching tabs.
-                  visibility: tabs[focused]?.id === tab.id ? 'visible' : 'hidden',
-                  pointerEvents: tabs[focused]?.id === tab.id ? 'auto' : 'none',
-                }}
-              >
-                {tab.variant === 'editor-debug' ? (
-                  <EditorDebugPanel />
-                ) : tab.variant === 'devbuild' ? (
-                  <DevBuildViewer pluginId={tab.id.replace(/^devbuild-/, '')} />
-                ) : tab.variant === 'plugin-logs' ? (
-                  <PluginLogViewer pluginId={tab.id.replace(/^pluginlogs-/, '')} />
-                ) : tab.variant === 'logs' ? (
-                  <LogViewerContainerMemo sessionId={tab.id} />
-                ) : (
-                  <TerminalContainerMemo sessionId={tab.id} tab={tab} />
-                )}
-              </Box>
-            ))}
-          </Box>
-        </Box>
-      </Box>
-    </>
+        <div className={styles.Panels}>
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={styles.Panel}
+              // visibility (not display:none) keeps xterm measured and fitted,
+              // which avoids a flash of doubled lines when switching tabs.
+              data-active={tabs[focused]?.id === tab.id || undefined}
+            >
+              {tab.variant === 'editor-debug' ? (
+                <EditorDebugPanel />
+              ) : tab.variant === 'devbuild' ? (
+                <DevBuildViewer pluginId={tab.id.replace(/^devbuild-/, '')} />
+              ) : tab.variant === 'plugin-logs' ? (
+                <PluginLogViewer pluginId={tab.id.replace(/^pluginlogs-/, '')} />
+              ) : tab.variant === 'logs' ? (
+                <LogViewerContainerMemo sessionId={tab.id} />
+              ) : (
+                <TerminalContainerMemo sessionId={tab.id} tab={tab} />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 };
 

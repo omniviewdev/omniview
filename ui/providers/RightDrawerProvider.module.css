@@ -1,0 +1,20 @@
+.Drawer {
+  position: absolute;
+  top: calc(var(--CoreLayoutHeader-height) - 1px);
+  right: 0;
+  z-index: 999;
+  width: 800px;
+  height: calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height));
+  min-height: calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height));
+  max-height: calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height));
+  padding: 0;
+  overflow: hidden;
+  background: var(--ov-color-bg-surface);
+  border-left: 1px solid var(--ov-color-border-muted);
+  transform: translateX(110%);
+  transition: transform 0.2s ease;
+}
+
+.Drawer[data-open] {
+  transform: translateX(0);
+}

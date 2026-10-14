@@ -4,8 +4,6 @@ import React, {
 } from 'react';
 
 // material-ui
-import Box from '@mui/material/Box';
-import { useTheme } from '@mui/material/styles';
 
 // context
 import {
@@ -30,6 +28,8 @@ import type { DrawerFactory as PluginDrawerFactory } from '@/features/plugins/co
 import type { SidebarComponent } from '@/features/plugins/core/types';
 import type { ResourceExtensionRenderContext } from '@/features/plugins/core/types';
 import log from '@/features/logger';
+import handleStyles from '@/components/base/ResizeHandle.module.css';
+import styles from './RightDrawerProvider.module.css';
 
 type Props = {
   children: ReactNode;
@@ -50,7 +50,6 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   const [context, setContext] = useState<DrawerContext | undefined>(undefined);
 
   const { showSnackbar } = useSnackbar();
-  const theme = useTheme();
 
   // Extension point hooks for plugin sidebar/drawer resolution
   const drawerEP = useExtensionPoint<PluginDrawerFactory, ResourceExtensionRenderContext>(
@@ -60,7 +59,6 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
     RESOURCE_SIDEBAR_EXTENSION_POINT_ID,
   );
   const [isDragging, setIsDragging] = useState(false);
-  const [isHovering, setIsHovering] = useState(false);
 
   const sidebarRef = useRef<HTMLDivElement>(null);
   const dragHandleRef = useRef<HTMLDivElement>(null);
@@ -265,7 +263,7 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
       }),
     ).then((result) => {
       openDrawer(drawer, {
-        data: result.result,
+        data: result?.result,
         resource: {
           id: params.resourceID,
           name: params.resourceName ?? params.resourceID,
@@ -290,24 +288,11 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
   return (
     <RightDrawerContext.Provider value={contextValue}>
       {children}
-      <Box
+      <div
         ref={sidebarRef}
-        sx={{
-          width: initialWidth,
-          borderLeft: (theme) => `1px solid ${theme.palette.divider}`,
-          bgcolor: 'background.paper',
-          p: 0,
-          position: 'absolute',
-          top: 'calc(var(--CoreLayoutHeader-height) - 1px)',
-          right: 0,
-          zIndex: 999,
-          height: 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))',
-          minHeight: 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))',
-          maxHeight: 'calc(100vh - var(--CoreLayoutHeader-height) - var(--CoreLayoutFooter-height) - var(--BottomDrawer-height))',
-          transition: 'transform 0.2s ease',
-          transform: isOpen ? 'translateX(0)' : 'translateX(110%)',
-          overflow: 'hidden',
-        }}
+        className={styles.Drawer}
+        data-open={isOpen || undefined}
+        style={{ width: initialWidth }}
       >
         {content &&
           <RightDrawer
@@ -319,29 +304,12 @@ const RightDrawerProvider: React.FC<Props> = ({ children }) => {
         }
         <div
           ref={dragHandleRef}
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: '10px', // This is the width of the draggable area
-            cursor: 'col-resize',
-            zIndex: 1201,
-            borderLeft: `${isDragging ? 4 : 2}px solid ${theme.palette.primary.main}`,
-            // borderRadius: sidebarRef.current?.style.width === `${maxWidth}px` ? '2px 0px 0px 2px' : '6px 0px 0px 6px',
-            opacity: isDragging ? 0.5 : isHovering ? 0.2 : 0,
-            transition: 'opacity 0.2s, border 0.2s',
-          }}
-          onMouseEnter={() => {
-            setIsHovering(true);
-          }}
-          onMouseLeave={() => {
-            setIsHovering(false);
-          }}
+          className={handleStyles.Left}
+          data-dragging={isDragging || undefined}
           onMouseDown={handleMouseDown}
           onClick={handleClick}
         />
-      </Box>
+      </div>
     </RightDrawerContext.Provider>
   );
 };

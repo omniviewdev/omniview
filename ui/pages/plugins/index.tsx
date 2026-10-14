@@ -26,12 +26,7 @@ const PluginsPage = () => {
   }
 
   return (
-    <Layout.Root
-      sx={{
-        p: 0,
-        gap: 0,
-      }}
-    >
+    <Layout.Root style={{ padding: 0, gap: 0 }}>
       <Layout.SideNav type='transparent' width={340}>
         <Box sx={{
           height: '100%',
