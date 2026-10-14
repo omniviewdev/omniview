@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"maps"
 
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // engineWatchSink implements resource.WatchEventSink on the engine side.

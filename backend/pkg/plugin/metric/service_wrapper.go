@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	metricsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	metricsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
 // ServiceWrapper is an explicit delegation wrapper around metric.Controller.

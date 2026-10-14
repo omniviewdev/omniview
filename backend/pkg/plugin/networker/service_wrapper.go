@@ -3,8 +3,9 @@ package networker
 import (
 	"context"
 
-	networkersdk "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	networkersdk "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 )
 
 // ServiceWrapper is an explicit delegation wrapper around networker.Controller.

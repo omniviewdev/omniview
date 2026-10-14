@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	logssdk "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	logssdk "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 )
 
 // ServiceWrapper is an explicit delegation wrapper around logs.Controller.

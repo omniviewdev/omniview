@@ -8,11 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
-
-	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
 )
 
 // pluginMeta returns a minimal config.PluginMeta for testing.

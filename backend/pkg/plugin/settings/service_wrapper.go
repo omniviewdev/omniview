@@ -3,8 +3,9 @@ package settings
 import (
 	"context"
 
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
 // ServiceWrapper is an explicit delegation wrapper around settings.Controller.

@@ -3,8 +3,9 @@ package exec
 import (
 	"context"
 
-	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
 
 // ServiceWrapper is an explicit delegation wrapper around exec.Controller.
