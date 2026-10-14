@@ -15,11 +15,19 @@ git diff --diff-filter=D --name-only 94485ccebb6b589f548077df1bcaa3e4837fc870..f
 | Measure | Result |
 | --- | ---: |
 | Deleted UI files | 148 |
-| Deleted TypeScript/TSX source lines | 13,635 |
+| Net TypeScript/TSX line reduction | 13,714 (13,743 removed, 29 added) |
 | Deleted bytes (sum of deleted Git blobs) | 3,577,834 |
 | Deleted files importing MUI directly | 41 |
 | Lines in deleted direct-MUI files | 6,271 |
 | Root manifest dependencies + devDependencies | 87 → 62 (25 removed) |
+
+Reproduce the source-line metric with:
+
+```sh
+git diff --shortstat 94485ccebb6b589f548077df1bcaa3e4837fc870..f7ee9423554d6cbe37e576f2da2a50bc0539e5b0 -- 'ui/**/*.ts' 'ui/**/*.tsx'
+```
+
+This reports `156 files changed, 29 insertions(+), 13743 deletions(-)`, a net reduction of 13,714 lines.
 
 The broader Git diff reports 21,785 deleted text lines because it also counts non-TypeScript data, notably the uncalled Nginx directives JSON. Metrics exclude modifications to reachable files and lockfile churn.
 

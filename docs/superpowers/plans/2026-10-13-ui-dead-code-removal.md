@@ -235,5 +235,5 @@
 - [x] Run targeted retained-path tests and the full suite; full result: 42 passed files, 4 failed files, 827 passed tests, 11 failed tests, and 12 unhandled errors, matching baseline failure counts and identities.
 - [x] Run `pnpm lint`; 1,310 errors versus the 1,520-error baseline, with changed-file diagnostics documented.
 - [x] Start the actual Wails surface through a temporary pnpm 10 shim and browser-smoke all requested route shapes; runtime observations are recorded in the audit.
-- [x] Record final metrics: 148 deleted UI files, 13,635 deleted TypeScript/TSX lines, 3,577,834 deleted bytes, 41 direct-MUI files/6,271 lines removed, and 25 manifest declarations removed.
+- [x] Record final metrics: 148 deleted UI files, 13,714 net TypeScript/TSX lines removed (13,743 removed, 29 added), 3,577,834 deleted bytes, 41 direct-MUI files/6,271 lines removed, and 25 manifest declarations removed.
 - [x] Remove the two stale prose references and publish `docs/ui-dead-code-audit.md`.

@@ -15,7 +15,7 @@ Task 8 documentation and stale-prose cleanup are complete. The cumulative cleanu
 ## Metrics (`94485ccebb6b589f548077df1bcaa3e4837fc870..f7ee9423554d6cbe37e576f2da2a50bc0539e5b0`)
 
 - 148 deleted UI files.
-- 13,635 deleted TypeScript/TSX lines.
+- 13,714 net TypeScript/TSX lines removed (13,743 removed, 29 added), measured with `git diff --shortstat 94485ccebb6b589f548077df1bcaa3e4837fc870..f7ee9423554d6cbe37e576f2da2a50bc0539e5b0 -- 'ui/**/*.ts' 'ui/**/*.tsx'`.
 - 3,577,834 deleted bytes (sum of deleted Git blob sizes).
 - 41 deleted direct-MUI files totaling 6,271 lines.
 - Root manifest declarations: 87 to 62, a reduction of 25.
