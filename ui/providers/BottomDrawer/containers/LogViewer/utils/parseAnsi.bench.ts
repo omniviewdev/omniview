@@ -6,7 +6,7 @@ import { parseAnsi } from './parseAnsi';
 // ---------------------------------------------------------------------------
 
 const PLAIN_SHORT = '2024-01-15T10:30:00Z INFO server started on :8080';
-const PLAIN_LONG = `2024-01-15T10:30:00.123456Z INFO  [request_id=abc-123-def-456] GET /api/v1/namespaces/kube-system/pods?labelSelector=app%3Dcoredns&limit=500 responded 200 in 12.34ms (bytes_in=0, bytes_out=48291, user_agent="kubectl/v1.28.0")`;
+const PLAIN_LONG = '2024-01-15T10:30:00.123456Z INFO  [request_id=abc-123-def-456] GET /api/v1/namespaces/kube-system/pods?labelSelector=app%3Dcoredns&limit=500 responded 200 in 12.34ms (bytes_in=0, bytes_out=48291, user_agent="kubectl/v1.28.0")';
 
 // Typical Go structured logger (zap/zerolog) — 4 SGR pairs
 const COLORED_TYPICAL = '\x1b[90m2024-01-15T10:30:00Z\x1b[0m \x1b[1;31mERROR\x1b[0m \x1b[36mmain.go:42\x1b[0m Failed to connect to \x1b[33mdatabase\x1b[0m service';
@@ -29,6 +29,7 @@ let PATHOLOGICAL = '';
 for (let i = 0; i < 50; i++) {
   PATHOLOGICAL += `\x1b[${30 + (i % 8)};${i % 2 ? 1 : 2}mword${i} `;
 }
+
 PATHOLOGICAL += '\x1b[0m';
 
 // OSC hyperlink sequences (some terminal loggers emit these)
@@ -87,20 +88,20 @@ describe('parseAnsi', () => {
 
   describe('batch ingest (100 lines)', () => {
     bench('100 mixed lines (plain + colored)', () => {
-      for (let i = 0; i < BATCH_MIXED_100.length; i++) {
-        parseAnsi(BATCH_MIXED_100[i]);
+      for (const line of BATCH_MIXED_100) {
+        parseAnsi(line);
       }
     });
 
     bench('100 plain lines (all fast path)', () => {
-      for (let i = 0; i < BATCH_PLAIN_100.length; i++) {
-        parseAnsi(BATCH_PLAIN_100[i]);
+      for (const line of BATCH_PLAIN_100) {
+        parseAnsi(line);
       }
     });
 
     bench('100 colored lines (worst case)', () => {
-      for (let i = 0; i < BATCH_COLORED_100.length; i++) {
-        parseAnsi(BATCH_COLORED_100[i]);
+      for (const line of BATCH_COLORED_100) {
+        parseAnsi(line);
       }
     });
   });
@@ -111,16 +112,16 @@ describe('parseAnsi', () => {
     bench('100k plain lines', () => {
       for (let i = 0; i < 1000; i++) {
         // Inner loop of 100 to reach 100k total
-        for (let j = 0; j < BATCH_PLAIN_100.length; j++) {
-          parseAnsi(BATCH_PLAIN_100[j]);
+        for (const line of BATCH_PLAIN_100) {
+          parseAnsi(line);
         }
       }
     }, { iterations: 3, warmupIterations: 1 });
 
     bench('100k mixed lines', () => {
       for (let i = 0; i < 1000; i++) {
-        for (let j = 0; j < BATCH_MIXED_100.length; j++) {
-          parseAnsi(BATCH_MIXED_100[j]);
+        for (const line of BATCH_MIXED_100) {
+          parseAnsi(line);
         }
       }
     }, { iterations: 3, warmupIterations: 1 });

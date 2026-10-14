@@ -3,12 +3,12 @@ import { Events } from '@omniviewdev/runtime/runtime';
 import type { LogEntry, LogStreamEvent, RawLogLine } from '../types';
 import { parseRawLogLine } from '../utils/parseLogLine';
 
-interface UseLogStreamOpts {
+type UseLogStreamOpts = {
   sessionId: string;
   onLines: (entries: LogEntry[]) => void;
   onEvent: (event: LogStreamEvent) => void;
   paused?: boolean;
-}
+};
 
 export function useLogStream({ sessionId, onLines, onEvent, paused }: UseLogStreamOpts): void {
   const pausedRef = useRef(paused);
@@ -25,7 +25,9 @@ export function useLogStream({ sessionId, onLines, onEvent, paused }: UseLogStre
   }, [onLines]);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      return;
+    }
 
     lineCounterRef.current = 0;
 

@@ -511,7 +511,7 @@ describe('LogViewerContainer', () => {
 
     // The log scroll area contains the entries; find it via the entry
     const entry = getByTestId('log-entry-0');
-    const scrollArea = entry.closest('[tabindex="0"]') as HTMLElement;
+    const scrollArea = entry.closest('[tabindex="0"]')!;
     expect(scrollArea).toBeTruthy();
 
     // Fire Cmd+A on the scroll area
@@ -549,7 +549,7 @@ describe('LogViewerContainer', () => {
     const { getByTestId } = render(<LogViewerContainer sessionId="sess-1" />);
 
     const entry = getByTestId('log-entry-0');
-    const scrollArea = entry.closest('[tabindex="0"]') as HTMLElement;
+    const scrollArea = entry.closest('[tabindex="0"]')!;
     expect(scrollArea).toBeTruthy();
 
     // Fire Ctrl+A (Windows/Linux) on the scroll area
@@ -571,7 +571,7 @@ describe('LogViewerContainer', () => {
 
     const toolbar = getByTestId('log-toolbar');
     const entry = getByTestId('log-entry-0');
-    const scrollArea = entry.closest('[tabindex="0"]') as HTMLElement;
+    const scrollArea = entry.closest('[tabindex="0"]')!;
     expect(scrollArea).toBeTruthy();
 
     // Toolbar should have normal pointer-events
@@ -596,7 +596,7 @@ describe('LogViewerContainer', () => {
 
     const toolbar = getByTestId('log-toolbar');
     const entry = getByTestId('log-entry-0');
-    const scrollArea = entry.closest('[tabindex="0"]') as HTMLElement;
+    const scrollArea = entry.closest('[tabindex="0"]')!;
 
     fireEvent.mouseDown(scrollArea, { button: 0 });
     expect(toolbar.style.pointerEvents).toBe('none');

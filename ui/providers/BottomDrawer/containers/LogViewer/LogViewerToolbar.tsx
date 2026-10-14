@@ -30,8 +30,13 @@ function useHoldRepeat(action: () => void) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stop = useCallback(() => {
-    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current); timeoutRef.current = null; 
+    }
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current); intervalRef.current = null; 
+    }
   }, []);
 
   const start = useCallback(() => {
@@ -45,7 +50,7 @@ function useHoldRepeat(action: () => void) {
   return { onMouseDown: start, onMouseUp: stop, onMouseLeave: stop };
 }
 
-interface Props {
+type Props = {
   // Search
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -93,7 +98,7 @@ interface Props {
 
   // Status
   lineCount: number;
-}
+};
 
 const LogViewerToolbar: React.FC<Props> = ({
   searchQuery,
@@ -165,8 +170,13 @@ const LogViewerToolbar: React.FC<Props> = ({
         }
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
-            e.shiftKey ? onPrevMatch() : onNextMatch();
+            if (e.shiftKey) {
+              onPrevMatch();
+            } else {
+              onNextMatch();
+            }
           }
+
           if (e.key === 'Escape') {
             onSearchChange('');
           }

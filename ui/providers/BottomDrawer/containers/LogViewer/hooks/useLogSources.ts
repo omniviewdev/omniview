@@ -2,36 +2,37 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LogsClient } from '@omniviewdev/runtime/api';
 import type { LogEntry, LogStreamEvent } from '../types';
 import { StreamEventType } from '../types';
+import { orFallback } from '@/utils/orFallback';
 
-interface LogSourceInfo {
+type LogSourceInfo = {
   id: string;
   labels: Record<string, string>;
-}
+};
 
-export interface FilterDimension {
+export type FilterDimension = {
   key: string;
   displayName: string;
   values: string[];
   selectedValues: Set<string>;
   allSelected: boolean;
-}
+};
 
-interface UseLogSourcesOpts {
+type UseLogSourcesOpts = {
   sessionId?: string;
   events: LogStreamEvent[];
   entries: LogEntry[];
   version: number;
   declaredDimensions?: Array<{ key: string; displayName?: string }>;
-}
+};
 
-export interface UseLogSourcesResult {
+export type UseLogSourcesResult = {
   sources: LogSourceInfo[];
   dimensions: FilterDimension[];
   toggleValue: (dimensionKey: string, value: string) => void;
   toggleAll: (dimensionKey: string) => void;
   selectedSourceIds: Set<string>;
   allSelected: boolean;
-}
+};
 
 /** Capitalize first letter and add trailing 's' for simple pluralization. */
 function toDisplayName(key: string): string {
@@ -54,6 +55,7 @@ function parseFilterLabels(raw: string): Array<{ key: string; displayName?: stri
       if (colonIdx > 0) {
         return { key: segment.slice(0, colonIdx), displayName: segment.slice(colonIdx + 1) };
       }
+
       return { key: segment };
     });
 }
@@ -79,12 +81,15 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
 
   // Fetch initial session sources + params on mount (only for SDK sessions)
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      return;
+    }
+
     LogsClient.GetSession(sessionId)
       .then((session: any) => {
-        const activeSources: LogSourceInfo[] = (session.active_sources || []).map((s: any) => ({
+        const activeSources: LogSourceInfo[] = orFallback(session.active_sources, []).map((s: any) => ({
           id: s.id,
-          labels: s.labels || {},
+          labels: orFallback(s.labels, {}),
         }));
         if (activeSources.length > 0) {
           setSources(activeSources);
@@ -113,11 +118,16 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
       }
     }
 
-    if (sourceMap.size === 0) return;
+    if (sourceMap.size === 0) {
+      return;
+    }
 
     setSources((prev) => {
       const merged = new Map<string, LogSourceInfo>();
-      for (const s of prev) merged.set(s.id, s);
+      for (const s of prev) {
+        merged.set(s.id, s);
+      }
+
       let changed = false;
       for (const [id, info] of sourceMap) {
         if (!merged.has(id)) {
@@ -125,24 +135,35 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
           changed = true;
         }
       }
-      if (!changed) return prev;
+
+      if (!changed) {
+        return prev;
+      }
+
       return Array.from(merged.values());
     });
   }, [version]);
 
   // Track SOURCE_ADDED/SOURCE_REMOVED events
   useEffect(() => {
-    if (events.length <= processedEventCount.current) return;
+    if (events.length <= processedEventCount.current) {
+      return;
+    }
 
     const newEvents = events.slice(processedEventCount.current);
     processedEventCount.current = events.length;
 
     for (const event of newEvents) {
-      if (!event.source_id) continue;
+      if (!event.source_id) {
+        continue;
+      }
 
       if (event.type === StreamEventType.SOURCE_ADDED) {
         setSources((prev) => {
-          if (prev.some((s) => s.id === event.source_id)) return prev;
+          if (prev.some((s) => s.id === event.source_id)) {
+            return prev;
+          }
+
           return [...prev, { id: event.source_id, labels: {} }];
         });
       }
@@ -154,13 +175,18 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
 
   // Build dimensions from sources + declared/auto-derived keys
   const dimensionKeys = useMemo(() => {
-    if (declaredDimensions) return declaredDimensions;
+    if (declaredDimensions) {
+      return declaredDimensions;
+    }
 
     // Auto-derive: find label keys with >1 unique value
     const keyValues = new Map<string, Set<string>>();
     for (const source of sources) {
       for (const [key, val] of Object.entries(source.labels)) {
-        if (!keyValues.has(key)) keyValues.set(key, new Set());
+        if (!keyValues.has(key)) {
+          keyValues.set(key, new Set());
+        }
+
         keyValues.get(key)!.add(val);
       }
     }
@@ -171,6 +197,7 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
         derived.push({ key });
       }
     }
+
     return derived;
   }, [declaredDimensions, sources]);
 
@@ -180,8 +207,11 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
       const valuesSet = new Set<string>();
       for (const source of sources) {
         const val = source.labels[key];
-        if (val) valuesSet.add(val);
+        if (val) {
+          valuesSet.add(val);
+        }
       }
+
       const values = Array.from(valuesSet).sort();
       const selectedValues = selectionMap[key] ?? new Set(values);
       const allSelected = values.length > 0 && values.every((v) => selectedValues.has(v));
@@ -198,7 +228,9 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
 
       for (const dim of dimensionKeys) {
         const currentSet = prev[dim.key];
-        if (!currentSet) continue; // Not initialized yet → will use default (all selected)
+        if (!currentSet) {
+          continue;
+        } // Not initialized yet → will use default (all selected)
 
         for (const source of sources) {
           const val = source.labels[dim.key];
@@ -206,9 +238,11 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
             if (!changed) {
               changed = true;
             }
+
             if (next[dim.key] === currentSet) {
               next[dim.key] = new Set(currentSet);
             }
+
             next[dim.key].add(val);
           }
         }
@@ -226,8 +260,11 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
         const val = source.labels[dim.key];
         return !val || dim.selectedValues.has(val);
       });
-      if (match) ids.add(source.id);
+      if (match) {
+        ids.add(source.id);
+      }
     }
+
     return ids;
   }, [sources, dimensions]);
 
@@ -239,11 +276,17 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
   // Debounced backend sync (only for SDK sessions)
   const syncToBackend = useCallback(
     (ids: Set<string>, allSources: LogSourceInfo[]) => {
-      if (!sessionId) return; // No backend sync for non-session sources
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (!sessionId) {
+        return;
+      } // No backend sync for non-session sources
+
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+
       debounceRef.current = setTimeout(() => {
         const all = ids.size === allSources.length;
-        LogsClient.UpdateSessionOptions(sessionId!, {
+        LogsClient.UpdateSessionOptions(sessionId, {
           params: { enabled_sources: all ? '' : Array.from(ids).join(',') },
         } as any).catch(() => {
           // Best effort
@@ -266,14 +309,19 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
     (dimensionKey: string, value: string) => {
       setSelectionMap((prev) => {
         const dim = dimensions.find((d) => d.key === dimensionKey);
-        if (!dim) return prev;
+        if (!dim) {
+          return prev;
+        }
 
         const currentSet = prev[dimensionKey] ?? new Set(dim.values);
         const next = new Set(currentSet);
 
         if (next.has(value)) {
           // Don't deselect if it would result in zero selected across all sources
-          if (next.size <= 1) return prev;
+          if (next.size <= 1) {
+            return prev;
+          }
+
           next.delete(value);
         } else {
           next.add(value);
@@ -289,7 +337,9 @@ export function useLogSources({ sessionId, events, entries, version, declaredDim
     (dimensionKey: string) => {
       setSelectionMap((prev) => {
         const dim = dimensions.find((d) => d.key === dimensionKey);
-        if (!dim) return prev;
+        if (!dim) {
+          return prev;
+        }
 
         const currentSet = prev[dimensionKey] ?? new Set(dim.values);
         const allCurrentlySelected = dim.values.every((v) => currentSet.has(v));

@@ -6,7 +6,7 @@ import { stripAnsi } from './stripAnsi';
 // ---------------------------------------------------------------------------
 
 const PLAIN_SHORT = '2024-01-15T10:30:00Z INFO server started on :8080';
-const PLAIN_LONG = `2024-01-15T10:30:00.123456Z INFO  [request_id=abc-123-def-456] GET /api/v1/namespaces/kube-system/pods?labelSelector=app%3Dcoredns&limit=500 responded 200 in 12.34ms (bytes_in=0, bytes_out=48291, user_agent="kubectl/v1.28.0")`;
+const PLAIN_LONG = '2024-01-15T10:30:00.123456Z INFO  [request_id=abc-123-def-456] GET /api/v1/namespaces/kube-system/pods?labelSelector=app%3Dcoredns&limit=500 responded 200 in 12.34ms (bytes_in=0, bytes_out=48291, user_agent="kubectl/v1.28.0")';
 
 const COLORED_SIMPLE = '\x1b[31mERROR\x1b[0m something broke';
 const COLORED_TYPICAL = '\x1b[90m2024-01-15T10:30:00Z\x1b[0m \x1b[1;31mERROR\x1b[0m \x1b[36mmain.go:42\x1b[0m Failed to connect to \x1b[33mdatabase\x1b[0m service';
@@ -14,8 +14,14 @@ const COLORED_HEAVY = '\x1b[1m\x1b[38;2;255;128;0m2024-01-15\x1b[0m \x1b[48;5;19
 
 // Pre-build a batch to simulate ingesting a chunk of log lines at once.
 const BATCH_MIXED_100 = Array.from({ length: 100 }, (_, i) => {
-  if (i % 3 === 0) return COLORED_TYPICAL;
-  if (i % 3 === 1) return PLAIN_LONG;
+  if (i % 3 === 0) {
+    return COLORED_TYPICAL;
+  }
+
+  if (i % 3 === 1) {
+    return PLAIN_LONG;
+  }
+
   return COLORED_HEAVY;
 });
 
@@ -50,14 +56,14 @@ describe('stripAnsi', () => {
 
   describe('batch (simulates ingest chunk)', () => {
     bench('100 mixed lines', () => {
-      for (let i = 0; i < BATCH_MIXED_100.length; i++) {
-        stripAnsi(BATCH_MIXED_100[i]);
+      for (const line of BATCH_MIXED_100) {
+        stripAnsi(line);
       }
     });
 
     bench('100 plain lines (fast path)', () => {
-      for (let i = 0; i < BATCH_PLAIN_100.length; i++) {
-        stripAnsi(BATCH_PLAIN_100[i]);
+      for (const line of BATCH_PLAIN_100) {
+        stripAnsi(line);
       }
     });
   });

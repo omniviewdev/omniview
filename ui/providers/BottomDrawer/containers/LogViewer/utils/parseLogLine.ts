@@ -34,14 +34,18 @@ function detectLevel(content: string): LogLevel | undefined {
   const jsonMatch = JSON_LEVEL_RE.exec(content);
   if (jsonMatch) {
     const found = LEVEL_WORD_SET.get(jsonMatch[1].toLowerCase());
-    if (found) return found;
+    if (found) {
+      return found;
+    }
   }
 
   // 2. Key=value match
   const kvMatch = KV_LEVEL_RE.exec(content);
   if (kvMatch) {
     const found = LEVEL_WORD_SET.get(kvMatch[1].toLowerCase());
-    if (found) return found;
+    if (found) {
+      return found;
+    }
   }
 
   // 3. Bracketed match — scan all brackets, return first recognized level
@@ -49,21 +53,28 @@ function detectLevel(content: string): LogLevel | undefined {
   let bracketMatch: RegExpExecArray | null;
   while ((bracketMatch = BRACKET_LEVEL_RE.exec(content)) !== null) {
     const found = LEVEL_WORD_SET.get(bracketMatch[1].toLowerCase());
-    if (found) return found;
+    if (found) {
+      return found;
+    }
   }
 
   // 4. Level keyword near line start (after optional timestamp)
   const startMatch = START_LEVEL_RE.exec(content);
   if (startMatch) {
     const found = LEVEL_WORD_SET.get(startMatch[1].toLowerCase());
-    if (found) return found;
+    if (found) {
+      return found;
+    }
   }
 
   return undefined;
 }
 
 function isJsonString(str: string): boolean {
-  if (!str.startsWith('{') && !str.startsWith('[')) return false;
+  if (!str.startsWith('{') && !str.startsWith('[')) {
+    return false;
+  }
+
   try {
     JSON.parse(str);
     return true;

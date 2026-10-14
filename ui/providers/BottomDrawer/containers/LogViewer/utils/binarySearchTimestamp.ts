@@ -6,7 +6,9 @@ import type { LogEntry } from '../types';
  * Returns the index of the first matching entry, or -1 if no match.
  */
 export function findEntryIndexByTime(entries: LogEntry[], target: Date): number {
-  if (entries.length === 0) return -1;
+  if (entries.length === 0) {
+    return -1;
+  }
 
   const targetMs = target.getTime();
   let lo = 0;

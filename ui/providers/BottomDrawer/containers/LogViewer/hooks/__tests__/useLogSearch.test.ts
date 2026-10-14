@@ -38,7 +38,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version: 1, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('foo'));
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
 
     expect(result.current.matches).toHaveLength(2);
     expect(result.current.matches[0]).toEqual({
@@ -59,7 +61,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version: 1, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('foo'));
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
 
     expect(result.current.matches).toHaveLength(3);
     expect(result.current.matches[0]).toEqual({ lineIndex: 0, startOffset: 0, endOffset: 3 });
@@ -80,7 +84,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('foo'));
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
     expect(result.current.matches).toHaveLength(1);
     expect(result.current.matches[0].lineIndex).toBe(0);
 
@@ -102,7 +108,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('aaa'));
+    act(() => {
+      result.current.setQuery('aaa'); 
+    });
     expect(result.current.matches).toHaveLength(1);
     expect(result.current.matches[0].lineIndex).toBe(0);
 
@@ -125,7 +133,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('foo'));
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
     expect(result.current.matches).toHaveLength(1);
 
     // Add entries with no matches
@@ -151,7 +161,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('foo'));
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
     expect(result.current.matches).toHaveLength(1);
 
     // Bump version without changing entries length — hits the no-change path
@@ -172,10 +184,14 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version: 1, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('foo'));
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
     expect(result.current.matches).toHaveLength(2);
 
-    act(() => result.current.setQuery('bar'));
+    act(() => {
+      result.current.setQuery('bar'); 
+    });
     expect(result.current.matches).toHaveLength(2);
     expect(result.current.matches[0].lineIndex).toBe(0);
     expect(result.current.matches[1].lineIndex).toBe(1);
@@ -187,11 +203,17 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version: 1, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('aaa'));
-    act(() => result.current.nextMatch());
+    act(() => {
+      result.current.setQuery('aaa'); 
+    });
+    act(() => {
+      result.current.nextMatch(); 
+    });
     expect(result.current.currentMatchIndex).toBe(1);
 
-    act(() => result.current.setQuery('bbb'));
+    act(() => {
+      result.current.setQuery('bbb'); 
+    });
     expect(result.current.currentMatchIndex).toBe(0);
   });
 
@@ -202,12 +224,16 @@ describe('useLogSearch', () => {
     );
 
     // Literal mode — dot is escaped, only matches "foo.bar"
-    act(() => result.current.setQuery('foo.bar'));
+    act(() => {
+      result.current.setQuery('foo.bar'); 
+    });
     expect(result.current.matches).toHaveLength(1);
     expect(result.current.matches[0].lineIndex).toBe(0);
 
     // Switch to regex mode — dot matches any char
-    act(() => result.current.setIsRegex(true));
+    act(() => {
+      result.current.setIsRegex(true); 
+    });
     expect(result.current.matches).toHaveLength(2);
   });
 
@@ -217,11 +243,15 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version: 1, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('hello'));
+    act(() => {
+      result.current.setQuery('hello'); 
+    });
     // Case insensitive by default
     expect(result.current.matches).toHaveLength(2);
 
-    act(() => result.current.setCaseSensitive(true));
+    act(() => {
+      result.current.setCaseSensitive(true); 
+    });
     expect(result.current.matches).toHaveLength(1);
     expect(result.current.matches[0].lineIndex).toBe(1);
   });
@@ -236,7 +266,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount }),
     );
 
-    act(() => result.current.setQuery('foo'));
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
     expect(result.current.matches).toHaveLength(3);
 
     // Simulate eviction: remove first entry, bump evictionCount
@@ -259,7 +291,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('foo'));
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
     expect(result.current.matches).toHaveLength(2);
 
     // New array ref (simulates filter toggle)
@@ -280,7 +314,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('foo'));
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
     expect(result.current.matches).toHaveLength(3);
 
     // Shrink the same array
@@ -308,7 +344,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('match'));
+    act(() => {
+      result.current.setQuery('match'); 
+    });
     expect(result.current.capped).toBe(true);
     const cappedCount = result.current.totalMatches;
 
@@ -333,7 +371,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('m'));
+    act(() => {
+      result.current.setQuery('m'); 
+    });
     expect(result.current.capped).toBe(false);
     expect(result.current.totalMatches).toBe(MAX_MATCH_COUNT - 2);
 
@@ -359,7 +399,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount }),
     );
 
-    act(() => result.current.setQuery('foo'));
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
     expect(result.current.matches).toHaveLength(2);
 
     // Simulate clear
@@ -426,7 +468,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('hello'));
+    act(() => {
+      result.current.setQuery('hello'); 
+    });
     expect(result.current.matches).toHaveLength(0);
 
     // Entries arrive (new ref since we go from empty to populated)
@@ -444,10 +488,14 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version: 1, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('foo'));
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
     expect(result.current.matches).toHaveLength(2);
 
-    act(() => result.current.setQuery(''));
+    act(() => {
+      result.current.setQuery(''); 
+    });
     expect(result.current.matches).toHaveLength(0);
     expect(result.current.totalMatches).toBe(0);
     expect(result.current.capped).toBe(false);
@@ -463,13 +511,19 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version: 1, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('aaa'));
+    act(() => {
+      result.current.setQuery('aaa'); 
+    });
     expect(result.current.currentMatchIndex).toBe(0);
 
-    act(() => result.current.nextMatch());
+    act(() => {
+      result.current.nextMatch(); 
+    });
     expect(result.current.currentMatchIndex).toBe(1);
 
-    act(() => result.current.nextMatch());
+    act(() => {
+      result.current.nextMatch(); 
+    });
     expect(result.current.currentMatchIndex).toBe(0); // wrapped
   });
 
@@ -479,13 +533,19 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version: 1, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('aaa'));
+    act(() => {
+      result.current.setQuery('aaa'); 
+    });
     expect(result.current.currentMatchIndex).toBe(0);
 
-    act(() => result.current.prevMatch());
+    act(() => {
+      result.current.prevMatch(); 
+    });
     expect(result.current.currentMatchIndex).toBe(1); // wrapped to last
 
-    act(() => result.current.prevMatch());
+    act(() => {
+      result.current.prevMatch(); 
+    });
     expect(result.current.currentMatchIndex).toBe(0);
   });
 
@@ -495,13 +555,19 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version: 1, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('zzz'));
+    act(() => {
+      result.current.setQuery('zzz'); 
+    });
     expect(result.current.currentMatchIndex).toBe(0);
 
-    act(() => result.current.nextMatch());
+    act(() => {
+      result.current.nextMatch(); 
+    });
     expect(result.current.currentMatchIndex).toBe(0);
 
-    act(() => result.current.prevMatch());
+    act(() => {
+      result.current.prevMatch(); 
+    });
     expect(result.current.currentMatchIndex).toBe(0);
   });
 
@@ -511,14 +577,22 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version: 1, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('aaa'));
+    act(() => {
+      result.current.setQuery('aaa'); 
+    });
     // Navigate to last match
-    act(() => result.current.nextMatch());
-    act(() => result.current.nextMatch());
+    act(() => {
+      result.current.nextMatch(); 
+    });
+    act(() => {
+      result.current.nextMatch(); 
+    });
     expect(result.current.currentMatchIndex).toBe(2);
 
     // Change query to something with fewer matches — resets index to 0
-    act(() => result.current.setQuery('aab'));
+    act(() => {
+      result.current.setQuery('aab'); 
+    });
     expect(result.current.currentMatchIndex).toBe(0);
   });
 
@@ -534,7 +608,9 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount: 0 }),
     );
 
-    act(() => result.current.setQuery('match'));
+    act(() => {
+      result.current.setQuery('match'); 
+    });
     expect(result.current.matches).toHaveLength(1);
 
     // Simulate multiple appends coalesced into one version bump
@@ -558,8 +634,12 @@ describe('useLogSearch', () => {
       useLogSearch({ entries, version, evictionCount }),
     );
 
-    act(() => result.current.setQuery('foo'));
-    act(() => result.current.nextMatch());
+    act(() => {
+      result.current.setQuery('foo'); 
+    });
+    act(() => {
+      result.current.nextMatch(); 
+    });
     expect(result.current.currentMatchIndex).toBe(1);
 
     // Evict — same matches but re-searched
