@@ -1,12 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { omniviewExternals } from "@omniviewdev/vite-plugin";
+import { injectCssIntoEntry } from "./vite/omniview";
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     omniviewExternals(),
+    injectCssIntoEntry("aws"),
   ],
   server: {
     host: '127.0.0.1',

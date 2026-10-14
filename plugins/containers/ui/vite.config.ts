@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { omniviewExternals } from "@omniviewdev/vite-plugin";
+import { injectCssIntoEntry } from "./vite/omniview";
 
 const externals = [
   // MUI
@@ -49,6 +50,7 @@ export default defineConfig({
   plugins: [
     react(),
     omniviewExternals(),
+    injectCssIntoEntry("containers"),
   ],
   server: {
     host: '127.0.0.1',
