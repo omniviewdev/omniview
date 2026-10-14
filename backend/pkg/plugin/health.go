@@ -27,7 +27,7 @@ const (
 // crashBudget tracks the total number of crash-recovery cycles for a plugin
 // within a sliding time window to prevent infinite recovery loops.
 type crashBudget struct {
-	count      int
+	count       int
 	windowStart time.Time
 }
 

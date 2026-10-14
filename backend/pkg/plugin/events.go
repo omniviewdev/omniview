@@ -76,11 +76,11 @@ const (
 
 // StateChangePayload is sent with EventStateChange.
 type StateChangePayload struct {
-	PluginID  string              `json:"pluginID"`
+	PluginID  string                `json:"pluginID"`
 	From      lifecycle.PluginPhase `json:"from"`
 	To        lifecycle.PluginPhase `json:"to"`
-	Reason    string              `json:"reason"`
-	Timestamp time.Time           `json:"timestamp"`
+	Reason    string                `json:"reason"`
+	Timestamp time.Time             `json:"timestamp"`
 }
 
 // UpdatePayload is sent with EventUpdateStarted and EventUpdateComplete.

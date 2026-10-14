@@ -144,4 +144,3 @@ func (b *ExternalBackend) NegotiatedVersion() int {
 func (b *ExternalBackend) ReattachConfig() *goplugin.ReattachConfig {
 	return b.pluginClient.ReattachConfig()
 }
-

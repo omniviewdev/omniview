@@ -324,7 +324,7 @@ func main() {
 		MinWidth:  MinWebviewWidth,
 		MinHeight: MinWebviewHeight,
 		//nolint:gomnd // #0D1117 dark theme background
-		BackgroundColour: application.NewRGBA(13, 17, 23, 255),
+		BackgroundColour:   application.NewRGBA(13, 17, 23, 255),
 		UseApplicationMenu: true,
 		Mac: application.MacWindow{
 			TitleBar:   application.MacTitleBarHiddenInset,

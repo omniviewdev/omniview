@@ -94,7 +94,7 @@ func (h *PluginAssetHandler) ServeHTTP(res http.ResponseWriter, req *http.Reques
 
 	h.logger.Debugw(ctx, "requested file", "path", requestedFilename)
 
-	if !isAllowed("/"+requestedFilename) {
+	if !isAllowed("/" + requestedFilename) {
 		respondUnauthorized()
 		return
 	}

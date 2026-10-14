@@ -42,8 +42,8 @@ type viteProcess struct {
 
 	mu   sync.Mutex
 	cmd  *exec.Cmd
-	pgid int             // cached process group ID, set at start
-	done chan struct{}   // closed when the process exits
+	pgid int           // cached process group ID, set at start
+	done chan struct{} // closed when the process exits
 }
 
 // newViteProcess creates a viteProcess. Call Start() to spawn.

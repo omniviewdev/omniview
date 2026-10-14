@@ -11,8 +11,8 @@ import (
 type MemoryStore struct {
 	mu      sync.RWMutex
 	entries map[string]ResourceEntry
-	byConn  map[string]map[string]struct{}  // "pluginID/connectionID" → set of entryKeys
-	byLabel map[string]map[string]struct{}  // "labelKey=labelValue" → set of entryKeys
+	byConn  map[string]map[string]struct{} // "pluginID/connectionID" → set of entryKeys
+	byLabel map[string]map[string]struct{} // "labelKey=labelValue" → set of entryKeys
 }
 
 func NewMemoryStore() *MemoryStore {

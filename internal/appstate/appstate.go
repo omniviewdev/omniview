@@ -38,7 +38,7 @@ type Service struct {
 	rootDir *ScopedRoot
 
 	// Cached per-plugin scoped roots.
-	pluginRootsMu sync.Mutex
+	pluginRootsMu    sync.Mutex
 	pluginDataRoots  map[string]*ScopedRoot
 	pluginStoreRoots map[string]*ScopedRoot
 

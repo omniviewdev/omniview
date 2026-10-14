@@ -3,8 +3,8 @@ package metric
 import (
 	"context"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 )
 
 // MetricProvider is the engine's version-independent interface for metric plugins.

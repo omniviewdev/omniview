@@ -84,11 +84,11 @@ type DevServerState struct {
 
 // LogEntry is a single log line from either the Vite process or the Go build.
 type LogEntry struct {
-	Timestamp string    `json:"timestamp"`
-	Source    string    `json:"source"` // "vite" | "go-build" | "go-watch" | "manager"
-	Level     string    `json:"level"`  // "info" | "warn" | "error" | "debug"
-	Message   string    `json:"message"`
-	PluginID  string    `json:"pluginID"`
+	Timestamp string `json:"timestamp"`
+	Source    string `json:"source"` // "vite" | "go-build" | "go-watch" | "manager"
+	Level     string `json:"level"`  // "info" | "warn" | "error" | "debug"
+	Message   string `json:"message"`
+	PluginID  string `json:"pluginID"`
 }
 
 // DevServerErrorPayload wraps a plugin ID and its build errors into a single

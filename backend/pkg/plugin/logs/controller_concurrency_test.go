@@ -5,12 +5,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 )
 
 // stubLogsProvider is a minimal LogsProvider for concurrency tests.

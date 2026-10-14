@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wailsapp/wails/v3/pkg/application"
-	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 	logging "github.com/omniviewdev/plugin-sdk/log"
+	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 

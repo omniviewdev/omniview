@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
@@ -600,7 +600,7 @@ func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter)
 		registryStore:       store,
 		dispatcher:          disp,
 		graph:               g,
-		pluginStoreFn: svc.PluginStore,
+		pluginStoreFn:       svc.PluginStore,
 	}
 	return ctrl, emitter
 }

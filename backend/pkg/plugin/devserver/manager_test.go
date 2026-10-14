@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	logging "github.com/omniviewdev/plugin-sdk/log"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
@@ -25,17 +25,17 @@ var _ pkgsettings.Provider = (*mockSettingsProvider)(nil)
 func (m *mockSettingsProvider) Initialize(_ context.Context, _ ...pkgsettings.Category) error {
 	return nil
 }
-func (m *mockSettingsProvider) LoadSettings() error                         { return nil }
-func (m *mockSettingsProvider) SaveSettings() error                         { return nil }
-func (m *mockSettingsProvider) ListSettings() pkgsettings.Store             { return nil }
-func (m *mockSettingsProvider) Values() map[string]any                      { return nil }
+func (m *mockSettingsProvider) LoadSettings() error             { return nil }
+func (m *mockSettingsProvider) SaveSettings() error             { return nil }
+func (m *mockSettingsProvider) ListSettings() pkgsettings.Store { return nil }
+func (m *mockSettingsProvider) Values() map[string]any          { return nil }
 func (m *mockSettingsProvider) GetSetting(string) (pkgsettings.Setting, error) {
 	return pkgsettings.Setting{}, nil
 }
-func (m *mockSettingsProvider) GetSettingValue(string) (any, error)   { return nil, nil }
-func (m *mockSettingsProvider) SetSetting(string, any) error          { return nil }
-func (m *mockSettingsProvider) SetSettings(map[string]any) error      { return nil }
-func (m *mockSettingsProvider) ResetSetting(string) error             { return nil }
+func (m *mockSettingsProvider) GetSettingValue(string) (any, error) { return nil, nil }
+func (m *mockSettingsProvider) SetSetting(string, any) error        { return nil }
+func (m *mockSettingsProvider) SetSettings(map[string]any) error    { return nil }
+func (m *mockSettingsProvider) ResetSetting(string) error           { return nil }
 func (m *mockSettingsProvider) RegisterSetting(string, pkgsettings.Setting) error {
 	return nil
 }
@@ -50,13 +50,13 @@ func (m *mockSettingsProvider) RegisterChangeHandler(string, pkgsettings.Categor
 func (m *mockSettingsProvider) GetCategoryValues(string) (map[string]interface{}, error) {
 	return nil, nil
 }
-func (m *mockSettingsProvider) GetString(string) (string, error)       { return "", nil }
+func (m *mockSettingsProvider) GetString(string) (string, error)        { return "", nil }
 func (m *mockSettingsProvider) GetStringSlice(string) ([]string, error) { return nil, nil }
-func (m *mockSettingsProvider) GetInt(string) (int, error)             { return 0, nil }
-func (m *mockSettingsProvider) GetIntSlice(string) ([]int, error)      { return nil, nil }
-func (m *mockSettingsProvider) GetFloat(string) (float64, error)       { return 0, nil }
+func (m *mockSettingsProvider) GetInt(string) (int, error)              { return 0, nil }
+func (m *mockSettingsProvider) GetIntSlice(string) ([]int, error)       { return nil, nil }
+func (m *mockSettingsProvider) GetFloat(string) (float64, error)        { return 0, nil }
 func (m *mockSettingsProvider) GetFloatSlice(string) ([]float64, error) { return nil, nil }
-func (m *mockSettingsProvider) GetBool(string) (bool, error)           { return false, nil }
+func (m *mockSettingsProvider) GetBool(string) (bool, error)            { return false, nil }
 
 func newTestManager(t *testing.T) *DevServerManager {
 	t.Helper()

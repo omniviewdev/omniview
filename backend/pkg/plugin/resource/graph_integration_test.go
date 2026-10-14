@@ -248,7 +248,7 @@ func TestIntegration_ConnectionTeardown(t *testing.T) {
 	g.SetDeclarations("k8s", "core::v1::Pod", []sdkresource.RelationshipDescriptor{
 		{
 			Type: sdkresource.RelRunsOn, TargetResourceKey: "core::v1::Node",
-			Label: "runs on",
+			Label:     "runs on",
 			Extractor: &sdkresource.RelationshipExtractor{Method: "fieldPath", FieldPath: "spec.nodeName"},
 		},
 	})

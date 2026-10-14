@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	logging "github.com/omniviewdev/plugin-sdk/log"
-	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
 
 var errUnsupported = fmt.Errorf("terminal sessions are not supported on Windows")

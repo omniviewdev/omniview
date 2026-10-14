@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 

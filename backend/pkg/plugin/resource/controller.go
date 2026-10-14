@@ -58,7 +58,6 @@ func init() {
 
 var tracer = otel.Tracer("omniview.resource")
 
-
 // Controller is the lifecycle + service interface for the resource capability.
 type Controller interface {
 	plugintypes.ConnectedController

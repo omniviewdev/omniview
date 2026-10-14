@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	maxHistory    = 50
-	maxRetries    = 5
+	maxHistory     = 50
+	maxRetries     = 5
 	initialBackoff = 1 * time.Second
 	maxBackoff     = 60 * time.Second
 )

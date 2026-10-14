@@ -18,17 +18,17 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	ep "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	lc "github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
 	lp "github.com/omniviewdev/plugin-sdk/pkg/v1/logs"
 	mp "github.com/omniviewdev/plugin-sdk/pkg/v1/metric"
 	np "github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	rpv1 "github.com/omniviewdev/plugin-sdk/pkg/v1/resource/plugin"
-	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 	sp "github.com/omniviewdev/plugin-sdk/pkg/v1/settings"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // LoadPluginOptions configures how a plugin is loaded.

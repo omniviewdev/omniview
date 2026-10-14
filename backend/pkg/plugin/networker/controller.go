@@ -18,8 +18,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/networker"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 

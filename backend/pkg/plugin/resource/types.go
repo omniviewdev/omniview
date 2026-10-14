@@ -1,8 +1,8 @@
 package resource
 
 import (
-	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	sdkresource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // ConnectionState is the full state snapshot for a single connection,

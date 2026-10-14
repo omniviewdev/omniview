@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // ResourceProvider is the engine's version-independent interface for resource plugins.

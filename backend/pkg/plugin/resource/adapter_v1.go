@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 // AdapterV1 wraps SDK v1 resource.Provider as the engine canonical ResourceProvider.

@@ -3,8 +3,8 @@ package exec
 import (
 	"context"
 
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
 
 // ExecProvider is the engine's version-independent interface for exec plugins.
