@@ -1,124 +1,49 @@
 import * as React from 'react';
-
-// Material-ui
-import Menu from '@mui/material/Menu';
-import MuiMenuItem from '@mui/material/MenuItem';
-import ListItemIcon from '@mui/material/ListItemIcon';
-import { IconButton } from '@omniviewdev/ui/buttons';
+import { useNavigate } from 'react-router-dom';
+import { IconButton, Menu } from '@omniviewdev/base-ui';
 
 // Project imports
 import Icon from '@/components/icons/Icon';
-import { type HeaderIconMenuItem, type HeaderIconMenu as HeaderIconMenuProps } from '@/store/header/types';
-import { WithConditionalTooltip } from './HeaderIconLink';
-import { WithConditionalLink } from '../HeaderContextArea';
+import { type HeaderIconMenu as HeaderIconMenuProps } from '@/store/header/types';
+import HintTooltip from '@/components/base/HintTooltip';
+import styles from '../../Header.module.css';
 
 type Props = HeaderIconMenuProps;
 
 /**
  * Display a drop down menu as a header icon
  */
-const HeaderIconMenu: React.FC<Props> = ({ id, icon, helpText, items }) => (
-  <MenuComponent
-    id={id}
-    control={
-      <WithConditionalTooltip helpText={helpText}>
-        <IconButton
-          size='sm'
-          emphasis='soft'
-          color='neutral'
-          aria-label='Apps'
-          sx={{
-            '--wails-draggable': 'no-drag',
-          }}
-        >
-          <Icon name={icon} />
-        </IconButton>
-      </WithConditionalTooltip>
-    }
-    menus={items}
-  />
-);
-
-function MenuComponent({
-  control,
-  menus,
-  id,
-}: {
-  control: React.ReactElement;
-  id: string;
-  menus: HeaderIconMenuItem[];
-}) {
-  const [buttonElement, setButtonElement]
-    = React.useState<HTMLButtonElement | null>(null);
-  const [isOpen, setOpen] = React.useState(false);
-  const buttonRef = React.useRef<HTMLButtonElement>(null);
-  const preventReopen = React.useRef(false);
-
-  const updateAnchor = React.useCallback((node: HTMLButtonElement | null) => {
-    setButtonElement(node);
-  }, []);
-
-  const handleButtonClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (preventReopen.current) {
-      event.preventDefault();
-      preventReopen.current = false;
-      return;
-    }
-
-    setOpen(open => !open);
-  };
-
-  const handleButtonKeyDown = (
-    event: React.KeyboardEvent<HTMLButtonElement>,
-  ) => {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      setOpen(true);
-    }
-  };
-
-  const close = () => {
-    setOpen(false);
-    buttonRef.current?.focus();
-  };
+const HeaderIconMenu: React.FC<Props> = ({ id, icon, helpText, items }) => {
+  const navigate = useNavigate();
 
   return (
-    <>
-      {React.cloneElement(control, {
-        type: 'button',
-        onClick: handleButtonClick,
-        onKeyDown: handleButtonKeyDown,
-        ref: updateAnchor,
-        'aria-controls': isOpen ? id : undefined,
-        'aria-expanded': isOpen || undefined,
-        'aria-haspopup': 'menu',
-      })}
-      <Menu
-        id={id}
-        open={isOpen}
-        onClose={close}
-        anchorEl={buttonElement}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-        sx={{ minWidth: 120 }}
-      >
-        {menus.map(({ label, icon, link }) => (
-          <WithConditionalLink link={link} key={label}>
-            <MuiMenuItem
-              onClick={close}
-            >
-              {icon && (
-                <ListItemIcon>
-                  <Icon name={icon} />
-                </ListItemIcon>
-              )}
-              {label}
-            </MuiMenuItem>
-          </WithConditionalLink>
-        ))}
-      </Menu>
-    </>
+    <Menu.Root>
+      <HintTooltip content={helpText}>
+        <Menu.Trigger
+          render={
+            <IconButton size='sm' variant='soft' color='neutral' aria-label={helpText || 'Apps'} className={styles.NoDrag}>
+              <Icon name={icon} />
+            </IconButton>
+          }
+        />
+      </HintTooltip>
+      <Menu.Portal>
+        <Menu.Positioner align='end' sideOffset={4}>
+          <Menu.Popup id={id} style={{ minWidth: 120 }}>
+            {items.map(({ label, icon: itemIcon, link }) => (
+              <Menu.Item
+                key={label}
+                startDecorator={itemIcon ? <Icon name={itemIcon} /> : undefined}
+                onClick={link ? () => navigate(link) : undefined}
+              >
+                {label}
+              </Menu.Item>
+            ))}
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
-}
+};
 
 export default HeaderIconMenu;

@@ -1,13 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-
-// Material-ui
-import Box from '@mui/material/Box';
-import { IconButton } from '@omniviewdev/ui/buttons';
-import { Text } from '@omniviewdev/ui/typography';
+import { IconButton, Text } from '@omniviewdev/base-ui';
 
 // Project imports
 import { Icon } from '@/components/icons/Icon';
+import styles from '../Header.module.css';
 
 type Props = {
   /** A title for the context area. */
@@ -30,22 +27,9 @@ type Props = {
  * Display a piece of contextual information in the header, like the current page or section.
  */
 const HeaderContextArea: React.FC<Props> = ({ icon, title, iconLink, onIconClick }) => (
-  <Box
-    sx={{
-      display: 'flex',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 1.5,
-      width: '100%',
-      height: '100%',
-    }}
-  >
+  <div className={styles.ContextArea}>
     {iconLink || onIconClick ? (
-      <IconButton
-        size='sm'
-        emphasis='soft'
-        // Sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
-      >
+      <IconButton size='sm' variant='soft'>
         {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       </IconButton>
     ) : (
@@ -54,7 +38,7 @@ const HeaderContextArea: React.FC<Props> = ({ icon, title, iconLink, onIconClick
         {title}
       </Text>
     )}
-  </Box>
+  </div>
 );
 
 /**

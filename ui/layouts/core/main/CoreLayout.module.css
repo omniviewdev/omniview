@@ -1,0 +1,22 @@
+/*
+ * Sizes of the IDE frame (keep in step with the AppShell props in CoreLayout).
+ * read these, so they stay global.
+ */
+:global(:root) {
+  --CoreLayoutHeader-height: 38px;
+  --CoreLayoutFooter-height: 24px;
+  --CoreLayoutSidebar-width: 48px;
+}
+
+.Shell {
+  height: 100dvh;
+  background: var(--ov-color-bg-base);
+}
+
+.Main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}

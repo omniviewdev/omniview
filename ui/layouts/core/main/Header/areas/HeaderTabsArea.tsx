@@ -1,57 +1,12 @@
 import React from 'react';
-
-// material-ui
-import Box from '@mui/material/Box';
-import { Window } from '@omniviewdev/runtime/runtime';
-
-// import TabBarProvider from '@/providers/header/TabBarProvider';
+import { toggleMaximiseOnDoubleClick } from '../toggleMaximise';
+import styles from '../Header.module.css';
 
 /**
- * The tabs area in the header
+ * The tabs area in the header. Currently an empty, draggable title-bar region.
  */
-const HeaderTabsArea: React.FC = () => {
-
-  /**
-   * Provide the functionality of the double click behavior like on MacOS
-   */
-  const handleAreaClick: React.MouseEventHandler = (e) => {
-    switch (e.detail) {
-      case 0:
-      case 1:
-        // don't do anything
-        break;
-      default:
-        Window.IsMaximised().then((isMaximized) => {
-          if (isMaximized) {
-            Window.UnMaximise();
-          } else {
-            Window.Maximise();
-          }
-        }).catch((err) => {
-          console.error(err);
-        });
-        break;
-    }
-  };
-
-  return (
-    <Box
-      onClick={handleAreaClick}
-      sx={{
-        display: 'flex',
-        flexDirection: 'row',
-        gap: 1,
-        width: 'calc(100% - var(--CoreLayoutHeader-inset))',
-        height: '100%',
-        justifyContent: 'flex-start',
-        alignItems: 'center',
-        px: 0.5,
-        WebkitUserSelect: 'none',
-      }}
-    >
-      {/* <TabBarProvider /> */}
-    </Box>
-  );
-};
+const HeaderTabsArea: React.FC = () => (
+  <div onClick={toggleMaximiseOnDoubleClick} className={styles.TabsArea} />
+);
 
 export default HeaderTabsArea;

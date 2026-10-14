@@ -1,0 +1,71 @@
+.Header {
+  /* Room for the macOS window controls; set inline from the platform. */
+  padding-left: var(--CoreLayoutHeader-inset, 0px);
+  gap: var(--ov-space-4);
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 1100;
+  --wails-draggable: drag;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Interactive controls inside the header must not start a window drag. */
+.NoDrag {
+  --wails-draggable: no-drag;
+}
+
+.Area {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ItemsArea {
+  composes: Area;
+  width: 100%;
+  justify-content: flex-end;
+  gap: var(--ov-space-1);
+  padding-inline: var(--ov-space-2);
+}
+
+.TabsArea {
+  composes: Area;
+  width: calc(100% - var(--CoreLayoutHeader-inset, 0px));
+  justify-content: flex-start;
+  gap: var(--ov-space-2);
+  padding-inline: var(--ov-space-1);
+}
+
+.ContextArea {
+  composes: Area;
+  width: 100%;
+  gap: var(--ov-space-3);
+}
+
+.SearchArea {
+  composes: Area;
+  justify-content: center;
+  gap: var(--ov-space-2);
+  padding-inline: var(--ov-space-1);
+}
+
+.Search {
+  composes: NoDrag;
+  flex-basis: 500px;
+  min-width: 400px;
+}
+
+@media (min-width: 1536px) {
+  .Search {
+    min-width: 500px;
+  }
+}
+
+.SearchIcon {
+  color: var(--ov-color-accent-fg, var(--ov-color-fg-muted));
+}
