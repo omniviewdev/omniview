@@ -1319,6 +1319,8 @@ export class PluginService {
           if (!settled) {
             settled = true;
             clearTimeout(timer);
+            // Pass the original rejection through unchanged.
+            // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
             reject(err);
           }
         },

@@ -217,7 +217,9 @@ describe('Group 3: Load Operations', () => {
 
     it('#19 import rejects with non-Error', async () => {
       s.importer.register('A', () => {
-        throw 'fail'; 
+        // The test is about a non-Error throw.
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'fail';
       });
       await s.service.load('A');
       expect(s.service.getPluginState('A')?.phase).toBe('error');
