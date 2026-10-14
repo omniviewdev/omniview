@@ -69,7 +69,7 @@ export default function DiffViewer({
     wordWrap: wordWrap ? 'on' as const : 'off' as const,
     scrollBeyondLastLine: false,
     fontSize: 13,
-    fontFamily: 'var(--ov-font-mono)',
+    fontFamily: 'var(--ovl-font-mono)',
     automaticLayout: true,
   };
 

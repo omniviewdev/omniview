@@ -183,7 +183,7 @@ function SingleSectionInternal({
           inline
           sx={{
             color: "var(--ov-fg-base)",
-            ...(monospace && { fontFamily: "var(--ov-font-mono)", fontSize: cfg.fontSize }),
+            ...(monospace && { fontFamily: "var(--ovl-font-mono)", fontSize: cfg.fontSize }),
             ...(!monospace && { fontSize: cfg.fontSize }),
             lineHeight: 1,
           }}

@@ -148,7 +148,7 @@ export default function CommandPalette({
         <Typography
           variant="caption"
           sx={{
-            fontFamily: 'var(--ov-font-mono)',
+            fontFamily: 'var(--ovl-font-mono)',
             fontSize: '0.6875rem',
             color: 'var(--ov-fg-faint)',
             bgcolor: 'var(--ov-bg-surface-inset)',

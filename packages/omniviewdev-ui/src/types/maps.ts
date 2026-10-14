@@ -102,7 +102,7 @@ export function toMuiInputSize(size: ComponentSize): 'small' | 'medium' {
 // ---------------------------------------------------------------------------
 
 const borderRadiusMap: Record<Shape, string | number> = {
-  rounded: 'var(--ov-radius-md, 6px)',
+  rounded: 'var(--ovl-radius-md, 6px)',
   pill: 999,
   square: 0,
 };

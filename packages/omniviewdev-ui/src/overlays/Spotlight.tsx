@@ -235,9 +235,9 @@ export default function Spotlight({
             color: 'var(--ov-fg-faint)',
           }}
         >
-          <span><kbd style={{ fontFamily: 'var(--ov-font-mono)' }}>&uarr;&darr;</kbd> navigate</span>
-          <span><kbd style={{ fontFamily: 'var(--ov-font-mono)' }}>&crarr;</kbd> select</span>
-          <span><kbd style={{ fontFamily: 'var(--ov-font-mono)' }}>esc</kbd> close</span>
+          <span><kbd style={{ fontFamily: 'var(--ovl-font-mono)' }}>&uarr;&darr;</kbd> navigate</span>
+          <span><kbd style={{ fontFamily: 'var(--ovl-font-mono)' }}>&crarr;</kbd> select</span>
+          <span><kbd style={{ fontFamily: 'var(--ovl-font-mono)' }}>esc</kbd> close</span>
         </Box>
       </Box>
     </MuiModal>

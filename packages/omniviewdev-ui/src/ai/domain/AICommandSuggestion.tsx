@@ -84,7 +84,7 @@ export default function AICommandSuggestion({
             sx={{
               fontSize: 'var(--ov-text-xs)',
               color: dangerous ? 'var(--ov-danger-default)' : 'var(--ov-fg-muted)',
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
             }}
           >
             {dangerous ? 'dangerous command' : 'command'}
@@ -129,7 +129,7 @@ export default function AICommandSuggestion({
         <pre style={{ margin: 0, overflow: 'auto' }}>
           <code
             style={{
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
               fontSize: '13px',
               lineHeight: 1.6,
               color: 'var(--ov-fg-default)',

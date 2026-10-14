@@ -94,7 +94,7 @@ export default function ModelSelector({
                       sx={{
                         fontSize: 'var(--ov-text-xs)',
                         color: 'var(--ov-fg-faint)',
-                        fontFamily: 'var(--ov-font-mono)',
+                        fontFamily: 'var(--ovl-font-mono)',
                       }}
                     >
                       {m.parameterCount}
@@ -105,7 +105,7 @@ export default function ModelSelector({
                       sx={{
                         fontSize: 'var(--ov-text-xs)',
                         color: 'var(--ov-fg-faint)',
-                        fontFamily: 'var(--ov-font-mono)',
+                        fontFamily: 'var(--ovl-font-mono)',
                       }}
                     >
                       {m.contextWindow >= 1000

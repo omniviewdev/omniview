@@ -177,7 +177,7 @@ export default function AIEventList({
                     sx={{
                       fontSize: '10px',
                       color: 'var(--ov-fg-faint)',
-                      fontFamily: 'var(--ov-font-mono)',
+                      fontFamily: 'var(--ovl-font-mono)',
                       mt: 0.25,
                     }}
                   >

@@ -122,7 +122,7 @@ export default function AgentPopup({
           <pre
             style={{
               margin: 0,
-              fontFamily: 'var(--ov-font-mono)',
+              fontFamily: 'var(--ovl-font-mono)',
               fontSize: '11px',
               lineHeight: 1.5,
               color: 'var(--ov-fg-muted)',

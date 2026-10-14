@@ -39,7 +39,7 @@ const cellTdStyles: React.CSSProperties = {
 
 const labelTdStyles: React.CSSProperties = {
   ...cellTdStyles,
-  fontFamily: 'var(--ov-font-mono)',
+  fontFamily: 'var(--ovl-font-mono)',
   fontSize: '12px',
   color: 'var(--ov-fg-muted)',
   width: 180,

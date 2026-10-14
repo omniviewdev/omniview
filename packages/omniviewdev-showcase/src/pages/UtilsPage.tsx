@@ -17,7 +17,7 @@ const resultBoxSx = {
   p: 2,
   borderRadius: '4px',
   bgcolor: 'var(--ov-bg-surface-inset)',
-  fontFamily: 'var(--ov-font-mono)',
+  fontFamily: 'var(--ovl-font-mono)',
   fontSize: 'var(--ov-text-sm)',
   color: 'var(--ov-fg-default)',
 };
@@ -60,7 +60,7 @@ const presetTdStyles: React.CSSProperties = {
 
 const presetTdMono: React.CSSProperties = {
   ...presetTdStyles,
-  fontFamily: 'var(--ov-font-mono)',
+  fontFamily: 'var(--ovl-font-mono)',
 };
 
 // --- Page ---

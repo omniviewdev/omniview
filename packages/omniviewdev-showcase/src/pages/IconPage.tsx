@@ -171,7 +171,7 @@ export default function IconPage() {
                 <Icon name="LuBox" size={size} />
                 <span
                   style={{
-                    fontFamily: 'var(--ov-font-mono)',
+                    fontFamily: 'var(--ovl-font-mono)',
                     fontSize: 'var(--ov-text-xs)',
                     color: 'var(--ov-fg-muted)',
                   }}
@@ -217,7 +217,7 @@ export default function IconPage() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '6px',
-                borderRadius: 'var(--ov-radius-md)',
+                borderRadius: 'var(--ovl-radius-md)',
                 cursor: 'default',
                 '&:hover': {
                   bgcolor: 'var(--ov-state-hover)',
@@ -227,7 +227,7 @@ export default function IconPage() {
               <Icon name={name} size={20} />
               <span
                 style={{
-                  fontFamily: 'var(--ov-font-mono)',
+                  fontFamily: 'var(--ovl-font-mono)',
                   fontSize: '9px',
                   color: 'var(--ov-fg-muted)',
                   textAlign: 'center',

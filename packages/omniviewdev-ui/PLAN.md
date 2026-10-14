@@ -52,7 +52,7 @@ The following are already implemented:
 
 - [x] **`src/inputs/TextField.tsx`** — Wraps MUI TextField
   - Props: `size?: ComponentSize`, `color?: SemanticColor`, `readOnly?: boolean`, `monospace?: boolean`, `debounced?: boolean`, `debounceMs?: number`, `value`, `onChange`, `label?`, `helperText?`, `error?`, `placeholder?`, `fullWidth?`, `startAdornment?`, `endAdornment?`, `sx?`
-  - `monospace` sets fontFamily to `var(--ov-font-mono)`
+  - `monospace` sets fontFamily to `var(--ovl-font-mono)`
   - `debounced` integrates debounce logic (internal state + setTimeout, calls onChange after delay)
   - Map size/color via `toMuiSize`/`toMuiColor` from `../types`
 
