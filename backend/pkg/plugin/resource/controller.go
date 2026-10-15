@@ -105,6 +105,7 @@ type controller struct {
 	registryStore registry.Store
 	dispatcher    *indexer.Dispatcher
 	graph         *graph.RelationshipGraph
+	graphNotifier *graphChangeNotifier
 
 	onCrashCallback func(pluginID string)
 	pluginStoreFn   func(pluginID string) (*appstate.ScopedRoot, error)
@@ -128,7 +129,7 @@ func NewController(
 	graphIndexer := graph.NewGraphIndexer(g, store)
 	dispatcher := indexer.NewDispatcher([]indexer.ResourceIndexer{graphIndexer})
 
-	return &controller{
+	c := &controller{
 		app:                 nil,
 		logger:              logger.Named("ResourceController"),
 		settingsProvider:    sp,
@@ -143,9 +144,15 @@ func NewController(
 		registryStore:       store,
 		dispatcher:          dispatcher,
 		graph:               g,
+		graphNotifier:       nil,
 		onCrashCallback:     nil,
 		pluginStoreFn:       pluginStoreFn,
 	}
+	// Read c.emitter at emit time: it is replaced when the app starts.
+	c.graphNotifier = newGraphChangeNotifier(g, func(eventKey string, data ...any) {
+		c.emitter.Emit(eventKey, data...)
+	}, graphChangeDebounce)
+	return c
 }
 
 // SetCrashCallback sets the function called when a plugin crash is detected.
@@ -169,6 +176,7 @@ func (c *controller) Run(_ context.Context) {
 		c.emitter = NoopEmitter{}
 	}
 	c.dispatcher.Start()
+	c.graphNotifier.Start()
 }
 
 // ServiceStartup is called by the Wails v3 runtime when the application starts.
@@ -176,11 +184,13 @@ func (c *controller) ServiceStartup(_ context.Context, _ application.ServiceOpti
 	c.app = application.Get()
 	c.emitter = newAppEmitter(c.app)
 	c.dispatcher.Start()
+	c.graphNotifier.Start()
 	return nil
 }
 
 // ServiceShutdown is called by the Wails v3 runtime when the application shuts down.
 func (c *controller) ServiceShutdown() error {
+	c.graphNotifier.Stop()
 	c.dispatcher.Stop()
 	return nil
 }

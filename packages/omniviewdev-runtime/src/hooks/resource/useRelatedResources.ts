@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { GetRelated } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graphservice';
 import type { GraphEdge, GraphNode } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph/models';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { useRefetchOnGraphChange } from './useRefetchOnGraphChange';
 
 /** Which side of the relationship the viewed resource is on. */
 export type RelationshipDirection = 'outgoing' | 'incoming';
@@ -58,14 +59,11 @@ type UseRelatedResourcesOptions = {
   enabled?: boolean;
 
   /**
-   * How often to refetch, in milliseconds. The graph is rebuilt in the
-   * background from watch events and does not notify the frontend, so it is
-   * polled. Pass false to disable.
+   * Also refetch on this interval, in milliseconds. Not needed normally: the
+   * query refetches when the host reports a graph change for the connection.
    */
   refetchInterval?: number | false;
 };
-
-const DEFAULT_REFETCH_INTERVAL = 10_000;
 
 const relationshipLabels: Record<string, Record<RelationshipDirection, string>> = {
   owns: { outgoing: 'Owns', incoming: 'Owned by' },
@@ -135,14 +133,19 @@ export const useRelatedResources = ({
   direction = 'both',
   relationshipType,
   enabled = true,
-  refetchInterval = DEFAULT_REFETCH_INTERVAL,
+  refetchInterval = false,
 }: UseRelatedResourcesOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
 
+  const queryKey = ['RESOURCE_RELATED', pluginID, connectionID, resourceKey, namespace, resourceID, direction, relationshipType ?? null];
+  const queryEnabled = enabled && !!pluginID && !!connectionID && !!resourceKey && !!resourceID;
+
+  useRefetchOnGraphChange(pluginID, connectionID, queryKey, queryEnabled);
+
   const query = useQuery({
-    queryKey: ['RESOURCE_RELATED', pluginID, connectionID, resourceKey, namespace, resourceID, direction, relationshipType ?? null],
+    queryKey,
     queryFn: async () => GetRelated(pluginID, connectionID, resourceKey, namespace, resourceID, direction, relationshipType ?? null),
-    enabled: enabled && !!pluginID && !!connectionID && !!resourceKey && !!resourceID,
+    enabled: queryEnabled,
     refetchInterval,
   });
 

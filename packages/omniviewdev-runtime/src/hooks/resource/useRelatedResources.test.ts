@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import type { Mock } from 'vitest';
@@ -17,6 +17,25 @@ vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resou
     return mockGetDependencyTree;
   },
 }));
+
+// Capture Events.On listeners so tests can fire host events.
+const listeners = new Map<string, Set<() => void>>();
+vi.mock('@wailsio/runtime', () => ({
+  Events: {
+    On: (name: string, cb: () => void) => {
+      const set = listeners.get(name) ?? new Set();
+      set.add(cb);
+      listeners.set(name, set);
+      return () => set.delete(cb);
+    },
+  },
+}));
+
+function emit(name: string) {
+  for (const cb of listeners.get(name) ?? []) {
+    cb();
+  }
+}
 
 import { relationshipLabel, toRelatedResources, useRelatedResources } from './useRelatedResources';
 import { useDependencyTree } from './useDependencyTree';
@@ -41,6 +60,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 beforeEach(() => {
   mockGetRelated = vi.fn();
   mockGetDependencyTree = vi.fn();
+  listeners.clear();
 });
 
 describe('toRelatedResources', () => {
@@ -115,6 +135,69 @@ describe('useRelatedResources', () => {
 
     expect(mockGetRelated).not.toHaveBeenCalled();
     expect(result.current.related).toEqual([]);
+  });
+});
+
+describe('graph change events', () => {
+  it('refetches related resources when the connection graph changes', async () => {
+    mockGetRelated.mockResolvedValueOnce([]).mockResolvedValue([{ source: pod, target: worker, type: 'runs_on', label: 'runs on' }]);
+
+    const { result } = renderHook(() => useRelatedResources({
+      connectionID: 'c1', resourceKey: 'core::v1::Pod', resourceID: 'web-1', namespace: 'default',
+    }), { wrapper });
+
+    await waitFor(() => {
+      expect(mockGetRelated).toHaveBeenCalledTimes(1);
+    });
+    expect(result.current.related).toEqual([]);
+
+    // Another connection's change is ignored.
+    act(() => {
+      emit('kubernetes/c2/graph/CHANGED');
+    });
+    act(() => {
+      emit('kubernetes/c1/graph/CHANGED');
+    });
+
+    await waitFor(() => {
+      expect(result.current.related).toHaveLength(1);
+    });
+    expect(mockGetRelated).toHaveBeenCalledTimes(2);
+  });
+
+  it('unsubscribes on unmount and when disabled', () => {
+    mockGetRelated.mockResolvedValue([]);
+
+    const { unmount } = renderHook(() => useRelatedResources({
+      connectionID: 'c1', resourceKey: 'core::v1::Pod', resourceID: 'web-1',
+    }), { wrapper });
+
+    expect(listeners.get('kubernetes/c1/graph/CHANGED')?.size).toBe(1);
+    unmount();
+    expect(listeners.get('kubernetes/c1/graph/CHANGED')?.size).toBe(0);
+
+    renderHook(() => useRelatedResources({
+      connectionID: 'c1', resourceKey: 'core::v1::Pod', resourceID: 'web-1', enabled: false,
+    }), { wrapper });
+    expect(listeners.get('kubernetes/c1/graph/CHANGED')?.size ?? 0).toBe(0);
+  });
+
+  it('refetches the dependency tree when the connection graph changes', async () => {
+    mockGetDependencyTree.mockResolvedValue({ root: rs, children: [] });
+
+    renderHook(() => useDependencyTree({
+      connectionID: 'c1', resourceKey: 'apps::v1::ReplicaSet', resourceID: 'web-abc', namespace: 'default',
+    }), { wrapper });
+
+    await waitFor(() => {
+      expect(mockGetDependencyTree).toHaveBeenCalledTimes(1);
+    });
+    act(() => {
+      emit('kubernetes/c1/graph/CHANGED');
+    });
+    await waitFor(() => {
+      expect(mockGetDependencyTree).toHaveBeenCalledTimes(2);
+    });
   });
 });
 

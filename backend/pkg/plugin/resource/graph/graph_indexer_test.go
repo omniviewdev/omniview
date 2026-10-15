@@ -633,7 +633,7 @@ func TestGraphIndexer_ServiceSelectorRemoved(t *testing.T) {
 	if got := g.EdgesFrom(svc.EntryKey()); len(got) != 0 {
 		t.Fatalf("want 0 selector edges, got %v", got)
 	}
-	if _, ok := g.GetSelectorCache(svc.EntryKey()); ok {
+	if g.hasSelectors(svc.EntryKey()) {
 		t.Fatal("want selector cache cleared")
 	}
 }
@@ -696,5 +696,159 @@ func TestGraphIndexer_LabelSelector_SlashInConnectionID(t *testing.T) {
 	got := g.EdgesFrom(svc.EntryKey())
 	if len(got) != 1 || got[0].Target.ConnectionID != conn || got[0].Target.ID != "web-1" {
 		t.Fatalf("want 1 selector edge to %s/web-1, got %v", conn, got)
+	}
+}
+
+// declareNetworkPolicy declares NetworkPolicy -> Pod via a full LabelSelector.
+func declareNetworkPolicy(g *RelationshipGraph) {
+	g.SetDeclarations("k8s", "networking::v1::NetworkPolicy", []resource.RelationshipDescriptor{
+		{
+			Type: resource.RelSelects, TargetResourceKey: "core::v1::Pod", Label: "selects",
+			Extractor: &resource.RelationshipExtractor{Method: MethodLabelSelectorObject, FieldPath: "spec.podSelector"},
+		},
+	})
+}
+
+func addPod(store *registry.MemoryStore, idx *Indexer, ns, id string, labels map[string]string) registry.ResourceEntry {
+	pod := makeEntry("core::v1::Pod", ns, id)
+	pod.Labels = labels
+	store.Put(pod)
+	idx.OnAdd(pod, json.RawMessage(`{}`))
+	return pod
+}
+
+func targetIDs(edges []GraphEdge) map[string]bool {
+	ids := make(map[string]bool, len(edges))
+	for _, e := range edges {
+		ids[e.Target.Namespace+"/"+e.Target.ID] = true
+	}
+	return ids
+}
+
+// TestGraphIndexer_SelectorObject_EmptySelectsNamespace — omn-bhrc: an empty
+// podSelector selects every Pod in the policy's namespace, including Pods
+// without labels and Pods created later, and none in other namespaces.
+func TestGraphIndexer_SelectorObject_EmptySelectsNamespace(t *testing.T) {
+	g, store, idx := setupIndexer()
+	declareNetworkPolicy(g)
+
+	addPod(store, idx, "default", "labelled", map[string]string{"app": "web"})
+	addPod(store, idx, "other", "elsewhere", map[string]string{"app": "web"})
+
+	np := makeEntry("networking::v1::NetworkPolicy", "default", "deny-all")
+	store.Put(np)
+	idx.OnAdd(np, json.RawMessage(`{"spec":{"podSelector":{}}}`))
+
+	addPod(store, idx, "default", "unlabelled", nil)
+
+	got := targetIDs(g.EdgesFrom(np.EntryKey()))
+	want := map[string]bool{"default/labelled": true, "default/unlabelled": true}
+	if len(got) != len(want) || !got["default/labelled"] || !got["default/unlabelled"] {
+		t.Fatalf("want %v, got %v", want, got)
+	}
+}
+
+// TestGraphIndexer_SelectorObject_Expressions — matchExpressions are applied
+// to existing Pods and to Pods that appear or change later.
+func TestGraphIndexer_SelectorObject_Expressions(t *testing.T) {
+	g, store, idx := setupIndexer()
+	declareNetworkPolicy(g)
+
+	addPod(store, idx, "default", "prod", map[string]string{"app": "web", "env": "prod"})
+	addPod(store, idx, "default", "dev", map[string]string{"app": "web", "env": "dev"})
+
+	np := makeEntry("networking::v1::NetworkPolicy", "default", "web-not-prod")
+	store.Put(np)
+	idx.OnAdd(np, json.RawMessage(`{"spec":{"podSelector":{
+		"matchLabels":{"app":"web"},
+		"matchExpressions":[{"key":"env","operator":"NotIn","values":["prod"]}]}}}`))
+
+	noEnv := addPod(store, idx, "default", "no-env", map[string]string{"app": "web"})
+
+	got := targetIDs(g.EdgesFrom(np.EntryKey()))
+	if len(got) != 2 || !got["default/dev"] || !got["default/no-env"] {
+		t.Fatalf("want dev and no-env, got %v", got)
+	}
+
+	// Relabelling a Pod into the excluded set unlinks it.
+	promoted := makeEntry("core::v1::Pod", "default", "no-env")
+	promoted.Labels = map[string]string{"app": "web", "env": "prod"}
+	store.Put(promoted)
+	idx.OnUpdate(noEnv, promoted, json.RawMessage(`{}`))
+
+	got = targetIDs(g.EdgesFrom(np.EntryKey()))
+	if len(got) != 1 || !got["default/dev"] {
+		t.Fatalf("after relabel: want only dev, got %v", got)
+	}
+}
+
+// TestGraphIndexer_SelectorObject_AbsentOrInvalidSelectsNothing — an absent
+// or invalid selector must not fall back to selecting everything.
+func TestGraphIndexer_SelectorObject_AbsentOrInvalidSelectsNothing(t *testing.T) {
+	for name, raw := range map[string]string{
+		"absent":  `{"spec":{}}`,
+		"invalid": `{"spec":{"podSelector":{"matchExpressions":[{"key":"env","operator":"Equals","values":["x"]}]}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			g, store, idx := setupIndexer()
+			declareNetworkPolicy(g)
+			addPod(store, idx, "default", "p1", nil)
+
+			np := makeEntry("networking::v1::NetworkPolicy", "default", "np")
+			store.Put(np)
+			idx.OnAdd(np, json.RawMessage(raw))
+			addPod(store, idx, "default", "p2", nil)
+
+			if got := g.EdgesFrom(np.EntryKey()); len(got) != 0 {
+				t.Fatalf("want no edges, got %v", got)
+			}
+		})
+	}
+}
+
+// TestGraphIndexer_PlainSelectorStillNeedsLabels — a Service with an empty
+// selector selects nothing, unlike an empty LabelSelector object.
+func TestGraphIndexer_PlainSelectorStillNeedsLabels(t *testing.T) {
+	g, store, idx := setupIndexer()
+	declareK8sSubset(g)
+	addPod(store, idx, "default", "p1", nil)
+
+	svc := makeEntry("core::v1::Service", "default", "headless")
+	store.Put(svc)
+	idx.OnAdd(svc, json.RawMessage(`{"spec":{"selector":{}}}`))
+	addPod(store, idx, "default", "p2", nil)
+
+	if got := g.EdgesFrom(svc.EntryKey()); len(got) != 0 {
+		t.Fatalf("want no edges, got %v", got)
+	}
+}
+
+// TestGraphIndexer_TwoSelectorDeclarations — a resource with two selector
+// declarations keeps both cached (they used to overwrite each other).
+func TestGraphIndexer_TwoSelectorDeclarations(t *testing.T) {
+	g, store, idx := setupIndexer()
+	g.SetDeclarations("k8s", "example::v1::Group", []resource.RelationshipDescriptor{
+		{
+			Type: resource.RelSelects, TargetResourceKey: "core::v1::Pod", Label: "selects",
+			Extractor: &resource.RelationshipExtractor{Method: MethodLabelSelector, FieldPath: "spec.pods"},
+		},
+		{
+			Type: resource.RelSelects, TargetResourceKey: "core::v1::Service", Label: "selects",
+			Extractor: &resource.RelationshipExtractor{Method: MethodLabelSelector, FieldPath: "spec.services"},
+		},
+	})
+
+	grp := makeEntry("example::v1::Group", "default", "g")
+	store.Put(grp)
+	idx.OnAdd(grp, json.RawMessage(`{"spec":{"pods":{"app":"web"},"services":{"app":"web"}}}`))
+
+	addPod(store, idx, "default", "p1", map[string]string{"app": "web"})
+	svc := makeEntry("core::v1::Service", "default", "s1")
+	svc.Labels = map[string]string{"app": "web"}
+	store.Put(svc)
+	idx.OnAdd(svc, json.RawMessage(`{}`))
+
+	if got := g.EdgesFrom(grp.EntryKey()); len(got) != 2 {
+		t.Fatalf("want edges to the pod and the service, got %v", got)
 	}
 }

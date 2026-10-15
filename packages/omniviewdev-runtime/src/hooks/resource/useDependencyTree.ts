@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { GetDependencyTree } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graphservice';
 import { useResolvedPluginId } from '../useResolvedPluginId';
+import { useRefetchOnGraphChange } from './useRefetchOnGraphChange';
 
 type UseDependencyTreeOptions = {
   /**
@@ -31,8 +32,8 @@ type UseDependencyTreeOptions = {
   enabled?: boolean;
 
   /**
-   * How often to refetch, in milliseconds. The graph does not notify the
-   * frontend of changes, so it is polled. Pass false to disable.
+   * Also refetch on this interval, in milliseconds. Not needed normally: the
+   * query refetches when the host reports a graph change for the connection.
    */
   refetchInterval?: number | false;
 };
@@ -51,14 +52,19 @@ export const useDependencyTree = ({
   namespace = '',
   maxDepth = 3,
   enabled = true,
-  refetchInterval = 10_000,
+  refetchInterval = false,
 }: UseDependencyTreeOptions) => {
   const pluginID = useResolvedPluginId(explicitPluginID);
 
+  const queryKey = ['RESOURCE_DEPENDENCY_TREE', pluginID, connectionID, resourceKey, namespace, resourceID, maxDepth];
+  const queryEnabled = enabled && !!pluginID && !!connectionID && !!resourceKey && !!resourceID;
+
+  useRefetchOnGraphChange(pluginID, connectionID, queryKey, queryEnabled);
+
   const query = useQuery({
-    queryKey: ['RESOURCE_DEPENDENCY_TREE', pluginID, connectionID, resourceKey, namespace, resourceID, maxDepth],
+    queryKey,
     queryFn: async () => GetDependencyTree(pluginID, connectionID, resourceKey, namespace, resourceID, maxDepth),
-    enabled: enabled && !!pluginID && !!connectionID && !!resourceKey && !!resourceID,
+    enabled: queryEnabled,
     refetchInterval,
   });
 
