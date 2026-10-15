@@ -3,6 +3,7 @@ export * as ExecClient from './bindings/github.com/omniviewdev/omniview/backend/
 export * as NetworkerClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/networker/servicewrapper';
 export * as PluginManager from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper';
 export * as ResourceClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/servicewrapper';
+export * as GraphClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graphservice';
 export * as SettingsClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/settings/servicewrapper';
 export * as SettingsProvider from './bindings/github.com/omniviewdev/omniview/internal/settings/servicewrapper';
 export * as UtilsClient from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/utils/client';
