@@ -170,8 +170,8 @@ tasks:
     summary: Build all workspace packages in dependency order
     cmds:
       - pnpm --filter @omniviewdev/providers run build
-      - pnpm --filter @omniviewdev/vite-plugin run build
       - pnpm --filter @omniviewdev/runtime run build
+      - pnpm --filter @omniviewdev/vite-plugin run build
 
   # ──────────────────────────────────────────────
   # Performance
