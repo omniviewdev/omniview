@@ -62,15 +62,16 @@ jobs:
             echo "Stamped $pkg → $VERSION"
           done
 
-      # Build in dependency order: providers → vite-plugin → runtime
+      # Build runtime before vite-plugin so shim generation sees the current
+      # runtime exports rather than the last checked-in build.
       - name: Build providers
         run: pnpm --filter @omniviewdev/providers run build
 
-      - name: Build vite-plugin
-        run: pnpm --filter @omniviewdev/vite-plugin run build
-
       - name: Build runtime
         run: pnpm --filter @omniviewdev/runtime run build
+
+      - name: Build vite-plugin
+        run: pnpm --filter @omniviewdev/vite-plugin run build
 
       - name: Publish packages
         shell: bash

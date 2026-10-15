@@ -28,6 +28,8 @@ The frontend is built on `@omniviewdev/base-ui` (with `ai-ui` and `editors`), pu
 
 Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yaml`. The release publishes the desktop artifacts and stamps `@omniviewdev/providers`, `@omniviewdev/vite-plugin`, and `@omniviewdev/runtime` with the tag version before publishing them to npm.
 
+Build `@omniviewdev/runtime` before `@omniviewdev/vite-plugin`. The Vite plugin build regenerates and verifies its dev-mode shims against the runtime bundle; reversing that order can publish shims without newly added runtime exports.
+
 npm trusted publishers must target the calling workflow filename: `release.yaml` for stable releases and `nightly.yaml` for nightlies. Both call `.github/workflows/npm-publish.yml`, but npm validates the caller for reusable workflows. Merge publishing-workflow changes to `main` before pushing the release tag so the tagged commit contains the OIDC configuration.
 
 ## Commits
