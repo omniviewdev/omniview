@@ -71,9 +71,9 @@ func (gi *Indexer) extractEdges(entry registry.ResourceEntry, raw json.RawMessag
 			continue
 		}
 		switch decl.Extractor.Method {
-		case "fieldPath":
+		case MethodFieldPath:
 			gi.extractFieldPath(sourceNode, entry, raw, decl)
-		case "labelSelector":
+		case MethodLabelSelector, MethodLabelSelectorObject:
 			gi.extractLabelSelector(sourceNode, entry, raw, decl)
 		}
 	}
@@ -157,29 +157,41 @@ func (gi *Indexer) extractLabelSelector(
 	}
 
 	result := gjson.GetBytes(raw, selectorPath)
-	if !result.Exists() || !result.IsObject() {
+	if !result.Exists() {
 		return
 	}
 
-	selector := make(map[string]string)
-	result.ForEach(func(key, value gjson.Result) bool {
-		selector[key.String()] = value.String()
-		return true
-	})
-
-	if len(selector) == 0 {
-		return
+	var selector labelSelector
+	if decl.Extractor.Method == MethodLabelSelectorObject {
+		sel, ok := parseLabelSelectorObject(result)
+		if !ok {
+			return
+		}
+		selector = sel
+	} else {
+		// A plain label map selects nothing when empty (a Service without
+		// a selector).
+		selector = parseLabelMap(result)
+		if selector.isEmpty() {
+			return
+		}
 	}
 
-	gi.graph.SetSelectorCache(source, selector)
+	gi.graph.setSelector(source, decl, selector)
 
-	matches := gi.store.ScanByLabel(
-		entry.PluginID, entry.ConnectionID,
-		decl.TargetResourceKey, selector,
-	)
+	// Narrow candidates by the exact-match labels when there are any.
+	var candidates []registry.ResourceEntry
+	if len(selector.matchLabels) > 0 {
+		candidates = gi.store.ScanByLabel(
+			entry.PluginID, entry.ConnectionID,
+			decl.TargetResourceKey, selector.matchLabels,
+		)
+	} else {
+		candidates = gi.store.ScanByResourceKey(entry.PluginID, entry.ConnectionID, decl.TargetResourceKey)
+	}
 
-	for _, match := range matches {
-		if !selectorReaches(source.Namespace, match.Namespace) {
+	for _, match := range candidates {
+		if !selectorReaches(source.Namespace, match.Namespace) || !selector.matches(match.Labels) {
 			continue
 		}
 		gi.graph.AddDeclaredEdge(GraphEdge{
@@ -191,10 +203,11 @@ func (gi *Indexer) extractLabelSelector(
 	}
 }
 
-// CheckLabelSelectorsForEntry checks if any cached selectors match the labels
-// on a newly added/updated entry.
+// CheckLabelSelectorsForEntry matches a newly added or updated entry against
+// the cached selectors. Entries without labels are checked too: empty
+// selectors and NotIn/DoesNotExist expressions can match them.
 func (gi *Indexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
-	if gi.store == nil || len(entry.Labels) == 0 {
+	if gi.store == nil {
 		return
 	}
 
@@ -207,39 +220,23 @@ func (gi *Indexer) CheckLabelSelectorsForEntry(entry registry.ResourceEntry) {
 		if selectorNode.PluginID != entry.PluginID || selectorNode.ConnectionID != entry.ConnectionID {
 			continue
 		}
+		if cached.decl.TargetResourceKey != entry.ResourceKey {
+			continue
+		}
 		if !selectorReaches(selectorNode.Namespace, entry.Namespace) {
 			continue
 		}
-		if !matchesSelector(entry.Labels, cached.selector) {
+		if !cached.selector.matches(entry.Labels) {
 			continue
 		}
 
-		decls := gi.graph.GetDeclarations(selectorNode.ResourceKey)
-		for _, decl := range decls {
-			if decl.Extractor == nil || decl.Extractor.Method != "labelSelector" {
-				continue
-			}
-			if decl.TargetResourceKey != entry.ResourceKey {
-				continue
-			}
-
-			gi.graph.AddDeclaredEdge(GraphEdge{
-				Source: selectorNode,
-				Target: entryNode,
-				Type:   decl.Type,
-				Label:  decl.Label,
-			}, selectorNode.Key(), true)
-		}
+		gi.graph.AddDeclaredEdge(GraphEdge{
+			Source: selectorNode,
+			Target: entryNode,
+			Type:   cached.decl.Type,
+			Label:  cached.decl.Label,
+		}, selectorNode.Key(), true)
 	}
-}
-
-func matchesSelector(labels, selector map[string]string) bool {
-	for k, v := range selector {
-		if labels[k] != v {
-			return false
-		}
-	}
-	return true
 }
 
 var _ interface{ Name() string } = (*Indexer)(nil)

@@ -41,9 +41,22 @@ export function GetRelationshipChain(pluginID: string, connectionID: string, res
     });
 }
 
+/**
+ * GetSubgraph returns the resources around one resource: up to upDepth hops
+ * against edge direction (owners, selectors) and downDepth hops along it
+ * (dependencies), with every edge between them.
+ */
+export function GetSubgraph(pluginID: string, connectionID: string, resourceKey: string, $namespace: string, id: string, upDepth: number, downDepth: number): $CancellablePromise<graph$0.Subgraph | null> {
+    return $Call.ByID(210990208, pluginID, connectionID, resourceKey, $namespace, id, upDepth, downDepth).then(($result: any) => {
+        return $$createType6($result);
+    });
+}
+
 // Private type creation functions
 const $$createType0 = graph$0.DependencyTree.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = graph$0.GraphEdge.createFrom;
 const $$createType3 = $Create.Array($$createType2);
 const $$createType4 = $Create.Array($$createType3);
+const $$createType5 = graph$0.Subgraph.createFrom;
+const $$createType6 = $Create.Nullable($$createType5);

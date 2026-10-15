@@ -71,3 +71,17 @@ func (s *GraphService) GetDependencyTree(
 	}
 	return s.graph.GetDependencyTree(ref, maxDepth)
 }
+
+// GetSubgraph returns the resources around one resource: up to upDepth hops
+// against edge direction (owners, selectors) and downDepth hops along it
+// (dependencies), with every edge between them.
+func (s *GraphService) GetSubgraph(
+	pluginID, connectionID, resourceKey, namespace, id string,
+	upDepth, downDepth int,
+) (*graph.Subgraph, error) {
+	ref := graph.GraphNode{
+		PluginID: pluginID, ConnectionID: connectionID,
+		ResourceKey: resourceKey, ID: id, Namespace: namespace,
+	}
+	return s.graph.GetSubgraph(ref, upDepth, downDepth), nil
+}

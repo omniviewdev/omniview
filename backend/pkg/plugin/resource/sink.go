@@ -7,6 +7,8 @@ import (
 	"maps"
 	"time"
 
+	"github.com/tidwall/gjson"
+
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/indexer"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/resource/registry"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
@@ -26,6 +28,7 @@ type engineWatchSink struct {
 var _ resource.WatchEventSink = (*engineWatchSink)(nil)
 
 func (s *engineWatchSink) entryFromAddPayload(p resource.WatchAddPayload) registry.ResourceEntry {
+	p.Metadata = completeMetadata(p.Metadata, p.Data)
 	entry := registry.ResourceEntry{
 		PluginID:     s.pluginID,
 		ConnectionID: p.Connection,
@@ -43,6 +46,7 @@ func (s *engineWatchSink) entryFromAddPayload(p resource.WatchAddPayload) regist
 }
 
 func (s *engineWatchSink) entryFromUpdatePayload(p resource.WatchUpdatePayload) registry.ResourceEntry {
+	p.Metadata = completeMetadata(p.Metadata, p.Data)
 	entry := registry.ResourceEntry{
 		PluginID:     s.pluginID,
 		ConnectionID: p.Connection,
@@ -142,4 +146,34 @@ func (s *engineWatchSink) OnStateChange(e resource.WatchStateEvent) {
 	s.ctrl.emitter.Emit(eventKey, e)
 	// Global event for footer/status bar aggregation.
 	s.ctrl.emitter.Emit("watch/STATE", e)
+}
+
+// completeMetadata fills metadata the payload lacks from the object's own
+// "metadata" block (uid, labels, creationTimestamp), the shape Kubernetes and
+// Kubernetes-like objects use. The SDK's gRPC watch messages carry only id,
+// namespace and data, so payload metadata set by the plugin never arrives;
+// without this, label selectors (Service, NetworkPolicy) match nothing.
+func completeMetadata(meta resource.ResourceMetadata, data json.RawMessage) resource.ResourceMetadata {
+	if meta.UID != "" && len(meta.Labels) > 0 && meta.CreatedAt != nil {
+		return meta
+	}
+	fields := gjson.GetManyBytes(data, "metadata.uid", "metadata.labels", "metadata.creationTimestamp")
+
+	if meta.UID == "" {
+		meta.UID = fields[0].String()
+	}
+	if len(meta.Labels) == 0 && fields[1].IsObject() {
+		labels := make(map[string]string)
+		fields[1].ForEach(func(k, v gjson.Result) bool {
+			labels[k.String()] = v.String()
+			return true
+		})
+		meta.Labels = labels
+	}
+	if meta.CreatedAt == nil && fields[2].Exists() {
+		if t, err := time.Parse(time.RFC3339, fields[2].String()); err == nil {
+			meta.CreatedAt = &t
+		}
+	}
+	return meta
 }

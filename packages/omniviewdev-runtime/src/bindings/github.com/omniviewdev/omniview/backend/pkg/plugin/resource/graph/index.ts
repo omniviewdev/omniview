@@ -5,7 +5,9 @@ export {
     DependencyNode,
     DependencyTree,
     GraphEdge,
-    GraphNode
+    GraphNode,
+    Subgraph,
+    SubgraphNode
 } from "./models.js";
 
 export type {

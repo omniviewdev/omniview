@@ -167,12 +167,29 @@ function parseStaticExports(packageName: string): string[] {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main
+/**
+ * Read the named exports an existing shim file declares.
+ */
+function readShimExports(filepath: string): string[] {
+  if (!fs.existsSync(filepath)) return [];
+  const content = fs.readFileSync(filepath, 'utf-8');
+  return [...content.matchAll(/^export const (\w+) = mod\.\1;$/gm)].map(m => m[1]);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   // Ensure shims directory exists
   if (!fs.existsSync(SHIMS_DIR)) {
     fs.mkdirSync(SHIMS_DIR, { recursive: true });
+  }
+
+  // Remember what the current shims export. A shim never drops a name: a
+  // plugin importing a name the shim lacks fails to load in dev mode, while
+  // a name the host no longer provides is just undefined, as in production.
+  const previousExports = new Map<string, string[]>();
+  for (const pkg of SHARED_PACKAGES) {
+    previousExports.set(pkg, readShimExports(path.join(SHIMS_DIR, safeFilename(pkg) + '.mjs')));
   }
 
   // Clean existing shims
@@ -188,7 +205,9 @@ async function main(): Promise<void> {
     const filename = safeFilename(pkg) + '.mjs';
     const filepath = path.join(SHIMS_DIR, filename);
 
-    const exports = await discoverExports(pkg);
+    const discovered = await discoverExports(pkg);
+    const kept = (previousExports.get(pkg) ?? []).filter(name => !discovered.includes(name));
+    const exports = discovered.length > 0 ? [...discovered, ...kept.sort()] : [];
     let content: string;
     if (exports.length > 0) {
       content = generateExplicitShim(pkg, exports);

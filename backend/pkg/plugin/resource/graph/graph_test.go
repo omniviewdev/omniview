@@ -1,6 +1,10 @@
 package graph
 
-import "testing"
+import (
+	"testing"
+
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+)
 
 func node(plugin, conn, key, ns, id string) GraphNode {
 	return GraphNode{
@@ -96,7 +100,11 @@ func TestGraph_RemoveEdgesForConnection_SlashInID(t *testing.T) {
 			Target: node("k8s", conn, "core::v1::Node", "", "n1"),
 			Type:   RelRunsOn,
 		})
-		g.SetSelectorCache(node("k8s", conn, "core::v1::Service", "default", "s1"), map[string]string{"app": "web"})
+		g.setSelector(
+			node("k8s", conn, "core::v1::Service", "default", "s1"),
+			resource.RelationshipDescriptor{Type: resource.RelSelects, TargetResourceKey: "core::v1::Pod"},
+			labelSelector{matchLabels: map[string]string{"app": "web"}},
+		)
 	}
 
 	g.RemoveEdgesForConnection("k8s", "a")
@@ -108,13 +116,13 @@ func TestGraph_RemoveEdgesForConnection_SlashInID(t *testing.T) {
 	if len(g.EdgesTo(node("k8s", "a/b", "core::v1::Node", "", "n1").Key())) != 1 {
 		t.Error("reverse index of connection a/b was removed")
 	}
-	if _, ok := g.GetSelectorCache(node("k8s", "a/b", "core::v1::Service", "default", "s1").Key()); !ok {
+	if !g.hasSelectors(node("k8s", "a/b", "core::v1::Service", "default", "s1").Key()) {
 		t.Error("selector cache of connection a/b was removed")
 	}
 	if len(g.EdgesFrom(node("k8s", "a", "core::v1::Pod", "default", "p1").Key())) != 0 {
 		t.Error("edges of connection a were kept")
 	}
-	if _, ok := g.GetSelectorCache(node("k8s", "a", "core::v1::Service", "default", "s1").Key()); ok {
+	if g.hasSelectors(node("k8s", "a", "core::v1::Service", "default", "s1").Key()) {
 		t.Error("selector cache of connection a was kept")
 	}
 }
@@ -134,5 +142,45 @@ func TestGraph_RemoveDerivedEdges_ReleasesStrings(t *testing.T) {
 	}
 	if len(g.forward) != 0 || len(g.reverse) != 0 {
 		t.Fatalf("want empty indexes, got forward=%v reverse=%v", g.forward, g.reverse)
+	}
+}
+
+// TestGraph_ChangeTracking — omn-gvuy: edge changes record the connections
+// at both ends and signal Changed; duplicate adds do not.
+func TestGraph_ChangeTracking(t *testing.T) {
+	g := NewRelationshipGraph()
+	pod := node("k8s", "c1", "core::v1::Pod", "default", "p1")
+	edge := GraphEdge{Source: pod, Target: node("k8s", "c2", "core::v1::Node", "", "n1"), Type: RelRunsOn}
+
+	g.AddDeclaredEdge(edge, pod.Key(), false)
+	select {
+	case <-g.Changed():
+	default:
+		t.Fatal("want a change signal after adding an edge")
+	}
+	got := g.TakeChanged()
+	if len(got) != 2 {
+		t.Fatalf("want both connections reported, got %v", got)
+	}
+	if len(g.TakeChanged()) != 0 {
+		t.Fatal("TakeChanged did not reset")
+	}
+
+	g.AddDeclaredEdge(edge, pod.Key(), false)
+	select {
+	case <-g.Changed():
+		t.Fatal("duplicate edge must not signal a change")
+	default:
+	}
+
+	g.RemoveDerivedEdges(pod.Key())
+	if got := g.TakeChanged(); len(got) != 2 {
+		t.Fatalf("want both connections reported after removal, got %v", got)
+	}
+
+	// Removing nothing is not a change.
+	g.RemoveDerivedEdges(pod.Key())
+	if got := g.TakeChanged(); len(got) != 0 {
+		t.Fatalf("want no change when nothing was removed, got %v", got)
 	}
 }
