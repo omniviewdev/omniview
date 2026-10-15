@@ -158,8 +158,100 @@ export class GraphNode {
  */
 export type RelationshipType = resource$0.RelationshipType;
 
+/**
+ * Subgraph is the neighbourhood of one resource: the nodes reached by
+ * following edges up and down from it, and every edge followed between them.
+ */
+export class Subgraph {
+    "root": GraphNode;
+    "nodes": SubgraphNode[];
+    "edges": GraphEdge[];
+
+    /**
+     * Truncated reports that maxSubgraphNodes was reached and some nodes and
+     * their edges were left out.
+     */
+    "truncated": boolean;
+
+    /** Creates a new Subgraph instance. */
+    constructor($$source: Partial<Subgraph> = {}) {
+        if (!("root" in $$source)) {
+            this["root"] = (new GraphNode());
+        }
+        if (!("nodes" in $$source)) {
+            this["nodes"] = [];
+        }
+        if (!("edges" in $$source)) {
+            this["edges"] = [];
+        }
+        if (!("truncated" in $$source)) {
+            this["truncated"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Subgraph instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Subgraph {
+        const $$createField0_0 = $$createType3;
+        const $$createField1_0 = $$createType5;
+        const $$createField2_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("root" in $$parsedSource) {
+            $$parsedSource["root"] = $$createField0_0($$parsedSource["root"]);
+        }
+        if ("nodes" in $$parsedSource) {
+            $$parsedSource["nodes"] = $$createField1_0($$parsedSource["nodes"]);
+        }
+        if ("edges" in $$parsedSource) {
+            $$parsedSource["edges"] = $$createField2_0($$parsedSource["edges"]);
+        }
+        return new Subgraph($$parsedSource as Partial<Subgraph>);
+    }
+}
+
+/**
+ * SubgraphNode is a node in a Subgraph with its distance from the root:
+ * negative upstream (resources pointing at the root, such as owners and
+ * selectors), positive downstream (resources the root points at), 0 for the
+ * root itself.
+ */
+export class SubgraphNode {
+    "node": GraphNode;
+    "depth": number;
+
+    /** Creates a new SubgraphNode instance. */
+    constructor($$source: Partial<SubgraphNode> = {}) {
+        if (!("node" in $$source)) {
+            this["node"] = (new GraphNode());
+        }
+        if (!("depth" in $$source)) {
+            this["depth"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SubgraphNode instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SubgraphNode {
+        const $$createField0_0 = $$createType3;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("node" in $$parsedSource) {
+            $$parsedSource["node"] = $$createField0_0($$parsedSource["node"]);
+        }
+        return new SubgraphNode($$parsedSource as Partial<SubgraphNode>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = GraphEdge.createFrom;
 const $$createType1 = DependencyNode.createFrom;
 const $$createType2 = $Create.Array($$createType1);
 const $$createType3 = GraphNode.createFrom;
+const $$createType4 = SubgraphNode.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $Create.Array($$createType0);

@@ -73,6 +73,7 @@ export const useResolvedPluginId = mod.useResolvedPluginId;
 export const useResource = mod.useResource;
 export const useResourceActions = mod.useResourceActions;
 export const useResourceAreaComponent = mod.useResourceAreaComponent;
+export const useResourceGraph = mod.useResourceGraph;
 export const useResourceGroups = mod.useResourceGroups;
 export const useResourceMetrics = mod.useResourceMetrics;
 export const useResourceMutations = mod.useResourceMutations;

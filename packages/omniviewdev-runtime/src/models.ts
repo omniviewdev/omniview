@@ -8,6 +8,8 @@ export {
   DependencyTree,
   GraphEdge,
   GraphNode,
+  Subgraph,
+  SubgraphNode,
 } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graph/models';
 // Shadows the generated WatchState with the alias-carrying one.
 export { WatchState } from './compat/resource';

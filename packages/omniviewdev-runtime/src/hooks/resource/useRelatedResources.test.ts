@@ -9,12 +9,16 @@ vi.mock('../useResolvedPluginId', () => ({
 
 let mockGetRelated: Mock;
 let mockGetDependencyTree: Mock;
+let mockGetSubgraph: Mock;
 vi.mock('../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/resource/graphservice', () => ({
   get GetRelated() {
     return mockGetRelated;
   },
   get GetDependencyTree() {
     return mockGetDependencyTree;
+  },
+  get GetSubgraph() {
+    return mockGetSubgraph;
   },
 }));
 
@@ -39,6 +43,7 @@ function emit(name: string) {
 
 import { relationshipLabel, toRelatedResources, useRelatedResources } from './useRelatedResources';
 import { useDependencyTree } from './useDependencyTree';
+import { useResourceGraph } from './useResourceGraph';
 
 const node = (resourceKey: string, id: string, namespace = '') => ({
   pluginId: 'kubernetes',
@@ -60,6 +65,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 beforeEach(() => {
   mockGetRelated = vi.fn();
   mockGetDependencyTree = vi.fn();
+  mockGetSubgraph = vi.fn();
   listeners.clear();
 });
 
@@ -214,5 +220,28 @@ describe('useDependencyTree', () => {
       expect(result.current.tree).toEqual(tree);
     });
     expect(mockGetDependencyTree).toHaveBeenCalledWith('kubernetes', 'c1', 'apps::v1::ReplicaSet', 'default', 'web-abc', 2);
+  });
+});
+
+describe('useResourceGraph', () => {
+  it('fetches the subgraph with default depths and refetches on graph changes', async () => {
+    const sg = { root: pod, nodes: [{ node: pod, depth: 0 }], edges: [], truncated: false };
+    mockGetSubgraph.mockResolvedValue(sg);
+
+    const { result } = renderHook(() => useResourceGraph({
+      connectionID: 'c1', resourceKey: 'core::v1::Pod', resourceID: 'web-1', namespace: 'default',
+    }), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.graph).toEqual(sg);
+    });
+    expect(mockGetSubgraph).toHaveBeenCalledWith('kubernetes', 'c1', 'core::v1::Pod', 'default', 'web-1', 2, 3);
+
+    act(() => {
+      emit('kubernetes/c1/graph/CHANGED');
+    });
+    await waitFor(() => {
+      expect(mockGetSubgraph).toHaveBeenCalledTimes(2);
+    });
   });
 });
