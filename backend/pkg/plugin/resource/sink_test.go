@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -229,4 +230,45 @@ func TestSink_EventKeyFormat_UPDATE_DELETE(t *testing.T) {
 	deletes := emitter.EventsWithKey("DELETE")
 	assert.Len(t, deletes, 1)
 	assert.Equal(t, "plugin-a/conn-1/pods/DELETE", deletes[0].Key)
+}
+
+// TestSink_FillsMetadataFromData — the SDK's gRPC watch messages drop payload
+// metadata, so labels must come from the object itself or label selectors
+// never match.
+func TestSink_FillsMetadataFromData(t *testing.T) {
+	sink, ctrl, _ := newSinkTestSetup(t)
+	data := json.RawMessage(`{"metadata":{"name":"web-1","namespace":"default","uid":"u-1",` +
+		`"labels":{"app":"web"},"creationTimestamp":"2026-10-01T12:00:00Z"}}`)
+
+	sink.OnAdd(resource.WatchAddPayload{Connection: "conn-1", Key: "core::v1::Pod", ID: "web-1", Namespace: "default", Data: data})
+
+	entry, ok := ctrl.registryStore.Get(sink.pluginID, "conn-1", "core::v1::Pod", "default", "web-1")
+	if !ok {
+		t.Fatal("entry not stored")
+	}
+	if entry.Labels["app"] != "web" || entry.UID != "u-1" || entry.CreatedAt.IsZero() {
+		t.Fatalf("metadata not filled from data: %+v", entry)
+	}
+
+	relabelled := json.RawMessage(`{"metadata":{"name":"web-1","labels":{"app":"db"}}}`)
+	sink.OnUpdate(resource.WatchUpdatePayload{Connection: "conn-1", Key: "core::v1::Pod", ID: "web-1", Namespace: "default", Data: relabelled})
+	entry, _ = ctrl.registryStore.Get(sink.pluginID, "conn-1", "core::v1::Pod", "default", "web-1")
+	if entry.Labels["app"] != "db" {
+		t.Fatalf("labels not refreshed on update: %v", entry.Labels)
+	}
+}
+
+func TestCompleteMetadata_PayloadWins(t *testing.T) {
+	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	meta := resource.ResourceMetadata{UID: "from-plugin", Labels: map[string]string{"app": "plugin"}, CreatedAt: &created}
+	got := completeMetadata(meta, json.RawMessage(`{"metadata":{"uid":"from-data","labels":{"app":"data"}}}`))
+	if got.UID != "from-plugin" || got.Labels["app"] != "plugin" {
+		t.Fatalf("payload metadata overwritten: %+v", got)
+	}
+
+	// Data without a metadata block leaves things empty.
+	got = completeMetadata(resource.ResourceMetadata{}, json.RawMessage(`{"name":"x"}`))
+	if got.UID != "" || len(got.Labels) != 0 || got.CreatedAt != nil {
+		t.Fatalf("want empty metadata, got %+v", got)
+	}
 }
