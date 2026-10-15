@@ -311,9 +311,8 @@ func main() {
 		BackgroundColour:   application.NewRGBA(backgroundRed, backgroundGreen, backgroundBlue, backgroundAlpha),
 		UseApplicationMenu: true,
 		Mac: application.MacWindow{
-			TitleBar:   application.MacTitleBarHiddenInset,
-			Appearance: application.NSAppearanceNameDarkAqua,
-			Backdrop:   application.MacBackdropTranslucent,
+			TitleBar: application.MacTitleBarHiddenInset,
+			Backdrop: application.MacBackdropTranslucent,
 		},
 	})
 

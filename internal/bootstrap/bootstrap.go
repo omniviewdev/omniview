@@ -103,6 +103,15 @@ func (b *Service) registerCoreSettings(coreCategories []pkgsettings.Category) {
 		}
 		if b.SettingsStore != nil {
 			if vals, loadErr := b.SettingsStore.LoadCategory(category.ID); loadErr == nil && len(vals) > 0 {
+				if category.ID == coresettings.Appearance.ID {
+					var changed bool
+					vals, changed = coresettings.MigrateAppearanceValues(vals)
+					if changed {
+						if saveErr := b.SettingsStore.SaveCategory(category.ID, vals); saveErr != nil {
+							fmt.Fprintf(os.Stderr, "failed to persist migrated settings category %s: %v\n", category.ID, saveErr)
+						}
+					}
+				}
 				hydrateCategory(b.SettingsProvider, category, vals)
 			}
 		}

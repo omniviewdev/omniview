@@ -47,10 +47,10 @@ var Terminal = settings.Category{
 			ID:          settingTheme,
 			Type:        settings.Text,
 			Label:       "Theme",
-			Default:     themeDefault,
+			Default:     themeApplication,
 			Description: "The color theme for the terminal",
 			Options: []settings.SettingOption{
-				{Value: themeDefault, Label: "Default", Description: ""},
+				{Value: themeApplication, Label: "Application", Description: ""},
 				{Value: "dracula", Label: "Dracula", Description: ""},
 				{Value: "solarized-dark", Label: "Solarized Dark", Description: ""},
 				{Value: "solarized-light", Label: "Solarized Light", Description: ""},
