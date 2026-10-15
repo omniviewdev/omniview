@@ -10,6 +10,17 @@ if (!mod) {
   );
 }
 
+export const Application = mod.Application;
+export const Browser = mod.Browser;
+export const Call = mod.Call;
+export const Clipboard = mod.Clipboard;
+export const Dialogs = mod.Dialogs;
+export const Events = mod.Events;
+export const Flags = mod.Flags;
+export const Screens = mod.Screens;
+export const System = mod.System;
+export const WML = mod.WML;
+export const Window = mod.Window;
 export const BrowserOpenURL = mod.BrowserOpenURL;
 export const CanResolveFilePaths = mod.CanResolveFilePaths;
 export const ClipboardGetText = mod.ClipboardGetText;

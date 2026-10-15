@@ -10,14 +10,17 @@ if (!mod) {
   );
 }
 
+export const DataClient = mod.DataClient;
 export const DevServerManager = mod.DevServerManager;
 export const DiagnosticsClient = mod.DiagnosticsClient;
 export const ExecClient = mod.ExecClient;
 export const GetOperatingSystem = mod.GetOperatingSystem;
+export const GraphClient = mod.GraphClient;
 export const LogsClient = mod.LogsClient;
 export const MetricClient = mod.MetricClient;
 export const NetworkerClient = mod.NetworkerClient;
 export const OpenFileSelectionDialog = mod.OpenFileSelectionDialog;
+export const PluginLogManager = mod.PluginLogManager;
 export const PluginManager = mod.PluginManager;
 export const ResourceClient = mod.ResourceClient;
 export const SaveFileDialog = mod.SaveFileDialog;
