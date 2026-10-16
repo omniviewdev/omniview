@@ -98,20 +98,31 @@ export default function AppThemeController({ children }: { children: ReactNode }
   const latestSelectionRef = useRef(0);
   const settledSelectionRef = useRef(0);
   const persistenceQueueRef = useRef<Promise<void> | null>(null);
+  const pendingBackendConfirmationRef = useRef<string | null>(null);
+  const observedBackendThemeIdRef = useRef<string | null>(null);
 
   const configuredTheme = settings[THEME_SETTING_ID];
   const backendThemeId = typeof configuredTheme === 'string'
     ? normalizeThemeId(configuredTheme)
     : null;
+  observedBackendThemeIdRef.current = backendThemeId;
 
   useEffect(() => {
     if (backendThemeId === null) {
       return;
     }
 
-    // Hydration is authoritative even while an optimistic selection is
-    // pending. Keep it as the durable rollback target, then apply it once no
-    // selection is in flight.
+    const pendingConfirmation = pendingBackendConfirmationRef.current;
+    if (pendingConfirmation !== null) {
+      if (backendThemeId !== pendingConfirmation) {
+        return;
+      }
+      pendingBackendConfirmationRef.current = null;
+    }
+
+    // Before any local write is confirmed, hydration is authoritative even
+    // while an optimistic selection is pending. After a successful write,
+    // ignore older snapshots until the backend confirms that write.
     durableThemeIdRef.current = backendThemeId;
     if (settledSelectionRef.current !== latestSelectionRef.current) {
       return;
@@ -139,6 +150,9 @@ export default function AppThemeController({ children }: { children: ReactNode }
       try {
         await SettingsProvider.SetSetting(THEME_SETTING_ID, nextId);
         durableThemeIdRef.current = nextId;
+        pendingBackendConfirmationRef.current = observedBackendThemeIdRef.current === nextId
+          ? null
+          : nextId;
         if (storage !== null) {
           writeBootstrapTheme(storage, nextId);
         }
