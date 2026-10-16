@@ -19,7 +19,7 @@ import { store } from './store/store';
 import './utils/globalutils';
 import './providers/monaco/bootstrap';
 
-import AppTheme from './theme/AppTheme';
+import AppThemeController from './theme/AppThemeController';
 
 // Providers
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
@@ -82,7 +82,7 @@ const App: React.FC = () => {
           <ExtensionProvider registry={EXTENSION_REGISTRY}>
             <AppSnackbarProvider>
               <Provider store={store}>
-                <AppTheme>
+                <AppThemeController>
                   <ErrorBoundary
                     FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
                     onError={onBoundaryError}
@@ -101,7 +101,7 @@ const App: React.FC = () => {
                       </ConfirmationModalProvider>
                     </OperationsProvider>
                   </ErrorBoundary>
-                </AppTheme>
+                </AppThemeController>
               </Provider>
             </AppSnackbarProvider>
           </ExtensionProvider>
