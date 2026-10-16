@@ -1,13 +1,20 @@
 package categories
 
-import "github.com/omniviewdev/plugin-sdk/settings"
+import (
+	"fmt"
+	"regexp"
+
+	"github.com/omniviewdev/plugin-sdk/settings"
+)
 
 // Setting IDs and values shared by several categories.
 const (
-	settingTheme    = "theme"
-	settingFontSize = "fontSize"
-	themeDefault    = "default"
+	settingTheme     = "theme"
+	settingFontSize  = "fontSize"
+	themeApplication = "application"
 )
+
+var themeIDPattern = regexp.MustCompile(`^[A-Za-z0-9._~%:/-]+$`)
 
 //nolint:gochecknoglobals // we're providing this as a package level variable
 var Appearance = settings.Category{
@@ -20,12 +27,40 @@ var Appearance = settings.Category{
 			ID:          settingTheme,
 			Type:        settings.Text,
 			Label:       "Theme",
-			Default:     themeDefault,
+			Default:     "void",
 			Description: "The color theme for the application UI",
-			Options: []settings.SettingOption{
-				{Value: themeDefault, Label: "Default", Description: ""},
-				{Value: "solarized", Label: "Solarized", Description: ""},
-			},
+			Validator:   validateThemeID,
 		},
 	},
+}
+
+func validateThemeID(value any) error {
+	id, ok := value.(string)
+	if !ok {
+		return settings.ErrSettingTypeMismatch
+	}
+	if id == "" || len(id) > 256 || !themeIDPattern.MatchString(id) {
+		return fmt.Errorf("invalid theme ID")
+	}
+	return nil
+}
+
+// MigrateAppearanceValues upgrades known legacy theme IDs without changing
+// extension-provided or otherwise unknown IDs.
+func MigrateAppearanceValues(values map[string]any) (map[string]any, bool) {
+	migrated := make(map[string]any, len(values))
+	for key, value := range values {
+		migrated[key] = value
+	}
+
+	switch migrated[settingTheme] {
+	case "default":
+		migrated[settingTheme] = "void"
+		return migrated, true
+	case "solarized":
+		migrated[settingTheme] = "solarized-dark"
+		return migrated, true
+	default:
+		return migrated, false
+	}
 }

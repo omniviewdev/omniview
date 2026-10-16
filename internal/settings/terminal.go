@@ -47,10 +47,10 @@ var Terminal = settings.Category{
 			ID:          settingTheme,
 			Type:        settings.Text,
 			Label:       "Theme",
-			Default:     themeDefault,
+			Default:     themeApplication,
 			Description: "The color theme for the terminal",
 			Options: []settings.SettingOption{
-				{Value: themeDefault, Label: "Default", Description: ""},
+				{Value: themeApplication, Label: "Application", Description: ""},
 				{Value: "dracula", Label: "Dracula", Description: ""},
 				{Value: "solarized-dark", Label: "Solarized Dark", Description: ""},
 				{Value: "solarized-light", Label: "Solarized Light", Description: ""},
@@ -99,6 +99,21 @@ var Terminal = settings.Category{
 			Description: "Whether the cursor should blink in the terminal",
 		},
 	},
+}
+
+// MigrateTerminalValues upgrades the legacy application-theme sentinel.
+func MigrateTerminalValues(values map[string]any) (map[string]any, bool) {
+	migrated := make(map[string]any, len(values))
+	for key, value := range values {
+		migrated[key] = value
+	}
+
+	if migrated[settingTheme] == "default" {
+		migrated[settingTheme] = themeApplication
+		return migrated, true
+	}
+
+	return migrated, false
 }
 
 // defaultShell picks a shell that exists on this machine: the user's $SHELL,

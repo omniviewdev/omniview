@@ -88,7 +88,8 @@ func main() {
 	// starts with the user's saved preferences rather than defaults.
 	telemetryCfg := telemetry.DefaultConfig(version.IsDevelopment())
 	if settingsStore != nil {
-		if telVals, loadErr := settingsStore.LoadCategory("telemetry"); loadErr == nil && len(telVals) > 0 {
+		if telVals, loadErr := settingsStore.LoadCategory("telemetry"); loadErr == nil &&
+			len(telVals) > 0 {
 			telemetryCfg = telemetryCfg.WithSettings(telVals)
 		}
 	}
@@ -118,7 +119,10 @@ func main() {
 	})
 
 	if settingsStore == nil {
-		log.Warnw(context.Background(), "settings persistence disabled; all settings will use defaults")
+		log.Warnw(
+			context.Background(),
+			"settings persistence disabled; all settings will use defaults",
+		)
 	}
 
 	diagnosticsClient := diagnostics.NewDiagnosticsClient(version.IsDevelopment(), logDir)
@@ -161,7 +165,12 @@ func main() {
 		pluginlog.DefaultRotation(),
 	)
 	if pluginLogErr != nil {
-		log.Warnw(context.Background(), "failed to initialize plugin log manager", "error", pluginLogErr)
+		log.Warnw(
+			context.Background(),
+			"failed to initialize plugin log manager",
+			"error",
+			pluginLogErr,
+		)
 	}
 
 	pluginRegistryClient := registry.NewClient("")
@@ -273,7 +282,10 @@ func main() {
 	}
 
 	if pluginLogManager != nil {
-		services = append(services, application.NewService(&pluginlog.ServiceWrapper{Mgr: pluginLogManager}))
+		services = append(
+			services,
+			application.NewService(&pluginlog.ServiceWrapper{Mgr: pluginLogManager}),
+		)
 	}
 
 	// Create the Wails v3 application
@@ -302,18 +314,22 @@ func main() {
 
 	// Create the main window
 	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:               "main",
-		Title:              appName,
-		Width:              DefaultWebviewWidth,
-		Height:             DefaultWebviewHeight,
-		MinWidth:           MinWebviewWidth,
-		MinHeight:          MinWebviewHeight,
-		BackgroundColour:   application.NewRGBA(backgroundRed, backgroundGreen, backgroundBlue, backgroundAlpha),
+		Name:      "main",
+		Title:     appName,
+		Width:     DefaultWebviewWidth,
+		Height:    DefaultWebviewHeight,
+		MinWidth:  MinWebviewWidth,
+		MinHeight: MinWebviewHeight,
+		BackgroundColour: application.NewRGBA(
+			backgroundRed,
+			backgroundGreen,
+			backgroundBlue,
+			backgroundAlpha,
+		),
 		UseApplicationMenu: true,
 		Mac: application.MacWindow{
-			TitleBar:   application.MacTitleBarHiddenInset,
-			Appearance: application.NSAppearanceNameDarkAqua,
-			Backdrop:   application.MacBackdropTranslucent,
+			TitleBar: application.MacTitleBarHidden,
+			Backdrop: application.MacBackdropTranslucent,
 		},
 	})
 

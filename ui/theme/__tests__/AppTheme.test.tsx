@@ -1,66 +1,143 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useTheme } from '@omniviewdev/base-ui';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const THEME_SETTING = 'appearance.theme';
-let mockSettings: Record<string, unknown> = {};
+const mocks = vi.hoisted(() => {
+  const settings: Record<string, unknown> = {};
+
+  return {
+    settings,
+    reload: vi.fn(),
+    setSetting: vi.fn(),
+    showSnackbar: vi.fn(),
+    showAppError: vi.fn(),
+  };
+});
 
 vi.mock('@omniviewdev/runtime', () => ({
-  useSettings: () => ({ settings: mockSettings }),
+  useSettings: () => ({ settings: mocks.settings, reload: mocks.reload }),
+  useSnackbar: () => ({ showSnackbar: mocks.showSnackbar }),
+  showAppError: mocks.showAppError,
+  useExtensionPoint: () => undefined,
 }));
 
-import AppTheme from '../AppTheme';
+vi.mock('@omniviewdev/runtime/api', () => ({
+  SettingsProvider: {
+    SetSetting: mocks.setSetting,
+  },
+}));
+
+import AppThemeController, { useAppTheme } from '../AppThemeController';
 
 function Probe() {
-  const { theme } = useTheme();
-  return <span data-testid="theme">{theme}</span>;
+  const appTheme = useAppTheme();
+  const baseTheme = useTheme();
+
+  return (
+    <>
+      <output data-testid="theme-state">
+        {JSON.stringify({
+          appRequestedId: appTheme.requestedThemeId,
+          providerRequestedId: baseTheme.requestedThemeId,
+          activeId: appTheme.activeTheme.id,
+          isFallback: appTheme.isFallback,
+          density: baseTheme.density,
+        })}
+      </output>
+      <button type="button" onClick={() => {
+        baseTheme.setTheme('solarized-dark');
+      }}>
+        Use Solarized Dark
+      </button>
+    </>
+  );
 }
 
-describe('AppTheme', () => {
+function readThemeState() {
+  return JSON.parse(screen.getByTestId('theme-state').textContent ?? '{}') as Record<string, unknown>;
+}
+
+describe('application theme provider integration', () => {
+  beforeEach(() => {
+    mocks.settings = {};
+    mocks.reload.mockReset();
+    mocks.setSetting.mockReset();
+    mocks.setSetting.mockResolvedValue(undefined);
+    mocks.showSnackbar.mockReset();
+    mocks.showAppError.mockReset();
+    localStorage.clear();
+  });
+
   afterEach(() => {
-    mockSettings = {};
+    cleanup();
     localStorage.clear();
     const root = document.documentElement;
-    ['data-ov-theme', 'data-ov-theme-custom', 'data-ov-density', 'data-ov-motion', 'style'].forEach((attr) => {
-      root.removeAttribute(attr);
+    root.removeAttribute('data-ov-theme');
+    root.removeAttribute('data-ov-theme-custom');
+    root.removeAttribute('data-ov-density');
+    root.removeAttribute('data-ov-motion');
+    root.removeAttribute('style');
+  });
+
+  it('mounts Base UI in Void compact mode before settings load', () => {
+    render(
+      <AppThemeController>
+        <Probe />
+      </AppThemeController>,
+    );
+
+    expect(readThemeState()).toMatchObject({
+      appRequestedId: 'void',
+      providerRequestedId: 'void',
+      activeId: 'void',
+      isFallback: false,
+      density: 'compact',
     });
+    expect(document.documentElement.dataset.ovTheme).toBe('void');
+    expect(document.documentElement.dataset.ovDensity).toBe('compact');
   });
 
-  it('mounts base-ui in dark compact mode by default', () => {
-    render(<AppTheme><Probe /></AppTheme>);
-    const root = document.documentElement;
-    expect(screen.getByTestId('theme').textContent).toBe('dark');
-    expect(root.getAttribute('data-ov-theme')).toBe('dark');
-    expect(root.getAttribute('data-ov-density')).toBe('compact');
+  it('preserves an unavailable custom request while Base UI safely applies Void', () => {
+    mocks.settings = { 'appearance.theme': 'plugin:missing/slate' };
+
+    render(
+      <AppThemeController>
+        <Probe />
+      </AppThemeController>,
+    );
+
+    expect(readThemeState()).toMatchObject({
+      appRequestedId: 'plugin:missing/slate',
+      providerRequestedId: 'plugin:missing/slate',
+      activeId: 'void',
+      isFallback: true,
+    });
+    expect(document.documentElement.dataset.ovTheme).toBe('void');
   });
 
-  it('applies the solarized setting and follows changes back to default', () => {
-    mockSettings = { [THEME_SETTING]: 'solarized' };
-    const { rerender } = render(<AppTheme><Probe /></AppTheme>);
-    const root = document.documentElement;
-    expect(screen.getByTestId('theme').textContent).toBe('solarized');
-    expect(root.getAttribute('data-ov-theme')).toBe('dark');
-    expect(root.getAttribute('data-ov-theme-custom')).toBe('solarized');
-    expect(root.style.getPropertyValue('--ov-color-bg-base')).toBe('#002B36');
-    expect(localStorage.getItem('ov-theme-variant')).toBe('solarized');
+  it('routes Base UI theme requests through optimistic durable selection', async () => {
+    mocks.settings = { 'appearance.theme': 'dark' };
+    render(
+      <AppThemeController>
+        <Probe />
+      </AppThemeController>,
+    );
 
-    mockSettings = { [THEME_SETTING]: 'default' };
-    rerender(<AppTheme><Probe /></AppTheme>);
-    expect(screen.getByTestId('theme').textContent).toBe('dark');
-    expect(root.getAttribute('data-ov-theme-custom')).toBeNull();
-    expect(root.style.getPropertyValue('--ov-color-bg-base')).toBe('');
-    expect(localStorage.getItem('ov-theme-variant')).toBe('default');
-  });
+    fireEvent.click(screen.getByRole('button', { name: 'Use Solarized Dark' }));
 
-  it('starts from the last applied theme before settings load', () => {
-    localStorage.setItem('ov-theme-variant', 'solarized');
-    render(<AppTheme><Probe /></AppTheme>);
-    expect(screen.getByTestId('theme').textContent).toBe('solarized');
-  });
-
-  it('does not persist base-ui theme state', () => {
-    render(<AppTheme><Probe /></AppTheme>);
-    expect(localStorage.getItem('ov-theme-mode')).toBeNull();
-    expect(localStorage.getItem('ov-theme-density')).toBeNull();
+    expect(readThemeState()).toMatchObject({
+      appRequestedId: 'solarized-dark',
+      providerRequestedId: 'solarized-dark',
+      activeId: 'solarized-dark',
+      isFallback: false,
+    });
+    expect(document.documentElement.dataset.ovTheme).toBe('solarized-dark');
+    await waitFor(() => {
+      expect(mocks.setSetting).toHaveBeenCalledWith('appearance.theme', 'solarized-dark');
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
+    });
+    expect(localStorage.getItem('ov-theme-bootstrap-v1')).toBe(
+      JSON.stringify({ schemaVersion: 1, themeId: 'solarized-dark' }),
+    );
   });
 });

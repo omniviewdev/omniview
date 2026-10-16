@@ -105,6 +105,51 @@ export default {
 EOF
 ```
 
+### 1.5 Contributing a Theme
+
+UI plugins can contribute themes through the `omniview/theme` extension point. A contribution contains the theme definition without an `id`; the host derives the globally unique ID from the plugin and registration IDs.
+
+```ts
+import type { ThemeDefinitionV1 } from '@omniviewdev/base-ui';
+import type { ExtensionRegistration } from '@omniviewdev/runtime';
+
+type ThemeContribution = Omit<ThemeDefinitionV1, 'id'>;
+
+export const extensionRegistrations = [
+  {
+    extensionPointId: 'omniview/theme',
+    registration: {
+      id: 'slate',
+      label: 'Slate',
+      value: {
+        schemaVersion: 1,
+        name: 'Slate',
+        base: 'void',
+        author: 'Acme',
+        version: '1.0.0',
+        tokens: {
+          'color.bg.base': '#101114',
+          'color.bg.surface': '#16181d',
+          'color.accent.strong': '#82a8ff',
+        },
+      },
+    },
+  },
+] satisfies ExtensionRegistration<ThemeContribution>[];
+```
+
+For a plugin whose ID is `acme-tools`, the registration above has the canonical theme ID `plugin:acme-tools/slate`. More generally, the host derives `plugin:<encoded-plugin-id>/<encoded-registration-id>`, URL-encoding both ID components. Plugins should use a stable local registration ID and must not put an `id` inside `value`.
+
+The host validates the schema version, metadata, base theme, token names and values, ownership, and ID uniqueness before adding a contributed theme. An invalid contribution is reported in the developer console and is not registered; it does not prevent other valid contributions from loading.
+
+Registration cleanup follows the plugin lifecycle:
+
+- Unloading a plugin automatically removes its contributed themes.
+- If the removed theme is selected, Omniview immediately renders the built-in `void` fallback. The requested canonical ID remains selected, so reloading the same valid contribution makes it active again.
+- Reloading or replacing a registration disposes its previous theme before registering the current contribution. Plugin code does not need to unregister themes manually.
+
+Before React starts, the loading surface uses the last cached built-in theme, including validated legacy Light and Solarized preferences during upgrades. Custom/plugin themes use Void for this first paint until their contribution loads; the persisted requested theme ID is not changed. The Appearance theme picker applies selections immediately and exposes the accessible name “Theme.”
+
 ---
 
 ## 2. IDE-Managed Mode (Recommended)

@@ -10,6 +10,10 @@ import {
   RESOURCE_DRAWER_EXTENSION_POINT_ID,
   createResourceDrawerExtensionPoint,
 } from './drawer/extensionPoint';
+import {
+  THEME_EXTENSION_POINT_ID,
+  createThemeExtensionPoint,
+} from './theme/extensionPoint';
 import { createResourceExtensionRenderContext } from './resource/context';
 
 // ─── Test Setup ─────────────────────────────────────────────────────
@@ -28,16 +32,18 @@ describe('Group 11: Built-in registration', () => {
 
     expect(registry.hasExtensionPoint(RESOURCE_SIDEBAR_EXTENSION_POINT_ID)).toBe(true);
     expect(registry.hasExtensionPoint(RESOURCE_DRAWER_EXTENSION_POINT_ID)).toBe(true);
+    expect(registry.hasExtensionPoint(THEME_EXTENSION_POINT_ID)).toBe(true);
   });
 
   it('11.15 — builtin registration is idempotent', () => {
     ensureBuiltinExtensionPointsRegistered(registry);
     ensureBuiltinExtensionPointsRegistered(registry);
 
-    // Still only 2 extension points, no error
-    expect(registry.listExtensionPoints()).toHaveLength(2);
+    // Still only 3 extension points, no error
+    expect(registry.listExtensionPoints()).toHaveLength(3);
     expect(registry.hasExtensionPoint(RESOURCE_SIDEBAR_EXTENSION_POINT_ID)).toBe(true);
     expect(registry.hasExtensionPoint(RESOURCE_DRAWER_EXTENSION_POINT_ID)).toBe(true);
+    expect(registry.hasExtensionPoint(THEME_EXTENSION_POINT_ID)).toBe(true);
   });
 
   it('builtin extension points are owned by core', () => {
@@ -45,9 +51,11 @@ describe('Group 11: Built-in registration', () => {
 
     const sidebar = registry.getExtensionPoint(RESOURCE_SIDEBAR_EXTENSION_POINT_ID);
     const drawer = registry.getExtensionPoint(RESOURCE_DRAWER_EXTENSION_POINT_ID);
+    const theme = registry.getExtensionPoint(THEME_EXTENSION_POINT_ID);
 
-    expect((sidebar as any).pluginId).toBe('core');
-    expect((drawer as any).pluginId).toBe('core');
+    expect(sidebar?.pluginId).toBe('core');
+    expect(drawer?.pluginId).toBe('core');
+    expect(theme?.pluginId).toBe('core');
   });
 
   it('sidebar is single mode', () => {
@@ -62,6 +70,13 @@ describe('Group 11: Built-in registration', () => {
 
     const store = registry.getExtensionPoint(RESOURCE_DRAWER_EXTENSION_POINT_ID);
     expect(store?.mode).toBe('single');
+  });
+
+  it('theme is multiple mode', () => {
+    ensureBuiltinExtensionPointsRegistered(registry);
+
+    const store = registry.getExtensionPoint(THEME_EXTENSION_POINT_ID);
+    expect(store?.mode).toBe('multiple');
   });
 });
 
@@ -332,5 +347,13 @@ describe('Extension point factories', () => {
     expect(ep.mode).toBe('single');
     expect(typeof ep.matcher).toBe('function');
     expect(typeof ep.select).toBe('function');
+  });
+
+  it('createThemeExtensionPoint has correct shape', () => {
+    const ep = createThemeExtensionPoint();
+
+    expect(ep.id).toBe(THEME_EXTENSION_POINT_ID);
+    expect(ep.pluginId).toBe('core');
+    expect(ep.mode).toBe('multiple');
   });
 });

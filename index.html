@@ -1,6 +1,56 @@
 <!doctype html>
-<html lang="en" data-ov-theme="dark">
+<html lang="en" data-ov-theme="void">
   <head>
+    <script>
+      (function () {
+        try {
+          var themes = {
+            'void': true,
+            'dark': true,
+            'light': true,
+            'obsidian': true,
+            'carbon': true,
+            'solarized-dark': true,
+            'solarized-light': true,
+            'high-contrast-dark': true,
+            'high-contrast-light': true,
+          };
+          var lightThemes = {
+            'light': true,
+            'solarized-light': true,
+            'high-contrast-light': true,
+          };
+          var themeId = null;
+          try {
+            var record = JSON.parse(localStorage.getItem('ov-theme-bootstrap-v1'));
+            if (
+              record !== null
+              && typeof record === 'object'
+              && record.schemaVersion === 1
+              && typeof record.themeId === 'string'
+              && themes[record.themeId] === true
+            ) themeId = record.themeId;
+          } catch (_error) {
+            // A malformed cache must not hide a valid legacy paint hint.
+          }
+          if (themeId === null) {
+            var variant = localStorage.getItem('ov-theme-variant');
+            var mode = localStorage.getItem('ov-theme-mode');
+            themeId = variant === 'solarized'
+              ? 'solarized-dark'
+              : variant === 'default'
+                ? 'void'
+                : themes[mode] === true ? mode : 'void';
+          }
+          document.documentElement.setAttribute('data-ov-theme', themeId);
+          document.documentElement.style.colorScheme = lightThemes[themeId] === true
+            ? 'light'
+            : 'dark';
+        } catch (_error) {
+          // Invalid or unavailable cache leaves the safe Void first paint intact.
+        }
+      })();
+    </script>
     <!-- React DevTools standalone — must load BEFORE the mock hook below so that
          when DevTools is running, its full-featured hook (with profiling support)
          is already installed and the mock's guard clause skips creation. -->
@@ -98,7 +148,7 @@
   <body style="margin: 0; height: 100%; overflow: hidden" >
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root">
-      <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0D1117;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--ov-color-bg-base,#0e0f11);flex-direction:column;gap:20px">
         <div style="position:relative;width:80px;height:80px;border-radius:18px;overflow:hidden">
           <img src="/appicon.png" alt="" style="width:100%;height:100%;display:block" />
           <div style="position:absolute;top:0;left:0;width:50%;height:100%;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.12) 50%,transparent 100%);animation:ov-shimmer 2.8s ease-in-out infinite"></div>

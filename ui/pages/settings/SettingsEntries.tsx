@@ -13,12 +13,19 @@ type Props = SectionSelection & {
   settings: Record<string, Setting | undefined>;
   draftValues: Record<string, any>;
   setDraftValues: (draftValues: Record<string, any>) => void;
+  renderSetting?: Readonly<Record<string, () => React.ReactNode>>;
 };
 
 /**
  * Displays and allows modification to application settings, given a settings namespace and section.
  */
-const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues, setDraftValues }) => {
+const SettingsEntries: React.FC<Props> = ({
+  id: sectionID,
+  settings,
+  draftValues,
+  setDraftValues,
+  renderSetting,
+}) => {
   const devMode = useDevMode();
 
   const handleChange = (name: string, value: any) => {
@@ -36,29 +43,38 @@ const SettingsEntries: React.FC<Props> = ({ id: sectionID, settings, draftValues
 
   return (
     <div className={styles.Root}>
-      {visibleSettings.map(([id, setting]) => (
-        <div key={id} className={styles.Row}>
-          {/* Label + description column */}
-          <div className={styles.LabelColumn}>
-            <Text weight='semibold' size='sm'>{setting.label}</Text>
-            <Text size='xs' tone='muted' className={styles.Description}>{setting.description}</Text>
-            {sectionID !== 'plugin' && (
-              <Text size='xs' tone='subtle' mono className={styles.Key}>
-                {sectionID}.{id}
-              </Text>
-            )}
+      {visibleSettings.map(([id, setting]) => {
+        const fullID = `${sectionID}.${id}`;
+        const renderOverride = renderSetting?.[fullID];
+
+        return (
+          <div key={id} className={styles.Row}>
+            {/* Label + description column */}
+            <div className={styles.LabelColumn}>
+              <Text weight='semibold' size='sm'>{setting.label}</Text>
+              <Text size='xs' tone='muted' className={styles.Description}>{setting.description}</Text>
+              {sectionID !== 'plugin' && (
+                <Text size='xs' tone='subtle' mono className={styles.Key}>
+                  {fullID}
+                </Text>
+              )}
+            </div>
+            {/* Input column */}
+            <div className={styles.InputColumn}>
+              {renderOverride
+                ? renderOverride()
+                : (
+                  <SettingsEntry
+                    setting={setting}
+                    id={id}
+                    draftValue={draftValues[fullID]}
+                    handleChange={handleChange}
+                  />
+                )}
+            </div>
           </div>
-          {/* Input column */}
-          <div className={styles.InputColumn}>
-            <SettingsEntry
-              setting={setting}
-              id={id}
-              draftValue={draftValues[`${sectionID}.${id}`]}
-              handleChange={handleChange}
-            />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };

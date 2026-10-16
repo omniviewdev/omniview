@@ -1,4 +1,4 @@
-import React, { createContext, useState } from 'react';
+import React, { createContext, useCallback, useRef, useState } from 'react';
 import { Values } from '../../bindings/github.com/omniviewdev/omniview/internal/settings/servicewrapper';
 
 // Define the context type
@@ -15,28 +15,40 @@ export const SettingsProvider = ({ children }: {
   children: React.ReactNode;
 }) => {
   const [settings, setSettings] = useState<Record<string, any>>({});
+  const requestGeneration = useRef(0);
 
   /**
    * Fetch the settings from the backend stores
    */
-  const fetchSettings = () => {
+  const fetchSettings = useCallback((): void => {
+    const generation = requestGeneration.current + 1;
+    requestGeneration.current = generation;
+
     Values()
       .then((values) => {
+        if (generation !== requestGeneration.current) {
+          return;
+        }
+
         console.log('Fetched settings:', values);
-        setSettings(values)
+        setSettings(values);
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
+        if (generation !== requestGeneration.current) {
+          return;
+        }
+
         console.error('Error fetching settings:', error);
-      })
-  }
+      });
+  }, []);
 
   React.useEffect(() => {
     fetchSettings();
-  }, [])
+  }, [fetchSettings]);
 
-  const reload = () => {
+  const reload = useCallback((): void => {
     fetchSettings();
-  }
+  }, [fetchSettings]);
 
   return (
     <SettingsContext.Provider value={{ settings, reload }}>

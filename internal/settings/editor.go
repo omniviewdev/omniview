@@ -16,6 +16,18 @@ var Editor = settings.Category{
 	Description: "Change settings within the code editor",
 	Icon:        "LuCode",
 	Settings: map[string]settings.Setting{
+		settingTheme: {
+			ID:          settingTheme,
+			Type:        settings.Text,
+			Label:       "Theme",
+			Default:     themeApplication,
+			Description: "The color theme for the editor",
+			Options: []settings.SettingOption{
+				{Value: themeApplication, Label: "Application", Description: ""},
+				{Value: "brilliance-black", Label: "Brilliance Black", Description: ""},
+				{Value: "github-dark", Label: "GitHub Dark", Description: ""},
+			},
+		},
 		"folding": {
 			ID:          "folding",
 			Type:        settings.Toggle,

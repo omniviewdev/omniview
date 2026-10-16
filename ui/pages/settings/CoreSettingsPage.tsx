@@ -7,6 +7,7 @@ import Icon from '@/components/icons/Icon';
 
 // Types
 import { useCategorySettings } from '@/hooks/settings/useCategorySettings';
+import AppearanceThemeSetting from '@/theme/AppearanceThemeSetting';
 import SettingsEntries from './SettingsEntries';
 import { Section } from '.';
 import styles from './SettingsPage.module.css';
@@ -14,6 +15,11 @@ import { useSettings } from '@omniviewdev/runtime';
 
 type Props = {
   id: string;
+};
+
+const THEME_SETTING_ID = 'appearance.theme';
+const APPEARANCE_SETTING_RENDERERS = {
+  [THEME_SETTING_ID]: () => <AppearanceThemeSetting />,
 };
 
 /**
@@ -25,11 +31,13 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
   const { settings, setSettings } = useCategorySettings({ category: categoryID });
   const { reload } = useSettings();
 
-  const hasDrafts = Object.values(draftValues).some(v => v !== undefined);
+  const hasDrafts = Object.entries(draftValues).some(
+    ([id, value]) => id !== THEME_SETTING_ID && value !== undefined,
+  );
 
   const commitDraftValues = () => {
     const values = Object.entries(draftValues).reduce<Record<string, any>>((acc, [id, value]) => {
-      if (value !== undefined) {
+      if (id !== THEME_SETTING_ID && value !== undefined) {
         acc[id] = value;
       }
 
@@ -71,6 +79,7 @@ const CoreSettingsPage: React.FC<Props> = ({ id: categoryID }) => {
           settings={settings.data.settings}
           draftValues={draftValues}
           setDraftValues={setDraftValues}
+          renderSetting={categoryID === 'appearance' ? APPEARANCE_SETTING_RENDERERS : undefined}
         />
       </div>
 

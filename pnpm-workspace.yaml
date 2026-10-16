@@ -3,3 +3,6 @@ packages:
   - "plugins/**"
   - "!plugins/kubernetes/**"
   - "e2e"
+allowBuilds:
+  esbuild: true
+  protobufjs: true
