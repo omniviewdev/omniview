@@ -250,4 +250,40 @@ describe('AppThemeController', () => {
       JSON.stringify({ schemaVersion: 1, themeId: 'carbon' }),
     );
   });
+
+  it('rolls back to the last committed theme when two queued selections reject', async () => {
+    mocks.settings = { 'appearance.theme': 'dark' };
+    const first = createDeferred();
+    const second = createDeferred();
+    mocks.setSetting
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    renderController();
+
+    let firstSelection!: Promise<void>;
+    let secondSelection!: Promise<void>;
+    act(() => {
+      firstSelection = controller.selectTheme('light');
+      secondSelection = controller.selectTheme('carbon');
+    });
+    expect(readThemeState()).toMatchObject({ requestedThemeId: 'carbon' });
+
+    await act(async () => {
+      first.reject(new Error('first failure'));
+      await firstSelection;
+    });
+    expect(readThemeState()).toMatchObject({ requestedThemeId: 'carbon' });
+
+    second.reject(new Error('second failure'));
+    await act(async () => Promise.all([firstSelection, secondSelection]));
+
+    expect(readThemeState()).toMatchObject({
+      requestedThemeId: 'dark',
+      activeThemeId: 'dark',
+    });
+    expect(localStorage.getItem(BOOTSTRAP_KEY)).toBe(
+      JSON.stringify({ schemaVersion: 1, themeId: 'dark' }),
+    );
+    expect(mocks.reload).not.toHaveBeenCalled();
+  });
 });

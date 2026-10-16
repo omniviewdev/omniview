@@ -84,6 +84,7 @@ export default function AppThemeController({ children }: { children: ReactNode }
     storage === null ? 'void' : readBootstrapTheme(storage)
   ));
   const requestedThemeIdRef = useRef(requestedThemeId);
+  const committedThemeIdRef = useRef(requestedThemeId);
   const latestSelectionRef = useRef(0);
   const settledSelectionRef = useRef(0);
   const persistenceQueueRef = useRef<Promise<void> | null>(null);
@@ -102,6 +103,7 @@ export default function AppThemeController({ children }: { children: ReactNode }
     }
 
     requestedThemeIdRef.current = backendThemeId;
+    committedThemeIdRef.current = backendThemeId;
     setRequestedThemeId((current) => (
       current === backendThemeId ? current : backendThemeId
     ));
@@ -114,7 +116,6 @@ export default function AppThemeController({ children }: { children: ReactNode }
 
   const selectTheme = useCallback((selectedId: string): Promise<void> => {
     const nextId = normalizeThemeId(selectedId);
-    const priorId = requestedThemeIdRef.current;
     const selection = latestSelectionRef.current + 1;
     latestSelectionRef.current = selection;
     requestedThemeIdRef.current = nextId;
@@ -123,14 +124,15 @@ export default function AppThemeController({ children }: { children: ReactNode }
     const persist = async (): Promise<void> => {
       try {
         await SettingsProvider.SetSetting(THEME_SETTING_ID, nextId);
+        committedThemeIdRef.current = nextId;
         if (storage !== null) {
           writeBootstrapTheme(storage, nextId);
         }
         reload();
       } catch (error) {
         if (selection === latestSelectionRef.current) {
-          requestedThemeIdRef.current = priorId;
-          setRequestedThemeId(priorId);
+          requestedThemeIdRef.current = committedThemeIdRef.current;
+          setRequestedThemeId(committedThemeIdRef.current);
         }
         showAppError(showSnackbar, error, 'Failed to save theme');
       } finally {
