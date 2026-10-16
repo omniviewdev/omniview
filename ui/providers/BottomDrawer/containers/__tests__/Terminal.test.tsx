@@ -20,15 +20,17 @@ const mocks = vi.hoisted(() => {
     },
     activeTheme: { id: 'void' },
   };
+  const settings: Record<string, unknown> = {
+    'terminal.cursorBlink': true,
+    'terminal.cursorStyle': 'block',
+    'terminal.fontSize': 14,
+    'terminal.theme': 'application',
+  };
+
 
   return {
     state,
-    settings: {
-      'terminal.cursorBlink': true,
-      'terminal.cursorStyle': 'block',
-      'terminal.fontSize': 14,
-      'terminal.theme': 'application',
-    } as Record<string, unknown>,
+    settings,
     mockBuildXtermTheme: vi.fn((element?: HTMLElement | null) => {
       const scope = element?.closest('[data-terminal-theme-scope]');
       return {

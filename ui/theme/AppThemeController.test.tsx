@@ -2,13 +2,17 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { useTheme } from '@omniviewdev/base-ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
-  settings: {} as Record<string, unknown>,
-  reload: vi.fn(),
-  setSetting: vi.fn(),
-  showSnackbar: vi.fn(),
-  showAppError: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  const settings: Record<string, unknown> = {};
+
+  return {
+    settings,
+    reload: vi.fn(),
+    setSetting: vi.fn(),
+    showSnackbar: vi.fn(),
+    showAppError: vi.fn(),
+  };
+});
 
 vi.mock('@omniviewdev/runtime', () => ({
   useSettings: () => ({ settings: mocks.settings, reload: mocks.reload }),
@@ -128,7 +132,7 @@ describe('AppThemeController', () => {
     expect(localStorage.getItem('ov-theme-mode')).toBeNull();
   });
 
-  it('applies a selection before its persistence promise settles', () => {
+  it('applies a selection before its persistence promise settles', async () => {
     mocks.settings = { 'appearance.theme': 'dark' };
     const deferred = createDeferred();
     mocks.setSetting.mockReturnValue(deferred.promise);
@@ -148,7 +152,7 @@ describe('AppThemeController', () => {
     );
 
     deferred.resolve();
-    return act(async () => selection);
+    await act(async () => selection);
   });
 
   it('writes the bootstrap cache and reloads settings after persistence succeeds', async () => {

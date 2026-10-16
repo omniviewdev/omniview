@@ -64,13 +64,13 @@ const SettingsEntries: React.FC<Props> = ({
               {renderOverride
                 ? renderOverride()
                 : (
-                    <SettingsEntry
-                      setting={setting}
-                      id={id}
-                      draftValue={draftValues[fullID]}
-                      handleChange={handleChange}
-                    />
-                  )}
+                  <SettingsEntry
+                    setting={setting}
+                    id={id}
+                    draftValue={draftValues[fullID]}
+                    handleChange={handleChange}
+                  />
+                )}
             </div>
           </div>
         );

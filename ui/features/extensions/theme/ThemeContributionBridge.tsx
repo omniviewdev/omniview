@@ -19,9 +19,9 @@ type ActiveThemeRegistration = {
   dispose: () => void;
 };
 
-export interface ThemeContributionBridgeProps {
+export type ThemeContributionBridgeProps = {
   registry: ThemeRegistry;
-}
+};
 
 function registrationKey(
   registration: ExtensionContributionRegistration<ThemeContribution>,
@@ -46,9 +46,8 @@ export function ThemeContributionBridge({
   const store = useExtensionPoint<ThemeContribution>(THEME_EXTENSION_POINT_ID);
   const storeVersion = store?.version;
   const activeRef = useRef<Map<string, ActiveThemeRegistration> | null>(null);
-  if (activeRef.current === null) {
-    activeRef.current = new Map();
-  }
+  activeRef.current ??= new Map();
+
   const activeRegistrations = activeRef.current;
 
   useEffect(() => {
@@ -101,6 +100,7 @@ export function ThemeContributionBridge({
     for (const active of activeRegistrations.values()) {
       active.dispose();
     }
+
     activeRegistrations.clear();
   }, [activeRegistrations]);
 

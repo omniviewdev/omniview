@@ -7,15 +7,17 @@ const BOOTSTRAP_KEY = 'ov-theme-bootstrap-v1';
 const LEGACY_VARIANT_KEY = 'ov-theme-variant';
 const LEGACY_MODE_KEY = 'ov-theme-mode';
 
-interface ThemeBootstrapRecordV1 {
+type ThemeBootstrapRecordV1 = {
   schemaVersion: 1;
   themeId: BuiltInThemeId;
-}
+};
 
 function readVersionedTheme(storage: Storage): BuiltInThemeId | null {
   try {
     const raw = storage.getItem(BOOTSTRAP_KEY);
-    if (raw === null) return null;
+    if (raw === null) {
+      return null;
+    }
 
     const record: unknown = JSON.parse(raw);
     if (
@@ -39,8 +41,13 @@ function readVersionedTheme(storage: Storage): BuiltInThemeId | null {
 export function readLegacyPaintHint(storage: Storage): BuiltInThemeId | null {
   try {
     const variant = storage.getItem(LEGACY_VARIANT_KEY);
-    if (variant === 'solarized') return 'solarized-dark';
-    if (variant === 'default') return 'void';
+    if (variant === 'solarized') {
+      return 'solarized-dark';
+    }
+
+    if (variant === 'default') {
+      return 'void';
+    }
 
     const mode = storage.getItem(LEGACY_MODE_KEY);
     return mode !== null && isBuiltInThemeId(mode) ? mode : null;

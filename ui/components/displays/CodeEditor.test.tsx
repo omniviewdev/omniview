@@ -4,15 +4,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   const defineTheme = vi.fn();
   const setTheme = vi.fn();
+  const settings: Record<string, unknown> = {
+    'editor.theme': 'application',
+  };
+
 
   return {
     activeTheme: {
       id: 'void',
       base: 'void',
     },
-    settings: {
-      'editor.theme': 'application',
-    } as Record<string, unknown>,
+    settings,
     buildMonacoTheme: vi.fn((base: string) => ({ base, inherit: true, rules: [], colors: {} })),
     defineTheme,
     setTheme,

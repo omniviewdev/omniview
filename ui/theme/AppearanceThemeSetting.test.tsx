@@ -59,7 +59,9 @@ describe('AppearanceThemeSetting', () => {
 
   afterEach(() => {
     cleanup();
-    unregisterThemes.forEach(unregister => unregister());
+    unregisterThemes.forEach((unregister) => {
+      unregister();
+    });
   });
 
   it('shows built-in, user, and plugin themes in registry order', () => {

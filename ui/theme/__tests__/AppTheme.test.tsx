@@ -2,13 +2,17 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { useTheme } from '@omniviewdev/base-ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
-  settings: {} as Record<string, unknown>,
-  reload: vi.fn(),
-  setSetting: vi.fn(),
-  showSnackbar: vi.fn(),
-  showAppError: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  const settings: Record<string, unknown> = {};
+
+  return {
+    settings,
+    reload: vi.fn(),
+    setSetting: vi.fn(),
+    showSnackbar: vi.fn(),
+    showAppError: vi.fn(),
+  };
+});
 
 vi.mock('@omniviewdev/runtime', () => ({
   useSettings: () => ({ settings: mocks.settings, reload: mocks.reload }),
@@ -40,7 +44,9 @@ function Probe() {
           density: baseTheme.density,
         })}
       </output>
-      <button type="button" onClick={() => baseTheme.setTheme('solarized-dark')}>
+      <button type="button" onClick={() => {
+        baseTheme.setTheme('solarized-dark');
+      }}>
         Use Solarized Dark
       </button>
     </>

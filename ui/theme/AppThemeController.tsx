@@ -31,18 +31,24 @@ import {
 
 const THEME_SETTING_ID = 'appearance.theme';
 
-export interface AppThemeContextValue {
+export type AppThemeContextValue = {
   requestedThemeId: string;
   activeTheme: Readonly<ThemeSummary>;
   isFallback: boolean;
   selectTheme: (id: string) => Promise<void>;
-}
+};
 
 export const AppThemeContext = createContext<AppThemeContextValue | null>(null);
 
 function normalizeThemeId(id: string): string {
-  if (id === 'default') return 'void';
-  if (id === 'solarized') return 'solarized-dark';
+  if (id === 'default') {
+    return 'void';
+  }
+
+  if (id === 'solarized') {
+    return 'solarized-dark';
+  }
+
   return id;
 }
 
@@ -51,13 +57,14 @@ export function useAppTheme(): AppThemeContextValue {
   if (value === null) {
     throw new Error('useAppTheme must be used within AppThemeController');
   }
+
   return value;
 }
 
-interface ThemeStateBridgeProps {
+type ThemeStateBridgeProps = {
   children: ReactNode;
   selectTheme: (id: string) => Promise<void>;
-}
+};
 
 function ThemeStateBridge({ children, selectTheme }: ThemeStateBridgeProps) {
   const { requestedThemeId, activeTheme, isFallback } = useTheme();
@@ -117,7 +124,7 @@ export default function AppThemeController({ children }: { children: ReactNode }
     }
   }, [backendThemeId, storage]);
 
-  const selectTheme = useCallback((selectedId: string): Promise<void> => {
+  const selectTheme = useCallback(async (selectedId: string): Promise<void> => {
     const nextId = normalizeThemeId(selectedId);
     const selection = latestSelectionRef.current + 1;
     latestSelectionRef.current = selection;
@@ -131,12 +138,14 @@ export default function AppThemeController({ children }: { children: ReactNode }
         if (storage !== null) {
           writeBootstrapTheme(storage, nextId);
         }
+
         reload();
       } catch (error) {
         if (selection === latestSelectionRef.current) {
           requestedThemeIdRef.current = committedThemeIdRef.current;
           setRequestedThemeId(committedThemeIdRef.current);
         }
+
         showAppError(showSnackbar, error, 'Failed to save theme');
       } finally {
         settledSelectionRef.current = selection;
@@ -148,14 +157,16 @@ export default function AppThemeController({ children }: { children: ReactNode }
       ? persist()
       : queued.then(persist, persist);
     persistenceQueueRef.current = persistence;
-    return persistence;
+    await persistence;
   }, [reload, showSnackbar, storage]);
 
   return (
     <ThemeProvider
       themeId={requestedThemeId}
       fallbackThemeId="void"
-      onThemeChange={(id) => void selectTheme(id)}
+      onThemeChange={(id) => {
+        selectTheme(id).catch(() => undefined);
+      }}
       initialDensity="compact"
       registry={themeRegistry}
     >
