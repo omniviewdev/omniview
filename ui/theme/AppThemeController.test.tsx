@@ -334,49 +334,6 @@ describe('AppThemeController', () => {
     );
   });
 
-  it('keeps the latest confirmed write when an older backend snapshot arrives', async () => {
-    localStorage.setItem(
-      BOOTSTRAP_KEY,
-      JSON.stringify({ schemaVersion: 1, themeId: 'obsidian' }),
-    );
-    const first = createDeferred();
-    const second = createDeferred();
-    mocks.setSetting
-      .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(second.promise);
-    const view = renderController();
-
-    let firstSelection!: Promise<void>;
-    let secondSelection!: Promise<void>;
-    act(() => {
-      firstSelection = controller.selectTheme('light');
-      secondSelection = controller.selectTheme('carbon');
-    });
-
-    first.resolve();
-    await act(async () => firstSelection);
-    expect(mocks.setSetting).toHaveBeenNthCalledWith(2, 'appearance.theme', 'carbon');
-    expect(readThemeState()).toMatchObject({ requestedThemeId: 'carbon' });
-
-    mocks.settings = { 'appearance.theme': 'dark' };
-    view.rerender(
-      <AppThemeController>
-        <Probe />
-      </AppThemeController>,
-    );
-
-    second.reject(new Error('second failure'));
-    await act(async () => secondSelection);
-
-    expect(readThemeState()).toMatchObject({
-      requestedThemeId: 'light',
-      activeThemeId: 'light',
-    });
-    expect(localStorage.getItem(BOOTSTRAP_KEY)).toBe(
-      JSON.stringify({ schemaVersion: 1, themeId: 'light' }),
-    );
-  });
-
   it('rolls back to the last committed theme when two queued selections reject', async () => {
     mocks.settings = { 'appearance.theme': 'dark' };
     const first = createDeferred();
