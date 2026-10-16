@@ -151,8 +151,8 @@ describe('ThemeContributionBridge', () => {
 
     act(() => {
       registerTheme(
-        "team!'()*雪/slate!'()*雪",
-        "team!'()*雪",
+        'team!\'()*雪/slate!\'()*雪',
+        'team!\'()*雪',
       );
     });
 
