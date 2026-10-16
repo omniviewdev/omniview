@@ -1,6 +1,9 @@
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import {
   createThemeRegistry,
+  ThemeProvider,
+  useTheme,
+  useThemeList,
   type ThemeRegistry,
 } from '@omniviewdev/base-ui';
 import {
@@ -33,6 +36,52 @@ function renderBridge() {
     <ExtensionProvider registry={extensionRegistry}>
       <ThemeContributionBridge registry={themeRegistry} />
     </ExtensionProvider>,
+  );
+}
+
+function ThemeConsumerProbe({ registry }: { registry: ThemeRegistry }) {
+  const themes = useThemeList(registry);
+  const { activeTheme, isFallback } = useTheme();
+  const pluginThemes = themes
+    .filter(theme => theme.owner.kind === 'plugin')
+    .map(theme => `${theme.id}:${theme.name}`);
+
+  return (
+    <output data-testid="theme-consumer-state">
+      {JSON.stringify({
+        activeThemeId: activeTheme.id,
+        activeThemeName: activeTheme.name,
+        isFallback,
+        pluginThemes,
+      })}
+    </output>
+  );
+}
+
+function renderConsumerHarness(showBridge: boolean) {
+  return (
+    <ExtensionProvider registry={extensionRegistry}>
+      <ThemeProvider
+        registry={themeRegistry}
+        themeId="plugin:acme/slate"
+        fallbackThemeId="void"
+        root={null}
+      >
+        {showBridge ? <ThemeContributionBridge registry={themeRegistry} /> : null}
+        <ThemeConsumerProbe registry={themeRegistry} />
+      </ThemeProvider>
+    </ExtensionProvider>
+  );
+}
+
+function readConsumerState(): {
+  activeThemeId: string;
+  activeThemeName: string;
+  isFallback: boolean;
+  pluginThemes: string[];
+} {
+  return JSON.parse(
+    screen.getByTestId('theme-consumer-state').textContent ?? '{}',
   );
 }
 
@@ -143,6 +192,68 @@ describe('ThemeContributionBridge', () => {
 
     expect(themeRegistry.has('plugin:acme/slate')).toBe(false);
     expect(themeRegistry.has('plugin:other/ember')).toBe(false);
+  });
+
+  it('updates consumers through late registration, replacement, removal, and bridge unmount', () => {
+    const view = render(renderConsumerHarness(true));
+
+    expect(readConsumerState()).toEqual({
+      activeThemeId: 'void',
+      activeThemeName: 'Void',
+      isFallback: true,
+      pluginThemes: [],
+    });
+
+    act(() => {
+      registerTheme('acme/slate', 'acme');
+    });
+
+    expect(readConsumerState()).toEqual({
+      activeThemeId: 'plugin:acme/slate',
+      activeThemeName: 'Slate',
+      isFallback: false,
+      pluginThemes: ['plugin:acme/slate:Slate'],
+    });
+
+    act(() => {
+      store.removeContributionsByPlugin('acme');
+      registerTheme('acme/slate', 'acme', {
+        ...slateTheme,
+        name: 'Slate Reloaded',
+      });
+    });
+
+    expect(readConsumerState()).toEqual({
+      activeThemeId: 'plugin:acme/slate',
+      activeThemeName: 'Slate Reloaded',
+      isFallback: false,
+      pluginThemes: ['plugin:acme/slate:Slate Reloaded'],
+    });
+
+    act(() => {
+      store.removeContributionsByPlugin('acme');
+    });
+
+    expect(readConsumerState()).toEqual({
+      activeThemeId: 'void',
+      activeThemeName: 'Void',
+      isFallback: true,
+      pluginThemes: [],
+    });
+
+    act(() => {
+      registerTheme('acme/slate', 'acme');
+    });
+    expect(readConsumerState().activeThemeId).toBe('plugin:acme/slate');
+
+    view.rerender(renderConsumerHarness(false));
+
+    expect(readConsumerState()).toEqual({
+      activeThemeId: 'void',
+      activeThemeName: 'Void',
+      isFallback: true,
+      pluginThemes: [],
+    });
   });
 
   it('isolates invalid contributions without removing another plugin theme', () => {
