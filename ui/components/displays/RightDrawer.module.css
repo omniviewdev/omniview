@@ -1,12 +1,11 @@
 .Root {
-  border-radius: var(--ov-radius-md);
+  /* RightDrawerProvider owns the shell split; drawer content stays unframed. */
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: auto;
   padding: 0;
   background-color: var(--ov-color-bg-surface);
-  border: 1px solid var(--ov-color-border-default);
 }
 
 .Header {
@@ -64,7 +63,7 @@
 
 .TabList {
   display: flex;
-  border-bottom: 1px solid var(--ov-color-border-default);
+  border-bottom: 1px solid var(--ov-color-border-muted);
   flex-shrink: 0;
 }
 

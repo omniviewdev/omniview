@@ -12,7 +12,7 @@
   align-items: center;
   gap: var(--ov-space-3);
   padding-bottom: var(--ov-space-4);
-  border-bottom: 1px solid var(--ov-color-border-default);
+  border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
 .HeaderText {
@@ -38,5 +38,5 @@
   gap: var(--ov-space-2);
   padding-top: var(--ov-space-4);
   margin-top: var(--ov-space-2);
-  border-top: 1px solid var(--ov-color-border-default);
+  border-top: 1px solid var(--ov-color-border-muted);
 }

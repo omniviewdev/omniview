@@ -210,7 +210,7 @@ button.Chip:hover {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--ov-color-fg-muted);
-  border: 1px solid var(--ov-color-border-muted);
+  border: 1px solid var(--ov-color-border-default);
   border-radius: 4px;
 }
 

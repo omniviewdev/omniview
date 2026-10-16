@@ -94,8 +94,10 @@ describe('CoreSettingsPage appearance settings', () => {
 
     expect(mocks.selectTheme).toHaveBeenCalledWith('obsidian');
     expect(screen.queryByRole('button', { name: 'Save Changes' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Find' } });
+    expect(screen.getByText('Unsaved change')).toBeVisible();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     });
@@ -104,5 +106,22 @@ describe('CoreSettingsPage appearance settings', () => {
     expect(mocks.setSettings).not.toHaveBeenCalledWith(expect.objectContaining({
       'appearance.theme': expect.anything(),
     }));
+    expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
+  });
+
+  it('marks an empty draft value and clears its marker when discarded', () => {
+    render(<CoreSettingsPage id='appearance' />);
+
+    expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
+
+    expect(screen.getByText('Unsaved change')).toBeVisible();
+    expect(screen.getByRole('textbox')).toHaveValue('');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+
+    expect(screen.queryByText('Unsaved change')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('Search');
+    expect(screen.queryByRole('button', { name: 'Save Changes' })).not.toBeInTheDocument();
   });
 });

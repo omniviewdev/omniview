@@ -90,7 +90,7 @@
 
 .Nav[data-type='bordered-inset'] {
   background: transparent;
-  border: 1px solid var(--ov-color-border-muted);
+  border: 1px solid var(--ov-color-border-default);
   border-radius: var(--ov-radius-md);
 }
 
