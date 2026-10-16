@@ -32,6 +32,7 @@ const ColumnFilter: React.FC<Props> = ({ anchorEl, columns, onClose, onClick }) 
       <Popover.Trigger
         render={
           <IconButton
+            size='sm'
             variant='outline'
             color='neutral'
             aria-label='Columns'
