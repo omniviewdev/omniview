@@ -14,6 +14,7 @@ vi.mock('@omniviewdev/runtime', () => ({
   useSettings: () => ({ settings: mocks.settings, reload: mocks.reload }),
   useSnackbar: () => ({ showSnackbar: mocks.showSnackbar }),
   showAppError: mocks.showAppError,
+  useExtensionPoint: () => undefined,
 }));
 
 vi.mock('@omniviewdev/runtime/api', () => ({

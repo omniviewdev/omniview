@@ -10,6 +10,7 @@ import {
 } from 'react';
 import {
   ThemeProvider,
+  themeRegistry,
   useTheme,
   type ThemeSummary,
 } from '@omniviewdev/base-ui';
@@ -19,6 +20,8 @@ import {
   useSnackbar,
 } from '@omniviewdev/runtime';
 import { SettingsProvider } from '@omniviewdev/runtime/api';
+
+import { ThemeContributionBridge } from '@/features/extensions/theme/ThemeContributionBridge';
 
 import {
   clearLegacyThemeKeys,
@@ -154,7 +157,9 @@ export default function AppThemeController({ children }: { children: ReactNode }
       fallbackThemeId="void"
       onThemeChange={(id) => void selectTheme(id)}
       initialDensity="compact"
+      registry={themeRegistry}
     >
+      <ThemeContributionBridge registry={themeRegistry} />
       <ThemeStateBridge selectTheme={selectTheme}>
         {children}
       </ThemeStateBridge>

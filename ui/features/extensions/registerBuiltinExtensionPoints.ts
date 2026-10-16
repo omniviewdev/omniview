@@ -7,6 +7,10 @@ import {
   RESOURCE_DRAWER_EXTENSION_POINT_ID,
   createResourceDrawerExtensionPoint,
 } from './drawer/extensionPoint';
+import {
+  THEME_EXTENSION_POINT_ID,
+  createThemeExtensionPoint,
+} from './theme/extensionPoint';
 
 /**
  * Ensure host-owned builtin extension points are registered.
@@ -22,6 +26,7 @@ export function ensureBuiltinExtensionPointsRegistered(
 ): void {
   registerIfAbsent(registry, RESOURCE_SIDEBAR_EXTENSION_POINT_ID, createResourceSidebarExtensionPoint);
   registerIfAbsent(registry, RESOURCE_DRAWER_EXTENSION_POINT_ID, createResourceDrawerExtensionPoint);
+  registerIfAbsent(registry, THEME_EXTENSION_POINT_ID, createThemeExtensionPoint);
 }
 
 function registerIfAbsent(
