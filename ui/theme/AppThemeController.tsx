@@ -94,7 +94,7 @@ export default function AppThemeController({ children }: { children: ReactNode }
     storage === null ? 'void' : readBootstrapTheme(storage)
   ));
   const requestedThemeIdRef = useRef(requestedThemeId);
-  const committedThemeIdRef = useRef(requestedThemeId);
+  const durableThemeIdRef = useRef(requestedThemeId);
   const latestSelectionRef = useRef(0);
   const settledSelectionRef = useRef(0);
   const persistenceQueueRef = useRef<Promise<void> | null>(null);
@@ -105,15 +105,19 @@ export default function AppThemeController({ children }: { children: ReactNode }
     : null;
 
   useEffect(() => {
-    if (
-      backendThemeId === null
-      || settledSelectionRef.current !== latestSelectionRef.current
-    ) {
+    if (backendThemeId === null) {
+      return;
+    }
+
+    // Hydration is authoritative even while an optimistic selection is
+    // pending. Keep it as the durable rollback target, then apply it once no
+    // selection is in flight.
+    durableThemeIdRef.current = backendThemeId;
+    if (settledSelectionRef.current !== latestSelectionRef.current) {
       return;
     }
 
     requestedThemeIdRef.current = backendThemeId;
-    committedThemeIdRef.current = backendThemeId;
     setRequestedThemeId((current) => (
       current === backendThemeId ? current : backendThemeId
     ));
@@ -134,21 +138,24 @@ export default function AppThemeController({ children }: { children: ReactNode }
     const persist = async (): Promise<void> => {
       try {
         await SettingsProvider.SetSetting(THEME_SETTING_ID, nextId);
-        committedThemeIdRef.current = nextId;
+        durableThemeIdRef.current = nextId;
         if (storage !== null) {
           writeBootstrapTheme(storage, nextId);
         }
 
         reload();
       } catch (error) {
-        if (selection === latestSelectionRef.current) {
-          requestedThemeIdRef.current = committedThemeIdRef.current;
-          setRequestedThemeId(committedThemeIdRef.current);
-        }
-
         showAppError(showSnackbar, error, 'Failed to save theme');
       } finally {
         settledSelectionRef.current = selection;
+        if (selection === latestSelectionRef.current) {
+          const durableThemeId = durableThemeIdRef.current;
+          requestedThemeIdRef.current = durableThemeId;
+          setRequestedThemeId(durableThemeId);
+          if (storage !== null) {
+            writeBootstrapTheme(storage, durableThemeId);
+          }
+        }
       }
     };
 

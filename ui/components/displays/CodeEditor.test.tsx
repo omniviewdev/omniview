@@ -15,7 +15,16 @@ const mocks = vi.hoisted(() => {
       base: 'void',
     },
     settings,
-    buildMonacoTheme: vi.fn((base: string) => ({ base, inherit: true, rules: [], colors: {} })),
+    buildMonacoTheme: vi.fn((base: string, element?: HTMLElement | null) => ({
+      base,
+      inherit: true,
+      rules: [],
+      colors: {
+        background: element
+          ?.closest('[data-editor-theme-scope]')
+          ?.getAttribute('data-editor-background'),
+      },
+    })),
     defineTheme,
     setTheme,
     monaco: {
@@ -60,6 +69,14 @@ vi.mock('@monaco-editor/react', () => ({
 
 import CodeEditor from './CodeEditor';
 
+function ScopedCodeEditor({ background }: { background: string }) {
+  return (
+    <div data-editor-theme-scope data-editor-background={background}>
+      <CodeEditor language="yaml" value={background} />
+    </div>
+  );
+}
+
 describe('CodeEditor themes', () => {
   beforeEach(() => {
     mocks.activeTheme = { id: 'void', base: 'void' };
@@ -93,6 +110,33 @@ describe('CodeEditor themes', () => {
       expect.objectContaining({ base: 'carbon' }),
     );
     expect(mocks.setTheme).toHaveBeenLastCalledWith('ov-theme');
+  });
+
+  it('rebuilds the application Monaco theme when the selected registration is replaced', async () => {
+    mocks.activeTheme = { id: 'plugin:acme/slate', base: 'dark' };
+    const view = render(<ScopedCodeEditor background="#102030" />);
+
+    await waitFor(() => {
+      expect(mocks.defineTheme).toHaveBeenCalledWith(
+        'ov-theme',
+        expect.objectContaining({
+          colors: { background: '#102030' },
+        }),
+      );
+    });
+
+    mocks.activeTheme = { id: 'plugin:acme/slate', base: 'dark' };
+    view.rerender(<ScopedCodeEditor background="#405060" />);
+
+    await waitFor(() => {
+      expect(mocks.defineTheme).toHaveBeenLastCalledWith(
+        'ov-theme',
+        expect.objectContaining({
+          colors: { background: '#405060' },
+        }),
+      );
+    });
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-theme', 'ov-theme');
   });
 
   it('keeps an explicit legacy theme selected when the application theme changes', async () => {

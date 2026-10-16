@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 // ui
-import { Spinner, useTheme } from '@omniviewdev/base-ui';
+import { Spinner, useTheme, type ThemeSummary } from '@omniviewdev/base-ui';
 import styles from './Terminal.module.css';
 
 // xterm
@@ -52,7 +52,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const [themeElement, setThemeElement] = useState<HTMLDivElement | null>(null);
   const [themeResolution, setThemeResolution] = useState<{
-    activeThemeId: string;
+    activeTheme: Readonly<ThemeSummary>;
     element: HTMLDivElement;
     name: string;
     theme: ITheme;
@@ -125,14 +125,14 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     }
 
     setThemeResolution({
-      activeThemeId: activeTheme.id,
+      activeTheme,
       element: themeElement,
       name: themeName,
       theme: getTerminalTheme(themeName, themeElement),
     });
-  }, [activeTheme.id, themeElement, themeName]);
+  }, [activeTheme, themeElement, themeName]);
 
-  const resolvedTheme = themeResolution?.activeThemeId === activeTheme.id
+  const resolvedTheme = themeResolution?.activeTheme === activeTheme
     && themeResolution.element === themeElement
     && themeResolution.name === themeName
     ? themeResolution.theme

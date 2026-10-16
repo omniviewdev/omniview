@@ -358,6 +358,47 @@ describe('TerminalContainer', () => {
     expect(Terminal).toHaveBeenCalledTimes(1);
   });
 
+  it('re-resolves a same-ID replacement without recreating the terminal', async () => {
+    mocks.state.activeTheme = { id: 'plugin:acme/scoped' };
+    const view = render(
+      <ScopedThemeHarness
+        background="#123456"
+        foreground="#fefefe"
+        revision="first registration"
+      />,
+    );
+    const scope = screen.getByTestId('terminal-theme-scope');
+    const terminalElement = scope.firstElementChild?.firstElementChild as HTMLElement;
+
+    await waitFor(() => {
+      expect(terminalElement.style.backgroundColor).toBe('rgb(18, 52, 86)');
+    });
+
+    mocks.state.activeTheme = { id: 'plugin:acme/scoped' };
+    view.rerender(
+      <ScopedThemeHarness
+        background="#654321"
+        foreground="#eeeeee"
+        revision="replacement registration"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.mockBuildXtermTheme).toHaveLastReturnedWith(expect.objectContaining({
+        background: '#654321',
+        foreground: '#eeeeee',
+      }));
+    });
+    await waitFor(() => {
+      expect(terminalElement.style.backgroundColor).toBe('rgb(101, 67, 33)');
+    });
+    expect(mocks.state.terminal?.options.theme).toEqual(expect.objectContaining({
+      background: '#654321',
+      foreground: '#eeeeee',
+    }));
+    expect(Terminal).toHaveBeenCalledTimes(1);
+  });
+
   it('preserves an explicit terminal override during live application theme changes', () => {
     mocks.settings = { ...mocks.settings, 'terminal.theme': 'dracula' };
     const view = render(<TerminalContainer sessionId="test-session-123" />);

@@ -146,6 +146,45 @@ describe('ThemeContributionBridge', () => {
     expect(themeRegistry.has('plugin:team%20blue/palette%2Fwarm')).toBe(true);
   });
 
+  it('encodes reserved URI punctuation and Unicode into the accepted ID grammar', () => {
+    renderBridge();
+
+    act(() => {
+      registerTheme(
+        "team!'()*雪/slate!'()*雪",
+        "team!'()*雪",
+      );
+    });
+
+    expect(
+      themeRegistry.has(
+        'plugin:team%21%27%28%29%2A%E9%9B%AA/slate%21%27%28%29%2A%E9%9B%AA',
+      ),
+    ).toBe(true);
+  });
+
+  it('skips a malformed surrogate ID without aborting following contributions', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    renderBridge();
+
+    act(() => {
+      registerTheme('broken/\uD800', 'broken');
+      registerTheme('steady/slate', 'steady');
+    });
+
+    expect(themeRegistry.has('plugin:steady/slate')).toBe(true);
+    expect(consoleError).toHaveBeenCalledWith(
+      '[ThemeContributionBridge] Invalid theme contribution',
+      expect.objectContaining({
+        pluginId: 'broken',
+        contributionId: 'broken/\uD800',
+        code: 'invalid_id',
+        path: 'id',
+        error: expect.any(URIError),
+      }),
+    );
+  });
+
   it('replaces a contribution with the same plugin and normalized ID on reload', () => {
     renderBridge();
 

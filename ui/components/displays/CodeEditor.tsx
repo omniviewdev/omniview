@@ -48,7 +48,7 @@ export function useResolvedMonacoTheme(rootRef: RefObject<HTMLElement | null>): 
     // Monaco themes are page-global, so reapply the selected theme whenever
     // the application theme changes.
     monaco.editor.setTheme(theme);
-  }, [activeTheme.base, activeTheme.id, monaco, rootRef, theme]);
+  }, [activeTheme, monaco, rootRef, theme]);
 
   return theme;
 }

@@ -33,6 +33,25 @@ func TestMigrateAppearanceValues(t *testing.T) {
 	}
 }
 
+func TestMigrateTerminalValues(t *testing.T) {
+	tests := map[string]string{
+		"default":         "application",
+		"application":     "application",
+		"dracula":         "dracula",
+		"future-terminal": "future-terminal",
+	}
+	for input, want := range tests {
+		t.Run(input, func(t *testing.T) {
+			original := map[string]any{settingTheme: input, "future": "preserved"}
+			values, changed := MigrateTerminalValues(original)
+			require.Equal(t, want, values[settingTheme])
+			require.Equal(t, "preserved", values["future"])
+			require.Equal(t, input != want, changed)
+			require.Equal(t, input, original[settingTheme], "migration must not mutate its input")
+		})
+	}
+}
+
 func TestEditorThemeDefaultsToApplicationWithExplicitOptions(t *testing.T) {
 	setting := Editor.Settings[settingTheme]
 	require.Equal(t, "application", setting.Default)

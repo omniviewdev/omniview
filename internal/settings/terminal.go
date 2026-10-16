@@ -101,6 +101,21 @@ var Terminal = settings.Category{
 	},
 }
 
+// MigrateTerminalValues upgrades the legacy application-theme sentinel.
+func MigrateTerminalValues(values map[string]any) (map[string]any, bool) {
+	migrated := make(map[string]any, len(values))
+	for key, value := range values {
+		migrated[key] = value
+	}
+
+	if migrated[settingTheme] == "default" {
+		migrated[settingTheme] = themeApplication
+		return migrated, true
+	}
+
+	return migrated, false
+}
+
 // defaultShell picks a shell that exists on this machine: the user's $SHELL,
 // else the first common one found. A fixed /bin/zsh fails validation on
 // systems without zsh, which rejects every save that includes the default.

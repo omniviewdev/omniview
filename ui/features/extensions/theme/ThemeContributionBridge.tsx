@@ -29,6 +29,13 @@ function registrationKey(
   return `${registration.plugin}\0${registration.id}`;
 }
 
+function encodeThemeIdSegment(value: string): string {
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+}
+
 function themeIdFor(
   registration: ExtensionContributionRegistration<ThemeContribution>,
 ): string {
@@ -37,7 +44,7 @@ function themeIdFor(
     ? registration.id.slice(normalizedPrefix.length)
     : registration.id;
 
-  return `plugin:${encodeURIComponent(registration.plugin)}/${encodeURIComponent(localContributionId)}`;
+  return `plugin:${encodeThemeIdSegment(registration.plugin)}/${encodeThemeIdSegment(localContributionId)}`;
 }
 
 export function ThemeContributionBridge({
@@ -72,15 +79,17 @@ export function ThemeContributionBridge({
         continue;
       }
 
-      const themeId = themeIdFor(registration);
+      let themeId: string | undefined;
       try {
+        themeId = themeIdFor(registration);
         const dispose = registry.register(
           { ...registration.value, id: themeId },
           { kind: 'plugin', id: registration.plugin },
         );
         activeRegistrations.set(key, { registration, registry, dispose });
       } catch (error) {
-        if (!(error instanceof ThemeValidationError)) {
+        const validationError = error instanceof ThemeValidationError;
+        if (!validationError && !(error instanceof URIError)) {
           throw error;
         }
 
@@ -88,8 +97,8 @@ export function ThemeContributionBridge({
           pluginId: registration.plugin,
           contributionId: registration.id,
           themeId,
-          code: error.code,
-          path: error.path,
+          code: validationError ? error.code : 'invalid_id',
+          path: validationError ? error.path : 'id',
           error,
         });
       }

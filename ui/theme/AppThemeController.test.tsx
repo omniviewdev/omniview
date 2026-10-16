@@ -256,6 +256,84 @@ describe('AppThemeController', () => {
     );
   });
 
+  it('rolls back to backend hydration that arrives while a write is pending', async () => {
+    localStorage.setItem(
+      BOOTSTRAP_KEY,
+      JSON.stringify({ schemaVersion: 1, themeId: 'obsidian' }),
+    );
+    const deferred = createDeferred();
+    mocks.setSetting.mockReturnValue(deferred.promise);
+    const view = renderController();
+
+    let selection!: Promise<void>;
+    act(() => {
+      selection = controller.selectTheme('light');
+    });
+
+    mocks.settings = { 'appearance.theme': 'carbon' };
+    view.rerender(
+      <AppThemeController>
+        <Probe />
+      </AppThemeController>,
+    );
+    expect(readThemeState()).toMatchObject({ requestedThemeId: 'light' });
+
+    deferred.reject(new Error('write failed'));
+    await act(async () => selection);
+
+    expect(readThemeState()).toMatchObject({
+      requestedThemeId: 'carbon',
+      activeThemeId: 'carbon',
+    });
+    expect(localStorage.getItem(BOOTSTRAP_KEY)).toBe(
+      JSON.stringify({ schemaVersion: 1, themeId: 'carbon' }),
+    );
+  });
+
+  it('uses pending backend hydration after the latest queued write rejects', async () => {
+    localStorage.setItem(
+      BOOTSTRAP_KEY,
+      JSON.stringify({ schemaVersion: 1, themeId: 'obsidian' }),
+    );
+    const first = createDeferred();
+    const second = createDeferred();
+    mocks.setSetting
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const view = renderController();
+
+    let firstSelection!: Promise<void>;
+    let secondSelection!: Promise<void>;
+    act(() => {
+      firstSelection = controller.selectTheme('light');
+      secondSelection = controller.selectTheme('carbon');
+    });
+
+    mocks.settings = { 'appearance.theme': 'solarized-light' };
+    view.rerender(
+      <AppThemeController>
+        <Probe />
+      </AppThemeController>,
+    );
+
+    await act(async () => {
+      first.reject(new Error('first failure'));
+      await firstSelection;
+    });
+    expect(readThemeState()).toMatchObject({ requestedThemeId: 'carbon' });
+
+    second.reject(new Error('second failure'));
+    await act(async () => Promise.all([firstSelection, secondSelection]));
+
+    expect(readThemeState()).toMatchObject({
+      requestedThemeId: 'solarized-light',
+      activeThemeId: 'solarized-light',
+    });
+    expect(localStorage.getItem(BOOTSTRAP_KEY)).toBe(
+      JSON.stringify({ schemaVersion: 1, themeId: 'solarized-light' }),
+    );
+  });
+
   it('rolls back to the last committed theme when two queued selections reject', async () => {
     mocks.settings = { 'appearance.theme': 'dark' };
     const first = createDeferred();
