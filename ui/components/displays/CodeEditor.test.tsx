@@ -42,7 +42,9 @@ vi.mock('@omniviewdev/base-ui', () => ({
 }));
 
 vi.mock('@omniviewdev/editors', () => ({
-  buildMonacoTheme: (...args: unknown[]) => mocks.buildMonacoTheme(...args),
+  buildMonacoTheme: (base: string, element?: HTMLElement | null) => (
+    mocks.buildMonacoTheme(base, element)
+  ),
   OV_MONACO_THEME: 'ov-theme',
 }));
 

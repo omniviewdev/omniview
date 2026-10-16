@@ -90,11 +90,11 @@ export default function AppThemeController({ children }: { children: ReactNode }
       return null;
     }
   });
-  const [requestedThemeId, setRequestedThemeId] = useState(() => (
+  const [requestedThemeId, setRequestedThemeId] = useState<string>(() => (
     storage === null ? 'void' : readBootstrapTheme(storage)
   ));
-  const requestedThemeIdRef = useRef(requestedThemeId);
-  const durableThemeIdRef = useRef(requestedThemeId);
+  const requestedThemeIdRef = useRef<string>(requestedThemeId);
+  const durableThemeIdRef = useRef<string>(requestedThemeId);
   const latestSelectionRef = useRef(0);
   const settledSelectionRef = useRef(0);
   const persistenceQueueRef = useRef<Promise<void> | null>(null);

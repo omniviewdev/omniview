@@ -122,7 +122,7 @@ describe('ThemeContributionBridge', () => {
     });
 
     act(() => {
-      store.removeContributionsByPlugin('acme');
+      extensionRegistry.removeContributions('acme');
     });
 
     expect(themeRegistry.has('plugin:acme/slate')).toBe(false);
@@ -195,7 +195,7 @@ describe('ThemeContributionBridge', () => {
     const original = themeRegistry.get('plugin:acme/slate');
 
     act(() => {
-      store.removeContributionsByPlugin('acme');
+      extensionRegistry.removeContributions('acme');
       registerTheme('acme/slate', 'acme', {
         schemaVersion: 1,
         name: 'Slate Reloaded',
@@ -255,7 +255,7 @@ describe('ThemeContributionBridge', () => {
     });
 
     act(() => {
-      store.removeContributionsByPlugin('acme');
+      extensionRegistry.removeContributions('acme');
       registerTheme('acme/slate', 'acme', {
         ...slateTheme,
         name: 'Slate Reloaded',
@@ -270,7 +270,7 @@ describe('ThemeContributionBridge', () => {
     });
 
     act(() => {
-      store.removeContributionsByPlugin('acme');
+      extensionRegistry.removeContributions('acme');
     });
 
     expect(readConsumerState()).toEqual({
@@ -323,7 +323,7 @@ describe('ThemeContributionBridge', () => {
     );
 
     act(() => {
-      store.removeContributionsByPlugin('broken');
+      extensionRegistry.removeContributions('broken');
     });
 
     expect(themeRegistry.has('plugin:steady/slate')).toBe(true);

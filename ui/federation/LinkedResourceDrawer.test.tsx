@@ -38,7 +38,7 @@ vi.mock('@omniviewdev/base-ui', () => ({
 }));
 
 vi.mock('@omniviewdev/editors', () => ({
-  buildMonacoTheme: (...args: unknown[]) => mocks.buildMonacoTheme(...args),
+  buildMonacoTheme: (base: string) => mocks.buildMonacoTheme(base),
   OV_MONACO_THEME: 'ov-theme',
 }));
 
@@ -65,7 +65,7 @@ import { createLinkedResourceDrawer } from './LinkedResourceDrawer';
 
 const ctx: DrawerContext = {
   data: { apiVersion: 'v1', kind: 'Pod' },
-  resource: { key: 'pods' },
+  resource: { id: 'pod-1', key: 'pods', connectionID: 'test-connection' },
 };
 
 function createDrawer() {
