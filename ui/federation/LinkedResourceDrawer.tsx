@@ -14,6 +14,7 @@ import { LuCode, LuFileDiff, LuFileCode, LuLink, LuRotateCw, LuSquareChartGantt 
 // third-party
 import { parse, stringify } from 'yaml';
 import MonacoEditor, { DiffEditor } from '@monaco-editor/react';
+import { useResolvedMonacoTheme } from '@/components/displays/CodeEditor';
 
 // -- Overview View ────────────────────────────────────────────────────
 
@@ -22,21 +23,26 @@ import MonacoEditor, { DiffEditor } from '@monaco-editor/react';
  * exactly like PodSidebar and other row-click views.
  */
 const LinkedResourceOverview: React.FC<{ ctx: DrawerContext }> = ({ ctx }) => {
+  const themeRootRef = React.useRef<HTMLDivElement>(null);
+  const theme = useResolvedMonacoTheme(themeRootRef);
+
   if (!ctx.data) {
     return null;
   }
 
   return (
-    <MonacoEditor
-      defaultLanguage='yaml'
-      theme='vs-dark'
-      height='100%'
-      value={stringify(ctx.data, null, 2)}
-      options={{
-        readOnly: true,
-        fontSize: 11,
-      }}
-    />
+    <div ref={themeRootRef} style={{ display: 'contents' }}>
+      <MonacoEditor
+        defaultLanguage='yaml'
+        theme={theme}
+        height='100%'
+        value={stringify(ctx.data, null, 2)}
+        options={{
+          readOnly: true,
+          fontSize: 11,
+        }}
+      />
+    </div>
   );
 };
 
@@ -57,6 +63,8 @@ const LinkedResourceEditor: React.FC<{
   const [value, setValue] = React.useState<string>(originalData);
   const [changed, setChanged] = React.useState(false);
   const [viewDiff, setViewDiff] = React.useState(false);
+  const themeRootRef = React.useRef<HTMLDivElement>(null);
+  const theme = useResolvedMonacoTheme(themeRootRef);
 
   if (!ctx.data) {
     return null;
@@ -80,64 +88,66 @@ const LinkedResourceEditor: React.FC<{
   };
 
   return (
-    <Stack direction="column" spacing={2} style={{ flex: 1 }}>
-      {viewDiff ? (
-        <DiffEditor
-          height='100%'
-          original={originalData}
-          theme='vs-dark'
-          modified={value}
-          language='yaml'
-          options={{ readOnly: true, fontSize: 11 }}
-        />
-      ) : (
-        <MonacoEditor
-          defaultLanguage='yaml'
-          theme='vs-dark'
-          height='100%'
-          value={value}
-          language='yaml'
-          path={editorPath}
-          options={{ readOnly: false, fontSize: 11 }}
-          onChange={handleChange}
-        />
-      )}
-      <Stack direction="row" justify="between" spacing={2}>
-        <Stack direction="row" spacing={2}>
-          <Button size='sm' variant='soft' color='brand' disabled={!changed} onClick={handleSubmit}>
-            Submit
-          </Button>
-          <Button size='sm' variant='outline' color='neutral' onClick={onClose}>
-            Cancel
-          </Button>
-        </Stack>
-        <Stack direction="row" spacing={2}>
-          <Button
-            size='sm'
-            variant='outline'
-            color='warning'
-            startDecorator={<LuRotateCw size={16} />}
-            onClick={() => {
-              setValue(originalData);
-              setChanged(false);
-            }}
-          >
-            Reset Changes
-          </Button>
-          <Button
-            size='sm'
-            variant='outline'
-            color='neutral'
-            startDecorator={viewDiff ? <LuFileCode size={18} /> : <LuFileDiff size={16} />}
-            onClick={() => {
-              setViewDiff(!viewDiff); 
-            }}
-          >
-            {viewDiff ? 'Return to Code Editor' : 'View in Diff Editor'}
-          </Button>
+    <div ref={themeRootRef} style={{ display: 'contents' }}>
+      <Stack direction="column" spacing={2} style={{ flex: 1 }}>
+        {viewDiff ? (
+          <DiffEditor
+            height='100%'
+            original={originalData}
+            theme={theme}
+            modified={value}
+            language='yaml'
+            options={{ readOnly: true, fontSize: 11 }}
+          />
+        ) : (
+          <MonacoEditor
+            defaultLanguage='yaml'
+            theme={theme}
+            height='100%'
+            value={value}
+            language='yaml'
+            path={editorPath}
+            options={{ readOnly: false, fontSize: 11 }}
+            onChange={handleChange}
+          />
+        )}
+        <Stack direction="row" justify="between" spacing={2}>
+          <Stack direction="row" spacing={2}>
+            <Button size='sm' variant='soft' color='brand' disabled={!changed} onClick={handleSubmit}>
+              Submit
+            </Button>
+            <Button size='sm' variant='outline' color='neutral' onClick={onClose}>
+              Cancel
+            </Button>
+          </Stack>
+          <Stack direction="row" spacing={2}>
+            <Button
+              size='sm'
+              variant='outline'
+              color='warning'
+              startDecorator={<LuRotateCw size={16} />}
+              onClick={() => {
+                setValue(originalData);
+                setChanged(false);
+              }}
+            >
+              Reset Changes
+            </Button>
+            <Button
+              size='sm'
+              variant='outline'
+              color='neutral'
+              startDecorator={viewDiff ? <LuFileCode size={18} /> : <LuFileDiff size={16} />}
+              onClick={() => {
+                setViewDiff(!viewDiff);
+              }}
+            >
+              {viewDiff ? 'Return to Code Editor' : 'View in Diff Editor'}
+            </Button>
+          </Stack>
         </Stack>
       </Stack>
-    </Stack>
+    </div>
   );
 };
 

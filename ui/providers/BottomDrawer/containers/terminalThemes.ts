@@ -1,30 +1,7 @@
 import type { ITheme } from '@xterm/xterm';
+import { buildXtermTheme } from '@omniviewdev/editors';
 
 export const terminalThemes: Record<string, ITheme> = {
-  default: {
-    background: '#1e1e1e',
-    foreground: '#d4d4d4',
-    cursor: '#d4d4d4',
-    cursorAccent: '#1e1e1e',
-    selectionBackground: '#264f78',
-    black: '#000000',
-    red: '#cd3131',
-    green: '#0dbc79',
-    yellow: '#e5e510',
-    blue: '#2472c8',
-    magenta: '#bc3fbc',
-    cyan: '#11a8cd',
-    white: '#e5e5e5',
-    brightBlack: '#666666',
-    brightRed: '#f14c4c',
-    brightGreen: '#23d18b',
-    brightYellow: '#f5f543',
-    brightBlue: '#3b8eea',
-    brightMagenta: '#d670d6',
-    brightCyan: '#29b8db',
-    brightWhite: '#ffffff',
-  },
-
   dracula: {
     background: '#282a36',
     foreground: '#f8f8f2',
@@ -482,14 +459,16 @@ export const terminalThemes: Record<string, ITheme> = {
   },
 };
 
-/** Look up a terminal theme by name, falling back to the default theme. */
-export function getTerminalTheme(name: string): ITheme {
-  return terminalThemes[name] ?? terminalThemes.default;
+/** Look up a terminal theme by name, falling back to the application theme. */
+export function getTerminalTheme(name: string, element?: HTMLElement | null): ITheme {
+  return name === 'application'
+    ? buildXtermTheme(element)
+    : terminalThemes[name] ?? buildXtermTheme(element);
 }
 
 /** Options array suitable for a settings dropdown. */
 export const terminalThemeOptions = [
-  { value: 'default', label: 'Default' },
+  { value: 'application', label: 'Application' },
   { value: 'dracula', label: 'Dracula' },
   { value: 'solarized-dark', label: 'Solarized Dark' },
   { value: 'solarized-light', label: 'Solarized Light' },

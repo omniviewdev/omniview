@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-// material-ui
-import { Spinner } from '@omniviewdev/base-ui';
+// ui
+import { Spinner, useTheme } from '@omniviewdev/base-ui';
 import styles from './Terminal.module.css';
 
 // xterm
@@ -43,10 +43,11 @@ const constructSignalHandler = (signal: string, sessionId: string) => {
  */
 export default function TerminalContainer({ sessionId, tab }: Props) {
   const { settings } = useSettings();
+  const { activeTheme } = useTheme();
 
   const tabStatus = tab?.properties?.status as string | undefined;
-  const settingsThemeBg = getTerminalTheme((settings['terminal.theme'] as string) || 'default').background ?? '#1e1e1e';
-
+  const themeName = (settings['terminal.theme'] as string) || 'application';
+  const settingsThemeBg = getTerminalTheme(themeName).background ?? '#1e1e1e';
   // Show loading state while session is being created
   if (tabStatus === 'connecting') {
     return (
@@ -125,12 +126,11 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
       return;
     }
 
-    const themeName = (settings['terminal.theme'] as string) || 'default';
-    term.options.theme = getTerminalTheme(themeName);
+    term.options.theme = getTerminalTheme(themeName, terminalRef.current);
     term.options.cursorBlink = settings['terminal.cursorBlink'] as boolean;
     term.options.cursorStyle = settings['terminal.cursorStyle'] as 'block' | 'underline' | 'bar';
     term.options.fontSize = (settings['terminal.fontSize'] as number) || 12;
-  }, [settings]);
+  }, [activeTheme.id, settings, themeName]);
 
   useEffect(() => {
     // Don't attempt if the ref is not set
@@ -146,12 +146,11 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     setError(null);
     errorRef.current = null;
 
-    // Resolve the terminal theme from the ref so we get current values
-    // without adding settings as a dependency.
+    // Resolve against the terminal element so scoped custom CSS tokens are
+    // included without recreating the terminal for ordinary settings updates.
     const s = settingsRef.current;
-    const themeName = (s['terminal.theme'] as string) || 'default';
-    const theme = getTerminalTheme(themeName);
-
+    const currentThemeName = (s['terminal.theme'] as string) || 'application';
+    const theme = getTerminalTheme(currentThemeName, terminalRef.current);
     // Initialize Terminal
     const terminal = new Terminal({
       cursorBlink: s['terminal.cursorBlink'],
@@ -366,8 +365,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     };
   }, [sessionId]);
 
-  const themeName = (settings['terminal.theme'] as string) || 'default';
-  const bgColor = getTerminalTheme(themeName).background ?? '#1e1e1e';
+  const bgColor = getTerminalTheme(themeName, terminalRef.current).background ?? '#1e1e1e';
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
