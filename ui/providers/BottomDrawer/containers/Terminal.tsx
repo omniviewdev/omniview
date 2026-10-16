@@ -6,6 +6,7 @@ import styles from './Terminal.module.css';
 
 // xterm
 import { Terminal } from '@xterm/xterm';
+import type { ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { CanvasAddon } from '@xterm/addon-canvas';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -47,32 +48,29 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
   const tabStatus = tab?.properties?.status as string | undefined;
   const themeName = (settings['terminal.theme'] as string) || 'application';
-  const settingsThemeBg = getTerminalTheme(themeName).background ?? '#1e1e1e';
-  // Show loading state while session is being created
-  if (tabStatus === 'connecting') {
-    return (
-      <div className={styles.Status} style={{ backgroundColor: settingsThemeBg }}>
-        <Spinner size='md' />
-        <div className={styles.StatusText}>Connecting...</div>
-      </div>
-    );
-  }
-
-  // Show error state if session creation failed
-  if (tabStatus === 'error') {
-    const errorMsg = tab?.properties?.error as string | undefined;
-    return (
-      <div className={styles.Status} style={{ backgroundColor: settingsThemeBg }}>
-        <div className={styles.StatusError}>Connection Failed</div>
-        {errorMsg && <div className={styles.StatusDetail}>{errorMsg}</div>}
-      </div>
-    );
-  }
 
   const terminalRef = useRef<HTMLDivElement>(null);
+  const [themeElement, setThemeElement] = useState<HTMLDivElement | null>(null);
+  const [themeResolution, setThemeResolution] = useState<{
+    activeThemeId: string;
+    element: HTMLDivElement;
+    name: string;
+    theme: ITheme;
+  } | null>(null);
+  const resolvedThemeRef = useRef<ITheme | null>(null);
+
+  const statusThemeRef = useCallback((element: HTMLDivElement | null) => {
+    setThemeElement(element);
+  }, []);
+
+  const terminalThemeRef = useCallback((element: HTMLDivElement | null) => {
+    terminalRef.current = element;
+    setThemeElement(element);
+  }, []);
 
   const disposers = useRef<Array<() => void>>([]);
   const xtermRef = useRef<Terminal | undefined>(undefined);
+  const terminalCleanupRef = useRef<(() => void) | null>(null);
 
   const fitAddonRef = useRef<FitAddon | undefined>(undefined);
   const canvasAddonRef = useRef<CanvasAddon | undefined>(undefined);
@@ -119,26 +117,64 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
-  // Apply settings changes to a live terminal without recreating it.
+  // CSS variables are committed by ThemeProvider after render. Resolve from
+  // the mounted element in a passive effect so scoped tokens are current.
   useEffect(() => {
-    const term = xtermRef.current;
-    if (!term) {
+    if (themeElement === null) {
       return;
     }
 
-    term.options.theme = getTerminalTheme(themeName, terminalRef.current);
+    setThemeResolution({
+      activeThemeId: activeTheme.id,
+      element: themeElement,
+      name: themeName,
+      theme: getTerminalTheme(themeName, themeElement),
+    });
+  }, [activeTheme.id, themeElement, themeName]);
+
+  const resolvedTheme = themeResolution?.activeThemeId === activeTheme.id
+    && themeResolution.element === themeElement
+    && themeResolution.name === themeName
+    ? themeResolution.theme
+    : null;
+  const resolvedElement = themeResolution?.element === themeElement
+    ? themeElement
+    : null;
+  resolvedThemeRef.current = resolvedTheme;
+
+  // Apply settings and the post-commit theme to a live terminal without
+  // recreating it.
+  useEffect(() => {
+    const term = xtermRef.current;
+    if (!term || resolvedTheme === null) {
+      return;
+    }
+
+    term.options.theme = resolvedTheme;
     term.options.cursorBlink = settings['terminal.cursorBlink'] as boolean;
     term.options.cursorStyle = settings['terminal.cursorStyle'] as 'block' | 'underline' | 'bar';
     term.options.fontSize = (settings['terminal.fontSize'] as number) || 12;
-  }, [activeTheme.id, settings, themeName]);
+  }, [resolvedTheme, settings]);
+
+  // Own teardown separately from initialization so a post-commit theme
+  // resolution can initialize or update xterm without recreating it.
+  useEffect(() => {
+    return () => {
+      terminalCleanupRef.current?.();
+      terminalCleanupRef.current = null;
+    };
+  }, [resolvedElement, sessionId, tabStatus]);
 
   useEffect(() => {
-    // Don't attempt if the ref is not set
-    if (terminalRef.current === null) {
-      return;
-    }
-
-    if (sessionId === '') {
+    if (
+      tabStatus === 'connecting'
+      || tabStatus === 'error'
+      || terminalRef.current === null
+      || resolvedElement === null
+      || resolvedThemeRef.current === null
+      || xtermRef.current !== undefined
+      || sessionId === ''
+    ) {
       return;
     }
 
@@ -146,11 +182,9 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
     setError(null);
     errorRef.current = null;
 
-    // Resolve against the terminal element so scoped custom CSS tokens are
-    // included without recreating the terminal for ordinary settings updates.
     const s = settingsRef.current;
-    const currentThemeName = (s['terminal.theme'] as string) || 'application';
-    const theme = getTerminalTheme(currentThemeName, terminalRef.current);
+    const theme = resolvedThemeRef.current;
+    const terminalElement = terminalRef.current;
     // Initialize Terminal
     const terminal = new Terminal({
       cursorBlink: s['terminal.cursorBlink'],
@@ -169,7 +203,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
     const fitAddon = new FitAddon();
 
-    terminal.open(terminalRef.current);
+    terminal.open(terminalElement);
 
     fitAddonRef.current = fitAddon;
 
@@ -329,7 +363,7 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
 
     // Cleanup function to detach from the session and remove listeners
-    return () => {
+    terminalCleanupRef.current = () => {
       // run our disposers
       disposers.current.forEach((disposer) => {
         disposer();
@@ -348,10 +382,9 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
 
       canvasAddonRef.current = undefined;
       webglAddonRef.current = undefined;
+      xtermRef.current = undefined;
 
-      if (terminalRef.current !== null) {
-        resizeObserver.unobserve(terminalRef.current);
-      }
+      resizeObserver.unobserve(terminalElement);
 
       // cleanup signal handlers
       ['ERROR', 'CLOSE', 'SIGINT', 'SIGQUIT', 'SIGTERM', 'SIGKILL', 'SIGHUP', 'SIGUSR1', 'SIGUSR2', 'SIGWINCH'].forEach((signal) => {
@@ -363,14 +396,33 @@ export default function TerminalContainer({ sessionId, tab }: Props) {
         log.error(new Error(parseAppError(err).detail), { event: 'detach_session', sessionId });
       });
     };
-  }, [sessionId]);
+  }, [resolvedElement, resolvedTheme, sessionId, tabStatus]);
 
-  const bgColor = getTerminalTheme(themeName, terminalRef.current).background ?? '#1e1e1e';
+  const bgColor = resolvedTheme?.background;
+
+  if (tabStatus === 'connecting') {
+    return (
+      <div ref={statusThemeRef} className={styles.Status} style={{ backgroundColor: bgColor }}>
+        <Spinner size='md' />
+        <div className={styles.StatusText}>Connecting...</div>
+      </div>
+    );
+  }
+
+  if (tabStatus === 'error') {
+    const errorMsg = tab?.properties?.error as string | undefined;
+    return (
+      <div ref={statusThemeRef} className={styles.Status} style={{ backgroundColor: bgColor }}>
+        <div className={styles.StatusError}>Connection Failed</div>
+        {errorMsg && <div className={styles.StatusDetail}>{errorMsg}</div>}
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       <div
-        ref={terminalRef}
+        ref={terminalThemeRef}
         style={{
           backgroundColor: bgColor,
           height: '100%',

@@ -1,5 +1,10 @@
-import type { ButtonHTMLAttributes, HTMLAttributes } from 'react';
-import { render, cleanup, act, screen } from '@testing-library/react';
+import {
+  useLayoutEffect,
+  useRef,
+  type ButtonHTMLAttributes,
+  type HTMLAttributes,
+} from 'react';
+import { render, cleanup, act, screen, waitFor } from '@testing-library/react';
 import type { BottomDrawerTab } from '@omniviewdev/runtime';
 
 // ─── xterm mocks ───────────────────────────────────────────────────────────────
@@ -24,7 +29,14 @@ const mocks = vi.hoisted(() => {
       'terminal.fontSize': 14,
       'terminal.theme': 'application',
     } as Record<string, unknown>,
-    mockBuildXtermTheme: vi.fn((_element?: HTMLElement | null) => ({ ...state.applicationTheme })),
+    mockBuildXtermTheme: vi.fn((element?: HTMLElement | null) => {
+      const scope = element?.closest('[data-terminal-theme-scope]');
+      return {
+        background: scope?.getAttribute('data-terminal-background') ?? state.applicationTheme.background,
+        foreground: scope?.getAttribute('data-terminal-foreground') ?? state.applicationTheme.foreground,
+        cursor: scope?.getAttribute('data-terminal-foreground') ?? state.applicationTheme.cursor,
+      };
+    }),
     mockOpen: vi.fn(),
     mockLoadAddon: vi.fn(),
     mockFocus: vi.fn(),
@@ -171,6 +183,40 @@ beforeEach(() => {
 import TerminalContainer from '../Terminal';
 import { Terminal } from '@xterm/xterm';
 
+function ScopedThemeHarness({
+  background,
+  foreground,
+  revision,
+  sessionId = 'scoped-session',
+}: {
+  background: string;
+  foreground: string;
+  revision: string;
+  sessionId?: string;
+}) {
+  const scopeRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    scopeRef.current?.setAttribute('data-terminal-background', background);
+    scopeRef.current?.setAttribute('data-terminal-foreground', foreground);
+  }, [background, foreground]);
+
+  return (
+    <div
+      ref={scopeRef}
+      data-testid="terminal-theme-scope"
+      data-terminal-theme-scope
+      data-terminal-background="#render-stale"
+      data-terminal-foreground="#render-stale"
+    >
+      <TerminalContainer
+        sessionId={sessionId}
+        tab={{ title: revision, properties: {} } as unknown as BottomDrawerTab}
+      />
+    </div>
+  );
+}
+
 describe('TerminalContainer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -264,6 +310,50 @@ describe('TerminalContainer', () => {
       background: '#304050',
       foreground: '#ffffff',
     }));
+  });
+
+  it('resolves scoped application tokens after the theme commit and updates shared chrome', async () => {
+    const view = render(
+      <ScopedThemeHarness
+        background="#123456"
+        foreground="#fefefe"
+        revision="void"
+      />,
+    );
+    const scope = screen.getByTestId('terminal-theme-scope');
+    const terminalElement = scope.firstElementChild?.firstElementChild as HTMLElement;
+
+    await waitFor(() => {
+      expect(terminalElement.style.backgroundColor).toBe('rgb(18, 52, 86)');
+    });
+    expect(mocks.state.terminal?.options.theme).toEqual(expect.objectContaining({
+      background: '#123456',
+      foreground: '#fefefe',
+    }));
+
+    mocks.state.activeTheme = { id: 'plugin:acme/scoped' };
+    view.rerender(
+      <ScopedThemeHarness
+        background="#654321"
+        foreground="#eeeeee"
+        revision="plugin:acme/scoped"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.mockBuildXtermTheme).toHaveLastReturnedWith(expect.objectContaining({
+        background: '#654321',
+      }));
+    });
+
+    await waitFor(() => {
+      expect(terminalElement.style.backgroundColor).toBe('rgb(101, 67, 33)');
+    });
+    expect(mocks.state.terminal?.options.theme).toEqual(expect.objectContaining({
+      background: '#654321',
+      foreground: '#eeeeee',
+    }));
+    expect(Terminal).toHaveBeenCalledTimes(1);
   });
 
   it('preserves an explicit terminal override during live application theme changes', () => {
