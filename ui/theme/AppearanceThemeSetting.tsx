@@ -48,7 +48,7 @@ export default function AppearanceThemeSetting() {
         }
       }}
     >
-      <Select.Trigger>
+      <Select.Trigger aria-label='Theme'>
         <Select.Value />
         <Select.Icon>
           <LuChevronDown aria-hidden />

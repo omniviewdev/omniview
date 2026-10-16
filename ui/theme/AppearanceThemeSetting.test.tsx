@@ -66,6 +66,7 @@ describe('AppearanceThemeSetting', () => {
 
   it('shows built-in, user, and plugin themes in registry order', () => {
     render(<AppearanceThemeSetting />);
+    expect(screen.getByRole('combobox', { name: 'Theme' })).toBeVisible();
 
     openThemePicker();
 

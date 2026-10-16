@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { BuiltInThemeId } from '@omniviewdev/base-ui';
 
@@ -20,6 +21,35 @@ const BUILT_IN_IDS: BuiltInThemeId[] = [
   'high-contrast-dark',
   'high-contrast-light',
 ];
+
+const startupScript = /<script>([\s\S]*?)<\/script>/.exec(readFileSync('index.html', 'utf8'))![1];
+
+describe('first-paint theme', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.setAttribute('data-ov-theme', 'void');
+    document.documentElement.style.colorScheme = '';
+  });
+
+  it.each([
+    ['ov-theme-mode', 'light', null, 'light', 'light'],
+    ['ov-theme-variant', 'solarized', null, 'solarized-dark', 'dark'],
+    ['ov-theme-mode', 'light', '{', 'light', 'light'],
+    ['ov-theme-mode', 'light', '{"schemaVersion":2,"themeId":"dark"}', 'light', 'light'],
+    ['ov-theme-mode', 'light', '{"schemaVersion":1,"themeId":"carbon"}', 'carbon', 'dark'],
+    ['ov-theme-mode', 'plugin:missing/theme', null, 'void', 'dark'],
+  ])('paints %s=%s with cache %s as %s', (key, value, cache, expected, scheme) => {
+    localStorage.setItem(key, value);
+    if (cache !== null) {
+      localStorage.setItem(BOOTSTRAP_KEY, cache);
+    }
+
+    new Function('document', 'localStorage', startupScript)(document, localStorage);
+
+    expect(document.documentElement.getAttribute('data-ov-theme')).toBe(expected);
+    expect(document.documentElement.style.colorScheme).toBe(scheme);
+  });
+});
 
 describe('theme bootstrap cache', () => {
   beforeEach(() => {

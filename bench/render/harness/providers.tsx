@@ -18,7 +18,7 @@ import {
 } from '@omniviewdev/runtime';
 
 import { store } from '@/store/store';
-import AppTheme from '@/theme/AppTheme';
+import AppThemeController from '@/theme/AppThemeController';
 import { AppSnackbarProvider } from '@/contexts/AppSnackbarProvider';
 import RightDrawerProvider from '@/providers/RightDrawerProvider';
 import BottomDrawerProvider from '@/providers/BottomDrawer/provider';
@@ -43,7 +43,7 @@ export function AppProviders({ children, queryClient }: AppProvidersProps) {
         <ExtensionProvider registry={EXTENSION_REGISTRY}>
           <AppSnackbarProvider>
             <Provider store={store}>
-              <AppTheme>
+              <AppThemeController>
                 <OperationsProvider>
                   <ConfirmationModalProvider>
                     <ConnectionStateProvider>
@@ -53,7 +53,7 @@ export function AppProviders({ children, queryClient }: AppProvidersProps) {
                     </ConnectionStateProvider>
                   </ConfirmationModalProvider>
                 </OperationsProvider>
-              </AppTheme>
+              </AppThemeController>
             </Provider>
           </AppSnackbarProvider>
         </ExtensionProvider>
