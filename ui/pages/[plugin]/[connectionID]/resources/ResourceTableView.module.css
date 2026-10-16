@@ -28,8 +28,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--ov-space-2);
-  border-radius: var(--ov-radius-sm);
-  border: 1px solid var(--ov-color-border-default);
+  border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
 .ConnectionName {

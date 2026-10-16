@@ -53,6 +53,9 @@ const SettingsEntries: React.FC<Props> = ({
             <div className={styles.LabelColumn}>
               <Text weight='semibold' size='sm'>{setting.label}</Text>
               <Text size='xs' tone='muted' className={styles.Description}>{setting.description}</Text>
+              {draftValues[fullID] !== undefined && (
+                <Text size='xs' tone='warning'>Unsaved change</Text>
+              )}
               {sectionID !== 'plugin' && (
                 <Text size='xs' tone='subtle' mono className={styles.Key}>
                   {fullID}

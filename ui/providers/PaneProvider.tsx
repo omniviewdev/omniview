@@ -78,7 +78,7 @@ export default function PaneRenderer() {
             return (
               <div
                 style={{
-                  borderRight: addRightBorder ? '2px solid var(--ov-color-border-default)' : 'none',
+                  borderRight: addRightBorder ? '1px solid var(--ov-color-border-muted)' : 'none',
                   gridColumn: `span ${panes.length == 0 ? 12 : 12 / panes.length}`,
                 }}
                 key={index}

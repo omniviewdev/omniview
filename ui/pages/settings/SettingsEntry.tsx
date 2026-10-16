@@ -32,14 +32,11 @@ const toStringArray = (value: any): string[] => {
   return [];
 };
 
-const cx = (...classes: Array<string | false | undefined>) => classes.filter(Boolean).join(' ');
-
 type SelectOption = { value: string; label: string };
 
 type SettingSelectProps = {
   value: string;
   options: SelectOption[];
-  isChanged: boolean;
   onChange: (value: string) => void;
 };
 
@@ -47,7 +44,7 @@ type SettingSelectProps = {
  * Single-value select over an `options` array (the call shape of the legacy
  * design system's Select), built on the base-ui Select compound.
  */
-const SettingSelect: React.FC<SettingSelectProps> = ({ value, options, isChanged, onChange }) => (
+const SettingSelect: React.FC<SettingSelectProps> = ({ value, options, onChange }) => (
   <Select.Root
     size='sm'
     value={value}
@@ -58,7 +55,7 @@ const SettingSelect: React.FC<SettingSelectProps> = ({ value, options, isChanged
       }
     }}
   >
-    <Select.Trigger className={cx(styles.SelectTrigger, isChanged && styles.Changed)}>
+    <Select.Trigger className={styles.SelectTrigger}>
       <Select.Value />
       <Select.Icon>
         <LuChevronDown aria-hidden />
@@ -121,7 +118,6 @@ const TextSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange })
   return (
     <TextField.Root size='sm' className={styles.Field}>
       <TextField.Control
-        className={cx(isChanged && styles.Changed)}
         value={isChanged ? draftValue as string : setting.value as string}
         onChange={e => {
           handleChange(id, e.target.value);
@@ -137,7 +133,6 @@ const SelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
   return (
     <SettingSelect
       value={isChanged ? draftValue as string : setting.value as string}
-      isChanged={isChanged}
       onChange={(value) => {
         handleChange(id, value);
       }}
@@ -158,7 +153,7 @@ const MultiSelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleCh
       {setting.options?.length ? (
         <MultiSelect
           size='sm'
-          className={cx(styles.MultiInput, isChanged && styles.Changed)}
+          className={styles.MultiInput}
           value={selectedValues}
           onValueChange={(value) => {
             handleChange(id, value);
@@ -172,7 +167,7 @@ const MultiSelectSetting: React.FC<Props> = ({ setting, id, draftValue, handleCh
       ) : (
         <TagInput
           size='sm'
-          className={cx(styles.MultiInput, isChanged && styles.Changed)}
+          className={styles.MultiInput}
           value={selectedValues}
           onChange={(val) => {
             handleChange(id, val);
@@ -223,7 +218,6 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
       <TextField.Root size='sm' className={styles.Field}>
         <TextField.Control
           type='number'
-          className={cx(isChanged && styles.Changed)}
           value={isChanged ? String(+draftValue) : String(+setting.value)}
           onChange={e => {
             handleChange(id, +e.target.value);
@@ -236,7 +230,6 @@ const NumberSetting: React.FC<Props> = ({ setting, id, draftValue, handleChange 
   return (
     <SettingSelect
       value={isChanged ? String(!!draftValue) : String(!!setting.value)}
-      isChanged={isChanged}
       onChange={(value) => {
         handleChange(id, value);
       }}

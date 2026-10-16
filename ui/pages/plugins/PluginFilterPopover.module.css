@@ -2,7 +2,7 @@
   width: 200px;
   padding: 0;
   background-color: var(--ov-color-bg-surface);
-  border: 1px solid var(--ov-color-border-default);
+  border: 1px solid var(--ov-color-border-overlay);
   border-radius: 8px;
 }
 

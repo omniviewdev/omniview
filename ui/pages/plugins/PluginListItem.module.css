@@ -120,7 +120,7 @@
   font-weight: 600;
   color: var(--ov-color-brand-500);
   background: none;
-  border: 1px solid color-mix(in srgb, var(--ov-color-brand-500) 40%, transparent);
+  border: 1px solid var(--ov-color-border-control);
   border-radius: 4px;
   cursor: pointer;
   padding: 1px 8px;
@@ -130,7 +130,6 @@
 
 .InstallButton:hover {
   background-color: color-mix(in srgb, var(--ov-color-brand-500) 10%, transparent);
-  border-color: color-mix(in srgb, var(--ov-color-brand-500) 60%, transparent);
 }
 
 .Description {

@@ -15,8 +15,7 @@
   gap: var(--ov-space-3);
   width: 100%;
   padding: var(--ov-space-2) var(--ov-space-4);
-  border: 1px solid var(--ov-color-border-default);
-  border-radius: var(--ov-radius-md);
+  border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
 .HeaderText {

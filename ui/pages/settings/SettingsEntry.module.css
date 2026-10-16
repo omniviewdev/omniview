@@ -2,12 +2,6 @@
   width: 100%;
 }
 
-/* Highlight a control whose value differs from the saved setting (draft). */
-.Changed {
-  outline: 2px solid var(--ov-color-border-focus);
-  outline-offset: 2px;
-}
-
 .SelectTrigger {
   width: 100%;
 }

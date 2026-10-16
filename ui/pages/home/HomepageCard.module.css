@@ -16,7 +16,7 @@
   align-items: center;
   justify-content: flex-end;
   padding: var(--ov-space-1) var(--ov-space-2);
-  border-bottom: 1px solid var(--ov-color-border-default);
+  border-bottom: 1px solid var(--ov-color-border-muted);
   background-color: var(--ov-color-bg-surface);
 }
 

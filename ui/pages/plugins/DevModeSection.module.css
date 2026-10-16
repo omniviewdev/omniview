@@ -12,7 +12,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--ov-color-border-default);
+  border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
 .HeaderLeft {

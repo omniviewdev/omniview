@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
-    "@omniviewdev/base-ui": "^0.2.2",
+    "@omniviewdev/base-ui": "^0.4.1",
     "@omniviewdev/runtime": "workspace:*",
     "date-fns": "^3.6.0",
     "language-detect": "^1.1.0",

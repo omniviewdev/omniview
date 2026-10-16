@@ -1,5 +1,5 @@
 .Surface {
-  border: 1px solid var(--ov-color-border-default);
+  border: 1px solid var(--ov-color-border-overlay);
   background: var(--ov-color-bg-elevated);
   overflow: hidden;
 }
@@ -9,7 +9,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--ov-space-3) var(--ov-space-4);
-  border-bottom: 1px solid var(--ov-color-border-default);
+  border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
 .Header .HeaderTitle {
@@ -23,7 +23,7 @@
 
 .ProgressSection {
   padding: var(--ov-space-2) var(--ov-space-4);
-  border-bottom: 1px solid var(--ov-color-border-default);
+  border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
 .ProgressRow {
@@ -58,7 +58,7 @@
   align-items: center;
   padding: 6px var(--ov-space-4);
   background: var(--ov-color-state-hover);
-  border-bottom: 1px solid var(--ov-color-border-default);
+  border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
 .GroupLabel {
@@ -114,7 +114,7 @@
   display: flex;
   justify-content: flex-end;
   padding: var(--ov-space-2) var(--ov-space-4);
-  border-top: 1px solid var(--ov-color-border-default);
+  border-top: 1px solid var(--ov-color-border-muted);
 }
 
 .IconMuted {

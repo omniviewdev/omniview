@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
-    "@omniviewdev/base-ui": "^0.2.2",
+    "@omniviewdev/base-ui": "^0.4.1",
     "@omniviewdev/runtime": "workspace:*",
     "@tanstack/react-query": "^5.76.1",
     "@tanstack/react-table": "^8.21.3",

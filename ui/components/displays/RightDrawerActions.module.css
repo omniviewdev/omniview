@@ -23,7 +23,7 @@
   transform: translateY(-50%);
   width: 1px;
   height: 16px;
-  background-color: var(--ov-color-border-default);
+  background-color: var(--ov-color-border-muted);
 }
 
 .TriggerWrap {

@@ -7,8 +7,7 @@
   gap: var(--ov-space-2);
   padding: var(--ov-space-1);
   background: var(--ov-color-bg-surface);
-  border: 1px solid var(--ov-color-border-default);
-  border-radius: var(--ov-radius-sm);
+  border-bottom: 1px solid var(--ov-color-border-muted);
 }
 
 .Title {
