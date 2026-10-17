@@ -73,6 +73,14 @@ Plugin imports of `@omniviewdev/base-ui/styles.css` must resolve through `ui/the
 
 Compact filter popovers use `size="sm"` and let the shared popup own outer padding and inter-section gaps. Group headings and controls into sections instead of adding another padded surface inside the popup.
 
+### Developing against published UI patches
+
+`task dev` first runs `task ui:update`, then starts Wails. The update task refreshes only Base UI, AI UI, and Editors for the host and runtime workspace; it respects their `~` version ranges, so patches are automatic but minor and major upgrades remain explicit. It updates the installed packages and `pnpm-lock.yaml`, and requires registry access. An update failure stops startup rather than silently running stale packages.
+
+Use `task ui:update` to refresh without starting the app. Restart `task dev` after publishing the UI repository; this consumes published npm packages, not unpublished sibling source changes. Running `pnpm dev` directly starts only Vite and does not run the refresh task.
+
+The root manifest pins pnpm 10.34.7 to keep local installs on the same major as CI. CI and release workflows continue using frozen lockfile installs; review and commit intended lockfile changes from development.
+
 ## Documentation
 
 For detailed instructions, tutorials, and API documentation, visit our [official documentation](https://docs.omniview.dev/docs/introduction).

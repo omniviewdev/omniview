@@ -30,7 +30,13 @@ tasks:
   dev:
     summary: Runs the application in development mode
     cmds:
+      - task: ui:update
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  ui:update:
+    summary: Refresh published UI packages to the newest patch allowed by their manifests
+    cmds:
+      - pnpm --filter omniview --filter @omniviewdev/runtime update --depth 0 @omniviewdev/base-ui @omniviewdev/ai-ui @omniviewdev/editors
 
   # Server mode: the app as a plain HTTP server on localhost:34115 with no native
   # window, for Playwright (e2e/). State goes to bin/server-state unless
