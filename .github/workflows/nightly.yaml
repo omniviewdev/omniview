@@ -17,7 +17,6 @@ env:
   NODE_OPTIONS: "--max-old-space-size=4096"
   GO_VERSION: "1.26"
   NODE_VERSION: "24"
-  PNPM_VERSION: "10"
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
@@ -78,7 +77,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
           run_install: |
             - args: []
             - args: [--global, typescript]
@@ -222,7 +220,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
           run_install: |
             - args: []
             - args: [--global, typescript]
@@ -292,7 +289,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
           run_install: |
             - args: []
             - args: [--global, typescript]

@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
+  "packageManager": "pnpm@10.34.7",
   "scripts": {
     "dev": "vite",
     "build": "pnpm run bundle:yaml-worker && tsc && vite build",
@@ -25,9 +26,9 @@
     "@grafana/faro-web-sdk": "^2.2.4",
     "@grafana/faro-web-tracing": "^2.2.4",
     "@monaco-editor/react": "^4.7.0",
-    "@omniviewdev/ai-ui": "^3.0.2",
-    "@omniviewdev/base-ui": "^0.4.2",
-    "@omniviewdev/editors": "^3.0.2",
+    "@omniviewdev/ai-ui": "~3.0.3",
+    "@omniviewdev/base-ui": "~0.4.3",
+    "@omniviewdev/editors": "~3.0.3",
     "@omniviewdev/providers": "workspace:*",
     "@omniviewdev/runtime": "workspace:*",
     "@opentelemetry/api": "^1.9.0",
@@ -102,11 +103,5 @@
     "typescript": "^5.8.3",
     "vite": "~8.0.1",
     "vitest": "^4.0.18"
-  },
-  "pnpm": {
-    "overrides": {
-      "@types/react": "^19.0.0",
-      "@types/react-dom": "^19.0.0"
-    }
   }
 }

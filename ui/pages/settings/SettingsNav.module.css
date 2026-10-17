@@ -1,5 +1,6 @@
 .Root {
-  padding: var(--ov-space-2) 0;
+  padding-block: var(--ov-space-2);
+  padding-inline: var(--ov-space-2);
 }
 
 .PluginAvatar {

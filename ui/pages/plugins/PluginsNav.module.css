@@ -107,8 +107,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
-  padding: 4px 12px;
+  inline-size: 100%;
+  min-block-size: var(--ov-size-list-item-height-md);
+  padding-block: var(--ov-space-1);
+  padding-inline: var(--ov-space-4);
+  line-height: 1.25;
   cursor: pointer;
   user-select: none;
 }
@@ -128,7 +131,7 @@
 }
 
 .SectionLabel {
-  margin-left: 4px;
+  margin-inline-start: var(--ov-space-1);
   font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -142,8 +145,8 @@
   background-color: color-mix(in srgb, var(--ov-color-brand-500) 20%, transparent);
   color: var(--ov-color-brand-500);
   border-radius: 10px;
-  padding: 0 6px;
-  margin-left: 6px;
+  padding-inline: var(--ov-space-1-5);
+  margin-inline-start: var(--ov-space-1-5);
   line-height: 16px;
 }
 

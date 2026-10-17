@@ -27,7 +27,8 @@
 
 .ItemsArea {
   composes: Area;
-  width: 100%;
+  flex: 1 1 0;
+  min-inline-size: 0;
   justify-content: flex-end;
   gap: var(--ov-space-1);
   padding-inline: var(--ov-space-2);
@@ -35,7 +36,8 @@
 
 .TabsArea {
   composes: Area;
-  width: calc(100% - var(--CoreLayoutHeader-inset, 0px));
+  flex: 1 1 0;
+  min-inline-size: 0;
   justify-content: flex-start;
   gap: var(--ov-space-2);
   padding-inline: var(--ov-space-1);
@@ -43,27 +45,23 @@
 
 .ContextArea {
   composes: Area;
-  width: 100%;
+  flex: 1 1 0;
+  min-inline-size: 0;
   gap: var(--ov-space-3);
 }
 
 .SearchArea {
   composes: Area;
+  flex: 0 1 500px;
+  min-inline-size: 0;
   justify-content: center;
-  gap: var(--ov-space-2);
   padding-inline: var(--ov-space-1);
 }
 
 .Search {
   composes: NoDrag;
-  flex-basis: 500px;
-  min-width: 400px;
-}
-
-@media (min-width: 1536px) {
-  .Search {
-    min-width: 500px;
-  }
+  inline-size: 100%;
+  min-inline-size: 0;
 }
 
 .SearchIcon {
