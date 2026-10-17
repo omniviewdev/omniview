@@ -81,6 +81,8 @@ Use `task ui:update` to refresh without starting the app. Restart `task dev` aft
 
 The root manifest’s `packageManager` field is the single pnpm version source for local development and GitHub Actions. Workflow setup steps intentionally omit a separate pnpm version. CI and release workflows continue using frozen lockfile installs; review and commit intended lockfile changes from development.
 
+`task check:ui-typecheck` checks application and test programs separately. The test configuration explicitly loads React diagnostic augmentation types, so component flags such as `whyDidYouRender` do not depend on unrelated imports being present.
+
 ## Documentation
 
 For detailed instructions, tutorials, and API documentation, visit our [official documentation](https://docs.omniview.dev/docs/introduction).
