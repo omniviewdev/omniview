@@ -19,11 +19,14 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useExtensionPoint } from '@omniviewdev/runtime';
-import { Button, Grid, Text } from '@omniviewdev/base-ui';
+import { Button, Grid, Spinner, Text } from '@omniviewdev/base-ui';
 import type { GridItemProps } from '@omniviewdev/base-ui';
 import { LuCheck, LuPencil } from 'react-icons/lu';
 import type { HomepageCardProps, HomepageCardMeta } from '@/features/extensions/homepage/types';
 import { useHomepageCardSettings } from '@/hooks/homepage/useHomepageCardSettings';
+import { DevProcessStatus } from '@omniviewdev/runtime/models';
+import { usePluginService } from '@/features/plugins/react/usePluginService';
+import { useInstalledPlugins } from '@/hooks/plugin/useInstalledPlugins';
 import HomepageCard from './HomepageCard';
 import HomepageEmptyState from './HomepageEmptyState';
 import Welcome from '../welcome';
@@ -72,6 +75,20 @@ const Home: React.FC = () => {
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const ep = useExtensionPoint<React.FC<HomepageCardProps>>('omniview/home/card');
   const registrations = ep?.list() ?? [];
+  const { ready, plugins } = usePluginService();
+  const { plugins: installedPlugins, isLoading, error } = useInstalledPlugins();
+  const pluginsPending = !ready || isLoading || installedPlugins.some((plugin) => {
+    if (plugin.dev && (
+      plugin.devStatus === DevProcessStatus.DevProcessStatusError
+      || plugin.devStatus === DevProcessStatus.DevProcessStatusStopped
+      || Boolean(plugin.devError)
+    )) {
+      return false;
+    }
+
+    const phase = plugins.get(plugin.id)?.phase;
+    return phase !== 'ready' && phase !== 'error';
+  });
 
   const { settings, setOrder, toggleHidden, updateCardConfig, isHidden, getCardConfig } =
     useHomepageCardSettings();
@@ -88,6 +105,10 @@ const Home: React.FC = () => {
 
   // Sync order: append newly registered IDs, prune IDs for plugins that are no longer loaded.
   React.useEffect(() => {
+    if (pluginsPending || error !== null) {
+      return;
+    }
+
     const currentIds = new Set(registrations.map((r) => r.id));
     const newIds = registrations.map((r) => r.id).filter((id) => !settings.order.includes(id));
     const pruned = settings.order.filter((id) => currentIds.has(id));
@@ -95,7 +116,7 @@ const Home: React.FC = () => {
       setOrder([...pruned, ...newIds]);
     }
     // Keyed on registrationIds, not registrations (see above).
-  }, [registrationIds]);
+  }, [registrationIds, pluginsPending, error]);
 
   // Build ordered list — memoized; only recalculates when order or known IDs change
   const orderedIds = React.useMemo(
@@ -130,8 +151,26 @@ const Home: React.FC = () => {
     setActiveId(null);
   };
 
-  // If no cards are registered, fall back to the original Welcome page
+  // An empty registry is not an empty installation until startup has settled.
   if (registrations.length === 0) {
+    if (error !== null) {
+      return (
+        <div className={styles.Loading} role='alert'>
+          <Text tone='danger'>Unable to load plugin content.</Text>
+          <Text size='sm' tone='muted'>{error.message}</Text>
+        </div>
+      );
+    }
+
+    if (pluginsPending) {
+      return (
+        <div className={styles.Loading} role='status' aria-live='polite'>
+          <Spinner size='lg' aria-hidden='true' />
+          <Text size='sm' tone='muted'>Loading plugin content…</Text>
+        </div>
+      );
+    }
+
     return <Welcome />;
   }
 

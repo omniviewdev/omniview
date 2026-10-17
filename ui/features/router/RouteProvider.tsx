@@ -4,6 +4,7 @@ import { usePluginRoutes } from '@/features/plugins';
 import { coreRoutes } from './routes';
 import PrimaryLoading from '@/components/util/PrimaryLoading';
 import { reportStartupReady } from '@/features/perf/startup';
+import PluginRouteStatus from '@/features/plugins/components/PluginRouteStatus';
 
 const buildPluginRouteWrapper = (pluginRoutes: RouteObject[]) => {
   // Deep-clone the top-level route and its children array to avoid mutating
@@ -20,7 +21,10 @@ const buildPluginRouteWrapper = (pluginRoutes: RouteObject[]) => {
 
   coreChildren.push({
     path: '_plugin',
-    children: pluginRoutes,
+    children: [
+      ...pluginRoutes,
+      { path: ':pluginId/*', Component: PluginRouteStatus },
+    ],
   });
 
   const root: RouteObject = { ...(coreRoutes[0] as NonIndexRouteObject), children: coreChildren };
@@ -46,6 +50,9 @@ export const RouteProvider = () => {
     const newRouter = createHashRouter(buildPluginRouteWrapper(pluginRoutes));
     setRouter(newRouter);
     console.debug('[RouteProvider] router created', { routeVersion });
+    return () => {
+      newRouter.dispose(); 
+    };
   }, [routeVersion]);
 
   // The shell counts as interactive once the first router has rendered.
@@ -60,5 +67,5 @@ export const RouteProvider = () => {
     return <PrimaryLoading message="Preparing workspace..." />;
   }
 
-  return <RouterProvider router={router} />;
+  return <RouterProvider router={router} fallbackElement={<PrimaryLoading message="Loading workspace..." />} />;
 };

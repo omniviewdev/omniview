@@ -55,6 +55,7 @@ ui/features/plugins/
 │   ├── ExtensionPointRenderer.tsx  # Renders all contributions for an extension point
 │   ├── PluginSurfaceBoundary.tsx   # Error boundary for plugin surfaces
 │   ├── PluginRenderer.tsx          # Route-level plugin layout + error boundary
+│   ├── PluginRouteStatus.tsx       # Progress/error surface before routes are available
 │   ├── PluginLoadErrorPage.tsx     # Error page shown when plugin fails to load
 │   └── PluginNotFoundPage.tsx      # 404 page for unknown plugin routes
 │
@@ -96,6 +97,39 @@ idle ──→ loading ──→ ready
 5. **Define extension points** — Register any extension points the plugin declares
 6. **Apply contributions** — Register contributions into the extension point registry
 7. **Emit event + notify** — Fire Wails event, notify `useSyncExternalStore` subscribers
+
+### Startup and Development Server Readiness
+
+The host starts plugin UI loading during startup, not on the first sidebar click.
+`useInstalledPlugins()` combines installed descriptors with the live dev-server
+state from `useDevServers()`. That subscription is installed before fetching its
+initial snapshot; status events received during the request take precedence over
+the older snapshot.
+Discovery shares the management `plugins` query cache, so install/uninstall
+invalidation also refreshes startup descriptors without a second cache.
+
+A positive `vitePort` only means a port has been allocated. Dev UI imports require
+`viteStatus === "ready"` and a positive port. Already-ready dev plugins join the
+initial `loadAll()` batch; delayed dev plugins start loading when their status
+becomes ready. Both paths consume the same reconciled state. Initial-batch IDs
+remain reserved until the batch settles, including plugins queued behind its
+concurrency limit, so a status update cannot start a competing import.
+
+The shell remains interactive while plugins initialize. `ready` describes the
+initial eligible batch settling, not every development server becoming ready.
+`RouteProvider` reserves `/_plugin/:pluginId/*` before plugin routes exist:
+known plugins show progress, dev-server failures offer a restart, import failures
+offer retry/reset (reset clears state and immediately reloads with the original
+dev options), and unknown plugin URLs show not-found feedback. Once routes
+are registered, the concrete plugin route replaces this fallback at the current
+URL, including deep links. Replaced routers are disposed to release their
+history listeners.
+
+The homepage also distinguishes pending registration from an empty installation.
+On a frontend reload it shows progress until discovery and plugin imports settle,
+including dev plugins waiting for their server. Welcome is only used once that
+state is settled and no cards are registered. Existing cards remain usable while
+other plugins load, and saved card order is not pruned against a partial registry.
 
 ### Concurrency Safety
 

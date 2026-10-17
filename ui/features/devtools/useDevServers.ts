@@ -11,31 +11,19 @@ import { getAggregateStatus } from './types';
  */
 export function useDevServers() {
   const [servers, setServers] = useState<Map<string, DevServerState>>(new Map());
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
-  // Hydrate from backend on mount.
   useEffect(() => {
-    DevServerManager.ListDevServerStates()
-      .then((states) => {
-        if (!states || states.length === 0) {
-          return;
-        }
+    let active = true;
+    const updated = new Set<string>();
 
-        setServers(new Map(
-          states.map((s) => [s.pluginID, s]),
-        ));
-      })
-      .catch(() => {
-        // Silently ignore -- backend may not be ready yet.
-      });
-  }, []);
-
-  // Subscribe to real-time status events.
-  useEffect(() => {
+    // Subscribe first; a slow snapshot must never replace a newer status event.
     const unsub = devToolsChannel.on('onStatusChange', (state) => {
+      updated.add(state.pluginID);
       setServers((prev) => {
         const next = new Map(prev);
         if (!state.grpcConnected && state.viteStatus === undefined) {
-          // Plugin fully disconnected -- remove from map.
           next.delete(state.pluginID);
         } else {
           next.set(state.pluginID, state);
@@ -45,7 +33,38 @@ export function useDevServers() {
       });
     });
 
-    return unsub;
+    void DevServerManager.ListDevServerStates()
+      .then((states) => {
+        if (!active) {
+          return;
+        }
+
+        setServers((prev) => {
+          const next = new Map(prev);
+          for (const state of states ?? []) {
+            if (!updated.has(state.pluginID)) {
+              next.set(state.pluginID, state);
+            }
+          }
+
+          return next;
+        });
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setError(cause instanceof Error ? cause : new Error(String(cause)));
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+      unsub();
+    };
   }, []);
 
   const summary: DevServerSummary = {
@@ -76,5 +95,5 @@ export function useDevServers() {
     }
   });
 
-  return { servers, summary };
+  return { servers, summary, isLoading, error };
 }

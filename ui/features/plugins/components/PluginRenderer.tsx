@@ -7,6 +7,7 @@ import PluginDevOverlay from '@/features/devtools/components/PluginDevOverlay';
 import { PanelErrorFallback, onBoundaryError } from '@/components/errors/ErrorFallback';
 import { usePluginService } from '@/features/plugins';
 import styles from './PluginRenderer.module.css';
+import PluginRouteStatus from './PluginRouteStatus';
 
 export type PluginRendererProps = Record<string, unknown>;
 
@@ -34,7 +35,7 @@ const PluginRenderer: React.FC<PluginRendererProps> = () => {
   }
 
   if (loadedAt == null) {
-    return null;
+    return <PluginRouteStatus pluginId={data.pluginID} />;
   }
 
   return (
