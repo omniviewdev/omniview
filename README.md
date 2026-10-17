@@ -79,7 +79,7 @@ Compact filter popovers use `size="sm"` and let the shared popup own outer paddi
 
 Use `task ui:update` to refresh without starting the app. Restart `task dev` after publishing the UI repository; this consumes published npm packages, not unpublished sibling source changes. Running `pnpm dev` directly starts only Vite and does not run the refresh task.
 
-The root manifest pins pnpm 10.34.7 to keep local installs on the same major as CI. CI and release workflows continue using frozen lockfile installs; review and commit intended lockfile changes from development.
+The root manifest’s `packageManager` field is the single pnpm version source for local development and GitHub Actions. Workflow setup steps intentionally omit a separate pnpm version. CI and release workflows continue using frozen lockfile installs; review and commit intended lockfile changes from development.
 
 ## Documentation
 

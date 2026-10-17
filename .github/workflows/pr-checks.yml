@@ -11,7 +11,6 @@ concurrency:
 env:
   GO_VERSION: "1.26"
   NODE_VERSION: "24"
-  PNPM_VERSION: "10"
 
 jobs:
   go-checks:
@@ -102,8 +101,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - name: Install Task
         uses: arduino/setup-task@v2
