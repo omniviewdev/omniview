@@ -69,6 +69,10 @@ For contributors: resource-toolbar controls should consistently request `size="s
 
 The titlebar search owns a flexible 500px preferred-width region; adjacent header regions share the remaining width. Keep sizing on the region rather than imposing a minimum width on the input, so narrow windows can shrink without clipping decorators.
 
+Plugin imports of `@omniviewdev/base-ui/styles.css` must resolve through `ui/theme/base-ui.css`, the same layered entry used by the host. Loading the package stylesheet directly a second time bypasses the cascade layer and can override host component sizing and spacing after plugin startup.
+
+Compact filter popovers use `size="sm"` and let the shared popup own outer padding and inter-section gaps. Group headings and controls into sections instead of adding another padded surface inside the popup.
+
 ## Documentation
 
 For detailed instructions, tutorials, and API documentation, visit our [official documentation](https://docs.omniview.dev/docs/introduction).

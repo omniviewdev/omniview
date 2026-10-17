@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { Checkbox, Popover, RadioGroup } from '@omniviewdev/base-ui';
+import { Button, Checkbox, Popover, RadioGroup } from '@omniviewdev/base-ui';
 
 import styles from './PluginFilterPopover.module.css';
 
@@ -66,6 +66,7 @@ const PluginFilterPopover: React.FC<Props> = ({
 
   return (
     <Popover.Root
+      size='sm'
       open={open && Boolean(anchorEl)}
       onOpenChange={(next) => {
         if (!next) {
@@ -76,30 +77,31 @@ const PluginFilterPopover: React.FC<Props> = ({
     >
       <Popover.Portal>
         <Popover.Positioner anchor={anchorEl} side='bottom' align='end' sideOffset={4}>
-          <Popover.Popup className={styles.Popup}>
-            {/* Category */}
-            <div className={styles.SectionTitle}>Category</div>
-            <div className={styles.Options}>
-              {CATEGORIES.map(cat => (
-                <Checkbox
-                  key={cat.value}
-                  size='sm'
-                  checked={filters.categories.has(cat.value)}
-                  onCheckedChange={() => {
-                    toggleCategory(cat.value);
-                  }}
-                  className={styles.Option}
-                >
-                  {cat.label}
-                </Checkbox>
-              ))}
-            </div>
+          <Popover.Popup>
+            <section className={styles.Section} aria-label='Category'>
+              <h3 className={styles.SectionTitle}>Category</h3>
+              <div className={styles.Options}>
+                {CATEGORIES.map(cat => (
+                  <Checkbox
+                    key={cat.value}
+                    size='sm'
+                    checked={filters.categories.has(cat.value)}
+                    onCheckedChange={() => {
+                      toggleCategory(cat.value);
+                    }}
+                    className={styles.Option}
+                  >
+                    {cat.label}
+                  </Checkbox>
+                ))}
+              </div>
+            </section>
 
-            {/* Sort */}
-            <div className={`${styles.SectionTitle} ${styles.SortTitle}`}>Sort by</div>
-            <div className={styles.SortOptions}>
+            <section className={styles.Section} aria-label='Sort by'>
+              <h3 className={styles.SectionTitle}>Sort by</h3>
               <RadioGroup
                 size='sm'
+                className={styles.Options}
                 value={filters.sort}
                 onValueChange={(v) => {
                   setSort(v as SortOption);
@@ -112,14 +114,14 @@ const PluginFilterPopover: React.FC<Props> = ({
                   </RadioGroup.Item>
                 ))}
               </RadioGroup>
-            </div>
+            </section>
 
             {/* Clear all */}
             {activeCount > 0 && (
               <div className={styles.Footer}>
-                <button type='button' onClick={clearAll} className={styles.ClearButton}>
+                <Button size='sm' variant='ghost' color='brand' onClick={clearAll}>
                   Clear all filters
-                </button>
+                </Button>
               </div>
             )}
           </Popover.Popup>
