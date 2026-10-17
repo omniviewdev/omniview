@@ -1,12 +1,10 @@
 import React, { useRef, useMemo, useEffect } from 'react';
-import { Events } from '@omniviewdev/runtime/runtime';
 import { PluginServiceContext } from './context';
 import { PluginService } from '../core/PluginService';
 import { createProductionDeps } from '../adapters/createProductionDeps';
 import type { PluginDescriptor } from '../core/types';
 
-// Read-only startup hook — independent from the service consumer hook.
-// Stubbed here; wired to real backend in B8.
+// Startup discovery is independent from the service consumer hook.
 import { useInstalledPlugins } from '@/hooks/plugin/useInstalledPlugins';
 
 export type PluginServiceProviderProps = {
@@ -31,7 +29,7 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
   const service = serviceRef.current;
 
   // Read-only startup data — acyclic, does not use the service consumer hook
-  const { plugins: installedPlugins, isLoading } = useInstalledPlugins();
+  const { plugins: installedPlugins, isLoading, error } = useInstalledPlugins();
 
   // Start/stop event listeners
   useEffect(() => {
@@ -43,15 +41,16 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
 
   // Orchestrate initial load
   const loadStarted = useRef(false);
+  const initialBatch = useRef<Set<string> | null>(null);
   useEffect(() => {
-    if (isLoading || loadStarted.current) {
+    if (isLoading || error !== null || loadStarted.current) {
       return;
     }
 
     loadStarted.current = true;
 
-    // Exclude dev plugins whose dev server hasn't started yet (no port).
-    // They will be loaded later when the dev server status event fires.
+    // Ready dev servers join the initial batch; others are loaded as soon as
+    // their reconciled status becomes ready, independently of navigation.
     const descriptors: PluginDescriptor[] = installedPlugins
       .filter((p) => !p.dev || (p.dev && p.devPort && p.devPort > 0))
       .map((p) => ({
@@ -59,15 +58,17 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
         dev: p.dev,
         devPort: p.devPort,
       }));
+    initialBatch.current = new Set(descriptors.map((plugin) => plugin.id));
 
     void service.loadAll(descriptors)
       .catch((err) => {
         console.error('[PluginServiceProvider] loadAll failed:', err);
       })
       .finally(() => {
+        initialBatch.current = null;
         service.markReady();
       });
-  }, [isLoading, installedPlugins, service]);
+  }, [isLoading, error, installedPlugins, service]);
 
   // Listen for quarantine activations
   useEffect(() => {
@@ -80,34 +81,30 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
     return cleanup;
   }, [service]);
 
-  // Listen for dev server readiness — load dev plugins once their server is up
+  // React to the same snapshot/event state used during initial discovery.
+  // This also handles readiness that arrives while loadAll is in flight.
   useEffect(() => {
-    const cleanup = Events.On('plugin/devserver/status', (ev) => {
-      const state = ev.data as {
-        pluginID: string;
-        vitePort: number;
-        viteStatus: string;
-      };
-      if (state.viteStatus !== 'ready' || !state.vitePort || state.vitePort <= 0) {
-        return;
+    if (isLoading || error !== null) {
+      return;
+    }
+
+    for (const plugin of installedPlugins) {
+      if (!plugin.dev || !plugin.devPort || initialBatch.current?.has(plugin.id)) {
+        continue;
       }
 
-      const ps = service.getPluginState(state.pluginID);
-      const devOpts = { dev: true, devPort: state.vitePort };
-
-      if (ps?.phase === 'error') {
-        void service.retry(state.pluginID, devOpts).catch((err) => {
-          console.error(`[PluginServiceProvider] deferred dev retry failed for ${state.pluginID}:`, err);
-        });
-      } else if (!ps || ps.phase === 'idle') {
-        void service.load(state.pluginID, devOpts).catch((err) => {
-          console.error(`[PluginServiceProvider] deferred dev load failed for ${state.pluginID}:`, err);
-        });
-      }
-    });
-
-    return cleanup;
-  }, [service]);
+      const state = service.getPluginState(plugin.id);
+      const opts = { dev: true, devPort: plugin.devPort };
+      const loading = state?.phase === 'error'
+        ? service.retry(plugin.id, opts)
+        : !state || state.phase === 'idle'
+          ? service.load(plugin.id, opts)
+          : undefined;
+      void loading?.catch((err: unknown) => {
+        console.error(`[PluginServiceProvider] dev load failed for ${plugin.id}:`, err);
+      });
+    }
+  }, [isLoading, error, installedPlugins, service]);
 
   // Dev mode: expose debug surface
   useEffect(() => {

@@ -10,7 +10,7 @@ type PluginLoadErrorPageProps = {
 };
 
 export default function PluginLoadErrorPage({ pluginId, error }: PluginLoadErrorPageProps) {
-  const { plugins, retry, forceReset } = usePluginService();
+  const { plugins, retry, forceReset, load } = usePluginService();
   const pluginState = plugins.get(pluginId);
   const [retrying, setRetrying] = React.useState(false);
 
@@ -27,6 +27,11 @@ export default function PluginLoadErrorPage({ pluginId, error }: PluginLoadError
     setRetrying(true);
     try {
       await forceReset(pluginId);
+      await load(pluginId, {
+        dev: pluginState?.isDev,
+        devPort: pluginState?.devPort ?? undefined,
+        moduleHash: pluginState?.moduleHash ?? undefined,
+      });
     } finally {
       setRetrying(false);
     }

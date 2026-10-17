@@ -1,5 +1,8 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { PluginManager, DevServerManager } from '@omniviewdev/runtime/api';
+import { PluginManager } from '@omniviewdev/runtime/api';
+import { DevProcessStatus } from '@omniviewdev/runtime/models';
+import { useDevServers } from '@/features/devtools/useDevServers';
 
 /**
  * Read-only startup hook for fetching installed plugin descriptors.
@@ -13,44 +16,26 @@ export type InstalledPluginDescriptor = {
   readonly id: string;
   readonly dev: boolean;
   readonly devPort?: number;
+  readonly devStatus?: DevProcessStatus;
+  readonly devError?: string;
 };
 
 export function useInstalledPlugins(): {
   readonly plugins: InstalledPluginDescriptor[];
   readonly isLoading: boolean;
+  readonly error: Error | null;
 } {
+  const { servers, isLoading: serversLoading, error: serversError } = useDevServers();
   const query = useQuery({
-    queryKey: ['installed-plugins'],
+    // Share the management cache so install/uninstall invalidation reaches startup.
+    queryKey: ['plugins'],
     queryFn: async () => {
       const plugins = await PluginManager.ListPlugins();
       if (!plugins) {
         return [];
       }
 
-      // For dev plugins, fetch dev server states to get Vite ports
-      const hasDevPlugins = plugins.some((p) => p.devMode);
-      let devPortsByPlugin: Map<string, number> | undefined;
-
-      if (hasDevPlugins) {
-        try {
-          const states = await DevServerManager.ListDevServerStates();
-          if (states?.length) {
-            devPortsByPlugin = new Map(
-              states
-                .filter((s) => s.vitePort > 0)
-                .map((s) => [s.pluginID, s.vitePort]),
-            );
-          }
-        } catch (err) {
-          console.debug('[useInstalledPlugins] DevServerManager unavailable:', err);
-        }
-      }
-
-      return plugins.map((p): InstalledPluginDescriptor => ({
-        id: p.id,
-        dev: p.devMode ?? false,
-        devPort: devPortsByPlugin?.get(p.id),
-      }));
+      return plugins;
     },
     // Poll until first successful fetch (backend may not be ready yet)
     refetchInterval: (query) => {
@@ -58,8 +43,22 @@ export function useInstalledPlugins(): {
     },
   });
 
+  const plugins = useMemo(() => (query.data ?? []).map((plugin): InstalledPluginDescriptor => {
+    const dev = plugin.devMode ?? false;
+    const server = dev ? servers.get(plugin.id) : undefined;
+    return {
+      id: plugin.id,
+      dev,
+      // The backend allocates the port before starting Vite.
+      devPort: server?.viteStatus === DevProcessStatus.DevProcessStatusReady && server.vitePort > 0 ? server.vitePort : undefined,
+      devStatus: server?.viteStatus,
+      devError: server?.lastError === '' ? undefined : server?.lastError ?? (!server && dev ? serversError?.message : undefined),
+    };
+  }), [query.data, servers, serversError]);
+
   return {
-    plugins: query.data ?? [],
-    isLoading: query.isLoading,
+    plugins,
+    isLoading: query.isLoading || (plugins.some((p) => p.dev) && serversLoading),
+    error: query.error,
   };
 }
