@@ -63,6 +63,7 @@ button.Chip:hover {
 }
 
 .Truncate {
+  min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -100,18 +101,19 @@ button.Chip:hover {
 
 .Popup {
   padding: 0;
-  min-width: 300px;
-  max-width: 400px;
+  gap: 0;
+  min-inline-size: min(300px, calc(100vw - (var(--ov-space-3) * 2)));
+  max-inline-size: min(400px, calc(100vw - (var(--ov-space-3) * 2)));
   color: var(--ov-color-fg-default);
 }
 
 .Popup[data-width='narrow'] {
-  min-width: 260px;
-  max-width: 320px;
+  min-inline-size: min(260px, calc(100vw - (var(--ov-space-3) * 2)));
+  max-inline-size: min(320px, calc(100vw - (var(--ov-space-3) * 2)));
 }
 
 .Popup[data-width='wide'] {
-  min-width: 320px;
+  min-inline-size: min(320px, calc(100vw - (var(--ov-space-3) * 2)));
 }
 
 .Header {
@@ -125,6 +127,7 @@ button.Chip:hover {
 
 .HeaderTitle {
   display: flex;
+  min-inline-size: 0;
   align-items: center;
   gap: var(--ov-space-2);
   font-size: 0.8125rem;
@@ -247,6 +250,7 @@ button.Chip:hover {
 
 .DetailValue {
   overflow: hidden;
+  min-inline-size: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--ov-color-fg-muted);

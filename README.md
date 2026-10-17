@@ -67,6 +67,8 @@ This build's UI runs on `@omniviewdev/base-ui` and no longer ships MUI, Emotion 
 
 For contributors: resource-toolbar controls should consistently request `size="sm"` and rely on the shared density scale rather than fixed pixel heights.
 
+The titlebar search owns a flexible 500px preferred-width region; adjacent header regions share the remaining width. Keep sizing on the region rather than imposing a minimum width on the input, so narrow windows can shrink without clipping decorators.
+
 ## Documentation
 
 For detailed instructions, tutorials, and API documentation, visit our [official documentation](https://docs.omniview.dev/docs/introduction).
