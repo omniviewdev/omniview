@@ -553,12 +553,16 @@ func (s *workspaceSupervisor) startPlugins(ctx context.Context) error {
 	return nil
 }
 func (s *workspaceSupervisor) pluginState(ctx context.Context, id string) (devcontrol.DevState, error) {
-	var state devcontrol.DevState
 	client, _, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation)
 	if err != nil {
-		return state, err
+		return devcontrol.DevState{}, err
 	}
 	defer client.Close()
+	return readPluginState(ctx, client, id)
+}
+
+func readPluginState(ctx context.Context, client *devcontrol.Client, id string) (devcontrol.DevState, error) {
+	var state devcontrol.DevState
 	response, err := client.Call(ctx, "plugin.dev.status", devcontrol.PluginParams{ID: id})
 	if err != nil {
 		return state, err
@@ -620,6 +624,11 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 			state, err := s.pluginState(ctx, plugin.ID)
 			if err != nil {
 				return nil, err
+			}
+			// A08 has no Go watcher for frontend-only or stopped instances.
+			// Keep capability readiness separate from dependency ownership.
+			if state.Mode != "managed" || state.BuildStatus == "n/a" {
+				continue
 			}
 			if state.Generation == "" {
 				return nil, fmt.Errorf("managed plugin has no current generation")

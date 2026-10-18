@@ -1,12 +1,13 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { chmod, lstat, mkdtemp, readFile, realpath, unlink, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { promisify } from 'node:util';
 
 const execute = promisify(execFile);
 const deadline = 25 * 60_000;
+const ownedHomes = new Map<string, string>();
 export type Descriptor = {
   schemaVersion: number; workspaceID: string; instanceID: string; generation: string;
   kind: string; displayName: string; stateRoot: string; readiness: string;
@@ -39,9 +40,13 @@ function requireEnvironment(name: string): string {
   return value;
 }
 
-function environment(): NodeJS.ProcessEnv {
+function environment(args: string[]): NodeJS.ProcessEnv {
   // An enclosing human workspace must never select our profile or module graph.
   const env: NodeJS.ProcessEnv = { ...process.env, GOWORK: 'off' };
+  const root = args[args.indexOf('--root') + 1];
+  const home = ownedHomes.get(root);
+  if (home) env.HOME = home;
+  else if (process.env.OMNIVIEW_E2E_MODE !== 'observe') throw new Error('Owned CLI commands require a registered private collection and HOME');
   for (const key of Object.keys(env)) {
     if (key.startsWith('OMNIVIEW_') || key.startsWith('WAILS_') || key.startsWith('GIT_') || ['pnpm_config_workspace_dir', 'npm_config_workspace_dir'].includes(key.toLowerCase()) || ['GOFLAGS', 'GO_MODFILE', 'NODE_PATH', 'FRONTEND_DEVSERVER_URL'].includes(key)) delete env[key];
   }
@@ -57,7 +62,7 @@ export async function cli<T>(args: string[]): Promise<T> {
   const binary = requireEnvironment('OMNIVIEW_E2E_CLI');
   if (!isAbsolute(binary)) throw new Error('OMNIVIEW_E2E_CLI must be an absolute built executable (not go run)');
   try {
-    const { stdout } = await execute(binary, [...args, '--json'], { env: environment(), timeout: deadline, maxBuffer: 8 * 1024 * 1024 });
+    const { stdout } = await execute(binary, [...args, '--json'], { env: environment(args), timeout: deadline, maxBuffer: 8 * 1024 * 1024 });
     return JSON.parse(stdout) as T;
   } catch (error) {
     // Do not relay arbitrary build/plugin stdout, token-bearing environment or logs.
@@ -251,7 +256,12 @@ export class OwnedProfiles {
     for (const [id, path] of Object.entries(sources.sources)) if (!isAbsolute(path) || !sources.refs?.[id]) throw new Error(`Explicit absolute source and committed ref required for ${id}`);
     const evidence = JSON.parse(await readFile(sources.linkEvidence, 'utf8')) as LinkEvidence;
     if (evidence.protocol !== 'workspace' || !Array.isArray(evidence.versions) || evidence.versions.length !== 1 || evidence.versions[0] !== '12.14.0' || evidence.atomicDist !== true || evidence.peers !== true || evidence.runtime !== true) throw new Error('The actual native12 feature-workspace live-output and recursive-peer protocol evidence is required; independent-root evidence is not accepted');
-    const root = await realpath(await mkdtemp(join(tmpdir(), 'omniview-e2e-')));
+    const arena = await realpath(await mkdtemp(join(tmpdir(), 'omniview-e2e-')));
+    const root = join(arena, 'collection');
+    const home = join(arena, 'home');
+    await mkdir(root, { mode: 0o700 });
+    await mkdir(home, { mode: 0o700 });
+    ownedHomes.set(root, home);
     const profiles = new OwnedProfiles(root, sources);
     await cli(['workspace', 'init', '--root', root, ...Object.entries(sources.sources).flatMap(([id, path]) => ['--source', `${id}=${path}`, '--source-ref', `${id}=${sources.refs[id]}`])]);
     return profiles;
@@ -264,7 +274,7 @@ export class OwnedProfiles {
       await existing.verify(); return existing;
     }
     if (!/^[a-z][a-z0-9-]{0,30}$/.test(name)) throw new Error('Invalid disposable profile name');
-    const created = await cli<{ root: string }>(['workspace', 'create', name, '--root', this.root, '--name', `E2E ${name}`, '--state-root', join(this.root, 'profiles', name, 'state'), ...this.sources.repositories.flatMap(id => ['--repo', id]), ...(this.sources.plugins ?? []).flatMap(id => ['--plugin', id])]);
+    const created = await cli<{ root: string }>(['workspace', 'create', name, '--root', this.root, '--name', `E2E ${name}`, '--state-root', join(dirname(this.root), 'profiles', name, 'state'), ...this.sources.repositories.flatMap(id => ['--repo', id]), ...(this.sources.plugins ?? []).flatMap(id => ['--plugin', id])]);
     const workspace = new Workspace(this.root, created.root, true);
     // Register before startup so a timed-out launch still goes through owned down.
     this.workspaces.set(name, workspace);
@@ -302,6 +312,8 @@ export class OwnedProfiles {
     }
     // Never kill by port/PID, recursively remove worktrees, or bypass dirty refusal.
     if (failures.length) throw new Error(`Owned cleanup refused for ${failures.join(', ')}; retained private collection ${this.root}; use workspace inspect/down/remove explicitly`);
+    await rm(dirname(this.root), { recursive: true });
+    ownedHomes.delete(this.root);
   }
 }
 

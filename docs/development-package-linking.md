@@ -41,6 +41,8 @@ Source package names, versions, dependency ranges, workspace configs and lockfil
 
 Source lock authority follows actual source workspace boundaries or selected standalone roots. An old `pnpm-lock.yaml` inside an ordinary workspace member is neither seeded nor freshness-tracked; the enclosing workspace's frozen importer remains authoritative. A nested `pnpm-workspace.yaml` creates a real boundary whose lock participates in convergence and conflict checks. Adding that boundary invalidates the prior plan.
 
+A workspace declaration owns its packages even when its lock is missing: an enclosing lock's leftover importer is not a fallback. Planning parses and fingerprints the same configuration bytes and rejects changes between repeated input reads. Before first native resolution, local manifest dependencies must resolve to canonical selected packages with matching names; an absent source lock does not permit an unmanaged external link.
+
 Build approvals are permissions, not requirements: explicit `allowBuilds` booleans intersect with **deny-wins** across roots. A host approval cannot override a plugin denial. Standalone files remain unchanged, managed installs still prohibit all scripts, and other incompatible policy values still refuse composition.
 
 Locked registry metadata may contain informational prose with support URLs. An embedded URL in a deprecation notice is not a URL-valued resolution; actual URL values still reject userinfo, query/fragment data and unresolved repository-local references.
@@ -50,6 +52,10 @@ The approved seed policy is **host-led convergence**: host lock first, selected 
 Local Omniview exports are explicit workspace mappings even when older published dependency ranges differ. React/ReactDOM use the selected host's locked semver providers within the same workspace, not external path links that pnpm12 cannot peer-attest. Managed installs use `--ignore-scripts` and strict peers, followed by **recursive** `pnpm -r peers check --json --lockfile-only`; frozen/up-to-date install alone can skip peer revalidation.
 
 Monaco must also be coherent across the shared runtime: the host, selected UI editors and Kubernetes frontend declare `^0.52.2`. `monaco-types@0.1.2` re-exports Monaco without declaring a peer/dependency, so mixing host `0.47` and editors `0.52` can pass native peer validation but fail the real editor producer's typecheck. Keep those producer checks; casts and disabled checks are not a compatibility fix.
+
+Vite's public `PluginOption` types also carry its `@types/node` peer context. The shipped safe probe declares `@types/node: ^25.5.0`, matching the selected host tooling cohort; Vite 5 with Node types 22 is not interchangeable with Vite 5 carrying Node types 25. A matching Vite version alone is insufficient, and the actual consumer configuration typecheck must reject a split cohort.
+
+The shim plugin removes shared forced optimizer entries only after all configuration hooks merge, including React's automatic includes. Shared modules stay excluded and shim-backed; nonshared dependency optimization remains enabled. Both ESM and CommonJS entry points resolve their own package directory. The CJS build's retained warning about the unreachable ESM `import.meta` branch is not suppressed; real require and executable optimizer-consumer checks cover the selected CJS branch.
 
 The Kubernetes standalone registry graph has a separate existing publication gate: published `@omniviewdev/runtime@0.4.2` requests base-ui `^0.2.1`, while the plugin requests `^0.4.2`. Native strict standalone installation refuses that graph. Managed feature composition instead maps the actual reviewed local runtime/UI exports and audits their original peer metadata. Do not treat a generated standalone lock as peer acceptance or disable strict peers; update the published dependency range only after a real compatible runtime release.
 

@@ -152,14 +152,18 @@ func readInput(w devcontract.ResolvedWorkspace, s *sourceSet, path string) ([]by
 	}
 	rel, _ := filepath.Rel(w.Root, path)
 	raw, e := os.ReadFile(path)
-	if os.IsNotExist(e) {
-		s.hashes[filepath.ToSlash(rel)] = "absent"
-		return nil, nil
-	}
-	if e != nil {
+	if e != nil && !os.IsNotExist(e) {
 		return nil, refusal("cannot read source input %s", filepath.ToSlash(rel))
 	}
-	s.hashes[filepath.ToSlash(rel)] = hash(raw)
+	fingerprint := "absent"
+	if e == nil {
+		fingerprint = hash(raw)
+	}
+	key := filepath.ToSlash(rel)
+	if prior, read := s.hashes[key]; read && prior != fingerprint {
+		return nil, refusal("source input %s changed during planning", key)
+	}
+	s.hashes[key] = fingerprint
 	return raw, nil
 }
 func readManifest(raw []byte, path string) (map[string]any, error) {
@@ -261,6 +265,19 @@ func included(path, repo string, configs map[string]map[string]any, plugin bool)
 	return configured || plugin || path == repo, nil
 }
 
+func workspaceOwner(dir string, configs map[string]map[string]any) string {
+	for {
+		if _, declared := configs[dir]; declared {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
 func discover(w devcontract.ResolvedWorkspace, roots []Root) (sourceSet, error) {
 	sources := sourceSet{
 		manifests: map[string]map[string]any{},
@@ -337,9 +354,9 @@ func discover(w devcontract.ResolvedWorkspace, roots []Root) (sourceSet, error) 
 			case "package.json":
 				manifestPaths = append(manifestPaths, path)
 			case "pnpm-workspace.yaml":
-				raw, err := os.ReadFile(path)
+				raw, err := readInput(w, &sources, path)
 				if err != nil {
-					return refusal("cannot read workspace config at %s", relative(w.Root, path))
+					return err
 				}
 				docs, err := decodeDocuments(raw)
 				if err != nil || len(docs) != 1 {
@@ -407,13 +424,7 @@ func discover(w devcontract.ResolvedWorkspace, roots []Root) (sourceSet, error) 
 			if name == "pnpm-lock.yaml" {
 				// A package member's old standalone lock is inert under its
 				// source workspace. Do not seed or freshness-track it.
-				workspaceRoot := ""
-				for ancestor := dir; ancestor != w.Root; ancestor = filepath.Dir(ancestor) {
-					if _, declared := sources.configs[ancestor]; declared {
-						workspaceRoot = ancestor
-						break
-					}
-				}
+				workspaceRoot := workspaceOwner(dir, sources.configs)
 				if workspaceRoot != "" {
 					if workspaceRoot != dir {
 						continue
@@ -448,6 +459,7 @@ func discover(w devcontract.ResolvedWorkspace, roots []Root) (sourceSet, error) 
 	for dir := range sources.configs {
 		if !usedDirs[dir] {
 			delete(sources.configs, dir)
+			delete(sources.hashes, relative(w.Root, filepath.Join(dir, "pnpm-workspace.yaml")))
 		}
 	}
 	for _, path := range sortedKeys(rootMap) {
@@ -503,6 +515,9 @@ func New(w devcontract.ResolvedWorkspace, roots []Root, targets map[string]strin
 		}
 	}
 	if err := validateTargets(plan); err != nil {
+		return Plan{}, err
+	}
+	if err := validateManifestDependencies(w, plan, sources.manifests); err != nil {
 		return Plan{}, err
 	}
 	policy, err := reconcile(w, sources)

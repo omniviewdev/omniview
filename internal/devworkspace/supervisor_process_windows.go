@@ -76,12 +76,16 @@ func waitOwnedCommand(child *ownedChild) error {
 	// otherwise a descendant retaining a pipe can prevent both EOF and cleanup.
 	var disposalErr error
 	child.mu.Lock()
-	if value, ok = childJob.LoadAndDelete(child); ok {
+	if value, ok = childJob.Load(child); ok {
 		record = value.(ownedWindowsJob)
 		terminateErr := windows.TerminateJobObject(record.job, 1)
 		if emptyErr := waitOwnedJobEmpty(record.job); emptyErr != nil {
-			disposalErr = errors.Join(terminateErr, emptyErr)
+			// Unproven disposal is not an exit. Retain both exact handles and
+			// leave the leader unreaped so Stop can retry this same Job lifetime.
+			child.mu.Unlock()
+			return errors.Join(observeErr, terminateErr, emptyErr)
 		}
+		childJob.Delete(child)
 		disposalErr = errors.Join(disposalErr, windows.CloseHandle(record.job), windows.CloseHandle(record.leader))
 	}
 	child.mu.Unlock()

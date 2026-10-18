@@ -272,3 +272,53 @@ func TestMemberLockIsInertUntilItDeclaresAWorkspaceBoundary(t *testing.T) {
 		t.Fatal("actual nested workspace lock lost its identity-conflict guard")
 	}
 }
+
+func TestNestedWorkspaceWithoutLockDoesNotInheritEnclosingImporter(t *testing.T) {
+	w, roots := fixture(t)
+	member := "omniview/packages/consumer"
+	put(t, w.Root, member+"/package.json", `{"name":"consumer","private":true,"dependencies":{"exact":"^1"}}`)
+	put(t, w.Root, member+"/pnpm-workspace.yaml", "packages: ['children/*']\n")
+	put(t, w.Root, member+"/children/child/package.json", `{"name":"child","private":true,"dependencies":{"exact":"^1"}}`)
+	raw, err := os.ReadFile(filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs, err := decodeDocuments(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := docs[len(docs)-1]
+	for _, key := range []string{"packages/consumer", "packages/consumer/children/child"} {
+		mapping(main["importers"])[key] = map[string]any{
+			"dependencies": map[string]any{"exact": map[string]any{"specifier": "^1", "version": "1.2.3"}},
+		}
+	}
+	mapping(main["packages"])["exact@1.2.3"] = map[string]any{"resolution": map[string]any{"integrity": "sha512-enclosing"}}
+	mapping(main["snapshots"])["exact@1.2.3"] = map[string]any{}
+	raw, err = encodeDocuments(docs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	put(t, w.Root, "omniview/pnpm-lock.yaml", string(raw))
+	p, err := New(w, roots, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs, err = decodeDocuments(generated(t, p, "pnpm-lock.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	importers := mapping(docs[len(docs)-1]["importers"])
+	for _, key := range []string{member, member + "/children/child"} {
+		if dependency := mapping(mapping(mapping(importers[key])["dependencies"])["exact"]); dependency["version"] != nil {
+			t.Errorf("missing owner lock inherited enclosing pin for %s: %+v", key, dependency)
+		}
+	}
+	if err := CheckInputs(p); err != nil {
+		t.Fatal(err)
+	}
+	put(t, w.Root, member+"/pnpm-lock.yaml", "lockfileVersion: '9.0'\nimporters: {.: {}}\npackages: {}\nsnapshots: {}\n")
+	if err := CheckInputs(p); err == nil {
+		t.Fatal("new authoritative lock did not invalidate first-resolution plan")
+	}
+}

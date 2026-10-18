@@ -347,3 +347,68 @@ func TestSharedCacheClosesOnlyAfterLastActualWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFilteredViteRestorationPreservesUnrelatedTrackedGitlink(t *testing.T) {
+	w, repo := outputFixture(t)
+	submodule := filepath.Join(repo, "plugins", "kubernetes")
+	if err := os.MkdirAll(submodule, 0700); err != nil {
+		t.Fatal(err)
+	}
+	revision := outputGit(t, repo, "rev-parse", "HEAD")
+	outputGit(t, repo, "update-index", "--add", "--cacheinfo", "160000,"+revision+",plugins/kubernetes")
+	outputCommit(t, repo, "retain unrelated submodule")
+	baseline := outputGit(t, repo, "ls-tree", "HEAD", "--", "plugins/kubernetes")
+	install, err := BeginInstall(context.Background(), w, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = install.Finish(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	vite, err := BeginVite(context.Background(), w, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamp := filepath.Join(repo, "vite.config.ts.timestamp-123-abcdef.mjs")
+	writeOutput(t, stamp, "owned Vite loader output")
+	if err = vite.Finish(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err = Restore(context.Background(), w); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Lstat(stamp); !os.IsNotExist(err) {
+		t.Fatalf("owned loader output was not retired: %v", err)
+	}
+	if current := outputGit(t, repo, "ls-tree", "HEAD", "--", "plugins/kubernetes"); current != baseline {
+		t.Fatal("restoration changed the unrelated tracked submodule")
+	}
+	if info, err := os.Stat(submodule); err != nil || !info.IsDir() {
+		t.Fatal("restoration removed unrelated submodule directory", err)
+	}
+}
+
+func TestFilteredViteBaselineStillRejectsSelectedNonregularEntry(t *testing.T) {
+	w, repo := outputFixture(t)
+	selected := "vite.config.ts.timestamp-123-abcdef.mjs"
+	if err := os.Mkdir(filepath.Join(repo, selected), 0700); err != nil {
+		t.Fatal(err)
+	}
+	revision := outputGit(t, repo, "rev-parse", "HEAD")
+	outputGit(t, repo, "update-index", "--add", "--cacheinfo", "160000,"+revision+","+selected)
+	outputCommit(t, repo, "nonregular selected loader baseline")
+	baseline := outputGit(t, repo, "ls-tree", "HEAD", "--", selected)
+	install, err := BeginInstall(context.Background(), w, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = install.Finish(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = BeginVite(context.Background(), w, repo); err == nil {
+		t.Fatal("nonregular selected loader baseline was adopted")
+	}
+	if current := outputGit(t, repo, "ls-tree", "HEAD", "--", selected); current != baseline {
+		t.Fatal("refused baseline changed the selected submodule")
+	}
+}

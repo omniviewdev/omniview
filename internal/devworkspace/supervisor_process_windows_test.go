@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
@@ -84,4 +86,99 @@ func TestWindowsOwnedPipeFixture(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	os.Exit(26)
+}
+
+func TestWindowsOwnedJobFailedDisposalRetainsLifetimeForStopRetry(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := filepath.Join(t.TempDir(), "release")
+	command := exec.Command(exe, "-test.run=TestWindowsDisposalRetryFixture")
+	command.Env = append(os.Environ(), "OMNIVIEW_WINDOWS_DISPOSAL_RELEASE="+release)
+	command.Stdout, command.Stderr = io.Discard, io.Discard
+	prepareOwnedCommand(command)
+	if err = command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	child := &ownedChild{command: command, done: make(chan struct{})}
+	child.identity, err = devsession.CaptureProcess(command.Process.Pid, devsession.ProcessOwner{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6", Generation: NewGeneration(), Role: "host", Source: exe})
+	if err != nil {
+		_ = discardUncapturedCommand(command)
+		t.Fatal(err)
+	}
+	if err = attachOwnedCommand(child); err != nil {
+		_ = discardUncapturedCommand(command)
+		t.Fatal(err)
+	}
+	value, _ := childJob.Load(child)
+	original := value.(ownedWindowsJob)
+	defer func() {
+		_ = windows.TerminateJobObject(original.job, 1)
+		if command.ProcessState == nil {
+			_ = command.Wait()
+		}
+		if value, ok := childJob.LoadAndDelete(child); ok {
+			record := value.(ownedWindowsJob)
+			_ = windows.CloseHandle(record.job)
+			_ = windows.CloseHandle(record.leader)
+			if record.job == original.job {
+				return
+			}
+		}
+		_ = windows.CloseHandle(original.job)
+	}()
+	// Keep the same kernel Job but remove QUERY access. Termination succeeds;
+	// accounting cannot prove descendant disposal. No production hook is used.
+	var restricted windows.Handle
+	const jobObjectTerminate = 0x0008
+	if err = windows.DuplicateHandle(windows.CurrentProcess(), original.job, windows.CurrentProcess(), &restricted, jobObjectTerminate, false, 0); err != nil {
+		t.Fatal(err)
+	}
+	childJob.Store(child, ownedWindowsJob{job: restricted, leader: original.leader})
+	finalized := false
+	child.finalize = func() error { finalized = true; return nil }
+	if err = os.WriteFile(release, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	child.complete()
+	close(child.done)
+	if !errors.Is(child.failure(), errOwnedCommandUncertain) {
+		t.Fatalf("failed accounting was reported as disposal: %v", child.failure())
+	}
+	if finalized || command.ProcessState != nil {
+		t.Fatal("uncertain Job disposal finalized the producer or reaped its retained leader")
+	}
+	retained, ok := childJob.Load(child)
+	if !ok || retained.(ownedWindowsJob).job != restricted || retained.(ownedWindowsJob).leader != original.leader {
+		t.Fatal("uncertain disposal discarded the exact Job/leader handles")
+	}
+	// Restore query access to that same Job and retry the retained child; no PID
+	// lookup, process adoption or new lifecycle generation can authorize this.
+	childJob.Store(child, original)
+	_ = windows.CloseHandle(restricted)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	if err = child.stop(ctx); err != nil {
+		t.Fatalf("Stop could not retry retained Windows disposal: %v", err)
+	}
+	if !finalized || command.ProcessState == nil || command.ProcessState.ExitCode() != 17 {
+		t.Fatal("confirmed disposal did not reap the original leader and finalize its producer")
+	}
+	if _, ok = childJob.Load(child); ok {
+		t.Fatal("confirmed disposal retained Job handles")
+	}
+}
+
+func TestWindowsDisposalRetryFixture(t *testing.T) {
+	release := os.Getenv("OMNIVIEW_WINDOWS_DISPOSAL_RELEASE")
+	if release == "" {
+		return
+	}
+	for {
+		if _, err := os.Stat(release); err == nil {
+			os.Exit(17)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

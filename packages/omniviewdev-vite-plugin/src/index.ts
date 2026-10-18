@@ -8,7 +8,9 @@ import { workspaceViteCacheDirectory, workspaceVitePort, workspaceViteRoots } fr
 export { SHARED_PACKAGES } from './sharedPackages';
 export { safeFilename } from './safeFilename';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const moduleDirectory = typeof __dirname === 'string'
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Compute the absolute path to the shims directory.
@@ -16,11 +18,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * In development (source), shims are at: <package-root>/shims/
  * In published package, shims are at:    <package-root>/shims/
  *
- * Since dist/ is a sibling of shims/, we go up one level from __dirname
+ * Since dist/ is a sibling of shims/, we go up one level from the module directory
  * (which is dist/ or src/ depending on context) to reach the package root.
  */
 function getShimsDir(): string {
-  const packageRoot = path.resolve(__dirname, '..');
+  const packageRoot = path.resolve(moduleDirectory, '..');
   return path.join(packageRoot, 'shims');
 }
 
@@ -200,6 +202,16 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
           };
         }
       }
+    },
+
+    configResolved(config) {
+      if (config.command !== 'serve' || !config.optimizeDeps.include) return;
+      // React's plugin adds forced optimizer entries after config hooks merge.
+      // Shared imports must stay shim-backed, not be both entries and externals.
+      config.optimizeDeps.include = config.optimizeDeps.include.filter(dependency => {
+        const target = dependency.slice(dependency.lastIndexOf('>') + 1).trim();
+        return !sharedSet.has(target);
+      });
     },
 
     resolveId(source) {

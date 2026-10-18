@@ -141,4 +141,6 @@ Managed children receive nonsecret `OMNIVIEW_DEV_CLI` from the captured supervis
 
 `--json` emits one machine-readable result on stdout; process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout.
 
+The owned Playwright fixture creates a private temporary arena with sibling `collection`, `home` and `profiles` directories. Its CLI subprocesses use that private HOME. Custom profile containers cannot live inside the registered collection or selected source repositories; the normal containment refusal remains active. Successful canonical down/unlink/remove precedes retirement of the arena; refused cleanup retains it for inspection.
+
 See [worktree lifecycle](development-worktree-lifecycle.md), [package linking](development-package-linking.md), [build/watch graph](development-watch-graph.md), [instance profiles](development-instance-profiles.md), [sessions](development-sessions.md), [baselines](development-baselines.md) and [authenticated control](development-control.md) for producer contracts and platform evidence.

@@ -387,8 +387,27 @@ func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Stat
 				status.Phase = "unreachable"
 				status.Instance = nil
 			} else {
-				client.Close()
+				defer client.Close()
 				status.Instance = &descriptor
+				// Reconcile live producer observations only in this response. A
+				// transient build failure or intentional plugin stop must neither
+				// poison the supervisor phase nor restart a managed generation.
+				for _, plugin := range s.workspace.Manifest.Plugins {
+					state, stateErr := readPluginState(ctx, client, plugin.ID)
+					if stateErr != nil {
+						status.Phase = "error"
+						status.LastError = workspaceError(stateErr)
+						break
+					}
+					if state.LastError != nil || state.BuildStatus == "error" || state.ViteStatus == "error" || state.RPCStatus == "error" || state.ControllerStatus == "error" || !state.Ready || state.Generation == "" || state.Mode != "managed" {
+						status.Phase = "error"
+						status.LastError = state.LastError
+						if status.LastError == nil {
+							status.LastError = devcontract.Fail(5, "plugin_not_ready", fmt.Sprintf("managed plugin %s is not ready: build=%s Vite=%s RPC=%s controllers=%s", plugin.ID, state.BuildStatus, state.ViteStatus, state.RPCStatus, state.ControllerStatus))
+						}
+						break
+					}
+				}
 			}
 		}
 		return status, nil

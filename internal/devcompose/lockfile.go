@@ -314,13 +314,22 @@ func seedLock(w devcontract.ResolvedWorkspace, sources sourceSet, plan *Plan, po
 		}
 		return relative(w.Root, left) < relative(w.Root, right)
 	})
-	// Only authoritative source workspace/standalone locks enter this set.
-	// A nested workspace owns its importer instead of an enclosing lock's leftover.
+	// Declaration ownership is independent of whether its lock exists. A missing
+	// nested owner's lock must not reactivate an enclosing leftover importer.
 	nearest := map[string]string{}
 	for _, pkg := range plan.Packages {
+		owner := workspaceOwner(pkg.Path, sources.configs)
+		if owner == "" {
+			for _, root := range sources.roots {
+				if within(root.Path, pkg.Path) && len(root.Path) > len(owner) {
+					owner = root.Path
+				}
+			}
+		}
 		for _, path := range sources.locks {
-			if within(filepath.Dir(path), pkg.Path) && len(path) > len(nearest[pkg.Path]) {
+			if filepath.Dir(path) == owner {
 				nearest[pkg.Path] = path
+				break
 			}
 		}
 	}
@@ -620,6 +629,69 @@ func mergeMetadata(dst, src map[string]any, source string) error {
 	}
 	return nil
 }
+func validateManifestDependencies(w devcontract.ResolvedWorkspace, p Plan, manifests map[string]map[string]any) error {
+	for _, dir := range sortedKeys(manifests) {
+		source := relative(w.Root, filepath.Join(dir, "package.json"))
+		for _, section := range []string{"dependencies", "devDependencies", "optionalDependencies"} {
+			for _, name := range sortedKeys(mapping(manifests[dir][section])) {
+				specifier, ok := mapping(manifests[dir][section])[name].(string)
+				if !ok {
+					continue
+				}
+				if err := validateLocalDependency(w, p, dir, name, specifier, source); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// Explicit framework mappings have already been checked by validateTargets and
+// replace source specifiers with workspace:*. Other local edges must resolve to
+// the actual selected package, never another repository or an untracked member.
+func validateLocalDependency(w devcontract.ResolvedWorkspace, p Plan, dir, name, specifier, source string) error {
+	if _, managed := p.Targets[name]; managed {
+		return nil
+	}
+	protocol, target, local := strings.Cut(specifier, ":")
+	if !local {
+		return nil
+	}
+	switch protocol {
+	case "file":
+		return refusal("file dependency in %s requires explicit reconciliation", source)
+	case "workspace":
+		if !strings.ContainsAny(target, "/\\") && !strings.HasPrefix(target, ".") {
+			matches := 0
+			for _, pkg := range p.Packages {
+				if pkg.Name == name {
+					matches++
+				}
+			}
+			if matches != 1 {
+				return refusal("workspace dependency in %s is not an unambiguous selected package", source)
+			}
+			return nil
+		}
+	case "link":
+	default:
+		return nil
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(dir, filepath.FromSlash(target))
+	}
+	if !within(w.Root, target) || exactPath(target) != nil {
+		return refusal("linked dependency in %s escapes or redirects selected composition", source)
+	}
+	for _, pkg := range p.Packages {
+		if pkg.Path == target && pkg.Name == name {
+			return nil
+		}
+	}
+	return refusal("linked dependency in %s is not an actual selected package with the declared name", source)
+}
+
 func rewriteImporter(w devcontract.ResolvedWorkspace, p Plan, dir string, src map[string]any, source string) (map[string]any, error) {
 	out := map[string]any{}
 	for key, value := range src {
@@ -649,24 +721,8 @@ func rewriteImporter(w devcontract.ResolvedWorkspace, p Plan, dir string, src ma
 				if target, ok := p.Targets[name]; ok {
 					copy["version"] = "link:" + relative(dir, target)
 				} else if version, ok := record["version"].(string); ok {
-					if strings.HasPrefix(version, "file:") {
-						return nil, refusal("file dependency lock in %s requires explicit reconciliation", source)
-					}
-					if strings.HasPrefix(version, "link:") {
-						target := filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(version, "link:")))
-						if !within(w.Root, target) || exactPath(target) != nil {
-							return nil, refusal("linked source lock dependency in %s escapes selected composition", source)
-						}
-						selected := false
-						for _, pkg := range p.Packages {
-							if pkg.Path == target {
-								selected = true
-								break
-							}
-						}
-						if !selected {
-							return nil, refusal("linked dependency in %s is not an actual selected package", source)
-						}
+					if err := validateLocalDependency(w, p, dir, name, version, source); err != nil {
+						return nil, err
 					}
 				}
 				rewritten[name] = copy

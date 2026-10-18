@@ -263,16 +263,16 @@ func tracked(ctx context.Context, spec specification) (map[string]committedFile,
 		if !ok {
 			return nil, fmt.Errorf("invalid committed source inventory")
 		}
-		fields := strings.Fields(string(metadata))
-		if len(fields) != 3 || fields[1] != "blob" || (fields[0] != "100644" && fields[0] != "100755") {
-			return nil, fmt.Errorf("producer baseline contains a non-regular tracked source file")
-		}
 		relative, err := filepath.Rel(spec.Target, filepath.Join(spec.Repository, filepath.FromSlash(string(path))))
 		if err != nil {
 			return nil, err
 		}
 		if spec.Mode == "filter" && (filepath.Dir(relative) != "." || !IsViteConfigTemporaryFile(filepath.Base(relative))) {
 			continue
+		}
+		fields := strings.Fields(string(metadata))
+		if len(fields) != 3 || fields[1] != "blob" || (fields[0] != "100644" && fields[0] != "100755") {
+			return nil, fmt.Errorf("producer baseline contains a non-regular tracked source file")
 		}
 		data, err := runGit(ctx, spec.Repository, "cat-file", "blob", fields[2])
 		if err != nil {

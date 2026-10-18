@@ -223,3 +223,103 @@ func TestUnmanagedFeatureRootPolicyCannotBypassReconciledSettings(t *testing.T) 
 		t.Fatal("unmanaged feature-root policy silently applied")
 	}
 }
+
+func TestPlanningInputRejectsMutationBetweenPolicyReads(t *testing.T) {
+	for _, change := range []string{"edit", "remove", "create"} {
+		t.Run(change, func(t *testing.T) {
+			w, _ := fixture(t)
+			path := filepath.Join(w.Root, "omniview/pnpm-workspace.yaml")
+			if change == "create" {
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			sources := sourceSet{hashes: map[string]string{}}
+			raw, err := readInput(w, &sources, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if change != "create" {
+				docs, err := decodeDocuments(raw)
+				if err != nil || docs[0]["strictPeerDependencies"] != true {
+					t.Fatalf("initial policy could not be planned: %v", err)
+				}
+			}
+			if change == "remove" {
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				put(t, w.Root, "omniview/pnpm-workspace.yaml", "packages: ['packages/*']\nstrictPeerDependencies: true\noverrides: {exact: 2.0.0}\n")
+			}
+			if _, err := readInput(w, &sources, path); err == nil {
+				t.Fatal("changed source accepted between planning reads; old policy can acquire a new fingerprint")
+			}
+		})
+	}
+}
+
+func TestManifestLocalDependenciesRequireSelectedCompositionBeforeResolution(t *testing.T) {
+	for _, locked := range []bool{false, true} {
+		for _, section := range []string{"dependencies", "devDependencies", "optionalDependencies"} {
+			for _, specifier := range []string{
+				"link:../../unselected",
+				"file:../../unselected",
+				"workspace:../../unselected",
+				"link:widgets/selected",
+				"workspace:./widgets/selected",
+				"workspace:*",
+			} {
+				t.Run(section+"/"+specifier+"/locked="+map[bool]string{false: "false", true: "true"}[locked], func(t *testing.T) {
+					w, roots := fixture(t)
+					put(t, w.Root, "unselected/package.json", `{"name":"outside","private":true}`)
+					put(t, w.Root, "plugin-a/ui/widgets/selected/package.json", `{"name":"different-name","private":true}`)
+					manifest, err := json.Marshal(map[string]any{"name": "plugin-ui", "private": true, section: map[string]string{"outside": specifier}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					put(t, w.Root, "plugin-a/ui/package.json", string(manifest))
+					if locked {
+						// The new local dependency is deliberately absent from this old lock.
+						put(t, w.Root, "plugin-a/ui/pnpm-lock.yaml", "lockfileVersion: '9.0'\nimporters: {.: {}}\npackages: {}\nsnapshots: {}\n")
+					}
+					if _, err := New(w, roots, nil); err == nil {
+						t.Fatal("unselected or misnamed manifest-local dependency accepted for native resolution")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestManifestLocalDependenciesAcceptSelectedPackagesAndManagedMappings(t *testing.T) {
+	for _, specifier := range []string{"link:widgets/selected", "workspace:./widgets/selected", "workspace:*"} {
+		t.Run(specifier, func(t *testing.T) {
+			w, roots := fixture(t)
+			put(t, w.Root, "plugin-a/ui/widgets/selected/package.json", `{"name":"selected","version":"1.0.0","private":true}`)
+			put(t, w.Root, "plugin-a/ui/package.json", `{"name":"plugin-ui","private":true,"dependencies":{"selected":"`+specifier+`"}}`)
+			p, err := New(w, roots, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := CheckInputs(p); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	w, roots := fixture(t)
+	target := filepath.Join(w.Root, "omniview/packages/framework")
+	put(t, w.Root, "omniview/packages/framework/package.json", `{"name":"@omniviewdev/runtime","version":"1.0.0","private":true}`)
+	put(t, w.Root, "plugin-a/ui/package.json", `{"name":"plugin-ui","private":true,"dependencies":{"@omniviewdev/runtime":"file:../../../published-runtime"}}`)
+	p, err := New(w, roots, map[string]string{"@omniviewdev/runtime": target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var policy map[string]any
+	if err := yaml.Unmarshal(generated(t, p, "pnpm-workspace.yaml"), &policy); err != nil {
+		t.Fatal(err)
+	}
+	if mapping(policy["overrides"])["@omniviewdev/runtime"] != "workspace:*" {
+		t.Fatal("approved framework workspace mapping lost")
+	}
+}
