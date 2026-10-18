@@ -51,6 +51,8 @@ Local Omniview exports are explicit workspace mappings even when older published
 
 The owned native launcher clears inherited workspace-dir aliases and sets validated `PNPM_CONFIG_WORKSPACE_DIR` to the feature root. Actual package cwd/argv remain unchanged, including nested scripts; a nearer child YAML does not override managed context. Child policies are explicitly reconciled, not presumed inherited.
 
+The launcher enforces `--config.verify-deps-before-run=error`. [Native pnpm12 defaults](https://pnpm.io/settings/build#verifydepsbeforerun) to installing before `run`/`exec` when dependencies are stale, then warning and continuing if that install fails. Managed pre-run verification must instead reject the stale graph without another installer or lockfile rewrite. Dependency changes go through the explicit owned install and recursive audit; checks are not disabled.
+
 Diagnostics resolve import-condition exports from each consumer's actual package location, including the runtime package, UI packages, and every selected plugin. Runtime `api`, `models` and `runtime` subpaths are checked independently. Missing exports, missing build outputs and wrong directories remain explicit problems.
 
 The host's CSS entry remains authoritative: `@omniviewdev/base-ui/styles.css` must still map to `@/theme/base-ui.css` in shared dependencies. Package-directory linking does not replace this CSS mapping or bypass the host's cascade layer. The disposable CSS-content probe is not a browser cascade proof. Actual host/plugin singleton identity through Vite aliases, generated shims, and browser rendering must also be exercised by the integration barrier; Node directory checks alone cannot establish that.

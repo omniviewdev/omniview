@@ -256,6 +256,25 @@ console.log(JSON.stringify({consumer,marker,peers:true,runtime:true,atomicDist:t
 		require.NoError(t, os.Rename(staging, filepath.Join(path, "dist")))
 	}
 	check("after")
+	// Native12 defaults to installing before exec and continuing after an
+	// install failure. Managed consumers must instead reject a stale graph.
+	consumerArgs := []string{"exec", "node", "--experimental-import-meta-resolve", "--input-type=module", "-e", probe, host, plugin, host, "after", string(encoded)}
+	require.NoError(t, runPNPM(consumerArgs...), "fresh graph must execute the real shared-package consumer")
+	aggregatePath := filepath.Join(root, "package.json")
+	aggregateBytes, err := os.ReadFile(aggregatePath)
+	require.NoError(t, err)
+	lockBeforeRun, err := os.ReadFile(filepath.Join(root, "pnpm-lock.yaml"))
+	require.NoError(t, err)
+	var staleAggregate map[string]any
+	require.NoError(t, json.Unmarshal(aggregateBytes, &staleAggregate))
+	staleAggregate["dependencies"].(map[string]any)["@omniviewdev/missing-workspace"] = "workspace:*"
+	put(aggregatePath, staleAggregate)
+	staleRunErr := runPNPM(consumerArgs...)
+	lockAfterRun, lockReadErr := os.ReadFile(filepath.Join(root, "pnpm-lock.yaml"))
+	require.NoError(t, os.WriteFile(aggregatePath, aggregateBytes, 0600))
+	require.NoError(t, lockReadErr)
+	require.Error(t, staleRunErr, "stale graph must not execute a consumer after an implicit installer fails")
+	require.Equal(t, lockBeforeRun, lockAfterRun, "consumer startup must not install or rewrite the aggregate lock")
 	// A warm peer-only edit must fail the explicit recursive audit even if
 	// native install's up-to-date fast path exits successfully.
 	bad := filepath.Join(targets["@omniviewdev/base-ui"], "package.json")

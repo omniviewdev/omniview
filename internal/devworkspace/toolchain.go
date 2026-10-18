@@ -218,7 +218,9 @@ func nativePNPMLauncherFiles(node, executable, pin, root string) ([]pnpmLauncher
 		"const executable = " + string(executableJSON) + ";\n" +
 		"const version = spawnSync(executable, ['--version'], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });\n" +
 		"if (version.error || version.status !== 0 || version.stdout.trim() !== " + string(versionJSON) + ") throw new Error('selected native pnpm version could not be attested');\n" +
-		"const result = spawnSync(executable, process.argv.slice(2), { env, stdio: 'inherit', windowsHide: true });\n"
+		"const args = process.argv.slice(2);\n" +
+		"args.unshift('--config.verify-deps-before-run=error');\n" +
+		"const result = spawnSync(executable, args, { env, stdio: 'inherit', windowsHide: true });\n"
 	script := "const { spawnSync } = require('node:child_process');\nconst path = require('node:path');\nconst fs = require('node:fs');\n" +
 		"const env = { ...process.env };\n" +
 		"for (const key of Object.keys(env)) if (['pnpm_config_workspace_dir','npm_config_workspace_dir'].includes(key.toLowerCase())) delete env[key];\n" +

@@ -316,5 +316,11 @@ The generated aggregate root is the registered feature directory above selected 
 
 The developer additionally approved host-led convergence of incompatible shared lock snapshots: host first, selected UI next, remaining source locks in stable relative-path order. This permits necessary transitive-edge convergence within the generated feature graph, not a general dependency update or changes to standalone source locks. Distinct locked identities/integrities remain seeded, same-key integrity conflicts still fail, seed choices are inspectable, and native installation plus recursive peers determine the actual final graph.
 
+The developer confirmed the host's bundled AWS/containers/testUI frontends are unused and may be ignored. Remove their broad `plugins/**` host workspace membership without deleting their files; explicitly selected registered plugin repositories still join each feature. This avoids turning managed workspace setup into an unrelated migration of unused frontend dependency cohorts.
+
+Source lock authority follows actual workspace boundaries, not every nested lockfile left in a package directory. Compatible source refs are still mandatory: the selected UI feature now includes the existing base-ui0.4.3 release required by the runtime peer contract, rather than faking its version or weakening peers.
+
+Native12's default pre-run dependency policy can attempt installation, warn on failure and still execute stale consumers. The owned launcher must enforce `verifyDepsBeforeRun=error` for `run`/`exec`: actual stale-graph refusal and unchanged lock bytes are part of the native protocol probe. The explicit owned install/recursive-audit transaction remains the dependency writer; checks are not disabled.
+
 Implementation packets, exact shared interfaces, parallel ownership and acceptance are in [the pnpm12 composition plan](../plans/2026-10-17-pnpm12-feature-composition.md). Standalone12 build success is not managed launch acceptance; the original hard gates above remain.
 
