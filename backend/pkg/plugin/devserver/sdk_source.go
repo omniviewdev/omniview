@@ -25,6 +25,8 @@ func validSDKRevision(revision string) bool {
 // VerifySelectedSDK validates the actual module selected by Go with GOWORK=off,
 // including replacements. expectedRevision is a trusted reviewed fixed-source
 // commit supplied by the host build graph, not metadata from the plugin repo.
+// Managed workspace verification also binds that module to the canonical SDK
+// checkout selected by the explicitly validated workspace/profile.
 // The shared source verifier protects the reviewed containment core and records
 // ordinary dirty SDK feature changes in the exact build source digest.
 func VerifySelectedSDK(ctx context.Context, goPath, source, expectedRevision string, environment []string) (devsource.Identity, error) {
@@ -69,22 +71,37 @@ func VerifySelectedSDK(ctx context.Context, goPath, source, expectedRevision str
 		return result, err
 	}
 	values := map[string]string{}
-	for _, entry := range environment {
+	for _, entry := range cmd.Env {
 		key, value, _ := strings.Cut(entry, "=")
 		values[key] = value
 	}
 	allowCoreChanges := values["OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES"] == "1"
-	if allowCoreChanges {
-		manifest, root := values[devcontract.WorkspaceEnvironment], values["OMNIVIEW_STATE_DIR"]
-		if manifest == "" || root == "" {
-			return result, fmt.Errorf("isolation source changes require an explicit validated workspace profile")
+	manifest, root := values[devcontract.WorkspaceEnvironment], values["OMNIVIEW_STATE_DIR"]
+	workspaceID := values["OMNIVIEW_WORKSPACE_ID"]
+	if manifest != "" || workspaceID != "" || allowCoreChanges {
+		if manifest == "" || root == "" || workspaceID == "" {
+			return result, fmt.Errorf("managed SDK verification requires an explicit validated workspace profile")
 		}
-		workspace, err := devcontract.ResolveWorkspace(devcontract.ResolveOptions{Explicit: manifest, StateRoot: root})
+		workspace, err := devcontract.ResolveWorkspace(devcontract.ResolveOptions{EnvironmentManifest: manifest, StateRoot: root})
 		if err != nil {
 			return result, err
 		}
-		if workspace.Manifest.WorkspaceID != values["OMNIVIEW_WORKSPACE_ID"] {
-			return result, fmt.Errorf("isolation source changes workspace identity mismatch")
+		if workspace.Manifest.WorkspaceID != workspaceID {
+			return result, fmt.Errorf("SDK verification workspace identity mismatch")
+		}
+		if workspace.Manifest.Links.SDKRepositoryID == nil {
+			return result, fmt.Errorf("managed workspace must explicitly select an SDK source repository")
+		}
+		selected, err := workspace.RepositoryPath(*workspace.Manifest.Links.SDKRepositoryID)
+		if err != nil {
+			return result, err
+		}
+		selected, err = devcontract.CanonicalPath(selected)
+		if err != nil {
+			return result, err
+		}
+		if directory != selected {
+			return result, fmt.Errorf("effective SDK source differs from selected workspace source")
 		}
 	}
 	return devsource.VerifyWithOptions(ctx, directory, expectedRevision, devsource.VerifyOptions{AllowIsolationCoreChanges: allowCoreChanges})
