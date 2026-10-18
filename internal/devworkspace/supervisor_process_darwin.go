@@ -34,6 +34,7 @@ func attachOwnedCommand(child *ownedChild) error {
 }
 
 func waitOwnedCommand(child *ownedChild) error {
+	alreadyExited := false
 	queue, err := unix.Kqueue()
 	if err != nil {
 		err = fmt.Errorf("create owned-child kqueue: %w", err)
@@ -42,6 +43,17 @@ func waitOwnedCommand(child *ownedChild) error {
 		changes := []unix.Kevent_t{{Ident: uint64(child.identity.PID), Filter: unix.EVFILT_PROC, Flags: unix.EV_ADD | unix.EV_ENABLE | unix.EV_ONESHOT, Fflags: unix.NOTE_EXIT}}
 		_, err = unix.Kevent(queue, changes, nil, nil)
 		if err != nil {
+			// A fast direct child can be an unreaped zombie before registration.
+			// ESRCH alone is not exit proof: bind the exact retained Cmd/PID to
+			// its kernel zombie record, and still require group disposal + Wait.
+			if errors.Is(err, unix.ESRCH) && child.command.Process != nil && child.command.ProcessState == nil && child.command.Process.Pid == child.identity.PID {
+				members, inspectErr := unix.SysctlKinfoProcSlice("kern.proc.pid", child.identity.PID)
+				if inspectErr != nil {
+					err = errors.Join(err, fmt.Errorf("inspect retained owned-child exit: %w", inspectErr))
+				} else {
+					alreadyExited = len(members) == 1 && int(members[0].Proc.P_pid) == child.identity.PID && members[0].Proc.P_stat == 5
+				}
+			}
 			err = fmt.Errorf("register owned-child exit: %w", err)
 		} else {
 			event := make([]unix.Kevent_t, 1)
@@ -77,9 +89,11 @@ func waitOwnedCommand(child *ownedChild) error {
 		return errors.Join(err, killErr, groupErr)
 	}
 	waitErr := child.command.Wait()
+	disposed := child.command.ProcessState != nil
+	child.disposed = disposed
 	child.mu.Unlock()
-	if err != nil {
-		return err
+	if err != nil && !(alreadyExited && disposed) {
+		return errors.Join(err, waitErr)
 	}
 	return waitErr
 }

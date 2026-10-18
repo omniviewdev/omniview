@@ -66,7 +66,9 @@ func waitLinuxOwnedCommand(child *ownedChild, proc fs.FS) error {
 		// writer lifetime pending when descendants might still produce output.
 		return errors.Join(errOwnedCommandUncertain, err)
 	}
-	return child.command.Wait()
+	waitErr := child.command.Wait()
+	child.disposed = child.command.ProcessState != nil
+	return waitErr
 }
 
 func signalUnreapedGroup(pgid int, signal syscall.Signal) error {

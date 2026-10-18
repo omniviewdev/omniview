@@ -104,11 +104,11 @@ func TestWindowsOwnedJobFailedDisposalRetainsLifetimeForStopRetry(t *testing.T) 
 	child := &ownedChild{command: command, done: make(chan struct{})}
 	child.identity, err = devsession.CaptureProcess(command.Process.Pid, devsession.ProcessOwner{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6", Generation: NewGeneration(), Role: "host", Source: exe})
 	if err != nil {
-		_ = discardUncapturedCommand(command)
+		_ = discardUncapturedCommand(child)
 		t.Fatal(err)
 	}
 	if err = attachOwnedCommand(child); err != nil {
-		_ = discardUncapturedCommand(command)
+		_ = discardUncapturedCommand(child)
 		t.Fatal(err)
 	}
 	value, _ := childJob.Load(child)

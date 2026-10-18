@@ -8,7 +8,8 @@ import (
 	"os/exec"
 )
 
-func discardUncapturedCommand(command *exec.Cmd) error {
+func discardUncapturedCommand(child *ownedChild) error {
+	command := child.command
 	// This is our unreaped direct child, never an adopted numeric PID.
 	signalErr := signalUnreapedGroup(command.Process.Pid, unix.SIGKILL)
 	if signalErr != nil {
@@ -19,6 +20,7 @@ func discardUncapturedCommand(command *exec.Cmd) error {
 		return errors.Join(errOwnedCommandUncertain, err)
 	}
 	waitErr := command.Wait()
+	child.disposed = command.ProcessState != nil
 	var exit *exec.ExitError
 	if errors.As(waitErr, &exit) {
 		waitErr = nil

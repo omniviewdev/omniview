@@ -32,6 +32,8 @@ type ownedChild struct {
 	finalize    func() error
 	retryDone   chan struct{}
 	uncaptured  bool
+	// Set only after the owned tree is proven empty and the actual leader reaped.
+	disposed    bool
 	stopping    bool
 	stopTree    func(bool) error
 	monitorOnce sync.Once
@@ -83,7 +85,8 @@ func startOwnedChildCommand(ctx context.Context, command *exec.Cmd, owner devses
 		err = attachOwnedCommand(child)
 	}
 	if err != nil {
-		if cleanupErr := discardUncapturedCommand(command); cleanupErr != nil {
+		cleanupErr := discardUncapturedCommand(child)
+		if !child.disposed {
 			child.startErr = err
 			child.uncaptured = true
 			child.disposalErr = errors.Join(errOwnedCommandUncertain, err, cleanupErr)
@@ -91,7 +94,7 @@ func startOwnedChildCommand(ctx context.Context, command *exec.Cmd, owner devses
 			close(child.done)
 			return child, child.err
 		}
-		return failed(err)
+		return failed(errors.Join(err, cleanupErr))
 	}
 	go func() {
 		child.complete()
@@ -117,17 +120,19 @@ func (c *ownedChild) complete() {
 	if !reaped {
 		if c.uncaptured {
 			c.mu.Lock()
-			waitErr = discardUncapturedCommand(c.command)
+			waitErr = discardUncapturedCommand(c)
 			c.mu.Unlock()
 		} else {
 			waitErr = waitOwnedCommand(c)
 		}
-		_, exit := waitErr.(*exec.ExitError)
-		if waitErr == nil || exit {
-			disposalErr = nil
-		} else {
-			disposalErr = errors.Join(errOwnedCommandUncertain, waitErr)
-		}
+	}
+	c.mu.Lock()
+	disposed := c.disposed
+	c.mu.Unlock()
+	if disposed {
+		disposalErr = nil
+	} else {
+		disposalErr = errors.Join(errOwnedCommandUncertain, waitErr)
 	}
 	var finalizeErr error
 	if disposalErr == nil && c.finalize != nil {
@@ -143,19 +148,14 @@ func (c *ownedChild) complete() {
 
 func (c *ownedChild) retryStop(ctx context.Context) error {
 	c.mu.Lock()
-	if c.disposalErr == nil && c.finalizeErr == nil {
-		err := c.err
+	if c.disposed && c.disposalErr == nil && c.finalizeErr == nil {
 		c.mu.Unlock()
-		var exit *exec.ExitError
-		if err == nil || errors.As(err, &exit) {
-			return nil
-		}
-		return err
+		return nil
 	}
 	// A reaped leader cannot authorize another group signal. Keep the failed
 	// ownership record rather than pretending that an unprovable disposal ended.
-	if c.disposalErr != nil && c.command.ProcessState != nil {
-		err := c.err
+	if !c.disposed && c.command.ProcessState != nil {
+		err := errors.Join(errOwnedCommandUncertain, c.err)
 		c.mu.Unlock()
 		return err
 	}
@@ -230,14 +230,13 @@ func (c *ownedChild) stop(ctx context.Context) error {
 func (c *ownedChild) terminalStopError() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if !c.disposed {
+		return errors.Join(errOwnedCommandUncertain, c.err)
+	}
 	if c.disposalErr != nil || c.finalizeErr != nil {
 		return c.err
 	}
-	var exit *exec.ExitError
-	if c.err == nil || errors.As(c.err, &exit) {
-		return nil
-	}
-	return c.err
+	return nil
 }
 func (c *ownedChild) failure() error {
 	c.mu.Lock()

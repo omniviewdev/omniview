@@ -90,6 +90,9 @@ func waitOwnedCommand(child *ownedChild) error {
 	}
 	child.mu.Unlock()
 	waitErr := child.command.Wait()
+	child.mu.Lock()
+	child.disposed = child.command.ProcessState != nil
+	child.mu.Unlock()
 	if observeErr != nil {
 		return observeErr
 	}
@@ -98,12 +101,15 @@ func waitOwnedCommand(child *ownedChild) error {
 	}
 	return waitErr
 }
-func discardUncapturedCommand(command *exec.Cmd) error {
+func discardUncapturedCommand(child *ownedChild) error {
+	command := child.command
 	killErr := command.Process.Kill()
 	if errors.Is(killErr, os.ErrProcessDone) {
 		killErr = nil
 	}
 	waitErr := command.Wait()
+	// Startup has not resumed this suspended child, so it cannot have descendants.
+	child.disposed = killErr == nil && command.ProcessState != nil
 	var exit *exec.ExitError
 	if errors.As(waitErr, &exit) {
 		waitErr = nil

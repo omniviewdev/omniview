@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -145,5 +146,50 @@ func TestFiniteCommandJoinsRetainedStartupUncertaintyBeforeReturning(t *testing.
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("finite caller could not join retained startup disposal")
+	}
+}
+
+func TestFiniteCommandReturnsReapedOutputFailure(t *testing.T) {
+	root, err := devcontract.CanonicalPath(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, writer := io.Pipe()
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	command := exec.Command(os.Args[0], "-test.run=^TestFiniteCommandFixture$")
+	command.Dir = root
+	command.Env = append(os.Environ(), "OMNIVIEW_FINITE_STREAM_FIXTURE=1")
+	command.Stdout = writer
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	owner := devsession.ProcessOwner{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6", Generation: NewGeneration(), Role: "build", Source: root}
+	child, err := startOwnedChildCommand(ctx, command, owner, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-child.done:
+	case <-ctx.Done():
+		t.Fatal("actual output failure did not complete the owned child")
+	}
+	child.mu.Lock()
+	reaped := child.command.ProcessState != nil
+	waitErr := child.waitErr
+	child.mu.Unlock()
+	if !reaped || !errors.Is(waitErr, io.ErrClosedPipe) {
+		t.Fatalf("real command did not reach a reaped output failure: reaped=%v err=%v", reaped, waitErr)
+	}
+	done := make(chan error, 1)
+	go func() { done <- joinRepositoryCommand(ctx, child) }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, io.ErrClosedPipe) || errors.Is(err, errOwnedCommandUncertain) {
+			t.Fatalf("terminal output failure lost its cause or became disposal uncertainty: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("finite caller kept retrying disposal after its actual child was reaped")
 	}
 }
