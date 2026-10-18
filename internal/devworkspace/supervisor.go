@@ -30,38 +30,42 @@ type supervisorRecord struct {
 }
 
 type workspaceSupervisor struct {
-	manager             *Manager
-	workspace           Workspace
-	options             LaunchOptions
-	generation          string
-	owner               devcontract.ProcessIdentity
-	record              supervisorRecord
-	registry            *devsession.Registry
-	output              io.Writer
-	mu                  sync.Mutex
-	runMu               sync.Mutex
-	status              Status
-	binary              string
-	children            map[string]*ownedChild
-	leases              map[string]devsession.Lease
-	graphInstance       *BuildGraph
-	sessionCancel       context.CancelFunc
-	sessionContext      context.Context
-	exit                chan struct{}
-	exitOnce            sync.Once
-	launchDone          chan struct{}
-	watchDone           chan struct{}
-	childContext        context.Context
-	goBuildCache        string
-	childCancel         context.CancelFunc
-	hostCaptureReady    chan struct{}
-	lastHost            *ownedChild
-	processStartMu      sync.Mutex
-	processMu           sync.Mutex
-	managedProcesses    map[string]*managedProcessRecord
-	managedKeys         map[string]string
-	managedClosing      bool
-	unixSocketDirectory *devsession.UnixSocketDirectory
+	manager               *Manager
+	workspace             Workspace
+	options               LaunchOptions
+	generation            string
+	owner                 devcontract.ProcessIdentity
+	record                supervisorRecord
+	registry              *devsession.Registry
+	output                io.Writer
+	mu                    sync.Mutex
+	runMu                 sync.Mutex
+	status                Status
+	binary                string
+	children              map[string]*ownedChild
+	leases                map[string]devsession.Lease
+	graphInstance         *BuildGraph
+	sessionCancel         context.CancelFunc
+	sessionContext        context.Context
+	exit                  chan struct{}
+	exitOnce              sync.Once
+	launchDone            chan struct{}
+	watchDone             chan struct{}
+	childContext          context.Context
+	goBuildCache          string
+	childCancel           context.CancelFunc
+	hostCaptureReady      chan struct{}
+	lastHost              *ownedChild
+	processStartMu        sync.Mutex
+	processMu             sync.Mutex
+	managedProcesses      map[string]*managedProcessRecord
+	managedKeys           map[string]string
+	managedClosing        bool
+	unixSocketDirectory   *devsession.UnixSocketDirectory
+	feedbackMu            sync.Mutex
+	feedback              *viteFeedback
+	feedbackShutdownError error
+	ownedCleanupComplete  bool
 }
 
 func verifySupervisor(record supervisorRecord, w Workspace) error {
@@ -320,9 +324,14 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 	for {
 		s.runMu.Lock()
 		stopErr := s.stopChildren(context.Background())
-		if stopErr == nil {
+		if stopErr == nil || s.ownedCleanupComplete {
 			s.childCancel()
-			s.setPhase("stopped", nil)
+			if stopErr != nil {
+				resultErr = errors.Join(resultErr, stopErr)
+				s.failed(stopErr)
+			} else {
+				s.setPhase("stopped", nil)
+			}
 			s.runMu.Unlock()
 			break
 		}
@@ -336,11 +345,17 @@ func (m *Manager) ServeSupervisor(ctx context.Context, name string, output io.Wr
 	defer cancel()
 	_ = server.Shutdown(shutdown)
 	// Keep stopped metadata as truthful history. Never sweep another generation.
-	return nil
+	return resultErr
 }
 func writeLaunchSecret(path string, token []byte) error { return writeOwnedLaunchSecret(path, token) }
 func (s *workspaceSupervisor) environment() []string {
-	return append(workspaceEnvironment(os.Environ(), s.workspace, s.generation, s.options), "OMNIVIEW_DEV_CLI="+s.owner.Executable, "GOCACHE="+s.goBuildCache)
+	env := append(workspaceEnvironment(os.Environ(), s.workspace, s.generation, s.options), "OMNIVIEW_DEV_CLI="+s.owner.Executable, "GOCACHE="+s.goBuildCache)
+	s.feedbackMu.Lock()
+	defer s.feedbackMu.Unlock()
+	if s.feedback != nil {
+		env = append(env, s.feedback.environment)
+	}
+	return env
 }
 func (s *workspaceSupervisor) snapshot() Status {
 	s.mu.Lock()
@@ -422,6 +437,8 @@ func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Stat
 			s.failed(err)
 		} else {
 			s.setPhase("stopped", nil)
+		}
+		if s.ownedCleanupComplete {
 			s.exitOnce.Do(func() { close(s.exit) })
 		}
 		s.runMu.Unlock()
@@ -432,6 +449,25 @@ func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Stat
 func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if s.ownedCleanupComplete {
+		return s.feedbackShutdownError
+	}
+	integrityErr, holdErr := s.holdExistingFeedback(ctx)
+	if holdErr != nil {
+		return errors.Join(holdErr, s.feedbackShutdownError)
+	}
+	if integrityErr != nil && s.feedbackShutdownError == nil {
+		// Feedback integrity never authorizes abandoning otherwise exact-owned
+		// children. Retire them normally without repairing foreign metadata.
+		s.feedbackShutdownError = integrityErr
+	}
+	if integrityErr != nil {
+		if err := s.retireUnfencedFeedbackConsumers(ctx); err != nil {
+			// Without a durable hold or confirmed feedback-process retirement,
+			// preserve the live backend and every remaining ownership handle.
+			return errors.Join(err, s.feedbackShutdownError)
+		}
 	}
 	// Ask A08 to shut down each exact managed generation before host teardown.
 	if client, _, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation); err == nil {
@@ -463,13 +499,13 @@ func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 	// Preserve every retained handle and capability if any disposal is still
 	// uncertain. A later authenticated Stop must be able to retry the real owner.
 	if first != nil {
-		return first
+		return errors.Join(first, s.feedbackShutdownError)
 	}
 	// The namespace may contain stale Unix socket inodes after a killed
 	// plugin. Only confirmed disposal of every owned group authorizes cleanup.
 	if s.unixSocketDirectory != nil {
 		if err := s.unixSocketDirectory.Close(); err != nil {
-			return err
+			return errors.Join(err, s.feedbackShutdownError)
 		}
 		s.unixSocketDirectory = nil
 	}
@@ -483,10 +519,10 @@ func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 		delete(s.leases, role)
 	}
 	if first != nil {
-		return first
+		return errors.Join(first, s.feedbackShutdownError)
 	}
 	if err := s.clearHostDiscovery(ctx); err != nil {
-		return err
+		return errors.Join(err, s.feedbackShutdownError)
 	}
 	s.mu.Lock()
 	for role, child := range children {
@@ -495,5 +531,9 @@ func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 		}
 	}
 	s.mu.Unlock()
-	return first
+	if err := s.closeFeedback(); err != nil {
+		return errors.Join(err, s.feedbackShutdownError)
+	}
+	s.ownedCleanupComplete = true
+	return s.feedbackShutdownError
 }

@@ -106,16 +106,13 @@ func signalUnreapedGroup(pgid int, signal syscall.Signal) error {
 	if !errors.Is(err, unix.EPERM) {
 		return err
 	}
-	// XNU killpg1_pgrpfilt excludes SZOMB; POSIX killpg returns EPERM when
-	// no eligible member remains. The unreaped leader pins this exact PGID.
-	members, inspectErr := unix.SysctlKinfoProcSlice("kern.proc.pgrp", pgid)
-	if inspectErr != nil {
-		return errors.Join(err, fmt.Errorf("inspect unreaped owned group: %w", inspectErr))
-	}
-	for _, member := range members {
-		if member.Proc.P_stat != 5 {
-			return err
-		}
+	// XNU can skip members that proc_find can no longer reference while their
+	// kernel exit cleanup is still visible as non-SZOMB. Neither EPERM nor an
+	// exit-in-progress flag proves disposal. The unreaped leader pins this
+	// exact PGID; require independent terminal-group proof within the existing
+	// bound, preserving the signal error if that proof fails.
+	if exitErr := waitUnreapedGroupExit(pgid); exitErr != nil {
+		return errors.Join(err, exitErr)
 	}
 	return nil
 }

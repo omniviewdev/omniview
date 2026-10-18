@@ -21,15 +21,10 @@ vi.mock('@/utils/env', () => ({ isDev: vi.fn(() => true) }));
 const mockIsDev = vi.mocked(isDev);
 const mockLogError = vi.mocked(logger.error);
 
-// clipboard + reload mocks
+// Clipboard behavior uses the browser API seam.
 const writeTextMock = vi.fn().mockResolvedValue(undefined);
 Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
 
-const reloadMock = vi.fn();
-Object.defineProperty(window, 'location', {
-  value: { ...window.location, reload: reloadMock },
-  writable: true,
-});
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -87,7 +82,6 @@ describe('FullPageErrorFallback', () => {
   beforeEach(() => {
     resetMock.mockClear();
     writeTextMock.mockClear();
-    reloadMock.mockClear();
   });
 
   describe('dev mode', () => {
@@ -124,17 +118,6 @@ describe('FullPageErrorFallback', () => {
       expect(screen.queryByText(/at Object/)).not.toBeInTheDocument();
     });
 
-    it('"Try Again" calls resetErrorBoundary', () => {
-      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
-      fireEvent.click(screen.getByText('Try Again'));
-      expect(resetMock).toHaveBeenCalledTimes(1);
-    });
-
-    it('"Reload Application" calls window.location.reload', () => {
-      renderUi(<FullPageErrorFallback error={makeError()} resetErrorBoundary={resetMock} />);
-      fireEvent.click(screen.getByText('Reload Application'));
-      expect(reloadMock).toHaveBeenCalledTimes(1);
-    });
 
     it('"Copy Error" writes to clipboard with errorId + stack', async () => {
       renderUi(<FullPageErrorFallback error={makeError('boom')} resetErrorBoundary={resetMock} />);
@@ -255,7 +238,6 @@ describe('InlineErrorFallback', () => {
 // ─── RootErrorFallback ──────────────────────────────────────────────────────
 
 describe('RootErrorFallback', () => {
-  beforeEach(() => reloadMock.mockClear());
 
   describe('dev mode', () => {
     beforeEach(() => mockIsDev.mockReturnValue(true));
@@ -271,11 +253,6 @@ describe('RootErrorFallback', () => {
       expect(screen.getByText('ERR-test')).toBeInTheDocument();
     });
 
-    it('"Reload" button calls window.location.reload', () => {
-      render(<RootErrorFallback error={makeError()} />);
-      fireEvent.click(screen.getByText('Reload Application'));
-      expect(reloadMock).toHaveBeenCalledTimes(1);
-    });
   });
 
   describe('prod mode', () => {

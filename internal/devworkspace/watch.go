@@ -42,10 +42,14 @@ type WatchHooks struct {
 	// already rebuilt AND ready by that restart, preventing duplicate rebuilds.
 	HostRebuildAndWait func(context.Context, HostBuildRequest) (map[string]bool, error)
 	// RefreshConsumers restarts affected Vite/shim consumers when necessary and
-	// waits for their actual ready endpoint, then sends a full browser reload.
-	// In particular a new runtime export needs fresh plugin Vite shim loading.
+	// waits for their actual ready endpoints. CommitFeedback publishes the
+	// deliberate browser reload only after this completes successfully.
 	RefreshConsumers func(context.Context, WatchChange) error
-	Debounce         time.Duration
+	// BeginFeedback fences browser feedback before any affected producer runs.
+	// CommitFeedback releases only the successfully completed transaction.
+	BeginFeedback  func(context.Context, WatchChange) error
+	CommitFeedback func(context.Context, WatchChange) error
+	Debounce       time.Duration
 }
 
 func ignoredBuildDirectory(name string) bool {
@@ -233,6 +237,9 @@ func (g *BuildGraph) rebuildChange(ctx context.Context, paths []string, h WatchH
 		if err := g.auditComposition(ctx); err != nil {
 			return err
 		}
+		if err := h.BeginFeedback(ctx, change); err != nil {
+			return err
+		}
 		// Ordinary dirty SDK APIs are trusted local development input, bound to the
 		// reviewed isolation baseline and exact source identity on both build sides.
 		if change.SDKChanged {
@@ -302,7 +309,10 @@ func (g *BuildGraph) rebuildChange(ctx context.Context, paths []string, h WatchH
 		if err := g.auditComposition(ctx); err != nil {
 			return err
 		}
-		return h.RefreshConsumers(ctx, change)
+		if err := h.RefreshConsumers(ctx, change); err != nil {
+			return err
+		}
+		return h.CommitFeedback(ctx, change)
 	})
 }
 
@@ -311,8 +321,8 @@ func (g *BuildGraph) rebuildChange(ctx context.Context, paths []string, h WatchH
 // and recover on the next edit; invalidated manifests and watcher I/O failures
 // return to the supervisor for explicit reconfiguration, never auto-install.
 func (g *BuildGraph) Watch(ctx context.Context, h WatchHooks) error {
-	if h.Managed == nil || h.Generations == nil || h.WaitPluginReady == nil || h.HostRebuildAndWait == nil || h.RefreshConsumers == nil {
-		return fmt.Errorf("managed generation, host supervisor and actual consumer readiness hooks are required")
+	if h.Managed == nil || h.Generations == nil || h.WaitPluginReady == nil || h.HostRebuildAndWait == nil || h.RefreshConsumers == nil || h.BeginFeedback == nil || h.CommitFeedback == nil {
+		return fmt.Errorf("managed generation, host supervisor, actual consumer readiness and paired feedback hooks are required")
 	}
 	lockPath, err := GeneratedLockPath(g.workspace, "watchgraph")
 	if err != nil {

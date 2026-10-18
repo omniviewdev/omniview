@@ -4,9 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { SHARED_PACKAGES } from './sharedPackages';
 import { safeFilename } from './safeFilename';
 import { workspaceViteCacheDirectory, workspaceVitePort, workspaceViteRoots } from './workspace';
+import { attachManagedViteFeedback } from './feedback';
 
 export { SHARED_PACKAGES } from './sharedPackages';
 export { safeFilename } from './safeFilename';
+export { managedViteFeedback } from './feedback';
 
 const moduleDirectory = typeof __dirname === 'string'
   ? __dirname
@@ -212,6 +214,10 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
         const target = dependency.slice(dependency.lastIndexOf('>') + 1).trim();
         return !sharedSet.has(target);
       });
+    },
+
+    configureServer(server) {
+      attachManagedViteFeedback(server);
     },
 
     resolveId(source) {

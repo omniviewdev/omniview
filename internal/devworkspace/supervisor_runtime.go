@@ -107,6 +107,10 @@ func (s *workspaceSupervisor) launch(ctx context.Context) error {
 		return err
 	}
 	s.goBuildCache = cache
+	initialChange := WatchChange{Nodes: []string{"host-backend"}}
+	if err := s.beginFeedback(deadline, initialChange); err != nil {
+		return err
+	}
 	// Seeding precedes A11's stopped-profile root lock, which may create .lock.
 	// Never remove an existing lock inode or replace initialized state to seed.
 	if err := s.seed(deadline); err != nil {
@@ -152,7 +156,9 @@ func (s *workspaceSupervisor) launch(ctx context.Context) error {
 	s.mu.Lock()
 	s.status.Instance = &descriptor
 	s.mu.Unlock()
-	s.setPhase("ready", nil)
+	if err := s.commitFeedback(deadline, initialChange); err != nil {
+		return err
+	}
 	if s.options.Watch {
 		done := make(chan struct{})
 		s.mu.Lock()
@@ -206,6 +212,9 @@ func (s *workspaceSupervisor) monitorChildren(ctx context.Context) {
 }
 
 func (s *workspaceSupervisor) startVite(ctx context.Context) error {
+	if err := s.checkFeedback(); err != nil {
+		return err
+	}
 	host, err := s.workspace.RepositoryPath("omniview")
 	if err != nil {
 		return err
@@ -323,6 +332,9 @@ func waitForService(ctx context.Context, child *ownedChild, probe func(context.C
 }
 
 func (s *workspaceSupervisor) startHost(ctx context.Context) error {
+	if err := s.checkFeedback(); err != nil {
+		return err
+	}
 	host, err := s.workspace.RepositoryPath("omniview")
 	if err != nil {
 		return err
@@ -633,7 +645,7 @@ func (r remoteManagedBuild) RebuildPluginGeneration(ctx context.Context, id, gen
 	return err
 }
 func (s *workspaceSupervisor) watchHooks() WatchHooks {
-	return WatchHooks{Managed: remoteManagedBuild{s: s}, Generations: func(ctx context.Context) (map[string]string, error) {
+	return WatchHooks{BeginFeedback: s.beginFeedback, CommitFeedback: s.commitFeedback, Managed: remoteManagedBuild{s: s}, Generations: func(ctx context.Context) (map[string]string, error) {
 		generations := map[string]string{}
 		for _, plugin := range s.workspace.Manifest.Plugins {
 			state, err := s.pluginState(ctx, plugin.ID)
@@ -706,12 +718,11 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 	}, RefreshConsumers: func(ctx context.Context, change WatchChange) error {
 		s.runMu.Lock()
 		defer s.runMu.Unlock()
-		hostRebuilt := false
-		for _, node := range change.Nodes {
-			if node == "host-backend" {
-				hostRebuilt = true
-				break
-			}
+		hostRebuilt := feedbackReplacesHost(change)
+		if !hostRebuilt && !feedbackRestartsConsumers(change) {
+			// Source-only host/plugin components and CSS retain their existing
+			// Vite document and Fast Refresh state; no Node restart is needed.
+			return nil
 		}
 		// Embedded host replacement already restarted the selected plugins and
 		// awaited their actual readiness. Do not restart those consumers twice.
@@ -791,7 +802,6 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 		s.mu.Lock()
 		s.status.Instance = &descriptor
 		s.mu.Unlock()
-		s.setPhase("ready", nil)
 		return nil
 	}}
 }
@@ -821,14 +831,7 @@ func (s *workspaceSupervisor) clearHostDiscovery(ctx context.Context) error {
 }
 
 func (s *workspaceSupervisor) refreshManagedConsumers(ctx context.Context, change WatchChange) error {
-	shared := change.RuntimeChanged
-	for _, node := range change.Nodes {
-		switch node {
-		case "base-ui", "ai-ui", "editors", "runtime", "vite-plugin":
-			shared = true
-		}
-	}
-	if !shared {
+	if !feedbackRestartsConsumers(change) {
 		return nil
 	}
 	client, _, err := ConnectWorkspaceControl(ctx, s.workspace, s.manager.options.Home, s.generation)

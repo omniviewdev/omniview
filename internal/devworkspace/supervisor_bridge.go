@@ -363,6 +363,9 @@ func (s *workspaceSupervisor) startManagedProcess(start devsession.ProcessStart,
 			return nil, err
 		}
 	}
+	if err := s.checkFeedback(); err != nil {
+		return nil, err
+	}
 	env := s.environment()
 	allowed, err := s.graphInstance.ViteEnvironment()
 	if err != nil {

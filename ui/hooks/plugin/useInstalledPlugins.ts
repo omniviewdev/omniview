@@ -34,11 +34,13 @@ export function useInstalledPlugins(): {
     const stopInit = Events.On('plugin/init_complete', invalidateInventory);
     const stopInventory = Events.On('plugin/inventory_changed', invalidateInventory);
     const stopInstall = Events.On('plugin/install_finished', invalidateInventory);
+    const stopDevInstall = Events.On('plugin/dev_install_complete', invalidateInventory);
     const stopUpdate = Events.On('plugin/update_complete', invalidateInventory);
     return () => {
       stopInit();
       stopInventory();
       stopInstall();
+      stopDevInstall();
       stopUpdate();
     };
   }, [queryClient]);

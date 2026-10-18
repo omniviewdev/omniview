@@ -13,6 +13,9 @@ import (
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 func run(args []string, out, diagnostics io.Writer) int {
+	if handled, code := handleViteFeedbackRead(args, out, diagnostics); handled {
+		return code
+	}
 	ctx := context.Background()
 	if handled, code := HandleControlCommand(ctx, args, os.Stdin, out, diagnostics); handled {
 		return code

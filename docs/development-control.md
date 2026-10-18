@@ -75,6 +75,8 @@ Durable installation commit and successful durable uninstall emit the payload-fr
 
 Inventory invalidation belongs to the always-mounted read-only startup provider, not the optional plugin-management screen. Install/update completion refreshes module selection from current backend metadata and the actual ready dev-server port; clearing the previous loader uses its previous mode. A committed artifact waits for any in-flight import, including queued startup batches through publication, before replacing it. Failed imports retain their attempted loader mode so a corrected archive evicts the failed installed module rather than reusing it. Explicit unload/force-reset invalidates pending refreshes as well as queued imports. Switching between installed archives and development sources must not keep fetching a retired Vite port.
 
+The startup inventory also invalidates on managed-source `plugin/dev_install_complete`. A successful early list can be partial while another managed plugin publishes, even when both Vite servers already report ready; stopping initial query polling must not hide that later source from navigation.
+
 Runtime plugin context can request metadata before a managed source publishes its host record. An unavailable context reconciles on `plugin/init_complete`, matching `plugin/dev_install_complete`, or committed inventory invalidation, fetching settings again as well. Request generations discard superseded successes/errors and responses after plugin changes or unmount. Already-loaded metadata is not refreshed by precommit readiness. Initial `Running` is not a reliable publication notification in the current loader, and these subscriptions do not replay events lost during a browser transport disconnect.
 
 ## Settings and output safety

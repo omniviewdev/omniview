@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -142,6 +143,201 @@ func TestDarwinSupervisorExitFixture(t *testing.T) {
 	}
 	_, _ = io.Copy(io.Discard, os.Stdin)
 	os.Exit(0)
+}
+
+func TestDarwinOwnedGroupExitFixture(t *testing.T) {
+	pidFile := os.Getenv("OMNIVIEW_DARWIN_EXIT_GROUP_PID_FILE")
+	if pidFile == "" {
+		return
+	}
+	command := exec.Command(os.Args[0], "-test.run=^TestDarwinSupervisorExitFixture$")
+	command.Env = os.Environ()
+	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := command.Start(); err != nil {
+		os.Exit(90)
+	}
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(command.Process.Pid)), 0600); err != nil {
+		os.Exit(91)
+	}
+	_, _ = io.Copy(io.Discard, os.Stdin)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		members, err := unix.SysctlKinfoProcSlice("kern.proc.pid", command.Process.Pid)
+		_, argsErr := unix.SysctlRaw("kern.procargs2", command.Process.Pid)
+		if err != nil {
+			os.Exit(92)
+		}
+		if len(members) == 1 && members[0].Proc.P_stat != 5 && members[0].Proc.P_flag&0x2000 != 0 && errors.Is(argsErr, unix.EINVAL) {
+			// Leave this exact descendant inside kernel exit while the retained
+			// group leader becomes an unreaped zombie.
+			os.Exit(17)
+		}
+		if !time.Now().Before(deadline) {
+			os.Exit(93)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestDarwinOwnedGroupWaitsForExitingDescendant(t *testing.T) {
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	raw, err := listener.SyscallConn()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var socketErr error
+	if err = raw.Control(func(fd uintptr) { socketErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, 1024) }); err != nil || socketErr != nil {
+		t.Fatal(errors.Join(err, socketErr))
+	}
+	pidFile := filepath.Join(t.TempDir(), "descendant.pid")
+	command := exec.Command(os.Args[0], "-test.run=^TestDarwinOwnedGroupExitFixture$")
+	command.Env = append(os.Environ(), "OMNIVIEW_DARWIN_EXIT_GROUP_PID_FILE="+pidFile, "OMNIVIEW_DARWIN_EXIT_FIXTURE="+strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+	input, err := command.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	command.Stderr = os.Stderr
+	prepareOwnedCommand(command)
+	if err = command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	child := &ownedChild{command: command}
+	child.identity.PID = command.Process.Pid
+	var peer *net.TCPConn
+	boundaryObserved := false
+	var completed chan error
+	waitFinished := false
+	defer func() {
+		_ = input.Close()
+		if peer != nil {
+			_ = peer.SetLinger(0)
+			_ = peer.Close()
+		}
+		if completed != nil && !waitFinished {
+			select {
+			case waitErr := <-completed:
+				t.Logf("retained observer completed during cleanup: %v", waitErr)
+			case <-time.After(6 * time.Second):
+				t.Errorf("cleanup unproven: retained observer still owns unreaped leader %d", command.Process.Pid)
+				return
+			}
+		}
+		if command.ProcessState != nil {
+			t.Logf("cleanup proven by owned observer: leader %d reaped, disposed=%t", command.Process.Pid, child.disposed)
+			return
+		}
+		var signalErr error
+		if !boundaryObserved {
+			signalErr = signalUnreapedGroup(command.Process.Pid, unix.SIGKILL)
+		}
+		// At the observed boundary every member has already entered exit. TCP
+		// reset releases the descendant; retain the leader until emptiness is
+		// independently proven, even when the production observer returned EPERM.
+		if groupErr := waitUnreapedGroupExit(command.Process.Pid); groupErr != nil {
+			t.Errorf("cleanup unproven; retained unreaped leader %d: %v", command.Process.Pid, errors.Join(signalErr, groupErr))
+			return
+		}
+		waitErr := command.Wait()
+		t.Logf("cleanup proven independently: group %d has no live members, retained leader reaped=%t, signal=%v, wait=%v", command.Process.Pid, command.ProcessState != nil, signalErr, waitErr)
+	}()
+	if err = listener.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	peer, err = listener.AcceptTCP()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready := make(chan error, 1)
+	go func() {
+		line, readErr := bufio.NewReader(output).ReadString('\n')
+		if readErr == nil && line != "ready\n" {
+			readErr = errors.New("unexpected linger fixture readiness")
+		}
+		ready <- readErr
+	}()
+	select {
+	case err = <-ready:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("actual descendant did not fill its lingering TCP socket")
+	}
+	rawPID, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	descendantPID, err := strconv.Atoi(string(rawPID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = input.Close(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		members, inspectErr := unix.SysctlKinfoProcSlice("kern.proc.pgrp", command.Process.Pid)
+		if inspectErr != nil {
+			t.Fatal(inspectErr)
+		}
+		leaderExited, descendantExiting := false, false
+		for _, member := range members {
+			switch int(member.Proc.P_pid) {
+			case command.Process.Pid:
+				leaderExited = member.Proc.P_stat == 5
+			case descendantPID:
+				_, argsErr := unix.SysctlRaw("kern.procargs2", descendantPID)
+				descendantExiting = member.Proc.P_stat != 5 && member.Proc.P_flag&0x2000 != 0 && errors.Is(argsErr, unix.EINVAL)
+			}
+		}
+		if len(members) == 2 && leaderExited && descendantExiting {
+			boundaryObserved = true
+			for _, member := range members {
+				t.Logf("retained group boundary: pid=%d stat=%d flags=%#x", member.Proc.P_pid, member.Proc.P_stat, member.Proc.P_flag)
+			}
+			break
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatal("did not hold exact unreaped leader plus non-zombie P_WEXIT descendant")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	completed = make(chan error, 1)
+	go func() { completed <- waitOwnedCommand(child) }()
+	select {
+	case err = <-completed:
+		waitFinished = true
+		t.Errorf("owned observer returned before held descendant kernel exit: EPERM=%t disposed=%t reaped=%t err=%v", errors.Is(err, unix.EPERM), child.disposed, command.ProcessState != nil, err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err = peer.SetLinger(0); err != nil {
+		t.Fatal(err)
+	}
+	if err = peer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if waitFinished {
+		return
+	}
+	select {
+	case err = <-completed:
+		waitFinished = true
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 17 || !child.disposed || command.ProcessState == nil {
+			t.Fatalf("released exact group lost disposal/reap/exit proof: disposed=%t reaped=%t err=%v", child.disposed, command.ProcessState != nil, err)
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("released descendant did not complete retained group disposal")
+	}
 }
 
 func TestDarwinDownWaitsForExactSupervisorKernelExit(t *testing.T) {

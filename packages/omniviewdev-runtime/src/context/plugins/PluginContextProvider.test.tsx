@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as WailsRuntime from '@wailsio/runtime';
 
@@ -62,6 +62,7 @@ describe('plugin metadata after managed source publication', () => {
       .mockResolvedValue(new PluginMeta({ id: 'probe', name: 'Recovered plugin' }));
     render(<PluginContextProvider pluginId="probe"><Consumer /></PluginContextProvider>);
     await screen.findByText("plugin 'probe' not found");
+    expect(screen.queryByLabelText('Plugin counter')).toBeNull();
 
     await act(async () => published());
 
@@ -89,5 +90,19 @@ describe('plugin metadata after managed source publication', () => {
 
     expect(screen.getByRole('heading', { name: 'Current plugin' }).textContent).toBe('Current plugin');
     expect(screen.getByLabelText('Plugin counter').textContent).toBe('29');
+  });
+
+  it('recovers the consumer through Retry without a publication event', async () => {
+    mocks.metadata
+      .mockRejectedValueOnce(new Error('Metadata unavailable'))
+      .mockResolvedValue(new PluginMeta({ id: 'probe', name: 'Retry recovered plugin' }));
+    render(<PluginContextProvider pluginId="probe"><Consumer /></PluginContextProvider>);
+    await screen.findByText('Metadata unavailable');
+    expect(screen.queryByLabelText('Plugin counter')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+
+    await screen.findByRole('heading', { name: 'Retry recovered plugin' });
+    expect(screen.getByLabelText('Plugin counter').textContent).toBe('17');
   });
 });

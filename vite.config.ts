@@ -7,6 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { workspaceViteCacheDirectory, workspaceVitePort, workspaceViteRoots } from './packages/omniviewdev-vite-plugin/src/workspace';
+import { managedViteFeedback } from './packages/omniviewdev-vite-plugin/src/feedback';
 
 // if in ESM context
 const __filename = fileURLToPath(import.meta.url);
@@ -66,6 +67,7 @@ export default defineConfig({
     force: true,
   } : undefined,
   plugins: [
+    managedViteFeedback(),
     {
       name: 'managed-yaml-worker-stage',
       enforce: 'pre',

@@ -10,9 +10,13 @@ import (
 	"time"
 )
 
-func recoveryWatchHooks(started chan struct{}) WatchHooks {
+func recoveryWatchHooks(t *testing.T, g *BuildGraph, started chan struct{}) WatchHooks {
+	t.Helper()
+	s, _ := feedbackSupervisorFixture(t, g)
 	return WatchHooks{
-		Managed: &graphManagedFixture{},
+		BeginFeedback:  s.beginFeedback,
+		CommitFeedback: s.commitFeedback,
+		Managed:        &graphManagedFixture{},
 		Generations: func(context.Context) (map[string]string, error) {
 			select {
 			case started <- struct{}{}:
@@ -58,7 +62,7 @@ func TestWatchRecoveryCannotDeclareReadyWithUnrebuiltSDKBackend(t *testing.T) {
 		return compiler(ctx, directory, environment, program, args...)
 	}
 	started := make(chan struct{}, 1)
-	hooks := recoveryWatchHooks(started)
+	hooks := recoveryWatchHooks(t, g, started)
 	hooks.HostRebuildAndWait = func(context.Context, HostBuildRequest) (map[string]bool, error) {
 		return nil, errors.New("SDK backend remains invalid")
 	}
@@ -105,7 +109,8 @@ func TestWatchRejectsNewAggregatePNPMModuleHook(t *testing.T) {
 	defer cancel()
 	started := make(chan struct{}, 1)
 	done := make(chan error, 1)
-	go func() { done <- g.Watch(ctx, recoveryWatchHooks(started)) }()
+	hooks := recoveryWatchHooks(t, g, started)
+	go func() { done <- g.Watch(ctx, hooks) }()
 	select {
 	case <-started:
 	case <-ctx.Done():

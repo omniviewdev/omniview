@@ -107,7 +107,7 @@ Accepted local evidence includes:
 - Actual Homebrew native12 runtime → shims → host/E2E builds and managed nested scripts with spaced paths/arguments and a conflicting inherited manager marker.
 - Genuine mixed UI-only/backend launch reports UI-only build/RPC/controller stages as not applicable. In live-host mode its actual Vite `js-update` changes rendered markup with the same document and counter, no page errors and unchanged backend generation; retirement succeeds. The captured renderer is React DOM 19.2.4 development (`bundleType: 1`).
 
-The latest combined runtime-admission source at this checkpoint is host `c5e1c1a0327f768677390fc12b15ba4edfc2ac3b`, UI `c71831890e5c869ff9bbf92ac12a0bb7bec29d3b`, SDK `d32a524bc89659260c6045062035ce05dc138ff4` and Kubernetes `5df15b06b80790c3a8e9255d300f40795fde9bef`. Test-only plugin sources are genuine fixtures, not released packages or synthetic ready/RPC responses.
+The first final-integration cohort uses host `ac0fbd81913c749294e2999ea02a75ef031f1679`, UI `c71831890e5c869ff9bbf92ac12a0bb7bec29d3b`, SDK `d32a524bc89659260c6045062035ce05dc138ff4` and Kubernetes `5df15b06b80790c3a8e9255d300f40795fde9bef`. Both full consumer scenarios fail real automatic-feedback gates: live mode repairs the SDK/backend graph but leaves its consumer on Chromium's error document; optimized mode passes host/probe CSS updates but loses Kubernetes navigation after host replacement. Test-only plugin sources are genuine fixtures, not released packages or synthetic ready/RPC responses.
 
 Follow-up unavailable-runtime-context recovery at host `48054a0ebdb3b367cdf05a187bbf5455a409e66e` passes 156 runtime tests, 354 host plugin tests, runtime → shim → host builds and E2E type checks. An actual single-plugin optimized host rebuild replaces the process/document, serves new host markup and leaves the plugin clickable without manual reload; retirement succeeds. That run observed no missing-metadata response, so unavailable-context recovery in the full two-plugin cohort remains a separate gate.
 
@@ -115,20 +115,63 @@ Optimized UI-only refresh failed despite delivered Vite component updates with n
 
 Actual native optimized-host verification also observes automatic updated markup, document replacement and a usable button, with native process/service identity and opaque generation unchanged. Down → unlink → remove all succeed, including exact-UUID native-store retirement and exact source restoration. No manual navigation/reload after the edit, pixel capture or permission request; native CSS HMR/live-frontend mode are not newly exercised by this run.
 
-Final containment review also produced three reproduced regressions: stop released a blocked real backend publisher before later installed-byte writes; rebuild SDK verification accepted an unselected reviewed checkout; production accepted durable custom-development claims. Their independent fixes are undergoing integration checks. They are not accepted merely because source review or targeted tests pass.
+The earlier containment wave passes the full Go suite and seven affected race-enabled packages. Real Go compilation/publication regressions prove confirmed stop, retry, reentrant stop and ordered reload/error reporting; actual Go module resolution rejects an unselected reviewed SDK. An actual production executable rejects twelve stable/nightly claimed-root, ancestor, descendant, symlink, physical-case-alias and prospective reserved-channel selections without changing existing bytes/modes; canonical retirement succeeds. Final targeted source reviews report no findings. Production override protection combines physical custom-path identity with an explicit case-insensitive reservation of default profile labels, rather than pretending all filesystems share case semantics.
+
+The feedback correction passes 26 actual Vite 5/8 network and native-authority-subprocess regressions, 157 runtime tests, 462 affected host tests and ordered runtime → shims → host/E2E builds under actual pnpm 12.14.0. Windows/Linux ARM64 CLI and both test binaries compile; nonroot, offline, read-only Linux runs exercise real authority, FIFO refusal, incomplete-publication retry and owned-process retirement. Final post-correction Go verification passes the full tagged suite (37 `ok` results plus 11 packages without test files) and all eight affected race-enabled packages. The earlier Darwin race failure remains recorded separately, not retroactively relabeled as success.
+
+A controlled TCP-linger fixture reproduces the Darwin boundary: an unreaped zombie leader coexists with an exiting non-zombie descendant, and group signaling reports `EPERM` before descendant cleanup completes. The correction waits for independent whole-group terminal proof within the existing bound, without extra signals or accepting exit flags as completion. The new race-enabled regression and both fresh original host-crash/authenticated-stop cases pass.
 
 Remaining order:
 
-1. **Parallel actual scenarios:** full optimized and live-Vite host/Kubernetes/probe CSS/component/runtime-export/SDK edits, failed/repaired builds and cross-profile isolation; unavailable runtime-context recovery after host replacement; final backend graph convergence after frontend updates. Do not manually reload away a refresh failure. Corrected fresh-profile retirement, explicit duplicate-launch checks, live-host UI-only state-preserving HMR and optimized browser/native automatic markup updates above are already exercised independently.
-2. Correct any observed failure at its causal boundary, with regression evidence and targeted review. Then rerun the affected real scenario on a new immutable cohort; do not relabel older evidence as current.
+1. Freeze the verified source into a new immutable cohort, then pass a focused actual failed/repaired SDK scenario without manual navigation or reload.
+2. On a new immutable cohort, run full optimized and live-Vite host/Kubernetes/probe CSS/component/runtime-export/SDK edits, failed/repaired builds and cross-profile isolation in parallel. Verify unavailable runtime-context recovery, retained registry identity and final backend graph convergence. Correct failures at their causal boundaries; never relabel older evidence as current.
 3. Reconcile the final scenario ledger: commands, source refs, UUIDs/generations, actual endpoints, observed result, artifacts/platform and limits. Keep compiler success distinct from connected RPC/controller readiness and actual module bytes.
 4. Publish the **real** fixed SDK and compatible package/plugin releases in dependency order before claiming normal production/release consumption. No fake SDK version or legacy MUI/shared-dependency shim is an acceptable substitute.
 5. Supply Windows/Linux native GUI runners and authorized pixel capture if those platform/pixel claims are required. Unavailable hardware/permissions remain explicit gates, not passes.
 6. Finish the final independent containment/baseline/auth/process review and update this checkpoint plus operational docs from observed results.
 
+### Automatic-feedback correction dependency order
+
+Host replacement currently keeps Vite reachable while the backend is unavailable, and producer outputs can trigger navigation before replacement begins. Client HMR callbacks are not a cross-version cancellation mechanism: Vite 5 does not await them, Vite 8 awaits without providing a veto, and their reconnect probes differ. The correction holds navigation-affecting Vite messages and reconnect probes at the server boundary before any backend-affecting producer publishes, while keeping ordinary HTML/modules available for real host readiness probes. Only the exact owned generation's private, integrity-checked feedback state can release one deliberate reload after backend/plugin readiness; failed builds retain the hold.
+
+Two independent rendered-consumer corrections are also required: discover late managed inventory on the real postpublication `plugin/dev_install_complete` event, and retain the extension registry for the document lifetime across live runtime HMR. Neither an initially successful partial inventory nor a Vite-ready status proves every plugin record has published.
+
+```mermaid
+flowchart LR
+  G[Go transaction and feedback ownership] --> B[Contract checks and actual SDK-repair smoke]
+  V[Vite 5 and 8 server-side gates] --> B
+  I[Late inventory discovery] --> B
+  R[Document-lifetime registry] --> B
+  B --> C[Full optimized and live consumer acceptance]
+```
+
 One before-fix diagnostic supervisor remains quarantined in its original private collection: its old command-completion loop blocks canonical down and holds a lock. The unknown partial aggregate lock and live-writer proof are deliberately not adopted or cleared. A read-only exact-identity Mach task-authority probe returned `KERN_FAILURE`; a debugger label alone does not prove safe termination authority. Fresh corrected collections and replay are independent. Do not describe this retained fixture as repaired or canonically removed.
 
 Development-profile isolation does not sandbox HOME, kubeconfig, cloud credentials, terminals or remote clusters. Baseline preferences and a DEV badge never authorize production-cluster mutation.
+
+### Local artifact index
+
+These are nonsecret records from this verification machine, rooted at `/private/tmp/omniview-current-verify.zTGCdd`; they are not checked-in fixtures or portable source paths. Refer to each record's source selection and limits rather than treating all runs as one cohort.
+
+| Scenario | Record relative to the verification root |
+| --- | --- |
+| Concurrent native A/B/private production-like control | `managed-native-acceptance/final-evidence.json` |
+| Explicit production/development duplicate refusal | `native-singleton-acceptance/summary.json` |
+| Same-open archive replacement, rename/rebind, foreign rejection and uninstall | `plugin-transaction-acceptance/promoted-acceptance-summary.json` |
+| Corrected fresh lifecycle and complete retirement | `plugin-transaction-acceptance/lifetime-final-proof.json` |
+| Live-host UI-only Fast Refresh | `frontend-only-hmr-live-proof.json` |
+| Optimized browser automatic markup update; later graph snapshot still building | `frontend-only-hmr-optimized4c39-proof.json` |
+| Optimized native automatic reload and usable button | `native-hmr4c39-acceptance/summary.json` |
+| Single-plugin embedded host replacement | `metadata-replacement-proof.json` |
+| Actual production claimed/reserved-root ingress refusal | `production-claim-smoke-proof.json` |
+| Actual nonroot Linux case-sensitive profile controls | `linux-profile-containment-proof.json` |
+| Windows/Linux ARM64 contract cross-compilation | `final-cross-compile-proof.json` |
+| Quarantined diagnostic owner's denied task authority | `plugin-transaction-acceptance/retained-task-authority-proof.json` |
+| Final immutable consumer input selection | `e2e-sources-ac0fbd.json` |
+| Feedback gates, native authority, Linux execution and outstanding Darwin race | `feedback-contract-proof.json` |
+| Actual Darwin exiting-descendant RED/GREEN and independent cleanup | `darwin-retirement-proof.json` |
+
+The failed first-cohort runs retain stage receipts, screenshots and browser-error records beneath `playwright-optimized-ac0fbd/` and `playwright-live-ac0fbd/`; these are failures, not final acceptance. The live error record is large: inspect bounded projections rather than loading it wholesale, and distinguish failure-stage observations from teardown noise. Linux profile tests actually ran nonroot with a read-only root filesystem, no network and private tmpfs; Windows runtime and both platforms' GUI/storage claims remain unexercised.
 
 ## Wails research relevant to this design
 

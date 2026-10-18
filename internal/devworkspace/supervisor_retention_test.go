@@ -82,6 +82,82 @@ func TestSupervisorFailedStopRetainsOwnerAndLeaseForRetry(t *testing.T) {
 	}
 }
 
+func TestViteFeedbackStopRetainsHandleUntilExactOwnedDisposal(t *testing.T) {
+	for _, tamper := range []bool{false, true} {
+		t.Run(map[bool]string{false: "owned-metadata", true: "foreign-replacement"}[tamper], func(t *testing.T) {
+			g, s, _, path := feedbackWatchFixture(t)
+			ctx := context.Background()
+			initial := WatchChange{Nodes: []string{"host-backend"}}
+			if err := s.beginFeedback(ctx, initial); err != nil {
+				t.Fatal(err)
+			}
+			assertFeedbackHeld(t, s, true, "initial startup before any child")
+			if err := s.commitFeedback(ctx, initial); err != nil {
+				t.Fatal(err)
+			}
+			retained := s.feedback.file
+			foreign, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tamper {
+				if err := os.Rename(path, path+".retained"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, foreign, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			host, err := g.workspace.RepositoryPath("omniview")
+			if err != nil {
+				t.Fatal(err)
+			}
+			child, err := startOwnedChild(ctx, host, s.environment(), io.Discard, devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: "host", Source: host}, nil, "/bin/sleep", "300")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.children = map[string]*ownedChild{"host": child}
+			stopTree := child.stopTree
+			defer func() { child.stopTree = stopTree; _ = child.stop(ctx) }()
+			denied := errors.New("owned group disposal remains unresolved")
+			child.stopTree = func(bool) error { return denied }
+			if err := s.stopChildren(ctx); !errors.Is(err, denied) {
+				t.Fatalf("lost exact-owned disposal failure: %v", err)
+			}
+			if _, err := retained.Stat(); err != nil || s.feedback.file != retained || s.children["host"] != child || s.ownedCleanupComplete {
+				t.Fatalf("uncertain disposal discarded actual ownership: %v", err)
+			}
+			if !tamper {
+				assertFeedbackHeld(t, s, true, "shutdown held before stopping actual child")
+			}
+			child.stopTree = stopTree
+			stopErr := s.stopChildren(ctx)
+			if (stopErr != nil) != tamper || !s.ownedCleanupComplete {
+				t.Fatalf("confirmed cleanup lost truthful integrity result: complete=%v err=%v", s.ownedCleanupComplete, stopErr)
+			}
+			select {
+			case <-child.done:
+			default:
+				t.Fatal("feedback handle closed before actual owned child exited")
+			}
+			if _, err := retained.Stat(); !errors.Is(err, os.ErrClosed) {
+				t.Fatalf("actual feedback descriptor remained open after owned cleanup: %v", err)
+			}
+			if tamper {
+				actual, err := os.ReadFile(path)
+				if err != nil || !bytes.Equal(actual, foreign) {
+					t.Fatalf("shutdown changed foreign feedback metadata: %q: %v", actual, err)
+				}
+				if err := s.stopChildren(ctx); err != stopErr {
+					t.Fatalf("repeated stop erased or changed fixed integrity failure: %v, original %v", err, stopErr)
+				}
+			} else {
+				assertFeedbackHeld(t, s, true, "closed supervisor leaves reconnect held")
+			}
+		})
+	}
+}
+
 func TestManagedBridgeFinalizationFailureIsNotTerminalExit(t *testing.T) {
 	w := generatedFixture(t)
 	generation := NewGeneration()

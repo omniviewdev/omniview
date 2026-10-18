@@ -65,6 +65,9 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 		if strings.EqualFold(key, "PNPM_CONFIG_WORKSPACE_DIR") || strings.EqualFold(key, "NPM_CONFIG_WORKSPACE_DIR") {
 			continue
 		}
+		if strings.EqualFold(key, viteFeedbackEnvironment) {
+			continue
+		}
 		if strings.HasPrefix(key, "OMNIVIEW_PROCESS_BRIDGE_") || key == "OMNIVIEW_NATIVE_PURGE_LOCK_FDS" || key == "OMNIVIEW_PNPM_NODE_PATH" {
 			continue
 		}
