@@ -41,6 +41,8 @@ Source package names, versions, dependency ranges, workspace configs and lockfil
 
 Build approvals are permissions, not requirements: explicit `allowBuilds` booleans intersect with **deny-wins** across roots. A host approval cannot override a plugin denial. Standalone files remain unchanged, managed installs still prohibit all scripts, and other incompatible policy values still refuse composition.
 
+Locked registry metadata may contain informational prose with support URLs. An embedded URL in a deprecation notice is not a URL-valued resolution; actual URL values still reject userinfo, query/fragment data and unresolved repository-local references.
+
 Local Omniview exports are explicit workspace mappings even when older published dependency ranges differ. React/ReactDOM use the selected host's locked semver providers within the same workspace, not external path links that pnpm12 cannot peer-attest. Managed installs use `--ignore-scripts` and strict peers, followed by **recursive** `pnpm -r peers check --json --lockfile-only`; frozen/up-to-date install alone can skip peer revalidation.
 
 The owned native launcher clears inherited workspace-dir aliases and sets validated `PNPM_CONFIG_WORKSPACE_DIR` to the feature root. Actual package cwd/argv remain unchanged, including nested scripts; a nearer child YAML does not override managed context. Child policies are explicitly reconciled, not presumed inherited.

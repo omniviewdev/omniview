@@ -14,7 +14,7 @@ func TestCompatibleCatalogsAndPatchPathsRetainTheirRepositoryMeaning(t *testing.
 	w, roots := fixture(t)
 	put(t, w.Root, "plugin-a/patches/exact.patch", "diff --git a/a b/a\n")
 	put(t, w.Root, "plugin-a/ui/pnpm-workspace.yaml", "packages: ['widgets/*']\ncatalog:\n  exact: ^1\npatchedDependencies:\n  exact@1.2.3: ../patches/exact.patch\n")
-	put(t, w.Root, "plugin-a/ui/pnpm-lock.yaml", "lockfileVersion: '9.0'\nimporters: {.: {}}\ncatalogs:\n  default:\n    exact: {specifier: ^1, version: 1.2.3}\npatchedDependencies:\n  exact@1.2.3: {hash: keep-patch-hash, path: ../patches/exact.patch}\npackages: {}\nsnapshots: {}\n")
+	put(t, w.Root, "plugin-a/ui/pnpm-lock.yaml", "lockfileVersion: '9.0'\nimporters: {.: {}}\ncatalogs:\n  default:\n    exact: {specifier: ^1, version: 1.2.3}\npatchedDependencies:\n  exact@1.2.3: {hash: keep-patch-hash, path: ../patches/exact.patch}\npackages:\n  exact@1.2.3:\n    resolution: {integrity: sha512-preserved}\n    deprecated: 'Deprecated; see https://example.test/support for support.'\nsnapshots:\n  exact@1.2.3: {}\n")
 	p, err := New(w, roots, nil)
 	if err != nil {
 		t.Fatal(err)

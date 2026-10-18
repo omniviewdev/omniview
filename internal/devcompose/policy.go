@@ -236,8 +236,9 @@ func safePolicyValue(value any) error {
 		if strings.Contains(value, "${") {
 			return refusal("environment-dependent policy")
 		}
-		if strings.Contains(value, "://") {
-			parsed, err := url.Parse(value)
+		candidate := strings.TrimSpace(value)
+		if policyURLValue(candidate) {
+			parsed, err := url.Parse(candidate)
 			if err != nil || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 				return refusal("credential-bearing URL")
 			}
@@ -263,6 +264,23 @@ func safePolicyValue(value any) error {
 		}
 	}
 	return nil
+}
+
+// Registry records also contain prose (for example deprecation notices). An
+// embedded URL does not make that entire sentence a URL-valued resolution.
+func policyURLValue(value string) bool {
+	end := strings.Index(value, "://")
+	if end < 1 {
+		return false
+	}
+	for i := range end {
+		c := value[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (i > 0 && ((c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.')) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 func mergePolicyMap(a, b any, key, left, right string) (any, error) {
 	am, bm := mapping(a), mapping(b)
