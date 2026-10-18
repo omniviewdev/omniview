@@ -41,7 +41,7 @@ A useful request is: “Use omniview-workspaces. Collection ROOT, feature NAME; 
 ## Evidence and safety
 
 - No context-file changes or global skill installation are necessary.
-- Command examples are source-defined contracts. At authoring, the integrated orchestrator had not completed its compilation/real-launch barrier; do not describe examples as exercised successes. Consult current integration evidence before making a stronger claim.
+- Real owned browser launch, concurrent native A/B/production-tagged windows, warm restart and canonical feature retirement have been exercised for the reviewed companion-source cohort. This does not establish every consumer-refresh, platform or source-ref combination; consult retained integration evidence rather than treating help output or command examples as exercised successes.
 - Fresh-context model decision evaluations and their provenance are versioned under `.agents/skills/evals/` (additional handoff artifacts under `.superpowers/sdd/2026-10-17-agentic-workspaces/a18-*`). The 21/21 result applies to the recorded text-model scenarios, not executed CLI, filesystem, browser, screenshot, cluster, or native tests. Subsequent bounded reference alignment is documented separately and has not been re-evaluated.
 - Missing/ambiguous workspace context, wrong UUID/generation, occupied ports, failed builds, and missing link/trust evidence fail closed. A healthy listener is not an owned instance.
 - Baseline seeding is explicit and offline; never copy a running profile's database/tree or connect to a real cluster automatically. Removal preserves state and branches by default and refuses dirty/user work rather than forcing cleanup.

@@ -8,6 +8,13 @@ Use the bootstrap-aware Task entry point. The initial CLI needs the reviewed com
 
 Current host/UI/plugin/probe manifests pin **pnpm 12.14.0**. Install the native executable on PATH, or explicitly export `OMNIVIEW_PNPM_EXECUTABLE=/canonical/absolute/native/pnpm` when an existing agent process still sees an older shell/Corepack installation. The managed launcher validates the actual version and does not downgrade the global installation. Node is still needed by application build scripts; native pnpm itself is not a Node entry point.
 
+An installed Homebrew formula can be available even when an already-running agent has no `pnpm` command on PATH. Select its canonical executable without installing another version or changing global links:
+
+```sh
+export OMNIVIEW_PNPM_EXECUTABLE="$(realpath "$(brew --prefix pnpm)/bin/pnpm")"
+export PATH="$(dirname "$OMNIVIEW_PNPM_EXECUTABLE"):$PATH"
+```
+
 The pnpm12 migration explicitly sets `minimumReleaseAge: 0` to preserve the previous pnpm10 immediate-release behavior, as approved by the developer. Strict peers, exact manager pins, frozen-lockfile verification and managed `--ignore-scripts` remain. Non-auth `.npmrc` settings moved into workspace YAML; the native12 lockfile metadata format is preserved as package-manager-owned bytes.
 
 Choose source refs that satisfy the actual peer contracts: compare the host's `packages/omniviewdev-runtime/package.json` with the selected UI's `packages/base-ui/package.json`. A checkout can lag an existing compatible release tag. Select compatible released source while preserving feature changes; do not invent a package version or weaken peer validation to make an older source pass.
