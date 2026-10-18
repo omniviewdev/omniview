@@ -193,7 +193,7 @@ importers:
         version: 2.2.4(supports-color@8.1.1)
       '@monaco-editor/react':
         specifier: ^4.7.0
-        version: 4.7.0(monaco-editor@0.47.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 4.7.0(monaco-editor@0.52.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/ai-ui':
         specifier: ~3.0.3
         version: 3.0.3(@omniviewdev/base-ui@0.4.3(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react-icons@5.7.0(react@19.2.4))(react@19.2.4)(supports-color@8.1.1)
@@ -270,17 +270,17 @@ importers:
         specifier: ^4.4.2
         version: 4.4.2
       monaco-editor:
-        specifier: ^0.47.0
-        version: 0.47.0
+        specifier: ^0.52.2
+        version: 0.52.2
       monaco-editor-nginx:
         specifier: ^1.1.0
-        version: 1.1.0(@babel/runtime@8.0.7)(monaco-editor@0.47.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 1.1.0(@babel/runtime@8.0.7)(monaco-editor@0.52.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       monaco-types:
         specifier: ^0.1.0
         version: 0.1.0
       monaco-yaml:
         specifier: ^5.3.1
-        version: 5.3.1(monaco-editor@0.47.0)
+        version: 5.3.1(monaco-editor@0.52.2)
       prettier:
         specifier: ^3.5.3
         version: 3.5.3
@@ -4166,9 +4166,6 @@ packages:
       react: '>=16.9.0'
       react-dom: '>=16.9.0'
 
-  monaco-editor@0.47.0:
-    resolution: {integrity: sha512-VabVvHvQ9QmMwXu4du008ZDuyLnHs9j7ThVFsiJoXSOQk18+LF89N4ADzPbFenm0W4V2bGHnFBztIRQTgBfxzw==}
-
   monaco-editor@0.52.2:
     resolution: {integrity: sha512-GEQWEZmfkOGLdd3XK8ryrfWz3AIP8YymVXiPHEdewrUq7mh0qrKrfHLNCXcbB6sTnMLnOZ3ztSiKcciFUkIJwQ==}
 
@@ -6319,10 +6316,10 @@ snapshots:
     dependencies:
       state-local: 1.0.7
 
-  '@monaco-editor/react@4.7.0(monaco-editor@0.47.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@monaco-editor/react@4.7.0(monaco-editor@0.52.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
       '@monaco-editor/loader': 1.5.0
-      monaco-editor: 0.47.0
+      monaco-editor: 0.52.2
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
 
@@ -9812,14 +9809,12 @@ snapshots:
 
   module-details-from-path@1.0.4: {}
 
-  monaco-editor-nginx@1.1.0(@babel/runtime@8.0.7)(monaco-editor@0.47.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+  monaco-editor-nginx@1.1.0(@babel/runtime@8.0.7)(monaco-editor@0.52.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
       '@babel/runtime': 8.0.7
-      monaco-editor: 0.47.0
+      monaco-editor: 0.52.2
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
-
-  monaco-editor@0.47.0: {}
 
   monaco-editor@0.52.2: {}
 
@@ -9845,22 +9840,18 @@ snapshots:
 
   monaco-types@0.1.0: {}
 
-  monaco-worker-manager@2.0.1(monaco-editor@0.47.0):
-    dependencies:
-      monaco-editor: 0.47.0
-
   monaco-worker-manager@2.0.1(monaco-editor@0.52.2):
     dependencies:
       monaco-editor: 0.52.2
 
-  monaco-yaml@5.3.1(monaco-editor@0.47.0):
+  monaco-yaml@5.3.1(monaco-editor@0.52.2):
     dependencies:
       jsonc-parser: 3.2.0
-      monaco-editor: 0.47.0
+      monaco-editor: 0.52.2
       monaco-languageserver-types: 0.4.0
       monaco-marker-data-provider: 1.2.2
       monaco-types: 0.1.0
-      monaco-worker-manager: 2.0.1(monaco-editor@0.47.0)
+      monaco-worker-manager: 2.0.1(monaco-editor@0.52.2)
       path-browserify: 1.0.1
       prettier: 3.5.3
       vscode-languageserver-textdocument: 1.0.11
