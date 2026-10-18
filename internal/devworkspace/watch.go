@@ -82,9 +82,9 @@ func sourceManifest(path string) bool {
 	return false
 }
 
-// affected preserves topological order and excludes Go compilation on CSS/JS
-// changes. Package/module manifests invalidate selection rather than quietly
-// installing or changing dependencies underneath a running generation.
+// affected preserves topological order. CSS/JS changes exclude Go compilation
+// unless the owned supervisor serves embedded frontend assets. Package/module
+// manifests invalidate selection rather than changing running dependencies.
 func (g *BuildGraph) affected(paths []string) ([]BuildNode, error) {
 	selected := map[string]bool{}
 	host := ""
@@ -136,6 +136,9 @@ func (g *BuildGraph) affected(paths []string) ([]BuildNode, error) {
 				break
 			}
 		}
+	}
+	if g.rebuildEmbeddedFrontend && selected["host-frontend"] {
+		selected["host-backend"] = true
 	}
 	nodes := []BuildNode{}
 	for _, n := range g.Nodes {

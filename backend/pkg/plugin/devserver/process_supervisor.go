@@ -39,3 +39,12 @@ func (m *DevServerManager) ConfigureProcessSupervisor(config devsession.ProcessB
 	m.ports.mu.Unlock()
 	return nil
 }
+
+// SupervisorOwnsStartup reports whether this host's validated workspace
+// supervisor owns initial selected-source linking. A workspace configured
+// without that process capability retains standalone dev-plugin restoration.
+func (m *DevServerManager) SupervisorOwnsStartup() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.workspace != nil && m.processSupervisor != nil
+}

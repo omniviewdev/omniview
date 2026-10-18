@@ -118,6 +118,7 @@ func (s *workspaceSupervisor) launch(ctx context.Context) error {
 		return err
 	}
 	s.graphInstance = graph
+	graph.rebuildEmbeddedFrontend = !s.options.LiveFrontend
 	s.setPhase("building", nil)
 	if err = graph.Bootstrap(deadline); err != nil {
 		return err
@@ -705,8 +706,19 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 	}, RefreshConsumers: func(ctx context.Context, change WatchChange) error {
 		s.runMu.Lock()
 		defer s.runMu.Unlock()
-		if err := s.refreshManagedConsumers(ctx, change); err != nil {
-			return err
+		hostRebuilt := false
+		for _, node := range change.Nodes {
+			if node == "host-backend" {
+				hostRebuilt = true
+				break
+			}
+		}
+		// Embedded host replacement already restarted the selected plugins and
+		// awaited their actual readiness. Do not restart those consumers twice.
+		if s.options.LiveFrontend || !hostRebuilt {
+			if err := s.refreshManagedConsumers(ctx, change); err != nil {
+				return err
+			}
 		}
 		if s.options.LiveFrontend {
 			priorPort := s.leases["vite"].Port

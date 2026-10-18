@@ -120,13 +120,16 @@ func (inst *DevServerInstance) Start() error {
 	if metadata.ID != inst.pluginID {
 		return fmt.Errorf("source plugin ID %q does not match %q", metadata.ID, inst.pluginID)
 	}
-	inst.hasUI = metadata.HasUICapabilities()
-	inst.hasBackend = metadata.HasBackendCapabilities()
-	if !inst.hasUI && !inst.hasBackend {
+	hasUI, hasBackend := metadata.HasUICapabilities(), metadata.HasBackendCapabilities()
+	if !hasUI && !hasBackend {
 		return fmt.Errorf("plugin has no supported development capabilities")
 	}
+	// The manager publishes this instance before Start; State can already run.
+	inst.mu.Lock()
+	inst.hasUI, inst.hasBackend = hasUI, hasBackend
+	inst.mu.Unlock()
 	inst.initializeStages()
-	if inst.hasUI {
+	if hasUI {
 		inst.vite = newViteProcess(inst.ctx, inst.logger, inst.pluginID, inst.devPath, inst.vitePort, inst.buildOpts, inst.appendLog, inst.setViteStatus)
 		if err := inst.vite.Start(); err != nil {
 			inst.setViteStatus(DevProcessStatusError)
@@ -134,7 +137,7 @@ func (inst *DevServerInstance) Start() error {
 			return err
 		}
 	}
-	if !inst.hasBackend {
+	if !hasBackend {
 		return nil
 	}
 

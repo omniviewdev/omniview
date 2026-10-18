@@ -183,9 +183,10 @@ type pluginManager struct {
 	installOpsLocks map[string]*sync.Mutex
 }
 
-// managedDevServers is the process boundary used by install transactions.
-// The existing devserver manager remains the sole process owner.
+// managedDevServers is the process boundary used by initialization and install
+// transactions. The existing devserver manager remains the sole process owner.
 type managedDevServers interface {
+	SupervisorOwnsStartup() bool
 	IsManaged(pluginID string) bool
 	StartDevServerForPath(pluginID, path string) (devserver.DevServerState, error)
 	StopDevServer(pluginID string) error
@@ -451,7 +452,7 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// Second pass: load plugins concurrently with a bounded worker pool.
 	pm.loadPluginsConcurrently(toLoad)
 
-	// Phase 2: Start dev servers in the background.
+	// Phase 2: Start dev servers not owned by the outer workspace supervisor.
 	if len(devPlugins) > 0 && pm.devServerMgr != nil {
 		go pm.startDevServers(devPlugins)
 	}
@@ -494,6 +495,7 @@ func (pm *pluginManager) planPluginLoads(
 	}
 
 	var devPlugins []devPluginEntry
+	supervisorOwnsStartup := pm.devServerMgr != nil && pm.devServerMgr.SupervisorOwnsStartup()
 	// Workspace selection is authoritative before any cached dev executable or
 	// old source watcher starts. Preserve every dev binding, even if its old
 	// repository/directory was removed; rebind only through the install transaction.
@@ -512,7 +514,9 @@ func (pm *pluginManager) planPluginLoads(
 			reason = selectionErr.Error()
 		}
 		pm.retainStoppedDevInventory(state, reason)
-		if selectionErr == nil && state.Enabled {
+		// A supervised host restores inventory only. Its supervisor links each
+		// selected source after host readiness through the canonical transaction.
+		if selectionErr == nil && state.Enabled && !supervisorOwnsStartup {
 			devPlugins = append(devPlugins, devPluginEntry{pluginID: state.ID, devPath: state.DevPath})
 		}
 	}

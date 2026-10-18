@@ -121,7 +121,7 @@ func (c *Client) Wait(ctx context.Context, operationID string, timeout time.Dura
 			last = response
 		}
 		if err != nil {
-			if response.Error != nil && response.Error.Code == "timeout" && time.Now().Before(deadline) {
+			if response.Error != nil && response.Error.Code == "timeout" && (response.Status == "accepted" || response.Status == "running") && time.Now().Before(deadline) {
 				continue
 			}
 			if response.OperationID == "" {

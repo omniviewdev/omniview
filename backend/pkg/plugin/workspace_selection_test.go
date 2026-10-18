@@ -22,6 +22,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcompose"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
+	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -130,6 +131,73 @@ func TestInitializeRetainsRemovedOrReboundDevInventoryWithoutExecutingOldSource(
 			require.Zero(t, launches.Load(), "removing the old worktree must not drop inventory or attempt execution")
 		})
 	}
+}
+
+func TestSupervisedStartupPreservesDevInventoryUntilCanonicalLink(t *testing.T) {
+	manager, servers, selected, _ := workspaceSelectionFixture(t, "selected")
+	manager.ctx = context.Background()
+	workspace, err := devcontract.ResolveWorkspace(devcontract.ResolveOptions{Explicit: filepath.Join(filepath.Dir(selected), "workspace.json")})
+	require.NoError(t, err)
+	generation := "5523f405-4385-472d-bc06-ef4f64d7b318"
+	host, err := devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{
+		WorkspaceID: workspace.Manifest.WorkspaceID, Generation: generation, Role: "host", Source: filepath.Join(workspace.Root, "host"),
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Join(workspace.Root, ".local"), 0700))
+	tokenFile := filepath.Join(workspace.Root, ".local", "supervisor-"+generation+".secret")
+	require.NoError(t, os.WriteFile(tokenFile, []byte(strings.Repeat("s", 64)), 0600))
+	require.NoError(t, servers.ConfigureProcessSupervisor(devsession.ProcessBridgeConfig{
+		Endpoint: "http://127.0.0.1:1/v1/process", TokenFile: tokenFile, WorkspaceFile: workspace.ManifestPath,
+		WorkspaceID: workspace.Manifest.WorkspaceID, Generation: generation, Host: host,
+	}))
+
+	// The selected source needs canonical startup work: its metadata is newer,
+	// and no aggregate UI install has been prepared. Initialization must not
+	// replace the saved installation or turn this inventory into a failed build.
+	require.NoError(t, os.WriteFile(filepath.Join(selected, "plugin.yaml"), []byte(uiOnlyYaml), 0600))
+	installPluginFixture(t, manager, "flux", []string{"ui"}, false)
+	before, err := manager.pluginsRoot.ReadFile(filepath.Join("flux", "plugin.yaml"))
+	require.NoError(t, err)
+	record := plugintypes.NewPluginRecord("flux", config.PluginMeta{ID: "flux", Version: "saved", Capabilities: []string{"ui"}}, lifecycle.PhaseRunning)
+	record.DevMode, record.DevPath, record.Enabled = true, selected, true
+	manager.records["flux"] = record
+	installPluginFixture(t, manager, "archive", []string{"ui"}, false)
+	require.NoError(t, manager.pluginsRoot.MkdirAll(filepath.Join("archive", "assets"), 0700))
+	manager.records["archive"] = plugintypes.NewPluginRecord("archive", config.PluginMeta{ID: "archive", Capabilities: []string{"ui"}}, lifecycle.PhaseRunning)
+	require.NoError(t, manager.writePluginStateJSON())
+	manager.records = map[string]*plugintypes.PluginRecord{}
+	states, err := manager.readPluginStateJSON()
+	require.NoError(t, err)
+	files, err := os.ReadDir(manager.pluginsRoot.ResolvePath(""))
+	require.NoError(t, err)
+
+	// Execute Initialize's complete load/start plan synchronously so observing a
+	// stopped record cannot pass just because its background goroutine is late.
+	toLoad, devPlugins := manager.planPluginLoads(files, states)
+	manager.loadPluginsConcurrently(toLoad)
+	manager.startDevServers(devPlugins)
+	require.NoError(t, manager.mergeAndWritePluginState(states))
+	info, err := manager.GetPlugin("flux")
+	require.NoError(t, err)
+	require.Equal(t, string(lifecycle.PhaseStopped), info.Phase)
+	require.Equal(t, "saved", info.Metadata.Version)
+	require.Equal(t, selected, info.DevPath)
+	require.True(t, info.Enabled)
+	require.True(t, info.DevMode)
+	require.Empty(t, info.LastError)
+	require.False(t, servers.IsManaged("flux"))
+	after, err := manager.pluginsRoot.ReadFile(filepath.Join("flux", "plugin.yaml"))
+	require.NoError(t, err)
+	require.Equal(t, before, after, "startup must leave replacement to the canonical link transaction")
+	archive, err := manager.GetPlugin("archive")
+	require.NoError(t, err)
+	require.Equal(t, string(lifecycle.PhaseRunning), archive.Phase, "installed plugins still restore normally")
+
+	_, err = manager.InstallDevPluginFromPath(selected)
+	require.Error(t, err, "explicit link must attempt the real, unprepared UI startup rather than report idle readiness")
+	after, err = manager.pluginsRoot.ReadFile(filepath.Join("flux", "plugin.yaml"))
+	require.NoError(t, err)
+	require.Equal(t, uiOnlyYaml, string(after), "explicit link, not initialization, owns source installation")
 }
 
 func TestSelectedUIStartupUsesCanonicalLifecycleAndActualHTTPBeforeReady(t *testing.T) {

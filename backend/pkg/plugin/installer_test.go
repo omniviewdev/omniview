@@ -29,6 +29,10 @@ type transactionDevServers struct {
 	buildError string
 }
 
+func (d *transactionDevServers) SupervisorOwnsStartup() bool {
+	return false
+}
+
 func (d *transactionDevServers) IsManaged(id string) bool {
 	return d.state.PluginID == id && d.state.Mode == devserver.DevServerModeManaged
 }

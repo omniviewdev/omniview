@@ -80,6 +80,10 @@ type BuildGraph struct {
 	mu          sync.Mutex
 	toolchainMu sync.Mutex
 	toolchains  map[string]pnpmToolchain
+
+	// Only the owned supervisor selects embedded assets rather than live Vite.
+	// Its watch transaction must rebuild the host after publishing frontend dist.
+	rebuildEmbeddedFrontend bool
 }
 
 // NewBuildGraph accepts an applied, successfully installed link overlay even if

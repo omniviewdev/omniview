@@ -121,7 +121,11 @@ func controlFixtureWithCustomState(t *testing.T, customState string, mutate func
 			t.Fatal(err)
 		}
 	}
-	process, err := devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: id, Generation: "host-1", Role: "host", Source: root})
+	host, err := workspace.RepositoryPath("omniview")
+	if err != nil {
+		t.Fatal(err)
+	}
+	process, err := devsession.CaptureProcess(os.Getpid(), devsession.ProcessOwner{WorkspaceID: id, Generation: "host-1", Role: "host", Source: host})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,6 +192,35 @@ func controlFixtureWithCustomState(t *testing.T, customState string, mutate func
 		t.Fatal(err)
 	}
 	return root, &requests
+}
+
+func TestControlCommandsRejectSelectedSourceMismatchBeforeMutation(t *testing.T) {
+	root, requests := controlFixture(t, nil)
+	path := filepath.Join(root, "workspace.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest devcontract.WorkspaceManifest
+	if err = json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Repositories[0].Directory = "different-host"
+	data, err = json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out, diag bytes.Buffer
+	handled, code := HandleControlCommand(context.Background(), []string{"plugin", "uninstall", "one", "--workspace", root}, strings.NewReader(""), &out, &diag)
+	if !handled || code != 4 {
+		t.Fatalf("wrong selected source was not rejected: handled=%v code=%d output=%s", handled, code, out.String())
+	}
+	if len(*requests) != 0 {
+		t.Fatalf("wrong selected source reached the authenticated endpoint: %+v", *requests)
+	}
 }
 
 func TestControlCommandsVerifyActualDescriptorBeforeMutation(t *testing.T) {

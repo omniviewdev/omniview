@@ -391,10 +391,14 @@ func connectControl(ctx context.Context, workspace devcontract.ResolvedWorkspace
 		}
 		return nil, empty, devcontract.Fail(4, "invalid_discovery", "workspace discovery identity or private permissions are invalid")
 	}
-	if discovery.StateRoot != workspace.StateRoot || discovery.Process.Role != "host" || discovery.Endpoints.Control == nil {
-		return nil, empty, devcontract.Fail(4, "conflicting_target", "discovered instance does not match the selected workspace profile")
+	host, err := workspace.RepositoryPath("omniview")
+	if err != nil {
+		return nil, empty, err
 	}
-	expected := devsession.ProcessOwner{WorkspaceID: discovery.WorkspaceID, Generation: discovery.Generation, Role: "host", Source: discovery.Process.Source}
+	if discovery.StateRoot != workspace.StateRoot || discovery.Process.Source != host || discovery.Process.Role != "host" || discovery.Endpoints.Control == nil {
+		return nil, empty, devcontract.Fail(4, "conflicting_target", "discovered instance does not match the selected workspace source/profile")
+	}
+	expected := devsession.ProcessOwner{WorkspaceID: discovery.WorkspaceID, Generation: discovery.Generation, Role: "host", Source: host}
 	if err = devsession.VerifyOwnedProcess(discovery.Process, expected); err != nil {
 		return nil, empty, devcontract.Fail(4, "stale_target", "discovered process identity is no longer owned by this generation")
 	}
