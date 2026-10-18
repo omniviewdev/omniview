@@ -2,6 +2,8 @@
 
 The host-owned CLI manages independent Git worktrees, one pnpm workspace per feature, isolated development profiles and persistent launch supervisors. Commands below replace manual developer-settings dialogs and global links. Runtime/platform acceptance is recorded separately; source implementation is not proof that every native, plugin and HMR combination has passed.
 
+The [workspace roadmap](development-workspaces-roadmap.md) records research decisions, repository routing, ordered parallel work packets, exercised evidence and remaining acceptance gates.
+
 ## Bootstrap the local CLI and sources
 
 Use the bootstrap-aware Task entry point. The initial CLI needs the reviewed companion SDK source because the currently declared published SDK does not contain the new isolation APIs. `SDK_SOURCE` is explicit: there is no inferred sibling replacement, global `go.work`, global `GOFLAGS`, package upgrade or canonical-source mutation.
