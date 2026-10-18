@@ -98,17 +98,21 @@ flowchart TD
 Accepted local evidence includes:
 
 - Concurrent native A/B/private-production-tagged windows, same Kubernetes ID from different sources, a second genuine SDK plugin, warm restart, private storage markers and stale-target rejection. Native DOM/input/CoreGraphics evidence is **not** pixel capture.
+- Same packaged production-tagged binary launched twice against one private production root: the second exits `1` on the canonical root lock before application/MCP/plugin state, while the first native window, bindings and storage marker remain unchanged. Same-profile development `up` exits `4` (`workspace_running`) without replacing UUID/generation/process identity. This is not a newly exercised different-root Wails-channel gate.
 - Actual two-plugin one-command browser launch; six identity/event/settings/custom-root/sticky-restart browser scenarios; strict occupied-port refusal leaving the foreign listener unchanged.
 - Stopped baseline import with unchanged source bytes, running-source rejection and inactive inventory that does not execute unknown binaries.
 - Genuine foreign archive rejection preserving installation bytes/inodes, durable records, live backend and caller archives. Serialized dev → installed A2 → installed A1 changes the same-open module/UI and retains settings; renamed/rebound B retains UUID/state and counter across restart.
 - Real Darwin `P_WEXIT`/`PROCARGS2 EINVAL` regression before/after retained kernel-exit observation; actual readonly Go-cache retirement with unchanged foreign symlink target; Windows/Linux cross-compilation and Linux process-lifetime checks. Cross-compilation is not platform GUI verification.
+- Corrected fresh-profile create/up/restart/down/unlink/remove all succeed using the installed Homebrew pnpm. Restart preserves UUID and sticky endpoints, replaces host generation/process, and brings the genuine backend plugin through all four stages; final retirement leaves no recorded process, listener, socket root, profile, state, capability or source branch.
 - Actual Homebrew native12 runtime → shims → host/E2E builds and managed nested scripts with spaced paths/arguments and a conflicting inherited manager marker.
 
 The latest combined runtime-admission source at this checkpoint is host `c5e1c1a0327f768677390fc12b15ba4edfc2ac3b`, UI `c71831890e5c869ff9bbf92ac12a0bb7bec29d3b`, SDK `d32a524bc89659260c6045062035ce05dc138ff4` and Kubernetes `5df15b06b80790c3a8e9255d300f40795fde9bef`. Test-only plugin sources are genuine fixtures, not released packages or synthetic ready/RPC responses.
 
+Follow-up unavailable-runtime-context recovery at host `48054a0ebdb3b367cdf05a187bbf5455a409e66e` passes 156 runtime tests, 354 host plugin tests, runtime → shim → host builds and E2E type checks. Its automatic post-replacement consumer scenario remains a separate actual-runtime gate, not a unit-test inference.
+
 Remaining order:
 
-1. **Parallel actual scenarios:** full optimized and live-Vite host/Kubernetes/probe CSS/component/runtime-export/SDK edits, failed/repaired builds and cross-profile isolation; mixed UI-only/backend readiness and state-preserving HMR; corrected new-fixture up/restart/down/retirement; explicit production/same-profile duplicate refusal. Do not manually reload away a refresh failure.
+1. **Parallel actual scenarios:** full optimized and live-Vite host/Kubernetes/probe CSS/component/runtime-export/SDK edits, failed/repaired builds and cross-profile isolation; mixed UI-only/backend automatic HMR (state-preserving for live-host mode); unavailable runtime-context recovery after host replacement. Do not manually reload away a refresh failure. Corrected fresh-profile retirement and the explicit duplicate-launch checks above are already exercised independently.
 2. Correct any observed failure at its causal boundary, with regression evidence and targeted review. Then rerun the affected real scenario on a new immutable cohort; do not relabel older evidence as current.
 3. Reconcile the final scenario ledger: commands, source refs, UUIDs/generations, actual endpoints, observed result, artifacts/platform and limits. Keep compiler success distinct from connected RPC/controller readiness and actual module bytes.
 4. Publish the **real** fixed SDK and compatible package/plugin releases in dependency order before claiming normal production/release consumption. No fake SDK version or legacy MUI/shared-dependency shim is an acceptable substitute.
