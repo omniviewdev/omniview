@@ -31,6 +31,8 @@ DEV="$(SDK_SOURCE="$FIXED_SDK_SOURCE" task --silent dev:cli:build)"
 
 Each source is an explicit local normal or bare Git repository. Use repeatable `--source-ref ID=REF` and `--source-directory ID=DIRECTORY` when defaults differ. Plugin IDs are read from committed `plugin.yaml` at the selected ref, never inferred from a directory name. Selected host refs must contain the tooling; creating a worktree does not copy uncommitted host changes from another checkout.
 
+Register every repository/plugin source needed by the collection up front. Registry source mappings are deliberately immutable: repeating the same initialization is allowed, but changing or adding mappings returns `registry_exists` with conflict exit4 and leaves the existing registry intact. Initialize another collection for a different source set; `workspace edit --add-plugin` selects an already registered plugin, not a new repository registration.
+
 The reviewed fixed SDK commit established during integration is `d32a524bc89659260c6045062035ce05dc138ff4`. Select a source descending from that commit. Subsequent ordinary edits in the selected feature SDK worktree are live development input and do not require per-edit commits. Protected isolation implementation changes require the explicit warning-bearing `--allow-isolation-source-changes` flag; it is scoped to this workspace's child processes and is not a sandbox.
 
 Local package linking requires the actual successful pinned pnpm protocol probe report, not manually asserted booleans. Run the probe once on the integrated host source with its effective SDK/native module selection, then pass the report explicitly (or place it at `$COLLECTION/.omniview-dev/link-protocol.json`):

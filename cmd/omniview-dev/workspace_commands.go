@@ -331,17 +331,17 @@ func HandleWorkspaceCommand(ctx context.Context, args []string, out, diagnostics
 				return fail(err)
 			}
 		}
-		paths, err := workspaceAssignments(c.sources)
-		if err != nil {
-			return fail(err)
+		paths, parseErr := workspaceAssignments(c.sources)
+		if parseErr != nil {
+			return fail(parseErr)
 		}
-		refs, err := workspaceAssignments(c.sourceRefs)
-		if err != nil {
-			return fail(err)
+		refs, parseErr := workspaceAssignments(c.sourceRefs)
+		if parseErr != nil {
+			return fail(parseErr)
 		}
-		directories, err := workspaceAssignments(c.sourceDirectories)
-		if err != nil {
-			return fail(err)
+		directories, parseErr := workspaceAssignments(c.sourceDirectories)
+		if parseErr != nil {
+			return fail(parseErr)
 		}
 		ids := make([]string, 0, len(paths))
 		for id := range paths {

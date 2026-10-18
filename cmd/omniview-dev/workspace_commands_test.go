@@ -51,10 +51,24 @@ func TestWorkspaceLifecycleCLIUsesRealGitAndPreservesBranches(t *testing.T) {
 		return out.Bytes()
 	}
 	invoke("workspace", "init", "--root", root, "--source", "omniview="+source, "--source-ref", "omniview=main", "--json")
+	var initOut, initDiagnostics bytes.Buffer
+	initCode := run([]string{"workspace", "init", "--root", root, "--source", "omniview=" + source, "--source-ref", "omniview=main", "--source-directory", "omniview=replacement", "--json"}, &initOut, &initDiagnostics)
+	var initFailure struct {
+		Error *devcontract.Error `json:"error"`
+	}
+	if err := json.Unmarshal(initOut.Bytes(), &initFailure); err != nil {
+		t.Fatalf("init conflict is not JSON: %s %v", initOut.String(), err)
+	}
+	if initCode != 4 || initFailure.Error == nil || initFailure.Error.Code != "registry_exists" {
+		t.Fatalf("changed registry reported success or wrong error: code=%d out=%s stderr=%s", initCode, initOut.String(), initDiagnostics.String())
+	}
 	raw := invoke("workspace", "create", "feature-one", "--root", root, "--json")
 	var workspace devworkspace.Workspace
 	if err := json.Unmarshal(raw, &workspace); err != nil {
 		t.Fatal(err)
+	}
+	if len(workspace.Manifest.Repositories) != 1 || workspace.Manifest.Repositories[0].Directory != "omniview" {
+		t.Fatalf("failed registry initialization changed source mapping: %s", raw)
 	}
 	if workspace.Manifest.WorkspaceID == "" || workspace.Root == source {
 		t.Fatalf("not an independent worktree: %s", raw)
