@@ -4,6 +4,7 @@ import type { APIRequestContext, BrowserContext, Page, TestInfo } from '@playwri
 import { callBinding, Service } from './wails';
 import { OwnedProfiles } from './workspace';
 import type { ProfileOptions, Workspace } from './workspace';
+import { BrowserErrors } from './browser-errors';
 
 type AppFixtures = {
   appPage: Page;
@@ -16,22 +17,22 @@ type AppFixtures = {
   captureErrors: void;
 };
 
-function collectErrors(page: Page, records: { kind: string; message: string }[]): void {
+function collectErrors(page: Page, records: BrowserErrors): void {
   const urlPath = (value: string) => { const url = new URL(value); return `${url.origin}${url.pathname}`; };
   page.on('console', message => {
     // Normal settings bootstrap logs contain full values; never capture them.
-    if (['warning', 'error'].includes(message.type())) records.push({ kind: `console.${message.type()}`, message: message.text() });
+    if (['warning', 'error'].includes(message.type())) records.add(`console.${message.type()}`, message.text());
   });
-  page.on('pageerror', error => records.push({ kind: 'pageerror', message: error.message }));
-  page.on('requestfailed', request => records.push({ kind: 'requestfailed', message: `${request.method()} ${urlPath(request.url())} ${request.failure()?.errorText}` }));
+  page.on('pageerror', error => records.add('pageerror', error.message));
+  page.on('requestfailed', request => records.add('requestfailed', `${request.method()} ${urlPath(request.url())} ${request.failure()?.errorText}`));
   page.on('response', response => {
-    if (response.status() >= 400) records.push({ kind: 'http', message: `${response.status()} ${response.request().method()} ${urlPath(response.url())}` });
+    if (response.status() >= 400) records.add('http', `${response.status()} ${response.request().method()} ${urlPath(response.url())}`);
   });
 }
 
-async function attachErrors(testInfo: TestInfo, name: string, records: { kind: string; message: string }[]): Promise<void> {
+async function attachErrors(testInfo: TestInfo, name: string, records: BrowserErrors): Promise<void> {
   const path = testInfo.outputPath(name);
-  await writeFile(path, JSON.stringify(records, null, 2));
+  await writeFile(path, records.serialize());
   await testInfo.attach(name, { path, contentType: 'application/json' });
 }
 
@@ -60,7 +61,7 @@ export const test = base.extend<AppFixtures, { ownedProfiles: OwnedProfiles }>({
 
   profiles: async ({ browser, ownedProfiles }, use, testInfo) => {
     const contexts: BrowserContext[] = [];
-    const records: { kind: string; message: string }[] = [];
+    const records = new BrowserErrors();
     try {
       await use({
         open: async (name, options) => {
@@ -81,7 +82,7 @@ export const test = base.extend<AppFixtures, { ownedProfiles: OwnedProfiles }>({
   },
 
   captureErrors: [async ({ page }, use, testInfo) => {
-    const records: { kind: string; message: string }[] = [];
+    const records = new BrowserErrors();
     collectErrors(page, records);
     page.context().on('page', additional => collectErrors(additional, records));
     await use();
