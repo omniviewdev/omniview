@@ -39,6 +39,8 @@ The feature directory is the single pnpm workspace/lockfile boundary above these
 
 Source package names, versions, dependency ranges, workspace configs and lockfiles remain standalone inputs. The planner explicitly reconciles compatible policies into generated aggregate `package.json`/`pnpm-workspace.yaml`/`pnpm-lock.yaml`, seeds existing registry resolutions, and refuses conflicting/unrepresentable settings rather than silently dropping them. Declared selected manager pins must match **12.14.0**; credentials are never copied into generated metadata.
 
+Source lock authority follows actual source workspace boundaries or selected standalone roots. An old `pnpm-lock.yaml` inside an ordinary workspace member is neither seeded nor freshness-tracked; the enclosing workspace's frozen importer remains authoritative. A nested `pnpm-workspace.yaml` creates a real boundary whose lock participates in convergence and conflict checks. Adding that boundary invalidates the prior plan.
+
 Build approvals are permissions, not requirements: explicit `allowBuilds` booleans intersect with **deny-wins** across roots. A host approval cannot override a plugin denial. Standalone files remain unchanged, managed installs still prohibit all scripts, and other incompatible policy values still refuse composition.
 
 Locked registry metadata may contain informational prose with support URLs. An embedded URL in a deprecation notice is not a URL-valued resolution; actual URL values still reject userinfo, query/fragment data and unresolved repository-local references.

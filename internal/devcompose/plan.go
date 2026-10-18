@@ -404,6 +404,24 @@ func discover(w devcontract.ResolvedWorkspace, roots []Root) (sourceSet, error) 
 	}
 	for _, dir := range sortedKeys(usedDirs) {
 		for _, name := range []string{"pnpm-workspace.yaml", "pnpm-lock.yaml", ".npmrc", ".pnpmfile.cjs", "pnpmfile.cjs", ".pnpmfile.mjs"} {
+			if name == "pnpm-lock.yaml" {
+				// A package member's old standalone lock is inert under its
+				// source workspace. Do not seed or freshness-track it.
+				workspaceRoot := ""
+				for ancestor := dir; ancestor != w.Root; ancestor = filepath.Dir(ancestor) {
+					if _, declared := sources.configs[ancestor]; declared {
+						workspaceRoot = ancestor
+						break
+					}
+				}
+				if workspaceRoot != "" {
+					if workspaceRoot != dir {
+						continue
+					}
+				} else if _, explicit := rootMap[dir]; !explicit {
+					continue
+				}
+			}
 			path := filepath.Join(dir, name)
 			raw, err := readInput(w, &sources, path)
 			if err != nil {

@@ -314,8 +314,8 @@ func seedLock(w devcontract.ResolvedWorkspace, sources sourceSet, plan *Plan, po
 		}
 		return relative(w.Root, left) < relative(w.Root, right)
 	})
-	// Only the nearest actual source lock owns a package's importer. Parent lock
-	// leftovers cannot override a nested workspace's frozen registry selection.
+	// Only authoritative source workspace/standalone locks enter this set.
+	// A nested workspace owns its importer instead of an enclosing lock's leftover.
 	nearest := map[string]string{}
 	for _, pkg := range plan.Packages {
 		for _, path := range sources.locks {

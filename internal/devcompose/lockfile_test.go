@@ -222,3 +222,53 @@ func TestSnapshotConvergencePreservesRequirednessAndRejectsOtherSemantics(t *tes
 		})
 	}
 }
+
+func TestMemberLockIsInertUntilItDeclaresAWorkspaceBoundary(t *testing.T) {
+	w, roots := fixture(t)
+	member := "omniview/packages/consumer"
+	put(t, w.Root, member+"/package.json", `{"name":"consumer","private":true,"dependencies":{"react":"^19.0.0"}}`)
+	raw, err := os.ReadFile(filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs, err := decodeDocuments(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapping(docs[len(docs)-1]["importers"])["packages/consumer"] = map[string]any{
+		"dependencies": map[string]any{"react": map[string]any{"specifier": "^19.0.0", "version": "19.2.4"}},
+	}
+	raw, err = encodeDocuments(docs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	put(t, w.Root, "omniview/pnpm-lock.yaml", string(raw))
+	before, err := New(w, roots, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	put(t, w.Root, member+"/pnpm-lock.yaml", "lockfileVersion: [invalid inert member lock\n")
+	after, err := New(w, roots, nil)
+	if err != nil {
+		t.Fatalf("member-local lock displaced its declared workspace authority: %v", err)
+	}
+	if err := CheckInputs(before); err != nil {
+		t.Fatalf("inert member-local lock invalidated the installed source graph: %v", err)
+	}
+	docs, err = decodeDocuments(generated(t, after, "pnpm-lock.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	importer := mapping(mapping(docs[len(docs)-1]["importers"])[relative(after.Root, filepath.Join(w.Root, member))])
+	if mapping(mapping(importer["dependencies"])["react"])["version"] != "19.2.4" {
+		t.Fatal("member lost its parent workspace's frozen React selection")
+	}
+	put(t, w.Root, member+"/pnpm-workspace.yaml", "packages: []\n")
+	put(t, w.Root, member+"/pnpm-lock.yaml", "lockfileVersion: '9.0'\nimporters: {.: {}}\npackages:\n  react@19.2.4: {resolution: {integrity: sha512-conflicting}}\nsnapshots: {}\n")
+	if err := CheckInputs(after); err == nil {
+		t.Fatal("new workspace boundary did not invalidate source authority")
+	}
+	if _, err := New(w, roots, nil); err == nil {
+		t.Fatal("actual nested workspace lock lost its identity-conflict guard")
+	}
+}
