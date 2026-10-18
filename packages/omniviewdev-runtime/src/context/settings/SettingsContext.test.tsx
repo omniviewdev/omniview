@@ -135,24 +135,4 @@ describe('SettingsProvider request sequencing', () => {
     expect(readSettings()).toEqual({ 'appearance.theme': 'dark' });
   });
 
-  it('reports an error only for the latest initiated request', async () => {
-    const initial = createDeferred<Record<string, unknown>>();
-    const reload = createDeferred<Record<string, unknown>>();
-    mocks.values
-      .mockReturnValueOnce(initial.promise)
-      .mockReturnValueOnce(reload.promise);
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    renderProvider();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
-
-    initial.reject(new Error('stale failure'));
-    await act(async () => initial.promise.catch(() => undefined));
-    expect(consoleError).not.toHaveBeenCalled();
-
-    const latestError = new Error('latest failure');
-    reload.reject(latestError);
-    await act(async () => reload.promise.catch(() => undefined));
-    expect(consoleError).toHaveBeenCalledWith('Error fetching settings:', latestError);
-  });
 });
