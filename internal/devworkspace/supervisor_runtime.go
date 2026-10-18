@@ -326,6 +326,20 @@ func (s *workspaceSupervisor) startHost(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	profile, err := profileFor(s.workspace, s.manager.options.Home, s.generation)
+	if err != nil {
+		return err
+	}
+	if s.unixSocketDirectory == nil {
+		// Retain even a partial creation handle. Its durable intent must not
+		// be adopted or discarded if publication or filesystem sync fails.
+		s.unixSocketDirectory, err = devsession.CreateUnixSocketDirectory(profile.RuntimeRoot, s.owner)
+		if err != nil {
+			return err
+		}
+	} else if _, err := devsession.ReadUnixSocketDirectory(profile.RuntimeRoot, s.workspace.Manifest.WorkspaceID, s.generation, s.workspace.Root); err != nil {
+		return err
+	}
 	browser := devsession.Lease{}
 	mcp := devsession.Lease{}
 	if s.options.Mode == "browser" {

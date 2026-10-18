@@ -19,6 +19,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
+	sdkstate "github.com/omniviewdev/plugin-sdk/pkg/state"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 )
 
@@ -78,6 +79,9 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.Pl
 	installMu := pm.installOpsLock(metadata.ID)
 	installMu.Lock()
 	defer installMu.Unlock()
+	if err := pm.guardUninstallRecovery(metadata.ID); err != nil {
+		return info, err
+	}
 	pm.emitter.Emit(EventDevInstallStart, metadata)
 
 	// Stop the watcher before unloading so it cannot reload the old source
@@ -290,6 +294,9 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 	installMu := pm.installOpsLock(metadata.ID)
 	installMu.Lock()
 	defer installMu.Unlock()
+	if err := pm.guardUninstallRecovery(metadata.ID); err != nil {
+		return nil, err
+	}
 
 	pm.emitter.Emit(EventInstallStarted, metadata)
 
@@ -383,25 +390,82 @@ func (pm *pluginManager) uninstallPlugin(id string) (sdktypes.PluginInfo, error)
 	if !ok {
 		return sdktypes.PluginInfo{}, apperror.PluginNotFound(id)
 	}
+	if err := sdkstate.ValidateComponent(id); err != nil {
+		return record.ToInfo(), apperror.Internal(err, "Invalid installed plugin identity")
+	}
+	recovery, err := pm.prepareUninstallRecovery(id, record)
+	if err != nil {
+		return record.ToInfo(), apperror.Internal(err, "Failed to prepare owned uninstall recovery").WithInstance(id)
+	}
+	canonical, staged, err := pm.locateUninstallRecovery(recovery)
+	if err != nil {
+		record.LastError = fmt.Sprintf("pending uninstall recovery at %s: %v", pm.pluginsRoot.ResolvePath(recovery.Stage), err)
+		return record.ToInfo(), apperror.Internal(err, "Uninstall recovery path is occupied or changed").WithInstance(id)
+	}
 	info := record.ToInfo()
-	if err := pm.unloadForReinstall(id); err != nil {
+	if err = pm.unloadForReinstall(id); err != nil {
+		// The pre-unload ownership marker remains available for a safe retry.
 		return info, err
 	}
-	if err := pm.pluginsRoot.RemoveAll(id); err != nil {
-		// Keep an inactive record when removal fails, so the operation can be
-		// retried without losing its metadata/source binding.
+	restore := func(cause error, incomplete bool) (sdktypes.PluginInfo, error) {
+		if recovery != nil && staged && recovery.cleanupStarted {
+			incomplete = true
+			cause = errors.Join(cause, errors.New("disposal began; partial artifacts remain in owned staging"))
+		}
+		if recovery != nil && staged && !recovery.cleanupStarted {
+			_, stillStaged, ownershipErr := pm.locateUninstallRecovery(recovery)
+			if ownershipErr == nil && stillStaged {
+				ownershipErr = pm.pluginsRoot.RenameDirectoryNoReplace(filepath.Join(recovery.Stage, "plugin"), id)
+				if ownershipErr == nil {
+					identity, identityErr := pm.pluginsRoot.DirectoryIdentity(id)
+					if identityErr != nil || identity != recovery.OwnedIdentity {
+						ownershipErr = errors.Join(identityErr, errors.New("restored plugin directory identity changed"))
+					}
+				}
+			} else if ownershipErr == nil {
+				ownershipErr = errors.New("owned staged installation is no longer complete")
+			}
+			if ownershipErr != nil {
+				incomplete = true
+				cause = errors.Join(cause, ownershipErr)
+			}
+		}
+		// Keep durable proof on every incomplete transaction, including when the
+		// main inventory write is unavailable. Never recapture a replacement inode.
+		if recovery != nil {
+			cause = fmt.Errorf("pending uninstall recovery at %s: %w", pm.pluginsRoot.ResolvePath(recovery.Stage), cause)
+		}
 		record.Phase = lifecycle.PhaseStopped
+		if incomplete {
+			record.Phase = lifecycle.PhaseFailed
+		}
 		record.Backend = nil
+		record.LastError = cause.Error()
 		if record.StateMachine != nil {
-			record.StateMachine.ForcePhase(lifecycle.PhaseStopped, "uninstall could not remove files")
+			record.StateMachine.ForcePhase(record.Phase, "uninstall did not complete")
 		}
 		pm.recordsMu.Lock()
 		pm.records[id] = record
 		pm.recordsMu.Unlock()
-		return record.ToInfo(), apperror.Internal(errors.Join(err, pm.persistPluginOperation(id)),
-			"Failed to remove plugin from filesystem").WithInstance(id)
+		return record.ToInfo(), apperror.Internal(errors.Join(cause, pm.persistPluginOperation(id)), "Failed to uninstall plugin").WithInstance(id)
 	}
-	return info, pm.persistPluginOperation(id)
+	if recovery != nil && canonical {
+		if err = pm.pluginsRoot.RenameDirectoryNoReplace(id, filepath.Join(recovery.Stage, "plugin")); err != nil {
+			return restore(err, false)
+		}
+		staged = true
+		if _, _, err = pm.locateUninstallRecovery(recovery); err != nil {
+			return restore(err, true)
+		}
+	}
+	if err = pm.persistPluginOperation(id); err != nil {
+		return restore(err, false)
+	}
+	if err = pm.removeUninstallRecovery(recovery); err != nil {
+		return restore(err, true)
+	}
+	pm.emitter.Emit(EventInventoryChanged)
+	return info, nil
 }
 
 // Build-related helper functions (extracted from dev.go).

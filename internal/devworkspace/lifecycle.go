@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
 type RemoveOptions struct {
@@ -876,6 +877,9 @@ func (m *Manager) remove(ctx context.Context, name string, opts RemoveOptions, r
 	}
 	defaultProfile, err := m.defaultProfileRoot(w.Manifest.WorkspaceID)
 	if err != nil {
+		return result, err
+	}
+	if err = devsession.ValidateUnixSocketDirectoriesRemoved(filepath.Join(defaultProfile, "runtime")); err != nil {
 		return result, err
 	}
 	purgeDefaultProfile := opts.PurgeState && purgePath == w.StateRoot

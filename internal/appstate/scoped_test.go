@@ -174,3 +174,96 @@ func TestScopedRoot_RemoveAll_SymlinkEscape(t *testing.T) {
 	_, err = os.Stat(externalFile)
 	require.NoError(t, err, "external file should still exist after blocked RemoveAll")
 }
+
+func TestScopedRoot_UninstallRollbackMustNotReplaceExistingEmptyDirectory(t *testing.T) {
+	r := newTestScopedRoot(t)
+	require.NoError(t, r.MkdirAll("owned/assets", 0755))
+	require.NoError(t, r.WriteFile("owned/assets/entry.js", []byte("original"), 0644))
+	require.NoError(t, r.MkdirAll("foreign", 0755))
+	original, err := r.Stat("owned")
+	require.NoError(t, err)
+	foreign, err := r.Stat("foreign")
+	require.NoError(t, err)
+
+	// The exclusive kernel operation must preserve an existing destination,
+	// including an empty directory that ordinary Rename may replace.
+	err = r.RenameDirectoryNoReplace("owned", "foreign")
+	assert.Error(t, err, "rollback must atomically refuse every occupied destination")
+	stillForeign, statErr := r.Stat("foreign")
+	require.NoError(t, statErr)
+	assert.True(t, os.SameFile(foreign, stillForeign), "foreign empty directory must retain its identity")
+	stillOriginal, statErr := r.Stat("owned")
+	assert.NoError(t, statErr)
+	if statErr == nil {
+		assert.True(t, os.SameFile(original, stillOriginal))
+	}
+}
+
+func TestScopedRoot_DirectoryNoReplacePreservesDurableIdentity(t *testing.T) {
+	r := newTestScopedRoot(t)
+	require.NoError(t, r.MkdirAll("source/assets", 0755))
+	require.NoError(t, r.WriteFile("source/assets/entry.js", []byte("owned bytes"), 0644))
+	before, err := r.DirectoryIdentity("source")
+	require.NoError(t, err)
+	require.NoError(t, r.RenameDirectoryNoReplace("source", "destination"))
+	after, err := r.DirectoryIdentity("destination")
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+	asset, err := r.ReadFile("destination/assets/entry.js")
+	require.NoError(t, err)
+	assert.Equal(t, "owned bytes", string(asset))
+	_, err = r.Stat("source")
+	assert.True(t, os.IsNotExist(err))
+	reopened, err := newScopedRoot(r.ResolvePath(""))
+	require.NoError(t, err)
+	defer reopened.Close()
+	restarted, err := reopened.DirectoryIdentity("destination")
+	require.NoError(t, err)
+	assert.Equal(t, before, restarted, "identity must survive a new root capability")
+}
+
+func TestScopedRoot_OrdinaryRenameStillReplacesFiles(t *testing.T) {
+	r := newTestScopedRoot(t)
+	require.NoError(t, r.WriteFile("source", []byte("new"), 0600))
+	require.NoError(t, r.WriteFile("destination", []byte("old"), 0600))
+	require.NoError(t, r.Rename("source", "destination"))
+	value, err := r.ReadFile("destination")
+	require.NoError(t, err)
+	assert.Equal(t, "new", string(value))
+}
+
+func TestScopedRoot_DirectoryNoReplaceRejectsFilesAndEscapes(t *testing.T) {
+	for _, target := range []string{".", "../escaped"} {
+		t.Run(target, func(t *testing.T) {
+			r := newTestScopedRoot(t)
+			require.NoError(t, r.MkdirAll("source", 0755))
+			assert.Error(t, r.RenameDirectoryNoReplace("source", target))
+			info, err := r.Stat("source")
+			require.NoError(t, err)
+			assert.True(t, info.IsDir())
+		})
+	}
+	r := newTestScopedRoot(t)
+	require.NoError(t, r.WriteFile("source", []byte("not a directory"), 0600))
+	assert.Error(t, r.RenameDirectoryNoReplace("source", "destination"))
+	value, err := r.ReadFile("source")
+	require.NoError(t, err)
+	assert.Equal(t, "not a directory", string(value))
+}
+
+func TestScopedRoot_PrivateRecoveryFileIdentityRejectsRedirectedProof(t *testing.T) {
+	r := newTestScopedRoot(t)
+	require.NoError(t, r.WriteFile("proof", []byte("private record"), 0600))
+	file, identity, err := r.OpenPrivateFile("proof", os.O_RDONLY)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+	reopened, reopenedIdentity, err := r.OpenPrivateFile("proof", os.O_RDONLY)
+	require.NoError(t, err)
+	require.NoError(t, reopened.Close())
+	assert.Equal(t, identity, reopenedIdentity)
+	if err := os.Symlink(r.ResolvePath("proof"), r.ResolvePath("redirected")); err != nil {
+		t.Skipf("symlink creation unavailable: %v", err)
+	}
+	_, _, err = r.OpenPrivateFile("redirected", os.O_RDONLY)
+	assert.Error(t, err)
+}

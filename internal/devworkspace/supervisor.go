@@ -30,36 +30,37 @@ type supervisorRecord struct {
 }
 
 type workspaceSupervisor struct {
-	manager          *Manager
-	workspace        Workspace
-	options          LaunchOptions
-	generation       string
-	owner            devcontract.ProcessIdentity
-	record           supervisorRecord
-	registry         *devsession.Registry
-	output           io.Writer
-	mu               sync.Mutex
-	runMu            sync.Mutex
-	status           Status
-	binary           string
-	children         map[string]*ownedChild
-	leases           map[string]devsession.Lease
-	graphInstance    *BuildGraph
-	sessionCancel    context.CancelFunc
-	sessionContext   context.Context
-	exit             chan struct{}
-	exitOnce         sync.Once
-	launchDone       chan struct{}
-	watchDone        chan struct{}
-	childContext     context.Context
-	goBuildCache     string
-	childCancel      context.CancelFunc
-	hostCaptureReady chan struct{}
-	lastHost         *ownedChild
-	processMu        sync.Mutex
-	managedProcesses map[string]*managedProcessRecord
-	managedKeys      map[string]string
-	managedClosing   bool
+	manager             *Manager
+	workspace           Workspace
+	options             LaunchOptions
+	generation          string
+	owner               devcontract.ProcessIdentity
+	record              supervisorRecord
+	registry            *devsession.Registry
+	output              io.Writer
+	mu                  sync.Mutex
+	runMu               sync.Mutex
+	status              Status
+	binary              string
+	children            map[string]*ownedChild
+	leases              map[string]devsession.Lease
+	graphInstance       *BuildGraph
+	sessionCancel       context.CancelFunc
+	sessionContext      context.Context
+	exit                chan struct{}
+	exitOnce            sync.Once
+	launchDone          chan struct{}
+	watchDone           chan struct{}
+	childContext        context.Context
+	goBuildCache        string
+	childCancel         context.CancelFunc
+	hostCaptureReady    chan struct{}
+	lastHost            *ownedChild
+	processMu           sync.Mutex
+	managedProcesses    map[string]*managedProcessRecord
+	managedKeys         map[string]string
+	managedClosing      bool
+	unixSocketDirectory *devsession.UnixSocketDirectory
 }
 
 func verifySupervisor(record supervisorRecord, w Workspace) error {
@@ -462,6 +463,14 @@ func (s *workspaceSupervisor) stopChildren(ctx context.Context) error {
 	// uncertain. A later authenticated Stop must be able to retry the real owner.
 	if first != nil {
 		return first
+	}
+	// The namespace may contain stale Unix socket inodes after a killed
+	// plugin. Only confirmed disposal of every owned group authorizes cleanup.
+	if s.unixSocketDirectory != nil {
+		if err := s.unixSocketDirectory.Close(); err != nil {
+			return err
+		}
+		s.unixSocketDirectory = nil
 	}
 	for role, lease := range s.leases {
 		if err := s.registry.Release(ctx, lease.Key, s.generation); err != nil {

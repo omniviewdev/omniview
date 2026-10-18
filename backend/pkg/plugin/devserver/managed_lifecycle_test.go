@@ -133,9 +133,10 @@ func TestBuildMetadataReplacesUntrustedYAMLAttestation(t *testing.T) {
 	installed, err := sdktypes.LoadPluginMetadata(root.ResolvePath("metadata"))
 	require.NoError(t, err)
 	require.Nil(t, installed.StateIsolation)
-	require.NoError(t, os.MkdirAll(filepath.Join(source, "build", "bin"), 0700))
-	binary := filepath.Join(source, "build", "bin", "plugin")
-	require.NoError(t, os.WriteFile(binary, []byte("built artifact fixture"), 0700))
+	gw.buildRelativePath = filepath.Join("metadata", ".test-build", "plugin")
+	require.NoError(t, root.MkdirAll(filepath.Dir(gw.buildRelativePath), 0700))
+	binary := root.ResolvePath(gw.buildRelativePath)
+	require.NoError(t, root.WriteFile(gw.buildRelativePath, []byte("built artifact fixture"), 0700))
 	gw.selectedSDK = devsource.Identity{Directory: source, ReviewedRevision: strings.Repeat("a", 40), SourceDigest: strings.Repeat("b", 64)}
 	require.NoError(t, gw.syncPluginYaml())
 	installed, err = sdktypes.LoadPluginMetadata(root.ResolvePath("metadata"))

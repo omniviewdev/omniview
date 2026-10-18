@@ -20,6 +20,16 @@ Named native development on macOS requires macOS14+ UUID datastores. Production 
 
 Bare `GOWORK=off go build .` does not consume an automatically generated modfile and therefore is not the supported command for this patched native toolchain. Use the explicit module command above or the bootstrap-aware Task. This is a deliberate build prerequisite, not an implicit machine-local replacement.
 
+## Managed plugin Unix transport
+
+General plugin `TMPDIR`/`TMP`/`TEMP` remain UUID-profile-private. Managed go-plugin RPC uses a separate short `PLUGIN_UNIX_SOCKET_DIR`, because Unix socket pathname limits can be exceeded by a valid long HOME plus UUID runtime path. The supervisor selects canonical OS temporary storage when it fits, otherwise a short canonical `/tmp` namespace; it exclusively creates the `0700` directory rather than adopting a developer-supplied path.
+
+A private generation record and matching marker bind the namespace to the workspace UUID, generation, captured supervisor identity, UID and directory identity. Cleanup waits for managed and host process groups to be disposed; unresolved, malformed or foreign ownership proof blocks destructive profile removal. Missing-root cleanup must finish external-parent synchronization before retiring the durable reference. Production/direct hosts do not gain a dependency on a managed-supervisor record.
+
+The plugin launcher passes the complete sanitized child environment with go-plugin's `SkipHostEnv: true`. This is required: go-plugin otherwise appends the raw host environment after `cmd.Env`, allowing inherited socket-directory/group or process-bridge values to override validated selections. Ordinary environment entries and UUID-private general temporary-directory settings remain available; go-plugin still injects its handshake/protocol variables. Do not shorten HOME or substitute a shared general temporary directory to fix RPC socket length.
+
+Darwin and non-root Linux component checks exercise real Unix socket nonce exchanges with long HOME paths, independent profiles, foreign-replacement refusal and durable cleanup retry. Linux also exercises the actual exclusive-rename kernel boundary; Windows cross-compilation is not runtime proof. Managed native plugin RPC readiness is a separate integration claim; the direct native boundary below does not establish it.
+
 ## Exercised native boundary
 
 On macOS27 arm64, an actual stable build without `devcontrol` and two named development builds ran concurrently in separate signed app bundles and state roots. The duplicate stable channel exited0 before settings-database/plugin startup; a duplicate named root exited1 without changing its settings or plugin inventory. CoreGraphics observed three onscreen native windows; this is not pixel capture.

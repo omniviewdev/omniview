@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"os"
@@ -68,6 +67,7 @@ type goWatcherProcess struct {
 	dependencyMu   sync.Mutex
 	dependencyDirs []string
 	selectedSDK    devsource.Identity
+	buildRelativePath string
 	runtimeError   func(error)
 }
 
@@ -336,7 +336,7 @@ func (gw *goWatcherProcess) debounceRebuild(mu *sync.Mutex, timers map[string]*t
 	mu.Unlock()
 }
 
-// handleRebuild performs a go build, copies the binary if successful, and triggers plugin reload.
+// handleRebuild compiles and publishes a private profile artifact, then reloads.
 func (gw *goWatcherProcess) handleRebuild(changedFile string) error {
 	gw.appendLog(newLogEntry(logSourceGoBuild, logLevelInfo, "Rebuilding after "+filepath.Base(changedFile)))
 	return gw.buildAndReload(false)
@@ -348,6 +348,9 @@ func (gw *goWatcherProcess) buildAndReload(initial bool) (result error) {
 	if err := gw.ctx.Err(); err != nil {
 		return err
 	}
+	defer func() {
+		result = errors.Join(result, gw.cleanupBuildOutput())
+	}()
 	gw.setStatus(DevProcessStatusBuilding)
 	started := time.Now()
 	buildReady := false
@@ -427,7 +430,18 @@ func goBuildEnv(env []string) []string {
 	return append(out, "GOWORK=off")
 }
 
-// runGoBuild runs `go build -o build/bin/plugin ./pkg` in the plugin's dev directory.
+func (gw *goWatcherProcess) cleanupBuildOutput() error {
+	if gw.buildRelativePath == "" {
+		return nil
+	}
+	if err := gw.pluginsRoot.RemoveAll(filepath.Dir(gw.buildRelativePath)); err != nil {
+		return err
+	}
+	gw.buildRelativePath = ""
+	return nil
+}
+
+// runGoBuild compiles into an exclusively created profile-local staging directory.
 // Returns nil on success, or an error containing the compiler output.
 func (gw *goWatcherProcess) runGoBuild() error {
 	goPath, err := resolveTool(gw.buildOpts.GoPath, "go")
@@ -447,16 +461,23 @@ func (gw *goWatcherProcess) runGoBuild() error {
 		}
 	}
 
-	// Ensure the output directory exists.
-	outDir := filepath.Join(gw.devPath, "build", "bin")
-	if err := os.MkdirAll(outDir, 0755); err != nil {
-		return apperror.Internal(err, "Failed to create build output directory")
+	if err := gw.cleanupBuildOutput(); err != nil {
+		return err
 	}
+	if err := gw.pluginsRoot.MkdirAll(gw.pluginID, 0700); err != nil {
+		return apperror.Internal(err, "Failed to create plugin build root")
+	}
+	stage, err := os.MkdirTemp(gw.pluginsRoot.ResolvePath(gw.pluginID), ".dev-build-")
+	if err != nil {
+		return apperror.Internal(err, "Failed to create private build output")
+	}
+	gw.buildRelativePath = filepath.Join(gw.pluginID, filepath.Base(stage), "plugin")
+	binaryPath := filepath.Join(stage, "plugin")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	cmd := exec.CommandContext(gw.ctx, goPath, "build", "-o", "build/bin/plugin", "./pkg")
+	cmd := exec.CommandContext(gw.ctx, goPath, "build", "-o", binaryPath, "./pkg")
 	cmd.Dir = gw.devPath
 	cmd.Env = goBuildEnv(gw.buildOpts.Environment)
 	cmd.Stdout = &stdout
@@ -489,7 +510,7 @@ func (gw *goWatcherProcess) runGoBuild() error {
 		}
 	}
 	if gw.selectedSDK.ReviewedRevision != "" {
-		info, err := buildinfo.ReadFile(filepath.Join(gw.devPath, "build", "bin", "plugin"))
+		info, err := buildinfo.ReadFile(binaryPath)
 		if err != nil {
 			return fmt.Errorf("read built SDK provenance: %w", err)
 		}
@@ -508,44 +529,23 @@ func (gw *goWatcherProcess) runGoBuild() error {
 	return nil
 }
 
-// transferBinary copies the built binary from <devPath>/build/bin/plugin to
-// <pluginsRoot>/<pluginID>/bin/plugin.
+// transferBinary atomically publishes the private staged executable inside the
+// same profile filesystem, without copying or mutating source-owned artifacts.
 func (gw *goWatcherProcess) transferBinary() error {
-	srcPath := filepath.Join(gw.devPath, "build", "bin", "plugin")
+	if gw.buildRelativePath == "" {
+		return fmt.Errorf("plugin build has no private artifact to publish")
+	}
 	binDir := filepath.Join(gw.pluginID, "bin")
 
 	if err := gw.pluginsRoot.MkdirAll(binDir, dirPerm); err != nil {
 		return apperror.Internal(err, "Failed to create plugin bin directory")
 	}
 
-	// Read source binary.
-	srcFile, err := os.Open(srcPath)
-	if err != nil {
-		return apperror.Internal(err, "Failed to open built binary")
-	}
-	defer srcFile.Close()
-
-	srcInfo, err := srcFile.Stat()
-	if err != nil {
-		return apperror.Internal(err, "Failed to stat built binary")
-	}
-
 	dstRelPath := filepath.Join(binDir, "plugin")
-
-	// Remove existing binary first (in case it's being held open).
-	_ = gw.pluginsRoot.Remove(dstRelPath)
-
-	dstFile, err := gw.pluginsRoot.OpenFile(dstRelPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
-	if err != nil {
-		return apperror.Internal(err, "Failed to create destination binary")
+	if err := gw.pluginsRoot.Rename(gw.buildRelativePath, dstRelPath); err != nil {
+		return apperror.Internal(err, "Failed to publish built binary")
 	}
-	defer dstFile.Close()
-
-	if _, err = io.Copy(dstFile, srcFile); err != nil {
-		return apperror.Internal(err, "Failed to copy binary")
-	}
-
-	return nil
+	return gw.cleanupBuildOutput()
 }
 
 // syncPluginYaml synchronizes capabilities but never copies self-attested source
@@ -561,7 +561,7 @@ func (gw *goWatcherProcess) syncPluginYaml() error {
 	}
 	metadata.StateIsolation = nil
 	if gw.selectedSDK.ReviewedRevision != "" {
-		binary := filepath.Join(gw.devPath, "build", "bin", "plugin")
+		binary := gw.pluginsRoot.ResolvePath(gw.buildRelativePath)
 		metadata.StateIsolation, err = sdkconfig.BuildStateIsolationProvenance(binary, gw.selectedSDK.ReviewedRevision, gw.selectedSDK.SourceDigest)
 		if err != nil {
 			return err

@@ -55,6 +55,7 @@ declare module "@wailsio/runtime" {
             "plugin/install_error": config$0.PluginMeta | null;
             "plugin/install_finished": config$0.PluginMeta | null;
             "plugin/install_started": config$0.PluginMeta | null;
+            "plugin/inventory_changed": void;
             "plugin/process/log": pluginlog$0.LogEntry;
             "plugin/recovered": plugin$0.PluginErrorPayload;
             "plugin/state_change": plugin$0.StateChangePayload;

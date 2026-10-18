@@ -252,10 +252,6 @@ func TestIntegration_GoWatcher_BuildOnFileChange(t *testing.T) {
 	require.True(t, ok, "reloader.ReloadPlugin should have been called")
 	assert.Equal(t, "test-integration", reloader.getLastPluginID())
 
-	// Verify binary exists in build output.
-	_, err = os.Stat(filepath.Join(devPath, "build", "bin", "plugin"))
-	assert.NoError(t, err, "built binary should exist in devPath/build/bin/plugin")
-
 	// Verify binary was transferred to the plugins directory.
 	transferredPath := filepath.Join(testSvc.Plugins().ResolvePath("test-integration"), "bin", "plugin")
 	_, err = os.Stat(transferredPath)

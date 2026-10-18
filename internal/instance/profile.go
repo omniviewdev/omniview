@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
 // buildChannel is independent of optimization tags and version.Development.
@@ -197,7 +198,7 @@ func (p Profile) ChildEnvironment(base []string, pluginID string) []string {
 	if p.Workspace != nil {
 		values = append(values, devcontract.WorkspaceEnvironment+"="+p.Workspace.ManifestPath)
 	}
-	keys := map[string]bool{devcontract.WorkspaceEnvironment: true, "GOWORK": true, "OMNIVIEW_STATE_DIR": true, "OMNIVIEW_INSTANCE_ID": true, "OMNIVIEW_GENERATION": true, "OMNIVIEW_WORKSPACE_ID": true, "OMNIVIEW_PLUGIN_ID": true}
+	keys := map[string]bool{devcontract.WorkspaceEnvironment: true, "GOWORK": true, "OMNIVIEW_STATE_DIR": true, "OMNIVIEW_INSTANCE_ID": true, "OMNIVIEW_GENERATION": true, "OMNIVIEW_WORKSPACE_ID": true, "OMNIVIEW_PLUGIN_ID": true, "PLUGIN_UNIX_SOCKET_DIR": true, "PLUGIN_UNIX_SOCKET_GROUP": true}
 	env := make([]string, 0, len(base)+len(values))
 	for _, entry := range base {
 		key, _, _ := strings.Cut(entry, "=")
@@ -332,5 +333,22 @@ func PluginEnvironment(stateRoot, pluginID string, base []string) ([]string, err
 		profile.Descriptor.InstanceID = workspace.Manifest.WorkspaceID
 		profile.Descriptor.WorkspaceID = workspace.Manifest.WorkspaceID
 	}
-	return profile.ChildEnvironment(base, pluginID), nil
+	env := profile.ChildEnvironment(base, pluginID)
+	// Only an actual managed host carries both process-bridge selections.
+	// Production and directly launched development hosts do not acquire a
+	// dependency on supervisor-owned transport records.
+	if profile.Workspace != nil && pluginID != "" && values["OMNIVIEW_PROCESS_BRIDGE_ENDPOINT"] != "" && values["OMNIVIEW_PROCESS_BRIDGE_TOKEN_FILE"] != "" {
+		managed, err := Resolve(Options{EnvironmentManifest: profile.Workspace.ManifestPath, StateRoot: root, Generation: generation})
+		if err != nil {
+			return nil, err
+		}
+		socketRoot, err := devsession.ReadUnixSocketDirectory(managed.RuntimeRoot, managed.Descriptor.WorkspaceID, generation, managed.Workspace.Root)
+		if err != nil {
+			return nil, fmt.Errorf("instance: managed plugin Unix socket ownership: %w", err)
+		}
+		if socketRoot != "" {
+			env = append(env, "PLUGIN_UNIX_SOCKET_DIR="+socketRoot)
+		}
+	}
+	return env, nil
 }

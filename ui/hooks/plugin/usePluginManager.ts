@@ -19,15 +19,16 @@ export const usePluginManager = () => {
   const { showSnackbar } = useSnackbar();
   const { load } = usePluginService();
 
-  // Listen for backend init_complete to immediately refresh the plugin list
-  // instead of waiting for the 2s poll interval.
+  // Refresh inventory after initialization or a committed noninteractive removal.
   React.useEffect(() => {
-    const cleanup = Events.On('plugin/init_complete', () => {
-      console.debug('[usePluginManager] plugin/init_complete received');
+    const invalidateInventory = () => {
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
-    });
+    };
+    const stopInit = Events.On('plugin/init_complete', invalidateInventory);
+    const stopInventory = Events.On('plugin/inventory_changed', invalidateInventory);
     return () => {
-      cleanup(); 
+      stopInit();
+      stopInventory();
     };
   }, [queryClient]);
 

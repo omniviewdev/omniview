@@ -53,6 +53,16 @@ Mutations return `accepted` and an operation ID, then progress through `running`
 
 The native-free `NewClient(endpoint, token, workspaceID, generation)` client provides `Call`, bounded `Wait`, and `Close` for idle connection cleanup. It checks response identity/request correlation and reconstructs local exit codes omitted from JSON. Interrupted waits preserve the operation ID/current known status. Exit codes are success 0, usage 2, missing target 3, conflict 4, runtime/dependency failure 5, unauthorized 6, and timeout 7.
 
+## Transactional plugin inventory
+
+An accepted operation is not a committed installation change. Archive inputs remain caller-owned, and a failed uninstall retains non-running inventory and its recovery evidence rather than announcing success.
+
+Before uninstall unloads or moves an installation, the manager durably records its original metadata/source binding and profile, plugins-directory, staging-directory and installation identities in a private profile-local recovery marker. Pre-disposal rollback uses an atomic directory-only no-replace rename: a replacement at the canonical plugin path is never overwritten or adopted. Startup excludes unresolved recovery paths from migration/loading; installation, managed-source selection and loading refuse pending or malformed recovery proof. Retry through the canonical manager operation; do not delete the marker/stage or edit the installed-state JSON to force a retry.
+
+Recursive disposal begins only after a cleanup-started phase is published through the validated existing marker file descriptor and synced. A failed publication prevents deletion. Once disposal intent has been attempted, incomplete artifacts remain Failed/staged rather than being rolled back as a complete installation. Persisted disposal intent survives restart: retry may clean only the owned stage and refuses every canonical entry, even one with the original inode identity.
+
+Successful durable uninstall emits the payload-free `plugin/inventory_changed` event. The running frontend invalidates the plugin-query prefix, including navigation/settings consumers, without a window reload. `plugin/init_complete` remains an initialization event; unrelated settings changes are not an inventory refresh mechanism. Failure emits no success notification.
+
 ## Settings and output safety
 
 Host settings use the actual SDK provider schema and write methods. JSON values are decoded to the declared scalar type before provider validation (for example an integer is an `int`, not a `float64` or `json.Number`). Provider validation, hooks, and persistence remain authoritative; control has no separate settings store.

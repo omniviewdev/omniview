@@ -385,12 +385,26 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// Kill any orphaned plugin processes from a previous unclean shutdown.
 	pm.pidTracker.CleanupStale(pm.logger)
 
+	blockedUninstalls, err := pm.restoreUninstallRecoveries()
+	if err != nil {
+		return fmt.Errorf("validate pending plugin uninstalls: %w", err)
+	}
+
 	pluginDir := pm.pluginsRoot.ResolvePath("")
 
 	states, err := pm.readPluginStateJSON()
 	if err != nil {
 		pm.logger.Warnw(pm.ctx, "failed to read plugin state file, reconciling from filesystem", "error", err)
 		states = pm.reconcileStatesFromFilesystem(pluginDir, states)
+	}
+	if len(blockedUninstalls) != 0 {
+		allowedStates := states[:0]
+		for _, state := range states {
+			if !blockedUninstalls[state.ID] {
+				allowedStates = append(allowedStates, state)
+			}
+		}
+		states = allowedStates
 	}
 
 	pm.logger.Debugw(pm.ctx, "Loading plugins states from disk", "states", states)
@@ -406,6 +420,18 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	files, err := os.ReadDir(pluginDir)
 	if err != nil {
 		return fmt.Errorf("error re-reading plugin directory after migration: %w", err)
+	}
+
+	// A recovery marker owns the original inode, not whatever now occupies its
+	// canonical name. Do not migrate, load or start those incomplete transactions.
+	if len(blockedUninstalls) != 0 {
+		allowedFiles := files[:0]
+		for _, file := range files {
+			if !blockedUninstalls[file.Name()] {
+				allowedFiles = append(allowedFiles, file)
+			}
+		}
+		files = allowedFiles
 	}
 
 	// Phase 1: Load all plugins using existing binaries on disk.

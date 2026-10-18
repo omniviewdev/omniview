@@ -12,6 +12,9 @@ import (
 )
 
 func (manager *pluginManager) validateManagedSource(id, source string) (bool, error) {
+	if err := manager.guardUninstallRecovery(id); err != nil {
+		return false, err
+	}
 	if policy, ok := manager.devServerMgr.(interface {
 		ValidateManagedSource(string, string) (bool, error)
 	}); ok {

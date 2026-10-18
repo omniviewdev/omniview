@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
@@ -112,123 +111,6 @@ func TestParseBuildErrors(t *testing.T) {
 			}
 		})
 	}
-}
-
-// ============================================================================
-// transferBinary tests
-// ============================================================================
-
-func TestTransferBinary_Success(t *testing.T) {
-	devPath := t.TempDir()
-
-	// Create a fake built binary at devPath/build/bin/plugin.
-	buildDir := filepath.Join(devPath, "build", "bin")
-	require.NoError(t, os.MkdirAll(buildDir, 0755))
-	srcBinary := filepath.Join(buildDir, "plugin")
-	require.NoError(t, os.WriteFile(srcBinary, []byte("fake-binary-data"), 0755))
-
-	svc := appstate.NewTestService(t)
-
-	gw := &goWatcherProcess{
-		logger:      logging.NewNop(),
-		pluginID:    "transfer-test",
-		devPath:     devPath,
-		pluginsRoot: svc.Plugins(),
-	}
-
-	err := gw.transferBinary()
-	require.NoError(t, err)
-
-	// Verify the binary was copied.
-	dstPath := filepath.Join(svc.Plugins().ResolvePath(""), "transfer-test", "bin", "plugin")
-	data, err := os.ReadFile(dstPath)
-	require.NoError(t, err)
-	assert.Equal(t, "fake-binary-data", string(data))
-
-	// Verify the file is executable.
-	info, err := os.Stat(dstPath)
-	require.NoError(t, err)
-	assert.NotZero(t, info.Mode()&0111, "binary should be executable")
-}
-
-func TestTransferBinary_SourceMissing(t *testing.T) {
-	devPath := t.TempDir()
-	// Do NOT create the binary — it should be missing.
-
-	svc := appstate.NewTestService(t)
-
-	gw := &goWatcherProcess{
-		logger:      logging.NewNop(),
-		pluginID:    "missing-src",
-		devPath:     devPath,
-		pluginsRoot: svc.Plugins(),
-	}
-
-	err := gw.transferBinary()
-	require.Error(t, err)
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, apperror.TypeInternal, appErr.Type)
-	assert.Equal(t, 500, appErr.Status)
-	assert.Equal(t, "Failed to open built binary", appErr.Title)
-}
-
-func TestTransferBinary_DestDirCreated(t *testing.T) {
-	devPath := t.TempDir()
-
-	// Create a fake binary.
-	buildDir := filepath.Join(devPath, "build", "bin")
-	require.NoError(t, os.MkdirAll(buildDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(buildDir, "plugin"), []byte("bin"), 0755))
-
-	svc := appstate.NewTestService(t)
-
-	gw := &goWatcherProcess{
-		logger:      logging.NewNop(),
-		pluginID:    "dest-create",
-		devPath:     devPath,
-		pluginsRoot: svc.Plugins(),
-	}
-
-	// The dest dir doesn't exist yet.
-	dstDir := filepath.Join(svc.Plugins().ResolvePath(""), "dest-create", "bin")
-	_, err := os.Stat(dstDir)
-	assert.True(t, os.IsNotExist(err))
-
-	require.NoError(t, gw.transferBinary())
-
-	// Now it should exist.
-	info, err := os.Stat(dstDir)
-	require.NoError(t, err)
-	assert.True(t, info.IsDir())
-}
-
-func TestTransferBinary_OverwritesExisting(t *testing.T) {
-	devPath := t.TempDir()
-
-	buildDir := filepath.Join(devPath, "build", "bin")
-	require.NoError(t, os.MkdirAll(buildDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(buildDir, "plugin"), []byte("new-binary"), 0755))
-
-	svc := appstate.NewTestService(t)
-
-	gw := &goWatcherProcess{
-		logger:      logging.NewNop(),
-		pluginID:    "overwrite-test",
-		devPath:     devPath,
-		pluginsRoot: svc.Plugins(),
-	}
-
-	// Pre-create an old binary at the destination.
-	dstDir := filepath.Join(svc.Plugins().ResolvePath(""), "overwrite-test", "bin")
-	require.NoError(t, os.MkdirAll(dstDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dstDir, "plugin"), []byte("old-binary"), 0755))
-
-	require.NoError(t, gw.transferBinary())
-
-	data, err := os.ReadFile(filepath.Join(dstDir, "plugin"))
-	require.NoError(t, err)
-	assert.Equal(t, "new-binary", string(data))
 }
 
 func TestParseBuildErrors_GoTestOutput(t *testing.T) {
@@ -376,39 +258,6 @@ func TestGoWatcherStart_InitialBuild_StatusProgression(t *testing.T) {
 	// Should have at least Building status (first status set by initial build).
 	require.GreaterOrEqual(t, len(statuses), 1)
 	assert.Equal(t, DevProcessStatusBuilding, statuses[0])
-}
-
-func TestTransferBinary_ReadOnlyDestDir(t *testing.T) {
-	devPath := t.TempDir()
-
-	// Create a built binary.
-	buildDir := filepath.Join(devPath, "build", "bin")
-	require.NoError(t, os.MkdirAll(buildDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(buildDir, "plugin"), []byte("bin"), 0755))
-
-	svc := appstate.NewTestService(t)
-
-	// Create the dest dir as read-only so file creation fails.
-	dstDir := filepath.Join(svc.Plugins().ResolvePath(""), "readonly-test", "bin")
-	require.NoError(t, os.MkdirAll(dstDir, 0755))
-	require.NoError(t, os.Chmod(dstDir, 0444))
-	t.Cleanup(func() { _ = os.Chmod(dstDir, 0755) })
-
-	gw := &goWatcherProcess{
-		logger:      logging.NewNop(),
-		pluginID:    "readonly-test",
-		devPath:     devPath,
-		pluginsRoot: svc.Plugins(),
-	}
-
-	err := gw.transferBinary()
-	require.Error(t, err)
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, apperror.TypeInternal, appErr.Type)
-	assert.Equal(t, 500, appErr.Status)
-	assert.Equal(t, "Failed to create destination binary", appErr.Title)
-	assert.Contains(t, appErr.Detail, "permission denied")
 }
 
 // ============================================================================

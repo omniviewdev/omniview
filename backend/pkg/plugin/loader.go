@@ -56,6 +56,9 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (sdktype
 }
 
 func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error) {
+	if err := pm.guardUninstallRecovery(id); err != nil {
+		return sdktypes.PluginInfo{}, err
+	}
 	log := pm.logger.Named("LoadPlugin").With(logging.Any("id", id), logging.Any("opts", opts))
 	// An existing dev binding remains dev inventory even when a caller omits
 	// options; only the canonical unload/install transaction may replace it.
@@ -425,6 +428,7 @@ func (pm *pluginManager) createBackend(
 		},
 		GRPCDialOptions:  sdk.GRPCDialOptions(),
 		Cmd:              cmd,
+		SkipHostEnv:      true,
 		StartTimeout:     pluginStartTimeout,
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		Logger: hclog.New(&hclog.LoggerOptions{

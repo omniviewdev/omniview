@@ -445,6 +445,9 @@ func discover(w devcontract.ResolvedWorkspace, roots []Root) (sourceSet, error) 
 			case "pnpm-lock.yaml":
 				sources.locks = append(sources.locks, path)
 			case "pnpm-workspace.yaml":
+				if _, discovered := sources.configs[dir]; !discovered {
+					return sources, refusal("workspace declaration at %s appeared during planning", relative(w.Root, path))
+				}
 				if _, actual := sources.manifests[dir]; actual {
 					if _, exists := rootMap[dir]; !exists {
 						rootMap[dir] = Root{Path: dir, Version: Version}
