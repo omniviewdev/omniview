@@ -89,6 +89,8 @@ The persistent supervisor outlives the short CLI. `--timeout` bounds the caller/
 
 Browser mode starts the real Wails server. Use `instance.endpoints.browser`, **not** the asset-only Vite URL. `--live-frontend=false` serves built assets instead of launching host Vite. `--watch=false` disables the supervisor build graph; otherwise its lifetime owns serial source rebuilds and real managed-generation waits. Runtime/shim changes restart actual consumers; a successful compiler exit alone is not plugin readiness.
 
+Backend readiness is not browser-side plugin import readiness. A cold browser can render the shell before the initial plugin batch, route publication and loader resolution complete. Wait for the selected rendered plugin, not just a Vite socket or shell; live-mode inspection also exposes `window.__PLUGIN_SERVICE__.getDebugSnapshot()` with service/plugin phases and route version. After an automatic document replacement, repeat browser bootstrap before exercising its controls. A `framenavigated` event alone is not reload proof: same-URL router `history.replaceState` and fragment changes stay in the same document; compare `performance.timeOrigin` or browser protocol navigation events.
+
 For a desktop window, choose `--mode native`. Native MCP additionally requires `--mcp`; it is authenticated, explicitly compiled development tooling, not a production endpoint. The private per-generation MCP token is in `<workspace>/.local/mcp-<generation>.secret`; never print/share the token. MCP is advertised only after the host confirms actual authenticated native JavaScript/binding identity. Browser/native support and required OS versions remain distinct; see [native toolchain](development-native-toolchain.md).
 
 ## Endpoints, ports and context

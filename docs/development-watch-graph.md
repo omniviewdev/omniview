@@ -55,6 +55,12 @@ POSIX readers verify private no-follow file identity with exact bigint device/in
 
 Owner-originated incomplete writes retain their exact physical after-image separately from pending durability. Failed release attempts restore consumer-held bytes without pretending an unsuccessful flush is durable; retry must discharge the real flush obligation before releasing ownership. Foreign integrity failures do not imply every reader is fenced: shutdown confirms exact-owned Node/Vite retirement before tearing down the backend, retaining backend/ownership if those consumers cannot retire and preserving the integrity error.
 
+## Diagnostics during replacement
+
+A temporarily unavailable diagnostics backend must not turn its own rejected log call into another backend log. The bridge and Faro transport report internal failures through the same captured unpatched console-error function; development failures remain visible without asynchronous console → bridge → console feedback.
+
+Owned browser error artifacts retain at most 500 ordinary distinct records plus explicit overflow, clip messages to 2048 characters and aggregate occurrences/first/last timestamps. Overflow declares incomplete coverage and counts every unretained occurrence; it is not evidence that omitted errors were harmless. Normal settings bootstrap messages remain excluded. Identify failing bindings rather than treating all `/wails/runtime` HTTP 422 responses alike: observed startup marketplace `ListAvailablePlugins` failures are independent of installed local-source loading.
+
 ## Parent-only live smoke
 
 Prepared script: `internal/devworkspace/testdata/buildgraph-live-smoke.mjs`. It must run only after parent verification and real disposable host/two-plugin launch; it has not been executed as part of source authoring.

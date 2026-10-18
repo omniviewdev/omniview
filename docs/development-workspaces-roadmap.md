@@ -121,6 +121,8 @@ The feedback correction passes 26 actual Vite 5/8 network and native-authority-s
 
 A controlled TCP-linger fixture reproduces the Darwin boundary: an unreaped zombie leader coexists with an exiting non-zombie descendant, and group signaling reports `EPERM` before descendant cleanup completes. The correction waits for independent whole-group terminal proof within the existing bound, without extra signals or accepting exit flags as completion. The new race-enabled regression and both fresh original host-crash/authenticated-stop cases pass.
 
+The corrected immutable cohort is host `917445d90b3e313b98ed577263035ed7a40cad93` with the same pinned UI/SDK/Kubernetes/probe refs above. Its Task-built cached CLI and explicit source input are recorded separately; actual focused/full browser scenarios must pass before this cohort is final acceptance.
+
 Remaining order:
 
 1. Freeze the verified source into a new immutable cohort, then pass a focused actual failed/repaired SDK scenario without manual navigation or reload.
@@ -167,9 +169,10 @@ These are nonsecret records from this verification machine, rooted at `/private/
 | Actual nonroot Linux case-sensitive profile controls | `linux-profile-containment-proof.json` |
 | Windows/Linux ARM64 contract cross-compilation | `final-cross-compile-proof.json` |
 | Quarantined diagnostic owner's denied task authority | `plugin-transaction-acceptance/retained-task-authority-proof.json` |
-| Final immutable consumer input selection | `e2e-sources-ac0fbd.json` |
+| First failed consumer cohort input selection | `e2e-sources-ac0fbd.json` |
 | Feedback gates, native authority, Linux execution and outstanding Darwin race | `feedback-contract-proof.json` |
 | Actual Darwin exiting-descendant RED/GREEN and independent cleanup | `darwin-retirement-proof.json` |
+| Corrected immutable consumer input selection | `e2e-sources-917445.json` |
 
 The failed first-cohort runs retain stage receipts, screenshots and browser-error records beneath `playwright-optimized-ac0fbd/` and `playwright-live-ac0fbd/`; these are failures, not final acceptance. The live error record is large: inspect bounded projections rather than loading it wholesale, and distinguish failure-stage observations from teardown noise. Linux profile tests actually ran nonroot with a read-only root filesystem, no network and private tmpfs; Windows runtime and both platforms' GUI/storage claims remain unexercised.
 
