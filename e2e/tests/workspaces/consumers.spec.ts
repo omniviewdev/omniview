@@ -53,6 +53,11 @@ async function prepareConsumers(workspace: Workspace): Promise<void> {
 }
 
 async function assertManagedPlugins(workspace: Workspace): Promise<Descriptor> {
+  // UI HMR can finish while the coalesced backend graph is still rebuilding.
+  // Wait only for that in-flight phase; terminal errors still fail verification.
+  await expect.poll(async () => (await workspace.status()).launchPhase, {
+    ...poll, message: 'Managed readiness must follow completion of the current source build',
+  }).not.toBe('building');
   const descriptor = await workspace.verify();
   const selected = (await workspace.status()).manifest.plugins;
   expect(selected.length).toBeGreaterThanOrEqual(2);
