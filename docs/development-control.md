@@ -73,6 +73,8 @@ If inventory was written but marker publication/sync could not be confirmed, `co
 
 Durable installation commit and successful durable uninstall emit the payload-free `plugin/inventory_changed` event exactly once. This is an inventory invalidation fact, not an operation-success signal: a committed installation still invalidates the open UI if later backup cleanup fails. Rejected or rolled-back changes emit none. The frontend invalidates the plugin-query prefix, including navigation/settings consumers, without a window reload. `plugin/init_complete` remains an initialization event; unrelated settings changes are not an inventory refresh mechanism.
 
+Inventory invalidation belongs to the always-mounted read-only startup provider, not the optional plugin-management screen. Install/update completion refreshes module selection from current backend metadata and the actual ready dev-server port; clearing the previous loader uses its previous mode. A committed artifact waits for any in-flight import, including queued startup batches through publication, before replacing it. Failed imports retain their attempted loader mode so a corrected archive evicts the failed installed module rather than reusing it. Switching between installed archives and development sources must not keep fetching a retired Vite port.
+
 ## Settings and output safety
 
 Host settings use the actual SDK provider schema and write methods. JSON values are decoded to the declared scalar type before provider validation (for example an integer is an `int`, not a `float64` or `json.Number`). Provider validation, hooks, and persistence remain authoritative; control has no separate settings store.

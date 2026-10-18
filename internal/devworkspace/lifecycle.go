@@ -217,6 +217,26 @@ func (m *Manager) apply(ctx context.Context, root string, j *journal) error {
 	if j.Phase == "rename" {
 		return m.finishRename(ctx, root, j)
 	}
+	if j.Phase == "edit" && j.RenameTo != "" {
+		// The validated edit intent precedes cleanup. Resume finishes the same
+		// attested deletion plan before applying any source changes or rename.
+		w, err := m.inspectRoot(root)
+		if err != nil {
+			return err
+		}
+		if _, err = prepareNativeSnapshot(w); err != nil {
+			return err
+		}
+		if err = RestoreRepositoryOutputs(ctx, w); err != nil {
+			return err
+		}
+		if err = CleanGenerated(w); err != nil {
+			return err
+		}
+		if err = preflightFiles(root, j); err != nil {
+			return err
+		}
+	}
 	selected := map[string]devcontract.Repository{}
 	for _, repo := range j.Manifest.Repositories {
 		selected[repo.ID] = repo
@@ -389,7 +409,13 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 		return Workspace{}, err
 	}
 	if desired.Slug != old.Slug {
-		if err = preflightFiles(root, j); err != nil {
+		if err = preflightWorkspaceFiles(root, j, true); err != nil {
+			return Workspace{}, err
+		}
+		if err = ValidateGenerated(ctx, w); err != nil {
+			return Workspace{}, err
+		}
+		if err = ValidateRepositoryOutputs(ctx, w); err != nil {
 			return Workspace{}, err
 		}
 		j.RenameTo = filepath.Join(m.Root, "workspaces", desired.Slug)
@@ -418,8 +444,9 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 			}
 		}
 	}
-	// Restore verified tool output before clean checks; human source/ref
-	// preflight still completes before applying an edit or writing its intent.
+	// Reconfigure restores dependency/producer overlays before Edit. A rename
+	// must validate every clean worktree and ref before retiring generated output;
+	// non-rename edits retain their existing producer restoration behavior.
 	outputsRestored := false
 	for i := range j.Resources {
 		r := &j.Resources[i]
@@ -433,7 +460,7 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 			}
 		}
 		mutating := target == nil || target.BaseCommit != r.Repository.BaseCommit || j.RenameTo != ""
-		if mutating && !outputsRestored {
+		if mutating && !outputsRestored && j.RenameTo == "" {
 			if err = RestoreRepositoryOutputs(ctx, w); err != nil {
 				return Workspace{}, err
 			}
@@ -467,6 +494,30 @@ func (m *Manager) Edit(ctx context.Context, name string, opts EditOptions) (Work
 					j.Resources = append(j.Resources, makeResource(root, old.WorkspaceID, repo, source))
 				}
 			}
+		}
+	}
+	if j.RenameTo != "" {
+		for i := range j.Resources {
+			r := &j.Resources[i]
+			if r.GitDir != "" && !r.Removed {
+				continue
+			}
+			for _, repo := range desired.Repositories {
+				if repo.ID == r.Repository.ID {
+					if err = preflightWorktreeAddition(ctx, root, r); err != nil {
+						return Workspace{}, err
+					}
+					break
+				}
+			}
+		}
+		if err = ctx.Err(); err != nil {
+			return Workspace{}, err
+		}
+		// Preserve the original UUID-scoped native bundle before its attested
+		// build tree is retired; a later purge still needs its real callback.
+		if _, err = prepareNativeSnapshot(w); err != nil {
+			return Workspace{}, err
 		}
 	}
 	j.Manifest, j.Phase = desired, "edit"

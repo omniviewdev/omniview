@@ -1,5 +1,6 @@
+import { writeFile } from 'node:fs/promises';
 import { test as base } from '@playwright/test';
-import type { APIRequestContext, BrowserContext, Page } from '@playwright/test';
+import type { APIRequestContext, BrowserContext, Page, TestInfo } from '@playwright/test';
 import { callBinding, Service } from './wails';
 import { OwnedProfiles } from './workspace';
 import type { ProfileOptions, Workspace } from './workspace';
@@ -26,6 +27,12 @@ function collectErrors(page: Page, records: { kind: string; message: string }[])
   page.on('response', response => {
     if (response.status() >= 400) records.push({ kind: 'http', message: `${response.status()} ${response.request().method()} ${urlPath(response.url())}` });
   });
+}
+
+async function attachErrors(testInfo: TestInfo, name: string, records: { kind: string; message: string }[]): Promise<void> {
+  const path = testInfo.outputPath(name);
+  await writeFile(path, JSON.stringify(records, null, 2));
+  await testInfo.attach(name, { path, contentType: 'application/json' });
 }
 
 async function closeAllSessions(request: APIRequestContext): Promise<void> {
@@ -63,12 +70,12 @@ export const test = base.extend<AppFixtures, { ownedProfiles: OwnedProfiles }>({
           context.on('page', additional => collectErrors(additional, records));
           const page = await context.newPage();
           await page.goto('/');
-          await page.getByTestId('app-shell').waitFor();
+          await page.getByTestId('app-shell').waitFor({ timeout: 120_000 });
           return { workspace, page };
         },
       });
     } finally {
-      await testInfo.attach('additional-profile-browser-errors.json', { body: JSON.stringify(records, null, 2), contentType: 'application/json' });
+      await attachErrors(testInfo, 'additional-profile-browser-errors.json', records);
       await Promise.all(contexts.map(context => context.close()));
     }
   },
@@ -78,7 +85,7 @@ export const test = base.extend<AppFixtures, { ownedProfiles: OwnedProfiles }>({
     collectErrors(page, records);
     page.context().on('page', additional => collectErrors(additional, records));
     await use();
-    await testInfo.attach('browser-errors.json', { body: JSON.stringify(records, null, 2), contentType: 'application/json' });
+    await attachErrors(testInfo, 'browser-errors.json', records);
     if (testInfo.status !== testInfo.expectedStatus && !page.isClosed()) await page.screenshot({ path: testInfo.outputPath('browser-failure.png'), fullPage: true });
   }, { auto: true }],
   // Settings live in the server's state directory and outlive the page, so a

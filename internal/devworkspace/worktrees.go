@@ -15,6 +15,58 @@ func refValue(ctx context.Context, common, ref string) string {
 	return out
 }
 
+// preflightWorktreeAddition checks an absent/newly reselected resource without
+// reserving refs or attaching a checkout. Rename uses it before output cleanup.
+func preflightWorktreeAddition(ctx context.Context, root string, r *resource) error {
+	path, err := devcontract.CanonicalPath(r.Path)
+	if err != nil {
+		return err
+	}
+	if path != r.Path || !inside(root, path) {
+		return devcontract.Fail(4, "foreign_worktree", "owned worktree path was redirected")
+	}
+	if _, err = os.Lstat(path); !os.IsNotExist(err) {
+		if err != nil {
+			return err
+		}
+		return devcontract.Fail(4, "foreign_worktree", "worktree destination already exists before source selection")
+	}
+	marker := refValue(ctx, r.CommonDir, r.Marker)
+	branch := "refs/heads/" + r.Repository.Branch
+	tip := refValue(ctx, r.CommonDir, branch)
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	if marker == "" {
+		refs, err := git(ctx, r.CommonDir, "", "for-each-ref", "--format=%(refname)")
+		if err != nil {
+			return err
+		}
+		plannedRefs := [2]string{branch, r.Marker}
+		for _, existing := range strings.Split(refs, "\n") {
+			for _, planned := range plannedRefs {
+				if existing == planned || strings.HasPrefix(existing, planned+"/") || strings.HasPrefix(planned, existing+"/") {
+					return devcontract.Fail(4, "occupied_branch", "source ref namespace conflicts with an existing Git ref")
+				}
+			}
+		}
+		return nil
+	}
+	if marker != r.Repository.BaseCommit || tip == "" || (tip != r.Repository.BaseCommit && !r.Removed) {
+		return devcontract.Fail(4, "ownership_changed", "reserved feature branch or ownership marker changed")
+	}
+	list, err := git(ctx, r.CommonDir, "", "worktree", "list", "--porcelain")
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(list, "\n") {
+		if line == "branch "+branch {
+			return devcontract.Fail(4, "occupied_branch", "owned branch is attached to a foreign worktree")
+		}
+	}
+	return nil
+}
+
 func (m *Manager) addWorktree(ctx context.Context, root string, j *journal, r *resource) error {
 	if err := ctx.Err(); err != nil {
 		return err

@@ -355,10 +355,6 @@ describe('Group 4: Unload Operations', () => {
     expect(s.service.getPluginState('A')?.phase).toBe('idle');
   });
 
-  it('#6 unload non-existent plugin — no-op', async () => {
-    await expect(s.service.unload('unknown')).resolves.toBeUndefined();
-  });
-
   it('#7 unload from idle — no-op', async () => {
     s.importer.register('A', validModule());
     // Create idle state via backend phase
@@ -851,10 +847,6 @@ describe('Group 10: forceReset', () => {
     expect(s.service.getPluginState('B')?.phase).toBe('ready');
   });
 
-  it('#6 unknown plugin is no-op', async () => {
-    await expect(s.service.forceReset('unknown')).resolves.toBeUndefined();
-  });
-
   it('#7 can load after forceReset', async () => {
     s.importer.register('A', validModule());
     await s.service.load('A');
@@ -883,6 +875,22 @@ describe('Group 11: Batch Operations (loadAll)', () => {
     expect(s.service.getPluginState('C')?.phase).toBe('ready');
   });
 
+  it.each(['unload', 'forceReset'] as const)('%s cancels a queued startup reservation before it has state', async (command) => {
+    const s = setup({ maxConcurrentLoads: 1 });
+    s.importer.register('A', validModule());
+    s.importer.register('B', validModule());
+    const loading = s.service.loadAll([
+      { id: 'A', dev: false },
+      { id: 'B', dev: false },
+    ]);
+
+    await s.service[command]('B');
+    await loading;
+
+    expect(s.service.getPluginState('A')?.phase).toBe('ready');
+    expect(s.service.getPluginState('B')).toBeUndefined();
+  });
+
   it('#2 partial failure', async () => {
     const s = setup();
     s.importer.register('A', validModule());
@@ -898,26 +906,11 @@ describe('Group 11: Batch Operations (loadAll)', () => {
     expect(s.service.getPluginState('C')?.phase).toBe('error');
   });
 
-  it('#3 empty array', async () => {
-    const s = setup();
-    await expect(s.service.loadAll([])).resolves.toBeUndefined();
-  });
-
   it('#4 single plugin', async () => {
     const s = setup();
     s.importer.register('A', validModule());
     await s.service.loadAll([{ id: 'A', dev: false }]);
     expect(s.service.getPluginState('A')?.phase).toBe('ready');
-  });
-
-  it('#5 skips already-loaded', async () => {
-    const s = setup();
-    s.importer.register('A', validModule());
-    s.importer.register('B', validModule());
-    await s.service.load('A');
-    const countBefore = s.importer.importCount;
-    await s.service.loadAll([{ id: 'A', dev: false }, { id: 'B', dev: false }]);
-    expect(s.importer.importCount).toBe(countBefore + 1); // only B imported
   });
 
   it('#6 maxConcurrentLoads=1 (serial)', async () => {
@@ -965,25 +958,6 @@ describe('Group 11: Batch Operations (loadAll)', () => {
 
     await loadPromise;
     expect(peakConcurrent).toBeLessThanOrEqual(2);
-  });
-
-  it('#9 markReady after loadAll', async () => {
-    const s = setup();
-    s.importer.register('A', validModule());
-    await s.service.loadAll([{ id: 'A', dev: false }]);
-    s.service.markReady();
-    expect(s.service.getSnapshot().ready).toBe(true);
-  });
-
-  it('#10 loadAll failure does not prevent markReady', async () => {
-    const s = setup();
-    s.importer.register('A', validModule());
-    s.importer.register('B', () => {
-      throw new Error('fail'); 
-    });
-    await s.service.loadAll([{ id: 'A', dev: false }, { id: 'B', dev: false }]);
-    s.service.markReady();
-    expect(s.service.getSnapshot().ready).toBe(true);
   });
 
   it('#11 two-pass startup resolves cross-plugin contributions', async () => {

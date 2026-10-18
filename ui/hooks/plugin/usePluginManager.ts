@@ -19,19 +19,6 @@ export const usePluginManager = () => {
   const { showSnackbar } = useSnackbar();
   const { load } = usePluginService();
 
-  // Refresh inventory after initialization or a committed noninteractive removal.
-  React.useEffect(() => {
-    const invalidateInventory = () => {
-      void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
-    };
-    const stopInit = Events.On('plugin/init_complete', invalidateInventory);
-    const stopInventory = Events.On('plugin/inventory_changed', invalidateInventory);
-    return () => {
-      stopInit();
-      stopInventory();
-    };
-  }, [queryClient]);
-
   // === Watchers === //
   React.useEffect(() => {
     // Set up watchers for plugin reload and install events

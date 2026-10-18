@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PluginManager } from '@omniviewdev/runtime/api';
 import { DevProcessStatus } from '@omniviewdev/runtime/models';
 import { useDevServers } from '@/features/devtools/useDevServers';
+import { Events } from '@omniviewdev/runtime/runtime';
 
 /**
  * Read-only startup hook for fetching installed plugin descriptors.
@@ -25,6 +26,23 @@ export function useInstalledPlugins(): {
   readonly isLoading: boolean;
   readonly error: Error | null;
 } {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const invalidateInventory = () => {
+      void queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    };
+    const stopInit = Events.On('plugin/init_complete', invalidateInventory);
+    const stopInventory = Events.On('plugin/inventory_changed', invalidateInventory);
+    const stopInstall = Events.On('plugin/install_finished', invalidateInventory);
+    const stopUpdate = Events.On('plugin/update_complete', invalidateInventory);
+    return () => {
+      stopInit();
+      stopInventory();
+      stopInstall();
+      stopUpdate();
+    };
+  }, [queryClient]);
+
   const { servers, isLoading: serversLoading, error: serversError } = useDevServers();
   const query = useQuery({
     // Share the management cache so install/uninstall invalidation reaches startup.

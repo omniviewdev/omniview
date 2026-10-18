@@ -294,7 +294,7 @@ export class PluginService {
 
     this.deps.log.debug(`Loading plugin "${pluginId}"`, { plugin: pluginId });
 
-    const promise = this.doLoad(pluginId, opts ?? {});
+    const promise = this.doLoad(pluginId, opts);
     this.inflightLoads.set(pluginId, promise);
 
     try {
@@ -332,11 +332,10 @@ export class PluginService {
 
   async unload(pluginId: string): Promise<void> {
     const current = this.state.get(pluginId);
-    if (!current) {
-      return;
-    }
-
-    if (current.phase === 'idle') {
+    if (!current || current.phase === 'idle') {
+      if (this.inflightLoads.delete(pluginId)) {
+        this.bumpLoadGeneration(pluginId);
+      }
       return;
     }
 
@@ -350,10 +349,8 @@ export class PluginService {
       this.transition(pluginId, 'unloading');
     }
 
-    // Clear module cache
-    if (current.phase === 'ready' || current.phase === 'loading' || current.phase === 'unloading') {
-      await this.deps.clearPlugin({ pluginId, dev: current.isDev });
-    }
+    // Failed imports and invalid exports are cached too.
+    await this.deps.clearPlugin({ pluginId, dev: current.isDev });
 
     // Remove registrations
     this.removePluginRegistrations(pluginId);
@@ -403,19 +400,34 @@ export class PluginService {
     const generation = this.bumpLoadGeneration(pluginId);
 
     try {
+      const resolved = opts === undefined
+        ? await this.deps.getPluginDescriptor(pluginId)
+        : {
+          dev: opts.dev ?? current.isDev,
+          devPort: opts.devPort ?? current.devPort ?? undefined,
+          moduleHash: opts.moduleHash,
+        };
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
       this.deps.ensureBuiltinExtensionPoints();
 
-      if (opts?.dev === true || current.isDev) {
+      if (resolved.dev) {
         await this.deps.ensureDevSharedDeps();
       }
 
-      await this.deps.clearPlugin({ pluginId, dev: opts?.dev ?? current.isDev });
+      await this.deps.clearPlugin({ pluginId, dev: current.isDev });
+
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
+      this.recordAttemptedSource(pluginId, resolved);
 
       const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
         pluginId,
-        dev: opts?.dev ?? current.isDev,
-        devPort: opts?.devPort ?? current.devPort ?? undefined,
-        moduleHash: opts?.moduleHash,
+        dev: resolved.dev,
+        devPort: resolved.devPort,
+        moduleHash: resolved.moduleHash,
       }));
 
       if (!this.isCurrentGeneration(pluginId, generation)) {
@@ -471,11 +483,11 @@ export class PluginService {
         pluginWindow: validated.plugin,
         loadedAt: Date.now(),
         retryCount: 0,
-        isDev: opts?.dev ?? current.isDev,
-        devPort: opts?.devPort ?? current.devPort,
+        isDev: resolved.dev ?? false,
+        devPort: resolved.devPort ?? null,
         error: null,
         validationErrors: [],
-        moduleHash: opts?.moduleHash ?? null,
+        moduleHash: resolved.moduleHash ?? null,
         declaredDependencies,
       });
 
@@ -497,6 +509,9 @@ export class PluginService {
   async forceReset(pluginId: string): Promise<void> {
     const current = this.state.get(pluginId);
     if (!current) {
+      if (this.inflightLoads.delete(pluginId)) {
+        this.bumpLoadGeneration(pluginId);
+      }
       return;
     }
 
@@ -547,13 +562,30 @@ export class PluginService {
     // Filter out already-loaded
     const toLoad = plugins.filter((p) => {
       const existing = this.state.get(p.id);
-      return !existing || existing.phase === 'idle';
+      return !this.inflightLoads.has(p.id) && (!existing || existing.phase === 'idle');
     });
 
     if (toLoad.length === 0) {
       return;
     }
 
+    // Reserve queued participants before any import starts, through publication.
+    const batch: Promise<void> = Promise.resolve().then(() => this.loadBatch(toLoad, batch));
+    for (const plugin of toLoad) {
+      this.inflightLoads.set(plugin.id, batch);
+    }
+    try {
+      await batch;
+    } finally {
+      for (const plugin of toLoad) {
+        if (this.inflightLoads.get(plugin.id) === batch) {
+          this.inflightLoads.delete(plugin.id);
+        }
+      }
+    }
+  }
+
+  private async loadBatch(toLoad: PluginDescriptor[], owner: Promise<void>): Promise<void> {
     // Pass 1: Import + validate + normalize in bounded parallel chunks
     const prepared: PreparedPluginLoad[] = [];
     const chunks: PluginDescriptor[][] = [];
@@ -563,16 +595,27 @@ export class PluginService {
 
     for (const chunk of chunks) {
       const settled = await Promise.allSettled(
-        chunk.map(async (p) => this.prepareLoadCandidate(p.id, p)),
+        chunk.map((p) => this.inflightLoads.get(p.id) === owner
+          ? this.prepareLoadCandidate(p.id, p, owner)
+          : undefined),
       );
 
       for (const result of settled) {
-        if (result.status === 'fulfilled') {
+        if (result.status === 'fulfilled' && result.value) {
           prepared.push(result.value);
         }
         // Rejected: prepareLoadCandidate already transitioned to error
       }
     }
+
+    // Cancelled participants must not publish after another operation took over.
+    let ownedCount = 0;
+    for (const candidate of prepared) {
+      if (this.inflightLoads.get(candidate.pluginId) === owner) {
+        prepared[ownedCount++] = candidate;
+      }
+    }
+    prepared.length = ownedCount;
 
     // Pass 2a: Register all plugin-defined extension points first
     for (const p of prepared) {
@@ -674,12 +717,7 @@ export class PluginService {
           return;
         }
 
-        const existing = this.state.get(meta.id);
-        if (existing?.phase === 'ready') {
-          void this.reload(meta.id);
-        } else {
-          void this.load(meta.id);
-        }
+        void this.refreshCommittedPlugin(meta.id);
       }),
 
       this.deps.onEvent('plugin/update_complete', (data: { pluginID?: string }) => {
@@ -687,12 +725,7 @@ export class PluginService {
           return;
         }
 
-        const existing = this.state.get(data.pluginID);
-        if (existing?.phase === 'ready') {
-          void this.reload(data.pluginID);
-        } else {
-          void this.load(data.pluginID);
-        }
+        void this.refreshCommittedPlugin(data.pluginID);
       }),
 
       this.deps.onEvent('plugin/dev_reload_complete', (meta: { id?: string }) => {
@@ -708,7 +741,7 @@ export class PluginService {
           return;
         }
 
-        void this.reload(meta.id);
+        void this.refreshCommittedPlugin(meta.id);
       }),
 
       // Payload is StateChangePayload: the new phase is `to`.
@@ -809,13 +842,32 @@ export class PluginService {
 
   // ── Private: Core Load Logic ────────────────────────────────────
 
-  private async doLoad(pluginId: string, opts: PluginLoadOpts): Promise<void> {
+  private async refreshCommittedPlugin(pluginId: string): Promise<void> {
+    const inflight = this.inflightLoads.get(pluginId);
+    if (inflight) {
+      await inflight;
+    }
+    if (this.eventCleanups.length === 0) {
+      return;
+    }
+    const current = this.state.get(pluginId);
+    if (current?.phase === 'ready') {
+      await this.reload(pluginId);
+      return;
+    }
+    if (current?.phase === 'error' || current?.phase === 'retrying') {
+      await this.unload(pluginId);
+    }
+    await this.load(pluginId);
+  }
+
+  private async doLoad(pluginId: string, opts?: PluginLoadOpts): Promise<void> {
     // Ensure or create initial state
     const current = this.state.get(pluginId);
     if (!current) {
       this.state.set(pluginId, createDefaultPluginState(pluginId, {
-        isDev: opts.dev ?? false,
-        devPort: opts.devPort ?? null,
+        isDev: opts?.dev ?? false,
+        devPort: opts?.devPort ?? null,
       }));
     }
 
@@ -824,17 +876,26 @@ export class PluginService {
     const generation = this.bumpLoadGeneration(pluginId);
 
     try {
+      const resolved = opts ?? await this.deps.getPluginDescriptor(pluginId);
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
       this.deps.ensureBuiltinExtensionPoints();
 
-      if (opts.dev) {
+      if (resolved.dev) {
         await this.deps.ensureDevSharedDeps();
       }
 
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
+      this.recordAttemptedSource(pluginId, resolved);
+
       const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
         pluginId,
-        dev: opts.dev,
-        devPort: opts.devPort,
-        moduleHash: opts.moduleHash,
+        dev: resolved.dev,
+        devPort: resolved.devPort,
+        moduleHash: resolved.moduleHash,
       }));
 
       // Stale check
@@ -892,11 +953,11 @@ export class PluginService {
         pluginWindow: validated.plugin,
         loadedAt: Date.now(),
         retryCount: 0,
-        isDev: opts.dev ?? false,
-        devPort: opts.devPort ?? null,
+        isDev: resolved.dev ?? false,
+        devPort: resolved.devPort ?? null,
         error: null,
         validationErrors: [],
-        moduleHash: opts.moduleHash ?? null,
+        moduleHash: resolved.moduleHash ?? null,
         declaredDependencies,
       });
 
@@ -930,18 +991,33 @@ export class PluginService {
     try {
       this.deps.ensureBuiltinExtensionPoints();
 
-      const isDev = opts?.dev ?? current.isDev;
+      const resolved = opts === undefined
+        ? await this.deps.getPluginDescriptor(pluginId)
+        : {
+          dev: opts.dev ?? current.isDev,
+          devPort: opts.devPort ?? current.devPort ?? undefined,
+          moduleHash: opts.moduleHash,
+        };
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
+      const isDev = resolved.dev ?? false;
       if (isDev) {
         await this.deps.ensureDevSharedDeps();
       }
 
-      await this.deps.clearPlugin({ pluginId, dev: isDev });
+      await this.deps.clearPlugin({ pluginId, dev: current.isDev });
+
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
+      }
+      this.recordAttemptedSource(pluginId, resolved);
 
       const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
         pluginId,
         dev: isDev,
-        devPort: opts?.devPort ?? current.devPort ?? undefined,
-        moduleHash: opts?.moduleHash,
+        devPort: resolved.devPort,
+        moduleHash: resolved.moduleHash,
       }));
 
       if (!this.isCurrentGeneration(pluginId, generation)) {
@@ -1008,10 +1084,10 @@ export class PluginService {
         loadedAt: Date.now(),
         retryCount: 0,
         isDev,
-        devPort: opts?.devPort ?? current.devPort,
+        devPort: resolved.devPort ?? null,
         error: null,
         validationErrors: [],
-        moduleHash: opts?.moduleHash ?? null,
+        moduleHash: resolved.moduleHash ?? null,
         declaredDependencies,
       });
 
@@ -1041,10 +1117,24 @@ export class PluginService {
 
   // ── Private: Load helpers ───────────────────────────────────────
 
+  private recordAttemptedSource(pluginId: string, source: PluginLoadOpts): void {
+    const current = this.state.get(pluginId)!;
+    const isDev = source.dev ?? false;
+    const devPort = isDev ? source.devPort ?? null : null;
+    const moduleHash = source.moduleHash ?? null;
+    if (current.isDev === isDev && current.devPort === devPort && current.moduleHash === moduleHash) {
+      return;
+    }
+    // Failure must retain the attempted loader mode, not the last live window's.
+    // The following ready/error transition publishes the updated snapshot.
+    this.state.set(pluginId, { ...current, isDev, devPort, moduleHash });
+  }
+
   private async prepareLoadCandidate(
     pluginId: string,
     opts: PluginLoadOpts | PluginDescriptor,
-  ): Promise<PreparedPluginLoad> {
+    owner: Promise<void>,
+  ): Promise<PreparedPluginLoad | undefined> {
     const isDev = 'dev' in opts ? (opts.dev ?? false) : false;
     const devPort = 'devPort' in opts ? (opts.devPort ?? null) : null;
     const moduleHash = 'moduleHash' in opts ? (opts.moduleHash ?? null) : null;
@@ -1063,6 +1153,11 @@ export class PluginService {
       if (isDev) {
         await this.deps.ensureDevSharedDeps();
       }
+
+      if (this.inflightLoads.get(pluginId) !== owner) {
+        return;
+      }
+      this.recordAttemptedSource(pluginId, opts);
 
       const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
         pluginId,
@@ -1091,7 +1186,9 @@ export class PluginService {
         declaredDependencies,
       };
     } catch (err) {
-      this.handleLoadError(pluginId, err, 0);
+      if (this.inflightLoads.get(pluginId) === owner) {
+        this.handleLoadError(pluginId, err, 0);
+      }
       throw err; // re-throw so Promise.allSettled captures it
     }
   }
