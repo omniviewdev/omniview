@@ -25,6 +25,8 @@ export const ErrorTypes = {
   PLUGIN_INSTALL_FAILED: 'omniview:plugin/install-failed',
   PLUGIN_LOAD_FAILED: 'omniview:plugin/load-failed',
   PLUGIN_BUILD_FAILED: 'omniview:plugin/build-failed',
+  PLUGIN_COMMITTED_CLEANUP_PENDING: 'omniview:plugin/committed-cleanup-pending',
+  PLUGIN_COMMIT_UNCERTAIN: 'omniview:plugin/commit-uncertain',
 
   // Settings
   SETTINGS_MISSING_CONFIG: 'omniview:settings/missing-config',

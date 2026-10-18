@@ -11,8 +11,11 @@ import (
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 )
 
-func (manager *pluginManager) validateManagedSource(id, source string) (bool, error) {
+func (manager *pluginManager) validateManagedSource(id, source string, archive *archiveRecovery) (bool, error) {
 	if err := manager.guardUninstallRecovery(id); err != nil {
+		return false, err
+	}
+	if err := manager.checkArchiveAccess(id, archive); err != nil {
 		return false, err
 	}
 	if policy, ok := manager.devServerMgr.(interface {

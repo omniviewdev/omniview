@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -212,6 +214,459 @@ func TestInstallPluginFromPath_PreservesCallerArchiveOnFailure(t *testing.T) {
 	after, err := os.ReadFile(archive)
 	require.NoError(t, err)
 	assert.Equal(t, before, after)
+}
+
+func TestInstallPluginFromPath_RefreshesInventoryOnlyAfterDurablePublication(t *testing.T) {
+	for _, replacement := range []bool{false, true} {
+		name := "fresh"
+		if replacement {
+			name = "replacement"
+		}
+		t.Run(name, func(t *testing.T) {
+			pm := newTestManager(t)
+			if replacement {
+				installPluginFixture(t, pm, "flux", []string{"ui"}, false)
+				require.NoError(t, os.MkdirAll(pm.pluginsRoot.ResolvePath("flux/assets"), 0755))
+				_, err := pm.LoadPlugin("flux", nil)
+				require.NoError(t, err)
+				require.NoError(t, pm.writePluginStateJSON())
+			}
+			archive := writeTestTarball(t, []tarEntry{
+				{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [ui]\n"},
+				{name: "assets/", mode: 0755, dir: true},
+				{name: "assets/entry.js", mode: 0644, body: "installed bundle"},
+			})
+			before, err := os.ReadFile(archive)
+			require.NoError(t, err)
+			visibleInventory := pm.ListPlugins()
+			refreshes := 0
+			pm.emitter = uninstallInventoryConsumer{refresh: func() {
+				refreshes++
+				visibleInventory = pm.ListPlugins()
+				persisted, readErr := pm.readPluginStateJSON()
+				require.NoError(t, readErr)
+				require.Len(t, persisted, 1)
+				assert.Equal(t, "0.4.0", persisted[0].Metadata.Version)
+				assert.Equal(t, lifecycle.PhaseRunning, persisted[0].Phase)
+				bundle, readErr := os.ReadFile(pm.pluginsRoot.ResolvePath("flux/assets/entry.js"))
+				require.NoError(t, readErr)
+				assert.Equal(t, "installed bundle", string(bundle))
+			}}
+
+			_, err = pm.InstallPluginFromPath(archive)
+			require.NoError(t, err)
+			require.Len(t, visibleInventory, 1, "an existing consumer must observe the committed installation")
+			assert.Equal(t, "0.4.0", visibleInventory[0].Metadata.Version)
+			assert.Equal(t, string(lifecycle.PhaseRunning), visibleInventory[0].Phase)
+			assert.Equal(t, 1, refreshes, "install/replacement must publish exactly one durable inventory invalidation")
+			after, err := os.ReadFile(archive)
+			require.NoError(t, err)
+			assert.Equal(t, before, after)
+		})
+	}
+}
+
+func TestInstallPluginFromPath_DoesNotPublishInventorySuccessOnFailure(t *testing.T) {
+	for _, failure := range []string{"load", "persist"} {
+		t.Run(failure, func(t *testing.T) {
+			pm := newTestManager(t)
+			metadata := uiOnlyYaml
+			if failure == "load" {
+				metadata = backendYaml
+			} else {
+				require.NoError(t, pm.stateRoot.MkdirAll(stateFileName+".tmp", 0700))
+			}
+			archive := writeTestTarball(t, []tarEntry{
+				{name: "plugin.yaml", mode: 0644, body: metadata},
+				{name: "assets/", mode: 0755, dir: true},
+				{name: "assets/entry.js", mode: 0644, body: "installed bundle"},
+			})
+			refreshes := 0
+			pm.emitter = uninstallInventoryConsumer{refresh: func() { refreshes++ }}
+
+			_, err := pm.InstallPluginFromPath(archive)
+			require.Error(t, err)
+			assert.Zero(t, refreshes, "a failed load or durable publication must not announce successful inventory")
+			assert.FileExists(t, archive)
+		})
+	}
+}
+
+func TestInstallPluginFromPath_FailedReplacementRestoresUsableInstallation(t *testing.T) {
+	for _, dev := range []bool{false, true} {
+		for _, failure := range []string{"load", "persist"} {
+			name := failure + "/installed"
+			if dev {
+				name = failure + "/dev"
+			}
+			t.Run(name, func(t *testing.T) {
+				pm := newTestManager(t)
+				installPluginFixture(t, pm, "flux", []string{"resource", "ui"}, true)
+				require.NoError(t, pm.pluginsRoot.MkdirAll("flux/assets", 0755))
+				require.NoError(t, pm.pluginsRoot.WriteFile("flux/assets/entry.js", []byte("original bundle"), 0644))
+				require.NoError(t, pm.pluginsRoot.MkdirAll("flux/store", 0700))
+				require.NoError(t, pm.pluginsRoot.WriteFile("flux/store/survivor", []byte("original user data"), 0600))
+				pm.backendFactory = func(metadata config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
+					if failure == "load" && metadata.Version == "0.4.0" {
+						return nil, errors.New("candidate RPC startup rejected")
+					}
+					return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": metadata.Version}), nil
+				}
+				var opts *LoadPluginOptions
+				servers := &transactionDevServers{}
+				if dev {
+					source := devSourceFixture(t, "id: flux\nversion: 1.0.0\ncapabilities: [resource, ui]\n")
+					pm.devServerMgr = servers
+					_, err := servers.StartDevServerForPath("flux", source)
+					require.NoError(t, err)
+					opts = &LoadPluginOptions{DevMode: true, DevModePath: source}
+				}
+				_, err := pm.LoadPlugin("flux", opts)
+				require.NoError(t, err)
+				require.NoError(t, pm.writePluginStateJSON())
+				before := pm.records["flux"].ToStateRecord()
+				beforeIdentity, err := pm.pluginsRoot.DirectoryIdentity("flux")
+				require.NoError(t, err)
+				beforeDurable, err := pm.stateRoot.ReadFile(stateFileName)
+				require.NoError(t, err)
+				archive := writeTestTarball(t, []tarEntry{
+					{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [resource, ui]\n"},
+					{name: "assets/", mode: 0755, dir: true},
+					{name: "assets/entry.js", mode: 0644, body: "candidate bundle"},
+					{name: "bin/", mode: 0755, dir: true},
+					{name: "bin/plugin", mode: 0755, body: "candidate executable"},
+				})
+				beforeArchive, err := os.ReadFile(archive)
+				require.NoError(t, err)
+				if failure == "persist" {
+					require.NoError(t, pm.stateRoot.MkdirAll(stateFileName+".tmp", 0700))
+				}
+				emitter := &testRecordingEmitter{}
+				pm.emitter = emitter
+
+				_, err = pm.InstallPluginFromPath(archive)
+				require.Error(t, err)
+				require.Contains(t, pm.records, "flux")
+				restored := pm.records["flux"]
+				assert.Equal(t, before, restored.ToStateRecord(), "rejection must restore original source and inventory, not retain the candidate")
+				if assert.NotNil(t, restored.Backend, "the original runtime must be usable again") {
+					resource, dispenseErr := restored.Backend.Dispense("resource")
+					require.NoError(t, dispenseErr)
+					assert.Equal(t, before.Metadata.Version, resource, "runtime must serve the original installation, not the rejected candidate")
+				}
+				afterIdentity, err := pm.pluginsRoot.DirectoryIdentity("flux")
+				require.NoError(t, err)
+				assert.Equal(t, beforeIdentity, afterIdentity, "rollback must restore the complete original directory, not recreate selected files")
+				bundle, err := pm.pluginsRoot.ReadFile("flux/assets/entry.js")
+				require.NoError(t, err)
+				assert.Equal(t, "original bundle", string(bundle))
+				data, err := pm.pluginsRoot.ReadFile("flux/store/survivor")
+				require.NoError(t, err)
+				assert.Equal(t, "original user data", string(data))
+				afterDurable, err := pm.stateRoot.ReadFile(stateFileName)
+				require.NoError(t, err)
+				assert.Equal(t, beforeDurable, afterDurable)
+				if dev {
+					assert.True(t, servers.IsManaged("flux"))
+					assert.Equal(t, before.DevPath, servers.state.DevPath)
+				}
+				afterArchive, err := os.ReadFile(archive)
+				require.NoError(t, err)
+				assert.Equal(t, beforeArchive, afterArchive)
+				for _, event := range emitter.getEvents() {
+					assert.NotEqual(t, EventInventoryChanged, event.event)
+					assert.NotEqual(t, EventInstallFinished, event.event)
+				}
+			})
+		}
+	}
+}
+
+func TestInstallPluginFromPath_RollbackNeverAdoptsForeignCanonicalDirectory(t *testing.T) {
+	pm := newTestManager(t)
+	installPluginFixture(t, pm, "flux", []string{"ui"}, false)
+	require.NoError(t, pm.pluginsRoot.MkdirAll("flux/assets", 0755))
+	require.NoError(t, pm.pluginsRoot.MkdirAll("flux/store", 0700))
+	require.NoError(t, pm.pluginsRoot.WriteFile("flux/store/survivor", []byte("original user data"), 0600))
+	_, err := pm.LoadPlugin("flux", nil)
+	require.NoError(t, err)
+	require.NoError(t, pm.writePluginStateJSON())
+	require.NoError(t, pm.stateRoot.MkdirAll(stateFileName+".tmp", 0700))
+	archive := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [ui]\n"},
+		{name: "assets/", mode: 0755, dir: true},
+		{name: "assets/entry.js", mode: 0644, body: "candidate bundle"},
+	})
+	beforeArchive, err := os.ReadFile(archive)
+	require.NoError(t, err)
+	foreignIntroduced := false
+	pm.emitter = uninstallInventoryConsumer{
+		refresh: func() { t.Error("failed replacement must not publish inventory success") },
+		onStateWriteFailure: func() {
+			if foreignIntroduced {
+				return
+			}
+			foreignIntroduced = true
+			require.NoError(t, pm.pluginsRoot.RenameDirectoryNoReplace("flux", "displaced-candidate"))
+			require.NoError(t, pm.pluginsRoot.MkdirAll("flux", 0700))
+			require.NoError(t, pm.pluginsRoot.WriteFile("flux/plugin.yaml", []byte(uiOnlyYaml), 0600))
+			require.NoError(t, pm.pluginsRoot.WriteFile("flux/foreign-survivor", []byte("do not remove"), 0600))
+		},
+	}
+
+	_, err = pm.InstallPluginFromPath(archive)
+	require.Error(t, err)
+	require.True(t, foreignIntroduced)
+	foreignIdentity, err := pm.pluginsRoot.DirectoryIdentity("flux")
+	require.NoError(t, err)
+	require.Contains(t, pm.records, "flux")
+	assert.Equal(t, lifecycle.PhaseFailed, pm.records["flux"].Phase)
+	assert.Contains(t, pm.records["flux"].LastError, pm.pluginsRoot.ResolvePath(""), "compound failure must expose its actual private recovery location")
+	recoveryFiles := []string{}
+	require.NoError(t, filepath.WalkDir(pm.pluginsRoot.ResolvePath(""), func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() && entry.Name() == "survivor" {
+			contents, readErr := os.ReadFile(path)
+			require.NoError(t, readErr)
+			if string(contents) == "original user data" {
+				recoveryFiles = append(recoveryFiles, path)
+			}
+		}
+		return nil
+	}))
+	assert.Len(t, recoveryFiles, 1, "the complete original installation must remain recoverable after a foreign entry blocks rollback")
+	_, err = pm.LoadPlugin("flux", nil)
+	require.Error(t, err, "pending recovery must not adopt a new canonical entry")
+	_, err = pm.InstallPluginFromPath(archive)
+	require.Error(t, err)
+	_, err = pm.UninstallPlugin("flux")
+	require.Error(t, err, "a later uninstall must not recapture and delete foreign bytes")
+	afterIdentity, err := pm.pluginsRoot.DirectoryIdentity("flux")
+	require.NoError(t, err)
+	assert.Equal(t, foreignIdentity, afterIdentity)
+	foreign, err := pm.pluginsRoot.ReadFile("flux/foreign-survivor")
+	require.NoError(t, err)
+	assert.Equal(t, "do not remove", string(foreign))
+	afterArchive, err := os.ReadFile(archive)
+	require.NoError(t, err)
+	assert.Equal(t, beforeArchive, afterArchive)
+}
+
+func TestInstallPluginFromPath_PreflightRejectionLeavesOriginalRuntimeUntouched(t *testing.T) {
+	pm := newTestManager(t)
+	installPluginFixture(t, pm, "flux", []string{"resource", "ui"}, true)
+	require.NoError(t, pm.pluginsRoot.MkdirAll("flux/assets", 0755))
+	require.NoError(t, pm.pluginsRoot.WriteFile("flux/assets/entry.js", []byte("original bundle"), 0644))
+	pm.backendFactory = func(metadata config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
+		return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": metadata.Version}), nil
+	}
+	_, err := pm.LoadPlugin("flux", nil)
+	require.NoError(t, err)
+	require.NoError(t, pm.writePluginStateJSON())
+	before := pm.records["flux"]
+	beforeIdentity, err := pm.pluginsRoot.DirectoryIdentity("flux")
+	require.NoError(t, err)
+	beforeState, err := pm.stateRoot.ReadFile(stateFileName)
+	require.NoError(t, err)
+	archive := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [resource, ui]\n"},
+		{name: "assets/", mode: 0755, dir: true},
+		{name: "assets/entry.js", mode: 0644, body: "candidate bundle"},
+		{name: "bin/", mode: 0755, dir: true},
+		{name: "bin/plugin", mode: 0755, body: "candidate executable"},
+	})
+	t.Setenv(devcontract.WorkspaceEnvironment, filepath.Join(t.TempDir(), "missing-workspace.json"))
+
+	_, err = pm.InstallPluginFromPath(archive)
+	require.Error(t, err, "workspace ownership/trusted-artifact preflight must reject before old runtime teardown")
+	assert.Same(t, before, pm.records["flux"])
+	assert.True(t, before.Backend.Healthy())
+	resource, err := before.Backend.Dispense("resource")
+	require.NoError(t, err)
+	assert.Equal(t, before.Metadata.Version, resource)
+	afterIdentity, err := pm.pluginsRoot.DirectoryIdentity("flux")
+	require.NoError(t, err)
+	assert.Equal(t, beforeIdentity, afterIdentity)
+	bundle, err := pm.pluginsRoot.ReadFile("flux/assets/entry.js")
+	require.NoError(t, err)
+	assert.Equal(t, "original bundle", string(bundle))
+	afterState, err := pm.stateRoot.ReadFile(stateFileName)
+	require.NoError(t, err)
+	assert.Equal(t, beforeState, afterState)
+	assert.FileExists(t, archive)
+}
+
+func TestInstallPluginFromPath_FailedFreshInstallLeavesNoInstallation(t *testing.T) {
+	for _, failure := range []string{"load", "persist"} {
+		t.Run(failure, func(t *testing.T) {
+			pm := newTestManager(t)
+			require.NoError(t, pm.writePluginStateJSON())
+			pm.backendFactory = func(_ config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
+				if failure == "load" {
+					return nil, errors.New("candidate RPC startup rejected")
+				}
+				return plugintypes.NewInProcessBackend(nil), nil
+			}
+			archive := writeTestTarball(t, []tarEntry{
+				{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [resource, ui]\n"},
+				{name: "assets/", mode: 0755, dir: true},
+				{name: "assets/entry.js", mode: 0644, body: "candidate bundle"},
+				{name: "bin/", mode: 0755, dir: true},
+				{name: "bin/plugin", mode: 0755, body: "candidate executable"},
+			})
+			if failure == "persist" {
+				require.NoError(t, pm.stateRoot.MkdirAll(stateFileName+".tmp", 0700))
+			}
+			_, err := pm.InstallPluginFromPath(archive)
+			require.Error(t, err)
+			assert.Empty(t, pm.records)
+			assert.NoDirExists(t, pm.pluginsRoot.ResolvePath("flux"))
+			states, err := pm.readPluginStateJSON()
+			require.NoError(t, err)
+			assert.Empty(t, states)
+			assert.FileExists(t, archive)
+		})
+	}
+}
+
+func TestInstallPluginFromPath_UnrelatedPersistenceKeepsArchivePreimageUntilCommit(t *testing.T) {
+	pm := newTestManager(t)
+	installPluginFixture(t, pm, "flux", []string{"resource", "ui"}, true)
+	require.NoError(t, pm.pluginsRoot.MkdirAll("flux/assets", 0755))
+	installPluginFixture(t, pm, "other", []string{"ui"}, false)
+	require.NoError(t, pm.pluginsRoot.MkdirAll("other/assets", 0755))
+	pm.backendFactory = func(metadata config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
+		if metadata.Version == "0.4.0" {
+			pm.recordsMu.Lock()
+			pm.records["other"].Metadata.Version = "9.0.0"
+			pm.recordsMu.Unlock()
+			require.NoError(t, pm.writePluginStateJSON())
+			states, readErr := pm.readPluginStateJSON()
+			require.NoError(t, readErr)
+			versions := map[string]string{}
+			for _, state := range states {
+				versions[state.ID] = state.Metadata.Version
+			}
+			assert.Equal(t, "1.0.0", versions["flux"], "another plugin's write must not publish an in-flight archive candidate or omit its previous state")
+			assert.Equal(t, "9.0.0", versions["other"])
+			return nil, errors.New("candidate RPC startup rejected")
+		}
+		return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": metadata.Version}), nil
+	}
+	_, err := pm.LoadPlugin("flux", nil)
+	require.NoError(t, err)
+	_, err = pm.LoadPlugin("other", nil)
+	require.NoError(t, err)
+	require.NoError(t, pm.writePluginStateJSON())
+	archive := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [resource, ui]\n"},
+		{name: "assets/", mode: 0755, dir: true},
+		{name: "assets/entry.js", mode: 0644, body: "candidate bundle"},
+		{name: "bin/", mode: 0755, dir: true},
+		{name: "bin/plugin", mode: 0755, body: "candidate executable"},
+	})
+
+	_, err = pm.InstallPluginFromPath(archive)
+	require.Error(t, err)
+	states, err := pm.readPluginStateJSON()
+	require.NoError(t, err)
+	versions := map[string]string{}
+	for _, state := range states {
+		versions[state.ID] = state.Metadata.Version
+	}
+	assert.Equal(t, "1.0.0", versions["flux"])
+	assert.Equal(t, "9.0.0", versions["other"], "rollback must not replace another plugin's legitimate durable update with a whole-file snapshot")
+	assert.True(t, pm.records["flux"].Backend != nil && pm.records["flux"].Backend.Healthy())
+}
+
+func TestInstallPluginFromPath_PartialBackupDisposalRetainsCommittedCandidate(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("real Unix permission-denied cleanup requires an unprivileged user")
+	}
+	pm := newTestManager(t)
+	installPluginFixture(t, pm, "flux", []string{"ui"}, false)
+	require.NoError(t, pm.pluginsRoot.MkdirAll("flux/assets", 0755))
+	require.NoError(t, pm.pluginsRoot.WriteFile("flux/a-removed.txt", []byte("old disposable"), 0644))
+	require.NoError(t, pm.pluginsRoot.MkdirAll("flux/z-blocked", 0700))
+	require.NoError(t, pm.pluginsRoot.WriteFile("flux/z-blocked/keep.txt", []byte("old partial backup"), 0644))
+	_, err := pm.LoadPlugin("flux", nil)
+	require.NoError(t, err)
+	require.NoError(t, pm.writePluginStateJSON())
+	originalIdentity, err := pm.pluginsRoot.DirectoryIdentity("flux")
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(pm.pluginsRoot.ResolvePath("flux/z-blocked"), 0000))
+	t.Cleanup(func() {
+		_ = os.Chmod(pm.pluginsRoot.ResolvePath("flux/z-blocked"), 0700)
+		entries, _ := pm.pluginsRoot.ReadDir(".")
+		for _, entry := range entries {
+			if entry.IsDir() {
+				_ = os.Chmod(pm.pluginsRoot.ResolvePath(filepath.Join(entry.Name(), "previous/z-blocked")), 0700)
+			}
+		}
+	})
+	archive := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [ui]\n"},
+		{name: "assets/", mode: 0755, dir: true},
+		{name: "assets/entry.js", mode: 0644, body: "committed candidate bundle"},
+	})
+	refreshes := 0
+	pm.emitter = uninstallInventoryConsumer{refresh: func() { refreshes++ }}
+
+	_, err = pm.InstallPluginFromPath(archive)
+	require.Error(t, err)
+	var appErr *apperror.AppError
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, "omniview:plugin/committed-cleanup-pending", appErr.Type)
+	require.Contains(t, pm.records, "flux")
+	assert.Equal(t, "0.4.0", pm.records["flux"].Metadata.Version)
+	assert.Equal(t, lifecycle.PhaseRunning, pm.records["flux"].Phase)
+	assert.Equal(t, 1, refreshes, "durable candidate publication must invalidate the UI even if subsequent maintenance fails")
+	states, err := pm.readPluginStateJSON()
+	require.NoError(t, err)
+	require.Len(t, states, 1)
+	assert.Equal(t, "0.4.0", states[0].Metadata.Version)
+	var recovery struct {
+		Committed uint8 `json:"committed"`
+		Record    struct {
+			Stage string `json:"stage"`
+		} `json:"record"`
+	}
+	proof, err := pm.stateRoot.ReadFile(".archive-recovery-flux.json")
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(proof, &recovery))
+	require.Equal(t, uint8(1), recovery.Committed)
+	staged := filepath.Join(recovery.Record.Stage, "previous")
+	_, err = pm.pluginsRoot.Stat(filepath.Join(staged, "a-removed.txt"))
+	assert.True(t, os.IsNotExist(err), "prove actual partial backup deletion before the failure")
+	require.NoError(t, os.Chmod(pm.pluginsRoot.ResolvePath(filepath.Join(staged, "z-blocked")), 0700))
+	partial, err := pm.pluginsRoot.ReadFile(filepath.Join(staged, "z-blocked/keep.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "old partial backup", string(partial))
+	candidate, err := pm.pluginsRoot.ReadFile("flux/assets/entry.js")
+	require.NoError(t, err)
+	assert.Equal(t, "committed candidate bundle", string(candidate))
+
+	// Deterministically reintroduce the old inode after irreversible disposal.
+	// Its identity still matches, but it is no longer a complete installation.
+	require.NoError(t, pm.pluginsRoot.RenameDirectoryNoReplace("flux", "held-committed-candidate"))
+	require.NoError(t, pm.pluginsRoot.RenameDirectoryNoReplace(staged, "flux"))
+	reappearedIdentity, err := pm.pluginsRoot.DirectoryIdentity("flux")
+	require.NoError(t, err)
+	require.Equal(t, originalIdentity, reappearedIdentity)
+	restarted := newTestManager(t)
+	restarted.stateRoot, restarted.pluginsRoot = pm.stateRoot, pm.pluginsRoot
+	restarted.pidTracker = NewPIDTracker(pm.stateRoot)
+	require.NoError(t, restarted.Initialize(context.Background()))
+	_, err = restarted.LoadPlugin("flux", nil)
+	require.Error(t, err)
+	_, err = restarted.UninstallPlugin("flux")
+	require.Error(t, err, "committed recovery must never adopt or dispose of the partially deleted original inode")
+	partial, err = pm.pluginsRoot.ReadFile("flux/z-blocked/keep.txt")
+	require.NoError(t, err)
+	assert.Equal(t, "old partial backup", string(partial))
+	assert.FileExists(t, archive)
 }
 
 func TestInstallPluginFromPath_UnloadConflictPreservesInstallationAndArchive(t *testing.T) {
@@ -770,4 +1225,128 @@ func TestUninstallPlugin_PartialDisposalNeverRestoresOrAdoptsCanonicalDirectory(
 	assert.NoError(t, readErr)
 	assert.Equal(t, "partial recovery bytes", string(survivor))
 	assert.Equal(t, 0, refreshes)
+}
+
+func TestInstallPluginFromPath_DoesNotStopLiveRuntimeWithoutRestorableDirectory(t *testing.T) {
+	pm := newTestManager(t)
+	installPluginFixture(t, pm, "flux", []string{"resource", "ui"}, true)
+	require.NoError(t, pm.pluginsRoot.MkdirAll("flux/assets", 0755))
+	pm.backendFactory = func(metadata config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
+		return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": metadata.Version}), nil
+	}
+	_, err := pm.LoadPlugin("flux", nil)
+	require.NoError(t, err)
+	require.NoError(t, pm.writePluginStateJSON())
+	original := pm.records["flux"]
+	before, err := pm.stateRoot.ReadFile(stateFileName)
+	require.NoError(t, err)
+	require.NoError(t, pm.pluginsRoot.RemoveAll("flux"))
+	require.True(t, original.Backend.Healthy(), "an already-running private snapshot can outlive its installation directory")
+	archive := writeTestTarball(t, []tarEntry{
+		{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [resource, ui]\n"},
+		{name: "assets/", mode: 0755, dir: true},
+		{name: "assets/entry.js", mode: 0644, body: "candidate bundle"},
+		{name: "bin/", mode: 0755, dir: true},
+		{name: "bin/plugin", mode: 0755, body: "candidate executable"},
+	})
+
+	_, err = pm.InstallPluginFromPath(archive)
+	require.Error(t, err, "do not destroy the only usable runtime when no complete original can be staged")
+	assert.Same(t, original, pm.records["flux"])
+	assert.True(t, original.Backend.Healthy())
+	provider, err := original.Backend.Dispense("resource")
+	require.NoError(t, err)
+	assert.Equal(t, original.Metadata.Version, provider)
+	after, err := pm.stateRoot.ReadFile(stateFileName)
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+	assert.NoDirExists(t, pm.pluginsRoot.ResolvePath("flux"))
+	assert.FileExists(t, archive)
+}
+
+func TestInstallPluginFromPath_ExtractedMetadataControlsPreflightBeforeTeardown(t *testing.T) {
+	for _, dev := range []bool{false, true} {
+		for _, shadow := range []string{"backend-capability", "different-id"} {
+			name := shadow + "/installed"
+			if dev {
+				name = shadow + "/dev"
+			}
+			t.Run(name, func(t *testing.T) {
+				pm := newTestManager(t)
+				installPluginFixture(t, pm, "flux", []string{"resource", "ui"}, true)
+				require.NoError(t, pm.pluginsRoot.MkdirAll("flux/assets", 0755))
+				require.NoError(t, pm.pluginsRoot.WriteFile("flux/assets/entry.js", []byte("original bundle"), 0644))
+				pm.backendFactory = func(metadata config.PluginMeta, _ string) (plugintypes.PluginBackend, error) {
+					if metadata.Version == "0.4.0" {
+						return nil, errors.New("candidate RPC boundary rejected")
+					}
+					return plugintypes.NewInProcessBackend(map[string]interface{}{"resource": metadata.Version}), nil
+				}
+				var opts *LoadPluginOptions
+				if dev {
+					source := devSourceFixture(t, "id: flux\nversion: 1.0.0\ncapabilities: [resource, ui]\n")
+					servers := &transactionDevServers{}
+					pm.devServerMgr = servers
+					_, err := servers.StartDevServerForPath("flux", source)
+					require.NoError(t, err)
+					opts = &LoadPluginOptions{DevMode: true, DevModePath: source}
+				}
+				_, err := pm.LoadPlugin("flux", opts)
+				require.NoError(t, err)
+				require.NoError(t, pm.writePluginStateJSON())
+				original := pm.records["flux"]
+				originalBackend := original.Backend
+				originalState := original.ToStateRecord()
+				originalIdentity, err := pm.pluginsRoot.DirectoryIdentity("flux")
+				require.NoError(t, err)
+				durableBefore, err := pm.stateRoot.ReadFile(stateFileName)
+				require.NoError(t, err)
+				lastMetadata := "id: flux\nversion: 0.4.0\ncapabilities: [resource, ui]\n"
+				if shadow == "different-id" {
+					lastMetadata = "id: other\nversion: 0.4.0\ncapabilities: [ui]\n"
+				}
+				archive := writeTestTarball(t, []tarEntry{
+					{name: "plugin.yaml", mode: 0644, body: "id: flux\nversion: 0.4.0\ncapabilities: [ui]\n"},
+					{name: "assets/", mode: 0755, dir: true},
+					{name: "assets/entry.js", mode: 0644, body: "candidate bundle"},
+					{name: "bin/", mode: 0755, dir: true},
+					{name: "bin/plugin", mode: 0755, body: "candidate executable"},
+					{name: "./plugin.yaml", mode: 0644, body: lastMetadata},
+				})
+				archiveBefore, err := os.ReadFile(archive)
+				require.NoError(t, err)
+				t.Setenv(devcontract.WorkspaceEnvironment, filepath.Join(t.TempDir(), "missing-workspace.json"))
+				emitter := &testRecordingEmitter{}
+				pm.emitter = emitter
+
+				_, err = pm.InstallPluginFromPath(archive)
+				require.Error(t, err)
+				assert.Same(t, original, pm.records["flux"], "metadata preflight rejection must not tear down/recreate the original runtime")
+				assert.True(t, originalBackend.Healthy())
+				assert.False(t, originalBackend.Exited())
+				provider, providerErr := originalBackend.Dispense("resource")
+				assert.NoError(t, providerErr)
+				assert.Equal(t, originalState.Metadata.Version, provider)
+				if restored := pm.records["flux"]; assert.NotNil(t, restored) {
+					assert.Equal(t, originalState, restored.ToStateRecord())
+				}
+				afterIdentity, err := pm.pluginsRoot.DirectoryIdentity("flux")
+				require.NoError(t, err)
+				assert.Equal(t, originalIdentity, afterIdentity)
+				bundle, err := pm.pluginsRoot.ReadFile("flux/assets/entry.js")
+				require.NoError(t, err)
+				assert.Equal(t, "original bundle", string(bundle))
+				durableAfter, err := pm.stateRoot.ReadFile(stateFileName)
+				require.NoError(t, err)
+				assert.Equal(t, durableBefore, durableAfter)
+				archiveAfter, err := os.ReadFile(archive)
+				require.NoError(t, err)
+				assert.Equal(t, archiveBefore, archiveAfter)
+				for _, event := range emitter.getEvents() {
+					assert.NotEqual(t, EventInventoryChanged, event.event)
+					assert.NotEqual(t, EventInstallFinished, event.event)
+				}
+			})
+		}
+	}
 }

@@ -41,9 +41,11 @@ const pluginStartTimeout = 15 * time.Second
 
 // LoadPluginOptions configures how a plugin is loaded.
 type LoadPluginOptions struct {
-	DevMode       bool
-	DevModePath   string
-	ExistingState *plugintypes.PluginStateRecord
+	DevMode        bool
+	DevModePath    string
+	ExistingState  *plugintypes.PluginStateRecord
+	archive        *archiveRecovery
+	archiveRestore bool
 }
 
 // LoadPlugin loads a plugin from its installation directory.
@@ -57,6 +59,9 @@ func (pm *pluginManager) LoadPlugin(id string, opts *LoadPluginOptions) (sdktype
 
 func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error) {
 	if err := pm.guardUninstallRecovery(id); err != nil {
+		return sdktypes.PluginInfo{}, err
+	}
+	if err := pm.checkArchiveLoad(id, opts); err != nil {
 		return sdktypes.PluginInfo{}, err
 	}
 	log := pm.logger.Named("LoadPlugin").With(logging.Any("id", id), logging.Any("opts", opts))
@@ -103,7 +108,11 @@ func (pm *pluginManager) loadPluginLocked(id string, opts *LoadPluginOptions) (s
 	workspaceManaged := false
 	if developmentLoad {
 		var selectionErr error
-		workspaceManaged, selectionErr = pm.validateManagedSource(id, developmentSource)
+		var archive *archiveRecovery
+		if opts != nil {
+			archive = opts.archive
+		}
+		workspaceManaged, selectionErr = pm.validateManagedSource(id, developmentSource, archive)
 		if selectionErr != nil {
 			return sdktypes.PluginInfo{}, selectionErr
 		}
@@ -461,6 +470,9 @@ func (pm *pluginManager) ReloadPlugin(id string) (sdktypes.PluginInfo, error) {
 }
 
 func (pm *pluginManager) reloadPluginLocked(id string) (sdktypes.PluginInfo, error) {
+	if err := pm.guardArchiveRecovery(id); err != nil {
+		return sdktypes.PluginInfo{}, err
+	}
 
 	pm.recordsMu.RLock()
 	record, ok := pm.records[id]
@@ -508,6 +520,9 @@ func (pm *pluginManager) UnloadPlugin(id string) error {
 	opsMu := pm.pluginOpsLock(id)
 	opsMu.Lock()
 	defer opsMu.Unlock()
+	if err := pm.guardArchiveRecovery(id); err != nil {
+		return err
+	}
 	return pm.unloadPluginLocked(id)
 }
 

@@ -17,11 +17,17 @@ func TestLegacyArtifactBlockedAndTrustedDigestChecked(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("trusted fixture executable"), 0700); err != nil {
 		t.Fatal(err)
 	}
+	if err := VerifyPluginArtifact(workspace, "kubernetes", binary); err == nil {
+		t.Fatal("preflight allowed legacy executable without trusted record")
+	}
 	if _, _, err := PreparePluginArtifact(workspace, "kubernetes", binary); err == nil {
 		t.Fatal("legacy executable allowed without trusted record")
 	}
 	revision := strings.Repeat("a", 40)
 	if err := RecordBuiltArtifactSource(workspace, "kubernetes", binary, revision, strings.Repeat("b", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyPluginArtifact(workspace, "kubernetes", binary); err != nil {
 		t.Fatal(err)
 	}
 	prepared, cleanup, err := PreparePluginArtifact(workspace, "kubernetes", binary)
@@ -126,6 +132,9 @@ func TestTrustedArtifactRequiresSourceSnapshotIdentity(t *testing.T) {
 		if err := os.WriteFile(path, changed, 0600); err != nil {
 			t.Fatal(err)
 		}
+		if err := VerifyPluginArtifact(workspace, "plugin", binary); err == nil {
+			t.Fatal("preflight allowed source identity mismatch/downgrade")
+		}
 		if _, _, err := PreparePluginArtifact(workspace, "plugin", binary); err == nil {
 			t.Fatal("source identity mismatch/downgrade allowed launch")
 		}
@@ -171,6 +180,123 @@ func TestArtifactIdentityRevalidatedWithoutAmbientWorkspace(t *testing.T) {
 	stale.Manifest.WorkspaceID = "22f2dbb0-9ecd-4b17-9690-a0c2239387ac"
 	if _, _, err := PreparePluginArtifact(stale, "plugin", binary); err == nil {
 		t.Fatal("caller identity disagreed with revalidated manifest")
+	}
+}
+
+func TestVerifyPluginArtifactDoesNotRequireWritableRuntime(t *testing.T) {
+	workspace := artifactWorkspaceFixture(t)
+	binary := filepath.Join(t.TempDir(), "plugin")
+	if err := os.WriteFile(binary, []byte("trusted preflight fixture"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecordBuiltArtifactSource(workspace, "plugin", binary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := artifactDirectory(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(dir, 0700); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := VerifyPluginArtifact(workspace, "plugin", binary); err != nil {
+		t.Fatalf("static preflight required runtime writes: %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "plugin.json" {
+		t.Fatalf("static preflight changed trusted artifact directory: %v", entries)
+	}
+	if err := os.WriteFile(binary, []byte("replaced preflight fixture"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyPluginArtifact(workspace, "plugin", binary); err == nil {
+		t.Fatal("preflight accepted bytes differing from trusted build evidence")
+	}
+}
+
+func TestVerifyPluginArtifactRejectsCrossProfileEvidence(t *testing.T) {
+	workspace := artifactWorkspaceFixture(t)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "plugin")
+	if err := os.WriteFile(binary, []byte("first profile artifact"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecordBuiltArtifactSource(workspace, "plugin", binary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err != nil {
+		t.Fatal(err)
+	}
+	foreignManifest := workspaceFixture(t, home, "22f2dbb0-9ecd-4b17-9690-a0c2239387ac", "Foreign artifact fixture")
+	foreign, err := devcontract.ResolveWorkspace(devcontract.ResolveOptions{Explicit: foreignManifest, Home: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignBinary := filepath.Join(t.TempDir(), "plugin")
+	if err := os.WriteFile(foreignBinary, []byte("foreign profile artifact"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecordBuiltArtifactSource(foreign, "plugin", foreignBinary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyPluginArtifact(foreign, "plugin", foreignBinary); err != nil {
+		t.Fatalf("foreign fixture lacks genuine trusted evidence: %v", err)
+	}
+	if err := VerifyPluginArtifact(workspace, "plugin", foreignBinary); err == nil {
+		t.Fatal("preflight accepted another profile's trusted artifact")
+	}
+	if _, cleanup, err := PreparePluginArtifact(workspace, "plugin", foreignBinary); err == nil {
+		cleanup()
+		t.Fatal("launch accepted another profile's trusted artifact")
+	}
+	stale := workspace
+	stale.StateRoot = foreign.StateRoot
+	if err := VerifyPluginArtifact(stale, "plugin", binary); err == nil {
+		t.Fatal("preflight accepted a root outside the selected workspace")
+	}
+	stale = workspace
+	stale.Manifest.WorkspaceID = foreign.Manifest.WorkspaceID
+	if err := VerifyPluginArtifact(stale, "plugin", binary); err == nil {
+		t.Fatal("preflight accepted a caller identity differing from the manifest")
+	}
+	if err := VerifyPluginArtifact(workspace, "../plugin", binary); err == nil {
+		t.Fatal("preflight accepted a traversing plugin ID")
+	}
+}
+
+func TestVerifyPluginArtifactRequiresSelectedProfileOwnership(t *testing.T) {
+	workspace := artifactWorkspaceFixture(t)
+	binary := filepath.Join(t.TempDir(), "plugin")
+	if err := os.WriteFile(binary, []byte("trusted ownership fixture"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecordBuiltArtifactSource(workspace, "plugin", binary, strings.Repeat("a", 40), strings.Repeat("b", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyPluginArtifact(workspace, "plugin", binary); err != nil {
+		t.Fatal(err)
+	}
+	owner := filepath.Join(filepath.Dir(workspace.StateRoot), ".workspace-owner.json")
+	if err := os.Remove(owner); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyPluginArtifact(workspace, "plugin", binary); err == nil {
+		t.Fatal("preflight accepted trusted evidence without profile ownership proof")
+	}
+	if _, cleanup, err := PreparePluginArtifact(workspace, "plugin", binary); err == nil {
+		cleanup()
+		t.Fatal("launch accepted trusted evidence without profile ownership proof")
+	}
+	if _, err := os.Lstat(owner); !os.IsNotExist(err) {
+		t.Fatal("read-only artifact verification claimed profile ownership")
 	}
 }
 

@@ -121,6 +121,69 @@ func RecordBuiltArtifactSource(workspace devcontract.ResolvedWorkspace, pluginID
 	return os.Rename(name, filepath.Join(dir, pluginID+".json"))
 }
 
+// readPluginArtifactRecord revalidates workspace/root ownership before reading
+// host-owned evidence. Both static preflight and private launch verification
+// must use this path rather than installed plugin metadata.
+func readPluginArtifactRecord(workspace devcontract.ResolvedWorkspace, pluginID string) (string, artifactRecord, error) {
+	var record artifactRecord
+	if err := state.ValidateComponent(pluginID); err != nil {
+		return "", record, err
+	}
+	dir, err := artifactDirectory(workspace)
+	if err != nil {
+		return "", record, err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", record, err
+	}
+	if err := devcontract.ValidateDefaultProfileOwnership(home, workspace.Manifest.WorkspaceID); err != nil {
+		return "", record, err
+	}
+	recordPath := filepath.Join(dir, pluginID+".json")
+	info, err := os.Lstat(recordPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", record, fmt.Errorf("instance: plugin %s has no trusted fixed-SDK artifact evidence; rebuild from the selected verified SDK before launch", pluginID)
+	}
+	file, err := os.Open(recordPath)
+	if err != nil {
+		return "", record, err
+	}
+	decodeErr := json.NewDecoder(io.LimitReader(file, 64*1024)).Decode(&record)
+	closeErr := file.Close()
+	if decodeErr != nil {
+		return "", record, decodeErr
+	}
+	if closeErr != nil {
+		return "", record, closeErr
+	}
+	if record.SchemaVersion != 2 || record.PluginID != pluginID || record.Provenance == nil || record.ExpectedSDKRevision == "" || record.ExpectedSDKSourceSHA256 == "" {
+		return "", record, fmt.Errorf("instance: invalid trusted artifact source evidence for %s", pluginID)
+	}
+	return dir, record, nil
+}
+
+func (record *artifactRecord) verifyArtifact(pluginID, binaryPath string) error {
+	if err := record.Provenance.VerifyArtifact(binaryPath, record.ExpectedSDKRevision, record.ExpectedSDKSourceSHA256); err != nil {
+		return fmt.Errorf("instance: plugin %s artifact isolation verification failed: %w", pluginID, err)
+	}
+	return nil
+}
+
+// VerifyPluginArtifact statically checks candidate bytes against the same
+// workspace ownership and independent trusted build evidence used at launch,
+// without copying the executable or writing to the artifact directory.
+// The caller must hold the selected root's ownership flock. This is preflight
+// only: bytes may subsequently change, so execution must still use the private
+// verified snapshot returned by PreparePluginArtifact.
+func VerifyPluginArtifact(workspace devcontract.ResolvedWorkspace, pluginID, binaryPath string) error {
+	_, record, err := readPluginArtifactRecord(workspace, pluginID)
+	if err != nil {
+		return err
+	}
+	return record.verifyArtifact(pluginID, binaryPath)
+}
+
 // PreparePluginArtifact fails closed before executing an unknown executable.
 // It verifies a private executable snapshot against independent trusted build
 // evidence, so replacement of the installed binary cannot race process launch.
@@ -130,40 +193,9 @@ func RecordBuiltArtifactSource(workspace devcontract.ResolvedWorkspace, pluginID
 // Windows may retain an executing file until process termination.
 func PreparePluginArtifact(workspace devcontract.ResolvedWorkspace, pluginID, binaryPath string) (string, func(), error) {
 	noop := func() {}
-	if err := state.ValidateComponent(pluginID); err != nil {
-		return "", noop, err
-	}
-	dir, err := artifactDirectory(workspace)
+	dir, record, err := readPluginArtifactRecord(workspace, pluginID)
 	if err != nil {
 		return "", noop, err
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", noop, err
-	}
-	if err := devcontract.ValidateDefaultProfileOwnership(home, workspace.Manifest.WorkspaceID); err != nil {
-		return "", noop, err
-	}
-	recordPath := filepath.Join(dir, pluginID+".json")
-	info, err := os.Lstat(recordPath)
-	if err != nil || !info.Mode().IsRegular() {
-		return "", noop, fmt.Errorf("instance: plugin %s has no trusted fixed-SDK artifact evidence; rebuild from the selected verified SDK before launch", pluginID)
-	}
-	file, err := os.Open(recordPath)
-	if err != nil {
-		return "", noop, err
-	}
-	var record artifactRecord
-	decodeErr := json.NewDecoder(io.LimitReader(file, 64*1024)).Decode(&record)
-	closeErr := file.Close()
-	if decodeErr != nil {
-		return "", noop, decodeErr
-	}
-	if closeErr != nil {
-		return "", noop, closeErr
-	}
-	if record.SchemaVersion != 2 || record.PluginID != pluginID || record.Provenance == nil || record.ExpectedSDKRevision == "" || record.ExpectedSDKSourceSHA256 == "" {
-		return "", noop, fmt.Errorf("instance: invalid trusted artifact source evidence for %s", pluginID)
 	}
 	// A private per-launch directory prevents plugin-source/installation changes
 	// from replacing the verified executable pathname between digest and exec.
@@ -199,9 +231,9 @@ func PreparePluginArtifact(workspace devcontract.ResolvedWorkspace, pluginID, bi
 			return "", noop, err
 		}
 	}
-	if err := record.Provenance.VerifyArtifact(prepared, record.ExpectedSDKRevision, record.ExpectedSDKSourceSHA256); err != nil {
+	if err := record.verifyArtifact(pluginID, prepared); err != nil {
 		cleanup()
-		return "", noop, fmt.Errorf("instance: plugin %s artifact isolation verification failed: %w", pluginID, err)
+		return "", noop, err
 	}
 	return prepared, cleanup, nil
 }

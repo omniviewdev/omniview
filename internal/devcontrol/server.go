@@ -231,8 +231,15 @@ func safeError(err error) *devcontract.Error {
 	var e *devcontract.Error
 	if errors.As(err, &e) {
 		switch e.Code {
-		case "invalid_request", "invalid_params", "unknown_operation", "stale_target", "setting_not_found", "operation_not_found", "operation_capacity", "shutting_down", "timeout", "conflict", "not_found", "validation_failed", "dependency_failed":
-			return devcontract.Fail(e.Exit, e.Code, safeMessage(e.Code))
+		case "invalid_request", "invalid_params", "unknown_operation", "stale_target", "setting_not_found", "operation_not_found", "operation_capacity", "shutting_down", "timeout", "conflict", "not_found", "validation_failed", "dependency_failed", "committed_cleanup_pending", "commit_uncertain":
+			result := devcontract.Fail(e.Exit, e.Code, safeMessage(e.Code))
+			if e.Code == "committed_cleanup_pending" {
+				result.Details = map[string]any{"category": e.Code, "committed": true, "recoveryRequired": true}
+			}
+			if e.Code == "commit_uncertain" {
+				result.Details = map[string]any{"category": e.Code, "commitUncertain": true, "recoveryRequired": true}
+			}
+			return result
 		}
 	}
 	var app *apperror.AppError
@@ -247,11 +254,23 @@ func safeError(err error) *devcontract.Error {
 			code, exit = "validation_failed", 2
 		case apperror.TypeResourceTimeout:
 			code, exit = "timeout", 7
+		case apperror.TypePluginCommittedCleanupPending:
+			code = "committed_cleanup_pending"
+		case apperror.TypePluginCommitUncertain:
+			code = "commit_uncertain"
 		}
 		result := devcontract.Fail(exit, code, safeMessage(code))
 		result.Details = map[string]any{"category": code}
+		if code == "committed_cleanup_pending" {
+			result.Details["committed"] = true
+			result.Details["recoveryRequired"] = true
+		}
+		if code == "commit_uncertain" {
+			result.Details["commitUncertain"] = true
+			result.Details["recoveryRequired"] = true
+		}
 		switch app.Type {
-		case apperror.TypePluginNotFound, apperror.TypePluginNotLoaded, apperror.TypePluginAlreadyLoaded, apperror.TypePluginInstallFailed, apperror.TypePluginLoadFailed, apperror.TypePluginBuildFailed, apperror.TypeResourceConflict, apperror.TypeValidation, apperror.TypeSettingsInvalidConfig, apperror.TypeResourceTimeout:
+		case apperror.TypePluginNotFound, apperror.TypePluginNotLoaded, apperror.TypePluginAlreadyLoaded, apperror.TypePluginInstallFailed, apperror.TypePluginLoadFailed, apperror.TypePluginBuildFailed, apperror.TypeResourceConflict, apperror.TypeValidation, apperror.TypeSettingsInvalidConfig, apperror.TypeResourceTimeout, apperror.TypePluginCommittedCleanupPending, apperror.TypePluginCommitUncertain:
 			result.Details["type"] = app.Type
 		}
 		if app.Status >= 100 && app.Status <= 599 {
@@ -293,6 +312,10 @@ func safeMessage(code string) string {
 		return "operation conflicts with current state"
 	case "dependency_failed":
 		return "plugin build or readiness failed"
+	case "committed_cleanup_pending":
+		return "plugin installation committed; owned backup cleanup requires recovery"
+	case "commit_uncertain":
+		return "plugin installation commit could not be confirmed; recovery is required"
 	default:
 		return "request was rejected"
 	}

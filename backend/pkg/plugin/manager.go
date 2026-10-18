@@ -160,6 +160,7 @@ type pluginManager struct {
 	pluginsRoot         *appstate.ScopedRoot // scoped to ~/.omniview/plugins
 	recordsMu           sync.RWMutex
 	records             map[string]*plugintypes.PluginRecord
+	pendingArchiveState map[string]*plugintypes.PluginStateRecord // recordsMu protects durable preimages until archive commit
 	connlessControllers map[sdktypes.Capability]plugintypes.Controller
 	connfullControllers map[sdktypes.Capability]plugintypes.ConnectedController
 	settingsProvider    pkgsettings.Provider
@@ -389,6 +390,16 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("validate pending plugin uninstalls: %w", err)
 	}
+	blockedArchives, err := pm.reconcileArchiveRecoveries()
+	if err != nil {
+		return fmt.Errorf("validate pending plugin archive replacements: %w", err)
+	}
+	for id := range blockedArchives {
+		if blockedUninstalls == nil {
+			blockedUninstalls = make(map[string]bool)
+		}
+		blockedUninstalls[id] = true
+	}
 
 	pluginDir := pm.pluginsRoot.ResolvePath("")
 
@@ -491,7 +502,7 @@ func (pm *pluginManager) planPluginLoads(
 		if !state.DevMode {
 			continue
 		}
-		constrained, selectionErr := pm.validateManagedSource(state.ID, state.DevPath)
+		constrained, selectionErr := pm.validateManagedSource(state.ID, state.DevPath, nil)
 		if !constrained {
 			continue
 		}
@@ -651,7 +662,7 @@ func (pm *pluginManager) startDevServers(devPlugins []devPluginEntry) {
 		go func(pluginID, devPath string) {
 			defer wg.Done()
 			pm.logger.Infow(pm.ctx, "starting dev server (background)", "pluginID", pluginID)
-			constrained, selectionErr := pm.validateManagedSource(pluginID, devPath)
+			constrained, selectionErr := pm.validateManagedSource(pluginID, devPath, nil)
 			if selectionErr != nil {
 				pm.logger.Warnw(pm.ctx, "development source is outside workspace selection", "pluginID", pluginID, "error", selectionErr)
 				return

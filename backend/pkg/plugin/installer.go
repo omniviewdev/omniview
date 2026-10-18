@@ -72,7 +72,7 @@ func (pm *pluginManager) InstallDevPluginFromPath(path string) (info sdktypes.Pl
 			"The dev server manager is not available. Ensure developer settings are configured.",
 		).WithActions(apperror.OpenSettingsAction("developer"))
 	}
-	if _, selectionErr := pm.validateManagedSource(metadata.ID, path); selectionErr != nil {
+	if _, selectionErr := pm.validateManagedSource(metadata.ID, path, nil); selectionErr != nil {
 		return info, selectionErr
 	}
 
@@ -297,60 +297,22 @@ func (pm *pluginManager) InstallPluginFromPath(path string) (*config.PluginMeta,
 	if err := pm.guardUninstallRecovery(metadata.ID); err != nil {
 		return nil, err
 	}
-
-	pm.emitter.Emit(EventInstallStarted, metadata)
-
-	location := pm.pluginsRoot.ResolvePath(metadata.ID)
-
-	// Unpack to a temporary directory first so we don't destroy a working
-	// installation if the archive is corrupt or extraction fails.
-	tmpDir, mkErr := os.MkdirTemp(pm.pluginsRoot.ResolvePath(""), metadata.ID+"-install-")
-	if mkErr != nil {
-		pm.emitter.Emit(EventInstallError, metadata)
-		return nil, apperror.Wrap(
-			mkErr, apperror.TypePluginInstallFailed, http.StatusInternalServerError, "Failed to create temp directory",
-		)
-	}
-	defer os.RemoveAll(tmpDir) // clean up temp dir in all cases
-
-	if err = unpackPluginArchive(path, tmpDir); err != nil {
-		pm.emitter.Emit(EventInstallError, metadata)
-		return nil, apperror.Wrap(
-			err, apperror.TypePluginInstallFailed, http.StatusInternalServerError, "Failed to unpack plugin package",
-		)
-	}
-
-	// Extraction succeeded — now unload the running plugin and swap directories.
-	if err = pm.unloadForReinstall(metadata.ID); err != nil {
-		pm.emitter.Emit(EventInstallError, metadata)
+	if err := pm.guardArchiveRecovery(metadata.ID); err != nil {
 		return nil, err
 	}
-	if err = os.RemoveAll(location); err != nil {
-		pm.emitter.Emit(EventInstallError, metadata)
-		return nil, apperror.Internal(err, "Failed to replace plugin files").WithInstance(metadata.ID)
-	}
 
-	if err = os.Rename(tmpDir, location); err != nil {
-		pm.emitter.Emit(EventInstallError, metadata)
-		return nil, apperror.Wrap(
-			err, apperror.TypePluginInstallFailed, http.StatusInternalServerError, "Failed to install plugin files",
-		)
-	}
-
-	_, err = pm.LoadPlugin(metadata.ID, nil)
+	statePublished, err := pm.installArchiveCandidate(path, metadata)
 	if err != nil {
-		pm.emitter.Emit(EventInstallError, metadata)
-		return nil, apperror.Wrap(
-			err, apperror.TypePluginLoadFailed, http.StatusInternalServerError, "Failed to load plugin after install",
-		)
+		var problem *apperror.AppError
+		if !errors.As(err, &problem) || problem.Type != apperror.TypePluginCommittedCleanupPending {
+			pm.emitter.Emit(EventInstallError, metadata)
+		}
+		if statePublished {
+			return metadata, err
+		}
+		return nil, err
 	}
 
-	if err = pm.persistPluginOperation(metadata.ID); err != nil {
-		pm.emitter.Emit(EventInstallError, metadata)
-		return metadata, err
-	}
-
-	pm.emitter.Emit(EventInstallFinished, metadata)
 	return metadata, nil
 }
 
@@ -392,6 +354,9 @@ func (pm *pluginManager) uninstallPlugin(id string) (sdktypes.PluginInfo, error)
 	}
 	if err := sdkstate.ValidateComponent(id); err != nil {
 		return record.ToInfo(), apperror.Internal(err, "Invalid installed plugin identity")
+	}
+	if err := pm.guardArchiveRecovery(id); err != nil {
+		return record.ToInfo(), err
 	}
 	recovery, err := pm.prepareUninstallRecovery(id, record)
 	if err != nil {
