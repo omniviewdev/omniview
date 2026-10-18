@@ -407,17 +407,11 @@ func HandleWorkspaceCommand(ctx context.Context, args []string, out, diagnostics
 			}
 		}
 	} else if c.verb == "resume" || c.verb == "rollback" || c.verb == "remove" {
-		root, rootErr := workspaceCollectionRoot(c.root)
-		if rootErr != nil {
-			return fail(rootErr)
-		}
-		manager, openErr := devworkspace.Open(root, devworkspace.Options{Stopped: devworkspace.RequireStopped})
-		if openErr != nil {
-			return fail(openErr)
-		}
 		target := c.target
-		if strings.ContainsAny(target, "/\\") || filepath.IsAbs(target) {
-			path := target
+		path := ""
+		collection := c.root
+		if c.explicit != "" || strings.ContainsAny(target, "/\\") || filepath.IsAbs(target) {
+			path = target
 			if filepath.Base(path) == "workspace.json" {
 				path = filepath.Dir(path)
 			}
@@ -425,6 +419,19 @@ func HandleWorkspaceCommand(ctx context.Context, args []string, out, diagnostics
 			if err != nil {
 				return fail(err)
 			}
+			if collection == "" {
+				collection = filepath.Dir(filepath.Dir(path))
+			}
+		}
+		root, rootErr := workspaceCollectionRoot(collection)
+		if rootErr != nil {
+			return fail(rootErr)
+		}
+		manager, openErr := devworkspace.Open(root, devworkspace.Options{Stopped: devworkspace.RequireStopped})
+		if openErr != nil {
+			return fail(openErr)
+		}
+		if path != "" {
 			if filepath.Dir(path) != filepath.Join(root, "workspaces") {
 				return fail(devcontract.Fail(4, "conflicting_target", "explicit lifecycle workspace path is outside the selected collection"))
 			}

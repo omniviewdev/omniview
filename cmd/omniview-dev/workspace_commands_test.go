@@ -104,8 +104,39 @@ func TestWorkspaceLifecycleCLIUsesRealGitAndPreservesBranches(t *testing.T) {
 		t.Fatalf("explicit remove ignored conflicting state: %d %s", code, conflictOut.String())
 	}
 	t.Setenv("OMNIVIEW_STATE_DIR", "")
+	foreignRoot := t.TempDir()
+	invoke("workspace", "init", "--root", foreignRoot, "--source", "omniview="+source, "--source-ref", "omniview=main", "--json")
+	var foreignOut, foreignDiagnostics bytes.Buffer
+	if code := run([]string{"workspace", "remove", "--workspace", filepath.Join(workspace.Root, "workspace.json"), "--root", foreignRoot, "--json"}, &foreignOut, &foreignDiagnostics); code != 4 {
+		t.Fatalf("explicit path ignored conflicting collection: code=%d out=%s", code, foreignOut.String())
+	}
+	if _, err := os.Stat(filepath.Join(workspace.Root, "workspace.json")); err != nil {
+		t.Fatalf("foreign collection selection mutated target: %v", err)
+	}
+	// Explicit lifecycle paths remain authoritative outside the collection.
+	t.Chdir(t.TempDir())
+	invoke("workspace", "resume", "--workspace", workspace.Root, "--json")
+	invoke("workspace", "resume", "--workspace", filepath.Join(workspace.Root, "workspace.json"), "--json")
+	var rollbackOut, rollbackDiagnostics bytes.Buffer
+	rollbackCode := run([]string{"workspace", "rollback", "--workspace", filepath.Join(other.Root, "workspace.json"), "--json"}, &rollbackOut, &rollbackDiagnostics)
+	var rollbackFailure struct {
+		Error *devcontract.Error `json:"error"`
+	}
+	if err := json.Unmarshal(rollbackOut.Bytes(), &rollbackFailure); err != nil || rollbackCode != 4 || rollbackFailure.Error == nil || rollbackFailure.Error.Code != "rollback_not_allowed" {
+		t.Fatalf("explicit rollback did not reach its lifecycle policy: code=%d out=%s err=%v", rollbackCode, rollbackOut.String(), err)
+	}
+	if _, err := os.Stat(filepath.Join(other.Root, "workspace.json")); err != nil {
+		t.Fatalf("refused rollback mutated completed workspace: %v", err)
+	}
+	invoke("workspace", "remove", "--workspace", other.Root, "--json")
+	if _, err := os.Stat(other.Root); !os.IsNotExist(err) {
+		t.Fatalf("explicit directory remove retained its worktree: %v", err)
+	}
 	branch := workspace.Manifest.Repositories[0].Branch
-	invoke("workspace", "remove", "feature-one", "--root", root, "--json")
+	invoke("workspace", "remove", "--workspace", filepath.Join(workspace.Root, "workspace.json"), "--json")
+	if _, err := os.Stat(workspace.Root); !os.IsNotExist(err) {
+		t.Fatalf("explicit remove retained its worktree: %v", err)
+	}
 	git("show-ref", "--verify", "refs/heads/"+branch)
 	if data, err := os.ReadFile(filepath.Join(source, "tracked")); err != nil || string(data) != "original" {
 		t.Fatalf("canonical source changed: %s %v", data, err)

@@ -53,8 +53,8 @@ Use `--mode native` instead for a desktop app; `--mcp` is optional and native-on
 For an existing selected workspace, root `task dev` is the canonical CLI `workspace up` wrapper, not an independent `wails dev` supervisor. It defaults to native; `SERVER=true` selects browser and `WAILS_MCP=1` opts into native MCP. Task dev/workspace wrappers capture the cache helper once internally without adding a path to command JSON stdout. For direct invocation, use the captured path:
 
 ```sh
-"$DEV" workspace up --mode browser \
-  --root "$COLLECTION" --workspace "$FEATURE" \
+"$DEV" workspace up "$FEATURE" --mode browser \
+  --root "$COLLECTION" \
   --reviewed-sdk-revision "$FULL_REVIEWED_SDK_REVISION" \
   --link-evidence "$SUCCESSFUL_PINNED_LINK_PROBE_JSON" --json
 ```
