@@ -125,11 +125,19 @@ async function fixture(t: TestContext, framework: Framework, managed = true, ini
   messages.length = 0;
 
   const change = async (name: string, contents: string) => {
-    const changed = once(hotUpdates, 'change');
-    writeFileSync(path.join(workspaceRoot, name), contents);
-    const [changedPath] = await changed;
-    assert.equal(changedPath, path.join(workspaceRoot, name));
-    assert.ok((await read(name)).includes(contents.includes('changed') ? 'changed' : contents));
+    const target = path.join(workspaceRoot, name);
+    let published = false;
+    const observe = (changedPath: string) => {
+      if (changedPath === target) published = true;
+    };
+    hotUpdates.on('change', observe);
+    try {
+      writeFileSync(target, contents);
+      await eventually(() => published, `real HMR publication for ${name}`);
+      assert.ok((await read(name)).includes(contents.includes('changed') ? 'changed' : contents));
+    } finally {
+      hotUpdates.off('change', observe);
+    }
     // A negative network assertion needs a bounded quiet window after the real
     // HMR lifecycle event and successful fresh transformation, not a mocked send.
     await delay(150);
