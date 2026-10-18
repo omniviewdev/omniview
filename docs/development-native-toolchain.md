@@ -20,6 +20,14 @@ Named native development on macOS requires macOS14+ UUID datastores. Production 
 
 Bare `GOWORK=off go build .` does not consume an automatically generated modfile and therefore is not the supported command for this patched native toolchain. Use the explicit module command above or the bootstrap-aware Task. This is a deliberate build prerequisite, not an implicit machine-local replacement.
 
+## Exercised native boundary
+
+On macOS27 arm64, an actual stable build without `devcontrol` and two named development builds ran concurrently in separate signed app bundles and state roots. The duplicate stable channel exited0 before settings-database/plugin startup; a duplicate named root exited1 without changing its settings or plugin inventory. CoreGraphics observed three onscreen native windows; this is not pixel capture.
+
+Authenticated native MCP reached both actual `wails://localhost/` shells and `AppService.GetInstanceInfo`, matching boot UUIDs/generations. A localStorage key stayed independent across profiles, persisted after restart with the original UUID, and reset after exact-UUID public native removal using the retained original complete bundle. Removing Alpha preserved live Beta's store. Every owned host and native store was cleaned up.
+
+This proof directly exercised the native host/bundle lifecycle, not managed multi-plugin supervisor orchestration. Screen-capture permission was unavailable (`CGPreflightScreenCaptureAccess` false), so DOM observations are not native pixel evidence. No cookie-persistence claim is made for the custom scheme. Windows/Linux native behavior still requires its own runner evidence.
+
 ## Reviewed portable patch export
 
 The beta.29 patch also exposes `ServerOptions.Middleware` (`json:"-"`) and wraps the complete server mux exactly once, after registering health, event WebSocket, stream WebSocket, runtime and asset routes. Its default is nil, preserving existing behavior; native `wails://localhost` requests do not use this server hook. Application development policy can reject hostile browser origins and DNS-rebinding hosts here, but this is not authentication: plain local nonbrowser clients can still make requests.

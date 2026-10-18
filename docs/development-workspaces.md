@@ -10,7 +10,11 @@ Current host/UI/plugin/probe manifests pin **pnpm 12.14.0**. Install the native 
 
 The pnpm12 migration explicitly sets `minimumReleaseAge: 0` to preserve the previous pnpm10 immediate-release behavior, as approved by the developer. Strict peers, exact manager pins, frozen-lockfile verification and managed `--ignore-scripts` remain. Non-auth `.npmrc` settings moved into workspace YAML; the native12 lockfile metadata format is preserved as package-manager-owned bytes.
 
+Choose source refs that satisfy the actual peer contracts: compare the host's `packages/omniviewdev-runtime/package.json` with the selected UI's `packages/base-ui/package.json`. A checkout can lag an existing compatible release tag. Select compatible released source while preserving feature changes; do not invent a package version or weaken peer validation to make an older source pass.
+
 The generated package root is `$COLLECTION/workspaces/<feature>`, above its host/UI/plugin worktrees. Managed native12 commands keep the actual consumer cwd/argv while enforcing this root through `PNPM_CONFIG_WORKSPACE_DIR`. Source configs/lockfiles remain standalone; compatible policies and locked registry resolutions are reconciled explicitly, and conflicts refuse mutation. Do not hand-edit generated root files or run independent plugin installs inside a managed feature.
+
+The host workspace includes its host packages and E2E tooling, not the unused bundled `plugins/` frontends. Their files remain untouched. Managed features add only explicitly selected plugin repositories; an unselected bundled example must not pull its stale dependency cohort into the feature.
 
 ```sh
 # Run from the host checkout containing the workspace implementation.

@@ -1,7 +1,5 @@
 packages:
   - "packages/*"
-  - "plugins/**"
-  - "!plugins/kubernetes/**"
   - "e2e"
 linkWorkspacePackages: false
 strictPeerDependencies: true
