@@ -60,6 +60,8 @@ Liveness and termination authorization are deliberately different checks. An exi
 
 Permission failures remain failures. Process identity checks and termination need platform-runner evidence; source implementation alone is not a platform validation claim.
 
+On macOS, canonical `down`/`restart` arm a retained kqueue `NOTE_EXIT` observation while the exact supervisor identity is still live, recheck ownership after registration, then use the existing authenticated stop owner. Darwin can deactivate the userspace task before publishing its zombie state (`P_WEXIT`): `kern.procargs2` then returns `EINVAL` even though `kern.proc.pid` still exposes the same start identity. Completion therefore waits for the retained kernel exit event instead of re-querying the executable during teardown. Neither `EINVAL` nor `P_WEXIT` alone is treated as completed exit. The authenticated response still depends on the supervisor's actual child group-empty/reap/writer-finish proofs; the observation grants no signal authority, and a changed durable supervisor record is refused. Linux and Windows retain their existing completion paths.
+
 On Windows, a process may exit after handle identity verification but before `TerminateProcess`. An access-denied result is idempotent only when a zero-time wait confirms that exact pinned handle is signaled. An unsignaled or unreadable handle retains the original error; permission failures for a live process are not suppressed.
 
 ## Discovery and tokens

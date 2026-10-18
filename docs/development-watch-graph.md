@@ -91,7 +91,7 @@ The serial graph prepares same-depth exclusive sibling stages using `Prepare` wi
 - `OMNIVIEW_BUILD_OUTPUT_DIRECTORY`: Vite/declaration outDir or argv-safe package-local tsup CLI out-dir.
 - `OMNIVIEW_SHIMS_OUTPUT_DIRECTORY` and read-only `OMNIVIEW_SHIMS_SOURCE_DIRECTORY`: generate/check new shims while preserving the established previous-export behavior.
 - `OMNIVIEW_YAML_WORKER_OUTPUT_FILE`: real esbuild output; host build resolver imports this staged worker, not stale tracked output.
-- `OMNIVIEW_VITE_CACHE_DIRECTORY`: host/runtime/UI/plugin actual optimizer cacheDir. Explicit conflicting plugin cache/output paths fail rather than silently escaping controlled scope.
+- `OMNIVIEW_VITE_CACHE_DIRECTORY`: owned optimizer-cache root. Host prebundles live beneath its `node_modules/.vite` child so Babel/React source transforms do not recompile generated dependencies. Linked UI stays excluded from optimization, while its two nested `use-sync-external-store/shim` entry points are explicitly included for [CommonJS interop](https://vite.dev/config/dep-optimization-options). Explicit conflicting plugin cache/output paths still fail rather than escaping controlled scope.
 
 Each UI package's `vite.config.ts` keeps custom/staged declaration output independent of the active distribution and stays inside that package's composite TypeScript boundary. Staged producers emit the complete declaration tree rooted at `src`; standalone publishing retains rolled declarations. API Extractor follows the fixed `package.json` dist entry, so it must not read an old active declaration or require one in a cold feature. Declaration compiler errors fail the actual producer rather than merely logging diagnostics and publishing output.
 

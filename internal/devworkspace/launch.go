@@ -188,7 +188,7 @@ func (m *Manager) Start(ctx context.Context, name string, o LaunchOptions, execu
 
 func (m *Manager) Down(ctx context.Context, name string) (Status, error) {
 	status, err := m.supervisorCommand(ctx, name, "stop")
-	if err != nil || status.Generation == "" {
+	if err != nil || status.Generation == "" || runtime.GOOS == "darwin" {
 		return status, err
 	}
 	w, err := m.Inspect(ctx, name)
@@ -229,6 +229,9 @@ func (m *Manager) Restart(ctx context.Context, name string) (Status, error) {
 	stopped, err := m.supervisorCommand(ctx, name, "restart")
 	if err != nil {
 		return stopped, err
+	}
+	if runtime.GOOS == "darwin" {
+		return m.Start(ctx, name, options, "", io.Discard)
 	}
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
@@ -272,7 +275,7 @@ func (m *Manager) supervisorCommand(ctx context.Context, name, command string) (
 	if err != nil {
 		return Status{}, err
 	}
-	return callSupervisor(ctx, record, token, command)
+	return shutdownSupervisor(ctx, w, record, token, command)
 }
 
 func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory string, environment []string, output io.Writer, program string, args ...string) ([]byte, error) {

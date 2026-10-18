@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, unlink, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { chmod, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { promisify } from 'node:util';
@@ -248,9 +249,11 @@ export class OwnedProfiles {
   private readonly modes = new Map<string, string>();
   readonly root: string;
   private readonly sources: Sources;
-  private constructor(root: string, sources: Sources) {
+  private readonly arenaIdentity: { dev: number; ino: number };
+  private constructor(root: string, sources: Sources, arenaIdentity: { dev: number; ino: number }) {
     this.root = root;
     this.sources = sources;
+    this.arenaIdentity = arenaIdentity;
   }
   static async create(): Promise<OwnedProfiles> {
     const sources = JSON.parse(await readFile(requireEnvironment('OMNIVIEW_E2E_SOURCES'), 'utf8')) as Sources;
@@ -264,7 +267,7 @@ export class OwnedProfiles {
     await mkdir(root, { mode: 0o700 });
     await mkdir(home, { mode: 0o700 });
     ownedHomes.set(root, home);
-    const profiles = new OwnedProfiles(root, sources);
+    const profiles = new OwnedProfiles(root, sources, await lstat(arena));
     await cli(['workspace', 'init', '--root', root, ...Object.entries(sources.sources).flatMap(([id, path]) => ['--source', `${id}=${path}`, '--source-ref', `${id}=${sources.refs[id]}`])]);
     return profiles;
   }
@@ -296,6 +299,44 @@ export class OwnedProfiles {
     await workspace.verify();
     return workspace;
   }
+  private async retireArena(): Promise<void> {
+    const arena = dirname(this.root);
+    const home = ownedHomes.get(this.root);
+    const info = await lstat(arena);
+    if (home !== join(arena, 'home') || !info.isDirectory() || info.isSymbolicLink() || info.dev !== this.arenaIdentity.dev || info.ino !== this.arenaIdentity.ino || (process.getuid && info.uid !== process.getuid()) || (process.platform !== 'win32' && (info.mode & 0o077) !== 0) || await realpath(arena) !== arena) throw new Error('Arena retirement refused a replaced or unowned private collection');
+    const homeInfo = await lstat(home);
+    if (!homeInfo.isDirectory() || homeInfo.isSymbolicLink() || homeInfo.uid !== info.uid || homeInfo.dev !== info.dev || await realpath(home) !== home) throw new Error('Arena retirement refused a redirected private HOME');
+
+    // Go makes extracted module directories read-only. Only their owner needs
+    // write/search permission for unlink; never chmod module files or follow
+    // symlinks (which may reference a human cache outside this disposable HOME).
+    const writableCacheDirectories = async (path: string): Promise<void> => {
+      const before = await lstat(path);
+      if (before.isSymbolicLink() || !before.isDirectory()) return;
+      if (before.uid !== info.uid || before.dev !== info.dev || await realpath(path) !== path) throw new Error('Arena retirement refused a redirected or foreign Go cache directory');
+      const directory = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+      try {
+        const opened = await directory.stat();
+        if (!opened.isDirectory() || opened.dev !== before.dev || opened.ino !== before.ino || opened.uid !== before.uid) throw new Error('Go cache directory changed during arena retirement');
+        if ((opened.mode & 0o700) !== 0o700) await directory.chmod((opened.mode & 0o777) | 0o700);
+        for (const entry of await readdir(path, { withFileTypes: true })) {
+          if (entry.isDirectory()) await writableCacheDirectories(join(path, entry.name));
+        }
+      } finally {
+        await directory.close();
+      }
+    };
+    const cache = join(home, 'go', 'pkg', 'mod');
+    let cacheExists = true;
+    try { await lstat(cache); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      cacheExists = false;
+    }
+    if (cacheExists) await writableCacheDirectories(cache);
+    const current = await lstat(arena);
+    if (current.dev !== info.dev || current.ino !== info.ino || await realpath(arena) !== arena) throw new Error('Private arena changed before retirement');
+    await rm(arena, { recursive: true });
+  }
   async close(): Promise<void> {
     const failures: string[] = [];
     // Stop every producer before restoring any throwaway source. Failed down
@@ -314,7 +355,7 @@ export class OwnedProfiles {
     }
     // Never kill by port/PID, recursively remove worktrees, or bypass dirty refusal.
     if (failures.length) throw new Error(`Owned cleanup refused for ${failures.join(', ')}; retained private collection ${this.root}; use workspace inspect/down/remove explicitly`);
-    await rm(dirname(this.root), { recursive: true });
+    await this.retireArena();
     ownedHomes.delete(this.root);
   }
 }

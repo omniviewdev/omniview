@@ -15,13 +15,15 @@ const __dirname = dirname(__filename);
 const selectedRoots = workspaceViteRoots(process.env.OMNIVIEW_VITE_ALLOWED_ROOTS);
 const ownedVitePort = workspaceVitePort(process.env.WAILS_VITE_PORT);
 const stagedYamlWorker = process.env.OMNIVIEW_YAML_WORKER_OUTPUT_FILE;
+const ownedViteCacheDirectory = workspaceViteCacheDirectory(process.env.OMNIVIEW_VITE_CACHE_DIRECTORY);
 if (selectedRoots && !ownedVitePort) {
   throw new Error('Managed host Vite requires its owned WAILS_VITE_PORT');
 }
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  cacheDir: workspaceViteCacheDirectory(process.env.OMNIVIEW_VITE_CACHE_DIRECTORY),
+  // Source transforms must not recompile generated optimized dependencies.
+  cacheDir: ownedViteCacheDirectory ? path.join(ownedViteCacheDirectory, 'node_modules', '.vite') : undefined,
   test: {
     globals: true,
     environment: 'jsdom',
@@ -56,6 +58,11 @@ export default defineConfig({
     exclude: ['@omniviewdev/base-ui', '@omniviewdev/ai-ui', '@omniviewdev/editors',
       '@omniviewdev/providers', '@omniviewdev/runtime', '@omniviewdev/runtime/api',
       '@omniviewdev/runtime/models', '@omniviewdev/runtime/runtime'],
+    // Linked UI stays live; its nested CommonJS shim still needs ESM interop.
+    include: [
+      '@omniviewdev/base-ui > @base-ui/react > @base-ui/utils > use-sync-external-store/shim',
+      '@omniviewdev/base-ui > @base-ui/react > @base-ui/utils > use-sync-external-store/shim/with-selector',
+    ],
     force: true,
   } : undefined,
   plugins: [
