@@ -35,7 +35,7 @@ const (
 	// DedupInterval is the debounce window for file change events.
 	DedupInterval = 500 * time.Millisecond
 
-	// goWatcherStopTimeout bounds how long Stop waits for the event loop to exit.
+	// goWatcherStopTimeout bounds retirement of the event loop and all publishers.
 	goWatcherStopTimeout = 5 * time.Second
 
 	// dirPerm and filePerm are the permissions for directories and files the
@@ -61,14 +61,21 @@ type goWatcherProcess struct {
 	setBuild   func(duration time.Duration, buildErr string)
 	emitErrors func(pluginID string, errors []BuildError)
 
-	watcher        *fsnotify.Watcher
-	done           chan struct{} // closed when the watcher goroutine exits
-	buildMu        sync.Mutex
-	dependencyMu   sync.Mutex
-	dependencyDirs []string
-	selectedSDK    devsource.Identity
+	watcher           *fsnotify.Watcher
+	done              chan struct{} // closed when the watcher goroutine exits
+	buildMu           sync.Mutex
+	lifecycleMu       sync.Mutex
+	stopping          bool
+	loopStarted       bool
+	publishers        sync.WaitGroup
+	stopOnce          sync.Once
+	retired           chan struct{}
+	stopErr           error
+	dependencyMu      sync.Mutex
+	dependencyDirs    []string
+	selectedSDK       devsource.Identity
 	buildRelativePath string
-	runtimeError   func(error)
+	runtimeError      func(error)
 }
 
 // newGoWatcherProcess creates a Go watcher. Call Start() to begin watching.
@@ -104,14 +111,33 @@ func newGoWatcherProcess(
 	}
 }
 
-// Start initializes the fsnotify watcher, walks the `pkg/` directory to register
-// all subdirectories, and starts the event loop goroutine.
+// Start initializes watching before the synchronous initial build. A lifecycle
+// reloader may stop the watcher without waiting for Start to launch its loop.
 func (gw *goWatcherProcess) Start() error {
+	if err := gw.startWatching(); err != nil {
+		return err
+	}
+	gw.initialBuild()
+	return nil
+}
+
+func (gw *goWatcherProcess) startWatching() error {
+	if err := gw.beginActivity(); err != nil {
+		return err
+	}
+	defer gw.publishers.Done()
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return apperror.Internal(err, "Failed to create file watcher")
 	}
+	gw.lifecycleMu.Lock()
+	if gw.stopping || gw.ctx.Err() != nil {
+		gw.lifecycleMu.Unlock()
+		watcher.Close()
+		return context.Canceled
+	}
 	gw.watcher = watcher
+	gw.lifecycleMu.Unlock()
 
 	// Walk the pkg/ directory and add all subdirectories.
 	pkgDir := filepath.Join(gw.devPath, "pkg")
@@ -151,10 +177,13 @@ func (gw *goWatcherProcess) Start() error {
 		logSourceGoWatch, logLevelInfo, fmt.Sprintf("Watching %d directories for Go changes", watchCount),
 	))
 
-	// Perform initial build so the binary exists for LoadPlugin validation.
-	gw.initialBuild()
-
-	// Start the event loop.
+	gw.lifecycleMu.Lock()
+	defer gw.lifecycleMu.Unlock()
+	if gw.stopping || gw.ctx.Err() != nil {
+		watcher.Close()
+		return context.Canceled
+	}
+	gw.loopStarted = true
 	go gw.eventLoop()
 
 	return nil
@@ -244,23 +273,60 @@ func (gw *goWatcherProcess) watchWorkspaceModules(watcher *fsnotify.Watcher, wat
 // starts. Failures are logged and reflected in the status; the watcher still
 // starts so the user can fix the code and rebuild.
 func (gw *goWatcherProcess) initialBuild() {
-	gw.appendLog(newLogEntry(logSourceGoBuild, logLevelInfo, "Running initial build..."))
-	if err := gw.buildAndReload(true); err != nil {
-		gw.appendLog(newLogEntry(logSourceGoBuild, logLevelError, fmt.Sprintf("Initial lifecycle build: %v", err)))
-	}
+	_ = gw.buildAndReload(true, "")
 }
 
-// Stop shuts down the fsnotify watcher and waits for the event loop to exit.
-func (gw *goWatcherProcess) Stop() {
-	gw.cancel()
-	if gw.watcher != nil {
-		gw.watcher.Close()
+// beginActivity serializes admission with Stop sealing the publisher set.
+// No WaitGroup Add can race the retirement wait after that seal.
+func (gw *goWatcherProcess) beginActivity() error {
+	gw.lifecycleMu.Lock()
+	defer gw.lifecycleMu.Unlock()
+	if gw.stopping {
+		return context.Canceled
 	}
-	// Wait for the event loop to finish.
+	if err := gw.ctx.Err(); err != nil {
+		return err
+	}
+	gw.publishers.Add(1)
+	return nil
+}
+
+// Stop seals build admission, cancels pending work, and confirms retirement.
+// A timeout retains ownership in the caller instead of reporting a false stop.
+func (gw *goWatcherProcess) Stop() error {
+	gw.stopOnce.Do(func() {
+		gw.lifecycleMu.Lock()
+		gw.stopping = true
+		gw.cancel()
+		watcher := gw.watcher
+		gw.retired = make(chan struct{})
+		gw.lifecycleMu.Unlock()
+		go func() {
+			if watcher != nil {
+				gw.stopErr = watcher.Close()
+			}
+			gw.publishers.Wait()
+			gw.lifecycleMu.Lock()
+			loopStarted := gw.loopStarted
+			gw.lifecycleMu.Unlock()
+			if loopStarted {
+				<-gw.done
+			}
+			close(gw.retired)
+		}()
+	})
 	select {
-	case <-gw.done:
-	case <-time.After(goWatcherStopTimeout):
-		gw.logger.Warnw(context.Background(), "go watcher event loop did not exit in time")
+	case <-gw.retired:
+		return gw.stopErr
+	default:
+	}
+	timer := time.NewTimer(goWatcherStopTimeout)
+	defer timer.Stop()
+	select {
+	case <-gw.retired:
+		return gw.stopErr
+	case <-timer.C:
+		return fmt.Errorf("go watcher did not retire all publishers within %s", goWatcherStopTimeout)
 	}
 }
 
@@ -338,39 +404,96 @@ func (gw *goWatcherProcess) debounceRebuild(mu *sync.Mutex, timers map[string]*t
 
 // handleRebuild compiles and publishes a private profile artifact, then reloads.
 func (gw *goWatcherProcess) handleRebuild(changedFile string) error {
-	gw.appendLog(newLogEntry(logSourceGoBuild, logLevelInfo, "Rebuilding after "+filepath.Base(changedFile)))
-	return gw.buildAndReload(false)
+	return gw.buildAndReload(false, changedFile)
 }
 
-func (gw *goWatcherProcess) buildAndReload(initial bool) (result error) {
+func (gw *goWatcherProcess) buildAndReload(initial bool, changedFile string) error {
+	// Serialize the complete build/reload/result operation before admission.
+	// Queued requests must not join the publisher set while a reloader can Stop.
 	gw.buildMu.Lock()
 	defer gw.buildMu.Unlock()
+	started := time.Now()
+	if err := gw.buildPlugin(initial, changedFile, started); err != nil {
+		return err
+	}
 	if err := gw.ctx.Err(); err != nil {
 		return err
 	}
+
+	// The mutable producer, including staging cleanup, has retired. Reload may
+	// synchronously Stop: retirement never waits for buildMu or queued requests.
+	var err error
+	if gw.reloader == nil {
+		err = fmt.Errorf("plugin lifecycle reloader unavailable")
+	} else if managed, ok := gw.reloader.(interface {
+		ReloadManagedPlugin(context.Context, string, string, string) error
+	}); ok && gw.buildOpts.Generation != "" {
+		err = managed.ReloadManagedPlugin(gw.ctx, gw.pluginID, gw.devPath, gw.buildOpts.Generation)
+	} else if gw.buildOpts.ExpectedSDKRevision != "" {
+		err = fmt.Errorf("workspace reloader must enforce source/generation")
+	} else {
+		err = gw.reloader.ReloadPlugin(gw.pluginID)
+	}
+	var appErr *apperror.AppError
+	if initial && errors.As(err, &appErr) && appErr.Type == apperror.TypePluginNotLoaded {
+		// Build ready, runtime still pending until installer LoadPlugin succeeds.
+		return nil
+	}
+	if err == nil {
+		return nil
+	}
+	err = fmt.Errorf("plugin lifecycle reload: %w", err)
+	// Reload failure is a separate, admitted notification, not an extension of
+	// the retired publisher. Stop can seal it out before returning success.
+	if gw.beginActivity() == nil {
+		defer gw.publishers.Done()
+		gw.setBuild(time.Since(started), err.Error())
+		if gw.runtimeError != nil {
+			gw.runtimeError(err)
+		}
+		gw.appendLog(newLogEntry(logSourceGoBuild, logLevelError, err.Error()))
+	}
+	return err
+}
+
+func (gw *goWatcherProcess) buildPlugin(initial bool, changedFile string, started time.Time) (result error) {
+	if err := gw.beginActivity(); err != nil {
+		return err
+	}
+	defer gw.publishers.Done()
+	if err := gw.ctx.Err(); err != nil {
+		return err
+	}
+	if initial {
+		gw.appendLog(newLogEntry(logSourceGoBuild, logLevelInfo, "Running initial build..."))
+	} else {
+		gw.appendLog(newLogEntry(logSourceGoBuild, logLevelInfo, "Rebuilding after "+filepath.Base(changedFile)))
+	}
+	gw.setStatus(DevProcessStatusBuilding)
 	defer func() {
 		result = errors.Join(result, gw.cleanupBuildOutput())
-	}()
-	gw.setStatus(DevProcessStatusBuilding)
-	started := time.Now()
-	buildReady := false
-	defer func() {
 		if result != nil {
 			gw.setBuild(time.Since(started), result.Error())
-			if !buildReady {
-				gw.setStatus(DevProcessStatusError)
-			} else if gw.runtimeError != nil {
-				gw.runtimeError(result)
-			}
+			gw.setStatus(DevProcessStatusError)
+			gw.appendLog(newLogEntry(logSourceGoBuild, logLevelError, result.Error()))
 		}
 	}()
 	if err := gw.runGoBuild(); err != nil {
 		return err
 	}
+	if err := gw.ctx.Err(); err != nil {
+		return err
+	}
 	if err := gw.syncPluginYaml(); err != nil {
 		return err
 	}
+	if err := gw.ctx.Err(); err != nil {
+		return err
+	}
 	if err := gw.transferBinary(); err != nil {
+		return err
+	}
+	if err := gw.ctx.Err(); err != nil {
 		return err
 	}
 	if gw.selectedSDK.ReviewedRevision != "" {
@@ -382,31 +505,11 @@ func (gw *goWatcherProcess) buildAndReload(initial bool) (result error) {
 			return err
 		}
 	}
+	if err := gw.ctx.Err(); err != nil {
+		return err
+	}
 	gw.setBuild(time.Since(started), "")
 	gw.setStatus(DevProcessStatusReady)
-	buildReady = true
-	if gw.reloader == nil {
-		return fmt.Errorf("plugin lifecycle reloader unavailable")
-	}
-	var err error
-	if managed, ok := gw.reloader.(interface {
-		ReloadManagedPlugin(context.Context, string, string, string) error
-	}); ok && gw.buildOpts.Generation != "" {
-		err = managed.ReloadManagedPlugin(gw.ctx, gw.pluginID, gw.devPath, gw.buildOpts.Generation)
-	} else {
-		if gw.buildOpts.ExpectedSDKRevision != "" {
-			return fmt.Errorf("workspace reloader must enforce source/generation")
-		}
-		err = gw.reloader.ReloadPlugin(gw.pluginID)
-	}
-	var appErr *apperror.AppError
-	if initial && errors.As(err, &appErr) && appErr.Type == apperror.TypePluginNotLoaded {
-		// Build ready, runtime still pending until installer LoadPlugin succeeds.
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("plugin lifecycle reload: %w", err)
-	}
 	return nil
 }
 
@@ -532,6 +635,9 @@ func (gw *goWatcherProcess) runGoBuild() error {
 // transferBinary atomically publishes the private staged executable inside the
 // same profile filesystem, without copying or mutating source-owned artifacts.
 func (gw *goWatcherProcess) transferBinary() error {
+	if err := gw.ctx.Err(); err != nil {
+		return err
+	}
 	if gw.buildRelativePath == "" {
 		return fmt.Errorf("plugin build has no private artifact to publish")
 	}
@@ -541,6 +647,9 @@ func (gw *goWatcherProcess) transferBinary() error {
 		return apperror.Internal(err, "Failed to create plugin bin directory")
 	}
 
+	if err := gw.ctx.Err(); err != nil {
+		return err
+	}
 	dstRelPath := filepath.Join(binDir, "plugin")
 	if err := gw.pluginsRoot.Rename(gw.buildRelativePath, dstRelPath); err != nil {
 		return apperror.Internal(err, "Failed to publish built binary")
@@ -555,6 +664,11 @@ func (gw *goWatcherProcess) syncPluginYaml() error {
 	metadata, err := sdktypes.LoadPluginMetadata(gw.devPath)
 	if err != nil {
 		return err
+	}
+	if gw.ctx != nil {
+		if err := gw.ctx.Err(); err != nil {
+			return err
+		}
 	}
 	if metadata.ID != gw.pluginID {
 		return fmt.Errorf("source metadata plugin ID changed from %q to %q", gw.pluginID, metadata.ID)
@@ -571,12 +685,23 @@ func (gw *goWatcherProcess) syncPluginYaml() error {
 	if err != nil {
 		return err
 	}
+	if gw.ctx != nil {
+		if err := gw.ctx.Err(); err != nil {
+			return err
+		}
+	}
 	if err = gw.pluginsRoot.MkdirAll(gw.pluginID, dirPerm); err != nil {
 		return err
 	}
 	temporary := filepath.Join(gw.pluginID, "plugin.yaml.tmp")
 	if err = gw.pluginsRoot.WriteFile(temporary, encoded, filePerm); err != nil {
 		return err
+	}
+	if gw.ctx != nil {
+		if err := gw.ctx.Err(); err != nil {
+			_ = gw.pluginsRoot.Remove(temporary)
+			return err
+		}
 	}
 	if err = gw.pluginsRoot.Rename(temporary, filepath.Join(gw.pluginID, "plugin.yaml")); err != nil {
 		_ = gw.pluginsRoot.Remove(temporary)

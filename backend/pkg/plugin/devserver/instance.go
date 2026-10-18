@@ -2,6 +2,7 @@ package devserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -173,29 +174,38 @@ func (inst *DevServerInstance) Start() error {
 // Stop methods can still look up and signal the process group.
 func (inst *DevServerInstance) Stop() error {
 	inst.logger.Infow(context.Background(), "stopping dev server instance")
-	var stopErr error
+	var viteErr, goErr error
 
 	// Stop sub-processes FIRST while the context is still alive,
 	// so they can do graceful SIGTERM → SIGKILL on the process group.
 	if inst.vite != nil {
-		stopErr = inst.vite.Stop()
+		viteErr = inst.vite.Stop()
 	}
 	if inst.goWatcher != nil {
-		inst.goWatcher.Stop()
+		goErr = inst.goWatcher.Stop()
 	}
 
 	// NOW cancel the context (no-op for already-stopped processes).
 	inst.cancel()
 
+	stopErr := errors.Join(viteErr, goErr)
 	if stopErr != nil {
 		inst.setLastError(stopErr.Error())
+	}
+	if viteErr != nil {
 		inst.setViteStatus(DevProcessStatusError)
 	} else {
 		inst.setViteStatus(DevProcessStatusStopped)
 	}
-	inst.setGoStatus(DevProcessStatusStopped)
+	if goErr != nil {
+		inst.setGoStatus(DevProcessStatusError)
+	} else {
+		inst.setGoStatus(DevProcessStatusStopped)
+	}
 
-	inst.logger.Infow(context.Background(), "dev server instance stopped")
+	if stopErr == nil {
+		inst.logger.Infow(context.Background(), "dev server instance stopped")
+	}
 	return stopErr
 }
 

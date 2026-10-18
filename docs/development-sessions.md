@@ -64,6 +64,13 @@ On macOS, canonical `down`/`restart` arm a retained kqueue `NOTE_EXIT` observati
 
 On Windows, a process may exit after handle identity verification but before `TerminateProcess`. An access-denied result is idempotent only when a zero-time wait confirms that exact pinned handle is signaled. An unsignaled or unreadable handle retains the original error; permission failures for a live process are not suppressed.
 
+## Managed backend publisher retirement
+
+The Go watcher registers initial setup/build and debounced rebuild publishers through one lifecycle admission gate. Stop seals that gate, cancels work, and waits for the event loop plus admitted compilation/publication/status/staging cleanup. A bounded timeout is an error, not a stopped acknowledgement: the manager retains ownership, and stop may be retried after the existing publisher retires.
+
+Build serialization is acquired before publisher admission and retained through synchronous reload and error reporting. Mutable publication retires before the reloader is called, so a reloader may stop its own watcher without waiting on itself. Queued builds are not admitted while waiting for serialization. Consequently an older failed reload cannot overtake a newer successful build and poison its readiness. Reload-error notification requires fresh admission through the sealed lifecycle gate; stopped generations cannot receive late status writes.
+
+
 ## Discovery and tokens
 
 `OpenDiscoveryStore(runtimeDirectory)` owns a dedicated profile runtime directory. `GenerateToken()` produces a bearer-token byte slice with 256 bits of randomness. Keep that value out of stdout, JSON responses, logs, baselines and inspect output.
