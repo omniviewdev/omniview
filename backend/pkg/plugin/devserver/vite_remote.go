@@ -163,6 +163,8 @@ func (vp *viteProcess) remoteObservationFailed(err error) {
 	vp.observationErr = err
 	vp.setStatus(DevProcessStatusError)
 	vp.mu.Unlock()
+	vp.logger.Warnw(context.Background(), "retained frontend observation failed", "pluginID", vp.pluginID, "error", err)
+	vp.appendLog(newLogEntry(logSourceVite, logLevelError, fmt.Sprintf("Retained frontend observation failed: %v", err)))
 	select {
 	case vp.observationError <- fmt.Errorf("retained frontend observation failed: %w", err):
 	default:

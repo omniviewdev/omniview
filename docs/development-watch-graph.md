@@ -80,6 +80,8 @@ Managed installation/build/Vite commands establish native-free `internal/devoutp
 
 Managed frontend preparation, spawn/capture and publication share a start gate with shutdown. Process-map locking covers only short lookup/publication operations, so a second plugin's tool/output preparation cannot block the first plugin's log/status observations. Shutdown snapshots every accepted retained child under the same start gate, then releases locks before waiting for disposal. Observation deadlines are not increased to hide a healthy process stranded behind unrelated startup work.
 
+A lost retained-process observation is not proof of process exit. The producer stays unready with its owned handle retained; the actual cause is written to its existing local diagnostic log and bounded dev-log buffer. Read those logs deliberately with `--unsafe-output` on a private test instance, rather than inferring death from a live HTTP endpoint or an empty public `LastError`.
+
 The serial graph prepares same-depth exclusive sibling stages using `Prepare` with `Distribution`, `Bindings`, `Shims`, or `YAMLWorker`. It runs actual compiler commands with:
 
 - `OMNIVIEW_BUILD_OUTPUT_DIRECTORY`: Vite/declaration outDir or argv-safe package-local tsup CLI out-dir.
