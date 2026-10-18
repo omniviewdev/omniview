@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdtemp, readFile, realpath } from 'node:fs/promises';
+import { chmod, lstat, mkdtemp, readFile, realpath, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { promisify } from 'node:util';
 
 const execute = promisify(execFile);
@@ -12,8 +12,18 @@ export type Descriptor = {
   kind: string; displayName: string; stateRoot: string; readiness: string;
   process: { pid: number; startIdentity: string; executable: string; workspaceID: string; generation: string; role: string; source: string };
   endpoints: { browser: string | null; vite: string | null; hmr: string | null; control: string | null; mcp: string | null };
+  plugins: { id: string; source: string; generation: string; mode: string; buildStatus: string; viteStatus: string; rpcStatus: string; controllerStatus: string }[];
 };
-type Status = { manifest: { workspaceID: string }; root: string; stateRoot: string; launchPhase: string; instance?: Descriptor };
+export type Status = {
+  manifest: { workspaceID: string; plugins: { id: string; repositoryID: string; mode: string }[] };
+  root: string; stateRoot: string; launchPhase: string; generation?: string; instance?: Descriptor;
+  builds?: Record<string, { node: string; phase: string }>;
+};
+export type ProfileOptions = {
+  liveFrontend?: boolean;
+  watch?: boolean;
+  prepare?: (workspace: Workspace) => Promise<void>;
+};
 type Response<T = unknown> = { protocolVersion: number; requestID: string; workspaceID: string; generation: string; status: string; result: T; error?: { code: string } };
 type Sources = { sources: Record<string, string>; refs: Record<string, string>; repositories: string[]; plugins?: string[]; reviewedSDKRevision: string; linkEvidence: string; liveFrontend?: boolean };
 type LinkEvidence = { protocol: string; versions: string[]; atomicDist: boolean; peers: boolean; runtime: boolean };
@@ -74,9 +84,77 @@ async function privateFile(path: string): Promise<Buffer> {
 
 export class Workspace {
   descriptor!: Descriptor;
+  private readonly edits = new Map<string, { before: Buffer | null; mode: number; current: Buffer }>();
   constructor(readonly root: string, readonly target: string, readonly owned: boolean, readonly expected?: { workspaceID: string; generation: string }) {}
   selection(): string[] { return ['--root', this.root, '--workspace', this.target]; }
   browserURL(): string { return loopback(this.descriptor.endpoints.browser); }
+  async status(): Promise<Status> {
+    return cli<Status>(['workspace', 'inspect', ...this.selection()]);
+  }
+  async repository(id: string): Promise<string> {
+    this.assertOwned();
+    const paths = await cli<{ workspaceID: string; repositories: Record<string, string> }>(['workspace', 'paths', ...this.selection()]);
+    const status = await this.status();
+    const path = paths.repositories[id];
+    if (paths.workspaceID !== status.manifest.workspaceID || (this.descriptor && paths.workspaceID !== this.descriptor.workspaceID) || !path) throw new Error(`Repository ${id} is not selected in this owned workspace`);
+    const target = await realpath(this.target);
+    const canonical = await realpath(path);
+    const inside = relative(target, canonical);
+    if (target !== this.target || canonical !== path || !inside || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) throw new Error('Source mutation must stay inside an authoritative harness-owned feature worktree');
+    return canonical;
+  }
+  private async sourcePath(repository: string, path: string): Promise<string> {
+    if (!path || isAbsolute(path) || path.split(/[\\/]/).some(part => !part || part === '.' || part === '..' || part.startsWith('.')) || /(?:^|\/)(?:node_modules|dist|build|bin|vendor)(?:\/|$)/.test(path)) throw new Error('Acceptance edits must name ordinary source files, not metadata or generated outputs');
+    const root = await this.repository(repository);
+    const selected = join(root, path);
+    if (await realpath(dirname(selected)) !== dirname(selected)) throw new Error('Acceptance source parent is redirected');
+    try {
+      const info = await lstat(selected);
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error('Acceptance source must be a regular file');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    return selected;
+  }
+  async editSource(repository: string, path: string, transform: (source: string) => string): Promise<void> {
+    this.assertOwned();
+    const status = await this.status();
+    if (this.descriptor && status.generation !== this.descriptor.generation) throw new Error('Reselect the new generation explicitly before editing source');
+    const selected = await this.sourcePath(repository, path);
+    let before: Buffer | null = null;
+    let mode = 0o600;
+    try { before = await readFile(selected); mode = (await lstat(selected)).mode & 0o777; } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const previous = this.edits.get(selected);
+    if (previous && (!before || !before.equals(previous.current))) throw new Error('Acceptance source changed outside its owned edit journal');
+    const current = Buffer.from(transform(before?.toString() ?? ''));
+    // Record intent before writing: a failed write must never permit dirty removal.
+    this.edits.set(selected, { before: previous ? previous.before : before, mode: previous?.mode ?? mode, current });
+    await writeFile(selected, current, { mode, flag: before ? 'w' : 'wx' });
+  }
+  async restoreSources(): Promise<void> {
+    this.assertOwned();
+    const status = await this.status();
+    if (status.launchPhase !== 'stopped') throw new Error('Source restoration requires proven owned workspace down');
+    for (const [path, edit] of [...this.edits].reverse()) {
+      if (await realpath(this.target) !== this.target || await realpath(dirname(path)) !== dirname(path)) throw new Error('Owned source restoration refused a redirected feature worktree');
+      const info = await lstat(path);
+      if (!info.isFile() || info.isSymbolicLink() || !Buffer.from(await readFile(path)).equals(edit.current)) throw new Error('Owned source restoration refused a foreign edit; private feature worktree retained');
+      if (edit.before === null) await unlink(path);
+      else { await writeFile(path, edit.before); await chmod(path, edit.mode); }
+      this.edits.delete(path);
+    }
+  }
+  async reselect(): Promise<Descriptor> {
+    this.assertOwned();
+    const previous = this.descriptor;
+    if (!previous) return this.verify();
+    const status = await this.status();
+    if (!status.instance || status.manifest.workspaceID !== previous.workspaceID || status.instance.instanceID !== previous.instanceID) throw new Error('Reselection refused a different owned profile');
+    this.descriptor = undefined as unknown as Descriptor;
+    try { return await this.verify(); } catch (error) { this.descriptor = previous; throw error; }
+  }
   async verify(): Promise<Descriptor> {
     // The CLI performs kernel start-identity/executable ownership checks, validates
     // private discovery and authenticates instance.inspect. No /health adoption.
@@ -151,6 +229,7 @@ export class Workspace {
 
 export class OwnedProfiles {
   private readonly workspaces = new Map<string, Workspace>();
+  private readonly modes = new Map<string, string>();
   private constructor(readonly root: string, private readonly sources: Sources) {}
   static async create(): Promise<OwnedProfiles> {
     const sources = JSON.parse(await readFile(requireEnvironment('OMNIVIEW_E2E_SOURCES'), 'utf8')) as Sources;
@@ -163,23 +242,46 @@ export class OwnedProfiles {
     await cli(['workspace', 'init', '--root', root, ...Object.entries(sources.sources).flatMap(([id, path]) => ['--source', `${id}=${path}`, '--source-ref', `${id}=${sources.refs[id]}`])]);
     return profiles;
   }
-  async get(name: string): Promise<Workspace> {
+  async get(name: string, options: ProfileOptions = {}): Promise<Workspace> {
+    const mode = JSON.stringify({ liveFrontend: options.liveFrontend ?? this.sources.liveFrontend === true, watch: options.watch ?? false });
     const existing = this.workspaces.get(name);
-    if (existing) { await existing.verify(); return existing; }
+    if (existing) {
+      if (this.modes.get(name) !== mode || options.prepare) throw new Error('Owned profile options cannot change after creation');
+      await existing.verify(); return existing;
+    }
     if (!/^[a-z][a-z0-9-]{0,30}$/.test(name)) throw new Error('Invalid disposable profile name');
     const created = await cli<{ root: string }>(['workspace', 'create', name, '--root', this.root, '--name', `E2E ${name}`, '--state-root', join(this.root, 'profiles', name, 'state'), ...this.sources.repositories.flatMap(id => ['--repo', id]), ...(this.sources.plugins ?? []).flatMap(id => ['--plugin', id])]);
     const workspace = new Workspace(this.root, created.root, true);
     // Register before startup so a timed-out launch still goes through owned down.
     this.workspaces.set(name, workspace);
-    await cli(['workspace', 'up', ...workspace.selection(), '--mode', 'browser', '--watch=false', `--live-frontend=${this.sources.liveFrontend === true}`, '--reviewed-sdk-revision', this.sources.reviewedSDKRevision, '--link-evidence', this.sources.linkEvidence, '--timeout', '20m']);
+    this.modes.set(name, mode);
+    // Kubernetes's standalone default scans the human kubeconfig. The disposable
+    // selected source instead exposes zero connections before any process starts.
+    for (const plugin of (await workspace.status()).manifest.plugins) {
+      if (plugin.id !== 'kubernetes') continue;
+      await workspace.editSource(plugin.repositoryID, 'pkg/main.go', source => {
+        const original = 'Default:     []string{"~/.kube/config"}';
+        if (source.split(original).length !== 2) throw new Error('Kubernetes safe startup prerequisite changed: cannot disable human kubeconfig discovery');
+        return source.replace(original, 'Default:     []string{}');
+      });
+    }
+    await options.prepare?.(workspace);
+    await cli(['workspace', 'up', ...workspace.selection(), '--mode', 'browser', `--watch=${options.watch ?? false}`, `--live-frontend=${options.liveFrontend ?? this.sources.liveFrontend === true}`, '--reviewed-sdk-revision', this.sources.reviewedSDKRevision, '--link-evidence', this.sources.linkEvidence, '--timeout', '20m']);
     await workspace.verify();
     return workspace;
   }
   async close(): Promise<void> {
     const failures: string[] = [];
+    // Stop every producer before restoring any throwaway source. Failed down
+    // never authorizes restoration, unlink, or native worktree removal.
+    const stopped: [string, Workspace][] = [];
     for (const [name, workspace] of [...this.workspaces].reverse()) {
+      try { await cli(['workspace', 'down', ...workspace.selection(), '--timeout', '2m']); stopped.push([name, workspace]); }
+      catch { failures.push(name); }
+    }
+    for (const [name, workspace] of stopped) {
       try {
-        await cli(['workspace', 'down', ...workspace.selection(), '--timeout', '2m']);
+        await workspace.restoreSources();
         await cli(['workspace', 'unlink', ...workspace.selection()]);
         await cli(['workspace', 'remove', ...workspace.selection(), '--delete-state', '--delete-branches']);
       } catch { failures.push(name); }

@@ -2,7 +2,7 @@ import { test as base } from '@playwright/test';
 import type { APIRequestContext, BrowserContext, Page } from '@playwright/test';
 import { callBinding, Service } from './wails';
 import { OwnedProfiles } from './workspace';
-import type { Workspace } from './workspace';
+import type { ProfileOptions, Workspace } from './workspace';
 
 type AppFixtures = {
   appPage: Page;
@@ -11,7 +11,7 @@ type AppFixtures = {
   /** Closes terminal sessions, which the app reopens as drawer tabs on load. */
   closeTerminals: void;
   workspace: Workspace;
-  profiles: { open(name: string): Promise<{ workspace: Workspace; page: Page }> };
+  profiles: { open(name: string, options?: ProfileOptions): Promise<{ workspace: Workspace; page: Page }> };
   captureErrors: void;
 };
 
@@ -56,12 +56,12 @@ export const test = base.extend<AppFixtures, { ownedProfiles: OwnedProfiles }>({
     const records: { kind: string; message: string }[] = [];
     try {
       await use({
-        open: async name => {
-          const workspace = await ownedProfiles.get(name);
+        open: async (name, options) => {
+          const workspace = await ownedProfiles.get(name, options);
           const context = await browser.newContext({ baseURL: workspace.browserURL() });
           contexts.push(context);
+          context.on('page', additional => collectErrors(additional, records));
           const page = await context.newPage();
-          collectErrors(page, records);
           await page.goto('/');
           await page.getByTestId('app-shell').waitFor();
           return { workspace, page };

@@ -314,5 +314,7 @@ Actual stock12 builds/installations succeeded, but its linked-peer checker rejec
 
 The generated aggregate root is the registered feature directory above selected worktrees. Preserve source configs/locks for standalone use, explicitly reconcile aggregate policies, maintain controlled output lifetimes/restoration, and retain stock12 without forks, downgrade or relaxed peer checks. Authoritative native `PNPM_CONFIG_WORKSPACE_DIR` preserves package cwd/argv while overriding nearer nested YAML; validate its canonical scope and clear inherited aliases before use.
 
+The developer additionally approved host-led convergence of incompatible shared lock snapshots: host first, selected UI next, remaining source locks in stable relative-path order. This permits necessary transitive-edge convergence within the generated feature graph, not a general dependency update or changes to standalone source locks. Distinct locked identities/integrities remain seeded, same-key integrity conflicts still fail, seed choices are inspectable, and native installation plus recursive peers determine the actual final graph.
+
 Implementation packets, exact shared interfaces, parallel ownership and acceptance are in [the pnpm12 composition plan](../plans/2026-10-17-pnpm12-feature-composition.md). Standalone12 build success is not managed launch acceptance; the original hard gates above remain.
 

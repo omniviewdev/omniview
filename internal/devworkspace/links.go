@@ -78,10 +78,11 @@ type LinkResolution struct {
 }
 
 type LinkReport struct {
-	WorkspaceID string           `json:"workspaceID"`
-	Protocol    string           `json:"protocol"`
-	Phase       string           `json:"phase"`
-	Resolutions []LinkResolution `json:"resolutions"`
+	WorkspaceID     string                       `json:"workspaceID"`
+	Protocol        string                       `json:"protocol"`
+	Phase           string                       `json:"phase"`
+	Resolutions     []LinkResolution             `json:"resolutions"`
+	SeedConvergence []devcompose.LockConvergence `json:"seedConvergence,omitempty"`
 }
 
 type linkRoot = devcompose.Root
@@ -828,7 +829,7 @@ func (m *Manager) Link(ctx context.Context, name string, opts LinkOptions) (Link
 			if err = errors.Join(devcompose.CheckInputs(*j.Plan.Composition), checkLinkFiles(w.Root, j)); err != nil {
 				return LinkReport{}, err
 			}
-			return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase}, nil
+			return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, SeedConvergence: j.Plan.Composition.Convergence}, nil
 		}
 		return LinkReport{}, devcontract.Fail(4, "link_interrupted", "unlink the interrupted dependency transaction before retrying")
 	}
@@ -883,7 +884,7 @@ func (m *Manager) Link(ctx context.Context, name string, opts LinkOptions) (Link
 		return LinkReport{}, err
 	}
 	if err = installComposition(ctx, w.ResolvedWorkspace, j, linkCommand); err != nil {
-		return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase}, err
+		return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, SeedConvergence: j.Plan.Composition.Convergence}, err
 	}
 	j.Phase = "linked"
 	if err = saveLinkJournal(j); err != nil {
@@ -891,7 +892,7 @@ func (m *Manager) Link(ctx context.Context, name string, opts LinkOptions) (Link
 	}
 	// Missing exports are legitimate before bootstrap; full resolution belongs
 	// after the selected producers have published their distributions.
-	return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase}, nil
+	return LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, SeedConvergence: j.Plan.Composition.Convergence}, nil
 }
 
 // Unlink restores only attested aggregate/Go files and owned outputs. It does not
@@ -940,7 +941,7 @@ func (m *Manager) InspectLinks(ctx context.Context, name string) (LinkReport, er
 	if err != nil {
 		return LinkReport{}, err
 	}
-	report := LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase}
+	report := LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, SeedConvergence: j.Plan.Composition.Convergence}
 	if err = checkLinkFiles(w.Root, j); err != nil {
 		return report, err
 	}
@@ -992,7 +993,7 @@ let entry=fileURLToPath(import.meta.resolve(specifier,pathToFileURL(path.join(co
 for(;;){const p=path.join(dir,'package.json');if(fs.existsSync(p)){const j=JSON.parse(fs.readFileSync(p));if(j.name===name){console.log(JSON.stringify({path:dir,version:j.version||''}));break;}}const up=path.dirname(dir);if(up===dir)throw Error('manifest not found');dir=up;}`
 
 func inspectLinkPlan(ctx context.Context, j *linkJournal) LinkReport {
-	report := LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, Resolutions: []LinkResolution{}}
+	report := LinkReport{WorkspaceID: j.WorkspaceID, Protocol: j.Evidence.Protocol, Phase: j.Phase, Resolutions: []LinkResolution{}, SeedConvergence: j.Plan.Composition.Convergence}
 	for _, consumer := range j.Plan.Consumers {
 		pkg, err := readLinkPackage(consumer.Path)
 		if err != nil {

@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/devcontract"
@@ -45,7 +46,239 @@ func mergeRecords(dst map[string]any, src any, setting, source string) error {
 	}
 	return nil
 }
-func seedLock(w devcontract.ResolvedWorkspace, sources sourceSet, plan Plan, policy map[string]any) ([]map[string]any, map[string]string, error) {
+
+// Native pnpm records effective peers after overrides, so standalone roots can
+// describe one tarball differently. Only policy-explained peer differences and
+// additive registry metadata can be reconciled without native resolution.
+func mergePackageRecord(left, right, policy map[string]any, source string) (map[string]any, error) {
+	merged := make(map[string]any, len(left))
+	for field, v := range left {
+		merged[field] = v
+	}
+	for _, field := range sortedKeys(right) {
+		v := right[field]
+		prior, present := left[field]
+		if present && reflect.DeepEqual(prior, v) {
+			continue
+		}
+		switch field {
+		case "libc", "deprecated":
+			// Retain a present platform constraint instead of making the
+			// package unrestricted because another lock predates it.
+			if present {
+				return nil, refusal("conflicting lock packages %s metadata in %s", field, source)
+			}
+			merged[field] = v
+		case "peerDependencies":
+			peers, ok := reconcileLockedPeers(mapping(prior), mapping(v), policy)
+			if !present || !ok {
+				return nil, refusal("conflicting lock packages peerDependencies metadata in %s", source)
+			}
+			merged[field] = peers
+		default:
+			return nil, refusal("conflicting lock packages %s metadata in %s; reconcile source locks before composition", safeSetting(field), source)
+		}
+	}
+	for _, field := range sortedKeys(left) {
+		if _, present := right[field]; !present && field != "libc" && field != "deprecated" {
+			return nil, refusal("conflicting lock packages %s metadata in %s; reconcile source locks before composition", safeSetting(field), source)
+		}
+	}
+	return merged, nil
+}
+
+// Deliberately cover only unconditional bare-name overrides with ordinary
+// exact/caret/tilde versions. More-specific selectors or non-semver overrides
+// need native resolution, not a second partial override interpreter here.
+var lockedPeerOverride = regexp.MustCompile(`^[~^]?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
+
+func reconcileLockedPeers(left, right, policy map[string]any) (map[string]any, bool) {
+	if left == nil || right == nil || len(left) != len(right) {
+		return nil, false
+	}
+	overrides := mapping(policy["overrides"])
+	peers := make(map[string]any, len(left))
+	for name, prior := range left {
+		value, present := right[name]
+		if !present {
+			return nil, false
+		}
+		if reflect.DeepEqual(prior, value) {
+			peers[name] = value
+			continue
+		}
+		replacement, ok := overrides[name].(string)
+		if !ok || !lockedPeerOverride.MatchString(replacement) {
+			return nil, false
+		}
+		for selector := range overrides {
+			// A version comparator can contain '>'; it is not a parent
+			// separator. Refuse unsupported qualified rules before splitting.
+			if selector != name && strings.Contains(selector, name+"@") {
+				return nil, false
+			}
+			target := selector
+			if i := strings.LastIndex(target, ">"); i >= 0 {
+				target = target[i+1:]
+			}
+			if selector != name && (target == name || strings.HasPrefix(target, name+"@")) {
+				return nil, false
+			}
+		}
+		peers[name] = replacement
+	}
+	return peers, true
+}
+
+// Host-led convergence keeps preferred child pins, while retaining compatible
+// additional edges. Native's single install and recursive audit own the final
+// graph, which may differ from every standalone source graph.
+func mergeSnapshotRecord(left, right map[string]any, source string) (map[string]any, error) {
+	merged := make(map[string]any, len(left))
+	for field, v := range left {
+		merged[field] = v
+	}
+	for _, field := range sortedKeys(right) {
+		v := right[field]
+		prior, present := left[field]
+		if present && reflect.DeepEqual(prior, v) {
+			continue
+		}
+		switch field {
+		case "dependencies", "optionalDependencies":
+			if mapping(v) == nil || (present && mapping(prior) == nil) {
+				return nil, refusal("invalid lock snapshots %s in %s", field, source)
+			}
+			deps := make(map[string]any, len(mapping(v))+len(mapping(prior)))
+			for name, version := range mapping(v) {
+				deps[name] = version
+			}
+			for name, version := range mapping(prior) {
+				deps[name] = version
+			}
+			merged[field] = deps
+		case "optional":
+			if _, ok := v.(bool); !ok {
+				return nil, refusal("invalid lock snapshots optional in %s", source)
+			}
+			if _, ok := prior.(bool); present && !ok {
+				return nil, refusal("invalid lock snapshots optional in %s", source)
+			}
+			if prior == true && v == true {
+				merged[field] = true
+			} else {
+				delete(merged, field)
+			}
+		case "transitivePeerDependencies":
+			names := map[string]bool{}
+			for _, value := range []any{prior, v} {
+				if value == nil {
+					continue
+				}
+				list, ok := value.([]any)
+				if !ok {
+					return nil, refusal("invalid lock snapshots transitivePeerDependencies in %s", source)
+				}
+				for _, item := range list {
+					name, ok := item.(string)
+					if !ok {
+						return nil, refusal("invalid lock snapshots transitivePeerDependencies in %s", source)
+					}
+					names[name] = true
+				}
+			}
+			list := make([]any, 0, len(names))
+			for _, name := range sortedKeys(names) {
+				list = append(list, name)
+			}
+			merged[field] = list
+		default:
+			return nil, refusal("conflicting lock snapshots %s metadata in %s; reconcile source locks before composition", safeSetting(field), source)
+		}
+	}
+	for _, field := range sortedKeys(left) {
+		if _, present := right[field]; !present {
+			switch field {
+			case "optional":
+				delete(merged, field)
+			case "dependencies", "optionalDependencies", "transitivePeerDependencies":
+			default:
+				return nil, refusal("conflicting lock snapshots %s metadata in %s; reconcile source locks before composition", safeSetting(field), source)
+			}
+		}
+	}
+	// Required paths win when another root labels the same child edge optional.
+	// Across the two maps, the preferred source still owns the selected pin.
+	required, optional := mapping(merged["dependencies"]), mapping(merged["optionalDependencies"])
+	for name := range optional {
+		if _, exists := required[name]; exists {
+			if version, preferred := mapping(left["dependencies"])[name]; preferred {
+				required[name] = version
+			} else if version, preferred := mapping(left["optionalDependencies"])[name]; preferred {
+				required[name] = version
+			}
+			delete(optional, name)
+		}
+	}
+	return merged, nil
+}
+
+var reportableLockKey = regexp.MustCompile(`^(?:@[A-Za-z0-9._-]+/)?[A-Za-z0-9._-]+@[0-9][0-9A-Za-z._+@/()=-]*$`)
+
+func mergeSeedRecords(dst map[string]any, src any, section, source string, owners map[string]string, plan *Plan, policy map[string]any) error {
+	records := mapping(src)
+	if src != nil && records == nil {
+		return refusal("invalid lock %s records in %s", section, source)
+	}
+	for _, key := range sortedKeys(records) {
+		value := records[key]
+		old, exists := dst[key]
+		if !exists {
+			dst[key], owners[key] = value, source
+			continue
+		}
+		if reflect.DeepEqual(old, value) {
+			continue
+		}
+		left, right := mapping(old), mapping(value)
+		if left == nil || right == nil {
+			return refusal("invalid lock %s record in %s", section, source)
+		}
+		changed := map[string]bool{}
+		for field, v := range left {
+			if other, present := right[field]; !present || !reflect.DeepEqual(v, other) {
+				changed[safeSetting(field)] = true
+			}
+		}
+		for field := range right {
+			if _, present := left[field]; !present {
+				changed[safeSetting(field)] = true
+			}
+		}
+		var merged map[string]any
+		var err error
+		if section == "packages" {
+			merged, err = mergePackageRecord(left, right, policy, source)
+		} else {
+			merged, err = mergeSnapshotRecord(left, right, source)
+		}
+		if err != nil {
+			return err
+		}
+		reportKey := key
+		if !reportableLockKey.MatchString(key) {
+			reportKey = "sha256:" + hash([]byte(key))
+		}
+		plan.Convergence = append(plan.Convergence, LockConvergence{
+			Section: section, PackageKey: reportKey, PreferredSource: owners[key],
+			OtherSource: source, ChangedFields: sortedKeys(changed),
+		})
+		dst[key] = merged
+	}
+	return nil
+}
+
+func seedLock(w devcontract.ResolvedWorkspace, sources sourceSet, plan *Plan, policy map[string]any) ([]map[string]any, map[string]string, error) {
 	emptyDocument := func() map[string]any {
 		return map[string]any{
 			"lockfileVersion": "9.0",
@@ -57,6 +290,30 @@ func seedLock(w devcontract.ResolvedWorkspace, sources sourceSet, plan Plan, pol
 	main, metadata := emptyDocument(), emptyDocument()
 	haveMetadata := false
 	documents := map[string]map[string]any{}
+	owners := map[string]map[string]string{"packages": {}, "snapshots": {}}
+	host, _ := w.RepositoryPath("omniview")
+	ui := ""
+	if w.Manifest.Links.UIRepositoryID != nil {
+		ui, _ = w.RepositoryPath(*w.Manifest.Links.UIRepositoryID)
+	}
+	priority := func(path string) int {
+		switch path {
+		case filepath.Join(host, "pnpm-lock.yaml"):
+			return 0
+		case filepath.Join(ui, "pnpm-lock.yaml"):
+			if ui != "" {
+				return 1
+			}
+		}
+		return 2
+	}
+	sort.Slice(sources.locks, func(i, j int) bool {
+		left, right := sources.locks[i], sources.locks[j]
+		if priority(left) != priority(right) {
+			return priority(left) < priority(right)
+		}
+		return relative(w.Root, left) < relative(w.Root, right)
+	})
 	// Only the nearest actual source lock owns a package's importer. Parent lock
 	// leftovers cannot override a nested workspace's frozen registry selection.
 	nearest := map[string]string{}
@@ -115,7 +372,7 @@ func seedLock(w devcontract.ResolvedWorkspace, sources sourceSet, plan Plan, pol
 					return nil, nil, refusal("relative tarball lock resolution in %s requires explicit reconciliation", source)
 				}
 			}
-			if err := mergeRecords(mapping(main[key]), doc[key], key, source); err != nil {
+			if err := mergeSeedRecords(mapping(main[key]), doc[key], key, source, owners[key], plan, policy); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -138,7 +395,7 @@ func seedLock(w devcontract.ResolvedWorkspace, sources sourceSet, plan Plan, pol
 			if importer == nil {
 				return nil, nil, refusal("invalid source lock importer in %s", source)
 			}
-			rewritten, err := rewriteImporter(w, plan, dir, importer, source)
+			rewritten, err := rewriteImporter(w, *plan, dir, importer, source)
 			if err != nil {
 				return nil, nil, err
 			}

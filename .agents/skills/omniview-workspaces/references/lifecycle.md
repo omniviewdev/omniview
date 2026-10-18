@@ -14,6 +14,8 @@ Managed JavaScript uses **one stock pnpm12.14.0 workspace per feature** above th
 
 Use a successful **workspace/12.14.0** protocol report, not historical pnpm10/link evidence. Install exit0 is not peer proof: the managed path requires recursive `pnpm -r peers check --json --lockfile-only`, including after peer-manifest changes. Policies are reconciled at the aggregate root; conflicts fail rather than weakening peers, script restrictions or source ownership.
 
+Shared lock snapshots use the developer-approved host→selected UI→stable remaining-source seed order. Necessary transitive edges may converge, while standalone locks remain unchanged and integrity conflicts still refuse. Inspect `seedConvergence` / canonical `plan.composition.convergence`; do not claim all standalone graphs remain identical or bypass the final native install/recursive audit.
+
 ## Establish a collection once
 
 Read `COLLECTION/.omniview-dev/repositories.json` if present. It is explicit machine-local source authority (`id`, `commonDir`, optional `worktree`, `defaultRef`, `directory`), not a feature path map. Do not recursively search parent directories for clones or guess which duplicate clone is current. With no registry, initialize known paths:

@@ -38,6 +38,16 @@ type File struct {
 	Path string
 	Data []byte
 }
+
+// LockConvergence describes a seed reconciliation, not the final native graph.
+// Sources and field names contain no registry URLs or resolution values.
+type LockConvergence struct {
+	Section         string   `json:"section"`
+	PackageKey      string   `json:"packageKey"`
+	PreferredSource string   `json:"preferredSource"`
+	OtherSource     string   `json:"otherSource"`
+	ChangedFields   []string `json:"changedFields"`
+}
 type Plan struct {
 	SchemaVersion int               `json:"schemaVersion"`
 	WorkspaceID   string            `json:"workspaceID"`
@@ -48,6 +58,7 @@ type Plan struct {
 	Targets       map[string]string `json:"targets"`
 	SourceHashes  map[string]string `json:"sourceHashes"`
 	Files         []File            `json:"-"`
+	Convergence   []LockConvergence `json:"convergence,omitempty"`
 }
 
 type sourceSet struct {
@@ -480,7 +491,7 @@ func New(w devcontract.ResolvedWorkspace, roots []Root, targets map[string]strin
 	if err != nil {
 		return Plan{}, err
 	}
-	lock, providers, err := seedLock(w, sources, plan, policy)
+	lock, providers, err := seedLock(w, sources, &plan, policy)
 	if err != nil {
 		return Plan{}, err
 	}

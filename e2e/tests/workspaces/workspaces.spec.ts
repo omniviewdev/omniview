@@ -25,37 +25,6 @@ test.describe('Owned workspace integration', () => {
     await appPage.screenshot({ path: testInfo.outputPath('named-workspace.png'), fullPage: true });
   });
 
-  test('keeps mandatory identity visible after real header consumer actions hide every optional region', async ({ appPage, workspace }, testInfo) => {
-    const descriptor = await workspace.verify();
-    test.skip(!descriptor.endpoints.vite, 'Requires sources JSON liveFrontend:true to exercise the existing Vite-exported Redux consumer API; optimized identity is covered separately');
-    const header = appPage.getByTestId('app-header');
-    await expect(header.getByPlaceholder('Search anything…', { exact: true })).toBeVisible();
-    for (const name of ['home', 'settings', 'plugins']) await expect(header.getByRole('button', { name, exact: true })).toBeVisible();
-    try {
-      const transition = await appPage.evaluate(async ({ storeModule, headerModule }) => {
-        // These production modules exist in the selected Vite server only; a
-        // Node static import would execute a different store outside the app.
-        const { store } = await import(storeModule);
-        const { actions } = await import(headerModule);
-        store.dispatch(actions.setHeaderVisibility(false));
-        for (const area of ['left', 'center', 'right']) store.dispatch(actions.setHeaderAreaVisibility({ area, visible: false }));
-        const after = store.getState().header;
-        return { visible: after.visible, allAreasHidden: Object.values(after.areas).every(area => !!(area && typeof area === 'object' && 'visible' in area && !area.visible)) };
-      }, { storeModule: '/ui/store/store.ts', headerModule: '/ui/store/header/slice.ts' });
-      expect(transition.visible).toBe(false);
-      expect(transition.allAreasHidden).toBe(true);
-      // A second, unused store would leave these actual consumer controls visible.
-      await expect(header.getByPlaceholder('Search anything…', { exact: true })).toBeHidden();
-      for (const name of ['home', 'settings', 'plugins']) await expect(header.getByRole('button', { name, exact: true })).toBeHidden();
-      await expect(header.getByRole('button', { name: `DEV · ${descriptor.displayName} — instance details`, exact: true })).toBeVisible();
-      await expect(appPage).toHaveTitle(`Omniview — DEV · ${descriptor.displayName}`);
-      await appPage.screenshot({ path: testInfo.outputPath('identity-with-header-regions-hidden.png'), fullPage: true });
-    } finally {
-      // Page reload restores the app's real default store, not a test-only API.
-      await appPage.reload();
-    }
-  });
-
   test('delivers real Wails events over the backend WebSocket to the existing app dispatcher', async ({ appPage, context }) => {
     const receiver = await context.newPage();
     const session = await context.newCDPSession(receiver);

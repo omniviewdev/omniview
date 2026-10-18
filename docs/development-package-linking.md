@@ -43,6 +43,8 @@ Build approvals are permissions, not requirements: explicit `allowBuilds` boolea
 
 Locked registry metadata may contain informational prose with support URLs. An embedded URL in a deprecation notice is not a URL-valued resolution; actual URL values still reject userinfo, query/fragment data and unresolved repository-local references.
 
+The approved seed policy is **host-led convergence**: host lock first, selected UI next, then stable feature-relative source order. Shared snapshot child pins may necessarily converge; distinct locked package identities/integrities remain available, source lockfiles stay unchanged, and same-key resolution/integrity differences still refuse. `seedConvergence` in link reports and `plan.composition.convergence` in the canonical journal identify preferred/other source and changed fields without raw private values. These are seed decisions, not a promise that the final native-installed graph equals every standalone graph.
+
 Local Omniview exports are explicit workspace mappings even when older published dependency ranges differ. React/ReactDOM use the selected host's locked semver providers within the same workspace, not external path links that pnpm12 cannot peer-attest. Managed installs use `--ignore-scripts` and strict peers, followed by **recursive** `pnpm -r peers check --json --lockfile-only`; frozen/up-to-date install alone can skip peer revalidation.
 
 The owned native launcher clears inherited workspace-dir aliases and sets validated `PNPM_CONFIG_WORKSPACE_DIR` to the feature root. Actual package cwd/argv remain unchanged, including nested scripts; a nearer child YAML does not override managed context. Child policies are explicitly reconciled, not presumed inherited.
