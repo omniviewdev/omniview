@@ -85,7 +85,16 @@ async function privateFile(path: string): Promise<Buffer> {
 export class Workspace {
   descriptor!: Descriptor;
   private readonly edits = new Map<string, { before: Buffer | null; mode: number; current: Buffer }>();
-  constructor(readonly root: string, readonly target: string, readonly owned: boolean, readonly expected?: { workspaceID: string; generation: string }) {}
+  readonly root: string;
+  readonly target: string;
+  readonly owned: boolean;
+  readonly expected?: { workspaceID: string; generation: string };
+  constructor(root: string, target: string, owned: boolean, expected?: { workspaceID: string; generation: string }) {
+    this.root = root;
+    this.target = target;
+    this.owned = owned;
+    this.expected = expected;
+  }
   selection(): string[] { return ['--root', this.root, '--workspace', this.target]; }
   browserURL(): string { return loopback(this.descriptor.endpoints.browser); }
   async status(): Promise<Status> {
@@ -230,7 +239,12 @@ export class Workspace {
 export class OwnedProfiles {
   private readonly workspaces = new Map<string, Workspace>();
   private readonly modes = new Map<string, string>();
-  private constructor(readonly root: string, private readonly sources: Sources) {}
+  readonly root: string;
+  private readonly sources: Sources;
+  private constructor(root: string, sources: Sources) {
+    this.root = root;
+    this.sources = sources;
+  }
   static async create(): Promise<OwnedProfiles> {
     const sources = JSON.parse(await readFile(requireEnvironment('OMNIVIEW_E2E_SOURCES'), 'utf8')) as Sources;
     if (!sources.sources?.omniview || !sources.sources?.['plugin-sdk'] || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(sources.reviewedSDKRevision) || !isAbsolute(sources.linkEvidence) || !Array.isArray(sources.repositories)) throw new Error('Explicit host/SDK sources, repositories, full reviewed SDK revision and absolute link evidence are required');
