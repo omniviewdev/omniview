@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 import type { Page, TestInfo } from '@playwright/test';
 import { test, expect } from '../fixtures/app.fixture';
 import { openSettingsCategory, saveSettings, settingRow } from '../fixtures/helpers';
@@ -112,7 +113,9 @@ async function graphReady(workspace: Workspace, info: TestInfo, stage: string): 
   }, { ...poll, message: `${stage}: real graph must recover, not retain an earlier ready receipt` }).toEqual({ phase: 'ready', graph: 'ready' });
   await workspace.reselect();
   const status = await workspace.status();
-  await info.attach(`${stage}-graph.json`, { body: JSON.stringify({ generation: status.generation, phase: status.launchPhase, builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([id, build]) => [id, build.phase])) }), contentType: 'application/json' });
+  const path = info.outputPath(`${stage}-graph.json`);
+  await writeFile(path, JSON.stringify({ generation: status.generation, phase: status.launchPhase, builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([id, build]) => [id, build.phase])) }));
+  await info.attach(`${stage}-graph.json`, { path, contentType: 'application/json' });
 }
 
 for (const liveFrontend of [false, true]) {
@@ -223,7 +226,9 @@ for (const liveFrontend of [false, true]) {
       expect(Object.values(failed.builds ?? {}).some(build => build.phase === 'error')).toBe(true);
       // Existing backend availability does not promote a failed new SDK graph.
       expect(failed.generation).toBe(beforeSDK.generation);
-      await info.attach(`${mode}-sdk-failed-graph.json`, { body: JSON.stringify({ phase: failed.launchPhase, generation: failed.generation, builds: Object.fromEntries(Object.entries(failed.builds ?? {}).map(([id, build]) => [id, build.phase])) }), contentType: 'application/json' });
+      const failedGraphPath = info.outputPath(`${mode}-sdk-failed-graph.json`);
+      await writeFile(failedGraphPath, JSON.stringify({ phase: failed.launchPhase, generation: failed.generation, builds: Object.fromEntries(Object.entries(failed.builds ?? {}).map(([id, build]) => [id, build.phase])) }));
+      await info.attach(`${mode}-sdk-failed-graph.json`, { path: failedGraphPath, contentType: 'application/json' });
       await assertManagedPlugins(b.workspace);
 
       stage = 'sdk-repair';
@@ -264,7 +269,9 @@ for (const liveFrontend of [false, true]) {
       for (const [name, profile] of [['a', a], ['b', b]] as const) {
         try {
           const status = await profile.workspace.status();
-          await info.attach(`${mode}-${name}-${stage}-failure.json`, { body: JSON.stringify({ stage, workspaceID: status.manifest.workspaceID, generation: status.generation, phase: status.launchPhase, builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([id, build]) => [id, build.phase])) }), contentType: 'application/json' });
+          const failurePath = info.outputPath(`${mode}-${name}-${stage}-failure.json`);
+          await writeFile(failurePath, JSON.stringify({ stage, workspaceID: status.manifest.workspaceID, generation: status.generation, phase: status.launchPhase, builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([id, build]) => [id, build.phase])) }));
+          await info.attach(`${mode}-${name}-${stage}-failure.json`, { path: failurePath, contentType: 'application/json' });
           if (!profile.page.isClosed()) await profile.page.screenshot({ path: info.outputPath(`${mode}-${name}-${stage}-failure.png`), fullPage: true });
           const kubernetes = name === 'a' ? kubeA : kubeB;
           if (!kubernetes.isClosed()) await kubernetes.screenshot({ path: info.outputPath(`${mode}-${name}-${stage}-kubernetes-failure.png`), fullPage: true });
