@@ -891,6 +891,27 @@ describe('Group 11: Batch Operations (loadAll)', () => {
     expect(s.service.getPluginState('B')).toBeUndefined();
   });
 
+  it.each(['unload', 'forceReset'] as const)('%s cancels a committed refresh waiting for startup import', async (command) => {
+    const s = setup();
+    const started = createDeferred<void>();
+    const importing = createDeferred<unknown>();
+    s.importer.register('A', async () => {
+      started.resolve();
+      return importing.promise;
+    });
+    s.service.startEventListeners();
+    const loading = s.service.loadAll([{ id: 'A', dev: false }]);
+    await started.promise;
+    s.eventBus.emit('plugin/install_finished', { id: 'A' });
+
+    await s.service[command]('A');
+    importing.resolve(validModule({ routes: [{ path: 'retired' }] }));
+    await loading;
+
+    expect(s.service.getPluginState('A')?.phase).toBe('idle');
+    expect(s.service.getAllRoutes()).toEqual([]);
+  });
+
   it('#2 partial failure', async () => {
     const s = setup();
     s.importer.register('A', validModule());

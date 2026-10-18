@@ -843,11 +843,12 @@ export class PluginService {
   // ── Private: Core Load Logic ────────────────────────────────────
 
   private async refreshCommittedPlugin(pluginId: string): Promise<void> {
+    const generation = this.loadGeneration.get(pluginId);
     const inflight = this.inflightLoads.get(pluginId);
     if (inflight) {
       await inflight;
     }
-    if (this.eventCleanups.length === 0) {
+    if (this.eventCleanups.length === 0 || this.loadGeneration.get(pluginId) !== generation) {
       return;
     }
     const current = this.state.get(pluginId);
@@ -856,7 +857,12 @@ export class PluginService {
       return;
     }
     if (current?.phase === 'error' || current?.phase === 'retrying') {
-      await this.unload(pluginId);
+      const unloading = this.unload(pluginId);
+      const unloadGeneration = this.loadGeneration.get(pluginId);
+      await unloading;
+      if (this.eventCleanups.length === 0 || this.loadGeneration.get(pluginId) !== unloadGeneration) {
+        return;
+      }
     }
     await this.load(pluginId);
   }
