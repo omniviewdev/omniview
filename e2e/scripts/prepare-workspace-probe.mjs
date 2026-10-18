@@ -21,7 +21,8 @@ const files = [
   'ui/tsconfig.json',
   'ui/vite.config.ts',
   'ui/vite/omniview.ts',
-  'ui/src/entry.tsx',
+  'ui/src/entry.ts',
+  'ui/src/ProbePage.tsx',
   'ui/src/probe.css',
 ];
 

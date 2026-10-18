@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/devsource"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -210,4 +211,35 @@ func TestPriorBackendObservationCannotReadyReplacementBuild(t *testing.T) {
 	require.NotEqual(t, old, current)
 	require.True(t, manager.NotifyPluginLifecycle("epoch", source, current, true, true, nil))
 	require.True(t, inst.State().Ready)
+}
+
+func TestStaleManagedGenerationReportsConflict(t *testing.T) {
+	manager := &DevServerManager{instances: map[string]*DevServerInstance{
+		"plugin": {generation: "current-generation"},
+	}}
+	for _, generation := range []string{"previous-generation", ""} {
+		t.Run(generation, func(t *testing.T) {
+			checks := map[string]func() error{
+				"rebuild": func() error {
+					return manager.RebuildPluginGeneration(context.Background(), "plugin", generation)
+				},
+				"readiness": func() error {
+					_, err := manager.WaitReady(context.Background(), "plugin", generation)
+					return err
+				},
+				"dependency watching": func() error {
+					return manager.SetDependencyWatching("plugin", generation, true)
+				},
+			}
+			for name, check := range checks {
+				t.Run(name, func(t *testing.T) {
+					err := check()
+					var failure *devcontract.Error
+					require.ErrorAs(t, err, &failure)
+					require.Equal(t, "stale_target", failure.Code)
+					require.Equal(t, 4, devcontract.ExitCode(err))
+				})
+			}
+		})
+	}
 }

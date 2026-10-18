@@ -56,6 +56,7 @@ type workspaceSupervisor struct {
 	childCancel         context.CancelFunc
 	hostCaptureReady    chan struct{}
 	lastHost            *ownedChild
+	processStartMu      sync.Mutex
 	processMu           sync.Mutex
 	managedProcesses    map[string]*managedProcessRecord
 	managedKeys         map[string]string

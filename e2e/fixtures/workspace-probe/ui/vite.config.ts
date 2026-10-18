@@ -14,7 +14,7 @@ export default defineConfig({
     cssCodeSplit: false,
     sourcemap: true,
     rollupOptions: {
-      input: 'src/entry.tsx',
+      input: 'src/entry.ts',
       output: {
         entryFileNames: 'assets/entry.js',
         chunkFileNames: 'assets/[name].js',

@@ -307,15 +307,19 @@ func (s *workspaceSupervisor) startManagedProcess(start devsession.ProcessStart,
 		return nil, devcontract.Fail(4, "composition_not_installed", "managed UI requires a complete installed feature composition; stop and reconfigure the workspace")
 	}
 	key := managedProcessKey(start)
+	s.processStartMu.Lock()
+	defer s.processStartMu.Unlock()
 	s.processMu.Lock()
-	defer s.processMu.Unlock()
-	if s.managedClosing {
+	closing := s.managedClosing
+	id := s.managedKeys[key]
+	existing := s.managedProcesses[id]
+	s.processMu.Unlock()
+	if closing {
 		return nil, devcontract.Fail(4, "process_conflict", "managed process owner is shutting down")
 	}
-	if id := s.managedKeys[key]; id != "" {
-		record := s.managedProcesses[id]
-		if record != nil && record.start == start && record.host == host {
-			return record, nil
+	if id != "" {
+		if existing != nil && existing.start == start && existing.host == host {
+			return existing, nil
 		}
 		return nil, devcontract.Fail(4, "process_conflict", "managed process key is already owned with different parameters")
 	}
@@ -383,14 +387,14 @@ func (s *workspaceSupervisor) startManagedProcess(start devsession.ProcessStart,
 	args = append(args, "run", "dev", "--port", strconv.Itoa(start.Port), "--strictPort", "--host", "127.0.0.1")
 	env = append(env, "OMNIVIEW_VITE_PORT="+strconv.Itoa(start.Port))
 	output := &managedProcessOutput{destination: s.output}
-	// Holding processMu through start/capture makes spawn and crash teardown one
-	// serialized ownership transaction. The host cannot disappear between an
-	// untracked Start and a later registry insertion.
+	// The start gate serializes preparation, capture and publication with shutdown.
+	// The map lock stays available to observe already-running sibling processes.
 	child, err := startOwnedChild(s.childContext, frontend.Directory, env, output, devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: role, Source: source}, func() error { return writer.Finish(context.WithoutCancel(s.childContext)) }, program, args...)
 	if child == nil {
 		return nil, err
 	}
 	record := &managedProcessRecord{id: NewGeneration(), start: start, host: host, child: child, output: output}
+	s.processMu.Lock()
 	if s.managedProcesses == nil {
 		s.managedProcesses = map[string]*managedProcessRecord{}
 	}
@@ -399,9 +403,11 @@ func (s *workspaceSupervisor) startManagedProcess(start devsession.ProcessStart,
 	}
 	s.managedProcesses[record.id] = record
 	s.managedKeys[key] = record.id
+	s.processMu.Unlock()
 	return record, err
 }
 func (s *workspaceSupervisor) stopManagedProcesses(ctx context.Context) error {
+	s.processStartMu.Lock()
 	s.processMu.Lock()
 	s.managedClosing = true
 	records := make([]*managedProcessRecord, 0, len(s.managedProcesses))
@@ -409,6 +415,7 @@ func (s *workspaceSupervisor) stopManagedProcesses(ctx context.Context) error {
 		records = append(records, record)
 	}
 	s.processMu.Unlock()
+	s.processStartMu.Unlock()
 	var first error
 	for _, record := range records {
 		if err := record.child.stop(ctx); err != nil && first == nil {

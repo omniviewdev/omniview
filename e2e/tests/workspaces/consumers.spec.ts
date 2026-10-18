@@ -39,7 +39,7 @@ async function prepareConsumers(workspace: Workspace): Promise<void> {
                                 <button type="button" className="workspace-host-consumer" onClick={event => { event.currentTarget.textContent = workspaceAcceptanceLabel(); }}>Read host runtime</button>
                                 <button type="button" className="workspace-header-consumer" onClick={() => { store.dispatch(headerActions.setHeaderVisibility(false)); for (const area of ['left', 'center', 'right'] as const) store.dispatch(headerActions.setHeaderAreaVisibility({ area, visible: false })); }}>Hide optional header regions</button>`);
   });
-  await workspace.editSource(probeRepository, 'ui/src/entry.tsx', source => {
+  await workspace.editSource(probeRepository, 'ui/src/ProbePage.tsx', source => {
     source = `import { workspaceAcceptanceLabel } from '@omniviewdev/runtime';\n${source}`;
     return replaceOnce(source, '<h1 id="workspace-probe-title">Workspace Probe</h1>', `<h1 id="workspace-probe-title">Workspace Probe</h1>
       <Button className="workspace-plugin-consumer" onClick={event => { event.currentTarget.textContent = workspaceAcceptanceLabel(); }}>Read plugin runtime</Button>`);
@@ -190,7 +190,7 @@ for (const liveFrontend of [false, true]) {
       const probeRepository = (await a.workspace.status()).manifest.plugins.find(plugin => plugin.id === probeID)!.repositoryID;
       await a.workspace.editSource('omniview', 'packages/omniviewdev-runtime/src/index.ts', source => `${source}\nexport function workspaceAcceptanceRevision(): string { return 'Shared runtime revised'; }\n`);
       await a.workspace.editSource('omniview', 'ui/App.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
-      await a.workspace.editSource(probeRepository, 'ui/src/entry.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
+      await a.workspace.editSource(probeRepository, 'ui/src/ProbePage.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
       const kubernetesRepository = (await a.workspace.status()).manifest.plugins.find(plugin => plugin.id === 'kubernetes')!.repositoryID;
       await a.workspace.editSource(kubernetesRepository, 'ui/src/pages/ClustersPage.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
       await graphReady(a.workspace, info, `${mode}-runtime`);

@@ -193,6 +193,8 @@ func TestManagedBridgeOwnsActualProcessesThroughHostCrash(t *testing.T) {
 	if observed.Cwd != frontend || observed.Root != w.Root || observed.Alias != "" || observed.Bridge != "" || observed.Fds != "" {
 		t.Fatalf("wrong cwd or private host capabilities leaked: %+v", observed)
 	}
+	assertManagedObservationDuringBlockedStart(t, ctx, server.URL, string(token), pluginSource, result.Process.ProcessID, request)
+
 	if err = registry.ConfirmBound(ctx, key, generation, lease.Port, result.Process.Identity); err != nil {
 		t.Fatal(err)
 	}

@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Button } from '@omniviewdev/base-ui';
-import { PluginWindow } from '@omniviewdev/runtime';
 import './probe.css';
 
-function ProbePage() {
+export function ProbePage() {
   const [clicks, setClicks] = useState(0);
 
   return (
@@ -23,7 +22,3 @@ function ProbePage() {
     </section>
   );
 }
-
-export const plugin = new PluginWindow()
-  .setRootPage(ProbePage)
-  .withRoutes([{ path: '/', Component: ProbePage }]);

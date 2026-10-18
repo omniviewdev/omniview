@@ -78,6 +78,8 @@ Managed installation/build/Vite commands establish native-free `internal/devoutp
 
 `BeginVite(ctx,resolvedWorkspace,consumerRoot)` covers typechecker/config-loader/Vite process lifetime and returns authoritative `OMNIVIEW_VITE_CACHE_DIRECTORY`. Optimizer cache is UUID-owned external storage; exact `.vite-temp` and `.tmp` children and Vite5 root loader stamps are separately controlled. An immutable modules snapshot excludes a cache subtree only with its matching independent journal record. Shared consumer cache writers remain live until the last actual process finishes, not until a transport request returns.
 
+Managed frontend preparation, spawn/capture and publication share a start gate with shutdown. Process-map locking covers only short lookup/publication operations, so a second plugin's tool/output preparation cannot block the first plugin's log/status observations. Shutdown snapshots every accepted retained child under the same start gate, then releases locks before waiting for disposal. Observation deadlines are not increased to hide a healthy process stranded behind unrelated startup work.
+
 The serial graph prepares same-depth exclusive sibling stages using `Prepare` with `Distribution`, `Bindings`, `Shims`, or `YAMLWorker`. It runs actual compiler commands with:
 
 - `OMNIVIEW_BUILD_OUTPUT_DIRECTORY`: Vite/declaration outDir or argv-safe package-local tsup CLI out-dir.

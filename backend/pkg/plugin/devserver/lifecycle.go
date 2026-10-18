@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
 )
@@ -105,7 +106,7 @@ func (m *DevServerManager) WaitReady(ctx context.Context, id, generation string)
 	for {
 		state := m.GetDevServerState(id)
 		if state.Generation != generation || generation == "" {
-			return state, fmt.Errorf("managed plugin generation changed")
+			return state, devcontract.Fail(4, "stale_target", "managed plugin generation changed")
 		}
 		if state.LastError != "" {
 			return state, fmt.Errorf("plugin lifecycle: %s", state.LastError)
@@ -129,7 +130,7 @@ func (m *DevServerManager) RebuildPluginGeneration(ctx context.Context, id, gene
 	inst := m.instances[id]
 	m.mu.RUnlock()
 	if inst == nil || inst.generation != generation {
-		return fmt.Errorf("managed plugin generation changed")
+		return devcontract.Fail(4, "stale_target", "managed plugin generation changed")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -154,7 +155,7 @@ func (m *DevServerManager) SetDependencyWatching(id, generation string, enabled 
 	inst := m.instances[id]
 	m.mu.RUnlock()
 	if inst == nil || inst.generation != generation || generation == "" || inst.goWatcher == nil {
-		return fmt.Errorf("managed backend watcher source/generation changed")
+		return devcontract.Fail(4, "stale_target", "managed backend watcher source/generation changed")
 	}
 	return inst.goWatcher.SetDependencyWatching(enabled)
 }
