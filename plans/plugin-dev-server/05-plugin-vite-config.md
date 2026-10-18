@@ -1,5 +1,9 @@
 # 05 -- Plugin-Side Vite Configuration Changes
 
+> Historical Vite design. Its standalone CLI scaffolding/attachment references
+> are superseded by the canonical host-managed
+> [development CLI](../../docs/development-cli.md). This is not a runnable guide.
+
 ## Phase 4: Plugin Vite Config
 
 **Goal**: Modify the plugin-side `vite.config.ts` to support HMR-based development via the `@omniviewdev/vite-plugin` package, while remaining backward-compatible with the existing SystemJS production build.

@@ -79,6 +79,12 @@ func New(opts ...Option) (*Service, error) {
 			return nil, err
 		}
 	}
+	// Validate programmatic selections just like environment/ldflags roots.
+	var err error
+	root, err = ValidateRoot(root)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := os.MkdirAll(root, 0755); err != nil {
 		return nil, fmt.Errorf("appstate: create root %q: %w", root, err)

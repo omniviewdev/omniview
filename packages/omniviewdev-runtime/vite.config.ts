@@ -10,6 +10,7 @@ import { dirname } from 'path';
 // if in ESM context
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const outputDirectory = process.env.OMNIVIEW_BUILD_OUTPUT_DIRECTORY || 'dist';
 
 const externals = [
   // REACT
@@ -26,7 +27,9 @@ const externals = [
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  cacheDir: process.env.OMNIVIEW_VITE_CACHE_DIRECTORY,
   build: {
+    outDir: outputDirectory,
     lib: {
       entry: [
         resolve(__dirname, "src/index.ts"),
@@ -50,7 +53,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
-    dts({ tsconfigPath: './tsconfig.app.json' })
+    dts({ tsconfigPath: './tsconfig.app.json', outDir: outputDirectory })
   ],
   test: {
     globals: true,

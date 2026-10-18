@@ -3,6 +3,11 @@ packages:
   - "plugins/**"
   - "!plugins/kubernetes/**"
   - "e2e"
+linkWorkspacePackages: false
+strictPeerDependencies: true
+pmOnFail: error
+# Preserve pnpm 10's immediate-release install behavior explicitly.
+minimumReleaseAge: 0
 overrides:
   '@types/react': ^19.0.0
   '@types/react-dom': ^19.0.0

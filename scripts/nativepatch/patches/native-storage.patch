@@ -1,0 +1,1015 @@
+--- a/pkg/application/application.go
++++ b/pkg/application/application.go
+@@ -655,6 +655,10 @@
+ 	// Ensure application context is cancelled in case of failures.
+ 	defer a.cancel()
+ 
++	if err := ValidateWebviewStorageOptions(a.options); err != nil {
++		return err
++	}
++
+ 	// Call post-create hooks
+ 	err := a.preRun()
+ 	if err != nil {
+@@ -662,6 +666,15 @@
+ 	}
+ 
+ 	a.impl = newPlatformApp(a)
++	if storage, ok := a.impl.(interface {
++		initWebviewStorage() error
++		releaseWebviewStorage()
++	}); ok {
++		if err := storage.initWebviewStorage(); err != nil {
++			return err
++		}
++		defer storage.releaseWebviewStorage()
++	}
+ 
+ 	// Ensure services are shut down in case of failures.
+ 	defer a.shutdownServices()
+--- a/pkg/application/application_linux.go
++++ b/pkg/application/application_linux.go
+@@ -45,8 +45,9 @@
+ }
+ 
+ type linuxApp struct {
+-	application pointer
+-	parent      *App
++	application    pointer
++	parent         *App
++	webviewStorage pointer
+ 
+ 	activated     chan struct{}
+ 	activatedOnce sync.Once
+--- a/pkg/application/application_linux_gtk3.go
++++ b/pkg/application/application_linux_gtk3.go
+@@ -54,8 +54,9 @@
+ }
+ 
+ type linuxApp struct {
+-	application pointer
+-	parent      *App
++	application    pointer
++	parent         *App
++	webviewStorage pointer
+ 
+ 	startupActions []func()
+ 
+--- a/pkg/application/application_options.go
++++ b/pkg/application/application_options.go
+@@ -136,6 +136,10 @@
+ 
+ // ServerOptions configures the HTTP server for headless mode.
+ type ServerOptions struct {
++	// Middleware wraps the complete server HTTP handler, including health,
++	// WebSocket, runtime and asset routes. Nil leaves request handling unchanged.
++	Middleware Middleware `json:"-"`
++
+ 	// Host is the address to bind to.
+ 	// Default: "localhost" for security. Use "0.0.0.0" for all interfaces.
+ 	Host string
+@@ -258,6 +262,12 @@
+ 	ActivationPolicy ActivationPolicy
+ 	// If set to true, the application will terminate when the last window is closed.
+ 	ApplicationShouldTerminateAfterLastWindowClosed bool
++
++	// WebsiteDataStoreIdentifier selects a persistent WKWebsiteDataStore shared
++	// by all application windows. It must be a nonzero UUID in 8-4-4-4-12 format.
++	// Explicit selection requires macOS 14 or later; Run returns an error on
++	// unsupported systems. Empty preserves the system's default data store.
++	WebsiteDataStoreIdentifier string
+ }
+ 
+ /****** Windows Options *******/
+@@ -320,6 +330,13 @@
+ type LinuxOptions struct {
+ 	// DisableQuitOnLastWindowClosed disables the auto quit of the application if the last window has been closed.
+ 	DisableQuitOnLastWindowClosed bool
++
++	// WebviewDataPath and WebviewCachePath select persistent WebKit profile
++	// directories shared by all application windows, including SQLite cookies
++	// in WebviewDataPath/cookies.sqlite. Both must be absolute, distinct,
++	// writable directories when either is set. Empty preserves default storage.
++	WebviewDataPath  string
++	WebviewCachePath string
+ 
+ 	// ProgramName is used to set the program's name for the window manager via GTK's g_set_prgname().
+ 	//This name should not be localized. [see the docs]
+--- a/pkg/application/application_server.go
++++ b/pkg/application/application_server.go
+@@ -227,6 +227,9 @@
+ 	// Serve all other requests through the asset server
+ 	mux.Handle("/", h.app.assets)
+ 
++	if middleware := h.app.options.Server.Middleware; middleware != nil {
++		return middleware(mux)
++	}
+ 	return mux
+ }
+ 
+--- /dev/null
++++ b/pkg/application/application_server_middleware_test.go
+@@ -0,0 +1,74 @@
++//go:build server
++
++package application
++
++import (
++	"log/slog"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++
++	"github.com/wailsapp/wails/v3/internal/assetserver"
++)
++
++func TestServerMiddlewareBlocksEveryRouteBeforeDispatch(t *testing.T) {
++	wraps, requests := 0, 0
++	app := &App{options: Options{Server: ServerOptions{
++		Middleware: func(next http.Handler) http.Handler {
++			wraps++
++			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++				requests++
++				http.Error(w, "blocked", http.StatusForbidden)
++			})
++		},
++	}}}
++	// Nil downstream services deliberately panic if dispatch precedes the policy.
++	server := &serverApp{app: app}
++	handler := server.createHandler()
++	for _, path := range []string{"/health", "/wails/events", "/wails/stream/ws", "/index.html", "/wails/runtime"} {
++		t.Run(path, func(t *testing.T) {
++			response := httptest.NewRecorder()
++			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
++			if response.Code != http.StatusForbidden || response.Body.String() != "blocked\n" {
++				t.Fatalf("policy did not block %s: %d %q", path, response.Code, response.Body.String())
++			}
++		})
++	}
++	if wraps != 1 || requests != 5 {
++		t.Fatalf("middleware wrapped %d times and handled %d requests", wraps, requests)
++	}
++}
++
++func TestServerNilMiddlewarePreservesHandlerBehavior(t *testing.T) {
++	assetRequests := 0
++	assets, err := assetserver.NewAssetServer(&assetserver.Options{
++		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++			assetRequests++
++			w.WriteHeader(http.StatusAccepted)
++			_, _ = w.Write([]byte("asset"))
++		}),
++		Logger: slog.Default(),
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	server := &serverApp{app: &App{assets: assets}}
++	handler := server.createHandler()
++	for _, test := range []struct {
++		path   string
++		status int
++		body   string
++	}{
++		{"/health", http.StatusOK, `{"status":"ok"}`},
++		{"/index.html", http.StatusAccepted, "asset"},
++	} {
++		response := httptest.NewRecorder()
++		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
++		if response.Code != test.status || response.Body.String() != test.body {
++			t.Fatalf("%s: got %d %q, want %d %q", test.path, response.Code, response.Body.String(), test.status, test.body)
++		}
++	}
++	if assetRequests != 1 {
++		t.Fatalf("asset handler received %d requests, want 1", assetRequests)
++	}
++}
+--- a/pkg/application/linux_cgo.c
++++ b/pkg/application/linux_cgo.c
+@@ -197,7 +197,13 @@
+ 
+ // WebKitGTK 6.0: webkit_web_view_new_with_user_content_manager() was removed
+ // Use g_object_new() with the "user-content-manager" property instead
+-GtkWidget* create_webview_with_user_content_manager(WebKitUserContentManager *manager) {
++GtkWidget* create_webview_with_user_content_manager(WebKitUserContentManager *manager, WebKitNetworkSession *session) {
++    if (session != NULL) {
++        return GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW,
++                                       "user-content-manager", manager,
++                                       "network-session", session,
++                                       NULL));
++    }
+     return GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+                                    "user-content-manager", manager,
+                                    NULL));
+--- a/pkg/application/linux_cgo.go
++++ b/pkg/application/linux_cgo.go
+@@ -4,6 +4,7 @@
+ 
+ import (
+ 	"fmt"
++	"path/filepath"
+ 	"strings"
+ 	"sync"
+ 	"time"
+@@ -1225,6 +1226,39 @@
+ 	return
+ }
+ 
++func validatePlatformWebviewStorageOptions(options Options) error {
++	return validateLinuxWebviewStorage(options.Linux)
++}
++
++func (a *linuxApp) initWebviewStorage() error {
++	options := a.parent.options.Linux
++	if options.WebviewDataPath == "" && options.WebviewCachePath == "" {
++		return nil
++	}
++	if err := prepareLinuxWebviewStorageDirectories(options); err != nil {
++		return err
++	}
++	c := NewCalloc()
++	defer c.Free()
++	session := C.webkit_network_session_new(c.String(options.WebviewDataPath), c.String(options.WebviewCachePath))
++	if session == nil {
++		return fmt.Errorf("could not create the explicitly selected Linux webview network session")
++	}
++	cookieManager := C.webkit_network_session_get_cookie_manager(session)
++	C.webkit_cookie_manager_set_persistent_storage(cookieManager,
++		c.String(filepath.Join(options.WebviewDataPath, "cookies.sqlite")),
++		C.WEBKIT_COOKIE_PERSISTENT_STORAGE_SQLITE)
++	a.webviewStorage = pointer(session)
++	return nil
++}
++
++func (a *linuxApp) releaseWebviewStorage() {
++	if a.webviewStorage != nil {
++		C.g_object_unref(C.gpointer(a.webviewStorage))
++		a.webviewStorage = nil
++	}
++}
++
+ func windowNewWebview(parentId uint, gpuPolicy WebviewGpuPolicy) pointer {
+ 	c := NewCalloc()
+ 	defer c.Free()
+@@ -1243,14 +1277,11 @@
+ 	// WebKitGTK 6.0: register_script_message_handler signature changed
+ 	C.webkit_user_content_manager_register_script_message_handler(manager, c.String("external"), nil)
+ 
+-	// WebKitGTK 6.0: Create network session first
+-	networkSession := C.webkit_network_session_get_default()
+-
+-	// Create web view with settings
++	// Explicit profiles share one application-owned session across all views.
++	// A nil session preserves WebKit's existing default construction path.
++	session := (*C.WebKitNetworkSession)(getNativeApplication().webviewStorage)
+ 	settings := C.webkit_settings_new()
+-	// WebKitGTK 6.0: webkit_web_view_new_with_user_content_manager() was removed
+-	// Use create_webview_with_user_content_manager() helper instead
+-	webView := C.create_webview_with_user_content_manager(manager)
++	webView := C.create_webview_with_user_content_manager(manager, session)
+ 
+ 	C.save_webview_to_content_manager(unsafe.Pointer(manager), unsafe.Pointer(webView))
+ 	C.save_window_id(unsafe.Pointer(webView), C.uint(parentId))
+@@ -1288,7 +1319,6 @@
+ 		C.schedule_signal_handler_fix()
+ 	})
+ 
+-	_ = networkSession
+ 	return pointer(webView)
+ }
+ 
+--- a/pkg/application/linux_cgo.h
++++ b/pkg/application/linux_cgo.h
+@@ -118,7 +118,7 @@
+ // ============================================================================
+ 
+ WebKitWebView* webkit_web_view(GtkWidget *webview);
+-GtkWidget* create_webview_with_user_content_manager(WebKitUserContentManager *manager);
++GtkWidget* create_webview_with_user_content_manager(WebKitUserContentManager *manager, WebKitNetworkSession *session);
+ 
+ // ============================================================================
+ // Menu system (GMenu/GAction for GTK4)
+--- a/pkg/application/linux_cgo_gtk3.go
++++ b/pkg/application/linux_cgo_gtk3.go
+@@ -5,6 +5,7 @@
+ import (
+ 	"errors"
+ 	"fmt"
++	"path/filepath"
+ 	"strings"
+ 	"sync"
+ 	"time"
+@@ -27,6 +28,25 @@
+ // Use NON_UNIQUE to allow multiple instances of the application to run.
+ // This matches the behavior of gtk_init/gtk_main used in v2.
+ #define APPLICATION_DEFAULT_FLAGS G_APPLICATION_NON_UNIQUE
++
++static WebKitWebContext *create_profile_web_context(const char *data, const char *cache) {
++    WebKitWebsiteDataManager *manager = webkit_website_data_manager_new(
++        "base-data-directory", data, "base-cache-directory", cache, NULL);
++    if (manager == NULL) {
++        return NULL;
++    }
++    WebKitWebContext *context = webkit_web_context_new_with_website_data_manager(manager);
++    g_object_unref(manager);
++    return context;
++}
++
++static GtkWidget *create_webview_with_profile(WebKitUserContentManager *manager, WebKitWebContext *context) {
++    if (context == NULL) {
++        return webkit_web_view_new_with_user_content_manager(manager);
++    }
++    return GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW,
++        "user-content-manager", manager, "web-context", context, NULL));
++}
+ 
+ typedef struct CallbackID
+ {
+@@ -1497,6 +1517,39 @@
+ 	return
+ }
+ 
++func validatePlatformWebviewStorageOptions(options Options) error {
++	return validateLinuxWebviewStorage(options.Linux)
++}
++
++func (a *linuxApp) initWebviewStorage() error {
++	options := a.parent.options.Linux
++	if options.WebviewDataPath == "" && options.WebviewCachePath == "" {
++		return nil
++	}
++	if err := prepareLinuxWebviewStorageDirectories(options); err != nil {
++		return err
++	}
++	c := NewCalloc()
++	defer c.Free()
++	context := C.create_profile_web_context(c.String(options.WebviewDataPath), c.String(options.WebviewCachePath))
++	if context == nil {
++		return fmt.Errorf("could not create the explicitly selected Linux webview context")
++	}
++	cookieManager := C.webkit_web_context_get_cookie_manager(context)
++	C.webkit_cookie_manager_set_persistent_storage(cookieManager,
++		c.String(filepath.Join(options.WebviewDataPath, "cookies.sqlite")),
++		C.WEBKIT_COOKIE_PERSISTENT_STORAGE_SQLITE)
++	a.webviewStorage = pointer(context)
++	return nil
++}
++
++func (a *linuxApp) releaseWebviewStorage() {
++	if a.webviewStorage != nil {
++		C.g_object_unref(C.gpointer(a.webviewStorage))
++		a.webviewStorage = nil
++	}
++}
++
+ func windowNewWebview(parentId uint, gpuPolicy WebviewGpuPolicy) pointer {
+ 	c := NewCalloc()
+ 	defer c.Free()
+@@ -1513,7 +1566,8 @@
+ 	C.webkit_user_script_unref(linuxBlobBodyShim)
+ 	C.free(unsafe.Pointer(linuxBlobBodyShimSource))
+ 	C.webkit_user_content_manager_register_script_message_handler(manager, c.String("external"))
+-	webView := C.webkit_web_view_new_with_user_content_manager(manager)
++	context := (*C.WebKitWebContext)(getNativeApplication().webviewStorage)
++	webView := C.create_webview_with_profile(manager, context)
+ 
+ 	fixSignalHandlers.Do(func() {
+ 		C.install_signal_handlers()
+--- /dev/null
++++ b/pkg/application/webview_storage.go
+@@ -0,0 +1,56 @@
++package application
++
++import (
++	"errors"
++	"path/filepath"
++	"strings"
++)
++
++// ValidateWebviewStorageOptions validates explicit native storage selection for
++// the current platform, including native OS availability. It does not create
++// directories or webviews. Server builds do not use native webview storage.
++// Run calls this before constructing the native application or starting services.
++func ValidateWebviewStorageOptions(options Options) error {
++	return validatePlatformWebviewStorageOptions(options)
++}
++
++func validateWebsiteDataStoreIdentifier(identifier string) error {
++	if len(identifier) != 36 {
++		return errors.New("Mac.WebsiteDataStoreIdentifier must be a nonzero UUID in 8-4-4-4-12 format")
++	}
++	nonzero := false
++	for i := range len(identifier) {
++		c := identifier[i]
++		if i == 8 || i == 13 || i == 18 || i == 23 {
++			if c != '-' {
++				return errors.New("Mac.WebsiteDataStoreIdentifier must be a UUID in 8-4-4-4-12 format")
++			}
++			continue
++		}
++		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
++			return errors.New("Mac.WebsiteDataStoreIdentifier must contain only hexadecimal UUID digits")
++		}
++		nonzero = nonzero || c != '0'
++	}
++	if !nonzero {
++		return errors.New("Mac.WebsiteDataStoreIdentifier must not be the zero UUID")
++	}
++	return nil
++}
++
++func validateLinuxWebviewStorage(options LinuxOptions) error {
++	data, cache := options.WebviewDataPath, options.WebviewCachePath
++	if data == "" && cache == "" {
++		return nil
++	}
++	if data == "" || cache == "" {
++		return errors.New("Linux.WebviewDataPath and Linux.WebviewCachePath must both be set for an explicit profile")
++	}
++	if strings.IndexByte(data, 0) >= 0 || strings.IndexByte(cache, 0) >= 0 || !filepath.IsAbs(data) || !filepath.IsAbs(cache) {
++		return errors.New("Linux webview data and cache paths must be absolute paths without NUL bytes")
++	}
++	if filepath.Clean(data) == filepath.Clean(cache) {
++		return errors.New("Linux webview data and cache paths must be distinct directories")
++	}
++	return nil
++}
+--- /dev/null
++++ b/pkg/application/webview_storage_darwin.go
+@@ -0,0 +1,75 @@
++//go:build darwin && !ios && !server
++
++package application
++
++/*
++#include "webview_storage_darwin.h"
++#include <stdlib.h>
++*/
++import "C"
++
++import (
++	"errors"
++	"sync"
++	"sync/atomic"
++	"unsafe"
++)
++
++func validatePlatformWebviewStorageOptions(options Options) error {
++	if options.Mac.WebsiteDataStoreIdentifier == "" {
++		return nil
++	}
++	if err := validateWebsiteDataStoreIdentifier(options.Mac.WebsiteDataStoreIdentifier); err != nil {
++		return err
++	}
++	return validateWebsiteDataStoreAvailability()
++}
++
++func validateWebsiteDataStoreAvailability() error {
++	if !bool(C.wailsWebsiteDataStoreIdentifiersSupported()) {
++		return errors.New("Mac.WebsiteDataStoreIdentifier requires macOS 14 or later and a macOS 14 SDK build; explicit storage cannot use the default data store")
++	}
++	return nil
++}
++
++var websiteDataStoreRemovalID atomic.Uint64
++var websiteDataStoreRemovals sync.Map
++
++// RemoveMacWebviewDataStore schedules removal of exactly one persistent UUID
++// store. The caller must release all views using it first. It never enumerates
++// stores or clears the default store. Invalid identifiers and unsupported OS/SDK
++// versions return an error without scheduling removal or calling completion.
++//
++// The main dispatch queue must remain running until completion is called.
++// Completion runs on a separate goroutine and receives WebKit's removal error,
++// including errors for stores still in use. A nonnil completion is required.
++func RemoveMacWebviewDataStore(identifier string, completion func(error)) error {
++	if err := validateWebsiteDataStoreIdentifier(identifier); err != nil {
++		return err
++	}
++	if err := validateWebsiteDataStoreAvailability(); err != nil {
++		return err
++	}
++	if completion == nil {
++		return errors.New("website data store removal requires a completion callback")
++	}
++	id := websiteDataStoreRemovalID.Add(1)
++	websiteDataStoreRemovals.Store(id, completion)
++	cIdentifier := C.CString(identifier)
++	defer C.free(unsafe.Pointer(cIdentifier))
++	C.wailsRemoveWebsiteDataStore(cIdentifier, C.uint64_t(id))
++	return nil
++}
++
++//export completeWebsiteDataStoreRemoval
++func completeWebsiteDataStoreRemoval(id C.uint64_t, message *C.char) {
++	callback, ok := websiteDataStoreRemovals.LoadAndDelete(uint64(id))
++	if !ok {
++		return
++	}
++	var err error
++	if message != nil {
++		err = errors.New(C.GoString(message))
++	}
++	go callback.(func(error))(err)
++}
+--- /dev/null
++++ b/pkg/application/webview_storage_darwin.h
+@@ -0,0 +1,11 @@
++#ifndef WAILS_WEBVIEW_STORAGE_DARWIN_H
++#define WAILS_WEBVIEW_STORAGE_DARWIN_H
++
++#include <stdbool.h>
++#include <stdint.h>
++
++bool wailsWebsiteDataStoreIdentifiersSupported(void);
++void *wailsWebsiteDataStoreForIdentifier(const char *identifier);
++void wailsRemoveWebsiteDataStore(const char *identifier, uint64_t callbackID);
++
++#endif
+--- /dev/null
++++ b/pkg/application/webview_storage_darwin.m
+@@ -0,0 +1,64 @@
++//go:build darwin && !ios && !server
++
++#import <Foundation/Foundation.h>
++#import <WebKit/WebKit.h>
++#import "webview_storage_darwin.h"
++
++extern void completeWebsiteDataStoreRemoval(uint64_t callbackID, const char *error);
++
++bool wailsWebsiteDataStoreIdentifiersSupported(void) {
++#if MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
++    if (@available(macOS 14.0, *)) {
++        return true;
++    }
++#endif
++    return false;
++}
++
++void *wailsWebsiteDataStoreForIdentifier(const char *identifier) {
++#if MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
++    if (@available(macOS 14.0, *)) {
++        NSUUID *uuid = [[NSUUID alloc] initWithUUIDString:[NSString stringWithUTF8String:identifier]];
++        if (uuid == nil) {
++            return NULL;
++        }
++        WKWebsiteDataStore *store = [WKWebsiteDataStore dataStoreForIdentifier:uuid];
++        [uuid release];
++        return store;
++    }
++#endif
++    return NULL;
++}
++
++void wailsRemoveWebsiteDataStore(const char *identifier, uint64_t callbackID) {
++#if MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
++    if (@available(macOS 14.0, *)) {
++        NSUUID *uuid = [[NSUUID alloc] initWithUUIDString:[NSString stringWithUTF8String:identifier]];
++        if (uuid == nil) {
++            completeWebsiteDataStoreRemoval(callbackID, "invalid website data store UUID");
++            return;
++        }
++        dispatch_async(dispatch_get_main_queue(), ^{
++            @autoreleasepool {
++                // The class removal API does not initialize WebKit's main
++                // RunLoop on its own. A windowless cleanup process must do so
++                // through a public ephemeral store before the IO queue posts
++                // its completion back. Never initialize a persistent default.
++                WKWebsiteDataStore *initializationStore = [WKWebsiteDataStore nonPersistentDataStore];
++                if (initializationStore == nil) {
++                    completeWebsiteDataStoreRemoval(callbackID, "could not initialize ephemeral WebKit storage");
++                    return;
++                }
++                // Remove only the explicitly owned UUID. Never enumerate
++                // stores or clear the default store.
++                [WKWebsiteDataStore removeDataStoreForIdentifier:uuid completionHandler:^(NSError *error) {
++                    completeWebsiteDataStoreRemoval(callbackID, error == nil ? NULL : [[error localizedDescription] UTF8String]);
++                }];
++            }
++        });
++        [uuid release];
++        return;
++    }
++#endif
++    completeWebsiteDataStoreRemoval(callbackID, "explicit website data stores require macOS 14 or later and a macOS 14 SDK build");
++}
+--- /dev/null
++++ b/pkg/application/webview_storage_darwin_test.go
+@@ -0,0 +1,25 @@
++//go:build darwin && !ios && !server
++
++package application
++
++import "testing"
++
++// Catch public preflight accepting an invalid explicit selection before startup.
++func TestValidateWebviewStorageOptionsRejectsInvalidMacIdentifier(t *testing.T) {
++	for _, identifier := range []string{"default", "00000000-0000-0000-0000-000000000000"} {
++		options := Options{Mac: MacOptions{WebsiteDataStoreIdentifier: identifier}}
++		if err := ValidateWebviewStorageOptions(options); err == nil {
++			t.Fatalf("accepted explicit identifier %q", identifier)
++		}
++	}
++}
++
++// Catch cleanup allowing an empty/default or invalid store into the native API.
++func TestRemoveMacWebviewDataStoreRejectsInvalidIdentifier(t *testing.T) {
++	for _, identifier := range []string{"", "default", "00000000-0000-0000-0000-000000000000"} {
++		err := RemoveMacWebviewDataStore(identifier, func(error) {})
++		if err == nil {
++			t.Fatalf("scheduled removal of invalid identifier %q", identifier)
++		}
++	}
++}
+--- /dev/null
++++ b/pkg/application/webview_storage_linux_test.go
+@@ -0,0 +1,16 @@
++//go:build linux && cgo && !android && !server
++
++package application
++
++import (
++	"path/filepath"
++	"testing"
++)
++
++// Catch either GTK build accepting a partial profile via the public preflight.
++func TestValidateWebviewStorageOptionsRejectsIncompleteLinuxProfile(t *testing.T) {
++	options := Options{Linux: LinuxOptions{WebviewDataPath: filepath.Join(t.TempDir(), "data")}}
++	if err := ValidateWebviewStorageOptions(options); err == nil {
++		t.Fatal("accepted a profile without a cache path")
++	}
++}
+--- /dev/null
++++ b/pkg/application/webview_storage_other.go
+@@ -0,0 +1,7 @@
++//go:build server || (!darwin && !linux) || ios || android || (linux && !cgo)
++
++package application
++
++func validatePlatformWebviewStorageOptions(_ Options) error {
++	return nil
++}
+--- /dev/null
++++ b/pkg/application/webview_storage_server_test.go
+@@ -0,0 +1,16 @@
++//go:build server
++
++package application
++
++import "testing"
++
++// Catch server/browser mode accidentally requiring native storage availability.
++func TestServerDoesNotValidateUnusedNativeWebviewStorage(t *testing.T) {
++	options := Options{
++		Mac:   MacOptions{WebsiteDataStoreIdentifier: "unused-native-store"},
++		Linux: LinuxOptions{WebviewDataPath: "unused-native-path"},
++	}
++	if err := ValidateWebviewStorageOptions(options); err != nil {
++		t.Fatalf("server build rejected unused native options: %v", err)
++	}
++}
+--- /dev/null
++++ b/pkg/application/webview_storage_test.go
+@@ -0,0 +1,67 @@
++package application
++
++import (
++	"os"
++	"path/filepath"
++	"testing"
++)
++
++// Catch accepting ambiguous or default-store identifiers for an explicit profile.
++func TestValidateWebsiteDataStoreIdentifier(t *testing.T) {
++	for _, tt := range []struct {
++		identifier string
++		valid      bool
++	}{
++		{"", false},
++		{"00000000-0000-0000-0000-000000000000", false},
++		{"2c6027ef-4514-4df6-ae0c-636337af26e7", true},
++		{"2C6027EF-4514-4DF6-AE0C-636337AF26E7", true},
++		{"2c6027ef45144df6ae0c636337af26e7", false},
++		{"{2c6027ef-4514-4df6-ae0c-636337af26e7}", false},
++		{"2c6027ef-4514-4df6-ae0c-636337af26eg", false},
++		{" 2c6027ef-4514-4df6-ae0c-636337af26e7", false},
++	} {
++		t.Run(tt.identifier, func(t *testing.T) {
++			if err := validateWebsiteDataStoreIdentifier(tt.identifier); (err == nil) != tt.valid {
++				t.Fatalf("validation error = %v, valid = %v", err, tt.valid)
++			}
++		})
++	}
++}
++
++// Catch partial selection silently routing one half of a Linux profile to defaults.
++func TestValidateLinuxWebviewStorage(t *testing.T) {
++	root := t.TempDir()
++	data := filepath.Join(root, "data")
++	cache := filepath.Join(root, "cache")
++	for _, tt := range []struct {
++		name    string
++		options LinuxOptions
++		valid   bool
++	}{
++		{"default", LinuxOptions{}, true},
++		{"profile", LinuxOptions{WebviewDataPath: data, WebviewCachePath: cache}, true},
++		{"missing cache", LinuxOptions{WebviewDataPath: data}, false},
++		{"missing data", LinuxOptions{WebviewCachePath: cache}, false},
++		{"relative data", LinuxOptions{WebviewDataPath: "data", WebviewCachePath: cache}, false},
++		{"relative cache", LinuxOptions{WebviewDataPath: data, WebviewCachePath: "cache"}, false},
++		{"same directory", LinuxOptions{WebviewDataPath: data, WebviewCachePath: data}, false},
++		{"same cleaned directory", LinuxOptions{WebviewDataPath: data, WebviewCachePath: data + string(filepath.Separator) + "."}, false},
++		{"nul data", LinuxOptions{WebviewDataPath: data + "\x00", WebviewCachePath: cache}, false},
++	} {
++		t.Run(tt.name, func(t *testing.T) {
++			if err := validateLinuxWebviewStorage(tt.options); (err == nil) != tt.valid {
++				t.Fatalf("validation error = %v, valid = %v", err, tt.valid)
++			}
++		})
++	}
++	if _, err := os.Stat(data); !os.IsNotExist(err) {
++		t.Fatalf("validation created data directory: %v", err)
++	}
++}
++
++func TestValidateWebviewStorageOptionsDefault(t *testing.T) {
++	if err := ValidateWebviewStorageOptions(Options{}); err != nil {
++		t.Fatalf("default storage must remain supported: %v", err)
++	}
++}
+--- /dev/null
++++ b/pkg/application/webview_storage_unix.go
+@@ -0,0 +1,71 @@
++//go:build linux || darwin
++
++package application
++
++import (
++	"errors"
++	"fmt"
++	"os"
++	"path/filepath"
++	"syscall"
++)
++
++func openWebviewCookieFile(path string) (*os.File, error) {
++	if info, err := os.Lstat(path); err == nil {
++		if !info.Mode().IsRegular() {
++			return nil, fmt.Errorf("cookie storage %q must be a regular file, not a symlink or special file", path)
++		}
++	} else if !os.IsNotExist(err) {
++		return nil, err
++	}
++	// O_NOFOLLOW rejects a final-component symlink even if the path changes
++	// after Lstat or did not exist. O_NONBLOCK prevents a concurrently substituted
++	// FIFO from hanging startup; fstat validates the object actually opened.
++	fd, err := syscall.Open(path, syscall.O_CREAT|syscall.O_RDWR|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
++	if err != nil {
++		return nil, &os.PathError{Op: "open", Path: path, Err: err}
++	}
++	file := os.NewFile(uintptr(fd), path)
++	info, err := file.Stat()
++	if err == nil && !info.Mode().IsRegular() {
++		err = fmt.Errorf("cookie storage %q must be a regular file", path)
++	}
++	if err != nil {
++		return nil, errors.Join(err, file.Close())
++	}
++	return file, nil
++}
++
++func prepareLinuxWebviewStorageDirectories(options LinuxOptions) error {
++	if err := validateLinuxWebviewStorage(options); err != nil {
++		return err
++	}
++	if options.WebviewDataPath == "" {
++		return nil
++	}
++	for _, path := range [...]string{options.WebviewDataPath, options.WebviewCachePath} {
++		if err := os.MkdirAll(path, 0700); err != nil {
++			return fmt.Errorf("prepare Linux webview profile directory %q: %w", path, err)
++		}
++		// WebKit's persistent-storage setters do not return filesystem errors.
++		// Reject unwritable selections rather than silently starting without persistence.
++		file, err := os.CreateTemp(path, ".wails-storage-check-*")
++		if err != nil {
++			return fmt.Errorf("Linux webview profile directory %q is not writable: %w", path, err)
++		}
++		closeErr := file.Close()
++		removeErr := os.Remove(file.Name())
++		if err := errors.Join(closeErr, removeErr); err != nil {
++			return fmt.Errorf("check Linux webview profile directory %q: %w", path, err)
++		}
++	}
++	cookiePath := filepath.Join(options.WebviewDataPath, "cookies.sqlite")
++	cookies, err := openWebviewCookieFile(cookiePath)
++	if err != nil {
++		return fmt.Errorf("prepare Linux persistent cookie storage %q: %w", cookiePath, err)
++	}
++	if err := cookies.Close(); err != nil {
++		return fmt.Errorf("close Linux persistent cookie storage %q: %w", cookiePath, err)
++	}
++	return nil
++}
+--- /dev/null
++++ b/pkg/application/webview_storage_unix_test.go
+@@ -0,0 +1,135 @@
++//go:build linux || darwin
++
++package application
++
++import (
++	"os"
++	"path/filepath"
++	"syscall"
++	"testing"
++)
++
++// Catch following existing or dangling cookie symlinks outside the selected profile.
++func TestPrepareLinuxWebviewStorageRejectsCookieSymlink(t *testing.T) {
++	for _, existing := range []bool{true, false} {
++		name := "dangling"
++		if existing {
++			name = "existing"
++		}
++		t.Run(name, func(t *testing.T) {
++			root := t.TempDir()
++			options := LinuxOptions{WebviewDataPath: filepath.Join(root, "data"), WebviewCachePath: filepath.Join(root, "cache")}
++			if err := os.MkdirAll(options.WebviewDataPath, 0700); err != nil {
++				t.Fatal(err)
++			}
++			outside := filepath.Join(root, "outside-cookie")
++			if existing {
++				if err := os.WriteFile(outside, []byte("outside sentinel"), 0600); err != nil {
++					t.Fatal(err)
++				}
++			}
++			cookiePath := filepath.Join(options.WebviewDataPath, "cookies.sqlite")
++			if err := os.Symlink(outside, cookiePath); err != nil {
++				t.Fatal(err)
++			}
++			if err := prepareLinuxWebviewStorageDirectories(options); err == nil {
++				t.Fatal("accepted a cookie symlink outside the profile")
++			}
++			if target, err := os.Readlink(cookiePath); err != nil || target != outside {
++				t.Fatalf("cookie symlink was changed: %q, %v", target, err)
++			}
++			if existing {
++				content, err := os.ReadFile(outside)
++				if err != nil || string(content) != "outside sentinel" {
++					t.Fatalf("outside cookie sentinel changed: %q, %v", content, err)
++				}
++			} else if _, err := os.Lstat(outside); !os.IsNotExist(err) {
++				t.Fatalf("created dangling symlink target: %v", err)
++			}
++		})
++	}
++}
++
++func TestPrepareLinuxWebviewStorageRejectsCookieFIFO(t *testing.T) {
++	root := t.TempDir()
++	options := LinuxOptions{WebviewDataPath: filepath.Join(root, "data"), WebviewCachePath: filepath.Join(root, "cache")}
++	if err := os.MkdirAll(options.WebviewDataPath, 0700); err != nil {
++		t.Fatal(err)
++	}
++	if err := syscall.Mkfifo(filepath.Join(options.WebviewDataPath, "cookies.sqlite"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	if err := prepareLinuxWebviewStorageDirectories(options); err == nil {
++		t.Fatal("accepted a FIFO as persistent cookie storage")
++	}
++}
++
++// Catch silently accepting a non-directory instead of rejecting profile startup.
++func TestPrepareLinuxWebviewStorageDirectories(t *testing.T) {
++	root := t.TempDir()
++	options := LinuxOptions{WebviewDataPath: filepath.Join(root, "data"), WebviewCachePath: filepath.Join(root, "cache")}
++	if err := prepareLinuxWebviewStorageDirectories(options); err != nil {
++		t.Fatal(err)
++	}
++	for _, path := range []string{options.WebviewDataPath, options.WebviewCachePath} {
++		info, err := os.Stat(path)
++		if err != nil || !info.IsDir() {
++			t.Fatalf("profile directory %q not prepared: %v", path, err)
++		}
++		entries, err := os.ReadDir(path)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if path == options.WebviewDataPath {
++			if len(entries) != 1 || entries[0].Name() != "cookies.sqlite" || entries[0].IsDir() {
++				t.Fatalf("persistent cookie file not prepared: %v", entries)
++			}
++		} else if len(entries) != 0 {
++			t.Fatalf("writability check left files in %q: %v", path, entries)
++		}
++	}
++	blocked := filepath.Join(root, "file")
++	if err := os.WriteFile(blocked, []byte("keep"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	options.WebviewCachePath = blocked
++	if err := prepareLinuxWebviewStorageDirectories(options); err == nil {
++		t.Fatal("accepted a file as a cache directory")
++	}
++	content, err := os.ReadFile(blocked)
++	if err != nil || string(content) != "keep" {
++		t.Fatalf("modified existing file: %q, %v", content, err)
++	}
++}
++
++func TestPrepareLinuxWebviewStorageRejectsInvalidCookiePath(t *testing.T) {
++	root := t.TempDir()
++	options := LinuxOptions{WebviewDataPath: filepath.Join(root, "data"), WebviewCachePath: filepath.Join(root, "cache")}
++	if err := os.MkdirAll(filepath.Join(options.WebviewDataPath, "cookies.sqlite"), 0700); err != nil {
++		t.Fatal(err)
++	}
++	if err := prepareLinuxWebviewStorageDirectories(options); err == nil {
++		t.Fatal("accepted a directory as persistent cookie storage")
++	}
++}
++
++func TestPrepareLinuxWebviewStoragePreservesExistingCookieFile(t *testing.T) {
++	root := t.TempDir()
++	options := LinuxOptions{WebviewDataPath: filepath.Join(root, "data"), WebviewCachePath: filepath.Join(root, "cache")}
++	if err := os.MkdirAll(options.WebviewDataPath, 0700); err != nil {
++		t.Fatal(err)
++	}
++	cookiePath := filepath.Join(options.WebviewDataPath, "cookies.sqlite")
++	if err := os.WriteFile(cookiePath, []byte("existing cookie data"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	for range 2 {
++		if err := prepareLinuxWebviewStorageDirectories(options); err != nil {
++			t.Fatal(err)
++		}
++	}
++	content, err := os.ReadFile(cookiePath)
++	if err != nil || string(content) != "existing cookie data" {
++		t.Fatalf("cookie file changed during preparation: %q, %v", content, err)
++	}
++}
+--- a/pkg/application/webview_window_darwin.go
++++ b/pkg/application/webview_window_darwin.go
+@@ -11,6 +11,7 @@
+ #include "mac_private_api_darwin.h"
+ #include "webview_panel_darwin.h"
+ #include "webview_notch_window_darwin.h"
++#include "webview_storage_darwin.h"
+ #include <stdlib.h>
+ #include "Cocoa/Cocoa.h"
+ #import <WebKit/WebKit.h>
+@@ -103,7 +104,15 @@
+ 		bool frameless, bool squareCorners, double cornerRadius, bool enableDragAndDrop,
+ 		struct WebviewPreferences preferences, const char* applicationNameForUserAgent,
+ 		bool isPanel, struct PanelPreferences panelPreferences, bool isNotchWindow,
+-		int notchContentWidth, int notchContentHeight, const char* notchScreenID) {
++		int notchContentWidth, int notchContentHeight, const char* notchScreenID,
++		const char* websiteDataStoreIdentifier) {
++	WKWebsiteDataStore *selectedDataStore = nil;
++	if (websiteDataStoreIdentifier != NULL) {
++		selectedDataStore = (WKWebsiteDataStore *)wailsWebsiteDataStoreForIdentifier(websiteDataStoreIdentifier);
++		if (selectedDataStore == nil) {
++			return NULL;
++		}
++	}
+ 	NSWindow<WailsWebviewWindow>* window = createNativeWindow(width, height, frameless,
+ 		squareCorners, cornerRadius, isPanel, panelPreferences, isNotchWindow);
+ 
+@@ -138,6 +147,9 @@
+ 	NSRect frame = NSMakeRect(0, 0, width, height);
+ 	WKWebViewConfiguration* config = [[WKWebViewConfiguration alloc] init];
+ 	[config autorelease];
++	if (selectedDataStore != nil) {
++		config.websiteDataStore = selectedDataStore;
++	}
+ 
+ 	// Set preferences
+     if (preferences.TabFocusesLinks != NULL) {
+@@ -1630,6 +1642,11 @@
+ 		if s := macOptions.WebviewPreferences.ApplicationNameForUserAgent; s != "" {
+ 			appName = C.CString(s)
+ 			defer C.free(unsafe.Pointer(appName))
++		}
++		var websiteDataStoreIdentifier *C.char
++		if identifier := globalApplication.options.Mac.WebsiteDataStoreIdentifier; identifier != "" {
++			websiteDataStoreIdentifier = C.CString(identifier)
++			defer C.free(unsafe.Pointer(websiteDataStoreIdentifier))
+ 		}
+ 		notchContentWidth, notchContentHeight, notchScreenID := w.notchConfiguration()
+ 		cNotchScreenID := C.CString(notchScreenID)
+@@ -1650,7 +1667,12 @@
+ 			C.int(notchContentWidth),
+ 			C.int(notchContentHeight),
+ 			cNotchScreenID,
++			websiteDataStoreIdentifier,
+ 		)
++		if w.nsWindow == nil {
++			globalApplication.handleError(fmt.Errorf("could not create native window with selected website data store"))
++			return
++		}
+ 		if macOptions.DisableEscapeExitsFullscreen {
+ 			C.windowSetDisableEscapeExitsFullscreen(w.nsWindow, C.bool(true))
+ 		}

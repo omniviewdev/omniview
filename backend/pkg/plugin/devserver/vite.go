@@ -3,6 +3,7 @@ package devserver
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,11 +17,17 @@ import (
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/devcompose"
+	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devoutputs"
+	"github.com/omniviewdev/omniview/internal/devsession"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 // ansiRegex matches ANSI escape sequences (colors, cursor movement, etc.).
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+var viteHTTPClient = &http.Client{Timeout: time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 
 const (
 	// viteReadyTimeout is how long we wait for Vite to print its "Local:" URL.
@@ -45,10 +52,23 @@ type viteProcess struct {
 	appendLog func(LogEntry)
 	setStatus func(DevProcessStatus)
 
-	mu   sync.Mutex
-	cmd  *exec.Cmd
-	pgid int           // cached process group ID, set at start
-	done chan struct{} // closed when the process exits
+	mu                     sync.Mutex
+	cmd                    *exec.Cmd
+	pgid                   int           // cached process group ID, set at start
+	done                   chan struct{} // closed when the process exits
+	readyDone              chan struct{}
+	readyErr               error
+	signalMu               sync.Mutex
+	reaping                bool
+	treeKilled             bool
+	cleanupErr             error
+	remote                 *devsession.RemoteProcess
+	remoteStartUnconfirmed bool
+	remoteLogsDone         <-chan struct{}
+	doneOnce               sync.Once
+	observationError       chan error
+	observationErr         error
+	outputWriter           *devoutputs.Writer
 }
 
 // newViteProcess creates a viteProcess. Call Start() to spawn.
@@ -63,18 +83,20 @@ func newViteProcess(
 	setStatus func(DevProcessStatus),
 ) *viteProcess {
 	return &viteProcess{
-		ctx:       ctx,
-		logger:    logger.Named("vite"),
-		pluginID:  pluginID,
-		devPath:   devPath,
-		port:      port,
-		buildOpts: buildOpts,
-		appendLog: appendLog,
-		setStatus: setStatus,
-		mu:        sync.Mutex{},
-		cmd:       nil,
-		pgid:      0,
-		done:      make(chan struct{}),
+		ctx:              ctx,
+		logger:           logger.Named("vite"),
+		pluginID:         pluginID,
+		devPath:          devPath,
+		port:             port,
+		buildOpts:        buildOpts,
+		appendLog:        appendLog,
+		setStatus:        setStatus,
+		mu:               sync.Mutex{},
+		cmd:              nil,
+		pgid:             0,
+		done:             make(chan struct{}),
+		readyDone:        make(chan struct{}),
+		observationError: make(chan error, 1),
 	}
 }
 
@@ -85,6 +107,9 @@ func newViteProcess(
 func (vp *viteProcess) Start() error {
 	vp.mu.Lock()
 	defer vp.mu.Unlock()
+	if err := vp.ctx.Err(); err != nil {
+		return err
+	}
 
 	vp.setStatus(DevProcessStatusStarting)
 
@@ -97,19 +122,32 @@ func (vp *viteProcess) Start() error {
 			"Plugin UI directory does not exist: "+uiDir,
 		)
 	}
-
-	// Resolve pnpm path.
-	pnpmPath := vp.buildOpts.PnpmPath
-	if pnpmPath == "" {
-		return apperror.ConfigMissing(
-			"developer.pnpmpath",
-			"pnpm path is not configured. Please set developer.pnpmpath in settings.",
-		)
+	var compositionRoot string
+	if vp.buildOpts.Workspace != nil {
+		composition, err := devcompose.Installed(*vp.buildOpts.Workspace, uiDir)
+		if err != nil {
+			return fmt.Errorf("managed UI requires a complete installed feature composition; stop and reconfigure the workspace: %w", err)
+		}
+		compositionRoot = composition.Root
+	}
+	if vp.buildOpts.ProcessSupervisor != nil {
+		return vp.startRemote(uiDir)
 	}
 
-	// Install dependencies if node_modules is missing.
-	if err := vp.installDepsIfMissing(uiDir, pnpmPath); err != nil {
+	pnpmPath, err := resolveTool(vp.buildOpts.PnpmPath, "pnpm")
+	if err != nil {
 		return err
+	}
+	if _, err = resolveTool(vp.buildOpts.NodePath, "node"); err != nil {
+		return err
+	}
+
+	// Standalone development retains its ordinary install behavior. Managed
+	// plugins consume the supervisor's completed aggregate transaction only.
+	if vp.buildOpts.Workspace == nil {
+		if err := vp.installDepsIfMissing(uiDir, pnpmPath); err != nil {
+			return err
+		}
 	}
 
 	// Build the command: pnpm run dev --port <port> --strictPort --host 127.0.0.1
@@ -123,12 +161,38 @@ func (vp *viteProcess) Start() error {
 		"--strictPort",
 		"--host", "127.0.0.1",
 	}
+	if len(vp.buildOpts.PnpmArgs) > 0 {
+		combined := make([]string, len(vp.buildOpts.PnpmArgs)+len(args))
+		copy(combined, vp.buildOpts.PnpmArgs)
+		copy(combined[len(vp.buildOpts.PnpmArgs):], args)
+		args = combined
+	}
 
-	cmd := exec.CommandContext(vp.ctx, pnpmPath, args...)
+	if err := vp.ctx.Err(); err != nil {
+		return err
+	}
+	// The supervisor is the sole reaper; exec's context watcher must not kill
+	// and reap only the pnpm leader before descendant cleanup completes.
+	cmd := exec.Command(pnpmPath, args...)
 	cmd.Dir = uiDir
 
 	// Set up environment with proper PATH including node and pnpm directories.
-	env := os.Environ()
+	env := append([]string(nil), vp.buildOpts.Environment...)
+	if env == nil {
+		env = os.Environ()
+	}
+	env = goBuildEnv(env)
+	if compositionRoot != "" {
+		env = compositionEnvironment(env, compositionRoot)
+		if vp.buildOpts.ExplicitNodePath != "" {
+			selectedNode, err := resolveTool(vp.buildOpts.ExplicitNodePath, "node")
+			if err != nil {
+				return err
+			}
+			env = append(env, "OMNIVIEW_PNPM_NODE_PATH="+selectedNode)
+		}
+	}
+	env = append(env, "OMNIVIEW_VITE_PORT="+strconv.Itoa(vp.port))
 	extraDirs := []string{}
 	if vp.buildOpts.PnpmPath != "" {
 		extraDirs = append(extraDirs, filepath.Dir(vp.buildOpts.PnpmPath))
@@ -151,26 +215,49 @@ func (vp *viteProcess) Start() error {
 	if err != nil {
 		return apperror.Internal(err, "Failed to create stderr pipe")
 	}
+	if vp.buildOpts.Workspace != nil {
+		vp.outputWriter, err = devoutputs.BeginVite(vp.ctx, *vp.buildOpts.Workspace, uiDir)
+		if err != nil {
+			return err
+		}
+		cmd.Env = append(cmd.Env, vp.outputWriter.Environment...)
+	}
 
 	if err = cmd.Start(); err != nil {
 		return apperror.Wrap(
-			err, apperror.TypePluginBuildFailed, http.StatusInternalServerError, "Failed to start Vite dev server",
+			errors.Join(err, vp.finishViteOutputs(true)), apperror.TypePluginBuildFailed, http.StatusInternalServerError, "Failed to start Vite dev server",
 		)
 	}
 
 	vp.cmd = cmd
-
-	// Cache the process group ID immediately so it survives process death.
-	vp.pgid = getProcessGroupID(cmd.Process.Pid)
-	if vp.pgid == 0 {
-		vp.pgid = cmd.Process.Pid // fallback
-	}
-
-	// Override the default context-cancel behavior (which only kills the lead PID)
-	// to kill the entire process group. Go 1.20+ calls cmd.Cancel instead of
-	// cmd.Process.Kill() when the context is cancelled.
-	cmd.Cancel = func() error {
-		return killProcessGroup(vp.pgid)
+	vp.pgid = cmd.Process.Pid // newProcessGroupAttr makes this owned child's group
+	go func() {
+		select {
+		case <-vp.ctx.Done():
+			if err := vp.signalOwnedTree(true); err != nil {
+				vp.logger.Errorw(context.Background(), "cancel owned Vite tree", "error", err)
+			}
+		case <-vp.done:
+		}
+	}()
+	if vp.buildOpts.ViteStarted != nil {
+		var identity devcontract.ProcessIdentity
+		if vp.buildOpts.ViteOwner.WorkspaceID != "" {
+			identity, err = devsession.CaptureProcess(cmd.Process.Pid, vp.buildOpts.ViteOwner)
+		}
+		if err == nil {
+			err = vp.buildOpts.ViteStarted(identity)
+		}
+		if err != nil {
+			stopErr := vp.signalOwnedTree(true)
+			vp.signalMu.Lock()
+			vp.reaping = true
+			vp.signalMu.Unlock()
+			_ = cmd.Wait()
+			outputErr := vp.finishViteOutputs(false)
+			close(vp.done)
+			return errors.Join(fmt.Errorf("capture managed Vite ownership: %w", err), stopErr, outputErr)
+		}
 	}
 
 	vp.logger.Infow(context.Background(), "vite process spawned", "pid", cmd.Process.Pid, "pgid", vp.pgid, "port", vp.port)
@@ -206,11 +293,19 @@ func (vp *viteProcess) installDepsIfMissing(uiDir, pnpmPath string) error {
 	}
 	vp.appendLog(newLogEntry(logSourceVite, logLevelInfo, "node_modules not found — running pnpm install"))
 
-	installCmd := exec.CommandContext(vp.ctx, pnpmPath, "install")
+	taskArgs := []string{"install"}
+	installArgs := make([]string, len(vp.buildOpts.PnpmArgs)+len(taskArgs))
+	copy(installArgs, vp.buildOpts.PnpmArgs)
+	copy(installArgs[len(vp.buildOpts.PnpmArgs):], taskArgs)
+	installCmd := exec.CommandContext(vp.ctx, pnpmPath, installArgs...)
 	installCmd.Dir = uiDir
 
 	// Set up environment with proper PATH.
-	installEnv := os.Environ()
+	installEnv := append([]string(nil), vp.buildOpts.Environment...)
+	if installEnv == nil {
+		installEnv = os.Environ()
+	}
+	installEnv = goBuildEnv(installEnv)
 	installDirs := []string{}
 	if vp.buildOpts.PnpmPath != "" {
 		installDirs = append(installDirs, filepath.Dir(vp.buildOpts.PnpmPath))
@@ -245,7 +340,7 @@ func (vp *viteProcess) pipeStdout(stdoutPipe io.Reader, readyCh chan<- struct{})
 		// Vite prints something like:
 		//   ➜  Local:   http://127.0.0.1:15173/
 		// We detect readiness by finding "Local:" in the output.
-		if strings.Contains(line, "Local:") && strings.Contains(line, strconv.Itoa(vp.port)) {
+		if strings.Contains(line, "Local:") && strings.Contains(line, fmt.Sprintf("http://127.0.0.1:%d/", vp.port)) {
 			select {
 			case readyCh <- struct{}{}:
 			default:
@@ -268,7 +363,30 @@ func (vp *viteProcess) pipeStderr(stderrPipe io.Reader) {
 
 // waitForExit waits for the Vite process to exit, logs the outcome and closes vp.done.
 func (vp *viteProcess) waitForExit(cmd *exec.Cmd) {
+	// Observe exit without reaping, then kill any descendants while the owned
+	// leader's unreaped identity still pins its group against numeric reuse.
+	observationErr := awaitOwnedExit(cmd.Process.Pid)
+	vp.signalMu.Lock()
+	if !vp.treeKilled {
+		if canSignalUnreapedGroup {
+			err := normalizeOwnedGroupError(killProcessGroup(vp.pgid))
+			if err != nil {
+				err = fmt.Errorf("dispose owned Vite group before reaping: %w", err)
+			}
+			vp.cleanupErr = errors.Join(vp.cleanupErr, err)
+			if err == nil {
+				vp.treeKilled = true
+			}
+		} else {
+			// A terminated Windows leader is not authority for numeric taskkill.
+			vp.cleanupErr = errors.Join(vp.cleanupErr, fmt.Errorf("owned Vite leader exited before tree cleanup could be confirmed"))
+		}
+	}
+	vp.cleanupErr = errors.Join(vp.cleanupErr, observationErr)
+	vp.reaping = true
+	vp.signalMu.Unlock()
 	err := cmd.Wait()
+	_ = vp.finishViteOutputs(false)
 	if err != nil {
 		vp.logger.Warnw(context.Background(), "vite process exited with error", "error", err)
 		vp.appendLog(newLogEntry(logSourceVite, logLevelError, fmt.Sprintf("Vite process exited: %v", err)))
@@ -276,32 +394,71 @@ func (vp *viteProcess) waitForExit(cmd *exec.Cmd) {
 		vp.logger.Infow(context.Background(), "vite process exited cleanly")
 		vp.appendLog(newLogEntry(logSourceVite, logLevelInfo, "Vite process exited"))
 	}
+	vp.setStatus(DevProcessStatusError)
 	close(vp.done)
 }
 
 // awaitReady sets the status once Vite is ready, times out, exits or the context is cancelled.
-func (vp *viteProcess) awaitReady(readyCh <-chan struct{}) {
-	select {
-	case <-readyCh:
-		vp.setStatus(DevProcessStatusReady)
-		vp.logger.Infow(context.Background(), "vite dev server is ready", "port", vp.port)
-		vp.appendLog(newLogEntry(
-			logSourceVite, logLevelInfo, fmt.Sprintf("Vite dev server ready at http://127.0.0.1:%d", vp.port),
-		))
-	case <-time.After(viteReadyTimeout):
-		vp.setStatus(DevProcessStatusError)
-		vp.logger.Errorw(
-			context.Background(), "vite dev server did not become ready in time", "timeout", viteReadyTimeout,
-		)
-		vp.appendLog(newLogEntry(
-			logSourceVite, logLevelError, fmt.Sprintf("Vite did not become ready within %s", viteReadyTimeout),
-		))
-	case <-vp.done:
-		// Process exited before ready.
-		vp.setStatus(DevProcessStatusError)
-	case <-vp.ctx.Done():
-		// Context cancelled.
-		return
+func (vp *viteProcess) awaitReady(advertised <-chan struct{}) {
+	deadline := time.NewTimer(viteReadyTimeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	hasAdvertisement := false
+	finish := func(err error) {
+		if err == nil && vp.buildOpts.Workspace != nil {
+			_, err = devcompose.Installed(*vp.buildOpts.Workspace, filepath.Join(vp.devPath, "ui"))
+			if err != nil {
+				err = fmt.Errorf("managed composition changed before Vite readiness; stop and reconfigure the workspace: %w", err)
+			}
+		}
+		vp.mu.Lock()
+		if err == nil {
+			err = vp.observationErr
+		}
+		vp.readyErr = err
+		if err != nil {
+			vp.setStatus(DevProcessStatusError)
+		} else {
+			vp.setStatus(DevProcessStatusReady)
+		}
+		vp.mu.Unlock()
+		close(vp.readyDone)
+	}
+	for {
+		select {
+		case <-advertised:
+			hasAdvertisement = true
+			advertised = nil
+		case err := <-vp.observationError:
+			finish(err)
+			return
+		case <-vp.ctx.Done():
+			finish(vp.ctx.Err())
+			return
+		case <-vp.done:
+			finish(fmt.Errorf("Vite exited before HTTP readiness"))
+			return
+		case <-deadline.C:
+			finish(fmt.Errorf("Vite HTTP endpoint unavailable after %s", viteReadyTimeout))
+			return
+		case <-ticker.C:
+			if !hasAdvertisement {
+				continue
+			}
+			ctx, cancel := context.WithTimeout(vp.ctx, time.Second)
+			err := probeVite(ctx, fmt.Sprintf("http://127.0.0.1:%d", vp.port))
+			cancel()
+			if err == nil {
+				select {
+				case <-vp.done:
+					finish(fmt.Errorf("Vite exited during HTTP readiness"))
+				default:
+					finish(nil)
+				}
+				return
+			}
+		}
 	}
 }
 
@@ -312,49 +469,84 @@ func (vp *viteProcess) PGID() int {
 	return vp.pgid
 }
 
-// Stop sends SIGTERM to the Vite process group, waits up to viteStopGracePeriod,
-// then sends SIGKILL if it's still running. Uses the cached PGID so it works
-// even if the lead process has already exited.
-func (vp *viteProcess) Stop() {
+// Stop signals only the live child owned by this Cmd, never a persisted or
+// already-exited numeric process group.
+func (vp *viteProcess) Stop() error {
 	vp.mu.Lock()
 	cmd := vp.cmd
-	pgid := vp.pgid
+	remote := vp.remote
+	unconfirmed := vp.remoteStartUnconfirmed
 	vp.mu.Unlock()
-
+	if remote != nil {
+		return vp.stopRemote(remote)
+	}
+	if unconfirmed {
+		return fmt.Errorf("managed process start is unconfirmed; retained supervisor ownership must be resolved before releasing its lease")
+	}
 	if cmd == nil || cmd.Process == nil {
-		return
+		return vp.stopResult()
 	}
-
-	vp.logger.Infow(context.Background(), "stopping vite process")
-
-	// Send SIGTERM (or equivalent) to the process group.
-	if pgid > 0 {
-		_ = termProcessGroup(pgid)
-	} else {
-		_ = termProcess(cmd.Process)
-	}
-
-	// Wait for exit or timeout.
 	select {
 	case <-vp.done:
-		vp.logger.Infow(context.Background(), "vite process stopped after SIGTERM")
-		return
-	case <-time.After(viteStopGracePeriod):
-		vp.logger.Warnw(context.Background(), "vite process did not stop after SIGTERM; sending SIGKILL")
-		if pgid > 0 {
-			_ = killProcessGroup(pgid)
-		} else {
-			_ = cmd.Process.Kill()
+		return vp.stopResult()
+	default:
+	}
+	if err := vp.signalOwnedTree(false); err != nil {
+		if forceErr := vp.signalOwnedTree(true); forceErr != nil {
+			return errors.Join(err, forceErr)
 		}
 	}
-
-	// Wait for final exit after SIGKILL.
 	select {
 	case <-vp.done:
-		vp.logger.Infow(context.Background(), "vite process stopped after SIGKILL")
-	case <-time.After(viteKillWaitPeriod):
-		vp.logger.Errorw(context.Background(), "vite process did not exit after SIGKILL; giving up")
+		return vp.stopResult()
+	case <-time.After(viteStopGracePeriod):
+		if err := vp.signalOwnedTree(true); err != nil {
+			return err
+		}
 	}
+	select {
+	case <-vp.done:
+		return vp.stopResult()
+	case <-time.After(viteKillWaitPeriod):
+		return fmt.Errorf("owned Vite process did not exit after termination")
+	}
+}
+
+// signalOwnedTree holds the sole-reaper gate across the signal. No code may
+// signal a cached group once this supervisor begins Cmd.Wait.
+func (vp *viteProcess) signalOwnedTree(force bool) error {
+	vp.signalMu.Lock()
+	defer vp.signalMu.Unlock()
+	if vp.reaping || vp.treeKilled {
+		return vp.cleanupErr
+	}
+	if vp.cmd == nil || vp.cmd.Process == nil || vp.pgid <= 0 {
+		return fmt.Errorf("owned Vite process group unavailable")
+	}
+	var err error
+	if force {
+		err = killProcessGroup(vp.pgid)
+	} else {
+		err = termProcessGroup(vp.pgid)
+	}
+	err = normalizeOwnedGroupError(err)
+	if err != nil {
+		err = fmt.Errorf("signal owned Vite group (force=%t): %w", force, err)
+	}
+	if err == nil && (force || termStopsOwnedTree) {
+		vp.treeKilled = true
+		vp.cleanupErr = nil
+	}
+	if err != nil && force {
+		vp.cleanupErr = err
+	}
+	return err
+}
+
+func (vp *viteProcess) stopResult() error {
+	vp.signalMu.Lock()
+	defer vp.signalMu.Unlock()
+	return vp.cleanupErr
 }
 
 // prependToPath adds directories to the front of the PATH environment variable.
@@ -373,4 +565,86 @@ func prependToPath(env []string, dirs []string) []string {
 	}
 	// PATH not found; add it.
 	return append(env, "PATH="+prefix)
+}
+
+func (vp *viteProcess) PID() int {
+	vp.mu.Lock()
+	defer vp.mu.Unlock()
+	if vp.remote != nil {
+		return vp.remote.Identity().PID
+	}
+	if vp.cmd == nil || vp.cmd.Process == nil {
+		return 0
+	}
+	return vp.cmd.Process.Pid
+}
+
+func (vp *viteProcess) WaitReady() error {
+	select {
+	case <-vp.ctx.Done():
+		return vp.ctx.Err()
+	case <-vp.readyDone:
+	}
+	vp.mu.Lock()
+	defer vp.mu.Unlock()
+	return vp.readyErr
+}
+
+func probeVite(ctx context.Context, endpoint string) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/@vite/client", nil)
+	if err != nil {
+		return err
+	}
+	response, err := viteHTTPClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK || !strings.Contains(response.Header.Get("Content-Type"), "javascript") {
+		return fmt.Errorf("Vite client endpoint returned %s (%s)", response.Status, response.Header.Get("Content-Type"))
+	}
+	count, err := io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return fmt.Errorf("Vite client endpoint returned empty JavaScript")
+	}
+	return nil
+}
+
+func resolveTool(configured, name string) (string, error) {
+	if configured == "" {
+		configured = name
+	}
+	path, err := exec.LookPath(configured)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s tool %q: %w", name, configured, err)
+	}
+	return path, nil
+}
+
+// finishViteOutputs is called only by the sole actual Cmd reaper, or after
+// Start failed without creating a process. Failed descendant cleanup must leave
+// the writer open rather than claiming a stable output snapshot.
+func (vp *viteProcess) finishViteOutputs(noProcess bool) error {
+	if vp.outputWriter == nil {
+		return nil
+	}
+	vp.signalMu.Lock()
+	canFinish := noProcess || (vp.treeKilled && vp.reaping && vp.cmd != nil && vp.cmd.ProcessState != nil)
+	vp.signalMu.Unlock()
+	var err error
+	if canFinish {
+		err = vp.outputWriter.Finish(context.WithoutCancel(vp.ctx))
+	} else {
+		err = fmt.Errorf("owned Vite output writer retained because descendant exit is unconfirmed")
+	}
+	if err != nil {
+		err = fmt.Errorf("finish owned Vite outputs: %w", err)
+		vp.signalMu.Lock()
+		vp.cleanupErr = errors.Join(vp.cleanupErr, err)
+		vp.signalMu.Unlock()
+	}
+	return err
 }

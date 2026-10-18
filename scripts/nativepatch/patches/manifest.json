@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "module": "github.com/wailsapp/wails/v3",
+  "version": "v3.0.0-beta.29",
+  "sum": "h1:oJbXasfieQmMkYtqPlFSPnDe0RwpzA5BKiov8WPD5lo=",
+  "goModSum": "h1:5DR/EG5FHU8+BNV7tQYQ/rJMjoFsVlYpM+0gp1+gcTI=",
+  "patch": "native-storage.patch",
+  "patchSHA256": "d59bbd19b0a2ab342fdb5edfbdb7f9a1a3a19af486769c44fa46ec34b87c910c",
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "sha256": "cede95c28e6e9d67d1c1e49e8ba3c20250c7d4080c3faca1579b6732327ae40d",
+      "copy": "WAILS-LICENSE"
+    }
+  ],
+  "files": [
+    {
+      "path": "pkg/application/application.go",
+      "before": "13f80791710adb366de90e375ba9df84b5da609ff2c0facd387d2dca63ebf5a8",
+      "after": "704a092a1b585adec606824cd81296fbb355c10d3754e8fc06431e47b00d065a"
+    },
+    {
+      "path": "pkg/application/application_linux.go",
+      "before": "8c57eda9a904ff69c2b0ad16532bc923ec29ec2c0eb5dcbed7e7768fa1c948d4",
+      "after": "99005130d1e905da2f573f9575ee69cd3585a9b4f738c75e03825e4e86329a86"
+    },
+    {
+      "path": "pkg/application/application_linux_gtk3.go",
+      "before": "6e83cc93b8404466f2aead1831883a224dc18b1a39909b12dc11249b39d79ba3",
+      "after": "5e6f235d828435ac86f405954c0599b67509309c3592c922e131a82be730bbb4"
+    },
+    {
+      "path": "pkg/application/application_options.go",
+      "before": "ce44225734a67dafd7937b6c1089e1a7ff6c36582d4947a0e2e42f82362de6dc",
+      "after": "1f547115400da6356b628687e53fc6c4e6febb73761608107f9fa0a763ea9c47"
+    },
+    {
+      "path": "pkg/application/application_server.go",
+      "before": "c5b20ce3bc3c26648076ffafebd5b13cc2b32bd47605ef9d4d550d050906c375",
+      "after": "3c20e48cb4665b727ca4e29b6206ce30429734747c3ec99463bc508965e1b9d4"
+    },
+    {
+      "path": "pkg/application/application_server_middleware_test.go",
+      "before": "",
+      "after": "bddb9be4c2f7cb1993dfb8e290376fcb52b7321646ed605784826b6188557bc5"
+    },
+    {
+      "path": "pkg/application/linux_cgo.c",
+      "before": "a81777afcb11f2ee3d2d57355918e00d7ea376dda6a77ec94dafe55a1322785f",
+      "after": "68f77553baac72e5cf8147e36409d9018e8849b0c27c45eb77eab4554aea8d58"
+    },
+    {
+      "path": "pkg/application/linux_cgo.go",
+      "before": "5ce463f7c7ff44f8f3c30faeb63c39ee7ba8c101d8eef4a231d11e363cc99f19",
+      "after": "c8c217145b96abf465355e4a4947487c03d6271d9e9d1a124e91dc2759b6ef51"
+    },
+    {
+      "path": "pkg/application/linux_cgo.h",
+      "before": "acc63b1af7eb6062460ed6f175faebafec2824b5f0efa7b680bf8468ac5c1fbf",
+      "after": "c9d3ca0b4fc9a445646751efe372e2e8395287591c3dc40fc98ae85f81a15078"
+    },
+    {
+      "path": "pkg/application/linux_cgo_gtk3.go",
+      "before": "36b69fb99a4fde28495d25d506bd8b87826bf93f2071cd05a8c47c3488795cd5",
+      "after": "679f5efed8a2a3c0591c3f9abc155a40ad8ea08f428b6fee4855fd2b26da7c63"
+    },
+    {
+      "path": "pkg/application/webview_storage.go",
+      "before": "",
+      "after": "339e7752379fac5d1b2385f95b5f0123256b3ebd76eb5bea19c58bfb7195f817"
+    },
+    {
+      "path": "pkg/application/webview_storage_darwin.go",
+      "before": "",
+      "after": "a765d2a864904cffdb2e5a036c6055d2141a0d6d0d0bf15da55282307bf414f8"
+    },
+    {
+      "path": "pkg/application/webview_storage_darwin.h",
+      "before": "",
+      "after": "7b26d36702542734d9a46029a9e1e310d45aefca9f912a3482e9fb61d02d4b18"
+    },
+    {
+      "path": "pkg/application/webview_storage_darwin.m",
+      "before": "",
+      "after": "be357e2a3d5c2bc5c87e425029177d1557d4d8f498cae16e42646e0c9b5a5b67"
+    },
+    {
+      "path": "pkg/application/webview_storage_darwin_test.go",
+      "before": "",
+      "after": "9f490b9a28ba1059ff96fca96c29d2e0f2496f2b7a55d6721f8f78a87abbdf1e"
+    },
+    {
+      "path": "pkg/application/webview_storage_linux_test.go",
+      "before": "",
+      "after": "2e2323109af20ce56a78b9a11eab01c4017ac92226885675de53b0287004a0c2"
+    },
+    {
+      "path": "pkg/application/webview_storage_other.go",
+      "before": "",
+      "after": "b4fa67b3709870e4ce8b00280bebd62208baf3d94c671cdc4f7653e4ddcebf90"
+    },
+    {
+      "path": "pkg/application/webview_storage_server_test.go",
+      "before": "",
+      "after": "16b8e3a0700a06b45670c79f4988c19ffc954be623aa98973a94b4fa0a82ed05"
+    },
+    {
+      "path": "pkg/application/webview_storage_test.go",
+      "before": "",
+      "after": "be6471996b0a54fae01fe6bbdf9fe5011158b98446e2f1c01f80a3993f1dfabd"
+    },
+    {
+      "path": "pkg/application/webview_storage_unix.go",
+      "before": "",
+      "after": "8a79f1be12dd96a80e1bfdce713ede1ad7da1f24c5e251c2c82ed22ae2b960e2"
+    },
+    {
+      "path": "pkg/application/webview_storage_unix_test.go",
+      "before": "",
+      "after": "169b73b48d9f49ef625c8637958366b6803ae998644f688cc1ae17ecd3e42e87"
+    },
+    {
+      "path": "pkg/application/webview_window_darwin.go",
+      "before": "40da2eb92b6762cc5d942a55d4e490a35e76459f093232a3fab691667e608791",
+      "after": "3bca879741a7d603213d53d453d9bfc302e384e8e7432cc93f0050eda1a3c1f8"
+    }
+  ]
+}

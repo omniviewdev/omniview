@@ -1,0 +1,13 @@
+id: workspace-probe
+version: 0.1.0
+name: Workspace Probe
+icon: LuFlaskConical
+description: Safe local workspace probe with a persisted counter setting and interactive UI.
+license: Apache-2.0
+author:
+  name: Omniview
+schema_version: 1
+sdk_protocol_version: 1
+capabilities:
+  - ui
+  - settings

@@ -63,12 +63,17 @@ type Manager interface {
 	Shutdown()
 
 	InstallInDevMode() (*config.PluginMeta, error)
+	InstallDevPluginFromPath(path string) (sdktypes.PluginInfo, error)
+	UnlinkDevPlugin(id string) (sdktypes.PluginInfo, error)
 	InstallFromPathPrompt() (*config.PluginMeta, error)
 	InstallPluginFromPath(path string) (*config.PluginMeta, error)
 	InstallPluginVersion(pluginID string, version string) (*config.PluginMeta, error)
 
 	LoadPlugin(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error)
 	ReloadPlugin(id string) (sdktypes.PluginInfo, error)
+	UnloadPlugin(id string) error
+	StopDevPlugin(id string) error
+	ReloadManagedPlugin(ctx context.Context, id, source, generation string) error
 	RetryFailedPlugin(id string) (sdktypes.PluginInfo, error)
 	UninstallPlugin(id string) (sdktypes.PluginInfo, error)
 
@@ -161,7 +166,7 @@ type pluginManager struct {
 	registryClient      *registry.Client
 	managers            map[string]plugintypes.PluginManager
 	devServerCheck      DevServerChecker
-	devServerMgr        *devserver.DevServerManager
+	devServerMgr        managedDevServers
 	pidTracker          *PIDTracker
 	healthChecker       *HealthChecker
 	pluginLogMgr        *pluginlog.Manager
@@ -172,8 +177,17 @@ type pluginManager struct {
 	// pluginOpsMu serializes load/reload/unload operations per plugin to
 	// prevent concurrent lifecycle transitions for the same plugin (e.g.
 	// two file-change events triggering simultaneous reloads).
-	pluginOpsMu    sync.Mutex
-	pluginOpsLocks map[string]*sync.Mutex
+	pluginOpsMu     sync.Mutex
+	pluginOpsLocks  map[string]*sync.Mutex
+	installOpsLocks map[string]*sync.Mutex
+}
+
+// managedDevServers is the process boundary used by install transactions.
+// The existing devserver manager remains the sole process owner.
+type managedDevServers interface {
+	IsManaged(pluginID string) bool
+	StartDevServerForPath(pluginID, path string) (devserver.DevServerState, error)
+	StopDevServer(pluginID string) error
 }
 
 // pluginOpsLock returns a per-plugin mutex that serializes load/reload/unload
@@ -227,6 +241,14 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	if crashError == "" {
 		crashError = "plugin process exited unexpectedly"
 	}
+	pm.recordsMu.RLock()
+	record := pm.records[pluginID]
+	source := ""
+	if record != nil {
+		source = record.DevPath
+	}
+	pm.recordsMu.RUnlock()
+	pm.observeManagedLifecycle(pluginID, source, pm.managedRuntimeGeneration(pluginID, source), false, false, fmt.Errorf("%s", crashError))
 
 	pm.logger.Errorw(pm.ctx, "plugin process crashed — attempting recovery",
 		"pluginID", pluginID,
@@ -329,6 +351,10 @@ func (pm *pluginManager) SetDevServerChecker(checker DevServerChecker) {
 
 // SetDevServerManager sets the dev server manager.
 func (pm *pluginManager) SetDevServerManager(mgr *devserver.DevServerManager) {
+	if mgr == nil {
+		pm.devServerMgr = nil
+		return
+	}
 	pm.devServerMgr = mgr
 }
 
@@ -431,6 +457,28 @@ func (pm *pluginManager) planPluginLoads(
 	}
 
 	var devPlugins []devPluginEntry
+	// Workspace selection is authoritative before any cached dev executable or
+	// old source watcher starts. Preserve every dev binding, even if its old
+	// repository/directory was removed; rebind only through the install transaction.
+	workspaceDev := make(map[string]bool)
+	for _, state := range states {
+		if !state.DevMode {
+			continue
+		}
+		constrained, selectionErr := pm.validateManagedSource(state.ID, state.DevPath)
+		if !constrained {
+			continue
+		}
+		workspaceDev[state.ID] = true
+		reason := ""
+		if selectionErr != nil {
+			reason = selectionErr.Error()
+		}
+		pm.retainStoppedDevInventory(state, reason)
+		if selectionErr == nil && state.Enabled {
+			devPlugins = append(devPlugins, devPluginEntry{pluginID: state.ID, devPath: state.DevPath})
+		}
+	}
 
 	// First pass: collect dev plugin entries and stub records (lightweight, sequential).
 	// Also build a list of plugins that need LoadPlugin called.
@@ -438,6 +486,9 @@ func (pm *pluginManager) planPluginLoads(
 
 	for _, file := range files {
 		if !file.IsDir() {
+			continue
+		}
+		if workspaceDev[file.Name()] {
 			continue
 		}
 
@@ -574,8 +625,19 @@ func (pm *pluginManager) startDevServers(devPlugins []devPluginEntry) {
 		go func(pluginID, devPath string) {
 			defer wg.Done()
 			pm.logger.Infow(pm.ctx, "starting dev server (background)", "pluginID", pluginID)
-			if _, startErr := pm.devServerMgr.StartDevServerForPath(pluginID, devPath); startErr != nil {
-				pm.logger.Warnw(pm.ctx, "failed to start dev server", "pluginID", pluginID, "error", startErr)
+			constrained, selectionErr := pm.validateManagedSource(pluginID, devPath)
+			if selectionErr != nil {
+				pm.logger.Warnw(pm.ctx, "development source is outside workspace selection", "pluginID", pluginID, "error", selectionErr)
+				return
+			}
+			var startErr error
+			if constrained {
+				_, startErr = pm.InstallDevPluginFromPath(devPath)
+			} else {
+				_, startErr = pm.devServerMgr.StartDevServerForPath(pluginID, devPath)
+			}
+			if startErr != nil {
+				pm.logger.Warnw(pm.ctx, "failed to start selected dev source", "pluginID", pluginID, "error", startErr)
 			}
 		}(dp.pluginID, dp.devPath)
 	}

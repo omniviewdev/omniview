@@ -125,7 +125,12 @@ export const usePluginManager = () => {
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
     },
-    onError: createErrorHandler(showSnackbar, 'Dev mode installation failed'),
+    onError(error) {
+      // A rejected build/rebind can still retain a different source and failed
+      // record. Refresh list and detail queries instead of leaving A as running.
+      void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
+      createErrorHandler(showSnackbar, 'Dev mode installation failed')(error);
+    },
   });
 
   /**

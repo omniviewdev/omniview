@@ -3,10 +3,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   values: vi.fn(),
+  changeListeners: new Set<() => void>(),
 }));
 
 vi.mock('../../bindings/github.com/omniviewdev/omniview/internal/settings/servicewrapper', () => ({
   Values: mocks.values,
+}));
+
+vi.mock('@wailsio/runtime', () => ({
+  Events: {
+    On: (name: string, callback: () => void) => {
+      if (name !== 'settings/changed') {
+        throw new Error(`Unexpected settings event: ${name}`);
+      }
+      mocks.changeListeners.add(callback);
+      return () => mocks.changeListeners.delete(callback);
+    },
+  },
 }));
 
 import { useSettings } from '../../hooks/settings/useSettings';
@@ -55,6 +68,28 @@ describe('SettingsProvider request sequencing', () => {
     vi.restoreAllMocks();
   });
 
+
+  it('refreshes an external change without letting pending hydration overwrite it', async () => {
+    const initial = createDeferred<Record<string, unknown>>();
+    const external = createDeferred<Record<string, unknown>>();
+    mocks.values
+      .mockReturnValueOnce(initial.promise)
+      .mockReturnValueOnce(external.promise);
+    renderProvider();
+
+    act(() => {
+      for (const notify of mocks.changeListeners) {
+        notify();
+      }
+    });
+    external.resolve({ 'appearance.theme': 'solarized-dark' });
+    await act(async () => external.promise);
+    expect(readSettings()).toEqual({ 'appearance.theme': 'solarized-dark' });
+
+    initial.resolve({ 'appearance.theme': 'obsidian' });
+    await act(async () => initial.promise);
+    expect(readSettings()).toEqual({ 'appearance.theme': 'solarized-dark' });
+  });
   it('does not let an older initial response overwrite a newer reload', async () => {
     const initial = createDeferred<Record<string, unknown>>();
     const reload = createDeferred<Record<string, unknown>>();

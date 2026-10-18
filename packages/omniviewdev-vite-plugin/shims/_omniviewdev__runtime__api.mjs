@@ -14,6 +14,7 @@ export const DataClient = mod.DataClient;
 export const DevServerManager = mod.DevServerManager;
 export const DiagnosticsClient = mod.DiagnosticsClient;
 export const ExecClient = mod.ExecClient;
+export const GetInstanceInfo = mod.GetInstanceInfo;
 export const GetOperatingSystem = mod.GetOperatingSystem;
 export const GraphClient = mod.GraphClient;
 export const LogsClient = mod.LogsClient;

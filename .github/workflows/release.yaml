@@ -17,6 +17,15 @@ env:
   NODE_OPTIONS: "--max-old-space-size=4096"
   GO_VERSION: "1.26"
   NODE_VERSION: "24"
+  # Release jobs must not inherit a developer's workspace/module/tooling flags.
+  GOWORK: "off"
+  GOFLAGS: ""
+  GO_MODFILE: ""
+  # Publish a compatible plugin-sdk and update go.mod before releasing; no local fallback.
+  SDK_SOURCE: ""
+  WAILS_MCP: ""
+  EXTRA_TAGS: ""
+  RELEASE: "true"
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
@@ -43,11 +52,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
-          run_install: |
-            - args: []
-            - args: [--global, typescript]
+          version: 12.14.0
+          install: false
+
+      - name: Install dependencies and global TypeScript
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm add --global typescript
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -62,13 +75,20 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare pinned native Wails patch
+        shell: bash
+        run: |
+          set -eu
+          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go --root "$PWD")"
+          printf 'GO_MODFILE=%s\n' "$HOST_MODFILE" >> "$GITHUB_ENV"
+
       - name: Install Wails v3
         shell: bash
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -modfile="$GO_MODFILE" -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
 
       - name: Build frontend
         shell: bash
-        run: task common:build:frontend
+        run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
 
       - name: Build Omniview
         shell: bash
@@ -78,12 +98,13 @@ jobs:
           CGO_LDFLAGS: "-mmacosx-version-min=10.15"
           MACOSX_DEPLOYMENT_TARGET: "10.15"
         run: |
-          go build -tags production -trimpath -buildvcs=false \
+          go build -modfile="$GO_MODFILE" -tags production -trimpath -buildvcs=false \
             -ldflags "-w -s \
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
+              -X github.com/omniviewdev/omniview/internal/instance.buildChannel=stable \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
@@ -190,11 +211,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
-          run_install: |
-            - args: []
-            - args: [--global, typescript]
+          version: 12.14.0
+          install: false
+
+      - name: Install dependencies and global TypeScript
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm add --global typescript
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -209,20 +234,28 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare pinned native Wails patch
+        shell: bash
+        run: |
+          set -eu
+          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go --root "$PWD")"
+          printf 'GO_MODFILE=%s\n' "$HOST_MODFILE" >> "$GITHUB_ENV"
+
       - name: Install Wails v3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -modfile="$GO_MODFILE" -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
 
       - name: Build frontend
-        run: task common:build:frontend
+        run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
 
       - name: Build Omniview
         run: |
-          go build -tags production -trimpath -buildvcs=false \
+          go build -modfile="$GO_MODFILE" -tags production -trimpath -buildvcs=false \
             -ldflags "-w -s \
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
+              -X github.com/omniviewdev/omniview/internal/instance.buildChannel=stable \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \
@@ -264,11 +297,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
-          run_install: |
-            - args: []
-            - args: [--global, typescript]
+          version: 12.14.0
+          install: false
+
+      - name: Install dependencies and global TypeScript
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm add --global typescript
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -283,23 +320,31 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare pinned native Wails patch
+        shell: bash
+        run: |
+          set -eu
+          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go --root "$PWD")"
+          printf 'GO_MODFILE=%s\n' "$HOST_MODFILE" >> "$GITHUB_ENV"
+
       - name: Install Wails v3
         shell: bash
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -modfile="$GO_MODFILE" -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
 
       - name: Build frontend
         shell: bash
-        run: task common:build:frontend
+        run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
 
       - name: Build Omniview
         shell: bash
         run: |
-          go build -tags production -trimpath -buildvcs=false \
+          go build -modfile="$GO_MODFILE" -tags production -trimpath -buildvcs=false \
             -ldflags "-w -s -H windowsgui \
               -X github.com/omniviewdev/omniview/internal/version.Version=${{ steps.version.outputs.version }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=false \
+              -X github.com/omniviewdev/omniview/internal/instance.buildChannel=stable \
               -X github.com/omniviewdev/registry.OmniviewPublicKeyHex=${{ secrets.REGISTRY_PUBLIC_KEY_HEX }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildOTLPEndpoint=${{ secrets.TELEMETRY_OTLP_ENDPOINT }} \
               -X github.com/omniviewdev/omniview/internal/telemetry.buildPyroscopeEndpoint=${{ secrets.TELEMETRY_PYROSCOPE_ENDPOINT }}" \

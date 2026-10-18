@@ -43,7 +43,7 @@ var Developer = settings.Category{
 		"pnpmpath": {
 			ID:          "pnpmpath",
 			Label:       "PNPM Path",
-			Description: "Path to the PNPM binary",
+			Description: "PNPM binary for standalone plugin development. Named workspaces require their owned launcher; select native pnpm with OMNIVIEW_PNPM_EXECUTABLE when starting the workspace instead.",
 			Type:        settings.Text,
 			Default:     "",
 			FileSelection: &settings.SettingFileSelection{

@@ -35,23 +35,19 @@ export type DevServerAggregateStatus = 'ready' | 'building' | 'error' | 'stopped
 
 /** Derive the aggregate status from a DevServerState. */
 export function getAggregateStatus(state: DevServerState): DevServerAggregateStatus {
-  if (state.goStatus === DevProcessStatus.DevProcessStatusError || state.viteStatus === DevProcessStatus.DevProcessStatusError) {
+  if (state.lastError || state.buildStatus === 'error' || state.rpcStatus === 'error' || state.controllerStatus === 'error' || state.viteStatus === DevProcessStatus.DevProcessStatusError) {
     return 'error';
   }
-
+  if (state.ready) {
+    return 'ready';
+  }
   if (state.goStatus === DevProcessStatus.DevProcessStatusBuilding || state.viteStatus === DevProcessStatus.DevProcessStatusStarting) {
     return 'building';
   }
-
-  if (state.viteStatus === DevProcessStatus.DevProcessStatusStopped && !state.grpcConnected) {
+  if (state.mode === 'idle' || state.goStatus === DevProcessStatus.DevProcessStatusStopped) {
     return 'stopped';
   }
-
-  if (!state.grpcConnected) {
-    return 'connecting';
-  }
-
-  return 'ready';
+  return 'connecting';
 }
 
 /** Color mapping for aggregate status values. */

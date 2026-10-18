@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SHARED_PACKAGES } from './sharedPackages';
 import { safeFilename } from './safeFilename';
+import { workspaceViteCacheDirectory, workspaceVitePort, workspaceViteRoots } from './workspace';
 
 export { SHARED_PACKAGES } from './sharedPackages';
 export { safeFilename } from './safeFilename';
@@ -98,13 +99,55 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
     enforce: 'pre', // Run before other plugins (especially @vitejs/plugin-react)
 
     config(config, { command }) {
+      const cache = workspaceViteCacheDirectory(process.env.OMNIVIEW_VITE_CACHE_DIRECTORY);
+      if (cache) {
+        if (config.cacheDir && path.resolve(config.root ?? process.cwd(), config.cacheDir) !== cache) {
+          throw new Error('Plugin Vite cache conflicts with its owned workspace cache');
+        }
+        config.cacheDir = cache;
+      }
+      const output = process.env.OMNIVIEW_BUILD_OUTPUT_DIRECTORY;
+      if (command === 'build' && output) {
+        const root = path.resolve(config.root ?? process.cwd());
+        const configured = config.build?.outDir && path.resolve(root, config.build.outDir);
+        if (configured && configured !== path.join(root, 'dist') && configured !== path.resolve(output)) {
+          throw new Error('Plugin distribution path conflicts with controlled workspace output');
+        }
+        config.build = { ...config.build, outDir: output };
+      }
       // In dev mode, prevent the dep optimizer from bundling shared packages
       // into pre-bundled chunks. Without this, MUI/etc. get their own copy of
       // React bundled inside, causing "multiple React instances" errors.
       // We use an esbuild plugin to externalize shared packages when they're
       // imported from within OTHER packages (not when they ARE the entry point).
       if (command === 'serve') {
+        const roots = workspaceViteRoots(process.env.OMNIVIEW_VITE_ALLOWED_ROOTS);
+        const ownedPort = workspaceVitePort(process.env.OMNIVIEW_VITE_PORT);
+        if (roots) {
+          if (!ownedPort) throw new Error('Managed plugin Vite requires its owned OMNIVIEW_VITE_PORT');
+          config.server = config.server ?? {};
+          if (config.server.port !== undefined && config.server.port !== ownedPort) {
+            throw new Error('Plugin Vite port conflicts with its owned workspace lease');
+          }
+          if (config.server.hmr === false || typeof config.server.hmr === 'object'
+            && (config.server.hmr.clientPort !== undefined && config.server.hmr.clientPort !== ownedPort
+              || config.server.hmr.port !== undefined && config.server.hmr.port !== ownedPort
+              || config.server.hmr.host !== undefined && config.server.hmr.host !== '127.0.0.1'
+              || config.server.hmr.protocol !== undefined && config.server.hmr.protocol !== 'ws')) {
+            throw new Error('Plugin Vite HMR conflicts with its owned loopback endpoint');
+          }
+          config.server.port = ownedPort;
+          config.server.strictPort = true;
+          config.server.fs = { ...config.server.fs, strict: true,
+            allow: [...new Set([...(config.server.fs?.allow ?? [config.root ?? process.cwd()]), ...roots, shimsDir])] };
+          config.server.hmr = { ...(typeof config.server.hmr === 'object' ? config.server.hmr : {}),
+            host: '127.0.0.1', protocol: 'ws', clientPort: ownedPort };
+        }
         config.optimizeDeps = config.optimizeDeps ?? {};
+        config.optimizeDeps.exclude = [...new Set([...(config.optimizeDeps.exclude ?? []), ...allPackages])];
+        // Shared shim modules must not survive a rebuilt runtime export graph.
+        // The supervisor restarts Vite after ordered runtime/shim completion.
+        if (roots) config.optimizeDeps.force = true;
         config.optimizeDeps.esbuildOptions = config.optimizeDeps.esbuildOptions ?? {};
         config.optimizeDeps.esbuildOptions.plugins = [
           ...(config.optimizeDeps.esbuildOptions.plugins ?? []),

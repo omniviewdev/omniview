@@ -62,6 +62,7 @@ declare module "@wailsio/runtime" {
             "plugin/update_complete": plugin$0.UpdatePayload;
             "plugin/update_error": plugin$0.UpdateErrorPayload;
             "plugin/update_started": plugin$0.UpdatePayload;
+            "settings/changed": string;
             "watch/STATE": resource$1.WatchStateEvent;
         }
     }

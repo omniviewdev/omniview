@@ -1,5 +1,10 @@
 # 09 -- CLI Wrapper Tool: `omniview-plugin-dev`
 
+> Superseded historical proposal. This standalone executable/module was removed;
+> its PID-file path did not establish a working external RPC attachment. Do not
+> install or implement this design. Use the host-managed
+> [development CLI](../../docs/development-cli.md), not a second process manager.
+
 ## Standalone Go Binary for Plugin Development
 
 **Goal**: A single binary that handles the entire plugin development lifecycle -- validation, Vite dev server, Go file watching, building, plugin binary management, `.devinfo` writing -- so developers can run one command and have everything work.

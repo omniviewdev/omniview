@@ -13,7 +13,20 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as devcontract$0 from "./internal/devcontract/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+/**
+ * GetInstanceInfo returns authoritative runtime identity without credentials.
+ */
+export function GetInstanceInfo(): $CancellablePromise<devcontract$0.InstanceDescriptor> {
+    return $Call.ByID(678226073).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
 
 /**
  * GetOperatingSystem returns the operating system type this application is running on.
@@ -27,7 +40,7 @@ export function GetOperatingSystem(): $CancellablePromise<string> {
  */
 export function OpenFileSelectionDialog(opts: $models.FileDialogOptions): $CancellablePromise<string[]> {
     return $Call.ByID(2957909098, opts).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType1($result);
     });
 }
 
@@ -46,4 +59,5 @@ export function WriteFileContent(path: string, content: string): $CancellablePro
 }
 
 // Private type creation functions
-const $$createType0 = $Create.Array($Create.Any);
+const $$createType0 = devcontract$0.InstanceDescriptor.createFrom;
+const $$createType1 = $Create.Array($Create.Any);

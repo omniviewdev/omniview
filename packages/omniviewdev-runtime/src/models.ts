@@ -64,8 +64,8 @@ export * from './bindings/github.com/omniviewdev/plugin-sdk/settings/models';
 // devserver: re-export everything except LogEntry (collides with pluginlog)
 export {
   BuildError,
-  DevInfoFile,
   DevProcessStatus,
+  LifecycleStage,
   DevServerErrorPayload,
   DevServerMode,
   DevServerState,

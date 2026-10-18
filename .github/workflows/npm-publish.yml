@@ -35,9 +35,10 @@ jobs:
         run: npm install --global npm@11.6.2
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
-          run_install: false
+          version: 12.14.0
+          install: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

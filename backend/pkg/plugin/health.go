@@ -114,6 +114,17 @@ func (hc *HealthChecker) checkPlugin(id string) bool {
 		backend = record.Backend
 	}
 	hc.pm.recordsMu.RUnlock()
+	if record != nil {
+		source := record.DevPath
+		generation := hc.pm.managedRuntimeGeneration(id, source)
+		if generation != "" && backend != nil {
+			err := verifyLifecycleRPC(backend, id)
+			if err != nil {
+				hc.pm.observeManagedLifecycle(id, source, generation, false, false, err)
+			}
+			return err == nil
+		}
+	}
 
 	if backend == nil {
 		// No record or no backend — cannot verify health, assume unhealthy.

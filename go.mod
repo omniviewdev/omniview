@@ -19,7 +19,7 @@ require (
 	github.com/tidwall/gjson v1.18.0
 	github.com/wailsapp/mimetype v1.4.1
 	github.com/wailsapp/wails/v3 v3.0.0-beta.29
-	go.etcd.io/bbolt v1.4.3
+	go.etcd.io/bbolt v1.5.0
 	go.opentelemetry.io/contrib/bridges/otelzap v0.17.0
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.67.0
 	go.opentelemetry.io/otel v1.42.0
@@ -89,6 +89,7 @@ require (
 	go.opentelemetry.io/otel/log v0.18.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect

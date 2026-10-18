@@ -1,5 +1,16 @@
 version: '3'
 
+# Ignore parent go.work/GOFLAGS, including ambient tags and module overrides.
+# GO_MODFILE is an optional effective host input; bootstrap output is separate.
+env:
+  GOWORK: "off"
+  GOFLAGS: ""
+  EXTRA_TAGS: '{{if ne .RELEASE "true"}}{{.EXTRA_TAGS | default ""}}{{end}}'
+  WAILS_MCP: '{{if ne .RELEASE "true"}}{{.WAILS_MCP | default ""}}{{end}}'
+  GO_MODFILE: '{{.GO_MODFILE | default ""}}'
+  SDK_SOURCE: '{{.SDK_SOURCE | default ""}}'
+  GOCACHE: '{{.GO_BUILD_CACHE_DIRECTORY | default (printf "%s/.local/cache/go-build" .ROOT_DIR)}}'
+
 includes:
   common: ./build/Taskfile.yml
   windows: ./build/windows/Taskfile.yml
@@ -9,9 +20,47 @@ includes:
 vars:
   APP_NAME: "Omniview"
   BIN_DIR: "bin"
-  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+  GO_MODFILE: '{{.GO_MODFILE | default ""}}'
+  HOST_INPUT_MODFILE: '{{.GO_MODFILE | default ""}}'
+  SDK_SOURCE: '{{.SDK_SOURCE | default ""}}'
+  NATIVE_PATCH_OUTPUT_DIRECTORY: '{{.NATIVE_PATCH_OUTPUT_DIRECTORY | default ""}}'
+  BINDINGS_OUTPUT_DIRECTORY: '{{.BINDINGS_OUTPUT_DIRECTORY | default ""}}'
+  GO_BUILD_CACHE_DIRECTORY: '{{.GO_BUILD_CACHE_DIRECTORY | default ""}}'
+  # Plain command text, evaluated only by host Go/Wails tasks (not UI/plugin tasks).
+  # Reset cross-compilation variables while running this native-free host helper.
+  HOST_BOOTSTRAP: 'GOWORK=off GOFLAGS= GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/nativepatch/main.go" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}} {{if .NATIVE_PATCH_OUTPUT_DIRECTORY}}--output-directory={{.NATIVE_PATCH_OUTPUT_DIRECTORY | shellQuote}}{{end}}'
+  # CLI bootstrap and execution must not inherit the standalone source-local cache.
+  CLI_ENVIRONMENT: 'GOWORK=off GOFLAGS= GO111MODULE=on GOCACHE={{if .GO_BUILD_CACHE_DIRECTORY}}{{.GO_BUILD_CACHE_DIRECTORY | shellQuote}}{{else}}{{env "GOCACHE" | shellQuote}}{{end}} GOTMPDIR='
+  CLI_BOOTSTRAP: '{{.CLI_ENVIRONMENT}} GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/devcli" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}}'
+  # Raw caller input; derived defaults are selected at each consuming task.
+  BUILD_FLAGS: '{{.BUILD_FLAGS | default ""}}'
+  DEV: '{{.DEV | default "false"}}'
+  SERVER: '{{.SERVER | default "false"}}'
+  RELEASE: '{{.RELEASE | default "false"}}'
+  WAILS_MCP: '{{.WAILS_MCP | default ""}}'
+  EXTRA_TAGS: '{{.EXTRA_TAGS | default ""}}'
+  TARGET_OS: '{{.TARGET_OS | default OS}}'
+  # Optimization (DEV) is independent of runtime profile and release channel.
+  # RELEASE ignores every ambient tooling tag. EXTRA_TAGS accepts commas/spaces.
+  BUILD_TAGS: &composeTags >-
+    {{- $tags := list -}}
+    {{- if or (ne .DEV "true") (eq .RELEASE "true") -}}{{- $tags = append $tags "production" -}}{{- end -}}
+    {{- if eq .SERVER "true" -}}{{- $tags = append $tags "server" -}}{{- end -}}
+    {{- if ne .RELEASE "true" -}}
+      {{- if eq .WAILS_MCP "1" -}}{{- $tags = append $tags "mcp" -}}{{- end -}}
+      {{- range (splitList "," (regexReplaceAll "[,[:space:]]+" (.EXTRA_TAGS | default "") ",")) -}}
+        {{- if . -}}{{- $tags = append $tags . -}}{{- end -}}
+      {{- end -}}
+    {{- end -}}
+    {{- join "," (uniq $tags) -}}
+  COMPOSED_BUILD_FLAGS: &composeFlags '{{if eq .RELEASE "true"}}-tags {{if eq .SERVER "true"}}production,server{{else}}production{{end}} {{else}}{{if .BUILD_TAGS}}-tags {{.BUILD_TAGS | shellQuote}} {{end}}{{end}}{{if and (eq .DEV "true") (ne .RELEASE "true")}}-buildvcs=false -gcflags=all="-l"{{else}}-trimpath -buildvcs=false -ldflags="-w -s{{if eq (.TARGET_OS | default OS) "windows"}} -H windowsgui{{end}}"{{end}}'
 
 tasks:
+  native:prepare:
+    summary: Prepare and verify pinned patched Wails; print effective host modfile
+    cmds:
+      - '{{.HOST_BOOTSTRAP}}'
+
   build:
     summary: Builds the application
     cmds:
@@ -21,6 +70,9 @@ tasks:
     summary: Packages a production build of the application
     cmds:
       - task: "{{OS}}:package"
+        vars:
+          RELEASE: "true"
+          DEV: "false"
 
   run:
     summary: Runs the application
@@ -28,30 +80,165 @@ tasks:
       - task: "{{OS}}:run"
 
   dev:
-    summary: Runs the application in development mode
+    summary: "Start the selected managed workspace and return its ready descriptor (detached)"
     cmds:
-      - task: ui:update
-      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace up --mode {{if eq .SERVER "true"}}browser{{else}}native{{end}}{{if eq .WAILS_MCP "1"}} --mcp{{end}} {{.CLI_ARGS}}
 
   ui:update:
     summary: Refresh published UI packages to the newest patch allowed by their manifests
     cmds:
       - pnpm --filter omniview --filter @omniviewdev/runtime update --depth 0 @omniviewdev/base-ui @omniviewdev/ai-ui @omniviewdev/editors
 
-  # Server mode: the app as a plain HTTP server on localhost:34115 with no native
-  # window, for Playwright (e2e/). State goes to bin/server-state unless
-  # OMNIVIEW_STATE_DIR is set, so it never touches ~/.omniview.
+
+  dev:cli:build:
+    summary: Build/cache the workspace CLI and print its actual immutable executable path
+    cmds:
+      - '{{.CLI_BOOTSTRAP}}'
+
+  workspace:inspect:
+    summary: "Inspect selected workspace; arguments after -- are passed to the CLI"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace inspect {{.CLI_ARGS}}
+
+  workspace:paths:
+    summary: "Print selected workspace paths; arguments after -- are passed to the CLI"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace paths {{.CLI_ARGS}}
+
+  workspace:profile:
+    summary: "Bind an explicitly selected stopped workspace to a custom state root"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace profile {{.CLI_ARGS}}
+
+  workspace:init:
+    summary: "Initialize a workspace collection; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace init {{.CLI_ARGS}}
+
+  workspace:create:
+    summary: "Create a named workspace; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace create {{.CLI_ARGS}}
+
+  workspace:up:
+    summary: "Start a workspace; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace up {{.CLI_ARGS}}
+
+  workspace:down:
+    summary: "Stop a workspace; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace down {{.CLI_ARGS}}
+
+  workspace:restart:
+    summary: "Restart a workspace; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace restart {{.CLI_ARGS}}
+
+  workspace:edit:
+    summary: "Edit workspace selection; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace edit {{.CLI_ARGS}}
+
+  workspace:link:
+    summary: "Apply workspace dependency links; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace link {{.CLI_ARGS}}
+
+  workspace:unlink:
+    summary: "Remove workspace dependency links; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace unlink {{.CLI_ARGS}}
+
+  workspace:remove:
+    summary: "Remove a stopped workspace; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace remove {{.CLI_ARGS}}
+
+  workspace:list:
+    summary: "List registered workspaces; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace list {{.CLI_ARGS}}
+
+  workspace:resume:
+    summary: "Resume workspace source setup; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace resume {{.CLI_ARGS}}
+
+  workspace:rollback:
+    summary: "Roll back workspace source setup; forward arguments after --"
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace rollback {{.CLI_ARGS}}
+
+  # Build-only server artifact. Development launches use `task dev SERVER=true`
+  # or canonical `workspace up --mode browser` with an explicit workspace.
+
   build:server:
+    vars:
+      SERVER: "true"
+      BUILD_TAGS: *composeTags
+      COMPOSED_BUILD_FLAGS: *composeFlags
+      BUILD_FLAGS: '{{if eq .RELEASE "true"}}{{.COMPOSED_BUILD_FLAGS}}{{else}}{{.BUILD_FLAGS | default .COMPOSED_BUILD_FLAGS}}{{end}}'
     deps:
       - task: common:build:frontend
+        vars:
+          BUILD_FLAGS:
+            ref: .BUILD_FLAGS
+          DEV:
+            ref: .DEV
     cmds:
-      - GOWORK=off go build -tags server -o {{.BIN_DIR}}/{{.APP_NAME}}-server .
-
-  run:server:
-    deps:
-      - task: build:server
-    cmds:
-      - OMNIVIEW_STATE_DIR="${OMNIVIEW_STATE_DIR:-$PWD/{{.BIN_DIR}}/server-state}" ./{{.BIN_DIR}}/{{.APP_NAME}}-server
+      - |
+        set -e
+        HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
+        GOWORK=off GOFLAGS= go build {{.BUILD_FLAGS}} -modfile="$HOST_MODFILE" -o "{{.BIN_DIR}}/{{.APP_NAME}}-server" .
 
   # ──────────────────────────────────────────────
   # CI / Verification targets
@@ -73,21 +260,32 @@ tasks:
 
   check:go-build:
     cmds:
-      - GOWORK=off go build ./...
+      - |
+        set -e
+        HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
+        GOWORK=off GOFLAGS= go build -modfile="$HOST_MODFILE" ./...
 
   check:go-vet:
     cmds:
-      - GOWORK=off go vet ./...
+      - |
+        set -e
+        HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
+        GOWORK=off GOFLAGS= go vet -modfile="$HOST_MODFILE" ./...
 
   check:go-test:
     cmds:
-      - GOWORK=off go test ./...
+      - |
+        set -e
+        HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
+        GOWORK=off GOFLAGS= go test -modfile="$HOST_MODFILE" ./...
 
   check:go-lint:
     cmds:
       - cmd: |
+          set -e
           if command -v golangci-lint >/dev/null 2>&1; then
-            GOWORK=off golangci-lint run
+            HOST_BINDING_GOFLAGS="$({{.HOST_BOOTSTRAP}} --format goflags)"
+            GOWORK=off GOFLAGS="$HOST_BINDING_GOFLAGS" golangci-lint run
           else
             echo "golangci-lint not installed, skipping"
           fi
@@ -126,10 +324,13 @@ tasks:
       - task: common:generate:bindings
 
   check:bindings-check:
+    vars:
+      BUILD_FLAGS: '{{if eq .RELEASE "true"}}{{.COMPOSED_BUILD_FLAGS}}{{else}}{{.BUILD_FLAGS | default .COMPOSED_BUILD_FLAGS}}{{end}}'
+      BINDINGS_OUTPUT_DIRECTORY: '{{.BINDINGS_OUTPUT_DIRECTORY | default "packages/omniviewdev-runtime/src/bindings"}}'
     cmds:
       - cmd: |
           set -e
-          BINDINGS_DIR=packages/omniviewdev-runtime/src/bindings
+          BINDINGS_DIR={{.BINDINGS_OUTPUT_DIRECTORY | shellQuote}}
           TMPDIR=$(mktemp -d)
           cleanup() {
             if [ -d "$TMPDIR/bindings-before" ]; then
@@ -142,7 +343,7 @@ tasks:
           if [ -d "$BINDINGS_DIR" ]; then
             cp -R "$BINDINGS_DIR" "$TMPDIR/bindings-before"
           fi
-          GOWORK=off wails3 generate bindings -d "$BINDINGS_DIR" -clean=true -ts
+          task bindings BINDINGS_OUTPUT_DIRECTORY={{.BINDINGS_OUTPUT_DIRECTORY | shellQuote}} {{if .HOST_INPUT_MODFILE}}GO_MODFILE={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .NATIVE_PATCH_OUTPUT_DIRECTORY}}NATIVE_PATCH_OUTPUT_DIRECTORY={{.NATIVE_PATCH_OUTPUT_DIRECTORY | shellQuote}}{{end}} {{if .GO_BUILD_CACHE_DIRECTORY}}GO_BUILD_CACHE_DIRECTORY={{.GO_BUILD_CACHE_DIRECTORY | shellQuote}}{{end}} {{if .BUILD_FLAGS}}BUILD_FLAGS={{.BUILD_FLAGS | shellQuote}}{{end}}
           if [ -d "$TMPDIR/bindings-before" ]; then
             if ! diff -r "$BINDINGS_DIR" "$TMPDIR/bindings-before" >/dev/null 2>&1; then
               echo "Wails bindings are stale. Run 'task check:bindings' and commit the result."

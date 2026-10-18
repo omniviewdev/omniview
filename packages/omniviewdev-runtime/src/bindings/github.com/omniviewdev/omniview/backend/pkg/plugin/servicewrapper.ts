@@ -67,6 +67,12 @@ export function GetPluginVersions(pluginID: string): $CancellablePromise<registr
     });
 }
 
+export function InstallDevPluginFromPath(path: string): $CancellablePromise<types$0.PluginInfo> {
+    return $Call.ByID(1357029266, path).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 export function InstallFromPathPrompt(): $CancellablePromise<config$0.PluginMeta | null> {
     return $Call.ByID(2477486666).then(($result: any) => {
         return $$createType8($result);
@@ -135,6 +141,12 @@ export function SearchPlugins(query: string, category: string, sort: string): $C
 
 export function UninstallPlugin(id: string): $CancellablePromise<types$0.PluginInfo> {
     return $Call.ByID(1369550929, id).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+export function UnlinkDevPlugin(id: string): $CancellablePromise<types$0.PluginInfo> {
+    return $Call.ByID(3828800061, id).then(($result: any) => {
         return $$createType0($result);
     });
 }

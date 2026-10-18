@@ -1,0 +1,17 @@
+.workspace-probe {
+  --workspace-probe-marker: source;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.workspace-probe-marker {
+  border-left: 4px solid #4f9d85;
+  padding-left: 12px;
+}
+
+.workspace-probe-clicks {
+  font-variant-numeric: tabular-nums;
+}

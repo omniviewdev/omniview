@@ -101,7 +101,7 @@ func TestInstance_SetBuildResult_Success(t *testing.T) {
 	state := inst.State()
 	assert.Equal(t, dur, state.LastBuildDuration)
 	assert.Empty(t, state.LastError)
-	assert.True(t, state.GRPCConnected) // success → grpc connected
+	assert.False(t, state.GRPCConnected) // compilation is not an RPC observation
 	assert.NotEmpty(t, state.LastBuildTime)
 	// 1 call from setBuildResult (setLastError doesn't emit status)
 	require.Equal(t, 1, sr.count())

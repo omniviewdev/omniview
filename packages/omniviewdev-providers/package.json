@@ -17,7 +17,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup index.ts --minify --dts --format cjs,esm --out-dir dist",
+    "build": "node ../../scripts/build-tsup.mjs index.ts --minify --dts --format cjs,esm",
     "lint": "eslint --cache --ext .js,.jsx,.ts,.tsx ./src",
     "lint:fix": "npm run lint -- --fix"
   },

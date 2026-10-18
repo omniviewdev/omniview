@@ -41,6 +41,7 @@ import { PluginServiceProvider } from '@/features/plugins';
 import { RouteProvider } from './features/router/RouteProvider';
 import log from '@/features/logger';
 import { orFallback } from '@/utils/orFallback';
+import { InstanceProvider } from '@/features/instance/InstanceContext';
 
 // 2. Global handlers for uncaught errors + promise rejections
 window.addEventListener('error', event => {
@@ -77,6 +78,7 @@ log.debug('starting up the application');
 const App: React.FC = () => {
   return (
     <ErrorBoundary FallbackComponent={RootErrorFallback}>
+      <InstanceProvider>
       <QueryClientProvider client={queryClient}>
         <SettingsProvider>
           <ExtensionProvider registry={EXTENSION_REGISTRY}>
@@ -107,6 +109,7 @@ const App: React.FC = () => {
           </ExtensionProvider>
         </SettingsProvider>
       </QueryClientProvider>
+      </InstanceProvider>
     </ErrorBoundary>
   );
 };

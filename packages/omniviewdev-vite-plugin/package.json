@@ -19,7 +19,7 @@
     "shims"
   ],
   "scripts": {
-    "build": "pnpm run generate-shims && pnpm run check-shims && tsup src/index.ts --format esm,cjs --dts --clean",
+    "build": "pnpm run generate-shims && pnpm run check-shims && node ../../scripts/build-tsup.mjs src/index.ts --format esm,cjs --dts --clean",
     "check-shims": "tsx scripts/check-shim-exports.ts",
     "generate-shims": "tsx scripts/generate-shims.ts",
     "test": "tsx --test scripts/*.test.ts",

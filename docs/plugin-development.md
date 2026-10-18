@@ -154,19 +154,18 @@ Before React starts, the loading surface uses the last cached built-in theme, in
 
 ## 2. IDE-Managed Mode (Recommended)
 
-This is the easiest way to develop plugins. The IDE manages all dev processes for you.
+The named workspace host owns plugin builds, Vite, RPC and controller lifecycles. Start from the [workspace CLI workflow](development-workspaces.md); plugin cards and the CLI use the same canonical managers.
 
 ### 2.1 Setup
 
-1. **Open Omniview**
-2. **Go to Settings > Plugins**
-3. **Click "Install Dev Mode"**
-4. **Select your plugin's root directory** (the folder containing `plugin.yaml`)
+1. Select the plugin repository in a named feature workspace.
+2. Start that workspace with `omniview-dev workspace up`.
+3. For interactive management, open **Settings > Plugins** in that named instance.
+4. Any selected source directory must match the workspace manifest.
 
-The IDE will:
-- Build your Go binary
-- Build your UI bundle
-- Install the plugin to `~/.omniview/plugins/<id>/`
+The host will:
+- Build with the selected verified SDK
+- Install transactionally into the resolved workspace state root, never an inferred `~/.omniview` path
 - Start a Vite dev server for HMR
 - Start a Go file watcher for auto-rebuilds
 - Display status indicators in the footer
@@ -217,206 +216,55 @@ When a UI error occurs:
 
 ---
 
-## 3. External Mode (Advanced)
+## 3. Workspace-Managed Development
 
-External mode is for developers who want full control over their development processes. You run the plugin binary and Vite server yourself, and the IDE auto-connects.
-
-### 3.1 When to Use External Mode
-
-- You want to use a debugger (e.g., `dlv debug`)
-- You want to use `air` for Go live-reload
-- You want custom build flags or environment variables
-- You are developing on a remote machine
-
-### 3.2 Setup
-
-#### Step 1: Install the plugin normally first
-
-The plugin must exist in `~/.omniview/plugins/<id>/` with at least a `plugin.yaml` for the IDE to recognize it. Either:
-- Install in dev mode once (which creates the directory), then switch to external
-- Manually create the directory and copy `plugin.yaml`
+For isolated feature work, use a named development instance and its authenticated
+CLI. The host owns the plugin build, Vite server, RPC connection, controller
+initialization and source watcher. A listening port or live PID is not readiness.
 
 ```bash
-mkdir -p ~/.omniview/plugins/my-plugin/bin
-cp plugins/my-plugin/plugin.yaml ~/.omniview/plugins/my-plugin/
+omniview-dev instance inspect --workspace /path/to/workspaces/my-feature
+omniview-dev plugin dev link --path /path/to/workspaces/my-feature/my-plugin \
+  --workspace /path/to/workspaces/my-feature --wait
+omniview-dev plugin dev status my-plugin --workspace /path/to/workspaces/my-feature
 ```
 
-#### Step 2: Build and run the plugin binary
+The instance must already be running with the development control build enabled.
+Workspace lookup never falls back to the production profile. Source linking is a
+host transaction; do not copy binaries or metadata into `~/.omniview`.
+
+External binary/Air/Delve supervision is not an attachment mechanism. The former
+PID-file discovery path did not establish a working RPC attachment and has been
+removed. Do not start a second Go or Vite supervisor for a managed plugin.
+
+See [development CLI](development-cli.md) and
+[managed lifecycle](development-plugin-lifecycle.md) for generation-aware status,
+readiness and dependency-watch details.
+
+## 4. CLI Development Workflow
+
+The host-module `omniview-dev` command replaces the independent plugin runner.
+Its commands call the running host's canonical managers; there is no second
+plugin process manager in the CLI.
 
 ```bash
-cd plugins/my-plugin
-go build -o build/bin/plugin ./pkg
-
-# Run with OMNIVIEW_DEV=1 to enable .devinfo writing
-OMNIVIEW_DEV=1 ./build/bin/plugin
+# List installed plugins, not marketplace publisher listings.
+omniview-dev plugin list --workspace /path/to/workspaces/my-feature
+omniview-dev plugin dev start my-plugin --workspace /path/to/workspaces/my-feature --wait
+omniview-dev plugin dev logs my-plugin --workspace /path/to/workspaces/my-feature --limit 100
+omniview-dev plugin dev stop my-plugin --workspace /path/to/workspaces/my-feature --wait
 ```
 
-The plugin outputs the go-plugin handshake to stdout:
-```
-1|1|tcp|127.0.0.1:42367|grpc
-```
+JSON results and operation IDs go to stdout. Default log messages are redacted.
+Use `plugin dev logs <id> --unsafe-output` deliberately for real bounded log text
+in JSON stdout; a stderr warning explains that arbitrary plugin/build output may
+contain secrets. Do not automatically forward raw logs to shared reports.
+Accepted mutations continue after a client wait timeout; poll their operation ID
+instead of submitting the mutation again. Go-only and UI-only capability handling
+belongs to the host lifecycle, not a client `--no-vite` switch.
 
-And writes `~/.omniview/plugins/my-plugin/.devinfo`:
-```json
-{
-  "pid": 48291,
-  "protocol": "grpc",
-  "protocolVersion": 1,
-  "addr": "127.0.0.1:42367",
-  "pluginId": "my-plugin",
-  "version": "0.1.0",
-  "startedAt": "2026-02-16T10:30:00Z"
-}
-```
-
-#### Step 3: The IDE auto-connects
-
-The IDE watches for `.devinfo` files. Within seconds, it:
-- Detects the file
-- Validates the PID is alive
-- Connects to the plugin via gRPC ReattachConfig
-- Shows the plugin as "External" in the UI
-
-#### Step 4: (Optional) Start Vite for UI HMR
-
-In a separate terminal:
-```bash
-cd plugins/my-plugin/ui
-pnpm run dev
-```
-
-Set the Vite port in the `.devinfo` by using the environment variable:
-```bash
-OMNIVIEW_DEV=1 OMNIVIEW_VITE_PORT=15173 ./build/bin/plugin
-```
-
-### 3.3 Using a Debugger
-
-```bash
-cd plugins/my-plugin
-
-# Build with debug symbols
-go build -gcflags="all=-N -l" -o build/bin/plugin ./pkg
-
-# Start with delve
-OMNIVIEW_DEV=1 dlv exec ./build/bin/plugin
-```
-
-Set breakpoints in your IDE (VS Code, GoLand). The Omniview IDE connects via `.devinfo` just as it would with a normal run.
-
-### 3.4 Using Air for Live Reload
-
-Create `.air.toml` in your plugin root:
-
-```toml
-root = "."
-tmp_dir = "build/tmp"
-
-[build]
-  cmd = "go build -o build/tmp/main ./pkg"
-  full_bin = "OMNIVIEW_DEV=1 OMNIVIEW_VITE_PORT=15173 ./build/tmp/main"
-  include_dir = ["pkg"]
-  include_ext = ["go"]
-  exclude_dir = ["build", "ui", "vendor"]
-  delay = 500
-  send_interrupt = true
-  kill_delay = "500ms"
-
-[misc]
-  clean_on_exit = true
-```
-
-Then run:
-```bash
-cd plugins/my-plugin
-air
-```
-
-Air watches Go files, rebuilds, and restarts the plugin. The IDE detects each restart via `.devinfo` updates and reconnects automatically.
-
-**Important**: `send_interrupt = true` ensures Air sends SIGTERM (not SIGKILL), allowing the plugin to clean up `.devinfo` before the new process starts.
-
-### 3.5 Disconnecting
-
-When you stop your external plugin:
-- The `.devinfo` file is deleted (by the plugin's cleanup handler)
-- The IDE detects the deletion and disconnects
-- The plugin's UI shows a disconnected state
-
-If the plugin crashes without cleanup, the IDE's health check (every 5 seconds) detects the dead PID and disconnects.
-
----
-
-## 4. Using the CLI Wrapper Tool
-
-The `omniview-plugin-dev` tool combines everything into one command. It is the recommended approach for external mode development.
-
-### 4.1 Installation
-
-```bash
-go install github.com/omniviewdev/omniview-plugin-dev@latest
-```
-
-### 4.2 Basic Usage
-
-```bash
-# From your plugin directory
-cd plugins/my-plugin
-omniview-plugin-dev
-
-# Or specify the directory
-omniview-plugin-dev --dir ./plugins/my-plugin
-```
-
-This single command:
-1. Validates your plugin structure
-2. Starts the Vite dev server
-3. Builds the Go binary
-4. Starts the plugin process
-5. Writes `.devinfo` for IDE auto-connect
-6. Watches Go files for changes
-7. Auto-rebuilds and restarts on changes
-
-### 4.3 Output
-
-```
-10:30:00 [system] omniview-plugin-dev v0.1.0
-10:30:00 [system] Plugin directory: /Users/you/plugins/my-plugin
-10:30:00 [system] Validating plugin structure...
-10:30:00 [system] Plugin: My Plugin v0.1.0 (my-plugin)
-10:30:00 [system] Starting Vite dev server...
-10:30:01 [vite]   VITE v5.4.0  ready in 342ms
-10:30:01 [vite]   Local: http://127.0.0.1:15173/
-10:30:01 [system] Vite running on http://127.0.0.1:15173
-10:30:01 [system] Building plugin binary...
-10:30:03 [system] Built in 2341ms
-10:30:03 [system] Starting plugin process...
-10:30:03 [system] Handshake: 1|1|tcp|127.0.0.1:42367|grpc
-10:30:03 [system] Plugin running (PID 48291, addr 127.0.0.1:42367)
-10:30:03 [system] Wrote .devinfo (IDE will auto-connect)
-10:30:03 [system] Starting file watcher on pkg/...
-10:30:03 [system] Ready! Watching for changes...
-10:30:03 [system] Press Ctrl+C to stop
-```
-
-### 4.4 Flags
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--dir` | `.` | Path to the plugin directory |
-| `--vite-port` | `15173` | Preferred Vite dev server port |
-| `--no-vite` | `false` | Skip Vite (for Go-only plugins) |
-| `--verbose` | `false` | Enable debug logging |
-| `--version` | - | Print version and exit |
-
-### 4.5 Go-Only Plugins
-
-If your plugin has no UI:
-```bash
-omniview-plugin-dev --dir ./plugins/my-plugin --no-vite
-```
-
----
+See [development CLI](development-cli.md) for installation, settings JSON input,
+all commands and stable exit codes.
 
 ## 5. Troubleshooting
 
@@ -436,11 +284,11 @@ omniview-plugin-dev --dir ./plugins/my-plugin --no-vite
 3. Check the console for HMR-related errors.
 4. Ensure your `vite.config.ts` has `hmr.host: '127.0.0.1'` and no hardcoded `hmr.port`.
 
-### 5.3 "Port 15173 Already in Use"
+### 5.3 Managed Port Already in Use
 
 **Cause**: Another Vite instance or process is using the port.
 
-**Fix**: With `strictPort: false` in your Vite config, Vite auto-increments to the next available port. If you need a specific port, stop the other process first.
+**Fix**: Inspect the selected workspace's actual endpoints and port policy. Sticky allocation may choose another port only through its owned bounded bind-retry path; explicit/strict overrides fail rather than silently increment. Choose another explicit assignment or clear the override with `--port "plugin-vite:<id>=0"`. Never kill a process merely because it occupies a port. Managed Vite uses `strictPort: true`; HTTP and HMR must agree with its actual lease.
 
 ### 5.4 Go Build Fails but No Error Shown
 
@@ -456,25 +304,21 @@ omniview-plugin-dev --dir ./plugins/my-plugin --no-vite
 **Fix**:
 1. Try reloading the plugin: Settings > Plugins > plugin card > Reload button
 2. Check the plugin's stderr output in the build output tab for errors
-3. If using external mode, ensure the handshake matches: `OMNIVIEW` magic cookie with value `<id>-<version>`
+3. For workspace-managed plugins, inspect generation-aware `plugin dev status` and bounded `plugin dev logs`; a handshake line alone is not proof of initialized controllers.
 
-### 5.6 External Mode: IDE Does Not Detect Plugin
+### 5.6 Workspace Instance Not Found
 
-**Checks**:
-1. Is `OMNIVIEW_DEV=1` set when running your plugin? Without it, no `.devinfo` is written.
-2. Check if `.devinfo` exists: `cat ~/.omniview/plugins/<id>/.devinfo`
-3. Is the PID in `.devinfo` still alive? `kill -0 <pid>`
-4. Does the plugin ID in `.devinfo` match the directory name in `~/.omniview/plugins/`?
-5. Is `~/.omniview/plugins/<id>/plugin.yaml` present? The IDE needs it for metadata.
+Select the workspace manifest/directory explicitly, or use a registered name with
+`--root`. The selected development host must be running with control support.
+`instance inspect` authenticates and compares the actual endpoint descriptor,
+workspace UUID, profile root and generation before any plugin mutation.
 
-### 5.7 External Mode: IDE Keeps Disconnecting
+### 5.7 Managed Plugin Keeps Disconnecting
 
-**Cause**: The plugin process is crashing or the health check is failing.
-
-**Checks**:
-1. Run the plugin in the foreground and check for panics or errors
-2. Check if the PID in `.devinfo` matches the actual process: `ps aux | grep plugin`
-3. If using `air`, ensure `send_interrupt = true` so cleanup handlers run
+Use `plugin dev status <id>` and `plugin dev logs <id>` against the same workspace.
+Inspect build, Vite, RPC and controller readiness separately. Repair the source
+error and allow the retained host watcher to rebuild, or submit a generation-aware
+rebuild. Do not launch an external binary as a fallback.
 
 ### 5.8 "Plugin Binary Not Found" After Build
 
@@ -510,20 +354,20 @@ omniview-plugin-dev --dir ./plugins/my-plugin --no-vite
 |--------|----------|---------|-------------|
 | `plugins: [omniviewExternals(external)]` | Yes | - | Resolves shared deps from host in dev mode |
 | `server.host` | Yes | `'127.0.0.1'` | Must be `127.0.0.1` for Wails webview |
-| `server.port` | No | `15173` | Preferred port (auto-increments if taken) |
+| `server.port` | Managed assignment | Actual workspace lease | Do not hardcode or silently increment managed ports |
 | `server.cors` | Yes | `true` | Required for cross-origin module loading |
-| `server.strictPort` | No | `false` | Set to `false` for multi-plugin support |
+| `server.strictPort` | Yes in managed mode | `true` | Occupied explicit assignments fail without adopting or killing another listener |
 | `hmr.protocol` | No | `'ws'` | WebSocket protocol |
 | `hmr.host` | Yes | `'127.0.0.1'` | Must match server.host |
 | `build.rollupOptions.format` | Yes | `'system'` | SystemJS format for production builds |
 | `build.rollupOptions.external` | Yes | `external` | Same array used by omniviewExternals |
 
-### 6.2 Environment Variables
+### 6.2 Workspace Environment
 
-| Variable | Used By | Description |
-|----------|---------|-------------|
-| `OMNIVIEW_DEV=1` | Plugin SDK | Enables `.devinfo` file writing |
-| `OMNIVIEW_VITE_PORT=<port>` | Plugin SDK, CLI | Vite port to include in `.devinfo` |
+`OMNIVIEW_WORKSPACE_FILE` may select an absolute workspace manifest. An explicit
+`--workspace` must agree with it. The host provides isolated runtime paths and
+assigned service ports to managed children; users should not hardcode discovery
+files or force production state roots.
 
 ### 6.3 IDE Settings
 
@@ -535,31 +379,12 @@ Available in Settings > Developer:
 | pnpm Path | `developer.pnpmpath` | Path to `pnpm` binary (auto-detected) |
 | Node Path | `developer.nodepath` | Path to `node` binary (auto-detected) |
 
-### 6.4 `.devinfo` File Format
+### 6.4 Instance and Operation Discovery
 
-```json
-{
-  "pid": 48291,
-  "protocol": "grpc",
-  "protocolVersion": 1,
-  "addr": "127.0.0.1:42367",
-  "vitePort": 15173,
-  "pluginId": "my-plugin",
-  "version": "0.1.0",
-  "startedAt": "2026-02-16T10:30:00Z"
-}
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `pid` | Yes | Plugin process ID |
-| `protocol` | Yes | Wire protocol (`"grpc"`) |
-| `protocolVersion` | Yes | Protocol version (`1`) |
-| `addr` | Yes | gRPC listen address |
-| `vitePort` | No | Vite dev server port |
-| `pluginId` | No | Plugin ID (validated against directory name) |
-| `version` | No | Plugin version |
-| `startedAt` | No | Process start timestamp |
+Use `omniview-dev instance inspect --workspace <path>` for the actual descriptor
+and `operation get <operation-id>` for accepted work. Credentials live only in
+private per-generation token files and are never included in command output.
+Plugin state includes its own generation; pass that generation to `plugin dev rebuild`.
 
 ### 6.5 Wails Events (for Advanced Integration)
 
@@ -591,7 +416,7 @@ sdk.RegisterResourcePlugin(plugin, sdk.ResourcePluginOpts{
     // Your resource plugin configuration...
 })
 
-// Serve (handles .devinfo automatically when OMNIVIEW_DEV=1)
+// Serve under the host-managed lifecycle and its isolated environment.
 plugin.Serve()
 ```
 
@@ -599,16 +424,15 @@ plugin.Serve()
 
 ## 7. Development Workflow Comparison
 
-| Feature | IDE-Managed | External (Manual) | External (CLI Tool) |
-|---------|-------------|-------------------|-------------------|
-| Setup effort | Lowest (point-and-click) | Highest | Medium (one command) |
-| UI HMR | Automatic | Manual Vite start | Automatic |
-| Go rebuild | Automatic | Manual build | Automatic |
-| Debugger support | No | Yes | No |
-| Custom build flags | No | Yes | Limited |
-| Works without IDE | No | Yes | Yes |
-| IDE required | Yes | No | No |
-| Multi-plugin | Automatic ports | Manual ports | Automatic ports |
-| State after IDE restart | Auto-restores | Re-read .devinfo | Persistent |
+| Feature | IDE-managed UI | Workspace CLI |
+|---------|----------------|---------------|
+| Supervisor | Canonical host manager | Same canonical host manager |
+| UI HMR and Go rebuild | Host-owned | Host-owned |
+| Target selection | Current application | Explicit/enclosing development workspace |
+| Multi-plugin addressing | Plugin cards | Explicit plugin IDs |
+| Completion | UI lifecycle state | Operation ID, wait, generation-aware status |
+| Standalone external attachment | Not supported | Not supported |
 
-**Recommendation**: Start with IDE-managed mode. Switch to external mode only when you need debugger support or custom build configurations.
+Use the CLI for reproducible noninteractive work in isolated development profiles;
+use plugin cards for interactive work. Neither path trusts PID-only discovery.
+
