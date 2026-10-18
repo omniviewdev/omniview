@@ -21,6 +21,8 @@ Before and after backend compilation, effective `GOWORK=off go list -m -json git
 
 The custom-profile containment validator `pkg/state/custom.go` is also protected by exact reviewed-baseline bytes. Select a reviewed fixed SDK commit containing that validator; a prior baseline missing it is not accepted. Explicit workspace isolation-source opt-in applies to this file too.
 
+Managed plugin watcher/rebuild operations enforce the same exact selected SDK directory and profile identity even when the parent graph has `watch=false`. A sibling checkout sharing the reviewed baseline is not the selected source. Isolation-core opt-in permits deliberate edits within that validated selection, not substitution of another workspace.
+
 ## Launch and watch adapters
 
 Before the first Vite child launch, merge `graph.ViteEnvironment()` into its explicit profile child environment. It contains `OMNIVIEW_VITE_ALLOWED_ROOTS` as JSON of canonical selected repository directories. Host Vite requires its actual `WAILS_VITE_PORT`; managed plugin Vite requires `OMNIVIEW_VITE_PORT` matching its leased listener. Both configure explicit HMR client ports; roots are strict filesystem allowances, not wildcard CORS or all-filesystem access. Plugin configuration conflicts with the owned port/HMR endpoint fail rather than silently using fallback discovery. Plugin React/runtime shared-module shim routing remains unchanged.
@@ -61,6 +63,10 @@ The observer must return JSON with `phase: "ready"` only for actual graph/proces
 The script makes real Button/CSS/runtime-export mutations, waits for actual JS/CSS/runtime/shim bytes and real browser observations, checks sibling canaries, introduces a genuine TypeScript syntax error and requires truthful failure/recovery, then adds an ordinary SDK API method and requires successful intended host/two-plugin rebuild/reload with fresh exact-source attestation. No commit is required for that live SDK edit. It restores exact source bytes in `finally` and waits for actual recovery. The script never supplies synthetic readiness or hides compiler failures.
 
 Managed plugin HMR listener `server.hmr.port`, if explicitly configured, must match the owned HTTP lease just like `clientPort`; conflicting separate WebSocket listeners are rejected before startup. Parent validation must establish an actual WebSocket connection/reconnect, not infer HMR readiness from fetching `/@vite/client`.
+
+Native ESM plugin imports retain the host's shared React singleton. A development-renderer host uses Vite Fast Refresh; an optimized host's production React DOM lacks those renderer hooks, so the import adapter subscribes to that plugin origin's Vite client and automatically reloads the document for JavaScript updates. CSS-only updates keep ordinary Vite handling. This is a compiled-renderer capability choice, not a way to infer workspace identity. Module clearing retires both installed and pending refresh subscriptions before loader cleanup; a late old import cannot install a replacement listener.
+
+Rendered updates can arrive while the coalesced backend graph still reports `building`. Consumer verification waits for that in-flight phase to end, then enforces authenticated host identity and every applicable plugin readiness stage. A terminal build error is not success, even if an existing page still renders.
 
 ## Nested package-manager pinning
 
