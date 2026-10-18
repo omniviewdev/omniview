@@ -137,14 +137,24 @@ func Resolve(opts Options) (Profile, error) {
 		if err != nil {
 			return profile, err
 		}
+		if err := validateProductionDefaultNamespaces(root, home, channel); err != nil {
+			return profile, err
+		}
 		for _, protected := range []string{filepath.Join(home, ".omniview-dev", "profiles")} {
 			canonical, e := devcontract.CanonicalPath(protected)
 			if e != nil {
 				return profile, e
 			}
-			if overlaps(root, canonical) {
+			overlap, e := devcontract.ProfilePathsOverlap(root, canonical)
+			if e != nil {
+				return profile, e
+			}
+			if overlap {
 				return profile, fmt.Errorf("instance: production state overlaps development profiles")
 			}
+		}
+		if err := devcontract.ValidateProductionProfileIsolation(root, home); err != nil {
+			return profile, err
 		}
 		other := ".omniview-nightly"
 		if channel == "nightly" {
@@ -154,7 +164,11 @@ func Resolve(opts Options) (Profile, error) {
 		if e != nil {
 			return profile, e
 		}
-		if overlaps(root, protected) {
+		overlap, e := devcontract.ProfilePathsOverlap(root, protected)
+		if e != nil {
+			return profile, e
+		}
+		if overlap {
 			return profile, fmt.Errorf("instance: %s state overlaps another production channel", channel)
 		}
 		name := "Omniview"
@@ -185,10 +199,74 @@ func canonicalUUID(value string) error {
 	return nil
 }
 
-func overlaps(a, b string) bool { return contained(a, b) || contained(b, a) }
 func contained(root, path string) bool {
 	rel, err := filepath.Rel(root, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// Production overrides reserve ASCII case variants of the other channel's
+// default label and .omniview-dev/profiles beneath this HOME, even before those
+// directories exist. This is a product namespace rule, not filesystem case
+// detection: arbitrary custom paths retain physical, case-sensitive identity.
+func validateProductionDefaultNamespaces(root, home, channel string) error {
+	home, err := devcontract.CanonicalPath(home)
+	if err != nil {
+		return err
+	}
+	homeInfo, err := os.Stat(home)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for ancestor := root; ; ancestor = filepath.Dir(ancestor) {
+		isHome := ancestor == home
+		if !isHome && homeInfo != nil {
+			info, err := os.Stat(ancestor)
+			if err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			isHome = info != nil && os.SameFile(info, homeInfo)
+		}
+		if isHome {
+			relative, err := filepath.Rel(ancestor, root)
+			if err != nil {
+				return err
+			}
+			label, tail, nested := strings.Cut(relative, string(filepath.Separator))
+			other := ".omniview-nightly"
+			if channel == "nightly" {
+				other = ".omniview"
+			}
+			if sameASCIIProfileLabel(label, other) {
+				return fmt.Errorf("instance: %s state overlaps another production channel's reserved namespace", channel)
+			}
+			if sameASCIIProfileLabel(label, ".omniview-dev") {
+				child, _, _ := strings.Cut(tail, string(filepath.Separator))
+				if !nested || sameASCIIProfileLabel(child, "profiles") {
+					return fmt.Errorf("instance: production state overlaps reserved development profiles")
+				}
+			}
+			return nil
+		}
+		if filepath.Dir(ancestor) == ancestor {
+			return nil
+		}
+	}
+}
+
+func sameASCIIProfileLabel(value, lowerLabel string) bool {
+	if len(value) != len(lowerLabel) {
+		return false
+	}
+	for i := range len(value) {
+		char := value[i]
+		if char >= 'A' && char <= 'Z' {
+			char += 'a' - 'A'
+		}
+		if char != lowerLabel[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // ChildEnvironment replaces inherited ownership values, including for a root

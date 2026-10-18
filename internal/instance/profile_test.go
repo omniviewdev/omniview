@@ -353,3 +353,451 @@ func TestPrepareRuntimeDoesNotClaimUnmarkedDefaultProfile(t *testing.T) {
 		t.Fatal("runtime preparation created owner metadata")
 	}
 }
+
+func productionCustomProfileFixture(t *testing.T) (string, devcontract.ResolvedWorkspace, string) {
+	t.Helper()
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := workspaceFixture(t, home, fixtureID, "Production isolation")
+	local, err := Resolve(Options{Home: home, Workspace: manifest, Channel: "local"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(base, "profiles", "custom", "state")
+	bound, err := devcontract.SetCustomProfile(context.Background(), *local.Workspace, state, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A stopped development instance still owns its profile. Release the real
+	// canonical state lock before attempting production resolution.
+	service, err := appstate.New(appstate.WithRoot(state))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, "sentinel"), []byte("development state must survive"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return home, bound, state
+}
+
+func preserveProfileEvidence(t *testing.T, paths ...string) {
+	t.Helper()
+	for _, path := range paths {
+		before, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			after, err := os.ReadFile(path)
+			if err != nil || string(after) != string(before) {
+				t.Errorf("profile resolution changed existing bytes at %s: %v", path, err)
+			}
+			afterInfo, err := os.Lstat(path)
+			if err != nil || afterInfo.Mode() != info.Mode() {
+				t.Errorf("profile resolution changed ownership evidence type/mode at %s: %v", path, err)
+			}
+		})
+	}
+}
+
+func TestProductionRejectsDurableCustomProfileOverlap(t *testing.T) {
+	for _, channel := range []string{"stable", "nightly"} {
+		t.Run(channel, func(t *testing.T) {
+			home, bound, state := productionCustomProfileFixture(t)
+			container := filepath.Dir(state)
+			alias := filepath.Join(t.TempDir(), "custom-alias")
+			if err := os.Symlink(container, alias); err != nil {
+				t.Fatal(err)
+			}
+			// Rebinding leaves the old durable reservation intact even though
+			// the workspace's current machine-local binding now points elsewhere.
+			next := filepath.Join(filepath.Dir(container), "replacement", "state")
+			if _, err := devcontract.SetCustomProfile(context.Background(), bound, next, home); err != nil {
+				t.Fatal(err)
+			}
+			preserveProfileEvidence(t,
+				filepath.Join(home, ".omniview-dev", "custom-profiles.json"),
+				filepath.Join(bound.Root, ".local", "profile.json"),
+				filepath.Join(container, ".omniview-profile.json"),
+				filepath.Join(filepath.Dir(next), ".omniview-profile.json"),
+				filepath.Join(state, "sentinel"),
+			)
+			for _, tc := range []struct{ name, root string }{
+				{"state equal", state},
+				{"container equal", container},
+				{"state descendant", filepath.Join(state, "nested")},
+				{"container descendant outside state", filepath.Join(container, "runtime")},
+				{"container ancestor", filepath.Dir(container)},
+				{"symlink state", filepath.Join(alias, "state")},
+				{"symlink container", alias},
+				{"symlink descendant", filepath.Join(alias, "nested")},
+				{"current binding", next},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					if _, err := Resolve(Options{Home: home, CWD: t.TempDir(), StateRoot: tc.root, Channel: channel, Generation: fixtureID}); err == nil {
+						t.Errorf("%s production accepted durable development container overlap: %s", channel, tc.root)
+					}
+				})
+			}
+			for _, absent := range []string{next, filepath.Join(state, "nested"), filepath.Join(container, "runtime"), filepath.Join(container, "nested")} {
+				if _, err := os.Lstat(absent); !os.IsNotExist(err) {
+					t.Errorf("profile resolution created %s: %v", absent, err)
+				}
+			}
+		})
+	}
+}
+
+func TestProductionAllowsDisjointCustomProfileClaims(t *testing.T) {
+	for _, channel := range []string{"stable", "nightly"} {
+		t.Run(channel, func(t *testing.T) {
+			home, bound, state := productionCustomProfileFixture(t)
+			container := filepath.Dir(state)
+			preserveProfileEvidence(t,
+				filepath.Join(home, ".omniview-dev", "custom-profiles.json"),
+				filepath.Join(bound.Root, ".local", "profile.json"),
+				filepath.Join(container, ".omniview-profile.json"),
+				filepath.Join(state, "sentinel"),
+			)
+			defaultName := ".omniview"
+			if channel == "nightly" {
+				defaultName = ".omniview-nightly"
+			}
+			for _, tc := range []struct{ name, root, want string }{
+				{"default", "", filepath.Join(home, defaultName)},
+				{"sibling", filepath.Join(filepath.Dir(container), "production"), filepath.Join(filepath.Dir(container), "production")},
+				{"lexical prefix sibling", container + "-production", container + "-production"},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					profile, err := Resolve(Options{Home: home, CWD: t.TempDir(), StateRoot: tc.root, Channel: channel, Generation: fixtureID})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if profile.Descriptor.Kind != "production" || profile.Descriptor.Channel != channel || profile.Descriptor.StateRoot != tc.want {
+						t.Fatalf("wrong disjoint production selection: %+v", profile.Descriptor)
+					}
+					if _, err := os.Lstat(tc.want); !os.IsNotExist(err) {
+						t.Fatalf("read-only profile resolution created production state: %v", err)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestProductionRejectsInvalidCustomProfileEvidence(t *testing.T) {
+	for _, channel := range []string{"stable", "nightly"} {
+		for _, kind := range []string{"registry malformed", "registry schema", "registry symlink", "registry dangling", "owner malformed", "owner foreign", "owner symlink", "owner dangling", "owner missing", "registry missing with owner", "claim missing with owner"} {
+			t.Run(channel+"/"+kind, func(t *testing.T) {
+				home, bound, state := productionCustomProfileFixture(t)
+				registry := filepath.Join(home, ".omniview-dev", "custom-profiles.json")
+				owner := filepath.Join(filepath.Dir(state), ".omniview-profile.json")
+				path := owner
+				if strings.HasPrefix(kind, "registry") || kind == "claim missing with owner" {
+					path = registry
+				}
+				root := filepath.Join(filepath.Dir(filepath.Dir(state)), "production")
+				switch kind {
+				case "registry malformed", "owner malformed":
+					if err := os.WriteFile(path, []byte("{not-json"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				case "registry schema":
+					if err := os.WriteFile(path, []byte(`{"schemaVersion":99,"claims":[]}`), 0600); err != nil {
+						t.Fatal(err)
+					}
+				case "owner foreign":
+					data, err := os.ReadFile(owner)
+					if err != nil {
+						t.Fatal(err)
+					}
+					data = []byte(strings.ReplaceAll(string(data), fixtureID, "22f2dbb0-9ecd-4b17-9690-a0c2239387ac"))
+					if err := os.WriteFile(owner, data, 0600); err != nil {
+						t.Fatal(err)
+					}
+				case "registry symlink", "owner symlink", "registry dangling", "owner dangling":
+					target := path + ".original"
+					if err := os.Rename(path, target); err != nil {
+						t.Fatal(err)
+					}
+					preserveProfileEvidence(t, target)
+					if strings.HasSuffix(kind, "dangling") {
+						target = path + ".missing"
+					}
+					if err := os.Symlink(target, path); err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() {
+						actual, err := os.Readlink(path)
+						if err != nil || actual != target {
+							t.Errorf("resolution changed redirected ownership evidence: %s %v", actual, err)
+						}
+					})
+				case "owner missing", "registry missing with owner":
+					if err := os.Remove(path); err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() {
+						if _, err := os.Lstat(path); !os.IsNotExist(err) {
+							t.Errorf("resolution recreated missing ownership evidence: %v", err)
+						}
+					})
+				case "claim missing with owner":
+					if err := os.WriteFile(registry, []byte(`{"schemaVersion":1,"claims":[]}`), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				// Without a registry entry, the external marker along the
+				// selected root's ancestors is still ownership evidence.
+				if kind == "registry missing with owner" || kind == "claim missing with owner" {
+					root = state
+				}
+				preserveProfileEvidence(t, filepath.Join(bound.Root, ".local", "profile.json"), filepath.Join(state, "sentinel"))
+				for _, evidence := range []string{registry, owner} {
+					if _, err := os.ReadFile(evidence); err == nil {
+						preserveProfileEvidence(t, evidence)
+					}
+				}
+				if _, err := Resolve(Options{Home: home, CWD: t.TempDir(), StateRoot: root, Channel: channel, Generation: fixtureID}); err == nil {
+					t.Errorf("%s production accepted invalid custom ownership evidence: %s", channel, kind)
+				}
+			})
+		}
+	}
+}
+
+func caseVariantProfileRoot(t *testing.T, original string) (string, bool) {
+	t.Helper()
+	originalInfo, err := os.Stat(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(filepath.Dir(original), strings.ToUpper(filepath.Base(original)))
+	aliasInfo, err := os.Stat(alias)
+	if os.IsNotExist(err) {
+		// On case-sensitive filesystems this is a genuinely disjoint sibling,
+		// not an alias. It must remain a legitimate production selection.
+		if err := os.Mkdir(alias, 0700); err != nil {
+			t.Fatal(err)
+		}
+		aliasInfo, err = os.Stat(alias)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := os.SameFile(originalInfo, aliasInfo)
+	t.Logf("case-variant directories share physical identity: %t", same)
+	return alias, same
+}
+
+func TestProductionProfileCaseVariantContainment(t *testing.T) {
+	for _, channel := range []string{"stable", "nightly"} {
+		for _, kind := range []string{"custom ancestor", "default development ancestor", "other production channel"} {
+			t.Run(channel+"/"+kind, func(t *testing.T) {
+				var home, original string
+				switch kind {
+				case "custom ancestor":
+					var bound devcontract.ResolvedWorkspace
+					var state string
+					home, bound, state = productionCustomProfileFixture(t)
+					original = filepath.Dir(filepath.Dir(state))
+					preserveProfileEvidence(t,
+						filepath.Join(home, ".omniview-dev", "custom-profiles.json"),
+						filepath.Join(bound.Root, ".local", "profile.json"),
+						filepath.Join(filepath.Dir(state), ".omniview-profile.json"),
+						filepath.Join(state, "sentinel"),
+					)
+				case "default development ancestor":
+					var err error
+					home, err = filepath.EvalSymlinks(t.TempDir())
+					if err != nil {
+						t.Fatal(err)
+					}
+					ensureDefaultOwnerFixture(t, home, fixtureID)
+					original = filepath.Join(home, ".omniview-dev")
+					state := filepath.Join(original, "profiles", fixtureID, "state")
+					if err := os.MkdirAll(state, 0700); err != nil {
+						t.Fatal(err)
+					}
+					sentinel := filepath.Join(state, "sentinel")
+					if err := os.WriteFile(sentinel, []byte("default development unchanged"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					preserveProfileEvidence(t,
+						filepath.Join(original, "profiles", fixtureID, ".workspace-owner.json"),
+						sentinel,
+					)
+				case "other production channel":
+					var err error
+					home, err = filepath.EvalSymlinks(t.TempDir())
+					if err != nil {
+						t.Fatal(err)
+					}
+					other := ".omniview-nightly"
+					if channel == "nightly" {
+						other = ".omniview"
+					}
+					original = filepath.Join(home, other)
+					if err := os.Mkdir(original, 0700); err != nil {
+						t.Fatal(err)
+					}
+					sentinel := filepath.Join(original, "sentinel")
+					if err := os.WriteFile(sentinel, []byte("other production channel unchanged"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					preserveProfileEvidence(t, sentinel)
+				}
+				alias, same := caseVariantProfileRoot(t, original)
+				profile, err := Resolve(Options{Home: home, CWD: t.TempDir(), StateRoot: alias, Channel: channel, Generation: fixtureID})
+				if same || kind != "custom ancestor" {
+					if err == nil {
+						t.Errorf("%s accepted reserved or physical %s overlap through case variant %s", channel, kind, alias)
+					}
+				} else {
+					if err != nil {
+						t.Fatalf("case-sensitive disjoint sibling rejected: %v", err)
+					}
+					if profile.Descriptor.Kind != "production" || profile.Descriptor.Channel != channel || profile.Descriptor.StateRoot != alias {
+						t.Errorf("wrong case-sensitive sibling selection: %+v", profile.Descriptor)
+					}
+				}
+				if _, err := os.Lstat(filepath.Join(alias, "runtime")); !os.IsNotExist(err) {
+					t.Errorf("resolution created case-variant runtime: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestProductionRejectsProspectiveCaseVariantReservedRoots(t *testing.T) {
+	arena, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Default profile labels are product-reserved ASCII namespaces even on
+	// case-sensitive filesystems. Neither endpoint needs to exist.
+	for _, channel := range []string{"stable", "nightly"} {
+		for _, kind := range []string{"default development", "other production channel"} {
+			t.Run(channel+"/"+kind, func(t *testing.T) {
+				home := filepath.Join(arena, channel+"-"+strings.ReplaceAll(kind, " ", "-"))
+				if err := os.Mkdir(home, 0700); err != nil {
+					t.Fatal(err)
+				}
+				sentinel := filepath.Join(home, "unrelated-sentinel")
+				if err := os.WriteFile(sentinel, []byte("fresh home unchanged"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				preserveProfileEvidence(t, sentinel)
+				var protected, selected string
+				if kind == "default development" {
+					protected = filepath.Join(home, ".omniview-dev", "profiles")
+					selected = filepath.Join(home, ".OMNIVIEW-DEV", "profiles", fixtureID, "state")
+				} else {
+					other := ".omniview-nightly"
+					if channel == "nightly" {
+						other = ".omniview"
+					}
+					protected = filepath.Join(home, other)
+					selected = filepath.Join(home, strings.ToUpper(other))
+				}
+				for _, path := range []string{protected, selected} {
+					if _, err := os.Lstat(path); !os.IsNotExist(err) {
+						t.Fatalf("prospective profile endpoint already exists: %s %v", path, err)
+					}
+				}
+				if _, err := Resolve(Options{Home: home, CWD: t.TempDir(), StateRoot: selected, Channel: channel, Generation: fixtureID}); err == nil {
+					t.Errorf("%s accepted prospective reserved %s case variant with both endpoints absent: %s", channel, kind, selected)
+				}
+				for _, path := range []string{protected, selected, filepath.Join(home, ".omniview-dev"), filepath.Join(home, ".OMNIVIEW-DEV"), filepath.Join(home, ".omniview"), filepath.Join(home, ".omniview-nightly")} {
+					if _, err := os.Lstat(path); !os.IsNotExist(err) {
+						t.Errorf("read-only resolution created prospective profile path: %s %v", path, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestProductionReservedNamespaceBoundariesAndHomeIdentity(t *testing.T) {
+	for _, channel := range []string{"stable", "nightly"} {
+		t.Run(channel, func(t *testing.T) {
+			arena, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			home := filepath.Join(arena, "home")
+			if err := os.Mkdir(home, 0700); err != nil {
+				t.Fatal(err)
+			}
+			other, own := ".omniview-nightly", ".omniview"
+			if channel == "nightly" {
+				other, own = own, other
+			}
+			for _, tc := range []struct {
+				name, root string
+				reject     bool
+			}{
+				{"other channel descendant", filepath.Join(home, strings.ToUpper(other), "state"), true},
+				{"development parent", filepath.Join(home, ".OMNIVIEW-DEV"), true},
+				{"development uppercase profiles", filepath.Join(home, ".OMNIVIEW-DEV", "PROFILES", fixtureID, "state"), true},
+				{"other channel prefix sibling", filepath.Join(home, strings.ToUpper(other)+"-backup"), false},
+				{"development prefix sibling", filepath.Join(home, ".OMNIVIEW-DEV-backup", "profiles"), false},
+				{"profiles prefix sibling", filepath.Join(home, ".OMNIVIEW-DEV", "profiles-backup"), false},
+				{"unreserved development child", filepath.Join(home, ".OMNIVIEW-DEV", "settings"), false},
+				{"own channel case variant", filepath.Join(home, strings.ToUpper(own)), false},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					profile, err := Resolve(Options{Home: home, CWD: t.TempDir(), StateRoot: tc.root, Channel: channel, Generation: fixtureID})
+					if tc.reject {
+						if err == nil {
+							t.Errorf("accepted reserved production override %s", tc.root)
+						}
+					} else {
+						if err != nil {
+							t.Fatalf("rejected unreserved production override: %v", err)
+						}
+						if profile.Descriptor.StateRoot != tc.root {
+							t.Errorf("unexpected unreserved root: %s", profile.Descriptor.StateRoot)
+						}
+					}
+					if _, err := os.Lstat(tc.root); !os.IsNotExist(err) {
+						t.Errorf("namespace validation created state: %v", err)
+					}
+				})
+			}
+			t.Run("case variant home identity", func(t *testing.T) {
+				variantHome, same := caseVariantProfileRoot(t, home)
+				selected := filepath.Join(variantHome, strings.ToUpper(other))
+				profile, err := Resolve(Options{Home: home, CWD: t.TempDir(), StateRoot: selected, Channel: channel, Generation: fixtureID})
+				if same {
+					if err == nil {
+						t.Error("physical HOME alias bypassed reserved namespace")
+					}
+				} else {
+					if err != nil {
+						t.Fatalf("reserved namespace leaked into a distinct case-sensitive HOME sibling: %v", err)
+					}
+					if profile.Descriptor.StateRoot != selected {
+						t.Errorf("wrong distinct HOME sibling root: %s", profile.Descriptor.StateRoot)
+					}
+				}
+				if _, err := os.Lstat(selected); !os.IsNotExist(err) {
+					t.Errorf("HOME identity validation created state: %v", err)
+				}
+			})
+		})
+	}
+}

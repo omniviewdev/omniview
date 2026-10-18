@@ -26,6 +26,53 @@ type customProfiles struct {
 func profileConflict(message string) error { return Fail(4, "conflicting_state_root", message) }
 func overlaps(a, b string) bool            { return contained(a, b) || contained(b, a) }
 
+// ProfilePathsOverlap compares canonical profile paths lexically and by existing
+// directory identity. Endpoint-versus-ancestor checks in both directions detect
+// filesystem case aliases without conflating distinct case-sensitive siblings.
+// Missing endpoints are allowed; other filesystem errors fail closed. It reads
+// only the endpoints and their ancestors, never directory descendants.
+func ProfilePathsOverlap(a, b string) (bool, error) {
+	if overlaps(a, b) {
+		return true, nil
+	}
+	aInfo, err := os.Stat(a)
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
+	bInfo, err := os.Stat(b)
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
+	if aInfo != nil && bInfo != nil && os.SameFile(aInfo, bInfo) {
+		return true, nil
+	}
+	if aInfo != nil {
+		match, err := profileHasAncestor(b, aInfo)
+		if match || err != nil {
+			return match, err
+		}
+	}
+	if bInfo != nil {
+		return profileHasAncestor(a, bInfo)
+	}
+	return false, nil
+}
+
+func profileHasAncestor(path string, ancestor os.FileInfo) (bool, error) {
+	for parent := filepath.Dir(path); ; parent = filepath.Dir(parent) {
+		info, err := os.Stat(parent)
+		if err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+		if info != nil && os.SameFile(info, ancestor) {
+			return true, nil
+		}
+		if filepath.Dir(parent) == parent {
+			return false, nil
+		}
+	}
+}
+
 func customProfileBase(home string) (string, error) {
 	if home == "" {
 		var err error
@@ -290,8 +337,12 @@ func ValidateCustomProfileClaim(stateRoot, workspaceID, home string) error {
 	if !found {
 		return profileConflict("custom profile binding has no matching durable claim")
 	}
+	return validateCustomProfileOwner(record)
+}
+
+func validateCustomProfileOwner(record customProfile) error {
 	var owner customProfile
-	err = readProfileJSON(filepath.Join(filepath.Dir(stateRoot), ".omniview-profile.json"), &owner)
+	err := readProfileJSON(filepath.Join(filepath.Dir(record.StateRoot), ".omniview-profile.json"), &owner)
 	if os.IsNotExist(err) {
 		return profileConflict("custom profile binding is missing its owner marker")
 	}
@@ -300,6 +351,58 @@ func ValidateCustomProfileClaim(stateRoot, workspaceID, home string) error {
 	}
 	if owner != record {
 		return profileConflict("custom profile owner marker disagrees with binding")
+	}
+	return nil
+}
+
+// ValidateProductionProfileIsolation rejects production state overlapping any
+// durable custom development container, including reservations retained after
+// rebinding. Existing claim and owner evidence must be valid even when disjoint.
+// stateRoot must be canonical. This reads metadata only: it creates no locks or
+// files, repairs nothing, and never scans directory descendants.
+func ValidateProductionProfileIsolation(stateRoot, home string) error {
+	canonical, err := CanonicalPath(stateRoot)
+	if err != nil {
+		return err
+	}
+	if canonical != stateRoot {
+		return profileConflict("production state root must be canonical")
+	}
+	base, err := customProfileBase(home)
+	if err != nil {
+		return err
+	}
+	registry, err := loadCustomProfiles(base, true)
+	if err != nil {
+		return err
+	}
+	for _, claim := range registry.Claims {
+		if err := validateCustomProfileOwner(claim); err != nil {
+			return err
+		}
+		overlap, err := ProfilePathsOverlap(stateRoot, filepath.Dir(claim.StateRoot))
+		if err != nil {
+			return err
+		}
+		if overlap {
+			return profileConflict("production state overlaps a custom development profile")
+		}
+	}
+	// A missing registry or removed claim does not erase an external marker.
+	// Check only the selected root and its ancestors; unrelated directories
+	// are not searched, and any malformed or redirected evidence fails closed.
+	for container := stateRoot; ; container = filepath.Dir(container) {
+		var owner customProfile
+		err := readProfileJSON(filepath.Join(container, ".omniview-profile.json"), &owner)
+		if err == nil {
+			return profileConflict("production state overlaps a marked development profile")
+		}
+		if !os.IsNotExist(err) {
+			return err
+		}
+		if filepath.Dir(container) == container {
+			break
+		}
 	}
 	return nil
 }
