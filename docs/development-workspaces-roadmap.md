@@ -58,12 +58,12 @@ Packet dependencies constrain implementation and verification; they are not perm
 | 1 | A01 contracts | Versioned workspace/instance/control identity and strict target resolution implemented |
 | 2, parallel | A02 native feasibility; A03 registry/worktrees; A04 SDK isolation; A06 leases/process/discovery | Darwin storage mechanism and concurrent native profiles exercised; actual worktrees, strict port conflict and source/provenance refusal exercised |
 | 3 | A05 plugin transactions; A07 runtime profiles | Archive rollback/foreign replacement, same-open archive UI transitions, uninstall inventory and private profiles exercised; final combined lifecycle admission remains tracked below |
-| 4, parallel after prerequisites | A08 managed lifecycle; A09 visible identity; A10 build plumbing; A11 local linking; A14 baselines | Genuine plugin readiness, named surfaces, runtime-before-shims, native12 resolution and stopped-source baseline checks exercised; full live consumer propagation remains a gate |
+| 4, parallel after prerequisites | A08 managed lifecycle; A09 visible identity; A10 build plumbing; A11 local linking; A14 baselines | Genuine plugin readiness, named surfaces, runtime-before-shims, native12 resolution, stopped baselines and actual shared consumers exercised |
 | 5 | A12 authenticated control → A13 CLI/runner cutover | Host/plugin settings, targeting, terminal failures, archive operations and managed commands use existing managers; no second standalone runner |
-| 6, parallel with frozen interfaces | A15 build/watch; A15b output ownership; A15c native12 migration; A15d aggregate composition | Ordered producers, reversible staged outputs, actual native12 nested commands and strict peers implemented/exercised; C05 coordinated consumer acceptance remains open |
+| 6, parallel with frozen interfaces | A15 build/watch; A15b output ownership; A15c native12 migration; A15d aggregate composition | Ordered producers, reversible outputs, strict native12 peers and full live/optimized two-profile CSS/runtime/SDK failure-recovery acceptance pass |
 | 7 | A16 orchestration | Literal `create --start` with host/UI/SDK/Kubernetes/genuine probe exercised, including actual UI and canonical retirement |
-| 8, parallel | A17 owned browser/native harness; A18 skills | Six real browser identity/events/settings/target/restart scenarios and native concurrency exercised; client-discovery/model-evaluation limits remain explicit |
-| 9 | A19 integrated acceptance/review/handoff | Close remaining scenarios, preserve platform/permission/publication limits, then record final accepted source refs and evidence |
+| 8, parallel | A17 owned browser/native harness; A18 skills | Owned browser matrix and native concurrency exercised; versioned skills/registration implemented; platform/pixel and fresh-client/model-evaluation limits remain explicit |
+| 9 | A19 integrated acceptance/review/handoff | Local functional matrix and independent containment/quality review complete; final source cohorts/evidence recorded; external gates below |
 
 The aggregate-composition work uses C01 package/lock reconciliation, C02 command/tool context, C03 consumer/build integration and C04 ownership/inspection in parallel under frozen APIs; C05 is their coordinated review and real-runtime barrier. A successful install alone cannot close C05.
 
@@ -121,20 +121,30 @@ The feedback correction passes 26 actual Vite 5/8 network and native-authority-s
 
 A controlled TCP-linger fixture reproduces the Darwin boundary: an unreaped zombie leader coexists with an exiting non-zombie descendant, and group signaling reports `EPERM` before descendant cleanup completes. The correction waits for independent whole-group terminal proof within the existing bound, without extra signals or accepting exit flags as completion. The new race-enabled regression and both fresh original host-crash/authenticated-stop cases pass.
 
-The corrected immutable cohort is host `917445d90b3e313b98ed577263035ed7a40cad93` with the same pinned UI/SDK/Kubernetes/probe refs above. Its Task-built cached CLI and explicit source input are recorded separately; actual focused/full browser scenarios must pass before this cohort is final acceptance.
+The first feedback-corrected cohort is host `917445d90b3e313b98ed577263035ed7a40cad93`. Its focused live run reaches real SDK failure/repair, fresh host/plugin readiness and automatic document replacement without a Chromium error page, but expires a five-second post-replacement shell assertion before cold browser bootstrap finishes. Its unbounded error attachment also exceeds JavaScript string limits; this is not final acceptance.
 
-Remaining order:
+The telemetry-safe cohort is host `9d9e78ae3873b6a6c80f56fe5158d72edd3cd826`, with the same pinned companion refs. Prior C05 artifacts expose an asynchronous diagnostics-log → patched-console → diagnostics-log loop during backend loss. Its failing-before/passing-after regression preserves local error reporting without resending bridge failures; fourteen telemetry tests and the host build pass. Browser artifacts now aggregate bounded records with explicit overflow (four artifact regressions plus E2E types pass). The focused actual live scenario passes real SDK failure, document preservation, repair, fresh host/both-plugin generations and automatically rendered updated host/plugin settings labels, with zero page errors and successful fixture teardown. Full optimized/live two-profile consumer checks remain separate gates.
 
-1. Freeze the verified source into a new immutable cohort, then pass a focused actual failed/repaired SDK scenario without manual navigation or reload.
-2. On a new immutable cohort, run full optimized and live-Vite host/Kubernetes/probe CSS/component/runtime-export/SDK edits, failed/repaired builds and cross-profile isolation in parallel. Verify unavailable runtime-context recovery, retained registry identity and final backend graph convergence. Correct failures at their causal boundaries; never relabel older evidence as current.
-3. Reconcile the final scenario ledger: commands, source refs, UUIDs/generations, actual endpoints, observed result, artifacts/platform and limits. Keep compiler success distinct from connected RPC/controller readiness and actual module bytes.
-4. Publish the **real** fixed SDK and compatible package/plugin releases in dependency order before claiming normal production/release consumption. No fake SDK version or legacy MUI/shared-dependency shim is an acceptable substitute.
-5. Supply Windows/Linux native GUI runners and authorized pixel capture if those platform/pixel claims are required. Unavailable hardware/permissions remain explicit gates, not passes.
-6. Finish the final independent containment/baseline/auth/process review and update this checkpoint plus operational docs from observed results.
+The telemetry-safe full optimized run passes initial two-profile isolation and actual host/probe/Kubernetes CSS propagation, then fails the new runtime-export action: the host button still executes the original handler, while Probe reports a missing named shim export. A separate actual optimized probe establishes that the published runtime and shim both contain the new export. Its automatic document replacements occur before the replacement host starts; the graph-ready browser still exposes the original runtime namespace, and neither real plugin recovers within the bounded browser-bootstrap observation. This rules out stale published shim output for that probe, but does not yet identify the failed final reconnect/reload boundary. Backend readiness and an earlier document change are not proof that the replacement host was consumed.
+
+The full live two-profile scenario passes against this cohort with actual pnpm 12.14.0: both real plugins render and interact; mandatory identity survives optional-header hiding; settings persist only in A; selected UI CSS and newly added shared runtime exports reach host/Kubernetes/probe consumers while B remains unchanged; invalid SDK compilation preserves the current document and reports failure; repair replaces the host and plugin generations and renders rebuilt settings; explicit restart preserves state and rotates generation; canonical fixture retirement succeeds. Its bounded browser report has no page errors or overflow. This is live-mode acceptance, not an optimized-mode pass.
+
+The retained-inode correction is host `60d9180cee9a82aa4d0d37aa10bd2498ba4d537e`. Matching the supervisor's actual positional-write/conditional-truncate publication makes the real Vite 5/8 release and pending-HTTP tests fail with a directory watcher; watching the owned file makes all 32 Vite-package cases pass, including the native authority subprocess. Runtime → shim/Vite-plugin builds and browser-harness types pass. An actual optimized application probe now passes: the host process changes, both reconnects receive 204, the browser automatically consumes a new document and shim with the new export, and host/probe buttons execute the revised runtime function with no page errors or manual reload. Full corrected live/optimized two-profile checks remain separate gates. The first corrected optimized attempt fails during default-profile launch before the scenario begins; its redacted error does not establish a cause, so the diagnostic run preserves structured private CLI failure data.
+
+The full live scenario also passes with the retained-inode correction and browser-readiness harness `23ba7aae8a1b72948bee81e1f12f77734b093776`, retries disabled. This run explicitly verifies document preservation during SDK failure, automatic repair, both plugin generations, state-preserving restart and unchanged B. Its retained descriptor artifact records A `769911fc-bb90-4506-96b5-db9e402e4184` at browser port 23929 and B `cb4f9ccb-410b-4ac0-b4d3-9af53b05073e` at port 27026; repaired A uses a fresh host process, restart rotates its generation, and B's original process/generation remain identical. Browser artifacts contain no page errors or overflow; canonical teardown completes.
+
+The full optimized scenario passes with the same corrected runtime and harness, retries disabled. A `071bae3c-210f-4c5f-83bd-8e2fabb19000` uses browser port 22878; B `8a58786a-ca7d-41a9-8c22-a80fc9f04328` uses port 32188. Actual new shared exports, SDK failure/document preservation/automatic repair, state-preserving restart, stale-generation rejection and unchanged B all pass, with no page errors or artifact overflow and successful canonical teardown. The temporary diagnostic wrapper forwarded the immutable real CLI's results without retries and is removed. The earlier default-profile `launch_failed` remains unclassified because its underlying detail was not retained; the successful diagnostic run captures only the expected failed-instance inspection. No speculative bootstrap cause or separate fix is claimed.
+
+Remaining external gates:
+
+1. Publish the **real** fixed SDK and compatible package/plugin releases in dependency order before claiming normal production/release consumption. No fake SDK version or legacy MUI/shared-dependency shim is an acceptable substitute.
+2. Supply Windows/Linux native GUI runners and authorized pixel capture before making those platform/pixel claims. Cross-compilation and native DOM/geometry checks are not substitutes.
+3. Exercise actual supported-client discovery and fresh-model skill evaluations beyond the locally checked commands and versioned evaluation cases before claiming those integrations.
+4. Retire the historical quarantined fixture only with independently established safe authority; its retained unknown outputs and ownership boundary remain described below.
 
 ### Automatic-feedback correction dependency order
 
-Host replacement currently keeps Vite reachable while the backend is unavailable, and producer outputs can trigger navigation before replacement begins. Client HMR callbacks are not a cross-version cancellation mechanism: Vite 5 does not await them, Vite 8 awaits without providing a veto, and their reconnect probes differ. The correction holds navigation-affecting Vite messages and reconnect probes at the server boundary before any backend-affecting producer publishes, while keeping ordinary HTML/modules available for real host readiness probes. Only the exact owned generation's private, integrity-checked feedback state can release one deliberate reload after backend/plugin readiness; failed builds retain the hold.
+The first cohort left producer feedback enabled across backend replacement. Client HMR callbacks are not a cross-version cancellation mechanism: Vite 5 does not await them, Vite 8 awaits without providing a veto, and their reconnect probes differ. The correction holds navigation-affecting Vite messages and reconnect probes at the server boundary before any backend-affecting producer publishes, while keeping ordinary HTML/modules available for real host readiness probes. Only the exact owned generation's private, integrity-checked feedback state can release one deliberate reload after backend/plugin readiness; failed builds retain the hold.
 
 Two independent rendered-consumer corrections are also required: discover late managed inventory on the real postpublication `plugin/dev_install_complete` event, and retain the extension registry for the document lifetime across live runtime HMR. Neither an initially successful partial inventory nor a Vite-ready status proves every plugin record has published.
 
@@ -144,6 +154,7 @@ flowchart LR
   V[Vite 5 and 8 server-side gates] --> B
   I[Late inventory discovery] --> B
   R[Document-lifetime registry] --> B
+  T[Nonrecursive telemetry and bounded artifacts] --> B
   B --> C[Full optimized and live consumer acceptance]
 ```
 
@@ -170,9 +181,13 @@ These are nonsecret records from this verification machine, rooted at `/private/
 | Windows/Linux ARM64 contract cross-compilation | `final-cross-compile-proof.json` |
 | Quarantined diagnostic owner's denied task authority | `plugin-transaction-acceptance/retained-task-authority-proof.json` |
 | First failed consumer cohort input selection | `e2e-sources-ac0fbd.json` |
-| Feedback gates, native authority, Linux execution and outstanding Darwin race | `feedback-contract-proof.json` |
+| Feedback ownership/native authority and historical Darwin failure | `feedback-contract-proof.json` |
 | Actual Darwin exiting-descendant RED/GREEN and independent cleanup | `darwin-retirement-proof.json` |
-| Corrected immutable consumer input selection | `e2e-sources-917445.json` |
+| First feedback-corrected immutable consumer inputs | `e2e-sources-917445.json` |
+| Accepted runtime cohort and pinned companion inputs | `e2e-sources-60d918.json` |
+| Retained-inode release RED/GREEN and actual automatic new document | `retained-inode-release-proof.json` |
+| Full corrected live consumer matrix | `live-consumers-60d918-proof.json` |
+| Full corrected optimized consumer matrix | `optimized-consumers-60d918-proof.json` |
 
 The failed first-cohort runs retain stage receipts, screenshots and browser-error records beneath `playwright-optimized-ac0fbd/` and `playwright-live-ac0fbd/`; these are failures, not final acceptance. The live error record is large: inspect bounded projections rather than loading it wholesale, and distinguish failure-stage observations from teardown noise. Linux profile tests actually ran nonroot with a read-only root filesystem, no network and private tmpfs; Windows runtime and both platforms' GUI/storage claims remain unexercised.
 
