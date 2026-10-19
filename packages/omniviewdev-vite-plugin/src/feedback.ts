@@ -270,9 +270,10 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
   };
   httpServer.once('close', cleanup);
   try {
-    watcher = watch(path.dirname(context.file), { persistent: false }, (_event, filename) => {
-      if (!filename || filename.toString() === path.basename(context.file)) observe();
-    });
+    // Publication extends this retained inode with WriteAt; it need not change
+    // a directory entry. Watch the file itself so a release wakes pending pings.
+    // observe still verifies the canonical path and captured inode before use.
+    watcher = watch(context.file, { persistent: false }, () => observe());
     watcher.on('error', () => { watchFailed = true; held = true; });
     // Cover a release between the initial read and installing the native watch.
     observe();

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
 import {
-  chmodSync, closeSync, fsyncSync, ftruncateSync, mkdirSync, mkdtempSync, openSync,
+  chmodSync, closeSync, fstatSync, fsyncSync, ftruncateSync, mkdirSync, mkdtempSync, openSync,
   realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync,
 } from 'node:fs';
 import { get } from 'node:http';
@@ -44,7 +44,7 @@ async function fixture(t: TestContext, framework: Framework, managed = true, ini
     // Match the supervisor's stable-inode, bounded in-place publication, not rename.
     const bytes = Buffer.from(raw);
     writeSync(descriptor, bytes, 0, bytes.length, 0);
-    ftruncateSync(descriptor, bytes.length);
+    if (fstatSync(descriptor).size > bytes.length) ftruncateSync(descriptor, bytes.length);
     fsyncSync(descriptor);
   };
   const publish = (held: boolean) => publishRaw(JSON.stringify({ ...context, held }));
