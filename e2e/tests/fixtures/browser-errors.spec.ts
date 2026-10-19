@@ -15,10 +15,19 @@ test('browser error artifacts aggregate repeated events without conflating kinds
 
 test('browser error artifacts conserve every occurrence after distinct-record overflow', () => {
   const errors = new BrowserErrors();
-  for (let index = 0; index < 500; index++) errors.add('pageerror', `failure ${index}`, index);
-  for (let index = 0; index < 1000; index++) errors.add('pageerror', `unretained ${index}`, 500 + index);
+  for (let index = 0; index < 500; index++) {
+    errors.add('pageerror', `failure ${index}`, index);
+  }
+
+  for (let index = 0; index < 1000; index++) {
+    errors.add('pageerror', `unretained ${index}`, 500 + index);
+  }
+
   // Repeated unretained events must each count, while retained events still aggregate.
-  for (let index = 0; index < 200; index++) errors.add('pageerror', 'unretained 0', 1500 + index);
+  for (let index = 0; index < 200; index++) {
+    errors.add('pageerror', 'unretained 0', 1500 + index);
+  }
+
   errors.add('pageerror', 'failure 0', 1700);
   const artifact = JSON.parse(errors.serialize());
   expect(artifact).toHaveLength(501);
@@ -44,7 +53,10 @@ test('browser error artifacts clip huge messages and aggregate by their clipped 
 test('browser error artifact serialization stays bounded across a unique huge-message storm', () => {
   const errors = new BrowserErrors();
   const hugeSuffix = '\\\"\n'.repeat(4096);
-  for (let index = 0; index < 2000; index++) errors.add('console.error', `${index}: ${hugeSuffix}`, index);
+  for (let index = 0; index < 2000; index++) {
+    errors.add('console.error', `${index}: ${hugeSuffix}`, index);
+  }
+
   const serialized = errors.serialize();
   const artifact = JSON.parse(serialized);
   expect(artifact).toHaveLength(501);

@@ -16,7 +16,7 @@ export type InstanceInfo = {
   version: string;
   commit: string;
   readiness: string;
-  repositories: { id: string; path: string; ref: string; commit: string }[] | null;
+  repositories: Array<{ id: string; path: string; ref: string; commit: string }> | null;
   endpoints: {
     browser: string | null;
     vite: string | null;
@@ -49,14 +49,20 @@ export function InstanceProvider({ children }: { children: ReactNode }) {
 
   const refreshInfo = useCallback(async () => {
     // Plain browser previews have no host or binding endpoint; never invent one.
-    if (initialIdentity === null) return;
+    if (initialIdentity === null) {
+      return;
+    }
+
     const request = ++requestSequence.current;
     // Hide the previous snapshot: it must not be presented as current/confirmed
     // while a fresh authoritative host read is pending or after it fails.
     setValue((current) => ({ ...current, info: null, status: 'refreshing' }));
     try {
       const info = await GetInstanceInfo();
-      if (request !== requestSequence.current) return;
+      if (request !== requestSequence.current) {
+        return;
+      }
+
       if (info.schemaVersion !== 1 || info.instanceID !== initialIdentity.instanceID
         || info.kind !== initialIdentity.kind || info.generation !== initialIdentity.generation
         || !info.displayName?.trim()) {
@@ -64,6 +70,7 @@ export function InstanceProvider({ children }: { children: ReactNode }) {
         setValue({ identity: initialIdentity, info: null, status: 'mismatch' });
         return;
       }
+
       setValue({
         identity: { ...initialIdentity, displayName: info.displayName },
         info,
@@ -78,7 +85,9 @@ export function InstanceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refreshInfo();
-    return () => { ++requestSequence.current; };
+    return () => {
+      ++requestSequence.current; 
+    };
   }, [refreshInfo]);
 
   useEffect(() => {
@@ -94,6 +103,9 @@ export function InstanceProvider({ children }: { children: ReactNode }) {
 
 export function useInstance(): InstanceContextValue {
   const instance = useContext(InstanceContext);
-  if (instance === null) throw new Error('useInstance must be used within InstanceProvider');
+  if (instance === null) {
+    throw new Error('useInstance must be used within InstanceProvider');
+  }
+
   return instance;
 }

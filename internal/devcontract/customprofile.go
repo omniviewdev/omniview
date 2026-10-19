@@ -3,25 +3,14 @@ package devcontract
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 
 	"github.com/gofrs/flock"
 	"github.com/google/uuid"
+	"github.com/omniviewdev/plugin-sdk/pkg/profilecontract"
 )
-
-// customProfile is machine-local ownership metadata, never portable manifest intent.
-// The same record is used for a binding, its container marker, and a global claim.
-type customProfile struct {
-	SchemaVersion int    `json:"schemaVersion"`
-	WorkspaceID   string `json:"workspaceID"`
-	StateRoot     string `json:"stateRoot"`
-}
-
-type customProfiles struct {
-	SchemaVersion int             `json:"schemaVersion"`
-	Claims        []customProfile `json:"claims"`
-}
 
 func profileConflict(message string) error { return Fail(4, "conflicting_state_root", message) }
 func overlaps(a, b string) bool            { return contained(a, b) || contained(b, a) }
@@ -84,84 +73,46 @@ func customProfileBase(home string) (string, error) {
 	return CanonicalPath(filepath.Join(home, ".omniview-dev"))
 }
 
-// readProfileJSON refuses metadata redirected through symlinks. A missing file is
-// distinguished from malformed, foreign, or inaccessible metadata by callers.
+// profileReadError preserves host exit/error classes without exposing JSON data.
+func profileReadError(err error) error {
+	var protocolError *profilecontract.Error
+	if errors.As(err, &protocolError) {
+		code := 2
+		if protocolError.Code == "conflicting_state_root" {
+			code = 4
+		}
+		return Fail(code, protocolError.Code, protocolError.Message)
+	}
+	return err
+}
+
 func readProfileJSON(path string, value any) error {
-	canonical, err := CanonicalPath(path)
-	if os.IsNotExist(err) {
-		return profileConflict("profile ownership metadata contains a dangling symlink")
-	}
-	if err != nil {
-		return err
-	}
-	if canonical != path {
-		return profileConflict("profile ownership metadata cannot be redirected through symlinks")
-	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return profileConflict("profile ownership metadata must be a regular file")
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	if err = json.Unmarshal(data, value); err != nil {
-		return Fail(2, "invalid_profile_binding", "invalid machine-local profile metadata")
-	}
-	return nil
+	return profileReadError(profilecontract.ReadJSON(path, value))
 }
 
-func validateCustomRecord(record customProfile) error {
-	id, err := uuid.Parse(record.WorkspaceID)
-	if record.SchemaVersion != 1 || err != nil || id == uuid.Nil || id.String() != record.WorkspaceID || !filepath.IsAbs(record.StateRoot) || filepath.Clean(record.StateRoot) != record.StateRoot || filepath.Base(record.StateRoot) != "state" {
-		return Fail(2, "invalid_profile_binding", "invalid machine-local profile identity or state path")
-	}
-	canonical, err := CanonicalPath(record.StateRoot)
-	if err != nil {
-		return err
-	}
-	if canonical != record.StateRoot {
-		return profileConflict("custom state container cannot be redirected through symlinks")
-	}
-	container := filepath.Dir(record.StateRoot)
-	canonical, err = CanonicalPath(container)
-	if err != nil {
-		return err
-	}
-	if canonical != container {
-		return profileConflict("custom profile container cannot be redirected through symlinks")
-	}
-	return nil
+func validateCustomRecord(record profilecontract.Record) error {
+	return profileReadError(profilecontract.ValidateRecord(record))
 }
 
-func loadCustomProfiles(base string, optional bool) (customProfiles, error) {
-	var registry customProfiles
+func loadCustomProfiles(base string, optional bool) (profilecontract.Claims, error) {
+	var registry profilecontract.Claims
 	err := readProfileJSON(filepath.Join(base, "custom-profiles.json"), &registry)
 	if os.IsNotExist(err) && optional {
-		return customProfiles{SchemaVersion: 1}, nil
+		return profilecontract.Claims{SchemaVersion: 1}, nil
 	}
 	if err != nil {
 		return registry, err
 	}
-	if registry.SchemaVersion != 1 {
-		return registry, Fail(2, "invalid_profile_binding", "unsupported custom profile claims schema")
-	}
-	seen := make(map[string]bool, len(registry.Claims))
-	for _, claim := range registry.Claims {
-		if err := validateCustomRecord(claim); err != nil {
-			return registry, err
-		}
-		if seen[claim.StateRoot] {
-			return registry, profileConflict("duplicate custom profile claim")
-		}
-		seen[claim.StateRoot] = true
+	if err := profilecontract.ValidateClaims(registry); err != nil {
+		return registry, profileReadError(err)
 	}
 	for i, a := range registry.Claims {
 		for _, b := range registry.Claims[:i] {
-			if overlaps(filepath.Dir(a.StateRoot), filepath.Dir(b.StateRoot)) {
+			overlap, err := ProfilePathsOverlap(filepath.Dir(a.StateRoot), filepath.Dir(b.StateRoot))
+			if err != nil {
+				return registry, err
+			}
+			if overlap {
 				return registry, profileConflict("custom profile claim containers overlap")
 			}
 		}
@@ -207,45 +158,29 @@ func customProtectedPaths(w ResolvedWorkspace, home string) ([]string, error) {
 			}
 		}
 	}
-	var journal struct {
-		SchemaVersion int               `json:"schemaVersion"`
-		WorkspaceID   string            `json:"workspaceID"`
-		Root          string            `json:"root"`
-		Phase         string            `json:"phase"`
-		RenameTo      string            `json:"renameTo"`
-		Manifest      WorkspaceManifest `json:"manifest"`
-		Resources     []struct {
-			CommonDir string `json:"commonDir"`
-		} `json:"resources"`
-	}
+	var journal profilecontract.OwnershipJournal[WorkspaceManifest]
 	err := readProfileJSON(filepath.Join(w.Root, ".local", "ownership.json"), &journal)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 	if err == nil {
-		if journal.SchemaVersion != 1 || journal.WorkspaceID != w.Manifest.WorkspaceID {
-			return nil, profileConflict("workspace ownership boundary disagrees with selected workspace")
+		intent := profilecontract.ManifestIdentity{
+			SchemaVersion: journal.Manifest.SchemaVersion,
+			WorkspaceID:   journal.Manifest.WorkspaceID,
+			Slug:          journal.Manifest.Slug,
 		}
-		if journal.Root != w.Root {
-			// A rename publishes the directory move before Git repair and
-			// journal rewrite. Preserve that exact recoverable sibling intent.
-			validRename := journal.Phase == "rename" && journal.RenameTo == w.Root &&
-				filepath.IsAbs(journal.Root) && filepath.Clean(journal.Root) == journal.Root &&
-				filepath.Dir(journal.Root) == filepath.Dir(w.Root) &&
-				journal.Manifest.WorkspaceID == w.Manifest.WorkspaceID &&
-				journal.Manifest.Slug == filepath.Base(w.Root)
-			if !validRename {
-				return nil, profileConflict("workspace ownership boundary disagrees with selected workspace")
-			}
+		intent.Profile.Kind = journal.Manifest.Profile.Kind
+		oldRoot, err := journal.ValidateBoundary(w.Root, w.Manifest.WorkspaceID, intent)
+		if err != nil {
+			return nil, profileReadError(err)
+		}
+		if oldRoot != "" {
 			if err := journal.Manifest.Validate(); err != nil {
 				return nil, err
 			}
-			paths = append(paths, journal.Root)
+			paths = append(paths, oldRoot)
 		}
 		for _, resource := range journal.Resources {
-			if !filepath.IsAbs(resource.CommonDir) {
-				return nil, Fail(2, "invalid_journal", "invalid registered source common directory")
-			}
 			paths = append(paths, resource.CommonDir)
 		}
 	}
@@ -259,7 +194,7 @@ func customProtectedPaths(w ResolvedWorkspace, home string) ([]string, error) {
 	return paths, nil
 }
 
-func validateCustomBoundary(w ResolvedWorkspace, record customProfile, home string) error {
+func validateCustomBoundary(w ResolvedWorkspace, record profilecontract.Record, home string) error {
 	if err := validateCustomRecord(record); err != nil {
 		return err
 	}
@@ -272,7 +207,11 @@ func validateCustomBoundary(w ResolvedWorkspace, record customProfile, home stri
 	}
 	container := filepath.Dir(record.StateRoot)
 	for _, protected := range paths {
-		if overlaps(container, protected) {
+		overlap, err := ProfilePathsOverlap(container, protected)
+		if err != nil {
+			return err
+		}
+		if overlap {
 			return profileConflict("custom profile overlaps protected application or source storage")
 		}
 	}
@@ -289,7 +228,7 @@ func ReadCustomProfileBinding(root, workspaceID, home string) (string, bool, err
 	if err != nil || id == uuid.Nil || id.String() != workspaceID {
 		return "", false, Fail(2, "invalid_identity", "binding reader requires a canonical workspace UUID")
 	}
-	var binding customProfile
+	var binding profilecontract.Record
 	err = readProfileJSON(filepath.Join(root, ".local", "profile.json"), &binding)
 	if os.IsNotExist(err) {
 		return "", false, nil
@@ -313,7 +252,7 @@ func ReadCustomProfileBinding(root, workspaceID, home string) (string, bool, err
 // for a state root retained in a lifecycle receipt after local binding removal.
 // It deliberately reads no workspace files and creates no state or metadata.
 func ValidateCustomProfileClaim(stateRoot, workspaceID, home string) error {
-	record := customProfile{SchemaVersion: 1, WorkspaceID: workspaceID, StateRoot: stateRoot}
+	record := profilecontract.Record{SchemaVersion: 1, WorkspaceID: workspaceID, StateRoot: stateRoot}
 	if err := validateCustomRecord(record); err != nil {
 		return err
 	}
@@ -340,8 +279,8 @@ func ValidateCustomProfileClaim(stateRoot, workspaceID, home string) error {
 	return validateCustomProfileOwner(record)
 }
 
-func validateCustomProfileOwner(record customProfile) error {
-	var owner customProfile
+func validateCustomProfileOwner(record profilecontract.Record) error {
+	var owner profilecontract.Record
 	err := readProfileJSON(filepath.Join(filepath.Dir(record.StateRoot), ".omniview-profile.json"), &owner)
 	if os.IsNotExist(err) {
 		return profileConflict("custom profile binding is missing its owner marker")
@@ -392,7 +331,7 @@ func ValidateProductionProfileIsolation(stateRoot, home string) error {
 	// Check only the selected root and its ancestors; unrelated directories
 	// are not searched, and any malformed or redirected evidence fails closed.
 	for container := stateRoot; ; container = filepath.Dir(container) {
-		var owner customProfile
+		var owner profilecontract.Record
 		err := readProfileJSON(filepath.Join(container, ".omniview-profile.json"), &owner)
 		if err == nil {
 			return profileConflict("production state overlaps a marked development profile")
@@ -412,7 +351,7 @@ func resolveCustomProfile(w ResolvedWorkspace, home string) (string, bool, error
 	if err != nil || !present {
 		return "", present, err
 	}
-	record := customProfile{SchemaVersion: 1, WorkspaceID: w.Manifest.WorkspaceID, StateRoot: state}
+	record := profilecontract.Record{SchemaVersion: 1, WorkspaceID: w.Manifest.WorkspaceID, StateRoot: state}
 	if err = validateCustomBoundary(w, record, home); err != nil {
 		return "", false, err
 	}
@@ -454,15 +393,7 @@ func writeProfileJSON(path string, value any) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if err = os.Rename(f.Name(), path); err != nil {
-		return err
-	}
-	dir, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return publishCustomProfileJSON(f.Name(), path)
 }
 
 func lockCustomPath(path string) (func() error, error) {
@@ -538,7 +469,7 @@ func SetCustomProfile(ctx context.Context, w ResolvedWorkspace, path, home strin
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Base(path) != "state" {
 		return result, Fail(2, "invalid_state_root", "custom state root must be an absolute canonical state child")
 	}
-	record := customProfile{SchemaVersion: 1, WorkspaceID: w.Manifest.WorkspaceID, StateRoot: path}
+	record := profilecontract.Record{SchemaVersion: 1, WorkspaceID: w.Manifest.WorkspaceID, StateRoot: path}
 	if err = validateCustomBoundary(current, record, home); err != nil {
 		return result, err
 	}
@@ -553,11 +484,15 @@ func SetCustomProfile(ctx context.Context, w ResolvedWorkspace, path, home strin
 			claimed = true
 			continue
 		}
-		if overlaps(container, filepath.Dir(claim.StateRoot)) {
+		overlap, err := ProfilePathsOverlap(container, filepath.Dir(claim.StateRoot))
+		if err != nil {
+			return result, err
+		}
+		if overlap {
 			return result, profileConflict("custom profile overlaps an existing durable claim")
 		}
 	}
-	var owner customProfile
+	var owner profilecontract.Record
 	ownerPath := filepath.Join(container, ".omniview-profile.json")
 	ownerErr := readProfileJSON(ownerPath, &owner)
 	if ownerErr != nil && !os.IsNotExist(ownerErr) {

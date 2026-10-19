@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gofrs/flock"
+	"github.com/omniviewdev/plugin-sdk/pkg/profilecontract"
+	"github.com/omniviewdev/plugin-sdk/pkg/state"
 )
 
 func customFixture(t *testing.T) (ResolvedWorkspace, string, string) {
@@ -139,6 +142,114 @@ func TestCustomProfileRegistryRejectsForeignAndNestedClaims(t *testing.T) {
 	}
 	if _, err := SetCustomProfile(context.Background(), other, state, home); ExitCode(err) != 4 {
 		t.Fatalf("old reservation was lost on rebind: %v", err)
+	}
+}
+
+func caseAliasDirectory(t *testing.T, path string) string {
+	t.Helper()
+	if err := os.MkdirAll(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(filepath.Dir(path), strings.ToUpper(filepath.Base(path)))
+	original, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliased, err := os.Stat(alias)
+	if os.IsNotExist(err) {
+		t.Skip("filesystem does not alias differently cased directory names")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alias == path || !os.SameFile(original, aliased) {
+		t.Skip("filesystem does not alias differently cased directory names")
+	}
+	return alias
+}
+
+func TestCustomProfileRejectsCaseAliasedNestedClaims(t *testing.T) {
+	t.Run("admission", func(t *testing.T) {
+		w, home, state := customFixture(t)
+		alias := caseAliasDirectory(t, filepath.Dir(state))
+		selected, err := SetCustomProfile(context.Background(), w, state, home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nested := filepath.Join(alias, "nested", "state")
+		if _, err := SetCustomProfile(context.Background(), selected, nested, home); ExitCode(err) != 4 {
+			t.Fatalf("case-aliased nested claim accepted: %v", err)
+		}
+		if _, err := os.Lstat(filepath.Dir(nested)); !os.IsNotExist(err) {
+			t.Fatalf("rejected claim created its container: %v", err)
+		}
+		resolved, err := ResolveWorkspace(ResolveOptions{Explicit: w.ManifestPath, Home: home})
+		if err != nil || resolved.StateRoot != state {
+			t.Fatalf("rejected claim changed the binding: %+v %v", resolved, err)
+		}
+	})
+	t.Run("registry", func(t *testing.T) {
+		w, home, state := customFixture(t)
+		alias := caseAliasDirectory(t, filepath.Dir(state))
+		registry := profilecontract.Claims{SchemaVersion: 1, Claims: []profilecontract.Record{
+			{SchemaVersion: 1, WorkspaceID: w.Manifest.WorkspaceID, StateRoot: state},
+			{SchemaVersion: 1, WorkspaceID: "4beee3e2-2450-421c-ad44-485a704c3a65", StateRoot: filepath.Join(alias, "nested", "state")},
+		}}
+		data, err := json.Marshal(registry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		base := filepath.Join(home, ".omniview-dev")
+		if err := os.MkdirAll(base, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(base, "custom-profiles.json"), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := loadCustomProfiles(base, false); ExitCode(err) != 4 {
+			t.Fatalf("case-aliased nested registry claims accepted: %v", err)
+		}
+	})
+	t.Run("protected boundary", func(t *testing.T) {
+		w, home, _ := customFixture(t)
+		alias := caseAliasDirectory(t, w.Root)
+		state := filepath.Join(alias, "nested", "state")
+		if _, err := SetCustomProfile(context.Background(), w, state, home); ExitCode(err) != 4 {
+			t.Fatalf("case-aliased workspace boundary accepted: %v", err)
+		}
+		if _, err := os.Lstat(filepath.Dir(state)); !os.IsNotExist(err) {
+			t.Fatalf("rejected boundary created its container: %v", err)
+		}
+	})
+}
+
+func TestCustomProfilePublicationReplacesMetadata(t *testing.T) {
+	base, err := CanonicalPath(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(base, "metadata", "profile.json")
+	first := profilecontract.Record{SchemaVersion: 1, WorkspaceID: "4beee3e2-2450-421c-ad44-485a704c3a65", StateRoot: filepath.Join(base, "first", "state")}
+	second := first
+	second.StateRoot = filepath.Join(base, "second", "state")
+	for _, record := range []profilecontract.Record{first, second} {
+		if err := writeProfileJSON(path, record); err != nil {
+			t.Fatalf("publish profile metadata: %v", err)
+		}
+		var actual profilecontract.Record
+		if err := readProfileJSON(path, &actual); err != nil {
+			t.Fatal(err)
+		}
+		if actual != record {
+			t.Fatalf("published metadata = %+v, want %+v", actual, record)
+		}
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "profile.json" {
+		t.Fatalf("publication left temporary metadata: %v", entries)
 	}
 }
 
@@ -294,7 +405,7 @@ func TestCustomProfileValidatesForeignOwnershipAndStateRemap(t *testing.T) {
 			if _, err := SetCustomProfile(context.Background(), w, state, home); err != nil {
 				t.Fatal(err)
 			}
-			foreign := customProfile{SchemaVersion: 1, WorkspaceID: "4beee3e2-2450-421c-ad44-485a704c3a65", StateRoot: state}
+			foreign := profilecontract.Record{SchemaVersion: 1, WorkspaceID: "4beee3e2-2450-421c-ad44-485a704c3a65", StateRoot: state}
 			var value any = foreign
 			path := filepath.Join(w.Root, ".local", "profile.json")
 			switch kind {
@@ -302,7 +413,7 @@ func TestCustomProfileValidatesForeignOwnershipAndStateRemap(t *testing.T) {
 				path = filepath.Join(filepath.Dir(state), ".omniview-profile.json")
 			case "claim identity":
 				path = filepath.Join(home, ".omniview-dev", "custom-profiles.json")
-				value = customProfiles{SchemaVersion: 1, Claims: []customProfile{foreign}}
+				value = profilecontract.Claims{SchemaVersion: 1, Claims: []profilecontract.Record{foreign}}
 			case "state remap":
 				target := filepath.Join(filepath.Dir(state), "runtime")
 				if err := os.MkdirAll(target, 0700); err != nil {
@@ -369,6 +480,70 @@ func TestCustomProfileResolutionPreservesInterruptedRenameRecovery(t *testing.T)
 				}
 			} else if err == nil {
 				t.Fatalf("invalid rename boundary %s accepted", kind)
+			}
+		})
+	}
+}
+
+// Both readers consume identical durable bytes; only the host validates portable
+// manifest intent beyond the identity needed to prove an interrupted rename.
+func TestCustomProfileProtocolReaderParity(t *testing.T) {
+	for _, kind := range []string{"valid rename", "wrong phase", "wrong target", "wrong identity", "wrong manifest identity", "unsupported schema", "production intent", "wrong slug", "invalid full manifest"} {
+		t.Run(kind, func(t *testing.T) {
+			w, home, stateRoot := customFixture(t)
+			if _, err := SetCustomProfile(context.Background(), w, stateRoot, home); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(filepath.Dir(w.Root), "renamed")
+			intent := w.Manifest
+			intent.Slug = "renamed"
+			journal := map[string]any{"schemaVersion": 1, "workspaceID": w.Manifest.WorkspaceID, "root": w.Root, "phase": "rename", "renameTo": target}
+			switch kind {
+			case "wrong phase":
+				journal["phase"] = "ready"
+			case "wrong target":
+				journal["renameTo"] = w.Root
+			case "wrong identity":
+				journal["workspaceID"] = "4beee3e2-2450-421c-ad44-485a704c3a65"
+			case "wrong manifest identity":
+				intent.WorkspaceID = "4beee3e2-2450-421c-ad44-485a704c3a65"
+			case "unsupported schema":
+				intent.SchemaVersion = 2
+			case "production intent":
+				intent.Profile.Kind = "production"
+			case "wrong slug":
+				intent.Slug = "different"
+			case "invalid full manifest":
+				intent.Repositories = nil
+			}
+			journal["manifest"] = intent
+			before, err := json.Marshal(journal)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(w.Root, ".local", "ownership.json"), before, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(w.Root, target); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
+			t.Setenv(state.WorkspaceFileEnvironment, filepath.Join(target, "workspace.json"))
+			t.Setenv(state.StateDirectoryEnvironment, stateRoot)
+			host, hostErr := ResolveWorkspace(ResolveOptions{Explicit: target, Home: home})
+			sdk, sdkErr := state.ResolveRoot()
+			hostAccepts := kind == "valid rename"
+			sdkAccepts := hostAccepts || kind == "invalid full manifest"
+			if (hostErr == nil) != hostAccepts || hostErr == nil && host.StateRoot != stateRoot {
+				t.Fatalf("host result: root=%q error=%v", host.StateRoot, hostErr)
+			}
+			if (sdkErr == nil) != sdkAccepts || sdkErr == nil && sdk != stateRoot {
+				t.Fatalf("SDK result: root=%q error=%v", sdk, sdkErr)
+			}
+			after, err := os.ReadFile(filepath.Join(target, ".local", "ownership.json"))
+			if err != nil || string(after) != string(before) {
+				t.Fatalf("readers changed durable intent: %v", err)
 			}
 		})
 	}

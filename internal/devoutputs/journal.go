@@ -33,6 +33,9 @@ type outputEntry struct {
 	Pending  *publication
 	Cleanup  *cleanup
 }
+
+// Phase, Restore and Remove retain the existing journal encoding. All runtime
+// interpretation and transitions go through publicationState, not these fields.
 type publication struct {
 	Token, Directory, ContainerIdentity, ParentIdentity, Head, Backup, Phase string
 	Before, After, Container                                                 snapshot
@@ -258,8 +261,8 @@ func Publish(ctx context.Context, stages ...*Stage) error {
 				return fmt.Errorf("producer capabilities have different or closed ownership")
 			}
 			entry := j.Entries[stage.key]
-			if entry == nil || entry.Pending == nil || entry.Pending.Token != stage.token || entry.Pending.Phase != "writing" {
-				return fmt.Errorf("producer stage capability is stale")
+			if err := requireWriting(entry, stage.token); err != nil {
+				return err
 			}
 			if err := checkStage(entry); err != nil {
 				return err
@@ -299,10 +302,15 @@ func Publish(ctx context.Context, stages ...*Stage) error {
 		}
 		// Persist every exact after-image before the first rename.
 		for _, stage := range stages {
-			j.Entries[stage.key].Pending.Phase = "captured"
+			j.Entries[stage.key].Pending.setState(producerCaptured)
 		}
 		if err := save(first.s, j); err != nil {
 			return err
+		}
+		for _, stage := range stages {
+			if _, err := inspectPublication(ctx, j.Entries[stage.key]); err != nil {
+				return err
+			}
 		}
 		for _, stage := range stages {
 			if err := completePublication(ctx, first.s, j, stage.key); err != nil {
@@ -315,98 +323,38 @@ func Publish(ctx context.Context, stages ...*Stage) error {
 }
 
 func completePublication(ctx context.Context, s scope, j *journal, key string) error {
-	entry := j.Entries[key]
-	if entry == nil || entry.Pending == nil {
-		return nil
-	}
-	p := entry.Pending
-	if p.Phase == "writing" {
-		return fmt.Errorf("interrupted producer has no authenticated after-image")
-	}
-	if p.Phase == "allocating" {
-		if _, err := os.Lstat(p.Directory); !os.IsNotExist(err) {
-			return fmt.Errorf("interrupted producer allocation has unverified output")
+	for {
+		entry := j.Entries[key]
+		if entry == nil || entry.Pending == nil {
+			return nil
 		}
-		current, err := snapshotPath(entry.Spec, entry.Exclude)
+		// A preflight result never authorizes later mutation. Reinspect the
+		// destination, stage, backup and source revision at each durable step.
+		inspection, err := inspectPublication(ctx, entry)
 		if err != nil {
 			return err
 		}
-		if !sameSnapshot(current, p.Before) {
-			return fmt.Errorf("producer allocation destination changed")
-		}
-		entry.Pending = nil
-		return save(s, j)
-	}
-	if p.Phase == "aborting" {
-		spec := entry.Spec
-		spec.Mode = "tree"
-		spec.Target = p.Directory
-		if err := removeSnapshot(spec, p.After); err != nil {
-			return err
-		}
-		entry.Pending = nil
-		return save(s, j)
-	}
-	current, err := snapshotPath(entry.Spec, entry.Exclude)
-	if err != nil {
-		return err
-	}
-	after := p.After
-	already := sameSnapshot(current, after)
-	if p.Remove {
-		already = len(current) == 0
-	}
-	if already {
-		if err := validateRetiredStage(entry); err != nil {
-			return err
-		}
-	}
-	if !already {
-		sourceHead, err := specHead(ctx, entry.Spec)
-		if err != nil {
-			return err
-		}
-		if sourceHead != p.Head {
-			return fmt.Errorf("source commit changed before producer publication")
-		}
-		parent, err := directoryIdentity(filepath.Dir(entry.Spec.Target))
-		if err != nil {
-			return err
-		}
-		if parent != p.ParentIdentity {
-			return fmt.Errorf("publication destination parent was replaced")
-		}
-		if !p.Remove {
-			if err = validateCapturedStage(entry); err != nil {
+		p := entry.Pending
+		operation := inspection.state.operation()
+		switch inspection.action {
+		case discardAllocation:
+			entry.Pending = nil
+			return save(s, j)
+		case discardAbortedStage:
+			spec := entry.Spec
+			spec.Mode = "tree"
+			spec.Target = p.Directory
+			if err = removeSnapshot(spec, p.After); err != nil {
 				return err
 			}
-		} else if err = validateRetiredStage(entry); err != nil {
-			return err
-		}
-		backupSpec := entry.Spec
-		backupSpec.Target = p.Backup
-		backup, err := snapshotPath(backupSpec, nil)
-		if err != nil {
-			return err
-		}
-		if len(current) > 0 {
-			if !sameSnapshot(current, p.Before) || len(backup) > 0 {
-				return fmt.Errorf("publication destination contains foreign changes")
-			}
+			entry.Pending = nil
+			return save(s, j)
+		case backupDestination:
 			if err = os.Rename(entry.Spec.Target, p.Backup); err != nil {
 				return err
 			}
-			p.Phase = "backed-up"
-			if err = save(s, j); err != nil {
-				return err
-			}
-		} else if len(p.Before) > 0 && !sameSnapshot(backup, p.Before) {
-			return fmt.Errorf("publication lost its exact original backup")
-		}
-		if !p.Remove {
-			if err = validateCapturedStage(entry); err != nil {
-				return err
-			}
+			p.setState(operation.backedUp())
+		case publishCapturedStage:
 			source := p.Directory
 			if entry.Spec.Mode == "file" {
 				source = filepath.Join(source, filepath.Base(entry.Spec.Target))
@@ -414,68 +362,76 @@ func completePublication(ctx context.Context, s scope, j *journal, key string) e
 			if err = os.Rename(source, entry.Spec.Target); err != nil {
 				return err
 			}
+			p.setState(operation.published())
+		case recordPublication:
+			p.setState(operation.published())
+		case retirePublication:
+			// Retire only exact known before-images, never broad deletion.
+			backupSpec := entry.Spec
+			backupSpec.Target = p.Backup
+			if len(inspection.backup) > 0 {
+				if err = removeSnapshot(backupSpec, p.Before); err != nil {
+					return err
+				}
+			}
+			if entry.Spec.Mode == "file" || operation == removeOutput {
+				if _, statErr := os.Lstat(p.Directory); statErr == nil {
+					// Removal revalidates the inspected container snapshot and
+					// every leaf, including partial cleanup after interruption.
+					container := entry.Spec
+					container.Mode = "tree"
+					container.Target = p.Directory
+					if err = validateRetiredStage(entry); err != nil {
+						return err
+					}
+					if err = removeSnapshot(container, p.Container); err != nil {
+						return err
+					}
+				} else if !os.IsNotExist(statErr) {
+					return statErr
+				}
+			}
+			if operation != produceOutput {
+				forgetEntry(j, key)
+			} else {
+				known := snapshot{}
+				for path, value := range entry.Expected {
+					known[path] = value
+				}
+				for path, value := range p.Before {
+					known[path] = value
+				}
+				entry.Expected = applied(known, p.After)
+				entry.Pending = nil
+			}
+			return save(s, j)
+		default:
+			return fmt.Errorf("restoration preparation must finish before publication")
 		}
-		p.Phase = "published"
 		if err = save(s, j); err != nil {
 			return err
 		}
 	}
-	// Retire only exact known before-images, never a broad recursive deletion.
-	backupSpec := entry.Spec
-	backupSpec.Target = p.Backup
-	backup, err := snapshotPath(backupSpec, nil)
-	if err != nil {
-		return err
-	}
-	if len(backup) > 0 {
-		for path, value := range backup {
-			if p.Before[path] != value {
-				return fmt.Errorf("publication backup was edited")
-			}
-		}
-		if err = removeSnapshot(backupSpec, p.Before); err != nil {
-			return err
-		}
-	}
-	if entry.Spec.Mode == "file" || p.Remove {
-		if info, statErr := os.Lstat(p.Directory); statErr == nil {
-			identity, idErr := directoryIdentity(p.Directory)
-			if idErr != nil || !info.IsDir() || identity != p.ContainerIdentity {
-				return fmt.Errorf("producer stage container changed")
-			}
-			container := entry.Spec
-			container.Mode = "tree"
-			container.Target = p.Directory
-			if err = removeSnapshot(container, p.Container); err != nil {
-				return err
-			}
-		} else if !os.IsNotExist(statErr) {
-			return statErr
-		}
-	}
-	if p.Restore {
-		forgetEntry(j, key)
-	} else {
-		known := snapshot{}
-		for path, value := range entry.Expected {
-			known[path] = value
-		}
-		for path, value := range p.Before {
-			known[path] = value
-		}
-		entry.Expected = applied(known, p.After)
-		entry.Pending = nil
-	}
-	return save(s, j)
 }
 func recoverPublications(ctx context.Context, s scope, j *journal) error {
 	keys := make([]string, 0, len(j.Entries))
 	for key, entry := range j.Entries {
-		if entry.Pending != nil && !entry.Pending.Restore && entry.Pending.Phase != "writing" {
-			keys = append(keys, key)
+		if entry.Pending != nil {
+			state, err := entry.Pending.state()
+			if err != nil {
+				return err
+			}
+			if state.operation() == produceOutput && state != producerWriting {
+				keys = append(keys, key)
+			}
 		}
 	}
 	sort.Strings(keys)
+	for _, key := range keys {
+		if _, err := inspectPublication(ctx, j.Entries[key]); err != nil {
+			return err
+		}
+	}
 	for _, key := range keys {
 		if err := completePublication(ctx, s, j, key); err != nil {
 			return err
@@ -497,8 +453,8 @@ func (stage *Stage) Abort(ctx context.Context) error {
 	}
 	return locked(ctx, stage.s, func(j *journal) error {
 		entry := j.Entries[stage.key]
-		if entry == nil || entry.Pending == nil || entry.Pending.Token != stage.token || entry.Pending.Phase != "writing" {
-			return fmt.Errorf("cannot abort a stale or partially published producer")
+		if err := requireWriting(entry, stage.token); err != nil {
+			return err
 		}
 		if err := checkStage(entry); err != nil {
 			return err
@@ -512,7 +468,7 @@ func (stage *Stage) Abort(ctx context.Context) error {
 		}
 		// The exact authenticated failed-output snapshot is durable before cleanup.
 		entry.Pending.After = contents
-		entry.Pending.Phase = "aborting"
+		entry.Pending.setState(producerAborting)
 		if err = save(stage.s, j); err != nil {
 			return err
 		}
@@ -532,11 +488,11 @@ func allocatePublication(s scope, j *journal, entry *outputEntry, sourceHead str
 		return err
 	}
 	token := uuid.NewString()
-	phase := "allocating"
+	entry.Pending = &publication{Token: token, Directory: filepath.Join(parent, ".omniview-output-"+token), ParentIdentity: parentID, Head: sourceHead, Backup: filepath.Join(backupDirectory(entry.Spec), ".omniview-before-"+token), Before: before}
+	entry.Pending.setState(producerAllocating)
 	if restore {
-		phase = "restore-allocating"
+		entry.Pending.setState(restoreAllocating)
 	}
-	entry.Pending = &publication{Token: token, Directory: filepath.Join(parent, ".omniview-output-"+token), ParentIdentity: parentID, Head: sourceHead, Backup: filepath.Join(backupDirectory(entry.Spec), ".omniview-before-"+token), Phase: phase, Before: before, Restore: restore}
 	if err = save(s, j); err != nil {
 		return err
 	}
@@ -547,9 +503,9 @@ func allocatePublication(s scope, j *journal, entry *outputEntry, sourceHead str
 	if err != nil {
 		return err
 	}
-	entry.Pending.Phase = "writing"
+	entry.Pending.setState(producerWriting)
 	if restore {
-		entry.Pending.Phase = "restoring"
+		entry.Pending.setState(restorePreparing)
 	}
 	return save(s, j)
 }
@@ -586,7 +542,8 @@ func allocateRemoval(s scope, j *journal, entry *outputEntry, sourceHead string,
 		return err
 	}
 	token := uuid.NewString()
-	entry.Pending = &publication{Token: token, Directory: filepath.Join(parent, ".omniview-output-"+token), ParentIdentity: parentID, Head: sourceHead, Backup: filepath.Join(backupDirectory(entry.Spec), ".omniview-before-"+token), Phase: "captured", Before: before, After: snapshot{}, Restore: true, Remove: true}
+	entry.Pending = &publication{Token: token, Directory: filepath.Join(parent, ".omniview-output-"+token), ParentIdentity: parentID, Head: sourceHead, Backup: filepath.Join(backupDirectory(entry.Spec), ".omniview-before-"+token), Before: before, After: snapshot{}}
+	entry.Pending.setState(removalCaptured)
 	return save(s, j)
 }
 
@@ -621,7 +578,11 @@ func validateRetiredStage(entry *outputEntry) error {
 	} else if err != nil {
 		return err
 	}
-	if entry.Spec.Mode == "tree" && !p.Remove || p.ContainerIdentity == "" {
+	state, err := p.state()
+	if err != nil {
+		return err
+	}
+	if entry.Spec.Mode == "tree" && state.operation() != removeOutput || p.ContainerIdentity == "" {
 		return fmt.Errorf("retired producer stage path was replaced by foreign data")
 	}
 	id, err := directoryIdentity(p.Directory)

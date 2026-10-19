@@ -8,6 +8,14 @@ The [workspace roadmap](development-workspaces-roadmap.md) records research deci
 
 Use the bootstrap-aware Task entry point. The initial CLI needs the reviewed companion SDK source because the currently declared published SDK does not contain the new isolation APIs. `SDK_SOURCE` is explicit: there is no inferred sibling replacement, global `go.work`, global `GOFLAGS`, package upgrade or canonical-source mutation.
 
+Task first runs a standard-library-only bootstrap entry. With explicit
+`SDK_SOURCE`, it prepares the existing pinned native module into a private
+temporary directory and uses that module to compile the CLI bootstrap itself,
+before any unpublished SDK package is imported. The original source and
+`GO_MODFILE` selections still reach the full CLI selection/cache checks unchanged.
+Temporary preparation is removed only after that bootstrap process exits; the
+immutable CLI and its owned cache remain managed by the full bootstrap.
+
 Current host/UI/plugin/probe manifests pin **pnpm 12.14.0**. Install the native executable on PATH, or explicitly export `OMNIVIEW_PNPM_EXECUTABLE=/canonical/absolute/native/pnpm` when an existing agent process still sees an older shell/Corepack installation. The managed launcher validates the actual version and does not downgrade the global installation. Node is still needed by application build scripts; native pnpm itself is not a Node entry point.
 
 An installed Homebrew formula can be available even when an already-running agent has no `pnpm` command on PATH. Select its canonical executable without installing another version or changing global links:
@@ -42,7 +50,7 @@ Each source is an explicit local normal or bare Git repository. Use repeatable `
 
 Register every repository/plugin source needed by the collection up front. Registry source mappings are deliberately immutable: repeating the same initialization is allowed, but changing or adding mappings returns `registry_exists` with conflict exit4 and leaves the existing registry intact. Initialize another collection for a different source set; `workspace edit --add-plugin` selects an already registered plugin, not a new repository registration.
 
-The reviewed fixed SDK commit established during integration is `d32a524bc89659260c6045062035ce05dc138ff4`. Select a source descending from that commit. Subsequent ordinary edits in the selected feature SDK worktree are live development input and do not require per-edit commits. Protected isolation implementation changes require the explicit warning-bearing `--allow-isolation-source-changes` flag; it is scoped to this workspace's child processes and is not a sandbox.
+The reviewed fixed SDK commit is `3368c2b412a0c1608a244bce6cb614f2749b95a7`, including the shared read-only profile contract required by this host. Select a source descending from that commit; the previous baseline lacks the required contract and cannot authorize this cutover. Subsequent ordinary edits in the selected feature SDK worktree are live development input and do not require per-edit commits. Protected isolation implementation changes require the explicit warning-bearing `--allow-isolation-source-changes` flag; it is scoped to this workspace's child processes and is not a sandbox.
 
 Local package linking requires the actual successful pinned pnpm protocol probe report, not manually asserted booleans. Run the probe once on the integrated host source with its effective SDK/native module selection, then pass the report explicitly (or place it at `$COLLECTION/.omniview-dev/link-protocol.json`):
 
@@ -69,14 +77,14 @@ The probe performs real native12 recursive peer, singleton, live-export and atom
   --repo ui --repo plugin-sdk \
   --plugin "$PLUGIN_A_ID" --plugin "$PLUGIN_B_ID" \
   --start --mode browser \
-  --reviewed-sdk-revision d32a524bc89659260c6045062035ce05dc138ff4 \
+  --reviewed-sdk-revision 3368c2b412a0c1608a244bce6cb614f2749b95a7 \
   --link-evidence "$LINK_EVIDENCE" --json
 
 # The same plugin ID can run independently in another profile.
 "$DEV" workspace create feature-b --root "$COLLECTION" \
   --repo ui --repo plugin-sdk --plugin "$PLUGIN_A_ID" \
   --start --mode browser \
-  --reviewed-sdk-revision d32a524bc89659260c6045062035ce05dc138ff4 \
+  --reviewed-sdk-revision 3368c2b412a0c1608a244bce6cb614f2749b95a7 \
   --link-evidence "$LINK_EVIDENCE" --json
 
 "$DEV" workspace inspect feature-a --root "$COLLECTION" --json

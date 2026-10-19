@@ -9,7 +9,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
 
-interface FeedbackContext {
+type FeedbackContext = {
   schemaVersion: 1;
   workspaceID: string;
   generation: string;
@@ -19,16 +19,16 @@ interface FeedbackContext {
     executable: string;
     identity: { volume: string; fileID: string };
   };
-}
+};
 
-interface FeedbackChannel {
+type FeedbackChannel = {
   send(payload: unknown, data?: unknown): void;
-}
+};
 
 // The common server surface deliberately avoids tying the host's Vite 8
 // configuration to the plugin package's Vite 5 Plugin/ViteDevServer types.
-interface ManagedFeedbackServer {
-  config: { server: { port?: number; hmr?: boolean | { server?: object; port?: number } } };
+type ManagedFeedbackServer = {
+  config: { server: { port?: number; hmr?: boolean | { server?: EventEmitter; port?: number } } };
   httpServer: EventEmitter | null;
   ws: FeedbackChannel & { readonly clients: { readonly size: number } };
   middlewares: {
@@ -36,9 +36,9 @@ interface ManagedFeedbackServer {
   };
   environments?: Record<string, { hot: FeedbackChannel }>;
   close(): Promise<void>;
-}
+};
 
-type UpgradeHandler = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
+type UpgradeHandler = (request: IncomingMessage, socket: Duplex, head: Uint8Array) => void;
 const navigationTypes: Record<string, true> = { update: true, 'full-reload': true, prune: true };
 const maximumStateBytes = 64 * 1024;
 const maximumStateSize = BigInt(maximumStateBytes);
@@ -48,6 +48,7 @@ function feedbackContext(raw: string): FeedbackContext {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('OMNIVIEW_VITE_FEEDBACK must be an explicit managed feedback context');
   }
+
   const context = value as Record<string, unknown>;
   if (context.schemaVersion !== 1
     || typeof context.workspaceID !== 'string'
@@ -59,14 +60,17 @@ function feedbackContext(raw: string): FeedbackContext {
     || context.file.includes('\0') || path.resolve(context.file) !== context.file) {
     throw new Error('Managed Vite feedback requires versioned, explicit workspace and file ownership');
   }
+
   if (realpathSync(context.workspaceRoot) !== context.workspaceRoot || !statSync(context.workspaceRoot).isDirectory()) {
     throw new Error('Managed Vite feedback workspace must be an existing canonical directory');
   }
+
   let authority: FeedbackContext['authority'];
   if (context.authority !== undefined) {
     if (!context.authority || typeof context.authority !== 'object' || Array.isArray(context.authority)) {
       throw new Error('Managed Vite feedback authority must be explicit supervisor ownership');
     }
+
     const value = context.authority as Record<string, unknown>;
     if (typeof value.executable !== 'string' || !path.isAbsolute(value.executable)
       || value.executable.includes('\0') || path.resolve(value.executable) !== value.executable
@@ -74,16 +78,19 @@ function feedbackContext(raw: string): FeedbackContext {
       || !value.identity || typeof value.identity !== 'object' || Array.isArray(value.identity)) {
       throw new Error('Managed Vite feedback authority requires its exact canonical supervisor executable');
     }
+
     const identity = value.identity as Record<string, unknown>;
     if (typeof identity.volume !== 'string' || !/^[0-9]+$/.test(identity.volume)
       || typeof identity.fileID !== 'string' || !/^[0-9a-f]{32}$/.test(identity.fileID)) {
       throw new Error('Managed Vite feedback authority requires the full stable file identity');
     }
+
     authority = {
       executable: value.executable,
       identity: { volume: identity.volume, fileID: identity.fileID },
     };
   }
+
   return {
     schemaVersion: 1,
     workspaceID: context.workspaceID,
@@ -98,7 +105,10 @@ function feedbackContext(raw: string): FeedbackContext {
 export function readViteFeedbackAuthority(raw: string): boolean {
   try {
     const context = feedbackContext(raw);
-    if (!context.authority) return true;
+    if (!context.authority) {
+      return true;
+    }
+
     const output = execFileSync(context.authority.executable, ['vite-feedback-read', '--context', raw], {
       encoding: 'utf8',
       shell: false,
@@ -109,63 +119,70 @@ export function readViteFeedbackAuthority(raw: string): boolean {
     });
     const result: unknown = JSON.parse(output);
     if (!result || typeof result !== 'object' || Array.isArray(result)
-      || Object.keys(result).length !== 1) return true;
+      || Object.keys(result).length !== 1) {
+      return true;
+    }
+
     return (result as Record<string, unknown>).held !== false;
   } catch {
     return true;
   }
 }
 
-/** Attach only to the explicitly selected child; ordinary Vite is unchanged. */
-export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = process.env.OMNIVIEW_VITE_FEEDBACK): void {
-  if (raw === undefined) return;
-  const context = feedbackContext(raw);
-  const capturedContext = raw;
-  if (process.platform === 'win32' && !context.authority) {
-    throw new Error('Managed Vite feedback on Windows requires its supervisor file authority');
-  }
-  const httpServer = server.httpServer;
-  const hmr = typeof server.config.server.hmr === 'object' ? server.config.server.hmr : undefined;
-  if (!httpServer || hmr?.server && hmr.server !== httpServer
-    || hmr?.port && hmr.port !== server.config.server.port) {
-    throw new Error('Managed Vite feedback requires HMR on its owned HTTP listener');
-  }
+type FeedbackAuthorityReader = {
+  initiallyHeld: boolean;
+  readHeld(): boolean;
+};
 
+function privateFeedbackFile(stat: BigIntStats): boolean {
+  const owner = process.getuid?.();
+  return stat.isFile() && owner !== undefined && stat.uid === BigInt(owner)
+    && (stat.mode & 0o777n) === 0o600n;
+}
+
+/** Retain the selected Unix inode; no subsequent read may adopt a replacement. */
+function retainUnixFeedbackAuthority(context: FeedbackContext): FeedbackAuthorityReader {
   const bytes = Buffer.alloc(maximumStateBytes + 1);
   let identity: BigIntStats | undefined;
-  let closed = false;
-  let watchFailed = false;
-  let watcher: FSWatcher | undefined;
-  let held = true;
-  const pendingPings = new Set<ServerResponse>();
-
-  function privateFile(stat: BigIntStats) {
-    const owner = process.getuid?.();
-    return stat.isFile() && owner !== undefined && stat.uid === BigInt(owner)
-      && (stat.mode & 0o777n) === 0o600n;
-  }
 
   function readHeld(captureIdentity = false): boolean {
-    if (closed || watchFailed) return true;
-    if (process.platform === 'win32') return readViteFeedbackAuthority(capturedContext);
+    // Identity is captured only by the initial read below, even if it fails.
     let descriptor: number | undefined;
     try {
       // O_NONBLOCK also prevents an untrusted FIFO replacement from hanging Vite.
       descriptor = openSync(context.file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
       const stat = fstatSync(descriptor, { bigint: true });
-      if (!privateFile(stat) || realpathSync(context.file) !== context.file) return true;
-      if (captureIdentity) identity = stat;
-      if (!identity || stat.dev !== identity.dev || stat.ino !== identity.ino) return true;
+      if (!privateFeedbackFile(stat) || realpathSync(context.file) !== context.file) {
+        return true;
+      }
+
+      if (captureIdentity) {
+        identity = stat;
+      }
+
+      if (!identity || stat.dev !== identity.dev || stat.ino !== identity.ino) {
+        return true;
+      }
+
       const linked = lstatSync(context.file, { bigint: true });
-      if (!privateFile(linked) || linked.dev !== identity.dev || linked.ino !== identity.ino
-        || stat.size < 1n || stat.size > maximumStateSize) return true;
+      if (!privateFeedbackFile(linked) || linked.dev !== identity.dev || linked.ino !== identity.ino
+        || stat.size < 1n || stat.size > maximumStateSize) {
+        return true;
+      }
+
       const length = readSync(descriptor, bytes, 0, bytes.length, 0);
-      if (BigInt(length) !== stat.size) return true;
+      if (BigInt(length) !== stat.size) {
+        return true;
+      }
+
       const state: unknown = JSON.parse(bytes.toString('utf8', 0, length));
-      if (!state || typeof state !== 'object' || Array.isArray(state)) return true;
+      if (!state || typeof state !== 'object' || Array.isArray(state)) {
+        return true;
+      }
+
       const value = state as Record<string, unknown>;
       const after = lstatSync(context.file, { bigint: true });
-      return !privateFile(after) || after.dev !== identity.dev || after.ino !== identity.ino
+      return !privateFeedbackFile(after) || after.dev !== identity.dev || after.ino !== identity.ino
         || value.schemaVersion !== context.schemaVersion || value.workspaceID !== context.workspaceID
         || value.generation !== context.generation || value.workspaceRoot !== context.workspaceRoot
         || typeof value.held !== 'boolean' || value.held;
@@ -173,60 +190,133 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
       // A partial durable publication, missing path, or foreign file never releases.
       return true;
     } finally {
-      if (descriptor !== undefined) closeSync(descriptor);
+      if (descriptor !== undefined) {
+        closeSync(descriptor);
+      }
     }
   }
 
-  held = readHeld(true);
+  return { initiallyHeld: readHeld(true), readHeld };
+}
+
+function feedbackAuthorityReader(context: FeedbackContext, raw: string): FeedbackAuthorityReader {
+  if (process.platform !== 'win32') {
+    return retainUnixFeedbackAuthority(context);
+  }
+
+  return {
+    initiallyHeld: readViteFeedbackAuthority(raw),
+    readHeld: () => readViteFeedbackAuthority(raw),
+  };
+}
+
+/** Attach only to the explicitly selected child; ordinary Vite is unchanged. */
+export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = process.env.OMNIVIEW_VITE_FEEDBACK): void {
+  if (raw === undefined) {
+    return;
+  }
+
+  const context = feedbackContext(raw);
+  if (process.platform === 'win32' && !context.authority) {
+    throw new Error('Managed Vite feedback on Windows requires its supervisor file authority');
+  }
+
+  const httpServer = server.httpServer;
+  const hmr = typeof server.config.server.hmr === 'object' ? server.config.server.hmr : undefined;
+  if (!httpServer || Boolean(hmr?.server && hmr.server !== httpServer)
+    || Boolean(hmr?.port && hmr.port !== server.config.server.port)) {
+    throw new Error('Managed Vite feedback requires HMR on its owned HTTP listener');
+  }
+
+  const authority = feedbackAuthorityReader(context, raw);
+  let closed = false;
+  let watchFailed = false;
+  let watcher: FSWatcher | undefined;
+  let held = authority.initiallyHeld;
+  const pendingPings = new Set<ServerResponse>();
+
+  function readHeld(): boolean {
+    return closed || watchFailed || authority.readHeld();
+  }
+
   const originalWebSocketSend = server.ws.send;
 
-  function observe() {
+  function reloadConnectedConsumers() {
+    // Vite 8 buffers a reload without recipients, then replays it directly
+    // on a later connection without passing through the feedback channels.
+    if (server.ws.clients.size > 0) {
+      originalWebSocketSend.call(server.ws, { type: 'full-reload', path: '*' });
+    }
+  }
+
+  function releasePendingHTTPPings(): 'held' | 'released' {
+    for (const response of pendingPings) {
+      held = readHeld();
+      if (held) {
+        return 'held';
+      }
+
+      pendingPings.delete(response);
+      response.writeHead(204).end();
+    }
+
+    return 'released';
+  }
+
+  function refreshReadinessAndReleaseConsumers(): 'held' | 'released' | 'ready' {
     const previouslyHeld = held;
     held = readHeld();
-    if (previouslyHeld && !held) {
-      // Check again at publication, including when a watcher noticed the release.
-      held = readHeld();
-      if (held) return;
-      // Vite 8 buffers a reload without recipients, then replays it directly
-      // on a later connection without passing through the feedback channels.
-      if (server.ws.clients.size > 0) {
-        originalWebSocketSend.call(server.ws, { type: 'full-reload', path: '*' });
-      }
-      for (const response of pendingPings) {
-        held = readHeld();
-        if (held) break;
-        pendingPings.delete(response);
-        response.writeHead(204).end();
-      }
+    if (held) {
+      return 'held';
     }
+
+    if (!previouslyHeld) {
+      return 'ready';
+    }
+
+    // Check again at publication, including when a watcher noticed the release.
+    held = readHeld();
+    if (held) {
+      return 'held';
+    }
+
+    reloadConnectedConsumers();
+    return releasePendingHTTPPings();
   }
 
   const environments = server.environments;
   // Vite 8 emits through environment.hot; Vite 5 also retains broadcaster
   // references to ws. Intercept both objects, not just one version's facade.
   const channels = new Set<FeedbackChannel>([server.ws]);
-  for (const environment of Object.values(environments ?? {})) channels.add(environment.hot);
+  for (const environment of Object.values(environments ?? {})) {
+    channels.add(environment.hot);
+  }
+
   for (const channel of channels) {
     const original = channel.send;
     channel.send = function (payload, data) {
       if (payload && typeof payload === 'object' && 'type' in payload
         && typeof payload.type === 'string' && navigationTypes[payload.type]) {
-        const previouslyHeld = held;
-        observe();
         // A release replaces queued/partial feedback with one complete reload.
-        if (held || previouslyHeld || server.ws.clients.size === 0) return;
+        if (refreshReadinessAndReleaseConsumers() !== 'ready' || server.ws.clients.size === 0) {
+          return;
+        }
       }
+
       original.call(this, payload, data);
     };
   }
 
   server.middlewares.use((request, response, next) => {
-    if (request.headers.accept !== 'text/x-vite-ping') return next();
-    observe();
-    if (!held) {
+    if (request.headers.accept !== 'text/x-vite-ping') {
+      next(); return;
+    }
+
+    if (refreshReadinessAndReleaseConsumers() !== 'held') {
       response.writeHead(204).end();
       return;
     }
+
     // Any fulfilled fetch, even 503, counts as ready in the Vite 5 client.
     pendingPings.add(response);
     response.once('close', () => pendingPings.delete(response));
@@ -237,14 +327,15 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
     const original = listener as UpgradeHandler;
     const gated: UpgradeHandler = function (this: EventEmitter, request, socket, head) {
       if (request.headers['sec-websocket-protocol'] === 'vite-ping') {
-        observe();
-        if (held) {
+        if (refreshReadinessAndReleaseConsumers() === 'held') {
           socket.destroy();
           return;
         }
       }
+
       original.call(this, request, socket, head);
     };
+
     upgradeHandlers.set(original, gated);
     httpServer.off('upgrade', original);
     httpServer.on('upgrade', gated);
@@ -252,31 +343,44 @@ export function attachManagedViteFeedback(server: ManagedFeedbackServer, raw = p
 
   const originalClose = server.close;
   function cleanup() {
-    if (closed) return;
+    if (closed) {
+      return;
+    }
+
     closed = true;
     watcher?.close();
-    for (const response of pendingPings) response.destroy();
+    for (const response of pendingPings) {
+      response.destroy();
+    }
+
     pendingPings.clear();
     for (const [original, gated] of upgradeHandlers) {
       httpServer!.off('upgrade', gated);
       httpServer!.on('upgrade', original);
     }
+
     httpServer!.off('close', cleanup);
     server.close = originalClose;
   }
+
   server.close = async function () {
     cleanup();
     await originalClose.call(this);
   };
+
   httpServer.once('close', cleanup);
   try {
     // Publication extends this retained inode with WriteAt; it need not change
     // a directory entry. Watch the file itself so a release wakes pending pings.
-    // observe still verifies the canonical path and captured inode before use.
-    watcher = watch(context.file, { persistent: false }, () => observe());
-    watcher.on('error', () => { watchFailed = true; held = true; });
+    // Refresh still verifies the canonical path and captured inode before use.
+    watcher = watch(context.file, { persistent: false }, () => {
+      refreshReadinessAndReleaseConsumers(); 
+    });
+    watcher.on('error', () => {
+      watchFailed = true; held = true; 
+    });
     // Cover a release between the initial read and installing the native watch.
-    observe();
+    refreshReadinessAndReleaseConsumers();
   } catch {
     watchFailed = true;
     held = true;

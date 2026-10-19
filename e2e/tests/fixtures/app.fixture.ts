@@ -18,15 +18,26 @@ type AppFixtures = {
 };
 
 function collectErrors(page: Page, records: BrowserErrors): void {
-  const urlPath = (value: string) => { const url = new URL(value); return `${url.origin}${url.pathname}`; };
+  const urlPath = (value: string) => {
+    const url = new URL(value); return `${url.origin}${url.pathname}`; 
+  };
+
   page.on('console', message => {
     // Normal settings bootstrap logs contain full values; never capture them.
-    if (['warning', 'error'].includes(message.type())) records.add(`console.${message.type()}`, message.text());
+    if (['warning', 'error'].includes(message.type())) {
+      records.add(`console.${message.type()}`, message.text());
+    }
   });
-  page.on('pageerror', error => records.add('pageerror', error.message));
-  page.on('requestfailed', request => records.add('requestfailed', `${request.method()} ${urlPath(request.url())} ${request.failure()?.errorText}`));
+  page.on('pageerror', error => {
+    records.add('pageerror', error.message); 
+  });
+  page.on('requestfailed', request => {
+    records.add('requestfailed', `${request.method()} ${urlPath(request.url())} ${request.failure()?.errorText}`); 
+  });
   page.on('response', response => {
-    if (response.status() >= 400) records.add('http', `${response.status()} ${response.request().method()} ${urlPath(response.url())}`);
+    if (response.status() >= 400) {
+      records.add('http', `${response.status()} ${response.request().method()} ${urlPath(response.url())}`);
+    }
   });
 }
 
@@ -37,7 +48,7 @@ async function attachErrors(testInfo: TestInfo, name: string, records: BrowserEr
 }
 
 async function closeAllSessions(request: APIRequestContext): Promise<void> {
-  const sessions = await callBinding<{ id: string }[] | null>(request, Service.exec, 'ListSessions');
+  const sessions = await callBinding<Array<{ id: string }> | null>(request, Service.exec, 'ListSessions');
   for (const { id } of sessions ?? []) {
     await callBinding(request, Service.exec, 'CloseSession', id);
   }
@@ -45,9 +56,16 @@ async function closeAllSessions(request: APIRequestContext): Promise<void> {
 
 export const test = base.extend<AppFixtures, { ownedProfiles: OwnedProfiles }>({
   ownedProfiles: [async ({}, use) => {
-    if (process.env.OMNIVIEW_E2E_MODE === 'observe') throw new Error('Destructive app fixtures cannot attach observationally');
+    if (process.env.OMNIVIEW_E2E_MODE === 'observe') {
+      throw new Error('Destructive app fixtures cannot attach observationally');
+    }
+
     const profiles = await OwnedProfiles.create();
-    try { await use(profiles); } finally { await profiles.close(); }
+    try {
+      await use(profiles); 
+    } finally {
+      await profiles.close(); 
+    }
   }, { scope: 'worker', timeout: 30 * 60_000 }],
 
   workspace: [async ({ ownedProfiles }, use) => {
@@ -57,7 +75,9 @@ export const test = base.extend<AppFixtures, { ownedProfiles: OwnedProfiles }>({
     await use(workspace);
   }, { timeout: 30 * 60_000 }],
 
-  baseURL: async ({ workspace }, use) => { await use(workspace.browserURL()); },
+  baseURL: async ({ workspace }, use) => {
+    await use(workspace.browserURL()); 
+  },
 
   profiles: async ({ browser, ownedProfiles }, use, testInfo) => {
     const contexts: BrowserContext[] = [];
@@ -68,7 +88,9 @@ export const test = base.extend<AppFixtures, { ownedProfiles: OwnedProfiles }>({
           const workspace = await ownedProfiles.get(name, options);
           const context = await browser.newContext({ baseURL: workspace.browserURL() });
           contexts.push(context);
-          context.on('page', additional => collectErrors(additional, records));
+          context.on('page', additional => {
+            collectErrors(additional, records); 
+          });
           const page = await context.newPage();
           await page.goto('/');
           await page.getByTestId('app-shell').waitFor({ timeout: 120_000 });
@@ -77,17 +99,21 @@ export const test = base.extend<AppFixtures, { ownedProfiles: OwnedProfiles }>({
       });
     } finally {
       await attachErrors(testInfo, 'additional-profile-browser-errors.json', records);
-      await Promise.all(contexts.map(context => context.close()));
+      await Promise.all(contexts.map(async context => context.close()));
     }
   },
 
   captureErrors: [async ({ page }, use, testInfo) => {
     const records = new BrowserErrors();
     collectErrors(page, records);
-    page.context().on('page', additional => collectErrors(additional, records));
+    page.context().on('page', additional => {
+      collectErrors(additional, records); 
+    });
     await use();
     await attachErrors(testInfo, 'browser-errors.json', records);
-    if (testInfo.status !== testInfo.expectedStatus && !page.isClosed()) await page.screenshot({ path: testInfo.outputPath('browser-failure.png'), fullPage: true });
+    if (testInfo.status !== testInfo.expectedStatus && !page.isClosed()) {
+      await page.screenshot({ path: testInfo.outputPath('browser-failure.png'), fullPage: true });
+    }
   }, { auto: true }],
   // Settings live in the server's state directory and outlive the page, so a
   // test that saves one would leak it into the next. Snapshot and put back

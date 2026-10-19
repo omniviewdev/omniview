@@ -41,10 +41,12 @@ export function createProductionDeps(config?: Partial<PluginServiceConfig>): Plu
       if (!plugin.devMode) {
         return { id: pluginId, dev: false };
       }
+
       const server = await DevServerManager.GetDevServerState(pluginId);
       if (!server || server.viteStatus !== DevProcessStatus.DevProcessStatusReady || server.vitePort <= 0) {
         throw new Error(`Development server for plugin "${pluginId}" is not ready`);
       }
+
       return { id: pluginId, dev: true, devPort: server.vitePort };
     },
     importPlugin,

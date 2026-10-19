@@ -17,7 +17,10 @@ const STATUS_LABEL = {
 function safeEndpoint(endpoint: string): string {
   try {
     const url = new URL(endpoint);
-    if (!['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)) return 'Unavailable';
+    if (!['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)) {
+      return 'Unavailable';
+    }
+
     // Endpoint query strings, fragments, and userinfo are never shown.
     return `${url.protocol}//${url.host}${url.pathname}`;
   } catch {
@@ -28,11 +31,18 @@ function safeEndpoint(endpoint: string): string {
 export default function InstanceIndicator() {
   const { identity, info, status, refreshInfo } = useInstance();
   const [open, setOpen] = useState(false);
-  if (identity?.kind === 'production') return null;
+  if (identity?.kind === 'production') {
+    return null;
+  }
+
   const label = identity ? `DEV · ${identity.displayName}` : 'Instance unavailable';
 
   return (
-    <div className={styles.InstanceControl} onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
+    <div className={styles.InstanceControl} onClick={(event) => {
+      event.stopPropagation(); 
+    }} onDoubleClick={(event) => {
+      event.stopPropagation(); 
+    }}>
       <button
         type='button'
         className={styles.InstanceChip}
@@ -47,7 +57,9 @@ export default function InstanceIndicator() {
       >
         {label}
       </button>
-      <Dialog open={open} onClose={() => setOpen(false)} size='md'>
+      <Dialog open={open} onClose={() => {
+        setOpen(false); 
+      }} size='md'>
         <Dialog.Title>{identity ? `Development instance · ${identity.displayName}` : 'Instance unavailable'}</Dialog.Title>
         <Dialog.Body>
           <p role='status'>{STATUS_LABEL[status]}</p>
@@ -89,7 +101,9 @@ export default function InstanceIndicator() {
           </>}
         </Dialog.Body>
         <Dialog.Footer>
-          <Button variant='ghost' color='neutral' onClick={() => setOpen(false)}>Close</Button>
+          <Button variant='ghost' color='neutral' onClick={() => {
+            setOpen(false); 
+          }}>Close</Button>
         </Dialog.Footer>
       </Dialog>
     </div>

@@ -33,10 +33,14 @@ test.describe('Owned workspace integration', () => {
       const handshake = Promise.withResolvers<number>();
       let eventsRequestID: string | undefined;
       session.on('Network.webSocketCreated', ({ requestId, url }) => {
-        if (new URL(url).pathname === '/wails/events') eventsRequestID = requestId;
+        if (new URL(url).pathname === '/wails/events') {
+          eventsRequestID = requestId;
+        }
       });
       session.on('Network.webSocketHandshakeResponseReceived', ({ requestId, response }) => {
-        if (requestId === eventsRequestID) handshake.resolve(response.status);
+        if (requestId === eventsRequestID) {
+          handshake.resolve(response.status);
+        }
       });
       await session.send('Network.enable');
       await receiver.goto('/');
@@ -44,10 +48,13 @@ test.describe('Owned workspace integration', () => {
       expect(await handshake.promise).toBe(101);
       const event = `omniview:e2e/${randomUUID()}`;
       const marker = randomUUID();
-      await expect.poll(() => receiver.evaluate(() => typeof window._wails?.dispatchWailsEvent)).toBe('function');
+      await expect.poll(async () => receiver.evaluate(() => typeof window._wails?.dispatchWailsEvent)).toBe('function');
       await receiver.evaluate(event => {
         const runtime = window._wails;
-        if (!runtime || typeof runtime.dispatchWailsEvent !== 'function') throw new Error('The app runtime dispatcher is unavailable');
+        if (!runtime || typeof runtime.dispatchWailsEvent !== 'function') {
+          throw new Error('The app runtime dispatcher is unavailable');
+        }
+
         const original = runtime.dispatchWailsEvent;
         const { promise, resolve } = Promise.withResolvers<unknown>();
         window.e2eEvent = promise;
@@ -55,12 +62,19 @@ test.describe('Owned workspace integration', () => {
         // original argument, receiver, result and exceptions without alteration.
         const observe = function (this: unknown, message: unknown): unknown {
           const result = original.call(this, message);
-          if (message && typeof message === 'object' && 'name' in message && message.name === event && 'data' in message) resolve(message.data);
+          if (message && typeof message === 'object' && 'name' in message && message.name === event && 'data' in message) {
+            resolve(message.data);
+          }
+
           return result;
         };
+
         runtime.dispatchWailsEvent = observe;
         window.e2eRestoreEventDispatcher = () => {
-          if (runtime.dispatchWailsEvent === observe) runtime.dispatchWailsEvent = original;
+          if (runtime.dispatchWailsEvent === observe) {
+            runtime.dispatchWailsEvent = original;
+          }
+
           delete window.e2eRestoreEventDispatcher;
           delete window.e2eEvent;
         };
@@ -68,7 +82,10 @@ test.describe('Owned workspace integration', () => {
       const frame = socket.waitForEvent('framereceived', { predicate: message => String(message.payload).includes(marker) });
       await appPage.evaluate(async ({ event, marker }) => {
         const clientID = window._wails?.clientId;
-        if (!clientID) throw new Error('The sender app runtime client ID is unavailable');
+        if (!clientID) {
+          throw new Error('The sender app runtime client ID is unavailable');
+        }
+
         // beta.29 Events.Emit uses POST /wails/runtime, objectNames.Events=3,
         // EventsEmit=0 and args={name,data}; this is the real backend transport.
         // Do not import another runtime or invoke a local dispatcher as a sender.
@@ -77,13 +94,17 @@ test.describe('Owned workspace integration', () => {
           headers: { 'Content-Type': 'application/json', 'x-wails-client-id': clientID },
           body: JSON.stringify({ object: 3, method: 0, args: { name: event, data: { marker } } }),
         });
-        if (!response.ok) throw new Error(`Backend event emission failed (${response.status})`);
+        if (!response.ok) {
+          throw new Error(`Backend event emission failed (${response.status})`);
+        }
       }, { event, marker });
       await frame;
-      expect(await receiver.evaluate(() => window.e2eEvent)).toEqual({ marker });
+      expect(await receiver.evaluate(async () => window.e2eEvent)).toEqual({ marker });
     } finally {
       try {
-        if (!receiver.isClosed()) await receiver.evaluate(() => window.e2eRestoreEventDispatcher?.());
+        if (!receiver.isClosed()) {
+          await receiver.evaluate(() => window.e2eRestoreEventDispatcher?.());
+        }
       } finally {
         await session.detach();
         await receiver.close();
@@ -117,7 +138,7 @@ test.describe('Owned workspace integration', () => {
     ] as const) {
       await openSettingsCategory(page, 'Appearance');
       await chooseSetting(page, 'appearance.theme', label);
-      await expect.poll(() => callBinding(page.request, Service.settings, 'GetSettingValue', 'appearance.theme')).toBe(theme);
+      await expect.poll(async () => callBinding(page.request, Service.settings, 'GetSettingValue', 'appearance.theme')).toBe(theme);
       // Observe the first actual rendering opportunity, without modifying app
       // identity, storage, HTML, runtime bindings, or response bodies.
       await page.addInitScript(() => {
@@ -126,10 +147,11 @@ test.describe('Owned workspace integration', () => {
         });
       });
       await page.reload();
-      await expect.poll(() => page.evaluate(() => window.e2eFirstFrame)).toEqual({ instanceID: descriptor.instanceID, theme });
+      await expect.poll(async () => page.evaluate(() => window.e2eFirstFrame)).toEqual({ instanceID: descriptor.instanceID, theme });
       await expect(page.getByTestId('app-shell')).toBeVisible();
       await testInfo.attach(`${theme}-first-frame.json`, { body: JSON.stringify(await page.evaluate(() => window.e2eFirstFrame)), contentType: 'application/json' });
     }
+
     await other.page.screenshot({ path: testInfo.outputPath('profile-b-unchanged.png'), fullPage: true });
   });
 
@@ -139,6 +161,7 @@ test.describe('Owned workspace integration', () => {
       const result = await workspace.control('settings.set', { scope: 'host', id: 'terminal.fontSize', value: 19 }, target);
       expect(result.error?.code).toBe('stale_target');
     }
+
     expect(await callBinding(request, Service.settings, 'GetSettingValue', 'terminal.fontSize')).toEqual(before);
   });
 
@@ -164,7 +187,10 @@ test.describe('Owned workspace integration', () => {
     const files: string[] = [];
     try {
       const address = foreign.address();
-      if (!address || typeof address === 'string') throw new Error('Foreign fixture listener did not obtain a TCP endpoint');
+      if (!address || typeof address === 'string') {
+        throw new Error('Foreign fixture listener did not obtain a TCP endpoint');
+      }
+
       await mkdir(adjacentRuntime, { mode: 0o700 });
       created = true;
       const hash = createHash('sha256').update(`${descriptor.workspaceID}\0${descriptor.generation}`).digest('hex');
@@ -182,8 +208,13 @@ test.describe('Owned workspace integration', () => {
       expect(foreignRequests).toBe(0);
     } finally {
       try {
-        for (const file of files.reverse()) await unlink(file);
-        if (created) await rmdir(adjacentRuntime);
+        for (const file of files.reverse()) {
+          await unlink(file);
+        }
+
+        if (created) {
+          await rmdir(adjacentRuntime);
+        }
       } finally {
         const closed = once(foreign, 'close');
         foreign.close();
@@ -197,7 +228,9 @@ test.describe('Owned workspace integration', () => {
     const before = await workspace.verify();
     await callBinding(appPage.request, Service.settings, 'SetSetting', 'terminal.fontSize', 16);
     const marker = randomUUID();
-    await appPage.evaluate(value => localStorage.setItem(window.__OMNIVIEW_BOOTSTRAP__!.storageKey('e2e-marker')!, value), marker);
+    await appPage.evaluate(value => {
+      localStorage.setItem(window.__OMNIVIEW_BOOTSTRAP__!.storageKey('e2e-marker')!, value); 
+    }, marker);
     const after = await workspace.restart();
     expect(after.workspaceID).toBe(before.workspaceID);
     expect(after.instanceID).toBe(before.instanceID);
@@ -212,12 +245,13 @@ test.describe('Owned workspace integration', () => {
   });
 });
 
-declare global {
-  interface Window {
-    e2eEvent?: Promise<unknown>;
-    e2eRestoreEventDispatcher?: () => void;
-    _wails?: { clientId?: string; dispatchWailsEvent?: (message: unknown) => unknown };
-    e2eFirstFrame?: { instanceID: string | undefined; theme: string | null };
-    __OMNIVIEW_BOOTSTRAP__?: { identity: { instanceID: string }; storageKey(key: string): string | null };
-  }
-}
+// These probes belong to this test module, not the application's global API.
+type AcceptanceWindow = Window & {
+  e2eEvent?: Promise<unknown>;
+  e2eRestoreEventDispatcher?: () => void;
+  _wails?: { clientId?: string; dispatchWailsEvent?: (message: unknown) => unknown };
+  e2eFirstFrame?: { instanceID: string | undefined; theme: string | null };
+  __OMNIVIEW_BOOTSTRAP__?: { identity: { instanceID: string }; storageKey(key: string): string | null };
+};
+
+declare const window: AcceptanceWindow;

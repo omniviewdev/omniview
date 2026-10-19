@@ -130,7 +130,6 @@ jobs:
 
       - name: Lint
         run: task check:ui-lint
-        continue-on-error: true
 
       - name: Typecheck
         run: task check:ui-typecheck

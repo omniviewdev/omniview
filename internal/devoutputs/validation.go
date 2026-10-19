@@ -54,13 +54,12 @@ func validateEntryRecord(entry *outputEntry) error {
 		if p.Directory != filepath.Join(parent, ".omniview-output-"+p.Token) || p.Backup != filepath.Join(backupDirectory(entry.Spec), ".omniview-before-"+p.Token) {
 			return fmt.Errorf("producer stage/backup escapes its exact selected boundary")
 		}
-		switch p.Phase {
-		case "allocating", "restore-allocating", "writing", "restoring", "captured", "backed-up", "published", "aborting":
-		default:
-			return fmt.Errorf("unknown producer publication state")
+		state, err := p.state()
+		if err != nil {
+			return err
 		}
 		for _, values := range []snapshot{p.Before, p.After} {
-			if p.Phase == "aborting" {
+			if state == producerAborting {
 				break
 			}
 			if err = validateSnapshotPaths(entry.Spec, values); err != nil {
@@ -72,7 +71,7 @@ func validateEntryRecord(entry *outputEntry) error {
 		if err = validateSnapshotPaths(container, p.Container); err != nil {
 			return err
 		}
-		if p.Phase == "aborting" {
+		if state == producerAborting {
 			if err = validateSnapshotPaths(container, p.After); err != nil {
 				return err
 			}

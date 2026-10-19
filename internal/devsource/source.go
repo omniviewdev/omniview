@@ -32,7 +32,7 @@ var fullRevision = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // Isolation-boundary changes need deliberate per-workspace developer consent,
 // not a source-text heuristic or imported plugin metadata assertion.
-var protectedFiles = []string{"pkg/state/root.go", "pkg/state/custom.go", "pkg/utils/store.go", "pkg/sdk/plugin.go"}
+var protectedFiles = []string{"pkg/state/root.go", "pkg/state/custom.go", "pkg/profilecontract/profile.go", "pkg/utils/store.go", "pkg/sdk/plugin.go"}
 
 func command(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)

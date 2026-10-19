@@ -110,14 +110,13 @@ type controlCommand struct {
 
 func parseControlCommand(args []string, in io.Reader, diagnostics io.Writer) (controlCommand, error) {
 	var command controlCommand
-	usage := func(message string) (controlCommand, error) { return command, devcontract.Fail(2, "usage", message) }
 	if len(args) < 2 {
-		return usage("command action is required; see development-cli.md")
+		return command, controlUsage("command action is required; see development-cli.md")
 	}
 	group, action, start := args[0], args[1], 2
 	if group == "plugin" && action == "dev" {
 		if len(args) < 3 {
-			return usage("plugin dev action is required")
+			return command, controlUsage("plugin dev action is required")
 		}
 		action = "dev." + args[2]
 		start = 3
@@ -130,201 +129,71 @@ func parseControlCommand(args []string, in io.Reader, diagnostics io.Writer) (co
 	flags.Bool("json", true, "JSON stdout (always enabled)")
 	flags.BoolVar(&command.wait, "wait", false, "wait for accepted mutation completion")
 	flags.DurationVar(&command.timeout, "timeout", 30*time.Second, "maximum wait; timeout does not cancel mutation")
-	var path, version, generation, scope, plugin, id, value, values string
-	var cursor, limit int
-	switch command.operation {
-	case "instance.inspect", "plugin.list":
-	case "plugin.get", "plugin.uninstall", "plugin.dev.unlink", "plugin.dev.start", "plugin.dev.stop", "plugin.dev.restart", "plugin.dev.status":
-		flags.StringVar(&id, "id", "", "plugin ID")
-	case "plugin.install-archive", "plugin.dev.link":
-		flags.StringVar(&path, "path", "", "archive or plugin source path")
-	case "plugin.install-version":
-		flags.StringVar(&id, "id", "", "plugin ID")
-		flags.StringVar(&version, "version", "", "exact plugin version")
-	case "plugin.dev.rebuild":
-		flags.StringVar(&id, "id", "", "plugin ID")
-		flags.StringVar(&generation, "generation", "", "expected plugin generation")
-	case "plugin.dev.logs":
-		flags.StringVar(&id, "id", "", "plugin ID")
-		flags.IntVar(&cursor, "cursor", 0, "log cursor")
-		flags.IntVar(&limit, "limit", 100, "maximum log records (1..500)")
-		flags.BoolVar(&command.unsafeOutput, "unsafe-output", false, "include raw potentially sensitive plugin/build output in JSON stdout")
-	case "settings.schema", "settings.get", "settings.set", "settings.set-many":
-		flags.StringVar(&scope, "scope", "host", "host or plugin")
-		flags.StringVar(&plugin, "plugin", "", "plugin ID for plugin settings")
-		if action != "schema" {
-			flags.StringVar(&id, "id", "", "setting ID")
-		}
-		if action == "set" {
-			flags.StringVar(&value, "value", "", "one JSON value; - reads stdin")
-		}
-		if action == "set-many" {
-			flags.StringVar(&values, "values", "", "JSON object; - reads stdin")
-		}
-	case "operation.get", "operation.wait":
-		flags.StringVar(&id, "id", "", "operation ID")
-	default:
-		return usage("unknown control command")
-	}
-	// Standard flag stops at the first positional. Reorder only declared flags;
-	// consume their values before interpreting positional arguments.
-	var options, positional []string
-	for i := start; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			positional = append(positional, args[i+1:]...)
-			break
-		}
-		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			positional = append(positional, arg)
-			continue
-		}
-		name, _, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
-		option := flags.Lookup(name)
-		if option == nil {
-			return usage("unknown command flag")
-		}
-		options = append(options, arg)
-		boolean, ok := option.Value.(interface{ IsBoolFlag() bool })
-		if !hasValue && !(ok && boolean.IsBoolFlag()) {
-			if i+1 >= len(args) {
-				return usage("command flag requires a value")
-			}
-			i++
-			options = append(options, args[i])
-		}
-	}
-	if err := flags.Parse(options); err != nil {
-		return usage("invalid command flags")
-	}
-	if command.timeout <= 0 {
-		return usage("timeout must be positive")
-	}
-	if len(positional) > 1 {
-		return usage("at most one positional target is accepted")
-	}
-	if len(positional) == 1 {
-		if command.operation == "plugin.install-archive" || command.operation == "plugin.dev.link" {
-			if path != "" && path != positional[0] {
-				return usage("path arguments disagree")
-			}
-			path = positional[0]
-		} else {
-			if id != "" && id != positional[0] {
-				return usage("ID arguments disagree")
-			}
-			id = positional[0]
-		}
-	}
-	requireID := func() error {
-		if strings.TrimSpace(id) == "" || strings.ContainsAny(id, "/\\\x00\r\n") {
-			return devcontract.Fail(2, "usage", "a valid explicit ID is required")
-		}
-		return nil
-	}
-	switch command.operation {
-	case "instance.inspect", "plugin.list":
-		if len(positional) != 0 {
-			return usage("this command accepts no positional target")
-		}
-		command.params = devcontrol.EmptyParams{}
-	case "plugin.install-archive", "plugin.dev.link":
-		if path == "" {
-			return usage("--path is required")
-		}
-		canonical, err := devcontract.CanonicalPath(path)
-		if err != nil {
-			return command, err
-		}
-		command.params = devcontrol.PathParams{Path: canonical}
-	case "plugin.install-version":
-		if err := requireID(); err != nil {
-			return command, err
-		}
-		if version == "" {
-			return usage("--version is required")
-		}
-		command.params = devcontrol.VersionParams{ID: id, Version: version}
-	case "plugin.dev.rebuild":
-		if err := requireID(); err != nil {
-			return command, err
-		}
-		if generation == "" {
-			return usage("--generation is required; use plugin dev status to obtain the plugin generation")
-		}
-		command.params = devcontrol.RebuildParams{ID: id, Generation: generation}
-	case "plugin.dev.logs":
-		if err := requireID(); err != nil {
-			return command, err
-		}
-		if cursor < 0 || limit < 1 || limit > 500 {
-			return usage("cursor must be nonnegative and limit must be 1..500")
-		}
-		command.params = devcontrol.LogsParams{ID: id, Cursor: cursor, Limit: limit, IncludeOutput: command.unsafeOutput}
-	case "settings.schema", "settings.get", "settings.set", "settings.set-many":
-		if scope != "host" && scope != "plugin" || scope == "plugin" && plugin == "" || scope == "host" && plugin != "" {
-			return usage("settings scope must be host, or plugin with --plugin ID")
-		}
-		params := devcontrol.SettingsParams{Scope: scope, PluginID: plugin, ID: id}
-		if action == "schema" && len(positional) > 0 {
-			return usage("settings schema accepts no ID")
-		}
-		if action == "set" {
-			if id == "" || value == "" {
-				return usage("settings set requires --id and --value JSON (or -)")
-			}
-			raw, err := readControlJSON(value, in)
+	switch group {
+	case "plugin":
+		err := parsePluginControlCommand(&command, flags, args[start:])
+		return command, err
+	case "settings":
+		err := parseSettingsControlCommand(&command, flags, args[start:], in)
+		return command, err
+	case "operation":
+		err := parseOperationControlCommand(&command, flags, args[start:])
+		return command, err
+	case "instance":
+		if action == "inspect" {
+			positionals, err := parseControlFlags(&command, flags, args[start:])
 			if err != nil {
 				return command, err
 			}
-			params.Value = raw
-		}
-		if action == "set-many" {
-			if id != "" || values == "" {
-				return usage("settings set-many requires --values JSON object (or -), without --id")
+			if len(positionals) != 0 {
+				return command, controlUsage("this command accepts no positional target")
 			}
-			raw, err := readControlJSON(values, in)
-			if err != nil {
-				return command, err
-			}
-			if err = json.Unmarshal(raw, &params.Values); err != nil || params.Values == nil {
-				return usage("settings values must be a JSON object")
-			}
+			command.params = devcontrol.EmptyParams{}
+			return command, nil
 		}
-		if action == "set-many" {
-			command.operation = "settings.bulk"
-		}
-		command.params = params
-	case "operation.get", "operation.wait":
-		if err := requireID(); err != nil {
-			return command, err
-		}
-		command.params = devcontrol.OperationParams{OperationID: id}
-	default:
-		if err := requireID(); err != nil {
-			return command, err
-		}
-		command.params = devcontrol.PluginParams{ID: id}
 	}
-	return command, nil
+	return command, controlUsage("unknown control command")
 }
 
-func readControlJSON(value string, in io.Reader) (json.RawMessage, error) {
-	data := []byte(value)
-	if value == "-" {
-		if in == nil {
-			return nil, devcontract.Fail(2, "invalid_params", "JSON stdin is required")
-		}
-		var err error
-		data, err = io.ReadAll(io.LimitReader(in, 1<<20+1))
-		if err != nil {
-			return nil, devcontract.Fail(2, "invalid_params", "cannot read JSON stdin")
-		}
+func controlUsage(message string) error {
+	return devcontract.Fail(2, "usage", message)
+}
+
+func parseControlFlags(command *controlCommand, flags *flag.FlagSet, args []string) ([]string, error) {
+	normalized := normalizeRegisteredFlags(flags, args, nil)
+	if normalized.unknownFlag {
+		return nil, controlUsage("unknown command flag")
 	}
-	if len(data) > 1<<20 || !json.Valid(data) {
-		return nil, devcontract.Fail(2, "invalid_params", "settings require one valid JSON value, at most 1 MiB")
+	if normalized.missingValue != "" {
+		return nil, controlUsage("command flag requires a value")
 	}
-	return json.RawMessage(data), nil
+	if err := flags.Parse(normalized.options); err != nil {
+		return nil, controlUsage("invalid command flags")
+	}
+	if command.timeout <= 0 {
+		return nil, controlUsage("timeout must be positive")
+	}
+	if len(normalized.positionals) > 1 {
+		return nil, controlUsage("at most one positional target is accepted")
+	}
+	return normalized.positionals, nil
+}
+
+func controlTarget(explicit string, positionals []string, disagreement string) (string, error) {
+	if len(positionals) == 0 {
+		return explicit, nil
+	}
+	if explicit != "" && explicit != positionals[0] {
+		return "", controlUsage(disagreement)
+	}
+	return positionals[0], nil
+}
+
+func requireControlID(id string) error {
+	if strings.TrimSpace(id) == "" || strings.ContainsAny(id, "/\\\x00\r\n") {
+		return controlUsage("a valid explicit ID is required")
+	}
+	return nil
 }
 
 // resolveControlWorkspace leaves manifest validation and profile isolation to

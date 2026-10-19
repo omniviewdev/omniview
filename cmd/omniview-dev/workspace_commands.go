@@ -96,40 +96,14 @@ func parseWorkspaceCommand(args []string, diagnostics io.Writer) (workspaceComma
 	default:
 		return c, devcontract.Fail(2, "usage", "unknown workspace command; use --help")
 	}
-	// flag.FlagSet stops at its first positional; normalize interspersed arguments
-	// using the actual registered flag types, without discarding -- semantics.
-	var options, positionals []string
-	for i := 2; i < len(args); i++ {
-		a := args[i]
-		if a == "--" {
-			positionals = append(positionals, args[i+1:]...)
-			break
-		}
-		if !strings.HasPrefix(a, "-") || a == "-" {
-			positionals = append(positionals, a)
-			continue
-		}
-		key := strings.TrimLeft(a, "-")
-		key, _, equal := strings.Cut(key, "=")
-		f := flags.Lookup(key)
-		if f == nil {
-			options = append(options, a)
-			continue
-		}
-		c.supplied[key] = true
-		options = append(options, a)
-		boolean, ok := f.Value.(interface{ IsBoolFlag() bool })
-		if !equal && (!ok || !boolean.IsBoolFlag()) {
-			if i+1 >= len(args) {
-				return c, devcontract.Fail(2, "usage", "--"+key+" requires a value")
-			}
-			i++
-			options = append(options, args[i])
-		}
+	normalized := normalizeRegisteredFlags(flags, args[2:], c.supplied)
+	if normalized.missingValue != "" {
+		return c, devcontract.Fail(2, "usage", "--"+normalized.missingValue+" requires a value")
 	}
-	if err := flags.Parse(options); err != nil {
+	if err := flags.Parse(normalized.options); err != nil {
 		return c, devcontract.Fail(2, "usage", "invalid workspace command flags")
 	}
+	positionals := normalized.positionals
 	if len(positionals) > 1 {
 		return c, devcontract.Fail(2, "usage", "at most one workspace target is accepted")
 	}

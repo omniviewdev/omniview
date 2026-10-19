@@ -31,6 +31,7 @@ export function useInstalledPlugins(): {
     const invalidateInventory = () => {
       void queryClient.invalidateQueries({ queryKey: ['plugins'] });
     };
+
     const stopInit = Events.On('plugin/init_complete', invalidateInventory);
     const stopInventory = Events.On('plugin/inventory_changed', invalidateInventory);
     const stopInstall = Events.On('plugin/install_finished', invalidateInventory);

@@ -31,6 +31,7 @@ export async function importPlugin(opts: PluginImportOpts): Promise<unknown> {
       clearDevPluginRefresh(pluginId);
       devRefreshSubscriptions.set(pluginId, refresh);
     }
+
     const devBase = `http://127.0.0.1:${devPort}`;
     const devUrl = `${devBase}/src/entry.ts`;
     try {
@@ -43,9 +44,12 @@ export async function importPlugin(opts: PluginImportOpts): Promise<unknown> {
         const { createHotContext } = await import(/* @vite-ignore */ `${devBase}/@vite/client`);
         if (devRefreshSubscriptions.get(pluginId) === refresh) {
           const hot = createHotContext('/@omniview/host-refresh');
-          const reload = (payload: { updates: { type: string }[] }) => {
-            if (payload.updates.some(update => update.type === 'js-update')) window.location.reload();
+          const reload = (payload: { updates: Array<{ type: string }> }) => {
+            if (payload.updates.some(update => update.type === 'js-update')) {
+              window.location.reload();
+            }
           };
+
           hot.on('vite:beforeUpdate', reload);
           refresh.stop = () => hot.off('vite:beforeUpdate', reload);
         }
@@ -61,9 +65,13 @@ export async function importPlugin(opts: PluginImportOpts): Promise<unknown> {
       } catch (e) {
         console.warn(`[PluginService] plugin "${pluginId}" — failed to init React Fast Refresh, HMR may not work`, { plugin: pluginId, error: String(e) });
       }
+
       return await import(/* @vite-ignore */ devUrl);
     } catch (err) {
-      if (refresh && devRefreshSubscriptions.get(pluginId) === refresh) clearDevPluginRefresh(pluginId);
+      if (refresh && devRefreshSubscriptions.get(pluginId) === refresh) {
+        clearDevPluginRefresh(pluginId);
+      }
+
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(
         `Dev plugin "${pluginId}" failed to load from ${devUrl}: ${message}. ` +

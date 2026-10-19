@@ -577,6 +577,10 @@ func (s *workspaceSupervisor) startPlugins(ctx context.Context) error {
 			return err
 		}
 	}
+	s.mu.Lock()
+	s.hostFrontendPort = s.leases["vite"].Port
+	s.hostReplacementPending = false
+	s.mu.Unlock()
 	return nil
 }
 func (s *workspaceSupervisor) pluginState(ctx context.Context, id string) (devcontrol.DevState, error) {
@@ -608,8 +612,8 @@ func (s *workspaceSupervisor) waitPluginReady(ctx context.Context, id, generatio
 		if generation != "" && state.Generation != generation {
 			return devcontract.Fail(4, "stale_target", "managed plugin generation changed during readiness wait")
 		}
-		if state.LastError != nil || state.BuildStatus == "error" || state.RPCStatus == "error" || state.ControllerStatus == "error" {
-			return devcontract.Fail(5, "plugin_not_ready", "managed plugin reported a failed readiness stage")
+		if stage := devcontract.FailedReadinessStage(state.BuildStatus, state.ViteStatus, state.RPCStatus, state.ControllerStatus); state.LastError != nil || stage != "" {
+			return devcontract.Fail(5, "plugin_not_ready", fmt.Sprintf("managed plugin reported a failed readiness stage: build=%s Vite=%s RPC=%s controllers=%s", state.BuildStatus, state.ViteStatus, state.RPCStatus, state.ControllerStatus))
 		}
 		if state.Ready && state.Generation != "" {
 			return nil
@@ -666,47 +670,7 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 	}, WaitPluginReady: s.waitPluginReady, HostRebuildAndWait: func(ctx context.Context, request HostBuildRequest) (map[string]bool, error) {
 		s.runMu.Lock()
 		defer s.runMu.Unlock()
-		// Stop owned host before replacement, but retain the frontend and selected
-		// supervisor lifetime. Old crash monitors must not classify this as a crash.
-		if err := s.stopManagedPlugins(ctx); err != nil {
-			return nil, err
-		}
-		if err := s.stopManagedProcesses(ctx); err != nil {
-			return nil, err
-		}
-		s.mu.Lock()
-		old := s.children["host"]
-		s.status.Instance = nil
-		s.mu.Unlock()
-		if old != nil {
-			if err := old.stop(ctx); err != nil {
-				return nil, err
-			}
-		}
-		s.mu.Lock()
-		if s.children["host"] == old {
-			delete(s.children, "host")
-		}
-		s.mu.Unlock()
-		if err := s.stopManagedProcesses(ctx); err != nil {
-			return nil, err
-		}
-		if err := s.releaseRole(ctx, "browser"); err != nil {
-			return nil, err
-		}
-		if err := s.releaseRole(ctx, "mcp"); err != nil {
-			return nil, err
-		}
-		if err := s.clearHostDiscovery(ctx); err != nil {
-			return nil, err
-		}
-		if err := s.buildHost(ctx, request); err != nil {
-			return nil, err
-		}
-		if err := s.startHost(ctx); err != nil {
-			return nil, err
-		}
-		if err := s.startPlugins(ctx); err != nil {
+		if err := s.replaceHost(ctx, &request); err != nil {
 			return nil, err
 		}
 		s.monitorChildren(s.sessionContext)
@@ -724,15 +688,21 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 			// Vite document and Fast Refresh state; no Node restart is needed.
 			return nil
 		}
+		s.mu.Lock()
+		hostFrontendPort := s.hostFrontendPort
+		hostReplacementPending := s.hostReplacementPending
+		s.mu.Unlock()
+		frontendRebindPending := s.options.LiveFrontend && (hostReplacementPending || hostFrontendPort != s.leases["vite"].Port)
 		// Embedded host replacement already restarted the selected plugins and
 		// awaited their actual readiness. Do not restart those consumers twice.
-		if s.options.LiveFrontend || !hostRebuilt {
+		// Pending replacements own plugin startup and may have no live host
+		// control endpoint after an earlier failed launch.
+		if !frontendRebindPending && (s.options.LiveFrontend || !hostRebuilt) {
 			if err := s.refreshManagedConsumers(ctx, change); err != nil {
 				return err
 			}
 		}
 		if s.options.LiveFrontend {
-			priorPort := s.leases["vite"].Port
 			s.mu.Lock()
 			old := s.children["vite"]
 			s.mu.Unlock()
@@ -752,43 +722,8 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 			if err := s.startVite(ctx); err != nil {
 				return err
 			}
-			if s.leases["vite"].Port != priorPort {
-				if err := s.stopManagedPlugins(ctx); err != nil {
-					return err
-				}
-				if err := s.stopManagedProcesses(ctx); err != nil {
-					return err
-				}
-				s.mu.Lock()
-				host := s.children["host"]
-				s.status.Instance = nil
-				s.mu.Unlock()
-				if host != nil {
-					if err := host.stop(ctx); err != nil {
-						return err
-					}
-				}
-				s.mu.Lock()
-				if s.children["host"] == host {
-					delete(s.children, "host")
-				}
-				s.mu.Unlock()
-				if err := s.stopManagedProcesses(ctx); err != nil {
-					return err
-				}
-				if err := s.releaseRole(ctx, "browser"); err != nil {
-					return err
-				}
-				if err := s.releaseRole(ctx, "mcp"); err != nil {
-					return err
-				}
-				if err := s.clearHostDiscovery(ctx); err != nil {
-					return err
-				}
-				if err := s.startHost(ctx); err != nil {
-					return err
-				}
-				if err := s.startPlugins(ctx); err != nil {
+			if hostReplacementPending || s.leases["vite"].Port != hostFrontendPort {
+				if err := s.replaceHost(ctx, nil); err != nil {
 					return err
 				}
 			}
@@ -804,6 +739,55 @@ func (s *workspaceSupervisor) watchHooks() WatchHooks {
 		s.mu.Unlock()
 		return nil
 	}}
+}
+
+// replaceHost runs under runMu. Both compiled replacements and frontend
+// rebindings retain the same disposal, lease, discovery, and readiness ordering.
+func (s *workspaceSupervisor) replaceHost(ctx context.Context, build *HostBuildRequest) error {
+	s.mu.Lock()
+	s.hostReplacementPending = true
+	s.mu.Unlock()
+	if err := s.stopManagedPlugins(ctx); err != nil {
+		return err
+	}
+	if err := s.stopManagedProcesses(ctx); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	old := s.children["host"]
+	s.status.Instance = nil
+	s.mu.Unlock()
+	if old != nil {
+		if err := old.stop(ctx); err != nil {
+			return err
+		}
+	}
+	s.mu.Lock()
+	if s.children["host"] == old {
+		delete(s.children, "host")
+	}
+	s.mu.Unlock()
+	if err := s.stopManagedProcesses(ctx); err != nil {
+		return err
+	}
+	if err := s.releaseRole(ctx, "browser"); err != nil {
+		return err
+	}
+	if err := s.releaseRole(ctx, "mcp"); err != nil {
+		return err
+	}
+	if err := s.clearHostDiscovery(ctx); err != nil {
+		return err
+	}
+	if build != nil {
+		if err := s.buildHost(ctx, *build); err != nil {
+			return err
+		}
+	}
+	if err := s.startHost(ctx); err != nil {
+		return err
+	}
+	return s.startPlugins(ctx)
 }
 
 func (s *workspaceSupervisor) releaseRole(ctx context.Context, role string) error {

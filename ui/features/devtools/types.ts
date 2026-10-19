@@ -4,7 +4,7 @@
  * Wails-generated bindings so there is a single source of truth.
  */
 import type { DevServerState as DevServerStateModel, DevServerLogEntry } from '@omniviewdev/runtime/models';
-import { DevProcessStatus } from '@omniviewdev/runtime/models';
+import { DevProcessStatus, DevServerMode, LifecycleStage } from '@omniviewdev/runtime/models';
 
 /** Dev server state, re-exported from the Wails binding models. */
 export type DevServerState = DevServerStateModel;
@@ -35,18 +35,22 @@ export type DevServerAggregateStatus = 'ready' | 'building' | 'error' | 'stopped
 
 /** Derive the aggregate status from a DevServerState. */
 export function getAggregateStatus(state: DevServerState): DevServerAggregateStatus {
-  if (state.lastError || state.buildStatus === 'error' || state.rpcStatus === 'error' || state.controllerStatus === 'error' || state.viteStatus === DevProcessStatus.DevProcessStatusError) {
+  if (state.lastError || state.buildStatus === LifecycleStage.StageError || state.rpcStatus === LifecycleStage.StageError || state.controllerStatus === LifecycleStage.StageError || state.viteStatus === DevProcessStatus.DevProcessStatusError) {
     return 'error';
   }
+
   if (state.ready) {
     return 'ready';
   }
+
   if (state.goStatus === DevProcessStatus.DevProcessStatusBuilding || state.viteStatus === DevProcessStatus.DevProcessStatusStarting) {
     return 'building';
   }
-  if (state.mode === 'idle' || state.goStatus === DevProcessStatus.DevProcessStatusStopped) {
+
+  if (state.mode === DevServerMode.DevServerModeIdle || state.goStatus === DevProcessStatus.DevProcessStatusStopped) {
     return 'stopped';
   }
+
   return 'connecting';
 }
 

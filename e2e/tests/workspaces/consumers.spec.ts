@@ -14,15 +14,28 @@ const probeID = 'workspace-probe';
 // authenticated lifecycle state or actual backend transport. Cleanup owns exact
 // before/after bytes and restores them only after the CLI proves every group down.
 function replaceOnce(source: string, before: string, after: string): string {
-  if (source.split(before).length !== 2) throw new Error('Acceptance source prerequisite changed; refusing an ambiguous source edit');
+  if (source.split(before).length !== 2) {
+    throw new Error('Acceptance source prerequisite changed; refusing an ambiguous source edit');
+  }
+
   return source.replace(before, after);
 }
 
 async function prepareConsumers(workspace: Workspace): Promise<void> {
   const selected = (await workspace.status()).manifest.plugins;
-  if (selected.length < 2 || !selected.some(plugin => plugin.id === 'kubernetes') || !selected.some(plugin => plugin.id === probeID) || selected.some(plugin => plugin.mode !== 'managed')) throw new Error('A17 requires real managed Kubernetes and workspace-probe sources in OMNIVIEW_E2E_SOURCES');
-  const probeRepository = selected.find(plugin => plugin.id === probeID)!.repositoryID;
-  const kubernetesRepository = selected.find(plugin => plugin.id === 'kubernetes')!.repositoryID;
+  if (selected.length < 2 || !selected.some(plugin => plugin.id === 'kubernetes') || !selected.some(plugin => plugin.id === probeID) || selected.some(plugin => plugin.mode !== 'managed')) {
+    throw new Error('A17 requires real managed Kubernetes and workspace-probe sources in OMNIVIEW_E2E_SOURCES');
+  }
+
+  const repositories = {
+    probe: selected.find(plugin => plugin.id === probeID)!.repositoryID,
+    kubernetes: selected.find(plugin => plugin.id === 'kubernetes')!.repositoryID,
+  };
+  await prepareSDKLabelConsumers(workspace, repositories.probe);
+  await prepareSharedRuntimeConsumers(workspace, repositories);
+}
+
+async function prepareSDKLabelConsumers(workspace: Workspace, probeRepository: string): Promise<void> {
   await workspace.editSource('plugin-sdk', 'settings/setting.go', source => `${source}\n// WithLabel returns a setting with a caller-selected display label.\nfunc (s Setting) WithLabel(label string) Setting {\n\ts.Label = label\n\treturn s\n}\n`);
   await workspace.editSource('omniview', 'internal/settings/terminal.go', source => {
     source = replaceOnce(source, 'settingFontSize: {', 'settingFontSize: settings.Setting{');
@@ -32,6 +45,9 @@ async function prepareConsumers(workspace: Workspace): Promise<void> {
     source = replaceOnce(source, 'Settings: []settings.Setting{\n\t\t\t{', 'Settings: []settings.Setting{\n\t\t\tsettings.Setting{');
     return replaceOnce(source, 'Sensitive:   false,\n\t\t\t},', 'Sensitive:   false,\n\t\t\t}.WithLabel("Probe counter"),');
   });
+}
+
+async function prepareSharedRuntimeConsumers(workspace: Workspace, repositories: { probe: string; kubernetes: string }): Promise<void> {
   await workspace.editSource('omniview', 'packages/omniviewdev-runtime/src/index.ts', source => `${source}\nexport function workspaceAcceptanceLabel(): string { return 'Shared runtime original'; }\n`);
   await workspace.editSource('ui', 'packages/base-ui/src/theme/styles.css', source => `${source}\n.workspace-host-consumer, .workspace-plugin-consumer, .workspace-kubernetes-consumer { border-top: 3px solid rgb(21, 67, 109) !important; }\n.workspace-host-consumer { position: fixed; bottom: 8px; right: 8px; z-index: 10000; }\n.workspace-header-consumer { position: fixed; bottom: 48px; right: 8px; z-index: 10000; }\n`);
   await workspace.editSource('omniview', 'ui/App.tsx', source => {
@@ -40,12 +56,12 @@ async function prepareConsumers(workspace: Workspace): Promise<void> {
                                 <button type="button" className="workspace-host-consumer" onClick={event => { event.currentTarget.textContent = workspaceAcceptanceLabel(); }}>Read host runtime</button>
                                 <button type="button" className="workspace-header-consumer" onClick={() => { store.dispatch(headerActions.setHeaderVisibility(false)); for (const area of ['left', 'center', 'right'] as const) store.dispatch(headerActions.setHeaderAreaVisibility({ area, visible: false })); }}>Hide optional header regions</button>`);
   });
-  await workspace.editSource(probeRepository, 'ui/src/ProbePage.tsx', source => {
+  await workspace.editSource(repositories.probe, 'ui/src/ProbePage.tsx', source => {
     source = `import { workspaceAcceptanceLabel } from '@omniviewdev/runtime';\n${source}`;
     return replaceOnce(source, '<h1 id="workspace-probe-title">Workspace Probe</h1>', `<h1 id="workspace-probe-title">Workspace Probe</h1>
       <Button className="workspace-plugin-consumer" onClick={event => { event.currentTarget.textContent = workspaceAcceptanceLabel(); }}>Read plugin runtime</Button>`);
   });
-  await workspace.editSource(kubernetesRepository, 'ui/src/pages/ClustersPage.tsx', source => {
+  await workspace.editSource(repositories.kubernetes, 'ui/src/pages/ClustersPage.tsx', source => {
     source = `import { workspaceAcceptanceLabel } from '@omniviewdev/runtime';\n${source}`;
     source = replaceOnce(source, 'import { Skeleton, Stack, Tabs }', 'import { Button, Skeleton, Stack, Tabs }');
     return replaceOnce(source, '<Stack direction="column" spacing={0} style={fullSizeStyle}>', `<Stack direction="column" spacing={0} style={fullSizeStyle}>
@@ -71,6 +87,7 @@ async function assertManagedPlugins(workspace: Workspace): Promise<Descriptor> {
     expect(plugin!.source).toBe(await workspace.repository(selection.repositoryID));
     expect(plugin!.generation).not.toBe('');
   }
+
   return descriptor;
 }
 
@@ -94,28 +111,100 @@ async function assertBackendEvents(page: Page, workspace: Workspace): Promise<vo
   const marker = randomUUID();
   const received = socket.waitForEvent('framereceived', { predicate: frame => String(frame.payload).includes(marker) });
   await page.evaluate(async marker => {
-    const clientID = window._wails?.clientId;
-    if (!clientID || typeof window._wails?.dispatchWailsEvent !== 'function') throw new Error('Actual app Wails event transport is unavailable');
+    const runtime: unknown = Reflect.get(window, '_wails');
+    const clientID: unknown = runtime && typeof runtime === 'object' ? Reflect.get(runtime, 'clientId') : undefined;
+
+    if (!runtime || typeof runtime !== 'object' || typeof clientID !== 'string' || !clientID || typeof Reflect.get(runtime, 'dispatchWailsEvent') !== 'function') {
+      throw new Error('Actual app Wails event transport is unavailable');
+    }
+
     const response = await fetch('/wails/runtime', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-wails-client-id': clientID }, body: JSON.stringify({ object: 3, method: 0, args: { name: 'omniview:e2e/consumer', data: { marker } } }) });
-    if (!response.ok) throw new Error(`Actual backend event emission failed (${response.status})`);
+    if (!response.ok) {
+      throw new Error(`Actual backend event emission failed (${response.status})`);
+    }
   }, marker);
   await received;
   expect(socket.isClosed()).toBe(false);
 }
 
 async function graphReady(workspace: Workspace, info: TestInfo, stage: string): Promise<void> {
-  // A previous graph.ready is historical state until this edit has actually
-  // invalidated it. Never accept the debounce window as completed rebuilding.
-  await expect.poll(async () => (await workspace.status()).launchPhase, { ...poll, message: `${stage}: watcher must observe the source edit` }).not.toBe('ready');
+  // Callers first prove their edit's rendered/runtime/process outcome. A fast
+  // completed build need not leave a transient non-ready sample to observe.
   await expect.poll(async () => {
     const status = await workspace.status();
     return { phase: status.launchPhase, graph: status.builds?.graph?.phase };
-  }, { ...poll, message: `${stage}: real graph must recover, not retain an earlier ready receipt` }).toEqual({ phase: 'ready', graph: 'ready' });
+  }, { ...poll, message: `${stage}: the fresh consumer graph must finish ready` }).toEqual({ phase: 'ready', graph: 'ready' });
   await workspace.reselect();
   const status = await workspace.status();
   const path = info.outputPath(`${stage}-graph.json`);
   await writeFile(path, JSON.stringify({ generation: status.generation, phase: status.launchPhase, builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([id, build]) => [id, build.phase])) }));
   await info.attach(`${stage}-graph.json`, { path, contentType: 'application/json' });
+}
+
+async function reviseSharedRuntimeConsumers(workspace: Workspace, pages: readonly Page[]): Promise<void> {
+  const selected = (await workspace.status()).manifest.plugins;
+  const probeRepository = selected.find(plugin => plugin.id === probeID)!.repositoryID;
+  const kubernetesRepository = selected.find(plugin => plugin.id === 'kubernetes')!.repositoryID;
+  await workspace.editSource('omniview', 'packages/omniviewdev-runtime/src/index.ts', source => `${source}\nexport function workspaceAcceptanceRevision(): string { return 'Shared runtime revised'; }\n`);
+  await workspace.editSource('omniview', 'ui/App.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
+  await workspace.editSource(probeRepository, 'ui/src/ProbePage.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
+  await workspace.editSource(kubernetesRepository, 'ui/src/pages/ClustersPage.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
+  // Old visible buttons may retain old handlers during automatic bootstrap.
+  // The newly loaded real export proves this edit reached each document.
+  for (const page of pages) {
+    await page.waitForFunction(() => {
+      const shared: unknown = Reflect.get(window, '__OMNIVIEW_SHARED__');
+      if (!shared || typeof shared !== 'object') {
+        return false;
+      }
+
+      const runtime: unknown = Reflect.get(shared, '@omniviewdev/runtime');
+      return !!runtime && typeof runtime === 'object'
+        && typeof Reflect.get(runtime, 'workspaceAcceptanceRevision') === 'function';
+    }, undefined, { timeout: 120_000 });
+  }
+}
+
+type SdkLabelBaseline = { descriptor: Descriptor; documentOrigin: number };
+
+async function failSDKLabelBuild(workspace: Workspace, page: Page, info: TestInfo, artifactName: string): Promise<SdkLabelBaseline> {
+  const descriptor = await assertManagedPlugins(workspace);
+  const documentOrigin = await page.evaluate(() => performance.timeOrigin);
+  await workspace.editSource('plugin-sdk', 'settings/setting.go', source => replaceOnce(source, '\ts.Label = label\n', '\ts.Label = )\n'));
+  await expect.poll(async () => {
+    const status = await workspace.status();
+    return { phase: status.launchPhase, graph: status.builds?.graph?.phase };
+  }, { ...poll, message: 'Invalid ordinary SDK API must fail the actual graph, not accept stale bindings/backend artifacts' }).toEqual({ phase: 'build-error', graph: 'error' });
+  await expect(workspace.verify()).rejects.toThrow();
+  const failed = await workspace.status();
+  expect(Object.values(failed.builds ?? {}).some(build => build.phase === 'error')).toBe(true);
+  // Existing backend availability does not promote a failed new SDK graph.
+  expect(failed.generation).toBe(descriptor.generation);
+  expect(await page.evaluate(() => performance.timeOrigin)).toBe(documentOrigin);
+  const path = info.outputPath(artifactName);
+  await writeFile(path, JSON.stringify({ phase: failed.launchPhase, generation: failed.generation, builds: Object.fromEntries(Object.entries(failed.builds ?? {}).map(([id, build]) => [id, build.phase])) }));
+  await info.attach(artifactName, { path, contentType: 'application/json' });
+  return { descriptor, documentOrigin };
+}
+
+async function repairSDKLabelBuild(workspace: Workspace, page: Page, baseline: SdkLabelBaseline, info: TestInfo, stage: string): Promise<Descriptor> {
+  await workspace.editSource('plugin-sdk', 'settings/setting.go', source => replaceOnce(source, '\ts.Label = )\n', '\ts.Label = label + " (rebuilt)"\n'));
+  await expect.poll(async () => {
+    const candidate = (await workspace.status()).instance;
+    return !!candidate && candidate.process.startIdentity !== baseline.descriptor.process.startIdentity;
+  }, { ...poll, message: 'The repaired SDK must replace the actual host, not reuse its previous ready graph' }).toBe(true);
+  await page.waitForFunction(previous => performance.timeOrigin !== previous, baseline.documentOrigin, { timeout: buildTimeout });
+  await graphReady(workspace, info, stage);
+  const repaired = await assertManagedPlugins(workspace);
+  expect(repaired.process.startIdentity).not.toBe(baseline.descriptor.process.startIdentity);
+  for (const plugin of baseline.descriptor.plugins) {
+    expect(repaired.plugins.find(current => current.id === plugin.id)!.generation).not.toBe(plugin.generation);
+  }
+
+  expect((await workspace.status()).builds?.['host-restart']?.phase).toBe('ready');
+  // A replacement document repeats cold app bootstrap; controls retain normal deadlines.
+  await page.getByTestId('app-shell').waitFor({ timeout: 120_000 });
+  return repaired;
 }
 
 for (const liveFrontend of [false, true]) {
@@ -139,6 +228,7 @@ for (const liveFrontend of [false, true]) {
         expect(other.source).not.toBe(plugin.source);
         expect(other.generation).not.toBe(plugin.generation);
       }
+
       await assertBackendEvents(a.page, a.workspace);
       await assertBackendEvents(b.page, b.workspace);
 
@@ -160,7 +250,10 @@ for (const liveFrontend of [false, true]) {
         const header = a.page.getByTestId('app-header');
         await expect(header.getByRole('button', { name: 'home', exact: true })).toBeVisible();
         await a.page.getByRole('button', { name: 'Hide optional header regions', exact: true }).click();
-        for (const name of ['home', 'settings', 'plugins']) await expect(header.getByRole('button', { name, exact: true })).toBeHidden();
+        for (const name of ['home', 'settings', 'plugins']) {
+          await expect(header.getByRole('button', { name, exact: true })).toBeHidden();
+        }
+
         await expect(header.getByPlaceholder('Search anything…', { exact: true })).toBeHidden();
         await expect(header.getByRole('button', { name: `DEV · ${beforeA.displayName} — instance details`, exact: true })).toBeVisible();
         await expect(a.page).toHaveTitle(`Omniview — DEV · ${beforeA.displayName}`);
@@ -186,33 +279,17 @@ for (const liveFrontend of [false, true]) {
       await expect(a.page.locator('.workspace-plugin-consumer')).toHaveCSS('border-top-color', 'rgb(21, 67, 109)');
       await expect(kubeA.locator('.workspace-kubernetes-consumer')).toHaveCSS('border-top-color', 'rgb(21, 67, 109)');
       await a.workspace.editSource('ui', 'packages/base-ui/src/theme/styles.css', source => replaceOnce(source, 'rgb(21, 67, 109)', 'rgb(149, 41, 73)'));
-      await graphReady(a.workspace, info, `${mode}-css`);
       // Do not manually reload A: the real consumer refresh/HMR must deliver it.
       await expect(a.page.locator('.workspace-host-consumer')).toHaveCSS('border-top-color', 'rgb(149, 41, 73)', { timeout: buildTimeout });
       await expect(a.page.locator('.workspace-plugin-consumer')).toHaveCSS('border-top-color', 'rgb(149, 41, 73)', { timeout: buildTimeout });
       await expect(kubeA.locator('.workspace-kubernetes-consumer')).toHaveCSS('border-top-color', 'rgb(149, 41, 73)', { timeout: buildTimeout });
+      await graphReady(a.workspace, info, `${mode}-css`);
       await expect(kubeB.locator('.workspace-kubernetes-consumer')).toHaveCSS('border-top-color', 'rgb(21, 67, 109)');
       await expect(b.page.locator('.workspace-plugin-consumer')).toHaveCSS('border-top-color', 'rgb(21, 67, 109)');
 
       stage = 'new-runtime-export';
-      const probeRepository = (await a.workspace.status()).manifest.plugins.find(plugin => plugin.id === probeID)!.repositoryID;
-      await a.workspace.editSource('omniview', 'packages/omniviewdev-runtime/src/index.ts', source => `${source}\nexport function workspaceAcceptanceRevision(): string { return 'Shared runtime revised'; }\n`);
-      await a.workspace.editSource('omniview', 'ui/App.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
-      await a.workspace.editSource(probeRepository, 'ui/src/ProbePage.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
-      const kubernetesRepository = (await a.workspace.status()).manifest.plugins.find(plugin => plugin.id === 'kubernetes')!.repositoryID;
-      await a.workspace.editSource(kubernetesRepository, 'ui/src/pages/ClustersPage.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
+      await reviseSharedRuntimeConsumers(a.workspace, [a.page, kubeA]);
       await graphReady(a.workspace, info, `${mode}-runtime`);
-      // Graph readiness precedes browser bootstrap. A visible old button can
-      // still execute its previous handler while automatic replacement starts.
-      for (const page of [a.page, kubeA]) {
-        await page.waitForFunction(() => {
-          const shared: unknown = Reflect.get(window, '__OMNIVIEW_SHARED__');
-          if (!shared || typeof shared !== 'object') return false;
-          const runtime: unknown = Reflect.get(shared, '@omniviewdev/runtime');
-          return !!runtime && typeof runtime === 'object'
-            && typeof Reflect.get(runtime, 'workspaceAcceptanceRevision') === 'function';
-        }, undefined, { timeout: 120_000 });
-      }
       await expect(a.page.locator('.workspace-host-consumer')).toBeVisible({ timeout: buildTimeout });
       await a.page.locator('.workspace-host-consumer').click();
       await expect(a.page.locator('.workspace-host-consumer')).toHaveText('Shared runtime revised');
@@ -226,34 +303,12 @@ for (const liveFrontend of [false, true]) {
       await expect(b.page.locator('.workspace-plugin-consumer')).toHaveText('Shared runtime original');
 
       stage = 'sdk-failure';
-      const beforeSDK = await assertManagedPlugins(a.workspace);
-      const beforeSDKDocument = await a.page.evaluate(() => performance.timeOrigin);
-      await a.workspace.editSource('plugin-sdk', 'settings/setting.go', source => replaceOnce(source, '\ts.Label = label\n', '\ts.Label = )\n'));
-      await expect.poll(async () => {
-        const status = await a.workspace.status();
-        return { phase: status.launchPhase, graph: status.builds?.graph?.phase };
-      }, { ...poll, message: 'Invalid ordinary SDK API must fail the actual graph, not accept stale bindings/backend artifacts' }).toEqual({ phase: 'build-error', graph: 'error' });
-      await expect(a.workspace.verify()).rejects.toThrow();
-      const failed = await a.workspace.status();
-      expect(Object.values(failed.builds ?? {}).some(build => build.phase === 'error')).toBe(true);
-      // Existing backend availability does not promote a failed new SDK graph.
-      expect(failed.generation).toBe(beforeSDK.generation);
-      expect(await a.page.evaluate(() => performance.timeOrigin)).toBe(beforeSDKDocument);
-      const failedGraphPath = info.outputPath(`${mode}-sdk-failed-graph.json`);
-      await writeFile(failedGraphPath, JSON.stringify({ phase: failed.launchPhase, generation: failed.generation, builds: Object.fromEntries(Object.entries(failed.builds ?? {}).map(([id, build]) => [id, build.phase])) }));
-      await info.attach(`${mode}-sdk-failed-graph.json`, { path: failedGraphPath, contentType: 'application/json' });
+      const sdkBaseline = await failSDKLabelBuild(a.workspace, a.page, info, `${mode}-sdk-failed-graph.json`);
+      const beforeSDK = sdkBaseline.descriptor;
       await assertManagedPlugins(b.workspace);
 
       stage = 'sdk-repair';
-      await a.workspace.editSource('plugin-sdk', 'settings/setting.go', source => replaceOnce(source, '\ts.Label = )\n', '\ts.Label = label + " (rebuilt)"\n'));
-      await graphReady(a.workspace, info, `${mode}-sdk-repaired`);
-      const repaired = await assertManagedPlugins(a.workspace);
-      expect(repaired.process.startIdentity).not.toBe(beforeSDK.process.startIdentity);
-      for (const plugin of beforeSDK.plugins) expect(repaired.plugins.find(current => current.id === plugin.id)!.generation).not.toBe(plugin.generation);
-      expect((await a.workspace.status()).builds?.['host-restart']?.phase).toBe('ready');
-      await a.page.waitForFunction(previous => performance.timeOrigin !== previous, beforeSDKDocument, { timeout: buildTimeout });
-      // A replacement document repeats cold app bootstrap; controls retain normal deadlines.
-      await a.page.getByTestId('app-shell').waitFor({ timeout: 120_000 });
+      const repaired = await repairSDKLabelBuild(a.workspace, a.page, sdkBaseline, info, `${mode}-sdk-repaired`);
       await openSettingsCategory(a.page, 'Terminal');
       await expect(settingRow(a.page, 'terminal.fontSize').getByText('Font Size (rebuilt)', { exact: true })).toBeVisible();
       await openProbeSettings(a.page);
@@ -267,7 +322,10 @@ for (const liveFrontend of [false, true]) {
       const oldPluginGenerations = new Map(repaired.plugins.map(plugin => [plugin.id, plugin.generation]));
       const restarted = await a.workspace.restart();
       expect(restarted.generation).not.toBe(repaired.generation);
-      for (const plugin of restarted.plugins) expect(plugin.generation).not.toBe(oldPluginGenerations.get(plugin.id));
+      for (const plugin of restarted.plugins) {
+        expect(plugin.generation).not.toBe(oldPluginGenerations.get(plugin.id));
+      }
+
       const rejected = await a.workspace.control('settings.set', { scope: 'plugin', pluginID: probeID, id: 'probe_counter', value: 99 }, { generation: repaired.generation });
       expect(rejected.error?.code).toBe('stale_target');
       await assertBackendEvents(a.page, a.workspace);
@@ -276,7 +334,10 @@ for (const liveFrontend of [false, true]) {
       const unchangedB = await assertManagedPlugins(b.workspace);
       expect(unchangedB.generation).toBe(beforeB.generation);
       expect(unchangedB.process.startIdentity).toBe(beforeB.process.startIdentity);
-      for (const plugin of unchangedB.plugins) expect(plugin.generation).toBe(beforeB.plugins.find(original => original.id === plugin.id)!.generation);
+      for (const plugin of unchangedB.plugins) {
+        expect(plugin.generation).toBe(beforeB.plugins.find(original => original.id === plugin.id)!.generation);
+      }
+
       await openProbe(b.page, b.workspace);
       await b.page.locator('.workspace-plugin-consumer').click();
       await expect(b.page.locator('.workspace-plugin-consumer')).toHaveText('Shared runtime original');
@@ -291,11 +352,17 @@ for (const liveFrontend of [false, true]) {
           const failurePath = info.outputPath(`${mode}-${name}-${stage}-failure.json`);
           await writeFile(failurePath, JSON.stringify({ stage, workspaceID: status.manifest.workspaceID, generation: status.generation, phase: status.launchPhase, builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([id, build]) => [id, build.phase])) }));
           await info.attach(`${mode}-${name}-${stage}-failure.json`, { path: failurePath, contentType: 'application/json' });
-          if (!profile.page.isClosed()) await profile.page.screenshot({ path: info.outputPath(`${mode}-${name}-${stage}-failure.png`), fullPage: true });
+          if (!profile.page.isClosed()) {
+            await profile.page.screenshot({ path: info.outputPath(`${mode}-${name}-${stage}-failure.png`), fullPage: true });
+          }
+
           const kubernetes = name === 'a' ? kubeA : kubeB;
-          if (!kubernetes.isClosed()) await kubernetes.screenshot({ path: info.outputPath(`${mode}-${name}-${stage}-kubernetes-failure.png`), fullPage: true });
+          if (!kubernetes.isClosed()) {
+            await kubernetes.screenshot({ path: info.outputPath(`${mode}-${name}-${stage}-kubernetes-failure.png`), fullPage: true });
+          }
         } catch { /* Never replace the original consumer failure or collect private logs/tokens. */ }
       }
+
       throw error;
     }
   });

@@ -6,16 +6,6 @@ export type BootIdentity = Readonly<{
   kind: 'development' | 'production';
 }>;
 
-declare global {
-  interface Window {
-    __OMNIVIEW_INSTANCE__?: unknown;
-    __OMNIVIEW_BOOTSTRAP__?: Readonly<{
-      identity: BootIdentity | null;
-      storageKey: (key: string) => string | null;
-    }>;
-  }
-}
-
 // index.html captures and validates identity before the first cache read. Never
 // derive a profile from Vite mode, origin, or a descriptor that arrives later.
 export function getBootIdentity(): BootIdentity | null {
@@ -28,7 +18,10 @@ export function profileStorageKey(key: string): string | null {
 
 export function readProfileStorage(key: string, storage?: Storage): string | null {
   const scopedKey = profileStorageKey(key);
-  if (scopedKey === null) return null;
+  if (scopedKey === null) {
+    return null;
+  }
+
   try {
     return (storage ?? window.localStorage).getItem(scopedKey);
   } catch {
@@ -38,7 +31,10 @@ export function readProfileStorage(key: string, storage?: Storage): string | nul
 
 export function writeProfileStorage(key: string, value: string, storage?: Storage): void {
   const scopedKey = profileStorageKey(key);
-  if (scopedKey === null) return;
+  if (scopedKey === null) {
+    return;
+  }
+
   try {
     (storage ?? window.localStorage).setItem(scopedKey, value);
   } catch {
@@ -48,7 +44,10 @@ export function writeProfileStorage(key: string, value: string, storage?: Storag
 
 export function removeProfileStorage(key: string, storage?: Storage): void {
   const scopedKey = profileStorageKey(key);
-  if (scopedKey === null) return;
+  if (scopedKey === null) {
+    return;
+  }
+
   try {
     (storage ?? window.localStorage).removeItem(scopedKey);
   } catch {

@@ -111,7 +111,7 @@ func (m *DevServerManager) WaitReady(ctx context.Context, id, generation string)
 		if state.LastError != "" {
 			return state, fmt.Errorf("plugin lifecycle: %s", state.LastError)
 		}
-		if state.ViteStatus == DevProcessStatusError || state.GoStatus == DevProcessStatusError || state.RPCStatus == StageError || state.ControllerStatus == StageError {
+		if stage := devcontract.FailedReadinessStage(string(state.BuildStatus), string(state.ViteStatus), string(state.RPCStatus), string(state.ControllerStatus)); stage != "" || state.GoStatus == DevProcessStatusError {
 			return state, fmt.Errorf("managed lifecycle stage failed: Vite=%s build=%s RPC=%s controllers=%s", state.ViteStatus, state.BuildStatus, state.RPCStatus, state.ControllerStatus)
 		}
 		if state.Ready {

@@ -152,7 +152,7 @@ func Seed(ctx context.Context, source SnapshotOptions, target ImportOptions) (Re
 	if err != nil {
 		return Result{}, err
 	}
-	return importLocked(ctx, b, target)
+	return importLocked(ctx, b, target, home)
 }
 
 // Import atomically publishes independent settings and baseline.json into a new
@@ -182,11 +182,11 @@ func Import(ctx context.Context, b *Baseline, opts ImportOptions) (Result, error
 		return Result{}, err
 	}
 	defer func() { _ = release() }()
-	return importLocked(ctx, clean, opts)
+	return importLocked(ctx, clean, opts, home)
 }
 
 // importLocked requires the stable profile guard, held once by Seed or Import.
-func importLocked(ctx context.Context, clean *Baseline, opts ImportOptions) (Result, error) {
+func importLocked(ctx context.Context, clean *Baseline, opts ImportOptions, home string) (Result, error) {
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -196,6 +196,15 @@ func importLocked(ctx context.Context, clean *Baseline, opts ImportOptions) (Res
 	}
 	if fingerprintOverlap(clean.Source, destination) {
 		return Result{}, fmt.Errorf("baseline: source and destination overlap")
+	}
+	defaultRoot, err := devcontract.CanonicalPath(filepath.Join(home, ".omniview-dev", "profiles", opts.Destination.Descriptor.WorkspaceID, "state"))
+	if err != nil {
+		return Result{}, err
+	}
+	if destination == defaultRoot {
+		if err := devcontract.EnsureDefaultProfileOwnership(home, opts.Destination.Descriptor.WorkspaceID); err != nil {
+			return Result{}, err
+		}
 	}
 	parent := filepath.Dir(destination)
 	if err := os.MkdirAll(parent, 0700); err != nil {

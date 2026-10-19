@@ -45,7 +45,10 @@ function readVersionedTheme(storage: Storage): BuiltInThemeId | null {
 }
 
 export function readLegacyPaintHint(storage: Storage): BuiltInThemeId | null {
-  if (getBootIdentity()?.kind !== 'production') return null;
+  if (getBootIdentity()?.kind !== 'production') {
+    return null;
+  }
+
   try {
     const variant = readProfileStorage(LEGACY_VARIANT_KEY, storage);
     if (variant === 'solarized') {
@@ -81,7 +84,10 @@ export function writeBootstrapTheme(storage: Storage, selectedId: string): void 
 }
 
 export function clearLegacyThemeKeys(storage: Storage): void {
-  if (getBootIdentity()?.kind !== 'production') return;
+  if (getBootIdentity()?.kind !== 'production') {
+    return;
+  }
+
   removeProfileStorage(LEGACY_VARIANT_KEY, storage);
   removeProfileStorage(LEGACY_MODE_KEY, storage);
 }

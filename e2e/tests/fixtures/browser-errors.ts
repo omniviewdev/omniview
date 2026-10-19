@@ -24,10 +24,12 @@ export class BrowserErrors {
       existing.messageTruncated ||= messageTruncated;
       return;
     }
+
     if (this.records.size < 500) {
       this.records.set(key, { kind, message: clipped, occurrences: 1, firstAt: at, lastAt: at, messageTruncated });
       return;
     }
+
     // Count every unretained occurrence, including repeats: coverage is incomplete.
     if (this.overflow) {
       this.overflow.occurrences++;
@@ -47,7 +49,10 @@ export class BrowserErrors {
 
   serialize(): string {
     const records = [...this.records.values()];
-    if (this.overflow) records.push(this.overflow);
+    if (this.overflow) {
+      records.push(this.overflow);
+    }
+
     return JSON.stringify(records, null, 2);
   }
 }

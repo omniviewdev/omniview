@@ -48,7 +48,7 @@ const BATCH_MIXED_100 = Array.from({ length: 100 }, (_, i) => {
 
 const BATCH_PLAIN_100 = Array.from({ length: 100 }, () => PLAIN_LONG);
 const BATCH_COLORED_100 = Array.from({ length: 100 }, (_, i) =>
-  i % 2 === 0 ? COLORED_TYPICAL : COLORED_HEAVY
+  i % 2 === 0 ? COLORED_TYPICAL : COLORED_HEAVY,
 );
 
 // ---------------------------------------------------------------------------

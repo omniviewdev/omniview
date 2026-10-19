@@ -893,7 +893,7 @@ describe('Group 11: Batch Operations (loadAll)', () => {
 
   it.each(['unload', 'forceReset'] as const)('%s cancels a committed refresh waiting for startup import', async (command) => {
     const s = setup();
-    const started = createDeferred<void>();
+    const started = createDeferred();
     const importing = createDeferred<unknown>();
     s.importer.register('A', async () => {
       started.resolve();

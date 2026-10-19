@@ -10,7 +10,7 @@
     "build:dev": "vite build --minify false --mode development",
     "bundle:yaml-worker": "node scripts/bundle-yaml-worker.mjs",
     "postinstall": "pnpm run bundle:yaml-worker",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint ui --ext ts,tsx --report-unused-disable-directives",
+    "lint": "eslint ui packages/omniviewdev-vite-plugin/src e2e/tests e2e/playwright.config.ts --report-unused-disable-directives",
     "preview": "nx preview",
     "test": "vitest run",
     "bench": "vitest bench --config vitest.bench.config.ts",

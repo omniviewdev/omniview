@@ -30,42 +30,46 @@ type supervisorRecord struct {
 }
 
 type workspaceSupervisor struct {
-	manager               *Manager
-	workspace             Workspace
-	options               LaunchOptions
-	generation            string
-	owner                 devcontract.ProcessIdentity
-	record                supervisorRecord
-	registry              *devsession.Registry
-	output                io.Writer
-	mu                    sync.Mutex
-	runMu                 sync.Mutex
-	status                Status
-	binary                string
-	children              map[string]*ownedChild
-	leases                map[string]devsession.Lease
-	graphInstance         *BuildGraph
-	sessionCancel         context.CancelFunc
-	sessionContext        context.Context
-	exit                  chan struct{}
-	exitOnce              sync.Once
-	launchDone            chan struct{}
-	watchDone             chan struct{}
-	childContext          context.Context
-	goBuildCache          string
-	childCancel           context.CancelFunc
-	hostCaptureReady      chan struct{}
-	lastHost              *ownedChild
-	processStartMu        sync.Mutex
-	processMu             sync.Mutex
-	managedProcesses      map[string]*managedProcessRecord
-	managedKeys           map[string]string
-	managedClosing        bool
-	unixSocketDirectory   *devsession.UnixSocketDirectory
-	feedbackMu            sync.Mutex
-	feedback              *viteFeedback
-	feedbackShutdownError error
-	ownedCleanupComplete  bool
+	manager          *Manager
+	workspace        Workspace
+	options          LaunchOptions
+	generation       string
+	owner            devcontract.ProcessIdentity
+	record           supervisorRecord
+	registry         *devsession.Registry
+	output           io.Writer
+	mu               sync.Mutex
+	runMu            sync.Mutex
+	status           Status
+	binary           string
+	children         map[string]*ownedChild
+	leases           map[string]devsession.Lease
+	graphInstance    *BuildGraph
+	sessionCancel    context.CancelFunc
+	sessionContext   context.Context
+	exit             chan struct{}
+	exitOnce         sync.Once
+	launchDone       chan struct{}
+	watchDone        chan struct{}
+	childContext     context.Context
+	goBuildCache     string
+	childCancel      context.CancelFunc
+	hostCaptureReady chan struct{}
+	lastHost         *ownedChild
+	// Committed only after the host and all managed plugins become ready.
+	hostFrontendPort int
+	// A partial replacement remains owed even if Vite reuses the committed port.
+	hostReplacementPending bool
+	processStartMu         sync.Mutex
+	processMu              sync.Mutex
+	managedProcesses       map[string]*managedProcessRecord
+	managedKeys            map[string]string
+	managedClosing         bool
+	unixSocketDirectory    *devsession.UnixSocketDirectory
+	feedbackMu             sync.Mutex
+	feedback               *viteFeedback
+	feedbackShutdownError  error
+	ownedCleanupComplete   bool
 }
 
 func verifySupervisor(record supervisorRecord, w Workspace) error {
@@ -416,7 +420,7 @@ func (s *workspaceSupervisor) execute(ctx context.Context, command string) (Stat
 						status.LastError = workspaceError(stateErr)
 						break
 					}
-					if state.LastError != nil || state.BuildStatus == "error" || state.ViteStatus == "error" || state.RPCStatus == "error" || state.ControllerStatus == "error" || !state.Ready || state.Generation == "" || state.Mode != "managed" {
+					if stage := devcontract.FailedReadinessStage(state.BuildStatus, state.ViteStatus, state.RPCStatus, state.ControllerStatus); state.LastError != nil || stage != "" || !state.Ready || state.Generation == "" || state.Mode != "managed" {
 						status.Phase = "error"
 						status.LastError = state.LastError
 						if status.LastError == nil {

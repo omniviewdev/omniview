@@ -17,6 +17,7 @@ export async function backgroundOf(locator: Locator): Promise<Rgb> {
   if (!match) {
     throw new Error(`unexpected background color ${color}`);
   }
+
   return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
@@ -32,7 +33,9 @@ export function isSolarizedDark([r, g, b]: Rgb): boolean {
 
 /** Navigates within the hash router without reloading the app. */
 export async function goTo(page: Page, path: string): Promise<void> {
-  await page.evaluate((hash) => { window.location.hash = hash; }, `#${path}`);
+  await page.evaluate((hash) => {
+    window.location.hash = hash; 
+  }, `#${path}`);
   await expect(page).toHaveURL(new RegExp(`#${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
 }
 

@@ -15,7 +15,7 @@ export const register = (instance: typeof monaco) => {
   instance.languages.registerCompletionItemProvider('nginx', {
     provideCompletionItems: (
       model: monaco.editor.ITextModel,
-      position: monaco.Position
+      position: monaco.Position,
     ) => {
       const word = model.getWordUntilPosition(position);
       const range = {
@@ -32,7 +32,7 @@ export const register = (instance: typeof monaco) => {
     provideHover: (
       model: monaco.editor.ITextModel,
       position: monaco.Position,
-      _token: monaco.CancellationToken
+      _token: monaco.CancellationToken,
     ) => {
       const word = model.getWordAtPosition(position);
       if (!word) {
@@ -40,7 +40,7 @@ export const register = (instance: typeof monaco) => {
       }
 
       const data = directives.find(
-        (item) => item.n === word.word || item.n === `$${word.word}`
+        (item) => item.n === word.word || item.n === `$${word.word}`,
       );
       if (!data) {
         return;

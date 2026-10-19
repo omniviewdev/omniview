@@ -37,10 +37,11 @@ function buildShimMap(shimsDir: string): Map<string, string> {
     const shimFile = path.join(shimsDir, `${safeFilename(pkg)}.mjs`);
     map.set(pkg, shimFile);
   }
+
   return map;
 }
 
-export interface OmniviewExternalsOptions {
+export type OmniviewExternalsOptions = {
   /**
    * Additional package names to treat as shared. These are appended to the
    * built-in SHARED_PACKAGES list. You must also ensure shim files exist for
@@ -53,7 +54,7 @@ export interface OmniviewExternalsOptions {
    * inside this package.
    */
   shimsDir?: string;
-}
+};
 
 /**
  * Vite plugin that redirects imports of shared dependencies to shim files
@@ -108,8 +109,10 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
         if (config.cacheDir && path.resolve(config.root ?? process.cwd(), config.cacheDir) !== cache) {
           throw new Error('Plugin Vite cache conflicts with its owned workspace cache');
         }
+
         config.cacheDir = cache;
       }
+
       const output = process.env.OMNIVIEW_BUILD_OUTPUT_DIRECTORY;
       if (command === 'build' && output) {
         const root = path.resolve(config.root ?? process.cwd());
@@ -117,8 +120,10 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
         if (configured && configured !== path.join(root, 'dist') && configured !== path.resolve(output)) {
           throw new Error('Plugin distribution path conflicts with controlled workspace output');
         }
+
         config.build = { ...config.build, outDir: output };
       }
+
       // In dev mode, prevent the dep optimizer from bundling shared packages
       // into pre-bundled chunks. Without this, MUI/etc. get their own copy of
       // React bundled inside, causing "multiple React instances" errors.
@@ -128,11 +133,15 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
         const roots = workspaceViteRoots(process.env.OMNIVIEW_VITE_ALLOWED_ROOTS);
         const ownedPort = workspaceVitePort(process.env.OMNIVIEW_VITE_PORT);
         if (roots) {
-          if (!ownedPort) throw new Error('Managed plugin Vite requires its owned OMNIVIEW_VITE_PORT');
+          if (!ownedPort) {
+            throw new Error('Managed plugin Vite requires its owned OMNIVIEW_VITE_PORT');
+          }
+
           config.server = config.server ?? {};
           if (config.server.port !== undefined && config.server.port !== ownedPort) {
             throw new Error('Plugin Vite port conflicts with its owned workspace lease');
           }
+
           if (config.server.hmr === false || typeof config.server.hmr === 'object'
             && (config.server.hmr.clientPort !== undefined && config.server.hmr.clientPort !== ownedPort
               || config.server.hmr.port !== undefined && config.server.hmr.port !== ownedPort
@@ -140,6 +149,7 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
               || config.server.hmr.protocol !== undefined && config.server.hmr.protocol !== 'ws')) {
             throw new Error('Plugin Vite HMR conflicts with its owned loopback endpoint');
           }
+
           config.server.port = ownedPort;
           config.server.strictPort = true;
           config.server.fs = { ...config.server.fs, strict: true,
@@ -147,11 +157,15 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
           config.server.hmr = { ...(typeof config.server.hmr === 'object' ? config.server.hmr : {}),
             host: '127.0.0.1', protocol: 'ws', clientPort: ownedPort };
         }
+
         config.optimizeDeps = config.optimizeDeps ?? {};
         config.optimizeDeps.exclude = [...new Set([...(config.optimizeDeps.exclude ?? []), ...allPackages])];
         // Shared shim modules must not survive a rebuilt runtime export graph.
         // The supervisor restarts Vite after ordered runtime/shim completion.
-        if (roots) config.optimizeDeps.force = true;
+        if (roots) {
+          config.optimizeDeps.force = true;
+        }
+
         config.optimizeDeps.esbuildOptions = config.optimizeDeps.esbuildOptions ?? {};
         config.optimizeDeps.esbuildOptions.plugins = [
           ...(config.optimizeDeps.esbuildOptions.plugins ?? []),
@@ -170,6 +184,7 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
                     return { path: shimPath };
                   }
                 }
+
                 return null;
               });
             },
@@ -190,16 +205,28 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
         } else if (typeof existing === 'function') {
           const originalFn = existing;
           config.build.rollupOptions.external = (source: string, importer: string | undefined, isResolved: boolean) => {
-            if (sharedSet.has(source)) return true;
+            if (sharedSet.has(source)) {
+              return true;
+            }
+
             return originalFn(source, importer, isResolved);
           };
         } else if (existing === undefined || existing === null) {
           config.build.rollupOptions.external = [...allPackages];
         } else {
           config.build.rollupOptions.external = (source: string) => {
-            if (sharedSet.has(source)) return true;
-            if (typeof existing === 'string') return source === existing;
-            if (existing instanceof RegExp) return existing.test(source);
+            if (sharedSet.has(source)) {
+              return true;
+            }
+
+            if (typeof existing === 'string') {
+              return source === existing;
+            }
+
+            if (existing instanceof RegExp) {
+              return existing.test(source);
+            }
+
             return false;
           };
         }
@@ -207,7 +234,10 @@ export function omniviewExternals(options: OmniviewExternalsOptions = {}): Plugi
     },
 
     configResolved(config) {
-      if (config.command !== 'serve' || !config.optimizeDeps.include) return;
+      if (config.command !== 'serve' || !config.optimizeDeps.include) {
+        return;
+      }
+
       // React's plugin adds forced optimizer entries after config hooks merge.
       // Shared imports must stay shim-backed, not be both entries and externals.
       config.optimizeDeps.include = config.optimizeDeps.include.filter(dependency => {

@@ -12,7 +12,9 @@ const retainedRegistry = hotData?.extensionRegistry as
 export const EXTENSION_REGISTRY = retainedRegistry ?? new ExtensionPointRegistry({
   initialStores: initialStores.filter((store) => store.id !== RESOURCE_SIDEBAR_EXTENSION_POINT_ID),
 });
-if (hotData) hotData.extensionRegistry = EXTENSION_REGISTRY;
+if (hotData) {
+  hotData.extensionRegistry = EXTENSION_REGISTRY;
+}
 
 // Register resource builtins with proper matchers, ownership, and cache key support.
 ensureBuiltinExtensionPointsRegistered(EXTENSION_REGISTRY);

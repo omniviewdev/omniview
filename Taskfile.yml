@@ -30,8 +30,9 @@ vars:
   # Reset cross-compilation variables while running this native-free host helper.
   HOST_BOOTSTRAP: 'GOWORK=off GOFLAGS= GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/nativepatch/main.go" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}} {{if .NATIVE_PATCH_OUTPUT_DIRECTORY}}--output-directory={{.NATIVE_PATCH_OUTPUT_DIRECTORY | shellQuote}}{{end}}'
   # CLI bootstrap and execution must not inherit the standalone source-local cache.
+  # Resolve an explicitly selected SDK before compiling the SDK-dependent CLI helper.
   CLI_ENVIRONMENT: 'GOWORK=off GOFLAGS= GO111MODULE=on GOCACHE={{if .GO_BUILD_CACHE_DIRECTORY}}{{.GO_BUILD_CACHE_DIRECTORY | shellQuote}}{{else}}{{env "GOCACHE" | shellQuote}}{{end}} GOTMPDIR='
-  CLI_BOOTSTRAP: '{{.CLI_ENVIRONMENT}} GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/devcli" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}}'
+  CLI_BOOTSTRAP: '{{.CLI_ENVIRONMENT}} GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/devcli/bootstrap/main.go" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}}'
   # Raw caller input; derived defaults are selected at each consuming task.
   BUILD_FLAGS: '{{.BUILD_FLAGS | default ""}}'
   DEV: '{{.DEV | default "false"}}'
@@ -82,10 +83,9 @@ tasks:
   dev:
     summary: "Start the selected managed workspace and return its ready descriptor (detached)"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace up --mode {{if eq .SERVER "true"}}browser{{else}}native{{end}}{{if eq .WAILS_MCP "1"}} --mcp{{end}} {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: 'workspace up --mode {{if eq .SERVER "true"}}browser{{else}}native{{end}}{{if eq .WAILS_MCP "1"}} --mcp{{end}}'
 
   ui:update:
     summary: Refresh published UI packages to the newest patch allowed by their manifests
@@ -98,125 +98,120 @@ tasks:
     cmds:
       - '{{.CLI_BOOTSTRAP}}'
 
-  workspace:inspect:
-    summary: "Inspect selected workspace; arguments after -- are passed to the CLI"
+  # Keep CLI_ARGS in the runner: Task preserves shell quoting without a second
+  # task CLI invocation. Capture the immutable executable before running it.
+  dev:cli:run:
+    internal: true
     cmds:
       - |
         set -e
         DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace inspect {{.CLI_ARGS}}
+        {{.CLI_ENVIRONMENT}} "$DEV_CLI" {{.CLI_COMMAND}} {{.CLI_ARGS}}
+
+  workspace:inspect:
+    summary: "Inspect selected workspace; arguments after -- are passed to the CLI"
+    cmds:
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace inspect
 
   workspace:paths:
     summary: "Print selected workspace paths; arguments after -- are passed to the CLI"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace paths {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace paths
 
   workspace:profile:
     summary: "Bind an explicitly selected stopped workspace to a custom state root"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace profile {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace profile
 
   workspace:init:
     summary: "Initialize a workspace collection; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace init {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace init
 
   workspace:create:
     summary: "Create a named workspace; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace create {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace create
 
   workspace:up:
     summary: "Start a workspace; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace up {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace up
 
   workspace:down:
     summary: "Stop a workspace; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace down {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace down
 
   workspace:restart:
     summary: "Restart a workspace; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace restart {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace restart
 
   workspace:edit:
     summary: "Edit workspace selection; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace edit {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace edit
 
   workspace:link:
     summary: "Apply workspace dependency links; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace link {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace link
 
   workspace:unlink:
     summary: "Remove workspace dependency links; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace unlink {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace unlink
 
   workspace:remove:
     summary: "Remove a stopped workspace; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace remove {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace remove
 
   workspace:list:
     summary: "List registered workspaces; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace list {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace list
 
   workspace:resume:
     summary: "Resume workspace source setup; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace resume {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace resume
 
   workspace:rollback:
     summary: "Roll back workspace source setup; forward arguments after --"
     cmds:
-      - |
-        set -e
-        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
-        {{.CLI_ENVIRONMENT}} "$DEV_CLI" workspace rollback {{.CLI_ARGS}}
+      - task: dev:cli:run
+        vars:
+          CLI_COMMAND: workspace rollback
 
   # Build-only server artifact. Development launches use `task dev SERVER=true`
   # or canonical `workspace up --mode browser` with an explicit workspace.

@@ -24,11 +24,18 @@ describe('RightDrawerProvider', () => {
     const { container, unmount } = render(<RightDrawerProvider><div>content</div></RightDrawerProvider>);
     try {
       const panel = container.lastElementChild;
-      if (!(panel instanceof HTMLElement)) throw new Error('Right drawer panel is unavailable');
-      act(() => setBottomDrawerHeight(550));
+      if (!(panel instanceof HTMLElement)) {
+        throw new Error('Right drawer panel is unavailable');
+      }
+
+      act(() => {
+        setBottomDrawerHeight(550); 
+      });
       expect(panel.style.getPropertyValue('--BottomDrawer-height')).toBe('550px');
       expect(document.documentElement.style.getPropertyValue('--BottomDrawer-height')).toBe(globalHeight);
-      act(() => setBottomDrawerHeight(220));
+      act(() => {
+        setBottomDrawerHeight(220); 
+      });
       expect(panel.style.getPropertyValue('--BottomDrawer-height')).toBe('220px');
       expect(document.documentElement.style.getPropertyValue('--BottomDrawer-height')).toBe(globalHeight);
     } finally {

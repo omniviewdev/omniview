@@ -16,102 +16,11 @@ type cleanup struct {
 }
 
 func validatePending(ctx context.Context, entry *outputEntry) error {
-	p := entry.Pending
-	if p == nil {
+	if entry.Pending == nil {
 		return nil
 	}
-	if p.Restore {
-		revision, err := specHead(ctx, entry.Spec)
-		if err != nil {
-			return err
-		}
-		if revision != p.Head {
-			return fmt.Errorf("committed source advanced during pending restoration; refusing historical source publication")
-		}
-	}
-	if p.Phase == "writing" {
-		return fmt.Errorf("repository producer was interrupted before authenticated completion")
-	}
-	if p.Phase == "allocating" || p.Phase == "restore-allocating" {
-		if _, err := os.Lstat(p.Directory); err == nil {
-			return fmt.Errorf("interrupted allocation has no authenticated directory identity")
-		} else if !os.IsNotExist(err) {
-			return err
-		}
-		current, err := snapshotPath(entry.Spec, entry.Exclude)
-		if err != nil {
-			return err
-		}
-		if !sameSnapshot(current, p.Before) {
-			return fmt.Errorf("allocation destination changed")
-		}
-		return nil
-	}
-	if p.Phase == "restoring" {
-		return validateRestoringStage(ctx, entry)
-	}
-	if p.Phase == "aborting" {
-		spec := entry.Spec
-		spec.Mode = "tree"
-		spec.Target = p.Directory
-		current, err := snapshotPath(spec, nil)
-		if err != nil {
-			return err
-		}
-		for path, value := range current {
-			if p.After[path] != value {
-				return fmt.Errorf("interrupted stage cleanup has foreign bytes")
-			}
-		}
-		return nil
-	}
-	current, err := snapshotPath(entry.Spec, entry.Exclude)
-	if err != nil {
-		return err
-	}
-	backupSpec := entry.Spec
-	backupSpec.Target = p.Backup
-	backup, err := snapshotPath(backupSpec, nil)
-	if err != nil {
-		return err
-	}
-	for path, value := range backup {
-		if p.Before[path] != value {
-			return fmt.Errorf("publication backup contains foreign bytes")
-		}
-	}
-	if sameSnapshot(current, p.After) || p.Remove && len(current) == 0 {
-		return validateRetiredStage(entry)
-	}
-	if len(current) > 0 && !sameSnapshot(current, p.Before) {
-		return fmt.Errorf("interrupted publication destination changed")
-	}
-	if !p.Remove {
-		if err = validateCapturedStage(entry); err != nil {
-			return err
-		}
-	} else if err = validateRetiredStage(entry); err != nil {
-		return err
-	}
-	if len(current) == 0 && len(p.Before) > 0 {
-		backup := entry.Spec
-		backup.Target = p.Backup
-		actual, err := snapshotPath(backup, nil)
-		if err != nil {
-			return err
-		}
-		if !sameSnapshot(actual, p.Before) {
-			return fmt.Errorf("interrupted publication original bytes are unavailable")
-		}
-	}
-	sourceHead, err := specHead(ctx, entry.Spec)
-	if err != nil {
-		return err
-	}
-	if sourceHead != p.Head {
-		return fmt.Errorf("source commit changed during interrupted publication")
-	}
-	return nil
+	_, err := inspectPublication(ctx, entry)
+	return err
 }
 func validateCleanup(ctx context.Context, entry *outputEntry) error {
 	current, err := snapshotPath(entry.Spec, nil)
@@ -315,10 +224,11 @@ func Restore(ctx context.Context, w devcontract.ResolvedWorkspace) error {
 					return err
 				}
 			}
-			if entry.Pending.Phase == "restore-allocating" {
-				if _, err := os.Lstat(entry.Pending.Directory); !os.IsNotExist(err) {
-					return fmt.Errorf("unverified interrupted restoration directory")
-				}
+			inspection, inspectErr := inspectPublication(ctx, entry)
+			if inspectErr != nil {
+				return inspectErr
+			}
+			if inspection.action == resumeRestoreAllocation {
 				if err = os.Mkdir(entry.Pending.Directory, 0700); err != nil {
 					return err
 				}
@@ -326,12 +236,12 @@ func Restore(ctx context.Context, w devcontract.ResolvedWorkspace) error {
 				if err != nil {
 					return err
 				}
-				entry.Pending.Phase = "restoring"
+				entry.Pending.setState(restorePreparing)
 				if err = save(s, j); err != nil {
 					return err
 				}
 			}
-			if entry.Pending.Phase == "restoring" {
+			if inspection.action == prepareRestoration || inspection.action == resumeRestoreAllocation {
 				if err = finishRestoringStage(ctx, s, j, entry); err != nil {
 					return err
 				}
@@ -428,8 +338,12 @@ func validateRestoringStage(ctx context.Context, entry *outputEntry) error {
 }
 
 func finishRestoringStage(ctx context.Context, s scope, j *journal, entry *outputEntry) error {
-	if err := validateRestoringStage(ctx, entry); err != nil {
+	inspection, err := inspectPublication(ctx, entry)
+	if err != nil {
 		return err
+	}
+	if inspection.action != prepareRestoration {
+		return fmt.Errorf("restoration stage is not ready for preparation")
 	}
 	files, err := restorationFiles(ctx, entry)
 	if err != nil {
@@ -486,8 +400,8 @@ func finishRestoringStage(ctx context.Context, s scope, j *journal, entry *outpu
 			}
 		}
 	}
-	entry.Pending.Remove = len(files) == 0
-	if entry.Pending.Remove {
+	remove := len(files) == 0
+	if remove {
 		entry.Pending.After = snapshot{}
 	} else {
 		entry.Pending.After, err = snapshotPath(stageSpec(entry), nil)
@@ -502,6 +416,10 @@ func finishRestoringStage(ctx context.Context, s scope, j *journal, entry *outpu
 	if err != nil {
 		return err
 	}
-	entry.Pending.Phase = "captured"
+	state := restoreCaptured
+	if remove {
+		state = removalCaptured
+	}
+	entry.Pending.setState(state)
 	return save(s, j)
 }

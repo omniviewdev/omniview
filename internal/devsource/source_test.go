@@ -27,7 +27,7 @@ func sourceFixture(t *testing.T) (string, string) {
 		return strings.TrimSpace(string(raw))
 	}
 	git("init")
-	for _, relative := range append(append([]string(nil), protectedFiles...), "settings/api.go", "go.mod") {
+	for _, relative := range []string{"pkg/state/root.go", "pkg/state/custom.go", "pkg/profilecontract/profile.go", "pkg/utils/store.go", "pkg/sdk/plugin.go", "settings/api.go", "go.mod"} {
 		file := filepath.Join(root, relative)
 		if err = os.MkdirAll(filepath.Dir(file), 0700); err != nil {
 			t.Fatal(err)
@@ -91,6 +91,17 @@ func TestVerifyIsolationCoreChangesRequireExplicitWorkspaceOptIn(t *testing.T) {
 				t.Fatal("opt-in omitted exact source digest")
 			}
 		})
+	}
+}
+
+func TestVerifyRejectsDirtySharedProfileContract(t *testing.T) {
+	root, revision := sourceFixture(t)
+	path := filepath.Join(root, "pkg/profilecontract/profile.go")
+	if err := os.WriteFile(path, []byte("package profilecontract\n// weakened read-only ownership validation\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(context.Background(), root, revision); err == nil || !strings.Contains(err.Error(), "pkg/profilecontract/profile.go") || !strings.Contains(err.Error(), "--allow-isolation-source-changes") {
+		t.Fatalf("dirty shared ownership validator escaped reviewed-byte enforcement: %v", err)
 	}
 }
 

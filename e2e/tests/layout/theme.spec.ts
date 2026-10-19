@@ -34,13 +34,14 @@ test.describe('Theme', () => {
         message: `${region} background follows Solarized Dark`,
       }).toBe(true);
     }
+
     await expect(appPage.getByRole('button', { name: 'Save Changes' })).toBeHidden();
   });
 
   test('Solarized Dark persists immediately and switching to Void restores neutral colors', async ({ appPage }) => {
     await openSettingsCategory(appPage, 'Appearance');
     await chooseSetting(appPage, 'appearance.theme', 'Solarized Dark');
-    await expect.poll(() => storedValue(appPage, 'appearance.theme')).toBe('solarized-dark');
+    await expect.poll(async () => storedValue(appPage, 'appearance.theme')).toBe('solarized-dark');
 
     await appPage.reload();
     await expect(appPage.getByTestId('app-shell')).toBeVisible();
@@ -48,7 +49,7 @@ test.describe('Theme', () => {
 
     await openSettingsCategory(appPage, 'Appearance');
     await chooseSetting(appPage, 'appearance.theme', 'Void');
-    await expect.poll(() => storedValue(appPage, 'appearance.theme')).toBe('void');
+    await expect.poll(async () => storedValue(appPage, 'appearance.theme')).toBe('void');
 
     const regions = shell(appPage);
     for (const region of REGIONS) {

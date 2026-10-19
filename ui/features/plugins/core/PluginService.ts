@@ -336,6 +336,7 @@ export class PluginService {
       if (this.inflightLoads.delete(pluginId)) {
         this.bumpLoadGeneration(pluginId);
       }
+
       return;
     }
 
@@ -410,6 +411,7 @@ export class PluginService {
       if (!this.isCurrentGeneration(pluginId, generation)) {
         return;
       }
+
       this.deps.ensureBuiltinExtensionPoints();
 
       if (resolved.dev) {
@@ -421,6 +423,7 @@ export class PluginService {
       if (!this.isCurrentGeneration(pluginId, generation)) {
         return;
       }
+
       this.recordAttemptedSource(pluginId, resolved);
 
       const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
@@ -512,6 +515,7 @@ export class PluginService {
       if (this.inflightLoads.delete(pluginId)) {
         this.bumpLoadGeneration(pluginId);
       }
+
       return;
     }
 
@@ -570,10 +574,11 @@ export class PluginService {
     }
 
     // Reserve queued participants before any import starts, through publication.
-    const batch: Promise<void> = Promise.resolve().then(() => this.loadBatch(toLoad, batch));
+    const batch: Promise<void> = Promise.resolve().then(async () => this.loadBatch(toLoad, batch));
     for (const plugin of toLoad) {
       this.inflightLoads.set(plugin.id, batch);
     }
+
     try {
       await batch;
     } finally {
@@ -583,125 +588,6 @@ export class PluginService {
         }
       }
     }
-  }
-
-  private async loadBatch(toLoad: PluginDescriptor[], owner: Promise<void>): Promise<void> {
-    // Pass 1: Import + validate + normalize in bounded parallel chunks
-    const prepared: PreparedPluginLoad[] = [];
-    const chunks: PluginDescriptor[][] = [];
-    for (let i = 0; i < toLoad.length; i += this.config.maxConcurrentLoads) {
-      chunks.push(toLoad.slice(i, i + this.config.maxConcurrentLoads));
-    }
-
-    for (const chunk of chunks) {
-      const settled = await Promise.allSettled(
-        chunk.map((p) => this.inflightLoads.get(p.id) === owner
-          ? this.prepareLoadCandidate(p.id, p, owner)
-          : undefined),
-      );
-
-      for (const result of settled) {
-        if (result.status === 'fulfilled' && result.value) {
-          prepared.push(result.value);
-        }
-        // Rejected: prepareLoadCandidate already transitioned to error
-      }
-    }
-
-    // Cancelled participants must not publish after another operation took over.
-    let ownedCount = 0;
-    for (const candidate of prepared) {
-      if (this.inflightLoads.get(candidate.pluginId) === owner) {
-        prepared[ownedCount++] = candidate;
-      }
-    }
-    prepared.length = ownedCount;
-
-    // Pass 2a: Register all plugin-defined extension points first
-    for (const p of prepared) {
-      this.registerExtensionPoints(p.pluginId, p.extensionPoints);
-      this.definedExtensionPointIdsByPlugin.set(p.pluginId, p.extensionPoints.map((ep) => ep.id));
-    }
-
-    // Pass 2b: Apply all contributions/routes
-    let readyCount = 0;
-    let failedCount = 0;
-    for (const p of prepared) {
-      try {
-        this.applyContributions(p.pluginId, p.normalizedContributions);
-        this.normalizedContributionsByPlugin.set(p.pluginId, p.normalizedContributions);
-        this.registrations.set(p.pluginId, p.registrations);
-
-        this.transition(p.pluginId, 'ready', {
-          pluginWindow: p.pluginWindow,
-          loadedAt: Date.now(),
-          retryCount: 0,
-          isDev: p.isDev,
-          devPort: p.devPort,
-          error: null,
-          validationErrors: [],
-          moduleHash: p.moduleHash,
-          declaredDependencies: p.declaredDependencies,
-        });
-
-        readyCount++;
-
-        // Emit deprecation warnings for legacy exports
-        this.emitLegacyDeprecationWarnings(p.pluginId, p.validated);
-      } catch (err) {
-        failedCount++;
-        this.handleLoadError(p.pluginId, err, 0);
-      }
-    }
-
-    // Replay pending contributions only for EPs from plugins that reached ready.
-    const allNewEpIds: string[] = [];
-    for (const p of prepared) {
-      const ps = this.state.get(p.pluginId);
-      if (ps?.phase === 'ready') {
-        allNewEpIds.push(...p.extensionPoints.map((ep) => ep.id));
-      }
-    }
-
-    if (allNewEpIds.length > 0) {
-      this.replayContributionsForExtensionPoints(allNewEpIds);
-    }
-
-    // F1: Register dependency metadata and run diagnostics
-    for (const p of prepared) {
-      if (p.declaredDependencies) {
-        this.dependencyAnalyzer.addPlugin(p.pluginId, p.declaredDependencies);
-      }
-    }
-
-    // Check for cycles after all plugins loaded
-    const cycles = this.dependencyAnalyzer.detectCycles();
-    if (cycles.length > 0) {
-      this.deps.log.warn(
-        `Dependency cycle detected among plugins: ${cycles.map((c) => c.join(' -> ')).join('; ')}`,
-        { cycles },
-      );
-    }
-
-    // Emit missing dependency advisories
-    for (const p of prepared) {
-      if (p.declaredDependencies) {
-        const warnings = this.getDependencyWarnings(p.pluginId);
-        for (const w of warnings) {
-          this.deps.log.warn(w, { pluginId: p.pluginId });
-        }
-      }
-    }
-
-    // Count plugins that failed during prepare (not in prepared array)
-    failedCount += toLoad.length - prepared.length;
-
-    this.deps.log.debug(
-      `loadAll complete: ${readyCount} ready, ${failedCount} failed (${toLoad.length} total)`,
-      { readyCount, failedCount, total: toLoad.length },
-    );
-
-    this.bumpRouteVersion();
   }
 
   // ── Event Listeners ─────────────────────────────────────────────
@@ -840,6 +726,126 @@ export class PluginService {
     this.notify();
   }
 
+  private async loadBatch(toLoad: PluginDescriptor[], owner: Promise<void>): Promise<void> {
+    // Pass 1: Import + validate + normalize in bounded parallel chunks
+    const prepared: PreparedPluginLoad[] = [];
+    const chunks: PluginDescriptor[][] = [];
+    for (let i = 0; i < toLoad.length; i += this.config.maxConcurrentLoads) {
+      chunks.push(toLoad.slice(i, i + this.config.maxConcurrentLoads));
+    }
+
+    for (const chunk of chunks) {
+      const settled = await Promise.allSettled(
+        chunk.map(async (p) => this.inflightLoads.get(p.id) === owner
+          ? this.prepareLoadCandidate(p.id, p, owner)
+          : undefined),
+      );
+
+      for (const result of settled) {
+        if (result.status === 'fulfilled' && result.value) {
+          prepared.push(result.value);
+        }
+        // Rejected: prepareLoadCandidate already transitioned to error
+      }
+    }
+
+    // Cancelled participants must not publish after another operation took over.
+    let ownedCount = 0;
+    for (const candidate of prepared) {
+      if (this.inflightLoads.get(candidate.pluginId) === owner) {
+        prepared[ownedCount++] = candidate;
+      }
+    }
+
+    prepared.length = ownedCount;
+
+    // Pass 2a: Register all plugin-defined extension points first
+    for (const p of prepared) {
+      this.registerExtensionPoints(p.pluginId, p.extensionPoints);
+      this.definedExtensionPointIdsByPlugin.set(p.pluginId, p.extensionPoints.map((ep) => ep.id));
+    }
+
+    // Pass 2b: Apply all contributions/routes
+    let readyCount = 0;
+    let failedCount = 0;
+    for (const p of prepared) {
+      try {
+        this.applyContributions(p.pluginId, p.normalizedContributions);
+        this.normalizedContributionsByPlugin.set(p.pluginId, p.normalizedContributions);
+        this.registrations.set(p.pluginId, p.registrations);
+
+        this.transition(p.pluginId, 'ready', {
+          pluginWindow: p.pluginWindow,
+          loadedAt: Date.now(),
+          retryCount: 0,
+          isDev: p.isDev,
+          devPort: p.devPort,
+          error: null,
+          validationErrors: [],
+          moduleHash: p.moduleHash,
+          declaredDependencies: p.declaredDependencies,
+        });
+
+        readyCount++;
+
+        // Emit deprecation warnings for legacy exports
+        this.emitLegacyDeprecationWarnings(p.pluginId, p.validated);
+      } catch (err) {
+        failedCount++;
+        this.handleLoadError(p.pluginId, err, 0);
+      }
+    }
+
+    // Replay pending contributions only for EPs from plugins that reached ready.
+    const allNewEpIds: string[] = [];
+    for (const p of prepared) {
+      const ps = this.state.get(p.pluginId);
+      if (ps?.phase === 'ready') {
+        allNewEpIds.push(...p.extensionPoints.map((ep) => ep.id));
+      }
+    }
+
+    if (allNewEpIds.length > 0) {
+      this.replayContributionsForExtensionPoints(allNewEpIds);
+    }
+
+    // F1: Register dependency metadata and run diagnostics
+    for (const p of prepared) {
+      if (p.declaredDependencies) {
+        this.dependencyAnalyzer.addPlugin(p.pluginId, p.declaredDependencies);
+      }
+    }
+
+    // Check for cycles after all plugins loaded
+    const cycles = this.dependencyAnalyzer.detectCycles();
+    if (cycles.length > 0) {
+      this.deps.log.warn(
+        `Dependency cycle detected among plugins: ${cycles.map((c) => c.join(' -> ')).join('; ')}`,
+        { cycles },
+      );
+    }
+
+    // Emit missing dependency advisories
+    for (const p of prepared) {
+      if (p.declaredDependencies) {
+        const warnings = this.getDependencyWarnings(p.pluginId);
+        for (const w of warnings) {
+          this.deps.log.warn(w, { pluginId: p.pluginId });
+        }
+      }
+    }
+
+    // Count plugins that failed during prepare (not in prepared array)
+    failedCount += toLoad.length - prepared.length;
+
+    this.deps.log.debug(
+      `loadAll complete: ${readyCount} ready, ${failedCount} failed (${toLoad.length} total)`,
+      { readyCount, failedCount, total: toLoad.length },
+    );
+
+    this.bumpRouteVersion();
+  }
+
   // ── Private: Core Load Logic ────────────────────────────────────
 
   private async refreshCommittedPlugin(pluginId: string): Promise<void> {
@@ -848,14 +854,17 @@ export class PluginService {
     if (inflight) {
       await inflight;
     }
+
     if (this.eventCleanups.length === 0 || this.loadGeneration.get(pluginId) !== generation) {
       return;
     }
+
     const current = this.state.get(pluginId);
     if (current?.phase === 'ready') {
       await this.reload(pluginId);
       return;
     }
+
     if (current?.phase === 'error' || current?.phase === 'retrying') {
       const unloading = this.unload(pluginId);
       const unloadGeneration = this.loadGeneration.get(pluginId);
@@ -864,6 +873,7 @@ export class PluginService {
         return;
       }
     }
+
     await this.load(pluginId);
   }
 
@@ -886,6 +896,7 @@ export class PluginService {
       if (!this.isCurrentGeneration(pluginId, generation)) {
         return;
       }
+
       this.deps.ensureBuiltinExtensionPoints();
 
       if (resolved.dev) {
@@ -895,6 +906,7 @@ export class PluginService {
       if (!this.isCurrentGeneration(pluginId, generation)) {
         return;
       }
+
       this.recordAttemptedSource(pluginId, resolved);
 
       const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
@@ -1007,6 +1019,7 @@ export class PluginService {
       if (!this.isCurrentGeneration(pluginId, generation)) {
         return;
       }
+
       const isDev = resolved.dev ?? false;
       if (isDev) {
         await this.deps.ensureDevSharedDeps();
@@ -1017,6 +1030,7 @@ export class PluginService {
       if (!this.isCurrentGeneration(pluginId, generation)) {
         return;
       }
+
       this.recordAttemptedSource(pluginId, resolved);
 
       const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
@@ -1131,6 +1145,7 @@ export class PluginService {
     if (current.isDev === isDev && current.devPort === devPort && current.moduleHash === moduleHash) {
       return;
     }
+
     // Failure must retain the attempted loader mode, not the last live window's.
     // The following ready/error transition publishes the updated snapshot.
     this.state.set(pluginId, { ...current, isDev, devPort, moduleHash });
@@ -1163,6 +1178,7 @@ export class PluginService {
       if (this.inflightLoads.get(pluginId) !== owner) {
         return;
       }
+
       this.recordAttemptedSource(pluginId, opts);
 
       const rawModule = await this.withImportTimeout(pluginId, this.deps.importPlugin({
@@ -1195,6 +1211,7 @@ export class PluginService {
       if (this.inflightLoads.get(pluginId) === owner) {
         this.handleLoadError(pluginId, err, 0);
       }
+
       throw err; // re-throw so Promise.allSettled captures it
     }
   }

@@ -44,12 +44,21 @@ The beta.29 patch also exposes `ServerOptions.Middleware` (`json:"-"`) and wraps
 
 The current source patch SHA256 is `d59bbd19b0a2ab342fdb5edfbdb7f9a1a3a19af486769c44fa46ec34b87c910c`, replacing `05e777acee99f7e9aad4c571171dded9f472e875c916839d1cacf6abd29b46de`. The named datastore deletion/storage fixes remain in the same export. The manifest retains exact `v3.0.0-beta.29` module and go.mod sums, license provenance, and every preimage/postimage checksum.
 
-Maintainers regenerate from the reviewed Wails worktree and a fresh extraction of the checksum-pinned beta.29 module archive, never from a prepared `.local/toolsrc` tree:
+Maintainers regenerate from the reviewed Wails worktree, its explicitly reviewed **pre-change commit ID**, and a fresh extraction of the checksum-pinned beta.29 module archive, never from a prepared `.local/toolsrc` tree. Record the full pre-change commit ID during review; do not substitute the current `HEAD`, a branch, or a tag. The base must be an ancestor of the reviewed checkout, contain all ten existing files, and contain none of the twelve added files.
 
 ```sh
 python3 scripts/nativepatch/export_patch.py \
   --reviewed-source /absolute/path/to/owned/wails/v3 \
+  --reviewed-base FULL_REVIEWED_PRE_CHANGE_COMMIT_ID \
   --beta29-source /absolute/path/to/pristine/github.com/wailsapp/wails/v3@v3.0.0-beta.29
 ```
 
-The exporter includes ten existing source files and twelve new source/test files (22 total), including `application_server.go` and `application_server_middleware_test.go`. It rejects reviewed tracked hunks without unique beta.29 preimages; bootstrap independently checks manifest preimages and postimages when preparing a fresh hash-addressed source directory.
+The exporter compares that fixed base directly to the current worktree for the ten existing source files, regardless of whether their reviewed bytes are unstaged, staged, or committed. It reads the twelve explicitly enumerated added source/test files directly, regardless of their tracking state. The output remains exactly 22 files, including `application_server.go` and `application_server_middleware_test.go`; unrelated changes are excluded. It refuses incomplete base-to-worktree inventories and reviewed tracked hunks without unique beta.29 preimages before writing output. Bootstrap independently checks manifest preimages and postimages when preparing a fresh hash-addressed source directory.
+
+Run the focused exporter regression without touching the live patch output:
+
+```sh
+python3 scripts/nativepatch/test_export_patch.py
+```
+
+The regression uses disposable Git source/output repositories, checks byte-identical exports across unstaged/staged/committed states, applies the generated patch to the pristine fixture, and verifies wrong-base refusal without changing prior output.

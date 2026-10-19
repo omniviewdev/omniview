@@ -153,3 +153,35 @@ func TestSupervisorLiveReadinessReflectsPluginFailureAndRecovery(t *testing.T) {
 		})
 	}
 }
+
+func TestSupervisorWaitPluginReadyRejectsTerminalStages(t *testing.T) {
+	for _, stage := range []string{"build", "vite", "rpc", "controller", "last-error"} {
+		t.Run(stage, func(t *testing.T) {
+			state := devcontrol.DevState{PluginState: devcontract.PluginState{ID: "plugin", Mode: "managed", Generation: "selected-generation", BuildStatus: "ready", ViteStatus: "ready", RPCStatus: "ready", ControllerStatus: "ready"}}
+			switch stage {
+			case "build":
+				state.BuildStatus = "error"
+			case "vite":
+				state.ViteStatus = "error"
+			case "rpc":
+				state.RPCStatus = "error"
+			case "controller":
+				state.ControllerStatus = "error"
+			case "last-error":
+				state.LastError = devcontract.Fail(5, "dependency_failed", "readiness failed")
+			}
+			s, _ := readinessSupervisor(t, map[string]devcontrol.DevState{"plugin": state})
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			err := s.waitPluginReady(ctx, "plugin", state.Generation)
+			var failure *devcontract.Error
+			if !errors.As(err, &failure) || failure.Code != "plugin_not_ready" {
+				t.Fatalf("terminal %s failure must stop readiness rather than wait for cancellation: %v", stage, err)
+			}
+			err = s.waitPluginReady(ctx, "plugin", "replaced-generation")
+			if !errors.As(err, &failure) || failure.Code != "stale_target" {
+				t.Fatalf("stage failure overrode the exact-generation check: %v", err)
+			}
+		})
+	}
+}

@@ -26,6 +26,7 @@ func sdkSourceFixture(t *testing.T) (source, sdk, revision, goPath string) {
 	source = t.TempDir()
 	files := map[string]string{"go.mod": "module github.com/omniviewdev/plugin-sdk\n\ngo 1.24.0\n", "pkg/state/root.go": "package state\n", "pkg/utils/store.go": "package utils\n", "pkg/sdk/plugin.go": "package sdk\n", "settings/value.go": "package settings\nconst Value=1\n", "log/value.go": "package log\nconst Value=1\n", "proto/value.go": "package proto\nconst Value=1\n"}
 	files["pkg/state/custom.go"] = "package state\n"
+	files["pkg/profilecontract/profile.go"] = "package profilecontract\n"
 	for name, value := range files {
 		path := filepath.Join(sdk, name)
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
@@ -65,6 +66,14 @@ func TestVerifySelectedSDKUsesActualGoModuleAndDirtySourceDigest(t *testing.T) {
 	env := append(os.Environ(), "OMNIVIEW_WORKSPACE_ID=9f479dc5-9fd0-4359-915a-ed307fbe5510", "OMNIVIEW_ALLOW_ISOLATION_SOURCE_CHANGES=1")
 	_, err = VerifySelectedSDK(context.Background(), goPath, source, revision, env)
 	require.ErrorContains(t, err, "explicit validated workspace", "a bare environment flag must not authorize containment-core changes")
+}
+
+func TestVerifySelectedSDKRejectsDirtyProfileContract(t *testing.T) {
+	source, sdk, revision, goPath := sdkSourceFixture(t)
+	require.NoError(t, os.WriteFile(filepath.Join(sdk, "pkg", "profilecontract", "profile.go"), []byte("package profilecontract\n// containment changed\n"), 0600))
+	_, err := VerifySelectedSDK(context.Background(), goPath, source, revision, os.Environ())
+	require.ErrorContains(t, err, "pkg/profilecontract/profile.go", "the shared ownership reader must not inherit baseline trust after a dirty edit")
+	require.ErrorContains(t, err, "--allow-isolation-source-changes")
 }
 
 func TestVerifySelectedSDKIgnoresYAMLAndFollowsReplacement(t *testing.T) {

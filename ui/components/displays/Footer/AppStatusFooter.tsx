@@ -14,6 +14,7 @@ import {
 } from 'react-icons/lu';
 import { Events } from '@omniviewdev/runtime/runtime';
 import type { PluginMeta } from '@omniviewdev/runtime/models';
+import { LifecycleStage } from '@omniviewdev/runtime/models';
 
 import { useDevServers } from '@/features/devtools/useDevServers';
 import { devToolsChannel } from '@/features/devtools/events';
@@ -91,8 +92,8 @@ function DevServerPopoverBody({ pluginId, state, onClose }: { pluginId: string; 
         {state.vitePort > 0 && <DetailRow label='Vite' value={`http://127.0.0.1:${state.vitePort}`} mono />}
         <DetailRow
           label='gRPC'
-          value={state.rpcStatus === 'n/a' ? 'Not applicable' : state.grpcConnected ? 'Connected' : 'Disconnected'}
-          tone={state.rpcStatus === 'n/a' ? undefined : state.grpcConnected ? 'success' : 'danger'}
+          value={state.rpcStatus === LifecycleStage.StageNotApplicable ? 'Not applicable' : state.grpcConnected ? 'Connected' : 'Disconnected'}
+          tone={state.rpcStatus === LifecycleStage.StageNotApplicable ? undefined : state.grpcConnected ? 'success' : 'danger'}
         />
         {state.lastError && <div className={styles.ErrorBox}>{state.lastError}</div>}
       </div>

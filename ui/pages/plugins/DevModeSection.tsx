@@ -2,6 +2,7 @@ import React from 'react';
 import { Chip, StatusDot } from '@omniviewdev/base-ui';
 import type { ComponentColor } from '@omniviewdev/base-ui';
 import { LuCircle, LuHammer, LuPlay, LuRefreshCw, LuSquare } from 'react-icons/lu';
+import { LifecycleStage } from '@omniviewdev/runtime/models';
 
 import HintTooltip from '@/components/base/HintTooltip';
 import { devToolsChannel } from '@/features/devtools/events';
@@ -106,8 +107,8 @@ const DevModeSection: React.FC<Props> = ({ pluginId, devPath }) => {
         {state.data && (
           <DetailRow
             label='gRPC'
-            value={state.data.rpcStatus === 'n/a' ? 'Not applicable' : state.data.grpcConnected ? 'Connected' : 'Disconnected'}
-            valueColor={state.data.rpcStatus === 'n/a' ? undefined : state.data.grpcConnected ? 'var(--ov-color-success)' : 'var(--ov-color-danger)'}
+            value={state.data.rpcStatus === LifecycleStage.StageNotApplicable ? 'Not applicable' : state.data.grpcConnected ? 'Connected' : 'Disconnected'}
+            valueColor={state.data.rpcStatus === LifecycleStage.StageNotApplicable ? undefined : state.data.grpcConnected ? 'var(--ov-color-success)' : 'var(--ov-color-danger)'}
           />
         )}
         {state.data?.lastError && (

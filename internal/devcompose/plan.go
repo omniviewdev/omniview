@@ -166,6 +166,18 @@ func readInput(w devcontract.ResolvedWorkspace, s *sourceSet, path string) ([]by
 	s.hashes[key] = fingerprint
 	return raw, nil
 }
+
+// Merge independently read policy inputs without losing discovery's evidence
+// when the same path was consumed by both phases.
+func mergeInputHashes(hashes, additional map[string]string) error {
+	for path, fingerprint := range additional {
+		if prior, read := hashes[path]; read && prior != fingerprint {
+			return refusal("source input %s changed during planning", path)
+		}
+		hashes[path] = fingerprint
+	}
+	return nil
+}
 func readManifest(raw []byte, path string) (map[string]any, error) {
 	var m map[string]any
 	if json.Unmarshal(raw, &m) != nil || m == nil {
@@ -523,10 +535,14 @@ func New(w devcontract.ResolvedWorkspace, roots []Root, targets map[string]strin
 	if err := validateManifestDependencies(w, plan, sources.manifests); err != nil {
 		return Plan{}, err
 	}
-	policy, err := reconcile(w, sources)
+	reconciled, err := reconcile(w, sources)
 	if err != nil {
 		return Plan{}, err
 	}
+	if err := mergeInputHashes(plan.SourceHashes, reconciled.inputHashes); err != nil {
+		return Plan{}, err
+	}
+	policy := reconciled.settings
 	lock, providers, err := seedLock(w, sources, &plan, policy)
 	if err != nil {
 		return Plan{}, err
@@ -738,7 +754,11 @@ func CheckInputs(plan Plan) error {
 	if err != nil {
 		return err
 	}
-	if _, err := reconcile(workspace, current); err != nil {
+	reconciled, err := reconcile(workspace, current)
+	if err != nil {
+		return err
+	}
+	if err := mergeInputHashes(current.hashes, reconciled.inputHashes); err != nil {
 		return err
 	}
 	if !reflect.DeepEqual(current.hashes, plan.SourceHashes) || !reflect.DeepEqual(current.packages, plan.Packages) {

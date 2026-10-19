@@ -69,21 +69,20 @@ const namingConventionRule = {
   ],
 };
 
-module.exports = {
-  parser: require.resolve('@typescript-eslint/parser'),
-  parserOptions: {
-    warnOnUnsupportedTypeScriptVersion: false,
-    sourceType: 'module',
-    project: ['tsconfig.app.json', 'tsconfig.test.json'],
-    ecmaFeatures: {
-      jsx: true,
+const sharedConfig = {
+  languageOptions: {
+    parser: require('@typescript-eslint/parser'),
+    parserOptions: {
+      warnOnUnsupportedTypeScriptVersion: false,
+      sourceType: 'module',
+      ecmaFeatures: { jsx: true },
     },
   },
-  plugins: [
-    '@typescript-eslint',
-    '@stylistic',
-    'import',
-  ],
+  plugins: {
+    '@typescript-eslint': require('@typescript-eslint/eslint-plugin'),
+    '@stylistic': require('@stylistic/eslint-plugin'),
+    import: require('eslint-plugin-import'),
+  },
   settings: {
     'import/resolver': {
       node: {
@@ -709,25 +708,48 @@ module.exports = {
     // `import/no-duplicates` works better with TypeScript.
     'no-duplicate-imports': 'off',
   },
-  overrides: [
-    {
-      files: ['**/.eslintrc.cjs'],
-      rules: {
-        '@typescript-eslint/naming-convention': 'off',
-      },
-    },
-    {
-      files: ['**/*.d.ts'],
-      rules: {
-        '@typescript-eslint/no-unused-vars': 'off',
-      },
-    },
-    {
-      files: ['**/*.test-d.ts'],
-      rules: {
-        '@typescript-eslint/no-unsafe-call': 'off',
-        '@typescript-eslint/no-confusing-void-expression': 'off', // Conflicts with `expectError` assertion.
-      },
-    },
-  ],
 };
+
+module.exports = [
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/shims/**', 'ui/providers/monaco/yaml.worker.bundle.js'] },
+  {
+    ...sharedConfig,
+    files: ['ui/**/*.{ts,tsx}'],
+    languageOptions: {
+      ...sharedConfig.languageOptions,
+      parserOptions: {
+        ...sharedConfig.languageOptions.parserOptions,
+        tsconfigRootDir: __dirname,
+        project: ['tsconfig.app.json', 'tsconfig.test.json'],
+      },
+    },
+  },
+  {
+    ...sharedConfig,
+    files: ['packages/omniviewdev-vite-plugin/src/**/*.ts', 'e2e/tests/**/*.ts', 'e2e/playwright.config.ts'],
+    languageOptions: {
+      ...sharedConfig.languageOptions,
+      parserOptions: {
+        ...sharedConfig.languageOptions.parserOptions,
+        tsconfigRootDir: __dirname,
+        project: ['packages/omniviewdev-vite-plugin/tsconfig.json', 'e2e/tsconfig.json'],
+      },
+    },
+  },
+  {
+    files: ['e2e/**/*.ts'],
+    rules: { '@typescript-eslint/parameter-properties': ['error', { prefer: 'class-property' }] },
+  },
+  { files: ['**/*.d.ts'], rules: { '@typescript-eslint/no-unused-vars': 'off' } },
+  {
+    files: ['ui/vite-env.d.ts'],
+    rules: { '@typescript-eslint/consistent-type-definitions': ['error', 'interface'] },
+  },
+  {
+    files: ['**/*.test-d.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-confusing-void-expression': 'off',
+    },
+  },
+];

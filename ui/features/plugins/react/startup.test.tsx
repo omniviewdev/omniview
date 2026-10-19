@@ -33,7 +33,9 @@ vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => {
     Events: {
       ...original.Events,
       On: (eventName: string, handler: (event: { data: unknown }) => void) =>
-        backend.deps!.onEvent(eventName, (data: unknown) => handler({ data })),
+        backend.deps!.onEvent(eventName, (data: unknown) => {
+          handler({ data }); 
+        }),
     },
   };
 });
@@ -189,15 +191,18 @@ describe('plugin startup navigation', () => {
     let currentModule: () => PluginModule = () => {
       throw new Error('Broken previous plugin module');
     };
+
     // SystemJS retains rejected imports until their URL is explicitly evicted.
     let cachedModule: Promise<PluginModule> | undefined;
-    testDeps.deps.importPlugin = () => {
+    testDeps.deps.importPlugin = async () => {
       cachedModule ??= Promise.resolve().then(currentModule);
       return cachedModule;
     };
+
     testDeps.deps.clearPlugin = async () => {
       cachedModule = undefined;
     };
+
     renderWorkspace();
     await screen.findByText('Broken previous plugin module');
 
@@ -212,7 +217,7 @@ describe('plugin startup navigation', () => {
 
   it('keeps a committed replacement when the previous startup import finishes later', async () => {
     backend.listServers.mockResolvedValue([server(DevProcessStatus.DevProcessStatusReady)]);
-    const started = createDeferred<void>();
+    const started = createDeferred();
     const importing = createDeferred<PluginModule>();
     testDeps.importer.register('kubernetes', async () => {
       started.resolve();
@@ -239,15 +244,23 @@ describe('plugin startup navigation', () => {
     let currentArchive: () => PluginModule = () => {
       throw new Error('Broken archive replacement');
     };
+
     let cachedArchive: Promise<PluginModule> | undefined;
-    testDeps.deps.importPlugin = (options) => {
-      if (options.dev) return Promise.resolve(pluginModule('Original development plugin'));
+    testDeps.deps.importPlugin = async (options) => {
+      if (options.dev) {
+        return Promise.resolve(pluginModule('Original development plugin'));
+      }
+
       cachedArchive ??= Promise.resolve().then(currentArchive);
       return cachedArchive;
     };
+
     testDeps.deps.clearPlugin = async (options) => {
-      if (!options.dev) cachedArchive = undefined;
+      if (!options.dev) {
+        cachedArchive = undefined;
+      }
     };
+
     renderWorkspace();
     await screen.findByRole('heading', { name: 'Original development plugin' });
 
@@ -269,7 +282,7 @@ describe('plugin startup navigation', () => {
     renderWorkspace();
     await screen.findByRole('heading', { name: 'Original plugin' });
 
-    const started = createDeferred<void>();
+    const started = createDeferred();
     const importing = createDeferred<PluginModule>();
     backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: false }]);
     testDeps.importer.register('kubernetes', async () => {

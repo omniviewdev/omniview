@@ -79,36 +79,36 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary FallbackComponent={RootErrorFallback}>
       <InstanceProvider>
-      <QueryClientProvider client={queryClient}>
-        <SettingsProvider>
-          <ExtensionProvider registry={EXTENSION_REGISTRY}>
-            <AppSnackbarProvider>
-              <Provider store={store}>
-                <AppThemeController>
-                  <ErrorBoundary
-                    FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
-                    onError={onBoundaryError}
-                  >
-                    <OperationsProvider>
-                      <ConfirmationModalProvider>
-                        <ConnectionStateProvider>
-                          <RightDrawerProvider>
-                            <BottomDrawerProvider>
-                              <PluginServiceProvider>
-                                <RouteProvider />
-                              </PluginServiceProvider>
-                            </BottomDrawerProvider>
-                          </RightDrawerProvider>
-                        </ConnectionStateProvider>
-                      </ConfirmationModalProvider>
-                    </OperationsProvider>
-                  </ErrorBoundary>
-                </AppThemeController>
-              </Provider>
-            </AppSnackbarProvider>
-          </ExtensionProvider>
-        </SettingsProvider>
-      </QueryClientProvider>
+        <QueryClientProvider client={queryClient}>
+          <SettingsProvider>
+            <ExtensionProvider registry={EXTENSION_REGISTRY}>
+              <AppSnackbarProvider>
+                <Provider store={store}>
+                  <AppThemeController>
+                    <ErrorBoundary
+                      FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
+                      onError={onBoundaryError}
+                    >
+                      <OperationsProvider>
+                        <ConfirmationModalProvider>
+                          <ConnectionStateProvider>
+                            <RightDrawerProvider>
+                              <BottomDrawerProvider>
+                                <PluginServiceProvider>
+                                  <RouteProvider />
+                                </PluginServiceProvider>
+                              </BottomDrawerProvider>
+                            </RightDrawerProvider>
+                          </ConnectionStateProvider>
+                        </ConfirmationModalProvider>
+                      </OperationsProvider>
+                    </ErrorBoundary>
+                  </AppThemeController>
+                </Provider>
+              </AppSnackbarProvider>
+            </ExtensionProvider>
+          </SettingsProvider>
+        </QueryClientProvider>
       </InstanceProvider>
     </ErrorBoundary>
   );

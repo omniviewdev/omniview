@@ -21,7 +21,7 @@ type EventBusConfig = {
  * For now, this meets our use case of simple event handling.
  */
 export function eventbus<E extends EventMap>(
-  config?: EventBusConfig
+  config?: EventBusConfig,
 ): EventBus<E> {
   const bus: Partial<Bus<E>> = {};
 

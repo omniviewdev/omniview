@@ -10,6 +10,59 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestReconciliationDoesNotMutateDiscoveredFingerprints(t *testing.T) {
+	w, roots := fixture(t)
+	put(t, w.Root, "plugin-a/patches/exact.patch", "diff --git a/a b/a\n")
+	put(t, w.Root, "plugin-a/ui/pnpm-workspace.yaml", "packages: ['widgets/*']\npatchedDependencies:\n  exact@1.2.3: ../patches/exact.patch\n")
+	sources, err := discover(w, roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const patchPath = "plugin-a/patches/exact.patch"
+	if _, exists := sources.hashes[patchPath]; exists {
+		t.Fatal("patch already fingerprinted before reconciliation")
+	}
+	reconciled, err := reconcile(w, sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint := reconciled.inputHashes[patchPath]
+	if fingerprint == "" || fingerprint == "absent" {
+		t.Fatal("reconciliation did not return the patch fingerprint")
+	}
+	if _, exists := sources.hashes[patchPath]; exists {
+		t.Fatal("reconciliation mutated discovery fingerprints through a sourceSet value copy")
+	}
+	put(t, w.Root, patchPath, "edited patch")
+	updated, err := reconcile(w, sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.inputHashes[patchPath] == fingerprint {
+		t.Fatal("changed patch bytes did not change the returned fingerprint")
+	}
+}
+
+func TestPolicyFingerprintMergeRejectsChangedDiscoveredInput(t *testing.T) {
+	w, roots := fixture(t)
+	const configPath = "plugin-a/ui/pnpm-workspace.yaml"
+	// A policy input can also be selected as a patch. Reading it again must
+	// not replace the fingerprint for the policy bytes already consumed.
+	put(t, w.Root, configPath, "packages: ['widgets/*']\npatchedDependencies:\n  exact@1.2.3: pnpm-workspace.yaml\n")
+	sources, err := discover(w, roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	put(t, w.Root, configPath, "packages: ['widgets/*']\n")
+	reconciled, err := reconcile(w, sources)
+	if err == nil {
+		err = mergeInputHashes(sources.hashes, reconciled.inputHashes)
+	}
+	if err == nil {
+		t.Fatal("changed input replaced discovery's original policy fingerprint")
+	}
+}
+
 func TestCompatibleCatalogsAndPatchPathsRetainTheirRepositoryMeaning(t *testing.T) {
 	w, roots := fixture(t)
 	put(t, w.Root, "plugin-a/patches/exact.patch", "diff --git a/a b/a\n")
@@ -53,6 +106,14 @@ func TestCredentialsHooksUnknownPoliciesAndDeniedBuildsFailClosed(t *testing.T) 
 		{"hook", "plugin-a/ui/.pnpmfile.cjs", "module.exports = {}"},
 		{"unknown", "plugin-a/ui/pnpm-workspace.yaml", "futureUnsafePolicy: true\n"},
 		{"peer suppression", "plugin-a/ui/pnpm-workspace.yaml", "peerDependencyRules: {allowAny: ['react']}\n"},
+		{"strict peers", "plugin-a/ui/pnpm-workspace.yaml", "strictPeerDependencies: false\n"},
+		{"native node", "plugin-a/ui/pnpm-workspace.yaml", "useNodeVersion: '22.0.0'\n"},
+		{"native package manager", "plugin-a/ui/pnpm-workspace.yaml", "managePackageManagerVersions: false\n"},
+		{"invalid policy map", "plugin-a/ui/pnpm-workspace.yaml", "overrides: []\n"},
+		{"implicit build approval", "plugin-a/ui/pnpm-workspace.yaml", "allowBuilds: {esbuild: 'true'}\n"},
+		{"invalid build list", "plugin-a/ui/pnpm-workspace.yaml", "onlyBuiltDependencies: [true]\n"},
+		{"credential URL", "plugin-a/ui/pnpm-workspace.yaml", "registry: https://user:never-print-this@registry.example.test\n"},
+		{"patch escape", "plugin-a/ui/pnpm-workspace.yaml", "patchedDependencies: {exact@1.2.3: ../../omniview/package.json}\n"},
 		{"build denial", "plugin-a/ui/pnpm-workspace.yaml", "allowBuilds: {esbuild: true}\nneverBuiltDependencies: [esbuild]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

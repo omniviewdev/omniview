@@ -30,125 +30,35 @@ var policyKeys = map[string]bool{
 }
 var mergedMaps = map[string]bool{"catalog": true, "catalogs": true, "overrides": true, "packageExtensions": true, "peerDependencyRules": true, "allowBuilds": true, "patchedDependencies": true}
 
-func reconcile(w devcontract.ResolvedWorkspace, s sourceSet) (map[string]any, error) {
+type reconciledPolicy struct {
+	settings    map[string]any
+	inputHashes map[string]string
+}
+
+// Reconciliation owns only its patch fingerprints; discovery remains unchanged.
+// Callers must merge inputHashes before publishing or checking a plan.
+func reconcile(w devcontract.ResolvedWorkspace, s sourceSet) (reconciledPolicy, error) {
 	out := map[string]any{}
 	owners := map[string]string{}
+	patches := sourceSet{hashes: map[string]string{}}
 	apply := func(settings map[string]any, path string) error {
-		source := relative(w.Root, path)
 		for _, key := range sortedKeys(settings) {
-			value := settings[key]
 			if key == "packages" {
 				continue
 			}
-			if !policyKeys[key] && !(strings.HasPrefix(key, "@") && strings.HasSuffix(key, ":registry")) {
-				return refusal("unsupported setting %s in %s; reconcile it explicitly before managed installation", safeSetting(key), source)
+			value, err := normalizePolicySetting(w, key, settings[key], path, &patches)
+			if err != nil {
+				return err
 			}
-			if e := safePolicyValue(value); e != nil {
-				return refusal("credential-bearing or nonrepresentable setting %s in %s; use external registry authentication", safeSetting(key), source)
-			}
-			if mergedMaps[key] && mapping(value) == nil {
-				return refusal("setting %s in %s must be a mapping", key, source)
-			}
-			if key == "allowBuilds" {
-				for _, v := range mapping(value) {
-					if _, ok := v.(bool); !ok {
-						return refusal("allowBuilds in %s must contain explicit boolean approvals", source)
-					}
-				}
-			}
-			if key == "onlyBuiltDependencies" || key == "ignoredBuiltDependencies" || key == "neverBuiltDependencies" {
-				list, ok := value.([]any)
-				if !ok {
-					return refusal("setting %s in %s must be a list", key, source)
-				}
-				for _, v := range list {
-					if _, ok := v.(string); !ok {
-						return refusal("setting %s in %s must contain package names", key, source)
-					}
-				}
-			}
-			switch key {
-			case "strictPeerDependencies":
-				if value != true {
-					return refusal("setting strictPeerDependencies in %s conflicts with managed strict peers", source)
-				}
-			case "minimumReleaseAge":
-				if !zero(value) {
-					return refusal("setting minimumReleaseAge in %s conflicts with approved immediate-release policy", source)
-				}
-				value = 0
-			case "dangerouslyAllowAllBuilds":
-				if value != false {
-					return refusal("setting dangerouslyAllowAllBuilds in %s is not supported for managed no-script installs", source)
-				}
-			case "sharedWorkspaceLockfile":
-				if value != true {
-					return refusal("setting sharedWorkspaceLockfile in %s conflicts with one managed workspace", source)
-				}
-			case "useNodeVersion", "managePackageManagerVersions":
-				return refusal("setting %s in %s cannot replace the owned native toolchain", key, source)
-			case "peerDependencyRules":
-				m := mapping(value)
-				for rule := range m {
-					if rule == "ignoreMissing" || rule == "allowAny" || rule == "allowedVersions" {
-						return refusal("setting peerDependencyRules.%s in %s would weaken managed peer validation", rule, source)
-					}
-				}
-			}
-			if key == "patchedDependencies" {
-				m := mapping(value)
-				if m == nil {
-					return refusal("invalid setting patchedDependencies in %s", source)
-				}
-				resolved := map[string]any{}
-				repo, e := repository(w, filepath.Dir(path))
-				if e != nil {
-					return e
-				}
-				for name, v := range m {
-					p, ok := v.(string)
-					if !ok {
-						return refusal("unsupported patch declaration in %s", source)
-					}
-					abs := p
-					if !filepath.IsAbs(abs) {
-						abs = filepath.Join(filepath.Dir(path), p)
-					}
-					if !within(repo, abs) || exactPath(abs) != nil {
-						return refusal("patch path in %s escapes or redirects its selected repository", source)
-					}
-					raw, e := readInput(w, &s, abs)
-					if e != nil {
-						return e
-					}
-					if raw == nil {
-						return refusal("patch file in %s is missing", source)
-					}
-					resolved[name] = relative(w.Root, abs)
-				}
-				value = resolved
-			}
-			if prior, ok := out[key]; ok {
-				var e error
-				if mergedMaps[key] {
-					value, e = mergePolicyMap(prior, value, key, owners[key], source)
-				} else if !reflect.DeepEqual(prior, value) {
-					e = refusal("setting %s conflicts between %s and %s", key, owners[key], source)
-				}
-				if e != nil {
-					return e
-				}
-			}
-			out[key] = value
-			if owners[key] == "" {
-				owners[key] = source
+			if err := mergePolicySetting(out, owners, key, value, relative(w.Root, path)); err != nil {
+				return err
 			}
 		}
 		return nil
 	}
 	for _, dir := range sortedKeys(s.configs) {
-		if e := apply(s.configs[dir], filepath.Join(dir, "pnpm-workspace.yaml")); e != nil {
-			return nil, e
+		if err := apply(s.configs[dir], filepath.Join(dir, "pnpm-workspace.yaml")); err != nil {
+			return reconciledPolicy{}, err
 		}
 	}
 	for _, dir := range sortedKeys(s.manifests) {
@@ -156,62 +66,196 @@ func reconcile(w devcontract.ResolvedWorkspace, s sourceSet) (map[string]any, er
 		if pnpm, ok := m["pnpm"]; ok {
 			settings := mapping(pnpm)
 			if settings == nil {
-				return nil, refusal("invalid pnpm policy in %s", relative(w.Root, filepath.Join(dir, "package.json")))
+				return reconciledPolicy{}, refusal("invalid pnpm policy in %s", relative(w.Root, filepath.Join(dir, "package.json")))
 			}
-			if e := apply(settings, filepath.Join(dir, "package.json")); e != nil {
-				return nil, e
+			if err := apply(settings, filepath.Join(dir, "package.json")); err != nil {
+				return reconciledPolicy{}, err
 			}
 		}
 		if _, ok := m["resolutions"]; ok {
-			return nil, refusal("package resolutions in %s require explicit pnpm overrides before managed installation", relative(w.Root, dir))
+			return reconciledPolicy{}, refusal("package resolutions in %s require explicit pnpm overrides before managed installation", relative(w.Root, dir))
 		}
 	}
-	for _, rel := range sortedKeys(s.hashes) {
-		if filepath.Base(rel) != ".npmrc" || s.hashes[rel] == "absent" {
-			continue
+	// A patch may itself select an npmrc input. Include those paths without
+	// adding the patch fingerprints to discovery's shared map.
+	npmrcPaths := map[string]bool{}
+	for _, hashes := range []map[string]string{s.hashes, patches.hashes} {
+		for rel, fingerprint := range hashes {
+			if filepath.Base(rel) == ".npmrc" && fingerprint != "absent" {
+				npmrcPaths[rel] = true
+			}
 		}
+	}
+	for _, rel := range sortedKeys(npmrcPaths) {
 		path := filepath.Join(w.Root, rel)
-		raw, e := os.ReadFile(path)
-		if e != nil {
-			return nil, e
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return reconciledPolicy{}, err
 		}
-		settings, e := npmSettings(raw, rel)
-		if e != nil {
-			return nil, e
+		settings, err := npmSettings(raw, rel)
+		if err != nil {
+			return reconciledPolicy{}, err
 		}
-		if e = apply(settings, path); e != nil {
-			return nil, e
-		}
-	}
-	// A root must never authorize a build another root explicitly denied, even
-	// though managed installation additionally disables every lifecycle script.
-	allowed := mapping(out["allowBuilds"])
-	for _, key := range []string{"ignoredBuiltDependencies", "neverBuiltDependencies"} {
-		if list, ok := out[key].([]any); ok {
-			for _, v := range list {
-				if name, ok := v.(string); ok && allowed[name] == true {
-					return nil, refusal("build approval conflicts with setting %s", key)
-				}
-			}
+		if err = apply(settings, path); err != nil {
+			return reconciledPolicy{}, err
 		}
 	}
-	if list, ok := out["onlyBuiltDependencies"].([]any); ok {
-		permitted := map[string]bool{}
-		for _, name := range list {
-			permitted[name.(string)] = true
-		}
-		for name, approval := range allowed {
-			if approval == true && !permitted[name] {
-				return nil, refusal("build approval conflicts with setting onlyBuiltDependencies")
-			}
-		}
+	if err := validateBuildApprovals(out); err != nil {
+		return reconciledPolicy{}, err
 	}
 	out["strictPeerDependencies"] = true
 	out["ignoreScripts"] = true
 	out["minimumReleaseAge"] = 0
 	out["pmOnFail"] = "error"
 	out["sharedWorkspaceLockfile"] = true
-	return out, nil
+	return reconciledPolicy{settings: out, inputHashes: patches.hashes}, nil
+}
+
+// Normalize one source's concrete policy before comparing it with other roots.
+// Security decisions belong here, not in merge/provenance bookkeeping.
+func normalizePolicySetting(w devcontract.ResolvedWorkspace, key string, value any, path string, patches *sourceSet) (any, error) {
+	source := relative(w.Root, path)
+	if !policyKeys[key] && !(strings.HasPrefix(key, "@") && strings.HasSuffix(key, ":registry")) {
+		return nil, refusal("unsupported setting %s in %s; reconcile it explicitly before managed installation", safeSetting(key), source)
+	}
+	if err := safePolicyValue(value); err != nil {
+		return nil, refusal("credential-bearing or nonrepresentable setting %s in %s; use external registry authentication", safeSetting(key), source)
+	}
+	if err := validatePolicyShape(key, value, source); err != nil {
+		return nil, err
+	}
+	switch key {
+	case "strictPeerDependencies":
+		if value != true {
+			return nil, refusal("setting strictPeerDependencies in %s conflicts with managed strict peers", source)
+		}
+	case "minimumReleaseAge":
+		if !zero(value) {
+			return nil, refusal("setting minimumReleaseAge in %s conflicts with approved immediate-release policy", source)
+		}
+		value = 0
+	case "dangerouslyAllowAllBuilds":
+		if value != false {
+			return nil, refusal("setting dangerouslyAllowAllBuilds in %s is not supported for managed no-script installs", source)
+		}
+	case "sharedWorkspaceLockfile":
+		if value != true {
+			return nil, refusal("setting sharedWorkspaceLockfile in %s conflicts with one managed workspace", source)
+		}
+	case "useNodeVersion", "managePackageManagerVersions":
+		return nil, refusal("setting %s in %s cannot replace the owned native toolchain", key, source)
+	case "peerDependencyRules":
+		for rule := range mapping(value) {
+			if rule == "ignoreMissing" || rule == "allowAny" || rule == "allowedVersions" {
+				return nil, refusal("setting peerDependencyRules.%s in %s would weaken managed peer validation", rule, source)
+			}
+		}
+	case "patchedDependencies":
+		return normalizePatchPaths(w, mapping(value), path, patches)
+	}
+	return value, nil
+}
+
+func validatePolicyShape(key string, value any, source string) error {
+	if mergedMaps[key] && mapping(value) == nil {
+		return refusal("setting %s in %s must be a mapping", key, source)
+	}
+	switch key {
+	case "allowBuilds":
+		for _, approval := range mapping(value) {
+			if _, ok := approval.(bool); !ok {
+				return refusal("allowBuilds in %s must contain explicit boolean approvals", source)
+			}
+		}
+	case "onlyBuiltDependencies", "ignoredBuiltDependencies", "neverBuiltDependencies":
+		list, ok := value.([]any)
+		if !ok {
+			return refusal("setting %s in %s must be a list", key, source)
+		}
+		for _, name := range list {
+			if _, ok := name.(string); !ok {
+				return refusal("setting %s in %s must contain package names", key, source)
+			}
+		}
+	}
+	return nil
+}
+
+func normalizePatchPaths(w devcontract.ResolvedWorkspace, declarations map[string]any, path string, patches *sourceSet) (map[string]any, error) {
+	source := relative(w.Root, path)
+	repo, err := repository(w, filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+	resolved := map[string]any{}
+	for name, declaration := range declarations {
+		patch, ok := declaration.(string)
+		if !ok {
+			return nil, refusal("unsupported patch declaration in %s", source)
+		}
+		abs := patch
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(filepath.Dir(path), patch)
+		}
+		if !within(repo, abs) || exactPath(abs) != nil {
+			return nil, refusal("patch path in %s escapes or redirects its selected repository", source)
+		}
+		raw, err := readInput(w, patches, abs)
+		if err != nil {
+			return nil, err
+		}
+		if raw == nil {
+			return nil, refusal("patch file in %s is missing", source)
+		}
+		resolved[name] = relative(w.Root, abs)
+	}
+	return resolved, nil
+}
+
+func mergePolicySetting(settings map[string]any, owners map[string]string, key string, value any, source string) error {
+	if prior, ok := settings[key]; ok {
+		if mergedMaps[key] {
+			var err error
+			value, err = mergePolicyMap(prior, value, key, owners[key], source)
+			if err != nil {
+				return err
+			}
+		} else if !reflect.DeepEqual(prior, value) {
+			return refusal("setting %s conflicts between %s and %s", key, owners[key], source)
+		}
+	}
+	settings[key] = value
+	if owners[key] == "" {
+		owners[key] = source
+	}
+	return nil
+}
+
+func validateBuildApprovals(settings map[string]any) error {
+	// A root must never authorize a build another root explicitly denied, even
+	// though managed installation additionally disables every lifecycle script.
+	allowed := mapping(settings["allowBuilds"])
+	for _, key := range []string{"ignoredBuiltDependencies", "neverBuiltDependencies"} {
+		if list, ok := settings[key].([]any); ok {
+			for _, v := range list {
+				if name, ok := v.(string); ok && allowed[name] == true {
+					return refusal("build approval conflicts with setting %s", key)
+				}
+			}
+		}
+	}
+	if list, ok := settings["onlyBuiltDependencies"].([]any); ok {
+		permitted := map[string]bool{}
+		for _, name := range list {
+			permitted[name.(string)] = true
+		}
+		for name, approval := range allowed {
+			if approval == true && !permitted[name] {
+				return refusal("build approval conflicts with setting onlyBuiltDependencies")
+			}
+		}
+	}
+	return nil
 }
 func zero(v any) bool {
 	switch n := v.(type) {

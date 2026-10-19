@@ -22,7 +22,10 @@ window.__OMNIVIEW_INSTANCE__ = {
   kind: 'production',
 };
 const instanceBootstrap = /<script>([\s\S]*?)<\/script>/.exec(readFileSync('index.html', 'utf8'))?.[1];
-if (!instanceBootstrap) throw new Error('Missing instance bootstrap script');
+if (!instanceBootstrap) {
+  throw new Error('Missing instance bootstrap script');
+}
+
 new Function(instanceBootstrap)();
 
 // Extend vitest's expect with jest-dom matchers
