@@ -202,6 +202,17 @@ for (const liveFrontend of [false, true]) {
       const kubernetesRepository = (await a.workspace.status()).manifest.plugins.find(plugin => plugin.id === 'kubernetes')!.repositoryID;
       await a.workspace.editSource(kubernetesRepository, 'ui/src/pages/ClustersPage.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
       await graphReady(a.workspace, info, `${mode}-runtime`);
+      // Graph readiness precedes browser bootstrap. A visible old button can
+      // still execute its previous handler while automatic replacement starts.
+      for (const page of [a.page, kubeA]) {
+        await page.waitForFunction(() => {
+          const shared: unknown = Reflect.get(window, '__OMNIVIEW_SHARED__');
+          if (!shared || typeof shared !== 'object') return false;
+          const runtime: unknown = Reflect.get(shared, '@omniviewdev/runtime');
+          return !!runtime && typeof runtime === 'object'
+            && typeof Reflect.get(runtime, 'workspaceAcceptanceRevision') === 'function';
+        }, undefined, { timeout: 120_000 });
+      }
       await expect(a.page.locator('.workspace-host-consumer')).toBeVisible({ timeout: buildTimeout });
       await a.page.locator('.workspace-host-consumer').click();
       await expect(a.page.locator('.workspace-host-consumer')).toHaveText('Shared runtime revised');
@@ -216,6 +227,7 @@ for (const liveFrontend of [false, true]) {
 
       stage = 'sdk-failure';
       const beforeSDK = await assertManagedPlugins(a.workspace);
+      const beforeSDKDocument = await a.page.evaluate(() => performance.timeOrigin);
       await a.workspace.editSource('plugin-sdk', 'settings/setting.go', source => replaceOnce(source, '\ts.Label = label\n', '\ts.Label = )\n'));
       await expect.poll(async () => {
         const status = await a.workspace.status();
@@ -226,6 +238,7 @@ for (const liveFrontend of [false, true]) {
       expect(Object.values(failed.builds ?? {}).some(build => build.phase === 'error')).toBe(true);
       // Existing backend availability does not promote a failed new SDK graph.
       expect(failed.generation).toBe(beforeSDK.generation);
+      expect(await a.page.evaluate(() => performance.timeOrigin)).toBe(beforeSDKDocument);
       const failedGraphPath = info.outputPath(`${mode}-sdk-failed-graph.json`);
       await writeFile(failedGraphPath, JSON.stringify({ phase: failed.launchPhase, generation: failed.generation, builds: Object.fromEntries(Object.entries(failed.builds ?? {}).map(([id, build]) => [id, build.phase])) }));
       await info.attach(`${mode}-sdk-failed-graph.json`, { path: failedGraphPath, contentType: 'application/json' });
@@ -238,6 +251,9 @@ for (const liveFrontend of [false, true]) {
       expect(repaired.process.startIdentity).not.toBe(beforeSDK.process.startIdentity);
       for (const plugin of beforeSDK.plugins) expect(repaired.plugins.find(current => current.id === plugin.id)!.generation).not.toBe(plugin.generation);
       expect((await a.workspace.status()).builds?.['host-restart']?.phase).toBe('ready');
+      await a.page.waitForFunction(previous => performance.timeOrigin !== previous, beforeSDKDocument, { timeout: buildTimeout });
+      // A replacement document repeats cold app bootstrap; controls retain normal deadlines.
+      await a.page.getByTestId('app-shell').waitFor({ timeout: 120_000 });
       await openSettingsCategory(a.page, 'Terminal');
       await expect(settingRow(a.page, 'terminal.fontSize').getByText('Font Size (rebuilt)', { exact: true })).toBeVisible();
       await openProbeSettings(a.page);
@@ -264,6 +280,9 @@ for (const liveFrontend of [false, true]) {
       await openProbe(b.page, b.workspace);
       await b.page.locator('.workspace-plugin-consumer').click();
       await expect(b.page.locator('.workspace-plugin-consumer')).toHaveText('Shared runtime original');
+      await writeFile(info.outputPath(`${mode}-consumer-identities.json`), JSON.stringify({
+        mode, initial: { a: beforeA, b: beforeB }, beforeSDK, repaired, restarted, unchangedB,
+      }, null, 2));
       await a.page.screenshot({ path: info.outputPath(`${mode}-sdk-repaired-and-restarted.png`), fullPage: true });
     } catch (error) {
       for (const [name, profile] of [['a', a], ['b', b]] as const) {
