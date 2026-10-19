@@ -14,7 +14,11 @@ export type Descriptor = {
   kind: string; displayName: string; stateRoot: string; readiness: string;
   process: { pid: number; startIdentity: string; executable: string; workspaceID: string; generation: string; role: string; source: string };
   endpoints: { browser: string | null; vite: string | null; hmr: string | null; control: string | null; mcp: string | null };
-  plugins: Array<{ id: string; source: string; generation: string; mode: string; buildStatus: string; viteStatus: string; rpcStatus: string; controllerStatus: string }>;
+  plugins: Array<{
+    id: string; source: string; generation: string; mode: string;
+    buildStatus: string; viteStatus: string; rpcStatus: string; controllerStatus: string;
+    lastError?: { code: string; message: string };
+  }>;
 };
 export type Status = {
   manifest: { workspaceID: string; plugins: Array<{ id: string; repositoryID: string; mode: string }> };

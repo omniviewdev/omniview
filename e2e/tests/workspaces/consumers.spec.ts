@@ -353,6 +353,11 @@ for (const liveFrontend of [false, true]) {
           await writeFile(failurePath, JSON.stringify({
             stage, workspaceID: status.manifest.workspaceID, generation: status.generation, phase: status.launchPhase,
             lastError: status.lastError && { code: status.lastError.code, message: status.lastError.message.slice(0, 2048) },
+            plugins: status.instance?.plugins?.map(plugin => ({
+              id: plugin.id, generation: plugin.generation,
+              build: plugin.buildStatus, vite: plugin.viteStatus, rpc: plugin.rpcStatus, controllers: plugin.controllerStatus,
+              lastError: plugin.lastError && { code: plugin.lastError.code, message: plugin.lastError.message.slice(0, 2048) },
+            })),
             builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([id, build]) => [id, { phase: build.phase, error: build.error?.slice(0, 2048) }])),
           }));
           await info.attach(`${mode}-${name}-${stage}-failure.json`, { path: failurePath, contentType: 'application/json' });
