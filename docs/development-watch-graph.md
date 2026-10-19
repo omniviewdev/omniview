@@ -94,6 +94,8 @@ Consumer verification first proves the edited source's observable outcome: rende
 
 Edit-specific freshness uses the existing producer build deadline, including runtime/shim generation, host frontend compilation and any host replacement. It does not inherit a short UI-control deadline merely because the final observation reads a browser document; ordinary controls keep their existing shorter deadlines.
 
+Authenticated descriptor admission and stage readiness belong to the same bounded observation attempt. A queued watch batch can enter `building` between a phase sample and the subsequent control request; repeat the complete observation under the existing producer deadline rather than treating that legitimate transition as an authentication failure. Every attempt still enforces exact UUID/generation, selected sources and applicable plugin stages.
+
 ## Nested package-manager pinning
 
 The graph's `PNPMCommand(ctx,pin,args...)` returns an argv-safe Node launcher through a ledger-owned `.local/toolchains/pnpm-12.14.0/pnpm.cjs`. It validates and directly spawns the actual native **12.14.0** executable—not Node/Corepack. Set canonical `OMNIVIEW_PNPM_EXECUTABLE` when PATH exposes another manager or a shell wrapper. Wrong versions fail without fallback. The launcher clears inherited workspace-dir aliases, assigns the validated feature root, preserves actual consumer cwd/argv, and uses private aliases for nested `pnpm`; no global installation or package script changes.

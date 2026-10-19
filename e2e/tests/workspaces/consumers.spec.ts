@@ -70,25 +70,28 @@ async function prepareSharedRuntimeConsumers(workspace: Workspace, repositories:
 }
 
 async function assertManagedPlugins(workspace: Workspace): Promise<Descriptor> {
-  // UI HMR can finish while the coalesced backend graph is still rebuilding.
-  // Wait only for that in-flight phase; terminal errors still fail verification.
-  await expect.poll(async () => (await workspace.status()).launchPhase, {
-    ...poll, message: 'Managed readiness must follow completion of the current source build',
-  }).not.toBe('building');
-  const descriptor = await workspace.verify();
-  const selected = (await workspace.status()).manifest.plugins;
-  expect(selected.length).toBeGreaterThanOrEqual(2);
-  for (const selection of selected) {
-    const response = await workspace.control('plugin.dev.status', { id: selection.id });
-    expect(response.error, `${selection.id} authenticated managed status`).toBeUndefined();
-    expect(response.result).toMatchObject({ id: selection.id, mode: 'managed', ready: true, buildStatus: 'ready', viteStatus: 'ready', rpcStatus: 'ready', controllerStatus: 'ready' });
-    const plugin = descriptor.plugins.find(plugin => plugin.id === selection.id);
-    expect(plugin, `${selection.id} must be included in the actual host descriptor`).toBeDefined();
-    expect(plugin!.source).toBe(await workspace.repository(selection.repositoryID));
-    expect(plugin!.generation).not.toBe('');
+  let ready: Descriptor | undefined;
+  await expect(async () => {
+    const descriptor = await workspace.verify();
+    const selected = (await workspace.status()).manifest.plugins;
+    expect(selected.length).toBeGreaterThanOrEqual(2);
+    for (const selection of selected) {
+      const response = await workspace.control('plugin.dev.status', { id: selection.id });
+      expect(response.error, `${selection.id} authenticated managed status`).toBeUndefined();
+      expect(response.result).toMatchObject({ id: selection.id, mode: 'managed', ready: true, buildStatus: 'ready', viteStatus: 'ready', rpcStatus: 'ready', controllerStatus: 'ready' });
+      const plugin = descriptor.plugins.find(plugin => plugin.id === selection.id);
+      expect(plugin, `${selection.id} must be included in the actual host descriptor`).toBeDefined();
+      expect(plugin!.source).toBe(await workspace.repository(selection.repositoryID));
+      expect(plugin!.generation).not.toBe('');
+    }
+
+    ready = descriptor;
+  }).toPass(poll);
+  if (!ready) {
+    throw new Error('Managed readiness completed without an authenticated descriptor');
   }
 
-  return descriptor;
+  return ready;
 }
 
 async function openProbe(page: Page, workspace: Workspace): Promise<void> {
@@ -130,11 +133,11 @@ async function assertBackendEvents(page: Page, workspace: Workspace): Promise<vo
 async function graphReady(workspace: Workspace, info: TestInfo, stage: string): Promise<void> {
   // Callers first prove their edit's rendered/runtime/process outcome. A fast
   // completed build need not leave a transient non-ready sample to observe.
-  await expect.poll(async () => {
+  await expect(async () => {
     const status = await workspace.status();
-    return { phase: status.launchPhase, graph: status.builds?.graph?.phase };
-  }, { ...poll, message: `${stage}: the fresh consumer graph must finish ready` }).toEqual({ phase: 'ready', graph: 'ready' });
-  await workspace.reselect();
+    expect({ phase: status.launchPhase, graph: status.builds?.graph?.phase }, `${stage}: the fresh consumer graph must finish ready`).toEqual({ phase: 'ready', graph: 'ready' });
+    await workspace.reselect();
+  }).toPass(poll);
   const status = await workspace.status();
   const path = info.outputPath(`${stage}-graph.json`);
   await writeFile(path, JSON.stringify({ generation: status.generation, phase: status.launchPhase, builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([id, build]) => [id, build.phase])) }));
