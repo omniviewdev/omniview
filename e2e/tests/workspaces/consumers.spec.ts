@@ -1,9 +1,10 @@
-import { randomUUID } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
 import type { Page, TestInfo } from '@playwright/test';
 import { test, expect } from '../fixtures/app.fixture';
 import { openSettingsCategory, saveSettings, settingRow } from '../fixtures/helpers';
 import type { Descriptor, Workspace } from '../fixtures/workspace';
+import { join } from 'node:path';
 
 const buildTimeout = 20 * 60_000;
 const poll = { timeout: buildTimeout, intervals: [500, 1_000, 2_000, 5_000] };
@@ -144,7 +145,9 @@ async function graphReady(workspace: Workspace, info: TestInfo, stage: string): 
   await info.attach(`${stage}-graph.json`, { path, contentType: 'application/json' });
 }
 
-async function reviseSharedRuntimeConsumers(workspace: Workspace, pages: readonly Page[]): Promise<void> {
+async function reviseSharedRuntimeConsumers(workspace: Workspace): Promise<void> {
+  const entry = join(await workspace.repository('omniview'), 'packages/omniviewdev-runtime/dist/index.js');
+  const previous = createHash('sha256').update(await readFile(entry)).digest('hex');
   const selected = (await workspace.status()).manifest.plugins;
   const probeRepository = selected.find(plugin => plugin.id === probeID)!.repositoryID;
   const kubernetesRepository = selected.find(plugin => plugin.id === 'kubernetes')!.repositoryID;
@@ -152,8 +155,13 @@ async function reviseSharedRuntimeConsumers(workspace: Workspace, pages: readonl
   await workspace.editSource('omniview', 'ui/App.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
   await workspace.editSource(probeRepository, 'ui/src/ProbePage.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
   await workspace.editSource(kubernetesRepository, 'ui/src/pages/ClustersPage.tsx', source => source.replaceAll('workspaceAcceptanceLabel', 'workspaceAcceptanceRevision'));
-  // Old visible buttons may retain old handlers during automatic bootstrap.
-  // The newly loaded real export proves this edit reached each document.
+  await expect(async () => {
+    const published = createHash('sha256').update(await readFile(entry)).digest('hex');
+    expect(published).not.toBe(previous);
+  }).toPass(poll);
+}
+
+async function waitForRuntimeConsumers(pages: readonly Page[]): Promise<void> {
   for (const page of pages) {
     await page.waitForFunction(() => {
       const shared: unknown = Reflect.get(window, '__OMNIVIEW_SHARED__');
@@ -164,7 +172,7 @@ async function reviseSharedRuntimeConsumers(workspace: Workspace, pages: readonl
       const runtime: unknown = Reflect.get(shared, '@omniviewdev/runtime');
       return !!runtime && typeof runtime === 'object'
         && typeof Reflect.get(runtime, 'workspaceAcceptanceRevision') === 'function';
-    }, undefined, { timeout: buildTimeout });
+    }, undefined, { timeout: 120_000 });
   }
 }
 
@@ -291,8 +299,9 @@ for (const liveFrontend of [false, true]) {
       await expect(b.page.locator('.workspace-plugin-consumer')).toHaveCSS('border-top-color', 'rgb(21, 67, 109)');
 
       stage = 'new-runtime-export';
-      await reviseSharedRuntimeConsumers(a.workspace, [a.page, kubeA]);
+      await reviseSharedRuntimeConsumers(a.workspace);
       await graphReady(a.workspace, info, `${mode}-runtime`);
+      await waitForRuntimeConsumers([a.page, kubeA]);
       await expect(a.page.locator('.workspace-host-consumer')).toBeVisible({ timeout: buildTimeout });
       await a.page.locator('.workspace-host-consumer').click();
       await expect(a.page.locator('.workspace-host-consumer')).toHaveText('Shared runtime revised');
