@@ -161,7 +161,7 @@ async function reviseSharedRuntimeConsumers(workspace: Workspace, pages: readonl
       const runtime: unknown = Reflect.get(shared, '@omniviewdev/runtime');
       return !!runtime && typeof runtime === 'object'
         && typeof Reflect.get(runtime, 'workspaceAcceptanceRevision') === 'function';
-    }, undefined, { timeout: 120_000 });
+    }, undefined, { timeout: buildTimeout });
   }
 }
 

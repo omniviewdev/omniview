@@ -92,6 +92,8 @@ Live runtime HMR retains the extension registry in document-local hot data. The 
 
 Consumer verification first proves the edited source's observable outcome: rendered CSS, a newly imported runtime export, or a changed host/plugin process identity and document. It then waits for the in-flight graph phase to end and enforces authenticated identity plus every applicable plugin readiness stage. No test requires sampling a transient `building` phase: a fast completed build is valid, while an old ready graph without the edited outcome is not. Terminal build errors remain failures even if an existing page still renders.
 
+Edit-specific freshness uses the existing producer build deadline, including runtime/shim generation, host frontend compilation and any host replacement. It does not inherit a short UI-control deadline merely because the final observation reads a browser document; ordinary controls keep their existing shorter deadlines.
+
 ## Nested package-manager pinning
 
 The graph's `PNPMCommand(ctx,pin,args...)` returns an argv-safe Node launcher through a ledger-owned `.local/toolchains/pnpm-12.14.0/pnpm.cjs`. It validates and directly spawns the actual native **12.14.0** executable—not Node/Corepack. Set canonical `OMNIVIEW_PNPM_EXECUTABLE` when PATH exposes another manager or a shell wrapper. Wrong versions fail without fallback. The launcher clears inherited workspace-dir aliases, assigns the validated feature root, preserves actual consumer cwd/argv, and uses private aliases for nested `pnpm`; no global installation or package script changes.
