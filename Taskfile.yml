@@ -33,6 +33,11 @@ vars:
   # Resolve explicit or manifest-linked SDK source before compiling the CLI helper.
   CLI_ENVIRONMENT: 'GOWORK=off GOFLAGS= GO111MODULE=on GOCACHE={{if .GO_BUILD_CACHE_DIRECTORY}}{{.GO_BUILD_CACHE_DIRECTORY | shellQuote}}{{else}}{{env "GOCACHE" | shellQuote}}{{end}} GOTMPDIR='
   CLI_BOOTSTRAP: '{{.CLI_ENVIRONMENT}} GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/devcli/bootstrap" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}}'
+  GO_FORMAT_SOURCES: >-
+    git ls-files --cached --others --exclude-standard --deduplicate -z -- '*.go' |
+    xargs -0 -r sh -c 'for file; do
+      if [ -f "$file" ]; then printf "%s\0" "$file"; fi
+    done' _
   # Raw caller input; derived defaults are selected at each consuming task.
   BUILD_FLAGS: '{{.BUILD_FLAGS | default ""}}'
   DEV: '{{.DEV | default "false"}}'
@@ -288,7 +293,7 @@ tasks:
   check:fmt:
     aliases: [fmt]
     cmds:
-      - set -o pipefail; git ls-files --cached --others --exclude-standard --deduplicate -z -- '*.go' | xargs -0 goimports -w
+      - set -o pipefail; {{.GO_FORMAT_SOURCES}} | xargs -0 -r goimports -w
 
   check:fmt-check:
     cmds:
@@ -298,7 +303,7 @@ tasks:
             echo "goimports not found. Install with: go install golang.org/x/tools/cmd/goimports@latest"
             exit 1
           fi
-          UNFORMATTED=$(git ls-files --cached --others --exclude-standard --deduplicate -z -- '*.go' | xargs -0 goimports -l)
+          UNFORMATTED=$({{.GO_FORMAT_SOURCES}} | xargs -0 -r goimports -l)
           if [ -n "$UNFORMATTED" ]; then
             echo "The following Go source files need formatting or import cleanup (run task fmt):"
             echo "$UNFORMATTED"
