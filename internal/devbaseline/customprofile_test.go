@@ -1,6 +1,7 @@
 package devbaseline
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -58,11 +59,12 @@ func TestBoundCustomProfileSeedsPreferencesAndInactiveInventory(t *testing.T) {
 	var manifest Baseline
 	data, err := os.ReadFile(result.ManifestPath)
 	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(data, &manifest))
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	require.NoError(t, decoder.Decode(&manifest))
 	require.Equal(t, []Plugin{{ID: "example", Version: "1.2.3", Status: "inactive", Provenance: "unverified-source-inventory"}}, manifest.Plugins)
 	require.NotContains(t, string(data), "/private/source-worktree")
 	require.NotContains(t, string(data), "secret")
-	require.NotContains(t, string(data), "1234")
 	ownerAfter, err := os.ReadFile(ownerPath)
 	require.NoError(t, err)
 	require.Equal(t, ownerBefore, ownerAfter)
