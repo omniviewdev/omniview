@@ -19,7 +19,8 @@ export type Descriptor = {
 export type Status = {
   manifest: { workspaceID: string; plugins: Array<{ id: string; repositoryID: string; mode: string }> };
   root: string; stateRoot: string; launchPhase: string; generation?: string; instance?: Descriptor;
-  builds?: Record<string, { node: string; phase: string }>;
+  builds?: Record<string, { node: string; phase: string; error?: string }>;
+  lastError?: { code: string; message: string };
 };
 export type ProfileOptions = {
   liveFrontend?: boolean;

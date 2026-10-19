@@ -350,7 +350,11 @@ for (const liveFrontend of [false, true]) {
         try {
           const status = await profile.workspace.status();
           const failurePath = info.outputPath(`${mode}-${name}-${stage}-failure.json`);
-          await writeFile(failurePath, JSON.stringify({ stage, workspaceID: status.manifest.workspaceID, generation: status.generation, phase: status.launchPhase, builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([id, build]) => [id, build.phase])) }));
+          await writeFile(failurePath, JSON.stringify({
+            stage, workspaceID: status.manifest.workspaceID, generation: status.generation, phase: status.launchPhase,
+            lastError: status.lastError && { code: status.lastError.code, message: status.lastError.message.slice(0, 2048) },
+            builds: Object.fromEntries(Object.entries(status.builds ?? {}).map(([id, build]) => [id, { phase: build.phase, error: build.error?.slice(0, 2048) }])),
+          }));
           await info.attach(`${mode}-${name}-${stage}-failure.json`, { path: failurePath, contentType: 'application/json' });
           if (!profile.page.isClosed()) {
             await profile.page.screenshot({ path: info.outputPath(`${mode}-${name}-${stage}-failure.png`), fullPage: true });
