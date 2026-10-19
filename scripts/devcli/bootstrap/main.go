@@ -1,4 +1,4 @@
-// Command bootstrap selects the explicit SDK for compiling devcli itself.
+// Command bootstrap selects compilation inputs before loading devcli itself.
 // Keep this entry standard-library-only: source selection and cache authority
 // remain in devcli, which may import packages absent from the published SDK.
 package main
@@ -54,6 +54,10 @@ func bootstrap(ctx context.Context, options bootstrapOptions, output, diagnostic
 	if err != nil {
 		return err
 	}
+	compileSDK, err := compilationSDK(root, options.sdkSource)
+	if err != nil {
+		return err
+	}
 	selection := []string{"--root", root}
 	if options.modfile != "" {
 		selection = append(selection, "--host-modfile", options.modfile)
@@ -62,7 +66,7 @@ func bootstrap(ctx context.Context, options bootstrapOptions, output, diagnostic
 		selection = append(selection, "--sdk-source", options.sdkSource)
 	}
 	compileModfile := options.modfile
-	if options.sdkSource != "" {
+	if compileSDK != "" {
 		var temporary string
 		temporary, err = os.MkdirTemp("", "omniview-devcli-bootstrap-")
 		if err != nil {
@@ -74,6 +78,9 @@ func bootstrap(ctx context.Context, options bootstrapOptions, output, diagnostic
 			return pathErr
 		}
 		args := append([]string{"run", filepath.Join(root, "scripts", "nativepatch", "main.go")}, selection...)
+		if options.sdkSource == "" {
+			args = append(args, "--sdk-source", compileSDK)
+		}
 		args = append(args, "--output-directory", canonical)
 		command := exec.CommandContext(ctx, "go", args...)
 		command.Dir = root

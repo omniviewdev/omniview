@@ -30,9 +30,9 @@ vars:
   # Reset cross-compilation variables while running this native-free host helper.
   HOST_BOOTSTRAP: 'GOWORK=off GOFLAGS= GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/nativepatch/main.go" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}} {{if .NATIVE_PATCH_OUTPUT_DIRECTORY}}--output-directory={{.NATIVE_PATCH_OUTPUT_DIRECTORY | shellQuote}}{{end}}'
   # CLI bootstrap and execution must not inherit the standalone source-local cache.
-  # Resolve an explicitly selected SDK before compiling the SDK-dependent CLI helper.
+  # Resolve explicit or manifest-linked SDK source before compiling the CLI helper.
   CLI_ENVIRONMENT: 'GOWORK=off GOFLAGS= GO111MODULE=on GOCACHE={{if .GO_BUILD_CACHE_DIRECTORY}}{{.GO_BUILD_CACHE_DIRECTORY | shellQuote}}{{else}}{{env "GOCACHE" | shellQuote}}{{end}} GOTMPDIR='
-  CLI_BOOTSTRAP: '{{.CLI_ENVIRONMENT}} GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/devcli/bootstrap/main.go" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}}'
+  CLI_BOOTSTRAP: '{{.CLI_ENVIRONMENT}} GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/devcli/bootstrap" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}}'
   # Raw caller input; derived defaults are selected at each consuming task.
   BUILD_FLAGS: '{{.BUILD_FLAGS | default ""}}'
   DEV: '{{.DEV | default "false"}}'

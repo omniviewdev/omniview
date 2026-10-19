@@ -8,11 +8,16 @@ The [workspace roadmap](development-workspaces-roadmap.md) records research deci
 
 Use the bootstrap-aware Task entry point. The initial CLI needs the reviewed companion SDK source because the currently declared published SDK does not contain the new isolation APIs. `SDK_SOURCE` is explicit: there is no inferred sibling replacement, global `go.work`, global `GOFLAGS`, package upgrade or canonical-source mutation.
 
-Task first runs a standard-library-only bootstrap entry. With explicit
-`SDK_SOURCE`, it prepares the existing pinned native module into a private
-temporary directory and uses that module to compile the CLI bootstrap itself,
-before any unpublished SDK package is imported. The original source and
-`GO_MODFILE` selections still reach the full CLI selection/cache checks unchanged.
+Task first runs a standard-library-only bootstrap entry. It uses explicit
+`SDK_SOURCE`, or the exact SDK repository linked by a selected enclosing workspace
+manifest whose canonical host directory matches the actual checkout. It never
+guesses sibling locations. This narrow source projection refuses ambiguous,
+escaping, or conflicting selections; it is not profile or ownership authority.
+The existing pinned native helper prepares a private temporary module to compile
+the CLI bootstrap before unpublished SDK packages are imported. Original source,
+workspace environment, and `GO_MODFILE` selections reach the full CLI unchanged,
+which independently validates the complete manifest, profile, and source/cache
+authority before publication.
 Temporary preparation is removed only after that bootstrap process exits; the
 immutable CLI and its owned cache remain managed by the full bootstrap.
 

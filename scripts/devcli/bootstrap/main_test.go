@@ -3,15 +3,30 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestBootstrapCompilesAgainstExplicitSDKBeforeLoadingDevcli(t *testing.T) {
-	root := t.TempDir()
-	sdk := t.TempDir()
+	testBootstrapCompilation(t, false)
+}
+
+func TestBootstrapCompilesAgainstEnclosingSDKBeforeLoadingDevcli(t *testing.T) {
+	testBootstrapCompilation(t, true)
+}
+
+func testBootstrapCompilation(t *testing.T, enclosing bool) {
+	t.Helper()
+	collection, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(collection, "host")
+	sdk := filepath.Join(collection, "reviewed-sdk")
 	write := func(path, value string) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -20,6 +35,18 @@ func TestBootstrapCompilesAgainstExplicitSDKBeforeLoadingDevcli(t *testing.T) {
 		if err := os.WriteFile(path, []byte(value), 0600); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if enclosing {
+		manifest := map[string]any{
+			"schemaVersion": 1,
+			"repositories":  []map[string]string{{"id": "omniview", "directory": "host"}, {"id": "selected-sdk", "directory": "reviewed-sdk"}},
+			"links":         map[string]string{"sdkRepositoryID": "selected-sdk"},
+		}
+		data, err := json.Marshal(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(filepath.Join(collection, "workspace.json"), string(data))
 	}
 	write(filepath.Join(root, "go.mod"), "module fixture\n\ngo 1.25.0\n")
 	originalModfile := filepath.Join(root, "selected.mod")
@@ -47,11 +74,17 @@ func main() {
 }`)
 	receipt := filepath.Join(t.TempDir(), "preparation.txt")
 	t.Setenv("BOOTSTRAP_RECEIPT", receipt)
-	t.Setenv("EXPECTED_SDK", sdk)
+	explicitSDK := sdk
+	if enclosing {
+		explicitSDK = ""
+	}
+	t.Setenv("EXPECTED_SDK", explicitSDK)
+	t.Setenv("OMNIVIEW_WORKSPACE_FILE", "")
+	t.Setenv("OMNIVIEW_STATE_DIR", "")
 	t.Setenv("GOWORK", "off")
 	t.Setenv("GOFLAGS", "")
 	var output, diagnostics bytes.Buffer
-	err := bootstrap(context.Background(), bootstrapOptions{root: root, modfile: originalModfile, sdkSource: sdk}, &output, &diagnostics)
+	err = bootstrap(context.Background(), bootstrapOptions{root: root, modfile: originalModfile, sdkSource: explicitSDK}, &output, &diagnostics)
 	if err != nil || strings.TrimSpace(output.String()) != "selected-contract" {
 		t.Fatalf("bootstrap did not use explicit SDK before compilation: %v\n%s\n%s", err, &output, &diagnostics)
 	}
@@ -84,6 +117,99 @@ func TestBootstrapRejectsInvalidExplicitSDKBeforeCompilingDevcli(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), "prepare explicit SDK bootstrap module") {
 				t.Fatalf("SDK refusal did not occur at native preparation ingress: %v\n%s", err, &diagnostics)
+			}
+		})
+	}
+}
+
+func TestCompilationSDKSourceBoundaries(t *testing.T) {
+	for _, kind := range []string{"enclosing link", "nested portable source", "explicit manifest", "environment wins ancestor ambiguity", "unsupported schema", "malformed manifest", "duplicate repository", "missing SDK link target", "escaping directory", "escaping symlink", "foreign host", "conflicting SDK", "relative environment", "missing environment", "ambiguous ancestors", "dangling manifest", "state without workspace"} {
+		t.Run(kind, func(t *testing.T) {
+			workspace, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, sdk := filepath.Join(workspace, "host"), filepath.Join(workspace, "not-a-guessed-sibling")
+			for _, directory := range []string{root, sdk} {
+				if err := os.Mkdir(directory, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			repositories := []map[string]string{{"id": "omniview", "directory": "host"}, {"id": "sdk-id", "directory": "not-a-guessed-sibling"}}
+			manifest := map[string]any{"schemaVersion": 1, "repositories": repositories, "links": map[string]string{"sdkRepositoryID": "sdk-id"}}
+			t.Setenv("OMNIVIEW_WORKSPACE_FILE", "")
+			t.Setenv("OMNIVIEW_STATE_DIR", "")
+			explicit := ""
+			manifestPath := filepath.Join(workspace, "workspace.json")
+			switch kind {
+			case "nested portable source":
+				sdk = filepath.Join(workspace, "libs", "selected-sdk")
+				if err := os.MkdirAll(sdk, 0700); err != nil {
+					t.Fatal(err)
+				}
+				repositories[1]["directory"] = "libs/selected-sdk"
+			case "explicit manifest", "environment wins ancestor ambiguity":
+				t.Setenv("OMNIVIEW_WORKSPACE_FILE", manifestPath)
+				if kind == "environment wins ancestor ambiguity" {
+					if err := os.WriteFile(filepath.Join(root, "workspace.json"), []byte("{}"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			case "unsupported schema":
+				manifest["schemaVersion"] = 2
+			case "duplicate repository":
+				manifest["repositories"] = append(repositories, repositories[1])
+			case "missing SDK link target":
+				manifest["links"] = map[string]string{"sdkRepositoryID": "unknown"}
+			case "escaping directory":
+				repositories[1]["directory"] = "../foreign"
+			case "escaping symlink":
+				if err := os.Remove(sdk); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(t.TempDir(), sdk); err != nil {
+					t.Skipf("symlink unavailable: %v", err)
+				}
+			case "foreign host":
+				repositories[0]["directory"] = "not-a-guessed-sibling"
+			case "conflicting SDK":
+				explicit = t.TempDir()
+			case "relative environment":
+				t.Setenv("OMNIVIEW_WORKSPACE_FILE", "workspace.json")
+			case "missing environment":
+				t.Setenv("OMNIVIEW_WORKSPACE_FILE", filepath.Join(workspace, "absent.json"))
+			case "ambiguous ancestors":
+				if err := os.WriteFile(filepath.Join(root, "workspace.json"), []byte("{}"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "state without workspace":
+				t.Setenv("OMNIVIEW_STATE_DIR", filepath.Join(workspace, "state"))
+			}
+			data, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kind == "malformed manifest" {
+				data = []byte("{")
+			}
+			if kind == "dangling manifest" {
+				if err := os.Symlink(filepath.Join(workspace, "absent.json"), manifestPath); err != nil {
+					t.Skipf("symlink unavailable: %v", err)
+				}
+			} else if kind != "state without workspace" {
+				if err := os.WriteFile(manifestPath, data, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			selected, err := compilationSDK(root, explicit)
+			accepted := kind == "enclosing link" || kind == "nested portable source" || kind == "explicit manifest" || kind == "environment wins ancestor ambiguity"
+			// Match devcontract.safeRelative exactly: its existing Windows
+			// contract refuses nested slash-form directories after filepath.Clean.
+			if kind == "nested portable source" && runtime.GOOS == "windows" {
+				accepted = false
+			}
+			if (err == nil) != accepted || accepted && selected != sdk {
+				t.Fatalf("selection=%q error=%v, expected acceptance=%v", selected, err, accepted)
 			}
 		})
 	}
