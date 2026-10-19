@@ -168,4 +168,6 @@ Additional-profile browser admission waits at most two minutes for the actual ap
 
 `task check:ui-lint` covers host UI, Vite-plugin source and E2E TypeScript through the flat ESLint configuration and is blocking in PR checks. E2E class declarations use erasable fields, not parameter properties, because fixtures also load through Node's strip-only TypeScript support. Parsed link evidence is validated from `unknown` and requires literal-`true` attestations. Go build/vet/test/format checks remain blocking; the existing broad Go style-lint profile remains advisory rather than weakening its rules or claiming the backlog is clean.
 
+`task fmt` and `task check:fmt-check` select tracked and nonignored Go source through Git, preserving spaced filenames with NUL-delimited arguments. Both use `goimports` for formatting and imports; they never traverse ignored `node_modules`, prepared Wails sources or other tool caches.
+
 See [worktree lifecycle](development-worktree-lifecycle.md), [package linking](development-package-linking.md), [build/watch graph](development-watch-graph.md), [instance profiles](development-instance-profiles.md), [sessions](development-sessions.md), [baselines](development-baselines.md) and [authenticated control](development-control.md) for producer contracts and platform evidence.

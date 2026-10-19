@@ -3,8 +3,9 @@
 package devworkspace
 
 import (
-	"github.com/omniviewdev/omniview/internal/devsession"
 	"os/exec"
+
+	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
 func detachSupervisor(*exec.Cmd)           {}

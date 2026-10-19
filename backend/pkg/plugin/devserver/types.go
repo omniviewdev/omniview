@@ -1,9 +1,10 @@
 package devserver
 
 import (
+	"time"
+
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
-	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )

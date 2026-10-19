@@ -5,13 +5,14 @@ package devworkspace
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/sys/windows"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 type ownedWindowsJob struct{ job, leader windows.Handle }

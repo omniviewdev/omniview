@@ -1,8 +1,9 @@
 package devworkspace
 
 import (
-	"github.com/omniviewdev/omniview/internal/devcontract"
 	"os"
+
+	"github.com/omniviewdev/omniview/internal/devcontract"
 )
 
 type generatedFileIdentity struct {

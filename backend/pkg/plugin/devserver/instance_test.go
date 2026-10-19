@@ -295,8 +295,6 @@ func TestDevServerInstance_Stop_Order(t *testing.T) {
 	}
 }
 
-
-
 func TestInstance_StateTransitions(t *testing.T) {
 	tests := []struct {
 		name       string

@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
+
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 

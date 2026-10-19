@@ -5,11 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/omniviewdev/omniview/internal/devcontract"
-	"github.com/omniviewdev/omniview/internal/devsource"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsource"
 )
 
 const sdkModulePath = "github.com/omniviewdev/plugin-sdk"

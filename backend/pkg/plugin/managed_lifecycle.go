@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"os"
+	"strings"
+
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/lifecycle"
 	plugintypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/internal/instance"
 	lc "github.com/omniviewdev/plugin-sdk/pkg/v1/lifecycle"
 	lifecyclepb "github.com/omniviewdev/plugin-sdk/proto/v1/lifecycle"
-	"os"
-	"strings"
 )
 
 // Optional interface keeps transactional fake boundaries narrow. Production's

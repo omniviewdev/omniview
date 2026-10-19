@@ -3,13 +3,6 @@ package devserver
 import (
 	"context"
 	"errors"
-	"github.com/omniviewdev/omniview/internal/appstate"
-	"github.com/omniviewdev/omniview/internal/devcontract"
-	"github.com/omniviewdev/omniview/internal/devsession"
-	"github.com/omniviewdev/omniview/internal/devsource"
-	logging "github.com/omniviewdev/plugin-sdk/log"
-	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
-	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +10,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/omniviewdev/omniview/internal/appstate"
+	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsession"
+	"github.com/omniviewdev/omniview/internal/devsource"
+	logging "github.com/omniviewdev/plugin-sdk/log"
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildSuccessDoesNotConnectRPC(t *testing.T) {

@@ -4,8 +4,9 @@ package devworkspace
 
 import (
 	"errors"
-	"golang.org/x/sys/unix"
 	"os/exec"
+
+	"golang.org/x/sys/unix"
 )
 
 func discardUncapturedCommand(child *ownedChild) error {

@@ -288,30 +288,22 @@ tasks:
   check:fmt:
     aliases: [fmt]
     cmds:
-      - goimports -w .
-      - gofmt -w .
+      - set -o pipefail; git ls-files --cached --others --exclude-standard --deduplicate -z -- '*.go' | xargs -0 goimports -w
 
   check:fmt-check:
     cmds:
       - cmd: |
-          FAILED=0
+          set -e -o pipefail
           if ! command -v goimports >/dev/null 2>&1; then
             echo "goimports not found. Install with: go install golang.org/x/tools/cmd/goimports@latest"
             exit 1
           fi
-          UNIMPORTED=$(goimports -l .)
-          if [ -n "$UNIMPORTED" ]; then
-            echo "The following Go files have incorrect imports (run goimports):"
-            echo "$UNIMPORTED"
-            FAILED=1
-          fi
-          UNFORMATTED=$(gofmt -l .)
+          UNFORMATTED=$(git ls-files --cached --others --exclude-standard --deduplicate -z -- '*.go' | xargs -0 goimports -l)
           if [ -n "$UNFORMATTED" ]; then
-            echo "The following Go files are not formatted (run gofmt):"
+            echo "The following Go source files need formatting or import cleanup (run task fmt):"
             echo "$UNFORMATTED"
-            FAILED=1
+            exit 1
           fi
-          if [ "$FAILED" -eq 1 ]; then exit 1; fi
 
   check:bindings:
     aliases: [bindings]

@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/omniviewdev/omniview/internal/devcontract"
-	"github.com/omniviewdev/omniview/internal/devsession"
 	"net"
 	"os"
 	"testing"
+
+	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsession"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

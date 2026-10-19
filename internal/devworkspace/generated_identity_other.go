@@ -3,8 +3,9 @@
 package devworkspace
 
 import (
-	"github.com/omniviewdev/omniview/internal/devsession"
 	"os"
+
+	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
 func generatedDirectoryIdentity(*os.File) (generatedFileIdentity, error) {

@@ -4,8 +4,9 @@ package devworkspace
 
 import (
 	"fmt"
-	"golang.org/x/sys/windows"
 	"os"
+
+	"golang.org/x/sys/windows"
 )
 
 func generatedDirectoryIdentity(file *os.File) (generatedFileIdentity, error) {

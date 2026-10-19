@@ -9,13 +9,14 @@ import (
 	"os"
 	"sync"
 
+	"strings"
+
 	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
 	logging "github.com/omniviewdev/plugin-sdk/log"
-	"strings"
 )
 
 const pluginPIDFileName = "plugin_pids.json"
