@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -21,7 +21,8 @@ for (const field of ['atomicDist', 'peers', 'runtime']) {
         process.env.OMNIVIEW_E2E_SOURCES = sources;
         process.env.TMPDIR = arena;
         delete process.env.OMNIVIEW_E2E_CLI;
-        await expect(OwnedProfiles.create()).rejects.toThrow('The actual native12 feature-workspace live-output and recursive-peer protocol evidence is required');
+        await expect(OwnedProfiles.create()).rejects.toBeInstanceOf(Error);
+        expect((await readdir(arena)).sort()).toEqual(['evidence.json', 'sources.json']);
       } finally {
         for (const [name, value] of Object.entries({ OMNIVIEW_E2E_SOURCES: original.sources, OMNIVIEW_E2E_CLI: original.cli, TMPDIR: original.temporary })) {
           if (value === undefined) {

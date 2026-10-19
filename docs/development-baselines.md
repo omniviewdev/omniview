@@ -28,6 +28,8 @@ The caller holds its workspace lifecycle operation lock around create/seed/up. *
 
 `Seed` and direct `Import` internally acquire the shared stable profile guard at `<HOME>/.omniview-dev/locks/<workspaceID>.lock` before checking that the destination is absent, and hold it through validation, staging, and atomic publication. Startup acquires the same guard before its state-root flock, so an absent destination cannot be initialized during import. `Seed` acquires it once and invokes the internal locked import path; callers must not pre-acquire this same non-reentrant guard around either public API. The source's stopped-instance root flock remains a separate lock; source/destination overlap is rejected before acquiring profile/source locks.
 
+For a default UUID profile, both public import APIs establish its ownership marker under that guard before publishing state. A direct `ResolveWorkspace` → `Seed`/`Import` caller therefore gets the same startup-valid ownership handoff as the CLI; no separate build-cache initialization is required. Custom profiles retain their separately validated binding and sibling owner marker.
+
 Separate APIs are available:
 
 - `Snapshot(ctx, SnapshotOptions) (*Baseline, error)` acquires the same `<source>/.lock` used by the application, then reads bbolt with `ReadOnly: true` and one coherent `View`. A busy source returns `ErrSourceBusy`; the CLI should explain that the source instance must first be stopped. It does not retry a live-source clone.
