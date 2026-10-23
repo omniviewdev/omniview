@@ -93,6 +93,18 @@ Browser mode starts the real Wails server. Use `instance.endpoints.browser`, **n
 
 Backend readiness is not browser-side plugin import readiness. A cold browser can render the shell before the initial plugin batch, route publication and loader resolution complete. Wait for the selected rendered plugin, not just a Vite socket or shell; live-mode inspection also exposes `window.__PLUGIN_SERVICE__.getDebugSnapshot()` with service/plugin phases and route version. After an automatic document replacement, repeat browser bootstrap before exercising its controls. A `framenavigated` event alone is not reload proof: same-URL router `history.replaceState` and fragment changes stay in the same document; compare `performance.timeOrigin` or browser protocol navigation events.
 
+On a live restart, wait for the document's frozen boot identity to match the
+authenticated replacement generation before navigating or testing controls.
+The Vite release can reload the existing page; a simultaneous same-URL `goto`
+can abort either navigation. Built-asset mode has no host Vite reload and needs
+explicit navigation. The E2E `restartApp` helper owns this distinction.
+
+The host explicitly disables Vite's agent-detected console forwarding: its
+existing diagnostics bridge owns structured forwarding, and Playwright captures
+browser errors independently. Vite8.0.1's forwarding can recursively reject with
+`send was called before connect` while its HMR socket is disconnected. This
+does not disable browser console output, diagnostic RPCs or failure artifacts.
+
 For a desktop window, choose `--mode native`. Native MCP additionally requires `--mcp`; it is authenticated, explicitly compiled development tooling, not a production endpoint. The private per-generation MCP token is in `<workspace>/.local/mcp-<generation>.secret`; never print/share the token. MCP is advertised only after the host confirms actual authenticated native JavaScript/binding identity. Browser/native support and required OS versions remain distinct; see [native toolchain](development-native-toolchain.md).
 
 ## Endpoints, ports and context

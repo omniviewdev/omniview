@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
 import { test, expect } from '../fixtures/app.fixture';
 import { callBinding, Service } from '../fixtures/wails';
-import { chooseSetting, openSettingsCategory, saveSettings, settingRow } from '../fixtures/helpers';
+import { chooseSetting, openSettingsCategory, restartApp, saveSettings, settingRow } from '../fixtures/helpers';
 import { cli } from '../fixtures/workspace';
 
 // These scenarios do not route/mock bindings. A broken backend, wrong profile,
@@ -238,14 +238,12 @@ test.describe('Owned workspace integration', () => {
     await appPage.evaluate(value => {
       localStorage.setItem(window.__OMNIVIEW_BOOTSTRAP__!.storageKey('e2e-marker')!, value); 
     }, marker);
-    const after = await workspace.restart();
+    const after = await restartApp(appPage, workspace);
     expect(after.workspaceID).toBe(before.workspaceID);
     expect(after.instanceID).toBe(before.instanceID);
     expect(after.generation).not.toBe(before.generation);
     // Browser persistence is origin-bound; sticky allocation must retain the URL.
     expect(after.endpoints.browser).toBe(before.endpoints.browser);
-    await appPage.goto(workspace.browserURL());
-    await expect(appPage.getByTestId('app-shell')).toBeVisible();
     expect(await callBinding(appPage.request, Service.settings, 'GetSettingValue', 'terminal.fontSize')).toBe(16);
     expect(await appPage.evaluate(() => localStorage.getItem(window.__OMNIVIEW_BOOTSTRAP__!.storageKey('e2e-marker')!))).toBe(marker);
     await appPage.screenshot({ path: testInfo.outputPath('restarted-workspace.png'), fullPage: true });

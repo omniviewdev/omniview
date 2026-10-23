@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import type { Descriptor, Workspace } from './workspace';
 
 /** The shell's fixed regions, by the test ids CoreLayout puts on them. */
 export const shell = (page: Page) => ({
@@ -8,6 +9,18 @@ export const shell = (page: Page) => ({
   main: page.getByTestId('app-main-content'),
   footer: page.getByTestId('app-footer'),
 });
+
+export async function restartApp(page: Page, workspace: Workspace): Promise<Descriptor> {
+  const descriptor = await workspace.restart();
+  if (!descriptor.endpoints.vite) {
+    await page.goto(workspace.browserURL());
+  }
+
+  await page.waitForFunction(generation => window.__OMNIVIEW_BOOTSTRAP__?.identity.generation === generation, descriptor.generation);
+  await page.waitForLoadState('load');
+  await expect(shell(page).root).toBeVisible();
+  return descriptor;
+}
 
 export type Rgb = [number, number, number];
 
@@ -93,3 +106,8 @@ export async function saveSettings(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Save Changes' }).click();
   await expect(page.getByRole('button', { name: 'Save Changes' })).toBeHidden();
 }
+
+type WorkspaceWindow = Window & {
+  __OMNIVIEW_BOOTSTRAP__?: { identity: { generation: string } };
+};
+declare const window: WorkspaceWindow;

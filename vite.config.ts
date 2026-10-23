@@ -46,6 +46,7 @@ export default defineConfig({
     // Fallback to 9245 to match the default in Taskfile.yml.
     port: ownedVitePort ?? 9245,
     strictPort: true,
+    forwardConsole: false,
     fs: selectedRoots ? { strict: true, allow: [__dirname, ...selectedRoots] } : undefined,
     // Wails webview loads from wails://localhost. Point HMR at the same IPv4
     // listener used by the asset proxy.
