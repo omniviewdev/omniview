@@ -66,7 +66,7 @@ GOWORK=off go list -m -json github.com/omniviewdev/plugin-sdk
 - [ ] Select existing UI committed source satisfying actual host/runtime UI peer ranges. Start with the observed compatible managed UI candidate; if its required changes are not committed, inspect existing compatible release/source refs without discarding feature changes. Do not manufacture a package version, downgrade host peers or silently abandon local UI source.
 - [ ] Select the Kubernetes source and exact plugin ID from its committed manifest. Verify the reviewed local runtime/Vite source-substitution policy, required API exports and actual singleton protocol; if it cannot admit this source cohort, record the exact compatibility prerequisite instead of forcing an install.
 - [ ] Bind these values from inspected identities: `HOST_SOURCE`, `FIXED_SDK_SOURCE`, `UI_SOURCE_OR_BARE_REPOSITORY`, `PLUGIN_SOURCE`, their explicit committed `*_REF` values, `PLUGIN_ID`, and a new CLI-owned `COLLECTION`. They are derived evidence, not arbitrary defaults. The collection must not be nested in a registered source repository and must not be a production state directory.
-- [ ] Verify native pnpm 12.14.0 and required Task/Go/native tooling. Use the documented absolute `OMNIVIEW_PNPM_EXECUTABLE` option if needed; do not globally downgrade/upgrade the agent's manager. Verify actual OS support before claiming native smoke; browser and native acceptance are distinct.
+- [ ] Verify native pnpm 12.14.0 and required Task/Go/Node/Git/native tooling. Bind `BASELINE_PNPM_EXECUTABLE` to the verified absolute pnpm executable. Construct `VERIFIED_TOOL_PATH` from the recorded canonical directories containing those verified executables and required platform utilities; exclude empty/relative entries and unreviewed directories, and never copy the caller's full `PATH`. Confirm executable resolution under that path agrees with the recorded identities. Do not globally downgrade/upgrade the agent's manager. Verify actual OS support before claiming native smoke; browser and native acceptance are distinct.
 - [ ] Review current operational guide commands against the selected source. If this reviewed capability is not available, a verified existing equivalent may be used only if it proves the same source/peer/export/profile/cleanup properties. Do not build a new manager in P00.
 
 **Stop gate:** a missing reviewed committed host/SDK capability, incompatible cohort or missing safe isolation prevents linkage execution. Complete the reachable audit/report and state exactly what must become available. Keep P00 open; do not launch P44/P04/P18 implementation on a falsely passed receipt.
@@ -81,7 +81,7 @@ GOWORK=off go list -m -json github.com/omniviewdev/plugin-sdk
 
 ```sh
 ISOLATION_HOME="$(mktemp -d "${TMPDIR:-/tmp}/omniview-resource-baseline.XXXXXX")"
-BASELINE_PATH="$PATH"
+BASELINE_PATH="${VERIFIED_TOOL_PATH:?set the verified tool-directory allowlist from Task 2}"
 mkdir "$ISOLATION_HOME/tmp" "$ISOLATION_HOME/.config" \
   "$ISOLATION_HOME/.cache" "$ISOLATION_HOME/.local"
 baseline_env() {
@@ -112,6 +112,8 @@ The registry ID `selected-provider` is local source ownership; `PLUGIN_ID` is th
 - [ ] Allocate a private owned `PROBE_DIR` and private `LINK_EVIDENCE` path. Follow the selected guide's existing nativepatch/modfile and real pinned link-probe procedure, with effective SDK/native selection:
 
 ```sh
+PROBE_DIR="$(mktemp -d "$ISOLATION_HOME/probe.XXXXXX")"
+LINK_EVIDENCE="$PROBE_DIR/link-evidence.json"
 mkdir "$PROBE_DIR/native" "$PROBE_DIR/module"
 HOST_MODFILE="$(baseline_env env GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go \
   --root "$PWD" --sdk-source "$FIXED_SDK_SOURCE" \
