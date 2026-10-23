@@ -30,7 +30,10 @@ The host input is the exact checked-out PR commit.
 The source builder reuses canonical workspace `Init`/`Create`/`Link`, native pnpm
 12.14.0, the actual protocol-probe report, and the existing JavaScript build graph
 and output-ownership producers in a disposable collection with its own private
-home. Only the real Kubernetes UI dependency closure is built: base-ui, ai-ui,
+home. Its manager uses the same session-aware `RequireStopped` guard as the real
+workspace CLI; a private home is not a substitute for proving the workspace is
+stopped before linking or retirement. Only the real Kubernetes UI dependency
+closure is built: base-ui, ai-ui,
 editors, providers, runtime, Vite plugin, then Kubernetes. The host's committed
 Wails bindings are compiler inputs, just as for `task packages`; no native host,
 plugin backend, SDK attestation or app service is substituted or launched.

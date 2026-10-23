@@ -76,7 +76,7 @@ func run(ctx context.Context) (resultErr error) {
 	}}); err != nil {
 		return err
 	}
-	manager, err := devworkspace.Open(collection, devworkspace.Options{Home: filepath.Join(collection, "home")})
+	manager, err := openProfileManager(collection)
 	if err != nil {
 		return err
 	}
@@ -129,5 +129,12 @@ func run(ctx context.Context) (resultErr error) {
 		Generation:  devworkspace.NewGeneration(),
 		Role:        "app-profile",
 		Source:      *host,
+	})
+}
+
+func openProfileManager(collection string) (*devworkspace.Manager, error) {
+	return devworkspace.Open(collection, devworkspace.Options{
+		Home:    filepath.Join(collection, "home"),
+		Stopped: devworkspace.RequireStopped,
 	})
 }
