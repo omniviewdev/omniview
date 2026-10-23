@@ -93,11 +93,12 @@ Browser mode starts the real Wails server. Use `instance.endpoints.browser`, **n
 
 Backend readiness is not browser-side plugin import readiness. A cold browser can render the shell before the initial plugin batch, route publication and loader resolution complete. Wait for the selected rendered plugin, not just a Vite socket or shell; live-mode inspection also exposes `window.__PLUGIN_SERVICE__.getDebugSnapshot()` with service/plugin phases and route version. After an automatic document replacement, repeat browser bootstrap before exercising its controls. A `framenavigated` event alone is not reload proof: same-URL router `history.replaceState` and fragment changes stay in the same document; compare `performance.timeOrigin` or browser protocol navigation events.
 
-On a live restart, wait for the document's frozen boot identity to match the
-authenticated replacement generation before navigating or testing controls.
-The Vite release can reload the existing page; a simultaneous same-URL `goto`
-can abort either navigation. Built-asset mode has no host Vite reload and needs
-explicit navigation. The E2E `restartApp` helper owns this distinction.
+After restart, wait for the document's frozen boot identity to match the
+authenticated replacement generation before testing controls. Host and plugin
+Vite clients can reload the parent page, even with an optimized host; a
+simultaneous same-URL `goto` can abort either navigation. The Chromium E2E
+`restartApp` helper requests `Page.reload` without awaiting one particular
+navigation, then verifies the replacement generation, document load and shell.
 
 The host explicitly disables Vite's agent-detected console forwarding: its
 existing diagnostics bridge owns structured forwarding, and Playwright captures
@@ -169,6 +170,10 @@ Managed children receive nonsecret `OMNIVIEW_DEV_CLI` from the captured supervis
 `--json` emits one machine-readable result on stdout; process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout.
 
 The owned Playwright fixture creates a private temporary arena with sibling `collection`, `home` and `profiles` directories. Its CLI subprocesses use that private HOME. Custom profile containers cannot live inside the registered collection or selected source repositories; the normal containment refusal remains active. Successful canonical down/unlink/remove precedes retirement of the arena; refused cleanup retains it for inspection. Retirement checks the original private arena identity and restores owner permissions only on owned, canonical Go module-cache directories under that HOME using no-follow directory handles; module files and symlink targets are never chmodded, and cleanup errors remain failures.
+
+Run the checked Playwright 1.50.1 acceptance harness on Node 24 LTS with native
+pnpm 12.14.0, matching CI. Native pnpm does not select the Node executable used
+by package scripts; verify `node --version` using the same `PATH`.
 
 Additional-profile browser admission waits at most two minutes for the actual app shell after workspace startup; it does not inherit a whole-test build deadline. Browser warnings, errors and failed requests are retained as `browser-errors.json` and `additional-profile-browser-errors.json` in the Playwright output directory, including with the list reporter. A ready host or Vite listener is not a rendered-shell pass. Consumer-refresh checks still require actual shared CSS/runtime changes without a manual page reload.
 

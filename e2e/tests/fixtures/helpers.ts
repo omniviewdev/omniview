@@ -12,8 +12,11 @@ export const shell = (page: Page) => ({
 
 export async function restartApp(page: Page, workspace: Workspace): Promise<Descriptor> {
   const descriptor = await workspace.restart();
-  if (!descriptor.endpoints.vite) {
-    await page.goto(workspace.browserURL());
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send('Page.reload');
+  } finally {
+    await session.detach();
   }
 
   await page.waitForFunction(generation => window.__OMNIVIEW_BOOTSTRAP__?.identity.generation === generation, descriptor.generation);
