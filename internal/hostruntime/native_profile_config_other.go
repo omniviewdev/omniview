@@ -1,6 +1,6 @@
 //go:build !darwin && !server
 
-package main
+package hostruntime
 
 import "github.com/omniviewdev/omniview/internal/instance"
 

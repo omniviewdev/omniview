@@ -6,19 +6,19 @@ shell, or offer arbitrary file operations. Marketplace publisher CLI commands ar
 unchanged; `plugin list` here means plugins installed in the selected instance.
 
 Bootstrap the CLI through the public task, which prints its actual immutable
-absolute executable path. For the initial unpublished SDK, explicitly select the
-reviewed fixed SDK source checkout:
+absolute executable path. The host consumes published SDK `v0.6.0`:
 
 ```sh
-DEV="$(SDK_SOURCE="$FIXED_SDK_SOURCE" task --silent dev:cli:build)"
+DEV="$(task --silent dev:cli:build)"
 "$DEV" instance inspect --workspace /path/to/workspace
 ```
 
-Set `FIXED_SDK_SOURCE` to the reviewed SDK source path before this first bootstrap.
-Inside a selected enclosing workspace, the task resolves the SDK source from the
-canonical workspace manifest instead. Do not use an ad hoc Go SDK replacement,
-invent a published SDK version, or build/install a CLI into the feature checkout.
-Keep using the returned `"$DEV"` path rather than guessing a `bin` location.
+For local SDK development, explicitly select its source with
+`SDK_SOURCE=/canonical/path/to/plugin-sdk`. Inside a selected enclosing workspace,
+the task may resolve SDK source from its canonical manifest instead; it never
+guesses a sibling. Do not use an ad hoc Go replacement or install a CLI into the
+feature checkout. Keep using the returned `"$DEV"` path rather than guessing a
+`bin` location.
 
 The target application must have been built with `devcontrol` enabled and launched
 against the workspace. Release builds do not advertise a control endpoint.

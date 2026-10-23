@@ -21,6 +21,10 @@ Stock macOS startup uses the immutable `CFBundleIdentifier` and WebKit's default
 
 Plain Go commands do not automatically select an unpublished companion SDK or consume generated alternate modfiles. Use the explicit module commands above or SDK-aware Tasks while developing against local SDK source. Ordinary published-dependency builds do not require framework preparation.
 
+Implementation ownership: `main.go` composes startup and retains profile-lock ordering; `internal/hostruntime` owns Wails/platform configuration, native-store removal and server asset policy; `internal/devcontrol/host` owns control-service registration, lifecycle and observed endpoints. `internal/instance` remains native-independent so the workspace CLI can share profile policy. The frontend-bound `AppService` stays in `app.go`; control receives private snapshot callbacks rather than an exported mutation API.
+
+macOS PR and release artifacts share `build/darwin/build-universal.sh`: it builds CGO-enabled arm64 and amd64 executables, combines them, and verifies both slices before publishing the output. Bundle metadata is stamped in the staged app before signing: the numeric SemVer core becomes `CFBundleShortVersionString`, and the workflow run number becomes Apple-valid `CFBundleVersion`. Source plists are not rewritten by CI.
+
 ## Stock native storage
 
 This unreleased feature has no legacy transition or compatibility path. Every development instance uses the current stock storage model. Display-name edits preserve the workspace UUID and native application identity.

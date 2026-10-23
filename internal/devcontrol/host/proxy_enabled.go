@@ -1,6 +1,6 @@
 //go:build devcontrol && !production
 
-package main
+package host
 
 // Wails' development asset handler honors FRONTEND_DEVSERVER_URL.
 const developmentAssetProxyEnabled = true

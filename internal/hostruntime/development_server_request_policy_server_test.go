@@ -1,6 +1,6 @@
 //go:build server
 
-package main
+package hostruntime
 
 import (
 	"io"
@@ -37,7 +37,7 @@ func TestDevelopmentAssetRequestPolicy(t *testing.T) {
 				state.Add(1)
 				w.WriteHeader(http.StatusNoContent)
 			})
-			middleware := developmentServerMiddleware(instance.Profile{Descriptor: devcontract.InstanceDescriptor{
+			middleware := DevelopmentServerMiddleware(instance.Profile{Descriptor: devcontract.InstanceDescriptor{
 				Kind: "development", WorkspaceID: "795f17ee-a4df-49e8-b461-145d344e9563",
 			}})
 			if middleware == nil {
@@ -177,7 +177,7 @@ func TestDevelopmentAssetRequestPolicyIPv6Listener(t *testing.T) {
 		t.Skipf("IPv6 loopback unavailable: %v", err)
 	}
 	var state atomic.Int64
-	middleware := developmentServerMiddleware(instance.Profile{Descriptor: devcontract.InstanceDescriptor{Kind: "development"}})
+	middleware := DevelopmentServerMiddleware(instance.Profile{Descriptor: devcontract.InstanceDescriptor{Kind: "development"}})
 	server := httptest.NewUnstartedServer(middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		state.Add(1)
 		w.WriteHeader(http.StatusNoContent)

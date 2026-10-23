@@ -234,8 +234,11 @@ func TestLiveGenerationCannotBeStolenAndStalePIDCanBeReclaimed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reclaimed.Port != lease.Port || reclaimed.Generation != "new" {
-		t.Fatalf("stale lease lost assignment: %+v", reclaimed)
+	if reclaimed.Generation != newOwner.Generation || reclaimed.Owner != newOwner || reclaimed.State != LeaseReserved {
+		t.Fatalf("stale lease was not reclaimed by the new generation: %+v", reclaimed)
+	}
+	if _, err := r.Reserve(context.Background(), LeaseRequest{Key: lease.Key, Owner: owner}); !errors.Is(err, ErrOwnership) {
+		t.Fatalf("old generation reclaimed the live replacement: %v", err)
 	}
 }
 

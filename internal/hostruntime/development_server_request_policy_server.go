@@ -1,6 +1,6 @@
 //go:build server
 
-package main
+package hostruntime
 
 import (
 	"net"
@@ -14,11 +14,11 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// developmentServerMiddleware adds application asset/document policy in server
+// DevelopmentServerMiddleware adds application asset/document policy in server
 // mode. Stock Wails guards the outer mux and its event/stream WebSockets; this
 // middleware does not see /health, /wails/custom.js, or those WebSockets.
 // It does not authenticate local clients.
-func developmentServerMiddleware(profile instance.Profile) application.Middleware {
+func DevelopmentServerMiddleware(profile instance.Profile) application.Middleware {
 	if profile.Descriptor.Kind != "development" {
 		return nil
 	}

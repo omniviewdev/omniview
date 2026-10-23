@@ -1,6 +1,6 @@
 //go:build devcontrol
 
-package main
+package host
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 	pluginsettings "github.com/omniviewdev/omniview/backend/pkg/plugin/settings"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devcontrol"
-	controlhost "github.com/omniviewdev/omniview/internal/devcontrol/host"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/instance"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
@@ -24,28 +23,31 @@ import (
 // Registered last: Wails starts services in order and shuts them down in reverse.
 // Thus no control mutation precedes controller/bootstrap startup or outlives its managers.
 type developmentControlLifecycle struct {
-	mu           sync.Mutex
-	runtimeReady bool
-	profile      instance.Profile
-	snapshot     *AppService
-	manager      plugin.Manager
-	dev          *devserver.DevServerManager
-	provider     pkgsettings.Provider
-	controller   pluginsettings.Controller
-	server       *devcontrol.Server
+	mu              sync.Mutex
+	runtimeReady    bool
+	profile         instance.Profile
+	readSnapshot    func() devcontract.InstanceDescriptor
+	publishSnapshot func(devcontract.InstanceDescriptor)
+	manager         plugin.Manager
+	dev             *devserver.DevServerManager
+	provider        pkgsettings.Provider
+	controller      pluginsettings.Controller
+	server          *devcontrol.Server
 }
 
-func registerDevelopmentControl(app *application.App, profile instance.Profile, snapshot *AppService, manager plugin.Manager, dev *devserver.DevServerManager, provider pkgsettings.Provider, controller pluginsettings.Controller) (func(), error) {
+// Register adds development control after all services that its adapters depend on.
+// The callbacks retain host-only ownership of the authoritative instance snapshot.
+func Register(app *application.App, profile instance.Profile, readSnapshot func() devcontract.InstanceDescriptor, publishSnapshot func(devcontract.InstanceDescriptor), manager plugin.Manager, dev *devserver.DevServerManager, provider pkgsettings.Provider, controller pluginsettings.Controller) (func(), error) {
 	if profile.Descriptor.Kind != "development" {
 		return nil, nil
 	}
-	lifecycle := &developmentControlLifecycle{profile: profile, snapshot: snapshot, manager: manager, dev: dev, provider: provider, controller: controller}
+	lifecycle := &developmentControlLifecycle{profile: profile, readSnapshot: readSnapshot, publishSnapshot: publishSnapshot, manager: manager, dev: dev, provider: provider, controller: controller}
 	app.RegisterService(application.NewService(lifecycle))
 	return lifecycle.markRuntimeReady, nil
 }
 
 func (s *developmentControlLifecycle) inspect(context.Context) (devcontract.InstanceDescriptor, error) {
-	descriptor := s.snapshot.GetInstanceInfo()
+	descriptor := s.readSnapshot()
 	descriptor.Plugins = nil
 	for _, plugin := range s.manager.ListPlugins() {
 		state := s.dev.GetDevServerState(plugin.ID)
@@ -71,19 +73,19 @@ func (s *developmentControlLifecycle) ServiceStartup(ctx context.Context, _ appl
 	if s.runtimeReady {
 		descriptor.Readiness = "host-ready"
 	}
-	s.snapshot.updateInstanceInfo(descriptor)
+	s.publishSnapshot(descriptor)
 	discovery, err := devsession.OpenDiscoveryStore(s.profile.RuntimeRoot)
 	if err != nil {
 		return err
 	}
-	server, err := devcontrol.Start(ctx, devcontrol.Config{Descriptor: descriptor, Discovery: discovery, Adapters: controlhost.New(s.manager, s.dev, s.provider, s.controller, s.inspect)})
+	server, err := devcontrol.Start(ctx, devcontrol.Config{Descriptor: descriptor, Discovery: discovery, Adapters: New(s.manager, s.dev, s.provider, s.controller, s.inspect)})
 	if err != nil {
 		return err
 	}
 	s.server = server
 	endpoint := server.Endpoint()
 	descriptor.Endpoints.Control = &endpoint
-	s.snapshot.updateInstanceInfo(descriptor)
+	s.publishSnapshot(descriptor)
 	if err := server.Refresh(ctx, descriptor); err != nil {
 		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -99,9 +101,9 @@ func (s *developmentControlLifecycle) markRuntimeReady() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.runtimeReady = true
-	descriptor := s.snapshot.GetInstanceInfo()
+	descriptor := s.readSnapshot()
 	descriptor.Readiness = "host-ready"
-	s.snapshot.updateInstanceInfo(descriptor)
+	s.publishSnapshot(descriptor)
 	if s.server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()

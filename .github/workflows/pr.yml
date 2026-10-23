@@ -18,7 +18,8 @@ jobs:
   # E2E Tests — actual disposable CLI-owned browser hosts, never a shared server.
   # The reviewed companion SDK must first be published to its remote repository.
   e2e-tests:
-    runs-on: ubuntu-latest
+    # Playwright 1.50.1 supports Ubuntu 24.04, not ubuntu-latest's Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     defaults:
       run:
@@ -273,14 +274,17 @@ jobs:
           CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=10.15' || '' }}
           MACOSX_DEPLOYMENT_TARGET: ${{ runner.os == 'macOS' && '10.15' || '' }}
         run: |
-          go build -tags "${{ matrix.build-tags }}" -trimpath -buildvcs=false \
+          build_command=(go build -o bin/Omniview)
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            build_command=(bash build/darwin/build-universal.sh bin/Omniview)
+          fi
+          "${build_command[@]}" -tags "${{ matrix.build-tags }}" -trimpath -buildvcs=false \
             -ldflags "-w -s ${{ matrix.extra-ldflags }} \
               -X github.com/omniviewdev/omniview/internal/version.Version=0.0.0-pr.${{ github.event.pull_request.number }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=true \
-              -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-pr" \
-            -o bin/Omniview .
+              -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-pr"
 
       - name: Create macOS .app bundle
         if: runner.os == 'macOS'
@@ -291,6 +295,8 @@ jobs:
           cp build/darwin/icons.icns bin/Omniview.app/Contents/Resources/
           cp bin/Omniview bin/Omniview.app/Contents/MacOS/
           cp build/darwin/Info.plist bin/Omniview.app/Contents/
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.0.0' bin/Omniview.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" bin/Omniview.app/Contents/Info.plist
           codesign --force --deep --sign - bin/Omniview.app
 
       - name: Prepare artifact (macOS)

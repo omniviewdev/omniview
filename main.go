@@ -35,7 +35,9 @@ import (
 	"github.com/omniviewdev/omniview/internal/appstate"
 	"github.com/omniviewdev/omniview/internal/bootstrap"
 	"github.com/omniviewdev/omniview/internal/devcontract"
+	controlhost "github.com/omniviewdev/omniview/internal/devcontrol/host"
 	"github.com/omniviewdev/omniview/internal/devsession"
+	"github.com/omniviewdev/omniview/internal/hostruntime"
 	"github.com/omniviewdev/omniview/internal/instance"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	settingsstore "github.com/omniviewdev/omniview/internal/settings/store"
@@ -71,7 +73,7 @@ var icon []byte
 
 //nolint:funlen // main function is expected to be long
 func main() {
-	if handled, exit := handleNativeProfileRemoval(os.Args[1:]); handled {
+	if handled, exit := hostruntime.HandleNativeProfileRemoval(os.Args[1:]); handled {
 		os.Exit(exit)
 	}
 	// Identity and native availability must be resolved before any state,
@@ -105,7 +107,7 @@ func main() {
 		})
 		return instance.BootMiddleware(profile.Descriptor.BootIdentity())(dispatch)
 	}
-	if policy := developmentServerMiddleware(profile); policy != nil {
+	if policy := hostruntime.DevelopmentServerMiddleware(profile); policy != nil {
 		options.Assets.Middleware = application.ChainMiddleware(policy, options.Assets.Middleware)
 	}
 	if profile.Descriptor.Kind != "development" {
@@ -114,7 +116,7 @@ func main() {
 			ExitCode: 0,
 		}
 	}
-	if err := configureNativeProfile(&options, profile); err != nil {
+	if err := hostruntime.ConfigureNativeProfile(&options, profile); err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: native profile storage unavailable: %v\n", err)
 		os.Exit(1)
 	}
@@ -143,7 +145,7 @@ func main() {
 		}
 		profile = selected
 		options.Name = profile.Descriptor.DisplayName
-		if err := configureNativeProfile(&options, profile); err != nil {
+		if err := hostruntime.ConfigureNativeProfile(&options, profile); err != nil {
 			_ = releaseProfile()
 			fmt.Fprintf(os.Stderr, "fatal: native profile storage unavailable: %v\n", err)
 			os.Exit(1)
@@ -187,7 +189,7 @@ func main() {
 	// flock above remains authoritative for every profile; duplicate-root
 	// launches fail early and do not promise focus/activation.
 	app := application.New(options)
-	if err := prepareProfileRuntime(profile); err != nil {
+	if err := hostruntime.PrepareProfileRuntime(profile); err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: cannot prepare runtime directories: %v\n", err)
 		os.Exit(1)
 	}
@@ -470,7 +472,11 @@ func main() {
 	for _, service := range services {
 		app.RegisterService(service)
 	}
-	runtimeReady, err := registerDevelopmentControl(app, profile, appService, pluginManager, devServerManager, settingsProvider, settingsController)
+	runtimeReady, err := controlhost.Register(
+		app, profile,
+		appService.GetInstanceInfo, appService.updateInstanceInfo,
+		pluginManager, devServerManager, settingsProvider, settingsController,
+	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: cannot register development control: %v\n", err)
 		os.Exit(1)

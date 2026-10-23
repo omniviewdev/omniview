@@ -1,13 +1,14 @@
 //go:build !darwin || server
 
-package main
+package hostruntime
 
 import (
 	"fmt"
 	"os"
 )
 
-func handleNativeProfileRemoval(args []string) (bool, int) {
+// HandleNativeProfileRemoval refuses native datastore removal on unsupported hosts.
+func HandleNativeProfileRemoval(args []string) (bool, int) {
 	if len(args) == 0 || args[0] != "--remove-native-profile" {
 		return false, 0
 	}

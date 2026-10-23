@@ -6,20 +6,9 @@ The [workspace roadmap](development-workspaces-roadmap.md) records research deci
 
 ## Bootstrap the local CLI and sources
 
-Use the bootstrap-aware Task entry point. The initial CLI needs the reviewed companion SDK source because the currently declared published SDK does not contain the new isolation APIs. `SDK_SOURCE` is explicit: there is no inferred sibling replacement, global `go.work`, global `GOFLAGS`, package upgrade or canonical-source mutation.
+Use the bootstrap-aware Task entry point. Ordinary bootstrap consumes published SDK `v0.6.0`. For local SDK development, `SDK_SOURCE` is explicit: there is no inferred sibling replacement, global `go.work`, global `GOFLAGS`, package upgrade or canonical-source mutation.
 
-Task first runs a standard-library-only bootstrap entry. It uses explicit
-`SDK_SOURCE`, or the exact SDK repository linked by a selected enclosing workspace
-manifest whose canonical host directory matches the actual checkout. It never
-guesses sibling locations. This narrow source projection refuses ambiguous,
-escaping, or conflicting selections; it is not profile or ownership authority.
-The existing pinned native helper prepares a private temporary module to compile
-the CLI bootstrap before unpublished SDK packages are imported. Original source,
-workspace environment, and `GO_MODFILE` selections reach the full CLI unchanged,
-which independently validates the complete manifest, profile, and source/cache
-authority before publication.
-Temporary preparation is removed only after that bootstrap process exits; the
-immutable CLI and its owned cache remain managed by the full bootstrap.
+Task first runs a standard-library-only bootstrap entry. It selects explicit SDK source, or the exact SDK repository linked by an enclosing workspace whose canonical host directory matches this checkout; otherwise it uses the declared published module. Local-source preparation uses a private temporary module and refuses ambiguous, escaping or conflicting selections. The full CLI independently validates the manifest, profile and source/cache authority. Temporary preparation is removed after bootstrap exits; the immutable CLI and its owned cache remain managed by the full bootstrap.
 
 Current host/UI/plugin/probe manifests pin **pnpm 12.14.0**. Install the native executable on PATH, or explicitly export `OMNIVIEW_PNPM_EXECUTABLE=/canonical/absolute/native/pnpm` when an existing agent process still sees an older shell/Corepack installation. The managed launcher validates the actual version and does not downgrade the global installation. Node is still needed by application build scripts; native pnpm itself is not a Node entry point.
 
@@ -40,7 +29,7 @@ The host workspace includes its host packages and E2E tooling, not the unused bu
 
 ```sh
 # Run from the host checkout containing the workspace implementation.
-DEV="$(SDK_SOURCE="$FIXED_SDK_SOURCE" task --silent dev:cli:build)"
+DEV="$(task --silent dev:cli:build)"
 
 "$DEV" workspace init --root "$COLLECTION" \
   --source "omniview=$HOST_SOURCE" \
@@ -48,14 +37,14 @@ DEV="$(SDK_SOURCE="$FIXED_SDK_SOURCE" task --silent dev:cli:build)"
   --source "plugin-sdk=$FIXED_SDK_SOURCE" \
   --source "plugin-a=$PLUGIN_A_SOURCE" \
   --source "plugin-b=$PLUGIN_B_SOURCE" \
-  --source-ref "plugin-sdk=feature/agentic-workspaces" --json
+  --source-ref "plugin-sdk=v0.6.0" --json
 ```
 
 Each source is an explicit local normal or bare Git repository. Use repeatable `--source-ref ID=REF` and `--source-directory ID=DIRECTORY` when defaults differ. Plugin IDs are read from committed `plugin.yaml` at the selected ref, never inferred from a directory name. Selected host refs must contain the tooling; creating a worktree does not copy uncommitted host changes from another checkout.
 
 Register every repository/plugin source needed by the collection up front. Registry source mappings are deliberately immutable: repeating the same initialization is allowed, but changing or adding mappings returns `registry_exists` with conflict exit4 and leaves the existing registry intact. Initialize another collection for a different source set; `workspace edit --add-plugin` selects an already registered plugin, not a new repository registration.
 
-The reviewed fixed SDK commit is `3368c2b412a0c1608a244bce6cb614f2749b95a7`, including the shared read-only profile contract required by this host. Select a source descending from that commit; the previous baseline lacks the required contract and cannot authorize this cutover. Subsequent ordinary edits in the selected feature SDK worktree are live development input and do not require per-edit commits. Protected isolation implementation changes require the explicit warning-bearing `--allow-isolation-source-changes` flag; it is scoped to this workspace's child processes and is not a sandbox.
+The reviewed published SDK `v0.6.0` commit is `1e92fb518b117814acb504aaae1772ff39abcdef`, including the shared read-only profile contract required by this host. Select that release or a reviewed descendant; SDK `v0.5.2` and earlier lack the contract. Subsequent ordinary edits in the selected feature SDK worktree are live development input and do not require per-edit commits. Protected isolation implementation changes require the explicit warning-bearing `--allow-isolation-source-changes` flag; it is scoped to this workspace's child processes and is not a sandbox.
 
 Local package linking requires the actual successful pinned pnpm protocol probe report, not manually asserted booleans. Run the probe once on the integrated host source with its effective SDK-aware module selection, then pass the report explicitly (or place it at `$COLLECTION/.omniview-dev/link-protocol.json`):
 
@@ -82,14 +71,14 @@ The probe performs real native12 recursive peer, singleton, live-export and atom
   --repo ui --repo plugin-sdk \
   --plugin "$PLUGIN_A_ID" --plugin "$PLUGIN_B_ID" \
   --start --mode browser \
-  --reviewed-sdk-revision 3368c2b412a0c1608a244bce6cb614f2749b95a7 \
+  --reviewed-sdk-revision 1e92fb518b117814acb504aaae1772ff39abcdef \
   --link-evidence "$LINK_EVIDENCE" --json
 
 # The same plugin ID can run independently in another profile.
 "$DEV" workspace create feature-b --root "$COLLECTION" \
   --repo ui --repo plugin-sdk --plugin "$PLUGIN_A_ID" \
   --start --mode browser \
-  --reviewed-sdk-revision 3368c2b412a0c1608a244bce6cb614f2749b95a7 \
+  --reviewed-sdk-revision 1e92fb518b117814acb504aaae1772ff39abcdef \
   --link-evidence "$LINK_EVIDENCE" --json
 
 "$DEV" workspace inspect feature-a --root "$COLLECTION" --json

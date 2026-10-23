@@ -1,6 +1,6 @@
 //go:build darwin && !server
 
-package main
+package hostruntime
 
 /*
 #cgo CFLAGS: -x objective-c -fblocks

@@ -12,16 +12,52 @@ import test from 'node:test';
 import type { TestContext } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createServer as createVite5, version as vite5Version } from 'vite';
-import type { ViteDevServer } from 'vite';
+import type { HMRPayload, ViteDevServer as Vite5DevServer } from 'vite';
 import { createServer as createVite8, version as vite8Version } from '../../../node_modules/vite/dist/node/index.js';
+import type { ViteDevServer as Vite8DevServer } from '../../../node_modules/vite/dist/node/index.js';
 import { omniviewExternals } from '../src/index';
-import { readViteFeedbackAuthority } from '../src/feedback';
+import { managedViteFeedback, readViteFeedbackAuthority } from '../src/feedback';
+
+function serverOptions(root: string, hotUpdates: EventEmitter) {
+  return {
+    root: path.join(root, 'workspace'),
+    configFile: false as const,
+    logLevel: 'silent' as const,
+    cacheDir: path.join(root, 'cache'),
+    plugins: [
+      {
+        name: 'observe-real-feedback-publication',
+        handleHotUpdate({ file }: { file: string }) {
+          // The raw watcher fires before Vite awaits watchChange and invalidates
+          // its graph. Observe the actual HMR lifecycle before requesting source.
+          hotUpdates.emit('change', file);
+        },
+      },
+    ],
+    optimizeDeps: { noDiscovery: true, include: [] },
+    server: { host: '127.0.0.1', port: 0, watch: { ignored: [path.join(root, 'runtime')] } },
+  };
+}
 
 const frameworks = [
-  { name: 'Vite 5', major: 5, version: vite5Version, createServer: createVite5 },
-  { name: 'Vite 8', major: 8, version: vite8Version, createServer: createVite8 as typeof createVite5 },
+  {
+    name: 'Vite 5', major: 5, version: vite5Version,
+    createServer(root: string, hotUpdates: EventEmitter) {
+      const options = serverOptions(root, hotUpdates);
+      return createVite5({ ...options, plugins: [omniviewExternals(), ...options.plugins] });
+    },
+  },
+  {
+    name: 'Vite 8', major: 8, version: vite8Version,
+    createServer(root: string, hotUpdates: EventEmitter) {
+      const options = serverOptions(root, hotUpdates);
+      return createVite8({ ...options, plugins: [managedViteFeedback(), ...options.plugins] });
+    },
+  },
 ];
 type Framework = typeof frameworks[number];
+type FixtureServer = Vite5DevServer | Vite8DevServer;
+type NavigationPayload = Extract<HMRPayload, { type: 'update' | 'prune' | 'full-reload' }>;
 type Feedback = { type: string; [key: string]: unknown };
 const navigationTypes: Record<string, true> = { update: true, 'full-reload': true, prune: true };
 
@@ -57,7 +93,7 @@ async function fixture(t: TestContext, framework: Framework, managed = true, ini
   const previousEnvironment = environmentKeys.map(key => [key, process.env[key]] as const);
   for (const key of environmentKeys) delete process.env[key];
   if (managed) process.env.OMNIVIEW_VITE_FEEDBACK = JSON.stringify({ ...context, file });
-  let server: ViteDevServer | undefined;
+  let server: FixtureServer | undefined;
   const sockets: WebSocket[] = [];
   const requests: ClientRequest[] = [];
   const hotUpdates = new EventEmitter();
@@ -74,25 +110,7 @@ async function fixture(t: TestContext, framework: Framework, managed = true, ini
       rmSync(root, { recursive: true, force: true });
     }
   });
-  server = await framework.createServer({
-    root: workspaceRoot,
-    configFile: false,
-    logLevel: 'silent',
-    cacheDir: path.join(root, 'cache'),
-    plugins: [
-      omniviewExternals(),
-      {
-        name: 'observe-real-feedback-publication',
-        handleHotUpdate({ file }) {
-          // The raw watcher fires before Vite awaits watchChange and invalidates
-          // its graph. Observe the actual HMR lifecycle before requesting source.
-          hotUpdates.emit('change', file);
-        },
-      },
-    ],
-    optimizeDeps: { noDiscovery: true, include: [] },
-    server: { host: '127.0.0.1', port: 0, watch: { ignored: [runtime] } },
-  });
+  server = await framework.createServer(root, hotUpdates);
   await server.listen();
   const address = server.httpServer!.address();
   assert.ok(address && typeof address !== 'string');
@@ -239,11 +257,12 @@ for (const framework of frameworks) {
     // Synchronous publication and real transport sends in one turn force the
     // read-before-send contract; a watch-event-only cache cannot pass this.
     f.publish(true);
-    const environments = (f.server as ViteDevServer & { environments?: Record<string, { hot: { send: (message: Feedback) => void } }> }).environments;
-    const hot = framework.major === 8 ? environments!.client.hot : f.server.ws;
-    hot.send({ type: 'update', updates: [{ type: 'js-update', path: '/value.js', acceptedPath: '/value.js', timestamp: Date.now() }] } as never);
-    hot.send({ type: 'prune', paths: ['/value.js'] } as never);
-    hot.send({ type: 'full-reload', path: '*' } as never);
+    const hot: { send(payload: NavigationPayload): void } = 'environments' in f.server
+      ? f.server.environments.client.hot
+      : f.server.ws;
+    hot.send({ type: 'update', updates: [{ type: 'js-update', path: '/value.js', acceptedPath: '/value.js', timestamp: Date.now() }] });
+    hot.send({ type: 'prune', paths: ['/value.js'] });
+    hot.send({ type: 'full-reload', path: '*' });
     await delay(150);
     assert.deepEqual(f.navigation(), [], 'no navigation-affecting message may race the hold publication');
     f.publish(false);

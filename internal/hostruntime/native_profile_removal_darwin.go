@@ -1,6 +1,6 @@
 //go:build darwin && !server
 
-package main
+package hostruntime
 
 import (
 	"context"
@@ -22,9 +22,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// This hidden entrypoint runs before normal profile state/settings/plugin startup.
-// A stopped UUID-owned profile and an active native main queue are both required.
-func handleNativeProfileRemoval(args []string) (bool, int) {
+// HandleNativeProfileRemoval dispatches the hidden removal command before normal
+// profile state/settings/plugin startup. A stopped UUID-owned profile and an
+// active native main queue are both required.
+func HandleNativeProfileRemoval(args []string) (bool, int) {
 	if len(args) == 0 || args[0] != "--remove-native-profile" {
 		return false, 0
 	}

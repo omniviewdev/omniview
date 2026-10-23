@@ -30,15 +30,15 @@ For launch, also supply an independently reviewed full fixed-capability SDK revi
 From the host checkout, capture the actual CLI path once, then invoke that immutable executable:
 
 ```sh
-DEV="$(SDK_SOURCE="$FIXED_SDK_SOURCE" task --silent dev:cli:build)"
+DEV="$(task --silent dev:cli:build)"
 "$DEV" workspace inspect "$FEATURE" --root "$COLLECTION" --json
 ```
 
-The helper builds outside source in the private OS user cache and prints the actual path; do not guess `$PWD/bin/omniview-dev` or create an alias. Initial/root bootstrap requires explicit canonical `FIXED_SDK_SOURCE` because the reviewed fixed SDK is unpublished. An enclosing workspace may derive SDK only from its canonical manifest, never a guessed sibling.
+The helper builds outside source in the private OS user cache and prints the actual path; do not guess `$PWD/bin/omniview-dev` or create an alias. Ordinary bootstrap uses the published SDK requirement. Select local SDK development explicitly through `SDK_SOURCE`; an enclosing workspace may derive it only from its canonical manifest, never a guessed sibling.
 
 For an existing feature, `task dev -- ...` wraps canonical `workspace up` (native default; `SERVER=true` browser; `WAILS_MCP=1` native MCP). Task dev/workspace wrappers capture the helper once internally, without extra path output contaminating JSON. Forward selection and real launch prerequisites after `--`; do not run a separate `wails dev` supervisor.
 
-The reviewed fixed SDK commit is `3368c2b412a0c1608a244bce6cb614f2749b95a7`, containing the shared profile contract this host requires. It is local/unpushed integration evidence, not a published module version or remote-fetch guarantee. Real Task create/edit/start/browser/down/remove exercised the helper with this SDK; that runtime verification is separate from model-routed skill evaluation.
+Published SDK `v0.6.0` resolves to reviewed commit `1e92fb518b117814acb504aaae1772ff39abcdef` and contains the shared profile contract required by this host. Its module and checksum have been verified through the public Go proxy. Earlier Task lifecycle evidence used the pre-release integration commit recorded in the roadmap; that evidence is not a claim of a fresh full lifecycle run against every subsequent release.
 
 A useful request is: “Use omniview-workspaces. Collection ROOT, feature NAME; select host, UI, SDK, Kubernetes and this second registered plugin. Start browser mode, report actual paths/UUID/generation/endpoints and any unverified boundary.” Plugin repository IDs and `plugin.yaml` plugin IDs are distinct; repeat both selections for multiple plugins.
 

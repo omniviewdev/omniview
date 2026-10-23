@@ -1,6 +1,6 @@
 //go:build devcontrol
 
-package main
+package host
 
 import (
 	"bytes"
@@ -159,7 +159,7 @@ func (s *developmentControlLifecycle) observeEndpoints(ctx context.Context) {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		descriptor := s.snapshot.GetInstanceInfo()
+		descriptor := s.readSnapshot()
 		changed := false
 		if browser != "" && descriptor.Endpoints.Browser == nil && developmentBrowserObserved(ctx, client, browser, descriptor.BootIdentity()) {
 			descriptor.Endpoints.Browser = &browser
@@ -180,7 +180,7 @@ func (s *developmentControlLifecycle) observeEndpoints(ctx context.Context) {
 		}
 		if changed {
 			s.mu.Lock()
-			current := s.snapshot.GetInstanceInfo()
+			current := s.readSnapshot()
 			if descriptor.Endpoints.Browser != nil {
 				current.Endpoints.Browser = descriptor.Endpoints.Browser
 			}
@@ -194,11 +194,11 @@ func (s *developmentControlLifecycle) observeEndpoints(ctx context.Context) {
 				current.Endpoints.HMR = descriptor.Endpoints.HMR
 			}
 			if s.server != nil && s.server.Refresh(ctx, current) == nil {
-				s.snapshot.updateInstanceInfo(current)
+				s.publishSnapshot(current)
 			}
 			s.mu.Unlock()
 		}
-		descriptor = s.snapshot.GetInstanceInfo()
+		descriptor = s.readSnapshot()
 		complete := (browser == "" || descriptor.Endpoints.Browser != nil) && (mcp == "" || descriptor.Endpoints.MCP != nil) && (vite == "" || descriptor.Endpoints.Vite != nil)
 		if complete {
 			return

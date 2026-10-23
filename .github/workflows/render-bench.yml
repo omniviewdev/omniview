@@ -15,7 +15,8 @@ env:
 jobs:
   render-bench:
     name: Render benchmarks
-    runs-on: ubuntu-latest
+    # Playwright 1.50.1 supports Ubuntu 24.04, not ubuntu-latest's Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -58,7 +59,7 @@ jobs:
         if: always()
         run: |
           if [ -f bench/render/results/latest.json ]; then
-            node bench/render/report.mjs --title "Render benchmarks (${{ github.sha }}, ubuntu-latest)"
+            node bench/render/report.mjs --title "Render benchmarks (${{ github.sha }}, ubuntu-24.04)"
           fi
 
       - name: Upload results

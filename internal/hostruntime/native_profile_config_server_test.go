@@ -1,6 +1,6 @@
 //go:build server
 
-package main
+package hostruntime
 
 import (
 	"os"
@@ -22,7 +22,7 @@ func TestBrowserRuntimePreparationNeverCreatesOrChangesNativeStorage(t *testing.
 				require.NoError(t, os.MkdirAll(p.WebviewRoot, 0700))
 				require.NoError(t, os.WriteFile(filepath.Join(p.WebviewRoot, "sentinel"), []byte("retained native data"), 0600))
 			}
-			require.NoError(t, prepareProfileRuntime(p))
+			require.NoError(t, PrepareProfileRuntime(p))
 			require.DirExists(t, filepath.Join(p.RuntimeRoot, "tmp"))
 			if existing {
 				data, err := os.ReadFile(filepath.Join(p.WebviewRoot, "sentinel"))

@@ -1,6 +1,6 @@
 //go:build !server
 
-package main
+package hostruntime
 
 import (
 	"fmt"
@@ -12,9 +12,10 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// Run before application.New and again after acquiring the stable profile guard.
-// Stock WebKit uses the immutable bundle's default persistent datastore on Mac.
-func configureNativeProfile(options *application.Options, profile instance.Profile) error {
+// ConfigureNativeProfile runs before application.New and again after acquiring
+// the stable profile guard. Stock WebKit uses the immutable bundle's default
+// persistent datastore on Mac.
+func ConfigureNativeProfile(options *application.Options, profile instance.Profile) error {
 	if profile.Descriptor.Kind != "development" {
 		return nil
 	}
@@ -33,6 +34,7 @@ func configureNativeProfile(options *application.Options, profile instance.Profi
 	return validateNativeBundle(profile)
 }
 
-func prepareProfileRuntime(profile instance.Profile) error {
+// PrepareProfileRuntime prepares the resolved profile's runtime directories.
+func PrepareProfileRuntime(profile instance.Profile) error {
 	return profile.PrepareRuntime()
 }

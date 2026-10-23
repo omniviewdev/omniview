@@ -100,7 +100,7 @@ describe('plugin metadata after managed source publication', () => {
     await screen.findByText('Metadata unavailable');
     expect(screen.queryByLabelText('Plugin counter')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     await screen.findByRole('heading', { name: 'Retry recovered plugin' });
     expect(screen.getByLabelText('Plugin counter').textContent).toBe('17');

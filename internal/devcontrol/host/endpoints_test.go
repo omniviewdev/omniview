@@ -1,6 +1,6 @@
 //go:build devcontrol
 
-package main
+package host
 
 import (
 	"context"
