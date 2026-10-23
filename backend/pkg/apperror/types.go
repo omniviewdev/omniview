@@ -3,12 +3,14 @@ package apperror
 // Error type URI constants used across Go and TypeScript.
 const (
 	// Plugin errors.
-	TypePluginNotFound      = "omniview:plugin/not-found"
-	TypePluginNotLoaded     = "omniview:plugin/not-loaded"
-	TypePluginAlreadyLoaded = "omniview:plugin/already-loaded"
-	TypePluginInstallFailed = "omniview:plugin/install-failed"
-	TypePluginLoadFailed    = "omniview:plugin/load-failed"
-	TypePluginBuildFailed   = "omniview:plugin/build-failed"
+	TypePluginNotFound                = "omniview:plugin/not-found"
+	TypePluginNotLoaded               = "omniview:plugin/not-loaded"
+	TypePluginAlreadyLoaded           = "omniview:plugin/already-loaded"
+	TypePluginInstallFailed           = "omniview:plugin/install-failed"
+	TypePluginLoadFailed              = "omniview:plugin/load-failed"
+	TypePluginBuildFailed             = "omniview:plugin/build-failed"
+	TypePluginCommittedCleanupPending = "omniview:plugin/committed-cleanup-pending"
+	TypePluginCommitUncertain         = "omniview:plugin/commit-uncertain"
 
 	// Settings errors.
 	TypeSettingsMissingConfig = "omniview:settings/missing-config"

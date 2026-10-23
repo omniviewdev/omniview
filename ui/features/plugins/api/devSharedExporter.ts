@@ -46,7 +46,7 @@ export async function exportSharedDepsForDev(): Promise<void> {
     entries.map(async ([name, loader]) => {
       const mod = await loader();
       return [name, mod] as const;
-    })
+    }),
   );
 
   // Write resolved modules to window, log failures

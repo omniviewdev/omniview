@@ -2,6 +2,12 @@ import {
   isBuiltInThemeId,
   type BuiltInThemeId,
 } from '@omniviewdev/base-ui';
+import {
+  getBootIdentity,
+  readProfileStorage,
+  removeProfileStorage,
+  writeProfileStorage,
+} from '@/features/instance/boot';
 
 const BOOTSTRAP_KEY = 'ov-theme-bootstrap-v1';
 const LEGACY_VARIANT_KEY = 'ov-theme-variant';
@@ -14,7 +20,7 @@ type ThemeBootstrapRecordV1 = {
 
 function readVersionedTheme(storage: Storage): BuiltInThemeId | null {
   try {
-    const raw = storage.getItem(BOOTSTRAP_KEY);
+    const raw = readProfileStorage(BOOTSTRAP_KEY, storage);
     if (raw === null) {
       return null;
     }
@@ -39,8 +45,12 @@ function readVersionedTheme(storage: Storage): BuiltInThemeId | null {
 }
 
 export function readLegacyPaintHint(storage: Storage): BuiltInThemeId | null {
+  if (getBootIdentity()?.kind !== 'production') {
+    return null;
+  }
+
   try {
-    const variant = storage.getItem(LEGACY_VARIANT_KEY);
+    const variant = readProfileStorage(LEGACY_VARIANT_KEY, storage);
     if (variant === 'solarized') {
       return 'solarized-dark';
     }
@@ -49,7 +59,7 @@ export function readLegacyPaintHint(storage: Storage): BuiltInThemeId | null {
       return 'void';
     }
 
-    const mode = storage.getItem(LEGACY_MODE_KEY);
+    const mode = readProfileStorage(LEGACY_MODE_KEY, storage);
     return mode !== null && isBuiltInThemeId(mode) ? mode : null;
   } catch {
     return null;
@@ -67,22 +77,17 @@ export function writeBootstrapTheme(storage: Storage, selectedId: string): void 
   };
 
   try {
-    storage.setItem(BOOTSTRAP_KEY, JSON.stringify(record));
+    writeProfileStorage(BOOTSTRAP_KEY, JSON.stringify(record), storage);
   } catch {
     // The backend setting remains authoritative when storage is unavailable.
   }
 }
 
 export function clearLegacyThemeKeys(storage: Storage): void {
-  try {
-    storage.removeItem(LEGACY_VARIANT_KEY);
-  } catch {
-    // Legacy cache cleanup is best-effort in restricted storage environments.
+  if (getBootIdentity()?.kind !== 'production') {
+    return;
   }
 
-  try {
-    storage.removeItem(LEGACY_MODE_KEY);
-  } catch {
-    // Legacy cache cleanup is best-effort in restricted storage environments.
-  }
+  removeProfileStorage(LEGACY_VARIANT_KEY, storage);
+  removeProfileStorage(LEGACY_MODE_KEY, storage);
 }

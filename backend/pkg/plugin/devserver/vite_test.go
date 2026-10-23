@@ -142,26 +142,21 @@ func newTestViteProcessWithSleep(ctx context.Context, t *testing.T) *viteProcess
 
 	// Spawn "sh -c 'sleep 300 & sleep 300'" — creates a parent sh and two
 	// child sleep processes, all in the same process group (Setpgid: true).
-	cmd := exec.CommandContext(ctx, "sh", "-c", "sleep 300 & sleep 300")
+	cmd := exec.Command("sh", "-c", "sleep 300 & sleep 300")
+	cmd.Env = goBuildEnv(os.Environ())
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	require.NoError(t, cmd.Start())
 
 	vp.cmd = cmd
-	vp.pgid, _ = syscall.Getpgid(cmd.Process.Pid)
-	if vp.pgid == 0 {
-		vp.pgid = cmd.Process.Pid
-	}
-
-	// Set cmd.Cancel to kill the process group on context cancellation.
-	cmd.Cancel = func() error {
-		return syscall.Kill(-vp.pgid, syscall.SIGKILL)
-	}
-
-	// Wait for the process in a goroutine so vp.done gets closed.
+	vp.pgid = cmd.Process.Pid
+	go vp.waitForExit(cmd)
 	go func() {
-		_ = cmd.Wait()
-		close(vp.done)
+		select {
+		case <-ctx.Done():
+			_ = vp.signalOwnedTree(true)
+		case <-vp.done:
+		}
 	}()
 
 	// Give the child sleep processes a moment to spawn.
@@ -202,7 +197,7 @@ func TestViteProcess_ContextCancel_KillsProcessGroup(t *testing.T) {
 
 	require.True(t, processAlive(parentPid), "parent should be alive before cancel")
 
-	// Cancel the context — this should trigger cmd.Cancel which kills the process group.
+	// Cancellation uses the same sole-reaper group owner as the real Vite path.
 	cancel()
 
 	// Wait for the process to exit.

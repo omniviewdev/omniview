@@ -1,0 +1,266 @@
+package devoutputs
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+type item struct {
+	Kind, Hash, Link, Identity string
+	Mode                       os.FileMode
+}
+type snapshot map[string]item
+
+func snapshotPath(spec specification, exclude []string) (snapshot, error) {
+	result := snapshot{}
+	info, err := os.Lstat(spec.Target)
+	if os.IsNotExist(err) {
+		return result, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if spec.Mode == "file" {
+		value, err := snapshotItem(spec.Target, info, false)
+		if err != nil {
+			return nil, err
+		}
+		result["."] = value
+		return result, nil
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("producer directory was replaced: %s", spec.Target)
+	}
+	err = filepath.WalkDir(spec.Target, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, err := filepath.Rel(spec.Target, path)
+		if err != nil {
+			return err
+		}
+		for _, skip := range exclude {
+			if relative == skip || strings.HasPrefix(relative, skip+string(filepath.Separator)) {
+				if entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+		if spec.Mode == "filter" && relative != "." {
+			if entry.IsDir() {
+				if IsViteConfigTemporaryFile(entry.Name()) {
+					return fmt.Errorf("config-loader artifact was replaced by a directory")
+				}
+				return filepath.SkipDir
+			}
+			if !IsViteConfigTemporaryFile(entry.Name()) {
+				return nil
+			}
+		}
+		for _, part := range strings.Split(filepath.ToSlash(relative), "/") {
+			if part == ".git" {
+				return fmt.Errorf("producer output overlaps Git metadata")
+			}
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		value, err := snapshotItem(path, info, spec.Kind == modules)
+		if err != nil {
+			return err
+		}
+		result[relative] = value
+		return nil
+	})
+	return result, err
+}
+func snapshotItem(path string, info os.FileInfo, allowLinks bool) (item, error) {
+	result := item{Mode: info.Mode().Perm()}
+	switch {
+	case info.IsDir():
+		result.Kind = "directory"
+		id, err := directoryIdentity(path)
+		result.Identity = id
+		return result, err
+	case info.Mode()&os.ModeSymlink != 0:
+		if !allowLinks {
+			return result, fmt.Errorf("producer source/output contains a symlink: %s", path)
+		}
+		result.Kind = "link"
+		target, err := os.Readlink(path)
+		result.Link = target
+		return result, err
+	case info.Mode().IsRegular():
+		result.Kind = "file"
+		stream, err := os.Open(path)
+		if err != nil {
+			return result, err
+		}
+		hash := sha256.New()
+		_, copyErr := io.Copy(hash, stream)
+		closeErr := stream.Close()
+		if copyErr != nil {
+			return result, copyErr
+		}
+		if closeErr != nil {
+			return result, closeErr
+		}
+		after, err := os.Lstat(path)
+		if err != nil {
+			return result, err
+		}
+		if !os.SameFile(info, after) || info.Size() != after.Size() || info.ModTime() != after.ModTime() {
+			return result, fmt.Errorf("producer output changed during snapshot: %s", path)
+		}
+		result.Hash = hex.EncodeToString(hash.Sum(nil))
+		return result, nil
+	default:
+		return result, fmt.Errorf("producer output contains a special file: %s", path)
+	}
+}
+func sameSnapshot(left, right snapshot) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for path, value := range left {
+		if right[path] != value {
+			return false
+		}
+	}
+	return true
+}
+func baselineSnapshot(files map[string]committedFile) snapshot {
+	result := snapshot{}
+	for path, file := range files {
+		sum := sha256.Sum256(file.Data)
+		result[path] = item{Kind: "file", Hash: hex.EncodeToString(sum[:]), Mode: file.Mode}
+		if path != "." {
+			for directory := filepath.Dir(path); ; directory = filepath.Dir(directory) {
+				result[directory] = item{Kind: "directory", Mode: 0755}
+				if directory == "." {
+					break
+				}
+			}
+		}
+	}
+	return result
+}
+func equalCommitted(actual item, exists bool, committed item, tracked bool) bool {
+	if exists != tracked {
+		return false
+	}
+	if !exists {
+		return true
+	}
+	if actual.Kind != committed.Kind {
+		return false
+	}
+	if actual.Kind == "directory" {
+		return true
+	}
+	return actual.Kind == "file" && actual.Hash == committed.Hash && (actual.Mode&0111 != 0) == (committed.Mode&0111 != 0)
+}
+func matchesOwnedOrCommitted(actual, expected, baseline snapshot) error {
+	paths := map[string]bool{}
+	for path := range actual {
+		paths[path] = true
+	}
+	for path := range expected {
+		paths[path] = true
+	}
+	for path := range baseline {
+		paths[path] = true
+	}
+	for path := range paths {
+		value, present := actual[path]
+		owned, wasOwned := expected[path]
+		if owned.Kind == "absent" {
+			if !present {
+				continue
+			}
+			wasOwned = false
+		}
+		if present && wasOwned && value.Kind == "directory" && owned.Kind == "directory" && (value.Identity != owned.Identity || value.Mode != owned.Mode) {
+			return fmt.Errorf("owned producer directory was replaced or changed: %s", path)
+		}
+		if present && wasOwned && value == owned {
+			continue
+		}
+		if !present && !wasOwned {
+			if _, tracked := baseline[path]; !tracked {
+				continue
+			}
+		}
+		committed, isTracked := baseline[path]
+		if !equalCommitted(value, present, committed, isTracked) {
+			return fmt.Errorf("producer path has unknown or uncommitted user changes: %s", path)
+		}
+	}
+	return nil
+}
+func requireBaseline(actual snapshot, baseline snapshot) error {
+	for path, value := range actual {
+		committed, ok := baseline[path]
+		if !equalCommitted(value, true, committed, ok) {
+			return fmt.Errorf("preexisting producer output is not a clean tracked baseline: %s", path)
+		}
+	}
+	for path, value := range baseline {
+		current, ok := actual[path]
+		if !equalCommitted(current, ok, value, true) {
+			return fmt.Errorf("tracked producer baseline was edited or removed: %s", path)
+		}
+	}
+	return nil
+}
+func removeSnapshot(spec specification, expected snapshot) error {
+	actual, err := snapshotPath(spec, nil)
+	if err != nil {
+		return err
+	}
+	for path, value := range actual {
+		if expected[path] != value {
+			return fmt.Errorf("producer cleanup snapshot changed: %s", path)
+		}
+	}
+	paths := make([]string, 0, len(expected))
+	for path := range expected {
+		paths = append(paths, path)
+	}
+	sort.Slice(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
+	for _, relative := range paths {
+		if spec.Mode == "filter" && relative == "." {
+			continue
+		}
+		path := spec.Target
+		if relative != "." {
+			path = filepath.Join(path, relative)
+		}
+		current, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		value, err := snapshotItem(path, current, spec.Kind == modules)
+		if err != nil {
+			return err
+		}
+		if value != expected[relative] {
+			return fmt.Errorf("producer cleanup path changed")
+		}
+		if err = os.Remove(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}

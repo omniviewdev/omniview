@@ -1,0 +1,26 @@
+# Feature-relative source map
+
+First obtain actual repository paths with `workspace paths FEATURE --root COLLECTION --json`. Below, **HOST**, **UI**, **SDK**, and **PLUGIN** are returned paths, not assumed sibling names or absolute machine paths. A selected repository may have a different feature directory from its ID. Source registry IDs `omniview`, `ui`, `plugin-sdk` are conventional; additional plugins can use arbitrary registered IDs. Match their manifest entries and committed `plugin.yaml` metadata.
+
+| Concern | Feature-relative first stop | Why / next narrow scope |
+| --- | --- | --- |
+| Host settings schema/service/persistence | HOST/`internal/settings/`, `internal/settings/store/`, `internal/appstate/` | Follow setting definition/service to profile-scoped storage and appstate root; not a plugin-specific preference by default. |
+| Workspace selection/custom root | HOST/`internal/devcontract/{workspace,customprofile}.go`, `internal/instance/` | Manifest resolution, ownership binding, profile startup. CLI wiring is `cmd/omniview-dev/`. |
+| Managed plugins/control/builds | HOST/`backend/pkg/plugin/`, `internal/devcontrol/`, `internal/devworkspace/` | Trace concrete manager caller after identifying operation; frontend loading starts at `ui/features/plugins/`. |
+| Feature pnpm composition/peer failures | HOST/`internal/devcompose/`, `internal/devworkspace/{links,toolchain,buildgraph,watch}.go` | One native12.14.0 workspace above independent Git worktrees; planner/policy/lock seeding and read-only completed receipt live in devcompose. Exact module/cache lifetimes and restore authority live in `internal/devoutputs/`. Do not fix managed failures through global links or per-plugin installs. |
+| Window identity/client boot | HOST/`main.go`, `ui/features/instance/` | Host profile/window setup and visible frontend identity. Native toolkit source is not needed for an ordinary React feature. |
+| Shared component/table CSS | UI/`packages/base-ui/src/components/{table,data-table,file-table,sortable-table}/`; adjacent styles and `packages/base-ui/src/theme/` | Choose the actual imported component first; host override/cascade entry is HOST/`ui/theme/base-ui.css`. |
+| AI components | UI/`packages/ai-ui/src/` | Separate published package, not host chat code by assumption. |
+| Shared editors | UI/`packages/editors/src/` | Monaco/editor adapters and components. |
+| Go SDK profile-root/store escape | SDK/`pkg/state/{root,custom}.go`, `pkg/utils/store.go`, `pkg/sdk/plugin.go` | Shared resolver/custom containment/store construction and child SDK entry. Trace SDK config via `pkg/config/`. |
+| Go SDK RPC/resource/settings APIs | SDK/`pkg/sdk/grpc.go`, `pkg/resource/{plugin,services}/`, `pkg/v1/`, `proto/`, `settings/` | SDK transport/service definitions differ from host JS runtime bindings. |
+| Kubernetes resources/Helm/auth | Kubernetes PLUGIN/`pkg/plugin/resource/`, `pkg/plugin/helm/`, `pkg/utils/kubeauth/` | Only the plugin whose metadata identifies Kubernetes; frontend starts at its `ui/src/{components,pages,hooks}/`, registration at `ui/src/entry.ts`. No cluster connection is needed to locate code. |
+| Arbitrary other plugin | Its own PLUGIN/`plugin.yaml`, `go.mod`, frontend `package.json`/entry and declared capabilities | Read that plugin's actual structure; do not project Kubernetes Helm/resource layout onto it or assume every plugin has Go plus UI. |
+| Host/plugin JS runtime | HOST/`packages/omniviewdev-runtime/src/` | Runtime API/models/bridge/bindings live here, not in Go plugin-sdk. Generated Wails bindings use `task bindings`, never raw generator. |
+| Providers/Vite plugin/shims | HOST/`packages/omniviewdev-providers/`, `packages/omniviewdev-vite-plugin/src/` | Local package linking and plugin build/externalization are host-owned; build runtime before Vite plugin/shim verification. |
+| Shared dependency disagreement | HOST/`ui/features/plugins/api/shared_dependencies.ts` **and** `packages/omniviewdev-vite-plugin/src/sharedPackages.ts` | Keep both lists in sync. Compare affected plugin frontend imports/package versions/Vite config, including every selected consumer. Preserve host base-ui CSS cascade through `@/theme/base-ui.css`. |
+| CLI setting changed but open UI stale | HOST/`internal/bootstrap/bootstrap.go`, `packages/omniviewdev-runtime/src/context/settings/`, `ui/hooks/settings/` | Core provider's single category callback owns persistence/side effects and value-free `settings/changed` invalidation; runtime state and category queries refresh from backend, not from CLI output. |
+
+Current shared UI is `@omniviewdev/base-ui`, `@omniviewdev/ai-ui`, and `@omniviewdev/editors`. MUI, Emotion and legacy `@omniviewdev/ui` are gone from host sharing. Older marketplace plugins can fail loading because they depend on that removed surface; report incompatibility rather than restoring obsolete shares. Old UI architecture prose/repository names are not authority over current manifests and source.
+
+Source collection initialization supports normal clones and bare Git sources (conventional UI `ui/.bare` with a main checkout `ui/main`); the feature worktree, not the bare common directory or main checkout, is the edit target. Never broad-search for clones to override the registered mapping.

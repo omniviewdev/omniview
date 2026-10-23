@@ -63,12 +63,17 @@ type Manager interface {
 	Shutdown()
 
 	InstallInDevMode() (*config.PluginMeta, error)
+	InstallDevPluginFromPath(path string) (sdktypes.PluginInfo, error)
+	UnlinkDevPlugin(id string) (sdktypes.PluginInfo, error)
 	InstallFromPathPrompt() (*config.PluginMeta, error)
 	InstallPluginFromPath(path string) (*config.PluginMeta, error)
 	InstallPluginVersion(pluginID string, version string) (*config.PluginMeta, error)
 
 	LoadPlugin(id string, opts *LoadPluginOptions) (sdktypes.PluginInfo, error)
 	ReloadPlugin(id string) (sdktypes.PluginInfo, error)
+	UnloadPlugin(id string) error
+	StopDevPlugin(id string) error
+	ReloadManagedPlugin(ctx context.Context, id, source, generation string) error
 	RetryFailedPlugin(id string) (sdktypes.PluginInfo, error)
 	UninstallPlugin(id string) (sdktypes.PluginInfo, error)
 
@@ -155,13 +160,14 @@ type pluginManager struct {
 	pluginsRoot         *appstate.ScopedRoot // scoped to ~/.omniview/plugins
 	recordsMu           sync.RWMutex
 	records             map[string]*plugintypes.PluginRecord
+	pendingArchiveState map[string]*plugintypes.PluginStateRecord // recordsMu protects durable preimages until archive commit
 	connlessControllers map[sdktypes.Capability]plugintypes.Controller
 	connfullControllers map[sdktypes.Capability]plugintypes.ConnectedController
 	settingsProvider    pkgsettings.Provider
 	registryClient      *registry.Client
 	managers            map[string]plugintypes.PluginManager
 	devServerCheck      DevServerChecker
-	devServerMgr        *devserver.DevServerManager
+	devServerMgr        managedDevServers
 	pidTracker          *PIDTracker
 	healthChecker       *HealthChecker
 	pluginLogMgr        *pluginlog.Manager
@@ -172,8 +178,18 @@ type pluginManager struct {
 	// pluginOpsMu serializes load/reload/unload operations per plugin to
 	// prevent concurrent lifecycle transitions for the same plugin (e.g.
 	// two file-change events triggering simultaneous reloads).
-	pluginOpsMu    sync.Mutex
-	pluginOpsLocks map[string]*sync.Mutex
+	pluginOpsMu     sync.Mutex
+	pluginOpsLocks  map[string]*sync.Mutex
+	installOpsLocks map[string]*sync.Mutex
+}
+
+// managedDevServers is the process boundary used by initialization and install
+// transactions. The existing devserver manager remains the sole process owner.
+type managedDevServers interface {
+	SupervisorOwnsStartup() bool
+	IsManaged(pluginID string) bool
+	StartDevServerForPath(pluginID, path string) (devserver.DevServerState, error)
+	StopDevServer(pluginID string) error
 }
 
 // pluginOpsLock returns a per-plugin mutex that serializes load/reload/unload
@@ -227,6 +243,14 @@ func (pm *pluginManager) HandlePluginCrash(pluginID string) {
 	if crashError == "" {
 		crashError = "plugin process exited unexpectedly"
 	}
+	pm.recordsMu.RLock()
+	record := pm.records[pluginID]
+	source := ""
+	if record != nil {
+		source = record.DevPath
+	}
+	pm.recordsMu.RUnlock()
+	pm.observeManagedLifecycle(pluginID, source, pm.managedRuntimeGeneration(pluginID, source), false, false, fmt.Errorf("%s", crashError))
 
 	pm.logger.Errorw(pm.ctx, "plugin process crashed — attempting recovery",
 		"pluginID", pluginID,
@@ -329,6 +353,10 @@ func (pm *pluginManager) SetDevServerChecker(checker DevServerChecker) {
 
 // SetDevServerManager sets the dev server manager.
 func (pm *pluginManager) SetDevServerManager(mgr *devserver.DevServerManager) {
+	if mgr == nil {
+		pm.devServerMgr = nil
+		return
+	}
 	pm.devServerMgr = mgr
 }
 
@@ -359,12 +387,36 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 	// Kill any orphaned plugin processes from a previous unclean shutdown.
 	pm.pidTracker.CleanupStale(pm.logger)
 
+	blockedUninstalls, err := pm.restoreUninstallRecoveries()
+	if err != nil {
+		return fmt.Errorf("validate pending plugin uninstalls: %w", err)
+	}
+	blockedArchives, err := pm.reconcileArchiveRecoveries()
+	if err != nil {
+		return fmt.Errorf("validate pending plugin archive replacements: %w", err)
+	}
+	for id := range blockedArchives {
+		if blockedUninstalls == nil {
+			blockedUninstalls = make(map[string]bool)
+		}
+		blockedUninstalls[id] = true
+	}
+
 	pluginDir := pm.pluginsRoot.ResolvePath("")
 
 	states, err := pm.readPluginStateJSON()
 	if err != nil {
 		pm.logger.Warnw(pm.ctx, "failed to read plugin state file, reconciling from filesystem", "error", err)
 		states = pm.reconcileStatesFromFilesystem(pluginDir, states)
+	}
+	if len(blockedUninstalls) != 0 {
+		allowedStates := states[:0]
+		for _, state := range states {
+			if !blockedUninstalls[state.ID] {
+				allowedStates = append(allowedStates, state)
+			}
+		}
+		states = allowedStates
 	}
 
 	pm.logger.Debugw(pm.ctx, "Loading plugins states from disk", "states", states)
@@ -382,13 +434,25 @@ func (pm *pluginManager) Initialize(ctx context.Context) error {
 		return fmt.Errorf("error re-reading plugin directory after migration: %w", err)
 	}
 
+	// A recovery marker owns the original inode, not whatever now occupies its
+	// canonical name. Do not migrate, load or start those incomplete transactions.
+	if len(blockedUninstalls) != 0 {
+		allowedFiles := files[:0]
+		for _, file := range files {
+			if !blockedUninstalls[file.Name()] {
+				allowedFiles = append(allowedFiles, file)
+			}
+		}
+		files = allowedFiles
+	}
+
 	// Phase 1: Load all plugins using existing binaries on disk.
 	toLoad, devPlugins := pm.planPluginLoads(files, states)
 
 	// Second pass: load plugins concurrently with a bounded worker pool.
 	pm.loadPluginsConcurrently(toLoad)
 
-	// Phase 2: Start dev servers in the background.
+	// Phase 2: Start dev servers not owned by the outer workspace supervisor.
 	if len(devPlugins) > 0 && pm.devServerMgr != nil {
 		go pm.startDevServers(devPlugins)
 	}
@@ -431,6 +495,31 @@ func (pm *pluginManager) planPluginLoads(
 	}
 
 	var devPlugins []devPluginEntry
+	supervisorOwnsStartup := pm.devServerMgr != nil && pm.devServerMgr.SupervisorOwnsStartup()
+	// Workspace selection is authoritative before any cached dev executable or
+	// old source watcher starts. Preserve every dev binding, even if its old
+	// repository/directory was removed; rebind only through the install transaction.
+	workspaceDev := make(map[string]bool)
+	for _, state := range states {
+		if !state.DevMode {
+			continue
+		}
+		constrained, selectionErr := pm.validateManagedSource(state.ID, state.DevPath, nil)
+		if !constrained {
+			continue
+		}
+		workspaceDev[state.ID] = true
+		reason := ""
+		if selectionErr != nil {
+			reason = selectionErr.Error()
+		}
+		pm.retainStoppedDevInventory(state, reason)
+		// A supervised host restores inventory only. Its supervisor links each
+		// selected source after host readiness through the canonical transaction.
+		if selectionErr == nil && state.Enabled && !supervisorOwnsStartup {
+			devPlugins = append(devPlugins, devPluginEntry{pluginID: state.ID, devPath: state.DevPath})
+		}
+	}
 
 	// First pass: collect dev plugin entries and stub records (lightweight, sequential).
 	// Also build a list of plugins that need LoadPlugin called.
@@ -438,6 +527,9 @@ func (pm *pluginManager) planPluginLoads(
 
 	for _, file := range files {
 		if !file.IsDir() {
+			continue
+		}
+		if workspaceDev[file.Name()] {
 			continue
 		}
 
@@ -574,8 +666,19 @@ func (pm *pluginManager) startDevServers(devPlugins []devPluginEntry) {
 		go func(pluginID, devPath string) {
 			defer wg.Done()
 			pm.logger.Infow(pm.ctx, "starting dev server (background)", "pluginID", pluginID)
-			if _, startErr := pm.devServerMgr.StartDevServerForPath(pluginID, devPath); startErr != nil {
-				pm.logger.Warnw(pm.ctx, "failed to start dev server", "pluginID", pluginID, "error", startErr)
+			constrained, selectionErr := pm.validateManagedSource(pluginID, devPath, nil)
+			if selectionErr != nil {
+				pm.logger.Warnw(pm.ctx, "development source is outside workspace selection", "pluginID", pluginID, "error", selectionErr)
+				return
+			}
+			var startErr error
+			if constrained {
+				_, startErr = pm.InstallDevPluginFromPath(devPath)
+			} else {
+				_, startErr = pm.devServerMgr.StartDevServerForPath(pluginID, devPath)
+			}
+			if startErr != nil {
+				pm.logger.Warnw(pm.ctx, "failed to start selected dev source", "pluginID", pluginID, "error", startErr)
 			}
 		}(dp.pluginID, dp.devPath)
 	}

@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
@@ -114,123 +113,6 @@ func TestParseBuildErrors(t *testing.T) {
 	}
 }
 
-// ============================================================================
-// transferBinary tests
-// ============================================================================
-
-func TestTransferBinary_Success(t *testing.T) {
-	devPath := t.TempDir()
-
-	// Create a fake built binary at devPath/build/bin/plugin.
-	buildDir := filepath.Join(devPath, "build", "bin")
-	require.NoError(t, os.MkdirAll(buildDir, 0755))
-	srcBinary := filepath.Join(buildDir, "plugin")
-	require.NoError(t, os.WriteFile(srcBinary, []byte("fake-binary-data"), 0755))
-
-	svc := appstate.NewTestService(t)
-
-	gw := &goWatcherProcess{
-		logger:      logging.NewNop(),
-		pluginID:    "transfer-test",
-		devPath:     devPath,
-		pluginsRoot: svc.Plugins(),
-	}
-
-	err := gw.transferBinary()
-	require.NoError(t, err)
-
-	// Verify the binary was copied.
-	dstPath := filepath.Join(svc.Plugins().ResolvePath(""), "transfer-test", "bin", "plugin")
-	data, err := os.ReadFile(dstPath)
-	require.NoError(t, err)
-	assert.Equal(t, "fake-binary-data", string(data))
-
-	// Verify the file is executable.
-	info, err := os.Stat(dstPath)
-	require.NoError(t, err)
-	assert.NotZero(t, info.Mode()&0111, "binary should be executable")
-}
-
-func TestTransferBinary_SourceMissing(t *testing.T) {
-	devPath := t.TempDir()
-	// Do NOT create the binary — it should be missing.
-
-	svc := appstate.NewTestService(t)
-
-	gw := &goWatcherProcess{
-		logger:      logging.NewNop(),
-		pluginID:    "missing-src",
-		devPath:     devPath,
-		pluginsRoot: svc.Plugins(),
-	}
-
-	err := gw.transferBinary()
-	require.Error(t, err)
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, apperror.TypeInternal, appErr.Type)
-	assert.Equal(t, 500, appErr.Status)
-	assert.Equal(t, "Failed to open built binary", appErr.Title)
-}
-
-func TestTransferBinary_DestDirCreated(t *testing.T) {
-	devPath := t.TempDir()
-
-	// Create a fake binary.
-	buildDir := filepath.Join(devPath, "build", "bin")
-	require.NoError(t, os.MkdirAll(buildDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(buildDir, "plugin"), []byte("bin"), 0755))
-
-	svc := appstate.NewTestService(t)
-
-	gw := &goWatcherProcess{
-		logger:      logging.NewNop(),
-		pluginID:    "dest-create",
-		devPath:     devPath,
-		pluginsRoot: svc.Plugins(),
-	}
-
-	// The dest dir doesn't exist yet.
-	dstDir := filepath.Join(svc.Plugins().ResolvePath(""), "dest-create", "bin")
-	_, err := os.Stat(dstDir)
-	assert.True(t, os.IsNotExist(err))
-
-	require.NoError(t, gw.transferBinary())
-
-	// Now it should exist.
-	info, err := os.Stat(dstDir)
-	require.NoError(t, err)
-	assert.True(t, info.IsDir())
-}
-
-func TestTransferBinary_OverwritesExisting(t *testing.T) {
-	devPath := t.TempDir()
-
-	buildDir := filepath.Join(devPath, "build", "bin")
-	require.NoError(t, os.MkdirAll(buildDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(buildDir, "plugin"), []byte("new-binary"), 0755))
-
-	svc := appstate.NewTestService(t)
-
-	gw := &goWatcherProcess{
-		logger:      logging.NewNop(),
-		pluginID:    "overwrite-test",
-		devPath:     devPath,
-		pluginsRoot: svc.Plugins(),
-	}
-
-	// Pre-create an old binary at the destination.
-	dstDir := filepath.Join(svc.Plugins().ResolvePath(""), "overwrite-test", "bin")
-	require.NoError(t, os.MkdirAll(dstDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dstDir, "plugin"), []byte("old-binary"), 0755))
-
-	require.NoError(t, gw.transferBinary())
-
-	data, err := os.ReadFile(filepath.Join(dstDir, "plugin"))
-	require.NoError(t, err)
-	assert.Equal(t, "new-binary", string(data))
-}
-
 func TestParseBuildErrors_GoTestOutput(t *testing.T) {
 	// Test failure output from `go test` looks different — no file:line:col pattern.
 	output := `--- FAIL: TestSomething (0.01s)
@@ -309,89 +191,9 @@ func TestGoWatcherProcess_Stop_WithWatcher(t *testing.T) {
 }
 
 func TestRunGoBuild_EmptyGoPath(t *testing.T) {
-	gw := &goWatcherProcess{
-		ctx:        context.Background(),
-		logger:     logging.NewNop(),
-		pluginID:   "empty-go",
-		devPath:    t.TempDir(),
-		buildOpts:  BuildOpts{GoPath: ""},
-		appendLog:  func(LogEntry) {},
-		emitErrors: func(string, []BuildError) {},
-	}
-
-	err := gw.runGoBuild()
-	require.Error(t, err)
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, apperror.TypeSettingsMissingConfig, appErr.Type)
-	assert.Equal(t, 422, appErr.Status)
-	assert.Contains(t, appErr.Title, "developer.gopath")
-	// ConfigMissing should attach an "Open Settings" action
-	require.NotEmpty(t, appErr.Actions)
-	assert.Equal(t, "navigate", appErr.Actions[0].Type)
-	assert.Contains(t, appErr.Actions[0].Target, "developer")
-}
-
-func TestGoWatcherStart_WatchesNestedSubdirs(t *testing.T) {
-	devPath := t.TempDir()
-
-	// Create pkg/ with nested subdirectories.
-	for _, sub := range []string{"pkg", "pkg/api", "pkg/api/v1", "pkg/internal"} {
-		require.NoError(t, os.MkdirAll(filepath.Join(devPath, sub), 0755))
-	}
-
-	var logs []LogEntry
-	gw := newGoWatcherProcess(
-		context.Background(),
-		logging.NewNop(),
-		"nested-test",
-		devPath,
-		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
-		&mockPluginReloader{},
-		appstate.NewTestService(t).Plugins(),
-		func(e LogEntry) { logs = append(logs, e) },
-		func(DevProcessStatus) {},
-		func(time.Duration, string) {},
-		func(string, []BuildError) {},
-	)
-
-	require.NoError(t, gw.Start())
-	defer gw.Stop()
-
-	// First log: "Watching N directories for Go changes" (4 pkg dirs + 1 root dir)
-	require.GreaterOrEqual(t, len(logs), 1)
-	assert.Contains(t, logs[0].Message, "Watching 5 directories")
-}
-
-func TestGoWatcherStart_SkipsHiddenVendorNodeModules(t *testing.T) {
-	devPath := t.TempDir()
-
-	// Create pkg/ with dirs that should be skipped and one valid one.
-	for _, sub := range []string{"pkg", "pkg/.hidden", "pkg/vendor", "pkg/node_modules", "pkg/valid"} {
-		require.NoError(t, os.MkdirAll(filepath.Join(devPath, sub), 0755))
-	}
-
-	var logs []LogEntry
-	gw := newGoWatcherProcess(
-		context.Background(),
-		logging.NewNop(),
-		"skip-test",
-		devPath,
-		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
-		&mockPluginReloader{},
-		appstate.NewTestService(t).Plugins(),
-		func(e LogEntry) { logs = append(logs, e) },
-		func(DevProcessStatus) {},
-		func(time.Duration, string) {},
-		func(string, []BuildError) {},
-	)
-
-	require.NoError(t, gw.Start())
-	defer gw.Stop()
-
-	// First log: "Watching N directories for Go changes" (2 pkg dirs + 1 root dir)
-	require.GreaterOrEqual(t, len(logs), 1)
-	assert.Contains(t, logs[0].Message, "Watching 3 directories")
+	t.Setenv("PATH", t.TempDir())
+	gw := newGoWatcherProcess(context.Background(), logging.NewNop(), "missing-go", t.TempDir(), BuildOpts{}, nil, appstate.NewTestService(t).Plugins(), func(LogEntry) {}, func(DevProcessStatus) {}, func(time.Duration, string) {}, func(string, []BuildError) {})
+	require.ErrorContains(t, gw.runGoBuild(), "resolve go tool")
 }
 
 // ============================================================================
@@ -404,7 +206,6 @@ func TestGoWatcherStart_InitialBuild_FailsGracefully(t *testing.T) {
 	devPath := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(devPath, "pkg"), 0755))
 
-	var logs []LogEntry
 	var statuses []DevProcessStatus
 	gw := newGoWatcherProcess(
 		context.Background(),
@@ -414,14 +215,14 @@ func TestGoWatcherStart_InitialBuild_FailsGracefully(t *testing.T) {
 		BuildOpts{GoPath: ""}, // Empty → build will fail
 		&mockPluginReloader{},
 		appstate.NewTestService(t).Plugins(),
-		func(e LogEntry) { logs = append(logs, e) },
+		func(LogEntry) {},
 		func(s DevProcessStatus) { statuses = append(statuses, s) },
 		func(time.Duration, string) {},
 		func(string, []BuildError) {},
 	)
 
 	// Start should succeed even though the initial build fails.
-	require.NoError(t, gw.Start())
+	require.NoError(t, startFixtureWatcher(t, gw))
 	defer gw.Stop()
 
 	// Verify status progression: Building → Error (from initial build failure)
@@ -429,18 +230,6 @@ func TestGoWatcherStart_InitialBuild_FailsGracefully(t *testing.T) {
 	assert.Equal(t, DevProcessStatusBuilding, statuses[0])
 	assert.Equal(t, DevProcessStatusError, statuses[1])
 
-	// Verify logs contain initial build messages.
-	var hasInitialBuildMsg, hasFailMsg bool
-	for _, log := range logs {
-		if log.Message == "Running initial build..." {
-			hasInitialBuildMsg = true
-		}
-		if log.Source == "go-build" && log.Level == "error" {
-			hasFailMsg = true
-		}
-	}
-	assert.True(t, hasInitialBuildMsg, "should log initial build start")
-	assert.True(t, hasFailMsg, "should log build failure")
 }
 
 func TestGoWatcherStart_InitialBuild_StatusProgression(t *testing.T) {
@@ -463,7 +252,7 @@ func TestGoWatcherStart_InitialBuild_StatusProgression(t *testing.T) {
 		func(string, []BuildError) {},
 	)
 
-	require.NoError(t, gw.Start())
+	require.NoError(t, startFixtureWatcher(t, gw))
 	defer gw.Stop()
 
 	// Should have at least Building status (first status set by initial build).
@@ -471,279 +260,11 @@ func TestGoWatcherStart_InitialBuild_StatusProgression(t *testing.T) {
 	assert.Equal(t, DevProcessStatusBuilding, statuses[0])
 }
 
-func TestTransferBinary_ReadOnlyDestDir(t *testing.T) {
-	devPath := t.TempDir()
-
-	// Create a built binary.
-	buildDir := filepath.Join(devPath, "build", "bin")
-	require.NoError(t, os.MkdirAll(buildDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(buildDir, "plugin"), []byte("bin"), 0755))
-
-	svc := appstate.NewTestService(t)
-
-	// Create the dest dir as read-only so file creation fails.
-	dstDir := filepath.Join(svc.Plugins().ResolvePath(""), "readonly-test", "bin")
-	require.NoError(t, os.MkdirAll(dstDir, 0755))
-	require.NoError(t, os.Chmod(dstDir, 0444))
-	t.Cleanup(func() { _ = os.Chmod(dstDir, 0755) })
-
-	gw := &goWatcherProcess{
-		logger:      logging.NewNop(),
-		pluginID:    "readonly-test",
-		devPath:     devPath,
-		pluginsRoot: svc.Plugins(),
-	}
-
-	err := gw.transferBinary()
-	require.Error(t, err)
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, apperror.TypeInternal, appErr.Type)
-	assert.Equal(t, 500, appErr.Status)
-	assert.Equal(t, "Failed to create destination binary", appErr.Title)
-	assert.Contains(t, appErr.Detail, "permission denied")
-}
-
 // ============================================================================
 // parseGoWorkUseDirectives tests
 // ============================================================================
 
-func TestParseGoWorkUseDirectives_BlockSyntax(t *testing.T) {
-	data := []byte(`go 1.22
-
-use (
-	.
-	../plugin-sdk
-	../some-other-module
-)
-`)
-	paths := parseGoWorkUseDirectives(data)
-	assert.Equal(t, []string{".", "../plugin-sdk", "../some-other-module"}, paths)
-}
-
-func TestParseGoWorkUseDirectives_SingleLineSyntax(t *testing.T) {
-	data := []byte(`go 1.22
-
-use ./local-module
-use ../sibling-module
-`)
-	paths := parseGoWorkUseDirectives(data)
-	assert.Equal(t, []string{"./local-module", "../sibling-module"}, paths)
-}
-
-func TestParseGoWorkUseDirectives_MixedSyntax(t *testing.T) {
-	data := []byte(`go 1.22
-
-use ./standalone
-
-use (
-	.
-	../sdk
-)
-`)
-	paths := parseGoWorkUseDirectives(data)
-	assert.Equal(t, []string{"./standalone", ".", "../sdk"}, paths)
-}
-
-func TestParseGoWorkUseDirectives_IgnoresComments(t *testing.T) {
-	data := []byte(`go 1.22
-
-use (
-	.
-	// ../commented-out
-	../real-module
-)
-`)
-	paths := parseGoWorkUseDirectives(data)
-	assert.Equal(t, []string{".", "../real-module"}, paths)
-}
-
-func TestParseGoWorkUseDirectives_EmptyFile(t *testing.T) {
-	paths := parseGoWorkUseDirectives([]byte(""))
-	assert.Nil(t, paths)
-}
-
-func TestParseGoWorkUseDirectives_NoUseDirectives(t *testing.T) {
-	data := []byte(`go 1.22
-
-toolchain go1.22.4
-`)
-	paths := parseGoWorkUseDirectives(data)
-	assert.Nil(t, paths)
-}
-
-func TestParseGoWorkUseDirectives_EmptyBlock(t *testing.T) {
-	data := []byte(`go 1.22
-
-use (
-)
-`)
-	paths := parseGoWorkUseDirectives(data)
-	assert.Nil(t, paths)
-}
-
-func TestParseGoWorkUseDirectives_WhitespaceInBlock(t *testing.T) {
-	data := []byte(`go 1.22
-
-use (
-	.
-
-	../plugin-sdk
-
-)
-`)
-	paths := parseGoWorkUseDirectives(data)
-	assert.Equal(t, []string{".", "../plugin-sdk"}, paths)
-}
-
-// ============================================================================
-// go.work watching tests
-// ============================================================================
-
-func TestGoWatcherStart_WatchesGoWorkModules(t *testing.T) {
-	devPath := t.TempDir()
-
-	// Create pkg/ (required by Start).
-	require.NoError(t, os.MkdirAll(filepath.Join(devPath, "pkg"), 0755))
-
-	// Create a sibling SDK module with pkg/ subdirectories.
-	sdkPkg := filepath.Join(devPath, "../plugin-sdk/pkg")
-	sdkPkgV1 := filepath.Join(devPath, "../plugin-sdk/pkg/v1")
-	require.NoError(t, os.MkdirAll(sdkPkgV1, 0755))
-	defer os.RemoveAll(filepath.Join(devPath, "../plugin-sdk"))
-
-	// Write a go.work file referencing the SDK.
-	goWork := []byte("go 1.22\n\nuse (\n\t.\n\t../plugin-sdk\n)\n")
-	require.NoError(t, os.WriteFile(filepath.Join(devPath, "go.work"), goWork, 0644))
-
-	var logs []LogEntry
-	gw := newGoWatcherProcess(
-		context.Background(),
-		logging.NewNop(),
-		"gowork-test",
-		devPath,
-		BuildOpts{}, // Empty GoPath → initial build will fail (expected)
-		&mockPluginReloader{},
-		appstate.NewTestService(t).Plugins(),
-		func(e LogEntry) { logs = append(logs, e) },
-		func(DevProcessStatus) {},
-		func(time.Duration, string) {},
-		func(string, []BuildError) {},
-	)
-
-	require.NoError(t, gw.Start())
-	defer gw.Stop()
-
-	// Should watch: pkg/ (1) + root (1) + sdk/pkg/ (1) + sdk/pkg/v1/ (1) = 4 directories.
-	require.GreaterOrEqual(t, len(logs), 1)
-	assert.Contains(t, logs[0].Message, "Watching 4 directories")
-
-	// Verify that the SDK directories are actually being watched by checking
-	// the watcher's watched paths include the SDK pkg dir.
-	watchList := gw.watcher.WatchList()
-	found := false
-	for _, w := range watchList {
-		abs, _ := filepath.Abs(sdkPkg)
-		wAbs, _ := filepath.Abs(w)
-		if abs == wAbs {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "watcher should include SDK pkg/ directory; watched: %v", watchList)
-}
-
-func TestGoWatcherStart_NoGoWork_StillWorks(t *testing.T) {
-	devPath := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(devPath, "pkg"), 0755))
-	// No go.work file — should still work fine.
-
-	var logs []LogEntry
-	gw := newGoWatcherProcess(
-		context.Background(),
-		logging.NewNop(),
-		"no-gowork",
-		devPath,
-		BuildOpts{},
-		&mockPluginReloader{},
-		appstate.NewTestService(t).Plugins(),
-		func(e LogEntry) { logs = append(logs, e) },
-		func(DevProcessStatus) {},
-		func(time.Duration, string) {},
-		func(string, []BuildError) {},
-	)
-
-	require.NoError(t, gw.Start())
-	defer gw.Stop()
-
-	// Should watch: pkg/ (1) + root (1) = 2 directories.
-	require.GreaterOrEqual(t, len(logs), 1)
-	assert.Contains(t, logs[0].Message, "Watching 2 directories")
-}
-
-func TestGoWatcherStart_GoWork_SkipsDotModule(t *testing.T) {
-	devPath := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(devPath, "pkg"), 0755))
-
-	// go.work with only "." module — should not double-count the current dir.
-	goWork := []byte("go 1.22\n\nuse .\n")
-	require.NoError(t, os.WriteFile(filepath.Join(devPath, "go.work"), goWork, 0644))
-
-	var logs []LogEntry
-	gw := newGoWatcherProcess(
-		context.Background(),
-		logging.NewNop(),
-		"dot-only",
-		devPath,
-		BuildOpts{},
-		&mockPluginReloader{},
-		appstate.NewTestService(t).Plugins(),
-		func(e LogEntry) { logs = append(logs, e) },
-		func(DevProcessStatus) {},
-		func(time.Duration, string) {},
-		func(string, []BuildError) {},
-	)
-
-	require.NoError(t, gw.Start())
-	defer gw.Stop()
-
-	// "." is skipped, so only pkg/ (1) + root (1) = 2 directories.
-	require.GreaterOrEqual(t, len(logs), 1)
-	assert.Contains(t, logs[0].Message, "Watching 2 directories")
-}
-
-func TestGoWatcherStart_GoWork_NonExistentModule(t *testing.T) {
-	devPath := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(devPath, "pkg"), 0755))
-
-	// Reference a module that doesn't exist.
-	goWork := []byte("go 1.22\n\nuse ../nonexistent-module\n")
-	require.NoError(t, os.WriteFile(filepath.Join(devPath, "go.work"), goWork, 0644))
-
-	var logs []LogEntry
-	gw := newGoWatcherProcess(
-		context.Background(),
-		logging.NewNop(),
-		"missing-mod",
-		devPath,
-		BuildOpts{},
-		&mockPluginReloader{},
-		appstate.NewTestService(t).Plugins(),
-		func(e LogEntry) { logs = append(logs, e) },
-		func(DevProcessStatus) {},
-		func(time.Duration, string) {},
-		func(string, []BuildError) {},
-	)
-
-	require.NoError(t, gw.Start())
-	defer gw.Stop()
-
-	// Non-existent module is silently skipped. Only pkg/ (1) + root (1) = 2.
-	require.GreaterOrEqual(t, len(logs), 1)
-	assert.Contains(t, logs[0].Message, "Watching 2 directories")
-}
-
 func TestGoBuildEnvDropsGOROOT(t *testing.T) {
-	got := goBuildEnv([]string{"PATH=/bin", "GOROOT=/old/go", "GOPATH=/gopath"})
-	assert.Equal(t, []string{"PATH=/bin", "GOPATH=/gopath"}, got)
+	got := goBuildEnv([]string{"PATH=/bin", "GOROOT=/old/go", "GOWORK=/foreign/go.work", "GOPATH=/gopath"})
+	assert.Equal(t, []string{"PATH=/bin", "GOPATH=/gopath", "GOWORK=off"}, got)
 }

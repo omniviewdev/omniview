@@ -1,5 +1,10 @@
 # 11 -- Plugin Author Guide
 
+> Historical guide draft, not current user documentation. External attachment
+> and standalone-runner examples below are unsupported and superseded by
+> [plugin development](../../docs/plugin-development.md) and
+> [development CLI](../../docs/development-cli.md).
+
 ## Developing Plugins for Omniview
 
 This guide covers everything you need to know to develop plugins for Omniview with fast iteration cycles. You will learn how to set up your environment, choose a development workflow, and troubleshoot common issues.

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Events } from '@wailsio/runtime';
 
 import { PluginContext } from './PluginContext';
 import { PluginValues } from '../../bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/settings/servicewrapper';
@@ -16,60 +17,95 @@ export function PluginContextProvider(props: React.PropsWithChildren<PluginConte
   const [meta, setMeta] = React.useState<PluginMeta>(new PluginMeta);
   const [metaLoaded, setMetaLoaded] = React.useState(false);
   const [metaError, setMetaError] = React.useState<string | null>(null);
+  const settingsRequest = React.useRef(0);
+  const metadataRequest = React.useRef(0);
 
   console.debug(`[PluginContextProvider] render`, { pluginId, metaLoaded, metaError: !!metaError });
 
   /**
    * Fetch the settings from the backend stores
    */
-  const fetchSettings = () => {
+  const fetchSettings = React.useCallback(() => {
     if (pluginId === undefined || pluginId === '') {
       return
     }
+    const request = ++settingsRequest.current;
 
     console.debug(`[PluginContextProvider] fetching settings for "${pluginId}"`);
     PluginValues(pluginId)
       .then((values) => {
+        if (request !== settingsRequest.current) return;
         console.debug(`[PluginContextProvider] settings loaded for "${pluginId}"`, Object.keys(values));
         setSettings(values)
       })
       .catch((error: unknown) => {
+        if (request !== settingsRequest.current) return;
         const appErr = parseAppError(error);
         console.error(`[PluginContextProvider] error fetching settings for "${pluginId}":`, appErr.detail);
       })
-  }
+  }, [pluginId]);
 
   /**
    * Fetch the metadata for the plugin from the backend stores
    */
-  const fetchMeta = () => {
+  const fetchMeta = React.useCallback(() => {
     if (pluginId === undefined || pluginId === '') {
       console.debug(`[PluginContextProvider] skipping meta fetch — empty pluginId`);
       return
     }
+    const request = ++metadataRequest.current;
 
     console.debug(`[PluginContextProvider] fetching meta for "${pluginId}"`);
     setMetaError(null);
 
     GetPluginMeta(pluginId)
       .then((values) => {
+        if (request !== metadataRequest.current) return;
         console.debug(`[PluginContextProvider] meta loaded for "${pluginId}"`, { name: values?.name, version: values?.version });
         setMeta(values)
         setMetaLoaded(true)
       })
       .catch((error: unknown) => {
+        if (request !== metadataRequest.current) return;
         const appErr = parseAppError(error);
         console.error(`[PluginContextProvider] error fetching meta for "${pluginId}":`, appErr.detail);
         setMetaError(appErr.detail);
         setMetaLoaded(false)
       })
-  }
+  }, [pluginId]);
+
+  React.useEffect(() => {
+    // Only unavailable context needs startup reconciliation. Loaded metadata
+    // must not be replaced by a candidate before its install transaction commits.
+    if (metaLoaded) return;
+    const refresh = () => {
+      fetchSettings();
+      fetchMeta();
+    };
+    const cleanups = [
+      Events.On('plugin/init_complete', refresh),
+      Events.On('plugin/dev_install_complete', (event) => {
+        if (event.data?.id === pluginId) refresh();
+      }),
+      Events.On('plugin/inventory_changed', refresh),
+    ];
+    return () => {
+      for (const stop of cleanups) stop();
+    };
+  }, [pluginId, metaLoaded, fetchSettings, fetchMeta]);
 
   React.useEffect(() => {
     console.debug(`[PluginContextProvider] useEffect — pluginId changed to "${pluginId}"`);
+    setMetaLoaded(false);
+    setMetaError(null);
+    setSettings({});
     fetchSettings();
     fetchMeta();
-  }, [pluginId])
+    return () => {
+      ++settingsRequest.current;
+      ++metadataRequest.current;
+    };
+  }, [pluginId, fetchSettings, fetchMeta]);
 
   if (metaError) {
     return (

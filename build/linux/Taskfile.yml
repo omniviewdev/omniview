@@ -1,21 +1,28 @@
 version: '3'
 
+env:
+  GOWORK: "off"
+  GOFLAGS: ""
+
 includes:
   common: ../Taskfile.yml
 
 tasks:
   build:
     summary: Builds the application for Linux
+    vars:
+      TARGET_OS: linux
     cmds:
       - task: build:native
         vars:
           DEV: '{{.DEV}}'
+          BUILD_FLAGS:
+            ref: .BUILD_FLAGS
 
   build:native:
     summary: Builds the application natively on Linux
     internal: true
     deps:
-      - task: common:go:mod:tidy
       - task: common:build:frontend
         vars:
           BUILD_FLAGS:
@@ -24,9 +31,13 @@ tasks:
             ref: .DEV
       - task: common:generate:icons
     cmds:
-      - go build {{.BUILD_FLAGS}} -o {{.OUTPUT}}
+      - |
+        set -e
+        HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
+        GOWORK=off GOFLAGS= go build {{.BUILD_FLAGS}} -modfile="$HOST_MODFILE" -o "{{.OUTPUT}}"
     vars:
-      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+      COMPOSED_BUILD_FLAGS: '{{if eq .RELEASE "true"}}-tags {{if eq .SERVER "true"}}production,server{{else}}production{{end}} {{else}}{{if .BUILD_TAGS}}-tags {{.BUILD_TAGS | shellQuote}} {{end}}{{end}}{{if and (eq .DEV "true") (ne .RELEASE "true")}}-buildvcs=false -gcflags=all="-l"{{else}}-trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+      BUILD_FLAGS: '{{if eq .RELEASE "true"}}{{.COMPOSED_BUILD_FLAGS}}{{else}}{{.BUILD_FLAGS | default .COMPOSED_BUILD_FLAGS}}{{end}}'
       DEFAULT_OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}'
       OUTPUT: '{{ .OUTPUT | default .DEFAULT_OUTPUT }}'
     env:
@@ -36,9 +47,18 @@ tasks:
 
   package:
     summary: Packages the application for Linux
+    vars:
+      RELEASE: "true"
+      DEV: "false"
+      TARGET_OS: linux
+      BUILD_FLAGS: '-tags production -trimpath -buildvcs=false -ldflags="-w -s"'
     deps:
       - task: build
+        vars:
+          DEV: "false"
+          BUILD_FLAGS:
+            ref: .BUILD_FLAGS
 
   run:
     cmds:
-      - '{{.BIN_DIR}}/{{.APP_NAME}}'
+      - 'GOWORK=off GOFLAGS= "{{.BIN_DIR}}/{{.APP_NAME}}"'

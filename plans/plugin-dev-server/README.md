@@ -1,5 +1,10 @@
 # Plugin Dev Server -- Implementation Specification
 
+> Historical design, not current operating instructions. The independent runner
+> and PID-file external attachment were removed in the workspace client cutover.
+> Use [development CLI](../../docs/development-cli.md) and
+> [plugin development](../../docs/plugin-development.md) for supported workflows.
+
 ## Overview
 
 This specification covers the implementation of a plugin development server system for Omniview that provides:

@@ -1,14 +1,14 @@
 import React from 'react';
 import { Chip, StatusDot } from '@omniviewdev/base-ui';
 import type { ComponentColor } from '@omniviewdev/base-ui';
-import { LuCircle, LuExternalLink, LuHammer, LuPlay, LuRefreshCw, LuSquare } from 'react-icons/lu';
+import { LuCircle, LuHammer, LuPlay, LuRefreshCw, LuSquare } from 'react-icons/lu';
+import { LifecycleStage } from '@omniviewdev/runtime/models';
 
 import HintTooltip from '@/components/base/HintTooltip';
 import { devToolsChannel } from '@/features/devtools/events';
 import { getAggregateStatus, STATUS_COLORS } from '@/features/devtools/types';
 import type { DevServerAggregateStatus } from '@/features/devtools/types';
 import { useDevServer } from '@/hooks/plugin/useDevServer';
-import { DevServerMode } from '@omniviewdev/runtime/models';
 import styles from './DevModeSection.module.css';
 
 type Props = {
@@ -65,16 +65,6 @@ const DevModeSection: React.FC<Props> = ({ pluginId, devPath }) => {
           >
             {STATUS_LABELS[aggStatus]}
           </Chip>
-          {state.data?.mode === DevServerMode.DevServerModeExternal && (
-            <Chip
-              size='xs'
-              color='neutral'
-              variant='outline'
-              startDecorator={<LuExternalLink size={10} />}
-            >
-              External
-            </Chip>
-          )}
           {/* Dev-only base-ui smoke test (omn-oiaq): checks base-ui renders inside the MUI tree. */}
           {import.meta.env.DEV && (
             <StatusDot status="info" size="sm" label="base-ui" data-testid="base-ui-smoke" />
@@ -117,8 +107,8 @@ const DevModeSection: React.FC<Props> = ({ pluginId, devPath }) => {
         {state.data && (
           <DetailRow
             label='gRPC'
-            value={state.data.grpcConnected ? 'Connected' : 'Disconnected'}
-            valueColor={state.data.grpcConnected ? 'var(--ov-color-success)' : 'var(--ov-color-danger)'}
+            value={state.data.rpcStatus === LifecycleStage.StageNotApplicable ? 'Not applicable' : state.data.grpcConnected ? 'Connected' : 'Disconnected'}
+            valueColor={state.data.rpcStatus === LifecycleStage.StageNotApplicable ? undefined : state.data.grpcConnected ? 'var(--ov-color-success)' : 'var(--ov-color-danger)'}
           />
         )}
         {state.data?.lastError && (

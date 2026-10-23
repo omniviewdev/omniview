@@ -4,119 +4,201 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
+	"os"
 	"sync"
 
+	"strings"
+
+	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsession"
+	"github.com/omniviewdev/omniview/internal/instance"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
 const pluginPIDFileName = "plugin_pids.json"
 
-// PIDTracker tracks PIDs of running plugin binary processes so that
-// orphaned processes from a previous unclean shutdown (force-quit, crash,
-// SIGKILL) can be cleaned up on the next startup.
-//
-// On clean shutdown, client.Kill() already terminates plugin processes, so the
-// saved PID file will typically be empty. The file only matters when shutdown
-// was interrupted.
+// PIDTracker persists kernel process identity plus supervisor provenance. Numeric
+// legacy PIDs are retained as rejected recovery evidence, never kill authority.
+// Live children remain owned by go-plugin Client.Kill, including on Darwin.
 type PIDTracker struct {
 	mu        sync.Mutex
-	pids      map[string]int // pluginID -> PID
+	pids      map[string]devcontract.ProcessIdentity
+	removed   map[string]bool
 	stateRoot *appstate.ScopedRoot
 }
 
-// NewPIDTracker creates a new tracker with an empty PID map.
-func NewPIDTracker(stateRoot *appstate.ScopedRoot) *PIDTracker {
-	return &PIDTracker{
-		mu:        sync.Mutex{},
-		pids:      make(map[string]int),
-		stateRoot: stateRoot,
+func NewPIDTracker(root *appstate.ScopedRoot) *PIDTracker {
+	return &PIDTracker{pids: map[string]devcontract.ProcessIdentity{}, removed: map[string]bool{}, stateRoot: root}
+}
+
+func (t *PIDTracker) RecordOwned(id string, pid int, owner devsession.ProcessOwner) error {
+	if owner.Role != "plugin-backend" {
+		return fmt.Errorf("invalid backend process role")
+	}
+	record, err := devsession.CaptureProcess(pid, owner)
+	if err != nil {
+		return err
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if data, readErr := t.stateRoot.ReadFile(pluginPIDFileName); readErr == nil {
+		var saved map[string]json.RawMessage
+		if err = json.Unmarshal(data, &saved); err != nil {
+			return err
+		}
+		if raw, exists := saved[id]; exists && !t.removed[id] {
+			var old devcontract.ProcessIdentity
+			if err = json.Unmarshal(raw, &old); err != nil {
+				return fmt.Errorf("unowned backend recovery record retained: %w", err)
+			}
+			if old != record {
+				expected := devsession.ProcessOwner{WorkspaceID: owner.WorkspaceID, Generation: old.Generation, Role: "plugin-backend", Source: old.Source}
+				if err := devsession.VerifyOwnedProcess(old, expected); !errors.Is(err, devsession.ErrProcessGone) {
+					return fmt.Errorf("unresolved backend recovery ownership conflict for %s: %v", id, err)
+				}
+			}
+		}
+	} else if !errors.Is(readErr, fs.ErrNotExist) {
+		return readErr
+	}
+	t.pids[id] = record
+	delete(t.removed, id)
+	return nil
+}
+func (t *PIDTracker) Remove(id string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if _, ok := t.pids[id]; ok {
+		delete(t.pids, id)
+		t.removed[id] = true
 	}
 }
 
-// Record adds or updates the PID for a plugin. Called after a plugin binary
-// is successfully started and the gRPC connection is established.
-func (t *PIDTracker) Record(pluginID string, pid int) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.pids[pluginID] = pid
-}
-
-// Remove deletes the PID entry for a plugin. Called when a plugin is cleanly
-// stopped via client.Kill().
-func (t *PIDTracker) Remove(pluginID string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	delete(t.pids, pluginID)
-}
-
-// Save persists the current pluginID->PID map to disk. This is called during
-// Shutdown as a safety net -- if all plugins were stopped cleanly the map is
-// empty, but if shutdownPlugin failed for any plugin its PID will be saved
-// for cleanup on the next startup.
 func (t *PIDTracker) Save() error {
 	t.mu.Lock()
-	data := make(map[string]int, len(t.pids))
-	for id, pid := range t.pids {
-		data[id] = pid
+	defer t.mu.Unlock()
+	data := map[string]json.RawMessage{}
+	if b, err := t.stateRoot.ReadFile(pluginPIDFileName); err == nil {
+		if err = json.Unmarshal(b, &data); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
 	}
-	t.mu.Unlock()
-
+	for id := range t.removed {
+		delete(data, id)
+	}
+	for id, record := range t.pids {
+		b, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		data[id] = b
+	}
 	b, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
-	return t.stateRoot.WriteFile(pluginPIDFileName, b, stateFilePerm)
+	return t.writeOwnershipFile(b)
 }
 
-// CleanupStale reads the PID file from a previous session, kills any processes
-// that are still alive, and removes the file. This should be called early in
-// Initialize(), before any new plugins are started.
 func (t *PIDTracker) CleanupStale(logger logging.Logger) {
 	b, err := t.stateRoot.ReadFile(pluginPIDFileName)
+	if errors.Is(err, fs.ErrNotExist) {
+		return
+	}
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			// No PID file -- nothing to clean up (normal case after clean shutdown).
-			return
-		}
-		logger.Warnw(context.Background(), "failed to read plugin PID file", "error", err)
+		logger.Warnw(context.Background(), "read plugin recovery records", "error", err)
 		return
 	}
-	_ = t.stateRoot.Remove(pluginPIDFileName)
-
-	var data map[string]int
+	var data map[string]json.RawMessage
 	if err = json.Unmarshal(b, &data); err != nil {
-		logger.Warnw(context.Background(), "failed to parse plugin PID file", "error", err)
+		logger.Warnw(context.Background(), "invalid plugin recovery records retained", "error", err)
 		return
 	}
-
-	killed := 0
-	for pluginID, pid := range data {
-		if pid <= 0 {
+	environment, envErr := instance.PluginEnvironment(t.stateRoot.ResolvePath(""), "", os.Environ())
+	if envErr != nil {
+		logger.Warnw(context.Background(), "cannot resolve plugin recovery workspace; records retained", "error", envErr)
+		return
+	}
+	workspace := ""
+	for _, entry := range environment {
+		if strings.HasPrefix(entry, "OMNIVIEW_WORKSPACE_ID=") {
+			workspace = strings.TrimPrefix(entry, "OMNIVIEW_WORKSPACE_ID=")
+		}
+	}
+	for id, raw := range data {
+		var record devcontract.ProcessIdentity
+		if err = json.Unmarshal(raw, &record); err != nil || workspace == "" || record.WorkspaceID != workspace || record.Role != "plugin-backend" {
+			logger.Warnw(context.Background(), "unowned plugin recovery record retained", "pluginID", id)
 			continue
 		}
-
-		if killErr := killProcess(pid); killErr != nil {
-			// Process already dead -- that's fine.
-			if !isProcessNotFound(killErr) {
-				logger.Warnw(context.Background(), "failed to kill stale plugin process",
-					"pluginID", pluginID,
-					"pid", pid,
-					"error", killErr,
-				)
-			}
+		expected := devsession.ProcessOwner{WorkspaceID: workspace, Generation: record.Generation, Role: "plugin-backend", Source: record.Source}
+		if err = devsession.TerminateOwnedProcess(record, expected); err != nil {
+			logger.Warnw(context.Background(), "plugin recovery unsupported or ownership rejected; record retained", "pluginID", id, "error", err)
 			continue
 		}
-
-		logger.Infow(context.Background(), "killed stale plugin process",
-			"pluginID", pluginID,
-			"pid", pid,
-		)
-		killed++
+		if exitErr := devsession.VerifyOwnedProcess(record, expected); !errors.Is(exitErr, devsession.ErrProcessGone) {
+			logger.Warnw(context.Background(), "plugin termination delivered but exit is unconfirmed; record retained", "pluginID", id, "error", exitErr)
+			continue
+		}
+		delete(data, id)
 	}
-
-	if killed > 0 {
-		logger.Infow(context.Background(), "cleaned up stale plugin processes", "count", killed)
+	if b, err = json.Marshal(data); err == nil {
+		if err = t.writeOwnershipFile(b); err != nil {
+			logger.Warnw(context.Background(), "persist retained plugin ownership records", "error", err)
+		}
 	}
+}
+
+func (t *PIDTracker) writeOwnershipFile(data []byte) error {
+	name := pluginPIDFileName + "." + uuid.NewString() + ".tmp"
+	file, err := t.stateRoot.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer t.stateRoot.Remove(name)
+	if _, err = file.Write(data); err == nil {
+		err = file.Sync()
+	}
+	err = errors.Join(err, file.Close())
+	if err != nil {
+		return err
+	}
+	return t.stateRoot.Rename(name, pluginPIDFileName)
+}
+
+// CheckAvailable runs before exec: unresolved recovery evidence must block a
+// second backend, not merely reject recording it after its startup side effects.
+func (t *PIDTracker) CheckAvailable(id, workspaceID string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	data, err := t.stateRoot.ReadFile(pluginPIDFileName)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var records map[string]json.RawMessage
+	if err = json.Unmarshal(data, &records); err != nil {
+		return err
+	}
+	raw, exists := records[id]
+	if !exists {
+		return nil
+	}
+	var record devcontract.ProcessIdentity
+	if err = json.Unmarshal(raw, &record); err != nil {
+		return fmt.Errorf("unowned backend recovery record retained for %s: %w", id, err)
+	}
+	owner := devsession.ProcessOwner{WorkspaceID: workspaceID, Generation: record.Generation, Role: "plugin-backend", Source: record.Source}
+	if err = devsession.VerifyOwnedProcess(record, owner); errors.Is(err, devsession.ErrProcessGone) {
+		return nil
+	}
+	return fmt.Errorf("backend recovery is incomplete for %s; ownership record retained: %v", id, err)
 }

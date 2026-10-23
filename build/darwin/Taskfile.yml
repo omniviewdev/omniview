@@ -1,5 +1,9 @@
 version: '3'
 
+env:
+  GOWORK: "off"
+  GOFLAGS: ""
+
 includes:
   common: ../Taskfile.yml
 
@@ -11,16 +15,19 @@ vars:
 tasks:
   build:
     summary: Builds the application
+    vars:
+      TARGET_OS: darwin
     cmds:
       - task: build:native
         vars:
           DEV: '{{.DEV}}'
+          BUILD_FLAGS:
+            ref: .BUILD_FLAGS
 
   build:native:
     summary: Builds the application natively on macOS
     internal: true
     deps:
-      - task: common:go:mod:tidy
       - task: common:build:frontend
         vars:
           BUILD_FLAGS:
@@ -29,9 +36,13 @@ tasks:
             ref: .DEV
       - task: common:generate:icons
     cmds:
-      - go build {{.BUILD_FLAGS}} -o {{.OUTPUT}}
+      - |
+        set -e
+        HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
+        GOWORK=off GOFLAGS= go build {{.BUILD_FLAGS}} -modfile="$HOST_MODFILE" -o "{{.OUTPUT}}"
     vars:
-      BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+      COMPOSED_BUILD_FLAGS: '{{if eq .RELEASE "true"}}-tags {{if eq .SERVER "true"}}production,server{{else}}production{{end}} {{else}}{{if .BUILD_TAGS}}-tags {{.BUILD_TAGS | shellQuote}} {{end}}{{end}}{{if and (eq .DEV "true") (ne .RELEASE "true")}}-buildvcs=false -gcflags=all="-l"{{else}}-trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+      BUILD_FLAGS: '{{if eq .RELEASE "true"}}{{.COMPOSED_BUILD_FLAGS}}{{else}}{{.BUILD_FLAGS | default .COMPOSED_BUILD_FLAGS}}{{end}}'
       DEFAULT_OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}'
       OUTPUT: '{{ .OUTPUT | default .DEFAULT_OUTPUT }}'
     env:
@@ -44,8 +55,17 @@ tasks:
 
   package:
     summary: Packages the application into a `.app` bundle
+    vars:
+      RELEASE: "true"
+      DEV: "false"
+      TARGET_OS: darwin
+      BUILD_FLAGS: '-tags production -trimpath -buildvcs=false -ldflags="-w -s"'
     deps:
       - task: build
+        vars:
+          DEV: "false"
+          BUILD_FLAGS:
+            ref: .BUILD_FLAGS
     cmds:
       - task: create:app:bundle
 
@@ -59,25 +79,25 @@ tasks:
       - cp build/darwin/Info.plist "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents"
       - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.app"
 
+  create:dev:app:bundle:
+    summary: Generate a selected-workspace bundle without changing production plists
+    cmds:
+      - |
+        set -e
+        DEV_CLI="$({{.CLI_BOOTSTRAP}})"
+        {{.CLI_ENVIRONMENT}} node build/darwin/create-dev-bundle.mjs {{.BIN_DIR | shellQuote}} {{.APP_NAME | shellQuote}} "$DEV_CLI"
+
   run:
     cmds:
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
-      - |
-        if [ -f build/darwin/icons.icns ]; then
-          cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
-        fi
-      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
-      - cp "build/darwin/Info.dev.plist" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Info.plist"
-      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
-      - '"{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS/{{.APP_NAME}}"'
+      - task: create:dev:app:bundle
+      - 'GOWORK=off GOFLAGS= "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS/{{.APP_NAME}}"'
 
   sign:
     summary: Signs the application bundle with Developer ID
     deps:
       - task: package
     cmds:
-      - wails3 tool sign --input "{{.BIN_DIR}}/{{.APP_NAME}}.app" --identity "{{.SIGN_IDENTITY}}" {{if .ENTITLEMENTS}}--entitlements {{.ENTITLEMENTS}}{{end}}
+      - '{{.WAILS_CLI}} tool sign --input "{{.BIN_DIR}}/{{.APP_NAME}}.app" --identity "{{.SIGN_IDENTITY}}" {{if .ENTITLEMENTS}}--entitlements {{.ENTITLEMENTS}}{{end}}'
     preconditions:
       - sh: '[ -n "{{.SIGN_IDENTITY}}" ]'
         msg: "SIGN_IDENTITY is required."
@@ -87,7 +107,7 @@ tasks:
     deps:
       - task: package
     cmds:
-      - wails3 tool sign --input "{{.BIN_DIR}}/{{.APP_NAME}}.app" --identity "{{.SIGN_IDENTITY}}" {{if .ENTITLEMENTS}}--entitlements {{.ENTITLEMENTS}}{{end}} --notarize --keychain-profile {{.KEYCHAIN_PROFILE}}
+      - '{{.WAILS_CLI}} tool sign --input "{{.BIN_DIR}}/{{.APP_NAME}}.app" --identity "{{.SIGN_IDENTITY}}" {{if .ENTITLEMENTS}}--entitlements {{.ENTITLEMENTS}}{{end}} --notarize --keychain-profile {{.KEYCHAIN_PROFILE}}'
     preconditions:
       - sh: '[ -n "{{.SIGN_IDENTITY}}" ]'
         msg: "SIGN_IDENTITY is required."

@@ -9,7 +9,7 @@ const runtimePackages = SHARED_PACKAGES.filter(
   packageName => packageName === '@omniviewdev/runtime' || packageName.startsWith('@omniviewdev/runtime/'),
 );
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const shimsDir = path.resolve(scriptDir, '..', 'shims');
+const shimsDir = process.env.OMNIVIEW_SHIMS_OUTPUT_DIRECTORY || path.resolve(scriptDir, '..', 'shims');
 
 function extractExportNames(source: string): Set<string> {
   const names = new Set<string>();

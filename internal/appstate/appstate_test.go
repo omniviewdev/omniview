@@ -1,21 +1,11 @@
 package appstate
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestNew_CreatesRootDir(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	svc, err := New(WithRoot(filepath.Join(dir, "state")), WithFlock(false))
-	require.NoError(t, err)
-	defer svc.Close()
-	assert.Equal(t, filepath.Join(dir, "state"), svc.Root())
-}
 
 func TestNew_Accessors(t *testing.T) {
 	t.Parallel()

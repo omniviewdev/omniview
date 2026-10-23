@@ -1,0 +1,19 @@
+{
+  "skill_name": "omniview-repo-map",
+  "fixture": "../../evals/fixture.json",
+  "evals": [
+    {
+      "id": 3,
+      "name": "route-feature-sources",
+      "prompt": "I am in canonical host checkout but orbit is selected. Find where to investigate settings persistence, table CSS, SDK RPC/store escaping profile, Kubernetes Helm resources, host runtime imports and plugin shared-dependency agreement. Return feature paths and narrowly scoped starting files/directories. Do not search every clone. metrics is an arbitrary second plugin, not Kubernetes.",
+      "expected_output": "Resolve orbit paths before canonical source search; Route settings to feature host internal/settings and internal/appstate; table to feature UI packages/base-ui/src; SDK RPC/root/store to feature SDK; Kubernetes uses feature kube path; arbitrary metrics source not assumed Kubernetes layout; Runtime to host packages/omniviewdev-runtime; both shared-dependency lists named",
+      "assertions": [
+        "Resolve orbit paths before canonical source search",
+        "Route settings to feature host internal/settings and internal/appstate; table to feature UI packages/base-ui/src; SDK RPC/root/store to feature SDK",
+        "Kubernetes uses feature kube path; arbitrary metrics source not assumed Kubernetes layout",
+        "Runtime to host packages/omniviewdev-runtime; both shared-dependency lists named"
+      ],
+      "files": []
+    }
+  ]
+}

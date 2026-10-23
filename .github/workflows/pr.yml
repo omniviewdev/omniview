@@ -15,18 +15,68 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # E2E Tests — Playwright against server mode (-tags server, no native window)
-  # ─────────────────────────────────────────────────────────────────────────────
+  # E2E Tests — actual disposable CLI-owned browser hosts, never a shared server.
+  # The reviewed companion SDK must first be published to its remote repository.
   e2e-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Playwright 1.50.1 supports Ubuntu 24.04, not ubuntu-latest's Ubuntu 26.04.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: optimized
+            exclude: live
+          - mode: live
+            exclude: optimized
+    defaults:
+      run:
+        shell: bash
+        working-directory: host
+    env:
+      GOWORK: "off"
+      GOFLAGS: ""
+      REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
+      UI_SOURCE_REF: ${{ vars.OMNIVIEW_E2E_UI_REF }}
     steps:
-      - name: Checkout
+      - name: Checkout host implementation
         uses: actions/checkout@v4
         with:
+          path: host
           submodules: recursive
+          persist-credentials: false
 
-      # awalsh128/cache-apt-pkgs-action@latest restores an empty package set here, so install directly.
+      - name: Require independently reviewed published source inputs
+        run: |
+          if [[ ! "$REVIEWED_SDK_REVISION" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]; then
+            echo "::error::Set repository variable OMNIVIEW_E2E_REVIEWED_SDK_REVISION to the independently reviewed full SDK commit, published and reachable in omniviewdev/plugin-sdk. No unpublished/default revision is accepted."
+            exit 1
+          fi
+          if [[ -z "$UI_SOURCE_REF" ]]; then
+            echo "::error::Set repository variable OMNIVIEW_E2E_UI_REF to the UI implementation ref to check out; its resolved full commit is registered."
+            exit 1
+          fi
+
+      - name: Checkout reviewed SDK source
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/plugin-sdk
+          ref: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
+          path: plugin-sdk
+          persist-credentials: false
+
+      - name: Checkout UI implementation
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/ui
+          ref: ${{ vars.OMNIVIEW_E2E_UI_REF }}
+          path: ui
+          persist-credentials: false
+
+      - name: Verify SDK checkout matches reviewed pin
+        run: |
+          test "$(git -C "$GITHUB_WORKSPACE/plugin-sdk" rev-parse HEAD)" = "$REVIEWED_SDK_REVISION"
+
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
@@ -37,19 +87,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
-          run_install: |
-            - args: []
-            - args: [--global, typescript]
+          version: 12.14.0
+          package-json-file: host/package.json
+          install: false
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-          cache-dependency-path: "go.sum"
+          cache-dependency-path: host/go.sum
 
       - name: Install Task
         uses: arduino/setup-task@v2
@@ -57,44 +107,87 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Wails v3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
-
-      - name: Build workspace packages
-        run: task packages
-
-      - name: Install Playwright browsers
-        working-directory: e2e
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Build and start server mode
+      - name: Prepare isolated tool and runtime home
         run: |
-          task build:server
-          OMNIVIEW_STATE_DIR="$RUNNER_TEMP/omniview-state" bin/Omniview-server > "$RUNNER_TEMP/server.log" 2>&1 &
-          echo "Waiting for server to be ready..."
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:34115/health > /dev/null 2>&1; then
-              echo "Server ready"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "::error::Server did not become ready"
-          cat "$RUNNER_TEMP/server.log"
-          exit 1
+          umask 077
+          mkdir "$RUNNER_TEMP/workspace-ci-home" "$RUNNER_TEMP/workspace-ci-private"
+          {
+            echo "HOME=$RUNNER_TEMP/workspace-ci-home"
+            echo "XDG_CONFIG_HOME=$RUNNER_TEMP/workspace-ci-home/.config"
+            echo "XDG_CACHE_HOME=$RUNNER_TEMP/workspace-ci-home/.cache"
+            echo "XDG_DATA_HOME=$RUNNER_TEMP/workspace-ci-home/.local/share"
+            echo "GOPATH=$RUNNER_TEMP/workspace-ci-home/go"
+            echo "SDK_SOURCE=$GITHUB_WORKSPACE/plugin-sdk"
+          } >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/workspace-ci-home/go/bin" >> "$GITHUB_PATH"
 
-      - name: Run Playwright tests
-        working-directory: e2e
-        run: pnpm test
+      - name: Install bootstrap tools and browser dependencies
+        run: |
+          GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
+          pnpm install --frozen-lockfile --ignore-scripts --strict-peer-dependencies
+          pnpm --dir e2e exec playwright install --with-deps chromium
 
-      - name: Upload test report
+      - name: Build canonical CLI with explicit SDK bootstrap
+        run: |
+          DEV="$(task --silent dev:cli:build)"
+          test -x "$DEV"
+          printf 'OMNIVIEW_E2E_CLI=%s\n' "$DEV" >> "$GITHUB_ENV"
+
+      - name: Run real pinned A11 linking and A15 native nested-script probes
+        run: |
+          umask 077
+          mkdir "$RUNNER_TEMP/workspace-ci-private/protocol-hostmod" "$RUNNER_TEMP/workspace-ci-private/protocol-module"
+          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$SDK_SOURCE" \
+            --output-directory "$RUNNER_TEMP/workspace-ci-private/protocol-hostmod")"
+          PROBE_MODFILE="$RUNNER_TEMP/workspace-ci-private/protocol-module/probe.mod"
+          cp "$HOST_MODFILE" "$PROBE_MODFILE"
+          cp "${HOST_MODFILE%.mod}.sum" "${PROBE_MODFILE%.mod}.sum"
+          A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT="$RUNNER_TEMP/workspace-ci-private/pinned-link-protocol.json" \
+            go test -modfile="$PROBE_MODFILE" -tags server ./internal/devworkspace \
+              -run '^TestLinkPinnedProtocolProbe$' -count=1
+          test -s "$RUNNER_TEMP/workspace-ci-private/pinned-link-protocol.json"
+          A15_PINNED_PNPM_PROBE=1 \
+            go test -modfile="$PROBE_MODFILE" -tags server ./internal/devworkspace \
+              -run '^TestPinnedPNPMNestedScriptProbe$' -count=1
+
+      - name: Prepare real safe plugin and private committed-source inputs
+        run: |
+          umask 077
+          node e2e/scripts/prepare-workspace-probe.mjs \
+            --destination "$GITHUB_WORKSPACE/workspace-probe" \
+            > "$RUNNER_TEMP/workspace-ci-private/probe-source.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          import { join } from 'node:path';
+          const root = process.env.GITHUB_WORKSPACE;
+          const privateRoot = join(process.env.RUNNER_TEMP, 'workspace-ci-private');
+          const probe = JSON.parse(readFileSync(join(privateRoot, 'probe-source.json'), 'utf8'));
+          if (probe.pluginID !== 'workspace-probe' || probe.source !== join(root, 'workspace-probe') || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(probe.ref)) throw Error('Invalid prepared real plugin source');
+          const sources = { omniview: join(root, 'host'), 'plugin-sdk': join(root, 'plugin-sdk'), ui: join(root, 'ui'), kubernetes: join(root, 'host', 'plugins', 'kubernetes'), 'workspace-probe': probe.source };
+          const refs = Object.fromEntries(Object.entries(sources).map(([id, path]) => [id, execFileSync('git', ['-C', path, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()]));
+          if (refs['plugin-sdk'] !== process.env.REVIEWED_SDK_REVISION || refs['workspace-probe'] !== probe.ref) throw Error('Source commit changed');
+          const input = { sources, refs, repositories: ['plugin-sdk', 'ui'], plugins: ['kubernetes', 'workspace-probe'], reviewedSDKRevision: process.env.REVIEWED_SDK_REVISION, linkEvidence: join(privateRoot, 'pinned-link-protocol.json') };
+          for (const liveFrontend of [false, true]) {
+            const mode = liveFrontend ? 'live' : 'optimized';
+            writeFileSync(join(privateRoot, `${mode}-sources.json`), JSON.stringify({ ...input, liveFrontend }), { mode: 0o600, flag: 'wx' });
+          }
+          NODE
+
+      - name: Run actual ${{ matrix.mode }} workspace scenarios
+        env:
+          OMNIVIEW_E2E_SOURCES: ${{ runner.temp }}/workspace-ci-private/${{ matrix.mode }}-sources.json
+          PLAYWRIGHT_HTML_REPORT: playwright-report/${{ matrix.mode }}
+        run: pnpm --dir e2e test tests/workspaces --grep-invert 'A17 ${{ matrix.exclude }}:' --output=test-results/${{ matrix.mode }} --reporter=html,list
+
+      - name: Upload only allowed browser reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.mode }}
           path: |
-            e2e/playwright-report/
-            e2e/test-results/
+            host/e2e/playwright-report/
+            host/e2e/test-results/
           retention-days: 7
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -141,11 +234,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
-          run_install: |
-            - args: []
-            - args: [--global, typescript]
+          version: 12.14.0
+          install: false
+
+      - name: Install dependencies and global TypeScript
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm add --global typescript
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -162,7 +259,7 @@ jobs:
 
       - name: Install Wails v3
         shell: bash
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
 
       - name: Build workspace packages
         shell: bash
@@ -180,14 +277,17 @@ jobs:
           CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-mmacosx-version-min=10.15' || '' }}
           MACOSX_DEPLOYMENT_TARGET: ${{ runner.os == 'macOS' && '10.15' || '' }}
         run: |
-          go build -tags "${{ matrix.build-tags }}" -trimpath -buildvcs=false \
+          build_command=(go build -o bin/Omniview)
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            build_command=(bash build/darwin/build-universal.sh bin/Omniview)
+          fi
+          "${build_command[@]}" -tags "${{ matrix.build-tags }}" -trimpath -buildvcs=false \
             -ldflags "-w -s ${{ matrix.extra-ldflags }} \
               -X github.com/omniviewdev/omniview/internal/version.Version=0.0.0-pr.${{ github.event.pull_request.number }} \
               -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=true \
-              -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-pr" \
-            -o bin/Omniview .
+              -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-pr"
 
       - name: Create macOS .app bundle
         if: runner.os == 'macOS'
@@ -198,6 +298,8 @@ jobs:
           cp build/darwin/icons.icns bin/Omniview.app/Contents/Resources/
           cp bin/Omniview bin/Omniview.app/Contents/MacOS/
           cp build/darwin/Info.plist bin/Omniview.app/Contents/
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.0.0' bin/Omniview.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" bin/Omniview.app/Contents/Info.plist
           codesign --force --deep --sign - bin/Omniview.app
 
       - name: Prepare artifact (macOS)

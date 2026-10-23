@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 	"testing"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -69,7 +69,6 @@ func TestNewDevServerManager(t *testing.T) {
 	require.NotNil(t, mgr)
 	assert.NotNil(t, mgr.instances)
 	assert.NotNil(t, mgr.ports)
-	assert.Nil(t, mgr.externalWatcher)
 }
 
 func TestManager_IsManaged_NoInstances(t *testing.T) {
@@ -88,70 +87,12 @@ func TestManager_IsManaged_WithInstance(t *testing.T) {
 	assert.False(t, mgr.IsManaged("other-plugin"))
 }
 
-func TestManager_IsManaged_WithExternalWatcher(t *testing.T) {
-	mgr := newTestManager(t)
-
-	// Manually set up an external watcher with a connected plugin.
-	mgr.externalWatcher = &ExternalWatcher{
-		connections: map[string]*ExternalConnection{
-			"ext-plugin": {
-				DevInfo:   &DevInfoFile{PID: 12345, Addr: "127.0.0.1:50051"},
-				Connected: true,
-			},
-		},
-	}
-
-	assert.True(t, mgr.IsManaged("ext-plugin"))
-	assert.False(t, mgr.IsManaged("nonexistent"))
-}
-
-func TestManager_IsManaged_ExternalDisconnected(t *testing.T) {
-	mgr := newTestManager(t)
-
-	mgr.externalWatcher = &ExternalWatcher{
-		connections: map[string]*ExternalConnection{
-			"ext-plugin": {
-				DevInfo:   &DevInfoFile{PID: 12345, Addr: "127.0.0.1:50051"},
-				Connected: false,
-			},
-		},
-	}
-
-	// Disconnected external plugins should NOT report as managed.
-	assert.False(t, mgr.IsManaged("ext-plugin"))
-}
-
 func TestManager_GetDevServerState_NoInstance(t *testing.T) {
 	mgr := newTestManager(t)
 
 	state := mgr.GetDevServerState("nonexistent")
 	assert.Equal(t, "nonexistent", state.PluginID)
 	assert.Equal(t, DevServerModeIdle, state.Mode)
-}
-
-func TestManager_GetExternalPluginInfo_NilWatcher(t *testing.T) {
-	mgr := newTestManager(t)
-	assert.Nil(t, mgr.GetExternalPluginInfo("test"))
-}
-
-func TestManager_GetExternalPluginInfo_WithConnection(t *testing.T) {
-	mgr := newTestManager(t)
-	info := &DevInfoFile{PID: 12345, Addr: "127.0.0.1:50051", VitePort: 15173}
-
-	mgr.externalWatcher = &ExternalWatcher{
-		connections: map[string]*ExternalConnection{
-			"test-plugin": {DevInfo: info, Connected: true},
-		},
-	}
-
-	result := mgr.GetExternalPluginInfo("test-plugin")
-	require.NotNil(t, result)
-	assert.Equal(t, 12345, result.PID)
-	assert.Equal(t, "127.0.0.1:50051", result.Addr)
-	assert.Equal(t, 15173, result.VitePort)
-
-	// Non-existent plugin returns nil.
-	assert.Nil(t, mgr.GetExternalPluginInfo("nonexistent"))
 }
 
 func TestManager_ListDevServerStates_Empty(t *testing.T) {
@@ -181,51 +122,6 @@ func TestManager_ListDevServerStates_WithInstances(t *testing.T) {
 	require.Len(t, states, 1)
 	assert.Equal(t, "plugin-a", states[0].PluginID)
 	assert.Equal(t, DevServerModeManaged, states[0].Mode)
-}
-
-func TestManager_ListDevServerStates_IncludesExternal(t *testing.T) {
-	mgr := newTestManager(t)
-
-	mgr.externalWatcher = &ExternalWatcher{
-		connections: map[string]*ExternalConnection{
-			"ext-plugin": {
-				DevInfo:   &DevInfoFile{PID: 99, Addr: "127.0.0.1:50051", VitePort: 15173},
-				Connected: true,
-			},
-			"ext-disconnected": {
-				DevInfo:   &DevInfoFile{PID: 100, Addr: "127.0.0.1:50052"},
-				Connected: false,
-			},
-		},
-	}
-
-	states := mgr.ListDevServerStates()
-	// Only connected external plugins should appear.
-	require.Len(t, states, 1)
-	assert.Equal(t, "ext-plugin", states[0].PluginID)
-	assert.Equal(t, DevServerModeExternal, states[0].Mode)
-	assert.True(t, states[0].GRPCConnected)
-	assert.Equal(t, 15173, states[0].VitePort)
-	assert.Equal(t, "http://127.0.0.1:15173", states[0].ViteURL)
-	assert.Equal(t, DevProcessStatusReady, states[0].ViteStatus)
-}
-
-func TestManager_ListDevServerStates_ExternalNoVitePort(t *testing.T) {
-	mgr := newTestManager(t)
-
-	mgr.externalWatcher = &ExternalWatcher{
-		connections: map[string]*ExternalConnection{
-			"go-only-plugin": {
-				DevInfo:   &DevInfoFile{PID: 99, Addr: "127.0.0.1:50051", VitePort: 0},
-				Connected: true,
-			},
-		},
-	}
-
-	states := mgr.ListDevServerStates()
-	require.Len(t, states, 1)
-	assert.Equal(t, DevProcessStatus(""), states[0].ViteStatus)
-	assert.Empty(t, states[0].ViteURL)
 }
 
 func TestManager_GetDevServerLogs_NoInstance(t *testing.T) {
@@ -273,22 +169,6 @@ func TestManager_ServiceShutdown_NoInstances(t *testing.T) {
 	_ = mgr.ServiceShutdown()
 }
 
-func TestManager_HandleExternalConnect(t *testing.T) {
-	mgr := newTestManager(t)
-
-	info := &DevInfoFile{PID: 12345, Addr: "127.0.0.1:50051", VitePort: 15173}
-	// handleExternalConnect calls emitStatus which checks m.ctx.
-	// With nil ctx, emitStatus is a no-op, which is fine for this test.
-	mgr.handleExternalConnect("test-plugin", info)
-	// No panic = success. The method just logs and emits events.
-}
-
-func TestManager_HandleExternalDisconnect(t *testing.T) {
-	mgr := newTestManager(t)
-	mgr.handleExternalDisconnect("test-plugin")
-	// No panic = success.
-}
-
 // ============================================================================
 // New tests: error paths and coordination
 // ============================================================================
@@ -307,27 +187,15 @@ func TestManager_StopDevServer_NotRunning(t *testing.T) {
 
 func TestManager_StartDevServer_AlreadyRunning(t *testing.T) {
 	mgr := newTestManager(t)
-
-	// Inject a pre-existing instance.
-	noop := func(string, DevServerState) {}
-	noopLogs := func(string, []LogEntry) {}
-	noopErrors := func(string, []BuildError) {}
-	inst := NewDevServerInstance(
-		context.Background(), logging.NewNop(),
-		"dup-plugin", "/dev/path", 15173, BuildOpts{}, nil, nil,
-		noop, noopLogs, noopErrors,
-	)
-
-	mgr.mu.Lock()
-	mgr.instances["dup-plugin"] = inst
-	mgr.mu.Unlock()
-
-	// pluginRef is nil, but StartDevServer should return early because
-	// the instance already exists — returns existing state, no error.
-	state, err := mgr.StartDevServer("dup-plugin")
+	source := managedSourceFixture(t, "same")
+	inst, _, _ := newTestInstance(t, "same")
+	inst.devPath = source
+	mgr.instances["same"] = inst
+	mgr.pluginRef = &mockPluginRef{devMode: true, devPath: source}
+	state, err := mgr.StartDevServer("same")
 	require.NoError(t, err)
-	assert.Equal(t, "dup-plugin", state.PluginID)
-	assert.Equal(t, DevServerModeManaged, state.Mode)
+	assert.Equal(t, inst.generation, state.Generation)
+	assert.Zero(t, mgr.ports.GetPort("same"))
 }
 
 func TestManager_StartDevServer_PluginNotFound(t *testing.T) {
@@ -402,29 +270,6 @@ func TestManager_ServiceShutdown_WithInstances(t *testing.T) {
 	mgr.mu.RUnlock()
 }
 
-func TestManager_ServiceShutdown_WithExternalWatcher(t *testing.T) {
-	mgr := newTestManager(t)
-
-	// Set up a minimal external watcher with a real fsnotify watcher
-	// (required because Stop() calls watcher.Close()).
-	ew, _, _ := newTestExternalWatcher(t)
-	watcher, err := fsnotify.NewWatcher()
-	require.NoError(t, err)
-	ew.watcher = watcher
-	mgr.externalWatcher = ew
-
-	// Pre-populate a connection.
-	ew.connections["ext-plug"] = &ExternalConnection{
-		DevInfo:   &DevInfoFile{PID: 1, Addr: "127.0.0.1:50051"},
-		Connected: true,
-	}
-
-	// Shutdown should call Stop on the external watcher, disconnecting all.
-	_ = mgr.ServiceShutdown()
-
-	assert.False(t, ew.IsExternallyManaged("ext-plug"))
-}
-
 func TestManager_GetDevServerState_WithInstance(t *testing.T) {
 	mgr := newTestManager(t)
 
@@ -459,10 +304,13 @@ func TestManager_GetDevServerState_WithInstance(t *testing.T) {
 func TestManager_ResolveBuildOpts(t *testing.T) {
 	mgr := newTestManager(t)
 	opts := mgr.resolveBuildOpts()
-	// mockSettingsProvider returns "" for all strings.
-	assert.Empty(t, opts.GoPath)
-	assert.Empty(t, opts.PnpmPath)
-	assert.Empty(t, opts.NodePath)
+	goPath, _ := exec.LookPath("go")
+	pnpmPath, _ := exec.LookPath("pnpm")
+	nodePath, _ := exec.LookPath("node")
+	assert.Equal(t, goPath, opts.GoPath)
+	assert.Equal(t, pnpmPath, opts.PnpmPath)
+	assert.Equal(t, nodePath, opts.NodePath)
+	assert.Equal(t, mgr.stateRoot.ResolvePath(""), opts.StateRoot)
 }
 
 func TestManager_EmitStatus_NilCtx(t *testing.T) {
@@ -502,21 +350,13 @@ func TestManager_EmitErrors_EmptyErrors(t *testing.T) {
 
 func TestManager_StartDevServer_PortExhaustion(t *testing.T) {
 	mgr := newTestManager(t)
-	mgr.pluginRef = &mockPluginRef{devMode: true, devPath: "/some/path"}
-	mgr.ctx = context.Background()
-
-	// Fill all ports in the allocator so Allocate fails.
+	source := managedSourceFixture(t, "new-plugin")
+	mgr.pluginRef = &mockPluginRef{devMode: true, devPath: source}
 	for port := PortRangeStart; port < PortRangeEnd; port++ {
-		mgr.ports.assigned[port] = fmt.Sprintf("plugin-%d", port)
+		mgr.ports.assigned[port] = fmt.Sprint(port)
 	}
-
 	_, err := mgr.StartDevServer("new-plugin")
-	require.Error(t, err)
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, apperror.TypeInternal, appErr.Type)
-	assert.Equal(t, 500, appErr.Status)
-	assert.Contains(t, appErr.Title, "Port allocation failed")
+	require.ErrorContains(t, err, "no free managed Vite port")
 }
 
 func TestManager_RestartDevServer_NotRunning(t *testing.T) {
@@ -588,42 +428,22 @@ func TestManager_StartDevServerForPath_EmptyPath(t *testing.T) {
 
 func TestManager_StartDevServerForPath_AlreadyRunning(t *testing.T) {
 	mgr := newTestManager(t)
-
-	// Inject a pre-existing instance.
-	noop := func(string, DevServerState) {}
-	noopLogs := func(string, []LogEntry) {}
-	noopErrors := func(string, []BuildError) {}
-	inst := NewDevServerInstance(
-		context.Background(), logging.NewNop(),
-		"dup-plugin", "/dev/path", 15173, BuildOpts{}, nil, nil,
-		noop, noopLogs, noopErrors,
-	)
-
-	mgr.mu.Lock()
-	mgr.instances["dup-plugin"] = inst
-	mgr.mu.Unlock()
-
-	// Should return existing state, no error.
-	state, err := mgr.StartDevServerForPath("dup-plugin", "/some/other/path")
-	require.NoError(t, err)
-	assert.Equal(t, "dup-plugin", state.PluginID)
-	assert.Equal(t, DevServerModeManaged, state.Mode)
+	sourceA := managedSourceFixture(t, "same")
+	sourceB := managedSourceFixture(t, "same")
+	inst, _, _ := newTestInstance(t, "same")
+	inst.devPath = sourceA
+	mgr.instances["same"] = inst
+	_, err := mgr.StartDevServerForPath("same", sourceB)
+	require.ErrorContains(t, err, "stop/unload")
+	assert.Equal(t, sourceA, mgr.GetDevServerState("same").DevPath)
 }
 
 func TestManager_StartDevServerForPath_PortExhaustion(t *testing.T) {
 	mgr := newTestManager(t)
-	mgr.ctx = context.Background()
-
-	// Fill all ports so Allocate fails.
+	source := managedSourceFixture(t, "new-plugin")
 	for port := PortRangeStart; port < PortRangeEnd; port++ {
-		mgr.ports.assigned[port] = fmt.Sprintf("plugin-%d", port)
+		mgr.ports.assigned[port] = fmt.Sprint(port)
 	}
-
-	_, err := mgr.StartDevServerForPath("new-plugin", "/some/path")
-	require.Error(t, err)
-	var appErr *apperror.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, apperror.TypeInternal, appErr.Type)
-	assert.Equal(t, 500, appErr.Status)
-	assert.Contains(t, appErr.Title, "Port allocation failed")
+	_, err := mgr.StartDevServerForPath("new-plugin", source)
+	require.ErrorContains(t, err, "no free managed Vite port")
 }

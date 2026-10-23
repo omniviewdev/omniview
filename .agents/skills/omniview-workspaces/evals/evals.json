@@ -1,0 +1,55 @@
+{
+  "skill_name": "omniview-workspaces",
+  "fixture": "../../evals/fixture.json",
+  "evals": [
+    {
+      "id": 1,
+      "name": "create-multi-plugin",
+      "prompt": "You are in /tmp with no workspace environment. Set up and start browser feature comet touching UI, SDK, Kubernetes and metrics. Use registered sources, only necessary repos and both plugin links. Give concise command template plus prerequisites and next evidence; no global links or canonical edits. We are in a hurry; assume --help works if unsure.",
+      "expected_output": "Explicit root and registered repo IDs including host/UI/SDK/both plugin repos; repeat plugin IDs separately; One workspace create comet --start command, browser mode, real reviewed revision and link-evidence prerequisite; Inspect/paths and authenticated instance identity before readiness claim; no invented help evidence",
+      "assertions": [
+        "Explicit root and registered repo IDs including host/UI/SDK/both plugin repos; repeat plugin IDs separately",
+        "One workspace create comet --start command, browser mode, real reviewed revision and link-evidence prerequisite",
+        "Inspect/paths and authenticated instance identity before readiness claim; no invented help evidence"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "resume-dirty-failed",
+      "prompt": "Resume orbit, whose SDK has uncommitted changes. Last plugin build failed; old browser localhost:34115 is healthy but inspect now says generation g9 and a different browser port. Give precise next commands/decisions without duplicate worktrees or committing each SDK edit. Plugin generation from status is p7; kubernetes is plugin ID. Can I call it ready now?",
+      "expected_output": "Select same orbit/UUID and inspect actual endpoints, not old health port; Retain dirty SDK, no commit-per-edit or duplicate create; Use plugin dev status/rebuild kubernetes --generation p7 --wait after repair; failure not ready; distinguish host generation g9",
+      "assertions": [
+        "Select same orbit/UUID and inspect actual endpoints, not old health port",
+        "Retain dirty SDK, no commit-per-edit or duplicate create",
+        "Use plugin dev status/rebuild kubernetes --generation p7 --wait after repair; failure not ready; distinguish host generation g9"
+      ],
+      "files": []
+    },
+    {
+      "id": 5,
+      "name": "dirty-removal",
+      "prompt": "Delete orbit to save disk. It has dirty worktrees and user commits on owned feature branches. Preserve app state. Lifecycle command refuses. Give supported next commands/decisions; no manual reset/removal or override inventing.",
+      "expected_output": "Owned down then workspace remove without --delete-state or --delete-branches; Refusal preserves dirty work and user commits; report conflict rather than force; No rm -rf/reset/force/stash or invented override",
+      "assertions": [
+        "Owned down then workspace remove without --delete-state or --delete-branches",
+        "Refusal preserves dirty work and user commits; report conflict rather than force",
+        "No rm -rf/reset/force/stash or invented override"
+      ],
+      "files": []
+    },
+    {
+      "id": 6,
+      "name": "baseline-custom-root",
+      "prompt": "Make new isolated native workspace with production settings and plugins; production currently running. Set state root /lab/profiles/new-profile/state. Can we copy bbolt/tree/PID files now and auto-connect Kubernetes? Describe correct CLI options/custom-root contract, safe baseline boundaries and missing native evidence.",
+      "expected_output": "No live tree/bbolt/PID copy; stop source for explicit --seed-from ROOT --seed-version VERSION or start empty; Custom --state-root requires fresh dedicated container/state plus owner registry and runtime sibling; no arbitrary environment-root override; No secrets, credentials, connections/autoconnect, plugin binaries/runtime artifacts; inactive inventory not active compatibility proof; Native --mode native optional --mcp; no launch/platform/pixel evidence claimed",
+      "assertions": [
+        "No live tree/bbolt/PID copy; stop source for explicit --seed-from ROOT --seed-version VERSION or start empty",
+        "Custom --state-root requires fresh dedicated container/state plus owner registry and runtime sibling; no arbitrary environment-root override",
+        "No secrets, credentials, connections/autoconnect, plugin binaries/runtime artifacts; inactive inventory not active compatibility proof",
+        "Native --mode native optional --mcp; no launch/platform/pixel evidence claimed"
+      ],
+      "files": []
+    }
+  ]
+}

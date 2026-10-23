@@ -6,13 +6,25 @@ import wails from '@wailsio/runtime/plugins/vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { workspaceViteCacheDirectory, workspaceVitePort, workspaceViteRoots } from './packages/omniviewdev-vite-plugin/src/workspace';
+import { managedViteFeedback } from './packages/omniviewdev-vite-plugin/src/feedback';
 
 // if in ESM context
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const selectedRoots = workspaceViteRoots(process.env.OMNIVIEW_VITE_ALLOWED_ROOTS);
+const ownedVitePort = workspaceVitePort(process.env.WAILS_VITE_PORT);
+const stagedYamlWorker = process.env.OMNIVIEW_YAML_WORKER_OUTPUT_FILE;
+const ownedViteCacheDirectory = workspaceViteCacheDirectory(process.env.OMNIVIEW_VITE_CACHE_DIRECTORY);
+if (selectedRoots && !ownedVitePort) {
+  throw new Error('Managed host Vite requires its owned WAILS_VITE_PORT');
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Source transforms must not recompile generated optimized dependencies.
+  cacheDir: ownedViteCacheDirectory ? path.join(ownedViteCacheDirectory, 'node_modules', '.vite') : undefined,
   test: {
     globals: true,
     environment: 'jsdom',
@@ -21,6 +33,7 @@ export default defineConfig({
     include: ['ui/**/*.{spec,test}.{ts,tsx}'],
   },
   build: {
+    outDir: process.env.OMNIVIEW_BUILD_OUTPUT_DIRECTORY || 'dist',
     minify: false,
     sourcemap: false,
   },
@@ -31,27 +44,61 @@ export default defineConfig({
     host: '127.0.0.1',
     // Port is set via WAILS_VITE_PORT env var (wails3 dev sets it automatically).
     // Fallback to 9245 to match the default in Taskfile.yml.
-    port: parseInt(process.env.WAILS_VITE_PORT || '9245'),
+    port: ownedVitePort ?? 9245,
     strictPort: true,
+    fs: selectedRoots ? { strict: true, allow: [__dirname, ...selectedRoots] } : undefined,
     // Wails webview loads from wails://localhost. Point HMR at the same IPv4
     // listener used by the asset proxy.
     hmr: {
       host: '127.0.0.1',
       protocol: 'ws',
+      clientPort: ownedVitePort,
     },
   },
+  optimizeDeps: selectedRoots ? {
+    exclude: ['@omniviewdev/base-ui', '@omniviewdev/ai-ui', '@omniviewdev/editors',
+      '@omniviewdev/providers', '@omniviewdev/runtime', '@omniviewdev/runtime/api',
+      '@omniviewdev/runtime/models', '@omniviewdev/runtime/runtime'],
+    // Linked UI stays live; its nested CommonJS shim still needs ESM interop.
+    include: [
+      '@omniviewdev/base-ui > @base-ui/react > @base-ui/utils > use-sync-external-store/shim',
+      '@omniviewdev/base-ui > @base-ui/react > @base-ui/utils > use-sync-external-store/shim/with-selector',
+    ],
+    force: true,
+  } : undefined,
   plugins: [
+    managedViteFeedback(),
+    {
+      name: 'managed-yaml-worker-stage',
+      enforce: 'pre',
+      resolveId(source, importer) {
+        if (stagedYamlWorker && source === './yaml.worker.bundle.js?url'
+          && importer && path.dirname(importer.split('?')[0]) === path.resolve(__dirname, 'ui/providers/monaco')) {
+          return `${stagedYamlWorker}?url`;
+        }
+        return null;
+      },
+    },
     react(),
     babel({ presets: [reactCompilerPreset({ target: '19' })] }),
     wails('./packages/omniviewdev-runtime/src/bindings'),
     {
-      name: 'strip-dev-scripts',
+      name: 'optional-local-react-devtools',
       transformIndexHtml(html, ctx) {
-        if (ctx.server) return html; // keep in dev
-        return html.replace(
-          /^\s*<script src="http:\/\/localhost:8097"><\/script>\n?/m,
-          '',
-        );
+        const marker = '<!-- omniview-react-devtools -->';
+        const configured = process.env.VITE_REACT_DEVTOOLS_URL;
+        // Never inject tooling into release assets, even with ambient env set.
+        if (!ctx.server || !configured) return html.replace(marker, '');
+        const url = new URL(configured);
+        if (!['http:', 'https:'].includes(url.protocol)
+          || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+          || url.username || url.password) {
+          throw new Error('VITE_REACT_DEVTOOLS_URL must be an unauthenticated loopback HTTP(S) URL');
+        }
+        const src = url.href.replace(/[&"<>]/g, (char) => ({
+          '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;',
+        })[char]!);
+        return html.replace(marker, `<script src="${src}"></script>`);
       },
     },
   ],

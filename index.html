@@ -1,8 +1,40 @@
 <!doctype html>
 <html lang="en" data-ov-theme="void">
   <head>
+    <title>Omniview</title>
     <script>
       (function () {
+        // Host boot identity arrives before this script in embedded and proxied HTML.
+        // No identity is NOT production: a plain Vite preview must not read its cache.
+        var raw = window.__OMNIVIEW_INSTANCE__;
+        var valid = raw && raw.schemaVersion === 1
+          && typeof raw.instanceID === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(raw.instanceID)
+          && typeof raw.displayName === 'string' && raw.displayName.trim().length > 0
+          && typeof raw.generation === 'string'
+          && (raw.kind !== 'development' || raw.generation.trim().length > 0)
+          && (raw.kind === 'development' || raw.kind === 'production');
+        var identity = valid ? Object.freeze({
+          schemaVersion: 1,
+          instanceID: raw.instanceID,
+          displayName: raw.displayName,
+          generation: raw.generation,
+          kind: raw.kind,
+        }) : null;
+        // The single key resolver is shared by first paint and all React consumers.
+        window.__OMNIVIEW_BOOTSTRAP__ = Object.freeze({
+          identity: identity,
+          storageKey: function (key) {
+            if (!identity) return null;
+            return identity.kind === 'production'
+              ? key
+              : 'omniview:instance:v1:' + encodeURIComponent(identity.instanceID) + ':' + key;
+          },
+        });
+        document.title = identity
+          ? identity.kind === 'development' ? 'Omniview — DEV · ' + identity.displayName : 'Omniview'
+          : 'Omniview — Instance unavailable';
+        var cacheKey = window.__OMNIVIEW_BOOTSTRAP__.storageKey('ov-theme-bootstrap-v1');
+        if (cacheKey === null) return;
         try {
           var themes = {
             'void': true,
@@ -22,7 +54,7 @@
           };
           var themeId = null;
           try {
-            var record = JSON.parse(localStorage.getItem('ov-theme-bootstrap-v1'));
+            var record = JSON.parse(localStorage.getItem(cacheKey));
             if (
               record !== null
               && typeof record === 'object'
@@ -33,7 +65,7 @@
           } catch (_error) {
             // A malformed cache must not hide a valid legacy paint hint.
           }
-          if (themeId === null) {
+          if (themeId === null && identity.kind === 'production') {
             var variant = localStorage.getItem('ov-theme-variant');
             var mode = localStorage.getItem('ov-theme-mode');
             themeId = variant === 'solarized'
@@ -42,6 +74,7 @@
                 ? 'void'
                 : themes[mode] === true ? mode : 'void';
           }
+          if (themeId === null) themeId = 'void';
           document.documentElement.setAttribute('data-ov-theme', themeId);
           document.documentElement.style.colorScheme = lightThemes[themeId] === true
             ? 'light'
@@ -51,10 +84,8 @@
         }
       })();
     </script>
-    <!-- React DevTools standalone — must load BEFORE the mock hook below so that
-         when DevTools is running, its full-featured hook (with profiling support)
-         is already installed and the mock's guard clause skips creation. -->
-    <script src="http://localhost:8097"></script>
+    <!-- Optional standalone DevTools is inserted here only by explicit Vite configuration. -->
+    <!-- omniview-react-devtools -->
     <!--
       Pre-create React DevTools hook with an inject() that stores renderers.
       Without this, @vitejs/plugin-react's injectIntoGlobalHook creates a mock
@@ -143,7 +174,6 @@
     <!--   href="https://fonts.googleapis.com/icon?family=Material+Icons" -->
     <!-- /> -->
 
-    <title>Omniview</title>
   </head>
   <body style="margin: 0; height: 100%; overflow: hidden" >
     <noscript>You need to enable JavaScript to run this app.</noscript>

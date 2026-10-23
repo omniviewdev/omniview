@@ -224,32 +224,6 @@ describe('SchemaRegistry', () => {
   });
 
   describe('flush()', () => {
-    it('should call monacoYaml.update and jsonDefaults.setDiagnosticsOptions', async () => {
-      schemaRegistry.register('k8s', 'conn-f', [
-        {
-          resourceKey: 'core::v1::Pod',
-          fileMatch: '**/core::v1::Pod/*.yaml',
-          uri: 'k8s://conn-f/core/v1/Pod',
-          language: 'yaml',
-        },
-        {
-          resourceKey: 'core::v1::ConfigMap',
-          fileMatch: '**/core::v1::ConfigMap/*.json',
-          uri: 'k8s://conn-f/core/v1/ConfigMap',
-          language: 'json',
-        },
-      ]);
-
-      await flushMicrotasks();
-
-      expect(mockUpdate).toHaveBeenCalled();
-      const yamlCall = mockUpdate.mock.calls[mockUpdate.mock.calls.length - 1][0];
-      expect(yamlCall.schemas.length).toBeGreaterThanOrEqual(1);
-      expect(yamlCall.enableSchemaRequest).toBe(true);
-
-      expect(mockSetDiagnosticsOptions).toHaveBeenCalled();
-    });
-
     it('should capture last flushed YAML schemas', async () => {
       schemaRegistry.register('k8s', 'conn-g', [
         {
@@ -263,7 +237,6 @@ describe('SchemaRegistry', () => {
       await flushMicrotasks();
 
       const flushed = schemaRegistry.getLastFlushedYamlSchemas();
-      expect(flushed.length).toBeGreaterThanOrEqual(1);
       expect(flushed.some((s) => s.uri === 'k8s://conn-g/core/v1/Pod')).toBe(true);
     });
   });

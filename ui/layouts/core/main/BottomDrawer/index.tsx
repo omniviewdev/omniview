@@ -14,6 +14,7 @@ import { bottomDrawerChannel, restoredSessionIds, setBottomDrawerHeight } from '
 import { Events } from '@omniviewdev/runtime/runtime';
 import handleStyles from '@/components/base/ResizeHandle.module.css';
 import styles from './BottomDrawer.module.css';
+import { readProfileStorage, writeProfileStorage } from '@/features/instance/boot';
 
 const TerminalContainerMemo = React.memo(TerminalContainer, (prev, next) => {
   return prev.sessionId === next.sessionId
@@ -84,11 +85,11 @@ const BottomDrawerContainer: React.FC = () => {
   const persistDrawerState = React.useCallback((mode: DrawerStartupMode, expandedHeight?: number) => {
     startupModeRef.current = mode;
     try {
-      localStorage.setItem(drawerModeStorageKey, mode);
+      writeProfileStorage(drawerModeStorageKey, mode);
 
       if (mode === 'expanded') {
         const height = expandedHeight ?? lastExpandedHeightRef.current;
-        localStorage.setItem(drawerExpandedHeightStorageKey, String(height));
+        writeProfileStorage(drawerExpandedHeightStorageKey, String(height));
       }
     } catch {
       // storage is best-effort only
@@ -97,12 +98,12 @@ const BottomDrawerContainer: React.FC = () => {
 
   React.useEffect(() => {
     try {
-      const savedMode = localStorage.getItem(drawerModeStorageKey);
+      const savedMode = readProfileStorage(drawerModeStorageKey);
       if (savedMode === 'expanded' || savedMode === 'minimized') {
         startupModeRef.current = savedMode;
       }
 
-      const savedHeightRaw = localStorage.getItem(drawerExpandedHeightStorageKey);
+      const savedHeightRaw = readProfileStorage(drawerExpandedHeightStorageKey);
       if (savedHeightRaw !== null) {
         const savedHeight = Number.parseInt(savedHeightRaw, 10);
         if (!Number.isNaN(savedHeight)) {

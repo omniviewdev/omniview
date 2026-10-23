@@ -1,6 +1,8 @@
 import { EXTENSION_REGISTRY } from '@/features/extensions/store';
 import { ensureBuiltinExtensionPointsRegistered } from '@/features/extensions/registerBuiltinExtensionPoints';
 import { Events } from '@omniviewdev/runtime/runtime';
+import { DevServerManager, PluginManager } from '@omniviewdev/runtime/api';
+import { DevProcessStatus } from '@omniviewdev/runtime/models';
 import { validatePluginExports } from '../core/validation';
 import { MissingExtensionPointError, DuplicateContributionError } from '../core/errors';
 import { InMemoryCrashDataStrategy } from '../core/CrashDataService';
@@ -34,6 +36,19 @@ export function createProductionDeps(config?: Partial<PluginServiceConfig>): Plu
 
   return {
     crashData,
+    getPluginDescriptor: async (pluginId) => {
+      const plugin = await PluginManager.GetPlugin(pluginId);
+      if (!plugin.devMode) {
+        return { id: pluginId, dev: false };
+      }
+
+      const server = await DevServerManager.GetDevServerState(pluginId);
+      if (!server || server.viteStatus !== DevProcessStatus.DevProcessStatusReady || server.vitePort <= 0) {
+        throw new Error(`Development server for plugin "${pluginId}" is not ready`);
+      }
+
+      return { id: pluginId, dev: true, devPort: server.vitePort };
+    },
     importPlugin,
     clearPlugin,
 

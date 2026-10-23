@@ -16,6 +16,7 @@ import { parseArgs } from 'node:util';
 import { chromium } from 'playwright';
 import { build, preview } from 'vite';
 
+import { pluginAssetDirectory, requirePluginBundle } from './plugin-bundle.mjs';
 const here = import.meta.dirname;
 const root = path.resolve(here, '../..');
 const configFile = path.join(here, 'vite.config.ts');
@@ -40,8 +41,11 @@ const POD_NAME = /^[a-z-]+-[0-9a-f]{10}-[0-9a-f]{5}$/;
 // ---------------------------------------------------------------- build + serve
 
 function ensurePluginBundle() {
-  const dist = path.join(root, 'plugins/kubernetes/ui/dist/assets/entry.js');
-  if (process.env.OV_K8S_PLUGIN_DIST || fs.existsSync(dist)) return;
+  const assets = pluginAssetDirectory(root);
+  if (process.env.OV_K8S_PLUGIN_DIST !== undefined || fs.existsSync(path.join(assets, 'entry.js'))) {
+    requirePluginBundle(assets);
+    return;
+  }
   const ui = path.join(root, 'plugins/kubernetes/ui');
   if (!fs.existsSync(path.join(ui, 'package.json'))) {
     throw new Error('plugins/kubernetes is not checked out: git submodule update --init plugins/kubernetes');
@@ -51,6 +55,7 @@ function ensurePluginBundle() {
     const r = spawnSync('pnpm', args, { cwd: ui, stdio: 'inherit' });
     if (r.status !== 0) throw new Error(`pnpm ${args.join(' ')} failed in plugins/kubernetes/ui`);
   }
+  requirePluginBundle(assets);
 }
 
 if (!opts['no-build']) {
@@ -58,6 +63,7 @@ if (!opts['no-build']) {
   console.log('Building the profiling bundle (bench/app/dist)…');
   await build({ configFile, logLevel: 'warn' });
 }
+if (opts['no-build']) requirePluginBundle(pluginAssetDirectory(root));
 const server = await preview({ configFile, logLevel: 'warn' });
 const baseURL = server.resolvedUrls.local[0];
 

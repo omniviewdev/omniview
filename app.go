@@ -4,17 +4,39 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"sync"
 
+	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // AppService is the main application service for Wails v3.
 // It is registered as a Wails service and exposes methods to the frontend.
-type AppService struct{}
+type AppService struct {
+	descriptorMu sync.RWMutex
+	descriptor   devcontract.InstanceDescriptor
+}
 
-// NewAppService creates a new AppService.
-func NewAppService() *AppService {
-	return &AppService{}
+// NewAppService retains a safe detached snapshot of the selected instance.
+func NewAppService(descriptor devcontract.InstanceDescriptor) *AppService {
+	return &AppService{descriptor: instance.Snapshot(descriptor)}
+}
+
+// GetInstanceInfo returns authoritative runtime identity without credentials.
+func (a *AppService) GetInstanceInfo() devcontract.InstanceDescriptor {
+	a.descriptorMu.RLock()
+	defer a.descriptorMu.RUnlock()
+	return instance.Snapshot(a.descriptor)
+}
+
+// updateInstanceInfo is host-only: a frontend binding must never be able to
+// replace authoritative identity/readiness. Publish after endpoint transitions.
+func (a *AppService) updateInstanceInfo(descriptor devcontract.InstanceDescriptor) {
+	snapshot := instance.Snapshot(descriptor)
+	a.descriptorMu.Lock()
+	a.descriptor = snapshot
+	a.descriptorMu.Unlock()
 }
 
 // ServiceStartup is called during application startup.

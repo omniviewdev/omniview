@@ -1,0 +1,94 @@
+# Development package linking
+
+`internal/devworkspace` composes only registry-owned feature worktrees into one **workspace-private pnpm12.14.0 workspace** at the canonical feature root. Git repositories and Go modules remain separate. It does not edit canonical checkouts, create global package links, change published dependency ranges or rely on a parent `go.work`.
+
+## API and ordering
+
+- `Manager.Link(ctx, name, LinkOptions{Evidence: evidence}) (LinkReport, error)` applies and installs links. `name` is the normal registry workspace name/UUID.
+- `Manager.InspectLinks(ctx, name) (LinkReport, error)` reports effective package directories, package versions, Go module replacements, and individual resolution failures.
+- `Manager.Unlink(ctx, name) (LinkReport, error)` restores recorded source/configuration bytes and original aggregate-file absence, retires exact owned package outputs, and retains the journal on a conflict/failure. It does not start a second independent-root installer; an absent journal makes unlink idempotent.
+- `Manager.LinkEvidence(ctx, name) (LinkProtocolEvidence, error)` reads exact accepted journal evidence before a stopped unlink/edit/relink operation. It requires a completed transaction, matching selected manifest, unchanged recorded hashes and valid protocol evidence. Unlinked, incomplete or edited transactions return errors; no synthetic success evidence is provided and no external commands are run.
+
+Link/unlink acquire the lifecycle lock, validate the A03 ownership journal and linked Git worktrees, and acquire the stopped-profile guard. Stop the workspace before changing its dependency graph. Unlink before changing selected repositories or removing the workspace.
+
+Build outputs must exist for effective-resolution diagnostics to pass. A first link can install successfully and still return `link_resolution_failed` when a selected package has no `dist` entry yet. Its durable phase remains `linked`; build in the A15 dependency order, then call `InspectLinks` or re-link to recheck. Do not treat this error as proof of a successful bootstrap. Runtime must build before Vite-plugin shim generation; generated bindings remain the parent's `task bindings` operation.
+
+## Protocol acceptance gate
+
+There is deliberately no unproved default. `LinkOptions.Evidence` must contain successful **workspace/12.14.0** output from the disposable composition probe. Historical independent-root `link` evidence cannot authorize this topology. Selected local exports use explicit workspace mappings with live directory outputs; no unproved `file:` materialization or global links are substituted.
+
+At the quiescent integration barrier, run from the feature host:
+
+```sh
+GOWORK=off GOFLAGS= A11_PROTOCOL_PROBE=1 \
+  A11_PROTOCOL_REPORT=/tmp/omniview-a11-protocol.json \
+  go test ./internal/devworkspace -run '^TestLinkPinnedProtocolProbe$' -count=1 -v
+```
+
+Requirements: Go, Node with `import.meta.resolve` and its explicit parent-resolution flag, and native pnpm **12.14.0** on PATH or selected by canonical `OMNIVIEW_PNPM_EXECUTABLE`. Corepack is not required; mixed/incompatible manager pins fail before mutation. The real probe uses registered disposable feature worktrees with spaces, nested source configs and multiple plugins. It checks actual manager selection, cold incompatible peers, recursive peer rejection after a warm peer-only edit, local UI/runtime resolution, React/ReactDOM/runtime object identity and live JS/CSS/declaration visibility across atomic `dist` replacement. Fresh Node processes observe replacements. Evidence is emitted only after all assertions succeed, not from directory/symlink existence or install exit0.
+
+Unmarshal that JSON as `LinkProtocolEvidence` for `Link`. The evidence is a prerequisite supplied by the trusted local orchestrator, not an artifact signature or a claim that real application browser validation has run. This source change alone is not protocol acceptance.
+
+## Consumer roots and singleton behavior
+
+The feature directory is the single pnpm workspace/lockfile boundary above these physical projects:
+
+1. Selected host and its providers/runtime/Vite-plugin packages.
+2. Selected UI root and base-ui/ai-ui/editors packages.
+3. Every selected plugin's real frontend package root; backend-only plugins add no frontend.
+
+Source package names, versions, dependency ranges, workspace configs and lockfiles remain standalone inputs. The planner explicitly reconciles compatible policies into generated aggregate `package.json`/`pnpm-workspace.yaml`/`pnpm-lock.yaml`, seeds existing registry resolutions, and refuses conflicting/unrepresentable settings rather than silently dropping them. Declared selected manager pins must match **12.14.0**; credentials are never copied into generated metadata.
+
+Source lock authority follows actual source workspace boundaries or selected standalone roots. An old `pnpm-lock.yaml` inside an ordinary workspace member is neither seeded nor freshness-tracked; the enclosing workspace's frozen importer remains authoritative. A nested `pnpm-workspace.yaml` creates a real boundary whose lock participates in convergence and conflict checks. Adding that boundary invalidates the prior plan.
+
+Native12 metadata/application lock streams retain an explicit initial `---` marker as well as the separator between documents. Without the initial marker native pnpm treats the seed as broken single-document YAML and may resolve fresh ranges instead of preserving the selected registry pins; the real pinned-manager probe rejects that warning.
+
+A workspace declaration owns its packages even when its lock is missing: an enclosing lock's leftover importer is not a fallback. Planning parses and fingerprints the same configuration bytes and rejects changes between repeated input reads. Before first native resolution, local manifest dependencies must resolve to canonical selected packages with matching names; an absent source lock does not permit an unmanaged external link.
+
+Build approvals are permissions, not requirements: explicit `allowBuilds` booleans intersect with **deny-wins** across roots. A host approval cannot override a plugin denial. Standalone files remain unchanged, managed installs still prohibit all scripts, and other incompatible policy values still refuse composition.
+
+Locked registry metadata may contain informational prose with support URLs. An embedded URL in a deprecation notice is not a URL-valued resolution; actual URL values still reject userinfo, query/fragment data and unresolved repository-local references.
+
+The approved seed policy is **host-led convergence**: host lock first, selected UI next, then stable feature-relative source order. Shared snapshot child pins may necessarily converge; distinct locked package identities/integrities remain available, source lockfiles stay unchanged, and same-key resolution/integrity differences still refuse. `seedConvergence` in link reports and `plan.composition.convergence` in the canonical journal identify preferred/other source and changed fields without raw private values. These are seed decisions, not a promise that the final native-installed graph equals every standalone graph.
+
+Local Omniview exports are explicit workspace mappings even when older published dependency ranges differ. React/ReactDOM use the selected host's locked semver providers within the same workspace, not external path links that pnpm12 cannot peer-attest. Managed installs use `--ignore-scripts` and strict peers, followed by **recursive** `pnpm -r peers check --json --lockfile-only`; frozen/up-to-date install alone can skip peer revalidation.
+
+Monaco must also be coherent across the shared runtime: the host, selected UI editors and Kubernetes frontend declare `^0.52.2`. `monaco-types@0.1.2` re-exports Monaco without declaring a peer/dependency, so mixing host `0.47` and editors `0.52` can pass native peer validation but fail the real editor producer's typecheck. Keep those producer checks; casts and disabled checks are not a compatibility fix.
+
+Vite's public `PluginOption` types carry both its Vite version and `@types/node` peer context. The shipped safe probe pins Vite `5.4.18` and Node types `25.5.0` to the selected SDK tooling cohort; separate Vite patch/type contexts can make plugin configuration types incompatible. These are fixture prerequisites, not production dependency overrides. Keep the fixture cohort aligned when updating SDK tooling, and require the actual consumer configuration typecheck rather than casting away a split context.
+
+The shim plugin removes shared forced optimizer entries only after all configuration hooks merge, including React's automatic includes. Shared modules stay excluded and shim-backed; nonshared dependency optimization remains enabled. Both ESM and CommonJS entry points resolve their own package directory. The CJS build's retained warning about the unreachable ESM `import.meta` branch is not suppressed; real require and executable optimizer-consumer checks cover the selected CJS branch.
+
+The Kubernetes standalone registry graph has a separate existing publication gate: published `@omniviewdev/runtime@0.4.2` requests base-ui `^0.2.1`, while the plugin requests `^0.4.2`. Native strict standalone installation refuses that graph. Managed feature composition instead maps the actual reviewed local runtime/UI exports and audits their original peer metadata. Do not treat a generated standalone lock as peer acceptance or disable strict peers; update the published dependency range only after a real compatible runtime release.
+
+The owned native launcher clears inherited workspace-dir aliases and sets validated `PNPM_CONFIG_WORKSPACE_DIR` to the feature root. Actual package cwd/argv remain unchanged, including nested scripts; a nearer child YAML does not override managed context. Child policies are explicitly reconciled, not presumed inherited.
+
+The launcher enforces `--config.verify-deps-before-run=error`. [Native pnpm12 defaults](https://pnpm.io/settings/build#verifydepsbeforerun) to installing before `run`/`exec` when dependencies are stale, then warning and continuing if that install fails. Managed pre-run verification must instead reject the stale graph without another installer or lockfile rewrite. Dependency changes go through the explicit owned install and recursive audit; checks are not disabled.
+
+Diagnostics resolve import-condition exports from each consumer's actual package location, including the runtime package, UI packages, and every selected plugin. Runtime `api`, `models` and `runtime` subpaths are checked independently. Missing exports, missing build outputs and wrong directories remain explicit problems.
+
+The host's CSS entry remains authoritative: `@omniviewdev/base-ui/styles.css` must still map to `@/theme/base-ui.css` in shared dependencies. Package-directory linking does not replace this CSS mapping or bypass the host's cascade layer. The disposable CSS-content probe is not a browser cascade proof. Actual host/plugin singleton identity through Vite aliases, generated shims, and browser rendering must also be exercised by the integration barrier; Node directory checks alone cannot establish that.
+
+## Actual Go consumers
+
+When an SDK repository is selected, the host and every selected Go plugin receive an actual worktree-local `go.mod` replacement:
+
+```go
+replace github.com/omniviewdev/plugin-sdk => "/absolute/feature path/plugin-sdk"
+```
+
+Go itself writes the properly quoted module syntax. A pre-existing replacement to the same local SDK is retained byte-for-byte; a different replacement, a registry replacement, or a version-specific override is a conflict. Other replacements are untouched. Commands always force `GOWORK=off` and clear ambient `GOFLAGS`, so neither a parent workspace nor an unrelated modfile can masquerade as the effective module. Inspection executes `go list -m -json github.com/omniviewdev/plugin-sdk` from every actual Go consumer. Selected SDK compatibility still requires the trusted local builds owned by A15; version strings or metadata are not build attestations.
+
+## Reversibility and conflicts
+
+`.local/links.json` is separate from A03's lifecycle ownership journal. It records workspace identity, selected manifest, consumer plan, protocol evidence, and original/applied bytes and SHA-256 hashes for modified pnpm configuration/lockfiles and Go mod/sum files. Original absence and permission bits are retained. The journal is persisted before applying edits and before running an installer. Only `pnpm-lock.yaml` is an expected pnpm output: successful output is captured after all configuration hashes are checked. Manifest, workspace YAML and Go-file bytes are never adopted from an external process. A concurrent editor change conflicts and remains untouched. Changed lockfile bytes left by a failed command remain pending/unverified and require reconciliation rather than automatic overwrite.
+
+Re-link does not reinstall or rewrite an unchanged completed transaction; it inspects effective resolution again. Unlink preflights every recorded file before restoring any file. A subsequent user edit yields `link_conflict` instead of being overwritten. Files already restored to their original hash are safe for interrupted unlink retries. A process crash during an installer that leaves bytes not covered by its last durable hash is an explicit unverified conflict, not permission to assume ownership. Preserve those bytes and reconcile them before retrying.
+
+Finite dependency commands distinguish command failure from ownership uncertainty. Once the existing platform waiter has proved the owned group/Job empty and reaped its actual leader, an output-stream or exit-observation error returns as a failed command; it is not retried as unfinished disposal. Without both proofs, the original command owner and pending output intent remain retained. Neither case authorizes adopting an unrecorded aggregate lockfile, discarding user edits, or declaring the composition linked.
+
+On macOS, a fast child can exit before kqueue registration, which then reports `ESRCH`. Only a positive kernel zombie record matching the exact unreaped command/PID permits the already-exited observation path. The existing owned-group-empty proof and actual `Cmd.Wait` still determine success, nonzero exit, or an output-stream error; `ESRCH` by itself never authorizes success.
+
+Selected repository directories, package directories, frontend roots and package manifests must resolve to their exact owned feature paths. Symlink redirects to canonical checkouts or other locations are rejected before planning can mutate configuration. SDK replacement validation scans every entry, so a matching unversioned replacement cannot hide a later conflicting version-specific replacement.
+
+Unlink and canonical stopped edit/remove restore exact aggregate/source contents or original absence and retire only independently owned outputs. `node_modules` is derived package-manager state, not a byte-for-byte user-data backup. Unknown ignored files, modified distributions, foreign roots and uncertain live writers remain explicit refusals; no force-cleaning or production profile/credential import is authorized.

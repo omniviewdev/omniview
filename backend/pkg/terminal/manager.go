@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid" // UUID package for generating unique identifiers.
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/internal/instance"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
@@ -144,7 +145,12 @@ func (m *Manager) StartSession(
 	// shell from the local IDE, so this is going to be exactly what the user wants.
 	cmd := exec.CommandContext(ctx, shell, newopts...)
 
-	cmd.Env = os.Environ()
+	childEnvironment, err := instance.RestoreNativeChildEnvironment(os.Environ())
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	cmd.Env = childEnvironment
 	cmd.Env = append(cmd.Env, "SHELL="+shell, "TERM=xterm-256color")
 
 	if opts.Labels == nil {

@@ -12,6 +12,7 @@ import HeaderTabsArea from './areas/HeaderTabsArea';
 import { WindowContext } from '@/contexts/WindowContext';
 import { toggleMaximiseOnDoubleClick } from './toggleMaximise';
 import styles from './Header.module.css';
+import InstanceIndicator from './InstanceIndicator';
 
 /**
  * Primary header component for the core main layout
@@ -31,6 +32,7 @@ const CoreLayoutHeader: React.FC = () => {
       style={style}
       onClick={toggleMaximiseOnDoubleClick}
     >
+      <InstanceIndicator />
       {areas?.left.visible && <HeaderItemAreaComponent area={areas.left} />}
       {areas?.center.visible && <HeaderItemAreaComponent area={areas.center} />}
       {areas?.right.visible && <HeaderItemAreaComponent area={areas.right} />}

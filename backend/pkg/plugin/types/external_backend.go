@@ -3,6 +3,7 @@ package types
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	goplugin "github.com/hashicorp/go-plugin"
@@ -20,8 +21,10 @@ const rpcTimeout = 5 * time.Second
 // ExternalBackend wraps a go-plugin Client and ClientProtocol pair.
 // All go-plugin concrete types are confined to this file.
 type ExternalBackend struct {
-	pluginClient *goplugin.Client
-	rpcClient    goplugin.ClientProtocol
+	pluginClient   *goplugin.Client
+	rpcClient      goplugin.ClientProtocol
+	processCleanup func()
+	cleanupOnce    sync.Once
 }
 
 // NewExternalBackend creates a new ExternalBackend wrapping go-plugin types.
@@ -30,6 +33,20 @@ func NewExternalBackend(pluginClient *goplugin.Client, rpcClient goplugin.Client
 		pluginClient: pluginClient,
 		rpcClient:    rpcClient,
 	}
+}
+
+// SetProcessCleanup transfers a verified executable snapshot to this process's
+// lifecycle. Configure once before publishing the backend to other goroutines.
+func (b *ExternalBackend) SetProcessCleanup(cleanup func()) {
+	b.processCleanup = cleanup
+}
+
+func (b *ExternalBackend) cleanupProcess() {
+	b.cleanupOnce.Do(func() {
+		if b.processCleanup != nil {
+			b.processCleanup()
+		}
+	})
 }
 
 // Dispense returns a capability client by name.
@@ -65,11 +82,18 @@ func (b *ExternalBackend) Stop() error {
 // Kill forcefully terminates the plugin process.
 func (b *ExternalBackend) Kill() {
 	b.pluginClient.Kill()
+	// go-plugin v1.7 Kill waits for the runner and client goroutines to exit;
+	// an RPC Close alone does not prove Windows released the executable.
+	b.cleanupProcess()
 }
 
 // Exited returns true if the plugin process has exited.
 func (b *ExternalBackend) Exited() bool {
-	return b.pluginClient.Exited()
+	exited := b.pluginClient.Exited()
+	if exited {
+		b.cleanupProcess()
+	}
+	return exited
 }
 
 // DetectCapabilities tries lifecycle-based detection first, then falls

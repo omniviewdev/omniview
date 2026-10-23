@@ -1,5 +1,7 @@
 package plugin
 
+import "context"
+
 // PluginRefAdapter adapts plugin.Manager to devserver.PluginRef.
 type PluginRefAdapter struct{ Mgr Manager }
 
@@ -17,4 +19,12 @@ type PluginReloaderAdapter struct{ Mgr Manager }
 func (a *PluginReloaderAdapter) ReloadPlugin(id string) error {
 	_, err := a.Mgr.ReloadPlugin(id)
 	return err
+}
+
+func (a *PluginReloaderAdapter) ReloadManagedPlugin(ctx context.Context, id, source, generation string) error {
+	return a.Mgr.ReloadManagedPlugin(ctx, id, source, generation)
+}
+
+func (a *PluginReloaderAdapter) StopDevPlugin(id string) error {
+	return a.Mgr.StopDevPlugin(id)
 }

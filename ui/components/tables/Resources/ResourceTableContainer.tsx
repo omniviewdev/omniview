@@ -28,6 +28,7 @@ import { plural } from '@/utils/language';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import ColumnFilter from './ColumnFilter';
 import NamespaceSelect from '@/components/selects/NamespaceSelect';
+import { readProfileStorage, writeProfileStorage } from '@/features/instance/boot';
 
 export type Memoizer = string | string[] | ((data: any) => string);
 export type IdAccessor = string | ((data: any) => string);
@@ -178,7 +179,7 @@ const ResourceTableContainer: React.FC<Props> = ({
   // also can't just put it in the initial state because it will cause an issue with table render as well
   React.useLayoutEffect(() => {
     // check local storage to see if they've saved this
-    const storedColumnVisibility = window.localStorage.getItem(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`);
+    const storedColumnVisibility = readProfileStorage(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`);
     if (storedColumnVisibility && initialColumnVisibility) {
       const current = JSON.parse(storedColumnVisibility);
 
@@ -199,7 +200,7 @@ const ResourceTableContainer: React.FC<Props> = ({
     let visibility = JSON.stringify(columnVisibility);
     // save changes to local storage
     if (visibility !== '{}') {
-      window.localStorage.setItem(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`, visibility);
+      writeProfileStorage(`${pluginID}-${connectionID}-${resourceKey}-column-visibility`, visibility);
     }
   }, [columnVisibility]);
 

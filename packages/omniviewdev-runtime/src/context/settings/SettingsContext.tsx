@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useRef, useState } from 'react';
+import { Events } from '@wailsio/runtime';
 import { Values } from '../../bindings/github.com/omniviewdev/omniview/internal/settings/servicewrapper';
 
 // Define the context type
@@ -30,7 +31,6 @@ export const SettingsProvider = ({ children }: {
           return;
         }
 
-        console.log('Fetched settings:', values);
         setSettings(values);
       })
       .catch((error: unknown) => {
@@ -43,7 +43,12 @@ export const SettingsProvider = ({ children }: {
   }, []);
 
   React.useEffect(() => {
+    const unsubscribe = Events.On('settings/changed', () => fetchSettings());
     fetchSettings();
+    return () => {
+      requestGeneration.current += 1;
+      unsubscribe();
+    };
   }, [fetchSettings]);
 
   const reload = useCallback((): void => {

@@ -75,9 +75,9 @@ Compact filter popovers use `size="sm"` and let the shared popup own outer paddi
 
 ### Developing against published UI patches
 
-`task dev` first runs `task ui:update`, then starts Wails. The update task refreshes only Base UI, AI UI, and Editors for the host and runtime workspace; it respects their `~` version ranges, so patches are automatic but minor and major upgrades remain explicit. It updates the installed packages and `pnpm-lock.yaml`, and requires registry access. An update failure stops startup rather than silently running stale packages.
+`task dev` starts an explicitly selected development workspace; it no longer mutates dependency versions implicitly. Use `task ui:update` separately to refresh published Base UI, AI UI, and Editors within their declared ranges, then review and commit intended lockfile changes.
 
-Use `task ui:update` to refresh without starting the app. Restart `task dev` after publishing the UI repository; this consumes published npm packages, not unpublished sibling source changes. Running `pnpm dev` directly starts only Vite and does not run the refresh task.
+Named workspaces use selected local source overlays rather than consuming unpublished sibling changes accidentally. Running `pnpm dev` directly starts only Vite, not an isolated host. See [development workspaces](docs/development-workspaces.md) and the [native toolchain](docs/development-native-toolchain.md) for explicit state selection and bootstrap-aware Go commands.
 
 The root manifest’s `packageManager` field is the single pnpm version source for local development and GitHub Actions. Workflow setup steps intentionally omit a separate pnpm version. CI and release workflows continue using frozen lockfile installs; review and commit intended lockfile changes from development.
 
