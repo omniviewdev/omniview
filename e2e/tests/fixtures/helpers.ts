@@ -19,7 +19,7 @@ export async function restartApp(page: Page, workspace: Workspace): Promise<Desc
     await session.detach();
   }
 
-  await page.waitForFunction(generation => window.__OMNIVIEW_BOOTSTRAP__?.identity.generation === generation, descriptor.generation);
+  await page.waitForFunction(generation => window.__OMNIVIEW_BOOTSTRAP__?.identity?.generation === generation, descriptor.generation);
   await page.waitForLoadState('load');
   await expect(shell(page).root).toBeVisible();
   return descriptor;
@@ -111,6 +111,6 @@ export async function saveSettings(page: Page): Promise<void> {
 }
 
 type WorkspaceWindow = Window & {
-  __OMNIVIEW_BOOTSTRAP__?: { identity: { generation: string } };
+  __OMNIVIEW_BOOTSTRAP__?: { identity: { generation: string } | null };
 };
 declare const window: WorkspaceWindow;
