@@ -19,7 +19,7 @@ export OMNIVIEW_PNPM_EXECUTABLE="$(realpath "$(brew --prefix pnpm)/bin/pnpm")"
 export PATH="$(dirname "$OMNIVIEW_PNPM_EXECUTABLE"):$PATH"
 ```
 
-The pnpm12 migration explicitly sets `minimumReleaseAge: 0` to preserve the previous pnpm10 immediate-release behavior, as approved by the developer. Strict peers, exact manager pins, frozen-lockfile verification and managed `--ignore-scripts` remain. Non-auth `.npmrc` settings moved into workspace YAML; the native12 lockfile metadata format is preserved as package-manager-owned bytes.
+The pnpm12 workspace policy retains 24-hour release-age protection (`minimumReleaseAge: 1440`), with immediate registry updates exempted only for `@omniviewdev/*`. Managed composition rejects conflicting release-age settings rather than silently disabling protection. Linked source worktrees do not require newly published registry versions. Strict peers, exact manager pins, frozen-lockfile verification and managed `--ignore-scripts` remain. Non-auth `.npmrc` settings live in workspace YAML; native12 lockfile metadata remains package-manager-owned.
 
 Choose source refs that satisfy the actual peer contracts: compare the host's `packages/omniviewdev-runtime/package.json` with the selected UI's `packages/base-ui/package.json`. A checkout can lag an existing compatible release tag. Select compatible released source while preserving feature changes; do not invent a package version or weaken peer validation to make an older source pass.
 

@@ -39,7 +39,7 @@ func fixture(t *testing.T) (devcontract.ResolvedWorkspace, []Root) {
 	raw, _ := json.Marshal(w.Manifest)
 	put(t, root, "workspace.json", string(raw))
 	put(t, root, "omniview/package.json", `{"name":"host","private":true,"packageManager":"pnpm@12.14.0","dependencies":{"react":"^19.0.0","react-dom":"^19.0.0"}}`)
-	put(t, root, "omniview/pnpm-workspace.yaml", "packages: ['packages/*']\nstrictPeerDependencies: true\nminimumReleaseAge: 0\n")
+	put(t, root, "omniview/pnpm-workspace.yaml", "packages: ['packages/*']\nstrictPeerDependencies: true\nminimumReleaseAge: 1440\n")
 	put(t, root, "omniview/pnpm-lock.yaml", "---\nlockfileVersion: '9.0'\nimporters:\n  .:\n    packageManagerDependencies:\n      pnpm: {specifier: 12.14.0, version: 12.14.0}\npackages: {}\nsnapshots: {}\n---\nlockfileVersion: '9.0'\nsettings: {autoInstallPeers: true, excludeLinksFromLockfile: false}\nimporters:\n  .:\n    dependencies:\n      react: {specifier: ^19.0.0, version: 19.2.4}\n      react-dom: {specifier: ^19.0.0, version: '19.2.4(react@19.2.4)'}\npackages:\n  react@19.2.4: {resolution: {integrity: sha512-react}}\n  react-dom@19.2.4: {resolution: {integrity: sha512-dom}}\nsnapshots:\n  react@19.2.4: {}\n  react-dom@19.2.4(react@19.2.4): {dependencies: {react: 19.2.4}}\n")
 	for _, id := range []string{"plugin-a", "plugin-b"} {
 		put(t, root, id+"/ui/package.json", `{"name":"plugin-ui","private":true,"dependencies":{"react":"^19"}}`)

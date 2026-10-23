@@ -169,13 +169,13 @@ jobs:
         env:
           OMNIVIEW_E2E_SOURCES: ${{ runner.temp }}/workspace-ci-private/sources.json
           PLAYWRIGHT_HTML_REPORT: playwright-report/optimized
-        run: pnpm --dir e2e test tests/workspaces --output=test-results/optimized --reporter=html
+        run: pnpm --dir e2e test tests/workspaces --grep-invert 'A17 live:' --output=test-results/optimized --reporter=html,list
 
       - name: Run actual live-frontend workspace scenarios
         env:
           OMNIVIEW_E2E_SOURCES: ${{ runner.temp }}/workspace-ci-private/live-sources.json
           PLAYWRIGHT_HTML_REPORT: playwright-report/live
-        run: pnpm --dir e2e test tests/workspaces --output=test-results/live --reporter=html
+        run: pnpm --dir e2e test tests/workspaces --grep-invert 'A17 optimized:' --output=test-results/live --reporter=html,list
 
       - name: Upload only allowed browser reports
         if: always()

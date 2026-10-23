@@ -105,7 +105,7 @@ func reconcile(w devcontract.ResolvedWorkspace, s sourceSet) (reconciledPolicy, 
 	}
 	out["strictPeerDependencies"] = true
 	out["ignoreScripts"] = true
-	out["minimumReleaseAge"] = 0
+	out["minimumReleaseAge"] = 1440
 	out["pmOnFail"] = "error"
 	out["sharedWorkspaceLockfile"] = true
 	return reconciledPolicy{settings: out, inputHashes: patches.hashes}, nil
@@ -130,10 +130,10 @@ func normalizePolicySetting(w devcontract.ResolvedWorkspace, key string, value a
 			return nil, refusal("setting strictPeerDependencies in %s conflicts with managed strict peers", source)
 		}
 	case "minimumReleaseAge":
-		if !zero(value) {
-			return nil, refusal("setting minimumReleaseAge in %s conflicts with approved immediate-release policy", source)
+		if !isManagedReleaseAge(value) {
+			return nil, refusal("setting minimumReleaseAge in %s conflicts with managed 24-hour release protection", source)
 		}
-		value = 0
+		value = 1440
 	case "dangerouslyAllowAllBuilds":
 		if value != false {
 			return nil, refusal("setting dangerouslyAllowAllBuilds in %s is not supported for managed no-script installs", source)
@@ -257,14 +257,14 @@ func validateBuildApprovals(settings map[string]any) error {
 	}
 	return nil
 }
-func zero(v any) bool {
+func isManagedReleaseAge(v any) bool {
 	switch n := v.(type) {
 	case int:
-		return n == 0
+		return n == 1440
 	case float64:
-		return n == 0
+		return n == 1440
 	case int64:
-		return n == 0
+		return n == 1440
 	}
 	return false
 }

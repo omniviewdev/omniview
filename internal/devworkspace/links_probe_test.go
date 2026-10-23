@@ -130,7 +130,7 @@ func probePinnedLinkProtocol(t *testing.T, version string) {
 	// Nearest-child YAML exists before the cold install; native12 must honor
 	// the owned root context while scripts retain their actual package cwd.
 	for _, path := range append([]string{host, ui}, plugins...) {
-		write(filepath.Join(path, "pnpm-workspace.yaml"), "packages:\n  - packages/*\nminimumReleaseAge: 0\nstrictPeerDependencies: true\n")
+		write(filepath.Join(path, "pnpm-workspace.yaml"), "packages:\n  - packages/*\nminimumReleaseAge: 1440\nstrictPeerDependencies: true\n")
 		write(filepath.Join(path, ".gitignore"), "node_modules/\ndist/\n")
 	}
 	plan, err := makeLinkPlan(w)

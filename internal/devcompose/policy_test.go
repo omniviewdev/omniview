@@ -225,11 +225,35 @@ func TestNestedMixedPackageManagerPinRefusesBeforeAnyAggregateWrite(t *testing.T
 	}
 }
 
-func TestEquivalentJSONAndYAMLReleaseAgePoliciesCompose(t *testing.T) {
+func TestReleaseAgeProtectionSurvivesMixedJSONAndYAMLInputs(t *testing.T) {
+	w, roots := fixture(t)
+	put(t, w.Root, "omniview/pnpm-workspace.yaml", "packages: ['packages/*']\nminimumReleaseAge: 1440\nminimumReleaseAgeExclude: ['@omniviewdev/*']\n")
+	put(t, w.Root, "plugin-a/ui/package.json", `{"name":"plugin-ui","private":true,"pnpm":{"minimumReleaseAge":1440}}`)
+	p, err := New(w, roots, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var policy map[string]any
+	if err := yaml.Unmarshal(generated(t, p, "pnpm-workspace.yaml"), &policy); err != nil {
+		t.Fatal(err)
+	}
+	if policy["minimumReleaseAge"] != 1440 {
+		t.Fatalf("release-age protection changed: %v", policy["minimumReleaseAge"])
+	}
+	exclusions, ok := policy["minimumReleaseAgeExclude"].([]any)
+	if !ok || len(exclusions) != 1 || exclusions[0] != "@omniviewdev/*" {
+		t.Fatalf("scoped release exception changed: %v", policy["minimumReleaseAgeExclude"])
+	}
+}
+
+func TestDisabledReleaseAgeProtectionRefusesBeforeAggregateWrite(t *testing.T) {
 	w, roots := fixture(t)
 	put(t, w.Root, "plugin-a/ui/package.json", `{"name":"plugin-ui","private":true,"pnpm":{"minimumReleaseAge":0}}`)
-	if _, err := New(w, roots, nil); err != nil {
-		t.Fatal(err)
+	if _, err := New(w, roots, nil); err == nil || !strings.Contains(err.Error(), "minimumReleaseAge") {
+		t.Fatalf("disabled release-age protection was not refused: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(w.Root, "package.json")); !os.IsNotExist(err) {
+		t.Fatal("release-age refusal mutated aggregate")
 	}
 }
 
