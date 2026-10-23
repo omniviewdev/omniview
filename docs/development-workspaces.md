@@ -25,7 +25,7 @@ Choose source refs that satisfy the actual peer contracts: compare the host's `p
 
 The generated package root is `$COLLECTION/workspaces/<feature>`, above its host/UI/plugin worktrees. Managed native12 commands keep the actual consumer cwd/argv while enforcing this root through `PNPM_CONFIG_WORKSPACE_DIR`. Source configs/lockfiles remain standalone; compatible policies and locked registry resolutions are reconciled explicitly, and conflicts refuse mutation. Do not hand-edit generated root files or run independent plugin installs inside a managed feature.
 
-The host workspace includes its host packages and E2E tooling, not the unused bundled `plugins/` frontends. Their files remain untouched. Managed features add only explicitly selected plugin repositories; an unselected bundled example must not pull its stale dependency cohort into the feature.
+The host workspace includes its packages and E2E tooling; host TypeScript projects own `ui/` and `packages/`, not plugin repositories under `plugins/`. Each plugin's own project owns its dependencies, aliases and tests. Managed features add only explicitly selected plugin repositories; initializing an unselected submodule must not change host compilation or dependency resolution.
 
 ```sh
 # Run from the host checkout containing the workspace implementation.

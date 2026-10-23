@@ -39,19 +39,19 @@
 
 - [x] Verify SDK review fixes, full suite and filesystem consumer smoke; merge SDK9 through the repository's squash-only policy.
 - [x] Publish immutable SDK v0.6.0 at 1e92fb518b117814acb504aaae1772ff39abcdef; verify public Go proxy origin, module checksums and profilecontract.
-- [ ] UI agent validates findings/checks and existing changeset; parent merges UI57 after gates pass.
-- [ ] Manage the generated Changesets release PR; verify base-ui0.4.4, ai-ui3.0.4 and editors3.0.4 through existing npm trusted publishing and exact registry provenance.
+- [x] Merge UI57 after full CodeRabbit source review, repaired/resolved release-age finding, and all current checks including CodSpeed pass.
+- [x] Review and merge generated Changesets release60. Concurrent accepted UI58/59 changes select base-ui0.5.0, ai-ui4.0.0 and editors4.0.0, superseding the initial patch-only plan. Exact versioned source passes builds, typechecks and1779 tests. Release39907858075 succeeds; all three versions are independently visible on npm with trusted-publisher provenance and exact base-ui0.5.0 peers.
 
 ## Task 4: Host consumer integration and release
 
-- [ ] Update host SDK requirement/checksums to published0.6.0; update necessary UI pins to published patch versions with native pnpm and strict peers. No local replacements in released files.
+- [x] Consume published SDK0.6.0 and the actual published UI0.5.0/4.0.0 cohort with native pnpm strict peers and 24-hour third-party protection. Host app/test compilation,933 host tests,157 runtime tests and runtime-before-Vite shim builds pass. No local replacements in released files.
 - [ ] Regenerate Task bindings and runtime/shims, run published-dependency builds/tests, inspect all required GitHub checks and resolve verified failures.
 - [ ] Merge host77 only after review and checks permit; tag next unused v0.5.0 after confirming tag availability. Existing release.yaml stamps providers/runtime/vite-plugin and publishes desktop artifacts.
 - [ ] Verify npm packages resolve at0.5.0, published export/shim compatibility, and desktop release jobs/artifacts. Inspect real failure logs rather than rerunning failures blindly.
 
 ## Task 5: Kubernetes published consumer release
 
-- [ ] Update compatible SDK0.6.0, host runtime/vite-plugin0.5.0 and UI patch pins; set plugin0.3.0 consistently across authorities.
+- [ ] Consume SDK0.6.0, host runtime/vite-plugin0.5.0 and the actual UI0.5.0/4.0.0 cohort; set plugin0.3.0 consistently across authorities and refresh standalone locks after host npm publication.
 - [x] Fix supported reusable-workflow pnpm12 inputs and pin version validation to the same immutable github.sha that the publisher builds.
 - [ ] Run published-consumer verification without human kubeconfig/cluster access; inspect review/checks and merge Kubernetes27 after its standalone lockfile resolves actual released npm packages.
 - [ ] **User-selected production gate:** hold the Kubernetes v0.3.0 tag/publication until the production API, validation worker and approval path are established. Production DNS is NXDOMAIN, production Terraform apply is explicitly disabled, and source deployment architecture is inconsistent; no infrastructure change or staging fallback is authorized.
@@ -64,6 +64,7 @@
 - Real pnpm12.14.0 canonical source composition at host4064330e/UIb61e125/Kubernetes2915a0b passes every selected producer, strict peer audits and shim checks, then completes three runs each of cold-start, Kubernetes startup, pods and logs. The private workspace retires through real session-aware guards. No unhandled backend calls were recorded; logs did record eight `ResizeObserver loop completed with undelivered notifications` events across the runs. Preserve this browser diagnostic for investigation; do not filter it out or call the run error-free.
 - Browser CI listed both A17 modes in each of its optimized/live invocations, repeating each expensive consumer scenario. Select only the corresponding A17 mode per invocation while retaining every general workspace scenario in both modes; real Playwright discovery verifies seven cases per invocation. Keep the HTML artifact and list reporter together so long-running tests produce progress instead of an HTML-only console.
 - The superseded browser retry trace proves an additional source-input failure: CI selected only `workspace-probe`, while A17 requires both it and managed Kubernetes. Add the initialized, immutable Kubernetes gitlink to source refs and plugin selection. Do not retry a missing-source fixture or relax A17's two-plugin requirement.
+- Corrected actual two-plugin A17 optimized execution passes locally in28.8minutes, covering cross-profile isolation, live shared edits and failed/repaired SDK builds. Run optimized/live modes on separate CI matrix runners, with the existing90-minute deadline and all seven corresponding cases per runner; retain separately named HTML artifacts.
 - Source packages declare the real upcoming 0.5.0 release, and Kubernetes/probe consumers declare ^0.5.0. Existing devcompose local-edge rules resolve those actual selected sources with old standalone lock seeds; this is not a claim that npm0.5.0 exists. Refresh standalone consumer locks after actual publication.
 - Fresh CodeRabbit review identified the global immediate-release exception. Restore the managed 24-hour policy and scope registry exemptions to `@omniviewdev/*` consistently in the host, UI, Kubernetes and probe workspaces. Security regressions were observed failing before repair; composition tests, native pnpm12.14.0 strict frozen UI installation and a fresh actual protocol probe pass with protection enabled.
 - The built providers CommonJS entry crashed on a Vite-only `import.meta.env.DEV` access used solely for a React context display name. Assigning the display name directly removes that environment dependency; the actual CommonJS import now succeeds after rebuilding.

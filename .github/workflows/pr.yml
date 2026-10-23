@@ -21,6 +21,14 @@ jobs:
     # Playwright 1.50.1 supports Ubuntu 24.04, not ubuntu-latest's Ubuntu 26.04.
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: optimized
+            exclude: live
+          - mode: live
+            exclude: optimized
     defaults:
       run:
         shell: bash
@@ -161,27 +169,22 @@ jobs:
           if (refs['plugin-sdk'] !== process.env.REVIEWED_SDK_REVISION || refs['workspace-probe'] !== probe.ref) throw Error('Source commit changed');
           const input = { sources, refs, repositories: ['plugin-sdk', 'ui'], plugins: ['kubernetes', 'workspace-probe'], reviewedSDKRevision: process.env.REVIEWED_SDK_REVISION, linkEvidence: join(privateRoot, 'pinned-link-protocol.json') };
           for (const liveFrontend of [false, true]) {
-            writeFileSync(join(privateRoot, liveFrontend ? 'live-sources.json' : 'sources.json'), JSON.stringify({ ...input, liveFrontend }), { mode: 0o600, flag: 'wx' });
+            const mode = liveFrontend ? 'live' : 'optimized';
+            writeFileSync(join(privateRoot, `${mode}-sources.json`), JSON.stringify({ ...input, liveFrontend }), { mode: 0o600, flag: 'wx' });
           }
           NODE
 
-      - name: Run actual optimized workspace scenarios
+      - name: Run actual ${{ matrix.mode }} workspace scenarios
         env:
-          OMNIVIEW_E2E_SOURCES: ${{ runner.temp }}/workspace-ci-private/sources.json
-          PLAYWRIGHT_HTML_REPORT: playwright-report/optimized
-        run: pnpm --dir e2e test tests/workspaces --grep-invert 'A17 live:' --output=test-results/optimized --reporter=html,list
-
-      - name: Run actual live-frontend workspace scenarios
-        env:
-          OMNIVIEW_E2E_SOURCES: ${{ runner.temp }}/workspace-ci-private/live-sources.json
-          PLAYWRIGHT_HTML_REPORT: playwright-report/live
-        run: pnpm --dir e2e test tests/workspaces --grep-invert 'A17 optimized:' --output=test-results/live --reporter=html,list
+          OMNIVIEW_E2E_SOURCES: ${{ runner.temp }}/workspace-ci-private/${{ matrix.mode }}-sources.json
+          PLAYWRIGHT_HTML_REPORT: playwright-report/${{ matrix.mode }}
+        run: pnpm --dir e2e test tests/workspaces --grep-invert 'A17 ${{ matrix.exclude }}:' --output=test-results/${{ matrix.mode }} --reporter=html,list
 
       - name: Upload only allowed browser reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.mode }}
           path: |
             host/e2e/playwright-report/
             host/e2e/test-results/

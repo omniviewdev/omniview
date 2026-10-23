@@ -195,14 +195,14 @@ importers:
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.52.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/ai-ui':
-        specifier: ~3.0.3
-        version: 3.0.3(@omniviewdev/base-ui@0.4.3(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react-icons@5.7.0(react@19.2.4))(react@19.2.4)(supports-color@8.1.1)
+        specifier: ~4.0.0
+        version: 4.0.0(@omniviewdev/base-ui@0.5.0(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react-icons@5.7.0(react@19.2.4))(react@19.2.4)(supports-color@8.1.1)
       '@omniviewdev/base-ui':
-        specifier: ~0.4.3
-        version: 0.4.3(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: ~0.5.0
+        version: 0.5.0(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@omniviewdev/editors':
-        specifier: ~3.0.3
-        version: 3.0.3(@omniviewdev/base-ui@0.4.3(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(supports-color@8.1.1)
+        specifier: ~4.0.0
+        version: 4.0.0(@omniviewdev/base-ui@0.5.0(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(supports-color@8.1.1)
       '@omniviewdev/providers':
         specifier: workspace:*
         version: link:packages/omniviewdev-providers
@@ -474,8 +474,8 @@ importers:
         version: 0.10.3
     devDependencies:
       '@omniviewdev/base-ui':
-        specifier: ~0.4.3
-        version: 0.4.3(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: ~0.5.0
+        version: 0.5.0(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tanstack/react-query':
         specifier: ^5.76.1
         version: 5.76.1(react@19.2.4)
@@ -1449,24 +1449,24 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@omniviewdev/ai-ui@3.0.3':
-    resolution: {integrity: sha512-E7a9QwiTq8vISpYyMbuoOgSkTx2WYPaJlBaMxAdUMAinxELt6y2V8tegpRUPVZRXPlsS84B8nA5bmaKLtnHmOg==}
+  '@omniviewdev/ai-ui@4.0.0':
+    resolution: {integrity: sha512-mJtDSe3/wE7EKG97Bol5CZjPyXI4d+v7kUf4xV2EgCH6JW0z262NglIpOOHJDqUa+4Jc0eQ6MqFyFwzP3empBQ==}
     peerDependencies:
-      '@omniviewdev/base-ui': 0.4.3
+      '@omniviewdev/base-ui': 0.5.0
       react: ^19.0.0
       react-dom: ^19.0.0
       react-icons: ^5.6.0
 
-  '@omniviewdev/base-ui@0.4.3':
-    resolution: {integrity: sha512-FcfOWHtopCMewkX+kSSUNgewiRCQUvAnmsQYH8xYKWGY5QnGdkcZK9tLFuyQQxibPaFMcoxovcCu3jE/Xhxt+g==}
+  '@omniviewdev/base-ui@0.5.0':
+    resolution: {integrity: sha512-Y5+o4RLvilTthj/FO0bRfoquE37WnY7Z+jEkWyt/O3yyi+mWYYeSWIY8ZIVDZFtjcwUE0q/G9r2Z1/yU1Xs+Rw==}
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
 
-  '@omniviewdev/editors@3.0.3':
-    resolution: {integrity: sha512-5jUCCBu4JIDDdfwyM8Awia7CMtjBb++NNso9oAKb0MCKRAiHCurRW2Mw7OfLe5cTSVqzbV57cg2P3sruGajSgw==}
+  '@omniviewdev/editors@4.0.0':
+    resolution: {integrity: sha512-5QDwZOqZ5f9ytXE+Rh4Q0H6qHPUVXl5Je/DEybdLKkziNUUv0u05J+JV/MC+PrHgq/5JQ5UwKWOxYC4+6UfV7A==}
     peerDependencies:
-      '@omniviewdev/base-ui': 0.4.3
+      '@omniviewdev/base-ui': 0.5.0
       react: ^19.0.0
       react-dom: ^19.0.0
 
@@ -6342,9 +6342,9 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.19.1
 
-  '@omniviewdev/ai-ui@3.0.3(@omniviewdev/base-ui@0.4.3(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react-icons@5.7.0(react@19.2.4))(react@19.2.4)(supports-color@8.1.1)':
+  '@omniviewdev/ai-ui@4.0.0(@omniviewdev/base-ui@0.5.0(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react-icons@5.7.0(react@19.2.4))(react@19.2.4)(supports-color@8.1.1)':
     dependencies:
-      '@omniviewdev/base-ui': 0.4.3(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@omniviewdev/base-ui': 0.5.0(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tanstack/react-virtual': 3.14.21(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
@@ -6355,7 +6355,7 @@ snapshots:
       - '@types/react'
       - supports-color
 
-  '@omniviewdev/base-ui@0.4.3(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@omniviewdev/base-ui@0.5.0(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
       '@base-ui/react': 1.9.0(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@dnd-kit/core': 6.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -6372,9 +6372,9 @@ snapshots:
       - '@types/react'
       - date-fns
 
-  '@omniviewdev/editors@3.0.3(@omniviewdev/base-ui@0.4.3(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(supports-color@8.1.1)':
+  '@omniviewdev/editors@4.0.0(@omniviewdev/base-ui@0.5.0(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(supports-color@8.1.1)':
     dependencies:
-      '@omniviewdev/base-ui': 0.4.3(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@omniviewdev/base-ui': 0.5.0(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@xterm/addon-fit': 0.11.0
       '@xterm/addon-search': 0.16.0
       '@xterm/addon-serialize': 0.14.0
