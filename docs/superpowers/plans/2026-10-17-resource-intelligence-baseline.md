@@ -77,10 +77,26 @@ GOWORK=off go list -m -json github.com/omniviewdev/plugin-sdk
 
 - [ ] From the selected host source, use its documented bootstrap-aware entrypoint. All variables below come from Task 2's recorded selection, not guessed refs:
 
+- [ ] Before any baseline bootstrap/init/probe/launch, allocate a private empty `ISOLATION_HOME` outside registered source repositories and production state. Record its owned path privately and use the same clean environment for every command through inspect/down/removal; otherwise profile/ownership registries can split across homes. Resolve `BASELINE_PNPM_EXECUTABLE` to the verified absolute pnpm 12.14.0 executable from Task 2. Do not copy kubeconfig, cloud credentials, shell startup files or user package-manager configuration into this home.
+
 ```sh
-export GOWORK=off
-DEV="$(SDK_SOURCE="$FIXED_SDK_SOURCE" task --silent dev:cli:build)"
-"$DEV" workspace init --root "$COLLECTION" \
+ISOLATION_HOME="$(mktemp -d "${TMPDIR:-/tmp}/omniview-resource-baseline.XXXXXX")"
+BASELINE_PATH="$PATH"
+mkdir "$ISOLATION_HOME/tmp" "$ISOLATION_HOME/.config" \
+  "$ISOLATION_HOME/.cache" "$ISOLATION_HOME/.local"
+baseline_env() {
+  env -i HOME="$ISOLATION_HOME" PATH="$BASELINE_PATH" \
+    TMPDIR="$ISOLATION_HOME/tmp" XDG_CONFIG_HOME="$ISOLATION_HOME/.config" \
+    XDG_CACHE_HOME="$ISOLATION_HOME/.cache" XDG_DATA_HOME="$ISOLATION_HOME/.local" \
+    GOWORK=off GOFLAGS= OMNIVIEW_PNPM_EXECUTABLE="$BASELINE_PNPM_EXECUTABLE" "$@"
+}
+```
+
+This excludes inherited Kubernetes/cloud configuration variables, credential-process settings, agent sockets and user-home defaults. Only reviewed toolchain additions may extend the allowlist; never forward the caller's full environment or credential-bearing paths. If a selected plugin requires credentials or an external connection even for the proposed harmless operation, stop that smoke and report the missing safe acceptance prerequisite. Clean environment/profile isolation is not an OS sandbox: native plugins can still read arbitrary user-accessible files or reach metadata/network services, so inspect the selected connection-free path and do not claim hostile-plugin credential isolation.
+
+```sh
+DEV="$(baseline_env env SDK_SOURCE="$FIXED_SDK_SOURCE" task --silent dev:cli:build)"
+baseline_env "$DEV" workspace init --root "$COLLECTION" \
   --source "omniview=$HOST_SOURCE" \
   --source "ui=$UI_SOURCE_OR_BARE_REPOSITORY" \
   --source "plugin-sdk=$FIXED_SDK_SOURCE" \
@@ -97,12 +113,12 @@ The registry ID `selected-provider` is local source ownership; `PLUGIN_ID` is th
 
 ```sh
 mkdir "$PROBE_DIR/native" "$PROBE_DIR/module"
-HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go \
+HOST_MODFILE="$(baseline_env env GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go \
   --root "$PWD" --sdk-source "$FIXED_SDK_SOURCE" \
   --output-directory "$PROBE_DIR/native")"
 cp "$HOST_MODFILE" "$PROBE_DIR/module/probe.mod"
 cp "${HOST_MODFILE%.mod}.sum" "$PROBE_DIR/module/probe.sum"
-GOWORK=off GOFLAGS= A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT="$LINK_EVIDENCE" \
+baseline_env env GOWORK=off GOFLAGS= A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT="$LINK_EVIDENCE" \
   go test -modfile="$PROBE_DIR/module/probe.mod" -tags server ./internal/devworkspace \
   -run '^TestLinkPinnedProtocolProbe$' -count=1
 ```
@@ -118,13 +134,13 @@ GOWORK=off GOFLAGS= A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT="$LINK_EVIDENCE" \
 - [ ] Create a uniquely named baseline workspace `resource-intelligence-baseline` in the newly owned collection. If it already exists, inspect ownership instead of overwriting/reusing an unrelated arena. Use the existing CLI:
 
 ```sh
-"$DEV" workspace create resource-intelligence-baseline --root "$COLLECTION" \
+baseline_env "$DEV" workspace create resource-intelligence-baseline --root "$COLLECTION" \
   --repo ui --repo plugin-sdk --plugin "$PLUGIN_ID" \
   --start --mode browser \
   --reviewed-sdk-revision d32a524bc89659260c6045062035ce05dc138ff4 \
   --link-evidence "$LINK_EVIDENCE" --json
-"$DEV" workspace inspect resource-intelligence-baseline --root "$COLLECTION" --json
-"$DEV" workspace paths resource-intelligence-baseline --root "$COLLECTION" --json
+baseline_env "$DEV" workspace inspect resource-intelligence-baseline --root "$COLLECTION" --json
+baseline_env "$DEV" workspace paths resource-intelligence-baseline --root "$COLLECTION" --json
 ```
 
 - [ ] Keep `GOWORK=off` effective for CLI children. Let its producer own native patch/bootstrap, package linking, `task bindings`, runtime-before-Vite build and process graph. Do not concurrently launch manual generators/builds.
@@ -153,7 +169,7 @@ GOWORK=off GOFLAGS= A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT="$LINK_EVIDENCE" \
 - [ ] Include caller/removal ownership: host resource service/controller, consumed SDK v1 vs older root generation, runtime hooks/cache/public entries, default host table, generated bindings, loader/contributions and release/shared maps. Keep active logs/exec/network/metrics/settings and current useful renderers visible for later cutover.
 - [ ] **Pass C00 only if** both Go consumers demonstrably use selected SDK source, actual UI/runtime source/peer/shared-export acceptance passes, actual selected host/plugin smoke passes, isolation is verified and downstream ownership is assigned. Source inspection or a fake-backend benchmark cannot satisfy these conditions.
 - [ ] If blocked, publish the audit plus exact unavailable prerequisite/attempts and leave P00/C00 open. No empty “ready” fields, fabricated benchmark figures or automatic dependent-code dispatch.
-- [ ] Stop owned processes with `workspace down`. If retiring the throwaway arena, use existing controlled unlink/remove after evidence retention; ordinary removal keeps state/branches. No `--delete-state`, `--delete-branches`, PID killing or source resets without separate authorization. Keep refused cleanup artifacts for inspection.
+- [ ] Stop owned processes with `baseline_env "$DEV" workspace down` against the recorded collection/workspace. Use the same isolated home/environment for all lifecycle commands. If retiring the throwaway arena, use existing controlled unlink/remove after evidence retention; ordinary removal keeps state/branches. No `--delete-state`, `--delete-branches`, PID killing or source resets without separate authorization. Keep refused cleanup artifacts and their isolated home for inspection; retire the home only after owned process/profile lifecycle and evidence retention are complete.
 - [ ] Review report/readiness changes; do not auto-commit or merge. On acceptance, dispatch only P44/P04/P18 independently under the launch plan's ownership/contracts, then release later nodes as their own predecessors pass.
 
 ## Literal next assignment
