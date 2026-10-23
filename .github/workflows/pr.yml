@@ -156,10 +156,10 @@ jobs:
           const privateRoot = join(process.env.RUNNER_TEMP, 'workspace-ci-private');
           const probe = JSON.parse(readFileSync(join(privateRoot, 'probe-source.json'), 'utf8'));
           if (probe.pluginID !== 'workspace-probe' || probe.source !== join(root, 'workspace-probe') || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(probe.ref)) throw Error('Invalid prepared real plugin source');
-          const sources = { omniview: join(root, 'host'), 'plugin-sdk': join(root, 'plugin-sdk'), ui: join(root, 'ui'), 'workspace-probe': probe.source };
+          const sources = { omniview: join(root, 'host'), 'plugin-sdk': join(root, 'plugin-sdk'), ui: join(root, 'ui'), kubernetes: join(root, 'host', 'plugins', 'kubernetes'), 'workspace-probe': probe.source };
           const refs = Object.fromEntries(Object.entries(sources).map(([id, path]) => [id, execFileSync('git', ['-C', path, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()]));
           if (refs['plugin-sdk'] !== process.env.REVIEWED_SDK_REVISION || refs['workspace-probe'] !== probe.ref) throw Error('Source commit changed');
-          const input = { sources, refs, repositories: ['plugin-sdk', 'ui'], plugins: ['workspace-probe'], reviewedSDKRevision: process.env.REVIEWED_SDK_REVISION, linkEvidence: join(privateRoot, 'pinned-link-protocol.json') };
+          const input = { sources, refs, repositories: ['plugin-sdk', 'ui'], plugins: ['kubernetes', 'workspace-probe'], reviewedSDKRevision: process.env.REVIEWED_SDK_REVISION, linkEvidence: join(privateRoot, 'pinned-link-protocol.json') };
           for (const liveFrontend of [false, true]) {
             writeFileSync(join(privateRoot, liveFrontend ? 'live-sources.json' : 'sources.json'), JSON.stringify({ ...input, liveFrontend }), { mode: 0o600, flag: 'wx' });
           }
