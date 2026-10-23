@@ -15,7 +15,7 @@ import { installDefaultFixtures, BENCH_CONNECTION_ID } from '../../render/fixtur
 import { makePods, servePods } from '../../render/fixtures/kubernetes';
 import { makeLogLines, streamLines } from '../../render/fixtures/logs';
 import { findByText, findScrollable, nextFrame, waitFor } from '../../render/harness/dom';
-import kubernetesPlugin from '../../../plugins/kubernetes/plugin.json';
+import kubernetesPlugin from 'virtual:bench-kubernetes-plugin';
 
 export interface BenchConfig {
   /** Plugin ids reported as installed; their UI bundles are loaded from /_/plugins/<id>/assets. */

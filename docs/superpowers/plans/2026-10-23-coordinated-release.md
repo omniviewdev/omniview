@@ -29,16 +29,16 @@
 
 **Files:** tsconfig.test.json; runtime PluginContextProvider.test.tsx; Vite-plugin feedback.test.ts; .github/workflows/{app-profile,render-bench,pr}.yml. Root organization follows evidence from AuditRootGoLayout/AuditTrackedRepoDebris; no speculative deletion.
 
-- [ ] Remove unsupported testing-library exact option; include existing application Window declarations in test compilation; replace invalid Vite5/8 server cast with correctly typed real entrypoint fixtures, retaining HMR/security assertions.
-- [ ] Fix Playwright1.50.1 versus ubuntu26.04 runner mismatch using a supported pinned runner or justified supported package update, without extending test deadlines or disabling jobs.
-- [ ] Configure explicit reviewed/published SDK and UI E2E inputs only after dependency review/release identity is established; retain fail-closed guards.
-- [ ] Remove current-feature execution debris and relocate implementation behind cohesive existing internal boundaries where build/cgo constraints allow. Update every caller, build tag, tool and doc; preserve root entrypoints that genuinely require package main.
+- [x] Remove unsupported testing-library exact option; include existing application Window declarations in test compilation; replace invalid Vite5/8 server cast with correctly typed real entrypoint fixtures, retaining HMR/security assertions.
+- [x] Fix Playwright1.50.1 versus ubuntu26.04 runner mismatch using a supported pinned runner, without extending test deadlines or disabling jobs.
+- [x] Configure explicit reviewed/published SDK and UI E2E inputs; retain fail-closed guards.
+- [x] Audit execution debris and relocate 19 root implementation/test files behind cohesive internal boundaries. Preserve unrelated historical/user files and genuine package-main entrypoints.
 - [ ] Parent runs actual typecheck, relevant tests, lint, native/server Go checks and affected runtime smoke; push fixes and inspect new Actions results.
 
 ## Task 3: SDK and UI dependency releases
 
-- [ ] SDK agent validates review findings and existing Go-tag conventions; parent verifies changes and merges SDK9 only after gates pass.
-- [ ] Parent tags merged SDK source v0.6.0; verify Go proxy exposes the exact tag commit and pkg/profilecontract. Never repoint an existing tag.
+- [x] Verify SDK review fixes, full suite and filesystem consumer smoke; merge SDK9 through the repository's squash-only policy.
+- [x] Publish immutable SDK v0.6.0 at 1e92fb518b117814acb504aaae1772ff39abcdef; verify public Go proxy origin, module checksums and profilecontract.
 - [ ] UI agent validates findings/checks and existing changeset; parent merges UI57 after gates pass.
 - [ ] Manage the generated Changesets release PR; verify base-ui0.4.4, ai-ui3.0.4 and editors3.0.4 through existing npm trusted publishing and exact registry provenance.
 
@@ -52,6 +52,17 @@
 ## Task 5: Kubernetes published consumer release
 
 - [ ] Update compatible SDK0.6.0, host runtime/vite-plugin0.5.0 and UI patch pins; set plugin0.3.0 consistently across authorities.
-- [ ] Fix reusable release workflow pnpm12/Go workspace behavior using supported inputs. Establish production versus staging target from existing release/marketplace evidence before changing endpoint or credentials wiring.
-- [ ] Run source and packaged-consumer verification without human kubeconfig/cluster access; inspect review/checks, merge Kubernetes27 and publish through its established pipeline.
-- [ ] Verify the marketplace/plugin artifact uses real published packages and the expected version; perform a final coherent published-dependency smoke and report exact release URLs and residual external blockers.
+- [x] Fix supported reusable-workflow pnpm12 inputs and pin version validation to the same immutable github.sha that the publisher builds.
+- [ ] Run published-consumer verification without human kubeconfig/cluster access; inspect review/checks and merge Kubernetes27 after its standalone lockfile resolves actual released npm packages.
+- [ ] **User-selected production gate:** hold the Kubernetes v0.3.0 tag/publication until the production API, validation worker and approval path are established. Production DNS is NXDOMAIN, production Terraform apply is explicitly disabled, and source deployment architecture is inconsistent; no infrastructure change or staging fallback is authorized.
+- [ ] After that gate is cleared, verify approved marketplace artifacts and normal-host availability. Submission success alone is not approval/installability.
+
+## Discovered verification fixes
+
+- Linux watch recovery: generated bindings were registered with inotify; atomic publication invalidated a descriptor and stopped Watch. The failing Linux probe observed `invalid argument`; generated-tree pruning at registration passes the three targeted Linux regressions without swallowing errors or changing deadlines.
+- Whole-app profiling: the old bundled Kubernetes source still used the removed MUI/Emotion/legacy UI cohort. Reuse canonical private source composition and the shared JS-only producer closure, not permissive install flags or a substitute workload.
+- Source packages declare the real upcoming 0.5.0 release, and Kubernetes/probe consumers declare ^0.5.0. Existing devcompose local-edge rules resolve those actual selected sources with old standalone lock seeds; this is not a claim that npm0.5.0 exists. Refresh standalone consumer locks after actual publication.
+- Full UI verification exposed a Calendar reciprocal-effect loop and deferred EditableList focus theft. One focused-date authority and immediate initial editor focus pass all 1,753 UI tests, typechecks, builds, and actual Chromium interaction/pixel checks.
+- The first UI CodSpeed check flagged RowList minima despite unchanged runtime/dependency inputs, unchanged mean/CPU and p=0.8557586. Do not optimize unrelated code or weaken thresholds. The verified UI fixes require a genuine new-head CI run; any acknowledgement must use CodSpeed's supported admin review workflow.
+- Historical host v0.4.2 notarization failed Apple HTTP403 for a missing/expired legal agreement. No code change substitutes for account-holder acceptance if that prerequisite remains unresolved.
+

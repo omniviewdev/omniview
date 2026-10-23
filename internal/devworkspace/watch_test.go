@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/fsnotify/fsnotify"
@@ -21,7 +20,7 @@ func (*graphManagedFixture) RebuildPluginGeneration(context.Context, string, str
 
 func TestWatchTreeIncludesNewSourceDirectoriesButNotOutputs(t *testing.T) {
 	root := t.TempDir()
-	for _, rel := range []string{"settings/new", "log", "proto", "pkg/new/module", "dist/generated", "node_modules/dependency", ".git/objects"} {
+	for _, rel := range []string{"settings/new", "log", "proto", "pkg/new/module", "packages/omniviewdev-runtime/src/feature", "packages/omniviewdev-runtime/src/bindings/nested", "dist/generated", "shims/generated", "node_modules/dependency", ".git/objects"} {
 		if err := os.MkdirAll(filepath.Join(root, rel), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -31,21 +30,22 @@ func TestWatchTreeIncludesNewSourceDirectoriesButNotOutputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer w.Close()
-	if err = addWatchTree(w, root); err != nil {
+	g := &BuildGraph{Nodes: []BuildNode{{ID: "bindings", Directory: root}}}
+	if err = g.addWatchTree(w, root); err != nil {
 		t.Fatal(err)
 	}
 	watched := map[string]bool{}
 	for _, dir := range w.WatchList() {
 		watched[dir] = true
 	}
-	for _, rel := range []string{"settings/new", "log", "proto", "pkg/new/module"} {
+	for _, rel := range []string{"settings/new", "log", "proto", "pkg/new/module", "packages/omniviewdev-runtime/src", "packages/omniviewdev-runtime/src/feature"} {
 		if !watched[filepath.Join(root, rel)] {
 			t.Fatalf("source not watched: %s", rel)
 		}
 	}
-	for dir := range watched {
-		if strings.Contains(dir, "node_modules") || strings.Contains(dir, "/dist/") || strings.Contains(dir, "/.git") {
-			t.Fatalf("generated/dependency output watched: %s", dir)
+	for _, rel := range []string{"packages/omniviewdev-runtime/src/bindings", "packages/omniviewdev-runtime/src/bindings/nested", "dist", "dist/generated", "shims", "shims/generated", "node_modules", "node_modules/dependency", ".git", ".git/objects"} {
+		if watched[filepath.Join(root, rel)] {
+			t.Fatalf("generated/dependency output watched: %s", rel)
 		}
 	}
 }

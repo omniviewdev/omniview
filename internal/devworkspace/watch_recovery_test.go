@@ -76,6 +76,8 @@ func TestWatchRecoveryCannotDeclareReadyWithUnrebuiltSDKBackend(t *testing.T) {
 	go func() { done <- g.Watch(ctx, hooks) }()
 	select {
 	case <-started:
+	case err := <-done:
+		t.Fatalf("watch exited before startup: %v", err)
 	case <-ctx.Done():
 		t.Fatal("watch did not start")
 	}
@@ -85,6 +87,8 @@ func TestWatchRecoveryCannotDeclareReadyWithUnrebuiltSDKBackend(t *testing.T) {
 		if event.Phase != "error" {
 			t.Fatalf("initial failed dependency chain advertised readiness: %+v", event)
 		}
+	case err := <-done:
+		t.Fatalf("watch exited before SDK change: %v", err)
 	case <-ctx.Done():
 		t.Fatal("SDK change was not processed")
 	}
@@ -94,6 +98,8 @@ func TestWatchRecoveryCannotDeclareReadyWithUnrebuiltSDKBackend(t *testing.T) {
 		if event.Phase != "error" {
 			t.Fatalf("recovery advertised readiness without rebuilding the failed SDK backend: %+v", event)
 		}
+	case err := <-done:
+		t.Fatalf("watch exited before runtime repair: %v", err)
 	case <-ctx.Done():
 		t.Fatal("runtime repair was not processed")
 	}

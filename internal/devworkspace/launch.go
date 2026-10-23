@@ -288,7 +288,7 @@ func (s *workspaceSupervisor) runLaunchCommand(ctx context.Context, directory st
 	var stdout strings.Builder
 	command.Stdout = &stdout
 	command.Stderr = output
-	err := runRepositoryCommand(ctx, command, devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: "build", Source: directory})
+	err := RunRepositoryCommand(ctx, command, devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: "build", Source: directory})
 	if output != nil && stdout.Len() > 0 {
 		_, _ = io.WriteString(output, stdout.String())
 	}

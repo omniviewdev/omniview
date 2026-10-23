@@ -166,7 +166,7 @@ func (g *BuildGraph) watchRoots() []string {
 	return roots
 }
 
-func addWatchTree(w *fsnotify.Watcher, root string) error {
+func (g *BuildGraph) addWatchTree(w *fsnotify.Watcher, root string) error {
 	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -177,7 +177,9 @@ func addWatchTree(w *fsnotify.Watcher, root string) error {
 		if !entry.IsDir() {
 			return nil
 		}
-		if path != root && ignoredBuildDirectory(entry.Name()) {
+		// Filtering events is too late: publication renames and removes generated
+		// trees, which can invalidate their watches before queued events drain.
+		if g.generatedSourceOutput(path) || path != root && ignoredBuildDirectory(entry.Name()) {
 			return filepath.SkipDir
 		}
 		return w.Add(path)
@@ -341,7 +343,7 @@ func (g *BuildGraph) Watch(ctx context.Context, h WatchHooks) error {
 	}
 	defer w.Close()
 	for _, root := range g.watchRoots() {
-		if err = addWatchTree(w, root); err != nil {
+		if err = g.addWatchTree(w, root); err != nil {
 			return err
 		}
 	}
@@ -414,7 +416,7 @@ func (g *BuildGraph) Watch(ctx context.Context, h WatchHooks) error {
 					if ignoredBuildDirectory(filepath.Base(name)) {
 						continue
 					}
-					if err = addWatchTree(w, name); err != nil {
+					if err = g.addWatchTree(w, name); err != nil {
 						return err
 					}
 				}

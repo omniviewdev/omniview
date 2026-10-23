@@ -161,6 +161,17 @@ func compileBuildGraph(w Workspace, p linkPlan, opts BuildOptions) (*BuildGraph,
 	g := &BuildGraph{workspace: w, plan: p, options: opts}
 	g.run = g.command
 	g.runProducer = g.commandWithEnvironment
+	nodes, err := planBuildNodes(w)
+	if err != nil {
+		return nil, err
+	}
+	g.Nodes = nodes
+	return g, nil
+}
+
+// Both native bootstrap and build-only profiling use the same dependency order.
+func planBuildNodes(w Workspace) ([]BuildNode, error) {
+	var nodes []BuildNode
 	host := ""
 	repos := map[string]string{}
 	for _, r := range w.Manifest.Repositories {
@@ -177,7 +188,7 @@ func compileBuildGraph(w Workspace, p linkPlan, opts BuildOptions) (*BuildGraph,
 		return nil, err
 	}
 	add := func(id, dir, pin, kind string, deps ...string) {
-		g.Nodes = append(g.Nodes, BuildNode{ID: id, Directory: dir, PNPMVersion: pin, Kind: kind, Dependencies: append([]string(nil), deps...)})
+		nodes = append(nodes, BuildNode{ID: id, Directory: dir, PNPMVersion: pin, Kind: kind, Dependencies: append([]string(nil), deps...)})
 	}
 	add("bindings", host, "", "bindings")
 	uiDeps := []string{}
@@ -223,14 +234,14 @@ func compileBuildGraph(w Workspace, p linkPlan, opts BuildOptions) (*BuildGraph,
 		}
 		if _, e := os.Stat(filepath.Join(source, "go.mod")); e == nil {
 			add("plugin-backend:"+plugin.ID, source, "", "plugin-backend")
-			g.Nodes[len(g.Nodes)-1].PluginID = plugin.ID
+			nodes[len(nodes)-1].PluginID = plugin.ID
 		} else if !os.IsNotExist(e) {
 			return nil, e
 		}
 	}
 	add("host-frontend", host, version, "javascript", frontendDeps...)
 	add("host-backend", host, "", "host-backend", "host-frontend")
-	return g, nil
+	return nodes, nil
 }
 
 func (g *BuildGraph) emit(id, phase string, err error) {
@@ -283,7 +294,7 @@ func (g *BuildGraph) commandWithEnvironment(ctx context.Context, dir string, env
 	if g.options.Output != nil {
 		cmd.Stderr = g.options.Output
 	} // Private caller sink, never inspect JSON.
-	err := runRepositoryCommand(ctx, cmd, devsession.ProcessOwner{WorkspaceID: g.workspace.Manifest.WorkspaceID, Generation: g.options.Generation, Role: "build-command", Source: dir})
+	err := RunRepositoryCommand(ctx, cmd, devsession.ProcessOwner{WorkspaceID: g.workspace.Manifest.WorkspaceID, Generation: g.options.Generation, Role: "build-command", Source: dir})
 	if g.options.Output != nil && output.Len() > 0 {
 		_, _ = io.WriteString(g.options.Output, output.String())
 	}

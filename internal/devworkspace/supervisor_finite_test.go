@@ -44,7 +44,7 @@ func TestFiniteOwnedCommandPreservesSeparateJSONAndDiagnostics(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	owner := devsession.ProcessOwner{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6", Generation: NewGeneration(), Role: "build", Source: root}
-	if err = runRepositoryCommand(ctx, command, owner); err != nil {
+	if err = RunRepositoryCommand(ctx, command, owner); err != nil {
 		t.Fatal(err)
 	}
 	var result struct {
@@ -71,7 +71,7 @@ func TestFiniteCancellationWaitsForOwnedDescendantExit(t *testing.T) {
 	defer cancel()
 	owner := devsession.ProcessOwner{WorkspaceID: "f14566c4-5130-4e3f-aa09-3e49c63b29a6", Generation: NewGeneration(), Role: "build", Source: root}
 	done := make(chan error, 1)
-	go func() { done <- runRepositoryCommand(ctx, command, owner) }()
+	go func() { done <- RunRepositoryCommand(ctx, command, owner) }()
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
 	var identity devcontract.ProcessIdentity

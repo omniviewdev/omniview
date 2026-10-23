@@ -9,7 +9,11 @@ import (
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
-func runRepositoryCommand(ctx context.Context, command *exec.Cmd, owner devsession.ProcessOwner) error {
+// RunRepositoryCommand runs one finite command under the caller's real workspace
+// and fresh generation. It joins disposal of the entire owned descendant tree,
+// including on cancellation, before returning authority to restore its inputs.
+// The command must not use exec.CommandContext's independent leader-only kill.
+func RunRepositoryCommand(ctx context.Context, command *exec.Cmd, owner devsession.ProcessOwner) error {
 	child, err := startOwnedChildCommand(ctx, command, owner, nil)
 	if child == nil {
 		return err

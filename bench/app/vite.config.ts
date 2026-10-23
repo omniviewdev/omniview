@@ -18,13 +18,15 @@ import path from 'node:path';
 import appConfig from '../../vite.config';
 import { wailsBindingIndex } from '../vite/wails-binding-index';
 
+import { pluginAssetDirectory } from './plugin-bundle.mjs';
 const root = path.resolve(import.meta.dirname, '../..');
 const here = import.meta.dirname;
+const pluginMetadata = path.resolve(root, process.env.OV_K8S_PLUGIN_METADATA ?? 'plugins/kubernetes/plugin.json');
 const bindingsRoot = path.join(root, 'packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview');
 
 /** Built plugin UI bundles served to the app, by plugin id. */
 export const pluginAssetDirs: Record<string, string> = {
-  kubernetes: process.env.OV_K8S_PLUGIN_DIST ?? path.join(root, 'plugins/kubernetes/ui/dist/assets'),
+  kubernetes: pluginAssetDirectory(root),
 };
 
 function instrumentEntry(): Plugin {
@@ -80,7 +82,11 @@ export default defineConfig({
   plugins: [instrumentEntry(), wailsBindingIndex(bindingsRoot), servePluginAssets(), ...(app.plugins ?? [])],
   resolve: {
     ...app.resolve,
-    alias: [{ find: /^react-dom\/client$/, replacement: 'react-dom/profiling' }, ...alias],
+    alias: [
+      { find: 'virtual:bench-kubernetes-plugin', replacement: pluginMetadata },
+      { find: /^react-dom\/client$/, replacement: 'react-dom/profiling' },
+      ...alias,
+    ],
   },
   define: {
     'import.meta.env.BENCH_VERBOSE': JSON.stringify(process.env.BENCH_VERBOSE ?? ''),

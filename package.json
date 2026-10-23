@@ -1,7 +1,7 @@
 {
   "name": "omniview",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.5.0",
   "type": "module",
   "packageManager": "pnpm@12.14.0",
   "scripts": {

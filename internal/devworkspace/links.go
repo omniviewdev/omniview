@@ -362,7 +362,7 @@ func linkCommand(ctx context.Context, dir, program string, args ...string) ([]by
 	var err error
 	if owned {
 		owner.Source = dir
-		err = runRepositoryCommand(ctx, cmd, owner)
+		err = RunRepositoryCommand(ctx, cmd, owner)
 	} else {
 		err = cmd.Run()
 	}
