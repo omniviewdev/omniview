@@ -109,13 +109,13 @@ baseline_env "$DEV" workspace init --root "$COLLECTION" \
 
 The registry ID `selected-provider` is local source ownership; `PLUGIN_ID` is the actual manifest plugin ID. Do not infer one from the other.
 
-- [ ] Allocate a private owned `PROBE_DIR` and private `LINK_EVIDENCE` path. Follow the selected guide's existing nativepatch/modfile and real pinned link-probe procedure, with effective SDK/native selection:
+- [ ] Allocate a privately owned `PROBE_DIR` and `LINK_EVIDENCE` path. From the selected host checkout (`HOST_SOURCE`), follow the current guide's existing host-modfile and real pinned link-probe procedure, with effective SDK/native selection:
 
 ```sh
 PROBE_DIR="$(mktemp -d "$ISOLATION_HOME/probe.XXXXXX")"
 LINK_EVIDENCE="$PROBE_DIR/link-evidence.json"
 mkdir "$PROBE_DIR/native" "$PROBE_DIR/module"
-HOST_MODFILE="$(baseline_env env GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go \
+HOST_MODFILE="$(baseline_env env GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go \
   --root "$PWD" --sdk-source "$FIXED_SDK_SOURCE" \
   --output-directory "$PROBE_DIR/native")"
 cp "$HOST_MODFILE" "$PROBE_DIR/module/probe.mod"
@@ -145,7 +145,7 @@ baseline_env "$DEV" workspace inspect resource-intelligence-baseline --root "$CO
 baseline_env "$DEV" workspace paths resource-intelligence-baseline --root "$COLLECTION" --json
 ```
 
-- [ ] Keep `GOWORK=off` effective for CLI children. Let its producer own native patch/bootstrap, package linking, `task bindings`, runtime-before-Vite build and process graph. Do not concurrently launch manual generators/builds.
+- [ ] Keep `GOWORK=off` effective for CLI children. Let its producer own host-modfile/bootstrap preparation, package linking, `task bindings`, runtime-before-Vite build and process graph. Do not concurrently launch manual generators/builds.
 - [ ] Verify launch readiness belongs to the exact UUID/generation/state root/selected host source and selected plugin. Plugin RPC may be a private Unix socket; do not fabricate a TCP target. A timeout or Vite listener alone is not readiness.
 - [ ] Open the **observed** `instance.endpoints.browser` in the real browser, not Vite's asset URL. Verify its boot identity against inspect before actions. Observe actual host shell, selected plugin loaded or truthful connection-free state, and no import/ABI/shared-export failures. Record console and rendered evidence; never expose private control/MCP tokens.
 - [ ] Exercise a harmless existing UI package surface and existing selected-plugin contribution. Use the existing live-export/link probe's reversible source edit/restore mechanism to show the selected component source reaches a live consumer; no source-text test, mock response or unbounded demo harness. Confirm shared React/runtime identity through the existing producer's actual acceptance, not matching paths alone.
