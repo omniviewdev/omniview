@@ -10,6 +10,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/types"
+	"github.com/omniviewdev/omniview/internal/instance"
 )
 
 type PluginBuilder struct{}
@@ -175,7 +176,10 @@ func PrepareCommandWithBinaries(
 ) (*exec.Cmd, error) {
 	cmd := exec.CommandContext(context.Background(), command, args...)
 
-	env := os.Environ()
+	env, err := instance.RestoreNativeChildEnvironment(os.Environ())
+	if err != nil {
+		return nil, err
+	}
 	var extraDirs []string
 
 	for _, bin := range binaries {

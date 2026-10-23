@@ -14,9 +14,10 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// developmentServerMiddleware protects the complete development HTTP mux,
-// including RPC and WebSocket routes that bypass the asset middleware. This is
-// browser request provenance enforcement, not authentication of local clients.
+// developmentServerMiddleware adds application asset/document policy in server
+// mode. Stock Wails guards the outer mux and its event/stream WebSockets; this
+// middleware does not see /health, /wails/custom.js, or those WebSockets.
+// It does not authenticate local clients.
 func developmentServerMiddleware(profile instance.Profile) application.Middleware {
 	if profile.Descriptor.Kind != "development" {
 		return nil
@@ -75,11 +76,10 @@ func developmentServerRequestAllowed(r *http.Request) bool {
 			return false
 		}
 	}
-	// Wails dispatches runtime calls by decoded URL.Path, including GET query
-	// calls. The generated runtime always supplies this nonsecret header.
-	// Requiring it blocks legacy browser subresource requests with neither
-	// Origin nor Fetch Metadata; it does not authenticate nonbrowser clients.
-	// Clean also covers slash/dot variants before the outer mux redirects.
+	// Runtime requests pass through the asset chain. Stock Wails requires POST
+	// and checks browser origins; keep the application's nonsecret client
+	// marker requirement as defense against provenance-free subresources.
+	// It is not authentication. Clean covers decoded slash/dot variants.
 	if path.Clean(r.URL.Path) == "/wails/runtime" && strings.TrimSpace(r.Header.Get("x-wails-client-id")) == "" {
 		return false
 	}

@@ -68,7 +68,7 @@ func workspaceEnvironment(base []string, w Workspace, generation string, o Launc
 		if strings.EqualFold(key, viteFeedbackEnvironment) {
 			continue
 		}
-		if strings.HasPrefix(key, "OMNIVIEW_PROCESS_BRIDGE_") || key == "OMNIVIEW_NATIVE_PURGE_LOCK_FDS" || key == "OMNIVIEW_PNPM_NODE_PATH" {
+		if strings.HasPrefix(key, "OMNIVIEW_PROCESS_BRIDGE_") || key == "OMNIVIEW_NATIVE_PURGE_LOCK_FDS" || key == "OMNIVIEW_NATIVE_ORIGINAL_XDG" || key == "OMNIVIEW_PNPM_NODE_PATH" {
 			continue
 		}
 		switch key {
@@ -325,18 +325,18 @@ func (s *workspaceSupervisor) graph(ctx context.Context) (*BuildGraph, error) {
 		return identity, nil
 	}
 	return s.manager.NewBuildGraph(ctx, s.workspace.Manifest.WorkspaceID, BuildOptions{Generation: s.generation, GoBuildCacheDirectory: s.goBuildCache, ExpectedSDKRevision: o.ReviewedSDKRevision, VerifySDKSource: verify, HostBuild: s.buildHost, Bindings: func(ctx context.Context, host, outputDirectory string) (resultErr error) {
-		nativeOutput, err := prepareStableNativeTree(s.workspace, s.generation)
+		hostModOutput, err := prepareStableHostModTree(s.workspace, s.generation)
 		if err != nil {
 			return err
 		}
 		defer func() {
 			if errors.Is(resultErr, errOwnedCommandUncertain) {
-				_ = nativeOutput.stageFile.Close()
+				_ = hostModOutput.stageFile.Close()
 				return
 			}
-			resultErr = errors.Join(resultErr, recordStableNativeTree(nativeOutput))
+			resultErr = errors.Join(resultErr, recordStableHostModTree(hostModOutput))
 		}()
-		args := []string{"bindings", "DEV=true", "EXTRA_TAGS=devcontrol", "BINDINGS_OUTPUT_DIRECTORY=" + outputDirectory, "NATIVE_PATCH_OUTPUT_DIRECTORY=" + nativeOutput.Directory, "GO_BUILD_CACHE_DIRECTORY=" + s.goBuildCache}
+		args := []string{"bindings", "DEV=true", "EXTRA_TAGS=devcontrol", "BINDINGS_OUTPUT_DIRECTORY=" + outputDirectory, "HOST_MOD_OUTPUT_DIRECTORY=" + hostModOutput.Directory, "GO_BUILD_CACHE_DIRECTORY=" + s.goBuildCache}
 		if o.Mode == "browser" {
 			args = append(args, "SERVER=true")
 		}
@@ -365,33 +365,33 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 	if err != nil {
 		return err
 	}
-	nativeOutput, err := prepareStableNativeTree(s.workspace, s.generation)
+	hostModOutput, err := prepareStableHostModTree(s.workspace, s.generation)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if errors.Is(resultErr, errOwnedCommandUncertain) {
-			_ = nativeOutput.stageFile.Close()
+			_ = hostModOutput.stageFile.Close()
 			return
 		}
-		resultErr = errors.Join(resultErr, recordStableNativeTree(nativeOutput))
+		resultErr = errors.Join(resultErr, recordStableHostModTree(hostModOutput))
 	}()
 	env := s.environment()
-	raw, err := s.runLaunchCommand(ctx, host, env, s.output, "go", "run", "./scripts/nativepatch/main.go", "--root", host, "--output-directory", nativeOutput.Directory, "--sdk-source", request.SDKDirectory, "--format", "json")
+	raw, err := s.runLaunchCommand(ctx, host, env, s.output, "go", "run", "./scripts/hostmod/main.go", "--root", host, "--output-directory", hostModOutput.Directory, "--sdk-source", request.SDKDirectory, "--format", "json")
 	if err != nil {
 		return err
 	}
-	var native struct {
+	var hostModule struct {
 		Modfile string `json:"modfile"`
 	}
-	if err = json.Unmarshal(raw, &native); err != nil {
+	if err = json.Unmarshal(raw, &hostModule); err != nil {
 		return err
 	}
-	if !filepath.IsAbs(native.Modfile) {
-		return fmt.Errorf("native bootstrap returned no absolute effective modfile")
+	if hostModule.Modfile != filepath.Join(hostModOutput.Directory, "host.mod") {
+		return fmt.Errorf("host module preparation returned no owned effective modfile")
 	}
 	// Inspect the exact alternate host graph, not just the source go.mod.
-	raw, err = s.runLaunchCommand(ctx, host, env, nil, "go", "list", "-modfile="+native.Modfile, "-m", "-json", linkedSDK)
+	raw, err = s.runLaunchCommand(ctx, host, env, nil, "go", "list", "-modfile="+hostModule.Modfile, "-m", "-json", linkedSDK)
 	if err != nil {
 		return err
 	}
@@ -454,7 +454,7 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 			s.mu.Unlock()
 		}
 	}()
-	if _, err = s.runLaunchCommand(ctx, host, env, s.output, "go", "build", "-modfile="+native.Modfile, "-tags="+tags, "-buildvcs=false", "-ldflags=-X github.com/omniviewdev/omniview/internal/instance.buildChannel=local", "-o", binary, "."); err != nil {
+	if _, err = s.runLaunchCommand(ctx, host, env, s.output, "go", "build", "-modfile="+hostModule.Modfile, "-tags="+tags, "-buildvcs=false", "-ldflags=-X github.com/omniviewdev/omniview/internal/instance.buildChannel=local", "-o", binary, "."); err != nil {
 		return err
 	}
 	after, err := devsource.VerifyWithOptions(ctx, actual, request.ExpectedSDKRevision, devsource.VerifyOptions{AllowIsolationCoreChanges: s.options.AllowIsolationSourceChanges})
@@ -465,7 +465,7 @@ func (s *workspaceSupervisor) buildHost(ctx context.Context, request HostBuildRe
 		return fmt.Errorf("SDK source changed during native host build")
 	}
 	if s.options.Mode == "native" && runtime.GOOS == "darwin" {
-		if _, err = s.runLaunchCommand(ctx, host, env, s.output, "task", "darwin:create:dev:app:bundle", "BIN_DIR="+bin, "NATIVE_PATCH_OUTPUT_DIRECTORY="+nativeOutput.Directory, "GO_BUILD_CACHE_DIRECTORY="+s.goBuildCache); err != nil {
+		if _, err = s.runLaunchCommand(ctx, host, env, s.output, "task", "darwin:create:dev:app:bundle", "BIN_DIR="+bin, "HOST_MOD_OUTPUT_DIRECTORY="+hostModOutput.Directory, "GO_BUILD_CACHE_DIRECTORY="+s.goBuildCache); err != nil {
 			return err
 		}
 		binary = filepath.Join(bin, "Omniview.dev.app", "Contents", "MacOS", "Omniview")

@@ -1,24 +1,36 @@
 # Isolated native WebView toolchain
 
-Named development profiles need explicit native datastore support beyond published Wails beta.29. The host carries a narrow reviewed patch with pinned module/archive/go.mod and per-file checksums in `scripts/nativepatch/patches`. It never modifies the global module cache or assumes an unpublished release exists.
+Omniview uses unmodified Wails `v3.0.0-beta.34.0.20261022002616-a90f7e7f50bf` and `@wailsio/runtime` `3.0.0-beta.34`. There is no framework fork, source patch, or patched-source build path. Native isolation uses application identity and stock platform options; cleanup and workspace policy belong to Omniview.
 
-Use bootstrap-aware Task entry points. For direct host Go commands, prepare the effective module explicitly:
+Use Task entry points, or prepare an effective host module when selecting a local SDK:
 
 ```sh
-GO_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go --root "$PWD")"
+GO_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go \
+  --root "$PWD" --sdk-source "$SDK_SOURCE")"
 GOWORK=off GOFLAGS= go build -modfile="$GO_MODFILE" .
 GOWORK=off GOFLAGS= go test -modfile="$GO_MODFILE" ./... -count=1
 ```
 
-If an effective host modfile already contains selected SDK replacements, pass `--host-modfile "$GO_MODFILE"` to bootstrap. Actual worktree-local replacements in `go.mod` are preserved by default. Do not export host `GOFLAGS` to plugin builds: each plugin uses its own module and `GOWORK=off`.
+`SDK_SOURCE` must name the explicitly selected companion SDK checkout. Existing local SDK replacements are preserved; conflicting selections refuse. Pass `--host-modfile "$GO_MODFILE"` when an existing effective graph is the input. Never export host `GOFLAGS` to plugin builds: each plugin uses its own module and `GOWORK=off`.
 
-The generated modfile/source live under ignored `.local/toolsrc`. Repeated preparation verifies source integrity. Existing tampered/incomplete output is rejected, not silently adopted or overwritten. Source/archive checksums prove patch identity, not native runtime behavior. Regenerate patches only using the documented maintainer exporter after review.
+Standalone effective mod/sum files live under ignored `.local/hostmod`; managed workspaces use their ledger-owned `toolsrc/hostmod` capability. Preparation does not copy framework sources. It refuses Wails replacements, unsafe output paths, and foreign output ownership. CLI caches separately hash immutable module templates and executables before reuse. `task host:prepare SDK_SOURCE="$SDK_SOURCE"` prints the effective modfile.
 
-Bindings remain `task bindings`; that task scopes the effective host module to Wails discovery and compilation. Never run raw binding generation or build Vite-plugin shims before the runtime package.
+Bindings remain `task bindings SDK_SOURCE="$SDK_SOURCE"`. Tasks select the Wails CLI from the root Go pin rather than trusting an ambient `wails3`. Never run raw binding generation or build Vite-plugin shims before the runtime package.
 
-Named native development on macOS requires macOS14+ UUID datastores. Production support is unchanged; older systems may use isolated browser/server mode. Windows uses an explicit WebView2 data folder. Linux explicit GTK4/GTK3 data/cache/session support is patched, but platform compilation and persistence require their runner evidence. Browser screenshots do not establish native storage or chrome correctness.
+Stock macOS startup uses the immutable `CFBundleIdentifier` and WebKit's default persistent store, not a UUID-store option. The removed UUID-selection requirement no longer imposes macOS14; older operating systems still need their own runtime verification. Windows retains stock `Windows.WebviewUserDataPath`.
 
-Bare `GOWORK=off go build .` does not consume an automatically generated modfile and therefore is not the supported command for this patched native toolchain. Use the explicit module command above or the bootstrap-aware Task. This is a deliberate build prerequisite, not an implicit machine-local replacement.
+Plain Go commands do not automatically select an unpublished companion SDK or consume generated alternate modfiles. Use the explicit module commands above or SDK-aware Tasks while developing against local SDK source. Ordinary published-dependency builds do not require framework preparation.
+
+## Stock native storage
+
+This unreleased feature has no legacy transition or compatibility path. Every development instance uses the current stock storage model. Display-name edits preserve the workspace UUID and native application identity.
+
+macOS `workspace remove --delete-state` uses the verified complete original same-ID application bundle and an Omniview-owned Apple bridge to clear that application's default store. Cleanup runs on the main queue after `ApplicationStarted`, retains inherited profile/state guard descriptors through completion, and records no success after timeout or refusal. Completion returns off the native main queue so shutdown cannot deadlock it. No guessed WebKit paths or Wails source patches are used.
+
+Browser runtime preparation creates runtime/temp resources without creating native storage roots. Production channel singleton and development root/profile locks are unchanged.
+
+Linux uses `dev.omniview.workspace.w<UUID-without-hyphens>` for both stock application and program identity. Only the native host's **pre-exec** environment selects `XDG_DATA_HOME=<UUID profile>/webview/data` and `XDG_CACHE_HOME=<UUID profile>/webview/cache`. Direct native execution must carry the complete managed startup environment, including valid original-root restore metadata; supplying isolated roots alone would lose plugin/tool credential contexts and is refused. Use `workspace up --mode native`; the app never sets XDG isolation after native initialization. HOME, XDG_CONFIG_HOME, XDG_RUNTIME_DIR and desktop/session variables remain unchanged. Original absent/empty/populated data/cache values are restored for plugin, Go/Node build-tool and terminal children; malformed metadata refuses those launches. Supervisor and source-tool environments remain unchanged.
+
 
 ## Managed plugin Unix transport
 
@@ -30,35 +42,47 @@ The plugin launcher passes the complete sanitized child environment with go-plug
 
 Darwin and non-root Linux component checks exercise real Unix socket nonce exchanges with long HOME paths, independent profiles, foreign-replacement refusal and durable cleanup retry. Linux also exercises the actual exclusive-rename kernel boundary; Windows cross-compilation is not runtime proof. Managed native plugin RPC readiness is a separate integration claim; the direct native boundary below does not establish it.
 
-## Exercised native boundary
+## Stock native host verification
 
-On macOS27 arm64, an actual stable build without `devcontrol` and two named development builds ran concurrently in separate signed app bundles and state roots. The duplicate stable channel exited0 before settings-database/plugin startup; a duplicate named root exited1 without changing its settings or plugin inventory. CoreGraphics observed three onscreen native windows; this is not pixel capture.
+On macOS27 arm64, two actual named Omniview workspaces ran concurrently against the pinned stock revision. Authenticated MCP reached both `wails://localhost/` shells and actual `AppService.GetInstanceInfo` bindings, matching workspace UUIDs, generations and display names.
 
-Authenticated native MCP reached both actual `wails://localhost/` shells and `AppService.GetInstanceInfo`, matching boot UUIDs/generations. A localStorage key stayed independent across profiles, persisted after restart with the original UUID, and reset after exact-UUID public native removal using the retained original complete bundle. Removing Alpha preserved live Beta's store. Every owned host and native store was cleaned up.
+Independent localStorage, IndexedDB and durable settings survived Alpha restart with the same UUID and a new generation. A duplicate native profile launch was refused. Stopped display-name rename preserved profile/storage identity. Public `down`/`remove --delete-state` removed Alpha while live Beta retained its state; both owned workspaces and state roots were retired.
 
-This proof directly exercised the native host/bundle lifecycle, not managed multi-plugin supervisor orchestration. Screen-capture permission was unavailable (`CGPreflightScreenCaptureAccess` false), so DOM observations are not native pixel evidence. No cookie-persistence claim is made for the custom scheme. Windows/Linux native behavior still requires its own runner evidence.
+This full-host check selected no plugins and used native MCP JavaScript/binding roundtrips, not native pixel capture or user-input automation. It did not rerun the production singleton channel or establish cookie persistence, older-macOS, Windows or full Linux host behavior. Linux engine-mechanism evidence and browser/plugin integration have separate verification boundaries.
 
-## Reviewed portable patch export
+### Linux engine-mechanism verification
 
-The beta.29 patch also exposes `ServerOptions.Middleware` (`json:"-"`) and wraps the complete server mux exactly once, after registering health, event WebSocket, stream WebSocket, runtime and asset routes. Its default is nil, preserving existing behavior; native `wails://localhost` requests do not use this server hook. Application development policy can reject hostile browser origins and DNS-rebinding hosts here, but this is not authentication: plain local nonbrowser clients can still make requests.
+Disposable Linux arm64/Xvfb runners exercised real GTK3 and GTK4 WebKit engines: concurrent profiles and two windows per profile, localStorage/IndexedDB restart, stopped Alpha purge with live Beta intact, reset persistence, actual data/cache placement, and unchanged HOME/config/runtime/desktop sentinel paths. The runner used Go 1.26.9 and WebKit 2.54.0.
 
-The current source patch SHA256 is `d59bbd19b0a2ab342fdb5edfbdb7f9a1a3a19af486769c44fa46ec34b87c910c`, replacing `05e777acee99f7e9aad4c571171dded9f472e875c916839d1cacf6abd29b46de`. The named datastore deletion/storage fixes remain in the same export. The manifest retains exact `v3.0.0-beta.29` module and go.mod sums, license provenance, and every preimage/postimage checksum.
+GTK3 passed with WebKit sandboxing enabled. The container prohibited bubblewrap user namespaces for GTK4; an explicit test-container-only sandbox-disabled run passed both engines. That exception is not an application configuration or a production sandbox claim. These are mechanism checks, not full Linux Omniview, Wayland, GPU, native pixel or Windows runtime proof.
 
-Maintainers regenerate from the reviewed Wails worktree, its explicitly reviewed **pre-change commit ID**, and a fresh extraction of the checksum-pinned beta.29 module archive, never from a prepared `.local/toolsrc` tree. Record the full pre-change commit ID during review; do not substitute the current `HEAD`, a branch, or a tag. The base must be an ancestor of the reviewed checkout, contain all ten existing files, and contain none of the twelve added files.
+## Stock browser host verification
 
-```sh
-python3 scripts/nativepatch/export_patch.py \
-  --reviewed-source /absolute/path/to/owned/wails/v3 \
-  --reviewed-base FULL_REVIEWED_PRE_CHANGE_COMMIT_ID \
-  --beta29-source /absolute/path/to/pristine/github.com/wailsapp/wails/v3@v3.0.0-beta.29
-```
+An actual server-mode Omniview host reached build, Vite, RPC and controller readiness for both Kubernetes and Workspace Probe against the stock pin. Chromium rendered the named development chip/title, host-confirmed instance details with UUID/generation/state/repositories/endpoints, and both plugin status indicators. The Workspace Probe page rendered and its increment button visibly changed the local count to `1`; browser screenshots captured the actual surface.
 
-The exporter compares that fixed base directly to the current worktree for the ten existing source files, regardless of whether their reviewed bytes are unstaged, staged, or committed. It reads the twelve explicitly enumerated added source/test files directly, regardless of their tracking state. The output remains exactly 22 files, including `application_server.go` and `application_server_middleware_test.go`; unrelated changes are excluded. It refuses incomplete base-to-worktree inventories and reviewed tracked hunks without unique beta.29 preimages before writing output. Bootstrap independently checks manifest preimages and postimages when preparing a fresh hash-addressed source directory.
+## Framework boundary
 
-Run the focused exporter regression without touching the live patch output:
+Application names, UUID derivation, bundle/desktop identity, ownership, profile locks, production single-instance behavior, request policy, and purge authorization stay in Omniview. Do not add framework APIs to encode workspace policy.
 
-```sh
-python3 scripts/nativepatch/test_export_patch.py
-```
+Stock Wails wraps the server mux with its Host guard and checks runtime/WebSocket origins. Omniview's existing asset middleware adds stricter document/RPC provenance and framing policy, followed by boot identity and plugin/default asset dispatch. Outer health, custom.js and event/stream WebSocket routes do not pass through asset middleware. MCP and control have independent listeners and authentication. Loopback browser provenance is not authentication of arbitrary local clients.
 
-The regression uses disposable Git source/output repositories, checks byte-identical exports across unstaged/staged/committed states, applies the generated patch to the pristine fixture, and verifies wrong-base refusal without changing prior output.
+The old `ServerOptions.Middleware`, UUID-store selection, and Linux explicit-session additions are removed rather than maintained as compatibility paths. Linux cookie persistence remains the stock default; isolation does not enable it incidentally.
+
+### Stock-Wails feasibility probe
+
+Before cutover, disposable applications exercised both stock beta.29 and the current pinned revision on macOS27 arm64. Two signed bundles used the same executable basename, Wails application name, and `wails://localhost` origin. Separate localStorage/IndexedDB markers survived independent restarts. Application-owned public default-store cleanup worked both with and without a window; Alpha reset while live Beta retained its marker.
+
+The pinned stock server passed 17 HTTP/WebSocket checks, including bound-method mutation/read, rejected foreign-Origin mutation with unchanged state, hostile-Host rejection, real upgrades, and binary stream echo. Chromium exercised the bound counter and captured its surface. The beta.29 comparison accepted the foreign mutation and hostile Host; removing browser policy while retaining beta.29 is unsafe.
+
+These are mechanism probes, not proof of every full-host lifecycle or platform. Event upgrade alone is not event-delivery evidence. No native pixels, cookie persistence, older-macOS runtime, or Windows runtime claim follows from them. Full migration evidence belongs to the implementation plan's verification record.
+
+### Future upstream work
+
+No Wails extension is required for this workspace model. If a new requirement genuinely exceeds stock capabilities, first demonstrate that gap independently of Omniview policy. Wails requires a [proposal-only WEP draft PR](https://github.com/wailsapp/wails/blob/a90f7e7f50bf3d7db5552fcaf9eeec6fd3d4e626/v3/wep/README.md), at least two weeks of feedback, and recorded acceptance before an implementation PR. Follow its [contribution guidance](https://github.com/wailsapp/wails/blob/a90f7e7f50bf3d7db5552fcaf9eeec6fd3d4e626/CONTRIBUTING.md); do not revive a local patch as a supported dependency.
+
+### Native API references
+
+- Apple: [default persistent store](https://developer.apple.com/documentation/webkit/wkwebsitedatastore/default()) and [public website-data management](https://developer.apple.com/documentation/webkit/wkwebsitedatastore).
+- GLib: startup-selected [data](https://docs.gtk.org/glib/func.get_user_data_dir.html) and [cache](https://docs.gtk.org/glib/func.get_user_cache_dir.html) roots.
+- Wails: [server routing](https://github.com/wailsapp/wails/blob/a90f7e7f50bf3d7db5552fcaf9eeec6fd3d4e626/v3/pkg/application/application_server.go) and [stock options](https://github.com/wailsapp/wails/blob/a90f7e7f50bf3d7db5552fcaf9eeec6fd3d4e626/v3/pkg/application/application_options.go).
+

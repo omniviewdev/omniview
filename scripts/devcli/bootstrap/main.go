@@ -65,34 +65,33 @@ func bootstrap(ctx context.Context, options bootstrapOptions, output, diagnostic
 	if options.sdkSource != "" {
 		selection = append(selection, "--sdk-source", options.sdkSource)
 	}
-	compileModfile := options.modfile
-	if compileSDK != "" {
-		var temporary string
-		temporary, err = os.MkdirTemp("", "omniview-devcli-bootstrap-")
-		if err != nil {
-			return err
-		}
-		defer func() { err = errors.Join(err, os.RemoveAll(temporary)) }()
-		canonical, pathErr := filepath.EvalSymlinks(temporary)
-		if pathErr != nil {
-			return pathErr
-		}
-		args := append([]string{"run", filepath.Join(root, "scripts", "nativepatch", "main.go")}, selection...)
-		if options.sdkSource == "" {
-			args = append(args, "--sdk-source", compileSDK)
-		}
-		args = append(args, "--output-directory", canonical)
-		command := exec.CommandContext(ctx, "go", args...)
-		command.Dir = root
-		var prepared bytes.Buffer
-		command.Stdout, command.Stderr = &prepared, diagnostics
-		if err := command.Run(); err != nil {
-			return fmt.Errorf("prepare explicit SDK bootstrap module: %w", err)
-		}
-		compileModfile = strings.TrimSpace(prepared.String())
-		if !filepath.IsAbs(compileModfile) || filepath.Clean(compileModfile) != compileModfile || filepath.Dir(compileModfile) != canonical || filepath.Ext(compileModfile) != ".mod" {
-			return errors.New("native preparation returned a module outside its owned output")
-		}
+	// Always validate module selection before compiling any host-owned package.
+	// This also rejects framework replacements when no explicit SDK is supplied.
+	temporary, err := os.MkdirTemp("", "omniview-devcli-bootstrap-")
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, os.RemoveAll(temporary)) }()
+	canonical, err := filepath.EvalSymlinks(temporary)
+	if err != nil {
+		return err
+	}
+	prepareArgs := append([]string{"run", filepath.Join(root, "scripts", "hostmod", "main.go")}, selection...)
+	if options.sdkSource == "" && compileSDK != "" {
+		prepareArgs = append(prepareArgs, "--sdk-source", compileSDK)
+	}
+	prepareArgs = append(prepareArgs, "--output-directory", canonical)
+	prepareCommand := exec.CommandContext(ctx, "go", prepareArgs...)
+	prepareCommand.Dir = root
+	prepareCommand.Env = bootstrapGoEnvironment()
+	var prepared bytes.Buffer
+	prepareCommand.Stdout, prepareCommand.Stderr = &prepared, diagnostics
+	if err := prepareCommand.Run(); err != nil {
+		return fmt.Errorf("prepare SDK-aware bootstrap module: %w", err)
+	}
+	compileModfile := strings.TrimSpace(prepared.String())
+	if !filepath.IsAbs(compileModfile) || filepath.Clean(compileModfile) != compileModfile || filepath.Dir(compileModfile) != canonical || filepath.Ext(compileModfile) != ".mod" {
+		return errors.New("host preparation returned a module outside its owned output")
 	}
 	args := []string{"run"}
 	if compileModfile != "" {
@@ -102,6 +101,20 @@ func bootstrap(ctx context.Context, options bootstrapOptions, output, diagnostic
 	args = append(args, selection...)
 	command := exec.CommandContext(ctx, "go", args...)
 	command.Dir = root
+	command.Env = bootstrapGoEnvironment()
 	command.Stdout, command.Stderr = output, diagnostics
 	return command.Run()
+}
+
+func bootstrapGoEnvironment() []string {
+	environment := make([]string, 0, len(os.Environ())+3)
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		switch key {
+		case "GOWORK", "GOFLAGS", "GO_MODFILE", "GO111MODULE":
+			continue
+		}
+		environment = append(environment, entry)
+	}
+	return append(environment, "GOWORK=off", "GOFLAGS=", "GO111MODULE=on")
 }

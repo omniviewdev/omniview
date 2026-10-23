@@ -86,7 +86,7 @@ test.describe('Owned workspace integration', () => {
           throw new Error('The sender app runtime client ID is unavailable');
         }
 
-        // beta.29 Events.Emit uses POST /wails/runtime, objectNames.Events=3,
+        // Stock Events.Emit uses POST /wails/runtime, objectNames.Events=3,
         // EventsEmit=0 and args={name,data}; this is the real backend transport.
         // Do not import another runtime or invoke a local dispatcher as a sender.
         const response = await fetch('/wails/runtime', {
@@ -139,6 +139,13 @@ test.describe('Owned workspace integration', () => {
       await openSettingsCategory(page, 'Appearance');
       await chooseSetting(page, 'appearance.theme', label);
       await expect.poll(async () => callBinding(page.request, Service.settings, 'GetSettingValue', 'appearance.theme')).toBe(theme);
+      await expect(page.locator('html')).toHaveAttribute('data-ov-theme', theme);
+      // Backend visibility can precede the UI binding's completion and cache
+      // write. Reload only once the actual browser has persisted its paint hint.
+      await expect.poll(async () => page.evaluate(() => {
+        const key = window.__OMNIVIEW_BOOTSTRAP__?.storageKey('ov-theme-bootstrap-v1');
+        return key ? JSON.parse(localStorage.getItem(key) ?? 'null') : null;
+      })).toEqual({ schemaVersion: 1, themeId: theme });
       // Observe the first actual rendering opportunity, without modifying app
       // identity, storage, HTML, runtime bindings, or response bodies.
       await page.addInitScript(() => {

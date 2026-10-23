@@ -58,13 +58,10 @@ func handleNativeProfileRemoval(args []string) (bool, int) {
 		return fail(4, "native profile removal: state is busy or its lock identity is unsafe")
 	}
 	defer unlock()
-	options := application.Options{Name: "Omniview profile cleanup", Mac: application.MacOptions{WebsiteDataStoreIdentifier: profile.Descriptor.InstanceID}}
-	if err := application.ValidateWebviewStorageOptions(options); err != nil {
-		return fail(5, "native profile removal: UUID datastores unavailable on this OS")
+	if err := validateNativeBundle(profile); err != nil {
+		return fail(4, "native profile removal: application bundle identity differs from the guarded workspace")
 	}
-	app := application.New(options)
-	result := make(chan error, 1)
-	var once sync.Once
+	options := application.Options{Name: "Omniview profile cleanup"}
 	// A tooling-tagged host may start MCP even without windows. Give this helper
 	// an unadvertised ephemeral, authenticated listener instead of reusing the
 	// stopped instance's leased port or the framework's fixed default.
@@ -78,11 +75,20 @@ func handleNativeProfileRemoval(args []string) (bool, int) {
 		}
 	}
 	_ = os.Unsetenv("FRONTEND_DEVSERVER_URL")
+	app := application.New(options)
+	result := make(chan error, 1)
+	var once sync.Once
 	finish := func(err error) { once.Do(func() { result <- err; app.Quit() }) }
-	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
-		if err := application.RemoveMacWebviewDataStore(profile.Descriptor.InstanceID, finish); err != nil {
-			go finish(err)
+	cancellations := make(chan func(), 1)
+	defer func() {
+		select {
+		case cancel := <-cancellations:
+			cancel()
+		default:
 		}
+	}()
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
+		cancellations <- removeNativeStorage(finish)
 	})
 	timer := time.AfterFunc(30*time.Second, func() { finish(context.DeadlineExceeded) })
 	defer timer.Stop()
@@ -93,9 +99,6 @@ func handleNativeProfileRemoval(args []string) (bool, int) {
 	case err := <-result:
 		if err == context.DeadlineExceeded {
 			return fail(7, "native profile removal: callback deadline exceeded; no cleanup success recorded")
-		}
-		if err != nil {
-			return fail(5, "native profile removal: WebKit refused UUID datastore removal")
 		}
 		return true, 0
 	default:

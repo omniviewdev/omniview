@@ -11,6 +11,27 @@ import (
 	"github.com/omniviewdev/omniview/internal/devcontract"
 )
 
+func TestLockSeedMarksNativeMetadataDocumentStream(t *testing.T) {
+	w, roots := fixture(t)
+	p, err := New(w, roots, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := generated(t, p, "pnpm-lock.yaml")
+	if !strings.HasPrefix(string(raw), "---\n") {
+		t.Fatal("native pnpm requires an initial document marker to recognize the metadata/application lock stream")
+	}
+	docs, err := decodeDocuments(raw)
+	if err != nil || len(docs) != 2 || !metadataDocument(docs[0]) || metadataDocument(docs[1]) {
+		t.Fatalf("metadata/application lock document boundaries changed: %v", err)
+	}
+	main := docs[1]
+	host := mapping(mapping(main["importers"])["omniview"])
+	if mapping(mapping(host["dependencies"])["react"])["version"] != "19.2.4" {
+		t.Fatal("native lock stream lost the selected host dependency pin")
+	}
+}
+
 func TestLockSeedReconcilesEffectivePeersAndEnrichesMetadataWithoutMovingPins(t *testing.T) {
 	w, roots := fixture(t)
 	put(t, w.Root, "omniview/pnpm-workspace.yaml", "packages: ['packages/*']\nstrictPeerDependencies: true\noverrides: {'@types/react': ^19.0.0}\n")

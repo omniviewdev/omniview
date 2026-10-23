@@ -75,16 +75,16 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare pinned native Wails patch
+      - name: Prepare stock host module
         shell: bash
         run: |
           set -eu
-          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go --root "$PWD")"
+          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD")"
           printf 'GO_MODFILE=%s\n' "$HOST_MODFILE" >> "$GITHUB_ENV"
 
       - name: Install Wails v3
         shell: bash
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -modfile="$GO_MODFILE" -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
 
       - name: Build frontend
         shell: bash
@@ -234,15 +234,15 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare pinned native Wails patch
+      - name: Prepare stock host module
         shell: bash
         run: |
           set -eu
-          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go --root "$PWD")"
+          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD")"
           printf 'GO_MODFILE=%s\n' "$HOST_MODFILE" >> "$GITHUB_ENV"
 
       - name: Install Wails v3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -modfile="$GO_MODFILE" -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
 
       - name: Build frontend
         run: task common:build:frontend RELEASE=true DEV=false BUILD_FLAGS='-tags production'
@@ -320,16 +320,16 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare pinned native Wails patch
+      - name: Prepare stock host module
         shell: bash
         run: |
           set -eu
-          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go --root "$PWD")"
+          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD")"
           printf 'GO_MODFILE=%s\n' "$HOST_MODFILE" >> "$GITHUB_ENV"
 
       - name: Install Wails v3
         shell: bash
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -modfile="$GO_MODFILE" -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
 
       - name: Build frontend
         shell: bash

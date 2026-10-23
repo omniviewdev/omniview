@@ -206,6 +206,9 @@ func probePinnedLinkProtocol(t *testing.T, version string) {
 		if errors.Is(installErr, errOwnedCommandUncertain) {
 			return installErr
 		}
+		if strings.Contains(lastOutput, "Ignoring broken lockfile") {
+			installErr = errors.Join(installErr, errors.New("native pnpm discarded the selected seed as a broken lockfile"))
+		}
 		peerErr := runPNPM("-r", "peers", "check", "--json", "--lockfile-only")
 		if errors.Is(peerErr, errOwnedCommandUncertain) {
 			return peerErr

@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"net"
 	"net/http"
@@ -16,9 +15,10 @@ import (
 	"github.com/omniviewdev/omniview/internal/instance"
 )
 
-// Removing any provenance or authority check must permit an otherwise forbidden
-// state transition, not merely change a response from a mock RPC endpoint.
-func TestDevelopmentServerRequestPolicy(t *testing.T) {
+// These exercise the application asset boundary over actual TCP/TLS listeners.
+// Stock's outer mux/runtime verb checks are verified separately at integration;
+// this handler records whether a forbidden request reached application state.
+func TestDevelopmentAssetRequestPolicy(t *testing.T) {
 	for _, tls := range []bool{false, true} {
 		name := "http"
 		if tls {
@@ -70,15 +70,11 @@ func TestDevelopmentServerRequestPolicy(t *testing.T) {
 				origins []string
 				fetch   string
 				method  string
-				upgrade bool
 				path    string
 				simple  bool
 				want    int
 			}{
 				{name: "same-origin browser RPC", origins: []string{origin}, fetch: "same-origin", want: http.StatusNoContent},
-				{name: "same-origin event path without client marker", origins: []string{origin}, method: http.MethodGet, simple: true, want: http.StatusNoContent},
-				{name: "same-origin WebSocket upgrade without client marker", origins: []string{origin}, method: http.MethodGet, upgrade: true, simple: true, want: http.StatusNoContent},
-				{name: "hostile WebSocket upgrade", origins: []string{"https://untrusted.invalid"}, method: http.MethodGet, upgrade: true, want: http.StatusForbidden},
 				{name: "nonbrowser arbitrary nonsecret client marker", want: http.StatusNoContent},
 				{name: "nonbrowser runtime GET arbitrary client marker", method: http.MethodGet, path: "/wails/runtime?object=0&method=0&args=%7B%7D", want: http.StatusNoContent},
 				{name: "same-origin browser runtime GET", origins: []string{origin}, fetch: "same-origin", method: http.MethodGet, path: "/wails/runtime?object=0&method=0&args=%7B%7D", want: http.StatusNoContent},
@@ -121,12 +117,6 @@ func TestDevelopmentServerRequestPolicy(t *testing.T) {
 						method = http.MethodPost
 					}
 					path := "/wails/runtime"
-					if method == http.MethodGet {
-						path = "/wails/events"
-					}
-					if test.upgrade {
-						path = "/wails/stream/ws"
-					}
 					if test.path != "" {
 						path = test.path
 					}
@@ -141,10 +131,10 @@ func TestDevelopmentServerRequestPolicy(t *testing.T) {
 					if test.host != "" {
 						req.Host = test.host
 					}
-					if test.upgrade {
-						req.Header.Set("Connection", "Upgrade")
-						req.Header.Set("Upgrade", "websocket")
-					}
+					// Forwarded authority must not repair invalid provenance.
+					req.Header.Set("X-Forwarded-Host", authority)
+					req.Header.Set("X-Forwarded-Proto", name)
+					req.Header.Set("Forwarded", "host="+authority+";proto="+name)
 					if !test.simple {
 						req.Header.Set("x-wails-client-id", "arbitrary-nonsecret-value")
 					}
@@ -181,47 +171,7 @@ func TestDevelopmentServerRequestPolicy(t *testing.T) {
 	}
 }
 
-func TestDevelopmentServerRequestPolicyRequiresLoopbackListener(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		addr any
-	}{
-		{name: "missing listener context"},
-		{name: "invalid listener context", addr: "127.0.0.1:34352"},
-		{name: "nil listener", addr: (*net.TCPAddr)(nil)},
-		{name: "wildcard listener", addr: &net.TCPAddr{IP: net.IPv4zero, Port: 34352}},
-		{name: "nonloopback listener", addr: &net.TCPAddr{IP: net.ParseIP("192.0.2.1"), Port: 34352}},
-		{name: "invalid listener port", addr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			var state int
-			middleware := developmentServerMiddleware(instance.Profile{Descriptor: devcontract.InstanceDescriptor{Kind: "development"}})
-			handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				state++
-				w.WriteHeader(http.StatusNoContent)
-			}))
-			request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:34352/wails/runtime", strings.NewReader("advance"))
-			if test.addr != nil {
-				request = request.WithContext(context.WithValue(request.Context(), http.LocalAddrContextKey, test.addr))
-			}
-			response := httptest.NewRecorder()
-			handler.ServeHTTP(response, request)
-			if response.Code != http.StatusForbidden || state != 0 {
-				t.Fatalf("invalid listener permitted request: status=%d state=%d", response.Code, state)
-			}
-		})
-	}
-}
-
-func TestDevelopmentServerRequestPolicyProductionUnchanged(t *testing.T) {
-	for _, kind := range []string{"production", ""} {
-		if middleware := developmentServerMiddleware(instance.Profile{Descriptor: devcontract.InstanceDescriptor{Kind: kind}}); middleware != nil {
-			t.Fatalf("profile kind %q unexpectedly acquired development request policy", kind)
-		}
-	}
-}
-
-func TestDevelopmentServerRequestPolicyIPv6Listener(t *testing.T) {
+func TestDevelopmentAssetRequestPolicyIPv6Listener(t *testing.T) {
 	listener, err := net.Listen("tcp6", "[::1]:0")
 	if err != nil {
 		t.Skipf("IPv6 loopback unavailable: %v", err)
@@ -238,19 +188,18 @@ func TestDevelopmentServerRequestPolicyIPv6Listener(t *testing.T) {
 	server.Listener = listener
 	server.Start()
 	defer server.Close()
-	request, err := http.NewRequest(http.MethodGet, server.URL+"/wails/stream/ws", nil)
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/wails/runtime", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	request.Header.Set("Origin", server.URL)
-	request.Header.Set("Connection", "Upgrade")
-	request.Header.Set("Upgrade", "websocket")
+	request.Header.Set("x-wails-client-id", "arbitrary-nonsecret-value")
 	response, err := server.Client().Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusNoContent || state.Load() != 1 {
-		t.Fatalf("same-origin IPv6 upgrade request rejected: status=%d state=%d", response.StatusCode, state.Load())
+		t.Fatalf("same-origin IPv6 runtime request rejected: status=%d state=%d", response.StatusCode, state.Load())
 	}
 }

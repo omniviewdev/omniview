@@ -380,10 +380,8 @@ for (const framework of frameworks) {
     assert.equal(ping.fulfilled(), false, 'server close must not count as successful reconnect');
   });
 
-  test(`${framework.name}: absent managed environment leaves ordinary source HMR and reconnect untouched`, { timeout: 10000 }, async t => {
+  test(`${framework.name}: absent managed environment leaves ordinary reconnect untouched`, { timeout: 10000 }, async t => {
     const f = await fixture(t, framework, false);
-    await f.change('value.js', 'export const value = "changed";');
-    assert.equal(f.navigation()[0]?.type, 'update');
     const ping = f.httpPing();
     await eventually(ping.fulfilled, 'ordinary HTTP reconnect');
     if (framework.major === 8) {

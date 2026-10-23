@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,7 +18,7 @@ import (
 	"github.com/omniviewdev/omniview/internal/devsession"
 )
 
-const cacheKind = "omniview-dev-cli-v1"
+const cacheKind = "omniview-dev-cli-v2"
 
 var cacheKeyPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
@@ -28,17 +27,20 @@ type namespaceOwner struct {
 	Kind          string `json:"kind"`
 }
 type inputOwner struct {
-	SchemaVersion   int    `json:"schemaVersion"`
-	Key             string `json:"key"`
-	Root            string `json:"root"`
-	SourceModfile   string `json:"sourceModfile"`
-	SDKSource       string `json:"sdkSource"`
-	ModuleSHA256    string `json:"moduleSHA256"`
-	SumSHA256       string `json:"sumSHA256"`
-	SumExists       bool   `json:"sumExists"`
-	SDKModuleSHA256 string `json:"sdkModuleSHA256"`
-	SDKSumSHA256    string `json:"sdkSumSHA256"`
-	SDKSumExists    bool   `json:"sdkSumExists"`
+	SchemaVersion    int    `json:"schemaVersion"`
+	Key              string `json:"key"`
+	Root             string `json:"root"`
+	SourceModfile    string `json:"sourceModfile"`
+	SDKSource        string `json:"sdkSource"`
+	ModuleSHA256     string `json:"moduleSHA256"`
+	SumSHA256        string `json:"sumSHA256"`
+	SumExists        bool   `json:"sumExists"`
+	RootModuleSHA256 string `json:"rootModuleSHA256"`
+	RootSumSHA256    string `json:"rootSumSHA256"`
+	RootSumExists    bool   `json:"rootSumExists"`
+	SDKModuleSHA256  string `json:"sdkModuleSHA256"`
+	SDKSumSHA256     string `json:"sdkSumSHA256"`
+	SDKSumExists     bool   `json:"sdkSumExists"`
 }
 type artifactOwner struct {
 	SchemaVersion int    `json:"schemaVersion"`
@@ -47,27 +49,25 @@ type artifactOwner struct {
 	SHA256        string `json:"sha256"`
 }
 type cachePaths struct {
-	directory, native, binaries, inputMod, inputSum, nativeRecord string
-	initialDirectory                                              os.FileInfo
+	directory, host, binaries, inputMod, inputSum, hostRecord string
+	initialDirectory                                          os.FileInfo
 }
-type nativeReply struct {
-	Modfile     string `json:"modfile"`
-	Source      string `json:"source"`
-	PatchSHA256 string `json:"patchSHA256"`
+type hostReply struct {
+	Modfile string `json:"modfile"`
 }
-type nativeRecord struct {
-	SchemaVersion int         `json:"schemaVersion"`
-	Output        nativeReply `json:"output"`
-	ModuleSHA256  string      `json:"moduleSHA256"`
-	SumSHA256     string      `json:"sumSHA256"`
+type hostRecord struct {
+	SchemaVersion int       `json:"schemaVersion"`
+	Output        hostReply `json:"output"`
+	ModuleSHA256  string    `json:"moduleSHA256"`
+	SumSHA256     string    `json:"sumSHA256"`
 }
 
 func digestBytes(raw []byte) string { value := sha256.Sum256(raw); return hex.EncodeToString(value[:]) }
 func expectedInputOwner(key string, selected selectedInputs) inputOwner {
-	return inputOwner{SchemaVersion: 1, Key: key, Root: selected.root, SourceModfile: selected.sourceModfile, SDKSource: selected.sdkSource, ModuleSHA256: digestBytes(selected.module), SumSHA256: digestBytes(selected.sum), SumExists: selected.sumExists, SDKModuleSHA256: digestBytes(selected.sdkModule), SDKSumSHA256: digestBytes(selected.sdkSum), SDKSumExists: selected.sdkSumExists}
+	return inputOwner{SchemaVersion: 1, Key: key, Root: selected.root, SourceModfile: selected.sourceModfile, SDKSource: selected.sdkSource, ModuleSHA256: digestBytes(selected.module), SumSHA256: digestBytes(selected.sum), SumExists: selected.sumExists, RootModuleSHA256: digestBytes(selected.rootModule), RootSumSHA256: digestBytes(selected.rootSum), RootSumExists: selected.rootSumExists, SDKModuleSHA256: digestBytes(selected.sdkModule), SDKSumSHA256: digestBytes(selected.sdkSum), SDKSumExists: selected.sdkSumExists}
 }
 
-func nativeInputKey(selected selectedInputs) (string, error) {
+func hostInputKey(selected selectedInputs) (string, error) {
 	hash := sha256.New()
 	identity := struct {
 		Inputs                  inputOwner
@@ -76,30 +76,7 @@ func nativeInputKey(selected selectedInputs) (string, error) {
 	if err := json.NewEncoder(hash).Encode(identity); err != nil {
 		return "", err
 	}
-	paths := []string{filepath.Join(selected.root, "scripts", "nativepatch", "main.go")}
-	artifactRoot := filepath.Join(selected.root, "scripts", "nativepatch", "patches")
-	if err := filepath.WalkDir(artifactRoot, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("native patch artifact is redirected: %s", path)
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("native patch artifact is not regular: %s", path)
-		}
-		paths = append(paths, path)
-		return nil
-	}); err != nil {
-		return "", err
-	}
+	paths := []string{filepath.Join(selected.root, "scripts", "hostmod", "main.go")}
 	buffer := make([]byte, 32*1024)
 	for _, path := range paths {
 		relative, err := filepath.Rel(selected.root, path)
@@ -123,7 +100,7 @@ func hashSourceFile(path string, buffer []byte) (string, error) {
 		return "", err
 	}
 	if !before.Mode().IsRegular() {
-		return "", fmt.Errorf("native artifact input is not a regular file: %s", path)
+		return "", fmt.Errorf("host module helper input is not a regular file: %s", path)
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -135,7 +112,7 @@ func hashSourceFile(path string, buffer []byte) (string, error) {
 		return "", err
 	}
 	if !os.SameFile(before, opened) {
-		return "", fmt.Errorf("native artifact input changed while opening: %s", path)
+		return "", fmt.Errorf("host module helper input changed while opening: %s", path)
 	}
 	hash := sha256.New()
 	if _, err := io.CopyBuffer(hash, file, buffer); err != nil {
@@ -146,7 +123,7 @@ func hashSourceFile(path string, buffer []byte) (string, error) {
 		return "", err
 	}
 	if before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
-		return "", fmt.Errorf("native artifact input changed while hashing: %s", path)
+		return "", fmt.Errorf("host module helper input changed while hashing: %s", path)
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
@@ -253,7 +230,7 @@ func claimInputs(root, key string, selected selectedInputs) (paths cachePaths, f
 		return paths, false, err
 	}
 	directory := filepath.Join(root, key)
-	paths = cachePaths{directory: directory, native: filepath.Join(directory, "native"), binaries: filepath.Join(directory, "binaries"), inputMod: filepath.Join(directory, "module.mod"), inputSum: filepath.Join(directory, "module.sum"), nativeRecord: filepath.Join(directory, "native.json")}
+	paths = cachePaths{directory: directory, host: filepath.Join(directory, "host"), binaries: filepath.Join(directory, "binaries"), inputMod: filepath.Join(directory, "module.mod"), inputSum: filepath.Join(directory, "module.sum"), hostRecord: filepath.Join(directory, "host.json")}
 	original, created, err := makePrivateDirectoryClaim(directory)
 	paths.initialDirectory = original
 	if created && original != nil {
@@ -269,7 +246,7 @@ func claimInputs(root, key string, selected selectedInputs) (paths cachePaths, f
 	expected := expectedInputOwner(key, selected)
 	marker := filepath.Join(directory, ".owner.json")
 	if created {
-		for _, path := range []string{paths.native, paths.binaries} {
+		for _, path := range []string{paths.host, paths.binaries} {
 			own, err := makePrivateDirectory(path)
 			if err != nil {
 				return paths, true, err
@@ -308,7 +285,7 @@ func claimInputs(root, key string, selected selectedInputs) (paths cachePaths, f
 			return paths, false, fmt.Errorf("CLI module snapshot was modified: %s", pair.path)
 		}
 	}
-	for _, path := range []string{paths.native, paths.binaries} {
+	for _, path := range []string{paths.host, paths.binaries} {
 		if err := devsession.ValidatePrivateDirectory(path); err != nil {
 			return paths, false, err
 		}
@@ -374,12 +351,12 @@ func hashPrivateFile(path string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func cloneBuildModule(nativeMod, stage string) (string, error) {
+func cloneBuildModule(hostMod, stage string) (string, error) {
 	if err := devsession.ValidatePrivateDirectory(stage); err != nil {
 		return "", err
 	}
 	target := filepath.Join(stage, "cli.mod")
-	for _, pair := range [][2]string{{nativeMod, target}, {strings.TrimSuffix(nativeMod, ".mod") + ".sum", filepath.Join(stage, "cli.sum")}} {
+	for _, pair := range [][2]string{{hostMod, target}, {strings.TrimSuffix(hostMod, ".mod") + ".sum", filepath.Join(stage, "cli.sum")}} {
 		source, err := openPrivateFile(pair[0])
 		if err != nil {
 			return "", err
@@ -505,17 +482,17 @@ func removeBuildStage(path string, original os.FileInfo) error {
 	return os.RemoveAll(path)
 }
 
-func validateNativeRecord(paths cachePaths, state nativeRecord) error {
-	if state.SchemaVersion != 1 || filepath.Dir(state.Output.Modfile) != paths.native || filepath.Dir(state.Output.Source) != paths.native || !cacheKeyPattern.MatchString(state.Output.PatchSHA256) || !strings.HasSuffix(state.Output.Modfile, ".mod") {
-		return fmt.Errorf("CLI native cache record identity differs")
+func validateHostRecord(paths cachePaths, state hostRecord) error {
+	if state.SchemaVersion != 1 || !filepath.IsAbs(state.Output.Modfile) || state.Output.Modfile != filepath.Join(paths.host, "host.mod") {
+		return fmt.Errorf("CLI host module cache record identity differs")
 	}
-	for _, path := range []string{state.Output.Modfile, state.Output.Source} {
+	for _, path := range []string{state.Output.Modfile, strings.TrimSuffix(state.Output.Modfile, ".mod") + ".sum"} {
 		canonical, err := filepath.EvalSymlinks(path)
 		if err != nil {
 			return err
 		}
 		if canonical != path {
-			return fmt.Errorf("CLI native cache path is redirected: %s", path)
+			return fmt.Errorf("CLI host module cache path is redirected: %s", path)
 		}
 	}
 	moduleHash, err := hashPrivateFile(state.Output.Modfile)
@@ -527,7 +504,7 @@ func validateNativeRecord(paths cachePaths, state nativeRecord) error {
 		return err
 	}
 	if moduleHash != state.ModuleSHA256 || sumHash != state.SumSHA256 {
-		return fmt.Errorf("immutable CLI native module template was modified")
+		return fmt.Errorf("immutable CLI host module template was modified")
 	}
 	return nil
 }

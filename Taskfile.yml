@@ -1,7 +1,7 @@
 version: '3'
 
 # Ignore parent go.work/GOFLAGS, including ambient tags and module overrides.
-# GO_MODFILE is an optional effective host input; bootstrap output is separate.
+# GO_MODFILE is an optional effective host input; prepared output is separate.
 env:
   GOWORK: "off"
   GOFLAGS: ""
@@ -23,12 +23,14 @@ vars:
   GO_MODFILE: '{{.GO_MODFILE | default ""}}'
   HOST_INPUT_MODFILE: '{{.GO_MODFILE | default ""}}'
   SDK_SOURCE: '{{.SDK_SOURCE | default ""}}'
-  NATIVE_PATCH_OUTPUT_DIRECTORY: '{{.NATIVE_PATCH_OUTPUT_DIRECTORY | default ""}}'
+  HOST_MOD_OUTPUT_DIRECTORY: '{{.HOST_MOD_OUTPUT_DIRECTORY | default ""}}'
   BINDINGS_OUTPUT_DIRECTORY: '{{.BINDINGS_OUTPUT_DIRECTORY | default ""}}'
   GO_BUILD_CACHE_DIRECTORY: '{{.GO_BUILD_CACHE_DIRECTORY | default ""}}'
   # Plain command text, evaluated only by host Go/Wails tasks (not UI/plugin tasks).
   # Reset cross-compilation variables while running this native-free host helper.
-  HOST_BOOTSTRAP: 'GOWORK=off GOFLAGS= GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/nativepatch/main.go" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}} {{if .NATIVE_PATCH_OUTPUT_DIRECTORY}}--output-directory={{.NATIVE_PATCH_OUTPUT_DIRECTORY | shellQuote}}{{end}}'
+  HOST_BOOTSTRAP: 'GOWORK=off GOFLAGS= GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/hostmod/main.go" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}} {{if .HOST_MOD_OUTPUT_DIRECTORY}}--output-directory={{.HOST_MOD_OUTPUT_DIRECTORY | shellQuote}}{{end}}'
+  # Resolve the CLI from the root stock pin, never an ambient wails3 executable.
+  WAILS_CLI: 'GOWORK=off GOFLAGS= GOOS={{OS}} GOARCH={{ARCH}} go run github.com/wailsapp/wails/v3/cmd/wails3@$(GOWORK=off GOFLAGS= go list -modfile={{printf "%s/go.mod" .ROOT_DIR | shellQuote}} -m -f {{print "{{.Version}}" | shellQuote}} github.com/wailsapp/wails/v3)'
   # CLI bootstrap and execution must not inherit the standalone source-local cache.
   # Resolve explicit or manifest-linked SDK source before compiling the CLI helper.
   CLI_ENVIRONMENT: 'GOWORK=off GOFLAGS= GO111MODULE=on GOCACHE={{if .GO_BUILD_CACHE_DIRECTORY}}{{.GO_BUILD_CACHE_DIRECTORY | shellQuote}}{{else}}{{env "GOCACHE" | shellQuote}}{{end}} GOTMPDIR='
@@ -62,8 +64,8 @@ vars:
   COMPOSED_BUILD_FLAGS: &composeFlags '{{if eq .RELEASE "true"}}-tags {{if eq .SERVER "true"}}production,server{{else}}production{{end}} {{else}}{{if .BUILD_TAGS}}-tags {{.BUILD_TAGS | shellQuote}} {{end}}{{end}}{{if and (eq .DEV "true") (ne .RELEASE "true")}}-buildvcs=false -gcflags=all="-l"{{else}}-trimpath -buildvcs=false -ldflags="-w -s{{if eq (.TARGET_OS | default OS) "windows"}} -H windowsgui{{end}}"{{end}}'
 
 tasks:
-  native:prepare:
-    summary: Prepare and verify pinned patched Wails; print effective host modfile
+  host:prepare:
+    summary: Prepare SDK-aware effective host module files using stock Wails
     cmds:
       - '{{.HOST_BOOTSTRAP}}'
 
@@ -335,7 +337,7 @@ tasks:
           if [ -d "$BINDINGS_DIR" ]; then
             cp -R "$BINDINGS_DIR" "$TMPDIR/bindings-before"
           fi
-          task bindings BINDINGS_OUTPUT_DIRECTORY={{.BINDINGS_OUTPUT_DIRECTORY | shellQuote}} {{if .HOST_INPUT_MODFILE}}GO_MODFILE={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .NATIVE_PATCH_OUTPUT_DIRECTORY}}NATIVE_PATCH_OUTPUT_DIRECTORY={{.NATIVE_PATCH_OUTPUT_DIRECTORY | shellQuote}}{{end}} {{if .GO_BUILD_CACHE_DIRECTORY}}GO_BUILD_CACHE_DIRECTORY={{.GO_BUILD_CACHE_DIRECTORY | shellQuote}}{{end}} {{if .BUILD_FLAGS}}BUILD_FLAGS={{.BUILD_FLAGS | shellQuote}}{{end}}
+          task bindings BINDINGS_OUTPUT_DIRECTORY={{.BINDINGS_OUTPUT_DIRECTORY | shellQuote}} {{if .HOST_INPUT_MODFILE}}GO_MODFILE={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .HOST_MOD_OUTPUT_DIRECTORY}}HOST_MOD_OUTPUT_DIRECTORY={{.HOST_MOD_OUTPUT_DIRECTORY | shellQuote}}{{end}} {{if .GO_BUILD_CACHE_DIRECTORY}}GO_BUILD_CACHE_DIRECTORY={{.GO_BUILD_CACHE_DIRECTORY | shellQuote}}{{end}} {{if .BUILD_FLAGS}}BUILD_FLAGS={{.BUILD_FLAGS | shellQuote}}{{end}}
           if [ -d "$TMPDIR/bindings-before" ]; then
             if ! diff -r "$BINDINGS_DIR" "$TMPDIR/bindings-before" >/dev/null 2>&1; then
               echo "Wails bindings are stale. Run 'task check:bindings' and commit the result."

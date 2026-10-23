@@ -28,6 +28,8 @@ type selectedInputs struct {
 	sdkSource                  string
 	module, sum                []byte
 	sumExists                  bool
+	rootModule, rootSum        []byte
+	rootSumExists              bool
 	sdkModule, sdkSum          []byte
 	sdkSumExists               bool
 	workspaceRoot, profileRoot string
@@ -198,6 +200,11 @@ func selectInputs(options inputOptions) (selectedInputs, error) {
 		return selected, err
 	}
 	if _, err = parseModule(filepath.Join(root, "go.mod"), sourceModule, hostModulePath); err != nil {
+		return selected, err
+	}
+	selected.rootModule = sourceModule
+	selected.rootSum, selected.rootSumExists, err = readSource(filepath.Join(root, "go.sum"), true)
+	if err != nil {
 		return selected, err
 	}
 	input := options.modfile

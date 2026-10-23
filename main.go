@@ -89,7 +89,7 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
-		Server: application.ServerOptions{Host: "localhost", Port: serverModePort, Middleware: developmentServerMiddleware(profile)},
+		Server: application.ServerOptions{Host: "localhost", Port: serverModePort},
 		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 		Linux:  application.LinuxOptions{ProgramName: appName},
 	}
@@ -105,20 +105,17 @@ func main() {
 		})
 		return instance.BootMiddleware(profile.Descriptor.BootIdentity())(dispatch)
 	}
-	if profile.Descriptor.Kind == "development" {
-		options.Mac.WebsiteDataStoreIdentifier = profile.Descriptor.InstanceID
-		options.Windows.WebviewUserDataPath = profile.WebviewRoot
-		options.Linux.WebviewDataPath = filepath.Join(profile.WebviewRoot, "data")
-		options.Linux.WebviewCachePath = filepath.Join(profile.WebviewRoot, "cache")
-	} else {
+	if policy := developmentServerMiddleware(profile); policy != nil {
+		options.Assets.Middleware = application.ChainMiddleware(policy, options.Assets.Middleware)
+	}
+	if profile.Descriptor.Kind != "development" {
 		options.SingleInstance = &application.SingleInstanceOptions{
 			UniqueID: "com.omniview." + profile.Descriptor.Channel,
 			ExitCode: 0,
 		}
 	}
-	// Server-tag builds deliberately bypass native datastore availability.
-	if err := application.ValidateWebviewStorageOptions(options); err != nil {
-		fmt.Fprintf(os.Stderr, "fatal: native profile storage unavailable: %v; use isolated browser/server mode instead\n", err)
+	if err := configureNativeProfile(&options, profile); err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: native profile storage unavailable: %v\n", err)
 		os.Exit(1)
 	}
 	// This stable guard lives outside the purgable profile. Acquire it before
@@ -146,13 +143,23 @@ func main() {
 		}
 		profile = selected
 		options.Name = profile.Descriptor.DisplayName
+		if err := configureNativeProfile(&options, profile); err != nil {
+			_ = releaseProfile()
+			fmt.Fprintf(os.Stderr, "fatal: native profile storage unavailable: %v\n", err)
+			os.Exit(1)
+		}
 		if err := devcontract.EnsureDefaultProfileOwnership(home, profile.Descriptor.WorkspaceID); err != nil {
 			_ = releaseProfile()
 			fmt.Fprintln(os.Stderr, "fatal: development profile namespace is not owned by this workspace")
 			os.Exit(1)
 		}
 	}
-	for _, entry := range profile.ChildEnvironment(nil, "") {
+	childEnvironment, err := profile.ChildEnvironment(nil, "")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: invalid child environment: %v\n", err)
+		os.Exit(1)
+	}
+	for _, entry := range childEnvironment {
 		key, value, _ := strings.Cut(entry, "=")
 		if err := os.Setenv(key, value); err != nil {
 			fmt.Fprintf(os.Stderr, "fatal: cannot publish runtime environment: %v\n", err)
@@ -180,7 +187,7 @@ func main() {
 	// flock above remains authoritative for every profile; duplicate-root
 	// launches fail early and do not promise focus/activation.
 	app := application.New(options)
-	if err := profile.PrepareRuntime(); err != nil {
+	if err := prepareProfileRuntime(profile); err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: cannot prepare runtime directories: %v\n", err)
 		os.Exit(1)
 	}

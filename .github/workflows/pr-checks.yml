@@ -84,8 +84,8 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install wails3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+      - name: Install pinned private Wails CLI
+        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
 
       - name: Check bindings are up to date
         run: task check:bindings-check

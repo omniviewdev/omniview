@@ -42,9 +42,13 @@ func (m *DevServerManager) ConfigureWorkspace(profile instance.Profile, registry
 	if err != nil {
 		return err
 	}
+	buildEnvironment, err := profile.ChildEnvironment(os.Environ(), "")
+	if err != nil {
+		return err
+	}
 	m.ports.registry, m.ports.owner = registry, owner
 	m.ports.portPolicy = policy
-	m.buildEnvironment = profile.ChildEnvironment(os.Environ(), "")
+	m.buildEnvironment = buildEnvironment
 	m.workspace = profile.Workspace
 	m.expectedSDKRevision = expectedSDKRevision
 	return nil

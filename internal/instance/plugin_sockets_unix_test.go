@@ -55,7 +55,10 @@ func TestManagedPluginUnixSocketEnvironmentRejectsUnownedInheritedDirectory(t *t
 		}
 		served <- err
 	}()
-	base := profile.ChildEnvironment(nil, "")
+	base, err := profile.ChildEnvironment(nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	base = append(base,
 		"OMNIVIEW_PROCESS_BRIDGE_ENDPOINT=http://127.0.0.1:1/v1/process",
 		"OMNIVIEW_PROCESS_BRIDGE_TOKEN_FILE="+filepath.Join(filepath.Dir(manifest), ".local", "supervisor.secret"),
@@ -116,7 +119,10 @@ func TestManagedPluginUnixSocketEnvironmentUsesRecordedRootWithoutChangingTMPDIR
 			t.Error(err)
 		}
 	}()
-	base := profile.ChildEnvironment(nil, "")
+	base, err := profile.ChildEnvironment(nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	base = append(base, "OMNIVIEW_PROCESS_BRIDGE_ENDPOINT=http://127.0.0.1:1/v1/process",
 		"OMNIVIEW_PROCESS_BRIDGE_TOKEN_FILE="+filepath.Join(filepath.Dir(manifest), ".local", "supervisor.secret"),
 		"PLUGIN_UNIX_SOCKET_DIR=/foreign", "PLUGIN_UNIX_SOCKET_GROUP=foreign", "TMPDIR="+tmp)
@@ -181,8 +187,12 @@ func TestDirectPluginEnvironmentDoesNotRequireSupervisorSocketRecord(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	childEnvironment, err := profile.ChildEnvironment(nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, base := range [][]string{
-		append(profile.ChildEnvironment(nil, ""), "PLUGIN_UNIX_SOCKET_DIR=/foreign"),
+		append(childEnvironment, "PLUGIN_UNIX_SOCKET_DIR=/foreign"),
 		{"OMNIVIEW_GENERATION=" + fixtureID, "PLUGIN_UNIX_SOCKET_DIR=/foreign"},
 	} {
 		env, err := PluginEnvironment(profile.Descriptor.StateRoot, "workspace-probe", base)

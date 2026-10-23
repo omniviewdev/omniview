@@ -425,6 +425,12 @@ func (s *workspaceSupervisor) startHost(ctx context.Context) error {
 				return err
 			}
 		}
+		if s.options.Mode == "native" && runtime.GOOS == "linux" {
+			env, err = profile.NativeHostEnvironment(env)
+			if err != nil {
+				return err
+			}
+		}
 		child, err := startOwnedChild(s.childContext, host, env, output, devsession.ProcessOwner{WorkspaceID: s.workspace.Manifest.WorkspaceID, Generation: s.generation, Role: "host", Source: host}, nil, s.binary)
 		if child != nil {
 			s.addChild("host", child)

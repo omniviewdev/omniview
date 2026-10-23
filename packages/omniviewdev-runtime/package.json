@@ -69,7 +69,7 @@
     "@omniviewdev/base-ui": "~0.4.3"
   },
   "dependencies": {
-    "@wailsio/runtime": "3.0.0-beta.29",
+    "@wailsio/runtime": "3.0.0-beta.34",
     "lodash.get": "^4.4.2",
     "ts-invariant": "^0.10.3"
   }

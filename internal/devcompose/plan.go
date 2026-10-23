@@ -793,6 +793,12 @@ func decodeDocuments(raw []byte) ([]map[string]any, error) {
 }
 func encodeDocuments(docs []map[string]any) ([]byte, error) {
 	var out bytes.Buffer
+	// Native pnpm recognizes its metadata/application stream only when the
+	// first document is explicit; otherwise it parses as single-document YAML
+	// and discards the entire seed as a broken lockfile.
+	if len(docs) > 1 {
+		out.WriteString("---\n")
+	}
 	enc := yaml.NewEncoder(&out)
 	enc.SetIndent(2)
 	for _, doc := range docs {

@@ -113,17 +113,17 @@ func executeGo(ctx context.Context, selected selectedInputs, environment []strin
 	return command.Run()
 }
 
-func prepareNative(ctx context.Context, paths cachePaths, fresh bool, selected selectedInputs, environment []string, diagnostics io.Writer) (nativeReply, error) {
-	var prior nativeRecord
+func prepareHost(ctx context.Context, paths cachePaths, fresh bool, selected selectedInputs, environment []string, diagnostics io.Writer) (hostReply, error) {
+	var prior hostRecord
 	if !fresh {
-		if err := devsession.ReadPrivateJSON(paths.nativeRecord, &prior); err != nil {
-			return nativeReply{}, fmt.Errorf("refusing incomplete native CLI cache %s: %w", paths.directory, err)
+		if err := devsession.ReadPrivateJSON(paths.hostRecord, &prior); err != nil {
+			return hostReply{}, fmt.Errorf("refusing incomplete host module CLI cache %s: %w", paths.directory, err)
 		}
-		if err := validateNativeRecord(paths, prior); err != nil {
-			return nativeReply{}, err
+		if err := validateHostRecord(paths, prior); err != nil {
+			return hostReply{}, err
 		}
 	}
-	args := []string{"run", filepath.Join(selected.root, "scripts", "nativepatch", "main.go"), "--root", selected.root, "--host-modfile", paths.inputMod, "--output-directory", paths.native, "--format", "json"}
+	args := []string{"run", filepath.Join(selected.root, "scripts", "hostmod", "main.go"), "--root", selected.root, "--host-modfile", paths.inputMod, "--output-directory", paths.host, "--format", "json"}
 	if selected.sdkSource != "" {
 		args = append(args, "--sdk-source", selected.sdkSource)
 	}
@@ -133,13 +133,13 @@ func prepareNative(ctx context.Context, paths cachePaths, fresh bool, selected s
 	command.Stderr = diagnostics
 	raw, err := command.Output()
 	if err != nil {
-		return nativeReply{}, fmt.Errorf("prepare pinned native source: %w", err)
+		return hostReply{}, fmt.Errorf("prepare effective host module: %w", err)
 	}
-	var reply nativeReply
+	var reply hostReply
 	if err := json.Unmarshal(raw, &reply); err != nil {
-		return reply, fmt.Errorf("decode native bootstrap result: %w", err)
+		return reply, fmt.Errorf("decode host module result: %w", err)
 	}
-	state := nativeRecord{SchemaVersion: 1, Output: reply}
+	state := hostRecord{SchemaVersion: 1, Output: reply}
 	state.ModuleSHA256, err = hashPrivateFile(reply.Modfile)
 	if err != nil {
 		return reply, err
@@ -148,15 +148,15 @@ func prepareNative(ctx context.Context, paths cachePaths, fresh bool, selected s
 	if err != nil {
 		return reply, err
 	}
-	if err := validateNativeRecord(paths, state); err != nil {
+	if err := validateHostRecord(paths, state); err != nil {
 		return reply, err
 	}
 	if fresh {
-		if err := writeNewJSON(paths.nativeRecord, state); err != nil {
+		if err := writeNewJSON(paths.hostRecord, state); err != nil {
 			return reply, err
 		}
 	} else if state != prior {
-		return reply, fmt.Errorf("native CLI cache changed despite immutable input identity: %s", paths.directory)
+		return reply, fmt.Errorf("host module CLI cache changed despite immutable input identity: %s", paths.directory)
 	}
 	return reply, nil
 }
@@ -166,7 +166,7 @@ func bootstrapCLI(ctx context.Context, options inputOptions, diagnostics io.Writ
 	if err != nil {
 		return "", err
 	}
-	key, err := nativeInputKey(selected)
+	key, err := hostInputKey(selected)
 	if err != nil {
 		return "", err
 	}
@@ -226,14 +226,14 @@ func bootstrapCLI(ctx context.Context, options inputOptions, diagnostics io.Writ
 		return "", fmt.Errorf("new CLI stage contains an unknown temporary directory")
 	}
 	environment := goEnvironment(cache, temporary)
-	native, err := prepareNative(ctx, paths, fresh, selected, environment, diagnostics)
+	host, err := prepareHost(ctx, paths, fresh, selected, environment, diagnostics)
 	if err != nil {
 		return "", err
 	}
-	// Native-ready publication ends fresh-claim rollback. A later build failure
+	// Host-module publication ends fresh-claim rollback. A later build failure
 	// retains this valid immutable template for the next real Go source check.
 	discardClaim = false
-	buildMod, err := cloneBuildModule(native.Modfile, stage)
+	buildMod, err := cloneBuildModule(host.Modfile, stage)
 	if err != nil {
 		return "", err
 	}
@@ -251,13 +251,13 @@ func bootstrapCLI(ctx context.Context, options inputOptions, diagnostics io.Writ
 	if err := validateExecutable(stagedBinary); err != nil {
 		return "", err
 	}
-	// Go may edit only the private clone. The immutable native template must
+	// Go may edit only the private clone. The immutable host module template must
 	// still match its independently recorded contents after compilation.
-	var nativeState nativeRecord
-	if err := devsession.ReadPrivateJSON(paths.nativeRecord, &nativeState); err != nil {
+	var hostState hostRecord
+	if err := devsession.ReadPrivateJSON(paths.hostRecord, &hostState); err != nil {
 		return "", err
 	}
-	if err := validateNativeRecord(paths, nativeState); err != nil {
+	if err := validateHostRecord(paths, hostState); err != nil {
 		return "", err
 	}
 	return publishArtifact(paths.binaries, stagedBinary, key)

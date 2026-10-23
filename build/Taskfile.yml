@@ -47,7 +47,7 @@ tasks:
         GOWORK=off GOFLAGS= go mod tidy -modfile="$HOST_MODFILE"
         HOST_BINDING_GOFLAGS="$({{.HOST_BOOTSTRAP}} --host-modfile="$HOST_MODFILE" --format goflags)"
         BINDING_FLAGS={{.BUILD_FLAGS | shellQuote}}
-        GOWORK=off GOFLAGS= wails3 generate bindings -d {{.BINDINGS_OUTPUT_DIRECTORY | shellQuote}} -f "$BINDING_FLAGS $HOST_BINDING_GOFLAGS" -clean=true -ts
+        {{.WAILS_CLI}} generate bindings -d {{.BINDINGS_OUTPUT_DIRECTORY | shellQuote}} -f "$BINDING_FLAGS $HOST_BINDING_GOFLAGS" -clean=true -ts
 
   generate:icons:
     summary: Generates platform icons from appicon.png
@@ -58,10 +58,10 @@ tasks:
       - "darwin/icons.icns"
       - "windows/icon.ico"
     cmds:
-      - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
+      - '{{.WAILS_CLI}} generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico'
 
   update:build-assets:
     summary: Updates the build assets
     dir: build
     cmds:
-      - wails3 update build-assets -name "{{.APP_NAME}}" -binaryname "{{.APP_NAME}}" -config config.yml -dir .
+      - '{{.WAILS_CLI}} update build-assets -name "{{.APP_NAME}}" -binaryname "{{.APP_NAME}}" -config config.yml -dir .'

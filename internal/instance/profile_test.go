@@ -57,7 +57,10 @@ func TestWorkspaceNamesRootsAndExplicitChildEnvironment(t *testing.T) {
 		if p.Descriptor.InstanceID != tc.id || p.Descriptor.DisplayName != tc.name || p.Descriptor.Kind != "development" {
 			t.Fatalf("wrong identity: %+v", p.Descriptor)
 		}
-		env := p.ChildEnvironment([]string{"OMNIVIEW_STATE_DIR=/wrong", "OMNIVIEW_GENERATION=wrong", "GOWORK=on", "KEEP=yes", "OMNIVIEW_PROCESS_BRIDGE_TOKEN_FILE=/private/capability", "OMNIVIEW_PROCESS_BRIDGE_ENDPOINT=http://127.0.0.1:1234", "OMNIVIEW_SUPERVISOR_TOKEN_FILE=/private/capability", "OMNIVIEW_PLUGIN_PNPM_COMMANDS=private-command-map"}, "kubernetes")
+		env, err := p.ChildEnvironment([]string{"OMNIVIEW_STATE_DIR=/wrong", "OMNIVIEW_GENERATION=wrong", "GOWORK=on", "KEEP=yes", "OMNIVIEW_PROCESS_BRIDGE_TOKEN_FILE=/private/capability", "OMNIVIEW_PROCESS_BRIDGE_ENDPOINT=http://127.0.0.1:1234", "OMNIVIEW_SUPERVISOR_TOKEN_FILE=/private/capability", "OMNIVIEW_PLUGIN_PNPM_COMMANDS=private-command-map"}, "kubernetes")
+		if err != nil {
+			t.Fatal(err)
+		}
 		got := strings.Join(env, "\n")
 		for _, want := range []string{"OMNIVIEW_STATE_DIR=" + p.Descriptor.StateRoot, "OMNIVIEW_WORKSPACE_FILE=" + p.Workspace.ManifestPath, "OMNIVIEW_GENERATION=" + fixtureID, "OMNIVIEW_PLUGIN_ID=kubernetes", "GOWORK=off", "KEEP=yes"} {
 			if !strings.Contains(got, want) {
@@ -116,7 +119,11 @@ func TestProductionEnvironmentDoesNotLeakWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := strings.Join(p.ChildEnvironment([]string{"OMNIVIEW_WORKSPACE_FILE=/foreign/workspace.json", "OMNIVIEW_INSTANCE_ID=foreign", "OMNIVIEW_STATE_DIR=/foreign"}, "plugin"), "\n")
+	childEnvironment, err := p.ChildEnvironment([]string{"OMNIVIEW_WORKSPACE_FILE=/foreign/workspace.json", "OMNIVIEW_INSTANCE_ID=foreign", "OMNIVIEW_STATE_DIR=/foreign"}, "plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := strings.Join(childEnvironment, "\n")
 	if strings.Contains(env, "foreign") || !strings.Contains(env, "OMNIVIEW_STATE_DIR="+p.Descriptor.StateRoot) {
 		t.Fatal(env)
 	}

@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/omniviewdev/omniview/scripts/internal/hostmodtest"
 )
 
 func TestBootstrapCompilesAgainstExplicitSDKBeforeLoadingDevcli(t *testing.T) {
@@ -48,32 +50,25 @@ func testBootstrapCompilation(t *testing.T, enclosing bool) {
 		}
 		write(filepath.Join(collection, "workspace.json"), string(data))
 	}
-	write(filepath.Join(root, "go.mod"), "module fixture\n\ngo 1.25.0\n")
+	requirement, _ := hostmodtest.Root(t, root)
 	originalModfile := filepath.Join(root, "selected.mod")
-	write(originalModfile, "module fixture\n\ngo 1.25.0\n")
+	originalInput := "module github.com/omniviewdev/omniview\n\ngo 1.25.0\n" + requirement + "require github.com/omniviewdev/plugin-sdk v0.0.0\n"
+	write(originalModfile, originalInput)
 	write(filepath.Join(sdk, "go.mod"), "module github.com/omniviewdev/plugin-sdk\n\ngo 1.25.0\n")
 	write(filepath.Join(sdk, "pkg/profilecontract/profile.go"), "package profilecontract\nconst Identity = \"selected-contract\"\n")
-	// Real Go commands prove that the SDK package is unavailable until the
-	// preparation command's modfile is selected. The fixture preparation writes
-	// only within the supplied private output capability.
-	write(filepath.Join(root, "scripts/nativepatch/main.go"), `package main
-import ("flag"; "fmt"; "os"; "path/filepath")
-func main() {
- root:=flag.String("root","",""); input:=flag.String("host-modfile","",""); sdk:=flag.String("sdk-source","",""); output:=flag.String("output-directory","",""); flag.Parse()
- if *input != filepath.Join(*root,"selected.mod") { panic("original module authority changed") }
- raw,err:=os.ReadFile(*input); if err!=nil { panic(err) }
- raw=append(raw,[]byte(fmt.Sprintf("require github.com/omniviewdev/plugin-sdk v0.0.0\nreplace github.com/omniviewdev/plugin-sdk => %q\n",*sdk))...)
- path:=filepath.Join(*output,"bootstrap.mod"); if err:=os.WriteFile(path,raw,0600); err!=nil { panic(err) }
- if err:=os.WriteFile(os.Getenv("BOOTSTRAP_RECEIPT"),[]byte(*output),0600); err!=nil { panic(err) }; fmt.Println(path)
-}`)
+	// Exercise the real module preparer before compiling a consumer of an SDK
+	// package unavailable from the host's original module graph.
+	helper, err := os.ReadFile(filepath.Join("..", "..", "hostmod", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(root, "scripts/hostmod/main.go"), string(helper))
 	write(filepath.Join(root, "scripts/devcli/main.go"), `package main
 import ("flag"; "fmt"; "os"; "path/filepath"; "github.com/omniviewdev/plugin-sdk/pkg/profilecontract")
 func main() {
  root:=flag.String("root","",""); input:=flag.String("host-modfile","",""); sdk:=flag.String("sdk-source","",""); flag.Parse()
  if *input!=filepath.Join(*root,"selected.mod") || *sdk!=os.Getenv("EXPECTED_SDK") { panic("source selection authority changed") }; fmt.Println(profilecontract.Identity)
 }`)
-	receipt := filepath.Join(t.TempDir(), "preparation.txt")
-	t.Setenv("BOOTSTRAP_RECEIPT", receipt)
 	explicitSDK := sdk
 	if enclosing {
 		explicitSDK = ""
@@ -81,22 +76,15 @@ func main() {
 	t.Setenv("EXPECTED_SDK", explicitSDK)
 	t.Setenv("OMNIVIEW_WORKSPACE_FILE", "")
 	t.Setenv("OMNIVIEW_STATE_DIR", "")
-	t.Setenv("GOWORK", "off")
-	t.Setenv("GOFLAGS", "")
+	t.Setenv("GOWORK", filepath.Join(collection, "foreign.work"))
+	t.Setenv("GOFLAGS", "-modfile=foreign.mod -tags=foreign")
 	var output, diagnostics bytes.Buffer
 	err = bootstrap(context.Background(), bootstrapOptions{root: root, modfile: originalModfile, sdkSource: explicitSDK}, &output, &diagnostics)
 	if err != nil || strings.TrimSpace(output.String()) != "selected-contract" {
 		t.Fatalf("bootstrap did not use explicit SDK before compilation: %v\n%s\n%s", err, &output, &diagnostics)
 	}
-	temporary, err := os.ReadFile(receipt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Lstat(string(temporary)); !os.IsNotExist(err) {
-		t.Fatalf("owned preparation outlived bootstrap compilation: %v", err)
-	}
 	original, err := os.ReadFile(originalModfile)
-	if err != nil || string(original) != "module fixture\n\ngo 1.25.0\n" {
+	if err != nil || string(original) != originalInput {
 		t.Fatalf("bootstrap changed original module input: %v", err)
 	}
 }
@@ -115,8 +103,8 @@ func TestBootstrapRejectsInvalidExplicitSDKBeforeCompilingDevcli(t *testing.T) {
 			if err == nil || output.Len() != 0 {
 				t.Fatalf("invalid explicit SDK reached CLI compilation: %v, stdout=%s", err, &output)
 			}
-			if !strings.Contains(err.Error(), "prepare explicit SDK bootstrap module") {
-				t.Fatalf("SDK refusal did not occur at native preparation ingress: %v\n%s", err, &diagnostics)
+			if !strings.Contains(err.Error(), "prepare SDK-aware bootstrap module") {
+				t.Fatalf("SDK refusal did not occur at host module preparation ingress: %v\n%s", err, &diagnostics)
 			}
 		})
 	}
@@ -212,5 +200,39 @@ func TestCompilationSDKSourceBoundaries(t *testing.T) {
 				t.Fatalf("selection=%q error=%v, expected acceptance=%v", selected, err, accepted)
 			}
 		})
+	}
+}
+
+func TestBootstrapRefusesWailsReplacementBeforeLoadingDevcli(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := "module github.com/omniviewdev/omniview\n\ngo 1.25.0\nreplace github.com/wailsapp/wails/v3 => ./patched-framework\n"
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(module), 0600); err != nil {
+		t.Fatal(err)
+	}
+	helper, err := os.ReadFile(filepath.Join("..", "..", "hostmod", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	helperPath := filepath.Join(root, "scripts", "hostmod", "main.go")
+	if err := os.MkdirAll(filepath.Dir(helperPath), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(helperPath, helper, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOWORK", "off")
+	t.Setenv("GOFLAGS", "")
+	t.Setenv("OMNIVIEW_WORKSPACE_FILE", "")
+	t.Setenv("OMNIVIEW_STATE_DIR", "")
+	var output, diagnostics bytes.Buffer
+	err = bootstrap(context.Background(), bootstrapOptions{root: root}, &output, &diagnostics)
+	if err == nil || !strings.Contains(diagnostics.String(), "Wails replacements are forbidden") {
+		t.Fatalf("framework replacement reached CLI compilation: %v\n%s", err, &diagnostics)
+	}
+	if output.Len() != 0 {
+		t.Fatal("refused bootstrap published executable output")
 	}
 }

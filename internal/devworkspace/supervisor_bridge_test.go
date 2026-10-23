@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devoutputs"
 	"github.com/omniviewdev/omniview/internal/devsession"
@@ -33,6 +34,9 @@ func TestManagedBridgeOwnsActualProcessesThroughHostCrash(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := generatedFixture(t)
+	// Concurrent test binaries have separate registries but share loopback ports.
+	// A distinct workspace identity avoids the same deterministic sticky port.
+	w.Manifest.WorkspaceID = uuid.NewString()
 	home, err := devcontract.CanonicalPath(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -190,8 +194,11 @@ func TestManagedBridgeOwnsActualProcessesThroughHostCrash(t *testing.T) {
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-	if observed.Cwd != frontend || observed.Root != w.Root || observed.Alias != "" || observed.Bridge != "" || observed.Fds != "" {
-		t.Fatalf("wrong cwd or private host capabilities leaked: %+v", observed)
+	if observed.Cwd != frontend || observed.Root != w.Root {
+		t.Fatalf("wrong selected frontend on port %d: cwd = %q, want %q; root = %q, want %q", lease.Port, observed.Cwd, frontend, observed.Root, w.Root)
+	}
+	if observed.Alias != "" || observed.Bridge != "" || observed.Fds != "" {
+		t.Fatalf("private host capabilities leaked: %+v", observed)
 	}
 	assertManagedObservationDuringBlockedStart(t, ctx, server.URL, string(token), pluginSource, result.Process.ProcessID, request)
 

@@ -57,14 +57,14 @@ Register every repository/plugin source needed by the collection up front. Regis
 
 The reviewed fixed SDK commit is `3368c2b412a0c1608a244bce6cb614f2749b95a7`, including the shared read-only profile contract required by this host. Select a source descending from that commit; the previous baseline lacks the required contract and cannot authorize this cutover. Subsequent ordinary edits in the selected feature SDK worktree are live development input and do not require per-edit commits. Protected isolation implementation changes require the explicit warning-bearing `--allow-isolation-source-changes` flag; it is scoped to this workspace's child processes and is not a sandbox.
 
-Local package linking requires the actual successful pinned pnpm protocol probe report, not manually asserted booleans. Run the probe once on the integrated host source with its effective SDK/native module selection, then pass the report explicitly (or place it at `$COLLECTION/.omniview-dev/link-protocol.json`):
+Local package linking requires the actual successful pinned pnpm protocol probe report, not manually asserted booleans. Run the probe once on the integrated host source with its effective SDK-aware module selection, then pass the report explicitly (or place it at `$COLLECTION/.omniview-dev/link-protocol.json`):
 
 ```sh
 PROBE_DIR="$(mktemp -d)"
-mkdir "$PROBE_DIR/native" "$PROBE_DIR/module"
-HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/nativepatch/main.go \
+mkdir "$PROBE_DIR/hostmod" "$PROBE_DIR/module"
+HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go \
   --root "$PWD" --sdk-source "$FIXED_SDK_SOURCE" \
-  --output-directory "$PROBE_DIR/native")"
+  --output-directory "$PROBE_DIR/hostmod")"
 cp "$HOST_MODFILE" "$PROBE_DIR/module/probe.mod"
 cp "${HOST_MODFILE%.mod}.sum" "$PROBE_DIR/module/probe.sum"
 GOWORK=off GOFLAGS= A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT="$LINK_EVIDENCE" \

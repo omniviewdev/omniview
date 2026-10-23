@@ -114,7 +114,7 @@ jobs:
 
       - name: Install bootstrap tools and browser dependencies
         run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+          GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
           pnpm install --frozen-lockfile --ignore-scripts --strict-peer-dependencies
           pnpm --dir e2e exec playwright install --with-deps chromium
 
@@ -127,9 +127,9 @@ jobs:
       - name: Run real pinned A11 linking and A15 native nested-script probes
         run: |
           umask 077
-          mkdir "$RUNNER_TEMP/workspace-ci-private/protocol-native" "$RUNNER_TEMP/workspace-ci-private/protocol-module"
-          HOST_MODFILE="$(go run ./scripts/nativepatch/main.go --root "$PWD" --sdk-source "$SDK_SOURCE" \
-            --output-directory "$RUNNER_TEMP/workspace-ci-private/protocol-native")"
+          mkdir "$RUNNER_TEMP/workspace-ci-private/protocol-hostmod" "$RUNNER_TEMP/workspace-ci-private/protocol-module"
+          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$SDK_SOURCE" \
+            --output-directory "$RUNNER_TEMP/workspace-ci-private/protocol-hostmod")"
           PROBE_MODFILE="$RUNNER_TEMP/workspace-ci-private/protocol-module/probe.mod"
           cp "$HOST_MODFILE" "$PROBE_MODFILE"
           cp "${HOST_MODFILE%.mod}.sum" "${PROBE_MODFILE%.mod}.sum"
@@ -255,7 +255,7 @@ jobs:
 
       - name: Install Wails v3
         shell: bash
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
 
       - name: Build workspace packages
         shell: bash

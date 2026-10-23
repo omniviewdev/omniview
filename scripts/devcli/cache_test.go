@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/omniviewdev/omniview/internal/devsession"
+	"github.com/omniviewdev/omniview/scripts/internal/hostmodtest"
 )
 
 func canonicalTempDir(t *testing.T) string {
@@ -241,16 +242,16 @@ func TestTamperedAndIncompletePublishedArtifactsAreRefusedPreservingBytes(t *tes
 	}
 }
 
-func TestBuildModuleCloneCannotMutateNativeTemplateSums(t *testing.T) {
-	native := filepath.Join(canonicalTempDir(t), "native")
-	module := filepath.Join(native, "host.mod")
-	if _, err := devsession.EnsurePrivateDirectory(native); err != nil {
+func TestBuildModuleCloneCannotMutateHostTemplateSums(t *testing.T) {
+	host := filepath.Join(canonicalTempDir(t), "host-module")
+	module := filepath.Join(host, "host.mod")
+	if _, err := devsession.EnsurePrivateDirectory(host); err != nil {
 		t.Fatal(err)
 	}
 	if err := devsession.WritePrivateFile(module, []byte(testHostModule)); err != nil {
 		t.Fatal(err)
 	}
-	if err := devsession.WritePrivateFile(filepath.Join(native, "host.sum"), []byte("immutable native sum\n")); err != nil {
+	if err := devsession.WritePrivateFile(filepath.Join(host, "host.sum"), []byte("immutable host sum\n")); err != nil {
 		t.Fatal(err)
 	}
 	stage := canonicalTempDir(t)
@@ -268,10 +269,10 @@ func TestBuildModuleCloneCannotMutateNativeTemplateSums(t *testing.T) {
 		t.Fatal(err)
 	}
 	if raw, err := os.ReadFile(module); err != nil || string(raw) != testHostModule {
-		t.Fatalf("native module template mutated: %v", err)
+		t.Fatalf("host module template mutated: %v", err)
 	}
-	if raw, err := os.ReadFile(filepath.Join(native, "host.sum")); err != nil || string(raw) != "immutable native sum\n" {
-		t.Fatalf("native sum template mutated: %v", err)
+	if raw, err := os.ReadFile(filepath.Join(host, "host.sum")); err != nil || string(raw) != "immutable host sum\n" {
+		t.Fatalf("host sum template mutated: %v", err)
 	}
 }
 
@@ -341,18 +342,18 @@ func TestGoEnvironmentIsScopedAndCannotInheritWorkspaceModuleFlags(t *testing.T)
 	}
 }
 
-func TestNativeInputKeyTracksActualPatchAndModuleInputs(t *testing.T) {
+func TestHostInputKeyTracksHelperAndModuleInputs(t *testing.T) {
 	cases := []struct {
 		name   string
 		file   string
 		change func(*selectedInputs)
 	}{
-		{name: "patch bytes", file: "patches/native.patch"},
-		{name: "patch metadata bytes", file: "patches/metadata.json"},
 		{name: "bootstrap implementation", file: "main.go"},
 		{name: "host module", change: func(selected *selectedInputs) {
 			selected.module = append(selected.module, []byte("// changed host requirement\n")...)
 		}},
+		{name: "root Wails version authority", change: func(selected *selectedInputs) { selected.rootModule = []byte("changed root pin") }},
+		{name: "root Wails checksum authority", change: func(selected *selectedInputs) { selected.rootSum = []byte("changed root checksum") }},
 		{name: "SDK module", change: func(selected *selectedInputs) {
 			selected.sdkModule = append(selected.sdkModule, []byte("// changed SDK requirement\n")...)
 		}},
@@ -361,37 +362,37 @@ func TestNativeInputKeyTracksActualPatchAndModuleInputs(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			root := canonicalTempDir(t)
-			nativeRoot := filepath.Join(root, "scripts", "nativepatch")
-			if err := os.MkdirAll(filepath.Join(nativeRoot, "patches"), 0700); err != nil {
+			hostRoot := filepath.Join(root, "scripts", "hostmod")
+			if err := os.MkdirAll(hostRoot, 0700); err != nil {
 				t.Fatal(err)
 			}
-			for _, name := range []string{"main.go", "patches/native.patch", "patches/metadata.json"} {
-				if err := os.WriteFile(filepath.Join(nativeRoot, filepath.FromSlash(name)), []byte("original artifact bytes\n"), 0600); err != nil {
+			for _, name := range []string{"main.go"} {
+				if err := os.WriteFile(filepath.Join(hostRoot, filepath.FromSlash(name)), []byte("original artifact bytes\n"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			}
 			selected := selectedInputs{root: root, sourceModfile: filepath.Join(root, "go.mod"), module: []byte("module " + hostModulePath + "\n"), sdkSource: filepath.Join(root, "sdk"), sdkModule: []byte("module " + sdkModulePath + "\n")}
-			original, err := nativeInputKey(selected)
+			original, err := hostInputKey(selected)
 			if err != nil {
 				t.Fatal(err)
 			}
-			stable, err := nativeInputKey(selected)
+			stable, err := hostInputKey(selected)
 			if err != nil || stable != original {
 				t.Fatalf("unchanged input key: %q %v", stable, err)
 			}
 			if test.file != "" {
-				if err := os.WriteFile(filepath.Join(nativeRoot, filepath.FromSlash(test.file)), []byte("changed artifact bytes\n"), 0600); err != nil {
+				if err := os.WriteFile(filepath.Join(hostRoot, filepath.FromSlash(test.file)), []byte("changed artifact bytes\n"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			} else {
 				test.change(&selected)
 			}
-			changed, err := nativeInputKey(selected)
+			changed, err := hostInputKey(selected)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if changed == original {
-				t.Fatal("changed native/module input reused the old cache key")
+				t.Fatal("changed helper/module input reused the old cache key")
 			}
 		})
 	}
@@ -431,7 +432,7 @@ func TestFreshInputClaimRollbackAllowsCleanPreparationRetry(t *testing.T) {
 	if err != nil || !fresh {
 		t.Fatalf("fresh input claim: %v %v", fresh, err)
 	}
-	if err := writeNewBytes(filepath.Join(paths.native, "partial-download"), []byte("incomplete owned native preparation")); err != nil {
+	if err := writeNewBytes(filepath.Join(paths.host, "partial-preparation"), []byte("incomplete owned module preparation")); err != nil {
 		t.Fatal(err)
 	}
 	if err := removeBuildStage(paths.directory, paths.initialDirectory); err != nil {
@@ -444,7 +445,57 @@ func TestFreshInputClaimRollbackAllowsCleanPreparationRetry(t *testing.T) {
 	if err != nil || !fresh {
 		t.Fatalf("clean retry: %v %v", fresh, err)
 	}
-	if _, err := os.Lstat(filepath.Join(retry.native, "partial-download")); !os.IsNotExist(err) {
-		t.Fatalf("partial native bytes survived rollback: %v", err)
+	if _, err := os.Lstat(filepath.Join(retry.host, "partial-preparation")); !os.IsNotExist(err) {
+		t.Fatalf("partial module bytes survived rollback: %v", err)
+	}
+}
+
+func TestCachedHostPreparationRefusesTamperedTemplatesBeforeHelperCanRewrite(t *testing.T) {
+	for _, suffix := range []string{".mod", ".sum"} {
+		t.Run(suffix, func(t *testing.T) {
+			host := canonicalTempDir(t)
+			hostmodtest.Root(t, host)
+			module, err := os.ReadFile(filepath.Join(host, "go.mod"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sum, err := os.ReadFile(filepath.Join(host, "go.sum"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			helper, err := os.ReadFile(filepath.Join("..", "hostmod", "main.go"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sourceFile(t, filepath.Join(host, "scripts", "hostmod", "main.go"), string(helper))
+			selected := selectedInputs{root: host, sourceModfile: filepath.Join(host, "go.mod"), module: module, sum: sum, sumExists: true, rootModule: module, rootSum: sum, rootSumExists: true}
+			key, err := hostInputKey(selected)
+			if err != nil {
+				t.Fatal(err)
+			}
+			paths, fresh, err := claimInputs(cacheFixture(t), key, selected)
+			if err != nil || !fresh {
+				t.Fatalf("claim inputs: %v %v", fresh, err)
+			}
+			environment := goEnvironment(os.Getenv("GOCACHE"), "")
+			prepared, err := prepareHost(context.Background(), paths, fresh, selected, environment, os.Stderr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reused, err := prepareHost(context.Background(), paths, false, selected, environment, os.Stderr)
+			if err != nil || reused != prepared {
+				t.Fatalf("unchanged reuse: %#v %v", reused, err)
+			}
+			path := strings.TrimSuffix(prepared.Modfile, ".mod") + suffix
+			if err := os.WriteFile(path, []byte("human-modified module bytes\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := prepareHost(context.Background(), paths, false, selected, environment, os.Stderr); err == nil {
+				t.Fatal("tampered template accepted")
+			}
+			if raw, _ := os.ReadFile(path); string(raw) != "human-modified module bytes\n" {
+				t.Fatal("tampered bytes were silently repaired")
+			}
+		})
 	}
 }

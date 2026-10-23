@@ -271,7 +271,12 @@ func sameASCIIProfileLabel(value, lowerLabel string) bool {
 
 // ChildEnvironment replaces inherited ownership values, including for a root
 // selected programmatically or by ldflags. It never replaces HOME/credentials.
-func (p Profile) ChildEnvironment(base []string, pluginID string) []string {
+func (p Profile) ChildEnvironment(base []string, pluginID string) ([]string, error) {
+	// Native host XDG roots must never escape into plugin or source-tool execs.
+	base, err := RestoreNativeChildEnvironment(base)
+	if err != nil {
+		return nil, err
+	}
 	values := []string{"GOWORK=off", "OMNIVIEW_STATE_DIR=" + p.Descriptor.StateRoot, "OMNIVIEW_INSTANCE_ID=" + p.Descriptor.InstanceID, "OMNIVIEW_GENERATION=" + p.Descriptor.Generation, "OMNIVIEW_WORKSPACE_ID=" + p.Descriptor.WorkspaceID, "OMNIVIEW_PLUGIN_ID=" + pluginID}
 	if p.Workspace != nil {
 		values = append(values, devcontract.WorkspaceEnvironment+"="+p.Workspace.ManifestPath)
@@ -287,7 +292,7 @@ func (p Profile) ChildEnvironment(base []string, pluginID string) []string {
 			env = append(env, entry)
 		}
 	}
-	return append(env, values...)
+	return append(env, values...), nil
 }
 
 // PrepareRuntime creates only instance-owned transient directories. Call after
@@ -383,6 +388,10 @@ func Snapshot(d devcontract.InstanceDescriptor) devcontract.InstanceDescriptor {
 // PluginEnvironment derives process ownership from the injected state service,
 // not an inherited state-root variable. This also supports non-main embedders.
 func PluginEnvironment(stateRoot, pluginID string, base []string) ([]string, error) {
+	base, err := RestoreNativeChildEnvironment(base)
+	if err != nil {
+		return nil, err
+	}
 	root, err := appstate.ValidateRoot(stateRoot)
 	if err != nil {
 		return nil, err
@@ -411,7 +420,10 @@ func PluginEnvironment(stateRoot, pluginID string, base []string) ([]string, err
 		profile.Descriptor.InstanceID = workspace.Manifest.WorkspaceID
 		profile.Descriptor.WorkspaceID = workspace.Manifest.WorkspaceID
 	}
-	env := profile.ChildEnvironment(base, pluginID)
+	env, err := profile.ChildEnvironment(base, pluginID)
+	if err != nil {
+		return nil, err
+	}
 	// Only an actual managed host carries both process-bridge selections.
 	// Production and directly launched development hosts do not acquire a
 	// dependency on supervisor-owned transport records.
