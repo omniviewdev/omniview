@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import type { Page, TestInfo } from '@playwright/test';
 import { test, expect } from '../fixtures/app.fixture';
-import { openSettingsCategory, saveSettings, settingRow } from '../fixtures/helpers';
+import { openSettingsCategory, restartApp, saveSettings, settingRow } from '../fixtures/helpers';
 import type { Descriptor, Workspace } from '../fixtures/workspace';
 import { join } from 'node:path';
 
@@ -332,7 +332,7 @@ for (const liveFrontend of [false, true]) {
 
       stage = 'restart-isolation';
       const oldPluginGenerations = new Map(repaired.plugins.map(plugin => [plugin.id, plugin.generation]));
-      const restarted = await a.workspace.restart();
+      const restarted = await restartApp(a.page, a.workspace);
       expect(restarted.generation).not.toBe(repaired.generation);
       for (const plugin of restarted.plugins) {
         expect(plugin.generation).not.toBe(oldPluginGenerations.get(plugin.id));
