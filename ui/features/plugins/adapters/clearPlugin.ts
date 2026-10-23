@@ -1,9 +1,10 @@
 import { systemJs } from '../api/systemjs';
+import { clearDevPluginRefresh } from './importPlugin';
 
 /**
  * Production clear adapter.
  *
- * - Dev mode: no-op (Vite HMR manages dev modules)
+ * - Dev mode: disposes native-import refresh ownership (Vite owns module updates)
  * - Production: removes module from SystemJS cache
  *
  * This adapter satisfies `PluginServiceDeps.clearPlugin`.
@@ -12,6 +13,7 @@ export async function clearPlugin(opts: {
   pluginId: string;
   dev?: boolean;
 }): Promise<void> {
+  clearDevPluginRefresh(opts.pluginId);
   if (opts.dev) {
     // Dev-mode modules loaded via native ESM; nothing to clear from SystemJS.
     return;

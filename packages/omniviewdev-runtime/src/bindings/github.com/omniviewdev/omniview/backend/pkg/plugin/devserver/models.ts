@@ -46,46 +46,6 @@ export class BuildError {
 }
 
 /**
- * DevInfoFile is the JSON structure of the .devinfo file written by externally-run plugins.
- */
-export class DevInfoFile {
-    "pid": number;
-    "protocol": string;
-    "protocolVersion": number;
-    "addr": string;
-    "vitePort"?: number;
-    "pluginId"?: string;
-    "version"?: string;
-    "startedAt"?: string;
-
-    /** Creates a new DevInfoFile instance. */
-    constructor($$source: Partial<DevInfoFile> = {}) {
-        if (!("pid" in $$source)) {
-            this["pid"] = 0;
-        }
-        if (!("protocol" in $$source)) {
-            this["protocol"] = "";
-        }
-        if (!("protocolVersion" in $$source)) {
-            this["protocolVersion"] = 0;
-        }
-        if (!("addr" in $$source)) {
-            this["addr"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DevInfoFile instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DevInfoFile {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DevInfoFile($$parsedSource as Partial<DevInfoFile>);
-    }
-}
-
-/**
  * DevProcessStatus describes the current status of either the Vite process or the Go watcher.
  */
 export enum DevProcessStatus {
@@ -101,6 +61,7 @@ export enum DevProcessStatus {
     DevProcessStatusReady = "ready",
     DevProcessStatusError = "error",
     DevProcessStatusStopped = "stopped",
+    DevProcessStatusNotApplicable = "n/a",
 };
 
 /**
@@ -154,12 +115,6 @@ export enum DevServerMode {
      * DevServerModeManaged means the IDE spawned and manages the Vite + Go watcher processes.
      */
     DevServerModeManaged = "managed",
-
-    /**
-     * DevServerModeExternal means the developer runs processes externally;
-     * the IDE connects via .devinfo file.
-     */
-    DevServerModeExternal = "external",
 };
 
 /**
@@ -178,6 +133,12 @@ export class DevServerState {
     "lastBuildTime": string;
     "lastError": string;
     "grpcConnected": boolean;
+    "generation": string;
+    "hmrURL": string;
+    "buildStatus": LifecycleStage;
+    "rpcStatus": LifecycleStage;
+    "controllerStatus": LifecycleStage;
+    "ready": boolean;
 
     /** Creates a new DevServerState instance. */
     constructor($$source: Partial<DevServerState> = {}) {
@@ -214,6 +175,24 @@ export class DevServerState {
         if (!("grpcConnected" in $$source)) {
             this["grpcConnected"] = false;
         }
+        if (!("generation" in $$source)) {
+            this["generation"] = "";
+        }
+        if (!("hmrURL" in $$source)) {
+            this["hmrURL"] = "";
+        }
+        if (!("buildStatus" in $$source)) {
+            this["buildStatus"] = LifecycleStage.$zero;
+        }
+        if (!("rpcStatus" in $$source)) {
+            this["rpcStatus"] = LifecycleStage.$zero;
+        }
+        if (!("controllerStatus" in $$source)) {
+            this["controllerStatus"] = LifecycleStage.$zero;
+        }
+        if (!("ready" in $$source)) {
+            this["ready"] = false;
+        }
 
         Object.assign(this, $$source);
     }
@@ -226,6 +205,23 @@ export class DevServerState {
         return new DevServerState($$parsedSource as Partial<DevServerState>);
     }
 }
+
+/**
+ * LifecycleStage distinguishes successful compilation from a live plugin.
+ */
+export enum LifecycleStage {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    StagePending = "pending",
+    StageBuilding = "building",
+    StageReady = "ready",
+    StageError = "error",
+    StageStopped = "stopped",
+    StageNotApplicable = "n/a",
+};
 
 /**
  * LogEntry is a single log line from either the Vite process or the Go build.

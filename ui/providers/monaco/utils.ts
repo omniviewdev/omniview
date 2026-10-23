@@ -21,7 +21,7 @@ export const registerModel = (opts: RegisterModelOpts) => {
   monaco.editor.createModel(
     opts.data ?? '',
     undefined,
-    monaco.Uri.parse(`file:///${opts.key}/${opts.id}.yaml`)
+    monaco.Uri.parse(`file:///${opts.key}/${opts.id}.yaml`),
   );
 };
 
@@ -30,7 +30,7 @@ export const registerModel = (opts: RegisterModelOpts) => {
  */
 export const disposeModel = (opts: RegisterModelOpts) => {
   const model = monaco.editor.getModel(
-    monaco.Uri.parse(`file:///${opts.key}/${opts.id}.yaml`)
+    monaco.Uri.parse(`file:///${opts.key}/${opts.id}.yaml`),
   );
   if (model) {
     model.dispose();

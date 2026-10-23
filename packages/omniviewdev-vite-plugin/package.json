@@ -1,6 +1,6 @@
 {
   "name": "@omniviewdev/vite-plugin",
-  "version": "0.2.1",
+  "version": "0.5.0",
   "description": "Vite plugin for Omniview plugin development. Redirects shared dependency imports to the host app's singleton instances via window.__OMNIVIEW_SHARED__.",
   "license": "AGPL-3.0-only",
   "author": "Omniview",
@@ -19,7 +19,7 @@
     "shims"
   ],
   "scripts": {
-    "build": "pnpm run generate-shims && pnpm run check-shims && tsup src/index.ts --format esm,cjs --dts --clean",
+    "build": "pnpm run generate-shims && pnpm run check-shims && node ../../scripts/build-tsup.mjs src/index.ts --format esm,cjs --dts --clean",
     "check-shims": "tsx scripts/check-shim-exports.ts",
     "generate-shims": "tsx scripts/generate-shims.ts",
     "test": "tsx --test scripts/*.test.ts",

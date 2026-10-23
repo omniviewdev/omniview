@@ -101,7 +101,7 @@ func TestInstance_SetBuildResult_Success(t *testing.T) {
 	state := inst.State()
 	assert.Equal(t, dur, state.LastBuildDuration)
 	assert.Empty(t, state.LastError)
-	assert.True(t, state.GRPCConnected) // success → grpc connected
+	assert.False(t, state.GRPCConnected) // compilation is not an RPC observation
 	assert.NotEmpty(t, state.LastBuildTime)
 	// 1 call from setBuildResult (setLastError doesn't emit status)
 	require.Equal(t, 1, sr.count())
@@ -293,50 +293,6 @@ func TestDevServerInstance_Stop_Order(t *testing.T) {
 			"goWatcher.Stop (idx %d) should be called before cancel (idx %d); order: %v",
 			gwIdx, cancelIdx, order)
 	}
-}
-
-func TestInstance_TriggerRebuild_NilGoWatcher(t *testing.T) {
-	inst, _, _ := newTestInstance(t, "trigger-nil")
-	// goWatcher is nil — TriggerRebuild should be a no-op, not panic.
-	inst.TriggerRebuild()
-}
-
-func TestInstance_TriggerRebuild_CallsHandleRebuild(t *testing.T) {
-	inst, _, _ := newTestInstance(t, "trigger-rebuild")
-
-	// Attach a goWatcher that records handleRebuild calls via the reloader mock.
-	reloader := &mockPluginReloader{}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Create a minimal goWatcher with real enough internals to test handleRebuild.
-	// We need: reloader, appendLog, setStatus, setBuild, emitErrors, logger, pluginID, devPath.
-	// handleRebuild calls runGoBuild which needs GoPath — with empty GoPath it will fail,
-	// which is fine for testing that the path is exercised.
-	doneCh := make(chan struct{})
-	close(doneCh)
-	inst.goWatcher = &goWatcherProcess{
-		ctx:        ctx,
-		cancel:     cancel,
-		logger:     logging.NewNop(),
-		pluginID:   "trigger-rebuild",
-		devPath:    t.TempDir(),
-		buildOpts:  BuildOpts{GoPath: ""}, // will cause build to fail
-		reloader:   reloader,
-		appendLog:  func(LogEntry) {},
-		setStatus:  func(DevProcessStatus) {},
-		setBuild:   func(time.Duration, string) {},
-		emitErrors: func(string, []BuildError) {},
-		done:       doneCh,
-	}
-
-	// TriggerRebuild should call handleRebuild("manual-trigger").
-	// Build will fail (no GoPath), but the point is that it exercises the path
-	// and doesn't panic.
-	inst.TriggerRebuild()
-
-	// Reloader should NOT be called because build failed.
-	assert.Equal(t, 0, reloader.getCallCount())
 }
 
 func TestInstance_StateTransitions(t *testing.T) {

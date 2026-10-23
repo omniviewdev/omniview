@@ -118,6 +118,12 @@ export class PluginMeta {
     "schema_version": number;
     "sdk_protocol_version": number;
 
+    /**
+     * StateIsolation is inspectable before launch; only a trusted builder's
+     * attestation may authorize isolated startup, never self-asserted YAML.
+     */
+    "state_isolation"?: StateIsolationProvenance | null;
+
     /** Creates a new PluginMeta instance. */
     constructor($$source: Partial<PluginMeta> = {}) {
         if (!("id" in $$source)) {
@@ -189,6 +195,7 @@ export class PluginMeta {
         const $$createField14_0 = $$createType6;
         const $$createField15_0 = $$createType7;
         const $$createField16_0 = $$createType8;
+        const $$createField19_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("author" in $$parsedSource) {
             $$parsedSource["author"] = $$createField10_0($$parsedSource["author"]);
@@ -210,6 +217,9 @@ export class PluginMeta {
         }
         if ("components" in $$parsedSource) {
             $$parsedSource["components"] = $$createField16_0($$parsedSource["components"]);
+        }
+        if ("state_isolation" in $$parsedSource) {
+            $$parsedSource["state_isolation"] = $$createField19_0($$parsedSource["state_isolation"]);
         }
         return new PluginMeta($$parsedSource as Partial<PluginMeta>);
     }
@@ -272,7 +282,7 @@ export class PluginTheme {
      * Creates a new PluginTheme instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginTheme {
-        const $$createField0_0 = $$createType9;
+        const $$createField0_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("colors" in $$parsedSource) {
             $$parsedSource["colors"] = $$createField0_0($$parsedSource["colors"]);
@@ -310,6 +320,57 @@ export class PluginThemeColors {
     }
 }
 
+/**
+ * StateIsolationProvenance is a trusted builder's attestation, not a declaration
+ * an arbitrary plugin may use to grant itself permission to start. It is checked
+ * without executing the artifact. Absence means unsupported, not legacy-safe.
+ * The host must establish the attestation's trusted origin separately.
+ * No lifecycle RPC/protocol change is required to inspect this metadata.
+ */
+export class StateIsolationProvenance {
+    "schema_version": number;
+    "capability": string;
+    "sdk_module": string;
+    "sdk_revision": string;
+
+    /**
+     * SDKSourceSHA256 identifies the trusted builder's exact selected working-tree
+     * snapshot, permitting live feature edits above the reviewed capability base.
+     * Empty is reserved for immutable, clean, commit-only trusted builds.
+     */
+    "sdk_source_sha256"?: string;
+    "binary_sha256": string;
+
+    /** Creates a new StateIsolationProvenance instance. */
+    constructor($$source: Partial<StateIsolationProvenance> = {}) {
+        if (!("schema_version" in $$source)) {
+            this["schema_version"] = 0;
+        }
+        if (!("capability" in $$source)) {
+            this["capability"] = "";
+        }
+        if (!("sdk_module" in $$source)) {
+            this["sdk_module"] = "";
+        }
+        if (!("sdk_revision" in $$source)) {
+            this["sdk_revision"] = "";
+        }
+        if (!("binary_sha256" in $$source)) {
+            this["binary_sha256"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new StateIsolationProvenance instance from a string or object.
+     */
+    static createFrom($$source: any = {}): StateIsolationProvenance {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new StateIsolationProvenance($$parsedSource as Partial<StateIsolationProvenance>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = PluginResourceComponent.createFrom;
 const $$createType1 = $Create.Array($$createType0);
@@ -320,4 +381,6 @@ const $$createType5 = $Create.Array($$createType4);
 const $$createType6 = $Create.Array($Create.Any);
 const $$createType7 = PluginTheme.createFrom;
 const $$createType8 = PluginComponents.createFrom;
-const $$createType9 = PluginThemeColors.createFrom;
+const $$createType9 = StateIsolationProvenance.createFrom;
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = PluginThemeColors.createFrom;

@@ -64,6 +64,7 @@ export async function callBinding<T = unknown>(
   if (!response.ok()) {
     throw new Error(`${method} failed: ${response.status()} ${await response.text()}`);
   }
+
   // Strings come back as plain text, everything else as JSON.
   const text = await response.text();
   const isJson = response.headers()['content-type']?.includes('application/json');
@@ -114,6 +115,7 @@ export async function mockBindings(
       });
       return;
     }
+
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body ?? null) });
   });
 }

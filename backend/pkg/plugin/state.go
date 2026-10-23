@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -22,15 +23,36 @@ func (pm *pluginManager) writePluginStateJSON() error {
 	stateMu.Lock()
 	defer stateMu.Unlock()
 
+	return pm.writePluginStateRecords(pm.pluginStateSnapshot(""))
+}
+
+// pluginStateSnapshot keeps an in-flight archive's durable preimage visible to
+// unrelated state writers. Only its commit may publish that candidate.
+func (pm *pluginManager) pluginStateSnapshot(committingID string) []types.PluginStateRecord {
 	pm.recordsMu.RLock()
-	records := make([]types.PluginStateRecord, 0, len(pm.records))
-	for _, r := range pm.records {
-		if r == nil {
-			continue
+	defer pm.recordsMu.RUnlock()
+	records := make([]types.PluginStateRecord, 0, len(pm.records)+len(pm.pendingArchiveState))
+	for id, record := range pm.records {
+		if id != committingID {
+			if _, pending := pm.pendingArchiveState[id]; pending {
+				continue
+			}
 		}
-		records = append(records, r.ToStateRecord())
+		if record != nil {
+			records = append(records, record.ToStateRecord())
+		}
 	}
-	pm.recordsMu.RUnlock()
+	for id, previous := range pm.pendingArchiveState {
+		if id != committingID && previous != nil {
+			records = append(records, *previous)
+		}
+	}
+	return records
+}
+
+// The caller holds stateMu. Sync both the file and its rename before a recovery
+// marker may authorize irreversible disposal of the previous installation.
+func (pm *pluginManager) writePluginStateRecords(records []types.PluginStateRecord) error {
 
 	data, err := json.MarshalIndent(records, "", "  ")
 	if err != nil {
@@ -39,7 +61,15 @@ func (pm *pluginManager) writePluginStateJSON() error {
 
 	tmpName := stateFileName + ".tmp"
 
-	if err = pm.stateRoot.WriteFile(tmpName, data, stateFilePerm); err != nil {
+	file, err := pm.stateRoot.OpenFile(tmpName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, stateFilePerm)
+	if err != nil {
+		return fmt.Errorf("error opening temp state file: %w", err)
+	}
+	_, writeErr := file.Write(data)
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
+	if err = errors.Join(writeErr, file.Close()); err != nil {
 		return fmt.Errorf("error writing temp state file: %w", err)
 	}
 
@@ -48,7 +78,7 @@ func (pm *pluginManager) writePluginStateJSON() error {
 		return fmt.Errorf("error renaming state file: %w", err)
 	}
 
-	return nil
+	return syncUninstallDirectory(pm.stateRoot, ".")
 }
 
 // mergeAndWritePluginState writes the current in-memory records but also
@@ -62,11 +92,18 @@ func (pm *pluginManager) mergeAndWritePluginState(persisted []types.PluginStateR
 	// Start with current in-memory records.
 	pm.recordsMu.RLock()
 	merged := make(map[string]types.PluginStateRecord, len(pm.records)+len(persisted))
-	for _, r := range pm.records {
-		if r == nil {
+	for id, record := range pm.records {
+		if _, pending := pm.pendingArchiveState[id]; pending {
 			continue
 		}
-		merged[r.ID] = r.ToStateRecord()
+		if record != nil {
+			merged[id] = record.ToStateRecord()
+		}
+	}
+	for id, previous := range pm.pendingArchiveState {
+		if previous != nil {
+			merged[id] = *previous
+		}
 	}
 	pm.recordsMu.RUnlock()
 
@@ -87,29 +124,18 @@ func (pm *pluginManager) mergeAndWritePluginState(persisted []types.PluginStateR
 		records = append(records, r)
 	}
 
-	data, err := json.MarshalIndent(records, "", "  ")
-	if err != nil {
-		return fmt.Errorf("error marshaling plugin state: %w", err)
-	}
-
-	tmpName := stateFileName + ".tmp"
-
-	if err = pm.stateRoot.WriteFile(tmpName, data, stateFilePerm); err != nil {
-		return fmt.Errorf("error writing temp state file: %w", err)
-	}
-
-	if err = pm.stateRoot.Rename(tmpName, stateFileName); err != nil {
-		_ = pm.stateRoot.Remove(tmpName)
-		return fmt.Errorf("error renaming state file: %w", err)
-	}
-
-	return nil
+	return pm.writePluginStateRecords(records)
 }
 
 // readPluginStateJSON reads persisted plugin state from JSON.
 func (pm *pluginManager) readPluginStateJSON() ([]types.PluginStateRecord, error) {
 	stateMu.RLock()
 	defer stateMu.RUnlock()
+	return pm.readPluginStateJSONLocked()
+}
+
+// The caller holds stateMu.
+func (pm *pluginManager) readPluginStateJSONLocked() ([]types.PluginStateRecord, error) {
 
 	data, err := pm.stateRoot.ReadFile(stateFileName)
 	if err != nil {

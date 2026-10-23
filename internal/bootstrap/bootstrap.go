@@ -17,6 +17,13 @@ import (
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
 
+const settingsChangedEvent = "settings/changed"
+
+func init() {
+	// Invalidation only: setting values can contain credentials.
+	application.RegisterEvent[string](settingsChangedEvent)
+}
+
 // Service wraps the startup/shutdown logic that was previously in the
 // Wails v2 OnStartup/OnShutdown closures. It implements ServiceStartup and
 // ServiceShutdown so the Wails v3 runtime calls it automatically.
@@ -38,29 +45,14 @@ func (b *Service) ServiceStartup(ctx context.Context, _ application.ServiceOptio
 	}
 	b.registerCoreSettings(coreCategories)
 
-	// Wire persistence: save to bbolt whenever a category changes.
-	b.persistOnChange(coreCategories)
-
-	// Wire telemetry settings hot-toggle: when any setting in the
-	// "telemetry" category changes, rebuild the telemetry Config and apply.
-	telemetryFromSettings := func(vals map[string]any) telemetry.Config {
-		return b.TelemetrySvc.Config().WithSettings(vals)
-	}
-
-	b.SettingsProvider.RegisterChangeHandler("telemetry", func(vals map[string]any) {
-		cfg := telemetryFromSettings(vals)
-		if err := b.TelemetrySvc.ApplyConfig(ctx, cfg); err != nil {
-			b.Log.Errorw(ctx, "failed to apply telemetry config change", "error", err)
-		} else {
-			b.Log.Infow(ctx, "telemetry config updated from settings")
-		}
-	})
+	// One handler per category owns persistence, side effects and UI invalidation.
+	b.persistOnChange(ctx, coreCategories)
 
 	// Apply the persisted telemetry settings immediately so telemetry
 	// activates on startup (the change handler only fires on changes).
 	if b.SettingsStore != nil {
 		if vals, err := b.SettingsStore.LoadCategory("telemetry"); err == nil && len(vals) > 0 {
-			cfg := telemetryFromSettings(vals)
+			cfg := b.TelemetrySvc.Config().WithSettings(vals)
 			if applyErr := b.TelemetrySvc.ApplyConfig(ctx, cfg); applyErr != nil {
 				b.Log.Errorw(ctx, "failed to apply initial telemetry config", "error", applyErr)
 			} else {
@@ -121,8 +113,8 @@ func (b *Service) registerCoreSettings(coreCategories []pkgsettings.Category) {
 	}
 }
 
-// persistOnChange registers change handlers that save each category to bbolt.
-func (b *Service) persistOnChange(coreCategories []pkgsettings.Category) {
+// persistOnChange registers the single category callback supported by the SDK.
+func (b *Service) persistOnChange(ctx context.Context, coreCategories []pkgsettings.Category) {
 	for _, category := range coreCategories {
 		catID := category.ID
 		b.SettingsProvider.RegisterChangeHandler(catID, func(vals map[string]any) {
@@ -130,6 +122,17 @@ func (b *Service) persistOnChange(coreCategories []pkgsettings.Category) {
 				if saveErr := b.SettingsStore.SaveCategory(catID, vals); saveErr != nil {
 					fmt.Fprintf(os.Stderr, "failed to persist settings category %s: %v\n", catID, saveErr)
 				}
+			}
+			if catID == coresettings.Telemetry.ID {
+				cfg := b.TelemetrySvc.Config().WithSettings(vals)
+				if err := b.TelemetrySvc.ApplyConfig(ctx, cfg); err != nil {
+					b.Log.Errorw(ctx, "failed to apply telemetry config change", "error", err)
+				} else {
+					b.Log.Infow(ctx, "telemetry config updated from settings")
+				}
+			}
+			if app := application.Get(); app != nil {
+				app.Event.Emit(settingsChangedEvent, catID)
 			}
 		})
 	}

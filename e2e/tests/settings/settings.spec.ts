@@ -29,6 +29,7 @@ test.describe('Settings', () => {
     for (const { label } of categories) {
       await expect(nav(appPage).getByText(label, { exact: true })).toBeVisible();
     }
+
     await expect(nav(appPage).getByText('Extensions', { exact: true })).toBeVisible();
   });
 
@@ -117,13 +118,17 @@ test.describe('Settings', () => {
 
   test('Discard puts back the stored values and saves nothing', async ({ appPage }) => {
     const before = await storedValue(appPage, 'developer.gopath');
+    if (before !== null && before !== undefined && typeof before !== 'string') {
+      throw new Error('Stored developer.gopath must be a string');
+    }
+
     await openSettingsCategory(appPage, 'Developer Settings');
 
     const input = settingRow(appPage, 'developer.gopath').getByRole('textbox');
     await input.fill('/tmp/e2e-discarded');
     await appPage.getByRole('button', { name: 'Discard' }).click();
 
-    await expect(input).toHaveValue(String(before ?? ''));
+    await expect(input).toHaveValue(before ?? '');
     await expect(appPage.getByRole('button', { name: 'Save Changes' })).toBeHidden();
     expect(await storedValue(appPage, 'developer.gopath')).toBe(before);
   });

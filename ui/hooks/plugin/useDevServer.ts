@@ -37,7 +37,7 @@ const KEYS = {
  */
 function upsertState(
   existing: DevServerState[] | undefined,
-  incoming: DevServerState
+  incoming: DevServerState,
 ): DevServerState[] {
   if (!existing) {
     return [incoming];
@@ -79,9 +79,9 @@ export function useDevServer(pluginID?: string) {
 
         // Update list cache
         queryClient.setQueryData<DevServerState[]>(KEYS.all, (old) =>
-          upsertState(old, state)
+          upsertState(old, state),
         );
-      }
+      },
     );
 
     return () => {
@@ -154,7 +154,7 @@ export function useDevServer(pluginID?: string) {
  */
 export function useDevBuildStream(
   pluginID: string,
-  opts?: { maxLines?: number; sourceFilter?: string }
+  opts?: { maxLines?: number; sourceFilter?: string },
 ) {
   const maxLines = opts?.maxLines ?? 1000;
   const sourceFilter = opts?.sourceFilter ?? 'all';
@@ -196,7 +196,7 @@ export function useDevBuildStream(
         }
 
         setErrors((prev) => [...prev, ...payload.errors]);
-      }
+      },
     );
 
     return () => {

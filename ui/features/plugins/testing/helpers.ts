@@ -160,6 +160,7 @@ export function createTestDeps(opts?: { maxCrashRecordsPerContribution?: number 
 
   const deps: PluginServiceDeps = {
     crashData,
+    getPluginDescriptor: async (pluginId) => ({ id: pluginId, dev: false }),
     importPlugin: importer.importPlugin,
 
     clearPlugin: async () => {

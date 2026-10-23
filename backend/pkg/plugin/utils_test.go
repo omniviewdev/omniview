@@ -106,4 +106,5 @@ func TestInstallPluginFromPath_UIOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "flux", meta.ID)
 	assert.FileExists(t, filepath.Join(pm.pluginsRoot.ResolvePath("flux"), "assets", "entry.js"))
+	assert.FileExists(t, path, "install must preserve the caller-owned archive")
 }

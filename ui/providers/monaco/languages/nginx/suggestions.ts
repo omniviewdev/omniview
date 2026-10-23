@@ -12,7 +12,7 @@ function getDirectives(range: monaco.IRange) {
 }
 
 export default function suggestions(
-  range: monaco.IRange
+  range: monaco.IRange,
 ): monaco.languages.CompletionList['suggestions'] {
   return [
     ...getDirectives(range),

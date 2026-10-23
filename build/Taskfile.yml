@@ -1,12 +1,10 @@
 version: '3'
 
-tasks:
-  go:mod:tidy:
-    summary: Runs `go mod tidy`
-    internal: true
-    cmds:
-      - go mod tidy
+env:
+  GOWORK: "off"
+  GOFLAGS: ""
 
+tasks:
   install:frontend:deps:
     summary: Install frontend dependencies
     dir: "{{.ROOT_DIR}}"
@@ -16,7 +14,7 @@ tasks:
     generates:
       - node_modules/.pnpm/lock.yaml
     cmds:
-      - pnpm install
+      - GOWORK=off GOFLAGS= pnpm install --frozen-lockfile
 
   build:frontend:
     label: build:frontend (DEV={{.DEV}})
@@ -29,7 +27,7 @@ tasks:
           BUILD_FLAGS:
             ref: .BUILD_FLAGS
     cmds:
-      - pnpm run {{.BUILD_COMMAND}}
+      - GOWORK=off GOFLAGS= pnpm run {{.BUILD_COMMAND}}
     env:
       PRODUCTION: '{{if eq .DEV "true"}}false{{else}}true{{end}}'
     vars:
@@ -39,16 +37,17 @@ tasks:
     label: generate:bindings (BUILD_FLAGS={{.BUILD_FLAGS}})
     summary: Generates bindings for the frontend
     dir: "{{.ROOT_DIR}}"
-    deps:
-      - task: go:mod:tidy
-    sources:
-      - "**/*.go"
-      - go.mod
-      - go.sum
-    generates:
-      - packages/omniviewdev-runtime/src/bindings/**/*
+    vars:
+      BUILD_FLAGS: '{{if eq .RELEASE "true"}}{{.COMPOSED_BUILD_FLAGS}}{{else}}{{.BUILD_FLAGS | default .COMPOSED_BUILD_FLAGS}}{{end}}'
+      BINDINGS_OUTPUT_DIRECTORY: '{{.BINDINGS_OUTPUT_DIRECTORY | default "packages/omniviewdev-runtime/src/bindings"}}'
     cmds:
-      - GOWORK=off wails3 generate bindings -d packages/omniviewdev-runtime/src/bindings -f '{{.BUILD_FLAGS}}' -clean=true -ts
+      - |
+        set -e
+        HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
+        GOWORK=off GOFLAGS= go mod tidy -modfile="$HOST_MODFILE"
+        HOST_BINDING_GOFLAGS="$({{.HOST_BOOTSTRAP}} --host-modfile="$HOST_MODFILE" --format goflags)"
+        BINDING_FLAGS={{.BUILD_FLAGS | shellQuote}}
+        {{.WAILS_CLI}} generate bindings -d {{.BINDINGS_OUTPUT_DIRECTORY | shellQuote}} -f "$BINDING_FLAGS $HOST_BINDING_GOFLAGS" -clean=true -ts
 
   generate:icons:
     summary: Generates platform icons from appicon.png
@@ -59,18 +58,10 @@ tasks:
       - "darwin/icons.icns"
       - "windows/icon.ico"
     cmds:
-      - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
-
-  dev:frontend:
-    summary: Runs the frontend in development mode
-    dir: "{{.ROOT_DIR}}"
-    deps:
-      - task: install:frontend:deps
-    cmds:
-      - pnpm exec vite --port {{.VITE_PORT}} --strictPort
+      - '{{.WAILS_CLI}} generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico'
 
   update:build-assets:
     summary: Updates the build assets
     dir: build
     cmds:
-      - wails3 update build-assets -name "{{.APP_NAME}}" -binaryname "{{.APP_NAME}}" -config config.yml -dir .
+      - '{{.WAILS_CLI}} update build-assets -name "{{.APP_NAME}}" -binaryname "{{.APP_NAME}}" -config config.yml -dir .'

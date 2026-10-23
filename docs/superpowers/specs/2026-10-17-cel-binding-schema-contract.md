@@ -107,7 +107,7 @@ Reproduction source, fixtures, exact module checksums and measured outputs: [con
 After extraction, run from `bindings/`:
 
 ```sh
-GOWORK=off go build -o evaluator . && bun run driver.ts
+test "$(bun --version)" = "1.1.20" && GOWORK=off go build -o evaluator . && bun run driver.ts
 ```
 
 Run from `schema/`:

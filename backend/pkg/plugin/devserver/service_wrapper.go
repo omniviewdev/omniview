@@ -2,6 +2,7 @@ package devserver
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -21,16 +22,37 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 	return s.Mgr.ServiceShutdown()
 }
 func (s *ServiceWrapper) StartDevServer(pluginID string) (DevServerState, error) {
-	return s.Mgr.StartDevServer(pluginID)
+	state, err := s.Mgr.StartDevServer(pluginID)
+	if err != nil {
+		return state, err
+	}
+	if state.RPCStatus == StageNotApplicable {
+		reloader, ok := s.Mgr.pluginReloader.(interface {
+			ReloadManagedPlugin(context.Context, string, string, string) error
+		})
+		if !ok {
+			return state, fmt.Errorf("canonical plugin lifecycle start unavailable")
+		}
+		if err = reloader.ReloadManagedPlugin(s.Mgr.ctx, pluginID, state.DevPath, state.Generation); err != nil {
+			return s.Mgr.GetDevServerState(pluginID), err
+		}
+	}
+	return s.Mgr.GetDevServerState(pluginID), nil
 }
 func (s *ServiceWrapper) StartDevServerForPath(pluginID, devPath string) (DevServerState, error) {
 	return s.Mgr.StartDevServerForPath(pluginID, devPath)
 }
 func (s *ServiceWrapper) StopDevServer(pluginID string) error {
-	return s.Mgr.StopDevServer(pluginID)
+	if stopper, ok := s.Mgr.pluginReloader.(interface{ StopDevPlugin(string) error }); ok {
+		return stopper.StopDevPlugin(pluginID)
+	}
+	return fmt.Errorf("canonical plugin lifecycle stop unavailable")
 }
 func (s *ServiceWrapper) RestartDevServer(pluginID string) (DevServerState, error) {
-	return s.Mgr.RestartDevServer(pluginID)
+	if err := s.StopDevServer(pluginID); err != nil {
+		return DevServerState{}, err
+	}
+	return s.StartDevServer(pluginID)
 }
 func (s *ServiceWrapper) RebuildPlugin(pluginID string) error {
 	return s.Mgr.RebuildPlugin(pluginID)
@@ -46,7 +68,4 @@ func (s *ServiceWrapper) GetDevServerLogs(pluginID string, count int) []LogEntry
 }
 func (s *ServiceWrapper) IsManaged(pluginID string) bool {
 	return s.Mgr.IsManaged(pluginID)
-}
-func (s *ServiceWrapper) GetExternalPluginInfo(pluginID string) *DevInfoFile {
-	return s.Mgr.GetExternalPluginInfo(pluginID)
 }

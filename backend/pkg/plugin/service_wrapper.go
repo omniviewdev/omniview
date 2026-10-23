@@ -17,6 +17,12 @@ type ServiceWrapper struct {
 func (s *ServiceWrapper) InstallInDevMode() (*config.PluginMeta, error) {
 	return s.Mgr.InstallInDevMode()
 }
+func (s *ServiceWrapper) InstallDevPluginFromPath(path string) (sdktypes.PluginInfo, error) {
+	return s.Mgr.InstallDevPluginFromPath(path)
+}
+func (s *ServiceWrapper) UnlinkDevPlugin(id string) (sdktypes.PluginInfo, error) {
+	return s.Mgr.UnlinkDevPlugin(id)
+}
 func (s *ServiceWrapper) InstallFromPathPrompt() (*config.PluginMeta, error) {
 	return s.Mgr.InstallFromPathPrompt()
 }

@@ -1,12 +1,12 @@
 {
   "name": "@omniviewdev/providers",
-  "version": "0.2.1",
+  "version": "0.5.0",
   "description": "Package to interact with the various providers in Omniview via the UI.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "repository": {
-    "directory": "pkg/providers",
+    "directory": "packages/omniviewdev-providers",
     "url": "https://github.com/omniviewdev/omniview"
   },
   "files": [
@@ -17,7 +17,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup index.ts --minify --dts --format cjs,esm --out-dir dist",
+    "build": "node ../../scripts/build-tsup.mjs index.ts --minify --dts --format cjs,esm",
     "lint": "eslint --cache --ext .js,.jsx,.ts,.tsx ./src",
     "lint:fix": "npm run lint -- --fix"
   },
@@ -39,6 +39,6 @@
     "vite": "^5.2.10"
   },
   "dependencies": {
-    "@wailsio/runtime": "3.0.0-beta.29"
+    "@wailsio/runtime": "3.0.0-beta.34"
   }
 }

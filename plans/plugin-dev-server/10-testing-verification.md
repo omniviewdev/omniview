@@ -1,5 +1,10 @@
 # 10 -- Testing & Verification Plan
 
+> Historical test proposal. The independent runner module no longer exists.
+> Its meaningful target/discovery/log/operation behavior is covered by the
+> host-module CLI, devsession and managed lifecycle tests; current command
+> scenarios are documented in [development CLI](../../docs/development-cli.md).
+
 ## Testing Strategy for the Plugin Dev Server System
 
 **Scope**: All components from Phases 1-9. Testing spans Go backend, TypeScript frontend, integration between them, and end-to-end user workflows.

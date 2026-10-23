@@ -363,67 +363,6 @@ describe('Group 21: Dev Mode Paths', () => {
     s = setup();
   });
 
-  // 21.1 Dev load calls ensureDevSharedDeps
-  it('21.1 dev load calls ensureDevSharedDeps', async () => {
-    let called = false;
-    s.deps.ensureDevSharedDeps = async () => {
-      called = true; 
-    };
-
-    s.importer.register('A', validModule());
-
-    await s.service.load('A', { dev: true, devPort: 5173 });
-
-    expect(called).toBe(true);
-  });
-
-  // 21.2 Prod load does NOT call ensureDevSharedDeps
-  it('21.2 prod load does NOT call ensureDevSharedDeps', async () => {
-    let called = false;
-    s.deps.ensureDevSharedDeps = async () => {
-      called = true; 
-    };
-
-    s.importer.register('A', validModule());
-
-    await s.service.load('A');
-
-    expect(called).toBe(false);
-  });
-
-  // 21.3 Dev plugin import URL format
-  it('21.3 dev plugin import called with dev opts', async () => {
-    let capturedOpts: any = null;
-    s.deps.importPlugin = async (opts) => {
-      capturedOpts = opts;
-      return validModule();
-    };
-
-    await s.service.load('A', { dev: true, devPort: 5173 });
-
-    expect(capturedOpts).toEqual(expect.objectContaining({
-      pluginId: 'A',
-      dev: true,
-      devPort: 5173,
-    }));
-  });
-
-  // 21.4 Dev reload preserves dev state
-  it('21.4 dev reload preserves dev state', async () => {
-    s.importer.register('A', validModule());
-    await s.service.load('A', { dev: true, devPort: 5173 });
-
-    const stateAfterLoad = s.service.getPluginState('A');
-    expect(stateAfterLoad?.isDev).toBe(true);
-    expect(stateAfterLoad?.devPort).toBe(5173);
-
-    await s.service.reload('A');
-
-    const stateAfterReload = s.service.getPluginState('A');
-    expect(stateAfterReload?.isDev).toBe(true);
-    expect(stateAfterReload?.devPort).toBe(5173);
-  });
-
   // 21.5 Dev and prod plugins coexist
   it('21.5 dev and prod plugins coexist', async () => {
     s.importer.register('A', validModule());

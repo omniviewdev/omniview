@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { HomepageCardConfig } from '@/features/extensions/homepage/types';
+import { readProfileStorage, writeProfileStorage } from '@/features/instance/boot';
 
 const STORAGE_KEY = 'omniview:homepage:cards';
 
@@ -13,7 +14,7 @@ const DEFAULT_SETTINGS: HomepageCardSettings = { order: [], hidden: [], configs:
 
 function readSettings(): HomepageCardSettings {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readProfileStorage(STORAGE_KEY);
     if (raw) {
       return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
     }
@@ -25,7 +26,7 @@ function readSettings(): HomepageCardSettings {
 }
 
 function writeSettings(s: HomepageCardSettings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  writeProfileStorage(STORAGE_KEY, JSON.stringify(s));
 }
 
 export function useHomepageCardSettings() {

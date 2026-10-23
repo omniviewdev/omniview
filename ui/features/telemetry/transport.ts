@@ -5,7 +5,7 @@ type IngestFn = (payload: string) => Promise<void>;
 
 // Capture unpatched console.error at module load to avoid re-entering the
 // patched console (which writes to the sink → calls transport → recursion).
-const _originalConsoleError = console.error.bind(console);
+export const originalConsoleError = console.error.bind(console);
 
 export class WailsTransport extends BaseTransport {
   private readonly ingest: IngestFn;
@@ -29,7 +29,7 @@ export class WailsTransport extends BaseTransport {
       data = JSON.stringify(items);
     } catch (err) {
       if (import.meta.env?.DEV) {
-        _originalConsoleError('[WailsTransport] JSON.stringify failed:', err);
+        originalConsoleError('[WailsTransport] JSON.stringify failed:', err);
       }
 
       return;
@@ -37,7 +37,7 @@ export class WailsTransport extends BaseTransport {
 
     this.ingest(data).catch((err) => {
       if (import.meta.env?.DEV) {
-        _originalConsoleError('[WailsTransport] ingest failed:', err);
+        originalConsoleError('[WailsTransport] ingest failed:', err);
       }
     });
   }

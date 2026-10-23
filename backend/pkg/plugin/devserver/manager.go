@@ -2,14 +2,23 @@ package devserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
+
+	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/internal/appstate"
+	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsession"
+	"github.com/omniviewdev/omniview/internal/instance"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	pkgsettings "github.com/omniviewdev/plugin-sdk/settings"
 )
@@ -28,17 +37,24 @@ type PluginReloader interface {
 // DevServerManager manages dev server instances for plugins in development mode.
 // It is exposed as a Wails binding. All public methods are callable from the frontend.
 type DevServerManager struct {
-	app              *application.App
-	ctx              context.Context
-	logger           logging.Logger
-	mu               sync.RWMutex
-	instances        map[string]*DevServerInstance // pluginID -> instance
-	ports            *PortAllocator
-	pluginRef        PluginRef
-	pluginReloader   PluginReloader
-	settingsProvider pkgsettings.Provider
-	externalWatcher  *ExternalWatcher
-	pluginsRoot      *appstate.ScopedRoot // scoped to ~/.omniview/plugins
+	app                       *application.App
+	ctx                       context.Context
+	logger                    logging.Logger
+	mu                        sync.RWMutex
+	instances                 map[string]*DevServerInstance // pluginID -> instance
+	ports                     *PortAllocator
+	pluginRef                 PluginRef
+	pluginReloader            PluginReloader
+	settingsProvider          pkgsettings.Provider
+	pluginsRoot               *appstate.ScopedRoot // scoped to ~/.omniview/plugins
+	stateRoot                 *appstate.ScopedRoot
+	buildEnvironment          []string
+	workspace                 *devcontract.ResolvedWorkspace
+	expectedSDKRevision       string
+	disableDependencyWatching bool
+	operations                sync.Map
+	pnpmCommands              map[string]PNPMCommand
+	processSupervisor         *devsession.ProcessBridgeClient
 }
 
 // NewDevServerManager creates a new DevServerManager. Call Initialize() with the Wails
@@ -52,8 +68,8 @@ func NewDevServerManager(
 	settingsProvider pkgsettings.Provider,
 ) *DevServerManager {
 	return &DevServerManager{
-		app:              nil, // set by ServiceStartup
-		ctx:              nil, // set by ServiceStartup
+		app:              nil,                  // set by ServiceStartup
+		ctx:              context.Background(), // replaced by ServiceStartup
 		logger:           logger.Named("DevServerManager"),
 		mu:               sync.RWMutex{},
 		instances:        make(map[string]*DevServerInstance),
@@ -61,8 +77,8 @@ func NewDevServerManager(
 		pluginRef:        pluginRef,
 		pluginReloader:   pluginReloader,
 		settingsProvider: settingsProvider,
-		externalWatcher:  nil, // set by ServiceStartup
 		pluginsRoot:      pluginsRoot,
+		stateRoot:        stateRoot,
 	}
 }
 
@@ -78,34 +94,13 @@ func (m *DevServerManager) ServiceStartup(ctx context.Context, _ application.Ser
 	// starting.
 	m.ports.CleanupStaleProcesses(m.ctx, m.logger)
 
-	// Start the external watcher for .devinfo files.
-	watcher, err := NewExternalWatcher(
-		m.logger,
-		m.pluginsRoot,
-		m.handleExternalConnect,
-		m.handleExternalDisconnect,
-	)
-	if err != nil {
-		m.logger.Errorw(ctx, "failed to create external watcher", "error", err)
-	} else {
-		m.externalWatcher = watcher
-		if startErr := watcher.Start(ctx); startErr != nil {
-			m.logger.Errorw(ctx, "failed to start external watcher", "error", startErr)
-		}
-	}
-
 	m.logger.Infow(ctx, "DevServerManager initialized")
 	return nil
 }
 
-// ServiceShutdown stops all running dev server instances and the external watcher.
+// ServiceShutdown stops all owned managed dev server instances.
 func (m *DevServerManager) ServiceShutdown() error {
 	m.logger.Infow(context.Background(), "DevServerManager shutting down")
-
-	// Stop the external watcher first.
-	if m.externalWatcher != nil {
-		m.externalWatcher.Stop()
-	}
 
 	m.mu.RLock()
 	ids := make([]string, 0, len(m.instances))
@@ -114,8 +109,10 @@ func (m *DevServerManager) ServiceShutdown() error {
 	}
 	m.mu.RUnlock()
 
+	var shutdownErr error
 	for _, id := range ids {
 		if err := m.StopDevServer(id); err != nil {
+			shutdownErr = errors.Join(shutdownErr, err)
 			m.logger.Errorw(context.Background(), "error stopping dev server during shutdown",
 				"pluginID", id,
 				"error", err,
@@ -123,12 +120,14 @@ func (m *DevServerManager) ServiceShutdown() error {
 		}
 	}
 
-	// All processes stopped — clear the PID file so next startup doesn't
-	// try to kill already-dead processes.
-	m.ports.SavePIDs()
-
+	// SavePIDs removes only records whose owned stop was confirmed; unresolved
+	// ownership survives shutdown for the retained supervisor/recovery path.
+	shutdownErr = errors.Join(shutdownErr, m.ports.SavePIDs())
+	if m.processSupervisor != nil {
+		m.processSupervisor.Close()
+	}
 	m.logger.Infow(context.Background(), "DevServerManager shutdown complete")
-	return nil
+	return shutdownErr
 }
 
 // ============================================================================
@@ -143,15 +142,6 @@ func (m *DevServerManager) ServiceShutdown() error {
 func (m *DevServerManager) StartDevServer(pluginID string) (DevServerState, error) {
 	l := m.logger.With(logging.Any("method", "StartDevServer"), logging.Any("pluginID", pluginID))
 	l.Infow(context.Background(), "starting dev server")
-
-	// Fast path: if already running, return existing state without looking up the plugin.
-	m.mu.RLock()
-	if inst, exists := m.instances[pluginID]; exists {
-		m.mu.RUnlock()
-		l.Warnw(context.Background(), "dev server already running")
-		return inst.State(), nil
-	}
-	m.mu.RUnlock()
 
 	// Look up the plugin to get DevPath.
 	devMode, devPath, err := m.pluginRef.GetDevPluginInfo(pluginID)
@@ -201,26 +191,77 @@ func (m *DevServerManager) StartDevServerForPath(pluginID, devPath string) (DevS
 
 // startDevServer is the shared implementation for StartDevServer and StartDevServerForPath.
 func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerState, error) {
+	lock := m.operationLock(pluginID)
+	lock.Lock()
+	defer lock.Unlock()
 	l := m.logger.With(logging.Any("method", "startDevServer"), logging.Any("pluginID", pluginID))
 
+	canonical, err := filepath.EvalSymlinks(devPath)
+	if err != nil {
+		return DevServerState{}, err
+	}
+	devPath, err = filepath.Abs(canonical)
+	if err != nil {
+		return DevServerState{}, err
+	}
+	metadata, err := sdktypes.LoadPluginMetadata(devPath)
+	if err != nil {
+		return DevServerState{}, fmt.Errorf("load source metadata: %w", err)
+	}
+	if metadata.ID != pluginID {
+		return DevServerState{}, fmt.Errorf("source plugin ID %q does not match %q", metadata.ID, pluginID)
+	}
+	if !metadata.HasUICapabilities() && !metadata.HasBackendCapabilities() {
+		return DevServerState{}, fmt.Errorf("plugin has no supported development capabilities")
+	}
+	if _, err = m.ValidateManagedSource(pluginID, devPath); err != nil {
+		return DevServerState{}, err
+	}
 	m.mu.Lock()
-
-	// Check if already running.
 	if inst, exists := m.instances[pluginID]; exists {
 		m.mu.Unlock()
-		l.Warnw(context.Background(), "dev server already running")
+		if inst.devPath != devPath {
+			return DevServerState{}, fmt.Errorf("plugin %q is still managed from %s; stop/unload before rebinding source", pluginID, inst.devPath)
+		}
 		return inst.State(), nil
 	}
-
-	// Allocate a port for the Vite dev server.
-	port, err := m.ports.Allocate(pluginID)
+	port := 0
+	if metadata.HasUICapabilities() {
+		port, err = m.ports.Allocate(pluginID)
+		if err != nil {
+			m.mu.Unlock()
+			return DevServerState{}, err
+		}
+		m.ports.mu.Lock()
+		m.ports.sources[pluginID] = devPath
+		m.ports.mu.Unlock()
+	}
+	buildOpts := m.resolveBuildOpts()
+	if metadata.HasUICapabilities() {
+		if err = m.applyPNPMCommand(pluginID, devPath, &buildOpts); err != nil {
+			m.mu.Unlock()
+			m.ports.Release(port)
+			return DevServerState{}, err
+		}
+	}
+	buildOpts.Environment, err = instance.PluginEnvironment(buildOpts.StateRoot, pluginID, buildOpts.Environment)
 	if err != nil {
 		m.mu.Unlock()
-		return DevServerState{}, apperror.Internal(err, "Port allocation failed")
+		m.ports.Release(port)
+		return DevServerState{}, err
 	}
-
-	// Resolve build tool paths from settings.
-	buildOpts := m.resolveBuildOpts()
+	if os.Getenv(devcontract.WorkspaceEnvironment) != "" && m.ports.registry == nil {
+		m.mu.Unlock()
+		m.ports.Release(port)
+		return DevServerState{}, fmt.Errorf("workspace managed lifecycle not configured")
+	}
+	buildOpts.ViteOwner = devsession.ProcessOwner{WorkspaceID: m.ports.owner.WorkspaceID, Generation: m.ports.owner.Generation, Role: "plugin-vite", Source: devPath}
+	buildOpts.ViteStarted = func(identity devcontract.ProcessIdentity) error {
+		if err := m.ports.RecordProcess(port, identity); err != nil {
+			return err
+		}
+		return m.ports.SavePIDs()
+	}
 
 	// Create the instance.
 	inst := NewDevServerInstance(
@@ -236,12 +277,21 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 		m.emitLogs,
 		m.emitErrors,
 	)
+	inst.hasUI, inst.hasBackend = metadata.HasUICapabilities(), metadata.HasBackendCapabilities()
+	inst.buildOpts.Generation = inst.generation
+	inst.buildOpts.DisableDependencyWatching = m.disableDependencyWatching
 
 	m.instances[pluginID] = inst
 	m.mu.Unlock()
 
-	// Start the instance (non-blocking; spawns goroutines).
+	// Initial compilation is synchronous; Vite is probed before a successful
+	// start result, while backend readiness awaits the actual loader callback.
 	if err = inst.Start(); err != nil {
+		if stopErr := inst.Stop(); stopErr != nil {
+			failure := errors.Join(err, stopErr)
+			inst.setLastError(failure.Error())
+			return inst.State(), failure
+		}
 		m.mu.Lock()
 		delete(m.instances, pluginID)
 		m.mu.Unlock()
@@ -251,15 +301,23 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 		)
 	}
 
-	// Record the Vite process group ID so we can kill zombies on next startup
-	// if the app crashes or gets SIGKILL'd.
-	if pgid := inst.VitePGID(); pgid > 0 {
-		m.ports.RecordPID(port, pgid)
-		m.ports.SavePIDs()
+	if inst.vite != nil {
+		if err = inst.vite.WaitReady(); err == nil {
+			err = m.ports.ConfirmBound(pluginID)
+		}
+		if err != nil {
+			_ = m.ports.BindFailed(pluginID)
+			inst.setLastError(err.Error())
+			inst.setViteStatus(DevProcessStatusError)
+			return inst.State(), err
+		}
 	}
 
 	state := inst.State()
 	m.emitStatus(pluginID, state)
+	if state.LastError != "" {
+		return state, fmt.Errorf("managed plugin startup: %s", state.LastError)
+	}
 
 	l.Infow(context.Background(), "dev server started", "port", port)
 	return state, nil
@@ -268,6 +326,9 @@ func (m *DevServerManager) startDevServer(pluginID, devPath string) (DevServerSt
 // StopDevServer stops the managed dev server for the given plugin.
 func (m *DevServerManager) StopDevServer(pluginID string) error {
 	l := m.logger.With(logging.Any("method", "StopDevServer"), logging.Any("pluginID", pluginID))
+	lock := m.operationLock(pluginID)
+	lock.Lock()
+	defer lock.Unlock()
 	l.Infow(context.Background(), "stopping dev server")
 
 	m.mu.Lock()
@@ -284,7 +345,13 @@ func (m *DevServerManager) StopDevServer(pluginID string) error {
 	delete(m.instances, pluginID)
 	m.mu.Unlock()
 
-	inst.Stop()
+	if err := inst.Stop(); err != nil {
+		m.mu.Lock()
+		m.instances[pluginID] = inst
+		m.mu.Unlock()
+		m.emitStatus(pluginID, inst.State())
+		return err
+	}
 	m.ports.ReleaseByPlugin(pluginID)
 	m.ports.SavePIDs()
 
@@ -327,8 +394,7 @@ func (m *DevServerManager) RebuildPlugin(pluginID string) error {
 			fmt.Sprintf("No dev server is running for plugin '%s'.", pluginID))
 	}
 
-	inst.TriggerRebuild()
-	return nil
+	return inst.TriggerRebuild()
 }
 
 // GetDevServerState returns the current state of the dev server for a single plugin.
@@ -353,18 +419,6 @@ func (m *DevServerManager) ListDevServerStates() []DevServerState {
 	}
 	m.mu.RUnlock()
 
-	// Include externally-managed plugins.
-	if m.externalWatcher != nil {
-		m.externalWatcher.mu.RLock()
-		for pluginID, conn := range m.externalWatcher.connections {
-			if !conn.Connected {
-				continue
-			}
-			states = append(states, externalState(pluginID, conn.DevInfo))
-		}
-		m.externalWatcher.mu.RUnlock()
-	}
-
 	return states
 }
 
@@ -387,48 +441,12 @@ func (m *DevServerManager) IsManaged(pluginID string) bool {
 	m.mu.RLock()
 	_, exists := m.instances[pluginID]
 	m.mu.RUnlock()
-	if exists {
-		return true
-	}
-
-	// Check externally-managed instances.
-	if m.externalWatcher != nil {
-		return m.externalWatcher.IsExternallyManaged(pluginID)
-	}
-
-	return false
-}
-
-// GetExternalPluginInfo returns the DevInfo for an externally-managed plugin, or nil.
-func (m *DevServerManager) GetExternalPluginInfo(pluginID string) *DevInfoFile {
-	if m.externalWatcher == nil {
-		return nil
-	}
-	return m.externalWatcher.GetExternalInfo(pluginID)
+	return exists
 }
 
 // ============================================================================
 // Internal helpers
 // ============================================================================
-
-// handleExternalConnect is called by ExternalWatcher when a .devinfo file is detected.
-func (m *DevServerManager) handleExternalConnect(pluginID string, info *DevInfoFile) {
-	m.logger.Infow(context.Background(), "external plugin connected",
-		"pluginID", pluginID,
-		"addr", info.Addr,
-		"vitePort", info.VitePort,
-		"pid", info.PID,
-	)
-
-	m.emitStatus(pluginID, externalState(pluginID, info))
-}
-
-// handleExternalDisconnect is called by ExternalWatcher when an external plugin disconnects.
-func (m *DevServerManager) handleExternalDisconnect(pluginID string) {
-	m.logger.Infow(context.Background(), "external plugin disconnected", "pluginID", pluginID)
-
-	m.emitStatus(pluginID, idleState(pluginID))
-}
 
 // idleState is the state of a plugin with no dev server.
 func idleState(pluginID string) DevServerState {
@@ -447,37 +465,40 @@ func idleState(pluginID string) DevServerState {
 	}
 }
 
-// externalState is the state of an externally-managed plugin described by info.
-func externalState(pluginID string, info *DevInfoFile) DevServerState {
-	state := DevServerState{
-		PluginID:          pluginID,
-		Mode:              DevServerModeExternal,
-		DevPath:           "",
-		VitePort:          info.VitePort,
-		ViteURL:           "",
-		ViteStatus:        "",
-		GoStatus:          "",
-		LastBuildDuration: 0,
-		LastBuildTime:     "",
-		LastError:         "",
-		GRPCConnected:     true,
-	}
-	if info.VitePort > 0 {
-		state.ViteStatus = DevProcessStatusReady
-		state.ViteURL = fmt.Sprintf("http://127.0.0.1:%d", info.VitePort)
-	}
-	return state
-}
-
 func (m *DevServerManager) resolveBuildOpts() BuildOpts {
-	opts := BuildOpts{GoPath: "", PnpmPath: "", NodePath: ""}
-	opts.GoPath, _ = m.settingsProvider.GetString("developer.gopath")
-	opts.PnpmPath, _ = m.settingsProvider.GetString("developer.pnpmpath")
-	opts.NodePath, _ = m.settingsProvider.GetString("developer.nodepath")
+	opts := BuildOpts{StateRoot: m.stateRoot.ResolvePath(""), Environment: m.buildEnvironment, ExpectedSDKRevision: m.expectedSDKRevision, Workspace: m.workspace, ProcessSupervisor: m.processSupervisor}
+	if m.settingsProvider != nil {
+		opts.GoPath, _ = m.settingsProvider.GetString("developer.gopath")
+		opts.PnpmPath, _ = m.settingsProvider.GetString("developer.pnpmpath")
+		opts.NodePath, _ = m.settingsProvider.GetString("developer.nodepath")
+		opts.ExplicitPnpmPath = opts.PnpmPath
+		opts.ExplicitNodePath = opts.NodePath
+	}
+	if opts.GoPath == "" {
+		opts.GoPath, _ = exec.LookPath("go")
+	}
+	if opts.PnpmPath == "" {
+		opts.PnpmPath, _ = exec.LookPath("pnpm")
+	}
+	if opts.NodePath == "" {
+		opts.NodePath, _ = exec.LookPath("node")
+	}
+	if opts.Environment == nil {
+		opts.Environment = os.Environ()
+	}
 	return opts
 }
 
-func (m *DevServerManager) emitStatus(_ string, state DevServerState) {
+func (m *DevServerManager) emitStatus(pluginID string, state DevServerState) {
+	if state.Generation != "" {
+		m.mu.RLock()
+		inst := m.instances[pluginID]
+		current := inst != nil && inst.generation == state.Generation
+		m.mu.RUnlock()
+		if !current {
+			return
+		}
+	}
 	if m.app == nil {
 		return
 	}

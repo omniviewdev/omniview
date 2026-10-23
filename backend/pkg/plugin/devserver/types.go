@@ -3,6 +3,9 @@ package devserver
 import (
 	"time"
 
+	"github.com/omniviewdev/omniview/internal/devcontract"
+	"github.com/omniviewdev/omniview/internal/devsession"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -43,23 +46,20 @@ const (
 
 	// DevServerModeManaged means the IDE spawned and manages the Vite + Go watcher processes.
 	DevServerModeManaged DevServerMode = "managed"
-
-	// DevServerModeExternal means the developer runs processes externally;
-	// the IDE connects via .devinfo file.
-	DevServerModeExternal DevServerMode = "external"
 )
 
 // DevProcessStatus describes the current status of either the Vite process or the Go watcher.
 type DevProcessStatus string
 
 const (
-	DevProcessStatusIdle     DevProcessStatus = "idle"
-	DevProcessStatusStarting DevProcessStatus = "starting"
-	DevProcessStatusBuilding DevProcessStatus = "building"
-	DevProcessStatusRunning  DevProcessStatus = "running"
-	DevProcessStatusReady    DevProcessStatus = "ready"
-	DevProcessStatusError    DevProcessStatus = "error"
-	DevProcessStatusStopped  DevProcessStatus = "stopped"
+	DevProcessStatusIdle          DevProcessStatus = "idle"
+	DevProcessStatusStarting      DevProcessStatus = "starting"
+	DevProcessStatusBuilding      DevProcessStatus = "building"
+	DevProcessStatusRunning       DevProcessStatus = "running"
+	DevProcessStatusReady         DevProcessStatus = "ready"
+	DevProcessStatusError         DevProcessStatus = "error"
+	DevProcessStatusStopped       DevProcessStatus = "stopped"
+	DevProcessStatusNotApplicable DevProcessStatus = "n/a"
 )
 
 // ============================================================================
@@ -80,7 +80,25 @@ type DevServerState struct {
 	LastBuildTime     string           `json:"lastBuildTime"`
 	LastError         string           `json:"lastError"`
 	GRPCConnected     bool             `json:"grpcConnected"`
+	Generation        string           `json:"generation"`
+	HMRURL            string           `json:"hmrURL"`
+	BuildStatus       LifecycleStage   `json:"buildStatus"`
+	RPCStatus         LifecycleStage   `json:"rpcStatus"`
+	ControllerStatus  LifecycleStage   `json:"controllerStatus"`
+	Ready             bool             `json:"ready"`
 }
+
+// LifecycleStage distinguishes successful compilation from a live plugin.
+type LifecycleStage string
+
+const (
+	StagePending       LifecycleStage = "pending"
+	StageBuilding      LifecycleStage = "building"
+	StageReady         LifecycleStage = "ready"
+	StageError         LifecycleStage = "error"
+	StageStopped       LifecycleStage = "stopped"
+	StageNotApplicable LifecycleStage = "n/a"
+)
 
 // LogEntry is a single log line from either the Vite process or the Go build.
 type LogEntry struct {
@@ -127,23 +145,23 @@ type BuildError struct {
 	Message string `json:"message"`
 }
 
-// DevInfoFile is the JSON structure of the .devinfo file written by externally-run plugins.
-type DevInfoFile struct {
-	PID             int    `json:"pid"`
-	Protocol        string `json:"protocol"`
-	ProtocolVersion int    `json:"protocolVersion"`
-	Addr            string `json:"addr"`
-	VitePort        int    `json:"vitePort,omitempty"`
-	PluginID        string `json:"pluginId,omitempty"`
-	Version         string `json:"version,omitempty"`
-	StartedAt       string `json:"startedAt,omitempty"`
-}
-
 // BuildOpts holds resolved paths to build tools.
 type BuildOpts struct {
-	GoPath   string
-	PnpmPath string
-	NodePath string
+	GoPath                    string
+	PnpmPath                  string
+	PnpmArgs                  []string
+	NodePath                  string
+	Environment               []string
+	StateRoot                 string
+	ExpectedSDKRevision       string
+	ViteStarted               func(devcontract.ProcessIdentity) error
+	ViteOwner                 devsession.ProcessOwner
+	ProcessSupervisor         *devsession.ProcessBridgeClient
+	ExplicitPnpmPath          string
+	ExplicitNodePath          string
+	Generation                string
+	DisableDependencyWatching bool
+	Workspace                 *devcontract.ResolvedWorkspace
 }
 
 // ============================================================================

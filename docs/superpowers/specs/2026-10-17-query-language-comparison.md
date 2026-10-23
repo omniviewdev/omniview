@@ -3,7 +3,7 @@
 Date: 2026-10-17 (verification timestamps in the evidence are UTC and may fall on October 18).
 Status: CEL language direction accepted by the user; internal native checked-AST direction retained. Production profile, schema/binding/wire contracts and integration validation remain open gates. No product dependency changed.
 Context: [reviewed foundation](2026-10-17-resource-foundation-design.md), especially sections 7–13.
-Reproduction: [source, fixtures, pinned modules and measured outputs](2026-10-17-query-language-evidence.zip).
+Reproduction: [source, fixtures, pinned modules and measured outputs](2026-10-17-query-language-evidence.zip). SHA-256: `1771a69c0b383e835dad876867d67e59ef057504fdbbb739e594fd4680dbc5a5`.
 
 ## 1. Accepted language direction
 

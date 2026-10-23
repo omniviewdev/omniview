@@ -78,7 +78,7 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
             {action.icon}
           </IconButton>
         </span>
-      </HintTooltip>
+      </HintTooltip>,
     );
   }
 
@@ -100,7 +100,7 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
             {action.icon}
           </IconButton>
         </span>
-      </HintTooltip>
+      </HintTooltip>,
     );
   }
 
@@ -144,7 +144,7 @@ const RightDrawerAction: React.FC<{ ctx: DrawerContext; action: DrawerComponentA
             </Menu.Popup>
           </Menu.Positioner>
         </Menu.Portal>
-      </Menu.Root>
+      </Menu.Root>,
     );
   }
 

@@ -2,6 +2,9 @@ package devserver
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -152,4 +155,26 @@ func newTestInstance(t *testing.T, pluginID string) (*DevServerInstance, *status
 	)
 
 	return inst, sr, lr
+}
+
+func managedSourceFixture(t *testing.T, id string) string {
+	t.Helper()
+	directory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireMetadata := fmt.Sprintf("id: %s\nname: Fixture\nversion: 1.0.0\ncapabilities:\n  - ui\n", id)
+	if err := os.WriteFile(filepath.Join(directory, "plugin.yaml"), []byte(requireMetadata), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return directory
+}
+
+func startFixtureWatcher(t *testing.T, gw *goWatcherProcess) error {
+	t.Helper()
+	metadata := fmt.Sprintf("id: %s\nname: Watch fixture\nversion: 1.0.0\ncapabilities:\n  - resource\n", gw.pluginID)
+	if err := os.WriteFile(filepath.Join(gw.devPath, "plugin.yaml"), []byte(metadata), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return gw.Start()
 }

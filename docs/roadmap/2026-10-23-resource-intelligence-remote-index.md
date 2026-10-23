@@ -4,8 +4,8 @@ Published: 2026-10-23.
 
 - [Delivery project](https://github.com/orgs/omniviewdev/projects/13) (organization project, private).
 - [Parent roadmap and launch-wave index](https://github.com/omniviewdev/omniview/issues/78).
-- 48 canonical packets, 113 native GitHub blocked-by relationships, three independent UI-quality followups, and one parent issue. All 51 child issues remain open.
-- At publication, P00 and the three UI followups are Ready; 47 production packets remain Blocked. Existing UI evidence is not full acceptance.
+- 48 canonical packets, 113 native GitHub blocked-by relationships, three independent UI-quality followups, and one parent issue. All 48 production issues remain open; the bounded table/palette followups have merged implementation receipts.
+- Current reconciliation: P00 and UI-LAYOUT are Ready; 47 production packets remain Blocked. UI-TABLE and UI-PALETTE are Done for their bounded acceptance only; P23/P24/P42/P43 remain Blocked. Existing UI evidence is not full production acceptance.
 - Project fields: Packet, Wave, Workstream, Status, Readiness and Evidence. Views: All work, Delivery board, Dependency waves, Ready to launch and UI work. Wave is longest-predecessor depth, not a date/estimate. Use ascending Wave sorting when planning; don't treat packet numbering as launch order.
 - Existing Platform project links the parent; Kubernetes Plugin project also includes P08–P11. Existing issues/drafts were not closed, moved or overwritten.
 
@@ -64,9 +64,9 @@ Published: 2026-10-23.
 
 ## Independent presentation followups
 
-- [UI-TABLE: Harden expandable table keyboard, focus and nested interactions](https://github.com/omniviewdev/ui/issues/66); related P23/P24, not completion of those packets. Execution/assignment unconfirmed.
-- [UI-LAYOUT: Harden existing view-layout keyboard and controlled interactions](https://github.com/omniviewdev/ui/issues/67); related P33, not completion of those packets. Execution/assignment unconfirmed.
-- [UI-PALETTE: Harden existing command-palette interaction and accessibility](https://github.com/omniviewdev/ui/issues/68); related P42/P43, not completion of those packets. Execution/assignment unconfirmed.
+- [UI-TABLE: Harden expandable table keyboard, focus and nested interactions](https://github.com/omniviewdev/ui/issues/66): Done from merged [UI PR59](https://github.com/omniviewdev/ui/pull/59), commit `3c5b5fc`; related P23/P24 remain Blocked, not completed by presentation hardening.
+- [UI-LAYOUT: Harden existing view-layout keyboard and controlled interactions](https://github.com/omniviewdev/ui/issues/67): Ready; execution/assignment unconfirmed. Related P33 remains Blocked.
+- [UI-PALETTE: Harden existing command-palette interaction and accessibility](https://github.com/omniviewdev/ui/issues/68): Done from merged [UI PR58](https://github.com/omniviewdev/ui/pull/58), commit `dd8f60c`; related P42/P43 remain Blocked, not completed by presentation hardening.
 
 ## Maintaining progress
 
@@ -75,8 +75,8 @@ Published: 2026-10-23.
 3. Recheck native blockers and frozen contract receipts before changing Readiness. Status/Readiness fields are manual; closing a predecessor does not automatically certify dependents.
 4. Each parallel UI agent maintains its own docs/roadmap-progress receipt; the integration owner reconciles this central index, work-package reconciliation and contract-readiness ledger.
 5. Closing a full packet requires reviewed end-to-end acceptance and actual API/UI/runtime evidence, including provider-neutral profiles where applicable.
-6. Some authoritative planning/spec/evidence sources are not yet published on GitHub main. Remote issue bodies are self-contained and identify unpublished sources explicitly; obtaining reviewed artifacts is a contract-consumption gate, not permission to guess APIs. No dead main-branch links are presented as published evidence.
+6. Authoritative reviewed planning/specification sources and all six evidence archives are published at immutable [commit 0fbaace](https://github.com/omniviewdev/omniview/tree/0fbaace31aacfcb1041c4a6240e7525a67d11bcd/docs), with integration/review corrections in [documentation PR116](https://github.com/omniviewdev/omniview/pull/116). Existing issue-body URLs retain that immutable publication commit. Read the reviewed corrections before contract consumption; published designs and experimental archives do not freeze production APIs or complete packets.
 
 ## Verified publication
 
-GitHub API read-back verified all48 packet IDs, exact native blocker sets, parent relationships, open states, acceptance/verification/ownership/progress sections, board packet/wave/status values, all51 child issues and all52 project items. Independent review accepted backlog fidelity after unpublished references were explicitly identified. This is tracking verification, not product tests or implementation readiness.
+Initial GitHub API read-back verified all 48 packet IDs, exact native blocker sets, parent relationships, then-open child states, acceptance/verification/ownership/progress sections, board packet/wave/status values, all 51 child issues and all 52 project items. Independent review accepted backlog fidelity; the source/specification/evidence publication now replaces the initial unpublished-source limitation. Subsequent bounded table/palette reconciliation uses the merged receipts above. This is tracking/documentation evidence, not product tests or implementation readiness.

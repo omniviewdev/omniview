@@ -44,7 +44,7 @@ Proposed new-major SDK/domain/IDL and query-runtime file names are selected by C
 
 ## 2. Current launch decision
 
-**Launch only P00 first, under the integration owner.** Its module/path audit has initial evidence, but its linking and actual host/plugin acceptance has not run. Host consumes SDK v0.5.0 and Kubernetes v0.4.0 from the module cache, not sibling source. Installed UI artifacts are behind current manifest requirements. The workspace implementation is in another observed worktree and is not established as ready in the root checkout.
+**Launch only P00 first, under the integration owner.** Its initial audit observed module-cache SDK v0.5.0 in the host, v0.4.0 in Kubernetes, and installed UI artifacts behind manifest requirements; these are historical observations, not a claim about every current checkout. Workspace implementation has since merged in [host PR57](https://github.com/omniviewdev/omniview/pull/57). Select its current reviewed committed sources and prove the actual P00 cohort/linking/host-plugin acceptance; publication and the workspace merge do not themselves pass C00.
 
 No language/source experiment needs repeating merely to select CEL again. Re-run a specific corpus when its actual dependency/codec/contract changes, or when a new implementation invalidates an evidence assumption.
 
@@ -75,7 +75,9 @@ No language/source experiment needs repeating merely to select CEL again. Re-run
 
 **Files:** readiness ledger C01–C09; focused specs/receipts produced by the named P owners; current SDK/host service/domain/codec paths identified in section 1. New production filenames are part of each approved receipt, not missing symbols left for an executor to guess.
 
-**Consumes:** C00, P44 corpus, P04 context/error decisions and accepted semantic specs. **Produces:** P01 exact contract ownership and C01/C02/C03/C06/C07 receipts sufficient for P45; later source/schema/result/editor receipts before their consumers.
+**Consumes:** C00, P44 corpus and accepted semantic specs for P01; P04's reviewed C02 decisions before invocation/error integration or P45 readiness. **Produces:** P01 exact contract ownership and C01/C03/C06/C07 receipts; P04 owns C02, jointly reviewed with P01/P45 before P45 consumes it. Later source/schema/result/editor receipts precede their consumers.
+
+P01's hard blockers remain P00 and P44, as in the backlog/native graph. P01 may draft and confirm pure query/identity/value semantics while P04 proceeds, using only an opaque host-issued invocation-context slot, propagated cancellation and the existing `apperror` categories as provisional design inputs. P01 must not invent actor authentication, ownership rules, machine error codes or production C02 DTOs. P04 owns those decisions; jointly reconcile/freeze C02 before any production invocation integration. P45 already depends on both P01 and P04, so this handoff adds no hidden P04 hard edge to P01. The frontier table is not a serial barrier.
 
 - [ ] Contract owner consolidates exact identity/authority/scope, capability, parameter/value, failure and acquisition DTOs. Specify field presence, lossless Go/protobuf/TS mapping and canonical encoding once.
 - [ ] Resolve the P45/P05 finite-source allocation explicitly: prefer P45 real snapshot-only behavior on the final source boundary, P05 optional update coordination. Do not create a temporary replacement List endpoint. Review exact allocation before coding.

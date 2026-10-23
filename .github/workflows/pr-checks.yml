@@ -84,8 +84,8 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install wails3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+      - name: Install pinned private Wails CLI
+        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
 
       - name: Check bindings are up to date
         run: task check:bindings-check
@@ -100,7 +100,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          version: 12.14.0
+          install: false
 
       - name: Install Task
         uses: arduino/setup-task@v2
@@ -127,7 +130,6 @@ jobs:
 
       - name: Lint
         run: task check:ui-lint
-        continue-on-error: true
 
       - name: Typecheck
         run: task check:ui-typecheck

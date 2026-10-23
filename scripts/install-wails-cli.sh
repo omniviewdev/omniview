@@ -1,14 +1,17 @@
-#! /bin/bash
+#!/bin/bash
+set -euo pipefail
 
-echo -e "Start running the script..."
-cd ../
-
-echo -e "Current Go version: \c"
-go version
-
-echo -e "Install the Wails command line tool..."
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
-echo -e "Successful installation!"
-
-echo -e "End running the script!"
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+export GOWORK=off GOFLAGS=
+cd "$ROOT"
+VERSION="$(go list -modfile="$ROOT/go.mod" -m -f '{{if .Replace}}replaced{{else}}{{.Version}}{{end}}' github.com/wailsapp/wails/v3)"
+case "$VERSION" in
+  v3.*) ;;
+  *) printf 'Root Wails dependency must be an unreplaced v3 version, got %s\n' "$VERSION" >&2; exit 1 ;;
+esac
+# Never overwrite a globally installed Wails CLI. Task resolves this same root
+# version with go run, independent of PATH; this installer is an optional tool.
+DESTINATION="$ROOT/.local/tools/wails/$VERSION"
+mkdir -p "$DESTINATION"
+GOBIN="$DESTINATION" go install "github.com/wailsapp/wails/v3/cmd/wails3@$VERSION"
+printf '%s/wails3%s\n' "$DESTINATION" "$(go env GOEXE)"

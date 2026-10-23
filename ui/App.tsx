@@ -41,6 +41,7 @@ import { PluginServiceProvider } from '@/features/plugins';
 import { RouteProvider } from './features/router/RouteProvider';
 import log from '@/features/logger';
 import { orFallback } from '@/utils/orFallback';
+import { InstanceProvider } from '@/features/instance/InstanceContext';
 
 // 2. Global handlers for uncaught errors + promise rejections
 window.addEventListener('error', event => {
@@ -77,36 +78,38 @@ log.debug('starting up the application');
 const App: React.FC = () => {
   return (
     <ErrorBoundary FallbackComponent={RootErrorFallback}>
-      <QueryClientProvider client={queryClient}>
-        <SettingsProvider>
-          <ExtensionProvider registry={EXTENSION_REGISTRY}>
-            <AppSnackbarProvider>
-              <Provider store={store}>
-                <AppThemeController>
-                  <ErrorBoundary
-                    FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
-                    onError={onBoundaryError}
-                  >
-                    <OperationsProvider>
-                      <ConfirmationModalProvider>
-                        <ConnectionStateProvider>
-                          <RightDrawerProvider>
-                            <BottomDrawerProvider>
-                              <PluginServiceProvider>
-                                <RouteProvider />
-                              </PluginServiceProvider>
-                            </BottomDrawerProvider>
-                          </RightDrawerProvider>
-                        </ConnectionStateProvider>
-                      </ConfirmationModalProvider>
-                    </OperationsProvider>
-                  </ErrorBoundary>
-                </AppThemeController>
-              </Provider>
-            </AppSnackbarProvider>
-          </ExtensionProvider>
-        </SettingsProvider>
-      </QueryClientProvider>
+      <InstanceProvider>
+        <QueryClientProvider client={queryClient}>
+          <SettingsProvider>
+            <ExtensionProvider registry={EXTENSION_REGISTRY}>
+              <AppSnackbarProvider>
+                <Provider store={store}>
+                  <AppThemeController>
+                    <ErrorBoundary
+                      FallbackComponent={(props) => <FullPageErrorFallback {...props} boundary="Application" />}
+                      onError={onBoundaryError}
+                    >
+                      <OperationsProvider>
+                        <ConfirmationModalProvider>
+                          <ConnectionStateProvider>
+                            <RightDrawerProvider>
+                              <BottomDrawerProvider>
+                                <PluginServiceProvider>
+                                  <RouteProvider />
+                                </PluginServiceProvider>
+                              </BottomDrawerProvider>
+                            </RightDrawerProvider>
+                          </ConnectionStateProvider>
+                        </ConfirmationModalProvider>
+                      </OperationsProvider>
+                    </ErrorBoundary>
+                  </AppThemeController>
+                </Provider>
+              </AppSnackbarProvider>
+            </ExtensionProvider>
+          </SettingsProvider>
+        </QueryClientProvider>
+      </InstanceProvider>
     </ErrorBoundary>
   );
 };

@@ -13,7 +13,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SHIMS_DIR = path.resolve(__dirname, '..', 'shims');
+const SHIMS_DIR = process.env.OMNIVIEW_SHIMS_OUTPUT_DIRECTORY || path.resolve(__dirname, '..', 'shims');
+const SHIMS_SOURCE_DIR = process.env.OMNIVIEW_SHIMS_SOURCE_DIRECTORY || SHIMS_DIR;
 
 // Import from source directly (tsx handles it)
 import { SHARED_PACKAGES } from '../src/sharedPackages';
@@ -189,7 +190,7 @@ async function main(): Promise<void> {
   // a name the host no longer provides is just undefined, as in production.
   const previousExports = new Map<string, string[]>();
   for (const pkg of SHARED_PACKAGES) {
-    previousExports.set(pkg, readShimExports(path.join(SHIMS_DIR, safeFilename(pkg) + '.mjs')));
+    previousExports.set(pkg, readShimExports(path.join(SHIMS_SOURCE_DIR, safeFilename(pkg) + '.mjs')));
   }
 
   // Clean existing shims

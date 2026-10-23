@@ -129,7 +129,7 @@ const PluginsNav: React.FC = () => {
     return plugins.data.filter(p =>
       p.metadata?.name?.toLowerCase().includes(searchLower) ||
       p.metadata?.description?.toLowerCase().includes(searchLower) ||
-      p.id?.toLowerCase().includes(searchLower)
+      p.id?.toLowerCase().includes(searchLower),
     );
   }, [plugins.data, searchLower]);
 
@@ -150,7 +150,7 @@ const PluginsNav: React.FC = () => {
       items = items.filter(p =>
         p.name?.toLowerCase().includes(searchLower) === true ||
         p.description?.toLowerCase().includes(searchLower) === true ||
-        p.id?.toLowerCase().includes(searchLower) === true
+        p.id?.toLowerCase().includes(searchLower) === true,
       );
     }
 

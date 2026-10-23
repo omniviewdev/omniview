@@ -29,19 +29,13 @@ export function GetDevServerState(pluginID: string): $CancellablePromise<$models
     });
 }
 
-export function GetExternalPluginInfo(pluginID: string): $CancellablePromise<$models.DevInfoFile | null> {
-    return $Call.ByID(1268119665, pluginID).then(($result: any) => {
-        return $$createType4($result);
-    });
-}
-
 export function IsManaged(pluginID: string): $CancellablePromise<boolean> {
     return $Call.ByID(1859413816, pluginID);
 }
 
 export function ListDevServerStates(): $CancellablePromise<$models.DevServerState[]> {
     return $Call.ByID(2707386443).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType3($result);
     });
 }
 
@@ -75,6 +69,4 @@ export function StopDevServer(pluginID: string): $CancellablePromise<void> {
 const $$createType0 = $models.LogEntry.createFrom;
 const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = $models.DevServerState.createFrom;
-const $$createType3 = $models.DevInfoFile.createFrom;
-const $$createType4 = $Create.Nullable($$createType3);
-const $$createType5 = $Create.Array($$createType2);
+const $$createType3 = $Create.Array($$createType2);

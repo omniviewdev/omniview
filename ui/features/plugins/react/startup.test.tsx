@@ -11,6 +11,7 @@ import { createDeferred, createTestDeps } from '../testing/helpers';
 import type { PluginServiceDeps } from '../core/types';
 import type { TestDeps } from '../testing/helpers';
 import type * as RuntimeAPI from '@omniviewdev/runtime/api';
+import type * as RuntimeCore from '@omniviewdev/runtime/runtime';
 
 const backend = vi.hoisted(() => ({
   listPlugins: vi.fn(),
@@ -23,6 +24,19 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
     ...original,
     PluginManager: { ...original.PluginManager, ListPlugins: backend.listPlugins },
     DevServerManager: { ...original.DevServerManager, ListDevServerStates: backend.listServers },
+  };
+});
+vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => {
+  const original = await importOriginal<typeof RuntimeCore>();
+  return {
+    ...original,
+    Events: {
+      ...original.Events,
+      On: (eventName: string, handler: (event: { data: unknown }) => void) =>
+        backend.deps!.onEvent(eventName, (data: unknown) => {
+          handler({ data }); 
+        }),
+    },
   };
 });
 vi.mock('../../../../packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/servicewrapper', () => ({
@@ -56,9 +70,9 @@ function renderWorkspace() {
 
 type PluginModule = { plugin: PluginWindow };
 
-function pluginModule(): PluginModule {
+function pluginModule(title = 'Kubernetes clusters'): PluginModule {
   return { plugin: new PluginWindow().withRoutes([
-    { index: true, Component: () => <h1>Kubernetes clusters</h1> },
+    { index: true, Component: () => <h1>{title}</h1> },
     { path: 'cluster/:id', Component: () => <h1>Cluster details</h1> },
   ]) };
 }
@@ -172,16 +186,134 @@ describe('plugin startup navigation', () => {
     expect(window.location.hash).toBe('#/settings');
   });
 
-  it('loads dev plugins installed after startup through the normal plugin cache refresh', async () => {
+  it('loads a committed replacement after the previous module failed at the same URL', async () => {
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: false }]);
+    let currentModule: () => PluginModule = () => {
+      throw new Error('Broken previous plugin module');
+    };
+
+    // SystemJS retains rejected imports until their URL is explicitly evicted.
+    let cachedModule: Promise<PluginModule> | undefined;
+    testDeps.deps.importPlugin = async () => {
+      cachedModule ??= Promise.resolve().then(currentModule);
+      return cachedModule;
+    };
+
+    testDeps.deps.clearPlugin = async () => {
+      cachedModule = undefined;
+    };
+
+    renderWorkspace();
+    await screen.findByText('Broken previous plugin module');
+
+    currentModule = () => pluginModule('Reinstalled plugin');
+    await act(async () => {
+      testDeps.eventBus.emit('plugin/install_finished', { id: 'kubernetes' });
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Reinstalled plugin' })).toBeVisible();
+    expect(window.location.hash).toBe('#/_plugin/kubernetes');
+  });
+
+  it('keeps a committed replacement when the previous startup import finishes later', async () => {
+    backend.listServers.mockResolvedValue([server(DevProcessStatus.DevProcessStatusReady)]);
+    const started = createDeferred();
+    const importing = createDeferred<PluginModule>();
+    testDeps.importer.register('kubernetes', async () => {
+      started.resolve();
+      return importing.promise;
+    });
+    renderWorkspace();
+    await started.promise;
+
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: false }]);
+    testDeps.importer.register('kubernetes', pluginModule('Committed startup replacement'));
+    await act(async () => {
+      testDeps.eventBus.emit('plugin/install_finished', { id: 'kubernetes' });
+    });
+    await act(async () => {
+      importing.resolve(pluginModule('Superseded startup plugin'));
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Committed startup replacement' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Superseded startup plugin' })).not.toBeInTheDocument();
+  });
+
+  it('recovers a failed archive replacement of a running development plugin', async () => {
+    backend.listServers.mockResolvedValue([server(DevProcessStatus.DevProcessStatusReady)]);
+    let currentArchive: () => PluginModule = () => {
+      throw new Error('Broken archive replacement');
+    };
+
+    let cachedArchive: Promise<PluginModule> | undefined;
+    testDeps.deps.importPlugin = async (options) => {
+      if (options.dev) {
+        return Promise.resolve(pluginModule('Original development plugin'));
+      }
+
+      cachedArchive ??= Promise.resolve().then(currentArchive);
+      return cachedArchive;
+    };
+
+    testDeps.deps.clearPlugin = async (options) => {
+      if (!options.dev) {
+        cachedArchive = undefined;
+      }
+    };
+
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'Original development plugin' });
+
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: false }]);
+    await act(async () => {
+      testDeps.eventBus.emit('plugin/install_finished', { id: 'kubernetes' });
+    });
+    currentArchive = () => pluginModule('Repaired archive replacement');
+    await act(async () => {
+      testDeps.eventBus.emit('plugin/install_finished', { id: 'kubernetes' });
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Repaired archive replacement' })).toBeVisible();
+  });
+
+  it('publishes the latest committed artifact when a prior reload is still importing', async () => {
+    backend.listServers.mockResolvedValue([server(DevProcessStatus.DevProcessStatusReady)]);
+    testDeps.importer.register('kubernetes', pluginModule('Original plugin'));
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'Original plugin' });
+
+    const started = createDeferred();
+    const importing = createDeferred<PluginModule>();
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: false }]);
+    testDeps.importer.register('kubernetes', async () => {
+      started.resolve();
+      return importing.promise;
+    });
+    await act(async () => {
+      testDeps.eventBus.emit('plugin/update_complete', { pluginID: 'kubernetes' });
+      await started.promise;
+    });
+
+    testDeps.importer.register('kubernetes', pluginModule('Latest committed plugin'));
+    await act(async () => {
+      testDeps.eventBus.emit('plugin/install_finished', { id: 'kubernetes' });
+      importing.resolve(pluginModule('Superseded plugin'));
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Latest committed plugin' })).toBeVisible();
+    expect(window.location.hash).toBe('#/_plugin/kubernetes');
+  });
+
+  it('discovers committed inventory without a mounted management screen', async () => {
     backend.listPlugins.mockResolvedValue([]);
     backend.listServers.mockResolvedValue([server(DevProcessStatus.DevProcessStatusReady)]);
     testDeps.importer.register('kubernetes', pluginModule());
-    const client = renderWorkspace();
+    renderWorkspace();
     await screen.findByRole('heading', { name: 'Page not found' });
 
     backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: true }]);
     await act(async () => {
-      await client.invalidateQueries({ queryKey: ['plugins'] });
+      testDeps.eventBus.emit('plugin/inventory_changed', { id: 'kubernetes' });
     });
 
     expect(await screen.findByRole('heading', { name: 'Kubernetes clusters' })).toBeVisible();

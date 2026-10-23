@@ -26,6 +26,7 @@ func init() {
 	application.RegisterEvent[UpdateErrorPayload](EventUpdateError)
 	application.RegisterEvent[UpdatePayload](EventUpdateComplete)
 	application.RegisterEvent[application.Void](EventInitComplete)
+	application.RegisterEvent[application.Void](EventInventoryChanged)
 	application.RegisterEvent[PluginErrorPayload](EventCrash)
 	application.RegisterEvent[PluginErrorPayload](EventCrashRecoveryFailed)
 	application.RegisterEvent[PluginErrorPayload](EventRecovered)
@@ -61,6 +62,9 @@ const (
 
 	// Initialization.
 	EventInitComplete = "plugin/init_complete"
+
+	// Durable installed-inventory changes.
+	EventInventoryChanged = "plugin/inventory_changed"
 
 	// Crash recovery.
 	EventCrash               = "plugin/crash"

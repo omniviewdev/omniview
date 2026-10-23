@@ -30,7 +30,7 @@
 - Sibling Kubernetes `go.mod`, `plugin.yaml`, `ui/package.json`, `pkg/main.go`, `pkg/plugin/resource/register_v1.go` and resource/Helm test entrypoints.
 - UI checkout `ui/main/packages/{base-ui,editors,ai-ui}/package.json` and actual package exports. Directory `ui` is not itself the assumed package worktree.
 
-**Read existing managed-workspace source:** `/Users/joshuapare/Repos/omniviewdev/workspaces/agentic-workspaces/omniview/docs/development-workspaces.md`, its linked package-linking/profile/control/build/native guides, bootstrap Task entrypoint and CLI implementation. Initial source candidates exist alongside it in `../{plugin-sdk,ui,omniview-plugin-kubernetes}`. Inspect selected refs before assuming any are committed or integrated.
+**Read existing managed-workspace source:** `$HOST_SOURCE/docs/development-workspaces.md` in the selected committed host checkout, its linked package-linking/profile/control/build/native guides, bootstrap Task entrypoint and CLI implementation. Resolve `HOST_SOURCE` from the registered source cohort and keep the machine-specific path in private notes. Inspect companion SDK/UI/Kubernetes repository IDs and selected refs before assuming directory layout or that any changes are committed or integrated.
 
 **Private outputs:** existing CLI-owned collection/profile/logs/link receipts and a narrowly owned temporary native/protocol-probe directory. The integration owner records canonical identities before mutation; no hand-editing generated aggregate roots or profile files.
 
@@ -140,8 +140,8 @@ GOWORK=off GOFLAGS= A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT="$LINK_EVIDENCE" \
 **Contract:** useful existing behavior still works under the selected sources. No new permanent wiring tests; use existing consumer-visible cases and bounded throwaway scripts only where needed.
 
 - [ ] After the managed graph settles, reuse its actual build results where identical. For additional affected checks, use the selected SDK/native module environment, not a clean registry-only invocation accidentally testing different code.
-- [ ] Existing host entrypoint is `GOWORK=off go build .`; targeted SDK entrypoints are `GOWORK=off go test ./pkg/v1/resource/... ./pkg/sdk ./pkg/interceptors -count=1`. Include real client/server codec cases where a changed source selection affects their boundary.
-- [ ] Existing Kubernetes entrypoints are `GOWORK=off GOEXPERIMENT=jsonv2 go build -o bin/plugin ./pkg` and `GOWORK=off go test ./pkg/plugin/resource/... ./pkg/plugin/helm/... -count=1`. Use the managed effective module selection; do not run `make generate`, tidy or lint fix as checks.
+- [ ] Using each consumer's captured effective modfile/environment from the managed source receipt, run the existing host entrypoint `GOWORK=off go build .` and targeted SDK entrypoints `GOWORK=off go test ./pkg/v1/resource/... ./pkg/sdk ./pkg/interceptors -count=1`. Reuse an identical managed result instead of rerunning it. Include real client/server codec cases where a changed source selection affects their boundary.
+- [ ] Using the captured managed Kubernetes environment, run the existing entrypoints `GOWORK=off GOEXPERIMENT=jsonv2 go build -o bin/plugin ./pkg` and `GOWORK=off go test ./pkg/plugin/resource/... ./pkg/plugin/helm/... -count=1`. Do not run `make generate`, tidy or lint fix as checks.
 - [ ] Verify runtime package build precedes Vite-plugin build/shim checks; inspect the managed receipt's actual command/result before scheduling a duplicate. Use the selected UI package's build/typecheck and meaningful existing behavior cases when source integration changes them.
 - [ ] For every check, report cwd/source identity, effective environment, command, observed result and limit. Existing unrelated failures are evidence to classify, not permission to suppress exceptions or rewrite incidental test expectations. No cold-start/steady-state performance threshold is invented here; P02 owns measured production budgets.
 

@@ -15,7 +15,8 @@ env:
 jobs:
   render-bench:
     name: Render benchmarks
-    runs-on: ubuntu-latest
+    # Playwright 1.50.1 supports Ubuntu 24.04, not ubuntu-latest's Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -25,7 +26,10 @@ jobs:
           submodules: true
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          version: 12.14.0
+          install: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -55,7 +59,7 @@ jobs:
         if: always()
         run: |
           if [ -f bench/render/results/latest.json ]; then
-            node bench/render/report.mjs --title "Render benchmarks (${{ github.sha }}, ubuntu-latest)"
+            node bench/render/report.mjs --title "Render benchmarks (${{ github.sha }}, ubuntu-24.04)"
           fi
 
       - name: Upload results

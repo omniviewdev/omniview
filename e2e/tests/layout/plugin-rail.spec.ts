@@ -38,7 +38,9 @@ test.describe('Plugin rail', () => {
       scrollHeight: el.scrollHeight, clientHeight: el.clientHeight,
     }));
     expect(scrollHeight).toBeGreaterThan(clientHeight);
-    await rail.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await rail.evaluate((el) => {
+      el.scrollTop = el.scrollHeight; 
+    });
     await expect(rail.getByRole('link', { name: 'E2E Plugin 30' })).toBeInViewport();
 
     // ...but neither the rail nor the window shows a scrollbar for it.

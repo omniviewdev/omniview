@@ -81,7 +81,7 @@ These are contract subjects, not preselected filenames or new API symbols. The o
 - **Depends:** none
 - **Owner / size:** integration owner; host + selected source worktrees; S
 - **Start:** host `go.mod`, `package.json`, `Taskfile.yml`, plugin shared-dependency lists; sibling Kubernetes module/package manifests; `ui/main` package exports; existing workspace plan.
-- **Deliver:** resolved source/version matrix and isolated linking procedure; inventory all host/runtime/plugin consumers of Find/List search, namespace/GVK identity, providers/raw clients, compatibility models and legacy contributions. Assign every affected surface to P03/P05/P07/P10/P15/P26/P45/P47; inventory is migration input, not a reason to keep old APIs.
+- **Deliver:** resolved source/version matrix and isolated linking procedure; inventory all host/runtime/plugin consumers of Find/List search, namespace/GVK identity, providers/raw clients, compatibility models and legacy contributions. Assign every affected surface to P03/P05/P07/P10/P15/P26/P43/P45/P47; P43 owns legacy `useResourceSearch` callers and superseded search execution. Inventory is migration input, not a reason to keep old APIs.
 - **Accept:** demonstrate selected SDK source actually reaches both Go consumers with `GOWORK=off`; demonstrate one selected UI/runtime export reaches host and plugin without duplicate React/CSS/runtime instances. Record current versions and incompatibilities; do not merely change version strings.
 - **Exclude:** implementing the existing workspace program again. If environment prerequisites are not delivered, use a verified equivalent for these smokes and name its limits.
 

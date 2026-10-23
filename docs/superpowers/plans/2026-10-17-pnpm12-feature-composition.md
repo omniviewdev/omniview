@@ -1,0 +1,140 @@
+# pnpm12 Feature Composition Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Execute the ownership-separated packets below; parent owns coordinated verification after each source freeze.
+
+**Goal:** Make stock native pnpm12.14.0 support fully isolated, reversible, multi-repository feature workspaces without duplicate React, stale live outputs or weakened peer checks.
+
+**Architecture:** Generate one pnpm workspace and lockfile at the canonical feature directory above its selected physical Git worktrees. Git repositories, Go modules, profile UUIDs/state, native storage and process supervision remain separate. Existing source configurations remain available for standalone development; managed installation explicitly reconciles policies at the aggregate root and uses native12 authoritative context.
+
+**Tech Stack:** Existing Go devcontract/devsession/devworkspace/devoutputs, yaml.v3, native pnpm12.14.0, Node, existing Wails3/browser/native harnesses.
+
+**Spec:** `../specs/2026-10-17-agentic-workspaces-discovery.md`; user explicitly approved this topology after actual native12 failure/source diagnosis. Evidence: `.superpowers/sdd/2026-10-17-agentic-workspaces/pnpm12-migration.md`.
+
+## Superseding constraints
+
+- This replaces A11/A15's independent-pnpm-root assumption, not profile/Git/Go isolation.
+- Managed feature composition targets exact12.14.0. Reject incompatible/mixed declared manager pins before mutation; no downgrade, private pnpm fork, peer-warning suppression or React proxy package. Remove obsolete per-root managed installer/Corepack paths and stale legacy probe switches during cutover rather than keep two authorities.
+- `minimumReleaseAge: 0` is the developer-approved prior-behavior policy. Strict peers, managed no-script installs, source-policy conflict refusal, immutable CLI binaries and real retained process ownership remain required.
+- The developer explicitly approved **host-led lock convergence** after real source graphs pinned different children under identical package/peer snapshot keys. Seed host lock first, selected UI next, then remaining sources in stable relative-path order. Keep distinct locked identities/integrities; identical-key integrity changes still refuse. Necessary shared transitive edges may converge without rewriting standalone locks or running a general update. Record nonsecret seed choices in `Plan.Convergence` / link reports' `seedConvergence`; the single native install, recursive audit and final aggregate lock remain authoritative.
+- Installation exit0 is not peer proof. Run `pnpm -r peers check --json --lockfile-only` from aggregate root after install and before build/ready; recheck after manifest changes. Plain root-only peers check is insufficient.
+- Do not claim success from source fixtures: actual12 Node identity, live JS/CSS/declaration replacement, cold invalid peers and warm peer-only edits must be exercised.
+- No checks/builds/formatters during parallel source mutation. Parent formats/freezes, then runs once. GOWORK=off for every Go command; selected SDK/native modfile is mandatory while SDK publication is pending.
+- Fresh worktrees use committed source refs, never copied dirty source. Canonical clones/global package installation/user profile data remain untouched.
+
+## Frozen shared interfaces
+
+New native-independent `internal/devcompose` imports devcontract/YAML/stdlib, not devworkspace/devoutputs/backend. It is the single composition model/discovery/policy implementation; do not duplicate planner logic in runtime/output adapters.
+
+```go
+package devcompose
+
+const Version = "12.14.0"
+const RootEnvironment = "PNPM_CONFIG_WORKSPACE_DIR"
+
+type Root struct {
+    Path string `json:"path"`
+    Version string `json:"version"`
+    Targets map[string]string `json:"targets"`
+}
+type Package struct {
+    Path string `json:"path"`
+    Name string `json:"name"`
+    Version string `json:"version,omitempty"`
+    Private bool `json:"private"`
+}
+type File struct { Path string; Data []byte }
+type Plan struct {
+    SchemaVersion int `json:"schemaVersion"`
+    WorkspaceID string `json:"workspaceID"`
+    Root string `json:"root"`
+    Version string `json:"version"`
+    Roots []Root `json:"roots"`
+    Packages []Package `json:"packages"`
+    Targets map[string]string `json:"targets"`
+    SourceHashes map[string]string `json:"sourceHashes"`
+    Files []File `json:"-"`
+}
+func New(w devcontract.ResolvedWorkspace, roots []Root, targets map[string]string) (Plan, error)
+func Validate(w devcontract.ResolvedWorkspace, p Plan) error
+func CheckInputs(p Plan) error
+func Installed(w devcontract.ResolvedWorkspace, consumer string) (Plan, error)
+```
+
+`New` is pure planning/read-only. `Files` contains only fixed aggregate `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml` paths; no source writes. Persisted plan excludes duplicate generated byte buffers: linkJournal.Files already owns their before/applied bytes. SourceHashes use feature-relative source inputs, including package manifests/configs/source lockfiles; generated files are checked through journal AppliedHash.
+
+`Installed` projects the existing authoritative `.local/links.json`: schema2, exact workspace/root, phase `linked`, `plan.composition`, no pending file outputs, exact generated file AppliedHashes and matching source inputs; consumer must be a selected package/root. It does not create another lifecycle journal, infer readiness from directories, print diagnostics/secrets, or accept arbitrary roots. Phase applying/unknown/mismatched source returns a clear refusal.
+
+Existing private `linkPlan` gains `Composition *devcompose.Plan json:"composition,omitempty"`; linkJournal schema becomes2. New accepted evidence uses `Protocol:"workspace"`, `Versions:["12.14.0"]`, and the existing true AtomicDist/Peers/Runtime results. Historical link/10 evidence cannot authorize this topology. Public Link/Unlink/Inspect and CLI target semantics remain.
+
+Output addition:
+```go
+func BeginCompositionInstall(ctx context.Context, w devcontract.ResolvedWorkspace, p devcompose.Plan) (*Writer, error)
+```
+It owns aggregate root node_modules and every actual selected package's node_modules, including shared virtual-store metadata, before process start. It derives/validates exact canonical targets from Plan, not a generic output path. Existing BeginVite/Prepare/Publish/Restore APIs remain; they understand composed module ownership without adopting unknown data.
+
+Runtime command contract preserves `PNPMCommand(ctx,pin,args...)` and original argv/consumer cwd. Native12's implemented workspace root finder honors `PNPM_CONFIG_WORKSPACE_DIR` before upward child-YAML discovery. The owned launcher clears all case/prefix aliases (`PNPM_CONFIG_WORKSPACE_DIR`, `pnpm_config_workspace_dir`, `NPM_CONFIG_WORKSPACE_DIR`, `npm_config_workspace_dir`), then sets the authoritative uppercase key to the canonical registered feature root for native pnpm and its nested scripts. Validate selection before assigning it: native pnpm accepts this value verbatim. No `--dir`/`--filter` indirection, generic argv rewriter or redundant host-only root environment is needed. Explicit aggregate install/recursive audits deliberately use feature-root cwd; package builds retain actual package cwd. Source: pnpm12.14.0 `workspace/src/root_finder.rs` and its precedence tests.
+
+## File/ownership map and parallel DAG
+
+| Packet | Owned files | Dependencies |
+| --- | --- | --- |
+| C01 Composition planner | New `internal/devcompose/{plan,policy,lockfile,installed}.go` and meaningful tests | Frozen types above |
+| C02 Aggregate output ownership | `internal/devoutputs/{scope,writer,journal,snapshot,restore}.go` as needed + boundary tests | C01 Plan types; can code concurrently |
+| C03 Link/graph/native command cutover | `internal/devworkspace/{links,buildgraph,toolchain,watch,repository_outputs}.go` and relevant tests | C01/C02 interfaces; can code concurrently |
+| C04 Runtime/harness adapters | `internal/devworkspace/{supervisor,launch,generated}_*.go` as needed; backend devserver; main env map; e2e fixtures/scripts; no C03-owned files | Frozen command/Installed contract; can code concurrently |
+| C05 Integration evidence/docs | Parent: formatting, public docs/skills, CLI/bootstrap, cold protocol and actual A/B launch/browser/native checks | All packets source-frozen |
+
+Sibling source overlaps must be messaged before editing. C03 owns `links_probe_test.go` and new protocol output; C04 consumes its frozen evidence shape, not implementation. Parent owns plan/spec/current evidence notes and integration commits.
+
+### C01: Pure composition, policy reconciliation and source-lock seeding
+
+- [ ] Add canonical Plan validation: feature root is registered workspace root, every package is inside its exact selected repository, no symlink/metadata/state/canonical-clone redirect, exact12 compatible roots only. Discover actual package directories using existing workspace glob conventions, preserve private duplicate plugin names when legal, reject ambiguous exported managed-target names.
+- [ ] Generate private aggregate manifest with UUID ownership marker, exact manager pin and explicit local package workspace mappings. Do not rewrite source package names, versions, dependency ranges or source lockfiles.
+- [ ] Reconcile workspace settings explicitly. Preserve compatible registry/catalog/package-extension/override/resolution settings; resolve relative source paths against their actual repository before checking containment. Conflicts fail with setting/source identifiers, never secret values. Managed installs always disable scripts; build approvals cannot silently grant permissions denied by another selected root. Unknown/unrepresentable policies or repository-local credentials/hooks require an actionable refusal rather than silent dropping/copying credentials.
+  - Integration clarification: `allowBuilds` approvals are permission sets, so explicit booleans intersect with deny-wins across selected roots; standalone configs are unchanged. This resolves the real host-allow/plugin-deny esbuild combination without granting scripts. All managed installs remain no-script, and incompatible non-permission settings still fail.
+- [ ] Use the selected host's locked React/ReactDOM versions as singleton providers, not outside-root React path links. Preserve other registry selections by seeding a composed lock from selected source importers/packages/snapshots; rewrite importer paths deterministically, retain exact resolution integrity and detect conflicting records. Handle native12 multi-document metadata explicitly. Missing source lockfiles are first-resolution input, not fabricated frozen evidence. Do not run a dependency update command or float already-locked versions incidentally.
+- [ ] Implement Installed as a read-only projection of schema2 canonical link authority, checking root/generated file hashes and source fingerprints before runtime uses it.
+- [ ] Add behavior regressions for policy conflict/no mutation, lock path rewriting/integrity preservation, foreign root/redirect refusal, cold multiple plugins/nested source configs and installed-receipt staleness. No source-text/copy/echo assertions. Freeze with exact changed paths and assumptions.
+
+### C02: Aggregate producer lifetime and reversible output ownership
+
+- [ ] Extend only exact composition-derived module scopes to include feature-root node_modules; it is not a Git repository or arbitrary extra output root. Use stable workspace/selected-source identities and existing external private UUID journal/lock policy.
+- [ ] BeginCompositionInstall preflights all module/cache scopes before any mutation, refusing unknown ignored output, replaced roots and overlapping live writers. The actual retained process and descendants must stop before Finish. Unknown disposal retains pending intent.
+- [ ] Keep consumer-specific Vite loader/type/optimizer caches separately owned and excluded only under independent receipts. Shared immutable store is not a permissive cache; do not hash mutable payload while another authorized writer is live.
+- [ ] Restore aggregate modules and per-package aliases safely under stopped lifecycle/profile guards, retain source edits/foreign replacements on conflict, and retire only exact owned artifacts before source relocation/removal. No ignored-path exemptions or force-cleaning.
+- [ ] Add deterministic real-file lifetime/root replacement/recovery regressions, no timing sleeps or wiring echoes. Freeze; parent runs full ownership suites and actual install/restore.
+
+### C03: One transactional link/install/peer authority and graph consumers
+
+- [ ] Run gopls references before exported evidence/PNPMCommand changes. Move JS root discovery/policy semantics into devcompose rather than leave a second planner. Keep actual Go SDK replacements independent and unchanged in authority.
+- [ ] Journal fixed aggregate generated files and source input snapshots before writing. Existing unknown aggregate files conflict. Apply one composition install through existing owned native launcher, followed by explicit recursive peer audit; only proven terminal success and unchanged source inputs permit phase linked. Preserve partial/failure lock provenance and uncertain producer lifetimes.
+- [ ] On reuse, validate schema2/evidence/source inputs/generated hashes before resolution; do not treat export absence before bootstrap as installer failure, or stale peer manifests as success. On explicit stopped reconfiguration, safely reconcile changed manifests/configs rather than silently adopt them.
+- [ ] Unlink restores original aggregate absence/source Go/config bytes and exact owned module outputs; remove the obsolete independent-root reinstall authority. Human edits remain conflicts. Retire old unsupported journal/protocol shapes with actionable instructions, not silent shims.
+- [ ] Derive native12 package commands from selected consumer/root, preserve actual script cwd/arguments, package-local build context, renamed Node and nested pnpm selection. Remove dead managed legacy Corepack/version branches once all callers are migrated. No global modifications.
+- [x] Enforce native12 `verifyDepsBeforeRun=error` in the owned launcher. A real dependency-consuming command must run on a fresh graph, fail before consuming a stale graph even when the default implicit installer would only warn, and leave aggregate lock bytes unchanged. Do not disable validation or repin mock argument-forwarding tests.
+- [ ] Run recursive peer audit at graph bootstrap and before accepting manifest-triggered rebuild/readiness. Snapshot/check full manifest inputs so frozen/up-to-date install fast paths cannot conceal peer changes. Dependency changes needing reinstall require truthful stopped reconfiguration, not module mutation under live Vite.
+- [ ] Update real opt-in protocol probe to aggregate layout, cold invalid peer and warm peer-only audit, real React/ReactDOM/runtime identity, multiple plugins and atomic JS/CSS/declaration output replacement. Emit workspace/12 proof only after all pass. Keep diagnostic privacy; remove throwaway debugging instrumentation once real proof is retained.
+- [ ] Freeze; no test/build/formatter in flight.
+
+### C04: Runtime, supervisor and harness cutover
+
+- [ ] Use devcompose.Installed for selected plugin UI startup rather than a second per-plugin package install. An attested complete composition is a real prerequisite; stale/missing/tampered data fails, not a no-op fallback. Only actual Vite lifetime gets its writer.
+- [ ] Migrate all supervisor/host/plugin command maps to exact12 dispatch with authoritative `PNPM_CONFIG_WORKSPACE_DIR`, preserving original argv, actual package cwd, Node override and private process bridge ownership. Partial/conflicting context fails closed. Preserve plugin-ID stripping of parent bridge capabilities.
+- [ ] Initial supervisor preparation waits on one install+recursive-peer transaction before bindings/build/native bundle/plugin starts. Restart/source edit dependencies respect composed module writer lifetimes; no hidden reinstall while other consumers run.
+- [ ] Update CLI/e2e input validation for workspace/12 evidence and generated aggregate paths. No fixed ports, arbitrary listener reuse, guessed binary paths or human-profile destructive fixtures. Safe probe preparation remains real source+lockfile, no cloud/autoconnect.
+- [ ] Retain A16 native purge capability, immutable CLI/native bundle receipts, typed retained-group death proof and generation/token readiness behavior unchanged. Use gopls for affected callsites; freeze without checks.
+
+### C05: Parent integration/review barrier and actual acceptance
+
+- [ ] Format only owned changed Go once all packets freeze. Run composed planner/output/core/backend suites with the reviewed SDK/native modfile; inspect actual output before claiming pass.
+- [ ] Run native12 cold protocol with nested source configs before first install, two plugin packages, non-wildcard runtime/local UI peer; require explicit recursive audit0. Change React peer to incompatible18 and require audit failure even on warm/frozen metadata. No hidden skip, fake fields or peer suppression.
+- [ ] Rebuild current immutable CLI, retain both binary hashes, create fresh committed host/UI/Kubernetes/probe feature worktrees through canonical init/create --start, actual12 linking/build order and assigned/discovered endpoints. SDK reviewed baseline remains d32a524bc89659260c6045062035ce05dc138ff4; no fabricated published dependency.
+- [ ] Exercise A/B settings/native/browser/profile separation, same plugin ID across profiles and multiple plugins, source CSS/runtime export/SDK edits, failed/recovered builds, restart/strict occupied ports, source config conflict and stopped canonical edit/remove/restore. Use actual browser screenshots/IPC/events plus named native MCP; native OS pixel permission limit remains explicit.
+- [ ] Run existing real esbuild output boundary and Vite-plugin behavior suite; no forwarding/mock-echo/source-text tests. Complete packet reviews/security fixes, public docs/agent instructions and integration commits. Clean only owned throwaway fixtures after their real proof; never mutate canonical clones/global tools or user production state.
+
+## Review checkpoints
+
+1. Planner/policy/lock preservation and aggregate output boundaries independently reviewable before integration.
+2. Link schema/command context and runtime adapters reviewed together after exact shared interfaces compile.
+3. Actual cold/warm12 proof is the gate to one-command feature launch, not source plausibility or standalone builds.
+4. Final delivery separates local exercised acceptance from SDK publication/remote CI/cross-platform/native-pixel prerequisites.

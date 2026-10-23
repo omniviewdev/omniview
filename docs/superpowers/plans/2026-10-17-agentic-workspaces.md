@@ -64,6 +64,7 @@ Paths in the host are relative to `omniview/`; sibling paths are relative to the
 | A13 | `cmd/omniview-dev/{instance,plugin,settings}.go` | Scriptable client commands and wait/error/redaction handling |
 | A14 | New `internal/devbaseline`; store read-only export helpers; baseline CLI command | Consistent, sanitized source snapshot/import |
 | A15 | New `internal/devworkspace/{buildgraph,watch}.go`; UI build-watch scripts/config | Ordered bootstrap and change propagation |
+| A15b | Repository producer output journal, staged JS/binding/shim/worker publication, controlled install/cache writers | Safe ownership and restoration before worktree removal |
 | A16 | New `internal/devworkspace/{launch,status}.go`; CLI main integration and Task wrappers via A10 interface | One-command orchestration, restart/stop, actual endpoints |
 | A17 | `e2e/playwright.config.ts`, fixtures/scenarios, dev verification command/native MCP integration | Identity-checked disposable verification |
 | A18 | `.agents/skills`, `docs/development-workspaces.md`, repo map/reference files, registration task | Agent entry points and concise navigation |
@@ -179,6 +180,10 @@ flowchart TD
   A13 --> A16
   A14 --> A16
   A15 --> A16
+  A15 --> A15b["A15b Repository output ownership"]
+  A10 --> A15b
+  A11 --> A15b
+  A15b --> A16
   A16 --> A17["A17 Verification harness"]
   A16 --> A18["A18 Skills and navigation"]
   A17 --> A19["A19 Integrated acceptance"]
@@ -195,7 +200,7 @@ Integration owner owns CLI root wiring, `main.go` cross-cutting startup changes 
 
 **Dependencies:** none. **Owner:** host contract/CLI foundation. **Files:** new `internal/devcontract`, CLI root dispatch/flag parsing; new fixture manifests and relevant developer documentation.
 
-**Consumes:** discovery §3–11. **Produces:** v1 manifest/descriptor/control types above; validation and explicit workspace-context resolution; stable error/exit mapping. Define `OMNIVIEW_WORKSPACE_FILE` as the absolute manifest selector passed to child apps. Existing `OMNIVIEW_STATE_DIR` remains supported but must agree with the resolved profile.
+**Consumes:** discovery §3–11. **Produces:** v1 manifest/descriptor/control types above; validation and explicit workspace-context resolution; stable error/exit mapping. Define `OMNIVIEW_WORKSPACE_FILE` as the absolute manifest selector passed to child apps. `OMNIVIEW_STATE_DIR` names the canonical `stateRoot` (`<profileRoot>/state`), never the profile container. Host startup and child processes consume the same resolved descriptor and reject disagreement; runtime and webview paths derive from that profile container, not by appending children to `stateRoot`. Default profile storage and explicit custom binding follow discovery §8 and the current [operational guide](../../development-workspaces.md#settings-baseline-and-custom-state-roots).
 
 - [ ] Encode portable intent separately from local resolved paths/runtime secrets. Enforce UUID, slug, repo uniqueness, plugin-ID uniqueness, path containment and schema-version handling.
 - [ ] Resolve explicit `--workspace` first, enclosing manifest second; missing/ambiguous context fails. Do not discover a human production app as a fallback.
@@ -272,7 +277,7 @@ Integration owner owns CLI root wiring, `main.go` cross-cutting startup changes 
 - [ ] Implement locked root registry keyed by workspace UUID/service/plugin ID. Sticky preferred allocation in 20000–44999 by default; configurable range and explicit overrides.
 - [ ] Preserve assignments when plugin selection order changes or another plugin is added. Occupied preferred port gets a recorded new assignment unless strict/pinned policy requires failure.
 - [ ] Handle child-bind races explicitly: verify readiness/identity after strict bind, bounded allocation retry for automatic policy, no hidden increment and no killing unrelated listener.
-- [ ] Persist generation, PID/start identity, executable/role/source identity. Cleanup verifies ownership before signals, works after crash, and refuses recycled/foreign PID records.
+- [ ] Persist generation, PID/start identity, executable/role/source identity and a generation-owned process-tree containment primitive: a dedicated Unix session/process group or Windows Job Object. Carry containment identity and lifetime through the journal, launch, verification and cleanup; a recycled numeric group/PID alone is not ownership. After reparenting or supervisor crash, recover only where the platform can still verify that containment and its live members; otherwise report uncertain ownership and refuse signals. Test descendants, detached escape/refusal, leader exit and foreign/recycled identifiers; platform support requires actual evidence.
 - [ ] Publish descriptor with restrictive permissions and token-file reference. Remove only own generation's discovery. Support platform-appropriate permissions and process identity checks.
 - [ ] Test concurrent allocators, stale leases, unrelated occupied port, strict conflicts, reordered plugins, bind race, PID reuse, wrong-generation cleanup and interrupted atomic writes.
 
@@ -416,9 +421,24 @@ Integration owner owns CLI root wiring, `main.go` cross-cutting startup changes 
 
 **Check:** edit a selected UI component/CSS, runtime export and SDK method in disposable worktrees; observe intended host and two selected plugins update/rebuild, while a second workspace remains unchanged. Verify one React/runtime instance. Rebuild recovery after syntax error must return to ready; no false-success typecheck. Remove throwaway probe edits before delivery.
 
+## A15b — Producer-scoped repository output ownership
+
+**Dependencies:** A10, A11, A15 producer conventions; may proceed alongside A16's supervisor implementation against frozen APIs. **Owner:** A15 output journal and producer adapters; A10 Task destination forwarding; A16 actual process/cache writer lifetimes; integration owner canonical removal wiring.
+
+Actual implementation inspection exposed an initial plan gap: ignored dist/node_modules plus tracked generated bindings/shims/worker output were not owned by the workspace generated ledger. Successful builds must not make safe removal impossible, and unknown files must never be broadly adopted or deleted.
+
+- [ ] Implement external UUID-scoped durable private publication/restoration journal, exact selected targets and retained path identity.
+- [ ] Stage JS and source-generated outputs, preserve sourcemap depth, compare expected/current HEAD and working bytes before publication; refuse human edits/unknown outputs.
+- [ ] Restore current committed generated source and remove only unchanged known generated outputs; preserve user commits and fail closed on foreign replacements or interrupted unknown writers.
+- [ ] Account for every pnpm install/reinstall and long-lived Vite/config-loader cache writer, with actual lifetime ownership rather than stale hashes.
+- [ ] Keep `task bindings` as sole generator entry with explicit staged output; keep the actual host source separate from prepared native bootstrap output.
+- [ ] Wire restoration under stopped lifecycle/profile guards before normal source-clean checks; keep irreversible native removal after every canonical refusal preflight.
+
+**Check:** actual fresh bootstrap/unlink/remove succeeds without broad ignored exemptions; unknown ignored files, edited generated source and replaced directories are refused unchanged; current committed source survives; partial publication/restoration is retryable. Full contract: `.superpowers/sdd/2026-10-17-agentic-workspaces/repository-output-ownership.md`.
+
 ## A16 — End-to-end one-command workspace launch
 
-**Dependencies:** A03, A06, A09, A10, A11, A13, A14, A15. **Owner:** orchestration/integration.
+**Dependencies:** A03, A06, A09, A10, A11, A13, A14, A15, A15b. **Owner:** orchestration/integration.
 
 **Consumes:** all lifecycle/link/build/profile/control contracts. **Produces:** create --start, up/down/edit/restart/inspect with authoritative endpoint/generation readiness and Task wrappers.
 
@@ -502,3 +522,11 @@ Integration owner owns CLI root wiring, `main.go` cross-cutting startup changes 
 Discovery proved concurrent empty-profile server processes, one real UI settings write isolated from another backend, native MCP DOM/input, and Vite-proxied browser rendering/backend access. It did not prove packaged multi-instance native storage, linked-library source-change HMR, SDK compatibility with selected Kubernetes code, standalone external backend attachment, multiple real plugins, production import, Windows/Linux behavior, or the full existing test suite.
 
 These are explicit work-packet acceptance gates above, not silently deferred deliverables. Do not begin by running the current `task dev` in a new worktree: today it still defaults to production state and upgrades UI dependencies. Implement/verify the profile and linking prerequisites first.
+
+## 7. Approved pnpm12 execution amendment
+
+The user selected stock native **pnpm12.14.0**, prior pnpm10 release-age behavior (`minimumReleaseAge: 0`), and a **single managed pnpm workspace per feature** after actual cross-root peer incompatibility was established. Complete A15c (native12 migration) and A15d (aggregate composition) before A16/A17 final acceptance.
+
+The authoritative [pnpm12 feature composition plan](2026-10-17-pnpm12-feature-composition.md) replaces independent-root JS installation with packets C01–C04 in parallel under frozen interfaces, followed by C05 coordinated review/runtime proof. It preserves separate Git worktrees/Go modules/profiles and all original removal, live feedback, multi-plugin, native and browser gates. No strict-peer relaxation, global linking, pnpm fork or downgrade is authorized.
+
+Current standalone12 source installs/builds and named native/browser identity proofs are recorded in the integration evidence, not inferred to complete the aggregate managed path. Historical discovery limitations and old per-root pnpm10 assumptions above must not override this approved amendment.

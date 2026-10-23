@@ -11,27 +11,64 @@ concurrency:
 
 env:
   NODE_VERSION: "24"
+  GOWORK: "off"
+  GOFLAGS: ""
+  UI_SOURCE_REF: ${{ vars.OMNIVIEW_APP_PROFILE_UI_REF }}
+  KUBERNETES_SOURCE_REF: ${{ vars.OMNIVIEW_APP_PROFILE_KUBERNETES_REF }}
 
 jobs:
   app-profile:
     name: Whole-app profile
-    runs-on: ubuntu-latest
+    # Playwright 1.50.1 supports Ubuntu 24.04, not ubuntu-latest's Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # The kubernetes plugin's UI bundle is built from the submodule and loaded by the app.
-          submodules: true
+          persist-credentials: false
+
+      - name: Require reviewed source cohort
+        shell: bash
+        run: |
+          if [[ ! "$UI_SOURCE_REF" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]] || [[ ! "$KUBERNETES_SOURCE_REF" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]; then
+            echo "::error::Set OMNIVIEW_APP_PROFILE_UI_REF and OMNIVIEW_APP_PROFILE_KUBERNETES_REF to reviewed, published full commits. No default branch or future npm version is substituted."
+            exit 1
+          fi
+
+      - name: Checkout reviewed UI source
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/ui
+          ref: ${{ env.UI_SOURCE_REF }}
+          path: .app-profile-sources/ui
+          persist-credentials: false
+
+      - name: Checkout reviewed Kubernetes source
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/omniview-plugin-kubernetes
+          ref: ${{ env.KUBERNETES_SOURCE_REF }}
+          path: .app-profile-sources/kubernetes
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          version: 12.14.0
+          install: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -48,10 +85,24 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
-      # Builds the kubernetes plugin UI and the profiling bundle, then runs the
-      # scenarios. Writes the summary to the job summary.
+      - name: Prove native pnpm source composition
+        env:
+          A11_PROTOCOL_PROBE: "1"
+          A11_PROTOCOL_REPORT: ${{ runner.temp }}/app-profile-link-protocol.json
+        run: go test -tags server ./internal/devworkspace -run '^TestLinkPinnedProtocolProbe$' -count=1
+
+      # Reuse canonical source linking and JS producers, not the obsolete bundled
+      # submodule or unpublished runtime versions. The helper retires its private
+      # collection only after the full real-plugin profile finishes.
       - name: Profile
-        run: pnpm bench:app --runs 3
+        shell: bash
+        run: |
+          go run -tags server ./bench/app/build-plugin \
+            --host "$GITHUB_WORKSPACE" --host-ref "$(git rev-parse HEAD)" \
+            --ui "$GITHUB_WORKSPACE/.app-profile-sources/ui" --ui-ref "$UI_SOURCE_REF" \
+            --kubernetes "$GITHUB_WORKSPACE/.app-profile-sources/kubernetes" --kubernetes-ref "$KUBERNETES_SOURCE_REF" \
+            --link-evidence "$RUNNER_TEMP/app-profile-link-protocol.json" \
+            -- --runs 3
 
       - name: Upload results
         if: always()

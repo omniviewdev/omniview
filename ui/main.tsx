@@ -7,19 +7,8 @@ import 'systemjs/dist/system.js';
 import 'systemjs/dist/extras/amd.js';
 import 'systemjs/dist/extras/named-register.js';
 
-import { DiagnosticsClient } from '@omniviewdev/runtime/api';
-import { initTelemetry, type LogSink } from './features/telemetry';
-
-// Bridge frontend telemetry to the existing DiagnosticsClient.Log Wails binding.
-const bridgeSink: LogSink = {
-  write(level, msg, fields) {
-    DiagnosticsClient.Log(level, msg, fields).catch((err) => {
-      if (import.meta.env?.DEV) {
-        console.error('[bridgeSink] DiagnosticsClient.Log failed:', err);
-      }
-    });
-  },
-};
+import { initTelemetry } from './features/telemetry';
+import { bridgeSink } from './features/telemetry/bridgeSink';
 
 initTelemetry(bridgeSink);
 

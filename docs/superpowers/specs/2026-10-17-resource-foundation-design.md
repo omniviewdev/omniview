@@ -353,7 +353,7 @@ Not-provided schemas permit basic reads and applicable runtime validation. Unava
 
 ## 7. Accepted query request and compilation boundary
 
-A query specifies the desired result, not a provider fetch strategy. The host validates/plans bounded native, local or hybrid execution. Language choice and exact logical representation remain subject to the comparison spike; existing Find is not the public contract.
+A query specifies the desired result, not a provider fetch strategy. The host validates/plans bounded native, local or hybrid execution. CEL is the accepted language direction; exact logical representation and implementation profile remain subject to their confirmation gates. Existing Find is not the public contract.
 
 ```mermaid
 flowchart TD
@@ -399,6 +399,8 @@ classDiagram
 ```
 
 Conceptual names are not complete wire definitions. Multiple targets mean explicit union, not implicit joins/all-connection search. Text/builder inputs declare versions and resolve to shared semantics, not necessarily identical syntax trees. Parameters are typed bound values with agreed precision/time semantics, never string substitution.
+
+Explicit union preserves one observation row per resolved target and resource membership, even when compatible targets reach the same `ResourceAddress`. The host-issued row key includes stable target membership identity as well as resource/incarnation identity; it is not an address-only deduplication key. Each row retains its own target provenance, representation and requested projection. Differing projections remain separate rows; no last-writer selection or field-wise body enrichment is allowed. A future deduplicating union would require a separately explicit, access-safe reconciliation contract, not an implicit optimization of this union.
 
 - Projection describes output; execution may privately acquire other fields needed by predicates/order.
 - Ordering defines null/missing and deterministic identity tie-break behavior, not incidental arrival order.
@@ -490,10 +492,11 @@ type QueryDelivery = {
   mode: "once" | "follow";
   pageSize: number;
   after?: string;
+  allowPartial?: boolean; // defaults to false; explicit caller authorization
 };
 ```
 
-Illustrative delivery shape: once returns a page and supported continuation; follow maintains a bounded window under section 8. Continuation is query-result state, not a provider cursor. Follow-with-continuation requires correct supported window semantics or an explicit unsupported-mode error. Validate limits and expose effective page size.
+Illustrative delivery shape: once returns a page and supported continuation; follow maintains a bounded window under section 8. `allowPartial` belongs to this execution/delivery request, not saved predicate meaning or trusted invocation context. Omission resolves to false: failures cannot become successful partial results without explicit caller authorization under section 12. Authorization permits only policy-allowed partial coverage; it never overrides access denial, and returned coverage/errors remain explicit. It participates in execution-sharing/continuation compatibility. Continuation is query-result state, not a provider cursor. Follow-with-continuation requires correct supported window semantics or an explicit unsupported-mode error. Validate limits and expose effective page size and partial policy.
 
 ```mermaid
 sequenceDiagram

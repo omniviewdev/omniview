@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { Events } from '@wailsio/runtime';
 import { useSnackbar, createErrorHandler } from '@omniviewdev/runtime';
 
 // Underlying client
@@ -21,6 +23,12 @@ export const useCategorySettings = ({ category }: UseCategorySettingsOptions) =>
   const { showSnackbar } = useSnackbar();
 
   const queryKey = ['settings', category];
+
+  useEffect(() => Events.On('settings/changed', (event) => {
+    if (event.data === category) {
+      void queryClient.invalidateQueries({ queryKey: ['settings', category] });
+    }
+  }), [category, queryClient]);
 
   const settings = useQuery({
     queryKey,

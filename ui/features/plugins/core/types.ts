@@ -278,6 +278,8 @@ export type PluginServiceDeps = {
     error(message: string, data?: Record<string, unknown>): void;
   };
 
+  getPluginDescriptor(pluginId: string): Promise<PluginDescriptor>;
+
   importPlugin(opts: PluginImportOpts): Promise<unknown>;
   clearPlugin(opts: { pluginId: string; dev?: boolean }): Promise<void>;
   onEvent(eventName: string, handler: (...args: any[]) => void): () => void;

@@ -42,40 +42,6 @@ function setup(config?: Partial<PluginServiceConfig>) {
 // ─── Group 9: Event System ──────────────────────────────────────────
 
 describe('Group 9: Event System', () => {
-  // ── 9.1 Event Listener Setup ──────────────────────────────────────
-
-  describe('9.1 Event Listener Setup', () => {
-    it('9.1.1 — startEventListeners registers all events', () => {
-      const s = setup();
-      s.service.startEventListeners();
-      // 7 event types: install_finished, update_complete, dev_reload_complete,
-      // state_change, crash, recovered, crash_recovery_failed
-      expect(s.eventBus.listenerCount()).toBe(7);
-    });
-
-    it('9.1.2 — stopEventListeners unregisters all', () => {
-      const s = setup();
-      s.service.startEventListeners();
-      expect(s.eventBus.listenerCount()).toBe(7);
-      s.service.stopEventListeners();
-      expect(s.eventBus.listenerCount()).toBe(0);
-    });
-
-    it('9.1.3 — double start is idempotent', () => {
-      const s = setup();
-      s.service.startEventListeners();
-      s.service.startEventListeners();
-      expect(s.eventBus.listenerCount()).toBe(7);
-    });
-
-    it('9.1.4 — stop without start is no-op', () => {
-      const s = setup();
-      expect(() => {
-        s.service.stopEventListeners(); 
-      }).not.toThrow();
-      expect(s.eventBus.listenerCount()).toBe(0);
-    });
-  });
 
   // ── 9.2 plugin/install_finished ───────────────────────────────────
 
@@ -92,63 +58,11 @@ describe('Group 9: Event System', () => {
       });
     });
 
-    it('9.2.6 — triggers reload if already loaded', async () => {
-      const s = setup();
-      s.importer.register('A', validModule());
-      await s.service.load('A');
-      expect(s.service.getPluginState('A')?.phase).toBe('ready');
-      const importCountBefore = s.importer.importCount;
-
-      s.service.startEventListeners();
-
-      // Re-register with a fresh module for reload
-      s.importer.register('A', validModule());
-      s.eventBus.emit('plugin/install_finished', { id: 'A' });
-
-      await vi.waitFor(() => {
-        expect(s.service.getPluginState('A')?.phase).toBe('ready');
-        expect(s.importer.importCount).toBeGreaterThan(importCountBefore);
-      });
-    });
-
-    it('9.2.7 — missing pluginId in payload', () => {
-      const s = setup();
-      s.service.startEventListeners();
-
-      // Should not crash
-      expect(() => {
-        s.eventBus.emit('plugin/install_finished', {}); 
-      }).not.toThrow();
-    });
-
-    it('9.2.8 — null payload', () => {
-      const s = setup();
-      s.service.startEventListeners();
-
-      expect(() => {
-        s.eventBus.emit('plugin/install_finished', null); 
-      }).not.toThrow();
-    });
   });
 
   // ── 9.3 plugin/update_complete ────────────────────────────────────
 
   describe('9.3 plugin/update_complete', () => {
-    it('9.3.9 — triggers reload for loaded plugin', async () => {
-      const s = setup();
-      s.importer.register('A', validModule());
-      await s.service.load('A');
-      const importCountBefore = s.importer.importCount;
-
-      s.service.startEventListeners();
-      s.importer.register('A', validModule());
-      s.eventBus.emit('plugin/update_complete', { pluginID: 'A', version: '1.0.0' });
-
-      await vi.waitFor(() => {
-        expect(s.service.getPluginState('A')?.phase).toBe('ready');
-        expect(s.importer.importCount).toBeGreaterThan(importCountBefore);
-      });
-    });
 
     it('9.3.10 — for unloaded plugin falls back to load', async () => {
       const s = setup();
@@ -163,45 +77,6 @@ describe('Group 9: Event System', () => {
     });
   });
 
-  // ── 9.4 plugin/dev_reload_complete ────────────────────────────────
-
-  describe('9.4 plugin/dev_reload_complete', () => {
-    it('9.4.11 — triggers reload for dev plugin', async () => {
-      const s = setup();
-      s.importer.register('A', validModule());
-      await s.service.load('A', { dev: true });
-      const importCountBefore = s.importer.importCount;
-
-      s.service.startEventListeners();
-      s.importer.register('A', validModule());
-      s.eventBus.emit('plugin/dev_reload_complete', { id: 'A' });
-
-      await vi.waitFor(() => {
-        expect(s.service.getPluginState('A')?.phase).toBe('ready');
-        expect(s.importer.importCount).toBeGreaterThan(importCountBefore);
-      });
-    });
-
-    it('9.4.12 — for non-dev plugin is ignored and logged', async () => {
-      const s = setup();
-      s.importer.register('A', validModule());
-      await s.service.load('A'); // prod mode
-      const loadedAt1 = s.service.getPluginState('A')?.loadedAt;
-
-      s.service.startEventListeners();
-      s.eventBus.emit('plugin/dev_reload_complete', { id: 'A' });
-
-      // Allow microtask queue to drain (event handler is synchronous for non-dev case)
-      await Promise.resolve();
-
-      // Should NOT reload — loadedAt unchanged
-      expect(s.service.getPluginState('A')?.loadedAt).toBe(loadedAt1);
-      // Warning should be logged
-      expect(s.log.byLevel('warn').some((l) =>
-        l.message.includes('Ignoring dev reload'),
-      )).toBe(true);
-    });
-  });
 
   // ── 9.5 plugin/state_change ───────────────────────────────────────
 

@@ -14,7 +14,7 @@ import {
 } from 'react-icons/lu';
 import { Events } from '@omniviewdev/runtime/runtime';
 import type { PluginMeta } from '@omniviewdev/runtime/models';
-import { DevServerMode } from '@omniviewdev/runtime/models';
+import { LifecycleStage } from '@omniviewdev/runtime/models';
 
 import { useDevServers } from '@/features/devtools/useDevServers';
 import { devToolsChannel } from '@/features/devtools/events';
@@ -60,23 +60,6 @@ const STATUS_LABELS: Record<DevServerAggregateStatus, string> = {
   connecting: 'Connecting...',
 };
 
-// ---------------------------------------------------------------------------
-// DevModeChip — only visible in dev builds
-// ---------------------------------------------------------------------------
-
-function DevModeChip() {
-  if (!import.meta.env.DEV) {
-    return null;
-  }
-
-  return (
-    <HintTooltip content='Running in development mode' side='top'>
-      <span className={styles.Chip} data-tone='warning' tabIndex={-1}>DEVELOPMENT MODE</span>
-    </HintTooltip>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // DevServerPopover — details and actions for one dev server
 // ---------------------------------------------------------------------------
 
@@ -97,7 +80,6 @@ function DevServerPopoverBody({ pluginId, state, onClose }: { pluginId: string; 
         title={
           <>
             {pluginId}
-            {state.mode === DevServerMode.DevServerModeExternal && <span className={styles.Badge}>External</span>}
           </>
         }
       >
@@ -110,8 +92,8 @@ function DevServerPopoverBody({ pluginId, state, onClose }: { pluginId: string; 
         {state.vitePort > 0 && <DetailRow label='Vite' value={`http://127.0.0.1:${state.vitePort}`} mono />}
         <DetailRow
           label='gRPC'
-          value={state.grpcConnected ? 'Connected' : 'Disconnected'}
-          tone={state.grpcConnected ? 'success' : 'danger'}
+          value={state.rpcStatus === LifecycleStage.StageNotApplicable ? 'Not applicable' : state.grpcConnected ? 'Connected' : 'Disconnected'}
+          tone={state.rpcStatus === LifecycleStage.StageNotApplicable ? undefined : state.grpcConnected ? 'success' : 'danger'}
         />
         {state.lastError && <div className={styles.ErrorBox}>{state.lastError}</div>}
       </div>
@@ -173,7 +155,7 @@ function DetailRow({
 function DevServerChip({ pluginId, state }: { pluginId: string; state: DevServerState }) {
   const aggStatus = getAggregateStatus(state);
   const tone = STATUS_TONE[aggStatus];
-  const tooltipText = `${STATUS_LABELS[aggStatus]}${state.mode === DevServerMode.DevServerModeExternal ? ' (external)' : ''}${state.vitePort > 0 ? ` \u2022 Vite: :${state.vitePort}` : ''}`;
+  const tooltipText = `${STATUS_LABELS[aggStatus]}${state.vitePort > 0 ? ` \u2022 Vite: :${state.vitePort}` : ''}`;
 
   return (
     <FooterPopover
@@ -592,8 +574,6 @@ export default function AppStatusFooter() {
   return (
     <StatusBar data-testid='app-footer' size='sm' className={styles.Bar}>
       <StatusBar.Section align='start'>
-        <DevModeChip />
-        {import.meta.env.DEV && <StatusBar.Separator />}
         <DevServerIndicators />
         <FailedPluginIndicator />
         <PortForwardIndicator />

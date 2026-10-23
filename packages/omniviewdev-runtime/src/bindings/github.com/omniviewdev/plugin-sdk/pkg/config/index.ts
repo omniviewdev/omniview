@@ -9,5 +9,6 @@ export {
     PluginMeta,
     PluginResourceComponent,
     PluginTheme,
-    PluginThemeColors
+    PluginThemeColors,
+    StateIsolationProvenance
 } from "./models.js";

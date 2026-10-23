@@ -19,18 +19,6 @@ export const usePluginManager = () => {
   const { showSnackbar } = useSnackbar();
   const { load } = usePluginService();
 
-  // Listen for backend init_complete to immediately refresh the plugin list
-  // instead of waiting for the 2s poll interval.
-  React.useEffect(() => {
-    const cleanup = Events.On('plugin/init_complete', () => {
-      console.debug('[usePluginManager] plugin/init_complete received');
-      void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
-    });
-    return () => {
-      cleanup(); 
-    };
-  }, [queryClient]);
-
   // === Watchers === //
   React.useEffect(() => {
     // Set up watchers for plugin reload and install events
@@ -125,7 +113,12 @@ export const usePluginManager = () => {
       void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
       void queryClient.refetchQueries({ queryKey: [Entity.PLUGINS] });
     },
-    onError: createErrorHandler(showSnackbar, 'Dev mode installation failed'),
+    onError(error) {
+      // A rejected build/rebind can still retain a different source and failed
+      // record. Refresh list and detail queries instead of leaving A as running.
+      void queryClient.invalidateQueries({ queryKey: [Entity.PLUGINS] });
+      createErrorHandler(showSnackbar, 'Dev mode installation failed')(error);
+    },
   });
 
   /**
