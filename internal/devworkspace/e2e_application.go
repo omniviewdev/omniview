@@ -161,6 +161,10 @@ func (m *Manager) BuildApplicationFixtureProducer(ctx context.Context, target, i
 	g.options.ExpectedSDKRevision = revision
 	g.options.VerifySDKSource = devsource.Verify
 	g.options.Output = os.Stderr
+	// linkCommandContext constructs a toolchain-only graph. Bind its existing
+	// production runners before SDK verification or any actual producer call.
+	g.run = g.command
+	g.runProducer = g.commandWithEnvironment
 	nodes, err := planBuildNodes(g.workspace)
 	if err != nil {
 		return err
@@ -200,7 +204,7 @@ func (g *BuildGraph) applicationFixtureBindings(ctx context.Context, node BuildN
 			resultErr = errors.Join(resultErr, stage.Abort(context.WithoutCancel(ctx)))
 		}
 	}()
-	_, err = g.runCommand(ctx, node.Directory, "task", "bindings", "DEV=true", "SERVER=true", "EXTRA_TAGS=devcontrol,e2eapplication", "SDK_SOURCE="+g.plan.SDK, "BINDINGS_OUTPUT_DIRECTORY="+stage.Directory, "HOST_MOD_OUTPUT_DIRECTORY="+filepath.Join(artifacts, "hostmod"), "GO_BUILD_CACHE_DIRECTORY="+g.options.GoBuildCacheDirectory)
+	_, err = g.run(ctx, node.Directory, "task", "bindings", "DEV=true", "SERVER=true", "EXTRA_TAGS=devcontrol,e2eapplication", "SDK_SOURCE="+g.plan.SDK, "BINDINGS_OUTPUT_DIRECTORY="+stage.Directory, "HOST_MOD_OUTPUT_DIRECTORY="+filepath.Join(artifacts, "hostmod"), "GO_BUILD_CACHE_DIRECTORY="+g.options.GoBuildCacheDirectory)
 	if err != nil {
 		return err
 	}
@@ -273,12 +277,12 @@ func (g *BuildGraph) applicationFixtureJavaScript(ctx context.Context, node Buil
 		environment = append(environment, "OMNIVIEW_YAML_WORKER_OUTPUT_FILE="+filepath.Join(worker.Directory, "yaml.worker.bundle.js"), "PRODUCTION=false")
 		// Canonical linking deliberately ignores install scripts. Run the real
 		// worker producer once, then Task build:server's DEV frontend recipe.
-		if _, err = g.runProducerCommand(ctx, node.Directory, environment, "pnpm", "run", "bundle:yaml-worker"); err != nil {
+		if _, err = g.runProducer(ctx, node.Directory, environment, "pnpm", "run", "bundle:yaml-worker"); err != nil {
 			return err
 		}
 		script = "build:dev"
 	}
-	if _, err = g.runProducerCommand(ctx, node.Directory, environment, "pnpm", "run", script); err != nil {
+	if _, err = g.runProducer(ctx, node.Directory, environment, "pnpm", "run", script); err != nil {
 		return err
 	}
 	if err = validateDistribution(pkg, dist.Directory, node.ID == "host-frontend"); err != nil {
@@ -309,7 +313,7 @@ func (g *BuildGraph) applicationFixtureServer(ctx context.Context, node BuildNod
 	if err != nil {
 		return err
 	}
-	modfile, err := g.runCommand(ctx, node.Directory, "task", "--silent", "host:prepare", "SDK_SOURCE="+g.plan.SDK, "HOST_MOD_OUTPUT_DIRECTORY="+filepath.Join(artifacts, "hostmod"), "GO_BUILD_CACHE_DIRECTORY="+g.options.GoBuildCacheDirectory)
+	modfile, err := g.run(ctx, node.Directory, "task", "--silent", "host:prepare", "SDK_SOURCE="+g.plan.SDK, "HOST_MOD_OUTPUT_DIRECTORY="+filepath.Join(artifacts, "hostmod"), "GO_BUILD_CACHE_DIRECTORY="+g.options.GoBuildCacheDirectory)
 	if err != nil {
 		return err
 	}
@@ -319,7 +323,7 @@ func (g *BuildGraph) applicationFixtureServer(ctx context.Context, node BuildNod
 	}
 	// Task build:server's DEV=true backend recipe, after staged bindings and
 	// frontend publication. Do not call the aggregate target and rebuild them.
-	_, err = g.runCommand(ctx, node.Directory, "go", "build", "-tags", "server,devcontrol,e2eapplication", "-buildvcs=false", "-gcflags=all=-l", "-modfile="+path, "-o", filepath.Join(artifacts, "bin", "Omniview-server"), ".")
+	_, err = g.run(ctx, node.Directory, "go", "build", "-tags", "server,devcontrol,e2eapplication", "-buildvcs=false", "-gcflags=all=-l", "-modfile="+path, "-o", filepath.Join(artifacts, "bin", "Omniview-server"), ".")
 	if err != nil {
 		return err
 	}
