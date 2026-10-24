@@ -21,14 +21,15 @@ import (
 )
 
 type ApplicationFixtureCommand struct {
-	Directory       string                  `json:"directory"`
-	Program         string                  `json:"program"`
-	Args            []string                `json:"args"`
-	Owner           devsession.ProcessOwner `json:"owner"`
-	IdentityFile    string                  `json:"identityFile"`
-	StoppedFile     string                  `json:"stoppedFile"`
-	Environment     []string                `json:"-"`
-	OutputWorkspace string                  `json:"outputWorkspace,omitempty"`
+	Directory        string                  `json:"directory"`
+	Program          string                  `json:"program"`
+	Args             []string                `json:"args"`
+	Owner            devsession.ProcessOwner `json:"owner"`
+	IdentityFile     string                  `json:"identityFile"`
+	StoppedFile      string                  `json:"stoppedFile"`
+	Environment      []string                `json:"-"`
+	OutputWorkspace  string                  `json:"outputWorkspace,omitempty"`
+	ProfileWorkspace string                  `json:"profileWorkspace,omitempty"`
 }
 
 type ApplicationFixtureStopped struct {
@@ -64,23 +65,37 @@ func RunApplicationFixtureCommand(options ApplicationFixtureCommand, shutdown <-
 		// The browser fixture already supplies a private per-profile Vite cache.
 		// This capability additionally owns source-local config-loader outputs.
 	}
-	child, startErr := startOwnedChild(context.Background(), options.Directory, options.Environment, os.Stdout, options.Owner, nil, options.Program, options.Args...)
-	if child == nil {
-		return errors.Join(startErr, writer.Finish(context.Background()))
+	var supervisor *applicationFixtureSupervisor
+	var startErr error
+	if options.ProfileWorkspace != "" {
+		supervisor, options.Environment, startErr = startApplicationFixtureSupervisor(options)
+	}
+	var child *ownedChild
+	if startErr == nil {
+		child, startErr = startOwnedChild(context.Background(), options.Directory, options.Environment, os.Stdout, options.Owner, nil, options.Program, options.Args...)
+		if child != nil {
+			supervisor.capture(child)
+		}
 	}
 	if startErr == nil {
 		startErr = devsession.WritePrivateJSON(options.IdentityFile, child.identity)
 	}
 	unexpectedExit := false
 	if startErr == nil {
+		var bridgeDone <-chan error
+		if supervisor != nil {
+			bridgeDone = supervisor.done
+		}
 		select {
 		case <-shutdown:
 		case <-child.done:
 			unexpectedExit = true
+		case err := <-bridgeDone:
+			startErr = errors.Join(err, fmt.Errorf("actual application process bridge stopped unexpectedly"))
 		}
 	}
 	for {
-		if err := child.stop(context.Background()); err != nil {
+		if err := supervisor.stop(child); err != nil {
 			// Do not exit and lose the actual retained handle on disposal failure.
 			// The parent retains its private arena and can request another stop.
 			fmt.Fprintln(os.Stderr, "application fixture retains an unproved owned child")
@@ -89,6 +104,9 @@ func RunApplicationFixtureCommand(options ApplicationFixtureCommand, shutdown <-
 		}
 		if err := writer.Finish(context.Background()); err != nil {
 			return errors.Join(startErr, err)
+		}
+		if child == nil {
+			return startErr
 		}
 		proofErr := devsession.WritePrivateJSON(options.StoppedFile, ApplicationFixtureStopped{Process: child.identity, ChildrenEmpty: true})
 		if unexpectedExit {
