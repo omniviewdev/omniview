@@ -6,7 +6,7 @@ The [workspace roadmap](development-workspaces-roadmap.md) records research deci
 
 ## Bootstrap the local CLI and sources
 
-Use the bootstrap-aware Task entry point. Ordinary bootstrap consumes published SDK `v0.6.0`. For local SDK development, `SDK_SOURCE` is explicit: there is no inferred sibling replacement, global `go.work`, global `GOFLAGS`, package upgrade or canonical-source mutation.
+Use the bootstrap-aware Task entry point. Ordinary bootstrap consumes the published SDK version declared by the host's `go.mod`. For local SDK development, `SDK_SOURCE` is explicit: there is no inferred sibling replacement, global `go.work`, global `GOFLAGS`, package upgrade or canonical-source mutation.
 
 Task first runs a standard-library-only bootstrap entry. It selects explicit SDK source, or the exact SDK repository linked by an enclosing workspace whose canonical host directory matches this checkout; otherwise it uses the declared published module. Local-source preparation uses a private temporary module and refuses ambiguous, escaping or conflicting selections. The full CLI independently validates the manifest, profile and source/cache authority. Temporary preparation is removed after bootstrap exits; the immutable CLI and its owned cache remain managed by the full bootstrap.
 
@@ -169,15 +169,107 @@ Managed children receive nonsecret `OMNIVIEW_DEV_CLI` from the captured supervis
 
 `--json` emits one machine-readable result on stdout; process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout.
 
-The owned Playwright fixture creates a private temporary arena with sibling `collection`, `home` and `profiles` directories. Its CLI subprocesses use that private HOME. Custom profile containers cannot live inside the registered collection or selected source repositories; the normal containment refusal remains active. Successful canonical down/unlink/remove precedes retirement of the arena; refused cleanup retains it for inspection. Retirement checks the original private arena identity and restores owner permissions only on owned, canonical Go module-cache directories under that HOME using no-follow directory handles; module files and symlink targets are never chmodded, and cleanup errors remain failures.
+## Application E2E
 
-Run the checked Playwright 1.50.1 acceptance harness on Node 24 LTS with native
-pnpm 12.14.0, matching CI. Native pnpm does not select the Node executable used
-by package scripts; verify `node --version` using the same `PATH`.
+Run the canonical suite from a clean, committed standalone host checkout with
+Node 24.14.0, native pnpm 12.14.0 and Playwright 1.64.1. A managed feature
+worktree is a source input, not a second package-install root.
 
-Additional-profile browser admission waits at most two minutes for the actual app shell after workspace startup; it does not inherit a whole-test build deadline. Browser warnings, errors and failed requests are retained as `browser-errors.json` and `additional-profile-browser-errors.json` in the Playwright output directory, including with the list reporter. A ready host or Vite listener is not a rendered-shell pass. Consumer-refresh checks still require actual shared CSS/runtime changes without a manual page reload.
+```sh
+export GOWORK=off
+export SDK_SOURCE=/absolute/plugin-sdk UI_SOURCE=/absolute/ui
+export KUBERNETES_SOURCE=/absolute/kubernetes
+export REVIEWED_SDK_REVISION=<reviewed-full-sdk-commit>
+task e2e
+task e2e -- --changed --base origin/main
+task e2e -- --grep 'published consumers'
+```
+
+Full execution is the default. Change selection unions affected groups and
+falls back to full for unknown/core changes, incomplete Git data or a changed
+source cohort. A focused `--grep` run is diagnostic evidence, not full acceptance.
+Tooling-only selections do not prepare a Go application.
+
+`task e2e-ui` opens an interactive debugging session, not a timed acceptance run.
+It has no session-wide acceptance deadline; preparation and retirement commands
+remain individually bounded, and closing or interrupting the session still
+drains owned processes. Its report records `interactive: true` and no acceptance
+budget rather than certifying the 600-second full-run gate.
+
+One invocation-private source cohort links the selected SDK, UI and plugins
+through the native package protocol. Producers build each required artifact
+once; two actual runtime profiles share immutable artifacts but have distinct
+HOME, state, storage, origins and authenticated instance identities. Browser
+cases exercise real UI/binding persistence, plugin rendering, isolation and
+owned process replacement. An explicit document reload is not automatic source
+recovery or canonical supervisor-restart proof.
+
+Producers run sequentially in canonical dependency order, followed by the plugin
+Go compilers. Every command retains stopped-workspace and selected-source
+admission. A failed command stops the remaining producers; owned descendant
+disposal completes before returning. Plugin assets are finalized only after
+every producer succeeds. The private `application/build-execution.json` records
+actual stage start offsets, durations, outcomes and selected SDK identities;
+`invocation.json` includes that report as `buildExecution`.
+
+Small runtime-export/CSS producer-consumer contracts use real Vite, shim and
+externalization adapters in the same Playwright invocation. The real selected-SDK
+compiler/watch/settings-RPC failure-repair contract runs in the Go suite as
+`TestSelectedSDKAPIRealCompileRPCAndRecovery`; it does not build the IDE.
+
+The full acceptance budget is 600 seconds including dependency preparation,
+cohort builds, profile startup, cases, replacement and teardown. Cases default to
+30 seconds, with a 60-second bound for actual process replacement and no retries.
+`invocation.json` and `case-timings.json` distinguish preparation, assertions and
+cleanup without excluding them from the total. A listener or app shell alone
+does not prove plugin rendering.
+
+Owned child/descendant disposal precedes canonical output restoration and
+cohort unlink/removal. Refused cleanup retains private state and journals;
+unknown files, foreign sources and production credentials are never adopted.
+
+### Verified local execution
+
+The full canonical invocation on 2026-10-24 passed all 85 cases with zero retries
+in **304.202 seconds**, including dependency preparation, the single source-cohort
+build, actual profile startup/replacement, assertions and complete retirement.
+The host source was `5aa04c056b143d1d3a2771dbaaf7c5bec5ee32a5`, SDK
+`9ba88075a39e5406926a22d536722afecaab465c`, UI
+`c437aca20d853aa6f65f0fa437ada3e0bcfc82f9`, and Kubernetes
+`977e51e6bd51854fc7656b1eba96dce8c89d48c7`.
+
+Environment: macOS 27 arm64, Go 1.26.1, Node 24.14.0, native pnpm 12.14.0,
+Playwright 1.64.1 and its Chromium build. Native dependency/compiler payloads
+were reused; application artifacts and profiles were freshly produced. This is
+local evidence, not a cold-run or Linux CI timing claim.
+
+| Measured phase | Seconds |
+|---|---:|
+| Sequential application producers | 136.456 |
+| All case assertions and worker teardown | 64.979 |
+| Owned application process teardown | 0.597 |
+| Canonical cohort unlink/removal | 55.174 |
+| Private preparation retirement | 0.395 |
+
+The ownership receipt proved all five launched/replaced processes drained with
+`childrenEmpty: true`. The six application journeys each completed in
+0.648–11.4 seconds. Separate real SDK compiler/watch/RPC contracts and the
+published runtime/CSS contracts retain their own boundary evidence.
+
+Canonical supervisor-driven source-to-browser recovery remains a separate
+[acceptance gate](https://github.com/omniviewdev/omniview/issues/124);
+explicit process replacement and document reload do not certify that gate.
+
+### Static checks
 
 `task check:ui-lint` covers host UI, Vite-plugin source and E2E TypeScript through the flat ESLint configuration and is blocking in PR checks. E2E class declarations use erasable fields, not parameter properties, because fixtures also load through Node's strip-only TypeScript support. Parsed link evidence is validated from `unknown` and requires literal-`true` attestations. Go build/vet/test/format checks remain blocking; the existing broad Go style-lint profile remains advisory rather than weakening its rules or claiming the backlog is clean.
+
+Native Wails capability contracts run with
+`GOWORK=off node --test scripts/wails-tool.test.mjs` in the existing bindings
+freshness job after Task generation. They authenticate real pinned executables
+and reject altered, foreign or redirected capabilities. Fast selector contracts
+remain Go/Task-free; generated-binding freshness and actual application execution
+exercise generation and its consumers.
 
 `task fmt` and `task check:fmt-check` select tracked and nonignored Go source through Git, preserving spaced filenames with NUL-delimited arguments. Both use `goimports` for formatting and imports; they never traverse ignored `node_modules`, prepared Wails sources or other tool caches.
 

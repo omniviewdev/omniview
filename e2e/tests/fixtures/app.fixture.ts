@@ -2,153 +2,190 @@ import { writeFile } from 'node:fs/promises';
 import { test as base } from '@playwright/test';
 import type { APIRequestContext, BrowserContext, Page, TestInfo } from '@playwright/test';
 import { callBinding, Service } from './wails';
-import { OwnedProfiles } from './workspace';
-import type { ProfileOptions, Workspace } from './workspace';
+import { ApplicationWorkspace } from './application';
 import { BrowserErrors } from './browser-errors';
 
+type OpenProfile = { workspace: ApplicationWorkspace; page: Page };
+type ProfileOptions = { liveFrontend?: boolean };
+type ProfileFixtures = {
+  profiles: {
+    open(name: string, options?: ProfileOptions): Promise<OpenProfile>;
+  };
+};
 type AppFixtures = {
+  liveFrontend: boolean;
   appPage: Page;
-  /** Restores every setting to its value from before the test. */
+  workspace: ApplicationWorkspace;
   restoreSettings: void;
-  /** Closes terminal sessions, which the app reopens as drawer tabs on load. */
   closeTerminals: void;
-  workspace: Workspace;
-  profiles: { open(name: string, options?: ProfileOptions): Promise<{ workspace: Workspace; page: Page }> };
   captureErrors: void;
 };
-
 function collectErrors(page: Page, records: BrowserErrors): void {
-  const urlPath = (value: string) => {
-    const url = new URL(value); return `${url.origin}${url.pathname}`; 
-  };
-
   page.on('console', message => {
-    // Normal settings bootstrap logs contain full values; never capture them.
     if (['warning', 'error'].includes(message.type())) {
       records.add(`console.${message.type()}`, message.text());
-    }
+    } 
   });
   page.on('pageerror', error => {
     records.add('pageerror', error.message); 
   });
   page.on('requestfailed', request => {
-    records.add('requestfailed', `${request.method()} ${urlPath(request.url())} ${request.failure()?.errorText}`); 
+    const url = new URL(request.url()); records.add('requestfailed', `${request.method()} ${url.origin}${url.pathname} ${request.failure()?.errorText}`); 
   });
   page.on('response', response => {
     if (response.status() >= 400) {
-      records.add('http', `${response.status()} ${response.request().method()} ${urlPath(response.url())}`);
-    }
+      const url = new URL(response.url()); records.add('http', `${response.status()} ${response.request().method()} ${url.origin}${url.pathname}`); 
+    } 
   });
 }
 
-async function attachErrors(testInfo: TestInfo, name: string, records: BrowserErrors): Promise<void> {
+async function attachErrors(testInfo: TestInfo, records: BrowserErrors, name = 'browser-errors.json'): Promise<void> {
   const path = testInfo.outputPath(name);
   await writeFile(path, records.serialize());
   await testInfo.attach(name, { path, contentType: 'application/json' });
 }
 
-async function closeAllSessions(request: APIRequestContext): Promise<void> {
+async function closeSessions(request: APIRequestContext): Promise<void> {
   const sessions = await callBinding<Array<{ id: string }> | null>(request, Service.exec, 'ListSessions');
   for (const { id } of sessions ?? []) {
     await callBinding(request, Service.exec, 'CloseSession', id);
   }
 }
 
-export const test = base.extend<AppFixtures, { ownedProfiles: OwnedProfiles }>({
-  ownedProfiles: [async ({}, use) => {
-    if (process.env.OMNIVIEW_E2E_MODE === 'observe') {
-      throw new Error('Destructive app fixtures cannot attach observationally');
-    }
+async function rememberBaseline(workspace: ApplicationWorkspace): Promise<void> {
+  await workspace.rememberSetting({ scope: 'host', id: 'appearance.theme' });
+  await workspace.rememberSetting({ scope: 'host', id: 'terminal.fontSize' });
+  await workspace.rememberSetting({ scope: 'plugin', pluginID: 'workspace-probe', id: 'probe_counter' });
+}
 
-    const profiles = await OwnedProfiles.create();
+// The parent owns launch handles across worker loss. Test teardown restores real
+// providers while healthy and closes contexts; it never parks/rebuilds profiles.
+const profileTest = base.extend<ProfileFixtures>({
+  profiles: async ({ browser }, use, testInfo) => {
+    const contexts: BrowserContext[] = [];
+    const workspaces: ApplicationWorkspace[] = [];
+    const operations: Array<Promise<unknown>> = [];
+    const records = new BrowserErrors();
+    let closing = false;
+    const open = async (name: string, options: ProfileOptions = {}): Promise<OpenProfile> => {
+      if (closing) {
+        return Promise.reject(new Error('Profile browser fixture is draining'));
+      }
+
+      const operation = (async () => {
+        const workspace = await new ApplicationWorkspace(name, options.liveFrontend ?? false).open();
+        workspaces.push(workspace);
+        await rememberBaseline(workspace);
+        const context = await browser.newContext({ baseURL: workspace.browserURL() });
+        contexts.push(context);
+        context.on('page', page => {
+          collectErrors(page, records); 
+        });
+        const page = await context.newPage();
+        await closeSessions(page.request);
+        await page.goto('/');
+        await page.getByTestId('app-shell').waitFor();
+        return { workspace, page };
+      })();
+      operations.push(operation);
+      return operation;
+    };
+
     try {
-      await use(profiles); 
+      await use({ open });
     } finally {
-      await profiles.close(); 
+      closing = true;
+      await Promise.allSettled(operations);
+      const failures: unknown[] = [];
+      for (const workspace of workspaces) {
+        try {
+          await workspace.restoreSettings(); 
+        } catch (error) {
+          failures.push(error); 
+        }
+      }
+
+      for (const context of contexts) {
+        try {
+          await closeSessions(context.request); 
+        } catch (error) {
+          failures.push(error); 
+        }
+
+        try {
+          await context.close(); 
+        } catch (error) {
+          failures.push(error); 
+        }
+      }
+
+      await attachErrors(testInfo, records, 'additional-profile-browser-errors.json');
+      if (failures.length) {
+        throw new AggregateError(failures, 'Actual profile reset/drain failed; parent retains private ownership');
+      }
     }
-  }, { scope: 'worker', timeout: 30 * 60_000 }],
+  },
+});
 
-  workspace: [async ({ ownedProfiles }, use) => {
-    const workspace = await ownedProfiles.get('profile-a');
+export const test = profileTest.extend<AppFixtures>({
+  liveFrontend: [false, { option: true }],
+  workspace: async ({ liveFrontend }, use) => {
+    const workspace = await new ApplicationWorkspace('profile-a', liveFrontend).open();
     workspace.assertOwned();
-    await workspace.verify();
     await use(workspace);
-  }, { timeout: 30 * 60_000 }],
-
+  },
   baseURL: async ({ workspace }, use) => {
     await use(workspace.browserURL()); 
   },
-
-  profiles: async ({ browser, ownedProfiles }, use, testInfo) => {
-    const contexts: BrowserContext[] = [];
-    const records = new BrowserErrors();
-    try {
-      await use({
-        open: async (name, options) => {
-          const workspace = await ownedProfiles.get(name, options);
-          const context = await browser.newContext({ baseURL: workspace.browserURL() });
-          contexts.push(context);
-          context.on('page', additional => {
-            collectErrors(additional, records); 
-          });
-          const page = await context.newPage();
-          await page.goto('/');
-          await page.getByTestId('app-shell').waitFor({ timeout: 120_000 });
-          return { workspace, page };
-        },
-      });
-    } finally {
-      await attachErrors(testInfo, 'additional-profile-browser-errors.json', records);
-      await Promise.all(contexts.map(async context => context.close()));
-    }
-  },
-
   captureErrors: [async ({ page }, use, testInfo) => {
     const records = new BrowserErrors();
     collectErrors(page, records);
     page.context().on('page', additional => {
       collectErrors(additional, records); 
     });
-    await use();
-    await attachErrors(testInfo, 'browser-errors.json', records);
-    if (testInfo.status !== testInfo.expectedStatus && !page.isClosed()) {
-      await page.screenshot({ path: testInfo.outputPath('browser-failure.png'), fullPage: true });
+    try {
+      await use(); 
+    } finally {
+      await attachErrors(testInfo, records);
+      if (testInfo.status !== testInfo.expectedStatus && !page.isClosed()) {
+        await page.screenshot({ path: testInfo.outputPath('browser-failure.png'), fullPage: true });
+      }
     }
   }, { auto: true }],
-  // Settings live in the server's state directory and outlive the page, so a
-  // test that saves one would leak it into the next. Snapshot and put back
-  // only what changed: SetSettings validates every value it is given, and some
-  // defaults do not validate on every machine (terminal.defaultShell is
-  // /bin/zsh, which CI's Linux runners do not have).
   restoreSettings: [async ({ request, workspace }, use) => {
-    workspace.assertOwned();
     await workspace.verify();
+    await rememberBaseline(workspace);
     const before = await callBinding<Record<string, unknown>>(request, Service.settings, 'Values');
-    await use();
-    await workspace.verify();
-    const after = await callBinding<Record<string, unknown>>(request, Service.settings, 'Values');
-    const changed = Object.fromEntries(
-      Object.entries(before).filter(([id, value]) => JSON.stringify(after[id]) !== JSON.stringify(value)),
-    );
-    if (Object.keys(changed).length > 0) {
-      await callBinding(request, Service.settings, 'SetSettings', changed);
+    try {
+      await use(); 
+    } finally {
+      await workspace.verify();
+      const after = await callBinding<Record<string, unknown>>(request, Service.settings, 'Values');
+      const changed = Object.fromEntries(Object.entries(before).filter(([id, value]) => JSON.stringify(after[id]) !== JSON.stringify(value)));
+      if (Object.keys(changed).length) {
+        await callBinding(request, Service.settings, 'SetSettings', changed);
+        const restored = await callBinding<Record<string, unknown>>(request, Service.settings, 'Values');
+        if (Object.entries(changed).some(([id, value]) => JSON.stringify(restored[id]) !== JSON.stringify(value))) {
+          throw new Error('Actual host settings reset did not complete');
+        }
+      }
+
+      await workspace.restoreSettings();
     }
   }, { auto: true }],
-
   closeTerminals: [async ({ request, workspace }, use) => {
-    workspace.assertOwned();
     await workspace.verify();
-    await closeAllSessions(request);
-    await use();
-    await workspace.verify();
-    await closeAllSessions(request);
+    await closeSessions(request);
+    try {
+      await use(); 
+    } finally {
+      await workspace.verify(); await closeSessions(request); 
+    }
   }, { auto: true }],
-
   appPage: async ({ page }, use) => {
     await page.goto('/');
-    await page.waitForSelector('[data-testid="app-shell"]', { timeout: 15_000 });
+    await page.getByTestId('app-shell').waitFor();
     await use(page);
   },
 });
-
 export { expect } from '@playwright/test';

@@ -15,20 +15,13 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # E2E Tests — actual disposable CLI-owned browser hosts, never a shared server.
+  # E2E Tests — one real application build and isolated owned browser profiles.
   # The reviewed companion SDK must first be published to its remote repository.
   e2e-tests:
-    # Playwright 1.50.1 supports Ubuntu 24.04, not ubuntu-latest's Ubuntu 26.04.
+    # Keep the application/browser execution image explicit and reproducible.
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - mode: optimized
-            exclude: live
-          - mode: live
-            exclude: optimized
+    # Safety watchdog, not an acceptance timing claim; reports include preparation.
+    timeout-minutes: 15
     defaults:
       run:
         shell: bash
@@ -43,6 +36,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: host
+          fetch-depth: 0
           submodules: recursive
           persist-credentials: false
 
@@ -72,119 +66,106 @@ jobs:
           ref: ${{ vars.OMNIVIEW_E2E_UI_REF }}
           path: ui
           persist-credentials: false
-
       - name: Verify SDK checkout matches reviewed pin
         run: |
           test "$(git -C "$GITHUB_WORKSPACE/plugin-sdk" rev-parse HEAD)" = "$REVIEWED_SDK_REVISION"
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.0"
+
+      - name: Selector boundary contracts
+        run: node --test e2e/scripts/*.test.mjs
+
+      - name: Select conservative application impact
+        id: selection
+        env:
+          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
+          UI_SOURCE: ${{ github.workspace }}/ui
+          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
+        run: |
+          if ! node e2e/scripts/run.mjs --changed --base '${{ github.event.pull_request.base.sha }}' --select; then
+            echo "::warning::Selection failed; requiring the full application path rather than skipping."
+            echo "kind=full" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Explain no application impact
+        if: steps.selection.outputs.kind == 'none'
+        run: echo "Application E2E preparation skipped only for explicitly allowlisted prose with an unchanged committed source cohort."
+
       - name: Install Linux dependencies
+        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev build-essential pkg-config
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup pinned pnpm
+        if: steps.selection.outputs.kind != 'none'
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
           version: 12.14.0
           package-json-file: host/package.json
           install: false
 
+      - name: Initialize private native-tool cache container
+        if: steps.selection.outputs.kind != 'none'
+        env:
+          OMNIVIEW_E2E_TOOL_CACHE_ROOT: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1
+          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
+          UI_SOURCE: ${{ github.workspace }}/ui
+          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
+        # Filesystem ownership only: no install, compile or probe happens here.
+        # GITHUB_ENV binds setup-go's native go env cache paths and the runner.
+        run: node e2e/scripts/run.mjs --init-tool-cache
+
+      - name: Restore standalone native pnpm content store
+        if: steps.selection.outputs.kind != 'none'
+        uses: actions/cache@v4
+        with:
+          # Payload only, never HOME, ownership markers or managed receipts.
+          path: ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/pnpm-store/12.14.0
+          key: ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-${{ hashFiles('host/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-
+
       - name: Setup Go
+        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-          cache-dependency-path: host/go.sum
+          # setup-go v5 discovers both paths using native go env. Include the
+          # explicit-cache recipe to separate these payloads from legacy paths.
+          cache-dependency-path: |
+            host/go.sum
+            host/e2e/scripts/tool-cache.mjs
 
       - name: Install Task
+        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
         uses: arduino/setup-task@v2
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare isolated tool and runtime home
-        run: |
-          umask 077
-          mkdir "$RUNNER_TEMP/workspace-ci-home" "$RUNNER_TEMP/workspace-ci-private"
-          {
-            echo "HOME=$RUNNER_TEMP/workspace-ci-home"
-            echo "XDG_CONFIG_HOME=$RUNNER_TEMP/workspace-ci-home/.config"
-            echo "XDG_CACHE_HOME=$RUNNER_TEMP/workspace-ci-home/.cache"
-            echo "XDG_DATA_HOME=$RUNNER_TEMP/workspace-ci-home/.local/share"
-            echo "GOPATH=$RUNNER_TEMP/workspace-ci-home/go"
-            echo "SDK_SOURCE=$GITHUB_WORKSPACE/plugin-sdk"
-          } >> "$GITHUB_ENV"
-          echo "$RUNNER_TEMP/workspace-ci-home/go/bin" >> "$GITHUB_PATH"
 
-      - name: Install bootstrap tools and browser dependencies
-        run: |
-          GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
-          pnpm install --frozen-lockfile --ignore-scripts --strict-peer-dependencies
-          pnpm --dir e2e exec playwright install --with-deps chromium
-
-      - name: Build canonical CLI with explicit SDK bootstrap
-        run: |
-          DEV="$(task --silent dev:cli:build)"
-          test -x "$DEV"
-          printf 'OMNIVIEW_E2E_CLI=%s\n' "$DEV" >> "$GITHUB_ENV"
-
-      - name: Run real pinned A11 linking and A15 native nested-script probes
-        run: |
-          umask 077
-          mkdir "$RUNNER_TEMP/workspace-ci-private/protocol-hostmod" "$RUNNER_TEMP/workspace-ci-private/protocol-module"
-          HOST_MODFILE="$(GOWORK=off GOFLAGS= go run ./scripts/hostmod/main.go --root "$PWD" --sdk-source "$SDK_SOURCE" \
-            --output-directory "$RUNNER_TEMP/workspace-ci-private/protocol-hostmod")"
-          PROBE_MODFILE="$RUNNER_TEMP/workspace-ci-private/protocol-module/probe.mod"
-          cp "$HOST_MODFILE" "$PROBE_MODFILE"
-          cp "${HOST_MODFILE%.mod}.sum" "${PROBE_MODFILE%.mod}.sum"
-          A11_PROTOCOL_PROBE=1 A11_PROTOCOL_REPORT="$RUNNER_TEMP/workspace-ci-private/pinned-link-protocol.json" \
-            go test -modfile="$PROBE_MODFILE" -tags server ./internal/devworkspace \
-              -run '^TestLinkPinnedProtocolProbe$' -count=1
-          test -s "$RUNNER_TEMP/workspace-ci-private/pinned-link-protocol.json"
-          A15_PINNED_PNPM_PROBE=1 \
-            go test -modfile="$PROBE_MODFILE" -tags server ./internal/devworkspace \
-              -run '^TestPinnedPNPMNestedScriptProbe$' -count=1
-
-      - name: Prepare real safe plugin and private committed-source inputs
-        run: |
-          umask 077
-          node e2e/scripts/prepare-workspace-probe.mjs \
-            --destination "$GITHUB_WORKSPACE/workspace-probe" \
-            > "$RUNNER_TEMP/workspace-ci-private/probe-source.json"
-          node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync } from 'node:fs';
-          import { execFileSync } from 'node:child_process';
-          import { join } from 'node:path';
-          const root = process.env.GITHUB_WORKSPACE;
-          const privateRoot = join(process.env.RUNNER_TEMP, 'workspace-ci-private');
-          const probe = JSON.parse(readFileSync(join(privateRoot, 'probe-source.json'), 'utf8'));
-          if (probe.pluginID !== 'workspace-probe' || probe.source !== join(root, 'workspace-probe') || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(probe.ref)) throw Error('Invalid prepared real plugin source');
-          const sources = { omniview: join(root, 'host'), 'plugin-sdk': join(root, 'plugin-sdk'), ui: join(root, 'ui'), kubernetes: join(root, 'host', 'plugins', 'kubernetes'), 'workspace-probe': probe.source };
-          const refs = Object.fromEntries(Object.entries(sources).map(([id, path]) => [id, execFileSync('git', ['-C', path, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()]));
-          if (refs['plugin-sdk'] !== process.env.REVIEWED_SDK_REVISION || refs['workspace-probe'] !== probe.ref) throw Error('Source commit changed');
-          const input = { sources, refs, repositories: ['plugin-sdk', 'ui'], plugins: ['kubernetes', 'workspace-probe'], reviewedSDKRevision: process.env.REVIEWED_SDK_REVISION, linkEvidence: join(privateRoot, 'pinned-link-protocol.json') };
-          for (const liveFrontend of [false, true]) {
-            const mode = liveFrontend ? 'live' : 'optimized';
-            writeFileSync(join(privateRoot, `${mode}-sources.json`), JSON.stringify({ ...input, liveFrontend }), { mode: 0o600, flag: 'wx' });
-          }
-          NODE
-
-      - name: Run actual ${{ matrix.mode }} workspace scenarios
+      # The SAME command is available locally via task e2e -- --changed --base REF.
+      # Installs, the single application build, profile startup and teardown stay
+      # inside this measured invocation; tooling-only selections need no Go host.
+      - name: Run canonical application suite once
+        if: steps.selection.outputs.kind != 'none'
         env:
-          OMNIVIEW_E2E_SOURCES: ${{ runner.temp }}/workspace-ci-private/${{ matrix.mode }}-sources.json
-          PLAYWRIGHT_HTML_REPORT: playwright-report/${{ matrix.mode }}
-        run: pnpm --dir e2e test tests/workspaces --grep-invert 'A17 ${{ matrix.exclude }}:' --output=test-results/${{ matrix.mode }} --reporter=html,list
+          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
+          UI_SOURCE: ${{ github.workspace }}/ui
+          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
+        run: node e2e/scripts/run.mjs ${{ steps.selection.outputs.kind == 'selected' && '--changed' || '--full' }} --base '${{ github.event.pull_request.base.sha }}'
 
       - name: Upload only allowed browser reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.mode }}
+          name: playwright-report
           path: |
             host/e2e/playwright-report/
             host/e2e/test-results/

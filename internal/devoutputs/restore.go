@@ -51,36 +51,8 @@ func validateCleanup(ctx context.Context, entry *outputEntry) error {
 	return nil
 }
 func validateEntry(ctx context.Context, entry *outputEntry, allowRecovery bool) error {
-	if len(entry.Live) > 0 {
-		return fmt.Errorf("repository output still has an active or interrupted writer")
-	}
-	if entry.Pending != nil {
-		if !allowRecovery {
-			return fmt.Errorf("repository publication requires recovery")
-		}
-		return validatePending(ctx, entry)
-	}
-	if entry.Cleanup != nil {
-		if !allowRecovery {
-			return fmt.Errorf("repository cleanup requires recovery")
-		}
-		return validateCleanup(ctx, entry)
-	}
-	actual, err := snapshotPath(entry.Spec, entry.Exclude)
-	if err != nil {
-		return err
-	}
-	if entry.Spec.Kind == modules || entry.Spec.Kind == viteCache || entry.Spec.Kind == loaderCache || entry.Spec.Kind == typeCache {
-		if !sameSnapshot(actual, physical(entry.Expected)) {
-			return fmt.Errorf("owned generated tree changed: %s", entry.Spec.Target)
-		}
-		return nil
-	}
-	baseline, err := tracked(ctx, entry.Spec)
-	if err != nil {
-		return err
-	}
-	return matchesOwnedOrCommitted(actual, entry.Expected, baselineSnapshot(baseline))
+	_, err := observeEntry(ctx, entry, allowRecovery)
+	return err
 }
 
 func Validate(ctx context.Context, w devcontract.ResolvedWorkspace) error {
@@ -116,6 +88,7 @@ func finishCleanup(ctx context.Context, s scope, j *journal, key string) error {
 		}
 	}
 	sort.Slice(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
+	var reader snapshotReader
 	for _, relative := range paths {
 		path := filepath.Join(entry.Spec.Target, relative)
 		info, err := os.Lstat(path)
@@ -125,7 +98,7 @@ func finishCleanup(ctx context.Context, s scope, j *journal, key string) error {
 		if err != nil {
 			return err
 		}
-		value, err := snapshotItem(path, info, false)
+		value, err := reader.item(path, info, false)
 		if err != nil {
 			return err
 		}
@@ -146,138 +119,7 @@ func Restore(ctx context.Context, w devcontract.ResolvedWorkspace) error {
 		return err
 	}
 	return locked(ctx, s, func(j *journal) error {
-		// Refuse all unknown/user changes before recovering or retiring any output.
-		for _, entry := range j.Entries {
-			if err := validateEntry(ctx, entry, true); err != nil {
-				return err
-			}
-		}
-		if err := recoverPublications(ctx, s, j); err != nil {
-			return err
-		}
-		if !j.Restoring {
-			for _, entry := range j.Entries {
-				if err := validateEntry(ctx, entry, false); err != nil {
-					return err
-				}
-			}
-			j.Restoring = true
-			if err = save(s, j); err != nil {
-				return err
-			}
-		}
-		keys := sortedEntries(j)
-		// Each plan and stage allocation is durable before its first mutation.
-		for _, key := range keys {
-			entry := j.Entries[key]
-			if entry.Cleanup != nil {
-				continue
-			}
-			if entry.Pending == nil {
-				current, err := snapshotPath(entry.Spec, entry.Exclude)
-				if err != nil {
-					return err
-				}
-				sourceHead, err := specHead(ctx, entry.Spec)
-				if err != nil {
-					return err
-				}
-				if entry.Spec.Mode == "filter" {
-					files, err := tracked(ctx, entry.Spec)
-					if err != nil {
-						return err
-					}
-					baseline := baselineSnapshot(files)
-					retained := snapshot{}
-					remove := snapshot{}
-					for path, value := range current {
-						if path == "." {
-							retained[path] = value
-							continue
-						}
-						if committed, ok := baseline[path]; ok {
-							if !equalCommitted(value, true, committed, true) {
-								return fmt.Errorf("committed loader source differs; refusing source undo")
-							}
-							retained[path] = value
-						} else {
-							remove[path] = value
-						}
-					}
-					entry.Cleanup = &cleanup{Remove: remove, Retain: retained, Head: sourceHead}
-					if err = save(s, j); err != nil {
-						return err
-					}
-					continue
-				}
-				files, err := tracked(ctx, entry.Spec)
-				if err != nil {
-					return err
-				}
-				if len(files) == 0 {
-					if err = allocateRemoval(s, j, entry, sourceHead, current); err != nil {
-						return err
-					}
-					continue
-				}
-				if err = allocatePublication(s, j, entry, sourceHead, current, true); err != nil {
-					return err
-				}
-			}
-			inspection, inspectErr := inspectPublication(ctx, entry)
-			if inspectErr != nil {
-				return inspectErr
-			}
-			if inspection.action == resumeRestoreAllocation {
-				if err = os.Mkdir(entry.Pending.Directory, 0700); err != nil {
-					return err
-				}
-				entry.Pending.ContainerIdentity, err = directoryIdentity(entry.Pending.Directory)
-				if err != nil {
-					return err
-				}
-				entry.Pending.setState(restorePreparing)
-				if err = save(s, j); err != nil {
-					return err
-				}
-			}
-			if inspection.action == prepareRestoration || inspection.action == resumeRestoreAllocation {
-				if err = finishRestoringStage(ctx, s, j, entry); err != nil {
-					return err
-				}
-			}
-		}
-		// Preflight the complete durable plan before its first source rename.
-		for _, entry := range j.Entries {
-			if err = validateEntry(ctx, entry, true); err != nil {
-				return err
-			}
-		}
-		keys = sortedEntries(j)
-		sort.Slice(keys, func(i, k int) bool {
-			left, right := j.Entries[keys[i]].Spec.Target, j.Entries[keys[k]].Spec.Target
-			if len(left) == len(right) {
-				return keys[i] < keys[k]
-			}
-			return len(left) > len(right)
-		})
-		for _, key := range keys {
-			entry := j.Entries[key]
-			if entry == nil {
-				continue
-			}
-			if entry.Cleanup != nil {
-				if err = finishCleanup(ctx, s, j, key); err != nil {
-					return err
-				}
-			} else if entry.Pending != nil {
-				if err = completePublication(ctx, s, j, key); err != nil {
-					return err
-				}
-			}
-		}
-		j.Restoring = false
-		return retireJournal(s, j)
+		return restoreOutputJournal(ctx, s, j)
 	})
 }
 
