@@ -15,7 +15,10 @@ import (
 // Removing the SDK API, failing to rebuild either consumer, bypassing settings
 // RPC, promoting a failed build, or dropping persisted hydration must fail here.
 func TestSelectedSDKAPIRealCompileRPCAndRecovery(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	// testing.T.Context is canceled before Cleanup runs. This fixture owns its
+	// bounded lifetime explicitly so cleanup can close host stdin and drain SDK
+	// lifecycle processes before cancellation would force-kill those children.
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	t.Cleanup(cancel)
 	fixture := newSDKRPCContract(t, ctx)
 	a := fixture.profile(t, "a")
