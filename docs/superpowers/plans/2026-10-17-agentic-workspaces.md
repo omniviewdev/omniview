@@ -200,7 +200,7 @@ Integration owner owns CLI root wiring, `main.go` cross-cutting startup changes 
 
 **Dependencies:** none. **Owner:** host contract/CLI foundation. **Files:** new `internal/devcontract`, CLI root dispatch/flag parsing; new fixture manifests and relevant developer documentation.
 
-**Consumes:** discovery §3–11. **Produces:** v1 manifest/descriptor/control types above; validation and explicit workspace-context resolution; stable error/exit mapping. Define `OMNIVIEW_WORKSPACE_FILE` as the absolute manifest selector passed to child apps. Existing `OMNIVIEW_STATE_DIR` remains supported but must agree with the resolved profile.
+**Consumes:** discovery §3–11. **Produces:** v1 manifest/descriptor/control types above; validation and explicit workspace-context resolution; stable error/exit mapping. Define `OMNIVIEW_WORKSPACE_FILE` as the absolute manifest selector passed to child apps. `OMNIVIEW_STATE_DIR` names the canonical `stateRoot` (`<profileRoot>/state`), never the profile container. Host startup and child processes consume the same resolved descriptor and reject disagreement; runtime and webview paths derive from that profile container, not by appending children to `stateRoot`. Default profile storage and explicit custom binding follow discovery §8 and the current [operational guide](../../development-workspaces.md#settings-baseline-and-custom-state-roots).
 
 - [ ] Encode portable intent separately from local resolved paths/runtime secrets. Enforce UUID, slug, repo uniqueness, plugin-ID uniqueness, path containment and schema-version handling.
 - [ ] Resolve explicit `--workspace` first, enclosing manifest second; missing/ambiguous context fails. Do not discover a human production app as a fallback.
@@ -277,7 +277,7 @@ Integration owner owns CLI root wiring, `main.go` cross-cutting startup changes 
 - [ ] Implement locked root registry keyed by workspace UUID/service/plugin ID. Sticky preferred allocation in 20000–44999 by default; configurable range and explicit overrides.
 - [ ] Preserve assignments when plugin selection order changes or another plugin is added. Occupied preferred port gets a recorded new assignment unless strict/pinned policy requires failure.
 - [ ] Handle child-bind races explicitly: verify readiness/identity after strict bind, bounded allocation retry for automatic policy, no hidden increment and no killing unrelated listener.
-- [ ] Persist generation, PID/start identity, executable/role/source identity. Cleanup verifies ownership before signals, works after crash, and refuses recycled/foreign PID records.
+- [ ] Persist generation, PID/start identity, executable/role/source identity and a generation-owned process-tree containment primitive: a dedicated Unix session/process group or Windows Job Object. Carry containment identity and lifetime through the journal, launch, verification and cleanup; a recycled numeric group/PID alone is not ownership. After reparenting or supervisor crash, recover only where the platform can still verify that containment and its live members; otherwise report uncertain ownership and refuse signals. Test descendants, detached escape/refusal, leader exit and foreign/recycled identifiers; platform support requires actual evidence.
 - [ ] Publish descriptor with restrictive permissions and token-file reference. Remove only own generation's discovery. Support platform-appropriate permissions and process identity checks.
 - [ ] Test concurrent allocators, stale leases, unrelated occupied port, strict conflicts, reordered plugins, bind race, PID reuse, wrong-generation cleanup and interrupted atomic writes.
 
@@ -530,4 +530,3 @@ The user selected stock native **pnpm12.14.0**, prior pnpm10 release-age behavio
 The authoritative [pnpm12 feature composition plan](2026-10-17-pnpm12-feature-composition.md) replaces independent-root JS installation with packets C01–C04 in parallel under frozen interfaces, followed by C05 coordinated review/runtime proof. It preserves separate Git worktrees/Go modules/profiles and all original removal, live feedback, multi-plugin, native and browser gates. No strict-peer relaxation, global linking, pnpm fork or downgrade is authorized.
 
 Current standalone12 source installs/builds and named native/browser identity proofs are recorded in the integration evidence, not inferred to complete the aggregate managed path. Historical discovery limitations and old per-root pnpm10 assumptions above must not override this approved amendment.
-

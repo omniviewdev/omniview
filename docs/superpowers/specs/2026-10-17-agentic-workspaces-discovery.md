@@ -173,6 +173,10 @@ Managed lifecycle migration replaces the standalone runner's user-facing workflo
 
 User config sets root once; initial registry explicitly distinguishes `ui/.bare` from `ui/main`. Existing clones need not move. Future contributors may use ordinary clones at `<root>/<repo>`; registry validation supports both layouts. Slug validation: lowercase ASCII letters/digits with interior single hyphens, 1–48 characters, no separators/traversal. UUID identity is stable across rename; branch convention `feature/<slug>-<shortUUID>` avoids already-checked-out branches. Base refs are explicit per repo and pinned to commits in the resolved manifest. Git operations use registered Git roots, not guessed `.git` layouts.
 
+The two roots are intentional: `<root>` is the configurable source collection; the default **global per-user profile root** is `~/.omniview-dev/profiles/<workspaceUUID>`, independent of collection location. `OMNIVIEW_STATE_DIR` selects its `state` child, not the profile container. The same resolved profile descriptor controls state locks, runtime and webview storage for the host and children. The current [operational guide](../../development-workspaces.md#settings-baseline-and-custom-state-roots) also supports an explicit machine-local custom state binding; do not infer one from `--root`.
+
+UUIDs are globally unique within the user's profile/ownership registry, not collection-local counters. Copying a manifest into another collection must not create a second independent owner of its profile: validate durable ownership and fail conflicting/live claims. Leases and process generations remain UUID-qualified, and collection moves retain UUID/profile identity only through the controlled stopped-workspace move/rebinding protocol; changing `--root` alone neither migrates profile data nor authorizes an alias owner. Baselines export/import sanitized settings, never live leases, locks, tokens or runtime/webview state. Backup and any explicit profile migration require a stopped, ownership-verified source and destination, preserve UUID and custom-binding metadata, and must not leave two writable owners. Ordinary collection removal retains profile data; explicit profile purge verifies UUID/path ownership and no live generation, and never recursively deletes another collection's state.
+
 Example future commands — **not implemented**:
 
 ```sh
@@ -323,4 +327,3 @@ Source lock authority follows actual workspace boundaries, not every nested lock
 Native12's default pre-run dependency policy can attempt installation, warn on failure and still execute stale consumers. The owned launcher must enforce `verifyDepsBeforeRun=error` for `run`/`exec`: actual stale-graph refusal and unchanged lock bytes are part of the native protocol probe. The explicit owned install/recursive-audit transaction remains the dependency writer; checks are not disabled.
 
 Implementation packets, exact shared interfaces, parallel ownership and acceptance are in [the pnpm12 composition plan](../plans/2026-10-17-pnpm12-feature-composition.md). Standalone12 build success is not managed launch acceptance; the original hard gates above remain.
-
