@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
-// No fixed port, /health adoption or reuseExistingServer. The worker fixture
-// creates a disposable A16-owned profile, then authenticates its descriptor.
+// The invocation owns build artifacts and isolated runtime profiles. Fixtures
+// authenticate actual descriptors; they never adopt an ambient listener.
 const observational = process.env.OMNIVIEW_E2E_MODE === 'observe';
 
 export default defineConfig({

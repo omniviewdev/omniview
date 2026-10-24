@@ -169,13 +169,50 @@ Managed children receive nonsecret `OMNIVIEW_DEV_CLI` from the captured supervis
 
 `--json` emits one machine-readable result on stdout; process/compiler output stays in the private supervisor log, and CLI warnings/diagnostics use stderr. Token **values** never enter descriptors or ordinary startup output. Error responses remain JSON on stdout. Exit codes are 0 success, 2 invalid request, 3 missing target/dependency evidence, 4 identity/state/ownership/port conflict, 5 operation/build failure, 6 unauthorized and 7 timeout.
 
-The owned Playwright fixture creates a private temporary arena with sibling `collection`, `home` and `profiles` directories. Its CLI subprocesses use that private HOME. Custom profile containers cannot live inside the registered collection or selected source repositories; the normal containment refusal remains active. Successful canonical down/unlink/remove precedes retirement of the arena; refused cleanup retains it for inspection. Retirement checks the original private arena identity and restores owner permissions only on owned, canonical Go module-cache directories under that HOME using no-follow directory handles; module files and symlink targets are never chmodded, and cleanup errors remain failures.
+## Application E2E
 
-Run the checked Playwright 1.50.1 acceptance harness on Node 24 LTS with native
-pnpm 12.14.0, matching CI. Native pnpm does not select the Node executable used
-by package scripts; verify `node --version` using the same `PATH`.
+Run the canonical suite from a clean, committed standalone host checkout with
+Node 24.14.0, native pnpm 12.14.0 and Playwright 1.64.1. A managed feature
+worktree is a source input, not a second package-install root.
 
-Additional-profile browser admission waits at most two minutes for the actual app shell after workspace startup; it does not inherit a whole-test build deadline. Browser warnings, errors and failed requests are retained as `browser-errors.json` and `additional-profile-browser-errors.json` in the Playwright output directory, including with the list reporter. A ready host or Vite listener is not a rendered-shell pass. Consumer-refresh checks still require actual shared CSS/runtime changes without a manual page reload.
+```sh
+export GOWORK=off
+export SDK_SOURCE=/absolute/plugin-sdk UI_SOURCE=/absolute/ui
+export KUBERNETES_SOURCE=/absolute/kubernetes
+export REVIEWED_SDK_REVISION=<reviewed-full-sdk-commit>
+task e2e
+task e2e -- --changed --base origin/main
+task e2e -- --grep 'published consumers'
+```
+
+Full execution is the default. Change selection unions affected groups and
+falls back to full for unknown/core changes, incomplete Git data or a changed
+source cohort. A focused `--grep` run is diagnostic evidence, not full acceptance.
+Tooling-only selections do not prepare a Go application.
+
+One invocation-private source cohort links the selected SDK, UI and plugins
+through the native package protocol. Producers build each required artifact
+once; two actual runtime profiles share immutable artifacts but have distinct
+HOME, state, storage, origins and authenticated instance identities. Browser
+cases exercise real UI/binding persistence, plugin rendering, isolation and
+owned process replacement. An explicit document reload is not automatic source
+recovery or canonical supervisor-restart proof.
+
+Small runtime-export/CSS producer-consumer contracts use real Vite, shim and
+externalization adapters in the same Playwright invocation. The real selected-SDK
+compiler/watch/settings-RPC failure-repair contract runs in the Go suite as
+`TestSelectedSDKAPIRealCompileRPCAndRecovery`; it does not build the IDE.
+
+The full acceptance budget is 600 seconds including dependency preparation,
+cohort builds, profile startup, cases, replacement and teardown. Cases default to
+30 seconds, with a 60-second bound for actual process replacement and no retries.
+`invocation.json` and `case-timings.json` distinguish preparation, assertions and
+cleanup without excluding them from the total. A listener or app shell alone
+does not prove plugin rendering.
+
+Owned child/descendant disposal precedes canonical output restoration and
+cohort unlink/removal. Refused cleanup retains private state and journals;
+unknown files, foreign sources and production credentials are never adopted.
 
 `task check:ui-lint` covers host UI, Vite-plugin source and E2E TypeScript through the flat ESLint configuration and is blocking in PR checks. E2E class declarations use erasable fields, not parameter properties, because fixtures also load through Node's strip-only TypeScript support. Parsed link evidence is validated from `unknown` and requires literal-`true` attestations. Go build/vet/test/format checks remain blocking; the existing broad Go style-lint profile remains advisory rather than weakening its rules or claiming the backlog is clean.
 

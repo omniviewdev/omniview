@@ -3,12 +3,25 @@ import { devNull } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { execFileSync } from 'node:child_process';
+import { readToolCache } from './tool-cache.mjs';
+import { validatePinnedWailsTool } from '../../scripts/wails-tool.mjs';
 // Start from nothing, not a credential-prefix blacklist. Selected source paths,
 // private HOME/cache locations and observation identity are added explicitly by
 // the runner; ambient provider/autoconnect/module/manager inputs never reach it.
-export function toolEnvironment(input) {
+export function toolEnvironment(input, { toolCacheRoot, wailsToolCapability } = {}) {
   const keys = ['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'TZ', 'TERM', 'CI', 'PNPM_HOME', 'PLAYWRIGHT_BROWSERS_PATH', 'OMNIVIEW_E2E_PNPM_EXECUTABLE'];
   const env = Object.fromEntries(keys.filter(key => typeof input[key] === 'string').map(key => [key, input[key]]));
+  if (toolCacheRoot) {
+    const cache = readToolCache(toolCacheRoot);
+    env.OMNIVIEW_E2E_TOOL_CACHE_ROOT = cache.root;
+    env.GOCACHE = cache.bootstrapGoCache;
+    env.GOMODCACHE = cache.goModCache;
+    env.pnpm_config_store_dir = cache.pnpmStore;
+  }
+  if (wailsToolCapability !== undefined) {
+    validatePinnedWailsTool(wailsToolCapability, { env });
+    env.OMNIVIEW_WAILS_TOOL_CAPABILITY = wailsToolCapability;
+  }
   return { ...env, GOWORK: 'off', GOFLAGS: '', GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' };
 }
 export function assertStandaloneBootstrap(host) {
@@ -38,5 +51,5 @@ export function applicationBudget(started, now) {
   const remainingMs = deadline - now;
   const cleanupReserveMs = 60_000;
   if (remainingMs <= cleanupReserveMs) throw Error('Inclusive E2E budget exhausted during preparation; refusing to start application profiles');
-  return { deadline, remainingMs, globalTimeoutMs: remainingMs - cleanupReserveMs, cleanupReserveMs };
+  return { deadline, remainingMs, interruptAfterMs: remainingMs - cleanupReserveMs, cleanupReserveMs };
 }

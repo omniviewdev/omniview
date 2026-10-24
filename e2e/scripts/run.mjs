@@ -1,11 +1,15 @@
-import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { applicationBudget, assertStandaloneBootstrap, repositoryCommit, toolEnvironment } from './execution.mjs';
 import { cohortMatches, selectFromGit } from './select-tests.mjs';
+import { discoveredSpecs, forceRegExp, prepareApplication, requiresApplication, startApplicationBroker } from './application.mjs';
+import { retireApplicationCohort } from './cohort.mjs';
+import { initializeToolCache, retirePreparationHome } from './tool-cache.mjs';
+import { preparePinnedWailsTool } from '../../scripts/wails-tool.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const started = Date.now();
@@ -15,6 +19,9 @@ let selection;
 let operation;
 let sourceRefs;
 let deadlineBudget;
+let launchBroker;
+let launchDrain;
+let toolCache;
 let env = toolEnvironment(process.env);
 function execute(command, args, { capture = false, timeout = 180_000, extraEnv = {}, cwd = root } = {}) {
   const remaining = 600_000 - (Date.now() - started);
@@ -27,6 +34,39 @@ function phase(name, fn) {
   const start = Date.now();
   try { return fn(); } finally { phases.push({ name, elapsedMs: Date.now() - start }); }
 }
+async function runApplication(args) {
+  const start = Date.now();
+  try {
+    deadlineBudget = applicationBudget(started, Date.now());
+    const outcome = await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [playwrightCLI(), ...args, '--global-timeout', '0', '--reporter=html,list,./scripts/timing-reporter.mjs'], { cwd: join(root, 'e2e'), env, stdio: 'inherit' });
+      let interrupted = false;
+      const interrupt = () => {
+        if (!interrupted) {
+          interrupted = true;
+          // Fence and begin draining launch handles at shutdown admission, not
+          // only after a potentially disconnected worker has exited.
+          void launchBroker?.closeAndDrain().catch(() => {});
+          child.kill('SIGINT');
+        }
+      };
+      // First SIGINT with an unbounded Playwright deadline awaits dispatcher and
+      // fixture shutdown. Parent ownership recovery also covers worker loss.
+      const timer = setTimeout(interrupt, deadlineBudget.interruptAfterMs);
+      process.on('SIGINT', interrupt);
+      const clear = () => { clearTimeout(timer); process.off('SIGINT', interrupt); };
+      child.once('error', () => { clear(); reject(Error('Playwright could not start')); });
+      child.once('close', code => { clear(); resolve({ code, interrupted }); });
+    });
+    if (outcome.code !== 0 || outcome.interrupted) throw Error('Playwright failed or reached its inclusive assertion deadline on the first attempt');
+  } finally {
+    phases.push({ name: 'application-assertions-and-worker-teardown', elapsedMs: Date.now() - start });
+    // IPC disconnect/worker crash cannot bypass ownership cleanup. This journal
+    // is coordinator data, never a managed receipt or a replacement for inspect.
+    const drainStarted = Date.now();
+    try { launchDrain = await launchBroker?.closeAndDrain(); } finally { phases.push({ name: 'owned-launch-drain', elapsedMs: Date.now() - drainStarted }); }
+  }
+}
 function git(source, ...args) {
   return execFileSync('git', ['-C', source, ...args], { env, encoding: 'utf8', timeout: Math.max(1, Math.min(30_000, 600_000 - (Date.now() - started))), stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 }).trim();
 }
@@ -37,15 +77,36 @@ function options(args) {
     if (arg === '--full') result.full = true;
     else if (arg === '--changed') result.full = false;
     else if (arg === '--base' && args[i + 1]) result.base = args[++i];
+    else if (arg === '--grep' && args[i + 1]) {
+      result.grep = args[++i];
+      forceRegExp(result.grep);
+    }
     else if (arg === '--list') result.list = true;
+    else if (arg === '--select') result.select = true;
     else if (arg === '--ui') result.ui = true;
     else if (arg === '--observe') result.observe = true;
     else if (arg === '--report') result.report = true;
-    else throw Error(`Unsupported argument: ${arg}. Use --full, --changed --base REF, --list, --ui, --observe, or --report.`);
+    else if (arg === '--init-tool-cache') result.initToolCache = true;
+    else throw Error(`Unsupported argument: ${arg}. Use --full, --changed --base REF, --grep PATTERN, --select, --list, --ui, --observe, --report, or --init-tool-cache.`);
   }
   if (args.includes('--full')) result.full = true;
   if (result.observe && !result.full) throw Error('Observation cannot use changed-file selection');
   return result;
+}
+function sourceLocations() {
+  return {
+    omniview: root,
+    'plugin-sdk': resolve(process.env.SDK_SOURCE ?? join(root, '..', 'plugin-sdk')),
+    ui: resolve(process.env.UI_SOURCE ?? join(root, '..', 'ui')),
+    kubernetes: resolve(process.env.KUBERNETES_SOURCE ?? join(root, 'plugins/kubernetes')),
+  };
+}
+function cacheProtectedRoots(sources, preparationRoot) {
+  const protectedRoots = [...Object.values(sources)];
+  if (preparationRoot) protectedRoots.push(preparationRoot);
+  const home = process.env.HOME ?? process.env.USERPROFILE;
+  if (home) for (const name of ['.omniview', '.omniview-nightly', '.omniview-dev']) protectedRoots.push(join(home, name));
+  return protectedRoots;
 }
 function cohortUnchanged(base, cohort) {
   if (!base || !cohort) return false;
@@ -67,9 +128,18 @@ const playwrightCLI = () => {
     throw Error('Playwright is not installed: real standalone E2E runs install its pinned dependencies; for discovery use an already prepared canonical dependency context, never an ambient pnpm exec install');
   }
 };
-function main() {
+async function main() {
   const opts = options(process.argv.slice(2));
-  operation = opts.report ? 'report' : opts.list ? 'discovery' : opts.observe ? 'observation' : 'application';
+  if (opts.initToolCache) {
+    operation = 'cache-initialization';
+    assertStandaloneBootstrap(root);
+    if (!process.env.OMNIVIEW_E2E_TOOL_CACHE_ROOT) throw Error('OMNIVIEW_E2E_TOOL_CACHE_ROOT must explicitly select a fresh or previously initialized private cache');
+    toolCache = initializeToolCache(process.env.OMNIVIEW_E2E_TOOL_CACHE_ROOT, { protectedRoots: cacheProtectedRoots(sourceLocations()) });
+    if (process.env.GITHUB_ENV) appendFileSync(process.env.GITHUB_ENV, `OMNIVIEW_E2E_TOOL_CACHE_ROOT=${toolCache.root}\nGOCACHE=${toolCache.bootstrapGoCache}\nGOMODCACHE=${toolCache.goModCache}\n`);
+    console.log('E2E native tool-cache container initialized; only native cache payloads may be restored');
+    return;
+  }
+  operation = opts.report ? 'report' : opts.select ? 'selection' : opts.list ? 'discovery' : opts.observe ? 'observation' : 'application';
   if (opts.report) {
     execute(process.execPath, [playwrightCLI(), 'show-report'], { cwd: join(root, 'e2e'), timeout: 0 });
     return;
@@ -77,9 +147,16 @@ function main() {
   let cohort;
   try { cohort = JSON.parse(readFileSync(join(root, 'e2e/source-cohort.json'), 'utf8')); } catch { /* Missing sentinel forces full, never another cohort. */ }
   selection = opts.observe ? { kind: 'observe', groups: ['observation'], specs: ['tests/observation'], reasons: ['explicit read-only opt-in'] } : selectFromGit({ root, base: opts.base, full: opts.full, cohortUnchanged: !opts.full && cohortUnchanged(opts.base, cohort), env });
+  if (opts.grep && selection.kind !== 'none') {
+    selection = { ...selection, kind: 'focused', testFilter: opts.grep, reasons: [...selection.reasons, 'explicit test-name filter; not full acceptance'] };
+  }
   console.log(`E2E selection: ${JSON.stringify(selection)}`);
+  if (opts.select) {
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `kind=${selection.kind}\nrequires_application=${requiresApplication(selection.specs)}\n`);
+    return;
+  }
   if (selection.kind === 'none') return;
-  const playwrightArgs = ['test', ...selection.specs];
+  let playwrightArgs = ['test', ...selection.specs, ...(opts.grep ? ['--grep', opts.grep] : [])];
   if (opts.list) {
     // Direct Node CLI discovery never invokes a package manager or prepares hosts.
     env.OMNIVIEW_E2E_MODE = opts.observe ? 'observe' : 'owned';
@@ -97,65 +174,89 @@ function main() {
   // A single invocation owns ALL preparation and browser work. No retry loop,
   // setup job, prebuilt host, force-peer override, or fabricated link evidence.
   assertStandaloneBootstrap(root);
-  const sources = {
-    omniview: realpathSync(root),
-    'plugin-sdk': realpathSync(resolve(process.env.SDK_SOURCE ?? join(root, '..', 'plugin-sdk'))),
-    ui: realpathSync(resolve(process.env.UI_SOURCE ?? join(root, '..', 'ui'))),
-    kubernetes: realpathSync(resolve(process.env.KUBERNETES_SOURCE ?? join(root, 'plugins/kubernetes'))),
-  };
-  const refs = Object.fromEntries(Object.entries(sources).map(([id, source]) => [id, repositoryCommit(source, env)]));
+  const sources = {};
+  const refs = {};
   sourceRefs = refs;
-  for (const id of Object.keys(sources)) {
-    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(refs[id])) throw Error(`Selected ${id} has no immutable source commit`);
-    if (git(sources[id], 'status', '--porcelain', '--untracked-files=all')) throw Error(`Selected ${id} has uncommitted source edits; commit intended source before running owned E2E`);
-  }
-  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(process.env.REVIEWED_SDK_REVISION ?? '') || process.env.REVIEWED_SDK_REVISION !== refs['plugin-sdk']) throw Error('Set REVIEWED_SDK_REVISION to the independently reviewed full selected SDK commit');
   privateRoot = realpathSync(mkdtempSync(join(tmpdir(), 'omniview-e2e-')));
   const home = join(privateRoot, 'home');
   mkdirSync(home, { mode: 0o700 });
-  env = { ...env, HOME: home, XDG_CONFIG_HOME: join(home, '.config'), XDG_CACHE_HOME: join(home, '.cache'), XDG_DATA_HOME: join(home, '.local/share'), GOPATH: join(home, 'go'), GOCACHE: join(home, '.cache/go-build'), SDK_SOURCE: sources['plugin-sdk'], PATH: `${join(home, 'go/bin')}${delimiter}${process.env.PATH}`, OMNIVIEW_E2E_MODE: 'owned' };
+  if (process.env.OMNIVIEW_E2E_TOOL_CACHE_ROOT !== undefined) {
+    toolCache = phase('tool-cache-validation', () => initializeToolCache(process.env.OMNIVIEW_E2E_TOOL_CACHE_ROOT, { protectedRoots: cacheProtectedRoots(sourceLocations(), privateRoot) }));
+  }
+  env = { ...toolEnvironment(process.env, { toolCacheRoot: toolCache?.root }), HOME: home, XDG_CONFIG_HOME: join(home, '.config'), XDG_CACHE_HOME: join(home, '.cache'), XDG_DATA_HOME: join(home, '.local/share'), GOPATH: join(home, 'go'), GOCACHE: toolCache?.bootstrapGoCache ?? join(home, '.cache/go-build'), SDK_SOURCE: sources['plugin-sdk'], PATH: `${join(home, 'go/bin')}${delimiter}${process.env.PATH}`, OMNIVIEW_E2E_MODE: 'owned' };
+  env.OMNIVIEW_E2E_OWNERSHIP_DIR = join(privateRoot, 'ownership');
+  mkdirSync(env.OMNIVIEW_E2E_OWNERSHIP_DIR, { mode: 0o700 });
   const pnpm = env.OMNIVIEW_E2E_PNPM_EXECUTABLE ?? 'pnpm';
   if (env.OMNIVIEW_E2E_PNPM_EXECUTABLE && !isAbsolute(pnpm)) throw Error('OMNIVIEW_E2E_PNPM_EXECUTABLE must be an absolute native pnpm executable');
   phase('bootstrap-tools', () => {
+    if (process.versions.node !== '24.14.0') throw Error('E2E requires native Node 24.14.0');
     if (execute(pnpm, ['--version'], { capture: true }) !== '12.14.0') throw Error('E2E requires native pnpm 12.14.0');
-    execute('bash', ['./scripts/install-wails-cli.sh']);
   });
-  phase('dependency-install', () => execute(pnpm, ['install', '--frozen-lockfile', '--ignore-scripts', '--strict-peer-dependencies']));
+  phase('dependency-install', () => {
+    try { execute(pnpm, ['install', '--frozen-lockfile', '--ignore-scripts', '--strict-peer-dependencies', ...(toolCache ? ['--store-dir', toolCache.pnpmStore] : [])]); } catch (error) {
+      if (toolCache) throw Error(`${error.message}; changing the standalone pnpm store requires a fresh committed source-tool bootstrap checkout, never forced peers or manual links`);
+      throw error;
+    }
+  });
+  if (opts.grep) {
+    const report = phase('focused-discovery', () => JSON.parse(execute(process.execPath, [playwrightCLI(), ...playwrightArgs, '--list', '--reporter=json'], { cwd: join(root, 'e2e'), capture: true })));
+    const specs = discoveredSpecs(report, join(root, 'e2e'));
+    selection = { ...selection, specs, reasons: [...selection.reasons, 'actual Playwright discovery before application preparation'] };
+    playwrightArgs = ['test', ...specs, '--grep', opts.grep];
+  }
+  const needsApplication = requiresApplication(selection.specs);
+  if (needsApplication) {
+    if (toolCache) {
+      const actual = JSON.parse(execute('go', ['env', '-json', 'GOMODCACHE', 'GOCACHE'], { capture: true }));
+      if (actual.GOMODCACHE !== toolCache.goModCache || actual.GOCACHE !== toolCache.bootstrapGoCache) throw Error('Native Go cache paths differ from the validated E2E tool-cache boundary');
+    }
+    Object.assign(sources, Object.fromEntries(Object.entries(sourceLocations()).map(([id, path]) => [id, realpathSync(path)])));
+    Object.assign(refs, Object.fromEntries(Object.entries(sources).map(([id, source]) => [id, repositoryCommit(source, env)])));
+    for (const [id, source] of Object.entries(sources)) {
+      if (git(source, 'status', '--porcelain', '--untracked-files=all')) throw Error(`Selected ${id} has uncommitted source edits; commit intended source before running owned E2E`);
+    }
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(process.env.REVIEWED_SDK_REVISION ?? '') || process.env.REVIEWED_SDK_REVISION !== refs['plugin-sdk']) throw Error('Set REVIEWED_SDK_REVISION to the independently reviewed full selected SDK commit');
+    env.SDK_SOURCE = sources['plugin-sdk'];
+  }
   phase('browser-install', () => execute(process.execPath, [playwrightCLI(), 'install', ...(process.platform === 'linux' ? ['--with-deps'] : []), 'chromium'], { cwd: join(root, 'e2e') }));
-  phase('canonical-cli-and-real-probes', () => {
-    env.OMNIVIEW_E2E_CLI = execute('task', ['--silent', 'dev:cli:build', `SDK_SOURCE=${sources['plugin-sdk']}`], { capture: true });
-    const hostmod = execute('task', ['--silent', 'host:prepare', `SDK_SOURCE=${sources['plugin-sdk']}`, `HOST_MOD_OUTPUT_DIRECTORY=${join(privateRoot, 'hostmod')}`], { capture: true });
-    const modfile = join(privateRoot, 'probe.mod');
-    copyFileSync(hostmod, modfile);
-    copyFileSync(hostmod.replace(/\.mod$/, '.sum'), modfile.replace(/\.mod$/, '.sum'));
-    const report = join(privateRoot, 'pinned-link-protocol.json');
-    execute('go', ['test', `-modfile=${modfile}`, '-tags', 'server', './internal/devworkspace', '-run', '^TestLinkPinnedProtocolProbe$', '-count=1'], { extraEnv: { A11_PROTOCOL_PROBE: '1', A11_PROTOCOL_REPORT: report } });
-    JSON.parse(readFileSync(report, 'utf8'));
-    execute('go', ['test', `-modfile=${modfile}`, '-tags', 'server', './internal/devworkspace', '-run', '^TestPinnedPNPMNestedScriptProbe$', '-count=1'], { extraEnv: { A15_PINNED_PNPM_PROBE: '1' } });
+  if (needsApplication) {
+  phase('pinned-native-wails-tool', () => {
+    env.OMNIVIEW_WAILS_TOOL_CAPABILITY = preparePinnedWailsTool({
+      root: sources.omniview, directory: join(privateRoot, 'wails-tool'), bootstrapGoCache: env.GOCACHE, env,
+      execute: (command, args, { env: childEnv, cwd }) => execute(command, args, { capture: true, extraEnv: childEnv, cwd }),
+    });
+  });
+  phase('safe-probe-source', () => {
     const probe = JSON.parse(execute(process.execPath, ['e2e/scripts/prepare-workspace-probe.mjs', '--destination', join(privateRoot, 'workspace-probe')], { capture: true }));
     if (probe.pluginID !== 'workspace-probe' || probe.source !== join(privateRoot, 'workspace-probe') || probe.ref !== git(probe.source, 'rev-parse', 'HEAD')) throw Error('Invalid real probe source');
     sources['workspace-probe'] = probe.source;
     refs['workspace-probe'] = probe.ref;
-    env.OMNIVIEW_E2E_SOURCES = join(privateRoot, 'sources.json');
-    writeFileSync(env.OMNIVIEW_E2E_SOURCES, JSON.stringify({ sources, refs, repositories: ['plugin-sdk', 'ui'], plugins: ['kubernetes', 'workspace-probe'], reviewedSDKRevision: refs['plugin-sdk'], linkEvidence: report, liveFrontend: false }), { mode: 0o600, flag: 'wx' });
   });
+  env.OMNIVIEW_E2E_APPLICATION = prepareApplication({ root, privateRoot, sources, refs, env, execute, phase });
   for (const [id, source] of Object.entries(sources)) {
     if (git(source, 'rev-parse', 'HEAD') !== refs[id] || git(source, 'diff', '--name-only', 'HEAD', '--')) throw Error(`Selected ${id} source changed during preparation; refusing mixed committed sources`);
   }
-  deadlineBudget = applicationBudget(started, Date.now());
-  // Let Playwright cancel the run and execute owned fixture teardown. Never
-  // SIGTERM a pnpm wrapper or infer stopped supervisors from CLI cancellation.
-  phase('application-assertions-and-owned-teardown', () => execute(process.execPath, [playwrightCLI(), ...playwrightArgs, '--global-timeout', String(deadlineBudget.globalTimeoutMs), ...(opts.ui ? ['--ui'] : [])], { cwd: join(root, 'e2e'), timeout: 0 }));
+  launchBroker = await startApplicationBroker({ application: env.OMNIVIEW_E2E_APPLICATION, ownershipDir: env.OMNIVIEW_E2E_OWNERSHIP_DIR, env, phases });
+  env.OMNIVIEW_E2E_LAUNCH_SOCKET = launchBroker.socketPath;
+  }
+  await runApplication([...playwrightArgs, ...(opts.ui ? ['--ui'] : [])]);
+  if (needsApplication) {
+    phase('original-read-only-source-proof-after-run', () => {
+      for (const [id, source] of Object.entries(sources)) {
+        if (git(source, 'rev-parse', 'HEAD') !== refs[id] || git(source, 'status', '--porcelain', '--untracked-files=all')) throw Error(`Selected original ${id} changed; retaining the private cohort and ownership evidence`);
+      }
+    });
+    const application = JSON.parse(readFileSync(env.OMNIVIEW_E2E_APPLICATION, 'utf8'));
+    phase('canonical-build-cohort-retirement', () => retireApplicationCohort(application.cohort, execute));
+  }
   phase('preparation-teardown', () => {
-    // Only this fresh private GOPATH is in scope; Go removes its own read-only
-    // extracted module directories before ordinary private-root retirement.
-    execute('go', ['clean', '-modcache']);
-    rmSync(privateRoot, { recursive: true });
+    if (needsApplication) retirePreparationHome(privateRoot, env, { toolCache, deadline: started + 600_000 });
+    else rmSync(privateRoot, { recursive: true });
     privateRoot = undefined;
   });
 }
 let succeeded = false;
-try { main(); succeeded = true; } catch (error) {
+try { await main(); succeeded = true; } catch (error) {
   console.error(`E2E: ${error.message}`);
   process.exitCode = 1;
 } finally {
@@ -170,9 +271,10 @@ try { main(); succeeded = true; } catch (error) {
     console.error('E2E inclusive600s budget exceeded; owned cleanup was allowed to finish, not force-killed');
   }
   if (privateRoot) console.error(`E2E private preparation retained: ${privateRoot}`);
-  const report = { succeeded, operation, elapsedMs: Date.now() - started, budgetMs: 600_000, budgetExceeded, deadlineBudget, selection, phases, sourceRefs, declaredFrontendModes: selection?.groups.includes('workspaces') ? ['optimized', 'live'] : [], retries: 0 };
-  if (operation !== 'report') {
+  const report = { succeeded, operation, elapsedMs: Date.now() - started, budgetMs: 600_000, budgetExceeded, deadlineBudget, launchDrain, selection, phases, sourceRefs, nativeToolCache: toolCache ? 'explicit' : env.HOME ? 'private' : 'not-used', declaredFrontendModes: selection?.kind !== 'focused' && selection?.groups.includes('workspaces') ? ['embedded', 'live-smoke'] : [], retries: 0 };
+  if (operation !== 'report' && operation !== 'cache-initialization') {
     mkdirSync(join(root, 'e2e/playwright-report'), { recursive: true });
-    writeFileSync(join(root, 'e2e/playwright-report', operation === 'discovery' ? 'discovery.json' : 'invocation.json'), `${JSON.stringify(report, null, 2)}\n`);
+    const filename = operation === 'selection' ? 'selection.json' : operation === 'discovery' ? 'discovery.json' : 'invocation.json';
+    writeFileSync(join(root, 'e2e/playwright-report', filename), `${JSON.stringify(report, null, 2)}\n`);
   }
 }

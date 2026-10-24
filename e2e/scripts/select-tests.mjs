@@ -1,13 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import { toolEnvironment } from './execution.mjs';
 
-// Entire specs are selected: mode loops and source assertions are never filtered.
+// Select complete behavioral groups; never remove assertions within a scenario.
 export const groups = {
   layout: ['tests/layout'],
   settings: ['tests/settings'],
   plugins: ['tests/plugins'],
   panels: ['tests/panels'],
   workspaces: ['tests/workspaces'],
+  tooling: ['tests/integration'],
   contracts: ['tests/fixtures'],
 };
 const prose = new Set(['README.md', 'docs/development-cli.md', 'docs/plugin-development.md']);
@@ -21,6 +22,7 @@ const specGroups = new Map([
   ['e2e/tests/panels/bottom-drawer.spec.ts', ['layout', 'panels', 'workspaces']],
   ['e2e/tests/workspaces/workspaces.spec.ts', ['workspaces']],
   ['e2e/tests/workspaces/consumers.spec.ts', ['workspaces']],
+  ['e2e/tests/integration/published-consumers.spec.ts', ['tooling']],
 ]);
 function full(reason) {
   return { kind: 'full', groups: Object.keys(groups), specs: Object.values(groups).flat(), reasons: [reason] };
@@ -55,6 +57,8 @@ export function selectChanges({ full: forceFull = false, changes, complete = fal
       if (typeof path !== 'string' || !path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..')) return full('invalid changed path');
       if (prose.has(path)) continue;
       let affected = specGroups.get(path);
+      if (!affected && path.startsWith('e2e/fixtures/published-consumers/')) affected = ['tooling'];
+      if (!affected && (path.startsWith('packages/omniviewdev-vite-plugin/') || path.startsWith('ui/features/plugins/api/'))) affected = ['layout', 'plugins', 'workspaces', 'tooling'];
       if (!affected && path.startsWith('ui/features/plugins/')) affected = ['layout', 'plugins', 'workspaces'];
       if (!affected) return full('core, cohort, or unclassified change');
       for (const group of affected) selected.add(group);
