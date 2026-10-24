@@ -56,6 +56,9 @@ export function prepareApplication({ root, privateRoot, sources, refs, env, exec
   mkdirSync(directory, { mode: 0o700 });
   const binaryDirectory = join(directory, 'bin');
   mkdirSync(binaryDirectory, { mode: 0o700 });
+  // Explicit hostmod outputs are capabilities for existing private directories;
+  // the authoritative helper intentionally refuses to create or repair them.
+  mkdirSync(join(directory, 'hostmod'), { mode: 0o700 });
   // Follow the canonical dependency order once. The bounded test-tagged adapter
   // reserves/publishes real repository outputs; it does not enter cache reuse.
   // Publish frontend assets before the actual server Go embed compilation.
