@@ -5,7 +5,7 @@ Published: 2026-10-23.
 - [Delivery project](https://github.com/orgs/omniviewdev/projects/13) (organization project, private).
 - [Parent roadmap and launch-wave index](https://github.com/omniviewdev/omniview/issues/78).
 - 48 canonical packets, 113 native GitHub blocked-by relationships at publication, three independent UI-quality followups, and one parent issue. Counts are historical; remote state remains authoritative.
-- Current execution reconciliation: P00/C00 has an independently accepted [selected-source baseline receipt](2026-10-17-resource-intelligence-baseline.md); remote integration is being reconciled. P44/P04/P18 become eligible from that accepted predecessor only; all other production dependencies remain. UI-LAYOUT is already owned/In Review in [UI PR71](https://github.com/omniviewdev/ui/pull/71), not unclaimed. UI-TABLE/UI-PALETTE remain Done only for bounded acceptance.
+- Current execution reconciliation: P00/C00 has an independently accepted [selected-source baseline receipt](2026-10-17-resource-intelligence-baseline.md), issue79 is closed, and P44/P04/P18 are claimed/In Progress against that predecessor; later contract gates remain. All three bounded UI-quality followups are Done, including UI-LAYOUT through merged [UI PR71](https://github.com/omniviewdev/ui/pull/71), commit `6c046bf19e332e8250d3aa66daaf5f092e600c5e`. This does not certify their related production packets.
 - Project fields: Packet, Wave, Workstream, Status, Readiness and Evidence. Views: All work, Delivery board, Dependency waves, Ready to launch and UI work. Wave is longest-predecessor depth, not a date/estimate. Use ascending Wave sorting when planning; don't treat packet numbering as launch order.
 - Existing Platform project links the parent; Kubernetes Plugin project also includes P08–P11. Existing issues/drafts were not closed, moved or overwritten.
 
@@ -65,7 +65,7 @@ Published: 2026-10-23.
 ## Independent presentation followups
 
 - [UI-TABLE: Harden expandable table keyboard, focus and nested interactions](https://github.com/omniviewdev/ui/issues/66): Done from merged [UI PR59](https://github.com/omniviewdev/ui/pull/59), commit `3c5b5fc`; related P23/P24 remain Blocked, not completed by presentation hardening.
-- [UI-LAYOUT: Harden existing view-layout keyboard and controlled interactions](https://github.com/omniviewdev/ui/issues/67): already owned/In Review in [UI PR71](https://github.com/omniviewdev/ui/pull/71); do not duplicate implementation. Related P33 remains separately gated.
+- [UI-LAYOUT: Harden existing view-layout keyboard and controlled interactions](https://github.com/omniviewdev/ui/issues/67): Done through merged [UI PR71](https://github.com/omniviewdev/ui/pull/71), commit `6c046bf19e332e8250d3aa66daaf5f092e600c5e`; issue closed and project Done verified. Related P33 remains separately gated.
 - [UI-PALETTE: Harden existing command-palette interaction and accessibility](https://github.com/omniviewdev/ui/issues/68): Done from merged [UI PR58](https://github.com/omniviewdev/ui/pull/58), commit `dd8f60c`; related P42/P43 remain Blocked, not completed by presentation hardening.
 
 ## Maintaining progress

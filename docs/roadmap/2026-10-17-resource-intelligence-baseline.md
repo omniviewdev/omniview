@@ -11,7 +11,7 @@ Status: **P00 / C00 accepted after independent technical review** for the select
 | ui | `229a060885acea203410b1b113c68e4016d81b97` | Merged PR69; base-ui0.5.0 with React/ReactDOM^19 peers |
 | omniview-plugin-kubernetes | `977e51e6bd51854fc7656b1eba96dce8c89d48c7` | Manifest ID `kubernetes`; runtime/Vite-plugin^0.5.0, base-ui^0.5.0, editors^4.0.0; native pnpm12.14.0 |
 
-The original host checkout contains user-owned modifications and was not altered. New worktrees consume committed identities, not inherited dirty worktree contents. Existing layout work remains owned in UI PR71; release PR70 is not part of this acceptance.
+The original host checkout contains user-owned modifications and was not altered. New worktrees consume committed identities, not inherited dirty worktree contents. UI PR71 merged after this cohort was selected; its bounded layout acceptance is tracked separately and does not change the selected UI229a060 identity above. Release PR70 is not part of this acceptance.
 
 ## Isolation and tooling
 
