@@ -76,7 +76,9 @@ it('keeps development identity and details available when optional header contro
   expect(screen.queryByRole('button', { name: 'Optional settings tool' })).not.toBeInTheDocument();
   const instanceButton = screen.getByRole('button', { name: 'DEV · Header profile — instance details' });
   expect(instanceButton).toBeVisible();
-  await waitFor(() => expect(document.title).toBe('Omniview — DEV · Header profile'));
+  await waitFor(() => {
+    expect(document.title).toBe('Omniview — DEV · Header profile'); 
+  });
   fireEvent.click(instanceButton);
   expect(await screen.findByRole('dialog')).toBeVisible();
   expect(await screen.findByText('Identity confirmed by the host.')).toBeVisible();

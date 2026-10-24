@@ -11,6 +11,7 @@ async function openProbeSettings(page: Page): Promise<void> {
   await page.getByRole('navigation').getByText('Workspace Probe', { exact: true }).click();
   await expect(settingRow(page, `${probeID}.probe_counter`).getByRole('spinbutton')).toBeVisible();
 }
+
 async function saveCounter(page: Page, value: number): Promise<void> {
   await openProbeSettings(page);
   await settingRow(page, `${probeID}.probe_counter`).getByRole('spinbutton').fill(String(value));

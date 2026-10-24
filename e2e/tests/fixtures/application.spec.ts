@@ -19,21 +19,32 @@ for (const failure of ['none', 'unaccepted', 'incomplete', 'not-persisted'] as c
     const server = createServer(socket => {
       socket.setEncoding('utf8');
       let input = '';
-      socket.on('data', chunk => {
+      socket.on('data', (chunk: string) => {
         input += chunk;
-        if (!input.endsWith('\n')) return;
+        if (!input.endsWith('\n')) {
+          return;
+        }
+
         const request = JSON.parse(input) as { command: string; params: { value?: unknown } };
         calls.push(request.command);
         let result: unknown;
-        if (request.command === 'settings.get') result = { status: 'succeeded', result: value };
+        if (request.command === 'settings.get') {
+          result = { status: 'succeeded', result: value };
+        }
+
         if (request.command === 'settings.set') {
           pending = request.params.value;
           result = failure === 'unaccepted' ? { status: 'failed' } : { status: 'accepted', operationID: 'reset' };
         }
+
         if (request.command === 'operation.wait') {
-          if (failure === 'none') value = pending as number;
+          if (failure === 'none') {
+            value = pending as number;
+          }
+
           result = { status: failure === 'incomplete' ? 'pending' : 'succeeded', operationID: 'reset' };
         }
+
         socket.end(`${JSON.stringify({ ok: true, result })}\n`);
       });
     });
@@ -60,12 +71,19 @@ for (const failure of ['none', 'unaccepted', 'incomplete', 'not-persisted'] as c
       }
     } finally {
       const closed = Promise.withResolvers<void>();
-      server.close(() => closed.resolve());
+      server.close(() => {
+        closed.resolve(); 
+      });
       await closed.promise;
       for (const name of names) {
         const value = before[name];
-        if (value === undefined) Reflect.deleteProperty(process.env, name); else process.env[name] = value;
+        if (value === undefined) {
+          Reflect.deleteProperty(process.env, name);
+        } else {
+          process.env[name] = value;
+        }
       }
+
       await rm(directory, { recursive: true, force: true });
     }
   });
