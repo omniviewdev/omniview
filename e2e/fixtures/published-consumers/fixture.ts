@@ -1,8 +1,9 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type { Readable } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -59,9 +60,11 @@ async function producer(kind: 'runtime' | Delivery) {
   // compiler service in the Playwright process just to bootstrap this child.
   const requirePlugin = createRequire(path.join(repo, 'packages/omniviewdev-vite-plugin/package.json'));
   const loader = pathToFileURL(requirePlugin.resolve('tsx')).href;
+  // Node's typed stdio overloads cover three entries, not the fourth IPC entry.
+  // The explicit pipe entries still guarantee both readable output streams.
   const child = spawn(process.execPath, ['--import', loader, path.join(directory, 'producer-worker.mjs'), kind], {
     cwd: repo, env, detached: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-  });
+  }) as ChildProcessByStdio<null, Readable, Readable>;
   const ready = Promise.withResolvers<Ready>();
   const exited = Promise.withResolvers<{ code: number | null; signal: NodeJS.Signals | null }>();
   const pending = new Map<number, Pending>();
