@@ -214,6 +214,39 @@ Owned child/descendant disposal precedes canonical output restoration and
 cohort unlink/removal. Refused cleanup retains private state and journals;
 unknown files, foreign sources and production credentials are never adopted.
 
+### Verified local execution
+
+The full canonical invocation on 2026-10-24 passed all 85 cases with zero retries
+in **370.998 seconds**, including dependency preparation, the single source-cohort
+build, actual profile startup/replacement, assertions and complete retirement.
+The host source was `bce11c820913610045aee6f7362851f0078db01e`, SDK
+`9ba88075a39e5406926a22d536722afecaab465c`, UI
+`c437aca20d853aa6f65f0fa437ada3e0bcfc82f9`, and Kubernetes
+`977e51e6bd51854fc7656b1eba96dce8c89d48c7`.
+
+Environment: macOS 27 arm64, Go 1.26.1, Node 24.14.0, native pnpm 12.14.0,
+Playwright 1.64.1 and its Chromium build. Native dependency/compiler payloads
+were reused; application artifacts and profiles were freshly produced. This is
+local evidence, not a cold-run or Linux CI timing claim.
+
+| Measured phase | Seconds |
+|---|---:|
+| All case assertions and worker teardown | 69.095 |
+| Owned application process teardown | 0.631 |
+| Canonical cohort unlink/removal | 55.495 |
+| Private preparation retirement | 0.385 |
+
+The ownership receipt proved all five launched/replaced processes drained with
+`childrenEmpty: true`. The six application journeys each completed in
+0.665–15.3 seconds. Separate real SDK compiler/watch/RPC contracts and the
+published runtime/CSS contracts retain their own boundary evidence.
+
+Canonical supervisor-driven source-to-browser recovery remains a separate
+[acceptance gate](https://github.com/omniviewdev/omniview/issues/124);
+explicit process replacement and document reload do not certify that gate.
+
+### Static checks
+
 `task check:ui-lint` covers host UI, Vite-plugin source and E2E TypeScript through the flat ESLint configuration and is blocking in PR checks. E2E class declarations use erasable fields, not parameter properties, because fixtures also load through Node's strip-only TypeScript support. Parsed link evidence is validated from `unknown` and requires literal-`true` attestations. Go build/vet/test/format checks remain blocking; the existing broad Go style-lint profile remains advisory rather than weakening its rules or claiming the backlog is clean.
 
 `task fmt` and `task check:fmt-check` select tracked and nonignored Go source through Git, preserving spaced filenames with NUL-delimited arguments. Both use `goimports` for formatting and imports; they never traverse ignored `node_modules`, prepared Wails sources or other tool caches.
