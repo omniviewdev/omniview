@@ -393,16 +393,14 @@ tasks:
   # ──────────────────────────────────────────────
 
   e2e:
-    dir: e2e
+    summary: "Canonical full application E2E, including bootstrap, probes and both frontend modes; --changed --base REF opts into selection"
     cmds:
-      - pnpm install
-      - pnpm exec playwright install chromium
-      - pnpm exec playwright test
+      - node e2e/scripts/run.mjs {{.CLI_ARGS}}
 
   e2e-ui:
-    dir: e2e
+    summary: "Canonical application E2E with Playwright UI"
     cmds:
-      - pnpm exec playwright test --ui
+      - node e2e/scripts/run.mjs --ui {{.CLI_ARGS}}
 
   e2e-report:
     dir: e2e

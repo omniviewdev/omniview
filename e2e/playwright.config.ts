@@ -7,9 +7,11 @@ const observational = process.env.OMNIVIEW_E2E_MODE === 'observe';
 export default defineConfig({
   testDir: './tests',
   timeout: 30_000,
-  testIgnore: observational ? ['**/layout/**', '**/settings/**', '**/plugins/**', '**/panels/**', '**/workspaces/**'] : ['**/observation/**'],
+  testMatch: observational ? '**/observation/**/*.spec.ts' : '**/*.spec.ts',
+  testIgnore: observational ? [] : ['**/observation/**'],
   outputDir: './test-results',
-  retries: process.env.CI ? 2 : 0,
+  retries: 0,
+  maxFailures: 1,
   workers: 1,
   reporter: [
     ['html', { open: 'never' }],
@@ -18,11 +20,11 @@ export default defineConfig({
   use: {
     // baseURL is resolved by fixtures from the authenticated backend descriptor.
     screenshot: 'only-on-failure',
-    video: 'on-first-retry',
+    video: 'retain-on-failure',
     // Playwright hides scrollbars in headless Chromium by default. Keep them, so
     // tests can catch stray scrollbars the way a user would see them.
     launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] },
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
   },
   // Observation has its own read-only fixture; destructive legacy fixtures
   // cannot attach to a human profile, even when environment variables exist.
