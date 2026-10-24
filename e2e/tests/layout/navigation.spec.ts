@@ -15,7 +15,7 @@ test.describe('Navigation', () => {
 
     await header.getByRole('button', { name: 'plugins' }).click();
     await expect(appPage).toHaveURL(/#\/plugins$/);
-    await expect(appPage.getByText('Installed', { exact: true })).toBeVisible();
+    await expect(appPage.getByRole('button', { name: 'Installed', exact: true })).toBeVisible();
 
     await header.getByRole('button', { name: 'home' }).click();
     await expect(appPage).toHaveURL(/#\/$/);
@@ -50,7 +50,7 @@ test.describe('Navigation', () => {
         ? shell(page).main.getByRole('button', { name: 'Edit Layout' })
         : path === '/settings'
           ? page.getByRole('navigation').getByText('Appearance', { exact: true })
-          : page.getByText('Installed', { exact: true });
+          : page.getByRole('button', { name: 'Installed', exact: true });
       await expect(ready).toBeVisible();
 
       expect(errors).toEqual([]);
