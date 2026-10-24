@@ -132,7 +132,7 @@ func newSDKRPCContract(t *testing.T, ctx context.Context) *sdkRPCContract {
 	require.NoError(t, os.WriteFile(kubeconfig, []byte("apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []\n"), 0600))
 	environment := []string{
 		"PATH=" + os.Getenv("PATH"), "HOME=" + home, "TMPDIR=" + tmp, "TMP=" + tmp, "TEMP=" + tmp,
-		"GOWORK=off", "GOENV=off", "GOTOOLCHAIN=local", "GOFLAGS=-mod=mod", "GOPROXY=off", "GOSUMDB=off",
+		"GOWORK=off", "GOENV=off", "GOTOOLCHAIN=local", "GOFLAGS=", "GOPROXY=off", "GOSUMDB=off",
 		"GOCACHE=" + caches["GOCACHE"], "GOMODCACHE=" + caches["GOMODCACHE"], "GOPATH=" + filepath.Join(home, "go"),
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"), "XDG_DATA_HOME=" + filepath.Join(home, ".local", "share"),
 		"XDG_CACHE_HOME=" + filepath.Join(home, ".cache"), "KUBECONFIG=" + kubeconfig, "OMNIVIEW_TELEMETRY_ENABLED=false",
@@ -328,11 +328,21 @@ func (f *sdkRPCContract) profile(t *testing.T, name string) *sdkRPCProfile {
 			t.Errorf("close owned profile state: %v", err)
 		}
 	})
-	// Settle module metadata before enabling the real root/dependency watches.
-	command := exec.CommandContext(f.ctx, f.goPath, "list", "-deps", "./host", "./pkg")
-	command.Dir, command.Env = p.source, p.env
-	output, err := command.CombinedOutput()
-	require.NoError(t, err, string(output))
+	// Materialize both imported-package and complete-module metadata while this
+	// newly generated fixture is still being prepared. Dependency registration
+	// uses the second query too: letting that first lazy go.sum update occur
+	// after root watches are registered would synthesize a setup rebuild.
+	// Only preparation permits module edits; watched compilation uses the same
+	// empty GOFLAGS as the production managed-workspace environment.
+	for _, args := range [][]string{
+		{"list", "-mod=mod", "-deps", "./host", "./pkg"},
+		{"list", "-mod=mod", "-m", "-json", "all"},
+	} {
+		command := exec.CommandContext(f.ctx, f.goPath, args...)
+		command.Dir, command.Env = p.source, p.env
+		output, err := command.CombinedOutput()
+		require.NoError(t, err, string(output))
+	}
 	p.identity(t)
 	return p
 }
@@ -379,7 +389,6 @@ func (p *sdkRPCProfile) start(t *testing.T) {
 				p.mu.Lock()
 				p.buildOrigin = entry.Message
 				p.mu.Unlock()
-				t.Logf("owned SDK watcher %s: %s", p.workspace.Manifest.Slug, entry.Message)
 			}
 		}, func(status DevProcessStatus) {
 			p.mu.Lock()
