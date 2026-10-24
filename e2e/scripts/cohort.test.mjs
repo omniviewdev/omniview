@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { copyCommittedSource } from './cohort.mjs';
+import { cohortEnvironment, copyCommittedSource } from './cohort.mjs';
 import { toolEnvironment } from './execution.mjs';
 
 test('one private committed source copy excludes foreign ignored build state and never writes it', () => {
@@ -34,4 +34,17 @@ test('one private committed source copy excludes foreign ignored build state and
     }
     assert.equal(git('status', '--porcelain', '--untracked-files=all'), '');
   } finally { rmSync(arena, { recursive: true, force: true }); }
+});
+
+test('producer environment preserves native PATH outside the scoped package launcher', () => {
+  const env = { PATH: '/native/bin:/usr/bin', HOME: '/private/home', GOWORK: 'off' };
+  const cohort = { sources: { 'plugin-sdk': '/selected/sdk' }, args: ['/owned/cohort/.local/toolchains/pnpm-12.14.0/pnpm.cjs'] };
+  const selected = cohortEnvironment(cohort, env);
+  assert.equal(selected.PATH, env.PATH);
+  assert.equal(selected.SDK_SOURCE, '/selected/sdk');
+  assert.equal(selected.OMNIVIEW_PNPM_EXECUTABLE, undefined);
+  assert.deepEqual(env, { PATH: '/native/bin:/usr/bin', HOME: '/private/home', GOWORK: 'off' });
+  const pinned = cohortEnvironment(cohort, { ...env, OMNIVIEW_E2E_PNPM_EXECUTABLE: '/admitted/native-pnpm' });
+  assert.equal(pinned.PATH, env.PATH);
+  assert.equal(pinned.OMNIVIEW_PNPM_EXECUTABLE, '/admitted/native-pnpm');
 });

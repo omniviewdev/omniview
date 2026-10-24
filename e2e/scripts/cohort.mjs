@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, delimiter, join } from 'node:path';
+import { join } from 'node:path';
 
 export function copyCommittedSource({ source, ref, destination, execute }) {
   const head = () => execute('git', ['-C', source, 'rev-parse', 'HEAD'], { capture: true });
@@ -42,7 +42,7 @@ export function prepareApplicationCohort({ privateRoot, sources, refs, env, exec
 }
 
 export function cohortEnvironment(cohort, env) {
-  return { ...env, SDK_SOURCE: cohort.sources['plugin-sdk'], PATH: `${dirname(cohort.args[0])}${delimiter}${env.PATH}`, ...(env.OMNIVIEW_E2E_PNPM_EXECUTABLE ? { OMNIVIEW_PNPM_EXECUTABLE: env.OMNIVIEW_E2E_PNPM_EXECUTABLE } : {}) };
+  return { ...env, SDK_SOURCE: cohort.sources['plugin-sdk'], ...(env.OMNIVIEW_E2E_PNPM_EXECUTABLE ? { OMNIVIEW_PNPM_EXECUTABLE: env.OMNIVIEW_E2E_PNPM_EXECUTABLE } : {}) };
 }
 
 export function verifyApplicationCohort(cohort, execute) {
