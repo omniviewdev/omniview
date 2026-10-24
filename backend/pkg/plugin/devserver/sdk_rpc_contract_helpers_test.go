@@ -398,9 +398,7 @@ func (p *sdkRPCProfile) start(t *testing.T) {
 	for name, before := range metadataBefore {
 		data, err := os.ReadFile(filepath.Join(p.source, name))
 		require.NoError(t, err)
-		if after := sha256.Sum256(data); after != before {
-			t.Logf("owned SDK watcher %s changed %s during registration/initial operation: before=%x after=%x", p.workspace.Manifest.Slug, name, before, after)
-		}
+		require.Equal(t, before, sha256.Sum256(data), "prepared %s must not be rewritten by watcher registration/initial operation; setup events are not SDK mutations", name)
 	}
 	require.Contains(t, p.watcher.WatchedDirectories(), filepath.Join(p.sdkSource, "settings"), "ordinary SDK API writes must reach the production watcher")
 }
