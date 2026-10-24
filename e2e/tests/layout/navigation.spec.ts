@@ -6,10 +6,6 @@ test.describe('Navigation', () => {
     await expect(shell(appPage).rail).toBeVisible();
   });
 
-  test('the home page shows the welcome screen', async ({ appPage }) => {
-    await expect(shell(appPage).main.getByText('Omniview', { exact: true })).toBeVisible();
-  });
-
   test('header buttons route to settings, plugins and back home', async ({ appPage }) => {
     const header = shell(appPage).header;
 
@@ -23,7 +19,6 @@ test.describe('Navigation', () => {
 
     await header.getByRole('button', { name: 'home' }).click();
     await expect(appPage).toHaveURL(/#\/$/);
-    await expect(shell(appPage).main.getByText('Omniview', { exact: true })).toBeVisible();
   });
 
   test('browser back and forward move between pages', async ({ appPage }) => {
@@ -51,8 +46,12 @@ test.describe('Navigation', () => {
 
       await page.goto(`/#${path}`);
       await expect(shell(page).root).toBeVisible();
-      // Let lazy queries settle before judging.
-      await page.waitForLoadState('networkidle');
+      const ready = path === '/'
+        ? shell(page).main.getByRole('button', { name: 'Edit Layout' })
+        : path === '/settings'
+          ? page.getByRole('navigation').getByText('Appearance', { exact: true })
+          : page.getByText('Installed', { exact: true });
+      await expect(ready).toBeVisible();
 
       expect(errors).toEqual([]);
       await expectPageDoesNotScroll(page);
