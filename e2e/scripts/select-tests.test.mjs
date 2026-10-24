@@ -15,13 +15,14 @@ test('full is default, explicit full overrides even prose, and unknown cohort is
   assert.equal(selectChanges({ complete: true, changes: [change('README.md')] }).kind, 'full');
 });
 test('cohort sentinel allows selection only when base, sentinel and actual refs agree', () => {
-  const current = { 'plugin-sdk': 'a'.repeat(40), ui: 'b'.repeat(40) };
+  const current = { 'plugin-sdk': 'a'.repeat(40), ui: 'b'.repeat(40), kubernetes: 'd'.repeat(40) };
   assert.equal(cohortMatches({ current, baseline: { ...current }, actual: { ...current } }), true);
   for (const input of [
     {},
     { current, baseline: current },
     { current, baseline: { ...current, ui: 'c'.repeat(40) }, actual: current },
     { current, baseline: current, actual: { ...current, 'plugin-sdk': 'c'.repeat(40) } },
+    { current, baseline: current, actual: { ...current, kubernetes: 'c'.repeat(40) } },
     { current: { ...current, ui: 'branch' }, baseline: current, actual: current },
   ]) {
     const cohortUnchanged = cohortMatches(input);

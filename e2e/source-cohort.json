@@ -1,4 +1,5 @@
 {
   "plugin-sdk": "1e92fb518b117814acb504aaae1772ff39abcdef",
-  "ui": "c437aca20d853aa6f65f0fa437ada3e0bcfc82f9"
+  "ui": "c437aca20d853aa6f65f0fa437ada3e0bcfc82f9",
+  "kubernetes": "977e51e6bd51854fc7656b1eba96dce8c89d48c7"
 }

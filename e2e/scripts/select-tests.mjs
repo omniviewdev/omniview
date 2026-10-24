@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { toolEnvironment } from './execution.mjs';
 
 // Entire specs are selected: mode loops and source assertions are never filtered.
 export const groups = {
@@ -25,7 +26,7 @@ function full(reason) {
   return { kind: 'full', groups: Object.keys(groups), specs: Object.values(groups).flat(), reasons: [reason] };
 }
 export function cohortMatches({ current, baseline, actual } = {}) {
-  return Boolean(current && baseline && actual && ['plugin-sdk', 'ui'].every(id =>
+  return Boolean(current && baseline && actual && ['plugin-sdk', 'ui', 'kubernetes'].every(id =>
     /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(current[id]) &&
     baseline[id] === current[id] && actual[id] === current[id]));
 }
@@ -62,10 +63,10 @@ export function selectChanges({ full: forceFull = false, changes, complete = fal
   const names = Object.keys(groups).filter(group => selected.has(group));
   return { kind: names.length ? 'selected' : 'none', groups: names, specs: names.flatMap(group => groups[group]), reasons: [names.length ? 'union of affected groups including dependencies' : 'explicit prose-only allowlist'] };
 }
-export function selectFromGit({ root, base, cohortUnchanged = false, full: forceFull = false }) {
+export function selectFromGit({ root, base, cohortUnchanged = false, full: forceFull = false, env = toolEnvironment(process.env) }) {
   if (forceFull || !base) return full(forceFull ? 'explicit full override' : 'no base supplied');
   try {
-    const git = args => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+    const git = args => execFileSync('git', ['-C', root, ...args], { env, encoding: 'utf8', timeout: 30_000, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
     const mergeBase = git(['merge-base', base, 'HEAD']).trim();
     if (!/^[a-f0-9]{40,64}$/.test(mergeBase)) return full('unavailable merge base');
     const data = git(['diff', '--name-status', '-z', '--find-renames', mergeBase, 'HEAD', '--']);

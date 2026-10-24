@@ -24,7 +24,9 @@ export default defineConfig({
     // Playwright hides scrollbars in headless Chromium by default. Keep them, so
     // tests can catch stray scrollbars the way a user would see them.
     launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] },
-    trace: 'retain-on-failure',
+    // Vite HMR URLs contain authentication query tokens: never upload raw traces.
+    // First-attempt screenshots/video and redacted browser errors remain enabled.
+    trace: 'off',
   },
   // Observation has its own read-only fixture; destructive legacy fixtures
   // cannot attach to a human profile, even when environment variables exist.

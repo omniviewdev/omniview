@@ -403,6 +403,5 @@ tasks:
       - node e2e/scripts/run.mjs --ui {{.CLI_ARGS}}
 
   e2e-report:
-    dir: e2e
     cmds:
-      - pnpm exec playwright show-report
+      - node e2e/scripts/run.mjs --report

@@ -6,7 +6,7 @@
     "test": "node scripts/run.mjs",
     "test:ui": "node scripts/run.mjs --ui",
     "test:contracts": "node --test scripts/*.test.mjs",
-    "report": "playwright show-report"
+    "report": "node scripts/run.mjs --report"
   },
   "devDependencies": {
     "@playwright/test": "1.50.1",
