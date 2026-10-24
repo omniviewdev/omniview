@@ -10,6 +10,7 @@ function expectRetired(root: string, pid: number) {
     expect(error).toHaveProperty('code', 'ESRCH');
     return;
   }
+
   throw new Error('Published-consumer producer group survived fixture teardown');
 }
 
@@ -18,7 +19,7 @@ async function retireFixture(context: BrowserContext, fixture: {
 }, primaryFailure: unknown) {
   try {
     try {
-      await Promise.all(context.pages().map(page => page.close()));
+      await Promise.all(context.pages().map(async page => page.close()));
     } finally {
       await fixture.close();
       expectRetired(fixture.root, fixture.pid);
@@ -26,9 +27,10 @@ async function retireFixture(context: BrowserContext, fixture: {
   } catch (cleanupError) {
     if (primaryFailure !== undefined) {
       throw new AggregateError([primaryFailure, cleanupError],
-        `Consumer contract failed: ${String(primaryFailure)}; cleanup failed: ${String(cleanupError)}`,
+        'Consumer contract and fixture cleanup both failed',
         { cause: primaryFailure });
     }
+
     throw cleanupError;
   }
 }
@@ -92,20 +94,31 @@ test.describe('published consumers', () => {
           page.on('websocket', socket => socket.on('framereceived',
             ({ payload }) => feedback[label].push(String(payload))));
         }
+
         await Promise.all([a.goto(fixture.a.url), b.goto(fixture.b.url)]);
         for (const page of [a, b]) {
           await expect(page.locator('#host')).toHaveCSS('background-color', 'rgb(31, 72, 113)');
           await expect(page.locator('#plugin')).toHaveCSS('background-color', 'rgb(31, 72, 113)');
         }
+
         for (const label of ['a', 'b'] as const) {
           await expect.poll(() => feedback[label].some(frame => frame.includes('"type":"connected"'))).toBe(true);
         }
+
         const documentID = await a.evaluate(() => document.documentElement.dataset.documentId);
         const bDocumentID = await b.evaluate(() => document.documentElement.dataset.documentId);
         let navigations = 0;
-        a.on('framenavigated', frame => { if (frame === a.mainFrame()) navigations++; });
+        a.on('framenavigated', frame => {
+          if (frame === a.mainFrame()) {
+            navigations++;
+          } 
+        });
         let bNavigations = 0;
-        b.on('framenavigated', frame => { if (frame === b.mainFrame()) bNavigations++; });
+        b.on('framenavigated', frame => {
+          if (frame === b.mainFrame()) {
+            bNavigations++;
+          } 
+        });
         await fixture.a.publishCSS('rgb(116, 52, 93)');
         await expect(a.locator('#host')).toHaveCSS('background-color', 'rgb(116, 52, 93)');
         await expect(a.locator('#plugin')).toHaveCSS('background-color', 'rgb(116, 52, 93)');

@@ -47,7 +47,9 @@ test.describe('Owned application profiles', () => {
         return key ? JSON.parse(localStorage.getItem(key) ?? 'null') : null;
       })).toEqual({ schemaVersion: 1, themeId: theme });
       await page.addInitScript(() => {
-        requestAnimationFrame(() => { window.e2eFirstFrame = { instanceID: window.__OMNIVIEW_BOOTSTRAP__?.identity.instanceID, theme: document.documentElement.getAttribute('data-ov-theme') }; });
+        requestAnimationFrame(() => {
+          window.e2eFirstFrame = { instanceID: window.__OMNIVIEW_BOOTSTRAP__?.identity.instanceID, theme: document.documentElement.getAttribute('data-ov-theme') }; 
+        });
       });
       await page.reload();
       await expect.poll(async () => page.evaluate(() => window.e2eFirstFrame)).toEqual({ instanceID: descriptor.instanceID, theme });

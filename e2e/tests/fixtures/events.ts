@@ -9,8 +9,16 @@ export async function assertBackendEventDelivery(sender: Page, context: BrowserC
     const socketReady = receiver.waitForEvent('websocket', socket => new URL(socket.url()).pathname === '/wails/events');
     const handshake = Promise.withResolvers<number>();
     let eventsRequestID: string | undefined;
-    session.on('Network.webSocketCreated', ({ requestId, url }) => { if (new URL(url).pathname === '/wails/events') eventsRequestID = requestId; });
-    session.on('Network.webSocketHandshakeResponseReceived', ({ requestId, response }) => { if (requestId === eventsRequestID) handshake.resolve(response.status); });
+    session.on('Network.webSocketCreated', ({ requestId, url }) => {
+      if (new URL(url).pathname === '/wails/events') {
+        eventsRequestID = requestId;
+      } 
+    });
+    session.on('Network.webSocketHandshakeResponseReceived', ({ requestId, response }) => {
+      if (requestId === eventsRequestID) {
+        handshake.resolve(response.status);
+      } 
+    });
     await session.send('Network.enable');
     await receiver.goto(browserURL);
     const socket = await socketReady;
@@ -20,18 +28,28 @@ export async function assertBackendEventDelivery(sender: Page, context: BrowserC
     await expect.poll(async () => receiver.evaluate(() => typeof window._wails?.dispatchWailsEvent)).toBe('function');
     await receiver.evaluate(event => {
       const runtime = window._wails;
-      if (!runtime?.dispatchWailsEvent) throw new Error('Actual app dispatcher is unavailable');
+      if (!runtime?.dispatchWailsEvent) {
+        throw new Error('Actual app dispatcher is unavailable');
+      }
+
       const original = runtime.dispatchWailsEvent;
       const { promise, resolve } = Promise.withResolvers<unknown>();
       window.e2eEvent = promise;
       const observe = function (this: unknown, message: unknown): unknown {
         const result = original.call(this, message);
-        if (message && typeof message === 'object' && 'name' in message && message.name === event && 'data' in message) resolve(message.data);
+        if (message && typeof message === 'object' && 'name' in message && message.name === event && 'data' in message) {
+          resolve(message.data);
+        }
+
         return result;
       };
+
       runtime.dispatchWailsEvent = observe;
       window.e2eRestoreEventDispatcher = () => {
-        if (runtime.dispatchWailsEvent === observe) runtime.dispatchWailsEvent = original;
+        if (runtime.dispatchWailsEvent === observe) {
+          runtime.dispatchWailsEvent = original;
+        }
+
         delete window.e2eRestoreEventDispatcher;
         delete window.e2eEvent;
       };
@@ -39,17 +57,28 @@ export async function assertBackendEventDelivery(sender: Page, context: BrowserC
     const frame = socket.waitForEvent('framereceived', { predicate: message => String(message.payload).includes(marker) });
     await sender.evaluate(async ({ event, marker }) => {
       const clientID = window._wails?.clientId;
-      if (!clientID) throw new Error('Actual sender runtime client ID is unavailable');
+      if (!clientID) {
+        throw new Error('Actual sender runtime client ID is unavailable');
+      }
+
       const response = await fetch('/wails/runtime', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-wails-client-id': clientID }, body: JSON.stringify({ object: 3, method: 0, args: { name: event, data: { marker } } }) });
-      if (!response.ok) throw new Error(`Actual backend event emission failed (${response.status})`);
+      if (!response.ok) {
+        throw new Error(`Actual backend event emission failed (${response.status})`);
+      }
     }, { event, marker });
     await frame;
     expect(await receiver.evaluate(async () => window.e2eEvent)).toEqual({ marker });
   } finally {
-    try { if (!receiver.isClosed()) await receiver.evaluate(() => window.e2eRestoreEventDispatcher?.()); }
-    finally { await session.detach(); await receiver.close(); }
+    try {
+      if (!receiver.isClosed()) {
+        await receiver.evaluate(() => window.e2eRestoreEventDispatcher?.());
+      } 
+    } finally {
+      await session.detach(); await receiver.close(); 
+    }
   }
 }
+
 type EventWindow = Window & {
   e2eEvent?: Promise<unknown>;
   e2eRestoreEventDispatcher?: () => void;

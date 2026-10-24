@@ -14,6 +14,7 @@ function selection() {
     expected: { workspaceID: descriptor.workspaceID, generation: descriptor.generation },
   };
 }
+
 test('read-only observation admits the exact authenticated UUID, process, generation and state', () => {
   const { descriptor, status, response, expected } = selection();
   expect(validateObservation(status, response, expected)).toEqual(descriptor);
@@ -21,16 +22,35 @@ test('read-only observation admits the exact authenticated UUID, process, genera
 for (const mutation of ['uuid', 'generation', 'state', 'process', 'endpoint', 'foreign endpoint', 'not ready'] as const) {
   test(`read-only observation refuses ${mutation} drift`, () => {
     const { status, response, expected } = selection();
-    if (mutation === 'uuid') expected.workspaceID = 'foreign';
-    if (mutation === 'generation') expected.generation = 'foreign';
-    if (mutation === 'state') response.result.stateRoot = '/foreign/state';
-    if (mutation === 'process') response.result.process.startIdentity = 'different-start';
-    if (mutation === 'endpoint') response.result.endpoints.control = 'http://127.0.0.1:31000/v1/control';
+    if (mutation === 'uuid') {
+      expected.workspaceID = 'foreign';
+    }
+
+    if (mutation === 'generation') {
+      expected.generation = 'foreign';
+    }
+
+    if (mutation === 'state') {
+      response.result.stateRoot = '/foreign/state';
+    }
+
+    if (mutation === 'process') {
+      response.result.process.startIdentity = 'different-start';
+    }
+
+    if (mutation === 'endpoint') {
+      response.result.endpoints.control = 'http://127.0.0.1:31000/v1/control';
+    }
+
     if (mutation === 'foreign endpoint') {
       response.result.endpoints.control = 'http://foreign.example:30001/v1/control';
       status.instance.endpoints.control = response.result.endpoints.control;
     }
-    if (mutation === 'not ready') status.launchPhase = 'starting';
+
+    if (mutation === 'not ready') {
+      status.launchPhase = 'starting';
+    }
+
     expect(() => validateObservation(status, response, expected)).toThrow();
   });
 }
