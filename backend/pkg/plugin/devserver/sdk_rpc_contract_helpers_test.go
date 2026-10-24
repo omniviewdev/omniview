@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -41,16 +42,50 @@ import (
 
 const sdkRPCContractID = "sdk-rpc-contract"
 
-type sdkRPCModule struct {
-	Path, Version, Dir, Sum, GoModSum string
-	Replace *sdkRPCModule
-}
 
 type sdkRPCContract struct {
 	ctx context.Context
 	goPath, root, home, origin, repository string
 	env []string
 }
+// sdkRPCSelectSource admits an explicit source or the source file of the SDK
+// function actually linked into this test binary. It never resolves the root
+// repository's original go.mod, which may differ from a parent's -modfile.
+func sdkRPCSelectSource(explicit, compiledFile string) (string, error) {
+	selected := explicit
+	authority := "SDK_SOURCE"
+	if selected == "" {
+		authority = "compiled SDK source; set SDK_SOURCE explicitly"
+		if !filepath.IsAbs(compiledFile) || !strings.HasSuffix(filepath.ToSlash(compiledFile), "/pkg/v1/settings/provider.go") {
+			return "", fmt.Errorf("cannot locate absolute compiled SDK source (possibly -trimpath); set SDK_SOURCE explicitly")
+		}
+		selected = filepath.Clean(filepath.Join(filepath.Dir(compiledFile), "../../.."))
+		if _, err := os.Stat(compiledFile); err != nil {
+			return "", fmt.Errorf("%s: %w", authority, err)
+		}
+	}
+	selected, err := filepath.Abs(selected)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", authority, err)
+	}
+	selected, err = filepath.EvalSymlinks(selected)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", authority, err)
+	}
+	data, err := os.ReadFile(filepath.Join(selected, "go.mod"))
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", authority, err)
+	}
+	module, err := modfile.Parse("go.mod", data, nil)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", authority, err)
+	}
+	if module.Module == nil || module.Module.Mod.Path != sdkModulePath {
+		return "", fmt.Errorf("%s must select actual module %s", authority, sdkModulePath)
+	}
+	return selected, nil
+}
+
 
 func newSDKRPCContract(t *testing.T, ctx context.Context) *sdkRPCContract {
 	t.Helper()
@@ -104,38 +139,31 @@ func newSDKRPCContract(t *testing.T, ctx context.Context) *sdkRPCContract {
 		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_TERMINAL_PROMPT=0",
 	}
 	fixture := &sdkRPCContract{ctx: ctx, goPath: goPath, root: root, home: home, repository: repository, env: environment}
-	// SDK_SOURCE is an explicit source selection, not a fallback hint. Invalid
-	// selections fail, even if a released SDK is available in the module cache.
-	selected := os.Getenv("SDK_SOURCE")
-	if selected != "" {
-		selected, err = filepath.Abs(selected)
-		require.NoError(t, err)
-		selected, err = filepath.EvalSymlinks(selected)
-		require.NoError(t, err, "explicit SDK_SOURCE must exist")
-	}
-	originCommand := exec.CommandContext(ctx, goPath, "list", "-m", "-json", sdkModulePath)
-	originCommand.Dir, originCommand.Env = repository, environment
-	raw, err = originCommand.CombinedOutput()
-	require.NoError(t, err, string(raw))
-	var origin sdkRPCModule
-	require.NoError(t, json.Unmarshal(raw, &origin))
-	require.Equal(t, sdkModulePath, origin.Path)
-	t.Logf("effective SDK module: path=%s version=%s sum=%s goModSum=%s directory=%s replacement=%+v", origin.Path, origin.Version, origin.Sum, origin.GoModSum, origin.Dir, origin.Replace)
-	if selected == "" {
-		selected = origin.Dir
-		if origin.Replace != nil {
-			selected = origin.Replace.Dir
+	// An explicit source is authoritative and does not depend on unused release
+	// metadata. Otherwise inspect the function actually linked by the parent,
+	// preserving -modfile replacements that go list on root go.mod would lose.
+	explicit, compiledFile := os.Getenv("SDK_SOURCE"), ""
+	authority := "SDK_SOURCE"
+	if explicit == "" {
+		authority = "compiled sdksettings.NewProviderWrapper"
+		if function := runtime.FuncForPC(reflect.ValueOf(sdksettings.NewProviderWrapper).Pointer()); function != nil {
+			compiledFile, _ = function.FileLine(function.Entry())
 		}
 	}
-	selected, err = filepath.EvalSymlinks(selected)
+	selected, err := sdkRPCSelectSource(explicit, compiledFile)
 	require.NoError(t, err)
-	moduleData, err := os.ReadFile(filepath.Join(selected, "go.mod"))
-	require.NoError(t, err)
-	module, err := modfile.Parse("go.mod", moduleData, nil)
-	require.NoError(t, err)
-	require.NotNil(t, module.Module)
-	require.Equal(t, sdkModulePath, module.Module.Mod.Path, "selected source must be the actual SDK module")
 	fixture.origin = selected
+	t.Logf("selected SDK source: authority=%s module=%s directory=%s compiled-source-file=%s", authority, sdkModulePath, selected, compiledFile)
+	// If the actual selected source is a released module-cache directory, log
+	// its own version/archive checksum, never another root manifest's SDK. These
+	// optional metadata bytes are distinct from the verified source digest.
+	if moduleCache, cacheErr := filepath.EvalSymlinks(caches["GOMODCACHE"]); cacheErr == nil {
+		prefix := filepath.Join(moduleCache, filepath.FromSlash(sdkModulePath)) + "@"
+		if version, inCache := strings.CutPrefix(selected, prefix); inCache && !strings.ContainsAny(version, `/\`) {
+			archiveSum, sumErr := os.ReadFile(filepath.Join(moduleCache, "cache", "download", filepath.FromSlash(sdkModulePath), "@v", version+".ziphash"))
+			t.Logf("selected module-cache SDK metadata: version=%s archiveSum=%s checksumReadError=%v", version, strings.TrimSpace(string(archiveSum)), sumErr)
+		}
+	}
 	if info, statErr := os.Stat(filepath.Join(selected, ".git")); statErr == nil && (info.IsDir() || info.Mode().IsRegular()) {
 		command := exec.CommandContext(ctx, "git", "-C", selected, "rev-parse", "HEAD")
 		command.Env = environment
@@ -143,7 +171,7 @@ func newSDKRPCContract(t *testing.T, ctx context.Context) *sdkRPCContract {
 		require.NoError(t, revisionErr, string(revision))
 		t.Logf("explicit/effective SDK source: directory=%s actual HEAD=%s (distinct from fixture-local snapshot commits)", selected, strings.TrimSpace(string(revision)))
 	} else {
-		t.Logf("effective SDK source: directory=%s (module-cache source, no invented upstream commit)", selected)
+		t.Logf("selected SDK source: directory=%s (no Git identity; fixture-local snapshot recorded separately)", selected)
 	}
 	// Production artifact/profile adapters consult the current process HOME.
 	// Test subprocesses still receive only the explicit allowlist above.
