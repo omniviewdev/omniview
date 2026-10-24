@@ -2,8 +2,8 @@ package devserver
 
 import (
 	"context"
-	"debug/buildinfo"
 	"crypto/sha256"
+	"debug/buildinfo"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -42,12 +42,12 @@ import (
 
 const sdkRPCContractID = "sdk-rpc-contract"
 
-
 type sdkRPCContract struct {
-	ctx context.Context
+	ctx                                    context.Context
 	goPath, root, home, origin, repository string
-	env []string
+	env                                    []string
 }
+
 // sdkRPCSelectSource admits an explicit source or the source file of the SDK
 // function actually linked into this test binary. It never resolves the root
 // repository's original go.mod, which may differ from a parent's -modfile.
@@ -85,7 +85,6 @@ func sdkRPCSelectSource(explicit, compiledFile string) (string, error) {
 	}
 	return selected, nil
 }
-
 
 func newSDKRPCContract(t *testing.T, ctx context.Context) *sdkRPCContract {
 	t.Helper()
@@ -232,31 +231,31 @@ func (f *sdkRPCContract) snapshot(t *testing.T, directory string) string {
 }
 
 type sdkRPCReady struct {
-	hostPID, pluginPID int
+	hostPID, pluginPID     int
 	hostLabel, pluginLabel string
 	sdkDigest, buildOrigin string
 }
 
 type sdkRPCProfile struct {
-	fixture *sdkRPCContract
+	fixture                                 *sdkRPCContract
 	source, sdkSource, revision, generation string
-	workspace devcontract.ResolvedWorkspace
-	env []string
-	state *appstate.Service
-	watcher *goWatcherProcess
-	readyEvents chan sdkRPCReady
-	failures chan string
-	mu sync.Mutex
-	live sdkRPCReady
-	buildStatus DevProcessStatus
-	buildOrigin string
-	backend *plugintypes.ExternalBackend
-	controller pluginsettings.Controller
-	store *settingsstore.Store
-	host *exec.Cmd
-	hostInput io.WriteCloser
-	hostDone chan error
-	hostDirectory string
+	workspace                               devcontract.ResolvedWorkspace
+	env                                     []string
+	state                                   *appstate.Service
+	watcher                                 *goWatcherProcess
+	readyEvents                             chan sdkRPCReady
+	failures                                chan string
+	mu                                      sync.Mutex
+	live                                    sdkRPCReady
+	buildStatus                             DevProcessStatus
+	buildOrigin                             string
+	backend                                 *plugintypes.ExternalBackend
+	controller                              pluginsettings.Controller
+	store                                   *settingsstore.Store
+	host                                    *exec.Cmd
+	hostInput                               io.WriteCloser
+	hostDone                                chan error
+	hostDirectory                           string
 }
 
 func (f *sdkRPCContract) profile(t *testing.T, name string) *sdkRPCProfile {
@@ -297,7 +296,7 @@ func (f *sdkRPCContract) profile(t *testing.T, name string) *sdkRPCProfile {
 			{ID: sdkID, Directory: "sdk", BaseRef: "HEAD", BaseCommit: p.revision, Branch: "fixture/sdk"},
 		},
 		Plugins: []devcontract.Plugin{{ID: sdkRPCContractID, RepositoryID: "omniview", Mode: "managed"}},
-		Links: devcontract.Links{SDKRepositoryID: &sdkID}, Profile: devcontract.Profile{Kind: "development"}, Ports: devcontract.PortPolicy{Policy: "sticky"},
+		Links:   devcontract.Links{SDKRepositoryID: &sdkID}, Profile: devcontract.Profile{Kind: "development"}, Ports: devcontract.PortPolicy{Policy: "sticky"},
 	}
 	data, err = json.Marshal(manifest)
 	require.NoError(t, err)
@@ -508,7 +507,7 @@ func (p *sdkRPCProfile) launchHost(binary string) error {
 	p.host, p.hostInput, p.hostDone = command, input, make(chan error, 1)
 	go func() { p.hostDone <- command.Wait() }()
 	var response struct {
-		PID int `json:"pid"`
+		PID    int                             `json:"pid"`
 		Schema map[string]pkgsettings.Category `json:"schema"`
 	}
 	if err := json.NewDecoder(stdout).Decode(&response); err != nil {
@@ -551,7 +550,7 @@ func (p *sdkRPCProfile) launchPlugin() error {
 			"settings": &sdksettings.SettingsPlugin{}, "lifecycle": &lifecycle.Plugin{},
 		}},
 		GRPCDialOptions: sdk.GRPCDialOptions(), Cmd: command, SkipHostEnv: true,
-		StartTimeout: 10*time.Second, AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC}, Logger: hclog.NewNullLogger(),
+		StartTimeout: 10 * time.Second, AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC}, Logger: hclog.NewNullLogger(),
 	})
 	rpc, err := client.Client()
 	if err != nil {
@@ -637,7 +636,7 @@ func (p *sdkRPCProfile) stopConsumers() error {
 			if err != nil {
 				result = fmt.Errorf("owned host consumer exit: %w", err)
 			}
-		case <-time.After(5*time.Second):
+		case <-time.After(5 * time.Second):
 			_ = p.host.Process.Kill()
 			<-p.hostDone
 			result = fmt.Errorf("owned host consumer failed to exit on stdin close")

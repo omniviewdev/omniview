@@ -18,7 +18,7 @@ func main() {
 		}},
 	})
 	if err := json.NewEncoder(os.Stdout).Encode(struct {
-		PID int `json:"pid"`
+		PID    int                          `json:"pid"`
 		Schema map[string]settings.Category `json:"schema"`
 	}{PID: os.Getpid(), Schema: provider.ListSettings()}); err != nil {
 		panic(err)
