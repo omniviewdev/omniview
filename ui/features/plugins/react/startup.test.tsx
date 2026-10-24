@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -126,6 +127,73 @@ describe('plugin startup navigation', () => {
 
     expect(await screen.findByRole('heading', { name: 'Cluster details' })).toBeVisible();
     expect(window.location.hash).toBe('#/_plugin/kubernetes/cluster/early');
+  });
+
+  it('renders repaired plugin routes after the provider remounts over the same extension registry', async () => {
+    backend.listServers.mockResolvedValue([server(DevProcessStatus.DevProcessStatusReady)]);
+    const original = pluginModule('Original plugin');
+    original.plugin.registerExtensionPoints([{ id: 'kubernetes/cluster/page', mode: 'multiple' }]);
+    testDeps.importer.register('kubernetes', original);
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'Original plugin' });
+
+    // Fast Refresh can replace the provider without replacing the retained registry.
+    cleanup();
+    const repaired = pluginModule('Repaired plugin');
+    repaired.plugin.registerExtensionPoints([{ id: 'kubernetes/cluster/page', mode: 'multiple' }]);
+    testDeps.importer.register('kubernetes', repaired);
+    renderWorkspace();
+
+    expect(await screen.findByRole('heading', { name: 'Repaired plugin' })).toBeVisible();
+    expect(window.location.hash).toBe('#/_plugin/kubernetes');
+    expect(testDeps.extensions.getExtensionPoint('kubernetes/cluster/page')).toBeDefined();
+  });
+
+  it('does not publish a retired provider import over the repaired provider', async () => {
+    backend.listServers.mockResolvedValue([server(DevProcessStatus.DevProcessStatusReady)]);
+    const started = createDeferred();
+    const pending = createDeferred<PluginModule>();
+    testDeps.importer.register('kubernetes', async () => {
+      started.resolve();
+      return pending.promise;
+    });
+    renderWorkspace();
+    await started.promise;
+    cleanup();
+
+    const repaired = pluginModule('Repaired plugin');
+    repaired.plugin.registerExtensionPoints([{ id: 'kubernetes/cluster/page', mode: 'multiple' }]);
+    testDeps.importer.register('kubernetes', repaired);
+    renderWorkspace();
+    await screen.findByRole('heading', { name: 'Repaired plugin' });
+
+    const retired = pluginModule('Retired plugin');
+    retired.plugin.registerExtensionPoints([{ id: 'kubernetes/cluster/page', mode: 'multiple' }]);
+    await act(async () => {
+      pending.resolve(retired);
+    });
+
+    expect(screen.getByRole('heading', { name: 'Repaired plugin' })).toBeVisible();
+    expect(testDeps.log.byLevel('error')).toEqual([]);
+  });
+
+  it('loads cached startup descriptors after Strict Mode replays provider effects', async () => {
+    backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: false }]);
+    const module = pluginModule('Strict Mode plugin');
+    module.plugin.registerExtensionPoints([{ id: 'kubernetes/cluster/page', mode: 'multiple' }]);
+    testDeps.importer.register('kubernetes', module);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    client.setQueryData(['plugins'], [{ id: 'kubernetes', devMode: false }]);
+    render(
+      <StrictMode>
+        <QueryClientProvider client={client}>
+          <PluginServiceProvider><RouteProvider /></PluginServiceProvider>
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Strict Mode plugin' })).toBeVisible();
+    expect(testDeps.log.byLevel('error')).toEqual([]);
   });
 
   it.each(['Retry', 'Reset'])('recovers from import failure through %s at the same URL', async (action) => {
