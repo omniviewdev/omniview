@@ -22,6 +22,7 @@ let deadlineBudget;
 let launchBroker;
 let launchDrain;
 let toolCache;
+let buildExecution;
 let interactive = false;
 let env = toolEnvironment(process.env);
 function execute(command, args, { capture = false, timeout = 180_000, extraEnv = {}, cwd = root } = {}) {
@@ -234,7 +235,7 @@ async function main() {
     sources['workspace-probe'] = probe.source;
     refs['workspace-probe'] = probe.ref;
   });
-  env.OMNIVIEW_E2E_APPLICATION = prepareApplication({ root, privateRoot, sources, refs, env, execute, phase });
+  env.OMNIVIEW_E2E_APPLICATION = prepareApplication({ root, privateRoot, sources, refs, env, execute, phase, recordBuildExecution: report => { buildExecution = report; } });
   for (const [id, source] of Object.entries(sources)) {
     if (git(source, 'rev-parse', 'HEAD') !== refs[id] || git(source, 'diff', '--name-only', 'HEAD', '--')) throw Error(`Selected ${id} source changed during preparation; refusing mixed committed sources`);
   }
@@ -273,7 +274,7 @@ try { await main(); succeeded = true; } catch (error) {
     console.error('E2E inclusive600s budget exceeded; owned cleanup was allowed to finish, not force-killed');
   }
   if (privateRoot) console.error(`E2E private preparation retained: ${privateRoot}`);
-  const report = { succeeded, operation, interactive, elapsedMs: Date.now() - started, budgetMs: interactive ? null : 600_000, budgetExceeded, deadlineBudget, launchDrain, selection, phases, sourceRefs, nativeToolCache: toolCache ? 'explicit' : env.HOME ? 'private' : 'not-used', declaredFrontendModes: selection?.kind !== 'focused' && selection?.groups.includes('workspaces') ? ['embedded', 'live-smoke'] : [], retries: 0 };
+  const report = { succeeded, operation, interactive, elapsedMs: Date.now() - started, budgetMs: interactive ? null : 600_000, budgetExceeded, deadlineBudget, launchDrain, buildExecution, selection, phases, sourceRefs, nativeToolCache: toolCache ? 'explicit' : env.HOME ? 'private' : 'not-used', declaredFrontendModes: selection?.kind !== 'focused' && selection?.groups.includes('workspaces') ? ['embedded', 'live-smoke'] : [], retries: 0 };
   if (operation !== 'report' && operation !== 'cache-initialization') {
     mkdirSync(join(root, 'e2e/playwright-report'), { recursive: true });
     const filename = operation === 'selection' ? 'selection.json' : operation === 'discovery' ? 'discovery.json' : 'invocation.json';

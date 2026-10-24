@@ -47,7 +47,7 @@ export function validateApplicationDescriptor(descriptor, expected) {
   if (descriptor?.schemaVersion !== 1 || descriptor.kind !== 'development' || descriptor.workspaceID !== expected.workspaceID || descriptor.instanceID !== expected.workspaceID || descriptor.generation !== expected.generation || descriptor.stateRoot !== expected.stateRoot || !['backend-ready', 'host-ready'].includes(descriptor.readiness) || descriptor.endpoints?.browser !== expected.browser || descriptor.process?.pid !== expected.pid || descriptor.process.executable !== expected.binary || descriptor.process.startIdentity !== expected.startIdentity || descriptor.process.workspaceID !== expected.workspaceID || descriptor.process.generation !== expected.generation || descriptor.process.role !== 'host') throw Error('Application is not authentically ready');
   return { ...descriptor, plugins: descriptor.plugins ?? [] };
 }
-export function prepareApplication({ root, privateRoot, sources, refs, env, execute, phase }) {
+export function prepareApplication({ root, privateRoot, sources, refs, env, execute, phase, recordBuildExecution }) {
   const originalSources = { ...sources };
   const cohort = prepareApplicationCohort({ root, privateRoot, sources, refs, env, execute, phase });
   sources = cohort.sources;
@@ -64,36 +64,42 @@ export function prepareApplication({ root, privateRoot, sources, refs, env, exec
   // Explicit hostmod outputs are capabilities for existing private directories;
   // the authoritative helper intentionally refuses to create or repair them.
   mkdirSync(join(directory, 'hostmod'), { mode: 0o700 });
-  // Follow the canonical dependency order once. The bounded test-tagged adapter
-  // reserves/publishes real repository outputs; it does not enter cache reuse.
-  // Publish frontend assets before the actual server Go embed compilation.
-  for (const node of cohort.nodes) {
-    if (!['bindings', 'javascript', 'host-backend'].includes(node.kind)) continue;
-    phase(`${node.id}-build-once`, () => execute(cohort.tool, ['producer', cohort.config, node.id, directory], { cwd: root, extraEnv: buildEnvironment, timeout: node.kind === 'host-backend' ? 480_000 : 180_000 }));
-  }
+  const buildReport = join(directory, 'build-execution.json');
+  let buildExecution;
+  phase('application-build-once', () => {
+    let failure;
+    try {
+      execute(cohort.tool, ['build', cohort.config, directory, buildReport], { cwd: root, extraEnv: buildEnvironment, timeout: 480_000 });
+    } catch (error) { failure = error; }
+    try {
+      buildExecution = privateJSON(buildReport);
+      if (buildExecution.schemaVersion !== 1 || !Array.isArray(buildExecution.stages) || !Array.isArray(buildExecution.plugins)) throw Error('Invalid actual producer execution report');
+      recordBuildExecution?.(buildExecution);
+    } catch (error) {
+      if (failure) throw new AggregateError([failure, error], 'Application build failed and its private execution report could not be read');
+      throw error;
+    }
+    if (failure) throw failure;
+    if (buildExecution.succeeded !== true) throw Error('Actual application producers did not all complete');
+  });
+  if (buildExecution.plugins.length !== 2 || new Set(buildExecution.plugins.map(plugin => plugin.id)).size !== 2) throw Error('Actual plugin build records are incomplete');
   const plugins = [];
   for (const id of ['workspace-probe', 'kubernetes']) {
+    const built = buildExecution.plugins.find(plugin => plugin.id === id);
     const source = sources[id];
     const artifact = join(directory, id);
-    mkdirSync(artifact, { mode: 0o700 });
-    mkdirSync(join(artifact, 'bin'), { mode: 0o700 });
-    const modfile = join(artifact, 'plugin.mod');
-    cpSync(join(source, 'go.mod'), modfile);
-    cpSync(join(source, 'go.sum'), join(artifact, 'plugin.sum'));
-    let sdkIdentity;
-    phase(`${id}-artifact-build-once`, () => {
-      build('go', ['mod', 'edit', `-modfile=${modfile}`, `-replace=github.com/omniviewdev/plugin-sdk=${sources['plugin-sdk']}`], { cwd: source });
-      const identity = () => JSON.parse(build(join(binaryDirectory, 'Omniview-server'), ['--e2e-sdk-identity', source, modfile, sources['plugin-sdk'], refs['plugin-sdk']], { capture: true }));
-      sdkIdentity = identity();
-      build('go', ['build', '-mod=mod', `-modfile=${modfile}`, '-o', join(artifact, 'bin/plugin'), './pkg'], { cwd: source, timeout: 240_000, extraEnv: id === 'kubernetes' ? { GOEXPERIMENT: 'jsonv2' } : {} });
-      if (JSON.stringify(identity()) !== JSON.stringify(sdkIdentity)) throw Error('SDK source changed across the actual plugin build');
+    const sdkIdentity = built?.sdkIdentity;
+    if (built?.source !== source || built?.artifact !== artifact || sdkIdentity?.Directory !== sources['plugin-sdk'] || sdkIdentity.ReviewedRevision !== refs['plugin-sdk'] || !/^[a-f0-9]{64}$/.test(sdkIdentity.SourceDigest)) throw Error('Actual plugin build evidence differs from the selected cohort');
+    // Both owned branches have joined. Only now copy immutable UI assets and
+    // metadata into the already-built private binary artifacts.
+    phase(`${id}-artifact-finalize`, () => {
       cpSync(join(source, 'ui/dist/assets'), join(artifact, 'assets'), { recursive: true, errorOnExist: true });
       cpSync(join(source, 'plugin.yaml'), join(artifact, 'plugin.yaml'));
     });
     plugins.push({ id, source: originalSources[id], buildSource: source, ref: refs[id], artifact, sdkIdentity });
   }
   const resolutions = phase('actual-selected-package-resolution-proof', () => verifyApplicationCohort(cohort, (command, args, options) => build(command, args, options)));
-  const manifest = { schemaVersion: 1, binary: join(binaryDirectory, 'Omniview-server'), root, commit: refs.omniview, directory, plugins, originalSources, buildSources: sources, cohort, resolutions };
+  const manifest = { schemaVersion: 1, binary: join(binaryDirectory, 'Omniview-server'), root, commit: refs.omniview, directory, plugins, originalSources, buildSources: sources, cohort, resolutions, buildReport };
   const path = join(directory, 'application.json');
   writeFileSync(path, JSON.stringify(manifest), { flag: 'wx', mode: 0o600 });
   return path;

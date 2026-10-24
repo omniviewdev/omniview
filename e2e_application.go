@@ -12,12 +12,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/omniviewdev/omniview/backend/pkg/plugin/devserver"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/devsession"
 	"github.com/omniviewdev/omniview/internal/devsource"
@@ -42,20 +40,6 @@ func init() {
 		if err == nil {
 			result = map[string]any{"descriptor": profile.Descriptor, "runtimeRoot": profile.RuntimeRoot, "manifest": profile.Workspace.ManifestPath}
 		}
-	case "--e2e-sdk-identity":
-		if len(os.Args) != 6 {
-			fmt.Fprintln(os.Stderr, "invalid SDK identity arguments")
-			os.Exit(2)
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		environment := append(os.Environ(), "GOWORK=off", "GOFLAGS="+strconv.Quote("-modfile="+os.Args[3]))
-		var identity devsource.Identity
-		identity, err = devserver.VerifySelectedSDK(ctx, "", os.Args[2], os.Args[5], environment)
-		if err == nil && identity.Directory != os.Args[4] {
-			err = fmt.Errorf("effective SDK differs from invocation-selected source")
-		}
-		result = identity
 	case "--e2e-record-plugin":
 		if len(os.Args) != 8 {
 			fmt.Fprintln(os.Stderr, "invalid plugin artifact arguments")
