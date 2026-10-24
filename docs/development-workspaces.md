@@ -231,9 +231,9 @@ unknown files, foreign sources and production credentials are never adopted.
 ### Verified local execution
 
 The full canonical invocation on 2026-10-24 passed all 85 cases with zero retries
-in **305.138 seconds**, including dependency preparation, the single source-cohort
+in **304.202 seconds**, including dependency preparation, the single source-cohort
 build, actual profile startup/replacement, assertions and complete retirement.
-The host source was `f4fd11a1b74ca40f58bc2d2bc39048d8df63d692`, SDK
+The host source was `5aa04c056b143d1d3a2771dbaaf7c5bec5ee32a5`, SDK
 `9ba88075a39e5406926a22d536722afecaab465c`, UI
 `c437aca20d853aa6f65f0fa437ada3e0bcfc82f9`, and Kubernetes
 `977e51e6bd51854fc7656b1eba96dce8c89d48c7`.
@@ -245,15 +245,15 @@ local evidence, not a cold-run or Linux CI timing claim.
 
 | Measured phase | Seconds |
 |---|---:|
-| Application producer wall time (overlapping lanes) | 134.255 |
-| All case assertions and worker teardown | 68.123 |
+| Sequential application producers | 136.456 |
+| All case assertions and worker teardown | 64.979 |
 | Owned application process teardown | 0.597 |
-| Canonical cohort unlink/removal | 54.837 |
-| Private preparation retirement | 0.397 |
+| Canonical cohort unlink/removal | 55.174 |
+| Private preparation retirement | 0.395 |
 
 The ownership receipt proved all five launched/replaced processes drained with
 `childrenEmpty: true`. The six application journeys each completed in
-0.631–14.9 seconds. Separate real SDK compiler/watch/RPC contracts and the
+0.648–11.4 seconds. Separate real SDK compiler/watch/RPC contracts and the
 published runtime/CSS contracts retain their own boundary evidence.
 
 Canonical supervisor-driven source-to-browser recovery remains a separate
