@@ -204,7 +204,8 @@ cases exercise real UI/binding persistence, plugin rendering, isolation and
 owned process replacement. An explicit document reload is not automatic source
 recovery or canonical supervisor-restart proof.
 
-The dependency-ordered bindings/JavaScript/host build lane overlaps one sequential
+Bindings and the foundational base UI publish before plugin compilers start.
+The remaining dependency-ordered JavaScript/host lane overlaps one sequential
 plugin Go compiler lane. Every command retains stopped-workspace and selected
 source admission; both lanes join before plugin assets are finalized. Failure
 cancels and drains the sibling lane before returning. The private
