@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,7 +39,6 @@ type applicationBuildPlugin struct {
 }
 
 // Execution timings only: this is not a managed workspace/ownership receipt.
-// Overlapping lane durations must never be summed as invocation wall time.
 type applicationBuildReport struct {
 	SchemaVersion int                      `json:"schemaVersion"`
 	Succeeded     bool                     `json:"succeeded"`
@@ -50,7 +48,6 @@ type applicationBuildReport struct {
 }
 
 type applicationBuildReporter struct {
-	mu      sync.Mutex
 	path    string
 	started time.Time
 	report  applicationBuildReport
@@ -71,17 +68,13 @@ func newApplicationBuildReporter(path string, started time.Time) (*applicationBu
 
 func (r *applicationBuildReporter) stage(name, lane string, build func() error) error {
 	started := time.Now()
-	r.mu.Lock()
 	index := len(r.report.Stages)
 	r.report.Stages = append(r.report.Stages, applicationBuildStage{Name: name, Lane: lane, StartedMS: started.Sub(r.started).Milliseconds(), Status: "running"})
 	err := devsession.WritePrivateJSON(r.path, r.report)
-	r.mu.Unlock()
 	if err != nil {
 		return err
 	}
 	buildErr := build()
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.report.Stages[index].ElapsedMS = time.Since(started).Milliseconds()
 	r.report.Stages[index].Status = "succeeded"
 	if buildErr != nil {
@@ -92,15 +85,11 @@ func (r *applicationBuildReporter) stage(name, lane string, build func() error) 
 }
 
 func (r *applicationBuildReporter) plugin(plugin applicationBuildPlugin) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.report.Plugins = append(r.report.Plugins, plugin)
 	return devsession.WritePrivateJSON(r.path, r.report)
 }
 
 func (r *applicationBuildReporter) finish(buildErr error) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.report.ElapsedMS = time.Since(r.started).Milliseconds()
 	r.report.Succeeded = buildErr == nil
 	for i := range r.report.Stages {
@@ -110,25 +99,6 @@ func (r *applicationBuildReporter) finish(buildErr error) error {
 		}
 	}
 	return devsession.WritePrivateJSON(r.path, r.report)
-}
-
-// Two specific branches, not a worker framework. Every command joins its owned
-// descendants before returning; after the first failure both branches must join.
-func runApplicationBuildBranches(ctx context.Context, ordered, pluginGo func(context.Context) error) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	done := make(chan error, 2)
-	go func() { done <- ordered(ctx) }()
-	go func() { done <- pluginGo(ctx) }()
-	var result error
-	for range 2 {
-		err := <-done
-		if err != nil {
-			result = errors.Join(result, err)
-			cancel()
-		}
-	}
-	return errors.Join(result, ctx.Err())
 }
 
 func runApplicationBuildCommand(ctx context.Context, owner devsession.ProcessOwner, directory string, environment []string, capture bool, program string, args ...string) ([]byte, error) {
@@ -232,24 +202,15 @@ func buildApplicationCohort(ctx context.Context, manager *devworkspace.Manager, 
 	if err = report.stage("application-sdk-admission", "setup", func() error { _, err := verify(ctx, prepared.Paths.Repositories["omniview"], ""); return err }); err != nil {
 		return err
 	}
-	baseEnd := -1
-	for index, node := range prepared.Nodes {
-		if node.ID == "base-ui" && node.Kind == "javascript" {
-			baseEnd = index
-			break
-		}
-	}
-	if baseEnd < 0 {
-		return fmt.Errorf("application build plan has no base UI publication boundary")
-	}
-	buildNode := func(ctx context.Context, node devworkspace.BuildNode) error {
+	// Finish every ordered producer before starting any plugin Go compiler.
+	for _, node := range prepared.Nodes {
 		if node.Kind != "bindings" && node.Kind != "javascript" && node.Kind != "host-backend" {
-			return nil
+			continue
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return report.stage(node.ID+"-build-once", "ordered", func() error {
+		if err := report.stage(node.ID+"-build-once", "ordered", func() error {
 			timeout := 180 * time.Second
 			if node.Kind == "host-backend" {
 				timeout = 480 * time.Second
@@ -257,80 +218,64 @@ func buildApplicationCohort(ctx context.Context, manager *devworkspace.Manager, 
 			producerCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 			return manager.BuildApplicationFixtureProducer(producerCtx, target, node.ID, artifacts, config.Refs["plugin-sdk"])
-		})
-	}
-	// Complete binding generation and the foundational UI publication before
-	// admitting plugin compilers beside the remaining ordered producers.
-	for _, node := range prepared.Nodes[:baseEnd+1] {
-		if err := buildNode(ctx, node); err != nil {
+		}); err != nil {
 			return err
 		}
 	}
-	return runApplicationBuildBranches(ctx, func(ctx context.Context) error {
-		for _, node := range prepared.Nodes[baseEnd+1:] {
-			if err := buildNode(ctx, node); err != nil {
-				return err
-			}
+	for _, id := range []string{"workspace-probe", "kubernetes"} {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		return nil
-	}, func(ctx context.Context) error {
-		// Serial by construction: at most one plugin Go compiler beside the
-		// remaining JavaScript/host producer chain.
-		for _, id := range []string{"workspace-probe", "kubernetes"} {
-			if err := ctx.Err(); err != nil {
+		err := report.stage(id+"-artifact-go-build-once", "plugin-go", func() error {
+			source, artifact := prepared.Paths.Repositories[id], filepath.Join(artifacts, id)
+			if err := os.Mkdir(artifact, 0700); err != nil {
 				return err
 			}
-			err := report.stage(id+"-artifact-go-build-once", "plugin-go", func() error {
-				source, artifact := prepared.Paths.Repositories[id], filepath.Join(artifacts, id)
-				if err := os.Mkdir(artifact, 0700); err != nil {
-					return err
-				}
-				if err := os.Mkdir(filepath.Join(artifact, "bin"), 0700); err != nil {
-					return err
-				}
-				modfile := filepath.Join(artifact, "plugin.mod")
-				for input, output := range map[string]string{"go.mod": modfile, "go.sum": filepath.Join(artifact, "plugin.sum")} {
-					data, err := os.ReadFile(filepath.Join(source, input))
-					if err != nil {
-						return err
-					}
-					if err = os.WriteFile(output, data, 0600); err != nil {
-						return err
-					}
-				}
-				editCtx, cancelEdit := context.WithTimeout(ctx, 180*time.Second)
-				_, editErr := runSelected(editCtx, source, os.Environ(), false, "go", "mod", "edit", "-modfile="+modfile, "-replace=github.com/omniviewdev/plugin-sdk="+prepared.Paths.Repositories["plugin-sdk"])
-				cancelEdit()
-				if editErr != nil {
-					return editErr
-				}
-				before, err := verify(ctx, source, modfile)
+			if err := os.Mkdir(filepath.Join(artifact, "bin"), 0700); err != nil {
+				return err
+			}
+			modfile := filepath.Join(artifact, "plugin.mod")
+			for input, output := range map[string]string{"go.mod": modfile, "go.sum": filepath.Join(artifact, "plugin.sum")} {
+				data, err := os.ReadFile(filepath.Join(source, input))
 				if err != nil {
 					return err
 				}
-				environment := os.Environ()
-				if id == "kubernetes" {
-					environment = append(environment, "GOEXPERIMENT=jsonv2")
-				}
-				compileCtx, cancelCompile := context.WithTimeout(ctx, 240*time.Second)
-				_, err = runSelected(compileCtx, source, environment, false, "go", "build", "-mod=mod", "-modfile="+modfile, "-o", filepath.Join(artifact, "bin", "plugin"), "./pkg")
-				cancelCompile()
-				if err != nil {
+				if err = os.WriteFile(output, data, 0600); err != nil {
 					return err
 				}
-				after, err := verify(ctx, source, modfile)
-				if err != nil {
-					return err
-				}
-				if after != before {
-					return fmt.Errorf("SDK source changed across the actual %s plugin build", id)
-				}
-				return report.plugin(applicationBuildPlugin{ID: id, Source: source, Artifact: artifact, SDKIdentity: before})
-			})
+			}
+			editCtx, cancelEdit := context.WithTimeout(ctx, 180*time.Second)
+			_, editErr := runSelected(editCtx, source, os.Environ(), false, "go", "mod", "edit", "-modfile="+modfile, "-replace=github.com/omniviewdev/plugin-sdk="+prepared.Paths.Repositories["plugin-sdk"])
+			cancelEdit()
+			if editErr != nil {
+				return editErr
+			}
+			before, err := verify(ctx, source, modfile)
 			if err != nil {
 				return err
 			}
+			environment := os.Environ()
+			if id == "kubernetes" {
+				environment = append(environment, "GOEXPERIMENT=jsonv2")
+			}
+			compileCtx, cancelCompile := context.WithTimeout(ctx, 240*time.Second)
+			_, err = runSelected(compileCtx, source, environment, false, "go", "build", "-mod=mod", "-modfile="+modfile, "-o", filepath.Join(artifact, "bin", "plugin"), "./pkg")
+			cancelCompile()
+			if err != nil {
+				return err
+			}
+			after, err := verify(ctx, source, modfile)
+			if err != nil {
+				return err
+			}
+			if after != before {
+				return fmt.Errorf("SDK source changed across the actual %s plugin build", id)
+			}
+			return report.plugin(applicationBuildPlugin{ID: id, Source: source, Artifact: artifact, SDKIdentity: before})
+		})
+		if err != nil {
+			return err
 		}
-		return nil
-	})
+	}
+	return ctx.Err()
 }

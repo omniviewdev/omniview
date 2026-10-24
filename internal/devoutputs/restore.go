@@ -88,6 +88,7 @@ func finishCleanup(ctx context.Context, s scope, j *journal, key string) error {
 		}
 	}
 	sort.Slice(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
+	var reader snapshotReader
 	for _, relative := range paths {
 		path := filepath.Join(entry.Spec.Target, relative)
 		info, err := os.Lstat(path)
@@ -97,7 +98,7 @@ func finishCleanup(ctx context.Context, s scope, j *journal, key string) error {
 		if err != nil {
 			return err
 		}
-		value, err := snapshotItem(path, info, false)
+		value, err := reader.item(path, info, false)
 		if err != nil {
 			return err
 		}
