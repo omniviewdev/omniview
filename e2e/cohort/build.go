@@ -232,30 +232,50 @@ func buildApplicationCohort(ctx context.Context, manager *devworkspace.Manager, 
 	if err = report.stage("application-sdk-admission", "setup", func() error { _, err := verify(ctx, prepared.Paths.Repositories["omniview"], ""); return err }); err != nil {
 		return err
 	}
+	baseEnd := -1
+	for index, node := range prepared.Nodes {
+		if node.ID == "base-ui" && node.Kind == "javascript" {
+			baseEnd = index
+			break
+		}
+	}
+	if baseEnd < 0 {
+		return fmt.Errorf("application build plan has no base UI publication boundary")
+	}
+	buildNode := func(ctx context.Context, node devworkspace.BuildNode) error {
+		if node.Kind != "bindings" && node.Kind != "javascript" && node.Kind != "host-backend" {
+			return nil
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return report.stage(node.ID+"-build-once", "ordered", func() error {
+			timeout := 180 * time.Second
+			if node.Kind == "host-backend" {
+				timeout = 480 * time.Second
+			}
+			producerCtx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			return manager.BuildApplicationFixtureProducer(producerCtx, target, node.ID, artifacts, config.Refs["plugin-sdk"])
+		})
+	}
+	// Complete binding generation and the foundational UI publication before
+	// admitting plugin compilers beside the remaining ordered producers.
+	for _, node := range prepared.Nodes[:baseEnd+1] {
+		if err := buildNode(ctx, node); err != nil {
+			return err
+		}
+	}
 	return runApplicationBuildBranches(ctx, func(ctx context.Context) error {
-		for _, node := range prepared.Nodes {
-			if node.Kind != "bindings" && node.Kind != "javascript" && node.Kind != "host-backend" {
-				continue
-			}
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if err := report.stage(node.ID+"-build-once", "ordered", func() error {
-				timeout := 180 * time.Second
-				if node.Kind == "host-backend" {
-					timeout = 480 * time.Second
-				}
-				producerCtx, cancel := context.WithTimeout(ctx, timeout)
-				defer cancel()
-				return manager.BuildApplicationFixtureProducer(producerCtx, target, node.ID, artifacts, config.Refs["plugin-sdk"])
-			}); err != nil {
+		for _, node := range prepared.Nodes[baseEnd+1:] {
+			if err := buildNode(ctx, node); err != nil {
 				return err
 			}
 		}
 		return nil
 	}, func(ctx context.Context) error {
 		// Serial by construction: at most one plugin Go compiler beside the
-		// ordered bindings/JavaScript/host producer chain.
+		// remaining JavaScript/host producer chain.
 		for _, id := range []string{"workspace-probe", "kubernetes"} {
 			if err := ctx.Err(); err != nil {
 				return err
