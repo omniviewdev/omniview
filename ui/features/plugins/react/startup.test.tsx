@@ -158,7 +158,9 @@ describe('plugin startup navigation', () => {
       return pending.promise;
     });
     renderWorkspace();
-    await started.promise;
+    await act(async () => {
+      await started.promise;
+    });
     cleanup();
 
     const repaired = pluginModule('Repaired plugin');
@@ -292,7 +294,9 @@ describe('plugin startup navigation', () => {
       return importing.promise;
     });
     renderWorkspace();
-    await started.promise;
+    await act(async () => {
+      await started.promise;
+    });
 
     backend.listPlugins.mockResolvedValue([{ id: 'kubernetes', devMode: false }]);
     testDeps.importer.register('kubernetes', pluginModule('Committed startup replacement'));
