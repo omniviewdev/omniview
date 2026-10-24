@@ -33,8 +33,8 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) < 3 || (os.Args[1] != "run" && os.Args[1] != "producer" && len(os.Args) != 3) {
-		return fmt.Errorf("expected prepare|verify|retire|run|producer and private cohort configuration")
+	if len(os.Args) < 3 || (os.Args[1] != "run" && os.Args[1] != "build" && os.Args[1] != "sdk-identity" && len(os.Args) != 3) {
+		return fmt.Errorf("expected prepare|verify|retire|run|build|sdk-identity and private cohort configuration")
 	}
 	var config configuration
 	if err := devsession.ReadPrivateJSON(os.Args[2], &config); err != nil {
@@ -63,14 +63,26 @@ func run() error {
 	}
 	var result any
 	switch os.Args[1] {
-	case "producer":
+	case "build":
 		if len(os.Args) != 5 {
-			return fmt.Errorf("application producer requires node and private artifact directory")
+			return fmt.Errorf("application build requires private artifact directory and execution report")
 		}
-		if err = manager.BuildApplicationFixtureProducer(ctx, target, os.Args[3], os.Args[4], config.Refs["plugin-sdk"]); err != nil {
+		workspace, inspectErr := manager.Inspect(ctx, target)
+		if inspectErr != nil {
+			return inspectErr
+		}
+		if err = devworkspace.RequireStopped(ctx, workspace.ResolvedWorkspace); err != nil {
 			return err
 		}
-		result = map[string]string{"built": os.Args[3]}
+		if err = buildApplicationCohort(ctx, manager, target, config, os.Args[2], os.Args[3], os.Args[4]); err != nil {
+			return err
+		}
+		result = map[string]bool{"built": true}
+	case "sdk-identity":
+		if len(os.Args) != 5 {
+			return fmt.Errorf("SDK identity requires actual consumer directory and effective modfile")
+		}
+		result, err = applicationSDKIdentity(ctx, manager, target, config, os.Args[3], os.Args[4])
 	case "run":
 		if len(os.Args) < 5 {
 			return fmt.Errorf("owned cohort command requires directory and program")

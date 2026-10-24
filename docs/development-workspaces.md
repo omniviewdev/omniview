@@ -204,6 +204,14 @@ cases exercise real UI/binding persistence, plugin rendering, isolation and
 owned process replacement. An explicit document reload is not automatic source
 recovery or canonical supervisor-restart proof.
 
+The dependency-ordered bindings/JavaScript/host build lane overlaps one sequential
+plugin Go compiler lane. Every command retains stopped-workspace and selected
+source admission; both lanes join before plugin assets are finalized. Failure
+cancels and drains the sibling lane before returning. The private
+`application/build-execution.json` records actual stage start offsets, durations,
+outcomes and selected SDK identities; `invocation.json` includes that report as
+`buildExecution`. Overlapping stage durations are not additive wall time.
+
 Small runtime-export/CSS producer-consumer contracts use real Vite, shim and
 externalization adapters in the same Playwright invocation. The real selected-SDK
 compiler/watch/settings-RPC failure-repair contract runs in the Go suite as
