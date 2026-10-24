@@ -234,6 +234,7 @@ func (f *sdkRPCContract) snapshot(t *testing.T, directory string) string {
 type sdkRPCReady struct {
 	hostPID, pluginPID int
 	hostLabel, pluginLabel string
+	sdkDigest, buildOrigin string
 }
 
 type sdkRPCProfile struct {
@@ -248,6 +249,7 @@ type sdkRPCProfile struct {
 	mu sync.Mutex
 	live sdkRPCReady
 	buildStatus DevProcessStatus
+	buildOrigin string
 	backend *plugintypes.ExternalBackend
 	controller pluginsettings.Controller
 	store *settingsstore.Store
@@ -364,9 +366,22 @@ func (p *sdkRPCProfile) identity(t *testing.T) devsource.Identity {
 
 func (p *sdkRPCProfile) start(t *testing.T) {
 	t.Helper()
+	metadataBefore := make(map[string][sha256.Size]byte)
+	for _, name := range []string{"go.mod", "go.sum"} {
+		data, err := os.ReadFile(filepath.Join(p.source, name))
+		require.NoError(t, err)
+		metadataBefore[name] = sha256.Sum256(data)
+	}
 	p.watcher = newGoWatcherProcess(p.fixture.ctx, logging.NewNop(), sdkRPCContractID, p.source,
 		BuildOpts{GoPath: p.fixture.goPath, Environment: p.env, ExpectedSDKRevision: p.revision, Workspace: &p.workspace, Generation: p.generation},
-		p, p.state.Plugins(), func(LogEntry) {}, func(status DevProcessStatus) {
+		p, p.state.Plugins(), func(entry LogEntry) {
+			if entry.Source == logSourceGoBuild && entry.Level == logLevelInfo {
+				p.mu.Lock()
+				p.buildOrigin = entry.Message
+				p.mu.Unlock()
+				t.Logf("owned SDK watcher %s: %s", p.workspace.Manifest.Slug, entry.Message)
+			}
+		}, func(status DevProcessStatus) {
 			p.mu.Lock()
 			p.buildStatus = status
 			p.mu.Unlock()
@@ -380,6 +395,13 @@ func (p *sdkRPCProfile) start(t *testing.T) {
 			}
 		}, func(string, []BuildError) {})
 	require.NoError(t, p.watcher.Start())
+	for name, before := range metadataBefore {
+		data, err := os.ReadFile(filepath.Join(p.source, name))
+		require.NoError(t, err)
+		if after := sha256.Sum256(data); after != before {
+			t.Logf("owned SDK watcher %s changed %s during registration/initial operation: before=%x after=%x", p.workspace.Manifest.Slug, name, before, after)
+		}
+	}
 	require.Contains(t, p.watcher.WatchedDirectories(), filepath.Join(p.sdkSource, "settings"), "ordinary SDK API writes must reach the production watcher")
 }
 
@@ -451,6 +473,7 @@ func (p *sdkRPCProfile) ReloadManagedPlugin(ctx context.Context, id, source, gen
 		return fmt.Errorf("controller schema differs from actual SDK settings RPC")
 	}
 	p.live.pluginPID = p.backend.ReattachConfig().Pid
+	p.live.sdkDigest, p.live.buildOrigin = before.SourceDigest, p.buildOrigin
 	select {
 	case p.readyEvents <- p.live:
 		return nil
