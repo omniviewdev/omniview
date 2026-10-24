@@ -6,7 +6,7 @@ The [workspace roadmap](development-workspaces-roadmap.md) records research deci
 
 ## Bootstrap the local CLI and sources
 
-Use the bootstrap-aware Task entry point. Ordinary bootstrap consumes published SDK `v0.6.0`. For local SDK development, `SDK_SOURCE` is explicit: there is no inferred sibling replacement, global `go.work`, global `GOFLAGS`, package upgrade or canonical-source mutation.
+Use the bootstrap-aware Task entry point. Ordinary bootstrap consumes the published SDK version declared by the host's `go.mod`. For local SDK development, `SDK_SOURCE` is explicit: there is no inferred sibling replacement, global `go.work`, global `GOFLAGS`, package upgrade or canonical-source mutation.
 
 Task first runs a standard-library-only bootstrap entry. It selects explicit SDK source, or the exact SDK repository linked by an enclosing workspace whose canonical host directory matches this checkout; otherwise it uses the declared published module. Local-source preparation uses a private temporary module and refuses ambiguous, escaping or conflicting selections. The full CLI independently validates the manifest, profile and source/cache authority. Temporary preparation is removed after bootstrap exits; the immutable CLI and its owned cache remain managed by the full bootstrap.
 
