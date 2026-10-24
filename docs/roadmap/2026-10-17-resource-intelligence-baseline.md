@@ -41,7 +41,7 @@ Result: PASS, package duration10.774s. Genuine producer receipt: `protocol=works
 
 ## Actual selected-cohort execution
 
-Managed `workspace up` completed in279.62s. Inspection reported every selected build node ready, including bindings, runtime, Vite plugin, all three UI packages, host frontend/backend and Kubernetes frontend/backend. The supervisor log records Task-owned binding generation, runtime outputs before32 generated shims, actual hostmod selection and the managed Kubernetes Unix-socket handshake. These identical build results are reused, not misrepresented as separate builds.
+Managed `workspace up` completed in 279.62 s. Inspection reported every selected build node ready, including bindings, runtime, Vite plugin, all three UI packages, host frontend/backend and Kubernetes frontend/backend. The supervisor log records Task-owned binding generation, runtime outputs before 32 generated shims, actual hostmod selection and the managed Kubernetes Unix-socket handshake. These identical build results are reused, not misrepresented as separate builds.
 
 Both effective consumer queries returned SDKv0.6.0 replaced by the exact selected feature `plugin-sdk` directory:
 
@@ -53,7 +53,7 @@ go list -modfile="$MANAGED_HOST_MODFILE" -m -json github.com/omniviewdev/plugin-
 go list -m -json github.com/omniviewdev/plugin-sdk
 ```
 
-Actual browser inspection matched UUID and generation against the authenticated instance descriptor before actions. Kubernetes reached frontend `phase=ready`, no loader error or validation errors, routeVersion1. Its All Clusters tab rendered0 and “No Clusters Found / No kubeconfig contexts were detected” under the empty private HOME. No external cluster was selected.
+Actual browser inspection matched UUID and generation against the authenticated instance descriptor before actions. Kubernetes reached frontend `phase=ready`, no loader error or validation errors, route version 1. Its All Clusters tab rendered 0 clusters and “No Clusters Found / No kubeconfig contexts were detected” under the empty private HOME. No external cluster was selected.
 
 From that real browser document, calling the shared runtime's `ResourceClient.LoadConnections('kubernetes')` returned `[]` in2.9ms. This is the actual Wails→host→managed resource-provider discovery path, not a fake response or direct-controller mock. The inspected selected implementation loads only configured kubeconfig files; the default `~/.kube/config` resolves into the empty private HOME. This single observation is not a latency budget.
 
