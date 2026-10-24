@@ -129,7 +129,7 @@ function launch(program, args, options) {
   const identityFile = `${options.log}.identity.json`;
   const stoppedFile = `${options.log}.stopped.json`;
   const command = `${options.log}.command.json`;
-  writeFileSync(command, JSON.stringify({ directory: options.cwd, program, args, owner: options.owner, identityFile, stoppedFile, outputWorkspace: options.outputWorkspace }), { flag: 'wx', mode: 0o600 });
+  writeFileSync(command, JSON.stringify({ directory: options.cwd, program, args, owner: options.owner, identityFile, stoppedFile, outputWorkspace: options.outputWorkspace, profileWorkspace: options.profileWorkspace }), { flag: 'wx', mode: 0o600 });
   const log = openSync(options.log, 'ax', 0o600);
   const child = spawn(options.wrapper, ['--e2e-own-command', command], { cwd: options.cwd, env: options.env, stdio: ['ignore', log, log] });
   closeSync(log);
@@ -219,7 +219,7 @@ export async function startApplicationBroker({ application, ownershipDir, env, p
   const start = async profile => {
     profile.generation = randomUUID();
     const childEnv = { ...profile.env, OMNIVIEW_WORKSPACE_FILE: profile.manifest, OMNIVIEW_GENERATION: profile.generation, WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(profile.port), OMNIVIEW_EXPECTED_SDK_REVISION: env.REVIEWED_SDK_REVISION ?? '', ...(profile.liveFrontend ? { FRONTEND_DEVSERVER_URL: profile.viteURL } : {}) };
-    profile.host = launch(artifact.binary, [], { wrapper: artifact.binary, owner: { WorkspaceID: profile.descriptor.workspaceID, Generation: profile.generation, Role: 'host', Source: join(ownershipDir, profile.name, 'artifact') }, cwd: artifact.root, env: childEnv, log: join(ownershipDir, `${profile.name}-${profile.generation}.log`) });
+    profile.host = launch(artifact.binary, [], { wrapper: artifact.binary, profileWorkspace: profile.manifest, owner: { WorkspaceID: profile.descriptor.workspaceID, Generation: profile.generation, Role: 'host', Source: join(ownershipDir, profile.name, 'artifact') }, cwd: artifact.root, env: childEnv, log: join(ownershipDir, `${profile.name}-${profile.generation}.log`) });
     records.add(profile.host);
     publishOwnership(profile, 'starting');
     const descriptor = await ready(profile);
