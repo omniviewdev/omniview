@@ -44,6 +44,25 @@ test('independent UI groups add their actual workspace and shell dependencies', 
   assert.deepEqual(result.groups, ['layout', 'settings', 'panels', 'workspaces']);
   assert.deepEqual(result.specs, result.groups.flatMap(group => groups[group]));
 });
+test('small consumer contracts run alone for fixture edits and accompany production adapter edits', () => {
+  for (const path of [
+    'e2e/tests/integration/published-consumers.spec.ts',
+    'e2e/fixtures/published-consumers/fixture.mts',
+  ]) {
+    assert.deepEqual(selected([change(path)]).groups, ['tooling'], path);
+  }
+  for (const path of [
+    'packages/omniviewdev-vite-plugin/src/index.ts',
+    'packages/omniviewdev-vite-plugin/scripts/generate-shims.ts',
+    'ui/features/plugins/api/importmap.ts',
+  ]) {
+    assert.deepEqual(selected([change(path)]).groups, ['layout', 'plugins', 'workspaces', 'tooling'], path);
+  }
+  assert.deepEqual(selected([
+    change('e2e/tests/settings/settings.spec.ts'),
+    change('e2e/tests/integration/published-consumers.spec.ts'),
+  ]).groups, ['layout', 'settings', 'workspaces', 'tooling']);
+});
 test('core, unknown, fixture, package and cohort paths always force full', () => {
   for (const path of ['internal/devworkspace/watch.go', 'unclassified.txt', 'e2e/tests/fixtures/browser-errors.spec.ts', 'packages/omniviewdev-runtime/src/index.ts', 'e2e/source-cohort.json', 'pnpm-lock.yaml', 'ui/main.tsx']) {
     assert.equal(selected([change('README.md'), change(path)]).kind, 'full', path);

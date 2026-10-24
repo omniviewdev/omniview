@@ -15,10 +15,10 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # E2E Tests — actual disposable CLI-owned browser hosts, never a shared server.
+  # E2E Tests — one real application build and isolated owned browser profiles.
   # The reviewed companion SDK must first be published to its remote repository.
   e2e-tests:
-    # Playwright 1.50.1 supports Ubuntu 24.04, not ubuntu-latest's Ubuntu 26.04.
+    # Keep the application/browser execution image explicit and reproducible.
     runs-on: ubuntu-24.04
     # Safety watchdog, not an acceptance timing claim; reports include preparation.
     timeout-minutes: 15
@@ -70,47 +70,96 @@ jobs:
         run: |
           test "$(git -C "$GITHUB_WORKSPACE/plugin-sdk" rev-parse HEAD)" = "$REVIEWED_SDK_REVISION"
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.0"
+
+      - name: Selector boundary contracts
+        run: node --test e2e/scripts/*.test.mjs
+
+      - name: Select conservative application impact
+        id: selection
+        env:
+          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
+          UI_SOURCE: ${{ github.workspace }}/ui
+          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
+        run: |
+          if ! node e2e/scripts/run.mjs --changed --base '${{ github.event.pull_request.base.sha }}' --select; then
+            echo "::warning::Selection failed; requiring the full application path rather than skipping."
+            echo "kind=full" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Explain no application impact
+        if: steps.selection.outputs.kind == 'none'
+        run: echo "Application E2E preparation skipped only for explicitly allowlisted prose with an unchanged committed source cohort."
+
       - name: Install Linux dependencies
+        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev build-essential pkg-config
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup pinned pnpm
+        if: steps.selection.outputs.kind != 'none'
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with:
           version: 12.14.0
           package-json-file: host/package.json
           install: false
 
+      - name: Initialize private native-tool cache container
+        if: steps.selection.outputs.kind != 'none'
+        env:
+          OMNIVIEW_E2E_TOOL_CACHE_ROOT: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1
+          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
+          UI_SOURCE: ${{ github.workspace }}/ui
+          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
+        # Filesystem ownership only: no install, compile or probe happens here.
+        # GITHUB_ENV binds setup-go's native go env cache paths and the runner.
+        run: node e2e/scripts/run.mjs --init-tool-cache
+
+      - name: Restore standalone native pnpm content store
+        if: steps.selection.outputs.kind != 'none'
+        uses: actions/cache@v4
+        with:
+          # Payload only, never HOME, ownership markers or managed receipts.
+          path: ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/pnpm-store/12.14.0
+          key: ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-${{ hashFiles('host/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-
+
       - name: Setup Go
+        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-          cache-dependency-path: host/go.sum
+          # setup-go v5 discovers both paths using native go env. Include the
+          # explicit-cache recipe to separate these payloads from legacy paths.
+          cache-dependency-path: |
+            host/go.sum
+            host/e2e/scripts/tool-cache.mjs
 
       - name: Install Task
+        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
         uses: arduino/setup-task@v2
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Selector boundary contracts
-        run: node --test e2e/scripts/*.test.mjs
 
       # The SAME command is available locally via task e2e -- --changed --base REF.
-      # Installs, canonical CLI bootstrap, A11/A15 probes and safe-source creation
-      # remain inside this measured invocation rather than a hidden setup phase.
+      # Installs, the single application build, profile startup and teardown stay
+      # inside this measured invocation; tooling-only selections need no Go host.
       - name: Run canonical application suite once
+        if: steps.selection.outputs.kind != 'none'
         env:
           SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
           UI_SOURCE: ${{ github.workspace }}/ui
-        run: node e2e/scripts/run.mjs --changed --base '${{ github.event.pull_request.base.sha }}'
+          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
+        run: node e2e/scripts/run.mjs ${{ steps.selection.outputs.kind == 'selected' && '--changed' || '--full' }} --base '${{ github.event.pull_request.base.sha }}'
 
       - name: Upload only allowed browser reports
         if: always()
