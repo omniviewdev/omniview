@@ -28,12 +28,27 @@ test('broker admits only the two invocation-owned profiles and a real frontend m
   }
 });
 
-test('focused layering uses actual discovered files, not a guessed grep title', () => {
-  const report = { suites: [{ suites: [{ specs: [{ file: '/owned/e2e/tests/integration/published-consumers.spec.ts', tests: [{}] }] }] }] };
-  assert.deepEqual(discoveredSpecs(report, '/owned/e2e'), ['tests/integration/published-consumers.spec.ts']);
-  assert.throws(() => discoveredSpecs({ suites: [] }, '/owned/e2e'), /no tests/);
-  assert.throws(() => discoveredSpecs({ suites: [{ specs: [{ file: '/foreign/spec.ts', tests: [{}] }] }] }, '/owned/e2e'), /outside/);
+test('focused layering resolves genuine Playwright root-relative discovery files', () => {
+  // Playwright 1.64 JSON reports spec.file relative to config.rootDir, not
+  // relative to the directory containing playwright.config.ts.
+  const config = { rootDir: '/owned/e2e/tests' };
+  const report = { config, suites: [{ suites: [{ specs: [{ file: 'integration/published-consumers.spec.ts', tests: [{}] }] }] }] };
+  const files = discoveredSpecs(report, '/owned/e2e');
+  assert.deepEqual(files, ['tests/integration/published-consumers.spec.ts']);
+  assert.equal(requiresApplication(files), false);
+  assert.throws(() => discoveredSpecs({ config, suites: [] }, '/owned/e2e'), /no tests/);
   assert.throws(() => discoveredSpecs({ ...report, errors: [{ message: 'import failed' }] }, '/owned/e2e'), /discovery/);
+});
+
+test('focused discovery refuses invalid roots and traversal before classifying files', () => {
+  const suites = [{ specs: [{ file: 'integration/published-consumers.spec.ts', tests: [{}] }] }];
+  for (const rootDir of [undefined, null, 42, '', 'tests', '/foreign/tests', '/owned/e2e', '/owned/e2e/tests/../tests']) {
+    assert.throws(() => discoveredSpecs({ config: { rootDir }, suites }, '/owned/e2e'), /root/);
+  }
+  assert.throws(() => discoveredSpecs({ suites }, '/owned/e2e'), /root/);
+  for (const file of [undefined, 42, '', '../outside.spec.ts', 'integration/../../outside.spec.ts', 'integration/../workspaces/consumers.spec.ts', '/foreign/spec.ts']) {
+    assert.throws(() => discoveredSpecs({ config: { rootDir: '/owned/e2e/tests' }, suites: [{ specs: [{ file, tests: [{}] }] }] }, '/owned/e2e'), /outside/);
+  }
 });
 
 

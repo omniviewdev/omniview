@@ -21,13 +21,18 @@ export function validateApplicationSelection(value) {
 }
 export function discoveredSpecs(report, directory) {
   if (report.errors?.length || !Array.isArray(report.suites)) throw Error('Playwright discovery failed');
+  const testsDirectory = resolve(directory, 'tests');
+  const reportRoot = report.config?.rootDir;
+  if (typeof reportRoot !== 'string' || !isAbsolute(reportRoot) || reportRoot !== testsDirectory) throw Error('Playwright discovery root is not the canonical test directory');
   const files = new Set();
   const visit = suite => {
     for (const spec of suite.specs ?? []) {
       if (!spec.tests?.length) continue;
-      const file = relative(directory, resolve(directory, spec.file)).split(sep).join('/');
-      if (!file.startsWith('tests/') || file.includes('/../')) throw Error('Discovered test is outside the canonical suite');
-      files.add(file);
+      if (typeof spec.file !== 'string' || !spec.file || spec.file.split(/[\\/]/).includes('..')) throw Error('Discovered test is outside the canonical suite');
+      const absolute = resolve(reportRoot, spec.file);
+      const withinTests = relative(testsDirectory, absolute);
+      if (!withinTests || withinTests === '..' || withinTests.startsWith(`..${sep}`) || isAbsolute(withinTests)) throw Error('Discovered test is outside the canonical suite');
+      files.add(relative(directory, absolute).split(sep).join('/'));
     }
     for (const child of suite.suites ?? []) visit(child);
   };
