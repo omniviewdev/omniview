@@ -55,15 +55,17 @@ test.describe('published consumers', () => {
         await expect(page.locator('#new-export')).toHaveText('absent');
       }
 
-      // Production replaces Vite after ordered runtime -> shim publication.
-      // Explicit reload here is intentional; CSS cases below prohibit reloads.
+      // Runtime publication replaces Vite endpoints; use a fresh document so
+      // the old client's automatic reconnect cannot compete with navigation.
+      await a.close();
       await fixture.a.publishNewExport();
-      await a.reload();
-      await expect(a.locator('#host')).toHaveText('revised:host:fresh');
-      await expect(a.locator('#served')).toHaveText('revised:served:fresh');
-      await expect(a.locator('#production')).toHaveText('revised:production:fresh');
-      await expect(a.locator('#identity')).toHaveText('shared functions');
-      await expect(a.locator('#new-export')).toHaveText('present');
+      const revised = await context.newPage();
+      await revised.goto(fixture.a.url);
+      await expect(revised.locator('#host')).toHaveText('revised:host:fresh');
+      await expect(revised.locator('#served')).toHaveText('revised:served:fresh');
+      await expect(revised.locator('#production')).toHaveText('revised:production:fresh');
+      await expect(revised.locator('#identity')).toHaveText('shared functions');
+      await expect(revised.locator('#new-export')).toHaveText('present');
       await expect(b.locator('#host')).toHaveText('baseline:host');
       await expect(b.locator('#served')).toHaveText('baseline:served');
       await expect(b.locator('#production')).toHaveText('baseline:production');

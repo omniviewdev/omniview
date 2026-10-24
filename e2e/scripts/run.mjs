@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { applicationBudget, assertStandaloneBootstrap, repositoryCommit, toolEnvironment } from './execution.mjs';
+import { applicationBudget, assertStandaloneBootstrap, commandTimeout, repositoryCommit, toolEnvironment } from './execution.mjs';
 import { cohortMatches, selectFromGit } from './select-tests.mjs';
 import { discoveredSpecs, forceRegExp, prepareApplication, requiresApplication, startApplicationBroker } from './application.mjs';
 import { retireApplicationCohort } from './cohort.mjs';
@@ -22,11 +22,11 @@ let deadlineBudget;
 let launchBroker;
 let launchDrain;
 let toolCache;
+let interactive = false;
 let env = toolEnvironment(process.env);
 function execute(command, args, { capture = false, timeout = 180_000, extraEnv = {}, cwd = root } = {}) {
-  const remaining = 600_000 - (Date.now() - started);
-  if (timeout !== 0 && remaining <= 0) throw Error('Inclusive E2E budget exhausted');
-  const child = spawnSync(command, args, { cwd, env: { ...env, ...extraEnv }, encoding: 'utf8', stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit', timeout: timeout === 0 ? undefined : Math.min(timeout, remaining), maxBuffer: 16 * 1024 * 1024 });
+  const boundedTimeout = commandTimeout(started, Date.now(), timeout, interactive);
+  const child = spawnSync(command, args, { cwd, env: { ...env, ...extraEnv }, encoding: 'utf8', stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit', timeout: boundedTimeout, maxBuffer: 16 * 1024 * 1024 });
   if (child.error || child.status !== 0) throw Error(`${command} failed on its first attempt (${child.error?.code ?? child.status})`);
   return capture ? child.stdout.trim() : '';
 }
@@ -37,7 +37,7 @@ function phase(name, fn) {
 async function runApplication(args) {
   const start = Date.now();
   try {
-    deadlineBudget = applicationBudget(started, Date.now());
+    deadlineBudget = applicationBudget(started, Date.now(), { interactive });
     const outcome = await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, [playwrightCLI(), ...args, '--global-timeout', '0', '--reporter=html,list,./scripts/timing-reporter.mjs'], { cwd: join(root, 'e2e'), env, stdio: 'inherit' });
       let interrupted = false;
@@ -46,19 +46,20 @@ async function runApplication(args) {
           interrupted = true;
           // Fence and begin draining launch handles at shutdown admission, not
           // only after a potentially disconnected worker has exited.
-          void launchBroker?.closeAndDrain().catch(() => {});
+          if (!interactive) void launchBroker?.closeAndDrain().catch(() => {});
           child.kill('SIGINT');
         }
       };
       // First SIGINT with an unbounded Playwright deadline awaits dispatcher and
       // fixture shutdown. Parent ownership recovery also covers worker loss.
-      const timer = setTimeout(interrupt, deadlineBudget.interruptAfterMs);
+      const timer = deadlineBudget ? setTimeout(interrupt, deadlineBudget.interruptAfterMs) : undefined;
       process.on('SIGINT', interrupt);
       const clear = () => { clearTimeout(timer); process.off('SIGINT', interrupt); };
       child.once('error', () => { clear(); reject(Error('Playwright could not start')); });
-      child.once('close', code => { clear(); resolve({ code, interrupted }); });
+      child.once('close', (code, signal) => { clear(); resolve({ code, signal, interrupted }); });
     });
-    if (outcome.code !== 0 || outcome.interrupted) throw Error('Playwright failed or reached its inclusive assertion deadline on the first attempt');
+    const closedInteractive = interactive && outcome.interrupted && (outcome.code === 130 || outcome.signal === 'SIGINT');
+    if ((outcome.code !== 0 && !closedInteractive) || (outcome.interrupted && !interactive)) throw Error('Playwright failed or reached its inclusive assertion deadline on the first attempt');
   } finally {
     phases.push({ name: 'application-assertions-and-worker-teardown', elapsedMs: Date.now() - start });
     // IPC disconnect/worker crash cannot bypass ownership cleanup. This journal
@@ -68,7 +69,7 @@ async function runApplication(args) {
   }
 }
 function git(source, ...args) {
-  return execFileSync('git', ['-C', source, ...args], { env, encoding: 'utf8', timeout: Math.max(1, Math.min(30_000, 600_000 - (Date.now() - started))), stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 }).trim();
+  return execFileSync('git', ['-C', source, ...args], { env, encoding: 'utf8', timeout: commandTimeout(started, Date.now(), 30_000, interactive), stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 }).trim();
 }
 function options(args) {
   const result = { full: true, base: process.env.OMNIVIEW_E2E_BASE };
@@ -140,6 +141,7 @@ async function main() {
     return;
   }
   operation = opts.report ? 'report' : opts.select ? 'selection' : opts.list ? 'discovery' : opts.observe ? 'observation' : 'application';
+  interactive = Boolean(opts.ui && !opts.list && !opts.select);
   if (opts.report) {
     execute(process.execPath, [playwrightCLI(), 'show-report'], { cwd: join(root, 'e2e'), timeout: 0 });
     return;
@@ -168,7 +170,7 @@ async function main() {
     for (const key of ['OMNIVIEW_E2E_CLI', 'OMNIVIEW_E2E_ROOT', 'OMNIVIEW_E2E_WORKSPACE', 'OMNIVIEW_E2E_WORKSPACE_ID', 'OMNIVIEW_E2E_GENERATION']) {
       if (process.env[key]) env[key] = process.env[key];
     }
-    execute(process.execPath, [playwrightCLI(), ...playwrightArgs, '--global-timeout', '600000', ...(opts.ui ? ['--ui'] : [])], { cwd: join(root, 'e2e'), timeout: 0 });
+    execute(process.execPath, [playwrightCLI(), ...playwrightArgs, '--global-timeout', opts.ui ? '0' : '600000', ...(opts.ui ? ['--ui'] : [])], { cwd: join(root, 'e2e'), timeout: 0 });
     return;
   }
   // A single invocation owns ALL preparation and browser work. No retry loop,
@@ -250,7 +252,7 @@ async function main() {
     phase('canonical-build-cohort-retirement', () => retireApplicationCohort(application.cohort, execute));
   }
   phase('preparation-teardown', () => {
-    if (needsApplication) retirePreparationHome(privateRoot, env, { toolCache, deadline: started + 600_000 });
+    if (needsApplication) retirePreparationHome(privateRoot, env, { toolCache, deadline: interactive ? Date.now() + 60_000 : started + 600_000 });
     else rmSync(privateRoot, { recursive: true });
     privateRoot = undefined;
   });
@@ -264,14 +266,14 @@ try { await main(); succeeded = true; } catch (error) {
   // Fixture teardown owns workspace down/removal; never recursively delete its
   // private arena after failure or retry the complete preparation implicitly.
   const elapsedMs = Date.now() - started;
-  const budgetExceeded = operation === 'application' && elapsedMs > 600_000;
+  const budgetExceeded = operation === 'application' && !interactive && elapsedMs > 600_000;
   if (budgetExceeded) {
     succeeded = false;
     process.exitCode = 1;
     console.error('E2E inclusive600s budget exceeded; owned cleanup was allowed to finish, not force-killed');
   }
   if (privateRoot) console.error(`E2E private preparation retained: ${privateRoot}`);
-  const report = { succeeded, operation, elapsedMs: Date.now() - started, budgetMs: 600_000, budgetExceeded, deadlineBudget, launchDrain, selection, phases, sourceRefs, nativeToolCache: toolCache ? 'explicit' : env.HOME ? 'private' : 'not-used', declaredFrontendModes: selection?.kind !== 'focused' && selection?.groups.includes('workspaces') ? ['embedded', 'live-smoke'] : [], retries: 0 };
+  const report = { succeeded, operation, interactive, elapsedMs: Date.now() - started, budgetMs: interactive ? null : 600_000, budgetExceeded, deadlineBudget, launchDrain, selection, phases, sourceRefs, nativeToolCache: toolCache ? 'explicit' : env.HOME ? 'private' : 'not-used', declaredFrontendModes: selection?.kind !== 'focused' && selection?.groups.includes('workspaces') ? ['embedded', 'live-smoke'] : [], retries: 0 };
   if (operation !== 'report' && operation !== 'cache-initialization') {
     mkdirSync(join(root, 'e2e/playwright-report'), { recursive: true });
     const filename = operation === 'selection' ? 'selection.json' : operation === 'discovery' ? 'discovery.json' : 'invocation.json';

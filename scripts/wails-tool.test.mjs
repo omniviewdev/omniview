@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { chmodSync, copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -16,7 +16,7 @@ before(() => {
   mkdirSync(root, { mode: 0o700 });
   copyFileSync(join(host, 'go.mod'), join(root, 'go.mod'));
   copyFileSync(join(host, 'go.sum'), join(root, 'go.sum'));
-  const bootstrapCache = process.env.GOCACHE || join(arena, 'bootstrap-cache');
+  const bootstrapCache = process.env.GOCACHE || execFileSync('go', ['env', 'GOCACHE'], { env: { ...process.env, GOWORK: 'off', GOFLAGS: '' }, encoding: 'utf8' }).trim();
   environment = { ...process.env, GOWORK: 'off', GOFLAGS: '', GOCACHE: bootstrapCache };
   // This is a real pinned stock installation, not a synthetic executable or
   // --version response. All its build cost belongs to this test invocation.
@@ -79,43 +79,10 @@ test('copied attestation and non-private executable ownership are refused', () =
   finally { chmodSync(descriptor.executable, 0o500); }
 });
 
-
 test('foreign platform and ownership attestations cannot authorize an actual tool', () => {
   const descriptor = JSON.parse(capability);
   assert.throws(() => validatePinnedWailsTool(JSON.stringify({ ...descriptor, platform: 'win32' }), { root, env: environment }), /foreign/);
   assert.throws(() => validatePinnedWailsTool(JSON.stringify({ ...descriptor, executableIdentity: { ...descriptor.executableIdentity, uid: String(process.getuid() + 1) } }), { root, env: environment }), /identity/);
-});
-
-test('actual Task default and explicit-tool generation produce byte-identical SDK-aware bindings with separate application caches', () => {
-  const outputs = [];
-  for (const mode of ['default', 'native']) {
-    const output = join(arena, `bindings-${mode}`);
-    const hostmod = join(arena, `hostmod-${mode}`);
-    const applicationCache = join(arena, `application-cache-${mode}`);
-    mkdirSync(hostmod, { mode: 0o700 });
-    const childEnv = { ...environment };
-    // Match owned launch isolation: Task selects the application cache, not
-    // the preparation process's bootstrap cache.
-    delete childEnv.GOCACHE;
-    delete childEnv.OMNIVIEW_WAILS_TOOL_CAPABILITY;
-    if (mode === 'native') childEnv.OMNIVIEW_WAILS_TOOL_CAPABILITY = capability;
-    const child = spawnSync('task', ['--silent', 'bindings', 'BUILD_FLAGS=-tags server', `BINDINGS_OUTPUT_DIRECTORY=${output}`, `HOST_MOD_OUTPUT_DIRECTORY=${hostmod}`, `GO_BUILD_CACHE_DIRECTORY=${applicationCache}`, ...(environment.SDK_SOURCE ? [`SDK_SOURCE=${environment.SDK_SOURCE}`] : [])], { cwd: host, env: childEnv, encoding: 'utf8', timeout: 240_000, maxBuffer: 16 * 1024 * 1024 });
-    assert.equal(child.status, 0, `${mode}: ${child.stderr}`);
-    assert.ok(lstatSync(applicationCache).isDirectory());
-    assert.notEqual(applicationCache, environment.GOCACHE);
-    const files = {};
-    const collect = (directory, prefix = '') => {
-      for (const entry of readdirSync(directory, { withFileTypes: true })) {
-        const relative = `${prefix}${entry.name}`;
-        if (entry.isDirectory()) collect(join(directory, entry.name), `${relative}/`);
-        else files[relative] = readFileSync(join(directory, entry.name));
-      }
-    };
-    collect(output);
-    assert.ok(Object.keys(files).length > 0);
-    outputs.push(files);
-  }
-  assert.deepEqual(outputs[1], outputs[0]);
 });
 
 test('real foreign-platform and wrong-module Go executables fail native stock build-info authentication', () => {

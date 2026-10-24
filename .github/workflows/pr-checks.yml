@@ -84,11 +84,18 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.0"
+
       - name: Install pinned private Wails CLI
         run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
 
       - name: Check bindings are up to date
         run: task check:bindings-check
+
+      - name: Check native Wails capability contracts
+        run: GOWORK=off GOFLAGS= node --test scripts/wails-tool.test.mjs
 
   ui-checks:
     name: UI checks

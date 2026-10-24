@@ -46,7 +46,15 @@ export function repositoryCommit(source, env) {
   if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(ref)) throw Error('Selected source has no immutable commit');
   return ref;
 }
-export function applicationBudget(started, now) {
+export function commandTimeout(started, now, timeout, interactive = false) {
+  if (timeout === 0) return undefined;
+  if (interactive) return timeout;
+  const remaining = started + 600_000 - now;
+  if (remaining <= 0) throw Error('Inclusive E2E budget exhausted');
+  return Math.min(timeout, remaining);
+}
+export function applicationBudget(started, now, { interactive = false } = {}) {
+  if (interactive) return null;
   const deadline = started + 600_000;
   const remainingMs = deadline - now;
   const cleanupReserveMs = 60_000;

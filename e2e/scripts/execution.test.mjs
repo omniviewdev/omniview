@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { assertStandaloneBootstrap, applicationBudget, repositoryCommit, toolEnvironment } from './execution.mjs';
+import { assertStandaloneBootstrap, applicationBudget, commandTimeout, repositoryCommit, toolEnvironment } from './execution.mjs';
 
 test('tool environment drops ambient credentials, autoconnect and module/workspace overrides', () => {
   const env = toolEnvironment({ PATH: '/tools', HOME: '/human', CI: '1', AWS_ACCESS_KEY_ID: 'secret', AWS_SECRET_ACCESS_KEY: 'secret', KUBECONFIG: '/human/kube', GOOGLE_APPLICATION_CREDENTIALS: '/human/cloud', AZURE_CLIENT_SECRET: 'secret', GH_TOKEN: 'secret', NODE_OPTIONS: '--require=/human/hook', NODE_PATH: '/human/modules', OMNIVIEW_WORKSPACE_FILE: '/human/workspace.json', PNPM_CONFIG_WORKSPACE_DIR: '/human/root', GOFLAGS: '-modfile=/human/go.mod', GOWORK: '/human/go.work', SDK_SOURCE: '/human/sdk', GIT_CONFIG_GLOBAL: '/human/gitconfig', OMNIVIEW_E2E_PNPM_EXECUTABLE: '/tools/pnpm', GOCACHE: '/human/compiler', GOMODCACHE: '/human/modules', GOPATH: '/human/go', OMNIVIEW_E2E_TOOL_CACHE_ROOT: '/human/cache' });
@@ -32,6 +32,13 @@ test('application deadline subtracts all preparation and reserves owned teardown
   assert.deepEqual(applicationBudget(1000, 151000), { deadline: 601000, remainingMs: 450000, interruptAfterMs: 390000, cleanupReserveMs: 60000 });
   assert.throws(() => applicationBudget(1000, 541000), /budget/);
   assert.throws(() => applicationBudget(1000, 601001), /budget/);
+});
+test('interactive sessions outlive acceptance while each command keeps a fresh bound', () => {
+  assert.equal(applicationBudget(1000, 901000, { interactive: true }), null);
+  assert.equal(commandTimeout(1000, 901000, 30000, true), 30000);
+  assert.equal(commandTimeout(1000, 901000, 60000, true), 60000);
+  assert.equal(commandTimeout(1000, 591000, 30000, false), 10000);
+  assert.throws(() => commandTimeout(1000, 901000, 30000, false), /budget/);
 });
 test('source identity refuses an empty submodule resolving to the parent repository', () => {
   const arena = mkdtempSync(join(tmpdir(), 'omniview-e2e-repository-'));

@@ -190,6 +190,12 @@ falls back to full for unknown/core changes, incomplete Git data or a changed
 source cohort. A focused `--grep` run is diagnostic evidence, not full acceptance.
 Tooling-only selections do not prepare a Go application.
 
+`task e2e-ui` opens an interactive debugging session, not a timed acceptance run.
+It has no session-wide acceptance deadline; preparation and retirement commands
+remain individually bounded, and closing or interrupting the session still
+drains owned processes. Its report records `interactive: true` and no acceptance
+budget rather than certifying the 600-second full-run gate.
+
 One invocation-private source cohort links the selected SDK, UI and plugins
 through the native package protocol. Producers build each required artifact
 once; two actual runtime profiles share immutable artifacts but have distinct
@@ -248,6 +254,13 @@ explicit process replacement and document reload do not certify that gate.
 ### Static checks
 
 `task check:ui-lint` covers host UI, Vite-plugin source and E2E TypeScript through the flat ESLint configuration and is blocking in PR checks. E2E class declarations use erasable fields, not parameter properties, because fixtures also load through Node's strip-only TypeScript support. Parsed link evidence is validated from `unknown` and requires literal-`true` attestations. Go build/vet/test/format checks remain blocking; the existing broad Go style-lint profile remains advisory rather than weakening its rules or claiming the backlog is clean.
+
+Native Wails capability contracts run with
+`GOWORK=off node --test scripts/wails-tool.test.mjs` in the existing bindings
+freshness job after Task generation. They authenticate real pinned executables
+and reject altered, foreign or redirected capabilities. Fast selector contracts
+remain Go/Task-free; generated-binding freshness and actual application execution
+exercise generation and its consumers.
 
 `task fmt` and `task check:fmt-check` select tracked and nonignored Go source through Git, preserving spaced filenames with NUL-delimited arguments. Both use `goimports` for formatting and imports; they never traverse ignored `node_modules`, prepared Wails sources or other tool caches.
 
