@@ -63,16 +63,17 @@ export default defineConfig({
     exclude: ['@omniviewdev/base-ui', '@omniviewdev/ai-ui', '@omniviewdev/editors',
       '@omniviewdev/providers', '@omniviewdev/runtime', '@omniviewdev/runtime/api',
       '@omniviewdev/runtime/models', '@omniviewdev/runtime/runtime'],
+    // Exclusion keeps linked code live but also stops transitive scanning.
+    // Scan its real entries so all third-party imports are discovered together.
+    entries: [
+      'index.html',
+      ...['base-ui', 'ai-ui', 'editors', 'providers'].map(name =>
+        fileURLToPath(import.meta.resolve(`@omniviewdev/${name}`))),
+      ...['index', 'api', 'models', 'runtime'].map(name =>
+        path.resolve(__dirname, `packages/omniviewdev-runtime/src/${name}.ts`)),
+    ],
     // Linked UI stays live; its nested CommonJS shim still needs ESM interop.
     include: [
-      // The excluded linked publication is not traversed by Vite's scanner.
-      // Discover its deep imports before the browser receives optimized URLs.
-      ...[
-        'button', 'alert-dialog', 'autocomplete', 'avatar', 'checkbox',
-        'checkbox-group', 'combobox', 'field', 'input', 'context-menu',
-        'popover', 'toggle', 'menu', 'number-field', 'radio', 'radio-group',
-        'select', 'separator', 'slider', 'switch', 'tabs', 'toggle-group', 'tooltip',
-      ].map(subpath => `@omniviewdev/base-ui > @base-ui/react/${subpath}`),
       '@omniviewdev/base-ui > @base-ui/react > @base-ui/utils > use-sync-external-store/shim',
       '@omniviewdev/base-ui > @base-ui/react > @base-ui/utils > use-sync-external-store/shim/with-selector',
     ],
