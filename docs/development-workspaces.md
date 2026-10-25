@@ -228,6 +228,42 @@ Owned child/descendant disposal precedes canonical output restoration and
 cohort unlink/removal. Refused cleanup retains private state and journals;
 unknown files, foreign sources and production credentials are never adopted.
 
+### Main-scope native cache preparation
+
+PR validation and trusted pushes to `main` share `.github/workflows/e2e-runner.yml`.
+PRs execute the selected application suite once. The small, always-evaluated
+`e2e-tests` check preserves the required check name and succeeds only when that
+canonical job succeeded, including an explicitly proven prose-only skip. Failed,
+cancelled, missing or skipped jobs cannot make the gate green.
+
+The separate push-main cache primer first performs lookup-only requests for the
+same exact Go and native pnpm keys used by PRs. If both payloads exist, it skips
+native preparation entirely; fallback hits or missing outputs do not count.
+On a miss it restores the existing same-toolchain/store fallbacks, then runs:
+
+```sh
+OMNIVIEW_E2E_TOOL_CACHE_ROOT=/absolute/owned-native-cache \
+  node e2e/scripts/run.mjs --cache-only
+```
+
+This exclusive mode uses the same committed complete source cohort, reviewed SDK,
+actual native composition protocol probe, SDK-aware Task-owned Wails preparation,
+producer dependency order (runtime before Vite shims), source proof and canonical
+cohort/private preparation retirement. It does not install Chromium, start
+application profiles or run browser/application assertions. Its report records
+`operation: "cache-only"` and `applicationAcceptance: false`; success is cache
+preparation evidence, never application acceptance. The inclusive 600-second
+clock, first-attempt failure and refusal/retained-evidence cleanup behavior remain
+unchanged.
+
+Only native Go module/compiler and pnpm content payloads are saved beneath a
+fresh authenticated private cache container; ownership markers, application
+outputs/binaries, managed receipts, profiles and private source cohorts are never
+cached. Main saves require successful canonical preparation and retirement.
+Linux APT archives retain their independent package-index/hash authentication.
+No privileged `workflow_run` or PR artifact promotion is involved: main-scope
+payloads are created by trusted main pushes and are then available to PRs.
+
 ### Verified local execution
 
 The full canonical invocation on 2026-10-25 passed all 85 cases with zero retries

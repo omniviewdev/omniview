@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { applicationBudget, assertStandaloneBootstrap, commandTimeout, repositoryCommit, toolEnvironment } from './execution.mjs';
+import { applicationBudget, assertStandaloneBootstrap, commandTimeout, repositoryCommit, runnerOptions, toolEnvironment } from './execution.mjs';
 import { cohortMatches, selectFromGit } from './select-tests.mjs';
 import { discoveredSpecs, forceRegExp, prepareApplication, requiresApplication, startApplicationBroker } from './application.mjs';
 import { retireApplicationCohort } from './cohort.mjs';
@@ -72,29 +72,6 @@ async function runApplication(args) {
 function git(source, ...args) {
   return execFileSync('git', ['-C', source, ...args], { env, encoding: 'utf8', timeout: commandTimeout(started, Date.now(), 30_000, interactive), stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 }).trim();
 }
-function options(args) {
-  const result = { full: true, base: process.env.OMNIVIEW_E2E_BASE };
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--full') result.full = true;
-    else if (arg === '--changed') result.full = false;
-    else if (arg === '--base' && args[i + 1]) result.base = args[++i];
-    else if (arg === '--grep' && args[i + 1]) {
-      result.grep = args[++i];
-      forceRegExp(result.grep);
-    }
-    else if (arg === '--list') result.list = true;
-    else if (arg === '--select') result.select = true;
-    else if (arg === '--ui') result.ui = true;
-    else if (arg === '--observe') result.observe = true;
-    else if (arg === '--report') result.report = true;
-    else if (arg === '--init-tool-cache') result.initToolCache = true;
-    else throw Error(`Unsupported argument: ${arg}. Use --full, --changed --base REF, --grep PATTERN, --select, --list, --ui, --observe, --report, or --init-tool-cache.`);
-  }
-  if (args.includes('--full')) result.full = true;
-  if (result.observe && !result.full) throw Error('Observation cannot use changed-file selection');
-  return result;
-}
 function sourceLocations() {
   return {
     omniview: root,
@@ -131,7 +108,8 @@ const playwrightCLI = () => {
   }
 };
 async function main() {
-  const opts = options(process.argv.slice(2));
+  const opts = runnerOptions(process.argv.slice(2));
+  if (opts.grep) forceRegExp(opts.grep);
   if (opts.initToolCache) {
     operation = 'cache-initialization';
     assertStandaloneBootstrap(root);
@@ -141,7 +119,8 @@ async function main() {
     console.log('E2E native tool-cache container initialized; only native cache payloads may be restored');
     return;
   }
-  operation = opts.report ? 'report' : opts.select ? 'selection' : opts.list ? 'discovery' : opts.observe ? 'observation' : 'application';
+  operation = opts.cacheOnly ? 'cache-only' : opts.report ? 'report' : opts.select ? 'selection' : opts.list ? 'discovery' : opts.observe ? 'observation' : 'application';
+  if (opts.cacheOnly && !process.env.OMNIVIEW_E2E_TOOL_CACHE_ROOT) throw Error('--cache-only requires OMNIVIEW_E2E_TOOL_CACHE_ROOT for explicit owned native payloads');
   interactive = Boolean(opts.ui && !opts.list && !opts.select);
   if (opts.report) {
     execute(process.execPath, [playwrightCLI(), 'show-report'], { cwd: join(root, 'e2e'), timeout: 0 });
@@ -149,7 +128,7 @@ async function main() {
   }
   let cohort;
   try { cohort = JSON.parse(readFileSync(join(root, 'e2e/source-cohort.json'), 'utf8')); } catch { /* Missing sentinel forces full, never another cohort. */ }
-  selection = opts.observe ? { kind: 'observe', groups: ['observation'], specs: ['tests/observation'], reasons: ['explicit read-only opt-in'] } : selectFromGit({ root, base: opts.base, full: opts.full, cohortUnchanged: !opts.full && cohortUnchanged(opts.base, cohort), env });
+  selection = opts.cacheOnly ? { kind: 'cache-only', groups: [], specs: [], reasons: ['explicit native payload preparation; no application assertions'] } : opts.observe ? { kind: 'observe', groups: ['observation'], specs: ['tests/observation'], reasons: ['explicit read-only opt-in'] } : selectFromGit({ root, base: opts.base, full: opts.full, cohortUnchanged: !opts.full && cohortUnchanged(opts.base, cohort), env });
   if (opts.grep && selection.kind !== 'none') {
     selection = { ...selection, kind: 'focused', testFilter: opts.grep, reasons: [...selection.reasons, 'explicit test-name filter; not full acceptance'] };
   }
@@ -207,7 +186,7 @@ async function main() {
     selection = { ...selection, specs, reasons: [...selection.reasons, 'actual Playwright discovery before application preparation'] };
     playwrightArgs = ['test', ...specs, '--grep', opts.grep];
   }
-  const needsApplication = requiresApplication(selection.specs);
+  const needsApplication = opts.cacheOnly || requiresApplication(selection.specs);
   if (needsApplication) {
     if (toolCache) {
       const actual = JSON.parse(execute('go', ['env', '-json', 'GOMODCACHE', 'GOCACHE'], { capture: true }));
@@ -221,7 +200,7 @@ async function main() {
     if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(process.env.REVIEWED_SDK_REVISION ?? '') || process.env.REVIEWED_SDK_REVISION !== refs['plugin-sdk']) throw Error('Set REVIEWED_SDK_REVISION to the independently reviewed full selected SDK commit');
     env.SDK_SOURCE = sources['plugin-sdk'];
   }
-  phase('browser-install', () => execute(process.execPath, [playwrightCLI(), 'install', ...(process.platform === 'linux' ? ['--with-deps'] : []), 'chromium'], { cwd: join(root, 'e2e') }));
+  if (!opts.cacheOnly) phase('browser-install', () => execute(process.execPath, [playwrightCLI(), 'install', ...(process.platform === 'linux' ? ['--with-deps'] : []), 'chromium'], { cwd: join(root, 'e2e') }));
   if (needsApplication) {
   phase('pinned-native-wails-tool', () => {
     env.OMNIVIEW_WAILS_TOOL_CAPABILITY = preparePinnedWailsTool({
@@ -239,10 +218,12 @@ async function main() {
   for (const [id, source] of Object.entries(sources)) {
     if (git(source, 'rev-parse', 'HEAD') !== refs[id] || git(source, 'diff', '--name-only', 'HEAD', '--')) throw Error(`Selected ${id} source changed during preparation; refusing mixed committed sources`);
   }
-  launchBroker = await startApplicationBroker({ application: env.OMNIVIEW_E2E_APPLICATION, ownershipDir: env.OMNIVIEW_E2E_OWNERSHIP_DIR, env, phases });
-  env.OMNIVIEW_E2E_LAUNCH_SOCKET = launchBroker.socketPath;
+  if (!opts.cacheOnly) {
+    launchBroker = await startApplicationBroker({ application: env.OMNIVIEW_E2E_APPLICATION, ownershipDir: env.OMNIVIEW_E2E_OWNERSHIP_DIR, env, phases });
+    env.OMNIVIEW_E2E_LAUNCH_SOCKET = launchBroker.socketPath;
   }
-  await runApplication([...playwrightArgs, ...(opts.ui ? ['--ui'] : [])]);
+  }
+  if (!opts.cacheOnly) await runApplication([...playwrightArgs, ...(opts.ui ? ['--ui'] : [])]);
   if (needsApplication) {
     phase('original-read-only-source-proof-after-run', () => {
       for (const [id, source] of Object.entries(sources)) {
@@ -267,7 +248,7 @@ try { await main(); succeeded = true; } catch (error) {
   // Fixture teardown owns workspace down/removal; never recursively delete its
   // private arena after failure or retry the complete preparation implicitly.
   const elapsedMs = Date.now() - started;
-  const budgetExceeded = operation === 'application' && !interactive && elapsedMs > 600_000;
+  const budgetExceeded = ['application', 'cache-only'].includes(operation) && !interactive && elapsedMs > 600_000;
   if (budgetExceeded) {
     succeeded = false;
     process.exitCode = 1;
@@ -275,6 +256,7 @@ try { await main(); succeeded = true; } catch (error) {
   }
   if (privateRoot) console.error(`E2E private preparation retained: ${privateRoot}`);
   const report = { succeeded, operation, interactive, elapsedMs: Date.now() - started, budgetMs: interactive ? null : 600_000, budgetExceeded, deadlineBudget, launchDrain, buildExecution, selection, phases, sourceRefs, nativeToolCache: toolCache ? 'explicit' : env.HOME ? 'private' : 'not-used', declaredFrontendModes: selection?.kind !== 'focused' && selection?.groups.includes('workspaces') ? ['embedded', 'live-smoke'] : [], retries: 0 };
+  report.applicationAcceptance = operation === 'application' && succeeded && selection?.kind === 'full';
   if (operation !== 'report' && operation !== 'cache-initialization') {
     mkdirSync(join(root, 'e2e/playwright-report'), { recursive: true });
     const filename = operation === 'selection' ? 'selection.json' : operation === 'discovery' ? 'discovery.json' : 'invocation.json';

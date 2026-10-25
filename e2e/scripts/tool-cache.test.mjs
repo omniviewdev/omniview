@@ -209,3 +209,30 @@ test('private preparation retirement preserves persistent native data and never 
     assert.equal(readFileSync(payload, 'utf8'), 'persistent native module');
   } finally { rmSync(arena, { recursive: true, force: true }); }
 });
+
+test('cache-only retirement removes complete private artifacts and cohort data, preserving only authenticated native payloads', () => {
+  const arena = temporary();
+  try {
+    const cache = initializeToolCache(join(arena, 'cache'));
+    const owner = readFileSync(join(cache.root, '.owner.json'), 'utf8');
+    for (const directory of [cache.goModCache, cache.bootstrapGoCache, cache.pnpmStore]) writeFileSync(join(directory, 'native-payload'), 'retained native bytes');
+    const root = join(arena, 'preparation');
+    const home = join(root, 'home');
+    mkdirSync(home, { recursive: true, mode: 0o700 });
+    for (const name of ['application', 'build-cohort', 'ownership', 'wails-tool']) {
+      mkdirSync(join(root, name), { mode: 0o700 });
+      writeFileSync(join(root, name, 'private-data'), 'not a reusable native payload');
+    }
+    const env = { ...toolEnvironment(process.env), PATH: '', HOME: home, GOPATH: join(home, 'go'), GOMODCACHE: cache.goModCache };
+    // Unknown restored metadata refuses deletion; never hide a failed retirement
+    // by publishing a cache-only success or deleting the evidence first.
+    writeFileSync(join(cache.root, 'foreign-receipt'), 'unknown');
+    assert.throws(() => retirePreparationHome(root, env, { toolCache: cache }), /unknown/);
+    assert.equal(existsSync(join(root, 'build-cohort/private-data')), true);
+    rmSync(join(cache.root, 'foreign-receipt')); // This test owns the injected file.
+    retirePreparationHome(root, env, { toolCache: cache });
+    assert.equal(existsSync(root), false);
+    assert.equal(readFileSync(join(cache.root, '.owner.json'), 'utf8'), owner);
+    for (const directory of [cache.goModCache, cache.bootstrapGoCache, cache.pnpmStore]) assert.equal(readFileSync(join(directory, 'native-payload'), 'utf8'), 'retained native bytes');
+  } finally { rmSync(arena, { recursive: true, force: true }); }
+});
