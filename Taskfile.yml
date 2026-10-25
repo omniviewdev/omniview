@@ -290,6 +290,9 @@ tasks:
       vars: [C02_ERROR_CORPUS]
     env:
       C02_ERROR_CORPUS: '{{.C02_ERROR_CORPUS}}'
+    preconditions:
+      - sh: test -n {{.C02_ERROR_CORPUS | shellQuote}}
+        msg: C02_ERROR_CORPUS must name the output corpus file
     cmds:
       - |
         set -e
