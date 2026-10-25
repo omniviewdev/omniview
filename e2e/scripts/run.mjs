@@ -256,7 +256,7 @@ try { await main(); succeeded = true; } catch (error) {
   }
   if (privateRoot) console.error(`E2E private preparation retained: ${privateRoot}`);
   const report = { succeeded, operation, interactive, elapsedMs: Date.now() - started, budgetMs: interactive ? null : 600_000, budgetExceeded, deadlineBudget, launchDrain, buildExecution, selection, phases, sourceRefs, nativeToolCache: toolCache ? 'explicit' : env.HOME ? 'private' : 'not-used', declaredFrontendModes: selection?.kind !== 'focused' && selection?.groups.includes('workspaces') ? ['embedded', 'live-smoke'] : [], retries: 0 };
-  report.applicationAcceptance = operation === 'application' && succeeded && selection?.kind === 'full';
+  report.applicationAcceptance = operation === 'application' && succeeded && !interactive && selection?.kind === 'full';
   if (operation !== 'report' && operation !== 'cache-initialization') {
     mkdirSync(join(root, 'e2e/playwright-report'), { recursive: true });
     const filename = operation === 'selection' ? 'selection.json' : operation === 'discovery' ? 'discovery.json' : 'invocation.json';
