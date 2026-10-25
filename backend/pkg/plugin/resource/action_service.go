@@ -20,7 +20,12 @@ func (c *controller) StreamAction(ctx context.Context, pluginID, connectionID, k
 	if err != nil {
 		return "", err
 	}
-	defer finishResource(ctx, &retErr)
+	defer func() {
+		// Committed handles own the producer independently of the open request.
+		if retErr != nil {
+			finishResource(ctx, &retErr)
+		}
+	}()
 	provider, sessionCtx, err := c.withSession(ctx, pluginID, connectionID)
 	if err != nil {
 		return "", err
