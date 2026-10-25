@@ -293,6 +293,8 @@ tasks:
     preconditions:
       - sh: test -n {{.C02_ERROR_CORPUS | shellQuote}}
         msg: C02_ERROR_CORPUS must name the output corpus file
+      - sh: test {{osIsAbs .C02_ERROR_CORPUS}} = true
+        msg: C02_ERROR_CORPUS must name an absolute output corpus file
     cmds:
       - |
         set -e
@@ -307,6 +309,8 @@ tasks:
     env:
       C02_ERROR_CORPUS: '{{.C02_ERROR_CORPUS}}'
     preconditions:
+      - sh: test {{osIsAbs .C02_ERROR_CORPUS}} = true
+        msg: C02_ERROR_CORPUS must name an absolute generated corpus file
       - sh: test -f {{.C02_ERROR_CORPUS | shellQuote}} && test -r {{.C02_ERROR_CORPUS | shellQuote}}
         msg: C02_ERROR_CORPUS must name a readable generated corpus file
     cmds:
