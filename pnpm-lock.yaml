@@ -166,6 +166,9 @@ overrides:
   '@types/react': ^19.0.0
   '@types/react-dom': ^19.0.0
 
+patchedDependencies:
+  '@wailsio/runtime@3.0.0-beta.34': dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947
+
 importers:
 
   .:
@@ -371,7 +374,7 @@ importers:
         version: 4.1.0(vitest@4.1.0)
       '@wailsio/runtime':
         specifier: 3.0.0-beta.34
-        version: 3.0.0-beta.34
+        version: 3.0.0-beta.34(patch_hash=dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947)
       '@welldone-software/why-did-you-render':
         specifier: ^10.0.1
         version: 10.0.1(react@19.2.4)
@@ -437,7 +440,7 @@ importers:
     dependencies:
       '@wailsio/runtime':
         specifier: 3.0.0-beta.34
-        version: 3.0.0-beta.34
+        version: 3.0.0-beta.34(patch_hash=dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947)
     devDependencies:
       '@types/node':
         specifier: ^25.5.0
@@ -465,7 +468,7 @@ importers:
     dependencies:
       '@wailsio/runtime':
         specifier: 3.0.0-beta.34
-        version: 3.0.0-beta.34
+        version: 3.0.0-beta.34(patch_hash=dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947)
       lodash.get:
         specifier: ^4.4.2
         version: 4.4.2
@@ -7210,7 +7213,7 @@ snapshots:
 
   '@vue/shared@3.5.13': {}
 
-  '@wailsio/runtime@3.0.0-beta.34': {}
+  '@wailsio/runtime@3.0.0-beta.34(patch_hash=dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947)': {}
 
   '@welldone-software/why-did-you-render@10.0.1(react@19.2.4)':
     dependencies:

@@ -132,6 +132,9 @@ jobs:
       - name: Install dependencies
         run: task check:ui-install
 
+      - name: Check Wails Call settlement ownership
+        run: node --test scripts/wails-call.test.mjs
+
       - name: Build
         run: task check:ui-build
 
