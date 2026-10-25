@@ -21,8 +21,8 @@ Explicit limits:
 
 - Bundled schema bytes are corpus evidence, not normalized schema admission/static catalog checking. Resource unions/partial documents retain the accepted design semantics; this spike does not claim to implement them. Existing accepted nullable/union/schema evidence is reused, not promoted or copied into a second normalizer.
 - Dynamic numeric fixture bodies admit exact int64/uint64 integral lexemes only; fractional body numbers return UNSUPPORTED in this probe. This is a probe subset, **not a proposed production ban**. Typed finite double bindings work; mixed exact/binary64 mathematical safety is not claimed. Timestamps in resource bodies remain original strings unless a predicate explicitly constructs timestamps; tagged timestamp bindings are actual CEL timestamps.
-- Builder supports member-only dynamic paths and the listed state/value clauses; it is a CEL lowerer, not a second evaluator. No correlated-array builder UI, branch-specific union lowering or advanced reverse conversion is claimed. Correlated arrays execute through native CEL text.
-- Order is ascending string, missing then null then values, then ascending address key. No full comparator, multi-target union, opaque result continuation, lease/follow or source protocol is implemented. Offset is finite experimental state, never a production cursor. P44 server-filter support is absent: candidate/residual controls are host-only, not actual native-provider equivalence.
+- Builder supports member-only dynamic paths and the listed state/value clauses; it is a CEL lowerer, not a second evaluator. Operands must be declared valid parameter identifiers, never CEL literal/reserved names. No correlated-array builder UI, branch-specific union lowering or advanced reverse conversion is claimed. Correlated arrays execute through native CEL text.
+- Order is ascending string, missing then null then values, then ascending address key and opaque incarnation token (absent before present in this private representation). This request has one target; neither fixture name, source revision nor arrival order is a tie-break. No full comparator, multi-target union, opaque result continuation, lease/follow or source protocol is implemented. Offset is finite experimental state, never a production cursor. P44 server-filter support is absent: candidate/residual controls are host-only, not actual native-provider equivalence.
 - Draft recovery handles unquoted `resource.member.` chains only. It returns context/replacement bytes and declaration/revision-bound native diagnostics; it is not catalog completion, schema/permission discovery or an LSP/editor. Caller revision labels are echoed only in this private experiment; production host-authoritative environment identity and stale-response admission follow the canonical design, not a provenance claim from this probe.
 - Corpus coverage/freshness is carried unchanged. Exhaustion is selected-access-relative, bestEffort remains bestEffort, partial remains partial; no production exact/live query success inferred.
 - Limits (64KiB request/document,16KiB source,depth32,4096 JSON values,128 declarations/page rows,cost100000,5s process evaluation deadline) are finite experiment settings, not measured product budgets. The stdin reader reads at most64KiB+1; corpus export is trusted provenance-checked fixture input.
@@ -41,9 +41,15 @@ BASELINE="${OMNIVIEW_P01_BASELINE_ENV:?Set to the reviewed private-HOME environm
 "$BASELINE" node driver.mjs
 ```
 
-`export-corpus.mjs` verifies exact merged SDK HEAD `da0c53be2da636d3833b7ca1e73f8a6c8d26b5c7` and compares corpus sources against that commit. It creates an exclusive UUID-named SDK-internal temporary exporter to invoke existing `NativeCorpus()` and `Validate()`, always removes its exact source/directory in `finally`, preserves raw stdout bytes (no JS numeric reserialization), and records SHA-256 source/export provenance. Changed corpus sources/foreign exporter entries refuse rather than clean unknown data. No retained SDK changes or public exporter.
+`export-corpus.mjs` verifies exact merged SDK HEAD `da0c53be2da636d3833b7ca1e73f8a6c8d26b5c7`, then clones committed objects into an exclusively owned private checkout (`--no-local --no-hardlinks --no-checkout`, detached reviewed commit, Git hooks disabled). It builds there, never in the caller worktree: tracked modifications, untracked and ignored Go inputs in that worktree cannot enter the export. Explicit corpus-source comparisons remain. An exclusive UUID-named SDK-internal temporary exporter invokes existing `NativeCorpus()` and `Validate()` with `go run -mod=readonly`; `finally` removes its source/directory and the private checkout before publishing provenance. Raw stdout bytes are preserved (no JS numeric reserialization). No retained caller SDK changes or public exporter.
 
 Generated local `corpus.json`, `corpus-provenance.json`, `results.json` and `p01-probe` are ignored. Keep actual result/provenance outputs with coordinator evidence; do not commit binaries/caches. `go.sum` is the exact experimental dependency checksum lock, not production dependency approval.
+
+The exporter behavioral regression uses its own disposable SDK clone with a broken tracked `go.mod` plus untracked and ignored Go init panics. It executes the real exporter CLI, checks the independently recorded corpus digest and verifies caller bytes/status remain unchanged. After the coordinator barrier:
+
+```sh
+"$BASELINE" env OMNIVIEW_P01_BASELINE_ENV="$BASELINE" OMNIVIEW_P01_SDK="$(pwd)/../../../plugin-sdk" node --test export-corpus.test.mjs
+```
 
 ## Numeric gate and acceptance status
 
@@ -78,8 +84,22 @@ Corrected source SHA256 recorded with that authorized cohort:
 | `codec_review_test.go` | `f596cb1fd37ed27ea68af61aa194c69ee743ed89681dbd3c84a24328c8a7d298` |
 | `driver.mjs` | `9a1946d0a0ca0de8837d55b6223ac3673e267df3a223a053a42fcf6d37941ff9` |
 
-These are retained historical execution receipts, not a new run or a public evidence-download URL. The ignored artifacts remain local coordinator evidence; the published source and reproduction instructions are independently usable. Final independent implementation re-review of the corrected source remains required before publication acceptance. The design reviews do not substitute for that re-review or numeric production approval.
+These are retained historical execution receipts, not a new run or a public evidence-download URL. The ignored artifacts remain local coordinator evidence; the published source and reproduction instructions are independently usable. Final independent implementation re-review approved those four corrected fixes, and a later authorized rerun passed normal/race/build/73 observations. The design reviews and that bounded implementation approval do not substitute for numeric production approval.
 
 ### Bounded upstream status check (2026-10-24)
 
 Read-only upstream metadata still identifies [v0.32.0 as the latest official release](https://github.com/cel-expr/cel-go/releases/tag/v0.32.0) and [master `4ab6aedf5933b15dcf0b3237e4bf0aed58b953dc`](https://github.com/cel-expr/cel-go/commit/4ab6aedf5933b15dcf0b3237e4bf0aed58b953dc), unchanged from the previously inspected unsafe sources. [PR1377](https://github.com/cel-expr/cel-go/pull/1377) remains open/unmerged at head `7d2d5e7d1203562205788c1a45392e1e86c645d3`; its current diff changes numeric comparison helpers and their tests, not optimized-membership aliases. This bounded status check admits no corrected candidate and runs no historical unsafe probe. Both correction paths and the selected-candidate conformance/license/pin/performance gate above remain required. No dependency, fork or upstream mutation was made.
+
+### PR130 follow-up corrections and executed barrier
+
+Review identified three additional valid gaps: builder literals accepted as parameter names, missing incarnation in final page ties, and exporter commit provenance not excluding other modified SDK build inputs. The current source rejects undeclared/reserved builder references, uses the required address/incarnation final tie (no fixture-name/stable-arrival substitute), and builds exclusively from the private committed SDK checkout described above. Go and actual subprocess Node regressions exercise rejected references, a valid bound operand, and equal-address incarnation pages under permuted arrival/name/revision order. Exporter contamination is exercised by the separate real-CLI regression above.
+
+After explicit coordinator grant, all five commands ran sequentially through the private-HOME launcher (`GOWORK=off`); no source edits during checks:
+
+- `go test ./... -count=1 -v`: all **16 top-level tests** passed, including 18 reserved/undeclared builder subcases and four existing correlation/presence subcases; final `ok github.com/omniviewdev/omniview/bench/resourcequeryspike 0.410s`.
+- `go test -race ./... -count=1`: passed, `ok github.com/omniviewdev/omniview/bench/resourcequeryspike 1.349s`; no race diagnostic for this finite workload.
+- `go build -o p01-probe .`: success, no stdout.
+- `node driver.mjs`: exact stdout **`Node -> Go -> native CEL -> Node: 92 independently expected observations passed; numeric production gate BLOCKED`**. This supersedes the 73-observation cohort for the changed source.
+- The exporter regression command above: **1 test passed, 0 failed/skipped**, exercising the real CLI with broken tracked module input and untracked/ignored Go init panics in its owned caller checkout. Exact committed corpus digest held and caller bytes/status were preserved; the exporter removed its private checkout before emitting provenance.
+
+No canonical corpus re-export/tidy/formatter/install/bindings/broad E2E/performance measurement ran. Historical source/provenance/result hashes above describe their original cohort, not the newly changed source or latest 92-observation result. No production dependency/profile change or safe mixed-number/optimized-membership claim.

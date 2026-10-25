@@ -37,7 +37,7 @@ func LowerClause(c Clause) (string, error) {
 	case "nonNull":
 		return nonNull, nil
 	case "equal", "not", "notEqualPresent":
-		if !identifier.MatchString(c.Parameter) || c.Parameter == "resource" {
+		if !validParameter(c.Parameter) {
 			return "", fail("INVALID_REQUEST", "builder parameter identifier required")
 		}
 		positive := "(" + nonNull + " && " + path + " == " + c.Parameter + ")"

@@ -2,20 +2,22 @@
 // No JavaScript evaluator, local query sorting, or numeric equality replacement.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { resolve, join } from 'node:path';
 
 const observations = [];
 function request(source = 'true') {
   return { version: 'omniview.p01-spike.v1', scenario: 'cloud-bundled-pages', source, scope: { account: { kind: 'any' }, region: { kind: 'any' } }, declarations: {}, bindings: {}, pageSize: 128 };
 }
-function invoke(r, raw) {
-  const p = spawnSync('./p01-probe', [], { input: raw ?? JSON.stringify(r), encoding: 'utf8', maxBuffer: 1024 * 1024 });
+function invoke(r, raw, cwd) {
+  const p = spawnSync(resolve('p01-probe'), [], { cwd, input: raw ?? JSON.stringify(r), encoding: 'utf8', maxBuffer: 1024 * 1024 });
   assert.equal(p.status, 0, p.stderr);
   return JSON.parse(p.stdout);
 }
-function observe(name, r, expected, raw) {
-  const out = invoke(r, raw);
+function observe(name, r, expected, raw, cwd) {
+  const out = invoke(r, raw, cwd);
   if (typeof expected === 'string') assert.equal(out.error?.code, expected, `${name}: ${JSON.stringify(out)}`);
   else { assert.equal(out.error, undefined, `${name}: ${JSON.stringify(out)}`); assert.deepEqual(out.names, expected, name); }
   observations.push({ name, expected, observed: out });
@@ -185,6 +187,41 @@ r = {version:'omniview.p01-spike.v1',draft:{source:'resource.labels.env',cursor:
 out = invoke(r); assert.equal(out.error,undefined); assert.equal(out.draft.start,16); assert.equal(out.draft.end,19);
 assert.equal(r.draft.source.slice(0,out.draft.start)+'environment'+r.draft.source.slice(out.draft.end),'resource.labels.environment');
 observations.push({name:'midtoken member replacement consumes identifier suffix',observed:out});
+
+for (const kind of ['equal','not','notEqualPresent']) {
+  for (const parameter of ['true','false','null','undeclared']) {
+    r = request(''); r.builder = {kind,path:['description'],parameter};
+    observe(`builder ${kind} rejects nonparameter ${parameter}`,r,'INVALID_REQUEST');
+  }
+}
+r = request(''); r.builder = {kind:'equal',path:['id'],parameter:'needle'};
+r.declarations.needle = {kind:'string'}; r.bindings.needle = scalar('string','ocid1.instance.fixture.us-west-2.a:b/c%25');
+observe('builder declared parameter selects exact native member',r,['cloud-ocid']);
+
+// Same target/address, different opaque incarnation; caller arrival, name and
+// source revision must not decide final page membership. The subprocess reads a
+// private derived fixture, never replacing the provenance-checked P44 corpus.
+const tieCorpus = JSON.parse(await readFile('corpus.json','utf8'));
+const base = tieCorpus.Records.find(record => record.Name === 'cloud-arn');
+const a = {...base,Name:'z-name',Incarnation:'a-token',Revision:'z-revision'};
+const b = {...base,Name:'a-name',Incarnation:'z-token',Revision:'a-revision'};
+const absent = {...base,Name:'middle-name'};
+delete absent.Incarnation;
+const tieScenario = tieCorpus.Scenarios.find(scenario => scenario.Name === 'cloud-bundled-pages');
+tieScenario.Pages = [{Records:['z-name','a-name','middle-name']}];
+const tieDirectory = await mkdtemp(join(tmpdir(),'p01-incarnation-pages-'));
+try {
+  for (const [permutation,records] of [[b,a,absent],[a,absent,b]].entries()) {
+    tieCorpus.Records = records;
+    await writeFile(join(tieDirectory,'corpus.json'),JSON.stringify(tieCorpus));
+    for (const [offset,want] of ['middle-name','z-name','a-name'].entries()) {
+      r = request(); r.pageSize = 1; r.offset = offset;
+      observe(`incarnation page ${offset} independent of arrival ${permutation}`,r,[want],undefined,tieDirectory);
+    }
+  }
+} finally {
+  await rm(tieDirectory,{recursive:true});
+}
 
 const corpus = await readFile('corpus.json');
 const provenance = JSON.parse(await readFile('corpus-provenance.json','utf8'));

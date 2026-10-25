@@ -245,3 +245,62 @@ func TestPartialDraftAndUnicodeByteUTF16Boundary(t *testing.T) {
 		t.Fatalf("cursor out of range: %v", err)
 	}
 }
+
+func TestBuilderRequiresDeclaredNonliteralParameter(t *testing.T) {
+	c := corpusForTest(t)
+	for _, kind := range []string{"equal", "not", "notEqualPresent"} {
+		for _, name := range []string{"true", "false", "null", "resource", "size", "undeclared"} {
+			t.Run(kind+"/"+name, func(t *testing.T) {
+				r := cloudRequest("")
+				r.Builder = &Clause{Kind: kind, Path: []string{"description"}, Parameter: name}
+				if name != "undeclared" {
+					if _, err := LowerClause(*r.Builder); code(err) != "INVALID_REQUEST" {
+						t.Fatalf("lowerer accepted reserved parameter: %v", err)
+					}
+				}
+				if _, err := Execute(context.Background(), r, c); code(err) != "INVALID_REQUEST" {
+					t.Fatalf("nonparameter admitted: %v", err)
+				}
+			})
+		}
+	}
+	r := cloudRequest("")
+	r.Builder = &Clause{Kind: "equal", Path: []string{"id"}, Parameter: "needle"}
+	r.Declarations["needle"] = BindingType{Kind: "string"}
+	r.Bindings["needle"] = value("string", "ocid1.instance.fixture.us-west-2.a:b/c%25")
+	got, err := Execute(context.Background(), r, c)
+	if err != nil || !reflect.DeepEqual(got.Names, []string{"cloud-ocid"}) {
+		t.Fatalf("declared parameter did not select expected native member: %+v %v", got, err)
+	}
+}
+
+func TestFinalPagesOrderByIncarnationNotArrivalNameOrRevision(t *testing.T) {
+	c := corpusForTest(t)
+	var base Record
+	for _, record := range c.Records {
+		if record.Name == "cloud-arn" {
+			base = record
+		}
+	}
+	a, b, absent := base, base, base
+	a.Name, a.Incarnation, a.Revision = "z-name", "a-token", "z-revision"
+	b.Name, b.Incarnation, b.Revision = "a-name", "z-token", "a-revision"
+	absent.Name, absent.Incarnation = "middle-name", ""
+	for i := range c.Scenarios {
+		if c.Scenarios[i].Name == "cloud-bundled-pages" {
+			c.Scenarios[i].Pages = c.Scenarios[i].Pages[:1]
+			c.Scenarios[i].Pages[0].Records = []string{"z-name", "a-name", "middle-name"}
+		}
+	}
+	for _, records := range [][]Record{{b, a, absent}, {a, absent, b}, {absent, b, a}} {
+		c.Records = records
+		for offset, want := range []string{"middle-name", "z-name", "a-name"} {
+			r := cloudRequest("true")
+			r.PageSize, r.Offset = 1, offset
+			got, err := Execute(context.Background(), r, c)
+			if err != nil || !reflect.DeepEqual(got.Names, []string{want}) {
+				t.Fatalf("offset %d, arrival %v: %+v %v", offset, records, got, err)
+			}
+		}
+	}
+}

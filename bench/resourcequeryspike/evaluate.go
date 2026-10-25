@@ -67,6 +67,11 @@ func Execute(ctx context.Context, r Request, corpus Corpus) (Response, error) {
 		if source != "" {
 			return out, fail("INVALID_REQUEST", "choose source or builder")
 		}
+		if r.Builder.Parameter != "" {
+			if _, ok := r.Declarations[r.Builder.Parameter]; !ok {
+				return out, fail("INVALID_REQUEST", "builder parameter must be declared")
+			}
+		}
 		source, err = LowerClause(*r.Builder)
 		if err != nil {
 			return out, err
@@ -217,7 +222,12 @@ func Execute(ctx context.Context, r Request, corpus Corpus) (Response, error) {
 		if rows[i].text != rows[j].text {
 			return rows[i].text < rows[j].text
 		}
-		return rows[i].row.AddressKey < rows[j].row.AddressKey
+		if rows[i].row.AddressKey != rows[j].row.AddressKey {
+			return rows[i].row.AddressKey < rows[j].row.AddressKey
+		}
+		// This finite request has one target. Incarnation is the final opaque
+		// identity token, not source revision, fixture name or arrival order.
+		return rows[i].row.Incarnation < rows[j].row.Incarnation
 	})
 	start := min(r.Offset, len(rows))
 	end := min(start+r.PageSize, len(rows))
