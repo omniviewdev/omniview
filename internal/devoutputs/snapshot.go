@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,8 +18,17 @@ type item struct {
 }
 type snapshot map[string]item
 
+// Scratch belongs to one observation, never to a path or a prior snapshot.
+type snapshotReader struct {
+	digest hash.Hash
+	buffer []byte
+	sum    [sha256.Size]byte
+	source struct{ io.Reader }
+}
+
 func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 	result := snapshot{}
+	var reader snapshotReader
 	info, err := os.Lstat(spec.Target)
 	if os.IsNotExist(err) {
 		return result, nil
@@ -27,7 +37,7 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 		return nil, err
 	}
 	if spec.Mode == "file" {
-		value, err := snapshotItem(spec.Target, info, false)
+		value, err := reader.item(spec.Target, info, false)
 		if err != nil {
 			return nil, err
 		}
@@ -73,7 +83,7 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 		if err != nil {
 			return err
 		}
-		value, err := snapshotItem(path, info, spec.Kind == modules)
+		value, err := reader.item(path, info, spec.Kind == modules)
 		if err != nil {
 			return err
 		}
@@ -82,7 +92,7 @@ func snapshotPath(spec specification, exclude []string) (snapshot, error) {
 	})
 	return result, err
 }
-func snapshotItem(path string, info os.FileInfo, allowLinks bool) (item, error) {
+func (reader *snapshotReader) item(path string, info os.FileInfo, allowLinks bool) (item, error) {
 	result := item{Mode: info.Mode().Perm()}
 	switch {
 	case info.IsDir():
@@ -104,8 +114,15 @@ func snapshotItem(path string, info os.FileInfo, allowLinks bool) (item, error) 
 		if err != nil {
 			return result, err
 		}
-		hash := sha256.New()
-		_, copyErr := io.Copy(hash, stream)
+		if reader.digest == nil {
+			reader.digest = sha256.New()
+			reader.buffer = make([]byte, 32*1024)
+		}
+		reader.digest.Reset()
+		// Expose only Read: os.File.WriteTo would bypass CopyBuffer's scratch.
+		reader.source.Reader = stream
+		_, copyErr := io.CopyBuffer(reader.digest, &reader.source, reader.buffer)
+		reader.source.Reader = nil
 		closeErr := stream.Close()
 		if copyErr != nil {
 			return result, copyErr
@@ -120,7 +137,7 @@ func snapshotItem(path string, info os.FileInfo, allowLinks bool) (item, error) 
 		if !os.SameFile(info, after) || info.Size() != after.Size() || info.ModTime() != after.ModTime() {
 			return result, fmt.Errorf("producer output changed during snapshot: %s", path)
 		}
-		result.Hash = hex.EncodeToString(hash.Sum(nil))
+		result.Hash = hex.EncodeToString(reader.digest.Sum(reader.sum[:0]))
 		return result, nil
 	default:
 		return result, fmt.Errorf("producer output contains a special file: %s", path)
@@ -236,6 +253,7 @@ func removeSnapshot(spec specification, expected snapshot) error {
 		paths = append(paths, path)
 	}
 	sort.Slice(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
+	var reader snapshotReader
 	for _, relative := range paths {
 		if spec.Mode == "filter" && relative == "." {
 			continue
@@ -251,7 +269,7 @@ func removeSnapshot(spec specification, expected snapshot) error {
 		if err != nil {
 			return err
 		}
-		value, err := snapshotItem(path, current, spec.Kind == modules)
+		value, err := reader.item(path, current, spec.Kind == modules)
 		if err != nil {
 			return err
 		}

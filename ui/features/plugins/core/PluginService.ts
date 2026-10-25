@@ -300,7 +300,9 @@ export class PluginService {
     try {
       await promise;
     } finally {
-      this.inflightLoads.delete(pluginId);
+      if (this.inflightLoads.get(pluginId) === promise) {
+        this.inflightLoads.delete(pluginId);
+      }
     }
   }
 
@@ -326,7 +328,9 @@ export class PluginService {
     try {
       await promise;
     } finally {
-      this.inflightLoads.delete(pluginId);
+      if (this.inflightLoads.get(pluginId) === promise) {
+        this.inflightLoads.delete(pluginId);
+      }
     }
   }
 
@@ -344,7 +348,7 @@ export class PluginService {
 
     // Cancel inflight loads
     this.inflightLoads.delete(pluginId);
-    this.bumpLoadGeneration(pluginId);
+    const generation = this.bumpLoadGeneration(pluginId);
 
     if (current.phase === 'ready') {
       this.transition(pluginId, 'unloading');
@@ -352,6 +356,9 @@ export class PluginService {
 
     // Failed imports and invalid exports are cached too.
     await this.deps.clearPlugin({ pluginId, dev: current.isDev });
+    if (!this.isCurrentGeneration(pluginId, generation)) {
+      return;
+    }
 
     // Remove registrations
     this.removePluginRegistrations(pluginId);
@@ -382,23 +389,22 @@ export class PluginService {
     }
 
     const delay = this.computeRetryDelay(current.retryCount);
+    const generation = this.bumpLoadGeneration(pluginId);
     this.transition(pluginId, 'retrying');
 
     if (delay > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
 
-    // After delay, check if still retrying (could have been force-reset)
+    // A reset/restart may already have begun another retry of this plugin.
     const afterDelay = this.state.get(pluginId);
-    if (!afterDelay || afterDelay.phase !== 'retrying') {
+    if (!this.isCurrentGeneration(pluginId, generation) || afterDelay?.phase !== 'retrying') {
       return;
     }
 
     const retryCount = current.retryCount + 1;
 
     this.transition(pluginId, 'loading', { retryCount });
-
-    const generation = this.bumpLoadGeneration(pluginId);
 
     try {
       const resolved = opts === undefined
@@ -416,6 +422,10 @@ export class PluginService {
 
       if (resolved.dev) {
         await this.deps.ensureDevSharedDeps();
+      }
+
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
       }
 
       await this.deps.clearPlugin({ pluginId, dev: current.isDev });
@@ -523,10 +533,13 @@ export class PluginService {
 
     // Cancel inflight
     this.inflightLoads.delete(pluginId);
-    this.bumpLoadGeneration(pluginId);
+    const generation = this.bumpLoadGeneration(pluginId);
 
     // Clear module cache
     await this.deps.clearPlugin({ pluginId, dev: current.isDev });
+    if (!this.isCurrentGeneration(pluginId, generation)) {
+      return;
+    }
 
     // Remove registrations
     this.removePluginRegistrations(pluginId);
@@ -707,13 +720,30 @@ export class PluginService {
 
   reset(): void {
     this.stopEventListeners();
+    const pluginIds = new Set([...this.state.keys(), ...this.inflightLoads.keys()]);
+    // Retire every operation before releasing registry entries. Keep generations
+    // monotonic so a new load cannot reuse an outstanding import's token.
+    for (const pluginId of pluginIds) {
+      this.bumpLoadGeneration(pluginId);
+    }
+
+    this.inflightLoads.clear();
+    for (const pluginId of pluginIds) {
+      const current = this.state.get(pluginId);
+      this.removePluginRegistrations(pluginId);
+      void this.deps.clearPlugin({ pluginId, dev: current?.isDev }).catch((err: unknown) => {
+        this.deps.log.error(`Failed to clear retired plugin "${pluginId}"`, {
+          plugin: pluginId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+
     this.state.clear();
     this.registrations.clear();
-    this.inflightLoads.clear();
     this.normalizedContributionsByPlugin.clear();
     this.definedExtensionPointIdsByPlugin.clear();
     this.pendingContributionsByExtensionPoint.clear();
-    this.loadGeneration.clear();
     this.legacyWarningEmitted.clear();
     this.quarantineManager.clearAll();
     this.deps.crashData.clearAll();
@@ -749,6 +779,10 @@ export class PluginService {
       }
     }
 
+    if (!toLoad.some(plugin => this.inflightLoads.get(plugin.id) === owner)) {
+      return;
+    }
+
     // Cancelled participants must not publish after another operation took over.
     let ownedCount = 0;
     for (const candidate of prepared) {
@@ -761,6 +795,10 @@ export class PluginService {
 
     // Pass 2a: Register all plugin-defined extension points first
     for (const p of prepared) {
+      if (this.inflightLoads.get(p.pluginId) !== owner) {
+        continue;
+      }
+
       this.registerExtensionPoints(p.pluginId, p.extensionPoints);
       this.definedExtensionPointIdsByPlugin.set(p.pluginId, p.extensionPoints.map((ep) => ep.id));
     }
@@ -769,6 +807,10 @@ export class PluginService {
     let readyCount = 0;
     let failedCount = 0;
     for (const p of prepared) {
+      if (this.inflightLoads.get(p.pluginId) !== owner) {
+        continue;
+      }
+
       try {
         this.applyContributions(p.pluginId, p.normalizedContributions);
         this.normalizedContributionsByPlugin.set(p.pluginId, p.normalizedContributions);
@@ -1023,6 +1065,10 @@ export class PluginService {
       const isDev = resolved.dev ?? false;
       if (isDev) {
         await this.deps.ensureDevSharedDeps();
+      }
+
+      if (!this.isCurrentGeneration(pluginId, generation)) {
+        return;
       }
 
       await this.deps.clearPlugin({ pluginId, dev: current.isDev });

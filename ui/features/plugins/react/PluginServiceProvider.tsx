@@ -30,18 +30,21 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
 
   // Read-only startup data — acyclic, does not use the service consumer hook
   const { plugins: installedPlugins, isLoading, error } = useInstalledPlugins();
+  const loadStarted = useRef(false);
+  const initialBatch = useRef<Set<string> | null>(null);
 
-  // Start/stop event listeners
+  // The provider owns registrations as well as event listeners. A Fast Refresh
+  // remount retains the document's extension registry, but creates a new service.
   useEffect(() => {
     service.startEventListeners();
     return () => {
-      service.stopEventListeners();
+      loadStarted.current = false;
+      initialBatch.current = null;
+      service.reset();
     };
   }, [service]);
 
   // Orchestrate initial load
-  const loadStarted = useRef(false);
-  const initialBatch = useRef<Set<string> | null>(null);
   useEffect(() => {
     if (isLoading || error !== null || loadStarted.current) {
       return;
@@ -58,13 +61,18 @@ export function PluginServiceProvider({ children }: PluginServiceProviderProps) 
         dev: p.dev,
         devPort: p.devPort,
       }));
-    initialBatch.current = new Set(descriptors.map((plugin) => plugin.id));
+    const batchIds = new Set(descriptors.map((plugin) => plugin.id));
+    initialBatch.current = batchIds;
 
     void service.loadAll(descriptors)
       .catch((err) => {
         console.error('[PluginServiceProvider] loadAll failed:', err);
       })
       .finally(() => {
+        if (initialBatch.current !== batchIds) {
+          return;
+        }
+
         initialBatch.current = null;
         service.markReady();
       });
