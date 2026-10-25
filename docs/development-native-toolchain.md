@@ -17,11 +17,13 @@ Standalone effective mod/sum files live under ignored `.local/hostmod`; managed 
 
 Bindings remain `task bindings SDK_SOURCE="$SDK_SOURCE"`. Tasks select the Wails CLI from the root Go pin rather than trusting an ambient `wails3`. Never run raw binding generation or build Vite-plugin shims before the runtime package.
 
-### Declared npm Call settlement patch
+## Declared npm Call settlement patch
 
 `pnpm-workspace.yaml` declares `patches/@wailsio__runtime@3.0.0-beta.34.patch` for the exact published npm package. The patch makes its Call response callbacks settle only their own still-registered resolver record. Cancellation removes that ownership while still sending the existing native CancelCall request; a later response cannot reject an already-canceled promise or touch a newly reused call ID. Ordinary errors and successful void results remain unchanged. The generic CancellablePromise late-rejection policy is not weakened.
 
 Native pnpm 12.14.0 generates and verifies the patch hash in `pnpm-lock.yaml`. Managed composition rebases and fingerprints the declared patch through its existing policy/source-hash path; never edit installed packages, caches or generated receipts. The post-install `node --test scripts/wails-call.test.mjs` regression imports the actual resolved package and uses strict isolated processes, not a Call clone or global rejection filter. Keep the patch until a genuinely corrected upstream release is selected and verified.
+
+Managed source fingerprints bind the raw patch bytes; native scalar-lock hashes use CRLF-to-LF-normalized patch bytes. Raw-byte changes still invalidate source ownership even when their normalized native hash is unchanged.
 
 This npm package owns application binding calls in development and production. The Go-embedded `/wails/runtime.js` used by separate MCP/dev surfaces is not modified by this patch and is not claimed fixed. Go/native Wails pinning, replacement refusal, native cancellation and cooperative cleanup remain stock. P04 still requires its integrated Wails cancellation/cleanup acceptance; this declared patch alone does not certify it.
 
