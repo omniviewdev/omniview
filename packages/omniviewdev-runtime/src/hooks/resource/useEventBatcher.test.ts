@@ -1,5 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
+import { WatchState } from '../../types/watch';
 import {
   applyBatch,
   useEventBatcher,
@@ -464,7 +465,7 @@ describe('useEventBatcher — mode transitions', () => {
     }
   }
 
-  it('SYNCING→SYNCED: pending sync timer flushes, then RAF used for new events', () => {
+  it('SYNCING→SYNCED: pending sync window finishes and later live batches remain bounded', () => {
     // Start in SYNCING.
     const { result, rerender } = renderHook(
       ({ state }: { state: any }) =>
@@ -482,14 +483,14 @@ describe('useEventBatcher — mode transitions', () => {
     act(() => { vi.advanceTimersByTime(500); });
     expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(1);
 
-    // New events use RAF.
+    // New live events retain the frame fast path and a bounded timer.
     act(() => { result.current(makePayload('pod-2', 'ADD')); });
 
-    // setTimeout should NOT cause a flush (mode changed).
+    // Withheld frames cannot prevent the already-delivered event from committing.
     act(() => { vi.advanceTimersByTime(500); });
-    expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(1);
+    expect(queryClient.getQueryState(queryKey)?.data).toMatchObject({ result: [{ metadata: { name: 'pod-1' } }, { metadata: { name: 'pod-2' } }] });
 
-    // RAF should cause flush.
+    // A losing frame must not duplicate the committed batch.
     act(() => { flushRAF(); });
     expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(2);
   });
@@ -682,5 +683,113 @@ describe('useEventBatcher — edge cases', () => {
     expect((queryClient.getQueryData(queryKey) as any).result).toHaveLength(1);
 
     vi.unstubAllGlobals();
+  });
+});
+
+describe('useEventBatcher — bounded live progress', () => {
+  const nativeQueryKey = ['workspace-probe', 'local', 'probe::v1::Task', [], 'list'];
+  const nativeResourceKey = (id: string, namespace: string) => ['workspace-probe', 'local', 'probe::v1::Task', namespace, id];
+  const initial = { id: 'task/opaque:%2F', name: 'Native local task', done: false };
+  const created = { id: 'subscription/opaque:%2F', name: 'Created through native watch', done: false };
+  const nativeADD: ResourceEvent = {
+    type: 'ADD',
+    payload: {
+      data: created,
+      key: 'probe::v1::Task',
+      connection: 'local',
+      id: created.id,
+      namespace: '',
+    },
+  };
+  let queryClient: QueryClient;
+  let frames: Map<number, FrameRequestCallback>;
+  let nextFrame: number;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    frames = new Map();
+    nextFrame = 0;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      const id = ++nextFrame;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id); });
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    queryClient.setQueryData(nativeQueryKey, { result: [initial], success: true, totalCount: 1 });
+  });
+
+  afterEach(() => {
+    queryClient.clear();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it.each([WatchState.WatchStateIdle, WatchState.WatchStateSynced])('commits a delivered native ADD within the bounded window when frames are withheld (state %s)', (state) => {
+    const { result } = renderHook(() =>
+      useEventBatcher(queryClient, nativeQueryKey, nativeResourceKey, 'id', state),
+    );
+    act(() => { result.current(nativeADD); });
+    act(() => { vi.advanceTimersByTime(499); });
+    expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial] });
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial, created] });
+    expect(queryClient.getQueryData(nativeResourceKey(created.id, ''))).toEqual({ result: created });
+  });
+
+  it('retains the normal next-frame fast path and cancels its timer', () => {
+    const { result } = renderHook(() =>
+      useEventBatcher(queryClient, nativeQueryKey, nativeResourceKey, 'id', WatchState.WatchStateSynced),
+    );
+    act(() => { result.current(nativeADD); });
+    const frame = frames.get(nextFrame)!;
+    act(() => { frame(16); });
+    const committed = queryClient.getQueryData(nativeQueryKey);
+    const updates = queryClient.getQueryState(nativeQueryKey)!.dataUpdateCount;
+    expect(committed).toMatchObject({ result: [initial, created] });
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(queryClient.getQueryData(nativeQueryKey)).toBe(committed);
+    expect(queryClient.getQueryState(nativeQueryKey)!.dataUpdateCount).toBe(updates);
+  });
+
+  it('does not apply a drained batch again if its losing frame callback arrives late', () => {
+    const { result } = renderHook(() =>
+      useEventBatcher(queryClient, nativeQueryKey, nativeResourceKey, 'id', WatchState.WatchStateIdle),
+    );
+    act(() => { result.current(nativeADD); });
+    const lateFrame = frames.get(nextFrame)!;
+    act(() => { vi.advanceTimersByTime(500); });
+    const committed = queryClient.getQueryData(nativeQueryKey);
+    const updates = queryClient.getQueryState(nativeQueryKey)!.dataUpdateCount;
+    expect(committed).toMatchObject({ result: [initial, created] });
+    act(() => { lateFrame(501); });
+    expect(queryClient.getQueryData(nativeQueryKey)).toBe(committed);
+    expect(queryClient.getQueryState(nativeQueryKey)!.dataUpdateCount).toBe(updates);
+  });
+
+  it('cancels both schedules on unmount without updating list or individual caches', () => {
+    const { result, unmount } = renderHook(() =>
+      useEventBatcher(queryClient, nativeQueryKey, nativeResourceKey, 'id', WatchState.WatchStateIdle),
+    );
+    act(() => { result.current(nativeADD); });
+    const original = queryClient.getQueryData(nativeQueryKey);
+    unmount();
+    act(() => {
+      vi.advanceTimersByTime(500);
+      for (const frame of frames.values()) frame(501);
+    });
+    expect(queryClient.getQueryData(nativeQueryKey)).toBe(original);
+    expect(queryClient.getQueryData(nativeResourceKey(created.id, ''))).toBeUndefined();
+  });
+
+  it('uses the existing configured window to bound a live batch', () => {
+    const { result } = renderHook(() =>
+      useEventBatcher(queryClient, nativeQueryKey, nativeResourceKey, 'id', WatchState.WatchStateSynced, { syncWindowMs: 200 }),
+    );
+    act(() => { result.current(nativeADD); });
+    act(() => { vi.advanceTimersByTime(199); });
+    expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial] });
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(queryClient.getQueryData(nativeQueryKey)).toMatchObject({ result: [initial, created] });
   });
 });
