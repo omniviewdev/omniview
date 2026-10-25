@@ -45,6 +45,8 @@ Native12 metadata/application lock streams retain an explicit initial `---` mark
 
 A workspace declaration owns its packages even when its lock is missing: an enclosing lock's leftover importer is not a fallback. Planning parses and fingerprints the same configuration bytes and rejects changes between repeated input reads. Before first native resolution, local manifest dependencies must resolve to canonical selected packages with matching names; an absent source lock does not permit an unmanaged external link.
 
+Declared patch files must stay inside their selected repository and match the reconciled source policy and fingerprint. Native pnpm12 scalar SHA-256 lock records retain that source authority; a lock-only patch cannot authorize a file. Path-bearing lock records are validated against the same policy before rebasing.
+
 Build approvals are permissions, not requirements: explicit `allowBuilds` booleans intersect with **deny-wins** across roots. A host approval cannot override a plugin denial. Standalone files remain unchanged, managed installs still prohibit all scripts, and other incompatible policy values still refuse composition.
 
 Locked registry metadata may contain informational prose with support URLs. An embedded URL in a deprecation notice is not a URL-valued resolution; actual URL values still reject userinfo, query/fragment data and unresolved repository-local references.
@@ -64,6 +66,8 @@ The Kubernetes standalone registry graph has a separate existing publication gat
 The owned native launcher clears inherited workspace-dir aliases and sets validated `PNPM_CONFIG_WORKSPACE_DIR` to the feature root. Actual package cwd/argv remain unchanged, including nested scripts; a nearer child YAML does not override managed context. Child policies are explicitly reconciled, not presumed inherited.
 
 The launcher enforces `--config.verify-deps-before-run=error`. [Native pnpm12 defaults](https://pnpm.io/settings/build#verifydepsbeforerun) to installing before `run`/`exec` when dependencies are stale, then warning and continuing if that install fails. Managed pre-run verification must instead reject the stale graph without another installer or lockfile rewrite. Dependency changes go through the explicit owned install and recursive audit; checks are not disabled.
+
+Run focused managed-workspace checks through installed Node executables. For Vitest, pass `--no-cache --configLoader runner` so verification leaves journal-owned dependency trees unchanged. Dependency installs and ownership-receipt updates remain canonical workspace operations.
 
 Diagnostics resolve import-condition exports from each consumer's actual package location, including the runtime package, UI packages, and every selected plugin. Runtime `api`, `models` and `runtime` subpaths are checked independently. Missing exports, missing build outputs and wrong directories remain explicit problems.
 
