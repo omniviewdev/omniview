@@ -281,6 +281,11 @@ Actions restores native Go module/compiler and pnpm content-store payloads using
 the participating host, SDK, UI and plugin dependency inputs. UUID-owned host
 compiler caches remain isolated. Installed trees, profiles, source outputs and
 ownership receipts are not restored from these caches.
+Go payloads use an exact dependency key with a fallback confined to the same
+Linux image, architecture and resolved Go version. Native Go validates reusable
+objects when dependencies change. Successfully restored/produced Go payloads
+are saved independently of browser assertions; an assertion failure must not
+discard dependency/compiler work. Cancellation does not publish a new cache.
 
 Linux development headers remain required by the pinned Wails transitive cgo
 dependencies even for server builds. CI caches only their downloaded `.deb`

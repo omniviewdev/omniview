@@ -158,19 +158,26 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-
 
       - name: Setup Go
+        id: go
         if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: true
-          # setup-go v5 discovers both paths using native go env. Include the
-          # explicit-cache recipe to separate these payloads from legacy paths.
-          cache-dependency-path: |
-            host/go.sum
-            plugin-sdk/go.sum
-            host/plugins/kubernetes/go.sum
-            host/e2e/fixtures/workspace-probe/go.sum
-            host/e2e/scripts/tool-cache.mjs
+          cache: false
+
+      - name: Restore native Go module and compiler payloads
+        id: go-cache
+        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.GOMODCACHE }}
+            ${{ env.GOCACHE }}
+          # Match setup-go's native Ubuntu x64 key, with a same-toolchain
+          # fallback: changed dependencies must not discard unrelated objects.
+          key: setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('host/go.sum', 'plugin-sdk/go.sum', 'host/plugins/kubernetes/go.sum', 'host/e2e/fixtures/workspace-probe/go.sum', 'host/e2e/scripts/tool-cache.mjs') }}
+          restore-keys: |
+            setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-
 
       - name: Install Task
         if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
@@ -190,6 +197,15 @@ jobs:
           UI_SOURCE: ${{ github.workspace }}/ui
           KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
         run: node e2e/scripts/run.mjs ${{ steps.selection.outputs.kind == 'selected' && '--changed' || '--full' }} --base '${{ github.event.pull_request.base.sha }}'
+
+      - name: Save native Go payloads independently of application assertions
+        if: ${{ !cancelled() && steps.go-cache.outcome == 'success' && steps.go-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.GOMODCACHE }}
+            ${{ env.GOCACHE }}
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
       - name: Upload only allowed browser reports
         if: always()
