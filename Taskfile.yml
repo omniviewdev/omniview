@@ -29,8 +29,9 @@ vars:
   # Plain command text, evaluated only by host Go/Wails tasks (not UI/plugin tasks).
   # Reset cross-compilation variables while running this native-free host helper.
   HOST_BOOTSTRAP: 'GOWORK=off GOFLAGS= GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/hostmod/main.go" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}} {{if .HOST_MOD_OUTPUT_DIRECTORY}}--output-directory={{.HOST_MOD_OUTPUT_DIRECTORY | shellQuote}}{{end}}'
-  # Resolve the CLI from the root stock pin, never an ambient wails3 executable.
-  WAILS_CLI: 'GOWORK=off GOFLAGS= GOOS={{OS}} GOARCH={{ARCH}} go run github.com/wailsapp/wails/v3/cmd/wails3@$(GOWORK=off GOFLAGS= go list -modfile={{printf "%s/go.mod" .ROOT_DIR | shellQuote}} -m -f {{print "{{.Version}}" | shellQuote}} github.com/wailsapp/wails/v3)'
+  # An explicit measured tool capability is authenticated by the host adapter.
+  # Without one, preserve the stock root-pinned go-run developer path verbatim.
+  WAILS_CLI: '{{if hasKey . "OMNIVIEW_WAILS_TOOL_CAPABILITY"}}node {{printf "%s/scripts/wails-tool.mjs" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} --capability {{.OMNIVIEW_WAILS_TOOL_CAPABILITY | shellQuote}} --{{else}}GOWORK=off GOFLAGS= GOOS={{OS}} GOARCH={{ARCH}} go run github.com/wailsapp/wails/v3/cmd/wails3@$(GOWORK=off GOFLAGS= go list -modfile={{printf "%s/go.mod" .ROOT_DIR | shellQuote}} -m -f {{print "{{.Version}}" | shellQuote}} github.com/wailsapp/wails/v3){{end}}'
   # CLI bootstrap and execution must not inherit the standalone source-local cache.
   # Resolve explicit or manifest-linked SDK source before compiling the CLI helper.
   CLI_ENVIRONMENT: 'GOWORK=off GOFLAGS= GO111MODULE=on GOCACHE={{if .GO_BUILD_CACHE_DIRECTORY}}{{.GO_BUILD_CACHE_DIRECTORY | shellQuote}}{{else}}{{env "GOCACHE" | shellQuote}}{{end}} GOTMPDIR='
@@ -393,18 +394,15 @@ tasks:
   # ──────────────────────────────────────────────
 
   e2e:
-    dir: e2e
+    summary: "Canonical full application E2E, including bootstrap, probes and both frontend modes; --changed --base REF opts into selection"
     cmds:
-      - pnpm install
-      - pnpm exec playwright install chromium
-      - pnpm exec playwright test
+      - node e2e/scripts/run.mjs {{.CLI_ARGS}}
 
   e2e-ui:
-    dir: e2e
+    summary: "Canonical application E2E with Playwright UI"
     cmds:
-      - pnpm exec playwright test --ui
+      - node e2e/scripts/run.mjs --ui {{.CLI_ARGS}}
 
   e2e-report:
-    dir: e2e
     cmds:
-      - pnpm exec playwright show-report
+      - node e2e/scripts/run.mjs --report

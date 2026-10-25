@@ -12,6 +12,9 @@ import { managedViteFeedback } from './packages/omniviewdev-vite-plugin/src/feed
 // if in ESM context
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const reactCompilerSourceRoot = __dirname.split(path.sep)
+  .map(segment => segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  .join(String.raw`[/\\]`);
 
 const selectedRoots = workspaceViteRoots(process.env.OMNIVIEW_VITE_ALLOWED_ROOTS);
 const ownedVitePort = workspaceVitePort(process.env.WAILS_VITE_PORT);
@@ -60,6 +63,15 @@ export default defineConfig({
     exclude: ['@omniviewdev/base-ui', '@omniviewdev/ai-ui', '@omniviewdev/editors',
       '@omniviewdev/providers', '@omniviewdev/runtime', '@omniviewdev/runtime/api',
       '@omniviewdev/runtime/models', '@omniviewdev/runtime/runtime'],
+    // Exclusion keeps linked code live but also stops transitive scanning.
+    // Scan its real entries so all third-party imports are discovered together.
+    entries: [
+      'index.html',
+      ...['base-ui', 'ai-ui', 'editors', 'providers'].map(name =>
+        fileURLToPath(import.meta.resolve(`@omniviewdev/${name}`))),
+      ...['index', 'api', 'models', 'runtime'].map(name =>
+        path.resolve(__dirname, `packages/omniviewdev-runtime/src/${name}.ts`)),
+    ],
     // Linked UI stays live; its nested CommonJS shim still needs ESM interop.
     include: [
       '@omniviewdev/base-ui > @base-ui/react > @base-ui/utils > use-sync-external-store/shim',
@@ -81,7 +93,11 @@ export default defineConfig({
       },
     },
     react(),
-    babel({ presets: [reactCompilerPreset({ target: '19' })] }),
+    babel({
+      // Linked package dist files are already compiled; keep app and benchmark sources live.
+      include: new RegExp(String.raw`^${reactCompilerSourceRoot}[/\\](?:ui[/\\]|bench[/\\]|packages[/\\][^/\\]+[/\\]src[/\\]|plugins[/\\][^/\\]+[/\\]ui[/\\]src[/\\]).*\.(?:[jt]sx?|[cm][jt]s)(?:$|\?)`),
+      presets: [reactCompilerPreset({ target: '19' })],
+    }),
     wails('./packages/omniviewdev-runtime/src/bindings'),
     {
       name: 'optional-local-react-devtools',

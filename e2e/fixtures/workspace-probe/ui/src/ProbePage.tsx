@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Button } from '@omniviewdev/base-ui';
+import { formatGroup } from '@omniviewdev/runtime';
 import './probe.css';
 
 export function ProbePage() {
   const [clicks, setClicks] = useState(0);
+  const [runtimeValue, setRuntimeValue] = useState('');
 
   return (
     <section className="workspace-probe" aria-labelledby="workspace-probe-title">
@@ -19,6 +21,10 @@ export function ProbePage() {
       <output className="workspace-probe-clicks" aria-live="polite" aria-label="Probe local clicks">
         {clicks}
       </output>
+      <Button onClick={() => setRuntimeValue(formatGroup('shared runtime ready'))}>
+        Read shared runtime
+      </Button>
+      <output role="status" aria-label="Probe runtime value">{runtimeValue}</output>
     </section>
   );
 }
