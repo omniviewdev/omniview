@@ -9,6 +9,7 @@ import { ExtensionProvider, PluginWindow } from '@omniviewdev/runtime';
 import { Category, Setting, SettingType } from '@omniviewdev/runtime/models';
 import type * as RuntimeAPI from '@omniviewdev/runtime/api';
 import type * as RuntimeCore from '@omniviewdev/runtime';
+import type * as RuntimeWindow from '@omniviewdev/runtime/runtime';
 import { afterAll, afterEach, expect, it, vi } from 'vitest';
 
 import { InstanceProvider } from '@/features/instance/InstanceContext';
@@ -38,6 +39,9 @@ const fixture = vi.hoisted(() => {
 const native = vi.hoisted(() => ({
   listPlugins: vi.fn(async (): Promise<string[]> => []),
   loadConnections: vi.fn(async (_pluginId: string): Promise<never[]> => []),
+  isMaximised: vi.fn(async () => false),
+  maximise: vi.fn(async () => undefined),
+  unMaximise: vi.fn(async () => undefined),
 }));
 
 vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
@@ -68,6 +72,19 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => {
   };
 });
 
+vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => {
+  const original = await importOriginal<typeof RuntimeWindow>();
+  return {
+    ...original,
+    Window: {
+      ...original.Window,
+      IsMaximised: native.isMaximised,
+      Maximise: native.maximise,
+      UnMaximise: native.unMaximise,
+    },
+  };
+});
+
 vi.mock('@omniviewdev/runtime', async (importOriginal) => {
   const original = await importOriginal<typeof RuntimeCore>();
   return { ...original, useSnackbar: () => ({ showSnackbar: vi.fn() }) };
@@ -79,6 +96,9 @@ afterEach(() => {
   cleanup();
   native.listPlugins.mockReset().mockResolvedValue([]);
   native.loadConnections.mockReset().mockResolvedValue([]);
+  native.isMaximised.mockClear();
+  native.maximise.mockClear();
+  native.unMaximise.mockClear();
 });
 
 function HeaderProviders({ children, service: suppliedService }: { children: ReactNode; service?: PluginService }) {
@@ -190,6 +210,25 @@ it.each(['ctrlKey', 'metaKey'] as const)('opens one real header session with %s+
   const listId = input.getAttribute('aria-controls');
   expect(listId).toBeTruthy();
   expect(document.getElementById(listId!)).toHaveAttribute('role', 'listbox');
+});
+
+it('keeps palette double-clicks outside native title-bar maximize behavior', async () => {
+  renderSearchHeader();
+  fireEvent.keyDown(document, { key: 'k', ctrlKey: true });
+  const input = await screen.findByRole('combobox', { name: /search/i });
+
+  await act(async () => {
+    fireEvent.click(input, { detail: 2 });
+  });
+  expect(native.isMaximised).not.toHaveBeenCalled();
+  expect(native.maximise).not.toHaveBeenCalled();
+  expect(native.unMaximise).not.toHaveBeenCalled();
+
+  fireEvent.keyDown(input, { key: 'Escape' });
+  await act(async () => {
+    fireEvent.click(screen.getByTestId('app-header'), { detail: 2 });
+  });
+  expect(native.maximise).toHaveBeenCalledOnce();
 });
 
 it('ignores both IME composition and legacy229 shortcut events without preventing browser default', async () => {

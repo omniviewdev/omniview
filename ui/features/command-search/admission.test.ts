@@ -36,16 +36,21 @@ describe('global search v1 admission', () => {
     const admitted = admitSearchEntry({ ...navigation(), run, principal: 'core', pluginId: 'core' });
     expect(admitted).toEqual(navigation());
     expect(run).not.toHaveBeenCalled();
-    expect(admitSearchEntry({ schemaVersion: 1, kind: 'setting', target: { section: 'extensions' } }))
-      .toEqual({ schemaVersion: 1, kind: 'setting', target: { section: 'extensions' } });
+    expect(admitSearchEntry({ schemaVersion: 1, kind: 'setting', target: { section: 'extensions' } })).toEqual({
+      schemaVersion: 1,
+      kind: 'setting',
+      target: { section: 'extensions' },
+    });
   });
 
   it.each(['id', 'plugin', 'label'] as const)('rejects empty/oversized outer %s before reading value', (field) => {
     for (const text of ['', 'x'.repeat(257)]) {
       const entry = { ...contribution(), [field]: text };
-      Object.defineProperty(entry, 'value', { get: () => {
-        throw new Error('value must not be scanned'); 
-      } });
+      Object.defineProperty(entry, 'value', {
+        get: () => {
+          throw new Error('value must not be scanned');
+        },
+      });
       expect(admitSearchContribution(entry)).toBeUndefined();
     }
   });
@@ -57,8 +62,9 @@ describe('global search v1 admission', () => {
       keywords: Array.from({ length: 16 }, () => 'k'.repeat(128)),
       availability: { state: 'disabled', reason: 'r'.repeat(1024) },
     };
-    expect(admitSearchContribution({ ...contribution(), id: 'i'.repeat(256), label: '😀'.repeat(128), value }))
-      .toBeDefined();
+    expect(
+      admitSearchContribution({ ...contribution(), id: 'i'.repeat(256), label: '😀'.repeat(128), value }),
+    ).toBeDefined();
     for (const invalid of [
       { ...value, description: 'd'.repeat(1025) },
       { ...value, keywords: Array(17).fill('k') },
@@ -71,18 +77,22 @@ describe('global search v1 admission', () => {
 
   it('does not inspect elements of an oversized keyword array', () => {
     const keywords = Array(17);
-    Object.defineProperty(keywords, 0, { get: () => {
-      throw new Error('oversized array must not be scanned'); 
-    } });
+    Object.defineProperty(keywords, 0, {
+      get: () => {
+        throw new Error('oversized array must not be scanned');
+      },
+    });
     expect(admitSearchEntry({ ...navigation(), keywords })).toBeUndefined();
   });
 
   it('rejects nonfunction providers and retains a valid provider function without invoking it', () => {
-    expect(admitSearchContribution({ ...contribution(), value: { schemaVersion: 1, kind: 'provider', search: 'run' } }))
-      .toBeUndefined();
+    expect(
+      admitSearchContribution({ ...contribution(), value: { schemaVersion: 1, kind: 'provider', search: 'run' } }),
+    ).toBeUndefined();
     const search = vi.fn();
-    expect(admitSearchContribution({ ...contribution(), value: { schemaVersion: 1, kind: 'provider', search } }))
-      .toEqual({ schemaVersion: 1, kind: 'provider', search });
+    expect(
+      admitSearchContribution({ ...contribution(), value: { schemaVersion: 1, kind: 'provider', search } }),
+    ).toEqual({ schemaVersion: 1, kind: 'provider', search });
     expect(search).not.toHaveBeenCalled();
   });
 });
@@ -90,9 +100,11 @@ describe('global search v1 admission', () => {
 describe('bounded provider response admission', () => {
   it('inspects only the first20 items and marks a surplus response truncated even if it claimed complete', () => {
     const items = Array.from({ length: 20 }, (_, index) => item(String(index)));
-    Object.defineProperty(items, 20, { get: () => {
-      throw new Error('surplus must not be inspected'); 
-    } });
+    Object.defineProperty(items, 20, {
+      get: () => {
+        throw new Error('surplus must not be inspected');
+      },
+    });
     items.length = 100_000;
     const result = admitProviderResponse({ items, completion: 'complete' });
     expect(result?.items).toHaveLength(20);
@@ -100,10 +112,11 @@ describe('bounded provider response admission', () => {
   });
 
   it('retains provider order, explicit truncation and duplicate checking only within the accepted prefix', () => {
-    expect(admitProviderResponse({ items: [item('z'), item('a')], completion: 'truncated' }))
-      .toEqual({ items: [item('z'), item('a')], completion: 'truncated' });
-    expect(admitProviderResponse({ items: [item('same'), item('same')], completion: 'complete' }))
-      .toBeUndefined();
+    expect(admitProviderResponse({ items: [item('z'), item('a')], completion: 'truncated' })).toEqual({
+      items: [item('z'), item('a')],
+      completion: 'truncated',
+    });
+    expect(admitProviderResponse({ items: [item('same'), item('same')], completion: 'complete' })).toBeUndefined();
     const items = Array.from({ length: 20 }, (_, index) => item(String(index)));
     items.push(item('0'));
     expect(admitProviderResponse({ items, completion: 'complete' })?.items).toHaveLength(20);
@@ -136,20 +149,32 @@ describe('query and plugin-relative navigation bounds', () => {
     expect(allowed).toBe(false);
   });
 
-  it.each(['https://outside.test/', '//outside.test/', '/../secret', '/%2e%2e/secret', '/a/../../secret', '/\\outside', '/%2f%2foutside', '/%3f/../../../outside', '/%23/../../../outside', '%2fcapabilities'])('rejects unsafe plugin-relative path %s', (path) => {
+  it.each([
+    'https://outside.test/',
+    '//outside.test/',
+    '/../secret',
+    '/%2e%2e/secret',
+    '/a/../../secret',
+    '/\\outside',
+    '/%2f%2foutside',
+    '/%3f/../../../outside',
+    '/%23/../../../outside',
+    '%2fcapabilities',
+  ])('rejects unsafe plugin-relative path %s', (path) => {
     expect(getNavigationHref({ kind: 'plugin', pluginId: 'probe', path })).toBeUndefined();
   });
 
   it('preserves a safe opaque encoded route segment instead of decoding it into another destination', () => {
-    expect(getNavigationHref({ kind: 'plugin', pluginId: 'probe', path: '/tasks/opaque:%252F' }))
-      .toBe('/_plugin/probe/tasks/opaque:%252F');
+    expect(getNavigationHref({ kind: 'plugin', pluginId: 'probe', path: '/tasks/opaque:%252F' })).toBe(
+      '/_plugin/probe/tasks/opaque:%252F',
+    );
   });
 
   it('checks the2048-unit path ceiling before decoding and never truncates a destination', () => {
-    expect(getNavigationHref({ kind: 'plugin', pluginId: 'probe', path: '/capabilities' }))
-      .toBe('/_plugin/probe/capabilities');
-    expect(getNavigationHref({ kind: 'plugin', pluginId: 'probe', path: `/${'x'.repeat(2047)}` }))
-      .toBeDefined();
+    expect(getNavigationHref({ kind: 'plugin', pluginId: 'probe', path: '/capabilities' })).toBe(
+      '/_plugin/probe/capabilities',
+    );
+    expect(getNavigationHref({ kind: 'plugin', pluginId: 'probe', path: `/${'x'.repeat(2047)}` })).toBeDefined();
     const decode = vi.spyOn(globalThis, 'decodeURIComponent').mockImplementation(() => {
       throw new Error('oversized path must not be decoded');
     });

@@ -22,7 +22,10 @@ export type CoreSearchCatalogue = {
   dispose: () => void;
 };
 
-export function registerCoreSearchCatalogue(registry: ExtensionPointRegistryContract, input: CatalogueInput): CoreSearchCatalogue {
+export function registerCoreSearchCatalogue(
+  registry: ExtensionPointRegistryContract,
+  input: CatalogueInput,
+): CoreSearchCatalogue {
   const store = registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID);
   if (!store) {
     throw new Error('Global search extension point must be registered before its catalogue.');
@@ -36,7 +39,8 @@ export function registerCoreSearchCatalogue(registry: ExtensionPointRegistryCont
   function register(label: string, value: SearchEntryV1) {
     const registration = { id: `core/global-search/catalogue/${owned.size}`, plugin: 'core', label, value };
     if (!admitSearchContribution(registration)) {
-      unavailable = true; return; 
+      unavailable = true;
+      return;
     }
 
     store!.register(registration);
@@ -53,7 +57,8 @@ export function registerCoreSearchCatalogue(registry: ExtensionPointRegistryCont
     }
 
     if (consumed++ >= 1000) {
-      truncated = true; break; 
+      truncated = true;
+      break;
     }
 
     const category = input.settings[key];
@@ -62,17 +67,24 @@ export function registerCoreSearchCatalogue(registry: ExtensionPointRegistryCont
     }
 
     if (typeof category.id !== 'string' || !category.id || category.id.length > 256) {
-      unavailable = true; continue; 
+      unavailable = true;
+      continue;
     }
 
-    register(category.label, { schemaVersion: 1, kind: 'setting', description: category.description, target: { section: 'core', categoryId: category.id } });
+    register(category.label, {
+      schemaVersion: 1,
+      kind: 'setting',
+      description: category.description,
+      target: { section: 'core', categoryId: category.id },
+    });
     for (const settingKey in category.settings) {
       if (!Object.hasOwn(category.settings, settingKey)) {
         continue;
       }
 
       if (consumed++ >= 1000) {
-        truncated = true; break catalogue; 
+        truncated = true;
+        break catalogue;
       }
 
       const setting = category.settings[settingKey];
@@ -81,7 +93,8 @@ export function registerCoreSearchCatalogue(registry: ExtensionPointRegistryCont
       }
 
       if (!settingKey || category.id.length + 1 + settingKey.length > 256) {
-        unavailable = true; continue; 
+        unavailable = true;
+        continue;
       }
 
       const fullId = `${category.id}.${settingKey}`;
@@ -100,28 +113,38 @@ export function registerCoreSearchCatalogue(registry: ExtensionPointRegistryCont
 
       // Deliberately read only public descriptors, never values/defaults/options.
       register(setting.label, {
-        schemaVersion: 1, kind: 'setting', description: setting.description,
-        keywords, target: { section: 'core', categoryId: category.id, settingId: fullId },
+        schemaVersion: 1,
+        kind: 'setting',
+        description: setting.description,
+        keywords,
+        target: { section: 'core', categoryId: category.id, settingId: fullId },
       });
     }
   }
 
   for (const plugin of input.plugins) {
     if (consumed++ >= 1000) {
-      truncated = true; break; 
+      truncated = true;
+      break;
     }
 
     if (!plugin.ready) {
       continue;
     }
 
-    if (plugin.id.length === 0 || plugin.id.length > 256
-      || plugin.label.length > 256 - 'Reload '.length - ' connections'.length) {
-      unavailable = true; continue; 
+    if (
+      plugin.id.length === 0 ||
+      plugin.id.length > 256 ||
+      plugin.label.length > 256 - 'Reload '.length - ' connections'.length
+    ) {
+      unavailable = true;
+      continue;
     }
 
     register(`Reload ${plugin.label} connections`, {
-      schemaVersion: 1, kind: 'command', command: { kind: 'reload-connections', pluginId: plugin.id },
+      schemaVersion: 1,
+      kind: 'command',
+      command: { kind: 'reload-connections', pluginId: plugin.id },
       description: 'Reload connections from this plugin’s native provider.',
     });
   }

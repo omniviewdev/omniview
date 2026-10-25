@@ -13,7 +13,8 @@ import { WindowContext } from '@/contexts/WindowContext';
 import { toggleMaximiseOnDoubleClick } from './toggleMaximise';
 import styles from './Header.module.css';
 import InstanceIndicator from './InstanceIndicator';
-import { useGlobalCommandSearch } from '@/features/command-search/GlobalCommandSearch';
+import { GlobalCommandSearch } from '@/features/command-search/GlobalCommandSearch';
+import { useGlobalCommandSearch } from '@/features/command-search/useGlobalCommandSearch';
 
 /**
  * Primary header component for the core main layout
@@ -25,26 +26,35 @@ const CoreLayoutHeader: React.FC = () => {
 
   // Compensate for the window controls on MacOS
   const shouldIndent = platform === 'macos' && !isFullscreen;
-  const style: React.CSSProperties & Record<`--${string}`, string> = { '--CoreLayoutHeader-inset': shouldIndent ? '68px' : '0px' };
+  const style: React.CSSProperties & Record<`--${string}`, string> = {
+    '--CoreLayoutHeader-inset': shouldIndent ? '68px' : '0px',
+  };
 
   return (
-    <AppShell.Header
-      data-testid='app-header'
-      className={`CoreLayoutHeader ${styles.Header}`}
-      style={style}
-      onClick={toggleMaximiseOnDoubleClick}
-    >
-      <InstanceIndicator />
-      {areas?.left.visible && <HeaderItemAreaComponent area={areas.left} onOpenSearch={search.open} />}
-      {areas?.center.visible && <HeaderItemAreaComponent area={areas.center} onOpenSearch={search.open} />}
-      {areas?.right.visible && <HeaderItemAreaComponent area={areas.right} onOpenSearch={search.open} />}
-      {search.palette}
-    </AppShell.Header>
+    <>
+      <AppShell.Header
+        data-testid='app-header'
+        className={`CoreLayoutHeader ${styles.Header}`}
+        style={style}
+        onClick={toggleMaximiseOnDoubleClick}
+      >
+        <InstanceIndicator />
+        {areas?.left.visible && <HeaderItemAreaComponent area={areas.left} onOpenSearch={search.open} />}
+        {areas?.center.visible && <HeaderItemAreaComponent area={areas.center} onOpenSearch={search.open} />}
+        {areas?.right.visible && <HeaderItemAreaComponent area={areas.right} onOpenSearch={search.open} />}
+      </AppShell.Header>
+      <GlobalCommandSearch {...search.paletteProps} />
+    </>
   );
 };
 
-const HeaderItemAreaComponent = ({ area, onOpenSearch }: { area: HeaderArea; onOpenSearch: () => void }): React.ReactElement => {
-
+const HeaderItemAreaComponent = ({
+  area,
+  onOpenSearch,
+}: {
+  area: HeaderArea;
+  onOpenSearch: () => void;
+}): React.ReactElement => {
   switch (area.type) {
     case 'items':
       return <HeaderItemsArea items={area.items as HeaderAreaItemListType[]} />;

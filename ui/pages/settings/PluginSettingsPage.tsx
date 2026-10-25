@@ -4,7 +4,7 @@ import { Avatar, Button, Text } from '@omniviewdev/base-ui';
 
 // Types
 import SettingsEntries from './SettingsEntries';
-import { Section } from '.';
+import { Section } from './settingsContext';
 import styles from './SettingsPage.module.css';
 import { usePluginSettings } from '@/hooks/settings/usePluginSettings';
 import { usePlugin } from '@/hooks/plugin/usePluginManager';

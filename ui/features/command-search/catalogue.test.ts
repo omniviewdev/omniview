@@ -13,11 +13,18 @@ function registry() {
 describe('core global-search catalogue ownership and public metadata', () => {
   it('registers typed settings and ready-plugin closed commands, never reads secret setting values/defaults', () => {
     const instance = registry();
-    const theme = new Setting({ id: 'theme', label: 'Theme', description: 'Application colors', type: SettingType.Select });
+    const theme = new Setting({
+      id: 'theme',
+      label: 'Theme',
+      description: 'Application colors',
+      type: SettingType.Select,
+    });
     for (const field of ['value', 'default']) {
-      Object.defineProperty(theme, field, { get: () => {
-        throw new Error('protected value must not be indexed'); 
-      } });
+      Object.defineProperty(theme, field, {
+        get: () => {
+          throw new Error('protected value must not be indexed');
+        },
+      });
     }
 
     const registration = registerCoreSearchCatalogue(instance, {
@@ -28,15 +35,27 @@ describe('core global-search catalogue ownership and public metadata', () => {
       ],
     });
     const entries = instance.getExtensionPoint('omniview/global-search')!.listAll();
-    expect(entries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ plugin: 'core', label: 'Theme', value: expect.objectContaining({
-        kind: 'setting', target: { section: 'core', categoryId: 'appearance', settingId: 'appearance.theme' },
-        keywords: expect.arrayContaining(['appearance.theme']),
-      }) }),
-      expect.objectContaining({ plugin: 'core', label: 'Reload Private native tasks connections', value: expect.objectContaining({
-        kind: 'command', command: { kind: 'reload-connections', pluginId: 'probe' },
-      }) }),
-    ]));
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          plugin: 'core',
+          label: 'Theme',
+          value: expect.objectContaining({
+            kind: 'setting',
+            target: { section: 'core', categoryId: 'appearance', settingId: 'appearance.theme' },
+            keywords: expect.arrayContaining(['appearance.theme']),
+          }),
+        }),
+        expect.objectContaining({
+          plugin: 'core',
+          label: 'Reload Private native tasks connections',
+          value: expect.objectContaining({
+            kind: 'command',
+            command: { kind: 'reload-connections', pluginId: 'probe' },
+          }),
+        }),
+      ]),
+    );
     expect(entries.some((entry) => entry.label.includes('Loading plugin'))).toBe(false);
     expect(entries.every((entry) => entry.id.startsWith('core/global-search/'))).toBe(true);
     registration.dispose();
@@ -45,9 +64,16 @@ describe('core global-search catalogue ownership and public metadata', () => {
   it('unregisters only its exact owned core contributions', () => {
     const instance = registry();
     const store = instance.getExtensionPoint('omniview/global-search')!;
-    store.register({ id: 'core/other-feature', plugin: 'core', label: 'Other feature', value: {
-      schemaVersion: 1, kind: 'navigation', target: { kind: 'core', path: '/' },
-    } });
+    store.register({
+      id: 'core/other-feature',
+      plugin: 'core',
+      label: 'Other feature',
+      value: {
+        schemaVersion: 1,
+        kind: 'navigation',
+        target: { kind: 'core', path: '/' },
+      },
+    });
     const registration = registerCoreSearchCatalogue(instance, { settings: {}, plugins: [] });
     expect(store.listAll().length).toBeGreaterThan(1);
     registration.dispose();
@@ -61,29 +87,46 @@ describe('core global-search catalogue ownership and public metadata', () => {
       settings[`s${index}`] = new Setting({ id: `s${index}`, label: `Setting ${index}`, type: SettingType.Text });
     }
 
-    Object.defineProperty(settings.s1000, 'label', { get: () => {
-      throw new Error('surplus metadata must not be scanned'); 
-    } });
+    Object.defineProperty(settings.s1000, 'label', {
+      get: () => {
+        throw new Error('surplus metadata must not be scanned');
+      },
+    });
     const registration = registerCoreSearchCatalogue(instance, {
-      settings: { general: new Category({ id: 'general', label: 'General', settings }) }, plugins: [],
+      settings: { general: new Category({ id: 'general', label: 'General', settings }) },
+      plugins: [],
     });
     expect(registration.truncated).toBe(true);
-    expect(instance.getExtensionPoint('omniview/global-search')!.listAll().some((entry) => entry.label === 'Setting 1000')).toBe(false);
+    expect(
+      instance
+        .getExtensionPoint('omniview/global-search')!
+        .listAll()
+        .some((entry) => entry.label === 'Setting 1000'),
+    ).toBe(false);
     registration.dispose();
   });
 
   it('rejects oversized generated IDs/command labels before constructing or reading unrelated metadata', () => {
     const instance = registry();
     const setting = new Setting({ id: 'oversized', label: 'Not indexed', type: SettingType.Text });
-    Object.defineProperty(setting, 'label', { get: () => {
-      throw new Error('oversized ID metadata must not be scanned'); 
-    } });
+    Object.defineProperty(setting, 'label', {
+      get: () => {
+        throw new Error('oversized ID metadata must not be scanned');
+      },
+    });
     const registration = registerCoreSearchCatalogue(instance, {
-      settings: { general: new Category({ id: 'general', label: 'General', settings: { ['x'.repeat(256)]: setting } }) },
+      settings: {
+        general: new Category({ id: 'general', label: 'General', settings: { ['x'.repeat(256)]: setting } }),
+      },
       plugins: [{ id: 'probe', label: 'x'.repeat(238), ready: true }],
     });
     expect(registration.unavailable).toBe(true);
-    expect(instance.getExtensionPoint('omniview/global-search')!.listAll().some((entry) => entry.label.startsWith('Reload '))).toBe(false);
+    expect(
+      instance
+        .getExtensionPoint('omniview/global-search')!
+        .listAll()
+        .some((entry) => entry.label.startsWith('Reload ')),
+    ).toBe(false);
     registration.dispose();
   });
 });

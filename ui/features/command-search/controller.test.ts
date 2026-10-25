@@ -36,7 +36,18 @@ function setup() {
     register(id, { schemaVersion: 1, kind: 'provider', search });
   };
 
-  return { registry, store, register, provider, ready, routes, controller, listResourcePlugins, loadConnections, navigate };
+  return {
+    registry,
+    store,
+    register,
+    provider,
+    ready,
+    routes,
+    controller,
+    listResourcePlugins,
+    loadConnections,
+    navigate,
+  };
 }
 
 type ProviderResponse = {
@@ -76,7 +87,10 @@ afterEach(() => {
 
 describe('actual registry and async epochs', () => {
   it('keeps external alias results without local matching/reranking and preserves source order', async () => {
-    h.provider('probe/z-first', async () => ({ items: [item('z', 'Zulu'), item('a', 'Alpha')], completion: 'complete' }));
+    h.provider('probe/z-first', async () => ({
+      items: [item('z', 'Zulu'), item('a', 'Alpha')],
+      completion: 'complete',
+    }));
     h.provider('probe/a-second', async () => response('alias', 'Native tasks'));
     h.controller.open();
     h.controller.setQuery('external-alias-that-is-not-a-label');
@@ -85,51 +99,59 @@ describe('actual registry and async epochs', () => {
     expect(new Set(h.controller.getSnapshot().rows.map((row) => row.key)).size).toBe(3);
   });
 
-  it.each(['resolve', 'reject'] as const)('aborts older queries and refuses late %s even if a provider ignores its signal', async (settle) => {
-    const old = createDeferred<ProviderResponse>();
-    const requests: ProviderRequest[] = [];
-    h.provider('probe/slow', async (request) => {
-      requests.push(request);
-      return request.query === 'old' ? old.promise : Promise.resolve(response('new', 'Current'));
-    });
-    h.controller.open();
-    h.controller.setQuery('old');
-    await flush();
-    h.controller.setQuery('new');
-    expect(requests.find((request) => request.query === 'old')?.signal.aborted).toBe(true);
-    await flush();
-    if (settle === 'resolve') {
-      old.resolve(response('old', 'Retired'));
-    } else {
-      old.reject(new Error('private stale diagnostic'));
-    }
+  it.each(['resolve', 'reject'] as const)(
+    'aborts older queries and refuses late %s even if a provider ignores its signal',
+    async (settle) => {
+      const old = createDeferred<ProviderResponse>();
+      const requests: ProviderRequest[] = [];
+      h.provider('probe/slow', async (request) => {
+        requests.push(request);
+        return request.query === 'old' ? old.promise : Promise.resolve(response('new', 'Current'));
+      });
+      h.controller.open();
+      h.controller.setQuery('old');
+      await flush();
+      h.controller.setQuery('new');
+      expect(requests.find((request) => request.query === 'old')?.signal.aborted).toBe(true);
+      await flush();
+      if (settle === 'resolve') {
+        old.resolve(response('old', 'Retired'));
+      } else {
+        old.reject(new Error('private stale diagnostic'));
+      }
 
-    await flush();
-    expect(labels()).toEqual(['Current']);
-    expect(JSON.stringify(h.controller.getSnapshot())).not.toContain('private');
-  });
+      await flush();
+      expect(labels()).toEqual(['Current']);
+      expect(JSON.stringify(h.controller.getSnapshot())).not.toContain('private');
+    },
+  );
 
-  it.each(['resolve', 'reject'] as const)('discards closed-session late %s and clears action references', async (settle) => {
-    const delayed = createDeferred<ProviderResponse>();
-    h.provider('probe/slow', async () => delayed.promise);
-    h.controller.open();
-    await flush();
-    h.controller.close();
-    if (settle === 'resolve') {
-      delayed.resolve(response('late'));
-    } else {
-      delayed.reject(new Error('private closed diagnostic'));
-    }
+  it.each(['resolve', 'reject'] as const)(
+    'discards closed-session late %s and clears action references',
+    async (settle) => {
+      const delayed = createDeferred<ProviderResponse>();
+      h.provider('probe/slow', async () => delayed.promise);
+      h.controller.open();
+      await flush();
+      h.controller.close();
+      if (settle === 'resolve') {
+        delayed.resolve(response('late'));
+      } else {
+        delayed.reject(new Error('private closed diagnostic'));
+      }
 
-    await flush();
-    expect(h.controller.getSnapshot()).toMatchObject({ isOpen: false, rows: [] });
-    expect(JSON.stringify(h.controller.getSnapshot())).not.toContain('private');
-    expect(vi.getTimerCount()).toBe(0);
-  });
+      await flush();
+      expect(h.controller.getSnapshot()).toMatchObject({ isOpen: false, rows: [] });
+      expect(JSON.stringify(h.controller.getSnapshot())).not.toContain('private');
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
 
   it('removes old provider rows immediately on a new query', async () => {
     const pending = createDeferred<ProviderResponse>();
-    h.provider('probe/search', async ({ query }) => query === 'waiting' ? pending.promise : Promise.resolve(response('old')));
+    h.provider('probe/search', async ({ query }) =>
+      query === 'waiting' ? pending.promise : Promise.resolve(response('old')),
+    );
     h.controller.open();
     await flush();
     expect(labels()).toEqual(['old']);
@@ -174,15 +196,17 @@ describe('actual registry and async epochs', () => {
   it('keeps good sources usable while another source fails without exposing raw diagnostics', async () => {
     h.provider('probe/good', async () => response('good', 'Working'));
     h.provider('probe/bad', async () => {
-      throw new Error('credential=private'); 
+      throw new Error('credential=private');
     });
     h.controller.open();
     await flush();
     expect(labels()).toEqual(['Working']);
-    expect(h.controller.getSnapshot().sources).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'probe/bad', state: 'unavailable' }),
-      expect.objectContaining({ id: 'probe/good', state: 'complete' }),
-    ]));
+    expect(h.controller.getSnapshot().sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'probe/bad', state: 'unavailable' }),
+        expect.objectContaining({ id: 'probe/good', state: 'complete' }),
+      ]),
+    );
     expect(JSON.stringify(h.controller.getSnapshot())).not.toContain('credential');
   });
 });
@@ -210,7 +234,9 @@ describe('finite work and nonauthoritative overflow', () => {
     retired.resolve(response('retired', 'Retired external tasks'));
     await flush();
     expect(labels()).toEqual(['Current external tasks']);
-    expect(h.controller.getSnapshot().sources).toContainEqual(expect.objectContaining({ id: 'probe/provider', state: 'complete' }));
+    expect(h.controller.getSnapshot().sources).toContainEqual(
+      expect.objectContaining({ id: 'probe/provider', state: 'complete' }),
+    );
   });
 
   it('admits8 attempts in registry order, runs4 concurrently, times out after5s and never retries', async () => {
@@ -218,14 +244,17 @@ describe('finite work and nonauthoritative overflow', () => {
     const pending = Array.from({ length: 9 }, () => createDeferred<ProviderResponse>());
     for (let index = 0; index < 9; index++) {
       h.provider(`probe/p${index}`, async () => {
-        calls.push(`p${index}`); return pending[index].promise; 
+        calls.push(`p${index}`);
+        return pending[index].promise;
       });
     }
 
     h.controller.open();
     await flush();
     expect(calls).toEqual(['p0', 'p1', 'p2', 'p3']);
-    expect(h.controller.getSnapshot().sources).toContainEqual(expect.objectContaining({ id: 'probe/p8', state: 'source-limit' }));
+    expect(h.controller.getSnapshot().sources).toContainEqual(
+      expect.objectContaining({ id: 'probe/p8', state: 'source-limit' }),
+    );
     pending[0].resolve(response('first'));
     await flush();
     expect(calls).toEqual(['p0', 'p1', 'p2', 'p3', 'p4']);
@@ -234,7 +263,9 @@ describe('finite work and nonauthoritative overflow', () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(calls).toHaveLength(8);
     expect(labels()).toEqual(['first']);
-    expect(h.controller.getSnapshot().sources.some((source) => source.state === 'pending' || source.state === 'queued')).toBe(false);
+    expect(
+      h.controller.getSnapshot().sources.some((source) => source.state === 'pending' || source.state === 'queued'),
+    ).toBe(false);
   });
 
   it('drops queued work on close and ignores a closed-session provider resolution', async () => {
@@ -260,7 +291,9 @@ describe('finite work and nonauthoritative overflow', () => {
     h.controller.open();
     await flush();
     await vi.advanceTimersByTimeAsync(5000);
-    expect(h.controller.getSnapshot().sources).toContainEqual(expect.objectContaining({ id: 'probe/slow', state: 'unavailable' }));
+    expect(h.controller.getSnapshot().sources).toContainEqual(
+      expect.objectContaining({ id: 'probe/slow', state: 'unavailable' }),
+    );
     delayed.resolve(response('late'));
     await flush();
     expect(labels()).toEqual([]);
@@ -268,7 +301,8 @@ describe('finite work and nonauthoritative overflow', () => {
 
   it('passes raw query and limit20, caps display100 and reports truncated sources', async () => {
     const search = vi.fn(async () => ({
-      items: Array.from({ length: 21 }, (_, index) => item(String(index))), completion: 'complete',
+      items: Array.from({ length: 21 }, (_, index) => item(String(index))),
+      completion: 'complete',
     }));
     for (let index = 0; index < 8; index++) {
       h.provider(`probe/p${index}`, search);
@@ -277,7 +311,9 @@ describe('finite work and nonauthoritative overflow', () => {
     h.controller.open();
     h.controller.setQuery('RAW Alias');
     await flush();
-    expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ query: 'RAW Alias', limit: 20, signal: expect.any(AbortSignal) }));
+    expect(search).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: 'RAW Alias', limit: 20, signal: expect.any(AbortSignal) }),
+    );
     expect(labels()).toHaveLength(100);
     expect(h.controller.getSnapshot().sources.every((source) => source.state === 'truncated')).toBe(true);
   });
@@ -288,9 +324,11 @@ describe('finite work and nonauthoritative overflow', () => {
     }
 
     const surplus = { id: 'probe/surplus', plugin: 'probe', label: 'needle', value: navigation() };
-    Object.defineProperty(surplus, 'value', { get: () => {
-      throw new Error('surplus static candidate must not be inspected'); 
-    } });
+    Object.defineProperty(surplus, 'value', {
+      get: () => {
+        throw new Error('surplus static candidate must not be inspected');
+      },
+    });
     h.store().register(surplus);
     h.controller.open();
     h.controller.setQuery('needle');
@@ -315,7 +353,11 @@ describe('finite work and nonauthoritative overflow', () => {
 
 describe('current typed dispatch, native service authority and execution lifecycle', () => {
   beforeEach(() => {
-    h.register('probe/reload', { schemaVersion: 1, kind: 'command', command: { kind: 'reload-connections', pluginId: 'probe' } }, 'Reload');
+    h.register(
+      'probe/reload',
+      { schemaVersion: 1, kind: 'command', command: { kind: 'reload-connections', pluginId: 'probe' } },
+      'Reload',
+    );
   });
 
   it('dispatches the actual closed service adapter only once while pending', async () => {
@@ -332,6 +374,132 @@ describe('current typed dispatch, native service authority and execution lifecyc
     await Promise.all([first, repeated]);
     expect(h.controller.getSnapshot().executionPending).toBe(false);
   });
+
+  it.each(['success', 'denial'] as const)(
+    'keeps pending native status and its %s after the query changes',
+    async (outcome) => {
+      const native = createDeferred<never[]>();
+      h.loadConnections.mockImplementation(async () => native.promise);
+      h.controller.open();
+      await flush();
+      const execution = h.controller.activate(key('Reload'));
+
+      h.controller.setQuery('another search');
+      await flush();
+      const pending = h.controller.getSnapshot();
+      if (outcome === 'success') {
+        native.resolve([]);
+      } else {
+        native.reject(
+          new Error(
+            JSON.stringify({
+              type: 'omniview:resource/forbidden',
+              status: 403,
+              title: 'Forbidden',
+              detail: 'This action is not permitted.',
+              code: 'FORBIDDEN',
+              requestId: 'pending-request',
+            }),
+          ),
+        );
+      }
+
+      await execution;
+      expect(pending).toMatchObject({
+        query: 'another search',
+        executionPending: true,
+        feedback: { message: 'Reloading connections…' },
+      });
+      expect(h.controller.getSnapshot()).toMatchObject({
+        query: 'another search',
+        executionPending: false,
+        feedback:
+          outcome === 'success'
+            ? { message: 'Connections reloaded.' }
+            : { code: 'FORBIDDEN', requestId: 'pending-request' },
+      });
+    },
+  );
+
+  it.each(['success', 'denial'] as const)(
+    'keeps accepted native %s feedback through an unrelated catalogue mutation',
+    async (outcome) => {
+      const native = createDeferred<never[]>();
+      h.loadConnections.mockImplementation(async () => native.promise);
+      h.controller.open();
+      await flush();
+      const execution = h.controller.activate(key('Reload'));
+
+      h.register('core/unrelated', navigation(), 'Unrelated destination', 'core');
+      await flush();
+      const pending = h.controller.getSnapshot();
+      if (outcome === 'success') {
+        native.resolve([]);
+      } else {
+        native.reject(
+          new Error(
+            JSON.stringify({
+              type: 'omniview:resource/forbidden',
+              status: 403,
+              title: 'Forbidden',
+              detail: 'This action is not permitted.',
+              code: 'FORBIDDEN',
+              requestId: 'catalogue-request',
+            }),
+          ),
+        );
+      }
+
+      await execution;
+      expect(pending.feedback).toMatchObject({ message: 'Reloading connections…' });
+      expect(h.controller.getSnapshot()).toMatchObject({
+        executionPending: false,
+        feedback:
+          outcome === 'success'
+            ? { message: 'Connections reloaded.' }
+            : { code: 'FORBIDDEN', requestId: 'catalogue-request' },
+      });
+    },
+  );
+
+  it.each([
+    { owner: 'probe', label: 'Reload', retiring: 'probe' },
+    { owner: 'core', label: 'Core reload', retiring: 'probe' },
+    { owner: 'contributor', label: 'Contributor reload', retiring: 'contributor' },
+  ])(
+    'does not revive a $owner-owned native result when a retired plugin becomes ready before settlement',
+    async ({ owner, label, retiring }) => {
+      h.ready.add('contributor');
+      if (owner !== 'probe') {
+        h.register(
+          `${owner}/reload-target`,
+          {
+            schemaVersion: 1,
+            kind: 'command',
+            command: { kind: 'reload-connections', pluginId: 'probe' },
+          },
+          label,
+          owner,
+        );
+      }
+
+      const native = createDeferred<never[]>();
+      h.loadConnections.mockImplementation(async () => native.promise);
+      h.controller.open();
+      await flush();
+      const execution = h.controller.activate(key(label));
+
+      h.ready.delete(retiring);
+      h.controller.refresh();
+      h.ready.add(retiring);
+      h.controller.refresh();
+      await flush();
+      native.resolve([]);
+      await execution;
+
+      expect(h.controller.getSnapshot()).toMatchObject({ isOpen: true, executionPending: false, feedback: undefined });
+    },
+  );
 
   it('shows fixed disabled capability feedback and refuses dispatch without resource capability', async () => {
     h.listResourcePlugins.mockResolvedValue([]);
@@ -360,10 +528,19 @@ describe('current typed dispatch, native service authority and execution lifecyc
   });
 
   it('preserves real service denial code/correlation without raw causes or privileged fallback', async () => {
-    h.loadConnections.mockRejectedValue(new Error(JSON.stringify({
-      type: 'omniview:resource/forbidden', status: 403, title: 'Forbidden',
-      detail: 'This action is not permitted.', code: 'FORBIDDEN', requestId: 'public-request',
-    }), { cause: new Error('credential=private') }));
+    h.loadConnections.mockRejectedValue(
+      new Error(
+        JSON.stringify({
+          type: 'omniview:resource/forbidden',
+          status: 403,
+          title: 'Forbidden',
+          detail: 'This action is not permitted.',
+          code: 'FORBIDDEN',
+          requestId: 'public-request',
+        }),
+        { cause: new Error('credential=private') },
+      ),
+    );
     h.controller.open();
     await flush();
     await h.controller.activate(key('Reload'));
@@ -389,7 +566,11 @@ describe('current typed dispatch, native service authority and execution lifecyc
   });
 
   it('rechecks current target route/owner before navigating and closes only on valid navigation', async () => {
-    h.register('probe/route', { schemaVersion: 1, kind: 'navigation', target: { kind: 'plugin', pluginId: 'probe', path: '/capabilities' } }, 'Tasks');
+    h.register(
+      'probe/route',
+      { schemaVersion: 1, kind: 'navigation', target: { kind: 'plugin', pluginId: 'probe', path: '/capabilities' } },
+      'Tasks',
+    );
     h.controller.open();
     await flush();
     const retained = key('Tasks');
@@ -406,27 +587,39 @@ describe('current typed dispatch, native service authority and execution lifecyc
   });
 
   it('keeps a contributed disabled reason visible and never executes its action', async () => {
-    h.register('probe/disabled', { ...navigation(), availability: { state: 'disabled', reason: 'Not available in this context.' } }, 'Disabled');
+    h.register(
+      'probe/disabled',
+      { ...navigation(), availability: { state: 'disabled', reason: 'Not available in this context.' } },
+      'Disabled',
+    );
     h.controller.open();
     await flush();
-    expect(h.controller.getSnapshot().rows.find((row) => row.label === 'Disabled')?.disabledReason)
-      .toBe('Not available in this context.');
+    expect(h.controller.getSnapshot().rows.find((row) => row.label === 'Disabled')?.disabledReason).toBe(
+      'Not available in this context.',
+    );
     await h.controller.activate(key('Disabled'));
     expect(h.navigate).not.toHaveBeenCalled();
   });
 
   it('resolves a typed setting intent into the existing settings route without any settings write', async () => {
-    h.register('probe/theme', {
-      schemaVersion: 1, kind: 'setting',
-      target: { section: 'core', categoryId: 'appearance', settingId: 'appearance.theme' },
-    }, 'Theme');
+    h.register(
+      'probe/theme',
+      {
+        schemaVersion: 1,
+        kind: 'setting',
+        target: { section: 'core', categoryId: 'appearance', settingId: 'appearance.theme' },
+      },
+      'Theme',
+    );
     h.controller.open();
     await flush();
     await h.controller.activate(key('Theme'));
     const destination = new URL(h.navigate.mock.calls[0][0], 'https://host.invalid');
     expect(destination.pathname).toBe('/settings');
     expect(Object.fromEntries(destination.searchParams)).toEqual({
-      section: 'core', category: 'appearance', setting: 'appearance.theme',
+      section: 'core',
+      category: 'appearance',
+      setting: 'appearance.theme',
     });
     expect(h.loadConnections).not.toHaveBeenCalled();
   });

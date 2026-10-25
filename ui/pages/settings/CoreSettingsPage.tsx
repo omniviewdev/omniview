@@ -9,7 +9,7 @@ import Icon from '@/components/icons/Icon';
 import { useCategorySettings } from '@/hooks/settings/useCategorySettings';
 import AppearanceThemeSetting from '@/theme/AppearanceThemeSetting';
 import SettingsEntries from './SettingsEntries';
-import { Section } from '.';
+import { Section } from './settingsContext';
 import styles from './SettingsPage.module.css';
 import { useSettings } from '@omniviewdev/runtime';
 

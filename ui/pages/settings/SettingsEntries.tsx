@@ -3,7 +3,7 @@ import React from 'react';
 import { Text } from '@omniviewdev/base-ui';
 
 // Types
-import { SettingsFocusContext, type SectionSelection } from '.';
+import { SettingsFocusContext, type SectionSelection } from './settingsContext';
 import SettingsEntry from './SettingsEntry';
 import type { Setting } from '@omniviewdev/runtime/models';
 import { useDevMode } from '@/hooks/useDevMode';
@@ -34,7 +34,8 @@ const SettingsEntries: React.FC<Props> = ({
 
   React.useEffect(() => {
     if (!focusRequest) {
-      fulfilledFocus.current = null; return; 
+      fulfilledFocus.current = null;
+      return;
     }
 
     const token = JSON.stringify([sectionID, focusRequest.requestKey, focusRequest.settingId]);

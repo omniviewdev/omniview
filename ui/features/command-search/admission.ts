@@ -23,7 +23,7 @@ export function isSearchQueryAllowed(query: string): boolean {
   }
 
   let count = 0;
-  for (let offset = 0; offset < query.length;) {
+  for (let offset = 0; offset < query.length; ) {
     offset += query.codePointAt(offset)! > 0xffff ? 2 : 1;
     if (++count > 256) {
       return false;
@@ -69,9 +69,9 @@ export function getNavigationHref(target: unknown): string | undefined {
   }
 
   try {
-    return `/_plugin/${encodeURIComponent(target.pluginId)}${path}`; 
+    return `/_plugin/${encodeURIComponent(target.pluginId)}${path}`;
   } catch {
-    return undefined; 
+    return undefined;
   }
 }
 
@@ -116,8 +116,12 @@ export function admitSearchEntry(input: unknown): SearchEntryV1 | undefined {
 
     if (input.availability.state === 'enabled') {
       availability = { state: 'enabled' };
-    } else if (input.availability.state === 'disabled' && typeof input.availability.reason === 'string'
-      && input.availability.reason.length > 0 && input.availability.reason.length <= 1024) {
+    } else if (
+      input.availability.state === 'disabled' &&
+      typeof input.availability.reason === 'string' &&
+      input.availability.reason.length > 0 &&
+      input.availability.reason.length <= 1024
+    ) {
       availability = { state: 'disabled', reason: input.availability.reason };
     } else {
       return undefined;
@@ -147,8 +151,16 @@ export function admitSearchEntry(input: unknown): SearchEntryV1 | undefined {
       return { ...common, kind: 'navigation', target: { kind: 'core', path: input.target.path } };
     }
 
-    if (input.target.kind === 'plugin' && typeof input.target.pluginId === 'string' && typeof input.target.path === 'string') {
-      return { ...common, kind: 'navigation', target: { kind: 'plugin', pluginId: input.target.pluginId, path: input.target.path } };
+    if (
+      input.target.kind === 'plugin' &&
+      typeof input.target.pluginId === 'string' &&
+      typeof input.target.path === 'string'
+    ) {
+      return {
+        ...common,
+        kind: 'navigation',
+        target: { kind: 'plugin', pluginId: input.target.pluginId, path: input.target.path },
+      };
     }
 
     return undefined;
@@ -197,7 +209,11 @@ export function admitSearchContribution(
 }
 
 export function admitProviderResponse(input: unknown): SearchProviderResponseV1 | undefined {
-  if (!record(input) || !Array.isArray(input.items) || (input.completion !== 'complete' && input.completion !== 'truncated')) {
+  if (
+    !record(input) ||
+    !Array.isArray(input.items) ||
+    (input.completion !== 'complete' && input.completion !== 'truncated')
+  ) {
     return undefined;
   }
 

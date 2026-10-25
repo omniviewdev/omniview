@@ -1,8 +1,26 @@
 import { isCancelledError, parseAppError } from '@omniviewdev/runtime';
-import type { ExtensionContributionRegistration, ExtensionPointRegistryContract, ExtensionPointStoreContract } from '@omniviewdev/runtime';
-import { admitProviderResponse, admitSearchContribution, admitSearchEntry, getNavigationHref, isSearchQueryAllowed } from './admission';
+import type {
+  ExtensionContributionRegistration,
+  ExtensionPointRegistryContract,
+  ExtensionPointStoreContract,
+} from '@omniviewdev/runtime';
+import {
+  admitProviderResponse,
+  admitSearchContribution,
+  admitSearchEntry,
+  getNavigationHref,
+  isSearchQueryAllowed,
+} from './admission';
 import { GLOBAL_SEARCH_EXTENSION_POINT_ID } from './extensionPoint';
-import type { SearchEntryV1, SearchFeedback, SearchProviderItemV1, SearchProviderV1, SearchRow, SearchSnapshot, SearchSource } from './types';
+import type {
+  SearchEntryV1,
+  SearchFeedback,
+  SearchProviderItemV1,
+  SearchProviderV1,
+  SearchRow,
+  SearchSnapshot,
+  SearchSource,
+} from './types';
 
 type ControllerDependencies = {
   registry: ExtensionPointRegistryContract;
@@ -32,6 +50,13 @@ type AcceptedEntry = {
   provider?: SearchProviderV1['search'];
 };
 
+type NativeExecution = {
+  session: number;
+  owner: string;
+  target: string;
+  valid: boolean;
+};
+
 type ProviderAttempt = {
   registration: ExtensionContributionRegistration;
   provider: SearchProviderV1;
@@ -54,8 +79,12 @@ function sameIntent(left: SearchEntryV1, right: SearchEntryV1): boolean {
       return left.target.path === right.target.path;
     }
 
-    return left.target.kind === 'plugin' && right.target.kind === 'plugin'
-      && left.target.pluginId === right.target.pluginId && left.target.path === right.target.path;
+    return (
+      left.target.kind === 'plugin' &&
+      right.target.kind === 'plugin' &&
+      left.target.pluginId === right.target.pluginId &&
+      left.target.path === right.target.path
+    );
   }
 
   if (left.kind === 'setting' && right.kind === 'setting') {
@@ -71,7 +100,11 @@ function sameIntent(left: SearchEntryV1, right: SearchEntryV1): boolean {
       return left.target.categoryId === right.target.categoryId;
     }
 
-    return left.target.section === 'plugins' && right.target.section === 'plugins' && left.target.pluginId === right.target.pluginId;
+    return (
+      left.target.section === 'plugins' &&
+      right.target.section === 'plugins' &&
+      left.target.pluginId === right.target.pluginId
+    );
   }
 
   return false;
@@ -83,9 +116,10 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
   let store: ExtensionPointStoreContract | undefined;
   let unsubscribeStore: (() => void) | undefined;
   let epoch = 0;
+  let session = 0;
   let capturedVersion = -1;
   let disposed = false;
-  let nativePending = false;
+  let nativeExecution: NativeExecution | undefined;
   let discovery = 0;
   let capabilityState: 'pending' | 'ready' | 'unavailable' = 'pending';
   let resourcePlugins = new Set<string>();
@@ -111,20 +145,43 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     return pluginId === 'core' || deps.isPluginReady(pluginId);
   }
 
+  function isExecutionCurrent(execution: NativeExecution) {
+    return (
+      nativeExecution === execution &&
+      execution.valid &&
+      !disposed &&
+      snapshot.isOpen &&
+      execution.session === session &&
+      ownerReady(execution.owner) &&
+      deps.isPluginReady(execution.target)
+    );
+  }
+
   function disabledReason(value: SearchEntryV1): string | undefined {
     if (value.availability?.state === 'disabled') {
       return value.availability.reason;
     }
 
     if (value.kind === 'command') {
-      if (!deps.isPluginReady(value.command.pluginId) || capabilityState !== 'ready' || !resourcePlugins.has(value.command.pluginId)) {
+      if (
+        !deps.isPluginReady(value.command.pluginId) ||
+        capabilityState !== 'ready' ||
+        !resourcePlugins.has(value.command.pluginId)
+      ) {
         return capabilityUnavailable;
       }
     } else if (value.kind === 'navigation' && value.target.kind === 'plugin') {
-      if (!deps.isPluginReady(value.target.pluginId) || !deps.hasPluginRoute(value.target.pluginId, value.target.path)) {
+      if (
+        !deps.isPluginReady(value.target.pluginId) ||
+        !deps.hasPluginRoute(value.target.pluginId, value.target.path)
+      ) {
         return 'This destination is unavailable.';
       }
-    } else if (value.kind === 'setting' && value.target.section === 'plugins' && !deps.isPluginReady(value.target.pluginId)) {
+    } else if (
+      value.kind === 'setting' &&
+      value.target.section === 'plugins' &&
+      !deps.isPluginReady(value.target.pluginId)
+    ) {
       return 'This plugin is unavailable.';
     }
 
@@ -142,10 +199,13 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     let clipped = displayOverflow;
     function append(entry: AcceptedEntry) {
       if (rows.length >= 100) {
-        clipped = true; return; 
+        clipped = true;
+        return;
       }
 
-      const key = encodeURIComponent(JSON.stringify([epoch, entry.registration.plugin, entry.registration.id, entry.itemId]));
+      const key = encodeURIComponent(
+        JSON.stringify([epoch, entry.registration.plugin, entry.registration.id, entry.itemId]),
+      );
       rows.push({ key, label: entry.label, value: entry.value, disabledReason: disabledReason(entry.value) });
       actions.set(key, entry);
     }
@@ -160,8 +220,11 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         append(entry);
       }
 
-      sources.push(attempt.items.length > remaining && attempt.source.state === 'complete'
-        ? { ...attempt.source, state: 'truncated' } : { ...attempt.source });
+      sources.push(
+        attempt.items.length > remaining && attempt.source.state === 'complete'
+          ? { ...attempt.source, state: 'truncated' }
+          : { ...attempt.source },
+      );
     }
 
     const messages: string[] = [];
@@ -181,7 +244,14 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       messages.push('Result limit reached. Narrow your search; additional results are not displayed.');
     }
 
-    snapshot = { ...snapshot, rows, sources, message: messages.length ? messages.join(' ') : undefined, executionPending: nativePending, feedback };
+    snapshot = {
+      ...snapshot,
+      rows,
+      sources,
+      message: messages.length ? messages.join(' ') : undefined,
+      executionPending: nativeExecution !== undefined,
+      feedback,
+    };
     emit();
   }
 
@@ -203,9 +273,15 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
   }
 
   function current(token: number, attempt: ProviderAttempt) {
-    return !disposed && snapshot.isOpen && epoch === token && !attempt.settled
-      && store === deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID)
-      && store?.version === capturedVersion && ownerReady(attempt.registration.plugin);
+    return (
+      !disposed &&
+      snapshot.isOpen &&
+      epoch === token &&
+      !attempt.settled &&
+      store === deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID) &&
+      store?.version === capturedVersion &&
+      ownerReady(attempt.registration.plugin)
+    );
   }
 
   function finishAttempt(token: number, attempt: ProviderAttempt, value: unknown, failed: boolean) {
@@ -231,7 +307,11 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       } else {
         attempt.source.state = response.completion;
         attempt.items = response.items.map((item: SearchProviderItemV1) => ({
-          registration: attempt.registration, label: item.label, itemId: item.id, value: item.value, provider: attempt.provider.search,
+          registration: attempt.registration,
+          label: item.label,
+          itemId: item.id,
+          value: item.value,
+          provider: attempt.provider.search,
         }));
       }
     }
@@ -265,12 +345,16 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         finishAttempt(token, attempt, undefined, true);
       }, 5000);
       try {
-        Promise.resolve(attempt.provider.search({ query: snapshot.query, signal: attempt.controller.signal, limit: 20 }))
-          .then((value) => {
-            finishAttempt(token, attempt, value, false); 
-          }, () => {
-            finishAttempt(token, attempt, undefined, true); 
-          });
+        Promise.resolve(
+          attempt.provider.search({ query: snapshot.query, signal: attempt.controller.signal, limit: 20 }),
+        ).then(
+          (value) => {
+            finishAttempt(token, attempt, value, false);
+          },
+          () => {
+            finishAttempt(token, attempt, undefined, true);
+          },
+        );
       } catch {
         finishAttempt(token, attempt, undefined, true);
       }
@@ -281,13 +365,18 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
 
   function invalidate() {
     ++epoch;
+    if (nativeExecution && !isExecutionCurrent(nativeExecution)) {
+      // A later ready phase must not revive feedback from a retired owner.
+      nativeExecution.valid = false;
+    }
+
     if (!snapshot.isOpen || disposed) {
       return;
     }
 
     abortSearch();
-    snapshot = { ...snapshot, rows: [], sources: [], feedback: undefined };
-    feedback = undefined;
+    feedback = nativeExecution?.valid ? feedback : undefined;
+    snapshot = { ...snapshot, rows: [], sources: [], feedback };
     emit();
     launchToken = epoch;
     if (launchQueued) {
@@ -308,7 +397,8 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       store = deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID);
       capturedVersion = store?.version ?? -1;
       if (!isSearchQueryAllowed(snapshot.query)) {
-        publish(); return; 
+        publish();
+        return;
       }
 
       const query = snapshot.query.toLowerCase();
@@ -319,9 +409,9 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         const registration = registrations[index];
         let value;
         try {
-          value = admitSearchContribution(registration); 
+          value = admitSearchContribution(registration);
         } catch {
-          value = undefined; 
+          value = undefined;
         }
 
         if (!value) {
@@ -343,9 +433,20 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
             continue;
           }
 
-          attempts.push({ registration, provider: value, source: { id: registration.id, label: registration.label, state: 'queued' }, controller: new AbortController(), items: [], settled: false });
-        } else if (!query || registration.label.toLowerCase().includes(query)
-          || value.description?.toLowerCase().includes(query) === true || value.keywords?.some((keyword) => keyword.toLowerCase().includes(query)) === true) {
+          attempts.push({
+            registration,
+            provider: value,
+            source: { id: registration.id, label: registration.label, state: 'queued' },
+            controller: new AbortController(),
+            items: [],
+            settled: false,
+          });
+        } else if (
+          !query ||
+          registration.label.toLowerCase().includes(query) ||
+          value.description?.toLowerCase().includes(query) === true ||
+          value.keywords?.some((keyword) => keyword.toLowerCase().includes(query)) === true
+        ) {
           if (statics.length < 100) {
             statics.push({ registration, label: registration.label, itemId: '', value });
           } else {
@@ -373,52 +474,68 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     const token = ++discovery;
     capabilityState = 'pending';
     resourcePlugins = new Set();
-    Promise.resolve().then(async () => {
-      if (disposed || !snapshot.isOpen || discovery !== token) {
-        return undefined;
-      }
+    Promise.resolve()
+      .then(async () => {
+        if (disposed || !snapshot.isOpen || discovery !== token) {
+          return undefined;
+        }
 
-      return deps.listResourcePlugins();
-    }).then((plugins) => {
-      if (disposed || !snapshot.isOpen || discovery !== token) {
-        return;
-      }
+        return deps.listResourcePlugins();
+      })
+      .then(
+        (plugins) => {
+          if (disposed || !snapshot.isOpen || discovery !== token) {
+            return;
+          }
 
-      if (!plugins) {
-        capabilityState = 'unavailable'; publish(); return; 
-      }
+          if (!plugins) {
+            capabilityState = 'unavailable';
+            publish();
+            return;
+          }
 
-      resourcePlugins = new Set(plugins);
-      capabilityState = 'ready';
-      publish();
-    }, () => {
-      if (disposed || !snapshot.isOpen || discovery !== token) {
-        return;
-      }
+          resourcePlugins = new Set(plugins);
+          capabilityState = 'ready';
+          publish();
+        },
+        () => {
+          if (disposed || !snapshot.isOpen || discovery !== token) {
+            return;
+          }
 
-      capabilityState = 'unavailable';
-      publish();
-    });
+          capabilityState = 'unavailable';
+          publish();
+        },
+      );
   }
 
   attachStore();
   const unsubscribeRegistry = deps.registry.subscribe(() => {
-    attachStore(); invalidate(); 
+    attachStore();
+    invalidate();
   });
 
   const controller: GlobalSearchController = {
     getSnapshot: () => snapshot,
     subscribe(listener) {
-      listeners.add(listener); return () => {
-        listeners.delete(listener); 
-      }; 
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
     open() {
       if (disposed || snapshot.isOpen) {
         return;
       }
 
-      snapshot = { ...snapshot, isOpen: true, query: '', feedback: undefined, executionPending: nativePending };
+      ++session;
+      snapshot = {
+        ...snapshot,
+        isOpen: true,
+        query: '',
+        feedback: undefined,
+        executionPending: nativeExecution !== undefined,
+      };
       discover();
       invalidate();
     },
@@ -428,11 +545,16 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       }
 
       ++discovery;
+      ++session;
+      if (nativeExecution) {
+        nativeExecution.valid = false;
+      }
+
       ++epoch;
       launchToken = undefined;
       abortSearch();
       feedback = undefined;
-      snapshot = { isOpen: false, query: '', rows: [], sources: [], executionPending: nativePending };
+      snapshot = { isOpen: false, query: '', rows: [], sources: [], executionPending: nativeExecution !== undefined };
       emit();
     },
     setQuery(query) {
@@ -446,25 +568,31 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
     refresh() {
       attachStore();
       if (snapshot.isOpen && !disposed) {
-        discover(); invalidate(); 
+        discover();
+        invalidate();
       }
     },
     async activate(key) {
-      if (disposed || !snapshot.isOpen || nativePending) {
+      if (disposed || !snapshot.isOpen || nativeExecution) {
         return;
       }
 
       const entry = actions.get(key);
-      if (!entry || !store || store !== deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID)
-        || store.version !== capturedVersion || !ownerReady(entry.registration.plugin)) {
+      if (
+        !entry ||
+        !store ||
+        store !== deps.registry.getExtensionPoint(GLOBAL_SEARCH_EXTENSION_POINT_ID) ||
+        store.version !== capturedVersion ||
+        !ownerReady(entry.registration.plugin)
+      ) {
         return;
       }
 
       let currentValue;
       try {
-        currentValue = admitSearchContribution(entry.registration); 
+        currentValue = admitSearchContribution(entry.registration);
       } catch {
-        return; 
+        return;
       }
 
       let value: SearchEntryV1 | undefined;
@@ -474,8 +602,12 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         }
 
         value = admitSearchEntry(entry.value);
-      } else if (currentValue && currentValue.kind !== 'provider' && entry.registration.label === entry.label
-        && sameIntent(entry.value, currentValue)) {
+      } else if (
+        currentValue &&
+        currentValue.kind !== 'provider' &&
+        entry.registration.label === entry.label &&
+        sameIntent(entry.value, currentValue)
+      ) {
         value = currentValue;
       }
 
@@ -485,7 +617,9 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
 
       const disabled = disabledReason(value);
       if (disabled) {
-        feedback = { message: disabled }; publish(); return; 
+        feedback = { message: disabled };
+        publish();
+        return;
       }
 
       if (value.kind !== 'command') {
@@ -518,17 +652,22 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
         return;
       }
 
-      const token = epoch;
-      nativePending = true;
+      const execution: NativeExecution = {
+        session,
+        owner: entry.registration.plugin,
+        target: value.command.pluginId,
+        valid: true,
+      };
+      nativeExecution = execution;
       feedback = { message: 'Reloading connections…' };
       publish();
       try {
         await deps.loadConnections(value.command.pluginId);
-        if (!disposed && snapshot.isOpen && token === epoch) {
+        if (isExecutionCurrent(execution)) {
           feedback = { message: 'Connections reloaded.' };
         }
       } catch (error) {
-        if (!disposed && snapshot.isOpen && token === epoch) {
+        if (isExecutionCurrent(execution)) {
           if (isCancelledError(error)) {
             feedback = undefined;
           } else {
@@ -537,7 +676,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
           }
         }
       } finally {
-        nativePending = false;
+        nativeExecution = undefined;
         if (!disposed && snapshot.isOpen) {
           publish();
         }
@@ -547,6 +686,7 @@ export function createGlobalSearchController(deps: ControllerDependencies): Glob
       controller.close();
       disposed = true;
       ++epoch;
+      ++session;
       ++discovery;
       abortSearch();
       unsubscribeStore?.();

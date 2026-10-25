@@ -11,31 +11,13 @@ import SettingsNav from './SettingsNav';
 import CoreSettingsPage from './CoreSettingsPage';
 import PluginSettingsPage from './PluginSettingsPage';
 import ExtensionSettingsPage from './ExtensionSettingsPage';
-
-export enum Section {
-  Core = 'core',
-  Plugins = 'plugins',
-  Extensions = 'extensions',
-}
+import { Section, SettingsFocusContext, type SectionSelection } from './settingsContext';
 
 const SECTION_BY_QUERY: Record<string, Section> = {
   core: Section.Core,
   plugins: Section.Plugins,
   extensions: Section.Extensions,
 };
-
-export type SectionSelection = {
-  /** Section of the settings */
-  section: Section;
-  /** ID of the part of the seciton (e.g the category or plugin ID) */
-  id: string;
-};
-
-type SettingsFocusRequest = {
-  settingId: string;
-  requestKey: string;
-};
-export const SettingsFocusContext = React.createContext<SettingsFocusRequest | null>(null);
 
 /**
  * The main settings page for the application.
@@ -47,18 +29,27 @@ export default function SettingsPage() {
   const { plugins } = usePluginManager();
   const sectionQuery = searchParams.get('section') ?? 'core';
   const section = Object.hasOwn(SECTION_BY_QUERY, sectionQuery) ? SECTION_BY_QUERY[sectionQuery] : undefined;
-  const id = section === Section.Extensions ? 'extensions'
-    : section === Section.Plugins ? searchParams.get('plugin') ?? '' : searchParams.get('category') ?? '';
+  const selectionParameter = section === Section.Plugins ? 'plugin' : 'category';
+  const id = section === Section.Extensions ? 'extensions' : (searchParams.get(selectionParameter) ?? '');
   const focusTarget = searchParams.get('setting');
-  const focusRequest = React.useMemo(() => focusTarget === null ? null : { settingId: focusTarget, requestKey: location.key }, [focusTarget, location.key]);
+  const focusRequest = React.useMemo(
+    () => (focusTarget === null ? null : { settingId: focusTarget, requestKey: location.key }),
+    [focusTarget, location.key],
+  );
   const validSection = section !== undefined;
-  const malformed = !validSection || id.length > 256
-    || (focusTarget !== null && (!focusTarget || focusTarget.length > 256 || !id || section === Section.Extensions));
+  const malformed =
+    !validSection ||
+    id.length > 256 ||
+    (focusTarget !== null && (!focusTarget || focusTarget.length > 256 || !id || section === Section.Extensions));
   const selected: SectionSelection = { section: section ?? Section.Core, id };
-  const loading = section === Section.Core ? settings.isLoading : section === Section.Plugins ? plugins.isLoading : false;
-  const missing = Boolean(id) && (section === Section.Core && id !== 'extensions'
-    ? !settings.data || !Object.values(settings.data).some((category) => category.id === id)
-    : section === Section.Plugins ? !plugins.data?.some((plugin) => plugin.id === id) : false);
+  const loading =
+    (section === Section.Core && settings.isLoading) || (section === Section.Plugins && plugins.isLoading);
+  const missing =
+    Boolean(id) &&
+    ((section === Section.Core &&
+      id !== 'extensions' &&
+      (!settings.data || !Object.values(settings.data).some((category) => category.id === id))) ||
+      (section === Section.Plugins && !plugins.data?.some((plugin) => plugin.id === id)));
   const unavailable = malformed || (!loading && missing) || (section === Section.Plugins && !id);
   const navSelection = section === Section.Extensions ? { section: Section.Core, id: 'extensions' } : selected;
 
@@ -74,17 +65,22 @@ export default function SettingsPage() {
     setSearchParams(params);
   }
 
+  let content: React.ReactNode;
+  if (unavailable) {
+    content = <p role='status'>Requested settings are unavailable.</p>;
+  } else if (loading) {
+    content = <p role='status'>Loading settings…</p>;
+  } else {
+    content = GetSettingsPage(selected.section, selected.id);
+  }
+
   return (
     <Layout.Root>
       <Layout.SideNav type='bordered'>
         <SettingsNav selected={navSelection} onChange={select} />
       </Layout.SideNav>
       <Layout.Main style={{ padding: 24, paddingLeft: 32 }}>
-        <SettingsFocusContext.Provider value={focusRequest}>
-          {unavailable ? <p role='status'>Requested settings are unavailable.</p>
-            : loading ? <p role='status'>Loading settings…</p>
-              : GetSettingsPage(selected.section, selected.id)}
-        </SettingsFocusContext.Provider>
+        <SettingsFocusContext.Provider value={focusRequest}>{content}</SettingsFocusContext.Provider>
       </Layout.Main>
     </Layout.Root>
   );
@@ -92,9 +88,7 @@ export default function SettingsPage() {
 
 const GetSettingsPage = (section: Section, id: string) => {
   if (!id) {
-    return (
-      <></>
-    );
+    return <></>;
   }
 
   switch (section) {

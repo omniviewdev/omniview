@@ -1,6 +1,4 @@
-export type AvailabilityV1 =
-  | { state: 'enabled' }
-  | { state: 'disabled'; reason: string };
+export type AvailabilityV1 = { state: 'enabled' } | { state: 'disabled'; reason: string };
 
 export type SettingTargetV1 =
   | { section: 'core'; categoryId: string; settingId?: string }
