@@ -69,7 +69,9 @@ test.describe('Alternate live frontend delivery', () => {
     const optimizerFailures: string[] = [];
     let documents = 0;
     page.on('request', request => {
-      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents++;
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+        documents++;
+      }
     });
     page.on('response', response => {
       if (response.status() >= 400 && new URL(response.url()).pathname.includes('/.vite/deps/')) {
