@@ -26,6 +26,7 @@ vars:
   HOST_MOD_OUTPUT_DIRECTORY: '{{.HOST_MOD_OUTPUT_DIRECTORY | default ""}}'
   BINDINGS_OUTPUT_DIRECTORY: '{{.BINDINGS_OUTPUT_DIRECTORY | default ""}}'
   GO_BUILD_CACHE_DIRECTORY: '{{.GO_BUILD_CACHE_DIRECTORY | default ""}}'
+  C02_ERROR_CORPUS: '{{.C02_ERROR_CORPUS | default (env "C02_ERROR_CORPUS")}}'
   # Plain command text, evaluated only by host Go/Wails tasks (not UI/plugin tasks).
   # Reset cross-compilation variables while running this native-free host helper.
   HOST_BOOTSTRAP: 'GOWORK=off GOFLAGS= GOOS={{OS}} GOARCH={{ARCH}} CGO_ENABLED=0 go run {{printf "%s/scripts/hostmod/main.go" .ROOT_DIR | shellQuote}} --root {{.ROOT_DIR | shellQuote}} {{if .HOST_INPUT_MODFILE}}--host-modfile={{.HOST_INPUT_MODFILE | shellQuote}}{{end}} {{if .SDK_SOURCE}}--sdk-source={{.SDK_SOURCE | shellQuote}}{{end}} {{if .HOST_MOD_OUTPUT_DIRECTORY}}--output-directory={{.HOST_MOD_OUTPUT_DIRECTORY | shellQuote}}{{end}}'
@@ -281,6 +282,44 @@ tasks:
         set -e
         HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
         GOWORK=off GOFLAGS= go test -modfile="$HOST_MODFILE" ./...
+
+  check:c02-corpus:
+    summary: Generate fresh C02 SDK-to-gRPC-to-host errors at C02_ERROR_CORPUS
+    dir: '{{.ROOT_DIR}}'
+    requires:
+      vars: [C02_ERROR_CORPUS]
+    env:
+      C02_ERROR_CORPUS: '{{.C02_ERROR_CORPUS}}'
+    cmds:
+      - |
+        set -e
+        HOST_MODFILE="$({{.HOST_BOOTSTRAP}})"
+        GOWORK=off GOFLAGS= go test -modfile="$HOST_MODFILE" ./backend/pkg/plugin/resource -run '^TestC02ErrorTransportCorpus$' -count=1 -timeout 30s
+
+  check:c02-runtime:
+    summary: Decode the generated C02_ERROR_CORPUS with the actual runtime parser
+    dir: '{{.ROOT_DIR}}'
+    requires:
+      vars: [C02_ERROR_CORPUS]
+    env:
+      C02_ERROR_CORPUS: '{{.C02_ERROR_CORPUS}}'
+    preconditions:
+      - sh: test -f {{.C02_ERROR_CORPUS | shellQuote}} && test -r {{.C02_ERROR_CORPUS | shellQuote}}
+        msg: C02_ERROR_CORPUS must name a readable generated corpus file
+    cmds:
+      - node {{printf "%s/node_modules/vitest/vitest.mjs" .ROOT_DIR | shellQuote}} run --config {{printf "%s/vitest.c02.config.mjs" .ROOT_DIR | shellQuote}} --configLoader native --no-cache
+
+  check:c02-transport:
+    summary: Generate and consume the same actual C02 transport corpus
+    requires:
+      vars: [C02_ERROR_CORPUS]
+    cmds:
+      - task: check:c02-corpus
+        vars:
+          C02_ERROR_CORPUS: '{{.C02_ERROR_CORPUS}}'
+      - task: check:c02-runtime
+        vars:
+          C02_ERROR_CORPUS: '{{.C02_ERROR_CORPUS}}'
 
   check:go-lint:
     cmds:
