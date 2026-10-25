@@ -1,0 +1,31 @@
+diff --git a/dist/calls.js b/dist/calls.js
+--- a/dist/calls.js
++++ b/dist/calls.js
+@@ -51,17 +51,24 @@
+ export function Call(options) {
+     const id = generateID();
+     const result = CancellablePromise.withResolvers();
+-    callResponses.set(id, { resolve: result.resolve, reject: result.reject });
++    const callbacks = { resolve: result.resolve, reject: result.reject };
++    callResponses.set(id, callbacks);
+     const request = call(CallBinding, Object.assign({ "call-id": id }, options));
+     let running = true;
+     request.then((res) => {
+         running = false;
++        if (callResponses.get(id) !== callbacks) {
++            return;
++        }
+         callResponses.delete(id);
+-        result.resolve(res);
++        callbacks.resolve(res);
+     }, (err) => {
+         running = false;
++        if (callResponses.get(id) !== callbacks) {
++            return;
++        }
+         callResponses.delete(id);
+-        result.reject(err);
++        callbacks.reject(err);
+     });
+     const cancel = () => {
+         callResponses.delete(id);

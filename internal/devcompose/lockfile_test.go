@@ -32,6 +32,126 @@ func TestLockSeedMarksNativeMetadataDocumentStream(t *testing.T) {
 	}
 }
 
+func TestLockSeedNative12ScalarPatchRequiresOwnedSource(t *testing.T) {
+	// These are the real beta.34 patch bytes and scalar record emitted by native
+	// pnpm 12.14.0 and consumed by its frozen standalone install for issue 133.
+	const nativeHash = "dabb203a4da4e8fc89694f2ba11be7cfd6d918a1ce1ce256a917c6c905f55947"
+	const patchPath = "omniview/patches/@wailsio__runtime@3.0.0-beta.34.patch"
+	patch, err := os.ReadFile("../../patches/@wailsio__runtime@3.0.0-beta.34.patch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hash(patch) != nativeHash {
+		t.Fatal("native scalar regression no longer matches its authentic source patch")
+	}
+	for _, name := range []string{
+		"accepted", "undeclared", "missing", "escaping", "redirected",
+		"changed", "malformed-hash", "wrong-hash", "foreign-declaration", "conflicting-policy",
+	} {
+		t.Run(name, func(t *testing.T) {
+			w, roots := fixture(t)
+			put(t, w.Root, patchPath, string(patch))
+			put(t, w.Root, "omniview/package.json", `{"name":"host","private":true,"packageManager":"pnpm@12.14.0","dependencies":{"react":"^19.0.0","react-dom":"^19.0.0","@wailsio/runtime":"3.0.0-beta.34"}}`)
+			policy := "packages: ['packages/*']\nstrictPeerDependencies: true\npatchedDependencies:\n  '@wailsio/runtime@3.0.0-beta.34': patches/@wailsio__runtime@3.0.0-beta.34.patch\n"
+			lockedHash := nativeHash
+			switch name {
+			case "undeclared", "foreign-declaration":
+				policy = "packages: ['packages/*']\nstrictPeerDependencies: true\n"
+			case "missing":
+				if err := os.Remove(filepath.Join(w.Root, patchPath)); err != nil {
+					t.Fatal(err)
+				}
+			case "escaping":
+				policy = strings.ReplaceAll(policy, "patches/@wailsio__runtime@3.0.0-beta.34.patch", "../outside.patch")
+				put(t, w.Root, "outside.patch", string(patch))
+			case "redirected":
+				put(t, w.Root, "outside.patch", string(patch))
+				if err := os.Remove(filepath.Join(w.Root, patchPath)); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(filepath.Join(w.Root, "outside.patch"), filepath.Join(w.Root, patchPath)); err != nil {
+					t.Fatal(err)
+				}
+			case "changed":
+				put(t, w.Root, patchPath, string(patch)+"# source changed after native lock generation\n")
+			case "malformed-hash":
+				lockedHash = "not-a-native-sha256"
+			case "wrong-hash":
+				lockedHash = strings.Repeat("0", 64)
+			}
+			put(t, w.Root, "omniview/pnpm-workspace.yaml", policy)
+			if name == "foreign-declaration" || name == "conflicting-policy" {
+				put(t, w.Root, "plugin-a/patches/runtime.patch", string(patch))
+				put(t, w.Root, "plugin-a/ui/pnpm-workspace.yaml", "packages: ['widgets/*']\npatchedDependencies:\n  '@wailsio/runtime@3.0.0-beta.34': ../patches/runtime.patch\n")
+			}
+			source, err := os.ReadFile(filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			docs, err := decodeDocuments(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			main := docs[len(docs)-1]
+			main["patchedDependencies"] = map[string]any{"@wailsio/runtime@3.0.0-beta.34": lockedHash}
+			version := "3.0.0-beta.34(patch_hash=" + lockedHash + ")"
+			mapping(mapping(mapping(main["importers"])["."])["dependencies"])["@wailsio/runtime"] = map[string]any{"specifier": "3.0.0-beta.34", "version": version}
+			mapping(main["packages"])["@wailsio/runtime@3.0.0-beta.34"] = map[string]any{
+				"resolution": map[string]any{"integrity": "sha512-uchPkqqbH+yAweQh4J0y0G1NRE6ILcas6huNTruTVU84aWqCFanlpdVM/KYJdcNzWKhdHGcGGBJYCUYn3ualoQ=="},
+			}
+			mapping(main["snapshots"])["@wailsio/runtime@"+version] = map[string]any{}
+			source, err = encodeDocuments(docs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			put(t, w.Root, "omniview/pnpm-lock.yaml", string(source))
+			p, err := New(w, roots, nil)
+			if name != "accepted" {
+				if err == nil {
+					t.Fatal("native scalar lock established authority over an invalid source patch")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("native pnpm scalar patch with declared, fingerprinted source refused: %v", err)
+			}
+			if p.SourceHashes[patchPath] != nativeHash {
+				t.Fatal("lock scalar replaced the declared source patch fingerprint")
+			}
+			generatedDocs, err := decodeDocuments(generated(t, p, "pnpm-lock.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			generatedMain := generatedDocs[len(generatedDocs)-1]
+			if mapping(generatedMain["patchedDependencies"])["@wailsio/runtime@3.0.0-beta.34"] != nativeHash {
+				t.Fatal("composition rewrote the native scalar into an installer-incompatible patch record")
+			}
+			host := mapping(mapping(generatedMain["importers"])["omniview"])
+			if mapping(mapping(host["dependencies"])["@wailsio/runtime"])["version"] != version || mapping(generatedMain["snapshots"])["@wailsio/runtime@"+version] == nil {
+				t.Fatal("composition moved the selected patched importer or snapshot")
+			}
+			generatedPolicy, err := decodeDocuments(generated(t, p, "pnpm-workspace.yaml"))
+			if err != nil || mapping(generatedPolicy[0]["patchedDependencies"])["@wailsio/runtime@3.0.0-beta.34"] != patchPath {
+				t.Fatalf("source policy lost its independently owned patch path: %v", err)
+			}
+			after, err := os.ReadFile(filepath.Join(w.Root, "omniview/pnpm-lock.yaml"))
+			if err != nil || string(after) != string(source) {
+				t.Fatalf("composition modified the native source lock: %v", err)
+			}
+			if err := CheckInputs(p); err != nil {
+				t.Fatal(err)
+			}
+			put(t, w.Root, patchPath, string(patch)+"# changed after planning\n")
+			if err := CheckInputs(p); err == nil {
+				t.Fatal("changed patch bytes did not stale the source-owned plan")
+			}
+			if _, err := New(w, roots, nil); err == nil {
+				t.Fatal("new planning accepted stale native patch hash after source mutation")
+			}
+		})
+	}
+}
+
 func TestLockSeedReconcilesEffectivePeersAndEnrichesMetadataWithoutMovingPins(t *testing.T) {
 	w, roots := fixture(t)
 	put(t, w.Root, "omniview/pnpm-workspace.yaml", "packages: ['packages/*']\nstrictPeerDependencies: true\noverrides: {'@types/react': ^19.0.0}\n")

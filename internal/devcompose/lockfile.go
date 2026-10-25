@@ -365,7 +365,7 @@ func seedLock(w devcontract.ResolvedWorkspace, sources sourceSet, plan *Plan, po
 		if err := mergeLockPolicy(main, doc, source); err != nil {
 			return nil, nil, err
 		}
-		if err := mergeLockedPatches(w, main, doc, policy, path); err != nil {
+		if err := mergeLockedPatches(w, main, doc, policy, plan.SourceHashes, path); err != nil {
 			return nil, nil, err
 		}
 		for _, key := range []string{"packages", "snapshots"} {
@@ -478,7 +478,7 @@ func mergeLockPolicy(dst, src map[string]any, source string) error {
 	return nil
 }
 
-func mergeLockedPatches(w devcontract.ResolvedWorkspace, dst, src, policy map[string]any, lockPath string) error {
+func mergeLockedPatches(w devcontract.ResolvedWorkspace, dst, src, policy map[string]any, sourceHashes map[string]string, lockPath string) error {
 	value, exists := src["patchedDependencies"]
 	if !exists {
 		return nil
@@ -494,6 +494,23 @@ func mergeLockedPatches(w devcontract.ResolvedWorkspace, dst, src, policy map[st
 		return err
 	}
 	for name, value := range patches {
+		if lockedHash, ok := value.(string); ok {
+			// Native12 records only a SHA256, never a patch path. Resolve that
+			// identity exclusively through already-fingerprinted source policy.
+			patch, declared := mapping(policy["patchedDependencies"])[name].(string)
+			if !declared {
+				return refusal("locked scalar patch in %s lacks a reconciled source declaration", source)
+			}
+			absolute := filepath.Join(w.Root, filepath.FromSlash(patch))
+			if !within(repo, absolute) || exactPath(absolute) != nil {
+				return refusal("locked patch escapes or redirects selected repository in %s", source)
+			}
+			if len(lockedHash) != 64 || sourceHashes[patch] != lockedHash {
+				return refusal("locked patch hash in %s does not match its reconciled source fingerprint", source)
+			}
+			rewritten[name] = lockedHash
+			continue
+		}
 		record := mapping(value)
 		if record == nil {
 			return refusal("unsupported locked patch record in %s", source)
