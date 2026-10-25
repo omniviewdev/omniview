@@ -3,11 +3,12 @@ package resource
 import (
 	"context"
 	"encoding/json"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
-	"github.com/omniviewdev/plugin-sdk/pkg/v1/resource/resourcetest"
 	"os"
 	"strings"
 	"testing"
+
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+	"github.com/omniviewdev/plugin-sdk/pkg/v1/resource/resourcetest"
 )
 
 // Optional artifact is consumed by the runtime parser transport acceptance test.
