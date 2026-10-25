@@ -21,7 +21,7 @@ func LowerClause(c Clause) (string, error) {
 		quoted, _ := json.Marshal(member)
 		parent := path
 		path += "[" + string(quoted) + "]"
-		guards = append(guards, "("+string(quoted)+" in "+parent+")", path+" != null")
+		guards = append(guards, "(type("+parent+") == map && "+string(quoted)+" in "+parent+")", path+" != null")
 	}
 	// dyn fixture paths require explicit ancestor/null guards.
 	presentGuards := append([]string{}, guards[:len(guards)-1]...)

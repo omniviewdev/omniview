@@ -304,3 +304,80 @@ func TestFinalPagesOrderByIncarnationNotArrivalNameOrRevision(t *testing.T) {
 		}
 	}
 }
+
+func TestBuilderNestedAncestorReachability(t *testing.T) {
+	c := corpusForTest(t)
+	for i := range c.Records {
+		if c.Records[i].Name == "cloud-arn" {
+			c.Records = []Record{c.Records[i]}
+			break
+		}
+	}
+	kinds := []string{"absent", "present", "null", "nonNull", "equal", "not", "notEqualPresent"}
+	cases := []struct {
+		name  string
+		body  string
+		want  []bool
+		decl  BindingType
+		bound Value
+	}{
+		{name: "missing-ancestor", body: `{}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "null-ancestor", body: `{"a":null}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "string-ancestor", body: `{"a":"x"}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "integer-ancestor", body: `{"a":7}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "boolean-ancestor", body: `{"a":false}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "empty-list-ancestor", body: `{"a":[]}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "list-containing-member-name", body: `{"a":["b"]}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "inner-string-ancestor", body: `{"a":{"b":"x"}}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "inner-list-containing-leaf-name", body: `{"a":{"b":["leaf"]}}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "missing-inner-ancestor", body: `{"a":{}}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "null-inner-ancestor", body: `{"a":{"b":null}}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "missing-leaf", body: `{"a":{"b":{}}}`, want: []bool{true, false, false, false, false, true, false}},
+		{name: "null-leaf", body: `{"a":{"b":{"leaf":null}}}`, want: []bool{false, true, true, false, false, true, false}},
+		{name: "matching-string-leaf", body: `{"a":{"b":{"leaf":"wanted"}}}`, want: []bool{false, true, false, true, true, false, false}},
+		{name: "different-string-leaf", body: `{"a":{"b":{"leaf":"other"}}}`, want: []bool{false, true, false, true, false, true, true}},
+		{name: "list-leaf", body: `{"a":{"b":{"leaf":["wanted"]}}}`, want: []bool{false, true, false, true, true, false, false}, decl: BindingType{Kind: "list", Element: &BindingType{Kind: "string"}}, bound: value("list", []Value{value("string", "wanted")})},
+		{name: "empty-list-leaf", body: `{"a":{"b":{"leaf":[]}}}`, want: []bool{false, true, false, true, true, false, false}, decl: BindingType{Kind: "list", Element: &BindingType{Kind: "string"}}, bound: value("list", []Value{})},
+		{name: "map-leaf", body: `{"a":{"b":{"leaf":{"k":"wanted"}}}}`, want: []bool{false, true, false, true, true, false, false}, decl: BindingType{Kind: "map", Value: &BindingType{Kind: "string"}}, bound: value("map", map[string]Value{"k": value("string", "wanted")})},
+		{name: "injection-shaped-bound-value", body: `{"a":{"b":{"leaf":"\" || true || \""}}}`, want: []bool{false, true, false, true, true, false, false}, decl: BindingType{Kind: "string"}, bound: value("string", `" || true || "`)},
+	}
+	for _, tc := range cases {
+		for i, kind := range kinds {
+			t.Run(tc.name+"/"+kind, func(t *testing.T) {
+				c.Records[0].Body = json.RawMessage(tc.body)
+				r := cloudRequest("")
+				r.Candidates = []string{"cloud-arn"}
+				r.Builder = &Clause{Kind: kind, Path: []string{"a", "b", "leaf"}}
+				if kind == "equal" || kind == "not" || kind == "notEqualPresent" {
+					r.Builder.Parameter = "needle"
+					r.Declarations["needle"], r.Bindings["needle"] = tc.decl, tc.bound
+					if tc.decl.Kind == "" {
+						r.Declarations["needle"], r.Bindings["needle"] = BindingType{Kind: "string"}, value("string", "wanted")
+					}
+				}
+				want := []string{}
+				if tc.want[i] {
+					want = []string{"cloud-arn"}
+				}
+				got, err := Execute(context.Background(), r, c)
+				if err != nil || !reflect.DeepEqual(got.Names, want) {
+					t.Fatalf("nested clause membership got %v, error %v; want %v", got.Names, err, want)
+				}
+			})
+		}
+	}
+}
+
+func TestBuilderGuardBuiltinsCannotBeShadowed(t *testing.T) {
+	c := corpusForTest(t)
+	for _, name := range []string{"type", "map", "list", "dyn", "bool"} {
+		t.Run(name, func(t *testing.T) {
+			r := cloudRequest("")
+			r.Builder = &Clause{Kind: "present", Path: []string{"tags", "leaf"}}
+			r.Declarations[name], r.Bindings[name] = BindingType{Kind: "string"}, value("string", "map")
+			if _, err := Execute(context.Background(), r, c); code(err) != "INVALID_REQUEST" {
+				t.Fatalf("builtin declaration altered guard environment: %v", err)
+			}
+		})
+	}
+}

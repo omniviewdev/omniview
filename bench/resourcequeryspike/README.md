@@ -103,3 +103,19 @@ After explicit coordinator grant, all five commands ran sequentially through the
 - The exporter regression command above: **1 test passed, 0 failed/skipped**, exercising the real CLI with broken tracked module input and untracked/ignored Go init panics in its owned caller checkout. Exact committed corpus digest held and caller bytes/status were preserved; the exporter removed its private checkout before emitting provenance.
 
 No canonical corpus re-export/tidy/formatter/install/bindings/broad E2E/performance measurement ran. Historical source/provenance/result hashes above describe their original cohort, not the newly changed source or latest 92-observation result. No production dependency/profile change or safe mixed-number/optimized-membership claim.
+
+### Nested ancestor follow-up: observed RED → GREEN
+
+The next review found that a dynamic member path could apply membership/indexing to a non-map ancestor. Tests were written first, then the coordinator-authorized RED runs reproduced actual native CEL errors on string/integer/Boolean/list ancestors and incorrect present/absent membership for a deeper list containing the member name. Existing missing/null controls, typed list/map leaves and all five builtin-shadowing rejection controls passed; the actual Node subprocess also failed on the expected string-ancestor case.
+
+The lowerer now adds standard native CEL `type(parent) == map` applicability before each membership test. Existing ancestor/terminal null guards and whole-clause NOT remain intact. Only ancestors must be maps: reachable terminal lists/maps retain typed operand comparison, including empty lists and injection-shaped bound string data. Existing declaration admission rejects `type`/`map` and other builtin-shadowing names; no new reserved names or helper evaluator were added.
+
+After explicit coordinator GREEN grant, sequential scoped `gofmt -w authoring.go contract_test.go`, normal/race/build, actual Node driver and real exporter regression all succeeded through the private-HOME launcher with `GOWORK=off`; no source edits during checks:
+
+- `go test ./... -count=1 -v`: **18 top-level tests passed**, including all 133 nested shape/clause cases and five builtin-shadowing controls; final `ok github.com/omniviewdev/omniview/bench/resourcequeryspike 0.463s`.
+- `go test -race ./... -count=1`: `ok github.com/omniviewdev/omniview/bench/resourcequeryspike 1.683s`, no race diagnostic for this workload.
+- `go build -o p01-probe .`: success, no stdout.
+- Actual driver stdout: **`Node -> Go -> native CEL -> Node: 230 independently expected observations passed; numeric production gate BLOCKED`**.
+- Real exporter contamination regression: **1 passed, 0 failed/skipped**; committed corpus digest and unchanged caller bytes/status held.
+
+This 230-observation cohort supersedes historical 92 for the changed lowerer source. It remains bounded design/spike evidence, not schema normalization, production authorization/planner/provider filtering or mixed-number/optimized-membership safety. Numeric production remains BLOCKED.

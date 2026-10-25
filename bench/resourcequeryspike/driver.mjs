@@ -223,6 +223,53 @@ try {
   await rm(tieDirectory,{recursive:true});
 }
 
+const unreachable = [true,false,false,false,false,true,false];
+const nestedCases = [
+  ['missing-ancestor',{},unreachable],
+  ['null-ancestor',{a:null},unreachable],
+  ['string-ancestor',{a:'x'},unreachable],
+  ['integer-ancestor',{a:7},unreachable],
+  ['boolean-ancestor',{a:false},unreachable],
+  ['empty-list-ancestor',{a:[]},unreachable],
+  ['list-containing-member-name',{a:['b']},unreachable],
+  ['inner-string-ancestor',{a:{b:'x'}},unreachable],
+  ['inner-list-containing-leaf-name',{a:{b:['leaf']}},unreachable],
+  ['missing-inner-ancestor',{a:{}},unreachable],
+  ['null-inner-ancestor',{a:{b:null}},unreachable],
+  ['missing-leaf',{a:{b:{}}},unreachable],
+  ['null-leaf',{a:{b:{leaf:null}}},[false,true,true,false,false,true,false]],
+  ['matching-string-leaf',{a:{b:{leaf:'wanted'}}},[false,true,false,true,true,false,false]],
+  ['different-string-leaf',{a:{b:{leaf:'other'}}},[false,true,false,true,false,true,true]],
+  ['list-leaf',{a:{b:{leaf:['wanted']}}},[false,true,false,true,true,false,false],{kind:'list',element:{kind:'string'}},scalar('list',[scalar('string','wanted')])],
+  ['empty-list-leaf',{a:{b:{leaf:[]}}},[false,true,false,true,true,false,false],{kind:'list',element:{kind:'string'}},scalar('list',[])],
+  ['map-leaf',{a:{b:{leaf:{k:'wanted'}}}},[false,true,false,true,true,false,false],{kind:'map',value:{kind:'string'}},scalar('map',{k:scalar('string','wanted')})],
+  ['injection-shaped-bound-value',{a:{b:{leaf:'" || true || "'}}},[false,true,false,true,true,false,false],{kind:'string'},scalar('string','" || true || "')],
+];
+const nestedKinds = ['absent','present','null','nonNull','equal','not','notEqualPresent'];
+const nestedCorpus = {...tieCorpus,Records:[{...base}]};
+tieScenario.Pages = [{Records:['cloud-arn']}];
+const nestedDirectory = await mkdtemp(join(tmpdir(),'p01-nested-ancestors-'));
+try {
+  for (const [name,body,want,declaration = {kind:'string'},binding = scalar('string','wanted')] of nestedCases) {
+    nestedCorpus.Records[0].Body = body;
+    await writeFile(join(nestedDirectory,'corpus.json'),JSON.stringify(nestedCorpus));
+    for (const [i,kind] of nestedKinds.entries()) {
+      r = request(''); r.builder = {kind,path:['a','b','leaf']};
+      if (['equal','not','notEqualPresent'].includes(kind)) {
+        r.builder.parameter = 'needle'; r.declarations.needle = declaration; r.bindings.needle = binding;
+      }
+      observe(`nested builder ${name} ${kind}`,r,want[i] ? ['cloud-arn'] : [],undefined,nestedDirectory);
+    }
+  }
+  for (const name of ['type','map','list','dyn','bool']) {
+    r = request(''); r.builder = {kind:'present',path:['a','b','leaf']};
+    r.declarations[name] = {kind:'string'}; r.bindings[name] = scalar('string','map');
+    observe(`builder guard builtin ${name} cannot be shadowed`,r,'INVALID_REQUEST',undefined,nestedDirectory);
+  }
+} finally {
+  await rm(nestedDirectory,{recursive:true});
+}
+
 const corpus = await readFile('corpus.json');
 const provenance = JSON.parse(await readFile('corpus-provenance.json','utf8'));
 assert.equal(createHash('sha256').update(corpus).digest('hex'),provenance.corpusSHA256);
