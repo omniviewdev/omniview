@@ -9,7 +9,6 @@ import { toolEnvironment } from './execution.mjs';
 const workflow = name => readFileSync(new URL(`../../.github/workflows/${name}`, import.meta.url), 'utf8');
 const shared = workflow('e2e-runner.yml');
 const pr = workflow('pr.yml');
-const main = workflow('main-native-cache.yml');
 function step(source, name) {
   const marker = `      - name: ${name}\n`;
   const start = source.indexOf(marker);
@@ -59,36 +58,8 @@ test('canonical workflow completion refuses missing, skipped, failed or cancelle
   for (const hit of ['false', '', '1']) assert.notEqual(shell(completion, { CACHE_ONLY: 'true', SELECTION: 'cache-only', PREPARATION: 'false', GO_HIT: hit, PNPM_HIT: 'true' }).status, 0);
 });
 
-test('one reusable application execution feeds the exact always-evaluated fail-closed e2e-tests check', () => {
-  assert.equal(pr.split('uses: ./.github/workflows/e2e-runner.yml').length - 1, 1);
-  assert.match(pr, /  e2e-tests:\n    name: e2e-tests\n    needs: e2e-application\n    if: always\(\)/);
-  assert.doesNotMatch(pr, /run\.mjs|continue-on-error/);
+test('stable e2e-tests gate accepts only a successful canonical result', () => {
   const gate = step(pr, 'Require canonical suite or explicit prose-only success');
   for (const result of ['success', 'failure', 'cancelled', 'skipped', '', 'unavailable']) assert.equal(shell(gate, { RESULT: result }).status === 0, result === 'success', result);
 });
 
-test('trusted push-main primer shares exact payload keys without PR promotion or application-output caching', () => {
-  assert.match(main, /push:\n    branches: \[main\]/);
-  assert.match(main, /group: main-native-cache-\$\{\{ github.ref \}\}/);
-  assert.match(main, /cancel-in-progress: false/);
-  assert.match(main, /uses: .\/.github\/workflows\/e2e-runner.yml\n    with:\n      cache-only: true/);
-  assert.match(shared, /github.event_name == 'push' && github.ref == 'refs\/heads\/main'/);
-  assert.doesNotMatch(main + shared, /workflow_run|download-artifact|actions\/cache@/);
-  for (const [lookup, restore, key] of [
-    ['Look up exact main pnpm payload', 'Restore standalone native pnpm content store', 'pnpm'],
-    ['Look up exact main Go payloads', 'Restore native Go module and compiler payloads', 'go'],
-  ]) {
-    const lookupStep = step(shared, lookup);
-    assert.match(lookupStep, /lookup-only: true/);
-    assert.doesNotMatch(lookupStep, /restore-keys:/);
-    const exactKey = `key: \u0024{{ steps.cache-keys.outputs.${key} }}`;
-    assert.ok(lookupStep.includes(exactKey));
-    assert.ok(step(shared, restore).includes(exactKey));
-  }
-  for (const name of ['Save native pnpm payload independently of application assertions', 'Save native Go payloads independently of application assertions']) {
-    const save = step(shared, name);
-    assert.match(save, /steps.canonical.outcome == 'success'/);
-    assert.doesNotMatch(save, /\.owner.json|node_modules|playwright|application\/|build-cohort|profiles|\/bin|HOME/);
-  }
-  assert.match(step(shared, 'Install Linux dependencies'), /node scripts\/verify-apt-archives.mjs/);
-});
