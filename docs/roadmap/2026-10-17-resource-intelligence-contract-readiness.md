@@ -4,6 +4,11 @@ Status: implementation-planning ledger. Accepted semantics are not frozen produc
 
 Remote tracking (2026-10-23): [delivery project](https://github.com/orgs/omniviewdev/projects/13), [parent roadmap](https://github.com/omniviewdev/omniview/issues/78), and [complete issue index / maintenance rules](2026-10-23-resource-intelligence-remote-index.md). All 48 packets have repository-owned issues and native blockers; three separate UI-quality followups do not certify their related production packets. Project readiness remains manually reviewed. Reviewed planning/specification sources and all six evidence archives are published at immutable [commit 0fbaace](https://github.com/omniviewdev/omniview/tree/0fbaace31aacfcb1041c4a6240e7525a67d11bcd/docs); publication is not production contract freeze or implementation acceptance.
 
+## P00 execution acceptance — 2026-10-23
+
+[C00 selected-source receipt](2026-10-17-resource-intelligence-baseline.md) is accepted after independent technical review: actual selected SDK behavior in host and Kubernetes processes, actual selected UI source in both browser consumers, inspected React/runtime/UI singleton identities, genuine native-pnpm protocol evidence and exact restoration/controlled shutdown. This supersedes the historical planning-only C00 status below, not its preserved observations. Browser-only limits, failed automatic CSS refresh ([#118](https://github.com/omniviewdev/omniview/issues/118)) and marketplace DNS failure remain explicit. C00 releases only P44/P04/P18 against their real acceptance; production identity/schema/query/invocation contracts remain unfrozen.
+
+
 ## 1. Decisions already accepted
 
 - Provider-neutral resource identity uses provider, backing AuthorityID, opaque type, exact identity scope and native ID. Connection is an access route; equal addresses do not authorize body sharing. Incarnation and native revision are optional, separate facts.
@@ -105,7 +110,7 @@ Every owner publishes a portable contract receipt alongside its focused spec/pla
 
 Do not launch production consumers if their inputs are merely illustrative code snippets, pending numeric dependency choices or a generated file from another agent's unlanded checkout. Stop and resolve the affected gate; unrelated ready work may continue.
 
-**Current next launch:** P00 under one integration owner, proving the actual selected source cohort rather than inferring it from working UI fixtures. After actual C00 acceptance, proceed with P44 and P04 under their existing dependencies, then P01's remaining confirmation gates. P18 already has reusable editor execution evidence: assess its remaining host feasibility acceptance, do not repeat the implemented editor work. Most feature implementation is still not dispatchable against frozen production interfaces.
+**Current next launch:** C00/P00 and P44 are independently accepted; P44's real SDK conformance receipt is merged in [SDK PR13](https://github.com/omniviewdev/plugin-sdk/pull/13) at `da0c53be2da636d3833b7ca1e73f8a6c8d26b5c7`. P01/P02 may execute their own design/spike and measurement acceptance. P01's production numeric/profile gate remains blocked. P04's reviewed C02 proposal is not implementation acceptance; SDK PR14 and host/runtime/provider consumption remain in progress. P18 reuses merged editor evidence while retaining explicit native accessibility gates. Production consumers remain held by their actual contract prerequisites.
 
 ## 6. UI execution reconciliation — 2026-10-22
 
