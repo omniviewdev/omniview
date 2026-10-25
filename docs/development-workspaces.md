@@ -332,6 +332,12 @@ objects when dependencies change. Successfully restored/produced Go payloads
 are saved independently of browser assertions; an assertion failure must not
 discard dependency/compiler work. Cancellation does not publish a new cache.
 
+The PR Go and bindings jobs capture `go env GOCACHE` after `actions/setup-go`
+restores its cache and pass that absolute path as `GO_BUILD_CACHE_DIRECTORY`
+to every Task invocation. `task check:go-cache` verifies the effective Go cache
+matches before verification starts. Standalone and workspace defaults remain
+unchanged; an explicit cache override must be nonempty and absolute.
+
 Linux development headers remain required by the pinned Wails transitive cgo
 dependencies even for server builds. CI caches only their downloaded `.deb`
 archives, keyed by platform, recipe and fresh APT index contents. Before
