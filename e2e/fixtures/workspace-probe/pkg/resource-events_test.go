@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/omniviewdev/plugin-sdk/pkg/types"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"testing"
 	"time"
+
+	"github.com/omniviewdev/plugin-sdk/pkg/types"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 type benchmarkTestSink struct {

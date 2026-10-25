@@ -5,12 +5,13 @@ package host
 import (
 	"context"
 	"encoding/json"
-	"github.com/omniviewdev/omniview/internal/devcontract"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/omniviewdev/omniview/internal/devcontract"
 )
 
 func metricFixture(t *testing.T) (string, devcontract.InstanceDescriptor) {

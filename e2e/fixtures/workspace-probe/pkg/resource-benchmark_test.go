@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
-	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 	"testing"
+
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
 )
 
 func TestFiniteCorpusBodiesAndCursor(t *testing.T) {
