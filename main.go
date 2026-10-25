@@ -72,6 +72,19 @@ var assets embed.FS
 //go:embed build/appicon.png
 var icon []byte
 
+func newUICapabilityControllers(
+	log logging.Logger,
+	settingsProvider pkgsettings.Provider,
+	resourceController resource.Controller,
+	resourceUIRealm *invocation.Scope,
+) (exec.Controller, networker.Controller, pluginlogs.Controller, pluginmetric.Controller) {
+	uiResourceService := &resource.ServiceWrapper{Ctrl: resourceController, Realm: resourceUIRealm}
+	return exec.NewController(log, settingsProvider, uiResourceService),
+		networker.NewController(log, settingsProvider, uiResourceService),
+		pluginlogs.NewController(log, settingsProvider, uiResourceService),
+		pluginmetric.NewController(log, settingsProvider, uiResourceService)
+}
+
 //nolint:funlen // main function is expected to be long
 func main() {
 	if handled, exit := hostruntime.HandleNativeProfileRemoval(os.Args[1:]); handled {
@@ -275,13 +288,9 @@ func main() {
 
 	settingsController := settings.NewController(log, settingsProvider, settingsStore)
 
-	execController := exec.NewController(log, settingsProvider, resourceController)
-
-	networkerController := networker.NewController(log, settingsProvider, resourceController)
-
-	logsController := pluginlogs.NewController(log, settingsProvider, resourceController)
-
-	metricController := pluginmetric.NewController(log, settingsProvider, resourceController)
+	execController, networkerController, logsController, metricController := newUICapabilityControllers(
+		log, settingsProvider, resourceController, resourceUIRealm,
+	)
 
 	dataController := data.NewController(log, stateDir.PluginData)
 
