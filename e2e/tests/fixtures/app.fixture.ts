@@ -34,7 +34,7 @@ function collectErrors(page: Page, records: BrowserErrors): void {
   });
   page.on('response', response => {
     if (response.status() >= 400) {
-      const url = new URL(response.url()); records.add('http', `${response.status()} ${response.request().method()} ${url.origin}${url.pathname}`); 
+      const url = new URL(response.url()); records.add('http', `${response.status()} ${response.statusText()} ${response.request().method()} ${url.origin}${url.pathname}`);
     } 
   });
 }

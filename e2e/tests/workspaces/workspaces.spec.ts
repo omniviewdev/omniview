@@ -63,16 +63,29 @@ test.describe('Owned application profiles', () => {
 // settings, Kubernetes or compiler-conformance matrix.
 test.describe('Alternate live frontend delivery', () => {
   test.use({ liveFrontend: true });
-  test('loads the actual live asset route and reconnects the same owned origin', async ({ appPage, workspace }) => {
+  test('loads the actual live asset route and reconnects the same owned origin', async ({ page, workspace }) => {
     const descriptor = await workspace.verify();
     expect(descriptor.endpoints.vite).toMatch(/^http:\/\/127\.0\.0\.1:\d+/);
-    await expect(appPage).toHaveTitle(`Omniview — DEV · ${descriptor.displayName}`);
-    await appPage.goto(`${workspace.browserURL()}#/_plugin/workspace-probe/`);
-    await expect(appPage.getByRole('heading', { name: 'Workspace Probe', exact: true })).toBeVisible();
-    const socket = appPage.waitForEvent('websocket', socket => new URL(socket.url()).pathname === '/wails/events');
-    await appPage.reload();
+    const optimizerFailures: string[] = [];
+    let documents = 0;
+    page.on('request', request => {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents++;
+    });
+    page.on('response', response => {
+      if (response.status() >= 400 && new URL(response.url()).pathname.includes('/.vite/deps/')) {
+        optimizerFailures.push(`${response.status()} ${response.statusText()} ${response.url()}`);
+      }
+    });
+    await page.goto(`${workspace.browserURL()}#/_plugin/workspace-probe/`, { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('app-shell')).toBeVisible();
+    await expect(page).toHaveTitle(`Omniview — DEV · ${descriptor.displayName}`);
+    await expect(page.getByRole('heading', { name: 'Workspace Probe', exact: true })).toBeVisible();
+    expect(optimizerFailures, 'Cold module graph must load without optimizer failures').toEqual([]);
+    expect(documents, 'Cold startup must not require an optimizer-triggered reload').toBe(1);
+    const socket = page.waitForEvent('websocket', socket => new URL(socket.url()).pathname === '/wails/events');
+    await page.reload({ waitUntil: 'domcontentloaded' });
     expect((await socket).isClosed()).toBe(false);
-    await expect(appPage.getByRole('heading', { name: 'Workspace Probe', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Workspace Probe', exact: true })).toBeVisible();
     expect((await workspace.verify()).generation).toBe(descriptor.generation);
   });
 });

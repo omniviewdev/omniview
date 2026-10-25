@@ -298,4 +298,7 @@ cache before browser execution; it does not certify application acceptance.
 The host React compiler processes owned source, including runtime and benchmark
 sources, rather than reprocessing built dependency/distribution bundles. Actual
 compiler/render regressions run on Linux and native Windows.
+Managed live delivery preoptimizes the linked UI's deep Base UI imports through
+their owning package. The cold-browser journey requires one initial document,
+no optimizer HTTP failures, actual plugin rendering and same-origin reconnect.
 
