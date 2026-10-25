@@ -92,3 +92,31 @@ On macOS, a fast child can exit before kqueue registration, which then reports `
 Selected repository directories, package directories, frontend roots and package manifests must resolve to their exact owned feature paths. Symlink redirects to canonical checkouts or other locations are rejected before planning can mutate configuration. SDK replacement validation scans every entry, so a matching unversioned replacement cannot hide a later conflicting version-specific replacement.
 
 Unlink and canonical stopped edit/remove restore exact aggregate/source contents or original absence and retire only independently owned outputs. `node_modules` is derived package-manager state, not a byte-for-byte user-data backup. Unknown ignored files, modified distributions, foreign roots and uncertain live writers remain explicit refusals; no force-cleaning or production profile/credential import is authorized.
+
+Restoration records its complete allocation plan atomically before creating stages or changing source. Observations taken after publication recovery form plan inputs only; each mutation still revalidates the actual bytes, source commit and filesystem identities. Stage identities remain immediately durable. Nested outputs retire before their parents; among independent eligible outputs, larger inventories retire first so unrelated checkpoints do not repeatedly serialize them. Interrupted legacy publications and partial cleanup retain their existing recovery states and ownership checks.
+
+## File observation memory
+
+Each observation rereads every regular file and retains fresh identity checks;
+neither a prior digest nor a matching size/mtime authorizes reuse. Hash state and
+a 32 KiB copy buffer are local to one observation or cleanup traversal. The
+reader-only file view keeps `os.File.WriteTo` from bypassing that buffer.
+Immediate cleanup leaf checks still reread bytes before removal.
+
+An isolated allocation benchmark is available without an existing workspace:
+
+```sh
+GOWORK=off go test ./internal/devoutputs -run '^$' -bench '^BenchmarkSnapshotModuleFiles$' -benchmem -benchtime=1x
+```
+
+A paired, profiled observation of the same 155,109-path owned pnpm aggregate on
+macOS 27/Apple M5 Max, Go 1.26.1, produced:
+
+| Implementation | Seconds | Allocated bytes | Allocations |
+|---|---:|---:|---:|
+| Per-file copy scratch | 5.373 | 4,887,471,008 | 2,658,263 |
+| Operation-local scratch | 4.579 | 408,550,120 | 2,249,598 |
+
+These are warmed-filesystem observation measurements, not an application or
+cold Linux timing claim. Snapshot contents and all ownership gates are unchanged.
+
