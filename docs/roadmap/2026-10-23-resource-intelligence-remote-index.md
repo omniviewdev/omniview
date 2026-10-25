@@ -11,7 +11,9 @@ Published: 2026-10-23.
 
 ## Packet index
 
-| Packet | Owning repository / remote issue | Wave | Hard blockers | Evidence / acceptance |
+Required predecessors remain listed after acceptance; the evidence column identifies the remaining gates.
+
+| Packet | Owning repository / remote issue | Wave | Required predecessors | Evidence / acceptance |
 | --- | --- | --- | --- | --- |
 | P00 | [omniview#79: Resolve the integration baseline](https://github.com/omniviewdev/omniview/issues/79) | 0 | None | Accepted [browser-mode selected-source receipt](2026-10-17-resource-intelligence-baseline.md), published by merged [PR119](https://github.com/omniviewdev/omniview/pull/119) |
 | P01 | [omniview#80: Complete the CEL query/resource contracts and confirmation gates](https://github.com/omniviewdev/omniview/issues/80) | 2 | [P00](https://github.com/omniviewdev/omniview/issues/79), [P44](https://github.com/omniviewdev/plugin-sdk/issues/11) | Reviewed design/native-CEL spike merged via [PR130](https://github.com/omniviewdev/omniview/pull/130); production numeric gate blocked |

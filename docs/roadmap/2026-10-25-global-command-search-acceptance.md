@@ -1,6 +1,6 @@
 # P42 / C11 command-search acceptance
 
-Status: **accepted** in [host PR139](https://github.com/omniviewdev/omniview/pull/139), merged as `c43662896b75af4409124ef29ebafe0bcd76c288`. [Packet113](https://github.com/omniviewdev/omniview/issues/113) is closed; delivery-project Status/Readiness are Done, with Integration evidence.
+Status: **accepted** in [host PR139](https://github.com/omniviewdev/omniview/pull/139), merged as `c43662896b75af4409124ef29ebafe0bcd76c288`. [P42 issue #113](https://github.com/omniviewdev/omniview/issues/113) is closed; delivery-project Status/Readiness are Done, with Integration evidence.
 
 This accepts the feature-local [command/provider contract](../superpowers/specs/2026-10-25-global-command-search-contract.md), not every C11 graph/search/index contract. [P43](https://github.com/omniviewdev/omniview/issues/114) still requires [P35](https://github.com/omniviewdev/omniview/issues/106)'s authoritative multi-provider query service.
 
