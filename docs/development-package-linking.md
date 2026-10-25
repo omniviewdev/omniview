@@ -69,6 +69,8 @@ The launcher enforces `--config.verify-deps-before-run=error`. [Native pnpm12 de
 
 Run focused managed-workspace checks through installed Node executables. For Vitest, pass `--no-cache --configLoader runner` so verification leaves journal-owned dependency trees unchanged. Dependency installs and ownership-receipt updates remain canonical workspace operations.
 
+For Prettier, set `--cache-location` to a file in owned scratch storage outside the managed feature. Prettier 3.5.3 creates its default `node_modules/.cache/prettier` directory even without `--cache`; formatting must not introduce unowned entries into the controlled dependency tree.
+
 Diagnostics resolve import-condition exports from each consumer's actual package location, including the runtime package, UI packages, and every selected plugin. Runtime `api`, `models` and `runtime` subpaths are checked independently. Missing exports, missing build outputs and wrong directories remain explicit problems.
 
 The host's CSS entry remains authoritative: `@omniviewdev/base-ui/styles.css` must still map to `@/theme/base-ui.css` in shared dependencies. Package-directory linking does not replace this CSS mapping or bypass the host's cascade layer. The disposable CSS-content probe is not a browser cascade proof. Actual host/plugin singleton identity through Vite aliases, generated shims, and browser rendering must also be exercised by the integration barrier; Node directory checks alone cannot establish that.

@@ -72,4 +72,27 @@ test.describe('App Shell', () => {
     ]);
     expect(onTop).toBe(true);
   });
+
+  test('global search keeps keyboard focus inside its dialog and restores its opener', async ({ appPage }) => {
+    const name = 'Search commands, settings and navigation';
+    const opener = appPage.getByRole('button', { name, exact: true });
+    await opener.focus();
+    await appPage.keyboard.press('ControlOrMeta+k');
+    const dialog = appPage.getByRole('dialog', { name, exact: true });
+    const input = dialog.getByRole('combobox', { name, exact: true });
+    await expect(input).toBeFocused();
+    await input.fill('Home');
+    await expect(dialog.getByRole('option', { name: /^Home/ })).toBeVisible();
+    const clear = dialog.getByRole('button', { name: 'Clear search', exact: true });
+    const close = dialog.getByRole('button', { name: 'Close search', exact: true });
+    await clear.focus();
+    await appPage.keyboard.press('Tab');
+    await expect(close).toBeFocused();
+    await appPage.keyboard.press('Shift+Tab');
+    await expect(clear).toBeFocused();
+    await input.focus();
+    await appPage.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(opener).toBeFocused();
+  });
 });

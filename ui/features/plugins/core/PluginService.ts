@@ -326,6 +326,8 @@ export class PluginService {
     this.inflightLoads.set(pluginId, promise);
 
     try {
+      // Reserve the operation before publishing loading to reentrant callers.
+      this.notify();
       await promise;
     } finally {
       if (this.inflightLoads.get(pluginId) === promise) {
@@ -352,6 +354,7 @@ export class PluginService {
 
     if (current.phase === 'ready') {
       this.transition(pluginId, 'unloading');
+      this.notify();
     }
 
     // Failed imports and invalid exports are cached too.

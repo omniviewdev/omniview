@@ -1,0 +1,28 @@
+.Results {
+  max-block-size: min(50vh, 28rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.Row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--ov-space-1) var(--ov-space-3);
+  min-inline-size: 0;
+}
+
+.Row > :nth-child(n + 3) {
+  grid-column: 1 / -1;
+}
+
+.Kind {
+  color: var(--ov-color-fg-subtle);
+  font-size: var(--ov-font-size-xs, 11px);
+}
+
+.Sources {
+  margin-block: var(--ov-space-3) 0;
+  padding-inline-start: var(--ov-space-4);
+  color: var(--ov-color-fg-muted);
+  font-size: var(--ov-font-size-xs, 11px);
+}

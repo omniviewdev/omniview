@@ -33,17 +33,20 @@ describe('Group 11: Built-in registration', () => {
     expect(registry.hasExtensionPoint(RESOURCE_SIDEBAR_EXTENSION_POINT_ID)).toBe(true);
     expect(registry.hasExtensionPoint(RESOURCE_DRAWER_EXTENSION_POINT_ID)).toBe(true);
     expect(registry.hasExtensionPoint(THEME_EXTENSION_POINT_ID)).toBe(true);
+    expect(registry.hasExtensionPoint('omniview/global-search')).toBe(true);
   });
 
-  it('11.15 — builtin registration is idempotent', () => {
+  it('11.15 — repeated registration preserves the actual search store and its live contribution', () => {
     ensureBuiltinExtensionPointsRegistered(registry);
+    const store = registry.getExtensionPoint('omniview/global-search')!;
+    const contribution = { id: 'probe/search', plugin: 'probe', label: 'Native tasks', value: {
+      schemaVersion: 1, kind: 'navigation', target: { kind: 'plugin', pluginId: 'probe', path: '/capabilities' },
+    } };
+    store.register(contribution);
     ensureBuiltinExtensionPointsRegistered(registry);
-
-    // Still only 3 extension points, no error
-    expect(registry.listExtensionPoints()).toHaveLength(3);
-    expect(registry.hasExtensionPoint(RESOURCE_SIDEBAR_EXTENSION_POINT_ID)).toBe(true);
-    expect(registry.hasExtensionPoint(RESOURCE_DRAWER_EXTENSION_POINT_ID)).toBe(true);
-    expect(registry.hasExtensionPoint(THEME_EXTENSION_POINT_ID)).toBe(true);
+    expect(registry.getExtensionPoint('omniview/global-search')).toBe(store);
+    expect(store.listAll()).toEqual([contribution]);
+    expect(store.listAll()[0]).toBe(contribution);
   });
 
   it('builtin extension points are owned by core', () => {
@@ -53,9 +56,11 @@ describe('Group 11: Built-in registration', () => {
     const drawer = registry.getExtensionPoint(RESOURCE_DRAWER_EXTENSION_POINT_ID);
     const theme = registry.getExtensionPoint(THEME_EXTENSION_POINT_ID);
 
+    const globalSearch = registry.getExtensionPoint('omniview/global-search');
     expect(sidebar?.pluginId).toBe('core');
     expect(drawer?.pluginId).toBe('core');
     expect(theme?.pluginId).toBe('core');
+    expect(globalSearch?.pluginId).toBe('core');
   });
 
   it('sidebar is single mode', () => {
@@ -77,6 +82,13 @@ describe('Group 11: Built-in registration', () => {
 
     const store = registry.getExtensionPoint(THEME_EXTENSION_POINT_ID);
     expect(store?.mode).toBe('multiple');
+  });
+
+  it('refuses a foreign-owned global search point rather than consuming its registrations', () => {
+    registry.addExtensionPoint({ id: 'omniview/global-search', pluginId: 'foreign', mode: 'multiple' });
+    expect(() => {
+      ensureBuiltinExtensionPointsRegistered(registry); 
+    }).toThrow(/non-core owner/);
   });
 });
 

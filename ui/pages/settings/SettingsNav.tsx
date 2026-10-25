@@ -3,7 +3,7 @@ import React from 'react';
 import { Avatar, NavList } from '@omniviewdev/base-ui';
 
 import Icon from '@/components/icons/Icon';
-import { type SectionSelection, Section } from '.';
+import { type SectionSelection, Section } from './settingsContext';
 import { useSettingsProvider } from '@/hooks/settings/useCoreSettings';
 import { usePluginManager } from '@/hooks/plugin/usePluginManager';
 import { IsImage } from '@/utils/url';

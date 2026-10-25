@@ -9,7 +9,7 @@ test.describe('Navigation', () => {
   test('header buttons route to settings, plugins and back home', async ({ appPage }) => {
     const header = shell(appPage).header;
 
-    await header.getByRole('button', { name: 'settings' }).click();
+    await header.getByRole('button', { name: 'settings', exact: true }).click();
     await expect(appPage).toHaveURL(/#\/settings$/);
     await expect(appPage.getByRole('navigation').getByText('Appearance', { exact: true })).toBeVisible();
 
@@ -23,7 +23,7 @@ test.describe('Navigation', () => {
 
   test('browser back and forward move between pages', async ({ appPage }) => {
     const header = shell(appPage).header;
-    await header.getByRole('button', { name: 'settings' }).click();
+    await header.getByRole('button', { name: 'settings', exact: true }).click();
     await header.getByRole('button', { name: 'plugins' }).click();
 
     await appPage.goBack();
