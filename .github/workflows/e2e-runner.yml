@@ -1,0 +1,304 @@
+name: Canonical E2E runner
+
+on:
+  workflow_call:
+    inputs:
+      cache-only:
+        description: Prepare native payloads on trusted main pushes, without application assertions
+        type: boolean
+        default: false
+      base:
+        description: PR base commit for conservative application selection
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    if: ${{ !inputs.cache-only || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-24.04
+    # Safety watchdog only; both runner modes keep the inclusive 600-second clock.
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+        working-directory: host
+    env:
+      GOWORK: "off"
+      GOFLAGS: ""
+      GO_VERSION: "1.26"
+      NODE_OPTIONS: "--max-old-space-size=4096"
+      REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
+      UI_SOURCE_REF: ${{ vars.OMNIVIEW_E2E_UI_REF }}
+      CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
+      SELECTION_BASE: ${{ inputs.base }}
+    steps:
+      - name: Checkout host implementation
+        uses: actions/checkout@v4
+        with:
+          path: host
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Require independently reviewed published source inputs
+        run: |
+          if [[ ! "$REVIEWED_SDK_REVISION" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]; then
+            echo "::error::Set repository variable OMNIVIEW_E2E_REVIEWED_SDK_REVISION to the independently reviewed full SDK commit, published and reachable in omniviewdev/plugin-sdk. No unpublished/default revision is accepted."
+            exit 1
+          fi
+          if [[ -z "$UI_SOURCE_REF" ]]; then
+            echo "::error::Set repository variable OMNIVIEW_E2E_UI_REF to the UI implementation ref to check out; its resolved full commit is registered."
+            exit 1
+          fi
+
+      - name: Checkout reviewed SDK source
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/plugin-sdk
+          ref: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
+          path: plugin-sdk
+          persist-credentials: false
+
+      - name: Checkout UI implementation
+        uses: actions/checkout@v4
+        with:
+          repository: omniviewdev/ui
+          ref: ${{ vars.OMNIVIEW_E2E_UI_REF }}
+          path: ui
+          persist-credentials: false
+
+      - name: Verify SDK checkout matches reviewed pin
+        run: test "$(git -C "$GITHUB_WORKSPACE/plugin-sdk" rev-parse HEAD)" = "$REVIEWED_SDK_REVISION"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.0"
+
+      - name: Selector and cache-mode boundary contracts
+        run: node --test e2e/scripts/*.test.mjs scripts/verify-apt-archives.test.mjs
+
+      - name: Select conservative application impact
+        id: selection
+        env:
+          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
+          UI_SOURCE: ${{ github.workspace }}/ui
+          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
+        run: |
+          if [[ "$CACHE_ONLY" == true ]]; then
+            echo "kind=cache-only" >> "$GITHUB_OUTPUT"
+            echo "requires_application=true" >> "$GITHUB_OUTPUT"
+          elif ! node e2e/scripts/run.mjs --changed --base "$SELECTION_BASE" --select; then
+            echo "::warning::Selection failed; requiring the full application path rather than skipping."
+            echo "kind=full" >> "$GITHUB_OUTPUT"
+            echo "requires_application=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Explain no application impact
+        if: steps.selection.outputs.kind == 'none'
+        run: echo "Application E2E preparation skipped only for explicitly allowlisted prose with an unchanged committed source cohort."
+
+      - name: Setup Go
+        id: go
+        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Select exact native payload keys
+        id: cache-keys
+        if: steps.selection.outputs.kind != 'none'
+        env:
+          PNPM_KEY: ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-${{ hashFiles('host/pnpm-lock.yaml', 'ui/pnpm-lock.yaml', 'host/plugins/kubernetes/ui/pnpm-lock.yaml') }}
+          GO_KEY: setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('host/go.sum', 'plugin-sdk/go.sum', 'host/plugins/kubernetes/go.sum', 'host/e2e/fixtures/workspace-probe/go.sum', 'host/e2e/scripts/tool-cache.mjs') }}
+        run: |
+          echo "pnpm=$PNPM_KEY" >> "$GITHUB_OUTPUT"
+          echo "go=$GO_KEY" >> "$GITHUB_OUTPUT"
+
+      # Lookup-only never restores ownership metadata or creates a native cache
+      # container. Both exact main-scope keys must exist to omit preparation.
+      - name: Look up exact main pnpm payload
+        id: pnpm-lookup
+        if: inputs.cache-only
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/pnpm-store/12.14.0
+          key: ${{ steps.cache-keys.outputs.pnpm }}
+          lookup-only: true
+
+      - name: Look up exact main Go payloads
+        id: go-lookup
+        if: inputs.cache-only
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/go-mod
+            ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1/bootstrap-go-build
+          key: ${{ steps.cache-keys.outputs.go }}
+          lookup-only: true
+
+      - name: Decide native preparation
+        id: preparation
+        env:
+          SELECTION: ${{ steps.selection.outputs.kind }}
+          GO_HIT: ${{ steps.go-lookup.outputs.cache-hit }}
+          PNPM_HIT: ${{ steps.pnpm-lookup.outputs.cache-hit }}
+        run: |
+          if [[ "$SELECTION" == none || ( "$CACHE_ONLY" == true && "$GO_HIT" == true && "$PNPM_HIT" == true ) ]]; then
+            echo "required=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "required=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Explain exact native payload hit
+        if: inputs.cache-only && steps.preparation.outputs.required == 'false'
+        run: echo "Both exact main-scope native payloads already exist; no install, compile, browser or application acceptance was performed."
+
+      - name: Prepare Linux package archive cache
+        id: linux-packages
+        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
+        run: |
+          directory=/tmp/omniview-e2e-apt
+          mkdir -m 0755 "$directory"
+          sudo install -d -m 0700 -o _apt -g root "$directory/partial"
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
+          sudo apt-get update
+          echo "indexes=$(sha256sum /var/lib/apt/lists/*_InRelease | sha256sum | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Linux package archives
+        id: linux-package-cache
+        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
+          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('host/.github/workflows/e2e-runner.yml') }}-${{ steps.linux-packages.outputs.indexes }}
+
+      - name: Install Linux dependencies
+        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
+        env:
+          APT_ARCHIVES_DIRECTORY: ${{ steps.linux-packages.outputs.directory }}
+        run: |
+          node scripts/verify-apt-archives.mjs "$APT_ARCHIVES_DIRECTORY"
+          sudo apt-get -o "Dir::Cache::archives=$APT_ARCHIVES_DIRECTORY" install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev build-essential pkg-config
+
+      - name: Save verified Linux package archives
+        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false' && steps.linux-package-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
+          key: ${{ steps.linux-package-cache.outputs.cache-primary-key }}
+
+      - name: Setup pinned pnpm
+        if: steps.preparation.outputs.required == 'true'
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          version: 12.14.0
+          package-json-file: host/package.json
+          install: false
+
+      - name: Initialize private native-tool cache container
+        if: steps.preparation.outputs.required == 'true'
+        env:
+          OMNIVIEW_E2E_TOOL_CACHE_ROOT: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1
+          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
+          UI_SOURCE: ${{ github.workspace }}/ui
+          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
+        # Filesystem ownership only; restore only native payloads beneath it.
+        run: node e2e/scripts/run.mjs --init-tool-cache
+
+      - name: Restore standalone native pnpm content store
+        id: pnpm-cache
+        if: steps.preparation.outputs.required == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/pnpm-store/12.14.0
+          key: ${{ steps.cache-keys.outputs.pnpm }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-
+
+      - name: Restore native Go module and compiler payloads
+        id: go-cache
+        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.GOMODCACHE }}
+            ${{ env.GOCACHE }}
+          key: ${{ steps.cache-keys.outputs.go }}
+          restore-keys: |
+            setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-
+
+      - name: Install Task
+        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Same canonical preparation for both modes, exactly one invocation.
+      # Cache-only returns through source proof and canonical/private retirement,
+      # never through application profiles, Playwright or acceptance assertions.
+      - name: Run canonical preparation or application suite once
+        id: canonical
+        if: steps.preparation.outputs.required == 'true'
+        env:
+          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
+          UI_SOURCE: ${{ github.workspace }}/ui
+          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
+          SELECTION: ${{ steps.selection.outputs.kind }}
+        run: |
+          if [[ "$CACHE_ONLY" == true ]]; then
+            node e2e/scripts/run.mjs --cache-only
+          elif [[ "$SELECTION" == selected ]]; then
+            node e2e/scripts/run.mjs --changed --base "$SELECTION_BASE"
+          else
+            node e2e/scripts/run.mjs --full --base "$SELECTION_BASE"
+          fi
+
+      - name: Save native pnpm payload independently of application assertions
+        if: ${{ !cancelled() && steps.pnpm-cache.outcome == 'success' && steps.pnpm-cache.outputs.cache-hit != 'true' && (!inputs.cache-only || steps.canonical.outcome == 'success') }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/pnpm-store/12.14.0
+          key: ${{ steps.pnpm-cache.outputs.cache-primary-key }}
+
+      - name: Save native Go payloads independently of application assertions
+        if: ${{ !cancelled() && steps.go-cache.outcome == 'success' && steps.go-cache.outputs.cache-hit != 'true' && (!inputs.cache-only || steps.canonical.outcome == 'success') }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.GOMODCACHE }}
+            ${{ env.GOCACHE }}
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
+
+      - name: Require completed canonical operation or proven skip
+        if: ${{ !cancelled() }}
+        env:
+          SELECTION: ${{ steps.selection.outputs.kind }}
+          SELECTION_OUTCOME: ${{ steps.selection.outcome }}
+          PREPARATION: ${{ steps.preparation.outputs.required }}
+          CANONICAL_OUTCOME: ${{ steps.canonical.outcome }}
+          GO_HIT: ${{ steps.go-lookup.outputs.cache-hit }}
+          PNPM_HIT: ${{ steps.pnpm-lookup.outputs.cache-hit }}
+        run: |
+          if [[ "$SELECTION_OUTCOME" == success && "$SELECTION" == none && "$CACHE_ONLY" == false ]]; then
+            exit 0
+          fi
+          if [[ "$CACHE_ONLY" == true && "$PREPARATION" == false && "$GO_HIT" == true && "$PNPM_HIT" == true ]]; then
+            exit 0
+          fi
+          test "$PREPARATION" = true && test "$CANONICAL_OUTCOME" = success
+
+      - name: Upload only allowed browser reports
+        if: always() && !inputs.cache-only
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            host/e2e/playwright-report/
+            host/e2e/test-results/
+          retention-days: 7
