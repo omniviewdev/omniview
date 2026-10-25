@@ -27,7 +27,7 @@ The implemented LSP 3.17 subset includes initialization/shutdown, full document 
 
 Thirteen composition-only Resource Intelligence stories were trimmed; reusable controls, component-focused stories/tests and the editor workbench remain. Their removal is not removal of the underlying controls, and retained fixture demonstrations are not production integrations.
 
-**Next packet:** P00 must prove the actual selected SDK/UI/runtime source cohort reaches host and plugin, shared instances and isolated app/plugin smoke (C00). Then follow the existing P44/P04 dependencies and P01 confirmation gates. Credit P18's available editor evidence instead of redoing it, while closing its unmet host acceptance explicitly. No P00, C00, P44 or complete backend packet is advanced to done here; provider/schema contracts, numeric guarantees, permission context, acquisition and live leases remain unresolved.
+**Current frontier:** P00/C00 has an independently accepted [selected-source baseline receipt](2026-10-17-resource-intelligence-baseline.md), including actual host/Kubernetes SDK behavior and selected UI/browser sharing. After remote predecessor reconciliation, P44/P04/P18 are eligible independently. P18 must reuse merged editor evidence and complete remaining host feasibility acceptance, not redo the editor. P01 still requires P44; no provider/schema/numeric/invocation/query/lease contract is certified by baseline acceptance.
 
 ## How to use this backlog
 
