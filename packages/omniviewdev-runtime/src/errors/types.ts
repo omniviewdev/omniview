@@ -14,6 +14,10 @@ export interface AppError {
   instance?: string;
   suggestions?: string[];
   actions?: AppErrorAction[];
+  code?: string;
+  requestId?: string;
+  recovery?: 'correctRequest' | 'refreshContract' | 'restartQuery' | 'reconnect' | 'none';
+  location?: { start: number; end: number; unit: 'utf8-byte' };
 }
 
 /** Error type URI constants matching Go apperror/types.go. */
@@ -38,12 +42,15 @@ export const ErrorTypes = {
   RESOURCE_UNAUTHORIZED: 'omniview:resource/unauthorized',
   RESOURCE_CONFLICT: 'omniview:resource/conflict',
   RESOURCE_TIMEOUT: 'omniview:resource/timeout',
+  RESOURCE_LIMIT: 'omniview:resource/limit',
+  RESOURCE_CONTINUATION_EXPIRED: 'omniview:resource/continuation-expired',
+  RESOURCE_RESET_REQUIRED: 'omniview:resource/reset-required',
+  RESOURCE_PARTIAL: 'omniview:resource/partial',
+  RESOURCE_PROVIDER_ERROR: 'omniview:resource/provider-error',
 
   // Connection
   CONNECTION_NOT_FOUND: 'omniview:connection/not-found',
   CONNECTION_FAILED: 'omniview:connection/failed',
-  RESOURCE_CONNECTION_ERROR: 'omniview:resource/connection-error',
-  RESOURCE_CERTIFICATE_ERROR: 'omniview:resource/certificate-error',
 
   // Session
   SESSION_NOT_FOUND: 'omniview:session/not-found',

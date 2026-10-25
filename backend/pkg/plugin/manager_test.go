@@ -274,7 +274,7 @@ func TestShutdown_StopsAllBackends(t *testing.T) {
 			},
 		},
 		connlessControllers: make(map[sdktypes.Capability]plugintypes.Controller),
-		connfullControllers: make(map[sdktypes.Capability]plugintypes.ConnectedController),
+		connfullControllers: make(map[sdktypes.Capability]plugintypes.LifecycleController),
 		managers:            make(map[string]plugintypes.PluginManager),
 		pidTracker:          NewPIDTracker(svc.RootDir()),
 	}

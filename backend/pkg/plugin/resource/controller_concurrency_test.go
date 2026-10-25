@@ -41,14 +41,14 @@ func TestConcurrent_CRUD_20Goroutines(t *testing.T) {
 			defer wg.Done()
 			key := fmt.Sprintf("core::v1::Pod%d", idx)
 
-			result, err := ctrl.Get("p1", "conn-1", key, resource.GetInput{})
+			result, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", key, resource.GetInput{})
 			assert.NoError(t, err)
 			assert.NotNil(t, result)
 
-			_, err = ctrl.List("p1", "conn-1", key, resource.ListInput{})
+			_, err = ctrl.List(testInvocationContext(), "p1", "conn-1", key, resource.ListInput{})
 			assert.NoError(t, err)
 
-			_, err = ctrl.Create("p1", "conn-1", key, resource.CreateInput{})
+			_, err = ctrl.Create(testInvocationContext(), "p1", "conn-1", key, resource.CreateInput{})
 			assert.NoError(t, err)
 		}(i)
 	}
@@ -70,8 +70,8 @@ func TestConcurrent_SubscribeUnsubscribe_100Cycles(t *testing.T) {
 			defer wg.Done()
 			key := fmt.Sprintf("type-%d", gID)
 			for i := 0; i < 100; i++ {
-				_ = ctrl.SubscribeResource("p1", "conn-1", key)
-				_ = ctrl.UnsubscribeResource("p1", "conn-1", key)
+				_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", key)
+				_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", "conn-1", key)
 			}
 		}(g)
 	}
@@ -103,7 +103,11 @@ func TestConcurrent_PluginStartStop(t *testing.T) {
 			})
 
 			// Verify we can query the plugin.
-			assert.True(t, ctrl.HasPlugin(pluginID))
+			{
+				present, err := ctrl.HasPlugin(testInvocationContext(), pluginID)
+				assert.NoError(t, err)
+				assert.True(t, present)
+			}
 
 			// Simulate stop by removing.
 			ctrl.pluginsMu.Lock()
@@ -136,18 +140,18 @@ func TestConcurrent_ConnectionOps(t *testing.T) {
 			}
 
 			// Add
-			err := ctrl.AddConnection("p1", conn)
+			err := ctrl.AddConnection(testInvocationContext(), "p1", conn)
 			assert.NoError(t, err)
 
 			// Update
 			conn.Name = fmt.Sprintf("Updated Connection %d", idx)
-			_, _ = ctrl.UpdateConnection("p1", conn)
+			_, _ = ctrl.UpdateConnection(testInvocationContext(), "p1", conn)
 
 			// List
-			_, _ = ctrl.ListConnections("p1")
+			_, _ = ctrl.ListConnections(testInvocationContext(), "p1")
 
 			// Remove
-			_ = ctrl.RemoveConnection("p1", conn.ID)
+			_ = ctrl.RemoveConnection(testInvocationContext(), "p1", conn.ID)
 		}(i)
 	}
 	wg.Wait()
@@ -160,7 +164,7 @@ func TestConcurrent_ConnectionOps(t *testing.T) {
 func TestConcurrent_SinkEmission(t *testing.T) {
 	ctrl, emitter := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
-	_ = ctrl.SubscribeResource("p1", "conn-1", "pods")
+	_ = ctrl.SubscribeResource(testInvocationContext(), "p1", "conn-1", "pods")
 
 	sink := &engineWatchSink{pluginID: "p1", ctrl: ctrl, store: ctrl.registryStore, dispatcher: ctrl.dispatcher}
 
@@ -216,7 +220,7 @@ func TestConcurrent_ListPlugins_DuringStartStop(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 20; j++ {
-				plugins, err := ctrl.ListPlugins()
+				plugins, err := ctrl.ListPlugins(testInvocationContext())
 				assert.NoError(t, err)
 				_ = plugins
 			}
@@ -258,7 +262,7 @@ func TestConcurrent_HasPlugin_DuringStartStop(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 50; j++ {
-				_ = ctrl.HasPlugin("p-volatile")
+				_, _ = ctrl.HasPlugin(testInvocationContext(), "p-volatile")
 			}
 		}()
 	}
@@ -336,13 +340,13 @@ func TestConcurrent_WatchOps(t *testing.T) {
 
 	var wg sync.WaitGroup
 	ops := []func(){
-		func() { _ = ctrl.StartConnectionWatch("p1", "conn-1") },
-		func() { _ = ctrl.StopConnectionWatch("p1", "conn-1") },
-		func() { _ = ctrl.EnsureResourceWatch("p1", "conn-1", "pods") },
-		func() { _ = ctrl.StopResourceWatch("p1", "conn-1", "pods") },
-		func() { _ = ctrl.RestartResourceWatch("p1", "conn-1", "pods") },
+		func() { _ = ctrl.StartConnectionWatch(testInvocationContext(), "p1", "conn-1") },
+		func() { _ = ctrl.StopConnectionWatch(testInvocationContext(), "p1", "conn-1") },
+		func() { _ = ctrl.EnsureResourceWatch(testInvocationContext(), "p1", "conn-1", "pods") },
+		func() { _ = ctrl.StopResourceWatch(testInvocationContext(), "p1", "conn-1", "pods") },
+		func() { _ = ctrl.RestartResourceWatch(testInvocationContext(), "p1", "conn-1", "pods") },
 		func() {
-			_, _ = ctrl.IsResourceWatchRunning("p1", "conn-1", "pods")
+			_, _ = ctrl.IsResourceWatchRunning(testInvocationContext(), "p1", "conn-1", "pods")
 		},
 	}
 
@@ -381,11 +385,11 @@ func TestConcurrent_MixedOps_StressTest(t *testing.T) {
 		EnsureResourceWatchFunc: func(_ context.Context, _, _ string) error {
 			return nil
 		},
-		GetResourceGroupsFunc: func(_ context.Context, _ string) map[string]resource.ResourceGroup {
-			return map[string]resource.ResourceGroup{"core": {ID: "core"}}
+		GetResourceGroupsFunc: func(_ context.Context, _ string) (map[string]resource.ResourceGroup, error) {
+			return map[string]resource.ResourceGroup{"core": {ID: "core"}}, nil
 		},
-		HasResourceTypeFunc: func(_ context.Context, _ string) bool {
-			return true
+		HasResourceTypeFunc: func(_ context.Context, _ string) (bool, error) {
+			return true, nil
 		},
 	}
 	registerMockPlugin(ctrl, "p1", mock)
@@ -400,36 +404,40 @@ func TestConcurrent_MixedOps_StressTest(t *testing.T) {
 
 			switch idx % 10 {
 			case 0:
-				_, _ = ctrl.Get("p1", connID, key, resource.GetInput{})
+				_, _ = ctrl.Get(testInvocationContext(), "p1", connID, key, resource.GetInput{})
 			case 1:
-				_, _ = ctrl.List("p1", connID, key, resource.ListInput{})
+				_, _ = ctrl.List(testInvocationContext(), "p1", connID, key, resource.ListInput{})
 			case 2:
-				_ = ctrl.SubscribeResource("p1", connID, key)
+				_ = ctrl.SubscribeResource(testInvocationContext(), "p1", connID, key)
 			case 3:
-				_ = ctrl.UnsubscribeResource("p1", connID, key)
+				_ = ctrl.UnsubscribeResource(testInvocationContext(), "p1", connID, key)
 			case 4:
-				_ = ctrl.AddConnection("p1", types.Connection{
+				_ = ctrl.AddConnection(testInvocationContext(), "p1", types.Connection{
 					ID:   fmt.Sprintf("new-conn-%d", idx),
 					Name: fmt.Sprintf("New Connection %d", idx),
 				})
 			case 5:
-				_, _ = ctrl.ListConnections("p1")
+				_, _ = ctrl.ListConnections(testInvocationContext(), "p1")
 			case 6:
-				_ = ctrl.StartConnectionWatch("p1", connID)
+				_ = ctrl.StartConnectionWatch(testInvocationContext(), "p1", connID)
 			case 7:
-				_ = ctrl.EnsureResourceWatch("p1", connID, key)
+				_ = ctrl.EnsureResourceWatch(testInvocationContext(), "p1", connID, key)
 			case 8:
-				_ = ctrl.GetResourceGroups("p1", connID)
+				_, _ = ctrl.GetResourceGroups(testInvocationContext(), "p1", connID)
 			case 9:
-				_ = ctrl.HasResourceType("p1", key)
+				_, _ = ctrl.HasResourceType(testInvocationContext(), "p1", key)
 			}
 		}(i)
 	}
 	wg.Wait()
 
 	// Basic sanity: plugin still registered and responding.
-	require.True(t, ctrl.HasPlugin("p1"))
-	plugins, err := ctrl.ListPlugins()
+	{
+		present, err := ctrl.HasPlugin(testInvocationContext(), "p1")
+		require.NoError(t, err)
+		require.True(t, present)
+	}
+	plugins, err := ctrl.ListPlugins(testInvocationContext())
 	require.NoError(t, err)
 	assert.Contains(t, plugins, "p1")
 }

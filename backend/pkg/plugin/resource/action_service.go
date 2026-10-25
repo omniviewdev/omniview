@@ -1,0 +1,208 @@
+package resource
+
+import (
+	"context"
+	"encoding/json"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/invocation"
+	resource "github.com/omniviewdev/plugin-sdk/pkg/v1/resource"
+)
+
+// StreamAction commits a public handle only after concrete native provider ready.
+// The producer owns its lifetime before it starts; request cancellation is bridged
+// through the commit, never reparented after a request-bound producer has started.
+func (c *controller) StreamAction(ctx context.Context, pluginID, connectionID, key, actionID string, input resource.ActionInput) (id string, retErr error) {
+	ctx, err := c.admit(ctx, "resource.StreamAction", invocation.Target{Provider: pluginID, Connection: connectionID, ResourceType: key, Object: input.ID, Action: actionID, Scope: namespaceScope(input.Namespace)})
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		// Committed handles own the producer independently of the open request.
+		if retErr != nil {
+			finishResource(ctx, &retErr)
+		}
+	}()
+	provider, sessionCtx, err := c.withSession(ctx, pluginID, connectionID)
+	if err != nil {
+		return "", err
+	}
+	producerCtx, cancelCause := context.WithCancelCause(context.WithoutCancel(sessionCtx))
+	cancel := func() { cancelCause(context.Canceled) }
+	request, _ := invocation.FromContext(ctx)
+	reservation, err := c.actions.reserve(request, cancel)
+	if err != nil {
+		cancel()
+		return "", err
+	}
+	var establishment sync.Mutex
+	committed := false
+	startupDeadline := time.Now().Add(actionStartupTimeout)
+	stopOpen := context.AfterFunc(ctx, func() {
+		establishment.Lock()
+		if !committed {
+			cancelCause(ctx.Err())
+		}
+		establishment.Unlock()
+	})
+	startup := time.AfterFunc(actionStartupTimeout, func() {
+		establishment.Lock()
+		if !committed {
+			cancelCause(context.DeadlineExceeded)
+		}
+		establishment.Unlock()
+	})
+	transferred := false
+	defer func() {
+		stopOpen()
+		startup.Stop()
+		c.actions.release(reservation)
+		if !transferred {
+			cancel()
+		}
+	}()
+	events := make(chan resource.ActionEvent, streamChannelBuffer)
+	result := make(chan error, 1)
+	go func() { result <- provider.StreamAction(producerCtx, key, actionID, input, events) }()
+	var completed bool
+	var resultErr error
+	for {
+		if completed && len(events) == 0 {
+			if resultErr != nil {
+				return "", resultErr
+			}
+			return "", actionProtocolError("The provider ended before accepting the action.")
+		}
+		select {
+		case <-producerCtx.Done():
+			return "", context.Cause(producerCtx)
+		case resultErr = <-result:
+			completed = true
+			result = nil
+		case event, ok := <-events:
+			if !ok {
+				events = nil
+				continue
+			}
+			if event.Type == "error" {
+				if event.Error != nil {
+					return "", event.Error
+				}
+				return "", actionProtocolError("The provider rejected action establishment.")
+			}
+			if event.Type != "ready" || event.Error != nil {
+				return "", actionProtocolError("The provider did not establish the action protocol.")
+			}
+			establishment.Lock()
+			if err = ctx.Err(); err == nil {
+				err = context.Cause(producerCtx)
+			}
+			if err == nil && !time.Now().Before(startupDeadline) {
+				err = context.DeadlineExceeded
+			}
+			var handle *actionHandle
+			if err == nil {
+				handle, err = c.actions.commit(reservation, producerCtx)
+				committed = err == nil
+			}
+			establishment.Unlock()
+			if err != nil {
+				return "", err
+			}
+			stopOpen()
+			startup.Stop()
+			transferred = true
+			go c.runActionStream(producerCtx, handle, events, result, completed, resultErr)
+			return handle.id, nil
+		}
+	}
+}
+
+func actionProtocolError(detail string) error {
+	return &resource.ResourceOperationError{Code: "PROVIDER_ERROR", Title: "Provider operation failed", Message: detail}
+}
+func actionEvent(event resource.ActionEvent, requestID string) (ActionEventDTO, error) {
+	if event.Type == "error" {
+		err := error(event.Error)
+		if event.Error == nil {
+			err = actionProtocolError("The provider reported an action failure.")
+		}
+		return ActionEventDTO{Type: "error", Error: apperror.ForResource(err, requestID)}, nil
+	}
+	if event.Type != "progress" && event.Type != "output" && event.Type != "complete" {
+		return ActionEventDTO{}, actionProtocolError("The provider sent an invalid action event.")
+	}
+	encoded, err := json.Marshal(ActionSnapshot{Sequence: 9007199254740991, Event: ActionEventDTO{Type: event.Type, Data: event.Data}, Terminal: true})
+	if err != nil {
+		return ActionEventDTO{}, actionProtocolError("The provider sent invalid action data.")
+	}
+	if len(encoded) > actionSnapshotBudget {
+		return ActionEventDTO{}, apperror.New(apperror.TypeResourceLimit, 429, "Resource limit", "The action snapshot exceeds the host budget.")
+	}
+	var snapshot ActionSnapshot
+	if err := json.Unmarshal(encoded, &snapshot); err != nil {
+		return ActionEventDTO{}, err
+	}
+	return snapshot.Event, nil
+}
+func (c *controller) runActionStream(ctx context.Context, handle *actionHandle, events <-chan resource.ActionEvent, result <-chan error, completed bool, resultErr error) {
+	for {
+		if completed && len(events) == 0 {
+			if resultErr != nil {
+				c.actions.update(handle, ActionEventDTO{Type: "error", Error: apperror.ForResource(resultErr, handle.request.ID())}, true)
+			} else {
+				c.actions.update(handle, ActionEventDTO{Type: "complete", Data: map[string]any{"message": "Completed"}}, true)
+			}
+			return
+		}
+		select {
+		case <-ctx.Done():
+			c.actions.update(handle, ActionEventDTO{Type: "error", Error: apperror.ForResource(context.Cause(ctx), handle.request.ID())}, true)
+			return
+		case resultErr = <-result:
+			completed = true
+			result = nil
+		case event, ok := <-events:
+			if !ok {
+				events = nil
+				continue
+			}
+			safe, err := actionEvent(event, handle.request.ID())
+			if err != nil {
+				safe = ActionEventDTO{Type: "error", Error: apperror.ForResource(err, handle.request.ID())}
+			}
+			terminal := safe.Type == "error" || safe.Type == "complete"
+			c.actions.update(handle, safe, terminal)
+			if terminal {
+				return
+			}
+		}
+	}
+}
+
+func (c *controller) actionInvocation(ctx context.Context, id, operation string) (context.Context, error) {
+	handle, err := c.actions.owned(ctx, id)
+	if err != nil {
+		return ctx, apperror.ForResource(err, uuid.NewString())
+	}
+	return c.admit(ctx, operation, handle.request.Target())
+}
+func (c *controller) AttachStreamAction(ctx context.Context, id string) (snapshot ActionSnapshot, retErr error) {
+	ctx, err := c.actionInvocation(ctx, id, "resource.AttachStreamAction")
+	if err != nil {
+		return ActionSnapshot{}, err
+	}
+	defer finishResource(ctx, &retErr)
+	return c.actions.attach(ctx, id)
+}
+func (c *controller) CancelStreamAction(ctx context.Context, id string) (retErr error) {
+	ctx, err := c.actionInvocation(ctx, id, "resource.CancelStreamAction")
+	if err != nil {
+		return err
+	}
+	defer finishResource(ctx, &retErr)
+	return c.actions.cancelOwned(ctx, id)
+}

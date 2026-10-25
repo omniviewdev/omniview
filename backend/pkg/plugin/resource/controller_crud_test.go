@@ -31,7 +31,7 @@ func TestGet_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	result, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
+	result, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Contains(t, string(result.Result), "pods")
@@ -46,9 +46,9 @@ func TestGet_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
+	_, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	assert.Equal(t, "PROVIDER_ERROR", requireAppError(t, err).Code)
 }
 
 func TestGet_ConnectionError_TriggersCrash(t *testing.T) {
@@ -62,7 +62,7 @@ func TestGet_ConnectionError_TriggersCrash(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
+	_, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
 	require.Error(t, err)
 
 	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
@@ -77,7 +77,7 @@ func TestGet_NonConnectionError_NoCrash(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, _ = ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
+	_, _ = ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
 
 	events := emitter.EventsWithKey("plugin/crash")
 	assert.Empty(t, events)
@@ -95,7 +95,7 @@ func TestGet_ContextHasSession(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.Get("p1", "conn-1", "pods", resource.GetInput{})
+	_, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "pods", resource.GetInput{})
 	require.NoError(t, err)
 }
 
@@ -112,7 +112,7 @@ func TestList_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	result, err := ctrl.List("p1", "conn-1", "pods", resource.ListInput{})
+	result, err := ctrl.List(testInvocationContext(), "p1", "conn-1", "pods", resource.ListInput{})
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 }
@@ -126,7 +126,7 @@ func TestList_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.List("p1", "conn-1", "pods", resource.ListInput{})
+	_, err := ctrl.List(testInvocationContext(), "p1", "conn-1", "pods", resource.ListInput{})
 	assert.Error(t, err)
 }
 
@@ -141,7 +141,7 @@ func TestList_ConnectionError_TriggersCrash(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, _ = ctrl.List("p1", "conn-1", "pods", resource.ListInput{})
+	_, _ = ctrl.List(testInvocationContext(), "p1", "conn-1", "pods", resource.ListInput{})
 	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
@@ -158,7 +158,7 @@ func TestFind_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	result, err := ctrl.Find("p1", "conn-1", "pods", resource.FindInput{})
+	result, err := ctrl.Find(testInvocationContext(), "p1", "conn-1", "pods", resource.FindInput{})
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 }
@@ -172,7 +172,7 @@ func TestFind_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.Find("p1", "conn-1", "pods", resource.FindInput{})
+	_, err := ctrl.Find(testInvocationContext(), "p1", "conn-1", "pods", resource.FindInput{})
 	assert.Error(t, err)
 }
 
@@ -187,7 +187,7 @@ func TestFind_ConnectionError_TriggersCrash(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, _ = ctrl.Find("p1", "conn-1", "pods", resource.FindInput{})
+	_, _ = ctrl.Find(testInvocationContext(), "p1", "conn-1", "pods", resource.FindInput{})
 	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
@@ -204,7 +204,7 @@ func TestCreate_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	result, err := ctrl.Create("p1", "conn-1", "pods", resource.CreateInput{})
+	result, err := ctrl.Create(testInvocationContext(), "p1", "conn-1", "pods", resource.CreateInput{})
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 }
@@ -218,7 +218,7 @@ func TestCreate_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.Create("p1", "conn-1", "pods", resource.CreateInput{})
+	_, err := ctrl.Create(testInvocationContext(), "p1", "conn-1", "pods", resource.CreateInput{})
 	assert.Error(t, err)
 }
 
@@ -233,7 +233,7 @@ func TestCreate_ConnectionError_TriggersCrash(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, _ = ctrl.Create("p1", "conn-1", "pods", resource.CreateInput{})
+	_, _ = ctrl.Create(testInvocationContext(), "p1", "conn-1", "pods", resource.CreateInput{})
 	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
@@ -250,7 +250,7 @@ func TestUpdate_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	result, err := ctrl.Update("p1", "conn-1", "pods", resource.UpdateInput{})
+	result, err := ctrl.Update(testInvocationContext(), "p1", "conn-1", "pods", resource.UpdateInput{})
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 }
@@ -264,7 +264,7 @@ func TestUpdate_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.Update("p1", "conn-1", "pods", resource.UpdateInput{})
+	_, err := ctrl.Update(testInvocationContext(), "p1", "conn-1", "pods", resource.UpdateInput{})
 	assert.Error(t, err)
 }
 
@@ -279,7 +279,7 @@ func TestUpdate_ConnectionError_TriggersCrash(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, _ = ctrl.Update("p1", "conn-1", "pods", resource.UpdateInput{})
+	_, _ = ctrl.Update(testInvocationContext(), "p1", "conn-1", "pods", resource.UpdateInput{})
 	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
@@ -296,7 +296,7 @@ func TestDelete_Success(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	result, err := ctrl.Delete("p1", "conn-1", "pods", resource.DeleteInput{})
+	result, err := ctrl.Delete(testInvocationContext(), "p1", "conn-1", "pods", resource.DeleteInput{})
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 }
@@ -310,7 +310,7 @@ func TestDelete_ProviderError(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, err := ctrl.Delete("p1", "conn-1", "pods", resource.DeleteInput{})
+	_, err := ctrl.Delete(testInvocationContext(), "p1", "conn-1", "pods", resource.DeleteInput{})
 	assert.Error(t, err)
 }
 
@@ -325,7 +325,7 @@ func TestDelete_ConnectionError_TriggersCrash(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	_, _ = ctrl.Delete("p1", "conn-1", "pods", resource.DeleteInput{})
+	_, _ = ctrl.Delete(testInvocationContext(), "p1", "conn-1", "pods", resource.DeleteInput{})
 	assert.Eventually(t, func() bool { return called.Load() >= 1 }, 2*time.Second, 10*time.Millisecond)
 }
 
@@ -340,12 +340,27 @@ func TestCRUD_PluginNotFound(t *testing.T) {
 		name string
 		fn   func() error
 	}{
-		{"Get", func() error { _, e := ctrl.Get("x", "c", "k", resource.GetInput{}); return e }},
-		{"List", func() error { _, e := ctrl.List("x", "c", "k", resource.ListInput{}); return e }},
-		{"Find", func() error { _, e := ctrl.Find("x", "c", "k", resource.FindInput{}); return e }},
-		{"Create", func() error { _, e := ctrl.Create("x", "c", "k", resource.CreateInput{}); return e }},
-		{"Update", func() error { _, e := ctrl.Update("x", "c", "k", resource.UpdateInput{}); return e }},
-		{"Delete", func() error { _, e := ctrl.Delete("x", "c", "k", resource.DeleteInput{}); return e }},
+		{"Get", func() error { _, e := ctrl.Get(testInvocationContext(), "x", "c", "k", resource.GetInput{}); return e }},
+		{"List", func() error {
+			_, e := ctrl.List(testInvocationContext(), "x", "c", "k", resource.ListInput{})
+			return e
+		}},
+		{"Find", func() error {
+			_, e := ctrl.Find(testInvocationContext(), "x", "c", "k", resource.FindInput{})
+			return e
+		}},
+		{"Create", func() error {
+			_, e := ctrl.Create(testInvocationContext(), "x", "c", "k", resource.CreateInput{})
+			return e
+		}},
+		{"Update", func() error {
+			_, e := ctrl.Update(testInvocationContext(), "x", "c", "k", resource.UpdateInput{})
+			return e
+		}},
+		{"Delete", func() error {
+			_, e := ctrl.Delete(testInvocationContext(), "x", "c", "k", resource.DeleteInput{})
+			return e
+		}},
 	}
 
 	for _, op := range ops {
@@ -367,7 +382,7 @@ func TestCRUD_EmptyKey(t *testing.T) {
 	}
 	registerMockPlugin(ctrl, "p1", mock)
 
-	result, err := ctrl.Get("p1", "conn-1", "", resource.GetInput{})
+	result, err := ctrl.Get(testInvocationContext(), "p1", "conn-1", "", resource.GetInput{})
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 }
@@ -377,7 +392,7 @@ func TestCRUD_NilInput(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
 	// Zero-value inputs should pass through without panic.
-	_, err := ctrl.Get("p1", "c1", "k", resource.GetInput{})
+	_, err := ctrl.Get(testInvocationContext(), "p1", "c1", "k", resource.GetInput{})
 	assert.NoError(t, err)
 }
 
@@ -444,11 +459,11 @@ func TestCRUD_MultiplePlugins_Isolation(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", mock1)
 	registerMockPlugin(ctrl, "p2", mock2)
 
-	r1, err := ctrl.Get("p1", "c1", "k", resource.GetInput{})
+	r1, err := ctrl.Get(testInvocationContext(), "p1", "c1", "k", resource.GetInput{})
 	require.NoError(t, err)
 	assert.Contains(t, string(r1.Result), "p1")
 
-	r2, err := ctrl.Get("p2", "c1", "k", resource.GetInput{})
+	r2, err := ctrl.Get(testInvocationContext(), "p2", "c1", "k", resource.GetInput{})
 	require.NoError(t, err)
 	assert.Contains(t, string(r2.Result), "p2")
 }
@@ -459,7 +474,7 @@ func TestCRUD_AfterPluginStop_Fails(t *testing.T) {
 
 	_ = ctrl.OnPluginStop("p1", defaultMeta())
 
-	_, err := ctrl.Get("p1", "c1", "k", resource.GetInput{})
+	_, err := ctrl.Get(testInvocationContext(), "p1", "c1", "k", resource.GetInput{})
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)

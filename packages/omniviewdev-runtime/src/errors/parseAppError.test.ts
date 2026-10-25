@@ -24,19 +24,19 @@ describe('parseAppError', () => {
     expect(result.actions).toHaveLength(1);
   });
 
-  it('handles plain string (Wails legacy) — wraps as internal error', () => {
+  it('replaces unclassified raw diagnostics with a safe internal error', () => {
     const result = parseAppError('something went wrong');
     expect(result.type).toBe(ErrorTypes.INTERNAL);
     expect(result.title).toBe('Error');
     expect(result.status).toBe(500);
-    expect(result.detail).toBe('something went wrong');
+    expect(result.detail).toBe('The operation could not be completed.');
   });
 
   it('handles Error object with .message', () => {
     const err = new Error('disk full');
     const result = parseAppError(err);
     expect(result.type).toBe(ErrorTypes.INTERNAL);
-    expect(result.detail).toBe('disk full');
+    expect(result.detail).toBe('The operation could not be completed.');
   });
 
   it('handles Error object with JSON .message', () => {
@@ -67,14 +67,13 @@ describe('parseAppError', () => {
   it('handles malformed JSON gracefully', () => {
     const result = parseAppError('{not valid json}');
     expect(result.type).toBe(ErrorTypes.INTERNAL);
-    expect(result.detail).toBe('{not valid json}');
+    expect(result.detail).toBe('The operation could not be completed.');
   });
 
   it('handles JSON missing required fields', () => {
     const result = parseAppError(JSON.stringify({ type: 'foo' }));
     expect(result.type).toBe(ErrorTypes.INTERNAL);
-    // Falls back to plain string since required fields are missing
-    expect(result.detail).toContain('foo');
+    expect(result.detail).toBe('The operation could not be completed.');
   });
 });
 
@@ -190,7 +189,7 @@ describe('createErrorHandler', () => {
 
     const call = showSnackbar.mock.calls[0]![0];
     expect(call.message).toBe('Install failed');
-    expect(call.details).toBe('something broke');
+    expect(call.details).toBe('The operation could not be completed.');
   });
 });
 

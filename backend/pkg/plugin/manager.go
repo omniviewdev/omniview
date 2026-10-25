@@ -127,7 +127,7 @@ func NewManager(
 			sdktypes.CapabilityLog:       logsController,
 			sdktypes.CapabilityMetric:    metricController,
 		},
-		connfullControllers: map[sdktypes.Capability]plugintypes.ConnectedController{
+		connfullControllers: map[sdktypes.Capability]plugintypes.LifecycleController{
 			sdktypes.CapabilityResource: resourceController,
 		},
 		managers:          managers,
@@ -162,7 +162,7 @@ type pluginManager struct {
 	records             map[string]*plugintypes.PluginRecord
 	pendingArchiveState map[string]*plugintypes.PluginStateRecord // recordsMu protects durable preimages until archive commit
 	connlessControllers map[sdktypes.Capability]plugintypes.Controller
-	connfullControllers map[sdktypes.Capability]plugintypes.ConnectedController
+	connfullControllers map[sdktypes.Capability]plugintypes.LifecycleController
 	settingsProvider    pkgsettings.Provider
 	registryClient      *registry.Client
 	managers            map[string]plugintypes.PluginManager

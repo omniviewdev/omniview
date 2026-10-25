@@ -11,11 +11,14 @@ concurrency:
 env:
   GO_VERSION: "1.26"
   NODE_VERSION: "24"
+  GOWORK: "off"
 
 jobs:
   go-checks:
     name: Go checks
     runs-on: ubuntu-latest
+    outputs:
+      c02_corpus_name: ${{ steps.c02-corpus.outputs.corpus_name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -44,6 +47,21 @@ jobs:
 
       - name: Test
         run: task check:go-test
+
+      - name: Generate fresh C02 error transport corpus
+        id: c02-corpus
+        run: |
+          CORPUS_NAME="c02-error-corpus-${GITHUB_RUN_ATTEMPT}"
+          export C02_ERROR_CORPUS="$RUNNER_TEMP/${CORPUS_NAME}.json"
+          task check:c02-corpus
+          printf 'corpus_name=%s\n' "$CORPUS_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Upload C02 error transport corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.c02-corpus.outputs.corpus_name }}
+          path: ${{ runner.temp }}/${{ steps.c02-corpus.outputs.corpus_name }}.json
+          if-no-files-found: error
 
       - name: Install goimports
         run: go install golang.org/x/tools/cmd/goimports@latest
@@ -100,6 +118,7 @@ jobs:
   ui-checks:
     name: UI checks
     runs-on: ubuntu-latest
+    needs: go-checks
     steps:
       - uses: actions/checkout@v4
 
@@ -131,6 +150,17 @@ jobs:
 
       - name: Install dependencies
         run: task check:ui-install
+
+      - name: Download producer C02 error transport corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.go-checks.outputs.c02_corpus_name }}
+          path: ${{ runner.temp }}
+
+      - name: Check actual C02 runtime error transport
+        run: task check:c02-runtime
+        env:
+          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ needs.go-checks.outputs.c02_corpus_name }}.json
 
       - name: Check Wails Call settlement ownership
         run: node --test scripts/wails-call.test.mjs

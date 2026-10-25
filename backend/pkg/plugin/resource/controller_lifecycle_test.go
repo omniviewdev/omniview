@@ -181,7 +181,7 @@ func TestListPlugins_ReturnsRegistered(t *testing.T) {
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 	registerMockPlugin(ctrl, "p2", &mockProvider{})
 
-	plugins, err := ctrl.ListPlugins()
+	plugins, err := ctrl.ListPlugins(testInvocationContext())
 	require.NoError(t, err)
 	assert.Len(t, plugins, 2)
 	assert.Contains(t, plugins, "p1")
@@ -192,8 +192,16 @@ func TestHasPlugin_TrueAndFalse(t *testing.T) {
 	ctrl, _ := newTestControllerWithEmitter(t)
 	registerMockPlugin(ctrl, "p1", &mockProvider{})
 
-	assert.True(t, ctrl.HasPlugin("p1"))
-	assert.False(t, ctrl.HasPlugin("nonexistent"))
+	{
+		present, err := ctrl.HasPlugin(testInvocationContext(), "p1")
+		assert.NoError(t, err)
+		assert.True(t, present)
+	}
+	{
+		present, err := ctrl.HasPlugin(testInvocationContext(), "nonexistent")
+		assert.NoError(t, err)
+		assert.False(t, present)
+	}
 }
 
 // ============================================================================

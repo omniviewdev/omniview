@@ -771,7 +771,7 @@ func (pm *pluginManager) shutdownBackend(ctx context.Context, pluginID string, r
 
 // controllerFor returns the controller registered for capability c, or nil.
 // Resource controllers are connection-full; all others are connection-less.
-func (pm *pluginManager) controllerFor(c sdktypes.Capability) plugintypes.Controller {
+func (pm *pluginManager) controllerFor(c sdktypes.Capability) plugintypes.LifecycleController {
 	if c == sdktypes.CapabilityResource {
 		return pm.connfullControllers[c]
 	}

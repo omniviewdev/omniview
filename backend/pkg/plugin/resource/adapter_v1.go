@@ -143,7 +143,7 @@ func (a *AdapterV1) IsResourceWatchRunning(ctx context.Context, connectionID, re
 
 // Type metadata
 
-func (a *AdapterV1) GetResourceGroups(ctx context.Context, connectionID string) map[string]resource.ResourceGroup {
+func (a *AdapterV1) GetResourceGroups(ctx context.Context, connectionID string) (map[string]resource.ResourceGroup, error) {
 	return a.inner.GetResourceGroups(ctx, connectionID)
 }
 
@@ -151,7 +151,7 @@ func (a *AdapterV1) GetResourceGroup(ctx context.Context, id string) (resource.R
 	return a.inner.GetResourceGroup(ctx, id)
 }
 
-func (a *AdapterV1) GetResourceTypes(ctx context.Context, connectionID string) map[string]resource.ResourceMeta {
+func (a *AdapterV1) GetResourceTypes(ctx context.Context, connectionID string) (map[string]resource.ResourceMeta, error) {
 	return a.inner.GetResourceTypes(ctx, connectionID)
 }
 
@@ -159,7 +159,7 @@ func (a *AdapterV1) GetResourceType(ctx context.Context, id string) (*resource.R
 	return a.inner.GetResourceType(ctx, id)
 }
 
-func (a *AdapterV1) HasResourceType(ctx context.Context, id string) bool {
+func (a *AdapterV1) HasResourceType(ctx context.Context, id string) (bool, error) {
 	return a.inner.HasResourceType(ctx, id)
 }
 

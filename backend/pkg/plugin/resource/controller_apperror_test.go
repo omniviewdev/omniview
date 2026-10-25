@@ -22,7 +22,7 @@ func newTestController() *controller {
 	storeFn := func(pluginID string) (*appstate.ScopedRoot, error) {
 		panic("unexpected call to pluginStoreFn in test for plugin " + pluginID)
 	}
-	ctrl, ok := NewController(logging.NewNop(), nil, storeFn).(*controller)
+	ctrl, ok := NewController(logging.NewNop(), nil, storeFn, nil).(*controller)
 	if !ok {
 		panic("NewController did not return *controller")
 	}
@@ -44,7 +44,7 @@ func requireAppError(t *testing.T, err error) *apperror.AppError {
 
 func TestStartConnection_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.StartConnection("nonexistent", "conn")
+	_, err := ctrl.StartConnection(testInvocationContext(), "nonexistent", "conn")
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
@@ -52,7 +52,7 @@ func TestStartConnection_PluginNotFound(t *testing.T) {
 
 func TestStopConnection_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.StopConnection("nonexistent", "conn")
+	_, err := ctrl.StopConnection(testInvocationContext(), "nonexistent", "conn")
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
@@ -60,7 +60,7 @@ func TestStopConnection_PluginNotFound(t *testing.T) {
 
 func TestLoadConnections_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.LoadConnections("nonexistent")
+	_, err := ctrl.LoadConnections(testInvocationContext(), "nonexistent")
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
@@ -68,7 +68,7 @@ func TestLoadConnections_PluginNotFound(t *testing.T) {
 
 func TestGetConnectionNamespaces_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.GetConnectionNamespaces("nonexistent", "conn")
+	_, err := ctrl.GetConnectionNamespaces(testInvocationContext(), "nonexistent", "conn")
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
@@ -76,7 +76,7 @@ func TestGetConnectionNamespaces_PluginNotFound(t *testing.T) {
 
 func TestGet_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.Get("nonexistent", "conn", "key", resource.GetInput{})
+	_, err := ctrl.Get(testInvocationContext(), "nonexistent", "conn", "key", resource.GetInput{})
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
@@ -84,7 +84,7 @@ func TestGet_PluginNotFound(t *testing.T) {
 
 func TestGetResourceGroup_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.GetResourceGroup("nonexistent", "group")
+	_, err := ctrl.GetResourceGroup(testInvocationContext(), "nonexistent", "group")
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
@@ -92,7 +92,7 @@ func TestGetResourceGroup_PluginNotFound(t *testing.T) {
 
 func TestGetResourceType_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.GetResourceType("nonexistent", "type")
+	_, err := ctrl.GetResourceType(testInvocationContext(), "nonexistent", "type")
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypePluginNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
@@ -111,35 +111,35 @@ func TestCRUDMethods_PluginNotFound(t *testing.T) {
 		{
 			name: "List",
 			fn: func() error {
-				_, err := ctrl.List("nonexistent", "conn", "key", resource.ListInput{})
+				_, err := ctrl.List(testInvocationContext(), "nonexistent", "conn", "key", resource.ListInput{})
 				return err
 			},
 		},
 		{
 			name: "Find",
 			fn: func() error {
-				_, err := ctrl.Find("nonexistent", "conn", "key", resource.FindInput{})
+				_, err := ctrl.Find(testInvocationContext(), "nonexistent", "conn", "key", resource.FindInput{})
 				return err
 			},
 		},
 		{
 			name: "Create",
 			fn: func() error {
-				_, err := ctrl.Create("nonexistent", "conn", "key", resource.CreateInput{})
+				_, err := ctrl.Create(testInvocationContext(), "nonexistent", "conn", "key", resource.CreateInput{})
 				return err
 			},
 		},
 		{
 			name: "Update",
 			fn: func() error {
-				_, err := ctrl.Update("nonexistent", "conn", "key", resource.UpdateInput{})
+				_, err := ctrl.Update(testInvocationContext(), "nonexistent", "conn", "key", resource.UpdateInput{})
 				return err
 			},
 		},
 		{
 			name: "Delete",
 			fn: func() error {
-				_, err := ctrl.Delete("nonexistent", "conn", "key", resource.DeleteInput{})
+				_, err := ctrl.Delete(testInvocationContext(), "nonexistent", "conn", "key", resource.DeleteInput{})
 				return err
 			},
 		},
@@ -166,53 +166,53 @@ func TestAdditionalMethods_PluginNotFound(t *testing.T) {
 		{
 			name: "StartConnectionWatch",
 			fn: func() error {
-				return ctrl.StartConnectionWatch("nonexistent", "conn")
+				return ctrl.StartConnectionWatch(testInvocationContext(), "nonexistent", "conn")
 			},
 		},
 		{
 			name: "StopConnectionWatch",
 			fn: func() error {
-				return ctrl.StopConnectionWatch("nonexistent", "conn")
+				return ctrl.StopConnectionWatch(testInvocationContext(), "nonexistent", "conn")
 			},
 		},
 		{
 			name: "GetEditorSchemas",
 			fn: func() error {
-				_, err := ctrl.GetEditorSchemas("nonexistent", "conn")
+				_, err := ctrl.GetEditorSchemas(testInvocationContext(), "nonexistent", "conn")
 				return err
 			},
 		},
 		{
 			name: "GetActions",
 			fn: func() error {
-				_, err := ctrl.GetActions("nonexistent", "conn", "key")
+				_, err := ctrl.GetActions(testInvocationContext(), "nonexistent", "conn", "key")
 				return err
 			},
 		},
 		{
 			name: "ExecuteAction",
 			fn: func() error {
-				_, err := ctrl.ExecuteAction("nonexistent", "conn", "key", "action", resource.ActionInput{})
+				_, err := ctrl.ExecuteAction(testInvocationContext(), "nonexistent", "conn", "key", "action", resource.ActionInput{})
 				return err
 			},
 		},
 		{
 			name: "GetWatchState",
 			fn: func() error {
-				_, err := ctrl.GetWatchState("nonexistent", "conn")
+				_, err := ctrl.GetWatchState(testInvocationContext(), "nonexistent", "conn")
 				return err
 			},
 		},
 		{
 			name: "EnsureResourceWatch",
 			fn: func() error {
-				return ctrl.EnsureResourceWatch("nonexistent", "conn", "key")
+				return ctrl.EnsureResourceWatch(testInvocationContext(), "nonexistent", "conn", "key")
 			},
 		},
 		{
 			name: "GetResourceDefinition",
 			fn: func() error {
-				_, err := ctrl.GetResourceDefinition("nonexistent", "type")
+				_, err := ctrl.GetResourceDefinition(testInvocationContext(), "nonexistent", "type")
 				return err
 			},
 		},
@@ -233,7 +233,7 @@ func TestAdditionalMethods_PluginNotFound(t *testing.T) {
 // TypeConnectionNotFound when the plugin has no connections entry in the map.
 func TestListConnections_ConnectionNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.ListConnections("nonexistent")
+	_, err := ctrl.ListConnections(testInvocationContext(), "nonexistent")
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypeConnectionNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
@@ -243,7 +243,7 @@ func TestListConnections_ConnectionNotFound(t *testing.T) {
 // TypeConnectionNotFound when the plugin ID has no connections map entry.
 func TestGetConnection_NoConnectionsConfigured(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.GetConnection("nonexistent", "conn")
+	_, err := ctrl.GetConnection(testInvocationContext(), "nonexistent", "conn")
 	appErr := requireAppError(t, err)
 	assert.Equal(t, apperror.TypeConnectionNotFound, appErr.Type)
 	assert.Equal(t, 404, appErr.Status)
@@ -262,14 +262,14 @@ func TestConnectionMethods_NoConnectionsConfigured(t *testing.T) {
 		{
 			name: "UpdateConnection",
 			fn: func() error {
-				_, err := ctrl.UpdateConnection("nonexistent", types.Connection{ID: "conn"})
+				_, err := ctrl.UpdateConnection(testInvocationContext(), "nonexistent", types.Connection{ID: "conn"})
 				return err
 			},
 		},
 		{
 			name: "RemoveConnection",
 			fn: func() error {
-				return ctrl.RemoveConnection("nonexistent", "conn")
+				return ctrl.RemoveConnection(testInvocationContext(), "nonexistent", "conn")
 			},
 		},
 	}

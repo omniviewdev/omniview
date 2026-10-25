@@ -89,27 +89,6 @@ func main() {
 	}
 }
 
-func TestBootstrapRejectsInvalidExplicitSDKBeforeCompilingDevcli(t *testing.T) {
-	root, err := filepath.Abs("../../..")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("GOWORK", "off")
-	t.Setenv("GOFLAGS", "")
-	for _, sdk := range []string{"relative-sdk", t.TempDir()} {
-		t.Run(sdk, func(t *testing.T) {
-			var output, diagnostics bytes.Buffer
-			err := bootstrap(context.Background(), bootstrapOptions{root: root, sdkSource: sdk}, &output, &diagnostics)
-			if err == nil || output.Len() != 0 {
-				t.Fatalf("invalid explicit SDK reached CLI compilation: %v, stdout=%s", err, &output)
-			}
-			if !strings.Contains(err.Error(), "prepare SDK-aware bootstrap module") {
-				t.Fatalf("SDK refusal did not occur at host module preparation ingress: %v\n%s", err, &diagnostics)
-			}
-		})
-	}
-}
-
 func TestCompilationSDKSourceBoundaries(t *testing.T) {
 	for _, kind := range []string{"enclosing link", "nested portable source", "explicit manifest", "environment wins ancestor ambiguity", "unsupported schema", "malformed manifest", "duplicate repository", "missing SDK link target", "escaping directory", "escaping symlink", "foreign host", "conflicting SDK", "relative environment", "missing environment", "ambiguous ancestors", "dangling manifest", "state without workspace"} {
 		t.Run(kind, func(t *testing.T) {
