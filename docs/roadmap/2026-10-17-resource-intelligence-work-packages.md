@@ -27,7 +27,7 @@ The implemented LSP 3.17 subset includes initialization/shutdown, full document 
 
 Thirteen composition-only Resource Intelligence stories were trimmed; reusable controls, component-focused stories/tests and the editor workbench remain. Their removal is not removal of the underlying controls, and retained fixture demonstrations are not production integrations.
 
-**Current frontier:** P00/C00 has an independently accepted [selected-source baseline receipt](2026-10-17-resource-intelligence-baseline.md), including actual host/Kubernetes SDK behavior and selected UI/browser sharing. After remote predecessor reconciliation, P44/P04/P18 are eligible independently. P18 must reuse merged editor evidence and complete remaining host feasibility acceptance, not redo the editor. P01 still requires P44; no provider/schema/numeric/invocation/query/lease contract is certified by baseline acceptance.
+**Current frontier:** P00/C00's [selected-source baseline](2026-10-17-resource-intelligence-baseline.md), P44's real SDK conformance and P02's [available-surfaces performance baseline](../../bench/app/README.md) are accepted. P01's reviewed design/spike is merged; production numeric/profile admission remains blocked. P04's published SDK/Kubernetes consumers are merged; full host acceptance remains tracked in [issue83](https://github.com/omniviewdev/omniview/issues/83). P18 reuses merged editor/portable browser evidence while retaining native feasibility gates. P23's P00/P02 predecessors are closed, but its authoritative host-prepared result/order/window integration still consumes unfrozen C08. Baseline or UI acceptance does not freeze provider/schema/numeric/invocation/query/lease contracts.
 
 ## How to use this backlog
 
@@ -117,6 +117,7 @@ These are contract subjects, not preselected filenames or new API symbols. The o
 - **Deliver:** repeatable query/table-shaped corpus and actual Go→IPC→runtime→paint measurement path, plus existing isolated renderer measurements. Record source watches, scans/evaluations, stream/lease counts, IPC bytes, retained objects/heap, CPU and latency.
 - **Accept:** capture a named baseline across the P44 cloud/container/hypervisor profiles plus Kubernetes payloads; distinguish native/server/browser and fake-backend evidence; profile typing, scrolling, sparse patches, groups, expansion and repeated mounts using available surfaces. Measure paginated/snapshot-only acquisition separately from event-driven update work. Later features extend the harness; never claim completed behavior from simulation.
 - **Exclude:** optimization without measurement or fixing arbitrary unrelated benchmark regressions.
+- **Accepted receipt:** [PR134](https://github.com/omniviewdev/omniview/pull/134), merge `1e67b3303598ffae2ffe4538b6e0fc8294d0faf5`; [real-path reproduction and limits](../../bench/app/README.md), [portable baseline](../../bench/app/resource-baseline-2026-10-24.json) and [separate lifecycle cleanup](../../bench/app/resource-cleanup-2026-10-24.json). Original available-surfaces acceptance is complete. Future host query evaluation/leases and native pixel or retained-heap plateau claims remain unavailable, not zero or implicitly accepted.
 
 ### P03 — Canonical resource identity and cache cutover
 - **Depends:** P00, P44, P45
