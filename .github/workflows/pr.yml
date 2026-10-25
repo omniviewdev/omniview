@@ -14,208 +14,24 @@ env:
   NODE_VERSION: "24"
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # E2E Tests — one real application build and isolated owned browser profiles.
-  # The reviewed companion SDK must first be published to its remote repository.
+  # One canonical application execution; the exact required check name stays
+  # stable even though reusable workflow checks have a caller/job prefix.
+  e2e-application:
+    uses: ./.github/workflows/e2e-runner.yml
+    with:
+      base: ${{ github.event.pull_request.base.sha }}
+
   e2e-tests:
-    # Keep the application/browser execution image explicit and reproducible.
+    name: e2e-tests
+    needs: e2e-application
+    if: always()
     runs-on: ubuntu-24.04
-    # Safety watchdog, not an acceptance timing claim; reports include preparation.
-    timeout-minutes: 15
-    defaults:
-      run:
-        shell: bash
-        working-directory: host
-    env:
-      GOWORK: "off"
-      GOFLAGS: ""
-      REVIEWED_SDK_REVISION: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
-      UI_SOURCE_REF: ${{ vars.OMNIVIEW_E2E_UI_REF }}
+    timeout-minutes: 1
     steps:
-      - name: Checkout host implementation
-        uses: actions/checkout@v4
-        with:
-          path: host
-          fetch-depth: 0
-          submodules: recursive
-          persist-credentials: false
-
-      - name: Require independently reviewed published source inputs
-        run: |
-          if [[ ! "$REVIEWED_SDK_REVISION" =~ ^([a-f0-9]{40}|[a-f0-9]{64})$ ]]; then
-            echo "::error::Set repository variable OMNIVIEW_E2E_REVIEWED_SDK_REVISION to the independently reviewed full SDK commit, published and reachable in omniviewdev/plugin-sdk. No unpublished/default revision is accepted."
-            exit 1
-          fi
-          if [[ -z "$UI_SOURCE_REF" ]]; then
-            echo "::error::Set repository variable OMNIVIEW_E2E_UI_REF to the UI implementation ref to check out; its resolved full commit is registered."
-            exit 1
-          fi
-
-      - name: Checkout reviewed SDK source
-        uses: actions/checkout@v4
-        with:
-          repository: omniviewdev/plugin-sdk
-          ref: ${{ vars.OMNIVIEW_E2E_REVIEWED_SDK_REVISION }}
-          path: plugin-sdk
-          persist-credentials: false
-
-      - name: Checkout UI implementation
-        uses: actions/checkout@v4
-        with:
-          repository: omniviewdev/ui
-          ref: ${{ vars.OMNIVIEW_E2E_UI_REF }}
-          path: ui
-          persist-credentials: false
-      - name: Verify SDK checkout matches reviewed pin
-        run: |
-          test "$(git -C "$GITHUB_WORKSPACE/plugin-sdk" rev-parse HEAD)" = "$REVIEWED_SDK_REVISION"
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24.14.0"
-
-      - name: Selector boundary contracts
-        run: node --test e2e/scripts/*.test.mjs scripts/verify-apt-archives.test.mjs
-
-      - name: Select conservative application impact
-        id: selection
+      - name: Require canonical suite or explicit prose-only success
         env:
-          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
-          UI_SOURCE: ${{ github.workspace }}/ui
-          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
-        run: |
-          if ! node e2e/scripts/run.mjs --changed --base '${{ github.event.pull_request.base.sha }}' --select; then
-            echo "::warning::Selection failed; requiring the full application path rather than skipping."
-            echo "kind=full" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Explain no application impact
-        if: steps.selection.outputs.kind == 'none'
-        run: echo "Application E2E preparation skipped only for explicitly allowlisted prose with an unchanged committed source cohort."
-
-      - name: Prepare Linux package archive cache
-        id: linux-packages
-        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
-        run: |
-          directory=/tmp/omniview-e2e-apt
-          mkdir -m 0755 "$directory"
-          sudo install -d -m 0700 -o _apt -g root "$directory/partial"
-          echo "directory=$directory" >> "$GITHUB_OUTPUT"
-          sudo apt-get update
-          echo "indexes=$(sha256sum /var/lib/apt/lists/*_InRelease | sha256sum | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore Linux package archives
-        id: linux-package-cache
-        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
-          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu24-e2e-apt-v1-${{ hashFiles('host/.github/workflows/pr.yml') }}-${{ steps.linux-packages.outputs.indexes }}
-
-      - name: Install Linux dependencies
-        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
-        env:
-          APT_ARCHIVES_DIRECTORY: ${{ steps.linux-packages.outputs.directory }}
-        run: |
-          node scripts/verify-apt-archives.mjs "$APT_ARCHIVES_DIRECTORY"
-          sudo apt-get -o "Dir::Cache::archives=$APT_ARCHIVES_DIRECTORY" install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libwayland-dev build-essential pkg-config
-
-      - name: Save verified Linux package archives
-        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false' && steps.linux-package-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.linux-packages.outputs.directory }}/*.deb
-          key: ${{ steps.linux-package-cache.outputs.cache-primary-key }}
-
-      - name: Setup pinned pnpm
-        if: steps.selection.outputs.kind != 'none'
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
-        with:
-          version: 12.14.0
-          package-json-file: host/package.json
-          install: false
-
-      - name: Initialize private native-tool cache container
-        if: steps.selection.outputs.kind != 'none'
-        env:
-          OMNIVIEW_E2E_TOOL_CACHE_ROOT: ${{ runner.temp }}/omniview-e2e-native-tool-cache-v1
-          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
-          UI_SOURCE: ${{ github.workspace }}/ui
-          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
-        # Filesystem ownership only: no install, compile or probe happens here.
-        # GITHUB_ENV binds setup-go's native go env cache paths and the runner.
-        run: node e2e/scripts/run.mjs --init-tool-cache
-
-      - name: Restore standalone native pnpm content store
-        if: steps.selection.outputs.kind != 'none'
-        uses: actions/cache@v4
-        with:
-          # Payload only, never HOME, ownership markers or managed receipts.
-          path: ${{ env.OMNIVIEW_E2E_TOOL_CACHE_ROOT }}/pnpm-store/12.14.0
-          key: ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-${{ hashFiles('host/pnpm-lock.yaml', 'ui/pnpm-lock.yaml', 'host/plugins/kubernetes/ui/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-
-
-      - name: Setup Go
-        id: go
-        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
-
-      - name: Restore native Go module and compiler payloads
-        id: go-cache
-        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ env.GOMODCACHE }}
-            ${{ env.GOCACHE }}
-          # Match setup-go's native Ubuntu x64 key, with a same-toolchain
-          # fallback: changed dependencies must not discard unrelated objects.
-          key: setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('host/go.sum', 'plugin-sdk/go.sum', 'host/plugins/kubernetes/go.sum', 'host/e2e/fixtures/workspace-probe/go.sum', 'host/e2e/scripts/tool-cache.mjs') }}
-          restore-keys: |
-            setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-
-
-      - name: Install Task
-        if: steps.selection.outputs.kind != 'none' && steps.selection.outputs.requires_application != 'false'
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-
-      # The SAME command is available locally via task e2e -- --changed --base REF.
-      # Installs, the single application build, profile startup and teardown stay
-      # inside this measured invocation; tooling-only selections need no Go host.
-      - name: Run canonical application suite once
-        if: steps.selection.outputs.kind != 'none'
-        env:
-          SDK_SOURCE: ${{ github.workspace }}/plugin-sdk
-          UI_SOURCE: ${{ github.workspace }}/ui
-          KUBERNETES_SOURCE: ${{ github.workspace }}/host/plugins/kubernetes
-        run: node e2e/scripts/run.mjs ${{ steps.selection.outputs.kind == 'selected' && '--changed' || '--full' }} --base '${{ github.event.pull_request.base.sha }}'
-
-      - name: Save native Go payloads independently of application assertions
-        if: ${{ !cancelled() && steps.go-cache.outcome == 'success' && steps.go-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ env.GOMODCACHE }}
-            ${{ env.GOCACHE }}
-          key: ${{ steps.go-cache.outputs.cache-primary-key }}
-
-      - name: Upload only allowed browser reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: |
-            host/e2e/playwright-report/
-            host/e2e/test-results/
-          retention-days: 7
+          RESULT: ${{ needs.e2e-application.result }}
+        run: test "$RESULT" = success
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Build Artifacts — downloadable binaries for manual testing
